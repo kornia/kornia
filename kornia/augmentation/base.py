@@ -350,6 +350,18 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
         """Compute the inverse transform of given transformation matrices."""
         return _torch_inverse_cast(transform)
 
+    def get_transformation_matrix(
+        self, input: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None
+    ) -> torch.Tensor:
+        if params is not None:
+            transform = self.compute_transformation(input, params)
+        elif not hasattr(self, "_transform_matrix"):
+            params = self.generate_parameters(input.shape)
+            transform = self.compute_transformation(input, params)
+        else:
+            transform = self._transform_matrix
+        return transform
+
     def inverse(
         self,
         input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
@@ -359,8 +371,14 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
     ) -> torch.Tensor:
         if isinstance(input, (list, tuple)):
             input, transform = input
+        elif not hasattr(self, '_transform_matrix'):
+            params = params if params is not None else self.generate_parameters(input.shape)
+            transform = self.compute_transformation(input, params)
         else:
             transform = self._transform_matrix
+        if params is not None:
+            transform = self.compute_transformation(input, params)
+
         ori_shape = input.shape
         in_tensor = self.transform_tensor(input)
         batch_shape = input.shape
