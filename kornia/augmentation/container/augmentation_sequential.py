@@ -92,8 +92,9 @@ class AugmentationSequential(Sequential):
             raise ValueError(f"Transformation matrix for {item} has not been computed.")
         elif isinstance(item, GeometricAugmentationBase2D) and param is not None:
             input = transform_boxes(
-                torch.as_tensor(
-                    item.get_transformation_matrix(input, param), device=input.device, dtype=input.dtype), input, mode
+                torch.as_tensor(item.get_transformation_matrix(input, param), device=input.device, dtype=input.dtype),
+                input,
+                mode,
             )
         else:
             pass  # No need to update anything
@@ -106,8 +107,8 @@ class AugmentationSequential(Sequential):
             raise ValueError(f"Transformation matrix for {item} has not been computed.")
         elif isinstance(item, GeometricAugmentationBase2D) and param is not None:
             input = transform_points(
-                torch.as_tensor(
-                    item.get_transformation_matrix(input, param), device=input.device, dtype=input.dtype), input
+                torch.as_tensor(item.get_transformation_matrix(input, param), device=input.device, dtype=input.dtype),
+                input,
             )
         else:
             pass  # No need to update anything
