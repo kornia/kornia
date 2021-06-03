@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from kornia.color import rgb_to_grayscale
+
 from kornia.geometry.conversions import rad2deg
 
 from kornia.filters import (
@@ -14,18 +16,16 @@ from .kernels import (
     get_canny_nms_kernel, get_hysteresis_kernel
 )
 
-# https://towardsdatascience.com/implement-canny-edge-detection-from-scratch-with-pytorch-a1cccfa58bed
-# https://github.com/DCurro/CannyEdgePytorch/blob/master/net_canny.py
 
 def canny(input: torch.Tensor, low_threshold: int = None, high_threshold: int = None, kernel_size: Tuple[int, int] = (5,5), sigma: Tuple[float, float] = (1,1), hysteresis: bool = False, eps: float = 1e-6) -> torch.Tensor:
-    r"""Computes the Canny operator and returns the magnitude per channel.
+    r"""Finds edgea of the input image and filters them using the Canny algorithm.
 
     Args:
-        input (torch.Tensor): the input image with shape :math:`(B,C,H,W)`.
-        low_threshold (int):
-        high_threshold (int):
-        kernel_size (int, int):
-        sigma (float, float):
+        input (torch.Tensor): input image tensor with shape :math:`(B,C,H,W)`.
+        low_threshold (int): lower threshold for the hysteresis procedure. If ``'None'``, low_threshold is set to :math:`10%' of dtype's max. Default: ``'None'``.
+        high_threshold (int): upper threshold for the hysteresis procedure. If ``'None'``, high_threshold is set to :math:`20%' of dtype's max. Default: ``'None'``.
+        kernel_size (Tuple[int, int]): the size of the kernel for the gaussian blur.
+        sigma (Tuple[float, float]): the standard deviation of the kernel for the gaussian blur.
         hysteresis (bool):
         eps (float): regularization number to avoid NaN during backprop. Default: 1e-6.
 
@@ -48,6 +48,10 @@ def canny(input: torch.Tensor, low_threshold: int = None, high_threshold: int = 
 
     device: torch.device = input.device
     dtype: torch.dtype = input.dtype
+
+    # To Grayscale
+    if input.shape[1] == 3:
+        input = rgb_to_grayscale(input)
 
     # Gaussian filter
     blurred: torch.Tensor = gaussian_blur2d(input, kernel_size, sigma)
