@@ -13,4 +13,3 @@ class TestCanny:
         inp = torch.zeros(1, 3, 4, 4, device=device, dtype=dtype)
         canny = kornia.filters.Canny()
         assert canny(inp).shape == (1, 3, 4, 4)
-
