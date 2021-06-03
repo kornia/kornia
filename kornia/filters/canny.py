@@ -128,20 +128,29 @@ def canny(input: torch.Tensor, low_threshold: float = 0.1, high_threshold: float
 
 
 class Canny(nn.Module):
-    r"""Computes the Canny operator and returns the magnitude per channel.
+    r"""Module that finds edges of the input image and filters them using the Canny algorithm.
 
     Args:
+        input (torch.Tensor): input image tensor with shape :math:`(B,C,H,W)`.
+        low_threshold (float): lower threshold for the hysteresis procedure. Default: 0.1.
+        high_threshold (float): upper threshold for the hysteresis procedure. Default: 0.1.
+        kernel_size (Tuple[int, int]): the size of the kernel for the gaussian blur.
+        sigma (Tuple[float, float]): the standard deviation of the kernel for the gaussian blur.
+        hysteresis (bool): if True, applies the hysteresis edge tracking. Otherwise, the edges are divided between weak (0.5) and strong (1) edges.
+        eps (float): regularization number to avoid NaN during backprop. Default: 1e-6.
 
-    Return:
-        torch.Tensor: the sobel edge gradient magnitudes map.
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor]:
+        - the canny edge magnitudes map, shape of :math:`(B,1,H,W)`.
+        - the canny edge detection filtered by thresholds and hysteresis, shape of :math:`(B,1,H,W)`.
 
-    Shape:
-        - Input: :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
-
-    Examples:
-        >>> input = torch.rand(1, 3, 4, 4)
-        >>> output = Sobel()(input)  # 1x3x4x4
+    Example:
+        >>> input = torch.rand(5, 3, 4, 4)
+        >>> magnitude, edges = Canny()(input)  # 5x3x4x4
+        >>> magnitude.shape
+        torch.Size([5, 1, 4, 4])
+        >>> edges.shape
+        torch.Size([5, 1, 4, 4])
     """
 
     def __init__(self,
@@ -165,7 +174,11 @@ class Canny(nn.Module):
     def __repr__(self) -> str:
         return self.__class__.__name__ + '('\
             'kernel_size=' + str(self.kernel_size) +\
-            'sigma=' + str(self.sigma) + ')'
+            'sigma=' + str(self.sigma) +\
+            'low_threshold=' + str(self.low_threshold) +\
+            'high_threshold=' + str(self.high_threshold) +\
+            'hysteresis=' + str(self.hysteresis) +\
+            'eps=' + str(self.eps) + ')'
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return canny(input, self.low_threshold, self.high_threshold, self.kernel_size, self.sigma, self.hysteresis, self.eps)
