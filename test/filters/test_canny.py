@@ -190,4 +190,3 @@ class TestCanny:
         actual_magnitude, actual_edges = op(img)
         assert_allclose(actual_magnitude, expected_magnitude)
         assert_allclose(actual_edges, expected_edges)
-

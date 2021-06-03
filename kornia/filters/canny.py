@@ -21,7 +21,7 @@ def canny(
     sigma: Tuple[float, float] = (1, 1),
     hysteresis: bool = True,
     eps: float = 1e-6,
-) -> torch.Tensor:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Finds edges of the input image and filters them using the Canny algorithm.
 
     Args:
@@ -30,7 +30,8 @@ def canny(
         high_threshold (float): upper threshold for the hysteresis procedure. Default: 0.1.
         kernel_size (Tuple[int, int]): the size of the kernel for the gaussian blur.
         sigma (Tuple[float, float]): the standard deviation of the kernel for the gaussian blur.
-        hysteresis (bool): if True, applies the hysteresis edge tracking. Otherwise, the edges are divided between weak (0.5) and strong (1) edges.
+        hysteresis (bool): if True, applies the hysteresis edge tracking.
+            Otherwise, the edges are divided between weak (0.5) and strong (1) edges.
         eps (float): regularization number to avoid NaN during backprop. Default: 1e-6.
 
     Returns:
@@ -53,7 +54,7 @@ def canny(
         raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}".format(input.shape))
 
     if low_threshold > high_threshold:
-        raise ValueError("Invalid input thresholds. low_threshold should be smaller than the high_threshold. Got: {} > {}"
+        raise ValueError("Invalid input thresholds. low_threshold should be smaller than the high_threshold. Got: {}>{}"
                          .format(low_threshold, high_threshold))
 
     if low_threshold < 0 and low_threshold > 1:
@@ -154,7 +155,8 @@ class Canny(nn.Module):
         high_threshold (float): upper threshold for the hysteresis procedure. Default: 0.1.
         kernel_size (Tuple[int, int]): the size of the kernel for the gaussian blur.
         sigma (Tuple[float, float]): the standard deviation of the kernel for the gaussian blur.
-        hysteresis (bool): if True, applies the hysteresis edge tracking. Otherwise, the edges are divided between weak (0.5) and strong (1) edges.
+        hysteresis (bool): if True, applies the hysteresis edge tracking.
+            Otherwise, the edges are divided between weak (0.5) and strong (1) edges.
         eps (float): regularization number to avoid NaN during backprop. Default: 1e-6.
 
     Returns:
@@ -183,7 +185,8 @@ class Canny(nn.Module):
         super(Canny, self).__init__()
 
         if low_threshold > high_threshold:
-            raise ValueError("Invalid input thresholds. low_threshold should be smaller than the high_threshold. Got: {} > {}"
+            raise ValueError("Invalid input thresholds. low_threshold should be\
+                             smaller than the high_threshold. Got: {}>{}"
                              .format(low_threshold, high_threshold))
 
         if low_threshold < 0 or low_threshold > 1:
@@ -210,22 +213,22 @@ class Canny(nn.Module):
     def __repr__(self) -> str:
         return (
             self.__class__.__name__ + '('
-            'kernel_size='
-            + str(self.kernel_size)
-            + 'sigma='
-            + str(self.sigma)
-            + 'low_threshold='
-            + str(self.low_threshold)
-            + 'high_threshold='
-            + str(self.high_threshold)
-            + 'hysteresis='
-            + str(self.hysteresis)
-            + 'eps='
-            + str(self.eps)
-            + ')'
+            'kernel_size=' +
+            str(self.kernel_size) +
+            'sigma=' +
+            str(self.sigma) +
+            'low_threshold=' +
+            str(self.low_threshold) +
+            'high_threshold=' +
+            str(self.high_threshold) +
+            'hysteresis=' +
+            str(self.hysteresis) +
+            'eps=' +
+            str(self.eps) +
+            ')'
         )
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         return canny(
             input, self.low_threshold, self.high_threshold, self.kernel_size, self.sigma, self.hysteresis, self.eps
         )
