@@ -17,7 +17,7 @@ from .kernels import (
 )
 
 
-def canny(input: torch.Tensor, low_threshold: float = 0.1, high_threshold: float = 0.2, kernel_size: Tuple[int, int] = (5,5), sigma: Tuple[float, float] = (1,1), hysteresis: bool = False, eps: float = 1e-6) -> torch.Tensor:
+def canny(input: torch.Tensor, low_threshold: float = 0.1, high_threshold: float = 0.2, kernel_size: Tuple[int, int] = (5,5), sigma: Tuple[float, float] = (1,1), hysteresis: bool = True, eps: float = 1e-6) -> torch.Tensor:
     r"""Finds edges of the input image and filters them using the Canny algorithm.
 
     Args:
@@ -50,6 +50,18 @@ def canny(input: torch.Tensor, low_threshold: float = 0.1, high_threshold: float
         raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
                          .format(input.shape))
 
+    if low_threshold > high_threshold:
+        raise ValueError("Invalid input thresholds. low_threshold should be smaller than the high_threshold. Got: {} > {}"
+                         .format(low_threshold, high_threshold))
+
+    if low_threshold < 0 and low_threshold > 1:
+        raise ValueError("Invalid input threshold. low_threshold should be in range (0,1). Got: {}"
+                         .format(low_threshold))
+
+    if high_threshold < 0 and high_threshold > 1:
+        raise ValueError("Invalid input threshold. high_threshold should be in range (0,1). Got: {}"
+                         .format(high_threshold))
+
     device: torch.device = input.device
     dtype: torch.dtype = input.dtype
 
@@ -61,11 +73,11 @@ def canny(input: torch.Tensor, low_threshold: float = 0.1, high_threshold: float
     blurred: torch.Tensor = gaussian_blur2d(input, kernel_size, sigma)
 
     # Compute the gradients
-    edges: torch.Tensor = spatial_gradient(blurred, normalized=False)
+    gradients: torch.Tensor = spatial_gradient(blurred, normalized=False)
 
     # Unpack the edges
-    gx: torch.Tensor = edges[:, :, 0]
-    gy: torch.Tensor = edges[:, :, 1]
+    gx: torch.Tensor = gradients[:, :, 0]
+    gy: torch.Tensor = gradients[:, :, 1]
 
     # Compute gradient magnitude and angle
     magnitude: torch.Tensor = torch.sqrt(gx * gx + gy * gy + eps)
@@ -96,7 +108,7 @@ def canny(input: torch.Tensor, low_threshold: float = 0.1, high_threshold: float
 
     is_max: torch.Tensor = channel_select_filtered.min(dim=1)[0] > 0.0
 
-    magnitude[is_max==0] = 0.0
+    magnitude = magnitude * is_max
 
     # Threshold
     edges: torch.Tensor = F.threshold(magnitude, low_threshold, 0.0)
@@ -109,7 +121,7 @@ def canny(input: torch.Tensor, low_threshold: float = 0.1, high_threshold: float
     # Hysteresis
     if hysteresis:
         edges_old: torch.Tensor = torch.zeros(edges.shape, device=edges.device, dtype=edges.dtype)
-        hysteresis_kernels: torch.Tensor = get_hysteresis_kernel(device, dtype)
+        hysteresis_kernels: torch.Tensor = get_hysteresis_kernel(device, edges.dtype)
 
         while ((edges_old - edges).abs() != 0).any():
             weak: torch.Tensor = (edges == 0.5).float()
@@ -157,6 +169,18 @@ class Canny(nn.Module):
                  low_threshold: float = 0.1, high_threshold: float = 0.2,
                  kernel_size: Tuple[int, int] = (5,5), sigma: Tuple[float, float] = (1,1), hysteresis: bool = False, eps: float = 1e-6) -> None:
         super(Canny, self).__init__()
+
+        if low_threshold > high_threshold:
+            raise ValueError("Invalid input thresholds. low_threshold should be smaller than the high_threshold. Got: {} > {}"
+                             .format(low_threshold, high_threshold))
+
+        if low_threshold < 0 or low_threshold > 1:
+            raise ValueError("Invalid input threshold. low_threshold should be in range (0,1). Got: {}"
+                             .format(low_threshold))
+
+        if high_threshold < 0 or high_threshold > 1:
+            raise ValueError("Invalid input threshold. high_threshold should be in range (0,1). Got: {}"
+                             .format(high_threshold))
 
         # Gaussian blur parameters
         self.kernel_size = kernel_size
