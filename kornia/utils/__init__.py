@@ -4,10 +4,12 @@ from .image import tensor_to_image, image_to_tensor, ImageToTensor
 from .pointcloud_io import save_pointcloud_ply, load_pointcloud_ply
 from .draw import draw_rectangle
 from .helpers import _extract_device_dtype
+from .memory import batched_forward
 
 from kornia.utils.metrics import *
 
 __all__ = [
+    "batched_forward",
     "one_hot",
     "create_meshgrid",
     "create_meshgrid3d",
