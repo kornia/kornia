@@ -1,10 +1,7 @@
-from re import S
-from typing import Callable, Tuple, Union, List, Optional, Dict, cast
+from typing import Tuple, Union, List, Optional, Dict, cast
 import warnings
 
 import torch
-from torch.functional import Tensor
-import torch.nn as nn
 from torch.nn.functional import pad
 
 from kornia.constants import Resample, BorderType, SamplePadding, pi
@@ -14,7 +11,6 @@ from kornia.geometry import (
     affine,
     bbox_generator,
     bbox_to_mask,
-    crop_by_boxes,
     crop_by_transform_mat,
     deg2rad,
     elastic_transform2d,
@@ -23,7 +19,6 @@ from kornia.geometry import (
     get_tps_transform,
     hflip,
     vflip,
-    rotate,
     warp_affine,
     warp_image_tps,
     warp_perspective,

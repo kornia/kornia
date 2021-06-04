@@ -195,6 +195,8 @@ class TestAugmentationSequential:
             ],
             input_types=["input", "mask", "bbox", "keypoints"],
         )
+        assert aug(inp).shape == inp.shape
+
         out_inv = aug.inverse(inp, mask, bbox, keypoints)
         assert out_inv[0].shape == inp.shape
         assert out_inv[1].shape == mask.shape

@@ -248,14 +248,13 @@ class AugmentationSequential(Sequential):
         outputs = []
         for input, itype in zip(args, self.input_types):
             for item in self.children():
-                if isinstance(item, _AugmentationBase):
-                    func_name = item.__class__.__name__
-                    # Check if a param recorded
-                    param = self._params[func_name] if func_name in self._params else None
-                    # Check if a param provided. If provided, it will overwrite the recorded ones.
-                    param = params[func_name] if func_name in params else param
-                else:
-                    param = None
+
+                func_name = item.__class__.__name__
+                # Check if a param recorded
+                param = self._params[func_name] if func_name in self._params else None
+                # Check if a param provided. If provided, it will overwrite the recorded ones.
+                param = params[func_name] if func_name in params else param
+
                 if itype == DataCategory.INPUT:
                     input = self.apply_to_input(input, item, param)
                 elif isinstance(item, GeometricAugmentationBase2D) and itype in DataCategory:
