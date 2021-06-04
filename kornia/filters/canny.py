@@ -212,22 +212,11 @@ class Canny(nn.Module):
         self.eps: float = eps
 
     def __repr__(self) -> str:
-        return (
-            self.__class__.__name__ + '('
-            'kernel_size=' +
-            str(self.kernel_size) +
-            'sigma=' +
-            str(self.sigma) +
-            'low_threshold=' +
-            str(self.low_threshold) +
-            'high_threshold=' +
-            str(self.high_threshold) +
-            'hysteresis=' +
-            str(self.hysteresis) +
-            'eps=' +
-            str(self.eps) +
+        return ''.join((
+            f'{type(self).__name__}(',
+            ', '.join(f'{name}={getattr(self, name)}' for name in sorted(self.__dict__) if not name.startswith('_')),
             ')'
-        )
+        ))
 
     def forward(self, input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         return canny(
