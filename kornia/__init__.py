@@ -75,6 +75,7 @@ from kornia.filters import (
     gaussian_blur2d,
     laplacian,
     sobel,
+    canny,
     spatial_gradient,
     box_blur,
     median_blur,
