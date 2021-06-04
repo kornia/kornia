@@ -122,11 +122,12 @@ def canny(
     high: torch.Tensor = magnitude > high_threshold
 
     edges = low * 0.5 + high * 0.5
+    edges = edges.to(dtype)
 
     # Hysteresis
     if hysteresis:
-        edges_old: torch.Tensor = -torch.ones(edges.shape, device=edges.device, dtype=edges.dtype)
-        hysteresis_kernels: torch.Tensor = get_hysteresis_kernel(device, edges.dtype)
+        edges_old: torch.Tensor = -torch.ones(edges.shape, device=edges.device, dtype=dtype)
+        hysteresis_kernels: torch.Tensor = get_hysteresis_kernel(device, dtype)
 
         while ((edges_old - edges).abs() != 0).any():
             weak: torch.Tensor = (edges == 0.5).float()
@@ -135,7 +136,7 @@ def canny(
             hysteresis_magnitude: torch.Tensor = F.conv2d(
                 edges, hysteresis_kernels, padding=hysteresis_kernels.shape[-1] // 2
             )
-            hysteresis_magnitude = (hysteresis_magnitude == 1).any(1, keepdim=True).float()
+            hysteresis_magnitude = (hysteresis_magnitude == 1).any(1, keepdim=True).to(dtype)
             hysteresis_magnitude = hysteresis_magnitude * weak + strong
 
             edges_old = edges.clone()

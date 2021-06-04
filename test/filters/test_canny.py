@@ -68,8 +68,10 @@ class TestCanny:
         ]]], device=device, dtype=dtype)
 
         magnitude, edges = kornia.filters.canny(inp)
-        assert_allclose(magnitude, expected_magnitude)
-        assert_allclose(edges, expected_edges)
+
+        tol_val: float = utils._get_precision(device, dtype)
+        assert_allclose(magnitude, expected_magnitude, rtol=tol_val, atol=tol_val)
+        assert_allclose(edges, expected_edges, rtol=tol_val, atol=tol_val)
 
     def test_magnitude_hyst(self, device, dtype):
         inp = torch.tensor([[[
