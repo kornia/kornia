@@ -43,29 +43,53 @@ class TestCanny:
         assert edges.shape == (batch_size, 1, 5, 5)
 
     def test_magnitude(self, device, dtype):
-        inp = torch.tensor([[[
-            [0., 0., 0., 0., 0.],
-            [0., 0., 1., 0., 0.],
-            [0., 1., 1., 1., 0.],
-            [0., 0., 1., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]], device=device, dtype=dtype)
+        inp = torch.tensor(
+            [
+                [
+                    [
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 1.0, 0.0, 0.0],
+                        [0.0, 1.0, 1.0, 1.0, 0.0],
+                        [0.0, 0.0, 1.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
-        expected_magnitude = torch.tensor([[[
-            [0., 0., 0., 0., 0.],
-            [0., 1.2458, 0.9672, 1.2458, 0.],
-            [0., 0.9672, 0., 0.9672, 0.],
-            [0., 1.2458, 0.9672, 1.2458, 0.],
-            [0., 0., 0., 0., 0.],
-        ]]], device=device, dtype=dtype)
+        expected_magnitude = torch.tensor(
+            [
+                [
+                    [
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 1.2458, 0.9672, 1.2458, 0.0],
+                        [0.0, 0.9672, 0.0, 0.9672, 0.0],
+                        [0.0, 1.2458, 0.9672, 1.2458, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
-        expected_edges = torch.tensor([[[
-            [0., 0., 0., 0., 0.],
-            [0., 1., 1., 1., 0.],
-            [0., 1., 0., 1., 0.],
-            [0., 1., 1., 1., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]], device=device, dtype=dtype)
+        expected_edges = torch.tensor(
+            [
+                [
+                    [
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 1.0, 1.0, 1.0, 0.0],
+                        [0.0, 1.0, 0.0, 1.0, 0.0],
+                        [0.0, 1.0, 1.0, 1.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
         magnitude, edges = kornia.filters.canny(inp)
 
@@ -74,29 +98,53 @@ class TestCanny:
         assert_allclose(edges, expected_edges, rtol=tol_val, atol=tol_val)
 
     def test_magnitude_hyst(self, device, dtype):
-        inp = torch.tensor([[[
-            [0.5, 0.4, 0.5, 0.45, 0.1],
-            [0.3, 0.2, 0.3, 0.0, 0.3],
-            [0.5, 1.0, 1.0, 0.6, 0.75],
-            [0.2, 0.4, 0.6, 0.0, 0.5],
-            [0.1, 0.35, 0.35, 0.26, 0.1],
-        ]]], device=device, dtype=dtype)
+        inp = torch.tensor(
+            [
+                [
+                    [
+                        [0.5, 0.4, 0.5, 0.45, 0.1],
+                        [0.3, 0.2, 0.3, 0.0, 0.3],
+                        [0.5, 1.0, 1.0, 0.6, 0.75],
+                        [0.2, 0.4, 0.6, 0.0, 0.5],
+                        [0.1, 0.35, 0.35, 0.26, 0.1],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
-        expected_magnitude = torch.tensor([[[
-            [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-            [0.4858, 0.5594, 0.6878, 0.6977, 0.5602],
-            [0.1129, 0.0000, 0.0000, 0.4531, 0.0000],
-            [0.6115, 0.5859, 0.6110, 0.6766, 0.5160],
-            [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]
-        ]]], device=device, dtype=dtype)
+        expected_magnitude = torch.tensor(
+            [
+                [
+                    [
+                        [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                        [0.4858, 0.5594, 0.6878, 0.6977, 0.5602],
+                        [0.1129, 0.0000, 0.0000, 0.4531, 0.0000],
+                        [0.6115, 0.5859, 0.6110, 0.6766, 0.5160],
+                        [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
-        expected_edges = torch.tensor([[[
-            [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-            [1.0000, 1.0000, 1.0000, 1.0000, 1.0000],
-            [1.0000, 0.0000, 0.0000, 1.0000, 0.0000],
-            [1.0000, 1.0000, 1.0000, 1.0000, 1.0000],
-            [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]
-        ]]], device=device, dtype=dtype)
+        expected_edges = torch.tensor(
+            [
+                [
+                    [
+                        [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                        [1.0000, 1.0000, 1.0000, 1.0000, 1.0000],
+                        [1.0000, 0.0000, 0.0000, 1.0000, 0.0000],
+                        [1.0000, 1.0000, 1.0000, 1.0000, 1.0000],
+                        [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
         magnitude, edges = kornia.filters.canny(inp, hysteresis=True)
 
@@ -105,29 +153,53 @@ class TestCanny:
         assert_allclose(edges, expected_edges, rtol=tol_val, atol=tol_val)
 
     def test_magnitude_hyst_false(self, device, dtype):
-        inp = torch.tensor([[[
-            [0.5, 0.4, 0.5, 0.45, 0.1],
-            [0.3, 0.2, 0.3, 0.0, 0.3],
-            [0.5, 1.0, 1.0, 0.6, 0.75],
-            [0.2, 0.4, 0.6, 0.0, 0.5],
-            [0.1, 0.35, 0.35, 0.26, 0.1],
-        ]]], device=device, dtype=dtype)
+        inp = torch.tensor(
+            [
+                [
+                    [
+                        [0.5, 0.4, 0.5, 0.45, 0.1],
+                        [0.3, 0.2, 0.3, 0.0, 0.3],
+                        [0.5, 1.0, 1.0, 0.6, 0.75],
+                        [0.2, 0.4, 0.6, 0.0, 0.5],
+                        [0.1, 0.35, 0.35, 0.26, 0.1],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
-        expected_magnitude = torch.tensor([[[
-            [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-            [0.4858, 0.5594, 0.6878, 0.6977, 0.5602],
-            [0.1129, 0.0000, 0.0000, 0.4531, 0.0000],
-            [0.6115, 0.5859, 0.6110, 0.6766, 0.5160],
-            [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]
-        ]]], device=device, dtype=dtype)
+        expected_magnitude = torch.tensor(
+            [
+                [
+                    [
+                        [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                        [0.4858, 0.5594, 0.6878, 0.6977, 0.5602],
+                        [0.1129, 0.0000, 0.0000, 0.4531, 0.0000],
+                        [0.6115, 0.5859, 0.6110, 0.6766, 0.5160],
+                        [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
-        expected_edges = torch.tensor([[[
-            [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-            [1.0000, 1.0000, 1.0000, 1.0000, 1.0000],
-            [0.5000, 0.0000, 0.0000, 1.0000, 0.0000],
-            [1.0000, 1.0000, 1.0000, 1.0000, 1.0000],
-            [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]
-        ]]], device=device, dtype=dtype)
+        expected_edges = torch.tensor(
+            [
+                [
+                    [
+                        [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                        [1.0000, 1.0000, 1.0000, 1.0000, 1.0000],
+                        [0.5000, 0.0000, 0.0000, 1.0000, 0.0000],
+                        [1.0000, 1.0000, 1.0000, 1.0000, 1.0000],
+                        [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
         magnitude, edges = kornia.filters.canny(inp, hysteresis=False)
 
@@ -136,29 +208,53 @@ class TestCanny:
         assert_allclose(edges, expected_edges, rtol=tol_val, atol=tol_val)
 
     def test_magnitude_threshold(self, device, dtype):
-        inp = torch.tensor([[[
-            [0.5, 0.4, 0.5, 0.45, 0.1],
-            [0.3, 0.2, 0.3, 0.0, 0.3],
-            [0.5, 1.0, 1.0, 0.6, 0.75],
-            [0.2, 0.4, 0.6, 0.0, 0.5],
-            [0.1, 0.35, 0.35, 0.26, 0.1],
-        ]]], device=device, dtype=dtype)
+        inp = torch.tensor(
+            [
+                [
+                    [
+                        [0.5, 0.4, 0.5, 0.45, 0.1],
+                        [0.3, 0.2, 0.3, 0.0, 0.3],
+                        [0.5, 1.0, 1.0, 0.6, 0.75],
+                        [0.2, 0.4, 0.6, 0.0, 0.5],
+                        [0.1, 0.35, 0.35, 0.26, 0.1],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
-        expected_magnitude = torch.tensor([[[
-            [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-            [0.4858, 0.5594, 0.6878, 0.6977, 0.5602],
-            [0.1129, 0.0000, 0.0000, 0.4531, 0.0000],
-            [0.6115, 0.5859, 0.6110, 0.6766, 0.5160],
-            [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]
-        ]]], device=device, dtype=dtype)
+        expected_magnitude = torch.tensor(
+            [
+                [
+                    [
+                        [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                        [0.4858, 0.5594, 0.6878, 0.6977, 0.5602],
+                        [0.1129, 0.0000, 0.0000, 0.4531, 0.0000],
+                        [0.6115, 0.5859, 0.6110, 0.6766, 0.5160],
+                        [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
-        expected_edges = torch.tensor([[[
-            [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-            [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-            [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-            [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-            [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]
-        ]]], device=device, dtype=dtype)
+        expected_edges = torch.tensor(
+            [
+                [
+                    [
+                        [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                        [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                        [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                        [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                        [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
         magnitude, edges = kornia.filters.canny(inp, low_threshold=0.3, high_threshold=0.9)
 
@@ -172,8 +268,7 @@ class TestCanny:
         batch_size, channels, height, width = 1, 1, 3, 4
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.filters.canny, img,
-                         raise_exception=True)
+        assert gradcheck(kornia.filters.canny, img, raise_exception=True)
 
     def test_jit(self, device, dtype):
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
