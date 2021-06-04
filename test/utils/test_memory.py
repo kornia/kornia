@@ -11,14 +11,14 @@ class TestBatchedForward:
     def test_runbatch(self, device):
         patches = torch.rand(34, 1, 32, 32)
         sift = kornia.feature.SIFTDescriptor(32)
-        desc_batched = kornia.utils.memory.batched_forward(sift, patches, torch.device('cuda'), 32)
+        desc_batched = kornia.utils.memory.batched_forward(sift, patches, device, 32)
         desc = sift(patches)
         assert torch.allclose(desc, desc_batched)
 
     def test_runone(self, device):
         patches = torch.rand(16, 1, 32, 32)
         sift = kornia.feature.SIFTDescriptor(32)
-        desc_batched = kornia.utils.memory.batched_forward(sift, patches, torch.device('cuda'), 32)
+        desc_batched = kornia.utils.memory.batched_forward(sift, patches, device, 32)
         desc = sift(patches)
         assert torch.allclose(desc, desc_batched)
 
