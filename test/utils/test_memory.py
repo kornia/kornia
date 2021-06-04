@@ -26,6 +26,9 @@ class TestBatchedForward:
         batch_size, channels, height, width = 3, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width, device=device)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.utils.memory.batched_forward,
-                         (kornia.feature.BlobHessian(), img, device, 2),
-                         raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(
+            kornia.utils.memory.batched_forward,
+            (kornia.feature.BlobHessian(), img, device, 2),
+            raise_exception=True,
+            nondet_tol=1e-4,
+        )

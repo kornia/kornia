@@ -2,10 +2,9 @@ from typing import Optional, Union
 import torch
 
 
-def batched_forward(model: torch.nn.Module,
-                    data: torch.Tensor,
-                    device: torch.device,
-                    batch_size: int = 128, **kwargs) -> torch.Tensor:
+def batched_forward(
+    model: torch.nn.Module, data: torch.Tensor, device: torch.device, batch_size: int = 128, **kwargs
+) -> torch.Tensor:
     r'''Convenience function, which allows to run the forward in micro-batches,
     when the just model.forward(data) does not fit into device memory, e.g. on laptop GPU.
     In the end, it transfers the output to the device of the input data tensor.
