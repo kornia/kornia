@@ -22,7 +22,7 @@ def batched_forward(
     Example:
         >>> patches = torch.rand(8000, 1, 32, 32)
         >>> sift = kornia.feature.SIFTDescriptor(32)
-        >>> desc_batched = batched_forward(sift, patches, torch.device('cuda'), 128)
+        >>> desc_batched = batched_forward(sift, patches, torch.device('cpu'), 128)
         >>> desc = sift(patches)
         >>> assert torch.allclose(desc, desc_batched)'''
     model_dev = model.to(device)
