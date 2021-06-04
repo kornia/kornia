@@ -222,11 +222,15 @@ class Canny(nn.Module):
         self.eps: float = eps
 
     def __repr__(self) -> str:
-        return ''.join((
-            f'{type(self).__name__}(',
-            ', '.join(f'{name}={getattr(self, name)}' for name in sorted(self.__dict__) if not name.startswith('_')),
-            ')'
-        ))
+        return ''.join(
+            (
+                f'{type(self).__name__}(',
+                ', '.join(
+                    f'{name}={getattr(self, name)}' for name in sorted(self.__dict__) if not name.startswith('_')
+                ),
+                ')',
+            )
+        )
 
     def forward(self, input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         return canny(
