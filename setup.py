@@ -115,28 +115,45 @@ if __name__ == '__main__':
         version=version,
         author='Edgar Riba',
         author_email='contact@kornia.org',
-        url='https://github.com/kornia/kornia',
+        url='https://www.kornia.org',
+        download_url='https://github.com/kornia/kornia',
+        license='Apache License 2.0',
         description='Open Source Differentiable Computer Vision Library for PyTorch',
         long_description=long_description,
         long_description_content_type='text/markdown',
-        license='Apache License 2.0',
         python_requires='>=3.6',
-        # Test
         setup_requires=['pytest-runner'],
         tests_require=['pytest'],
-        # Package info
         packages=find_packages(exclude=('docs', 'test', 'examples')),
         package_data={"kornia": ["py.typed"]},
         zip_safe=True,
         install_requires=requirements,
+        keywords=['computer vision', 'deep learning', 'pytorch']
+        project_urls={
+            "Bug Tracker": "https://github.com/kornia/kornia/issues",
+            "Documentation": "https://kornia.readthedocs.io/en/latest/",
+            "Source Code": "https://github.com/kornia/kornia",
+        },
         classifiers=[
+            'Environment :: Console',
+            'Natural Language :: English',
+            # How mature is this project? Common values are
+            #   3 - Alpha, 4 - Beta, 5 - Production/Stable
+            'Development Status :: 4 - Beta',
+            # Indicate who your project is intended for
             'Intended Audience :: Developers',
             'Intended Audience :: Education',
             'Intended Audience :: Science/Research',
-            'Operating System :: POSIX :: Linux',
-            'Programming Language :: Python :: 3 :: Only',
-            'License :: OSI Approved :: Apache Software License',
+            'Topic :: Scientific/Engineering :: Artificial Intelligence',
             'Topic :: Scientific/Engineering :: Image Recognition',
-            'Topic :: Software Development :: Libraries',
+            # Pick your license as you wish
+            'License :: OSI Approved :: Apache Software License',
+            'Operating System :: OS Independent',
+            # Specify the Python versions you support here. In particular, ensure
+            # that you indicate whether you support Python 2, Python 3 or both.
+            'Programming Language :: Python :: 3',
+            'Programming Language :: Python :: 3.6',
+            'Programming Language :: Python :: 3.7',
+            'Programming Language :: Python :: 3.8',
         ],
     )
