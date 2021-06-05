@@ -93,6 +93,24 @@ class TestHomographyWarper:
         res = torch.tensor([[[0.5, 0.0, 3.0], [0.0, 2.0, 0.5], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         assert (denorm_homo == res).all()
 
+    @pytest.mark.parametrize("batch_size", [1, 3])
+    def test_consistency(self, batch_size, device, dtype):
+        # create input data
+        height, width = 2, 5
+        dst_homo_src = torch.eye(3, device=device, dtype=dtype)
+        dst_homo_src[..., 0, 0] = 0.5
+        dst_homo_src[..., 1, 1] = 2.0
+        dst_homo_src[..., 0, 2] = 1.0
+        dst_homo_src[..., 1, 2] = 2.0
+        dst_homo_src = dst_homo_src.expand(batch_size, -1, -1)
+
+        denorm_homo = kornia.denormalize_homography(dst_homo_src, (height, width), (height, width))
+        norm_denorm_homo = kornia.normalize_homography(denorm_homo, (height, width), (height, width))
+        assert (dst_homo_src == norm_denorm_homo).all()
+        norm_homo = kornia.normalize_homography(dst_homo_src, (height, width), (height, width))
+        denorm_norm_homo = kornia.denormalize_homography(norm_homo, (height, width), (height, width))
+        assert (dst_homo_src == denorm_norm_homo).all()
+
     @pytest.mark.parametrize("offset", [1, 3, 7])
     @pytest.mark.parametrize("shape", [(4, 5), (2, 6), (4, 3), (5, 7)])
     def test_warp_grid_translation(self, shape, offset, device, dtype):
