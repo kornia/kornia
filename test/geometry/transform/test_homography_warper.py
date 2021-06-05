@@ -58,9 +58,9 @@ class TestHomographyWarper:
 
         # change output scale
         denorm_homo = kornia.denormalize_homography(dst_homo_src, (height, width), (height * 2, width // 2))
-        res = torch.tensor(
-            [[[0.25, 0.0, 0.0], [0.0, 3.0, 0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
-        ).repeat(batch_size, 1, 1)
+        res = torch.tensor([[[0.25, 0.0, 0.0], [0.0, 3.0, 0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype).repeat(
+            batch_size, 1, 1
+        )
         assert_allclose(denorm_homo, res, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 3])
