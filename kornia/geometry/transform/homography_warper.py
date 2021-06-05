@@ -16,6 +16,7 @@ __all__ = [
     "warp_grid",
     "warp_grid3d",
     "normalize_homography",
+    "denormalize_homography",
     "normalize_homography3d",
     "normal_transform_pixel",
     "normal_transform_pixel3d",
@@ -397,6 +398,41 @@ def normalize_homography(
 
     # compute chain transformations
     dst_norm_trans_src_norm: torch.Tensor = dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm)
+    return dst_norm_trans_src_norm
+
+
+def denormalize_homography(
+    dst_pix_trans_src_pix: torch.Tensor, dsize_src: Tuple[int, int], dsize_dst: Tuple[int, int]
+) -> torch.Tensor:
+    r"""De-normalize a given homography in pixels from [-1, 1] to actual height and width.
+
+    Args:
+        dst_pix_trans_src_pix (torch.Tensor): homography/ies from source to destination to be
+          denormalized. :math:`(B, 3, 3)`
+        dsize_src (tuple): size of the source image (height, width).
+        dsize_dst (tuple): size of the destination image (height, width).
+
+    Returns:
+        torch.Tensor: the denormalized homography of shape :math:`(B, 3, 3)`.
+    """
+    check_is_tensor(dst_pix_trans_src_pix)
+
+    if not (len(dst_pix_trans_src_pix.shape) == 3 or dst_pix_trans_src_pix.shape[-2:] == (3, 3)):
+        raise ValueError(
+            "Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {}".format(dst_pix_trans_src_pix.shape)
+        )
+
+    # source and destination sizes
+    src_h, src_w = dsize_src
+    dst_h, dst_w = dsize_dst
+
+    # compute the transformation pixel/norm for src/dst
+    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel(src_h, src_w).to(dst_pix_trans_src_pix)
+
+    dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel(dst_h, dst_w).to(dst_pix_trans_src_pix)
+    dst_denorm_trans_dst_pix = _torch_inverse_cast(dst_norm_trans_dst_pix)
+    # compute chain transformations
+    dst_norm_trans_src_norm: torch.Tensor = dst_denorm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_norm_trans_src_pix)
     return dst_norm_trans_src_norm
 
 

@@ -37,15 +37,31 @@ class TestHomographyWarper:
         norm_homo = kornia.normalize_homography(dst_homo_src, (height, width), (height, width))
         assert (norm_homo == dst_homo_src).all()
 
-        norm_homo = kornia.normalize_homography(dst_homo_src, (height, width), (height, width))
-        assert (norm_homo == dst_homo_src).all()
-
         # change output scale
         norm_homo = kornia.normalize_homography(dst_homo_src, (height, width), (height * 2, width // 2))
         res = torch.tensor(
             [[[4.0, 0.0, 3.0], [0.0, 1 / 3, -2 / 3], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
         ).repeat(batch_size, 1, 1)
         assert_allclose(norm_homo, res, atol=1e-4, rtol=1e-4)
+
+    @pytest.mark.parametrize("batch_size", [1, 3])
+    def test_denormalize_homography_identity(self, batch_size, device, dtype):
+        # create input data
+        height, width = 2, 5
+        dst_homo_src = utils.create_eye_batch(batch_size=batch_size, eye_size=3, device=device, dtype=dtype)
+
+        res = torch.tensor([[[0.5, 0.0, -1.0], [0.0, 2.0, -1.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        assert (kornia.normal_transform_pixel(height, width, device=device, dtype=dtype) == res).all()
+
+        denorm_homo = kornia.denormalize_homography(dst_homo_src, (height, width), (height, width))
+        assert (denorm_homo == dst_homo_src).all()
+
+        # change output scale
+        denorm_homo = kornia.denormalize_homography(dst_homo_src, (height, width), (height * 2, width // 2))
+        res = torch.tensor([[[0.25, 0.0, 0.0], [0.0, 3.0, 0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype).repeat(
+            batch_size, 1, 1
+        )
+        assert_allclose(denorm_homo, res, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 3])
     def test_normalize_homography_general(self, batch_size, device, dtype):
@@ -61,6 +77,39 @@ class TestHomographyWarper:
         norm_homo = kornia.normalize_homography(dst_homo_src, (height, width), (height, width))
         res = torch.tensor([[[0.5, 0.0, 0.0], [0.0, 2.0, 5.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         assert (norm_homo == res).all()
+
+    @pytest.mark.parametrize("batch_size", [1, 3])
+    def test_denormalize_homography_general(self, batch_size, device, dtype):
+        # create input data
+        height, width = 2, 5
+        dst_homo_src = torch.eye(3, device=device, dtype=dtype)
+        dst_homo_src[..., 0, 0] = 0.5
+        dst_homo_src[..., 1, 1] = 2.0
+        dst_homo_src[..., 0, 2] = 1.0
+        dst_homo_src[..., 1, 2] = 2.0
+        dst_homo_src = dst_homo_src.expand(batch_size, -1, -1)
+
+        denorm_homo = kornia.denormalize_homography(dst_homo_src, (height, width), (height, width))
+        res = torch.tensor([[[0.5, 0.0, 3.0], [0.0, 2.0, 0.5], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        assert (denorm_homo == res).all()
+
+    @pytest.mark.parametrize("batch_size", [1, 3])
+    def test_consistency(self, batch_size, device, dtype):
+        # create input data
+        height, width = 2, 5
+        dst_homo_src = torch.eye(3, device=device, dtype=dtype)
+        dst_homo_src[..., 0, 0] = 0.5
+        dst_homo_src[..., 1, 1] = 2.0
+        dst_homo_src[..., 0, 2] = 1.0
+        dst_homo_src[..., 1, 2] = 2.0
+        dst_homo_src = dst_homo_src.expand(batch_size, -1, -1)
+
+        denorm_homo = kornia.denormalize_homography(dst_homo_src, (height, width), (height, width))
+        norm_denorm_homo = kornia.normalize_homography(denorm_homo, (height, width), (height, width))
+        assert (dst_homo_src == norm_denorm_homo).all()
+        norm_homo = kornia.normalize_homography(dst_homo_src, (height, width), (height, width))
+        denorm_norm_homo = kornia.denormalize_homography(norm_homo, (height, width), (height, width))
+        assert (dst_homo_src == denorm_norm_homo).all()
 
     @pytest.mark.parametrize("offset", [1, 3, 7])
     @pytest.mark.parametrize("shape", [(4, 5), (2, 6), (4, 3), (5, 7)])
