@@ -356,7 +356,7 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
         if params is not None:
             transform = self.compute_transformation(input, params)
         elif not hasattr(self, "_transform_matrix"):
-            params = self.generate_parameters(input.shape)
+            params = self.forward_parameters(input.shape)
             transform = self.identity_matrix(input)
             transform[params['batch_prob']] = self.compute_transformation(input[params['batch_prob']], params)
         else:

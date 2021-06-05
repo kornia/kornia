@@ -62,7 +62,7 @@ class AugmentationSequential(Sequential):
         keepdim: Optional[bool] = None,
     ) -> None:
         super(AugmentationSequential, self).__init__(
-            *augmentation_list, same_on_batch=same_on_batch, return_transform=return_transform, keepdim=keepdim
+            augmentation_list, same_on_batch=same_on_batch, return_transform=return_transform, keepdim=keepdim
         )
 
         self.input_types = [DataCategory.get(inp) for inp in input_types]
@@ -248,7 +248,6 @@ class AugmentationSequential(Sequential):
         outputs = []
         for input, itype in zip(args, self.input_types):
             for item in self.children():
-
                 func_name = item.__class__.__name__
                 # Check if a param recorded
                 param = self._params[func_name] if func_name in self._params else None

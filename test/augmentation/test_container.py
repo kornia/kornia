@@ -3,6 +3,7 @@ import torch
 
 from torch.testing import assert_allclose
 
+import kornia
 import kornia.augmentation as K
 from kornia.geometry.transform import bbox_to_mask
 from kornia.constants import BorderType
@@ -123,6 +124,35 @@ class TestVideoSequential:
         assert_allclose(op(img), op_jit(img))
 
 
+class TestSequential:
+    @pytest.mark.parametrize('same_on_batch', [True, False, None])
+    @pytest.mark.parametrize("return_transform", [True, False, None])
+    @pytest.mark.parametrize("keepdim", [True, False, None])
+    def test_construction(self, same_on_batch, return_transform, keepdim):
+        K.Sequential(
+            [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)],
+            same_on_batch=same_on_batch, return_transform=return_transform, keepdim=keepdim
+        )
+
+    @pytest.mark.parametrize("return_transform", [True, False, None])
+    def test_forward(self, return_transform, device, dtype):
+        inp = torch.randn(1, 3, 30, 30, device=device, dtype=dtype)
+        aug = K.Sequential(
+            [
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+                kornia.filters.MedianBlur((3, 3)),
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0, return_transform=True),
+                K.RandomAffine(360, p=1.0)
+            ],
+            return_transform=return_transform
+        )
+        out = aug(inp)
+        if isinstance(out, (tuple,)):
+            assert out[0].shape == inp.shape
+        else:
+            assert out.shape == inp.shape
+
+
 class TestAugmentationSequential:
     @pytest.mark.parametrize(
         'input_types', ["input", ["mask", "input"], ["input", "bbox_yxyx"], [0, 10], [BorderType.REFLECT]]
@@ -195,7 +225,6 @@ class TestAugmentationSequential:
             ],
             input_types=["input", "mask", "bbox", "keypoints"],
         )
-        assert aug(inp).shape == inp.shape
 
         out_inv = aug.inverse(inp, mask, bbox, keypoints)
         assert out_inv[0].shape == inp.shape
