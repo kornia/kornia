@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -26,15 +26,13 @@ class Sequential(nn.Sequential):
         >>> import kornia
         >>> input = torch.randn(2, 3, 5, 6)
         >>> aug_list = Sequential(
-        ...     [
-        ...         kornia.color.BgrToRgb(),
-        ...         kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
-        ...         kornia.filters.MedianBlur((3, 3)),
-        ...         kornia.augmentation.RandomAffine(360, p=1.0),
-        ...         kornia.enhance.Invert(),
-        ...     ],
-        ...     return_transform=True,
-        ...     same_on_batch=True,
+        ...     kornia.color.BgrToRgb(),
+        ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...     kornia.filters.MedianBlur((3, 3)),
+        ...     kornia.augmentation.RandomAffine(360, p=1.0),
+        ...     kornia.enhance.Invert(),
+        ... return_transform=True,
+        ... same_on_batch=True,
         ... )
         >>> out = aug_list(input)
         >>> out[0].shape, out[1].shape
@@ -48,7 +46,7 @@ class Sequential(nn.Sequential):
 
     def __init__(
         self,
-        args: nn.Module,
+        *args: nn.Module,
         same_on_batch: Optional[bool] = None,
         return_transform: Optional[bool] = None,
         keepdim: Optional[bool] = None,

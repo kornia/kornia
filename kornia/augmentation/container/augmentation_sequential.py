@@ -37,13 +37,12 @@ class AugmentationSequential(Sequential):
         ...     [1., 2.],
         ... ]]).expand(2, -1, -1)
         >>> points = torch.tensor([[[1., 1.]]]).expand(2, -1, -1)
-        >>> aug_list = AugmentationSequential([
-        ...         kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
-        ...         kornia.augmentation.RandomAffine(360, p=1.0)
-        ...     ],
-        ...     input_types=["input", "mask", "bbox", "keypoints"],
-        ...     return_transform=False,
-        ...     same_on_batch=False,
+        >>> aug_list = AugmentationSequential(
+        ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...     kornia.augmentation.RandomAffine(360, p=1.0),
+        ... input_types=["input", "mask", "bbox", "keypoints"],
+        ... return_transform=False,
+        ... same_on_batch=False,
         ... )
         >>> out = aug_list(input, input, bbox, points)
         >>> [o.shape for o in out]
@@ -55,14 +54,14 @@ class AugmentationSequential(Sequential):
 
     def __init__(
         self,
-        augmentation_list: List[_AugmentationBase],
+        *args: _AugmentationBase,
         input_types: List[Union[str, int, DataCategory]] = [DataCategory.INPUT],
         same_on_batch: Optional[bool] = None,
         return_transform: Optional[bool] = None,
         keepdim: Optional[bool] = None,
     ) -> None:
         super(AugmentationSequential, self).__init__(
-            augmentation_list, same_on_batch=same_on_batch, return_transform=return_transform, keepdim=keepdim
+            *args, same_on_batch=same_on_batch, return_transform=return_transform, keepdim=keepdim
         )
 
         self.input_types = [DataCategory.get(inp) for inp in input_types]
