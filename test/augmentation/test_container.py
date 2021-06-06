@@ -153,12 +153,12 @@ class TestSequential:
 
 class TestAugmentationSequential:
     @pytest.mark.parametrize(
-        'input_types', ["input", ["mask", "input"], ["input", "bbox_yxyx"], [0, 10], [BorderType.REFLECT]]
+        'data_cates', ["input", ["mask", "input"], ["input", "bbox_yxyx"], [0, 10], [BorderType.REFLECT]]
     )
     @pytest.mark.parametrize("augmentation_list", [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0)])
-    def test_exception(self, augmentation_list, input_types, device, dtype):
+    def test_exception(self, augmentation_list, data_cates, device, dtype):
         with pytest.raises(Exception):  # AssertError and NotImplementedError
-            K.AugmentationSequential(augmentation_list, input_types=input_types)
+            K.AugmentationSequential(augmentation_list, data_cates=data_cates)
 
     def test_forward_and_inverse(self, device, dtype):
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
@@ -169,7 +169,7 @@ class TestAugmentationSequential:
         )[:, None].float()
         aug = K.AugmentationSequential(
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0),
-            input_types=["input", "mask", "bbox", "keypoints"],
+            data_cates=["input", "mask", "bbox", "keypoints"],
         )
         out = aug(inp, mask, bbox, keypoints)
         assert out[0].shape == inp.shape
@@ -193,7 +193,7 @@ class TestAugmentationSequential:
         aug = K.AugmentationSequential(
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0, return_transform=True),
             K.RandomAffine(360, p=1.0, return_transform=True),
-            input_types=["input", "mask", "bbox", "keypoints"],
+            data_cates=["input", "mask", "bbox", "keypoints"],
         )
         out = aug(inp, mask, bbox, keypoints)
         assert out[0][0].shape == inp.shape
@@ -217,7 +217,7 @@ class TestAugmentationSequential:
         aug = K.AugmentationSequential(
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0, return_transform=True),
             K.RandomAffine(360, p=1.0, return_transform=True),
-            input_types=["input", "mask", "bbox", "keypoints"],
+            data_cates=["input", "mask", "bbox", "keypoints"],
         )
 
         out_inv = aug.inverse(inp, mask, bbox, keypoints)

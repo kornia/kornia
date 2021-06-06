@@ -361,7 +361,7 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
             transform[params['batch_prob']] = self.compute_transformation(input[params['batch_prob']], params)
         else:
             transform = self._transform_matrix
-        return transform
+        return torch.as_tensor(transform, device=input.device, dtype=input.dtype)
 
     def inverse(
         self,

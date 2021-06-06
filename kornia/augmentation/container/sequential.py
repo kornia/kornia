@@ -70,22 +70,22 @@ class Sequential(nn.Sequential):
     def apply_to_input(
         self,
         input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
-        item: nn.Module,
+        module: nn.Module,
         param: Optional[Dict[str, torch.Tensor]] = None,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-        func_name = item.__class__.__name__
-        if isinstance(item, _AugmentationBase) and param is None:
-            input = item(input)
-            self._params.update({func_name: item._params})
-        elif isinstance(item, _AugmentationBase) and param is not None:
-            input = item(input, param)
+        func_name = module.__class__.__name__
+        if isinstance(module, _AugmentationBase) and param is None:
+            input = module(input)
+            self._params.update({func_name: module._params})
+        elif isinstance(module, _AugmentationBase) and param is not None:
+            input = module(input, param)
             self._params.update({func_name: param})
         else:
             # In case of return_transform = True
             if isinstance(input, (tuple, list)):
-                input = (item(input[0]), input[1])
+                input = (module(input[0]), input[1])
             else:
-                input = item(input)
+                input = module(input)
         return input
 
     def forward(
@@ -94,8 +94,8 @@ class Sequential(nn.Sequential):
         if params is None:
             params = {}
         self._params = {}
-        for item in self.children():
-            func_name = item.__class__.__name__
+        for module in self.children():
+            func_name = module.__class__.__name__
             param = params[func_name] if func_name in params else None
-            input = self.apply_to_input(input, item, param)  # type: ignore
+            input = self.apply_to_input(input, module, param)  # type: ignore
         return input
