@@ -135,6 +135,7 @@ if __name__ == '__main__':
             "Source Code": "https://github.com/kornia/kornia",
         },
         classifiers=[
+            'Environment :: GPU',
             'Environment :: Console',
             'Natural Language :: English',
             # How mature is this project? Common values are
@@ -144,6 +145,8 @@ if __name__ == '__main__':
             'Intended Audience :: Developers',
             'Intended Audience :: Education',
             'Intended Audience :: Science/Research',
+            'Intended Audience :: Information Technology',
+            'Topic :: Software Development :: Libraries',
             'Topic :: Scientific/Engineering :: Artificial Intelligence',
             'Topic :: Scientific/Engineering :: Image Processing',
             # Pick your license as you wish
