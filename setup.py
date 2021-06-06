@@ -128,10 +128,10 @@ if __name__ == '__main__':
         package_data={"kornia": ["py.typed"]},
         zip_safe=True,
         install_requires=requirements,
-        keywords=['computer vision', 'deep learning', 'pytorch']
+        keywords=['computer vision', 'deep learning', 'pytorch'],
         project_urls={
             "Bug Tracker": "https://github.com/kornia/kornia/issues",
-            "Documentation": "https://kornia.readthedocs.io/en/latest/",
+            "Documentation": "https://kornia.readthedocs.io/en/latest",
             "Source Code": "https://github.com/kornia/kornia",
         },
         classifiers=[
@@ -145,7 +145,7 @@ if __name__ == '__main__':
             'Intended Audience :: Education',
             'Intended Audience :: Science/Research',
             'Topic :: Scientific/Engineering :: Artificial Intelligence',
-            'Topic :: Scientific/Engineering :: Image Recognition',
+            'Topic :: Scientific/Engineering :: Image Processing',
             # Pick your license as you wish
             'License :: OSI Approved :: Apache Software License',
             'Operating System :: OS Independent',
