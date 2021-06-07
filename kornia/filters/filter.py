@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from kornia.filters.kernels import normalize_kernel2d
+from kornia.filters.__tmp__ import _deprecation_wrapper
 
 
 def _compute_padding(kernel_size: List[int]) -> List[int]:
@@ -210,5 +211,5 @@ def filter3d(
 
 
 # for backward compatibility.
-filter2D = filter2d
-filter3D = filter3d
+filter2D = _deprecation_wrapper(filter2d, 'filter2D')
+filter3D = _deprecation_wrapper(filter3d, 'filter3D')
