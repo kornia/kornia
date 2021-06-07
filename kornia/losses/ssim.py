@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.filters import get_gaussian_kernel2d, filter2D
+from kornia.filters import get_gaussian_kernel2d, filter2d
 
 
 def ssim(
@@ -68,17 +68,17 @@ def ssim(
     C2: float = (0.03 * max_val) ** 2
 
     # compute local mean per channel
-    mu1: torch.Tensor = filter2D(img1, kernel)
-    mu2: torch.Tensor = filter2D(img2, kernel)
+    mu1: torch.Tensor = filter2d(img1, kernel)
+    mu2: torch.Tensor = filter2d(img2, kernel)
 
     mu1_sq = mu1 ** 2
     mu2_sq = mu2 ** 2
     mu1_mu2 = mu1 * mu2
 
     # compute local sigma per channel
-    sigma1_sq = filter2D(img1 ** 2, kernel) - mu1_sq
-    sigma2_sq = filter2D(img2 ** 2, kernel) - mu2_sq
-    sigma12 = filter2D(img1 * img2, kernel) - mu1_mu2
+    sigma1_sq = filter2d(img1 ** 2, kernel) - mu1_sq
+    sigma2_sq = filter2d(img2 ** 2, kernel) - mu2_sq
+    sigma12 = filter2d(img1 * img2, kernel) - mu1_mu2
 
     # compute the similarity index map
     num: torch.Tensor = (2.0 * mu1_mu2 + C1) * (2.0 * sigma12 + C2)

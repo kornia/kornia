@@ -80,8 +80,8 @@ from kornia.filters import (
     box_blur,
     median_blur,
     motion_blur,
-    filter2D,
-    filter3D,
+    filter2d,
+    filter3d,
     unsharp_mask,
 )
 from kornia.losses import (

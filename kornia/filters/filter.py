@@ -29,7 +29,7 @@ def _compute_padding(kernel_size: List[int]) -> List[int]:
     return out_padding
 
 
-def filter2D(
+def filter2d(
     input: torch.Tensor, kernel: torch.Tensor, border_type: str = 'reflect', normalized: bool = False
 ) -> torch.Tensor:
     r"""Convolve a tensor with a 2d kernel.
@@ -61,7 +61,7 @@ def filter2D(
         ...    [0., 0., 0., 0., 0.],
         ...    [0., 0., 0., 0., 0.],]]])
         >>> kernel = torch.ones(1, 3, 3)
-        >>> filter2D(input, kernel)
+        >>> filter2d(input, kernel)
         tensor([[[[0., 0., 0., 0., 0.],
                   [0., 5., 5., 5., 0.],
                   [0., 5., 5., 5., 0.],
@@ -107,7 +107,7 @@ def filter2D(
     return output.view(b, c, h, w)
 
 
-def filter3D(
+def filter3d(
     input: torch.Tensor, kernel: torch.Tensor, border_type: str = 'replicate', normalized: bool = False
 ) -> torch.Tensor:
     r"""Convolve a tensor with a 3d kernel.
@@ -150,7 +150,7 @@ def filter3D(
         ...     [0., 0., 0., 0., 0.]]
         ... ]]])
         >>> kernel = torch.ones(1, 3, 3, 3)
-        >>> filter3D(input, kernel)
+        >>> filter3d(input, kernel)
         tensor([[[[[0., 0., 0., 0., 0.],
                    [0., 5., 5., 5., 0.],
                    [0., 5., 5., 5., 0.],
@@ -207,3 +207,8 @@ def filter3D(
     output = F.conv3d(input_pad, tmp_kernel, groups=tmp_kernel.size(0), padding=0, stride=1)
 
     return output.view(b, c, d, h, w)
+
+
+# for backward compatibility.
+filter2D = filter2d
+filter3D = filter3d

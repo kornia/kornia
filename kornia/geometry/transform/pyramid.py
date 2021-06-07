@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.filters import gaussian_blur2d, filter2D
+from kornia.filters import gaussian_blur2d, filter2d
 
 __all__ = ["PyrDown", "PyrUp", "ScalePyramid", "pyrdown", "pyrup", "build_pyramid"]
 
@@ -253,7 +253,7 @@ def pyrdown(input: torch.Tensor, border_type: str = 'reflect', align_corners: bo
     kernel: torch.Tensor = _get_pyramid_gaussian_kernel()
     b, c, height, width = input.shape
     # blur image
-    x_blur: torch.Tensor = filter2D(input, kernel, border_type)
+    x_blur: torch.Tensor = filter2d(input, kernel, border_type)
 
     # downsample.
     out: torch.Tensor = F.interpolate(
@@ -294,7 +294,7 @@ def pyrup(input: torch.Tensor, border_type: str = 'reflect', align_corners: bool
     )
 
     # blurs upsampled tensor
-    x_blur: torch.Tensor = filter2D(x_up, kernel, border_type)
+    x_blur: torch.Tensor = filter2d(x_up, kernel, border_type)
     return x_blur
 
 
