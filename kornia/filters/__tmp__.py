@@ -8,8 +8,7 @@ warnings.simplefilter('always', DeprecationWarning)
 
 def __deprecation_warning(name: str, replacement: str):
     warnings.warn(
-        f"`{name}` will be renamed to `{replacement}` in the future versions. "
-        f"Please use `{replacement}` instead.",
+        f"`{name}` will be renamed to `{replacement}` in the future versions. " f"Please use `{replacement}` instead.",
         category=DeprecationWarning,
     )
 
