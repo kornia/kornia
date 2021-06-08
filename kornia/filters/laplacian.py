@@ -38,7 +38,7 @@ def laplacian(
     if normalized:
         kernel = normalize_kernel2d(kernel)
 
-    return kornia.filter2D(input, kernel, border_type)
+    return kornia.filter2d(input, kernel, border_type)
 
 
 class Laplacian(nn.Module):

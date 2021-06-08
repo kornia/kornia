@@ -7,7 +7,7 @@ from .blur import BoxBlur, box_blur
 from .blur_pool import MaxBlurPool2D, BlurPool2D, max_blur_pool2d, blur_pool2d
 from .median import MedianBlur, median_blur
 from .motion import MotionBlur, MotionBlur3D, motion_blur, motion_blur3d
-from .filter import filter2D, filter3D
+from .filter import filter2d, filter3d, filter2D, filter3D
 from .unsharp import unsharp_mask, UnsharpMask
 from .kernels import (
     gaussian,
@@ -51,6 +51,8 @@ __all__ = [
     "median_blur",
     "motion_blur",
     "motion_blur3d",
+    "filter2d",
+    "filter3d",
     "filter2D",
     "filter3D",
     "GaussianBlur2d",

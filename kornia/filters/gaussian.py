@@ -34,7 +34,7 @@ def gaussian_blur2d(
     """
     kernel: torch.Tensor = torch.unsqueeze(get_gaussian_kernel2d(kernel_size, sigma), dim=0)
 
-    return kornia.filter2D(input, kernel, border_type)
+    return kornia.filter2d(input, kernel, border_type)
 
 
 class GaussianBlur2d(nn.Module):
