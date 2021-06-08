@@ -130,8 +130,11 @@ class TestSequential:
     @pytest.mark.parametrize("keepdim", [True, False, None])
     def test_construction(self, same_on_batch, return_transform, keepdim):
         K.ImageSequential(
-            K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0),
-            same_on_batch=same_on_batch, return_transform=return_transform, keepdim=keepdim
+            K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+            K.RandomAffine(360, p=1.0),
+            same_on_batch=same_on_batch,
+            return_transform=return_transform,
+            keepdim=keepdim,
         )
 
     @pytest.mark.parametrize("return_transform", [True, False, None])
@@ -142,7 +145,7 @@ class TestSequential:
             kornia.filters.MedianBlur((3, 3)),
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0, return_transform=True),
             K.RandomAffine(360, p=1.0),
-            return_transform=return_transform
+            return_transform=return_transform,
         )
         out = aug(inp)
         if isinstance(out, (tuple,)):
@@ -168,7 +171,8 @@ class TestAugmentationSequential:
             torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 1000, 500
         )[:, None].float()
         aug = K.AugmentationSequential(
-            K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0),
+            K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+            K.RandomAffine(360, p=1.0),
             data_keys=["input", "mask", "bbox", "keypoints"],
         )
         out = aug(inp, mask, bbox, keypoints)

@@ -85,17 +85,16 @@ class AugmentationSequential(ImageSequential):
         return input
 
     def apply_to_bbox(
-        self, input: torch.Tensor, module: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None,
-        mode: str = "xyxy"
+        self,
+        input: torch.Tensor,
+        module: nn.Module,
+        param: Optional[Dict[str, torch.Tensor]] = None,
+        mode: str = "xyxy",
     ) -> torch.Tensor:
         if isinstance(module, GeometricAugmentationBase2D) and param is None:
             raise ValueError(f"Transformation matrix for {module} has not been computed.")
         elif isinstance(module, GeometricAugmentationBase2D) and param is not None:
-            input = transform_boxes(
-                module.get_transformation_matrix(input, param),
-                input,
-                mode,
-            )
+            input = transform_boxes(module.get_transformation_matrix(input, param), input, mode)
         else:
             pass  # No need to update anything
         return input
@@ -106,10 +105,7 @@ class AugmentationSequential(ImageSequential):
         if isinstance(module, GeometricAugmentationBase2D) and param is None:
             raise ValueError(f"Transformation matrix for {module} has not been computed.")
         elif isinstance(module, GeometricAugmentationBase2D) and param is not None:
-            input = transform_points(
-                module.get_transformation_matrix(input, param),
-                input,
-            )
+            input = transform_points(module.get_transformation_matrix(input, param), input)
         else:
             pass  # No need to update anything
         return input
@@ -153,8 +149,11 @@ class AugmentationSequential(ImageSequential):
         return input
 
     def inverse_bbox(
-        self, input: torch.Tensor, module: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None,
-        mode: str = "xyxy"
+        self,
+        input: torch.Tensor,
+        module: nn.Module,
+        param: Optional[Dict[str, torch.Tensor]] = None,
+        mode: str = "xyxy",
     ) -> torch.Tensor:
         if isinstance(module, GeometricAugmentationBase2D):
             transform = module.compute_inverse_transformation(module.get_transformation_matrix(input, param))
@@ -200,8 +199,7 @@ class AugmentationSequential(ImageSequential):
         if data_keys is None:
             data_keys = cast(List[Union[str, int, DataKey]], self.data_keys)
         assert len(args) == len(data_keys), (
-            "The number of inputs must align with the number of data_keys, "
-            f"Got {len(args)} and {len(data_keys)}."
+            "The number of inputs must align with the number of data_keys, " f"Got {len(args)} and {len(data_keys)}."
         )
         self._params = {}
         params = params if params is not None else {}
@@ -244,9 +242,9 @@ class AugmentationSequential(ImageSequential):
             data_keys = cast(List[Union[str, int, DataKey]], self.data_keys)
 
         """Compute multiple tensors simultaneously according to ``self.data_keys``."""
-        assert len(args) == len(data_keys), (
-            f"The number of inputs must align with the number of data_keys. Got {len(args)} and {len(data_keys)}."
-        )
+        assert len(args) == len(
+            data_keys
+        ), f"The number of inputs must align with the number of data_keys. Got {len(args)} and {len(data_keys)}."
         params = params if params is not None else {}
 
         outputs = []
