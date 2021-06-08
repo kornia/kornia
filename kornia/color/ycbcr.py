@@ -88,7 +88,8 @@ class RgbToYcbcr(nn.Module):
     def __init__(self) -> None:
         super(RgbToYcbcr, self).__init__()
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
+    @staticmethod
+    def forward(image: torch.Tensor) -> torch.Tensor:
         return rgb_to_ycbcr(image)
 
 
@@ -113,5 +114,6 @@ class YcbcrToRgb(nn.Module):
     def __init__(self) -> None:
         super(YcbcrToRgb, self).__init__()
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
+    @staticmethod
+    def forward(image: torch.Tensor) -> torch.Tensor:
         return ycbcr_to_rgb(image)

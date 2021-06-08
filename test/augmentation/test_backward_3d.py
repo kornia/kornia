@@ -216,7 +216,8 @@ class TestRandomPerspective3DBackward:
     @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("return_transform", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False])
-    def test_param(self, distortion_scale, resample, align_corners, return_transform, same_on_batch, device, dtype):
+    @staticmethod
+    def test_param(distortion_scale, resample, align_corners, return_transform, same_on_batch, device, dtype):
 
         _distortion_scale = (
             distortion_scale

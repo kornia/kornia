@@ -247,7 +247,8 @@ class BgrToRgb(nn.Module):
     def __init__(self) -> None:
         super(BgrToRgb, self).__init__()
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
+    @staticmethod
+    def forward(image: torch.Tensor) -> torch.Tensor:
         return bgr_to_rgb(image)
 
 
@@ -272,7 +273,8 @@ class RgbToBgr(nn.Module):
     def __init__(self) -> None:
         super(RgbToBgr, self).__init__()
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
+    @staticmethod
+    def forward(image: torch.Tensor) -> torch.Tensor:
         return rgb_to_bgr(image)
 
 
@@ -361,7 +363,8 @@ class RgbaToRgb(nn.Module):
     def __init__(self) -> None:
         super(RgbaToRgb, self).__init__()
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
+    @staticmethod
+    def forward(image: torch.Tensor) -> torch.Tensor:
         return rgba_to_rgb(image)
 
 
@@ -386,7 +389,8 @@ class RgbaToBgr(nn.Module):
     def __init__(self) -> None:
         super(RgbaToBgr, self).__init__()
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
+    @staticmethod
+    def forward(image: torch.Tensor) -> torch.Tensor:
         return rgba_to_bgr(image)
 
 
@@ -419,7 +423,8 @@ class RgbToLinearRgb(nn.Module):
     def __init__(self) -> None:
         super(RgbToLinearRgb, self).__init__()
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
+    @staticmethod
+    def forward(image: torch.Tensor) -> torch.Tensor:
         return rgb_to_linear_rgb(image)
 
 
@@ -451,5 +456,6 @@ class LinearRgbToRgb(nn.Module):
     def __init__(self) -> None:
         super(LinearRgbToRgb, self).__init__()
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
+    @staticmethod
+    def forward(image: torch.Tensor) -> torch.Tensor:
         return linear_rgb_to_rgb(image)

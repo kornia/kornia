@@ -24,7 +24,8 @@ urls["orinet"] = "https://github.com/ducha-aiki/affnet/raw/master/pretrained/Ori
 class PassLAF(nn.Module):
     """Dummy module to use instead of local feature orientation or affine shape estimator"""
 
-    def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
+    @staticmethod
+    def forward(laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
         """
         Args:
             laf: torch.Tensor: 4d tensor

@@ -155,7 +155,8 @@ class ScalePyramid(nn.Module):
             + ')'
         )
 
-    def get_kernel_size(self, sigma: float):
+    @staticmethod
+    def get_kernel_size(sigma: float):
         ksize = int(2.0 * 4.0 * sigma + 1.0)
 
         #  matches OpenCV, but may cause padding problem for small images

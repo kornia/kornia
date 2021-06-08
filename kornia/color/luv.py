@@ -143,7 +143,8 @@ class RgbToLuv(nn.Module):
     def __init__(self) -> None:
         super(RgbToLuv, self).__init__()
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
+    @staticmethod
+    def forward(image: torch.Tensor) -> torch.Tensor:
         return rgb_to_luv(image)
 
 
@@ -173,5 +174,6 @@ class LuvToRgb(nn.Module):
     def __init__(self) -> None:
         super(LuvToRgb, self).__init__()
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
+    @staticmethod
+    def forward(image: torch.Tensor) -> torch.Tensor:
         return luv_to_rgb(image)

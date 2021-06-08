@@ -35,7 +35,8 @@ class TestRgbToYuv(BaseTester):
     #    pass
 
     # TODO: improve accuracy
-    def test_forth_and_back(self, device, dtype):
+    @staticmethod
+    def test_forth_and_back(device, dtype):
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
         yuv = kornia.color.rgb_to_yuv
         rgb = kornia.color.yuv_to_rgb
@@ -94,7 +95,8 @@ class TestYuvToRgb(BaseTester):
     #    pass
 
     # TODO: improve accuracy
-    def test_forth_and_back(self, device, dtype):
+    @staticmethod
+    def test_forth_and_back(device, dtype):
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
         rgb = kornia.color.yuv_to_rgb
         yuv = kornia.color.rgb_to_yuv

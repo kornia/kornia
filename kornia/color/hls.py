@@ -132,7 +132,8 @@ class RgbToHls(nn.Module):
     def __init__(self) -> None:
         super(RgbToHls, self).__init__()
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
+    @staticmethod
+    def forward(image: torch.Tensor) -> torch.Tensor:
         return rgb_to_hls(image)
 
 
@@ -160,5 +161,6 @@ class HlsToRgb(nn.Module):
     def __init__(self) -> None:
         super(HlsToRgb, self).__init__()
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
+    @staticmethod
+    def forward(image: torch.Tensor) -> torch.Tensor:
         return hls_to_rgb(image)

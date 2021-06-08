@@ -5,7 +5,8 @@ import kornia.augmentation.functional as F
 
 
 class TestHorizontalFlipFn:
-    def test_random_hflip(self, device):
+    @staticmethod
+    def test_random_hflip(device):
         input = torch.tensor([[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 2.0]])  # 3 x 4
         input.to(device)
 
@@ -13,7 +14,8 @@ class TestHorizontalFlipFn:
 
         assert (F.compute_hflip_transformation(input[None, None]) == expected_transform).all()
 
-    def test_batch_random_hflip(self, device):
+    @staticmethod
+    def test_batch_random_hflip(device):
         batch_size = 5
 
         input = torch.tensor([[[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]]]])  # 1 x 1 x 3 x 3
@@ -28,7 +30,8 @@ class TestHorizontalFlipFn:
 
 
 class TestVerticalFlipFn:
-    def test_random_vflip(self, device):
+    @staticmethod
+    def test_random_vflip(device):
 
         input = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]])  # 3 x 3
         input.to(device)
@@ -37,7 +40,8 @@ class TestVerticalFlipFn:
 
         assert (F.compute_vflip_transformation(input[None, None]) == expected_transform).all()
 
-    def test_batch_random_vflip(self, device):
+    @staticmethod
+    def test_batch_random_vflip(device):
         batch_size = 5
 
         input = torch.tensor([[[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]]]])  # 1 x 1 x 3 x 3
@@ -52,7 +56,8 @@ class TestVerticalFlipFn:
 
 
 class TestIntensityTransformation:
-    def test_intensity_transformation(self):
+    @staticmethod
+    def test_intensity_transformation():
 
         input = torch.rand(3, 5, 5)  # 3 x 5 x 5
 
@@ -60,7 +65,8 @@ class TestIntensityTransformation:
 
         assert_allclose(F.compute_intensity_transformation(input[None]), expected_transform, atol=1e-4, rtol=1e-5)
 
-    def test_intensity_transformation_batch(self):
+    @staticmethod
+    def test_intensity_transformation_batch():
         batch_size = 2
 
         input = torch.rand(batch_size, 3, 5, 5)  # 2 x 3 x 5 x 5
@@ -71,7 +77,8 @@ class TestIntensityTransformation:
 
 
 class TestPerspective:
-    def test_smoke_transform(self, device):
+    @staticmethod
+    def test_smoke_transform(device):
         x_data = torch.rand(1, 2, 3, 4).to(device)
         batch_prob = torch.rand(1) < 0.5
         start_points = torch.rand(1, 4, 2).to(device)

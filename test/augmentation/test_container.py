@@ -7,7 +7,8 @@ import kornia.augmentation as K
 class TestVideoSequential:
     @pytest.mark.parametrize('shape', [(3, 4), (2, 3, 4), (2, 3, 5, 6), (2, 3, 4, 5, 6, 7)])
     @pytest.mark.parametrize('data_format', ["BCTHW", "BTCHW"])
-    def test_exception(self, shape, data_format, device, dtype):
+    @staticmethod
+    def test_exception(shape, data_format, device, dtype):
         aug_list = K.VideoSequential(K.ColorJitter(0.1, 0.1, 0.1, 0.1), data_format=data_format, same_on_frame=True)
         with pytest.raises(AssertionError):
             input = torch.randn(*shape, device=device, dtype=dtype)
@@ -45,7 +46,8 @@ class TestVideoSequential:
 
     @pytest.mark.parametrize('augmentations', [[K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5), K.RandomAffine(360, p=0.5)]])
     @pytest.mark.parametrize('data_format', ["BCTHW", "BTCHW"])
-    def test_p_half(self, augmentations, data_format, device, dtype):
+    @staticmethod
+    def test_p_half(augmentations, data_format, device, dtype):
         input = torch.randn(1, 3, 3, 5, 6, device=device, dtype=dtype).repeat(2, 1, 1, 1, 1)
         torch.manual_seed(21)
         aug_list = K.VideoSequential(*augmentations, data_format=data_format, same_on_frame=True)
@@ -111,7 +113,8 @@ class TestVideoSequential:
 
     @pytest.mark.jit
     @pytest.mark.skip(reason="turn off due to Union Type")
-    def test_jit(self, device, dtype):
+    @staticmethod
+    def test_jit(device, dtype):
         B, C, D, H, W = 2, 3, 5, 4, 4
         img = torch.ones(B, C, D, H, W, device=device, dtype=dtype)
         op = K.VideoSequential(K.ColorJitter(0.1, 0.1, 0.1, 0.1), same_on_frame=True)

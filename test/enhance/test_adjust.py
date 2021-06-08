@@ -10,35 +10,41 @@ from kornia.testing import tensor_to_gradcheck_var, BaseTester
 
 
 class TestInvert:
-    def test_smoke(self, device, dtype):
+    @staticmethod
+    def test_smoke(device, dtype):
         img = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
         assert kornia.enhance.invert(img) is not None
 
     @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 4, 3, 3), (1, 3, 2, 1, 1)])
-    def test_cardinality(self, device, dtype, shape):
+    @staticmethod
+    def test_cardinality(device, dtype, shape):
         img = torch.rand(shape, device=device, dtype=dtype)
         out = kornia.enhance.invert(img, torch.tensor(1.0))
         assert out.shape == shape
 
-    def test_max_val_1(self, device, dtype):
+    @staticmethod
+    def test_max_val_1(device, dtype):
         img = torch.ones(1, 3, 4, 4, device=device, dtype=dtype)
         out = kornia.enhance.invert(img, torch.tensor(1.0))
         assert_allclose(out, torch.zeros_like(out))
 
-    def test_max_val_255(self, device, dtype):
+    @staticmethod
+    def test_max_val_255(device, dtype):
         img = 255.0 * torch.ones(1, 3, 4, 4, device=device, dtype=dtype)
         out = kornia.enhance.invert(img, torch.tensor(255.0))
         assert_allclose(out, torch.zeros_like(out))
 
     @pytest.mark.grad
-    def test_gradcheck(self, device, dtype):
+    @staticmethod
+    def test_gradcheck(device, dtype):
         B, C, H, W = 1, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         max_val = torch.tensor(1.0, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.enhance.invert, (img, max_val), raise_exception=True)
 
     @pytest.mark.jit
-    def test_jit(self, device, dtype):
+    @staticmethod
+    def test_jit(device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.enhance.invert
@@ -46,7 +52,8 @@ class TestInvert:
         assert_allclose(op(img), op_jit(img))
 
     @pytest.mark.nn
-    def test_module(self, device, dtype):
+    @staticmethod
+    def test_module(device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.enhance.invert
@@ -55,7 +62,8 @@ class TestInvert:
 
 
 class TestAdjustSaturation:
-    def test_saturation_one(self, device, dtype):
+    @staticmethod
+    def test_saturation_one(device, dtype):
         data = torch.tensor(
             [[[0.5, 0.5], [0.5, 0.5]], [[0.5, 0.5], [0.5, 0.5]], [[0.25, 0.25], [0.25, 0.25]]],
             device=device,
@@ -67,7 +75,8 @@ class TestAdjustSaturation:
         f = kornia.enhance.AdjustSaturation(1.0)
         assert_allclose(f(data), expected)
 
-    def test_saturation_one_batch(self, device, dtype):
+    @staticmethod
+    def test_saturation_one_batch(device, dtype):
         data = torch.tensor(
             [
                 [[[0.5, 0.5], [0.5, 0.5]], [[0.5, 0.5], [0.5, 0.5]], [[0.25, 0.25], [0.25, 0.25]]],
@@ -81,7 +90,8 @@ class TestAdjustSaturation:
         f = kornia.enhance.AdjustSaturation(torch.ones(2))
         assert_allclose(f(data), expected)
 
-    def test_gradcheck(self, device, dtype):
+    @staticmethod
+    def test_gradcheck(device, dtype):
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = tensor_to_gradcheck_var(img)  # to var
@@ -89,7 +99,8 @@ class TestAdjustSaturation:
 
 
 class TestAdjustHue:
-    def test_hue_one(self, device, dtype):
+    @staticmethod
+    def test_hue_one(device, dtype):
         data = torch.tensor(
             [[[0.5, 0.5], [0.5, 0.5]], [[0.5, 0.5], [0.5, 0.5]], [[0.25, 0.25], [0.25, 0.25]]],
             device=device,
@@ -101,7 +112,8 @@ class TestAdjustHue:
         f = kornia.enhance.AdjustHue(0.0)
         assert_allclose(f(data), expected)
 
-    def test_hue_one_batch(self, device, dtype):
+    @staticmethod
+    def test_hue_one_batch(device, dtype):
         data = torch.tensor(
             [
                 [[[0.5, 0.5], [0.5, 0.5]], [[0.5, 0.5], [0.5, 0.5]], [[0.25, 0.25], [0.25, 0.25]]],
@@ -115,7 +127,8 @@ class TestAdjustHue:
         f = kornia.enhance.AdjustHue(torch.tensor([0, 0]))
         assert_allclose(f(data), expected)
 
-    def test_hue_flip_batch(self, device, dtype):
+    @staticmethod
+    def test_hue_flip_batch(device, dtype):
         data = torch.tensor(
             [
                 [[[0.5, 0.5], [0.5, 0.5]], [[0.5, 0.5], [0.5, 0.5]], [[0.25, 0.25], [0.25, 0.25]]],
@@ -131,7 +144,8 @@ class TestAdjustHue:
         result = f(data)
         assert_allclose(result, result.flip(0))
 
-    def test_gradcheck(self, device, dtype):
+    @staticmethod
+    def test_gradcheck(device, dtype):
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = tensor_to_gradcheck_var(img)  # to var
@@ -139,7 +153,8 @@ class TestAdjustHue:
 
 
 class TestAdjustGamma:
-    def test_gamma_zero(self, device, dtype):
+    @staticmethod
+    def test_gamma_zero(device, dtype):
         data = torch.tensor(
             [[[1.0, 1.0], [1.0, 1.0]], [[0.5, 0.5], [0.5, 0.5]], [[0.25, 0.25], [0.25, 0.25]]],
             device=device,
@@ -151,7 +166,8 @@ class TestAdjustGamma:
         f = kornia.enhance.AdjustGamma(0.0)
         assert_allclose(f(data), expected)
 
-    def test_gamma_one(self, device, dtype):
+    @staticmethod
+    def test_gamma_one(device, dtype):
         data = torch.tensor(
             [[[1.0, 1.0], [1.0, 1.0]], [[0.5, 0.5], [0.5, 0.5]], [[0.25, 0.25], [0.25, 0.25]]],
             device=device,
@@ -163,7 +179,8 @@ class TestAdjustGamma:
         f = kornia.enhance.AdjustGamma(1.0)
         assert_allclose(f(data), expected)
 
-    def test_gamma_one_gain_two(self, device, dtype):
+    @staticmethod
+    def test_gamma_one_gain_two(device, dtype):
         data = torch.tensor(
             [[[1.0, 1.0], [1.0, 1.0]], [[0.5, 0.5], [0.5, 0.5]], [[0.25, 0.25], [0.25, 0.25]]],
             device=device,
@@ -177,7 +194,8 @@ class TestAdjustGamma:
         f = kornia.enhance.AdjustGamma(1.0, 2.0)
         assert_allclose(f(data), expected)
 
-    def test_gamma_two(self, device, dtype):
+    @staticmethod
+    def test_gamma_two(device, dtype):
         data = torch.tensor(
             [[[1.0, 1.0], [1.0, 1.0]], [[0.5, 0.5], [0.5, 0.5]], [[0.25, 0.25], [0.25, 0.25]]],
             device=device,
@@ -193,7 +211,8 @@ class TestAdjustGamma:
         f = kornia.enhance.AdjustGamma(2.0)
         assert_allclose(f(data), expected)
 
-    def test_gamma_two_batch(self, device, dtype):
+    @staticmethod
+    def test_gamma_two_batch(device, dtype):
         data = torch.tensor(
             [
                 [[[1.0, 1.0], [1.0, 1.0]], [[0.5, 0.5], [0.5, 0.5]], [[0.25, 0.25], [0.25, 0.25]]],
@@ -218,7 +237,8 @@ class TestAdjustGamma:
         f = kornia.enhance.AdjustGamma(p1, gain=p2)
         assert_allclose(f(data), expected)
 
-    def test_gradcheck(self, device, dtype):
+    @staticmethod
+    def test_gradcheck(device, dtype):
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
         img = tensor_to_gradcheck_var(img)  # to var
@@ -226,7 +246,8 @@ class TestAdjustGamma:
 
 
 class TestAdjustContrast:
-    def test_factor_zero(self, device, dtype):
+    @staticmethod
+    def test_factor_zero(device, dtype):
         # prepare input data
         data = torch.tensor(
             [[[1.0, 1.0], [1.0, 1.0]], [[0.5, 0.5], [0.5, 0.5]], [[0.25, 0.25], [0.25, 0.25]]],
@@ -239,7 +260,8 @@ class TestAdjustContrast:
         f = kornia.enhance.AdjustContrast(0.0)
         assert_allclose(f(data), expected)
 
-    def test_factor_one(self, device, dtype):
+    @staticmethod
+    def test_factor_one(device, dtype):
         # prepare input data
         data = torch.tensor(
             [[[1.0, 1.0], [1.0, 1.0]], [[0.5, 0.5], [0.5, 0.5]], [[0.25, 0.25], [0.25, 0.25]]],
@@ -252,7 +274,8 @@ class TestAdjustContrast:
         f = kornia.enhance.AdjustContrast(1.0)
         assert_allclose(f(data), expected)
 
-    def test_factor_two(self, device, dtype):
+    @staticmethod
+    def test_factor_two(device, dtype):
         # prepare input data
         data = torch.tensor(
             [[[1.0, 1.0], [1.0, 1.0]], [[0.5, 0.5], [0.5, 0.5]], [[0.25, 0.25], [0.25, 0.25]]],
@@ -267,7 +290,8 @@ class TestAdjustContrast:
         f = kornia.enhance.AdjustContrast(2.0)
         assert_allclose(f(data), expected)
 
-    def test_factor_tensor(self, device, dtype):
+    @staticmethod
+    def test_factor_tensor(device, dtype):
         # prepare input data
         data = torch.tensor(
             [
@@ -296,7 +320,8 @@ class TestAdjustContrast:
         f = kornia.enhance.AdjustContrast(factor)
         assert_allclose(f(data), expected)
 
-    def test_factor_tensor_color(self, device, dtype):
+    @staticmethod
+    def test_factor_tensor_color(device, dtype):
         # prepare input data
         data = torch.tensor(
             [
@@ -321,7 +346,8 @@ class TestAdjustContrast:
         f = kornia.enhance.AdjustContrast(factor)
         assert_allclose(f(data), expected)
 
-    def test_factor_tensor_shape(self, device, dtype):
+    @staticmethod
+    def test_factor_tensor_shape(device, dtype):
         # prepare input data
         data = torch.tensor(
             [
@@ -362,7 +388,8 @@ class TestAdjustContrast:
         f = kornia.enhance.AdjustContrast(factor)
         assert_allclose(f(data), expected)
 
-    def test_gradcheck(self, device, dtype):
+    @staticmethod
+    def test_gradcheck(device, dtype):
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
         img = tensor_to_gradcheck_var(img)  # to var
@@ -370,7 +397,8 @@ class TestAdjustContrast:
 
 
 class TestAdjustBrightness:
-    def test_factor_zero(self, device, dtype):
+    @staticmethod
+    def test_factor_zero(device, dtype):
         # prepare input data
         data = torch.tensor(
             [[[1.0, 1.0], [1.0, 1.0]], [[0.5, 0.5], [0.5, 0.5]], [[0.25, 0.25], [0.25, 0.25]]],
@@ -383,7 +411,8 @@ class TestAdjustBrightness:
         f = kornia.enhance.AdjustBrightness(0.0)
         assert_allclose(f(data), expected)
 
-    def test_factor_one(self, device, dtype):
+    @staticmethod
+    def test_factor_one(device, dtype):
         # prepare input data
         data = torch.tensor(
             [[[1.0, 1.0], [1.0, 1.0]], [[0.5, 0.5], [0.5, 0.5]], [[0.25, 0.25], [0.25, 0.25]]],
@@ -396,7 +425,8 @@ class TestAdjustBrightness:
         f = kornia.enhance.AdjustBrightness(1.0)
         assert_allclose(f(data), expected)
 
-    def test_factor_minus(self, device, dtype):
+    @staticmethod
+    def test_factor_minus(device, dtype):
         # prepare input data
         data = torch.tensor(
             [[[1.0, 1.0], [1.0, 1.0]], [[0.75, 0.75], [0.75, 0.75]], [[0.25, 0.25], [0.25, 0.25]]],
@@ -413,7 +443,8 @@ class TestAdjustBrightness:
         f = kornia.enhance.AdjustBrightness(-0.5)
         assert_allclose(f(data), expected)
 
-    def test_factor_tensor(self, device, dtype):
+    @staticmethod
+    def test_factor_tensor(device, dtype):
         # prepare input data
         data = torch.tensor(
             [
@@ -433,7 +464,8 @@ class TestAdjustBrightness:
         f = kornia.enhance.AdjustBrightness(factor)
         assert_allclose(f(data), expected)
 
-    def test_factor_tensor_color(self, device, dtype):
+    @staticmethod
+    def test_factor_tensor_color(device, dtype):
         # prepare input data
         data = torch.tensor(
             [
@@ -458,7 +490,8 @@ class TestAdjustBrightness:
         f = kornia.enhance.AdjustBrightness(factor)
         assert_allclose(f(data), expected)
 
-    def test_gradcheck(self, device, dtype):
+    @staticmethod
+    def test_gradcheck(device, dtype):
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
         img = tensor_to_gradcheck_var(img)  # to var
@@ -466,7 +499,8 @@ class TestAdjustBrightness:
 
 
 class TestEqualize:
-    def test_shape_equalize(self, device, dtype):
+    @staticmethod
+    def test_shape_equalize(device, dtype):
         bs, channels, height, width = 1, 3, 4, 5
 
         inputs = torch.ones(channels, height, width, device=device, dtype=dtype)
@@ -474,7 +508,8 @@ class TestEqualize:
 
         assert f(inputs).shape == torch.Size([bs, channels, height, width])
 
-    def test_shape_equalize_batch(self, device, dtype):
+    @staticmethod
+    def test_shape_equalize_batch(device, dtype):
         bs, channels, height, width = 2, 3, 4, 5
 
         inputs = torch.ones(bs, channels, height, width, device=device, dtype=dtype)
@@ -558,13 +593,15 @@ class TestEqualize:
 
         assert_allclose(f(inputs), expected, atol=1e-4, rtol=1e-4)
 
-    def test_gradcheck(self, device, dtype):
+    @staticmethod
+    def test_gradcheck(device, dtype):
         bs, channels, height, width = 1, 2, 3, 3
         inputs = torch.ones(bs, channels, height, width, device=device, dtype=dtype)
         inputs = tensor_to_gradcheck_var(inputs)
         assert gradcheck(kornia.enhance.equalize, (inputs,), raise_exception=True)
 
-    def test_jit(self, device, dtype):
+    @staticmethod
+    def test_jit(device, dtype):
         batch_size, channels, height, width = 1, 2, 3, 3
         inp = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
 
@@ -586,7 +623,8 @@ class TestEqualize:
 
 
 class TestEqualize3D:
-    def test_shape_equalize3d(self, device, dtype):
+    @staticmethod
+    def test_shape_equalize3d(device, dtype):
         bs, channels, depth, height, width = 1, 3, 6, 10, 10
 
         inputs3d = torch.ones(channels, depth, height, width, device=device, dtype=dtype)
@@ -594,7 +632,8 @@ class TestEqualize3D:
 
         assert f(inputs3d).shape == torch.Size([bs, channels, depth, height, width])
 
-    def test_shape_equalize3d_batch(self, device, dtype):
+    @staticmethod
+    def test_shape_equalize3d_batch(device, dtype):
         bs, channels, depth, height, width = 2, 3, 6, 10, 10
 
         inputs3d = torch.ones(bs, channels, depth, height, width, device=device, dtype=dtype)
@@ -636,13 +675,15 @@ class TestEqualize3D:
 
         assert_allclose(f(inputs3d), expected, atol=1e-4, rtol=1e-4)
 
-    def test_gradcheck(self, device, dtype):
+    @staticmethod
+    def test_gradcheck(device, dtype):
         bs, channels, depth, height, width = 1, 2, 3, 4, 5
         inputs3d = torch.ones(bs, channels, depth, height, width, device=device, dtype=dtype)
         inputs3d = tensor_to_gradcheck_var(inputs3d)
         assert gradcheck(kornia.enhance.equalize3d, (inputs3d,), raise_exception=True)
 
-    def test_jit(self, device, dtype):
+    @staticmethod
+    def test_jit(device, dtype):
         batch_size, channels, depth, height, width = 1, 2, 1, 3, 3
         inp = torch.ones(batch_size, channels, depth, height, width, device=device, dtype=dtype)
 
@@ -698,7 +739,8 @@ class TestSharpness(BaseTester):
         with pytest.raises(AssertionError):
             assert TestSharpness.f(img, torch.tensor([0.8]))
 
-    def test_value(self, device, dtype):
+    @staticmethod
+    def test_value(device, dtype):
         torch.manual_seed(0)
 
         inputs = torch.rand(1, 1, 3, 3).to(device=device, dtype=dtype)
@@ -719,7 +761,8 @@ class TestSharpness(BaseTester):
         assert_allclose(TestSharpness.f(inputs, 1.0), inputs, rtol=1e-4, atol=1e-4)
         assert_allclose(TestSharpness.f(inputs, 0.8), expected, rtol=1e-4, atol=1e-4)
 
-    def test_value_batch(self, device, dtype):
+    @staticmethod
+    def test_value_batch(device, dtype):
         torch.manual_seed(0)
 
         inputs = torch.rand(2, 1, 3, 3).to(device=device, dtype=dtype)
@@ -818,7 +861,8 @@ class TestSolarize(BaseTester):
             assert TestSolarize.f(img, 0.8, 1)
 
     # TODO: add better cases
-    def test_value(self, device, dtype):
+    @staticmethod
+    def test_value(device, dtype):
         torch.manual_seed(0)
 
         inputs = torch.rand(1, 1, 3, 3).to(device=device, dtype=dtype)
@@ -908,7 +952,8 @@ class TestPosterize(BaseTester):
 
     # TODO(jian): add better cases
     @pytest.mark.skipif(kornia.xla_is_available(), reason="issues with xla device")
-    def test_value(self, device, dtype):
+    @staticmethod
+    def test_value(device, dtype):
         torch.manual_seed(0)
 
         inputs = torch.rand(1, 1, 3, 3).to(device=device, dtype=dtype)

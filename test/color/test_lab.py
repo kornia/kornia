@@ -31,7 +31,8 @@ class TestRgbToLab(BaseTester):
             img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_lab(img)
 
-    def test_unit(self, device, dtype):
+    @staticmethod
+    def test_unit(device, dtype):
         data = torch.tensor(
             [
                 [
@@ -86,7 +87,8 @@ class TestRgbToLab(BaseTester):
         tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
         assert_allclose(kornia.color.rgb_to_lab(data), expected, rtol=tol_val, atol=tol_val)
 
-    def test_forth_and_back(self, device, dtype):
+    @staticmethod
+    def test_forth_and_back(device, dtype):
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
         lab = kornia.color.rgb_to_lab
         rgb = kornia.color.lab_to_rgb
@@ -141,7 +143,8 @@ class TestLabToRgb(BaseTester):
             img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.lab_to_rgb(img)
 
-    def test_unit(self, device, dtype):
+    @staticmethod
+    def test_unit(device, dtype):
         data = torch.tensor(
             [
                 [
@@ -228,7 +231,8 @@ class TestLabToRgb(BaseTester):
         assert_allclose(kornia.color.lab_to_rgb(data), expected, rtol=tol_val, atol=tol_val)
         assert_allclose(kornia.color.lab_to_rgb(data, clip=False), expected_unclipped, rtol=tol_val, atol=tol_val)
 
-    def test_forth_and_back(self, device, dtype):
+    @staticmethod
+    def test_forth_and_back(device, dtype):
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
         lab = kornia.color.rgb_to_lab
         rgb = kornia.color.lab_to_rgb

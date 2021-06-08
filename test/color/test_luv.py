@@ -30,7 +30,8 @@ class TestRgbToLuv(BaseTester):
             img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_luv(img)
 
-    def test_unit(self, device, dtype):
+    @staticmethod
+    def test_unit(device, dtype):
         data = torch.tensor(
             [
                 [
@@ -85,7 +86,8 @@ class TestRgbToLuv(BaseTester):
         tol_val: float = _get_precision(device, dtype)
         assert_allclose(kornia.color.rgb_to_luv(data), expected, rtol=tol_val, atol=tol_val)
 
-    def test_forth_and_back(self, device, dtype):
+    @staticmethod
+    def test_forth_and_back(device, dtype):
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
         luv = kornia.color.rgb_to_luv
         rgb = kornia.color.luv_to_rgb
@@ -139,7 +141,8 @@ class TestLuvToRgb(BaseTester):
             img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.luv_to_rgb(img)
 
-    def test_unit(self, device, dtype):
+    @staticmethod
+    def test_unit(device, dtype):
         data = torch.tensor(
             [
                 [
@@ -198,7 +201,8 @@ class TestLuvToRgb(BaseTester):
 
         assert_allclose(kornia.color.luv_to_rgb(data), expected, rtol=1e-4, atol=1e-4)
 
-    def test_forth_and_back(self, device, dtype):
+    @staticmethod
+    def test_forth_and_back(device, dtype):
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
         luv = kornia.color.rgb_to_luv
         rgb = kornia.color.luv_to_rgb

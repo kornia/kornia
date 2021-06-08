@@ -149,7 +149,8 @@ class RgbToLab(nn.Module):
     def __init__(self) -> None:
         super(RgbToLab, self).__init__()
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
+    @staticmethod
+    def forward(image: torch.Tensor) -> torch.Tensor:
         return rgb_to_lab(image)
 
 
@@ -179,5 +180,6 @@ class LabToRgb(nn.Module):
     def __init__(self) -> None:
         super(LabToRgb, self).__init__()
 
-    def forward(self, image: torch.Tensor, clip: bool = True) -> torch.Tensor:
+    @staticmethod
+    def forward(image: torch.Tensor, clip: bool = True) -> torch.Tensor:
         return lab_to_rgb(image, clip)

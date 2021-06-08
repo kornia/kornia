@@ -123,5 +123,6 @@ class BgrToGrayscale(nn.Module):
     def __init__(self) -> None:
         super(BgrToGrayscale, self).__init__()
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:  # type: ignore
+    @staticmethod
+    def forward(image: torch.Tensor) -> torch.Tensor:  # type: ignore
         return bgr_to_grayscale(image)

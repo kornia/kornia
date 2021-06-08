@@ -30,7 +30,8 @@ class TestRgbToXyz(BaseTester):
             img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_xyz(img)
 
-    def test_unit(self, device, dtype):
+    @staticmethod
+    def test_unit(device, dtype):
         data = torch.tensor(
             [
                 [
@@ -88,7 +89,8 @@ class TestRgbToXyz(BaseTester):
 
         assert_allclose(kornia.color.rgb_to_xyz(data), expected)
 
-    def test_forth_and_back(self, device, dtype):
+    @staticmethod
+    def test_forth_and_back(device, dtype):
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
         xyz = kornia.color.rgb_to_xyz
         rgb = kornia.color.xyz_to_rgb
@@ -142,7 +144,8 @@ class TestXyzToRgb(BaseTester):
             img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.xyz_to_rgb(img)
 
-    def test_unit(self, device, dtype):
+    @staticmethod
+    def test_unit(device, dtype):
         data = torch.tensor(
             [
                 [
@@ -200,7 +203,8 @@ class TestXyzToRgb(BaseTester):
 
         assert_allclose(kornia.color.xyz_to_rgb(data), expected, atol=1e-4, rtol=1e-4)
 
-    def test_forth_and_back(self, device, dtype):
+    @staticmethod
+    def test_forth_and_back(device, dtype):
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
         xyz = kornia.color.rgb_to_xyz
         rgb = kornia.color.xyz_to_rgb

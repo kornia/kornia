@@ -71,7 +71,8 @@ class VideoSequential(nn.Sequential):
         # Fix mypy complains: error: Incompatible return value type (got "Tuple[int, ...]", expected "Size")
         return cast(torch.Size, batch_shape[: self._temporal_channel] + batch_shape[self._temporal_channel + 1 :])
 
-    def __repeat_param_across_channels__(self, param: torch.Tensor, frame_num: int) -> torch.Tensor:
+    @staticmethod
+    def __repeat_param_across_channels__(param: torch.Tensor, frame_num: int) -> torch.Tensor:
         """Repeat parameters across channels.
 
         The input is shaped as (B, ...), while to output (B * same_on_frame, ...), which

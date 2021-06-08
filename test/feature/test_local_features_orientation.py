@@ -8,32 +8,37 @@ from kornia.feature.orientation import *
 
 
 class TestPassLAF:
-    def test_shape(self, device):
+    @staticmethod
+    def test_shape(device):
         inp = torch.rand(1, 1, 32, 32, device=device)
         laf = torch.rand(1, 1, 2, 3, device=device)
         ori = PassLAF().to(device)
         out = ori(laf, inp)
         assert out.shape == laf.shape
 
-    def test_shape_batch(self, device):
+    @staticmethod
+    def test_shape_batch(device):
         inp = torch.rand(2, 1, 32, 32, device=device)
         laf = torch.rand(2, 34, 2, 3, device=device)
         ori = PassLAF().to(device)
         out = ori(laf, inp)
         assert out.shape == laf.shape
 
-    def test_print(self, device):
+    @staticmethod
+    def test_print(device):
         sift = PassLAF()
         sift.__repr__()
 
-    def test_pass(self, device):
+    @staticmethod
+    def test_pass(device):
         inp = torch.rand(1, 1, 32, 32, device=device)
         laf = torch.rand(1, 1, 2, 3, device=device)
         ori = PassLAF().to(device)
         out = ori(laf, inp)
         assert_allclose(out, laf)
 
-    def test_gradcheck(self, device):
+    @staticmethod
+    def test_gradcheck(device):
         batch_size, channels, height, width = 1, 1, 21, 21
         patches = torch.rand(batch_size, channels, height, width, device=device)
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
@@ -42,23 +47,27 @@ class TestPassLAF:
 
 
 class TestPatchDominantGradientOrientation:
-    def test_shape(self, device):
+    @staticmethod
+    def test_shape(device):
         inp = torch.rand(1, 1, 32, 32, device=device)
         ori = PatchDominantGradientOrientation(32).to(device)
         ang = ori(inp)
         assert ang.shape == torch.Size([1])
 
-    def test_shape_batch(self, device):
+    @staticmethod
+    def test_shape_batch(device):
         inp = torch.rand(10, 1, 32, 32, device=device)
         ori = PatchDominantGradientOrientation(32).to(device)
         ang = ori(inp)
         assert ang.shape == torch.Size([10])
 
-    def test_print(self, device):
+    @staticmethod
+    def test_print(device):
         sift = PatchDominantGradientOrientation(32)
         sift.__repr__()
 
-    def test_toy(self, device):
+    @staticmethod
+    def test_toy(device):
         ori = PatchDominantGradientOrientation(19).to(device)
         inp = torch.zeros(1, 1, 19, 19, device=device)
         inp[:, :, :10, :] = 1
@@ -66,7 +75,8 @@ class TestPatchDominantGradientOrientation:
         expected = torch.tensor([90.0], device=device)
         assert_allclose(kornia.rad2deg(ang), expected)
 
-    def test_gradcheck(self, device):
+    @staticmethod
+    def test_gradcheck(device):
         batch_size, channels, height, width = 1, 1, 13, 13
         ori = PatchDominantGradientOrientation(width).to(device)
         patches = torch.rand(batch_size, channels, height, width, device=device)
@@ -75,7 +85,8 @@ class TestPatchDominantGradientOrientation:
 
     @pytest.mark.jit
     @pytest.mark.skip(" Compiled functions can't take variable number")
-    def test_jit(self, device, dtype):
+    @staticmethod
+    def test_jit(device, dtype):
         B, C, H, W = 2, 1, 13, 13
         patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
         model = PatchDominantGradientOrientation(13).to(patches.device, patches.dtype).eval()
@@ -84,29 +95,34 @@ class TestPatchDominantGradientOrientation:
 
 
 class TestOriNet:
-    def test_shape(self, device):
+    @staticmethod
+    def test_shape(device):
         inp = torch.rand(1, 1, 32, 32, device=device)
         ori = OriNet().to(device=device, dtype=inp.dtype).eval()
         ang = ori(inp)
         assert ang.shape == torch.Size([1])
 
-    def test_pretrained(self, device):
+    @staticmethod
+    def test_pretrained(device):
         inp = torch.rand(1, 1, 32, 32, device=device)
         ori = OriNet(True).to(device=device, dtype=inp.dtype).eval()
         ang = ori(inp)
         assert ang.shape == torch.Size([1])
 
-    def test_shape_batch(self, device):
+    @staticmethod
+    def test_shape_batch(device):
         inp = torch.rand(2, 1, 32, 32, device=device)
         ori = OriNet(True).to(device=device, dtype=inp.dtype).eval()
         ang = ori(inp)
         assert ang.shape == torch.Size([2])
 
-    def test_print(self, device):
+    @staticmethod
+    def test_print(device):
         sift = OriNet(32)
         sift.__repr__()
 
-    def test_toy(self, device):
+    @staticmethod
+    def test_toy(device):
         inp = torch.zeros(1, 1, 32, 32, device=device)
         inp[:, :, :16, :] = 1
         ori = OriNet(True).to(device=device, dtype=inp.dtype).eval()
@@ -115,7 +131,8 @@ class TestOriNet:
         assert_allclose(kornia.rad2deg(ang), expected, atol=1e-2, rtol=1e-3)
 
     @pytest.mark.skip("jacobian not well computed")
-    def test_gradcheck(self, device):
+    @staticmethod
+    def test_gradcheck(device):
         batch_size, channels, height, width = 2, 1, 32, 32
         patches = torch.rand(batch_size, channels, height, width, device=device)
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
@@ -123,7 +140,8 @@ class TestOriNet:
         assert gradcheck(ori, (patches,), raise_exception=True)
 
     @pytest.mark.jit
-    def test_jit(self, device, dtype):
+    @staticmethod
+    def test_jit(device, dtype):
         B, C, H, W = 2, 1, 32, 32
         patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
         tfeat = OriNet(True).to(patches.device, patches.dtype).eval()
@@ -132,25 +150,29 @@ class TestOriNet:
 
 
 class TestLAFOrienter:
-    def test_shape(self, device):
+    @staticmethod
+    def test_shape(device):
         inp = torch.rand(1, 1, 32, 32, device=device)
         laf = torch.rand(1, 1, 2, 3, device=device)
         ori = LAFOrienter().to(device)
         out = ori(laf, inp)
         assert out.shape == laf.shape
 
-    def test_shape_batch(self, device):
+    @staticmethod
+    def test_shape_batch(device):
         inp = torch.rand(2, 1, 32, 32, device=device)
         laf = torch.rand(2, 34, 2, 3, device=device)
         ori = LAFOrienter().to(device)
         out = ori(laf, inp)
         assert out.shape == laf.shape
 
-    def test_print(self, device):
+    @staticmethod
+    def test_print(device):
         sift = LAFOrienter()
         sift.__repr__()
 
-    def test_toy(self, device):
+    @staticmethod
+    def test_toy(device):
         ori = LAFOrienter(32).to(device)
         inp = torch.zeros(1, 1, 19, 19, device=device)
         inp[:, :, :, :10] = 1
@@ -159,7 +181,8 @@ class TestLAFOrienter:
         expected = torch.tensor([[[[0.0, 5.0, 8.0], [-5.0, 0, 8.0]]]], device=device)
         assert_allclose(new_laf, expected)
 
-    def test_gradcheck(self, device):
+    @staticmethod
+    def test_gradcheck(device):
         batch_size, channels, height, width = 1, 1, 21, 21
         patches = torch.rand(batch_size, channels, height, width, device=device).float()
         patches = utils.tensor_to_gradcheck_var(patches)  # to var

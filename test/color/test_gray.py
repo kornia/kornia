@@ -39,7 +39,8 @@ class TestRgbToGrayscale(BaseTester):
             rgb_weights = torch.tensor([0.2, 0.8])
             assert kornia.color.rgb_to_grayscale(img, rgb_weights=rgb_weights)
 
-    def test_opencv(self, device, dtype):
+    @staticmethod
+    def test_opencv(device, dtype):
         data = torch.tensor(
             [
                 [
@@ -86,7 +87,8 @@ class TestRgbToGrayscale(BaseTester):
         img_gray = kornia.rgb_to_grayscale(data)
         assert_allclose(img_gray, expected)
 
-    def test_custom_rgb_weights(self, device, dtype):
+    @staticmethod
+    def test_custom_rgb_weights(device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
 
@@ -141,7 +143,8 @@ class TestBgrToGrayscale(BaseTester):
             img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.bgr_to_grayscale(img)
 
-    def test_opencv(self, device, dtype):
+    @staticmethod
+    def test_opencv(device, dtype):
         data = torch.tensor(
             [
                 [

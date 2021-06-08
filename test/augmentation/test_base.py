@@ -10,12 +10,14 @@ from kornia.augmentation.base import _BasicAugmentationBase, AugmentationBase2D
 
 
 class TestBasicAugmentationBase:
-    def test_smoke(self, device, dtype):
+    @staticmethod
+    def test_smoke(device, dtype):
         base = _BasicAugmentationBase(p=0.5, p_batch=1.0, same_on_batch=True)
         __repr__ = "p=0.5, p_batch=1.0, same_on_batch=True"
         assert str(base) == __repr__
 
-    def test_infer_input(self, device, dtype):
+    @staticmethod
+    def test_infer_input(device, dtype):
         input = torch.rand((2, 3, 4, 5), device=device, dtype=dtype)
         augmentation = _BasicAugmentationBase(p=1.0, p_batch=1)
         with patch.object(augmentation, "transform_tensor", autospec=True) as transform_tensor:
@@ -50,7 +52,8 @@ class TestBasicAugmentationBase:
             assert len(output['degrees']) == output['batch_prob'].sum().item() == num
 
     @pytest.mark.parametrize('keepdim', (True, False))
-    def test_forward(self, device, dtype, keepdim):
+    @staticmethod
+    def test_forward(device, dtype, keepdim):
         torch.manual_seed(42)
         input = torch.rand((12, 3, 4, 5), device=device, dtype=dtype)
         expected_output = input[..., :2, :2] if keepdim else input.unsqueeze(dim=0)[..., :2, :2]
@@ -93,7 +96,8 @@ class TestAugmentationBase2D:
         augmentation.__check_batching__(input)
         augmentation.__check_batching__((input, in_trans))
 
-    def test_forward(self, device, dtype):
+    @staticmethod
+    def test_forward(device, dtype):
         torch.manual_seed(42)
         input = torch.rand((2, 3, 4, 5), device=device, dtype=dtype)
         input_transform = torch.rand((2, 3, 3), device=device, dtype=dtype)
@@ -145,7 +149,8 @@ class TestAugmentationBase2D:
             assert torch.allclose(expected_final_transformation, transformation)
             assert transformation.shape[0] == input.shape[0]
 
-    def test_gradcheck(self, device, dtype):
+    @staticmethod
+    def test_gradcheck(device, dtype):
         torch.manual_seed(42)
 
         input = torch.rand((1, 1, 3, 3), device=device, dtype=dtype)

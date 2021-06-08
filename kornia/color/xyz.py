@@ -90,7 +90,8 @@ class RgbToXyz(nn.Module):
     def __init__(self) -> None:
         super(RgbToXyz, self).__init__()
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
+    @staticmethod
+    def forward(image: torch.Tensor) -> torch.Tensor:
         return rgb_to_xyz(image)
 
 
@@ -116,5 +117,6 @@ class XyzToRgb(nn.Module):
     def __init__(self) -> None:
         super(XyzToRgb, self).__init__()
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
+    @staticmethod
+    def forward(image: torch.Tensor) -> torch.Tensor:
         return xyz_to_rgb(image)

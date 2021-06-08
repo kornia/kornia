@@ -6,7 +6,8 @@ from kornia.constants import pi
 
 
 class TestHorizontalFlipFn:
-    def test_random_hflip(self, device, dtype):
+    @staticmethod
+    def test_random_hflip(device, dtype):
         input = torch.tensor(
             [[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 2.0]], device=device, dtype=dtype
         )  # 3 x 4
@@ -17,7 +18,8 @@ class TestHorizontalFlipFn:
 
         assert (F.apply_hflip(input[None, None]) == expected).all()
 
-    def test_batch_random_hflip(self, device, dtype):
+    @staticmethod
+    def test_batch_random_hflip(device, dtype):
         batch_size = 5
         input = torch.tensor(
             [[[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]]]], device=device, dtype=dtype
@@ -33,7 +35,8 @@ class TestHorizontalFlipFn:
 
 
 class TestVerticalFlipFn:
-    def test_random_vflip(self, device, dtype):
+    @staticmethod
+    def test_random_vflip(device, dtype):
         input = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]], device=device, dtype=dtype)  # 3 x 3
 
         expected = torch.tensor(
@@ -42,7 +45,8 @@ class TestVerticalFlipFn:
 
         assert (F.apply_vflip(input[None, None]) == expected).all()
 
-    def test_batch_random_vflip(self, device, dtype):
+    @staticmethod
+    def test_batch_random_vflip(device, dtype):
         batch_size = 5
 
         input = torch.tensor(
@@ -60,7 +64,8 @@ class TestVerticalFlipFn:
 
 
 class TestColorJitter:
-    def test_color_jitter(self):
+    @staticmethod
+    def test_color_jitter():
 
         jitter_param = {
             'brightness_factor': torch.tensor(1.0),
@@ -76,7 +81,8 @@ class TestColorJitter:
 
         assert_allclose(F.apply_color_jitter(input[None], jitter_param), expected[None], atol=1e-4, rtol=1e-5)
 
-    def test_color_jitter_batch(self):
+    @staticmethod
+    def test_color_jitter_batch():
         batch_size = 2
         jitter_param = {
             'brightness_factor': torch.tensor([1.0] * batch_size),
@@ -91,7 +97,8 @@ class TestColorJitter:
 
         assert_allclose(F.apply_color_jitter(input, jitter_param), expected, atol=1e-4, rtol=1e-5)
 
-    def test_random_brightness(self):
+    @staticmethod
+    def test_random_brightness():
         torch.manual_seed(42)
         jitter_param = {
             'brightness_factor': torch.tensor([1.1529, 1.1660]),
@@ -121,7 +128,8 @@ class TestColorJitter:
 
         assert_allclose(F.apply_color_jitter(input, jitter_param), expected)
 
-    def test_random_contrast(self):
+    @staticmethod
+    def test_random_contrast():
         torch.manual_seed(42)
         jitter_param = {
             'brightness_factor': torch.tensor([1.0, 1.0]),
@@ -151,7 +159,8 @@ class TestColorJitter:
 
         assert_allclose(F.apply_color_jitter(input, jitter_param), expected, atol=1e-4, rtol=1e-5)
 
-    def test_random_saturation(self):
+    @staticmethod
+    def test_random_saturation():
         torch.manual_seed(42)
         jitter_param = {
             'brightness_factor': torch.tensor([1.0, 1.0]),
@@ -213,7 +222,8 @@ class TestColorJitter:
 
         assert_allclose(F.apply_color_jitter(input, jitter_param), expected, atol=1e-4, rtol=1e-5)
 
-    def test_random_hue(self):
+    @staticmethod
+    def test_random_hue():
         torch.manual_seed(42)
         jitter_param = {
             'brightness_factor': torch.tensor([1.0, 1.0]),
@@ -252,7 +262,8 @@ class TestColorJitter:
 
 
 class TestRandomGrayscale:
-    def test_opencv_true(self, device):
+    @staticmethod
+    def test_opencv_true(device):
         data = torch.tensor(
             [
                 [
@@ -309,7 +320,8 @@ class TestRandomGrayscale:
 
         assert_allclose(F.apply_grayscale(data[None]), expected[None])
 
-    def test_opencv_true_batch(self, device):
+    @staticmethod
+    def test_opencv_true_batch(device):
         batch_size = 4
         data = torch.tensor(
             [
@@ -372,7 +384,8 @@ class TestRandomGrayscale:
 
 
 class TestRandomRectangleEarasing:
-    def test_rectangle_erasing1(self, device):
+    @staticmethod
+    def test_rectangle_erasing1(device):
         inputs = torch.ones(1, 1, 10, 10).to(device)
         rect_params = {
             "widths": torch.tensor([5]),
@@ -401,7 +414,8 @@ class TestRandomRectangleEarasing:
         ).to(device)
         assert_allclose(F.apply_erase_rectangles(inputs, rect_params), expected)
 
-    def test_rectangle_erasing2(self, device):
+    @staticmethod
+    def test_rectangle_erasing2(device):
         inputs = torch.ones(3, 3, 3, 3).to(device)
         rect_params = {
             "widths": torch.tensor([3, 2, 1]),

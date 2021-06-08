@@ -8,7 +8,8 @@ from kornia.feature.matching import *
 
 class TestMatchNN:
     @pytest.mark.parametrize("num_desc1, num_desc2, dim", [(1, 4, 4), (2, 5, 128), (6, 2, 32)])
-    def test_shape(self, num_desc1, num_desc2, dim, device):
+    @staticmethod
+    def test_shape(num_desc1, num_desc2, dim, device):
         desc1 = torch.rand(num_desc1, dim, device=device)
         desc2 = torch.rand(num_desc2, dim, device=device)
 
@@ -16,7 +17,8 @@ class TestMatchNN:
         assert idxs.shape == (num_desc1, 2)
         assert dists.shape == (num_desc1, 1)
 
-    def test_matching(self, device):
+    @staticmethod
+    def test_matching(device):
         desc1 = torch.tensor([[0, 0.0], [1, 1], [2, 2], [3, 3.0], [5, 5.0]], device=device)
         desc2 = torch.tensor([[5, 5.0], [3, 3.0], [2.3, 2.4], [1, 1], [0, 0.0]], device=device)
 
@@ -26,7 +28,8 @@ class TestMatchNN:
         assert_allclose(dists, expected_dists)
         assert_allclose(idxs, expected_idx)
 
-    def test_gradcheck(self, device):
+    @staticmethod
+    def test_gradcheck(device):
         desc1 = torch.rand(5, 8, device=device)
         desc2 = torch.rand(7, 8, device=device)
         desc1 = utils.tensor_to_gradcheck_var(desc1)  # to var
@@ -36,7 +39,8 @@ class TestMatchNN:
 
 class TestMatchMNN:
     @pytest.mark.parametrize("num_desc1, num_desc2, dim", [(1, 4, 4), (2, 5, 128), (6, 2, 32)])
-    def test_shape(self, num_desc1, num_desc2, dim, device):
+    @staticmethod
+    def test_shape(num_desc1, num_desc2, dim, device):
         desc1 = torch.rand(num_desc1, dim, device=device)
         desc2 = torch.rand(num_desc2, dim, device=device)
 
@@ -46,7 +50,8 @@ class TestMatchMNN:
         assert idxs.shape[0] == dists.shape[0]
         assert dists.shape[0] <= num_desc1
 
-    def test_matching(self, device):
+    @staticmethod
+    def test_matching(device):
         desc1 = torch.tensor([[0, 0.0], [1, 1], [2, 2], [3, 3.0], [5, 5.0]], device=device)
         desc2 = torch.tensor([[5, 5.0], [3, 3.0], [2.3, 2.4], [1, 1], [0, 0.0]], device=device)
 
@@ -56,7 +61,8 @@ class TestMatchMNN:
         assert_allclose(dists, expected_dists)
         assert_allclose(idxs, expected_idx)
 
-    def test_gradcheck(self, device):
+    @staticmethod
+    def test_gradcheck(device):
         desc1 = torch.rand(5, 8, device=device)
         desc2 = torch.rand(7, 8, device=device)
         desc1 = utils.tensor_to_gradcheck_var(desc1)  # to var
@@ -66,7 +72,8 @@ class TestMatchMNN:
 
 class TestMatchSNN:
     @pytest.mark.parametrize("num_desc1, num_desc2, dim", [(2, 4, 4), (2, 5, 128), (6, 2, 32)])
-    def test_shape(self, num_desc1, num_desc2, dim, device):
+    @staticmethod
+    def test_shape(num_desc1, num_desc2, dim, device):
         desc1 = torch.rand(num_desc1, dim, device=device)
         desc2 = torch.rand(num_desc2, dim, device=device)
 
@@ -76,7 +83,8 @@ class TestMatchSNN:
         assert idxs.shape[0] == dists.shape[0]
         assert dists.shape[0] <= num_desc1
 
-    def test_matching1(self, device):
+    @staticmethod
+    def test_matching1(device):
         desc1 = torch.tensor([[0, 0.0], [1, 1], [2, 2], [3, 3.0], [5, 5.0]], device=device)
         desc2 = torch.tensor([[5, 5.0], [3, 3.0], [2.3, 2.4], [1, 1], [0, 0.0]], device=device)
 
@@ -86,7 +94,8 @@ class TestMatchSNN:
         assert_allclose(dists, expected_dists)
         assert_allclose(idxs, expected_idx)
 
-    def test_matching2(self, device):
+    @staticmethod
+    def test_matching2(device):
         desc1 = torch.tensor([[0, 0.0], [1, 1], [2, 2], [3, 3.0], [5, 5.0]], device=device)
         desc2 = torch.tensor([[5, 5.0], [3, 3.0], [2.3, 2.4], [1, 1], [0, 0.0]], device=device)
 
@@ -96,7 +105,8 @@ class TestMatchSNN:
         assert_allclose(dists, expected_dists)
         assert_allclose(idxs, expected_idx)
 
-    def test_gradcheck(self, device):
+    @staticmethod
+    def test_gradcheck(device):
         desc1 = torch.rand(5, 8, device=device)
         desc2 = torch.rand(7, 8, device=device)
         desc1 = utils.tensor_to_gradcheck_var(desc1)  # to var
@@ -106,7 +116,8 @@ class TestMatchSNN:
 
 class TestMatchSMNN:
     @pytest.mark.parametrize("num_desc1, num_desc2, dim", [(2, 4, 4), (2, 5, 128), (6, 2, 32)])
-    def test_shape(self, num_desc1, num_desc2, dim, device):
+    @staticmethod
+    def test_shape(num_desc1, num_desc2, dim, device):
         desc1 = torch.rand(num_desc1, dim, device=device)
         desc2 = torch.rand(num_desc2, dim, device=device)
 
@@ -117,7 +128,8 @@ class TestMatchSMNN:
         assert dists.shape[0] <= num_desc1
         assert dists.shape[0] <= num_desc2
 
-    def test_matching1(self, device):
+    @staticmethod
+    def test_matching1(device):
         desc1 = torch.tensor([[0, 0.0], [1, 1], [2, 2], [3, 3.0], [5, 5.0]], device=device)
         desc2 = torch.tensor([[5, 5.0], [3, 3.0], [2.3, 2.4], [1, 1], [0, 0.0]], device=device)
 
@@ -127,7 +139,8 @@ class TestMatchSMNN:
         assert_allclose(dists, expected_dists)
         assert_allclose(idxs, expected_idx)
 
-    def test_matching2(self, device):
+    @staticmethod
+    def test_matching2(device):
         desc1 = torch.tensor([[0, 0.0], [1, 1], [2, 2], [3, 3.0], [5, 5.0]], device=device)
         desc2 = torch.tensor([[5, 5.0], [3, 3.0], [2.3, 2.4], [1, 1], [0, 0.0]], device=device)
 
@@ -137,7 +150,8 @@ class TestMatchSMNN:
         assert_allclose(dists, expected_dists)
         assert_allclose(idxs, expected_idx)
 
-    def test_gradcheck(self, device):
+    @staticmethod
+    def test_gradcheck(device):
         desc1 = torch.rand(5, 8, device=device)
         desc2 = torch.rand(7, 8, device=device)
         desc1 = utils.tensor_to_gradcheck_var(desc1)  # to var

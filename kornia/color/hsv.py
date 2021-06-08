@@ -150,5 +150,6 @@ class HsvToRgb(nn.Module):
     def __init__(self) -> None:
         super(HsvToRgb, self).__init__()
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
+    @staticmethod
+    def forward(image: torch.Tensor) -> torch.Tensor:
         return hsv_to_rgb(image)

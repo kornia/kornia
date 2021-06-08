@@ -94,7 +94,8 @@ class RgbToYuv(nn.Module):
     def __init__(self) -> None:
         super(RgbToYuv, self).__init__()
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    @staticmethod
+    def forward(input: torch.Tensor) -> torch.Tensor:
         return rgb_to_yuv(input)
 
 
@@ -119,5 +120,6 @@ class YuvToRgb(nn.Module):
     def __init__(self) -> None:
         super(YuvToRgb, self).__init__()
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    @staticmethod
+    def forward(input: torch.Tensor) -> torch.Tensor:
         return yuv_to_rgb(input)

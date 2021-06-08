@@ -10,21 +10,24 @@ class TestHistogram:
 
     fcn = kornia.enhance.histogram
 
-    def test_shape(self, device, dtype):
+    @staticmethod
+    def test_shape(device, dtype):
         inp = torch.ones(1, 32, device=device, dtype=dtype)
         bins = torch.linspace(0, 255, 128, device=device, dtype=dtype)
         bandwidth = torch.tensor(0.9, device=device, dtype=dtype)
         pdf = TestHistogram.fcn(inp, bins, bandwidth)
         assert pdf.shape == (1, 128)
 
-    def test_shape_batch(self, device, dtype):
+    @staticmethod
+    def test_shape_batch(device, dtype):
         inp = torch.ones(8, 32, device=device, dtype=dtype)
         bins = torch.linspace(0, 255, 128, device=device, dtype=dtype)
         bandwidth = torch.tensor(0.9, device=device, dtype=dtype)
         pdf = TestHistogram.fcn(inp, bins, bandwidth)
         assert pdf.shape == (8, 128)
 
-    def test_gradcheck(self, device, dtype):
+    @staticmethod
+    def test_gradcheck(device, dtype):
         inp = torch.ones(1, 8, device=device, dtype=dtype)
         inp = utils.tensor_to_gradcheck_var(inp)  # to var
         bins = torch.linspace(0, 255, 8, device=device, dtype=dtype)
@@ -33,7 +36,8 @@ class TestHistogram:
         bandwidth = utils.tensor_to_gradcheck_var(bandwidth)
         assert gradcheck(TestHistogram.fcn, (inp, bins, bandwidth), raise_exception=True)
 
-    def test_jit(self, device, dtype):
+    @staticmethod
+    def test_jit(device, dtype):
         input1 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
         bins = torch.linspace(0, 255, 10, device=device, dtype=dtype)
         bandwidth = torch.tensor(2 * 0.4 ** 2, device=device, dtype=dtype)
@@ -44,7 +48,8 @@ class TestHistogram:
 
         assert_allclose(op(*inputs), op_script(*inputs))
 
-    def test_uniform_dist(self, device, dtype):
+    @staticmethod
+    def test_uniform_dist(device, dtype):
         input1 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
         input2 = torch.linspace(0, 255, 10, device=device, dtype=dtype)
         bandwidth = torch.tensor(2 * 0.4 ** 2, device=device, dtype=dtype)
@@ -58,7 +63,8 @@ class TestHistogram2d:
 
     fcn = kornia.enhance.histogram2d
 
-    def test_shape(self, device, dtype):
+    @staticmethod
+    def test_shape(device, dtype):
         inp1 = torch.ones(1, 32, device=device, dtype=dtype)
         inp2 = torch.ones(1, 32, device=device, dtype=dtype)
         bins = torch.linspace(0, 255, 128, device=device, dtype=dtype)
@@ -66,7 +72,8 @@ class TestHistogram2d:
         pdf = TestHistogram2d.fcn(inp1, inp2, bins, bandwidth)
         assert pdf.shape == (1, 128, 128)
 
-    def test_shape_batch(self, device, dtype):
+    @staticmethod
+    def test_shape_batch(device, dtype):
         inp1 = torch.ones(8, 32, device=device, dtype=dtype)
         inp2 = torch.ones(8, 32, device=device, dtype=dtype)
         bins = torch.linspace(0, 255, 128, device=device, dtype=dtype)
@@ -74,7 +81,8 @@ class TestHistogram2d:
         pdf = TestHistogram2d.fcn(inp1, inp2, bins, bandwidth)
         assert pdf.shape == (8, 128, 128)
 
-    def test_gradcheck(self, device, dtype):
+    @staticmethod
+    def test_gradcheck(device, dtype):
         inp1 = torch.ones(1, 8, device=device, dtype=dtype)
         inp2 = torch.ones(1, 8, device=device, dtype=dtype)
         inp1 = utils.tensor_to_gradcheck_var(inp1)  # to var
@@ -85,7 +93,8 @@ class TestHistogram2d:
         bandwidth = utils.tensor_to_gradcheck_var(bandwidth)
         assert gradcheck(TestHistogram2d.fcn, (inp1, inp2, bins, bandwidth), raise_exception=True)
 
-    def test_jit(self, device, dtype):
+    @staticmethod
+    def test_jit(device, dtype):
         input1 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
         input2 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
         bins = torch.linspace(0, 255, 10, device=device, dtype=dtype)
@@ -97,7 +106,8 @@ class TestHistogram2d:
 
         assert_allclose(op(*inputs), op_script(*inputs))
 
-    def test_uniform_dist(self, device, dtype):
+    @staticmethod
+    def test_uniform_dist(device, dtype):
         input1 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
         input2 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
         bins = torch.linspace(0, 255, 10, device=device, dtype=dtype)
