@@ -15,7 +15,8 @@ def cross_product_matrix(x: torch.Tensor) -> torch.Tensor:
         torch.Tensor: The constructed cross_product_matrix symmetric matrix with shape :math:`(B, 3, 3)`.
 
     """
-    assert len(x.shape) == 2 and x.shape[1] == 3, x.shape
+    if not (len(x.shape) == 2 and x.shape[1] == 3):
+        raise AssertionError(x.shape)
     # get vector compononens
     x0 = x[..., 0]
     x1 = x[..., 1]
@@ -39,8 +40,10 @@ def eye_like(n: int, input: torch.Tensor) -> torch.Tensor:
         torch.Tensor: The identity matrix with same size as input :math:`(*, N, N)`.
 
     """
-    assert n > 0, (type(n), n)
-    assert len(input.shape) >= 1, input.shape
+    if n <= 0:
+        raise AssertionError(type(n), n)
+    if len(input.shape) < 1:
+        raise AssertionError(input.shape)
 
     identity = torch.eye(n, device=input.device, dtype=input.dtype)
     return identity[None].repeat(input.shape[0], 1, 1)
@@ -58,8 +61,10 @@ def vec_like(n, tensor):
         torch.Tensor: The vector with same size as input :math:`(*, N, 1)`.
 
     """
-    assert n > 0, (type(n), n)
-    assert len(tensor.shape) >= 1, tensor.shape
+    if n <= 0:
+        raise AssertionError(type(n), n)
+    if len(tensor.shape) < 1:
+        raise AssertionError(tensor.shape)
 
     vec = torch.zeros(n, 1, device=tensor.device, dtype=tensor.dtype)
     return vec[None].repeat(tensor.shape[0], 1, 1)

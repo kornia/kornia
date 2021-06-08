@@ -69,7 +69,8 @@ def crop_and_resize(
     if not isinstance(size, (tuple, list)) and len(size) == 2:
         raise ValueError("Input size must be a tuple/list of length 2. Got {}".format(size))
 
-    assert len(tensor.shape) == 4, f"Only tensor with shape (B, C, H, W) supported. Got {tensor.shape}."
+    if len(tensor.shape) != 4:
+        raise AssertionError(f"Only tensor with shape (B, C, H, W) supported. Got {tensor.shape}.")
 
     # unpack input data
     dst_h, dst_w = size
@@ -126,7 +127,8 @@ def center_crop(
     if not isinstance(size, (tuple, list)) and len(size) == 2:
         raise ValueError("Input size must be a tuple/list of length 2. Got {}".format(size))
 
-    assert len(tensor.shape) == 4, f"Only tensor with shape (B, C, H, W) supported. Got {tensor.shape}."
+    if len(tensor.shape) != 4:
+        raise AssertionError(f"Only tensor with shape (B, C, H, W) supported. Got {tensor.shape}.")
 
     # unpack input sizes
     dst_h, dst_w = size
@@ -219,16 +221,18 @@ def crop_by_boxes(
     validate_bboxes(src_box)
     validate_bboxes(dst_box)
 
-    assert len(tensor.shape) == 4, f"Only tensor with shape (B, C, H, W) supported. Got {tensor.shape}."
+    if len(tensor.shape) != 4:
+        raise AssertionError(f"Only tensor with shape (B, C, H, W) supported. Got {tensor.shape}.")
 
     # compute transformation between points and warp
     # Note: Tensor.dtype must be float. "solve_cpu" not implemented for 'Long'
     dst_trans_src: torch.Tensor = get_perspective_transform(src_box.to(tensor), dst_box.to(tensor))
 
     bbox: Tuple[torch.Tensor, torch.Tensor] = infer_box_shape(dst_box)
-    assert (bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all(), (
-        f"Cropping height, width and depth must be exact same in a batch. " f"Got height {bbox[0]} and width {bbox[1]}."
-    )
+    if not ((bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all()):
+        raise AssertionError(
+            f"Cropping height, width and depth must be exact same in a batch. " f"Got height {bbox[0]} and width {bbox[1]}."
+        )
 
     h_out: int = int(bbox[0][0].item())
     w_out: int = int(bbox[1][0].item())
@@ -419,22 +423,26 @@ def bbox_generator(
                  [3, 3],
                  [1, 3]]])
     """
-    assert x_start.shape == y_start.shape and x_start.dim() in [
+    if not (x_start.shape == y_start.shape and x_start.dim() in [
         0,
         1,
-    ], f"`x_start` and `y_start` must be a scalar or (B,). Got {x_start}, {y_start}."
-    assert width.shape == height.shape and width.dim() in [
+    ]):
+        raise AssertionError(f"`x_start` and `y_start` must be a scalar or (B,). Got {x_start}, {y_start}.")
+    if not (width.shape == height.shape and width.dim() in [
         0,
         1,
-    ], f"`width` and `height` must be a scalar or (B,). Got {width}, {height}."
-    assert x_start.dtype == y_start.dtype == width.dtype == height.dtype, (
-        "All tensors must be in the same dtype. Got "
-        f"`x_start`({x_start.dtype}), `y_start`({x_start.dtype}), `width`({width.dtype}), `height`({height.dtype})."
-    )
-    assert x_start.device == y_start.device == width.device == height.device, (
-        "All tensors must be in the same device. Got "
-        f"`x_start`({x_start.device}), `y_start`({x_start.device}), `width`({width.device}), `height`({height.device})."
-    )
+    ]):
+        raise AssertionError(f"`width` and `height` must be a scalar or (B,). Got {width}, {height}.")
+    if not x_start.dtype == y_start.dtype == width.dtype == height.dtype:
+        raise AssertionError(
+            "All tensors must be in the same dtype. Got "
+            f"`x_start`({x_start.dtype}), `y_start`({x_start.dtype}), `width`({width.dtype}), `height`({height.dtype})."
+        )
+    if not x_start.device == y_start.device == width.device == height.device:
+        raise AssertionError(
+            "All tensors must be in the same device. Got "
+            f"`x_start`({x_start.device}), `y_start`({x_start.device}), `width`({width.device}), `height`({height.device})."
+        )
 
     bbox = torch.tensor([[[0, 0], [0, 0], [0, 0], [0, 0]]], device=x_start.device, dtype=x_start.dtype).repeat(
         1 if x_start.dim() == 0 else len(x_start), 1, 1

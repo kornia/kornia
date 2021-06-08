@@ -20,8 +20,10 @@ def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:
         torch.Tensor: The camera matrix with the shape of :math:`(B, 3, 3)`.
 
     """
-    assert len(input.shape) == 4, input.shape
-    assert focal > 0, focal
+    if len(input.shape) != 4:
+        raise AssertionError(input.shape)
+    if focal <= 0:
+        raise AssertionError(focal)
 
     B, _, H, W = input.shape
 
@@ -87,10 +89,14 @@ def projection_from_KRt(K: torch.Tensor, R: torch.Tensor, t: torch.Tensor) -> to
        torch.Tensor: The projection matrix P with shape :math:`(B, 4, 4)`.
 
     """
-    assert K.shape[-2:] == (3, 3), K.shape
-    assert R.shape[-2:] == (3, 3), R.shape
-    assert t.shape[-2:] == (3, 1), t.shape
-    assert len(K.shape) == len(R.shape) == len(t.shape)
+    if K.shape[-2:] != (3, 3):
+        raise AssertionError(K.shape)
+    if R.shape[-2:] != (3, 3):
+        raise AssertionError(R.shape)
+    if t.shape[-2:] != (3, 1):
+        raise AssertionError(t.shape)
+    if not len(K.shape) == len(R.shape) == len(t.shape):
+        raise AssertionError
 
     Rt: torch.Tensor = torch.cat([R, t], dim=-1)  # 3x4
     Rt_h = torch.nn.functional.pad(Rt, [0, 0, 0, 1], "constant", 0.0)  # 4x4
@@ -115,8 +121,10 @@ def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tenso
         - The Translation vector with shape :math:`(B, 3)`.
 
     """
-    assert P.shape[-2:] == (3, 4), "P must be of shape [B, 3, 4]"
-    assert len(P.shape) == 3
+    if P.shape[-2:] != (3, 4):
+        raise AssertionError("P must be of shape [B, 3, 4]")
+    if len(P.shape) != 3:
+        raise AssertionError
 
     submat_3x3 = P[:, 0:3, 0:3]
     last_column = P[:, 0:3, 3].unsqueeze(-1)
@@ -180,8 +188,10 @@ def projections_from_fundamental(F_mat: torch.Tensor) -> torch.Tensor:
         torch.Tensor: The projection matrices with shape :math:`(*, 4, 4, 2)`.
 
     """
-    assert len(F_mat.shape) >= 2, F_mat.shape
-    assert F_mat.shape[-2:] == (3, 3), F_mat.shape
+    if len(F_mat.shape) < 2:
+        raise AssertionError(F_mat.shape)
+    if F_mat.shape[-2:] != (3, 3):
+        raise AssertionError(F_mat.shape)
 
     R1 = numeric.eye_like(3, F_mat)  # Bx3x3
     t1 = numeric.vec_like(3, F_mat)  # Bx3

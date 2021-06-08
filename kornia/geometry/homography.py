@@ -27,9 +27,12 @@ def find_homography_dlt(
     Returns:
         torch.Tensor: the computed homography matrix with shape :math:`(B, 3, 3)`.
     """
-    assert points1.shape == points2.shape, points1.shape
-    assert len(points1.shape) >= 1 and points1.shape[-1] == 2, points1.shape
-    assert points1.shape[1] >= 4, points1.shape
+    if points1.shape != points2.shape:
+        raise AssertionError(points1.shape)
+    if not (len(points1.shape) >= 1 and points1.shape[-1] == 2):
+        raise AssertionError(points1.shape)
+    if points1.shape[1] < 4:
+        raise AssertionError(points1.shape)
 
     device, dtype = _extract_device_dtype([points1, points2])
 
@@ -51,7 +54,8 @@ def find_homography_dlt(
         A = A.transpose(-2, -1) @ A
     else:
         # We should use provided weights
-        assert len(weights.shape) == 2 and weights.shape == points1.shape[:2], weights.shape
+        if not (len(weights.shape) == 2 and weights.shape == points1.shape[:2]):
+            raise AssertionError(weights.shape)
         w_diag = torch.diag_embed(weights.unsqueeze(dim=-1).repeat(1, 1, 2).reshape(weights.shape[0], -1))
         A = A.transpose(-2, -1) @ w_diag @ A
 

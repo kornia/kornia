@@ -48,9 +48,12 @@ def warp_affine3d(
     .. note::
         This function is often used in conjuntion with :func:`get_perspective_transform3d`.
     """
-    assert len(src.shape) == 5, src.shape
-    assert len(M.shape) == 3 and M.shape[-2:] == (3, 4), M.shape
-    assert len(dsize) == 3, dsize
+    if len(src.shape) != 5:
+        raise AssertionError(src.shape)
+    if not (len(M.shape) == 3 and M.shape[-2:] == (3, 4)):
+        raise AssertionError(M.shape)
+    if len(dsize) != 3:
+        raise AssertionError(dsize)
     B, C, D, H, W = src.size()
 
     # TODO: remove the statement below in kornia v0.6
@@ -99,8 +102,10 @@ def projection_from_Rt(rmat: torch.Tensor, tvec: torch.Tensor) -> torch.Tensor:
        torch.Tensor: the projection matrix with shape :math:`(*, 3, 4)`.
 
     """
-    assert len(rmat.shape) >= 2 and rmat.shape[-2:] == (3, 3), rmat.shape
-    assert len(tvec.shape) >= 2 and tvec.shape[-2:] == (3, 1), tvec.shape
+    if not (len(rmat.shape) >= 2 and rmat.shape[-2:] == (3, 3)):
+        raise AssertionError(rmat.shape)
+    if not (len(tvec.shape) >= 2 and tvec.shape[-2:] == (3, 1)):
+        raise AssertionError(tvec.shape)
 
     return torch.cat([rmat, tvec], dim=-1)  # Bx3x4
 
@@ -126,10 +131,14 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
     .. note::
         This function is often used in conjuntion with :func:`warp_affine3d`.
     """
-    assert len(center.shape) == 2 and center.shape[-1] == 3, center.shape
-    assert len(angles.shape) == 2 and angles.shape[-1] == 3, angles.shape
-    assert center.device == angles.device, (center.device, angles.device)
-    assert center.dtype == angles.dtype, (center.dtype, angles.dtype)
+    if not (len(center.shape) == 2 and center.shape[-1] == 3):
+        raise AssertionError(center.shape)
+    if not (len(angles.shape) == 2 and angles.shape[-1] == 3):
+        raise AssertionError(angles.shape)
+    if center.device != angles.device:
+        raise AssertionError(center.device, angles.device)
+    if center.dtype != angles.dtype:
+        raise AssertionError(center.dtype, angles.dtype)
 
     # create rotation matrix
     angle_axis_rad: torch.Tensor = K.deg2rad(angles)
@@ -241,10 +250,11 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
             "Inputs must have same batch size dimension. Expect {} but got {}".format(src.shape, dst.shape)
         )
 
-    assert src.device == dst.device and src.dtype == dst.dtype, (
-        f"Expect `src` and `dst` to be in the same device (Got {src.dtype}, {dst.dtype}) "
-        f"with the same dtype (Got {src.dtype}, {dst.dtype})."
-    )
+    if not (src.device == dst.device and src.dtype == dst.dtype):
+        raise AssertionError(
+            f"Expect `src` and `dst` to be in the same device (Got {src.dtype}, {dst.dtype}) "
+            f"with the same dtype (Got {src.dtype}, {dst.dtype})."
+        )
 
     # we build matrix A by using only 4 point correspondence. The linear
     # system is solved with the least square method, so here

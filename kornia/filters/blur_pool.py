@@ -169,9 +169,10 @@ def max_blur_pool2d(
 
 def _blur_pool_by_kernel2d(input: torch.Tensor, kernel: torch.Tensor, stride: int):
     """Compute blur_pool by a given :math:`CxC_{out}xNxN` kernel."""
-    assert len(kernel.shape) == 4 and kernel.size(-1) == kernel.size(
+    if not (len(kernel.shape) == 4 and kernel.size(-1) == kernel.size(
         -2
-    ), f"Invalid kernel shape. Expect CxC_outxNxN, Got {kernel.shape}"
+    )):
+        raise AssertionError(f"Invalid kernel shape. Expect CxC_outxNxN, Got {kernel.shape}")
     padding: Tuple[int, int] = _compute_zero_padding((kernel.shape[-2], kernel.shape[-1]))
     return F.conv2d(input, kernel, padding=padding, stride=stride, groups=input.size(1))
 
@@ -180,9 +181,10 @@ def _max_blur_pool_by_kernel2d(
     input: torch.Tensor, kernel: torch.Tensor, stride: int, max_pool_size: int, ceil_mode: bool
 ):
     """Compute max_blur_pool by a given :math:`CxC_{out}xNxN` kernel."""
-    assert len(kernel.shape) == 4 and kernel.size(-1) == kernel.size(
+    if not (len(kernel.shape) == 4 and kernel.size(-1) == kernel.size(
         -2
-    ), f"Invalid kernel shape. Expect CxC_outxNxN, Got {kernel.shape}"
+    )):
+        raise AssertionError(f"Invalid kernel shape. Expect CxC_outxNxN, Got {kernel.shape}")
     # compute local maxima
     input = F.max_pool2d(input, kernel_size=max_pool_size, padding=0, stride=1, ceil_mode=ceil_mode)
     # blur and downsample

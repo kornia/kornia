@@ -59,7 +59,8 @@ class VideoSequential(nn.Sequential):
             if isinstance(aug, MixAugmentationBase):
                 raise NotImplementedError(f"MixAugmentations are not supported at this moment. Got {aug}.")
         self.data_format = data_format.upper()
-        assert self.data_format in ["BCTHW", "BTCHW"], f"Only `BCTHW` and `BTCHW` are supported. Got `{data_format}`."
+        if self.data_format not in ["BCTHW", "BTCHW"]:
+            raise AssertionError(f"Only `BCTHW` and `BTCHW` are supported. Got `{data_format}`.")
         self._temporal_channel: int
         if self.data_format == "BCTHW":
             self._temporal_channel = 2
@@ -101,7 +102,8 @@ class VideoSequential(nn.Sequential):
         return input
 
     def forward(self, input: torch.Tensor) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-        assert len(input.shape) == 5, f"Input must be a 5-dim tensor. Got {input.shape}."
+        if len(input.shape) != 5:
+            raise AssertionError(f"Input must be a 5-dim tensor. Got {input.shape}.")
         # Size of T
         frame_num = input.size(self._temporal_channel)
         # Got param generation shape to (B, C, H, W). Ignoring T.
