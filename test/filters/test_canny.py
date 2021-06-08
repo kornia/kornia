@@ -1,6 +1,6 @@
 import pytest
 
-import kornia as kornia
+import kornia
 import kornia.testing as utils  # test utils
 
 import torch

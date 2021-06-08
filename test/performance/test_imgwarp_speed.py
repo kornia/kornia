@@ -3,7 +3,7 @@ from time import time
 import pytest
 import torch
 
-import kornia as kornia
+import kornia
 
 shapes = [(512, 3, 256, 256), (256, 1, 64, 64)]
 PSs = [224, 32]
