@@ -69,8 +69,6 @@ __all__ = [
     "RandomMixUp",
     "RandomCutMix",
     "AugmentationBase3D",
-    "Normalize3D",
-    "Denormalize3D",
     "RandomDepthicalFlip3D",
     "RandomVerticalFlip3D",
     "RandomHorizontalFlip3D",
@@ -82,5 +80,5 @@ __all__ = [
     "CenterCrop3D",
     "RandomEqualize3D",
     "VideoSequential",
-    "RandomThinPlateSpline",
+    "RandomThinPlateSpline"
 ]
