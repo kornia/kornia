@@ -80,5 +80,5 @@ __all__ = [
     "CenterCrop3D",
     "RandomEqualize3D",
     "VideoSequential",
-    "RandomThinPlateSpline"
+    "RandomThinPlateSpline",
 ]
