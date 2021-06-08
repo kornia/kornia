@@ -47,7 +47,7 @@ def _validate_input3d(f: Callable) -> Callable:
 
         input_shape = len(input.shape)
         if input_shape != 5:
-            raise AssertionError(f'Expect input of 5 dimensions, got {input_shape} instead')
+            raise ValueError(f'Expect input of 5 dimensions, got {input_shape} instead')
         _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
         return f(input, *args, **kwargs)
@@ -154,14 +154,14 @@ def _transform_output_shape(
     if trans_matrix is not None:
         if len(out_tensor.shape) > len(shape):  # if output is broadcasted
             if trans_matrix.shape[0] != 1:
-                raise AssertionError(
+                raise ValueError(
                     f'Dimension 0 of transformation matrix is ' f'expected to be 1, got {trans_matrix.shape[0]}'
                 )
         trans_matrix = trans_matrix.squeeze(0)
 
     for dim in range(len(out_tensor.shape) - len(shape)):
         if out_tensor.shape[0] != 1:
-            raise AssertionError(f'Dimension {dim} of input is ' f'expected to be 1, got {out_tensor.shape[0]}')
+            raise ValueError(f'Dimension {dim} of input is ' f'expected to be 1, got {out_tensor.shape[0]}')
         out_tensor = out_tensor.squeeze(0)
 
     return (out_tensor, trans_matrix) if is_tuple else out_tensor  # type: ignore
@@ -275,4 +275,4 @@ def _adapted_beta(
 
 def _shape_validation(param: torch.Tensor, shape: Union[tuple, list], name: str) -> None:
     if param.shape != torch.Size(shape):
-        raise AssertionError(f"Invalid shape for {name}. Expected {shape}. Got {param.shape}")
+        raise ValueError(f"Invalid shape for {name}. Expected {shape}. Got {param.shape}")

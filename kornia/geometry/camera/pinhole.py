@@ -72,7 +72,7 @@ class PinholeCamera:
             torch.Tensor: tensor of shape :math:`(B, 4, 4)`
         """
         if not self._check_valid_params(self._intrinsics, "intrinsics"):
-            raise AssertionError
+            raise ValueError
         return self._intrinsics
 
     @property
@@ -83,7 +83,7 @@ class PinholeCamera:
             torch.Tensor: tensor of shape :math:`(B, 4, 4)`
         """
         if not self._check_valid_params(self._extrinsics, "extrinsics"):
-            raise AssertionError
+            raise ValueError
         return self._extrinsics
 
     @property
@@ -402,7 +402,7 @@ def pinhole_matrix(pinholes, eps=1e-6):
     #              "use PinholeCamera.camera_matrix instead",
     #              PendingDeprecationWarning)
     if not (len(pinholes.shape) == 2 and pinholes.shape[1] == 12):
-        raise AssertionError(pinholes.shape)
+        raise ValueError(pinholes.shape)
     # unpack pinhole values
     fx, fy, cx, cy = torch.chunk(pinholes[..., :4], 4, dim=1)  # Nx1
     # create output container
@@ -446,7 +446,7 @@ def inverse_pinhole_matrix(pinhole, eps=1e-6):
     #              "use PinholeCamera.intrinsics_inverse() instead",
     #              PendingDeprecationWarning)
     if not (len(pinhole.shape) == 2 and pinhole.shape[1] == 12):
-        raise AssertionError(pinhole.shape)
+        raise ValueError(pinhole.shape)
     # unpack pinhole values
     fx, fy, cx, cy = torch.chunk(pinhole[..., :4], 4, dim=1)  # Nx1
     # create output container
@@ -490,9 +490,9 @@ def scale_pinhole(pinholes, scale):
     #              "use PinholeCamera.scale() instead",
     #              PendingDeprecationWarning)
     if not (len(pinholes.shape) == 2 and pinholes.shape[1] == 12):
-        raise AssertionError(pinholes.shape)
+        raise ValueError(pinholes.shape)
     if len(scale.shape) != 1:
-        raise AssertionError(scale.shape)
+        raise ValueError(scale.shape)
     pinholes_scaled = pinholes.clone()
     pinholes_scaled[..., :6] = pinholes[..., :6] * scale.unsqueeze(-1)
     return pinholes_scaled
@@ -510,7 +510,7 @@ def get_optical_pose_base(pinholes):
 
     """
     if not (len(pinholes.shape) == 2 and pinholes.shape[1] == 12):
-        raise AssertionError(pinholes.shape)
+        raise ValueError(pinholes.shape)
     optical_pose_parent = pinholes[..., 6:]
     # TODO: where is rtvec_to_pose?
     return rtvec_to_pose(optical_pose_parent)
@@ -555,9 +555,9 @@ def homography_i_H_ref(pinhole_i, pinhole_ref):
     """
     # TODO: Add doctest once having `rtvec_to_pose`.
     if not (len(pinhole_i.shape) == 2 and pinhole_i.shape[1] == 12):
-        raise AssertionError(pinhole.shape)
+        raise ValueError(pinhole.shape)
     if pinhole_i.shape != pinhole_ref.shape:
-        raise AssertionError(pinhole_ref.shape)
+        raise ValueError(pinhole_ref.shape)
     i_pose_base = get_optical_pose_base(pinhole_i)
     ref_pose_base = get_optical_pose_base(pinhole_ref)
     i_pose_ref = torch.matmul(i_pose_base, inverse_transformation(ref_pose_base))

@@ -42,7 +42,7 @@ def tensor_to_gradcheck_var(tensor, dtype=torch.float64, requires_grad=True):
     `gradcheck` needs 64-bit floating point and requires gradient.
     """
     if not torch.is_tensor(tensor):
-        raise AssertionError(type(tensor))
+        raise ValueError(type(tensor))
     return tensor.requires_grad_(requires_grad).type(dtype)
 
 
@@ -109,7 +109,7 @@ def cartesian_product_of_parameters(**possible_parameters):
 
 def default_with_one_parameter_changed(*, default={}, **possible_parameters):
     if not isinstance(default, dict):
-        raise AssertionError(f"default should be a dict not a {type(default)}")
+        raise ValueError(f"default should be a dict not a {type(default)}")
 
     for parameter_name, possible_values in possible_parameters.items():
         for v in possible_values:

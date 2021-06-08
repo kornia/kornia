@@ -9,7 +9,7 @@ class TestVideoSequential:
     @pytest.mark.parametrize('data_format', ["BCTHW", "BTCHW"])
     def test_exception(self, shape, data_format, device, dtype):
         aug_list = K.VideoSequential(K.ColorJitter(0.1, 0.1, 0.1, 0.1), data_format=data_format, same_on_frame=True)
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             input = torch.randn(*shape, device=device, dtype=dtype)
             output = aug_list(input)
 

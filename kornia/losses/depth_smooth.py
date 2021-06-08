@@ -8,13 +8,13 @@ import torch.nn.functional as F
 
 def _gradient_x(img: torch.Tensor) -> torch.Tensor:
     if len(img.shape) != 4:
-        raise AssertionError(img.shape)
+        raise ValueError(img.shape)
     return img[:, :, :, :-1] - img[:, :, :, 1:]
 
 
 def _gradient_y(img: torch.Tensor) -> torch.Tensor:
     if len(img.shape) != 4:
-        raise AssertionError(img.shape)
+        raise ValueError(img.shape)
     return img[:, :, :-1, :] - img[:, :, 1:, :]
 
 

@@ -145,7 +145,7 @@ def motion_blur(
         False
     """
     if border_type not in ["constant", "reflect", "replicate", "circular"]:
-        raise AssertionError
+        raise ValueError
     kernel: torch.Tensor = get_motion_kernel2d(kernel_size, angle, direction, mode)
     return kornia.filter2d(input, kernel, border_type)
 
@@ -190,6 +190,6 @@ def motion_blur3d(
         False
     """
     if border_type not in ["constant", "reflect", "replicate", "circular"]:
-        raise AssertionError
+        raise ValueError
     kernel: torch.Tensor = get_motion_kernel3d(kernel_size, angle, direction, mode)
     return kornia.filter3d(input, kernel, border_type)

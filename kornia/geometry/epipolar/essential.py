@@ -23,13 +23,13 @@ def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.
 
     """
     if not (len(F_mat.shape) >= 2 and F_mat.shape[-2:] == (3, 3)):
-        raise AssertionError(F_mat.shape)
+        raise ValueError(F_mat.shape)
     if not (len(K1.shape) >= 2 and K1.shape[-2:] == (3, 3)):
-        raise AssertionError(K1.shape)
+        raise ValueError(K1.shape)
     if not (len(K2.shape) >= 2 and K2.shape[-2:] == (3, 3)):
-        raise AssertionError(K2.shape)
+        raise ValueError(K2.shape)
     if not len(F_mat.shape[:-2]) == len(K1.shape[:-2]) == len(K2.shape[:-2]):
-        raise AssertionError
+        raise ValueError
 
     return K2.transpose(-2, -1) @ F_mat @ K1
 
@@ -50,7 +50,7 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
 
     """
     if not (len(E_mat.shape) >= 2 and E_mat.shape[-2:]):
-        raise AssertionError(E_mat.shape)
+        raise ValueError(E_mat.shape)
 
     # decompose matrix by its singular values
     U, S, V = torch.svd(E_mat)
@@ -95,13 +95,13 @@ def essential_from_Rt(R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: 
 
     """
     if not (len(R1.shape) >= 2 and R1.shape[-2:] == (3, 3)):
-        raise AssertionError(R1.shape)
+        raise ValueError(R1.shape)
     if not (len(t1.shape) >= 2 and t1.shape[-2:] == (3, 1)):
-        raise AssertionError(t1.shape)
+        raise ValueError(t1.shape)
     if not (len(R2.shape) >= 2 and R2.shape[-2:] == (3, 3)):
-        raise AssertionError(R2.shape)
+        raise ValueError(R2.shape)
     if not (len(t2.shape) >= 2 and t2.shape[-2:] == (3, 1)):
-        raise AssertionError(t2.shape)
+        raise ValueError(t2.shape)
 
     # first compute the camera relative motion
     R, t = relative_camera_motion(R1, t1, R2, t2)
@@ -127,7 +127,7 @@ def motion_from_essential(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tens
 
     """
     if not (len(E_mat.shape) >= 2 and E_mat.shape[-2:]):
-        raise AssertionError(E_mat.shape)
+        raise ValueError(E_mat.shape)
 
     # decompose the essential matrix by its possible poses
     R1, R2, t = decompose_essential_matrix(E_mat)
@@ -173,22 +173,22 @@ def motion_from_essential_choose_solution(
 
     """
     if not (len(E_mat.shape) >= 2 and E_mat.shape[-2:]):
-        raise AssertionError(E_mat.shape)
+        raise ValueError(E_mat.shape)
     if not (len(K1.shape) >= 2 and K1.shape[-2:] == (3, 3)):
-        raise AssertionError(K1.shape)
+        raise ValueError(K1.shape)
     if not (len(K2.shape) >= 2 and K2.shape[-2:] == (3, 3)):
-        raise AssertionError(K2.shape)
+        raise ValueError(K2.shape)
     if not (len(x1.shape) >= 2 and x1.shape[-1] == 2):
-        raise AssertionError(x1.shape)
+        raise ValueError(x1.shape)
     if not (len(x2.shape) >= 2 and x2.shape[-1] == 2):
-        raise AssertionError(x2.shape)
+        raise ValueError(x2.shape)
     if not len(E_mat.shape[:-2]) == len(K1.shape[:-2]) == len(K2.shape[:-2]):
-        raise AssertionError
+        raise ValueError
     if mask is not None:
         if len(mask.shape) < 1:
-            raise AssertionError(mask.shape)
+            raise ValueError(mask.shape)
         if mask.shape != x1.shape[:-1]:
-            raise AssertionError(mask.shape)
+            raise ValueError(mask.shape)
 
     unbatched = len(E_mat.shape) == 2
 
@@ -272,13 +272,13 @@ def relative_camera_motion(
 
     """
     if not (len(R1.shape) >= 2 and R1.shape[-2:] == (3, 3)):
-        raise AssertionError(R1.shape)
+        raise ValueError(R1.shape)
     if not (len(t1.shape) >= 2 and t1.shape[-2:] == (3, 1)):
-        raise AssertionError(t1.shape)
+        raise ValueError(t1.shape)
     if not (len(R2.shape) >= 2 and R2.shape[-2:] == (3, 3)):
-        raise AssertionError(R2.shape)
+        raise ValueError(R2.shape)
     if not (len(t2.shape) >= 2 and t2.shape[-2:] == (3, 1)):
-        raise AssertionError(t2.shape)
+        raise ValueError(t2.shape)
 
     # compute first the relative rotation
     R = R2 @ R1.transpose(-2, -1)

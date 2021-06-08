@@ -70,7 +70,7 @@ def crop_and_resize(
         raise ValueError("Input size must be a tuple/list of length 2. Got {}".format(size))
 
     if len(tensor.shape) != 4:
-        raise AssertionError(f"Only tensor with shape (B, C, H, W) supported. Got {tensor.shape}.")
+        raise ValueError(f"Only tensor with shape (B, C, H, W) supported. Got {tensor.shape}.")
 
     # unpack input data
     dst_h, dst_w = size
@@ -128,7 +128,7 @@ def center_crop(
         raise ValueError("Input size must be a tuple/list of length 2. Got {}".format(size))
 
     if len(tensor.shape) != 4:
-        raise AssertionError(f"Only tensor with shape (B, C, H, W) supported. Got {tensor.shape}.")
+        raise ValueError(f"Only tensor with shape (B, C, H, W) supported. Got {tensor.shape}.")
 
     # unpack input sizes
     dst_h, dst_w = size
@@ -222,7 +222,7 @@ def crop_by_boxes(
     validate_bboxes(dst_box)
 
     if len(tensor.shape) != 4:
-        raise AssertionError(f"Only tensor with shape (B, C, H, W) supported. Got {tensor.shape}.")
+        raise ValueError(f"Only tensor with shape (B, C, H, W) supported. Got {tensor.shape}.")
 
     # compute transformation between points and warp
     # Note: Tensor.dtype must be float. "solve_cpu" not implemented for 'Long'
@@ -230,7 +230,7 @@ def crop_by_boxes(
 
     bbox: Tuple[torch.Tensor, torch.Tensor] = infer_box_shape(dst_box)
     if not ((bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all()):
-        raise AssertionError(
+        raise ValueError(
             f"Cropping height, width and depth must be exact same in a batch. "
             f"Got height {bbox[0]} and width {bbox[1]}."
         )
@@ -425,16 +425,16 @@ def bbox_generator(
                  [1, 3]]])
     """
     if not (x_start.shape == y_start.shape and x_start.dim() in [0, 1]):
-        raise AssertionError(f"`x_start` and `y_start` must be a scalar or (B,). Got {x_start}, {y_start}.")
+        raise ValueError(f"`x_start` and `y_start` must be a scalar or (B,). Got {x_start}, {y_start}.")
     if not (width.shape == height.shape and width.dim() in [0, 1]):
-        raise AssertionError(f"`width` and `height` must be a scalar or (B,). Got {width}, {height}.")
+        raise ValueError(f"`width` and `height` must be a scalar or (B,). Got {width}, {height}.")
     if not x_start.dtype == y_start.dtype == width.dtype == height.dtype:
-        raise AssertionError(
+        raise ValueError(
             "All tensors must be in the same dtype. Got "
             f"`x_start`({x_start.dtype}), `y_start`({x_start.dtype}), `width`({width.dtype}), `height`({height.dtype})."
         )
     if not x_start.device == y_start.device == width.device == height.device:
-        raise AssertionError(
+        raise ValueError(
             "All tensors must be in the same device. Got "
             f"`x_start`({x_start.device}), `y_start`({x_start.device}), `width`({width.device}), `height`({height.device})."
         )

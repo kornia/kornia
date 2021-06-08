@@ -395,7 +395,7 @@ def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5)
 
     if isinstance(thresholds, torch.Tensor) and len(thresholds.shape) != 0:
         if not (input.size(0) == len(thresholds) and len(thresholds.shape) == 1):
-            raise AssertionError(f"threshholds must be a 1-d vector of shape ({input.size(0)},). Got {thresholds}")
+            raise ValueError(f"threshholds must be a 1-d vector of shape ({input.size(0)},). Got {thresholds}")
         # TODO: I am not happy about this line, but no easy to do batch-wise operation
         thresholds = thresholds.to(input.device).to(input.dtype)
         thresholds = torch.stack([x.expand(*input.shape[1:]) for x in thresholds])
@@ -455,11 +455,11 @@ def solarize(
             additions = torch.tensor(additions)
 
         if not torch.all((additions < 0.5) * (additions > -0.5)):
-            raise AssertionError(f"The value of 'addition' is between -0.5 and 0.5. Got {additions}.")
+            raise ValueError(f"The value of 'addition' is between -0.5 and 0.5. Got {additions}.")
 
         if isinstance(additions, torch.Tensor) and len(additions.shape) != 0:
             if not (input.size(0) == len(additions) and len(additions.shape) == 1):
-                raise AssertionError(f"additions must be a 1-d vector of shape ({input.size(0)},). Got {additions}")
+                raise ValueError(f"additions must be a 1-d vector of shape ({input.size(0)},). Got {additions}")
             # TODO: I am not happy about this line, but no easy to do batch-wise operation
             additions = additions.to(input.device).to(input.dtype)
             additions = torch.stack([x.expand(*input.shape[1:]) for x in additions])
@@ -536,7 +536,7 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
         input = _to_bchw(input)
 
         if bits.shape[0] != input.shape[0]:
-            raise AssertionError(
+            raise ValueError(
                 f"Batch size must be equal between bits and input. Got {bits.shape[0]}, {input.shape[0]}."
             )
 
@@ -545,7 +545,7 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
         return torch.stack(res, dim=0)
 
     if bits.shape != input.shape[: len(bits.shape)]:
-        raise AssertionError(
+        raise ValueError(
             f"Batch and channel must be equal between bits and input. Got {bits.shape}, {input.shape[:len(bits.shape)]}."
         )
     _input = input.view(-1, *input.shape[len(bits.shape) :])
@@ -585,7 +585,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
 
     if len(factor.size()) != 0:
         if factor.shape != torch.Size([input.size(0)]):
-            raise AssertionError(
+            raise ValueError(
                 "Input batch size shall match with factor size if factor is not a 0-dim tensor. "
                 f"Got {input.size(0)} and {factor.shape}"
             )
@@ -625,13 +625,13 @@ def _blend_one(input1: torch.Tensor, input2: torch.Tensor, factor: torch.Tensor)
         torch.Tensor: image tensor with the batch in the zero position.
     """
     if not isinstance(input1, torch.Tensor):
-        raise AssertionError(f"`input1` must be a tensor. Got {input1}.")
+        raise ValueError(f"`input1` must be a tensor. Got {input1}.")
     if not isinstance(input2, torch.Tensor):
-        raise AssertionError(f"`input1` must be a tensor. Got {input2}.")
+        raise ValueError(f"`input1` must be a tensor. Got {input2}.")
 
     if isinstance(factor, torch.Tensor):
         if len(factor.size()) != 0:
-            raise AssertionError(f"Factor shall be a float or single element tensor. Got {factor}.")
+            raise ValueError(f"Factor shall be a float or single element tensor. Got {factor}.")
     if factor == 0.0:
         return input1
     if factor == 1.0:
@@ -775,9 +775,9 @@ def invert(input: torch.Tensor, max_val: torch.Tensor = torch.tensor(1.0)) -> to
         torch.Size([1, 3, 4, 4])
     """
     if not isinstance(input, torch.Tensor):
-        raise AssertionError(f"Input is not a torch.Tensor. Got: {type(input)}")
+        raise ValueError(f"Input is not a torch.Tensor. Got: {type(input)}")
     if not isinstance(max_val, torch.Tensor):
-        raise AssertionError(f"max_val is not a torch.Tensor. Got: {type(max_val)}")
+        raise ValueError(f"max_val is not a torch.Tensor. Got: {type(max_val)}")
     return max_val.to(input.dtype) - input
 
 
