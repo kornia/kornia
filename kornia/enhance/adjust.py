@@ -536,9 +536,7 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
         input = _to_bchw(input)
 
         if bits.shape[0] != input.shape[0]:
-            raise ValueError(
-                f"Batch size must be equal between bits and input. Got {bits.shape[0]}, {input.shape[0]}."
-            )
+            raise ValueError(f"Batch size must be equal between bits and input. Got {bits.shape[0]}, {input.shape[0]}.")
 
         for i in range(input.shape[0]):
             res.append(_posterize_one(input[i], bits[i]))
