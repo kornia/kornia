@@ -231,7 +231,8 @@ def crop_by_boxes(
     bbox: Tuple[torch.Tensor, torch.Tensor] = infer_box_shape(dst_box)
     if not ((bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all()):
         raise AssertionError(
-            f"Cropping height, width and depth must be exact same in a batch. " f"Got height {bbox[0]} and width {bbox[1]}."
+            f"Cropping height, width and depth must be exact same in a batch. "
+            f"Got height {bbox[0]} and width {bbox[1]}."
         )
 
     h_out: int = int(bbox[0][0].item())
@@ -423,15 +424,9 @@ def bbox_generator(
                  [3, 3],
                  [1, 3]]])
     """
-    if not (x_start.shape == y_start.shape and x_start.dim() in [
-        0,
-        1,
-    ]):
+    if not (x_start.shape == y_start.shape and x_start.dim() in [0, 1]):
         raise AssertionError(f"`x_start` and `y_start` must be a scalar or (B,). Got {x_start}, {y_start}.")
-    if not (width.shape == height.shape and width.dim() in [
-        0,
-        1,
-    ]):
+    if not (width.shape == height.shape and width.dim() in [0, 1]):
         raise AssertionError(f"`width` and `height` must be a scalar or (B,). Got {width}, {height}.")
     if not x_start.dtype == y_start.dtype == width.dtype == height.dtype:
         raise AssertionError(

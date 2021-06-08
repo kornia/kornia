@@ -432,31 +432,23 @@ def validate_bboxes3d(boxes: torch.Tensor) -> None:
             order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
             back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in the x, y, z order.
     """
-    if not (len(boxes.shape) == 3 and boxes.shape[1:] == torch.Size(
-        [8, 3]
-    )):
+    if not (len(boxes.shape) == 3 and boxes.shape[1:] == torch.Size([8, 3])):
         raise AssertionError(f"Box shape must be (B, 8, 3). Got {boxes.shape}.")
 
     left = torch.index_select(boxes, 1, torch.tensor([1, 2, 5, 6], device=boxes.device, dtype=torch.long))[:, :, 0]
     right = torch.index_select(boxes, 1, torch.tensor([0, 3, 4, 7], device=boxes.device, dtype=torch.long))[:, :, 0]
     widths = left - right + 1
-    if not torch.allclose(
-        widths.permute(1, 0), widths[:, 0]
-    ):
+    if not torch.allclose(widths.permute(1, 0), widths[:, 0]):
         raise AssertionError(f"Boxes must have be cube, while get different widths {widths}.")
 
     bot = torch.index_select(boxes, 1, torch.tensor([2, 3, 6, 7], device=boxes.device, dtype=torch.long))[:, :, 1]
     upper = torch.index_select(boxes, 1, torch.tensor([0, 1, 4, 5], device=boxes.device, dtype=torch.long))[:, :, 1]
     heights = bot - upper + 1
-    if not torch.allclose(
-        heights.permute(1, 0), heights[:, 0]
-    ):
+    if not torch.allclose(heights.permute(1, 0), heights[:, 0]):
         raise AssertionError(f"Boxes must have be cube, while get different heights {heights}.")
 
     depths = boxes[:, 4:, 2] - boxes[:, :4, 2] + 1
-    if not torch.allclose(
-        depths.permute(1, 0), depths[:, 0]
-    ):
+    if not torch.allclose(depths.permute(1, 0), depths[:, 0]):
         raise AssertionError(f"Boxes must have be cube, while get different depths {depths}.")
 
 
@@ -593,15 +585,11 @@ def bbox_generator3d(
                  [43, 54, 65],
                  [ 3, 54, 65]]])
     """
-    if not (x_start.shape == y_start.shape == z_start.shape and x_start.dim() in [
-        0,
-        1,
-    ]):
-        raise AssertionError(f"`x_start`, `y_start` and `z_start` must be a scalar or (B,). Got {x_start}, {y_start}, {z_start}.")
-    if not (width.shape == height.shape == depth.shape and width.dim() in [
-        0,
-        1,
-    ]):
+    if not (x_start.shape == y_start.shape == z_start.shape and x_start.dim() in [0, 1]):
+        raise AssertionError(
+            f"`x_start`, `y_start` and `z_start` must be a scalar or (B,). Got {x_start}, {y_start}, {z_start}."
+        )
+    if not (width.shape == height.shape == depth.shape and width.dim() in [0, 1]):
         raise AssertionError(f"`width`, `height` and `depth` must be a scalar or (B,). Got {width}, {height}, {depth}.")
     if not x_start.dtype == y_start.dtype == z_start.dtype == width.dtype == height.dtype == depth.dtype:
         raise AssertionError(

@@ -394,9 +394,7 @@ def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5)
         raise TypeError(f"The factor should be either a float or torch.Tensor. " f"Got {type(thresholds)}")
 
     if isinstance(thresholds, torch.Tensor) and len(thresholds.shape) != 0:
-        if not (
-            input.size(0) == len(thresholds) and len(thresholds.shape) == 1
-        ):
+        if not (input.size(0) == len(thresholds) and len(thresholds.shape) == 1):
             raise AssertionError(f"threshholds must be a 1-d vector of shape ({input.size(0)},). Got {thresholds}")
         # TODO: I am not happy about this line, but no easy to do batch-wise operation
         thresholds = thresholds.to(input.device).to(input.dtype)
@@ -456,15 +454,11 @@ def solarize(
         if isinstance(additions, float):
             additions = torch.tensor(additions)
 
-        if not torch.all(
-            (additions < 0.5) * (additions > -0.5)
-        ):
+        if not torch.all((additions < 0.5) * (additions > -0.5)):
             raise AssertionError(f"The value of 'addition' is between -0.5 and 0.5. Got {additions}.")
 
         if isinstance(additions, torch.Tensor) and len(additions.shape) != 0:
-            if not (
-                input.size(0) == len(additions) and len(additions.shape) == 1
-            ):
+            if not (input.size(0) == len(additions) and len(additions.shape) == 1):
                 raise AssertionError(f"additions must be a 1-d vector of shape ({input.size(0)},). Got {additions}")
             # TODO: I am not happy about this line, but no easy to do batch-wise operation
             additions = additions.to(input.device).to(input.dtype)
@@ -541,19 +535,19 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
     if len(bits.shape) == 1:
         input = _to_bchw(input)
 
-        if (
-            bits.shape[0] != input.shape[0]
-        ):
-            raise AssertionError(f"Batch size must be equal between bits and input. Got {bits.shape[0]}, {input.shape[0]}.")
+        if bits.shape[0] != input.shape[0]:
+            raise AssertionError(
+                f"Batch size must be equal between bits and input. Got {bits.shape[0]}, {input.shape[0]}."
+            )
 
         for i in range(input.shape[0]):
             res.append(_posterize_one(input[i], bits[i]))
         return torch.stack(res, dim=0)
 
-    if (
-        bits.shape != input.shape[: len(bits.shape)]
-    ):
-        raise AssertionError(f"Batch and channel must be equal between bits and input. Got {bits.shape}, {input.shape[:len(bits.shape)]}.")
+    if bits.shape != input.shape[: len(bits.shape)]:
+        raise AssertionError(
+            f"Batch and channel must be equal between bits and input. Got {bits.shape}, {input.shape[:len(bits.shape)]}."
+        )
     _input = input.view(-1, *input.shape[len(bits.shape) :])
     _bits = bits.flatten()
     for i in range(input.shape[0]):

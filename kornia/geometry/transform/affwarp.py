@@ -79,9 +79,7 @@ def _compute_rotation_matrix3d(
         pitch = pitch.unsqueeze(dim=1)
         roll = roll.unsqueeze(dim=1)
 
-    if not (
-        len(yaw.shape) == len(pitch.shape) == len(roll.shape) == 2
-    ):
+    if not (len(yaw.shape) == len(pitch.shape) == len(roll.shape) == 2):
         raise AssertionError(f"Expected yaw, pitch, roll to be (B, 1). Got {yaw.shape}, {pitch.shape}, {roll.shape}.")
 
     angles: torch.Tensor = torch.cat([yaw, pitch, roll], dim=1)
