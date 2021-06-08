@@ -64,7 +64,7 @@ class TestVideoSequential:
         [
             [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)],
             [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0)],
-            [K.RandomAffine(360, p=1.0)],
+            [K.RandomAffine(360, p=1.0), kornia.color.BgrToRgb()],
             [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.0), K.RandomAffine(360, p=0.0)],
             [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.0)],
             [K.RandomAffine(360, p=0.0)],
@@ -153,12 +153,12 @@ class TestSequential:
 
 class TestAugmentationSequential:
     @pytest.mark.parametrize(
-        'data_cates', ["input", ["mask", "input"], ["input", "bbox_yxyx"], [0, 10], [BorderType.REFLECT]]
+        'data_keys', ["input", ["mask", "input"], ["input", "bbox_yxyx"], [0, 10], [BorderType.REFLECT]]
     )
     @pytest.mark.parametrize("augmentation_list", [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0)])
-    def test_exception(self, augmentation_list, data_cates, device, dtype):
+    def test_exception(self, augmentation_list, data_keys, device, dtype):
         with pytest.raises(Exception):  # AssertError and NotImplementedError
-            K.AugmentationSequential(augmentation_list, data_cates=data_cates)
+            K.AugmentationSequential(augmentation_list, data_keys=data_keys)
 
     def test_forward_and_inverse(self, device, dtype):
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
@@ -169,7 +169,7 @@ class TestAugmentationSequential:
         )[:, None].float()
         aug = K.AugmentationSequential(
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0),
-            data_cates=["input", "mask", "bbox", "keypoints"],
+            data_keys=["input", "mask", "bbox", "keypoints"],
         )
         out = aug(inp, mask, bbox, keypoints)
         assert out[0].shape == inp.shape
@@ -183,6 +183,31 @@ class TestAugmentationSequential:
         assert out_inv[2].shape == bbox.shape
         assert out_inv[3].shape == keypoints.shape
 
+    def test_individual_forward_and_inverse(self, device, dtype):
+        inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
+        bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
+        keypoints = torch.tensor([[[465, 115], [545, 116]]], device=device, dtype=dtype)
+        mask = bbox_to_mask(
+            torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 1000, 500
+        )[:, None].float()
+
+        aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0, return_transform=True))
+        assert aug(inp, data_keys=['input'])[0].shape == inp.shape
+        aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0, return_transform=False))
+        assert aug(inp, data_keys=['input']).shape == inp.shape
+        assert aug(mask, data_keys=['mask']).shape == mask.shape
+        assert aug(bbox, data_keys=['bbox']).shape == bbox.shape
+        assert aug(keypoints, data_keys=['keypoints']).shape == keypoints.shape
+
+        aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0, return_transform=True))
+        assert aug.inverse(inp, data_keys=['input']).shape == inp.shape
+        aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0, return_transform=True))
+        assert aug.inverse(bbox, data_keys=['bbox']).shape == bbox.shape
+        aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0, return_transform=True))
+        assert aug.inverse(keypoints, data_keys=['keypoints']).shape == keypoints.shape
+        aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0, return_transform=True))
+        assert aug.inverse(mask, data_keys=['mask']).shape == mask.shape
+
     def test_forward_and_inverse_return_transform(self, device, dtype):
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
         bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
@@ -193,7 +218,7 @@ class TestAugmentationSequential:
         aug = K.AugmentationSequential(
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0, return_transform=True),
             K.RandomAffine(360, p=1.0, return_transform=True),
-            data_cates=["input", "mask", "bbox", "keypoints"],
+            data_keys=["input", "mask", "bbox", "keypoints"],
         )
         out = aug(inp, mask, bbox, keypoints)
         assert out[0][0].shape == inp.shape
@@ -217,7 +242,7 @@ class TestAugmentationSequential:
         aug = K.AugmentationSequential(
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0, return_transform=True),
             K.RandomAffine(360, p=1.0, return_transform=True),
-            data_cates=["input", "mask", "bbox", "keypoints"],
+            data_keys=["input", "mask", "bbox", "keypoints"],
         )
 
         out_inv = aug.inverse(inp, mask, bbox, keypoints)

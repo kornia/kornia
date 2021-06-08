@@ -1,6 +1,7 @@
 from typing import Tuple, Union, cast
 
 import torch
+import torch.nn as nn
 
 import kornia
 from kornia.augmentation.base import _AugmentationBase
@@ -54,7 +55,7 @@ class VideoSequential(Sequential):
         tensor(False)
     """
 
-    def __init__(self, *args: _AugmentationBase, data_format="BTCHW", same_on_frame: bool = True) -> None:
+    def __init__(self, *args: nn.Module, data_format="BTCHW", same_on_frame: bool = True) -> None:
         super(VideoSequential, self).__init__(*args, same_on_batch=None, return_transform=None, keepdim=None)
         self.same_on_frame = same_on_frame
         self.data_format = data_format.upper()

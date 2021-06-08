@@ -53,7 +53,7 @@ class SamplePadding(ConstantBase, Enum, metaclass=EnumMetaFlags):
     REFLECTION = 2
 
 
-class DataCategory(ConstantBase, Enum, metaclass=EnumMetaFlags):
+class DataKey(ConstantBase, Enum, metaclass=EnumMetaFlags):
     INPUT = 0
     MASK = 1
     BBOX = 2

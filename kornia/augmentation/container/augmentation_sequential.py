@@ -5,7 +5,7 @@ import torch.nn as nn
 
 from kornia.geometry import transform_points, transform_boxes
 from kornia.augmentation.base import _AugmentationBase, IntensityAugmentationBase2D, GeometricAugmentationBase2D
-from kornia.constants import DataCategory
+from kornia.constants import DataKey
 from .sequential import Sequential
 
 
@@ -14,7 +14,7 @@ class AugmentationSequential(Sequential):
 
     Args:
         *args (_AugmentationBase): a list of kornia augmentation modules.
-        data_cates (List[str]): the input type sequential for applying augmentations.
+        data_keys (List[str]): the input type sequential for applying augmentations.
             Accepts "input", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints".
         same_on_batch (bool, optional): apply the same transformation across the batch.
             If None, it will not overwrite the function-wise settings. Default: None.
@@ -40,7 +40,7 @@ class AugmentationSequential(Sequential):
         >>> aug_list = AugmentationSequential(
         ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
-        ... data_cates=["input", "mask", "bbox", "keypoints"],
+        ... data_keys=["input", "mask", "bbox", "keypoints"],
         ... return_transform=False,
         ... same_on_batch=False,
         ... )
@@ -55,7 +55,7 @@ class AugmentationSequential(Sequential):
     def __init__(
         self,
         *args: _AugmentationBase,
-        data_cates: List[Union[str, int, DataCategory]] = [DataCategory.INPUT],
+        data_keys: List[Union[str, int, DataKey]] = [DataKey.INPUT],
         same_on_batch: Optional[bool] = None,
         return_transform: Optional[bool] = None,
         keepdim: Optional[bool] = None,
@@ -64,14 +64,14 @@ class AugmentationSequential(Sequential):
             *args, same_on_batch=same_on_batch, return_transform=return_transform, keepdim=keepdim
         )
 
-        self.data_cates = [DataCategory.get(inp) for inp in data_cates]
+        self.data_keys = [DataKey.get(inp) for inp in data_keys]
 
         assert all(
-            [in_type in DataCategory for in_type in self.data_cates]
-        ), f"`data_cates` must be in {DataCategory}. Got {data_cates}."
+            [in_type in DataKey for in_type in self.data_keys]
+        ), f"`data_keys` must be in {DataKey}. Got {data_keys}."
 
-        if self.data_cates[0] != DataCategory.INPUT:
-            raise NotImplementedError(f"The first input must be {DataCategory.INPUT}.")
+        if self.data_keys[0] != DataKey.INPUT:
+            raise NotImplementedError(f"The first input must be {DataKey.INPUT}.")
 
     def apply_to_mask(
         self, input: torch.Tensor, module: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None
@@ -114,28 +114,28 @@ class AugmentationSequential(Sequential):
             pass  # No need to update anything
         return input
 
-    def apply_by_data_cate(
+    def apply_by_key(
         self,
         input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
         module: nn.Module,
         param: Optional[Dict[str, torch.Tensor]] = None,
-        dcate: Union[str, int, DataCategory] = DataCategory.INPUT,
+        dcate: Union[str, int, DataKey] = DataKey.INPUT,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-        if dcate in [DataCategory.INPUT]:
+        if DataKey.get(dcate) in [DataKey.INPUT]:
             return self.apply_to_input(input, module, param)
-        if dcate in [DataCategory.MASK]:
+        if DataKey.get(dcate) in [DataKey.MASK]:
             if isinstance(input, (tuple,)):
                 return (self.apply_to_mask(input[0], module, param), *input[1:])
             return self.apply_to_mask(input, module, param)
-        if dcate in [DataCategory.BBOX, DataCategory.BBOX_XYXY]:
+        if DataKey.get(dcate) in [DataKey.BBOX, DataKey.BBOX_XYXY]:
             if isinstance(input, (tuple,)):
                 return (self.apply_to_bbox(input[0], module, param, mode='xyxy'), *input[1:])
             return self.apply_to_bbox(input, module, param, mode='xyxy')
-        if dcate in [DataCategory.BBOX_XYHW]:
+        if DataKey.get(dcate) in [DataKey.BBOX_XYHW]:
             if isinstance(input, (tuple,)):
                 return (self.apply_to_bbox(input[0], module, param, mode='xyhw'), *input[1:])
             return self.apply_to_bbox(input, module, param, mode='xyhw')
-        if dcate in [DataCategory.KEYPOINTS]:
+        if DataKey.get(dcate) in [DataKey.KEYPOINTS]:
             if isinstance(input, (tuple,)):
                 return (self.apply_to_keypoints(input[0], module, param), *input[1:])
             return self.apply_to_keypoints(input, module, param)
@@ -169,20 +169,20 @@ class AugmentationSequential(Sequential):
             input = transform_points(torch.as_tensor(transform, device=input.device, dtype=input.dtype), input)
         return input
 
-    def inverse_by_data_category(
+    def inverse_by_key(
         self,
         input: torch.Tensor,
         module: nn.Module,
         param: Optional[Dict[str, torch.Tensor]] = None,
-        dcate: Union[str, int, DataCategory] = DataCategory.INPUT,
+        dcate: Union[str, int, DataKey] = DataKey.INPUT,
     ) -> torch.Tensor:
-        if dcate in [DataCategory.INPUT, DataCategory.MASK]:
+        if DataKey.get(dcate) in [DataKey.INPUT, DataKey.MASK]:
             return self.inverse_input(input, module, param)
-        if dcate in [DataCategory.BBOX, DataCategory.BBOX_XYXY]:
+        if DataKey.get(dcate) in [DataKey.BBOX, DataKey.BBOX_XYXY]:
             return self.inverse_bbox(input, module, param, mode='xyxy')
-        if dcate in [DataCategory.BBOX_XYHW]:
+        if DataKey.get(dcate) in [DataKey.BBOX_XYHW]:
             return self.inverse_bbox(input, module, param, mode='xyhw')
-        if dcate in [DataCategory.KEYPOINTS]:
+        if DataKey.get(dcate) in [DataKey.KEYPOINTS]:
             return self.inverse_keypoints(input, module, param)
         raise NotImplementedError(f"input type of {dcate} is not implemented.")
 
@@ -190,24 +190,24 @@ class AugmentationSequential(Sequential):
         self,
         *args: torch.Tensor,
         params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None,
-        data_cates: Optional[List[Union[str, int, DataCategory]]] = None,
+        data_keys: Optional[List[Union[str, int, DataKey]]] = None,
     ) -> Union[torch.Tensor, List[torch.Tensor]]:
         """Reverse the transformation applied.
 
-        Number of input tensors must align with the number of``data_cates``. If ``data_cates``
-        is not set, use ``self.data_cates`` by default.
+        Number of input tensors must align with the number of``data_keys``. If ``data_keys``
+        is not set, use ``self.data_keys`` by default.
         """
-        if data_cates is None:
-            data_cates = cast(List[Union[str, int, DataCategory]], self.data_cates)
-        assert len(args) == len(data_cates), (
-            "The number of inputs must align with the number of data_cates, "
-            f"Got {len(args)} and {len(data_cates)}."
+        if data_keys is None:
+            data_keys = cast(List[Union[str, int, DataKey]], self.data_keys)
+        assert len(args) == len(data_keys), (
+            "The number of inputs must align with the number of data_keys, "
+            f"Got {len(args)} and {len(data_keys)}."
         )
         self._params = {}
         params = params if params is not None else {}
 
         outputs = []
-        for input, dcate in zip(args, data_cates):
+        for input, dcate in zip(args, data_keys):
             for module in list(self.children())[::-1]:
                 if isinstance(module, _AugmentationBase):
                     func_name = module.__class__.__name__
@@ -217,13 +217,13 @@ class AugmentationSequential(Sequential):
                     param = params[func_name] if func_name in params else param
                 else:
                     param = None
-                if isinstance(module, GeometricAugmentationBase2D) and dcate in DataCategory:
+                if isinstance(module, GeometricAugmentationBase2D) and dcate in DataKey:
                     # Waiting for #1013 to specify the geometric and intensity augmentations.
-                    input = self.inverse_by_data_category(input, module, param, dcate)
-                elif isinstance(module, IntensityAugmentationBase2D) and dcate in DataCategory:
+                    input = self.inverse_by_key(input, module, param, dcate)
+                elif isinstance(module, IntensityAugmentationBase2D) and dcate in DataKey:
                     pass  # Do nothing
                 else:
-                    raise NotImplementedError(f"data_cate {dcate} is not implemented for {module}.")
+                    raise NotImplementedError(f"data_key {dcate} is not implemented for {module}.")
             outputs.append(input)
 
         if len(outputs) == 1:
@@ -235,19 +235,22 @@ class AugmentationSequential(Sequential):
         self,
         *args: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
         params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None,
+        data_keys: Optional[List[Union[str, int, DataKey]]] = None,
     ) -> Union[
         torch.Tensor, Tuple[torch.Tensor, torch.Tensor], List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]
     ]:
-        """Compute multiple tensors simultaneously according to ``self.data_cates``."""
-        assert len(args) == len(self.data_cates) and self.data_cates[0] in [DataCategory.INPUT], (
-            "The number of inputs must align with the number of data_cates, "
-            f"and the first element must be input. Got {len(args)} and {len(self.data_cates)}."
+        if data_keys is None:
+            self._params = {}
+            data_keys = cast(List[Union[str, int, DataKey]], self.data_keys)
+
+        """Compute multiple tensors simultaneously according to ``self.data_keys``."""
+        assert len(args) == len(data_keys), (
+            f"The number of inputs must align with the number of data_keys. Got {len(args)} and {len(data_keys)}."
         )
-        self._params = {}
         params = params if params is not None else {}
 
         outputs = []
-        for input, dcate in zip(args, self.data_cates):
+        for input, dcate in zip(args, data_keys):
             for module in self.children():
                 func_name = module.__class__.__name__
                 # Check if a param recorded
@@ -255,14 +258,14 @@ class AugmentationSequential(Sequential):
                 # Check if a param provided. If provided, it will overwrite the recorded ones.
                 param = params[func_name] if func_name in params else param
 
-                if dcate == DataCategory.INPUT:
+                if dcate == DataKey.INPUT:
                     input = self.apply_to_input(input, module, param)
-                elif isinstance(module, GeometricAugmentationBase2D) and dcate in DataCategory:
-                    input = self.apply_by_data_cate(input, module, param, dcate)
-                elif isinstance(module, IntensityAugmentationBase2D) and dcate in DataCategory:
+                elif isinstance(module, GeometricAugmentationBase2D) and dcate in DataKey:
+                    input = self.apply_by_key(input, module, param, dcate)
+                elif isinstance(module, IntensityAugmentationBase2D) and dcate in DataKey:
                     pass  # Do nothing
                 else:
-                    raise NotImplementedError(f"data_cate {dcate} is not implemented for {module}.")
+                    raise NotImplementedError(f"data_key {dcate} is not implemented for {module}.")
             outputs.append(input)
         if len(outputs) == 1:
             return outputs[0]
