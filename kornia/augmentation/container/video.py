@@ -5,11 +5,11 @@ import torch.nn as nn
 
 import kornia
 from kornia.augmentation.base import _AugmentationBase
-from .sequential import Sequential
+from .image import ImageSequential
 
 
 # TODO: Rewrite this to support inverse operation by having a generic AugmentationSequential.
-class VideoSequential(Sequential):
+class VideoSequential(ImageSequential):
     r"""VideoSequential for processing 5-dim video data like (B, T, C, H, W) and (B, C, T, H, W).
 
     `VideoSequential` is used to replace `nn.Sequential` for processing video data augmentations.

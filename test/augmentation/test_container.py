@@ -129,7 +129,7 @@ class TestSequential:
     @pytest.mark.parametrize("return_transform", [True, False, None])
     @pytest.mark.parametrize("keepdim", [True, False, None])
     def test_construction(self, same_on_batch, return_transform, keepdim):
-        K.Sequential(
+        K.ImageSequential(
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0),
             same_on_batch=same_on_batch, return_transform=return_transform, keepdim=keepdim
         )
@@ -137,7 +137,7 @@ class TestSequential:
     @pytest.mark.parametrize("return_transform", [True, False, None])
     def test_forward(self, return_transform, device, dtype):
         inp = torch.randn(1, 3, 30, 30, device=device, dtype=dtype)
-        aug = K.Sequential(
+        aug = K.ImageSequential(
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
             kornia.filters.MedianBlur((3, 3)),
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0, return_transform=True),

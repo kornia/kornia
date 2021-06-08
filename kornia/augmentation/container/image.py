@@ -6,7 +6,7 @@ import torch.nn as nn
 from kornia.augmentation.base import _AugmentationBase
 
 
-class Sequential(nn.Sequential):
+class ImageSequential(nn.Sequential):
     r"""Sequential for creating kornia image processing pipeline.
 
     Args:
@@ -25,7 +25,7 @@ class Sequential(nn.Sequential):
     Examples:
         >>> import kornia
         >>> input = torch.randn(2, 3, 5, 6)
-        >>> aug_list = Sequential(
+        >>> aug_list = ImageSequential(
         ...     kornia.color.BgrToRgb(),
         ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...     kornia.filters.MedianBlur((3, 3)),
@@ -42,6 +42,10 @@ class Sequential(nn.Sequential):
         >>> out2 = aug_list(input, params=aug_list._params)
         >>> torch.equal(out[0], out2[0]), torch.equal(out[1], out2[1])
         (True, True)
+
+    Note:
+        Transformation matrix returned only considers the transformation applied in ``kornia.augmentation`` module.
+        Those transformations in ``kornia.geometry`` will not be taken into account.
     """
 
     def __init__(
@@ -51,7 +55,7 @@ class Sequential(nn.Sequential):
         return_transform: Optional[bool] = None,
         keepdim: Optional[bool] = None,
     ) -> None:
-        super(Sequential, self).__init__(*args)
+        super(ImageSequential, self).__init__(*args)
         self.same_on_batch = same_on_batch
         self.return_transform = return_transform
         self.keepdim = keepdim

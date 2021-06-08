@@ -40,7 +40,7 @@ from .augmentation3d import (
     RandomPerspective3D,
 )
 from .mix_augmentation import RandomMixUp, RandomCutMix
-from .container import VideoSequential, AugmentationSequential, Sequential
+from .container import VideoSequential, AugmentationSequential, ImageSequential
 
 __all__ = [
     "AugmentationBase2D",
@@ -85,7 +85,7 @@ __all__ = [
     "RandomPerspective3D",
     "RandomEqualize3D",
     "RandomMotionBlur3D",
-    "VideoSequential",
     "AugmentationSequential",
-    "Sequential",
+    "ImageSequential",
+    "VideoSequential",
 ]

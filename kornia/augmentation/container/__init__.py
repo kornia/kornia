@@ -1,3 +1,3 @@
 from .video import VideoSequential
-from .augmentation_sequential import AugmentationSequential
-from .sequential import Sequential
+from .augment import AugmentationSequential
+from .image import ImageSequential

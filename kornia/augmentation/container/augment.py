@@ -6,10 +6,10 @@ import torch.nn as nn
 from kornia.geometry import transform_points, transform_boxes
 from kornia.augmentation.base import _AugmentationBase, IntensityAugmentationBase2D, GeometricAugmentationBase2D
 from kornia.constants import DataKey
-from .sequential import Sequential
+from .image import ImageSequential
 
 
-class AugmentationSequential(Sequential):
+class AugmentationSequential(ImageSequential):
     r"""AugmentationSequential for handling multiple input types like inputs, masks, keypoints at once.
 
     Args:
