@@ -35,9 +35,9 @@ class NonMaximaSuppression2d(nn.Module):
     @staticmethod
     def _compute_zero_padding2d(kernel_size: Tuple[int, int]) -> Tuple[int, int, int, int]:
         if not isinstance(kernel_size, tuple):
-            raise AssertionError(type(kernel_size))
+            raise ValueError(type(kernel_size))
         if len(kernel_size) != 2:
-            raise AssertionError(kernel_size)
+            raise ValueError(kernel_size)
 
         def pad(x):
             return (x - 1) // 2  # zero padding function
@@ -47,7 +47,7 @@ class NonMaximaSuppression2d(nn.Module):
 
     def forward(self, x: torch.Tensor, mask_only: bool = False) -> torch.Tensor:  # type: ignore
         if len(x.shape) != 4:
-            raise AssertionError(x.shape)
+            raise ValueError(x.shape)
         B, CH, H, W = x.size()
         # find local maximum values
         max_non_center = (
@@ -78,9 +78,9 @@ class NonMaximaSuppression3d(nn.Module):
     @staticmethod
     def _compute_zero_padding3d(kernel_size: Tuple[int, int, int]) -> Tuple[int, int, int, int, int, int]:
         if not isinstance(kernel_size, tuple):
-            raise AssertionError(type(kernel_size))
+            raise ValueError(type(kernel_size))
         if len(kernel_size) != 3:
-            raise AssertionError(kernel_size)
+            raise ValueError(kernel_size)
 
         def pad(x):
             return (x - 1) // 2  # zero padding function
@@ -90,7 +90,7 @@ class NonMaximaSuppression3d(nn.Module):
 
     def forward(self, x: torch.Tensor, mask_only: bool = False) -> torch.Tensor:  # type: ignore
         if len(x.shape) != 5:
-            raise AssertionError(x.shape)
+            raise ValueError(x.shape)
         # find local maximum values
         B, CH, D, H, W = x.size()
         max_non_center = (

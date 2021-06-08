@@ -21,9 +21,9 @@ def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:
 
     """
     if len(input.shape) != 4:
-        raise AssertionError(input.shape)
+        raise ValueError(input.shape)
     if focal <= 0:
-        raise AssertionError(focal)
+        raise ValueError(focal)
 
     B, _, H, W = input.shape
 
@@ -90,13 +90,13 @@ def projection_from_KRt(K: torch.Tensor, R: torch.Tensor, t: torch.Tensor) -> to
 
     """
     if K.shape[-2:] != (3, 3):
-        raise AssertionError(K.shape)
+        raise ValueError(K.shape)
     if R.shape[-2:] != (3, 3):
-        raise AssertionError(R.shape)
+        raise ValueError(R.shape)
     if t.shape[-2:] != (3, 1):
-        raise AssertionError(t.shape)
+        raise ValueError(t.shape)
     if not len(K.shape) == len(R.shape) == len(t.shape):
-        raise AssertionError
+        raise ValueError
 
     Rt: torch.Tensor = torch.cat([R, t], dim=-1)  # 3x4
     Rt_h = torch.nn.functional.pad(Rt, [0, 0, 0, 1], "constant", 0.0)  # 4x4
@@ -122,9 +122,9 @@ def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tenso
 
     """
     if P.shape[-2:] != (3, 4):
-        raise AssertionError("P must be of shape [B, 3, 4]")
+        raise ValueError("P must be of shape [B, 3, 4]")
     if len(P.shape) != 3:
-        raise AssertionError
+        raise ValueError
 
     submat_3x3 = P[:, 0:3, 0:3]
     last_column = P[:, 0:3, 3].unsqueeze(-1)
@@ -189,9 +189,9 @@ def projections_from_fundamental(F_mat: torch.Tensor) -> torch.Tensor:
 
     """
     if len(F_mat.shape) < 2:
-        raise AssertionError(F_mat.shape)
+        raise ValueError(F_mat.shape)
     if F_mat.shape[-2:] != (3, 3):
-        raise AssertionError(F_mat.shape)
+        raise ValueError(F_mat.shape)
 
     R1 = numeric.eye_like(3, F_mat)  # Bx3x3
     t1 = numeric.vec_like(3, F_mat)  # Bx3

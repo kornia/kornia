@@ -691,11 +691,11 @@ class TestSharpness(BaseTester):
 
     def test_exception(self, device, dtype):
         img = torch.ones(2, 3, 4, 5, device=device, dtype=dtype)
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             assert TestSharpness.f(img, [0.8, 0.9, 0.6])
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             assert TestSharpness.f(img, torch.tensor([0.8, 0.9, 0.6]))
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             assert TestSharpness.f(img, torch.tensor([0.8]))
 
     def test_value(self, device, dtype):

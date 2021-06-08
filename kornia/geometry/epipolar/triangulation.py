@@ -30,19 +30,19 @@ def triangulate_points(
 
     """
     if not (len(P1.shape) >= 2 and P1.shape[-2:] == (3, 4)):
-        raise AssertionError(P1.shape)
+        raise ValueError(P1.shape)
     if not (len(P2.shape) >= 2 and P2.shape[-2:] == (3, 4)):
-        raise AssertionError(P2.shape)
+        raise ValueError(P2.shape)
     if len(P1.shape[:-2]) != len(P2.shape[:-2]):
-        raise AssertionError(P1.shape, P2.shape)
+        raise ValueError(P1.shape, P2.shape)
     if not (len(points1.shape) >= 2 and points1.shape[-1] == 2):
-        raise AssertionError(points1.shape)
+        raise ValueError(points1.shape)
     if not (len(points2.shape) >= 2 and points2.shape[-1] == 2):
-        raise AssertionError(points2.shape)
+        raise ValueError(points2.shape)
     if len(points1.shape[:-2]) != len(points2.shape[:-2]):
-        raise AssertionError(points1.shape, points2.shape)
+        raise ValueError(points1.shape, points2.shape)
     if len(P1.shape[:-2]) != len(points1.shape[:-2]):
-        raise AssertionError(P1.shape, points1.shape)
+        raise ValueError(P1.shape, points1.shape)
 
     # allocate and construct the equations matrix with shape (*, 4, 4)
     points_shape = max(points1.shape, points2.shape)  # this allows broadcasting

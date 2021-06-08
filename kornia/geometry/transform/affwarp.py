@@ -38,7 +38,7 @@ __all__ = [
 def _compute_tensor_center(tensor: torch.Tensor) -> torch.Tensor:
     """Computes the center of tensor plane for (H, W), (C, H, W) and (B, C, H, W)."""
     if not 2 <= len(tensor.shape) <= 4:
-        raise AssertionError(f"Must be a 3D tensor as HW, CHW and BCHW. Got {tensor.shape}.")
+        raise ValueError(f"Must be a 3D tensor as HW, CHW and BCHW. Got {tensor.shape}.")
     height, width = tensor.shape[-2:]
     center_x: float = float(width - 1) / 2
     center_y: float = float(height - 1) / 2
@@ -49,7 +49,7 @@ def _compute_tensor_center(tensor: torch.Tensor) -> torch.Tensor:
 def _compute_tensor_center3d(tensor: torch.Tensor) -> torch.Tensor:
     """Computes the center of tensor plane for (D, H, W), (C, D, H, W) and (B, C, D, H, W)."""
     if not 3 <= len(tensor.shape) <= 5:
-        raise AssertionError(f"Must be a 3D tensor as DHW, CDHW and BCDHW. Got {tensor.shape}.")
+        raise ValueError(f"Must be a 3D tensor as DHW, CDHW and BCDHW. Got {tensor.shape}.")
     depth, height, width = tensor.shape[-3:]
     center_x: float = float(width - 1) / 2
     center_y: float = float(height - 1) / 2
@@ -80,7 +80,7 @@ def _compute_rotation_matrix3d(
         roll = roll.unsqueeze(dim=1)
 
     if not (len(yaw.shape) == len(pitch.shape) == len(roll.shape) == 2):
-        raise AssertionError(f"Expected yaw, pitch, roll to be (B, 1). Got {yaw.shape}, {pitch.shape}, {roll.shape}.")
+        raise ValueError(f"Expected yaw, pitch, roll to be (B, 1). Got {yaw.shape}, {pitch.shape}, {roll.shape}.")
 
     angles: torch.Tensor = torch.cat([yaw, pitch, roll], dim=1)
     scales: torch.Tensor = torch.ones_like(yaw)

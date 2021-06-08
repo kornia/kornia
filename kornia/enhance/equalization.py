@@ -58,9 +58,9 @@ def _compute_tiles(
         .squeeze(1)
     ).contiguous()  # GH x GW x C x TH x TW
     if tiles.shape[-5] != grid_size[0]:
-        raise AssertionError
+        raise ValueError
     if tiles.shape[-4] != grid_size[1]:
-        raise AssertionError
+        raise ValueError
     return tiles, batch
 
 
@@ -79,11 +79,11 @@ def _compute_interpolation_tiles(padded_imgs: torch.Tensor, tile_size: Tuple[int
 
     """
     if padded_imgs.dim() != 4:
-        raise AssertionError("Images Tensor must be 4D.")
+        raise ValueError("Images Tensor must be 4D.")
     if padded_imgs.shape[-2] % tile_size[0] != 0:
-        raise AssertionError("Images are not correctly padded.")
+        raise ValueError("Images are not correctly padded.")
     if padded_imgs.shape[-1] % tile_size[1] != 0:
-        raise AssertionError("Images are not correctly padded.")
+        raise ValueError("Images are not correctly padded.")
 
     # tiles to be interpolated are built by dividing in 4 each alrady existing
     interp_kernel_vert: int = tile_size[0] // 2
@@ -97,11 +97,11 @@ def _compute_interpolation_tiles(padded_imgs: torch.Tensor, tile_size: Tuple[int
         .squeeze(1)
     ).contiguous()  # 2GH x 2GW x C x TH/2 x TW/2
     if interp_tiles.shape[-3] != c:
-        raise AssertionError
+        raise ValueError
     if interp_tiles.shape[-2] != tile_size[0] / 2:
-        raise AssertionError
+        raise ValueError
     if interp_tiles.shape[-1] != tile_size[1] / 2:
-        raise AssertionError
+        raise ValueError
     return interp_tiles
 
 
@@ -127,7 +127,7 @@ def _compute_luts(
 
     """
     if tiles_x_im.dim() != 6:
-        raise AssertionError("Tensor must be 6D.")
+        raise ValueError("Tensor must be 6D.")
 
     b, gh, gw, c, th, tw = tiles_x_im.shape
     pixels: int = th * tw
@@ -173,9 +173,9 @@ def _map_luts(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
 
     """
     if interp_tiles.dim() != 6:
-        raise AssertionError("interp_tiles tensor must be 6D.")
+        raise ValueError("interp_tiles tensor must be 6D.")
     if luts.dim() != 5:
-        raise AssertionError("luts tensor must be 5D.")
+        raise ValueError("luts tensor must be 5D.")
 
     # gh, gw -> 2x the number of tiles used to compute the histograms
     # th, tw -> /2 the sizes of the tiles used to compute the histograms
@@ -229,9 +229,9 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
 
     """
     if interp_tiles.dim() != 6:
-        raise AssertionError("interp_tiles tensor must be 6D.")
+        raise ValueError("interp_tiles tensor must be 6D.")
     if luts.dim() != 5:
-        raise AssertionError("luts tensor must be 5D.")
+        raise ValueError("luts tensor must be 5D.")
 
     mapped_luts: torch.Tensor = _map_luts(interp_tiles, luts)  # Bx2GHx2GWx4xCx256
 

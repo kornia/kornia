@@ -33,9 +33,9 @@ def draw_rectangle(
     batch, c, h, w = image.shape
     batch_rect, num_rectangle, num_points = rectangle.shape
     if batch != batch_rect:
-        raise AssertionError("Image batch and rectangle batch must be equal")
+        raise ValueError("Image batch and rectangle batch must be equal")
     if num_points != 4:
-        raise AssertionError("Number of points in rectangle must be 4")
+        raise ValueError("Number of points in rectangle must be 4")
 
     # clone rectangle, in case it's been expanded assignment from clipping causes problems
     rectangle = rectangle.long().clone()

@@ -49,11 +49,11 @@ def warp_affine3d(
         This function is often used in conjuntion with :func:`get_perspective_transform3d`.
     """
     if len(src.shape) != 5:
-        raise AssertionError(src.shape)
+        raise ValueError(src.shape)
     if not (len(M.shape) == 3 and M.shape[-2:] == (3, 4)):
-        raise AssertionError(M.shape)
+        raise ValueError(M.shape)
     if len(dsize) != 3:
-        raise AssertionError(dsize)
+        raise ValueError(dsize)
     B, C, D, H, W = src.size()
 
     # TODO: remove the statement below in kornia v0.6
@@ -103,9 +103,9 @@ def projection_from_Rt(rmat: torch.Tensor, tvec: torch.Tensor) -> torch.Tensor:
 
     """
     if not (len(rmat.shape) >= 2 and rmat.shape[-2:] == (3, 3)):
-        raise AssertionError(rmat.shape)
+        raise ValueError(rmat.shape)
     if not (len(tvec.shape) >= 2 and tvec.shape[-2:] == (3, 1)):
-        raise AssertionError(tvec.shape)
+        raise ValueError(tvec.shape)
 
     return torch.cat([rmat, tvec], dim=-1)  # Bx3x4
 
@@ -132,13 +132,13 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
         This function is often used in conjuntion with :func:`warp_affine3d`.
     """
     if not (len(center.shape) == 2 and center.shape[-1] == 3):
-        raise AssertionError(center.shape)
+        raise ValueError(center.shape)
     if not (len(angles.shape) == 2 and angles.shape[-1] == 3):
-        raise AssertionError(angles.shape)
+        raise ValueError(angles.shape)
     if center.device != angles.device:
-        raise AssertionError(center.device, angles.device)
+        raise ValueError(center.device, angles.device)
     if center.dtype != angles.dtype:
-        raise AssertionError(center.dtype, angles.dtype)
+        raise ValueError(center.dtype, angles.dtype)
 
     # create rotation matrix
     angle_axis_rad: torch.Tensor = K.deg2rad(angles)
@@ -251,7 +251,7 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
         )
 
     if not (src.device == dst.device and src.dtype == dst.dtype):
-        raise AssertionError(
+        raise ValueError(
             f"Expect `src` and `dst` to be in the same device (Got {src.dtype}, {dst.dtype}) "
             f"with the same dtype (Got {src.dtype}, {dst.dtype})."
         )
