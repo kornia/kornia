@@ -274,14 +274,14 @@ class AugmentationBase2D(_AugmentationBase):
             inp, mat = input
             if len(inp.shape) == 4:
                 if len(mat.shape) != 3:
-                    raise AssertionError('Input tensor is in batch mode ' 'but transformation matrix is not')
+                    raise ValueError('Input tensor is in batch mode ' 'but transformation matrix is not')
                 if mat.shape[0] != inp.shape[0]:
-                    raise AssertionError(
+                    raise ValueError(
                         f'In batch dimension, input has {inp.shape[0]}' f'but transformation matrix has {mat.shape[0]}'
                     )
             elif len(inp.shape) == 3 or len(inp.shape) == 2:
                 if len(mat.shape) != 2:
-                    raise AssertionError('Input tensor is in non-batch mode ' 'but transformation matrix is not')
+                    raise ValueError('Input tensor is in non-batch mode ' 'but transformation matrix is not')
             else:
                 raise ValueError(f'Unrecognized output shape. Expected 2, 3, or 4, got {len(inp.shape)}')
 

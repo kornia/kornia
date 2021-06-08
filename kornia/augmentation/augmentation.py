@@ -1033,7 +1033,7 @@ class RandomCrop(GeometricAugmentationBase2D):
 
     def compute_padding(self, shape: torch.Size) -> List[int]:
         if len(shape) != 4:
-            raise AssertionError(f"Expected BCHW. Got {shape}.")
+            raise ValueError(f"Expected BCHW. Got {shape}.")
         padding = [0, 0, 0, 0]
         if self.padding is not None:
             if isinstance(self.padding, int):
