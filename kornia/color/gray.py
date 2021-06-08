@@ -120,8 +120,5 @@ class BgrToGrayscale(nn.Module):
         >>> output = gray(input)  # 2x1x4x5
     """
 
-    def __init__(self) -> None:
-        super(BgrToGrayscale, self).__init__()
-
     def forward(self, image: torch.Tensor) -> torch.Tensor:  # type: ignore
         return bgr_to_grayscale(image)

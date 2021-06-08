@@ -52,8 +52,5 @@ class TotalVariation(nn.Module):
         [1] https://en.wikipedia.org/wiki/Total_variation
     """
 
-    def __init__(self) -> None:
-        super(TotalVariation, self).__init__()
-
     def forward(self, img) -> torch.Tensor:
         return total_variation(img)
