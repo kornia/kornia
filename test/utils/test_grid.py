@@ -2,7 +2,7 @@ import pytest
 import torch
 from torch.testing import assert_allclose
 
-import kornia as kornia
+import kornia
 
 
 def test_create_meshgrid(device, dtype):
