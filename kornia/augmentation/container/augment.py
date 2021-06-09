@@ -67,7 +67,7 @@ class AugmentationSequential(ImageSequential):
         self.data_keys = [DataKey.get(inp) for inp in data_keys]
 
         assert all(
-            [in_type in DataKey for in_type in self.data_keys]
+            in_type in DataKey for in_type in self.data_keys
         ), f"`data_keys` must be in {DataKey}. Got {data_keys}."
 
         if self.data_keys[0] != DataKey.INPUT:
