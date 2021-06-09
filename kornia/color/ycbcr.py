@@ -85,9 +85,6 @@ class RgbToYcbcr(nn.Module):
         >>> output = ycbcr(input)  # 2x3x4x5
     """
 
-    def __init__(self) -> None:
-        super(RgbToYcbcr, self).__init__()
-
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgb_to_ycbcr(image)
 
@@ -109,9 +106,6 @@ class YcbcrToRgb(nn.Module):
         >>> rgb = YcbcrToRgb()
         >>> output = rgb(input)  # 2x3x4x5
     """
-
-    def __init__(self) -> None:
-        super(YcbcrToRgb, self).__init__()
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return ycbcr_to_rgb(image)
