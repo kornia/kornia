@@ -146,9 +146,6 @@ class RgbToLab(nn.Module):
         [3] https://github.com/torch/image/blob/dc061b98fb7e946e00034a5fc73e883a299edc7f/generic/image.c#L1467
     """
 
-    def __init__(self) -> None:
-        super(RgbToLab, self).__init__()
-
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgb_to_lab(image)
 
@@ -175,9 +172,6 @@ class LabToRgb(nn.Module):
 
         [3] https://github.com/torch/image/blob/dc061b98fb7e946e00034a5fc73e883a299edc7f/generic/image.c#L1518
     """
-
-    def __init__(self) -> None:
-        super(LabToRgb, self).__init__()
 
     def forward(self, image: torch.Tensor, clip: bool = True) -> torch.Tensor:
         return lab_to_rgb(image, clip)

@@ -87,9 +87,6 @@ class RgbToXyz(nn.Module):
         [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
     """
 
-    def __init__(self) -> None:
-        super(RgbToXyz, self).__init__()
-
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgb_to_xyz(image)
 
@@ -112,9 +109,6 @@ class XyzToRgb(nn.Module):
     Reference:
         [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
     """
-
-    def __init__(self) -> None:
-        super(XyzToRgb, self).__init__()
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return xyz_to_rgb(image)

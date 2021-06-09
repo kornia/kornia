@@ -91,9 +91,6 @@ class RgbToYuv(nn.Module):
         [1] https://es.wikipedia.org/wiki/YUV#RGB_a_Y'UV
     """
 
-    def __init__(self) -> None:
-        super(RgbToYuv, self).__init__()
-
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return rgb_to_yuv(input)
 
@@ -115,9 +112,6 @@ class YuvToRgb(nn.Module):
         >>> rgb = YuvToRgb()
         >>> output = rgb(input)  # 2x3x4x5
     """
-
-    def __init__(self) -> None:
-        super(YuvToRgb, self).__init__()
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return yuv_to_rgb(input)
