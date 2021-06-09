@@ -203,8 +203,7 @@ def _adapted_rsampling(
     """
     if same_on_batch:
         return dist.rsample((1, *shape[1:])).repeat(shape[0], *[1] * (len(shape) - 1))
-    else:
-        return dist.rsample(shape)
+    return dist.rsample(shape)
 
 
 def _adapted_sampling(
@@ -217,8 +216,7 @@ def _adapted_sampling(
     """
     if same_on_batch:
         return dist.sample((1, *shape[1:])).repeat(shape[0], *[1] * (len(shape) - 1))
-    else:
-        return dist.sample(shape)
+    return dist.sample(shape)
 
 
 def _adapted_uniform(
