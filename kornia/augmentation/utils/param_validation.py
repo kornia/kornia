@@ -5,9 +5,9 @@ import torch
 
 def _common_param_check(batch_size: int, same_on_batch: Optional[bool] = None):
     """Valid batch_size and same_on_batch params."""
-    assert type(batch_size) == int and batch_size >= 0, f"`batch_size` shall be a positive integer. Got {batch_size}."
+    assert type(batch_size) is int and batch_size >= 0, f"`batch_size` shall be a positive integer. Got {batch_size}."
     if same_on_batch is not None:
-        assert type(same_on_batch) == bool, f"`same_on_batch` shall be boolean. Got {same_on_batch}."
+        assert type(same_on_batch) is bool, f"`same_on_batch` shall be boolean. Got {same_on_batch}."
 
 
 def _range_bound(

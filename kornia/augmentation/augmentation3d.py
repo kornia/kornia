@@ -910,7 +910,7 @@ class RandomCrop3D(AugmentationBase3D):
         params: Optional[Dict[str, torch.Tensor]] = None,
         return_transform: Optional[bool] = None,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-        if type(input) == tuple:
+        if type(input) is tuple:
             input = (self.precrop_padding(input[0]), input[1])
         else:
             input = self.precrop_padding(input)  # type:ignore
