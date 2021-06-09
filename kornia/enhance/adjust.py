@@ -544,7 +544,8 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
 
     if bits.shape != input.shape[: len(bits.shape)]:
         raise ValueError(
-            f"Batch and channel must be equal between bits and input. Got {bits.shape}, {input.shape[:len(bits.shape)]}."
+            f"Batch and channel must be equal between bits and input."
+            f" Got {bits.shape}, {input.shape[:len(bits.shape)]}."
         )
     _input = input.view(-1, *input.shape[len(bits.shape) :])
     _bits = bits.flatten()

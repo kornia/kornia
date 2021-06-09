@@ -436,7 +436,8 @@ def bbox_generator(
     if not x_start.device == y_start.device == width.device == height.device:
         raise ValueError(
             "All tensors must be in the same device. Got "
-            f"`x_start`({x_start.device}), `y_start`({x_start.device}), `width`({width.device}), `height`({height.device})."
+            f"`x_start`({x_start.device}), `y_start`({x_start.device}),"
+            f" `width`({width.device}), `height`({height.device})."
         )
 
     bbox = torch.tensor([[[0, 0], [0, 0], [0, 0], [0, 0]]], device=x_start.device, dtype=x_start.dtype).repeat(
