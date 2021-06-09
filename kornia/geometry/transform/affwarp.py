@@ -506,12 +506,11 @@ def _side_to_image_size(side_size: int, aspect_ratio: float, side: str = "short"
         raise ValueError(f"side can be one of 'short', 'long', 'vert', and 'horz'. Got '{side}'")
     if side == "vert":
         return side_size, int(side_size * aspect_ratio)
-    elif side == "horz":
+    if side == "horz":
         return int(side_size / aspect_ratio), side_size
-    elif (side == "short") ^ (aspect_ratio < 1.0):
+    if (side == "short") ^ (aspect_ratio < 1.0):
         return side_size, int(side_size * aspect_ratio)
-    else:
-        return int(side_size / aspect_ratio), side_size
+    return int(side_size / aspect_ratio), side_size
 
 
 @perform_keep_shape
