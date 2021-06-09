@@ -128,14 +128,14 @@ def _tuple_range_reader(
         elif (
             isinstance(input_range, (tuple, list))
             and len(input_range) == target_shape[0]
-            and all([isinstance(x, (float, int)) for x in input_range])
+            and all(isinstance(x, (float, int)) for x in input_range)
         ):
             input_range_tmp = torch.tensor([(-s, s) for s in input_range], device=device, dtype=dtype)
 
         elif (
             isinstance(input_range, (tuple, list))
             and len(input_range) == target_shape[0]
-            and all([isinstance(x, (tuple, list)) for x in input_range])
+            and all(isinstance(x, (tuple, list)) for x in input_range)
         ):
             input_range_tmp = torch.tensor(input_range, device=device, dtype=dtype)
 

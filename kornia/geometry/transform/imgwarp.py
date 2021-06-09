@@ -574,7 +574,7 @@ def get_affine_matrix2d(
     # pad transform to get Bx3x3
     transform_h = convert_affinematrix_to_homography(transform)
 
-    if any([s is not None for s in [sx, sy]]):
+    if any(s is not None for s in [sx, sy]):
         shear_mat = get_shear_matrix2d(center, sx, sy)
         transform_h = transform_h @ shear_mat
 
@@ -678,7 +678,7 @@ def get_affine_matrix3d(
 
     # pad transform to get Bx3x3
     transform_h = convert_affinematrix_to_homography3d(transform)
-    if any([s is not None for s in [sxy, sxz, syx, syz, szx, szy]]):
+    if any(s is not None for s in [sxy, sxz, syx, syz, szx, szy]):
         shear_mat = get_shear_matrix3d(center, sxy, sxz, syx, syz, szx, szy)
         transform_h = transform_h @ shear_mat
 
