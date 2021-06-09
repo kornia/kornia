@@ -5,16 +5,26 @@ from typing import List, Optional
 
 
 # Dilation
-def dilation(tensor: torch.Tensor, kernel: torch.Tensor, origin: Optional[List[int]] = None) -> torch.Tensor:
+def dilation(tensor: torch.Tensor, kernel: torch.Tensor, structuring_element: Optional[torch.Tensor] = None,
+             origin: Optional[List[int]] = None, border_type: str = 'geodesic', border_value: float = 0.
+             ) -> torch.Tensor:
     r"""Returns the dilated image applying the same kernel in each channel.
 
     The kernel must have 2 dimensions.
 
     Args:
         tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
-        kernel (torch.Tensor): Structuring element with shape :math:`(k_x, k_y)`.
-        origin (List[int], Tuple[int, int]): Origin of the structuring element. Default is None and uses the center of
-        the structuring element as origin (rounding towards zero).
+        kernel (torch.Tensor): Positions of non-infinite elements of a flat structuring element. Non-zero values give
+            the set of neighbors of the center over which the operation is applied. Its shape is :math:`(k_x, k_y)`.
+            For full structural elements use torch.ones_like(structural_element).
+        structuring_element (torch.Tensor, optional): Structuring element used for the grayscale dilation. It may be a
+            non-flat structuring element.
+        origin (List[int], optional): Origin of the structuring element. Default is None and uses the center of
+            the structuring element as origin (rounding towards zero).
+        border_type (str, optional): It determines how the image borders are handled, where border_value is the value
+            when border_type is equal to ‘constant’. Default is ‘geodesic’ which ignores the values that are outside the
+            image when applying the operation.
+        border_value (float, optional): Value to fill past edges of input if border_type is ‘constant’. Default is 0.0.
 
     Returns:
         torch.Tensor: Dilated image with shape :math:`(B, C, H, W)`.
@@ -46,29 +56,52 @@ def dilation(tensor: torch.Tensor, kernel: torch.Tensor, origin: Optional[List[i
     if origin is None:
         origin = [se_h // 2, se_w // 2]
 
+    # minus infinity
+    minus_infinity: float = _minus_infinity(tensor)
+
     # pad
     pad_e: List[int] = [origin[1], se_w - origin[1] - 1, origin[0], se_h - origin[0] - 1]
-    output: torch.Tensor = F.pad(tensor, pad_e, mode='constant', value=0.)
+    if border_type == 'geodesic':
+        border_value = minus_infinity
+        border_type = 'constant'
+    output: torch.Tensor = F.pad(tensor, pad_e, mode=border_type, value=border_value)
 
     # computation
+    if structuring_element is None:
+        neighborhood = torch.zeros_like(kernel)
+        neighborhood[kernel == 0] = minus_infinity
+    else:
+        neighborhood = structuring_element
+        neighborhood[kernel == 0] = minus_infinity
+
     output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
-    output, _ = torch.max(output + kernel.flip((0, 1)), 4)
+    output, _ = torch.max(output + neighborhood.flip((0, 1)), 4)
     output, _ = torch.max(output, 4)
 
     return output
 
 
 # Erosion
-def erosion(tensor: torch.Tensor, kernel: torch.Tensor, origin: Optional[List[int]] = None) -> torch.Tensor:
+def erosion(tensor: torch.Tensor, kernel: torch.Tensor, structuring_element: Optional[torch.Tensor] = None,
+            origin: Optional[List[int]] = None, border_type: str = 'geodesic', border_value: float = 0.
+            ) -> torch.Tensor:
     r"""Returns the eroded image applying the same kernel in each channel.
 
     The kernel must have 2 dimensions.
 
     Args:
         tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
-        kernel (torch.Tensor): Structuring element with shape :math:`(k_x, k_y)`.
-        origin (List[int], Tuple[int, int]): Origin of the structuring element. Default is None and uses the center of
-        the structuring element as origin (rounding towards zero).
+        kernel (torch.Tensor): Positions of non-infinite elements of a flat structuring element. Non-zero values give
+            the set of neighbors of the center over which the operation is applied. Its shape is :math:`(k_x, k_y)`.
+            For full structural elements use torch.ones_like(structural_element).
+        structuring_element (torch.Tensor, optional): Structuring element used for the grayscale dilation. It may be a
+            non-flat structuring element.
+        origin (List[int], optional): Origin of the structuring element. Default is None and uses the center of
+            the structuring element as origin (rounding towards zero).
+        border_type (str, optional): It determines how the image borders are handled, where border_value is the value
+            when border_type is equal to ‘constant’. Default is ‘geodesic’ which ignores the values that are outside the
+            image when applying the operation.
+        border_value (float, optional): Value to fill past edges of input if border_type is ‘constant’. Default is 0.0.
 
     Returns:
         torch.Tensor: Eroded image with shape :math:`(B, C, H, W)`.
@@ -100,29 +133,52 @@ def erosion(tensor: torch.Tensor, kernel: torch.Tensor, origin: Optional[List[in
     if origin is None:
         origin = [se_h // 2, se_w // 2]
 
+    # plus infinity
+    plus_infinity: float = _plus_infinity(tensor)
+
     # pad
     pad_e: List[int] = [origin[1], se_w - origin[1] - 1, origin[0], se_h - origin[0] - 1]
-    output: torch.Tensor = F.pad(tensor, pad_e, mode='constant', value=1.)
+    if border_type == 'geodesic':
+        border_value = plus_infinity
+        border_type = 'constant'
+    output: torch.Tensor = F.pad(tensor, pad_e, mode=border_type, value=border_value)
 
     # computation
+    if structuring_element is None:
+        neighborhood = torch.zeros_like(kernel)
+        neighborhood[kernel == 0] = _minus_infinity(tensor)
+    else:
+        neighborhood = structuring_element
+        neighborhood[kernel == 0] = _minus_infinity(tensor)
+
     output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
-    output, _ = torch.min(output - kernel, 4)
+    output, _ = torch.min(output - neighborhood, 4)
     output, _ = torch.min(output, 4)
 
     return output
 
 
 # Opening
-def opening(tensor: torch.Tensor, kernel: torch.Tensor, origin: Optional[List[int]] = None) -> torch.Tensor:
+def opening(tensor: torch.Tensor, kernel: torch.Tensor, structuring_element: Optional[torch.Tensor] = None,
+            origin: Optional[List[int]] = None, border_type: str = 'geodesic', border_value: float = 0.
+            ) -> torch.Tensor:
     r"""Returns the opened image, (that means, dilation after an erosion) applying the same kernel in each channel.
 
     The kernel must have 2 dimensions.
 
     Args:
         tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
-        kernel (torch.Tensor): Structuring element with shape :math:`(k_x, k_y)`.
-        origin (List[int], Tuple[int, int]): Origin of the structuring element. Default is None and uses the center of
-        the structuring element as origin (rounding towards zero).
+        kernel (torch.Tensor): Positions of non-infinite elements of a flat structuring element. Non-zero values give
+            the set of neighbors of the center over which the operation is applied. Its shape is :math:`(k_x, k_y)`.
+            For full structural elements use torch.ones_like(structural_element).
+        structuring_element (torch.Tensor, optional): Structuring element used for the grayscale dilation. It may be a
+            non-flat structuring element.
+        origin (List[int], optional): Origin of the structuring element. Default is None and uses the center of
+            the structuring element as origin (rounding towards zero).
+        border_type (str, optional): It determines how the image borders are handled, where border_value is the value
+            when border_type is equal to ‘constant’. Default is ‘geodesic’ which ignores the values that are outside the
+            image when applying the operation.
+        border_value (float, optional): Value to fill past edges of input if border_type is ‘constant’. Default is 0.0.
 
     Returns:
        torch.Tensor: Opened image with shape :math:`(B, C, H, W)`.
@@ -149,20 +205,33 @@ def opening(tensor: torch.Tensor, kernel: torch.Tensor, origin: Optional[List[in
         raise ValueError("Kernel size must have 2 dimensions. Got {}".format(
             kernel.dim()))
 
-    return dilation(erosion(tensor, kernel, origin=origin), kernel, origin=origin)
+    return dilation(erosion(tensor, kernel=kernel, structuring_element=structuring_element, origin=origin,
+                            border_type=border_type, border_value=border_value),
+                    kernel=kernel, structuring_element=structuring_element, origin=origin, border_type=border_type,
+                    border_value=border_value)
 
 
 # Closing
-def closing(tensor: torch.Tensor, kernel: torch.Tensor, origin: Optional[List[int]] = None) -> torch.Tensor:
+def closing(tensor: torch.Tensor, kernel: torch.Tensor, structuring_element: Optional[torch.Tensor] = None,
+            origin: Optional[List[int]] = None, border_type: str = 'geodesic', border_value: float = 0.
+            ) -> torch.Tensor:
     r"""Returns the closed image, (that means, erosion after a dilation) applying the same kernel in each channel.
 
     The kernel must have 2 dimensions.
 
     Args:
         tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
-        kernel (torch.Tensor): Structuring element with shape :math:`(k_x, k_y)`.
-        origin (List[int], Tuple[int, int]): Origin of the structuring element. Default is None and uses the center of
-        the structuring element as origin (rounding towards zero).
+        kernel (torch.Tensor): Positions of non-infinite elements of a flat structuring element. Non-zero values give
+            the set of neighbors of the center over which the operation is applied. Its shape is :math:`(k_x, k_y)`.
+            For full structural elements use torch.ones_like(structural_element).
+        structuring_element (torch.Tensor, optional): Structuring element used for the grayscale dilation. It may be a
+            non-flat structuring element.
+        origin (List[int], optional): Origin of the structuring element. Default is None and uses the center of
+            the structuring element as origin (rounding towards zero).
+        border_type (str, optional): It determines how the image borders are handled, where border_value is the value
+            when border_type is equal to ‘constant’. Default is ‘geodesic’ which ignores the values that are outside the
+            image when applying the operation.
+        border_value (float, optional): Value to fill past edges of input if border_type is ‘constant’. Default is 0.0.
 
     Returns:
        torch.Tensor: Closed image with shape :math:`(B, C, H, W)`.
@@ -189,11 +258,16 @@ def closing(tensor: torch.Tensor, kernel: torch.Tensor, origin: Optional[List[in
         raise ValueError("Kernel size must have 2 dimensions. Got {}".format(
             kernel.dim()))
 
-    return erosion(dilation(tensor, kernel, origin=origin), kernel, origin=origin)
+    return erosion(dilation(tensor, kernel=kernel, structuring_element=structuring_element, origin=origin,
+                            border_type=border_type, border_value=border_value),
+                    kernel=kernel, structuring_element=structuring_element, origin=origin, border_type=border_type,
+                    border_value=border_value)
 
 
 # Morphological Gradient
-def gradient(tensor: torch.Tensor, kernel: torch.Tensor, origin: Optional[List[int]] = None) -> torch.Tensor:
+def gradient(tensor: torch.Tensor, kernel: torch.Tensor, structuring_element: Optional[torch.Tensor] = None,
+             origin: Optional[List[int]] = None, border_type: str = 'geodesic', border_value: float = 0.
+             ) -> torch.Tensor:
     r"""Returns the morphological gradient of an image.
 
     That means, (dilation - erosion) applying the same kernel in each channel.
@@ -201,9 +275,17 @@ def gradient(tensor: torch.Tensor, kernel: torch.Tensor, origin: Optional[List[i
 
     Args:
         tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
-        kernel (torch.Tensor): Structuring element with shape :math:`(k_x, k_y)`.
-        origin (List[int], Tuple[int, int]): Origin of the structuring element. Default is None and uses the center of
-        the structuring element as origin (rounding towards zero).
+        kernel (torch.Tensor): Positions of non-infinite elements of a flat structuring element. Non-zero values give
+            the set of neighbors of the center over which the operation is applied. Its shape is :math:`(k_x, k_y)`.
+            For full structural elements use torch.ones_like(structural_element).
+        structuring_element (torch.Tensor, optional): Structuring element used for the grayscale dilation. It may be a
+            non-flat structuring element.
+        origin (List[int], optional): Origin of the structuring element. Default is None and uses the center of
+            the structuring element as origin (rounding towards zero).
+        border_type (str, optional): It determines how the image borders are handled, where border_value is the value
+            when border_type is equal to ‘constant’. Default is ‘geodesic’ which ignores the values that are outside the
+            image when applying the operation.
+        border_value (float, optional): Value to fill past edges of input if border_type is ‘constant’. Default is 0.0.
 
     Returns:
        torch.Tensor: Gradient image with shape :math:`(B, C, H, W)`.
@@ -214,11 +296,23 @@ def gradient(tensor: torch.Tensor, kernel: torch.Tensor, origin: Optional[List[i
         >>> gradient_img = gradient(tensor, kernel)
     """
 
-    return dilation(tensor, kernel, origin=origin) - erosion(tensor, kernel, origin=origin)
+    return dilation(tensor,
+                    kernel=kernel,
+                    structuring_element=structuring_element,
+                    origin=origin,
+                    border_type=border_type,
+                    border_value=border_value) - erosion(tensor,
+                                                         kernel=kernel,
+                                                         structuring_element=structuring_element,
+                                                         origin=origin,
+                                                         border_type=border_type,
+                                                         border_value=border_value)
 
 
 # Top Hat
-def top_hat(tensor: torch.Tensor, kernel: torch.Tensor, origin: Optional[List[int]] = None) -> torch.Tensor:
+def top_hat(tensor: torch.Tensor, kernel: torch.Tensor, structuring_element: Optional[torch.Tensor] = None,
+            origin: Optional[List[int]] = None, border_type: str = 'geodesic', border_value: float = 0.
+            ) -> torch.Tensor:
     r"""Returns the top hat tranformation of an image.
 
     That means, (image - opened_image) applying the same kernel in each channel.
@@ -228,9 +322,17 @@ def top_hat(tensor: torch.Tensor, kernel: torch.Tensor, origin: Optional[List[in
 
     Args:
         tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
-        kernel (torch.Tensor): Structuring element with shape :math:`(k_x, k_y)`.
-        origin (List[int], Tuple[int, int]): Origin of the structuring element. Default is None and uses the center of
-        the structuring element as origin (rounding towards zero).
+        kernel (torch.Tensor): Positions of non-infinite elements of a flat structuring element. Non-zero values give
+            the set of neighbors of the center over which the operation is applied. Its shape is :math:`(k_x, k_y)`.
+            For full structural elements use torch.ones_like(structural_element).
+        structuring_element (torch.Tensor, optional): Structuring element used for the grayscale dilation. It may be a
+            non-flat structuring element.
+        origin (List[int], optional): Origin of the structuring element. Default is None and uses the center of
+            the structuring element as origin (rounding towards zero).
+        border_type (str, optional): It determines how the image borders are handled, where border_value is the value
+            when border_type is equal to ‘constant’. Default is ‘geodesic’ which ignores the values that are outside the
+            image when applying the operation.
+        border_value (float, optional): Value to fill past edges of input if border_type is ‘constant’. Default is 0.0.
 
     Returns:
        torch.Tensor: Top hat transformated image with shape :math:`(B, C, H, W)`.
@@ -257,11 +359,14 @@ def top_hat(tensor: torch.Tensor, kernel: torch.Tensor, origin: Optional[List[in
         raise ValueError("Kernel size must have 2 dimensions. Got {}".format(
             kernel.dim()))
 
-    return tensor - opening(tensor, kernel, origin=origin)
+    return tensor - opening(tensor, kernel=kernel, structuring_element=structuring_element, origin=origin,
+                            border_type=border_type, border_value=border_value)
 
 
 # Bottom Hat
-def bottom_hat(tensor: torch.Tensor, kernel: torch.Tensor, origin: Optional[List[int]] = None) -> torch.Tensor:
+def bottom_hat(tensor: torch.Tensor, kernel: torch.Tensor, structuring_element: Optional[torch.Tensor] = None,
+               origin: Optional[List[int]] = None, border_type: str = 'geodesic', border_value: float = 0.
+               ) -> torch.Tensor:
     r"""Returns the bottom hat tranformation of an image.
 
     That means, (closed_image - image) applying the same kernel in each channel.
@@ -271,9 +376,17 @@ def bottom_hat(tensor: torch.Tensor, kernel: torch.Tensor, origin: Optional[List
 
     Args:
         tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
-        kernel (torch.Tensor): Structuring element with shape :math:`(k_x, k_y)`.
-        origin (List[int], Tuple[int, int]): Origin of the structuring element. Default is None and uses the center of
-        the structuring element as origin (rounding towards zero).
+        kernel (torch.Tensor): Positions of non-infinite elements of a flat structuring element. Non-zero values give
+            the set of neighbors of the center over which the operation is applied. Its shape is :math:`(k_x, k_y)`.
+            For full structural elements use torch.ones_like(structural_element).
+        structuring_element (torch.Tensor, optional): Structuring element used for the grayscale dilation. It may be a
+            non-flat structuring element.
+        origin (List[int], optional): Origin of the structuring element. Default is None and uses the center of
+            the structuring element as origin (rounding towards zero).
+        border_type (str, optional): It determines how the image borders are handled, where border_value is the value
+            when border_type is equal to ‘constant’. Default is ‘geodesic’ which ignores the values that are outside the
+            image when applying the operation.
+        border_value (float, optional): Value to fill past edges of input if border_type is ‘constant’. Default is 0.0.
 
     Returns:
        torch.Tensor: Top hat transformated image with shape :math:`(B, C, H, W)`.
@@ -300,4 +413,34 @@ def bottom_hat(tensor: torch.Tensor, kernel: torch.Tensor, origin: Optional[List
         raise ValueError("Kernel size must have 2 dimensions. Got {}".format(
             kernel.dim()))
 
-    return closing(tensor, kernel, origin=origin) - tensor
+    return closing(tensor, kernel=kernel, structuring_element=structuring_element, origin=origin,
+                   border_type=border_type, border_value=border_value) - tensor
+
+
+# Infinity values to workaround for JIT
+def _plus_infinity(tensor: torch.Tensor,
+                   plus_infinity_16: float = torch.finfo(torch.float16).max,
+                   plus_infinity_32: float = torch.finfo(torch.float32).max,
+                   plus_infinity_64: float = torch.finfo(torch.float64).max) -> float:
+    if tensor.dtype == torch.float16:
+        return plus_infinity_16
+    elif tensor.dtype == torch.float32:
+        return plus_infinity_32
+    elif tensor.dtype == torch.float64:
+        return plus_infinity_64
+    else:
+        raise RuntimeError(f"Expected tensor to be floating-point, got {tensor.dtype}")
+
+
+def _minus_infinity(tensor: torch.Tensor,
+                    minus_infinity_16: float = torch.finfo(torch.float16).min,
+                    minus_infinity_32: float = torch.finfo(torch.float32).min,
+                    minus_infinity_64: float = torch.finfo(torch.float64).min) -> float:
+    if tensor.dtype == torch.float16:
+        return minus_infinity_16
+    elif tensor.dtype == torch.float32:
+        return minus_infinity_32
+    elif tensor.dtype == torch.float64:
+        return minus_infinity_64
+    else:
+        raise RuntimeError(f"Expected tensor to be floating-point, got {tensor.dtype}")
