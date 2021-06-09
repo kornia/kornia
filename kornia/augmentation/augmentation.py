@@ -29,6 +29,7 @@ from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute
 from kornia.color import rgb_to_grayscale
 from kornia.enhance import (
     equalize,
+    invert,
     posterize,
     solarize,
     sharpness,
@@ -40,7 +41,6 @@ from kornia.enhance import (
 from kornia.filters import box_blur
 from kornia.utils import _extract_device_dtype, create_meshgrid
 from kornia.enhance.normalize import normalize, denormalize
-from kornia.enhance import Invert
 
 from . import random_generator as rg
 from .utils import _range_bound, _transform_input
@@ -1868,7 +1868,6 @@ class RandomInvert(IntensityAugmentationBase2D):
         super(RandomInvert, self).__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0
         )
-        self.transform = Invert(max_val)
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
@@ -1876,7 +1875,7 @@ class RandomInvert(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        return self.transform(input)
+        return invert(input)
 
 
 class RandomChannelShuffle(IntensityAugmentationBase2D):

@@ -11,8 +11,8 @@ from .responses import (
 from .nms import NonMaximaSuppression2d, nms2d, NonMaximaSuppression3d, nms3d
 
 # Backward compatibility
-from .nms import nms2d as non_maxima_suppression2d
-from .nms import nms3d as non_maxima_suppression3d
+non_maxima_suppression2d = nms2d
+non_maxima_suppression3d = nms3d
 
 from .laf import (
     extract_patches_from_pyramid,
