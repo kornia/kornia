@@ -1,5 +1,5 @@
 :github_url: https://github.com/kornia/kornia
-             
+
 Kornia Documentation
 ====================
 
@@ -9,7 +9,7 @@ Kornia Documentation
 
    introduction
    installation
-   tutorials/index
+   Tutorials <https://kornia-tutorials.readthedocs.io/en/latest/>
 
 .. toctree::
    :maxdepth: 2

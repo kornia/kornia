@@ -6,17 +6,18 @@ import torch.nn.functional as F
 import kornia
 from kornia.filters.kernels import get_gaussian_kernel2d
 
-
 __all__ = ["elastic_transform2d"]
 
 
-def elastic_transform2d(image: torch.Tensor,
-                        noise: torch.Tensor,
-                        kernel_size: Tuple[int, int] = (3, 3),
-                        sigma: Tuple[float, float] = (4., 4.),
-                        alpha: Tuple[float, float] = (32., 32.),
-                        align_corners: bool = False,
-                        mode: str = 'bilinear') -> torch.Tensor:
+def elastic_transform2d(
+    image: torch.Tensor,
+    noise: torch.Tensor,
+    kernel_size: Tuple[int, int] = (63, 63),
+    sigma: Tuple[float, float] = (32.0, 32.0),
+    alpha: Tuple[float, float] = (1.0, 1.0),
+    align_corners: bool = False,
+    mode: str = 'bilinear',
+) -> torch.Tensor:
     r"""Applies elastic transform of images as described in :cite:`Simard2003BestPF`.
 
     Args:
@@ -24,11 +25,11 @@ def elastic_transform2d(image: torch.Tensor,
         noise (torch.Tensor): Noise image used to spatially transform the input image. Same
           resolution as the input image with shape :math:`(B, 2, H, W)`. The coordinates order
           it is expected to be in x-y.
-        kernel_size (Tuple[int, int]): the size of the Gaussian kernel. Default: (3, 3).
+        kernel_size (Tuple[int, int]): the size of the Gaussian kernel. Default: (63, 63).
         sigma (Tuple[float, float]): The standard deviation of the Gaussian in the y and x directions,
-          respecitvely. Larger sigma results in smaller pixel displacements. Default: (4, 4).
+          respecitvely. Larger sigma results in smaller pixel displacements. Default: (32, 32).
         alpha (Tuple[float, float]): The scaling factor that controls the intensity of the deformation
-          in the y and x directions, respectively. Default: 32.
+          in the y and x directions, respectively. Default: 1.
         align_corners (bool): Interpolation flag used by `grid_sample`. Default: False.
         mode (str): Interpolation mode used by `grid_sample`. Either 'bilinear' or 'nearest'. Default: 'bilinear'.
 
@@ -86,7 +87,6 @@ def elastic_transform2d(image: torch.Tensor,
     # Warp image based on displacement matrix
     b, c, h, w = image.shape
     grid = kornia.utils.create_meshgrid(h, w, device=image.device).to(image.dtype)
-    warped = F.grid_sample(
-        image, (grid + disp).clamp(-1, 1), align_corners=align_corners, mode=mode)
+    warped = F.grid_sample(image, (grid + disp).clamp(-1, 1), align_corners=align_corners, mode=mode)
 
     return warped

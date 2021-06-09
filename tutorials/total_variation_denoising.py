@@ -5,12 +5,12 @@ Denoise image using total variation
 
 """
 
-import torch
-import kornia
 import cv2
-import numpy as np
-
 import matplotlib.pyplot as plt
+import numpy as np
+import torch
+
+import kornia
 
 # read the image with OpenCV
 img: np.ndarray = cv2.imread('./data/doraemon.png')
@@ -37,6 +37,7 @@ class TVDenoise(torch.nn.Module):
 
     def get_clean_image(self):
         return self.clean_image
+
 
 tv_denoiser = TVDenoise(noisy_image)
 

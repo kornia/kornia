@@ -5,9 +5,15 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 urls: Dict[str, str] = dict()
-urls["liberty"] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-liberty.params"  # noqa pylint: disable
-urls["notredame"] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-notredame.params"  # noqa pylint: disable
-urls["yosemite"] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-yosemite.params"  # noqa pylint: disable
+urls[
+    "liberty"
+] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-liberty.params"  # noqa pylint: disable
+urls[
+    "notredame"
+] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-notredame.params"  # noqa pylint: disable
+urls[
+    "yosemite"
+] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-yosemite.params"  # noqa pylint: disable
 
 
 class TFeat(nn.Module):
@@ -42,12 +48,9 @@ class TFeat(nn.Module):
             nn.Tanh(),
             nn.MaxPool2d(kernel_size=2, stride=2),
             nn.Conv2d(32, 64, kernel_size=6),
-            nn.Tanh()
+            nn.Tanh(),
         )
-        self.descr = nn.Sequential(
-            nn.Linear(64 * 8 * 8, 128),
-            nn.Tanh()
-        )
+        self.descr = nn.Sequential(nn.Linear(64 * 8 * 8, 128), nn.Tanh())
         # use torch.hub to load pretrained model
         if pretrained:
             pretrained_dict = torch.hub.load_state_dict_from_url(

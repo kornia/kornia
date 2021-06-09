@@ -1,21 +1,24 @@
 import pytest
-
-import kornia as kornia
-
 import torch
 from torch.testing import assert_allclose
+
+import kornia as kornia
 
 
 class TestRenderGaussian2d:
     @pytest.fixture
     def gaussian(self, device, dtype):
-        return torch.tensor([
-            [0.002969, 0.013306, 0.021938, 0.013306, 0.002969],
-            [0.013306, 0.059634, 0.098320, 0.059634, 0.013306],
-            [0.021938, 0.098320, 0.162103, 0.098320, 0.021938],
-            [0.013306, 0.059634, 0.098320, 0.059634, 0.013306],
-            [0.002969, 0.013306, 0.021938, 0.013306, 0.002969],
-        ], dtype=dtype, device=device)
+        return torch.tensor(
+            [
+                [0.002969, 0.013306, 0.021938, 0.013306, 0.002969],
+                [0.013306, 0.059634, 0.098320, 0.059634, 0.013306],
+                [0.021938, 0.098320, 0.162103, 0.098320, 0.021938],
+                [0.013306, 0.059634, 0.098320, 0.059634, 0.013306],
+                [0.002969, 0.013306, 0.021938, 0.013306, 0.002969],
+            ],
+            dtype=dtype,
+            device=device,
+        )
 
     def test_pixel_coordinates(self, gaussian, device, dtype):
         mean = torch.tensor([2.0, 2.0], dtype=dtype, device=device)
@@ -40,6 +43,7 @@ class TestRenderGaussian2d:
     def test_jit_trace(self, device, dtype):
         def op(mean, std):
             return kornia.geometry.dsnt.render_gaussian2d(mean, std, (5, 5), True)
+
         mean = torch.tensor([0.0, 0.0], dtype=dtype, device=device)
         std = torch.tensor([0.25, 0.25], dtype=dtype, device=device)
         args = (mean, std)
@@ -48,10 +52,7 @@ class TestRenderGaussian2d:
 
 
 class TestSpatialSoftmax2d:
-    @pytest.fixture(params=[
-        torch.ones(1, 1, 5, 7),
-        torch.randn(2, 3, 16, 16),
-    ])
+    @pytest.fixture(params=[torch.ones(1, 1, 5, 7), torch.randn(2, 3, 16, 16)])
     def input(self, request, device, dtype):
         return request.param.to(device, dtype)
 
@@ -73,16 +74,15 @@ class TestSpatialSoftmax2d:
 
 
 class TestSpatialExpectation2d:
-    @pytest.fixture(params=[
-        (
-            torch.tensor([[[
-                [0.0, 0.0, 1.0],
-                [0.0, 0.0, 0.0],
-            ]]]),
-            torch.tensor([[[1.0, -1.0]]]),
-            torch.tensor([[[2.0, 0.0]]]),
-        ),
-    ])
+    @pytest.fixture(
+        params=[
+            (
+                torch.tensor([[[[0.0, 0.0, 1.0], [0.0, 0.0, 0.0]]]]),
+                torch.tensor([[[1.0, -1.0]]]),
+                torch.tensor([[[2.0, 0.0]]]),
+            )
+        ]
+    )
     def example(self, request, device, dtype):
         input, expected_norm, expected_px = request.param
         return input.to(device, dtype), expected_norm.to(device, dtype), expected_px.to(device, dtype)

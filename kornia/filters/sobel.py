@@ -2,15 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.filters.kernels import (
-    get_spatial_gradient_kernel2d, get_spatial_gradient_kernel3d, normalize_kernel2d
-)
+from kornia.filters.kernels import get_spatial_gradient_kernel2d, get_spatial_gradient_kernel3d, normalize_kernel2d
 
 
-def spatial_gradient(input: torch.Tensor,
-                     mode: str = 'sobel',
-                     order: int = 1,
-                     normalized: bool = True) -> torch.Tensor:
+def spatial_gradient(input: torch.Tensor, mode: str = 'sobel', order: int = 1, normalized: bool = True) -> torch.Tensor:
     r"""Computes the first order image derivative in both x and y using a Sobel
     operator.
 
@@ -30,12 +25,10 @@ def spatial_gradient(input: torch.Tensor,
         torch.Size([1, 3, 2, 4, 4])
     """
     if not isinstance(input, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}"
-                        .format(type(input)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
 
     if not len(input.shape) == 4:
-        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
-                         .format(input.shape))
+        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}".format(input.shape))
     # allocate kernel
     kernel: torch.Tensor = get_spatial_gradient_kernel2d(mode, order)
     if normalized:
@@ -50,22 +43,14 @@ def spatial_gradient(input: torch.Tensor,
     kernel_flip: torch.Tensor = tmp_kernel.flip(-3)
 
     # Pad with "replicate for spatial dims, but with zeros for channel
-    spatial_pad = [
-        kernel.size(1) // 2,
-        kernel.size(1) // 2,
-        kernel.size(2) // 2,
-        kernel.size(2) // 2
-    ]
+    spatial_pad = [kernel.size(1) // 2, kernel.size(1) // 2, kernel.size(2) // 2, kernel.size(2) // 2]
     out_channels: int = 3 if order == 2 else 2
-    padded_inp: torch.Tensor = F.pad(
-        input.reshape(b * c, 1, h, w), spatial_pad, 'replicate')[:, :, None]
+    padded_inp: torch.Tensor = F.pad(input.reshape(b * c, 1, h, w), spatial_pad, 'replicate')[:, :, None]
 
     return F.conv3d(padded_inp, kernel_flip, padding=0).view(b, c, out_channels, h, w)
 
 
-def spatial_gradient3d(input: torch.Tensor,
-                       mode: str = 'diff',
-                       order: int = 1) -> torch.Tensor:
+def spatial_gradient3d(input: torch.Tensor, mode: str = 'diff', order: int = 1) -> torch.Tensor:
     r"""Computes the first and second order volume derivative in x, y and d using a diff
     operator.
 
@@ -88,12 +73,10 @@ def spatial_gradient3d(input: torch.Tensor,
         torch.Size([1, 4, 3, 2, 4, 4])
     """
     if not isinstance(input, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}"
-                        .format(type(input)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
 
     if not len(input.shape) == 5:
-        raise ValueError("Invalid input shape, we expect BxCxDxHxW. Got: {}"
-                         .format(input.shape))
+        raise ValueError("Invalid input shape, we expect BxCxDxHxW. Got: {}".format(input.shape))
     # allocate kernel
     kernel: torch.Tensor = get_spatial_gradient_kernel3d(mode, order)
 
@@ -112,11 +95,12 @@ def spatial_gradient3d(input: torch.Tensor,
         kernel.size(3) // 2,
         kernel.size(3) // 2,
         kernel.size(4) // 2,
-        kernel.size(4) // 2
+        kernel.size(4) // 2,
     ]
     out_ch: int = 6 if order == 2 else 3
-    return F.conv3d(F.pad(
-        input, spatial_pad, 'replicate'), kernel_flip, padding=0, groups=c).view(b, c, out_ch, d, h, w)
+    return F.conv3d(F.pad(input, spatial_pad, 'replicate'), kernel_flip, padding=0, groups=c).view(
+        b, c, out_ch, d, h, w
+    )
 
 
 def sobel(input: torch.Tensor, normalized: bool = True, eps: float = 1e-6) -> torch.Tensor:
@@ -137,12 +121,10 @@ def sobel(input: torch.Tensor, normalized: bool = True, eps: float = 1e-6) -> to
         torch.Size([1, 3, 4, 4])
     """
     if not isinstance(input, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}"
-                        .format(type(input)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
 
     if not len(input.shape) == 4:
-        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
-                         .format(input.shape))
+        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}".format(input.shape))
 
     # comput the x/y gradients
     edges: torch.Tensor = spatial_gradient(input, normalized=normalized)
@@ -178,20 +160,17 @@ class SpatialGradient(nn.Module):
         >>> output = SpatialGradient()(input)  # 1x3x2x4x4
     """
 
-    def __init__(self,
-                 mode: str = 'sobel',
-                 order: int = 1,
-                 normalized: bool = True) -> None:
+    def __init__(self, mode: str = 'sobel', order: int = 1, normalized: bool = True) -> None:
         super(SpatialGradient, self).__init__()
         self.normalized: bool = normalized
         self.order: int = order
         self.mode: str = mode
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ + '('\
-            'order=' + str(self.order) + ', ' + \
-            'normalized=' + str(self.normalized) + ', ' + \
-            'mode=' + self.mode + ')'
+        return (
+            self.__class__.__name__ + '('
+            'order=' + str(self.order) + ', ' + 'normalized=' + str(self.normalized) + ', ' + 'mode=' + self.mode + ')'
+        )
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return spatial_gradient(input, self.mode, self.order, self.normalized)
@@ -219,9 +198,7 @@ class SpatialGradient3d(nn.Module):
         torch.Size([1, 4, 3, 2, 4, 4])
     """
 
-    def __init__(self,
-                 mode: str = 'diff',
-                 order: int = 1) -> None:
+    def __init__(self, mode: str = 'diff', order: int = 1) -> None:
         super(SpatialGradient3d, self).__init__()
         self.order: int = order
         self.mode: str = mode
@@ -229,9 +206,7 @@ class SpatialGradient3d(nn.Module):
         return
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ + '('\
-            'order=' + str(self.order) + ', ' + \
-            'mode=' + self.mode + ')'
+        return self.__class__.__name__ + '(' 'order=' + str(self.order) + ', ' + 'mode=' + self.mode + ')'
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return spatial_gradient3d(input, self.mode, self.order)
@@ -256,15 +231,13 @@ class Sobel(nn.Module):
         >>> output = Sobel()(input)  # 1x3x4x4
     """
 
-    def __init__(self,
-                 normalized: bool = True, eps: float = 1e-6) -> None:
+    def __init__(self, normalized: bool = True, eps: float = 1e-6) -> None:
         super(Sobel, self).__init__()
         self.normalized: bool = normalized
         self.eps: float = eps
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ + '('\
-            'normalized=' + str(self.normalized) + ')'
+        return self.__class__.__name__ + '(' 'normalized=' + str(self.normalized) + ')'
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return sobel(input, self.normalized, self.eps)

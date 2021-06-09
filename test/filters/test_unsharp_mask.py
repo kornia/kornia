@@ -1,11 +1,10 @@
 import pytest
-
-import kornia
-import kornia.testing as utils  # test utils
-
 import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
+
+import kornia
+import kornia.testing as utils  # test utils
 
 
 class Testunsharp:
@@ -36,11 +35,7 @@ class Testunsharp:
         # evaluate function gradient
         input = torch.rand(batch_shape, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(
-            kornia.filters.unsharp_mask,
-            (input, kernel_size, sigma, "replicate"),
-            raise_exception=True,
-        )
+        assert gradcheck(kornia.filters.unsharp_mask, (input, kernel_size, sigma, "replicate"), raise_exception=True)
 
     def test_jit(self, device, dtype):
         op = kornia.filters.unsharp_mask

@@ -1,11 +1,10 @@
 import pytest
+import torch
+from torch.autograd import gradcheck
+from torch.testing import assert_allclose
 
 import kornia as kornia
 import kornia.testing as utils  # test utils
-
-import torch
-from torch.testing import assert_allclose
-from torch.autograd import gradcheck
 
 
 class TestPyrUp:
@@ -104,7 +103,7 @@ class TestScalePyramid:
         PS = 16
         R = 2
         inp = torch.zeros(1, 1, PS, PS, device=device, dtype=dtype)
-        inp[..., PS // 2 - R:PS // 2 + R, PS // 2 - R:PS // 2 + R] = 1.0
+        inp[..., PS // 2 - R : PS // 2 + R, PS // 2 - R : PS // 2 + R] = 1.0
         SP = kornia.geometry.ScalePyramid(n_levels=3)
         sp, sigmas, pd = SP(inp)
         for i, pyr_level in enumerate(sp):
@@ -122,6 +121,7 @@ class TestScalePyramid:
         def sp_tuple(img):
             sp, sigmas, pd = SP()(img)
             return tuple(sp)
+
         assert gradcheck(sp_tuple, (img,), raise_exception=True, nondet_tol=1e-4)
 
 
@@ -151,4 +151,4 @@ class TestBuildPyramid:
         batch_size, channels, height, width = 1, 2, 7, 9
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.build_pyramid, (img, max_level,), raise_exception=True)
+        assert gradcheck(kornia.build_pyramid, (img, max_level), raise_exception=True)

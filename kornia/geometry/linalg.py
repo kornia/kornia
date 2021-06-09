@@ -7,7 +7,6 @@ from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.conversions import convert_points_from_homogeneous
 from kornia.testing import check_is_tensor
 
-
 __all__ = [
     "compose_transformations",
     "relative_transformation",
@@ -18,8 +17,7 @@ __all__ = [
 ]
 
 
-def compose_transformations(
-        trans_01: torch.Tensor, trans_12: torch.Tensor) -> torch.Tensor:
+def compose_transformations(trans_01: torch.Tensor, trans_12: torch.Tensor) -> torch.Tensor:
     r"""Functions that composes two homogeneous transformations.
 
     .. math::
@@ -48,20 +46,15 @@ def compose_transformations(
 
     """
     if not torch.is_tensor(trans_01):
-        raise TypeError("Input trans_01 type is not a torch.Tensor. Got {}"
-                        .format(type(trans_01)))
+        raise TypeError("Input trans_01 type is not a torch.Tensor. Got {}".format(type(trans_01)))
     if not torch.is_tensor(trans_12):
-        raise TypeError("Input trans_12 type is not a torch.Tensor. Got {}"
-                        .format(type(trans_12)))
+        raise TypeError("Input trans_12 type is not a torch.Tensor. Got {}".format(type(trans_12)))
     if not trans_01.dim() in (2, 3) and trans_01.shape[-2:] == (4, 4):
-        raise ValueError("Input trans_01 must be a of the shape Nx4x4 or 4x4."
-                         " Got {}".format(trans_01.shape))
+        raise ValueError("Input trans_01 must be a of the shape Nx4x4 or 4x4." " Got {}".format(trans_01.shape))
     if not trans_12.dim() in (2, 3) and trans_12.shape[-2:] == (4, 4):
-        raise ValueError("Input trans_12 must be a of the shape Nx4x4 or 4x4."
-                         " Got {}".format(trans_12.shape))
+        raise ValueError("Input trans_12 must be a of the shape Nx4x4 or 4x4." " Got {}".format(trans_12.shape))
     if not trans_01.dim() == trans_12.dim():
-        raise ValueError("Input number of dims must match. Got {} and {}"
-                         .format(trans_01.dim(), trans_12.dim()))
+        raise ValueError("Input number of dims must match. Got {} and {}".format(trans_01.dim(), trans_12.dim()))
     # unpack input data
     rmat_01: torch.Tensor = trans_01[..., :3, :3]  # Nx3x3
     rmat_12: torch.Tensor = trans_12[..., :3, :3]  # Nx3x3
@@ -106,11 +99,9 @@ def inverse_transformation(trans_12):
         >>> trans_21 = inverse_transformation(trans_12)  # Nx4x4
     """
     if not torch.is_tensor(trans_12):
-        raise TypeError("Input type is not a torch.Tensor. Got {}"
-                        .format(type(trans_12)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(trans_12)))
     if not trans_12.dim() in (2, 3) and trans_12.shape[-2:] == (4, 4):
-        raise ValueError("Input size must be a Nx4x4 or 4x4. Got {}"
-                         .format(trans_12.shape))
+        raise ValueError("Input size must be a Nx4x4 or 4x4. Got {}".format(trans_12.shape))
     # unpack input tensor
     rmat_12: torch.Tensor = trans_12[..., :3, 0:3]  # Nx3x3
     tvec_12: torch.Tensor = trans_12[..., :3, 3:4]  # Nx3x1
@@ -127,8 +118,7 @@ def inverse_transformation(trans_12):
     return trans_21
 
 
-def relative_transformation(
-        trans_01: torch.Tensor, trans_02: torch.Tensor) -> torch.Tensor:
+def relative_transformation(trans_01: torch.Tensor, trans_02: torch.Tensor) -> torch.Tensor:
     r"""Function that computes the relative homogenous transformation from a
     reference transformation :math:`T_1^{0} = \begin{bmatrix} R_1 & t_1 \\
     \mathbf{0} & 1 \end{bmatrix}` to destination :math:`T_2^{0} =
@@ -158,27 +148,21 @@ def relative_transformation(
         >>> trans_12 = relative_transformation(trans_01, trans_02)  # 4x4
     """
     if not torch.is_tensor(trans_01):
-        raise TypeError("Input trans_01 type is not a torch.Tensor. Got {}"
-                        .format(type(trans_01)))
+        raise TypeError("Input trans_01 type is not a torch.Tensor. Got {}".format(type(trans_01)))
     if not torch.is_tensor(trans_02):
-        raise TypeError("Input trans_02 type is not a torch.Tensor. Got {}"
-                        .format(type(trans_02)))
+        raise TypeError("Input trans_02 type is not a torch.Tensor. Got {}".format(type(trans_02)))
     if not trans_01.dim() in (2, 3) and trans_01.shape[-2:] == (4, 4):
-        raise ValueError("Input must be a of the shape Nx4x4 or 4x4."
-                         " Got {}".format(trans_01.shape))
+        raise ValueError("Input must be a of the shape Nx4x4 or 4x4." " Got {}".format(trans_01.shape))
     if not trans_02.dim() in (2, 3) and trans_02.shape[-2:] == (4, 4):
-        raise ValueError("Input must be a of the shape Nx4x4 or 4x4."
-                         " Got {}".format(trans_02.shape))
+        raise ValueError("Input must be a of the shape Nx4x4 or 4x4." " Got {}".format(trans_02.shape))
     if not trans_01.dim() == trans_02.dim():
-        raise ValueError("Input number of dims must match. Got {} and {}"
-                         .format(trans_01.dim(), trans_02.dim()))
+        raise ValueError("Input number of dims must match. Got {} and {}".format(trans_01.dim(), trans_02.dim()))
     trans_10: torch.Tensor = inverse_transformation(trans_01)
     trans_12: torch.Tensor = compose_transformations(trans_10, trans_02)
     return trans_12
 
 
-def transform_points(trans_01: torch.Tensor,
-                     points_1: torch.Tensor) -> torch.Tensor:
+def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Tensor:
     r"""Function that applies transformations to a set of points.
 
     Args:
@@ -203,7 +187,8 @@ def transform_points(trans_01: torch.Tensor,
         raise TypeError(
             "Tensor must be in the same device and dtype. "
             f"Got trans_01 with ({trans_01.dtype}, {points_1.dtype}) and "
-            f"points_1 with ({points_1.dtype}, {points_1.dtype})")
+            f"points_1 with ({points_1.dtype}, {points_1.dtype})"
+        )
     if not trans_01.shape[0] == points_1.shape[0] and trans_01.shape[0] != 1:
         raise ValueError("Input batch size must be the same for both tensors or 1")
     if not trans_01.shape[-1] == (points_1.shape[-1] + 1):
@@ -218,8 +203,7 @@ def transform_points(trans_01: torch.Tensor,
     # to homogeneous
     points_1_h = convert_points_to_homogeneous(points_1)  # BxNxD+1
     # transform coordinates
-    points_0_h = torch.bmm(points_1_h,
-                           trans_01.permute(0, 2, 1))
+    points_0_h = torch.bmm(points_1_h, trans_01.permute(0, 2, 1))
     points_0_h = torch.squeeze(points_0_h, dim=-1)
     # to euclidean
     points_0 = convert_points_from_homogeneous(points_0_h)  # BxNxD
@@ -231,7 +215,7 @@ def transform_points(trans_01: torch.Tensor,
 
 
 def transform_boxes(trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = "xyxy") -> torch.Tensor:
-    r""" Function that applies a transformation matrix to a box or batch of boxes. Boxes must
+    r"""Function that applies a transformation matrix to a box or batch of boxes. Boxes must
     be a tensor of the shape (N, 4) or a batch of boxes (B, N, 4) and trans_mat must be a (3, 3)
     transformation matrix or a batch of transformation matrices (B, 3, 3)
 
@@ -275,8 +259,7 @@ def transform_boxes(trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = "x
     return transformed_boxes
 
 
-def perspective_transform_lafs(trans_01: torch.Tensor,
-                               lafs_1: torch.Tensor) -> torch.Tensor:
+def perspective_transform_lafs(trans_01: torch.Tensor, lafs_1: torch.Tensor) -> torch.Tensor:
     r"""Function that applies perspective transformations to a set of local affine frames (LAFs).
 
     Args:
@@ -345,7 +328,6 @@ def perspective_transform_lafs(trans_01: torch.Tensor,
 
 # TODO:
 # - project_points: from opencv
-
 
 # layer api
 

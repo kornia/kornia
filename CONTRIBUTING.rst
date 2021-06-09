@@ -9,7 +9,7 @@ Everyone is welcomed to get involved with the project. There are different ways 
 
    - Please, don't use GitHub issues for Q&A.
    - In case you are a developer and want to learn more about the PyTorch ecosystem, we suggest you to join the PyTorch slack. You can apply using this form: `https://bit.ly/ptslack <https://bit.ly/ptslack>`_
-   
+
 
 2. Report bugs through `GitHub issues <https://github.com/arraiyopensource/kornia/issues>`_:
 
@@ -158,12 +158,12 @@ This section provides general guidance for developing code for the project. The 
 - Format your code:
 
   - We follow `PEP8 style guide <https://www.python.org/dev/peps/pep-0008>`_.
-  - Use ``autopep`` to autoformat: https://pypi.org/project/autopep8/#id3 .
-    For doing so, just run the following from the repository root
+  - Use ``pre-commit`` to autoformat each commit before push: https://pre-commit.com/.
+    For doing so, just install it for this repository:
 
   .. code:: bash
 
-    make autopep8
+    pre-commit install
 
 - Changes to PEP8:
 
