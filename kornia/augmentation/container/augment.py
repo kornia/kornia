@@ -93,7 +93,7 @@ class AugmentationSequential(ImageSequential):
     ) -> torch.Tensor:
         if isinstance(module, GeometricAugmentationBase2D) and param is None:
             raise ValueError(f"Transformation matrix for {module} has not been computed.")
-        elif isinstance(module, GeometricAugmentationBase2D) and param is not None:
+        if isinstance(module, GeometricAugmentationBase2D) and param is not None:
             input = transform_boxes(module.get_transformation_matrix(input, param), input, mode)
         else:
             pass  # No need to update anything
@@ -104,7 +104,7 @@ class AugmentationSequential(ImageSequential):
     ) -> torch.Tensor:
         if isinstance(module, GeometricAugmentationBase2D) and param is None:
             raise ValueError(f"Transformation matrix for {module} has not been computed.")
-        elif isinstance(module, GeometricAugmentationBase2D) and param is not None:
+        if isinstance(module, GeometricAugmentationBase2D) and param is not None:
             input = transform_points(module.get_transformation_matrix(input, param), input)
         else:
             pass  # No need to update anything
