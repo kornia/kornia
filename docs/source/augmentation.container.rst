@@ -23,7 +23,7 @@ for automating the processing of masks, bounding boxes, and keypoints.
 
 
 ImageSequential
------------------------
+---------------
 
 Kornia augmentations provides simple on-device augmentation framework with the support of various syntax sugars
 (e.g. return transformation matrix, inverse geometric transform). Additionally, ImageSequential supports the

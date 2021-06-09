@@ -74,8 +74,6 @@ __all__ = [
     "RandomCutMix",
     "AugmentationBase3D",
     "CenterCrop3D",
-    "Normalize3D",
-    "Denormalize3D",
     "RandomAffine3D",
     "RandomCrop3D",
     "RandomDepthicalFlip3D",
