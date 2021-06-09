@@ -1,10 +1,7 @@
-from re import S
-from typing import Callable, Tuple, Union, List, Optional, Dict, cast
+from typing import Tuple, Union, List, Optional, Dict, cast
 import warnings
 
 import torch
-from torch.functional import Tensor
-import torch.nn as nn
 from torch.nn.functional import pad
 
 from kornia.constants import Resample, BorderType, SamplePadding, pi
@@ -14,7 +11,6 @@ from kornia.geometry import (
     affine,
     bbox_generator,
     bbox_to_mask,
-    crop_by_boxes,
     crop_by_transform_mat,
     deg2rad,
     elastic_transform2d,
@@ -23,7 +19,6 @@ from kornia.geometry import (
     get_tps_transform,
     hflip,
     vflip,
-    rotate,
     warp_affine,
     warp_image_tps,
     warp_perspective,
@@ -41,8 +36,6 @@ from kornia.enhance import (
     adjust_contrast,
     adjust_saturation,
     adjust_hue,
-    adjust_gamma,
-    Invert,
 )
 from kornia.filters import box_blur
 from kornia.utils import _extract_device_dtype, create_meshgrid
@@ -677,13 +670,13 @@ class RandomAffine(GeometricAugmentationBase2D):
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return get_affine_matrix2d(
-            params['translations'],
-            params['center'],
-            params['scale'],
-            params['angle'],
-            deg2rad(params['sx']),
-            deg2rad(params['sy']),
-        ).type_as(input)
+            torch.as_tensor(params['translations'], device=input.device, dtype=input.dtype),
+            torch.as_tensor(params['center'], device=input.device, dtype=input.dtype),
+            torch.as_tensor(params['scale'], device=input.device, dtype=input.dtype),
+            torch.as_tensor(params['angle'], device=input.device, dtype=input.dtype),
+            deg2rad(torch.as_tensor(params['sx'], device=input.device, dtype=input.dtype)),
+            deg2rad(torch.as_tensor(params['sy'], device=input.device, dtype=input.dtype)),
+        )
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
