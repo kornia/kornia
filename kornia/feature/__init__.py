@@ -10,6 +10,10 @@ from .responses import (
 )
 from .nms import NonMaximaSuppression2d, nms2d, NonMaximaSuppression3d, nms3d
 
+# Backward compatibility
+non_maxima_suppression2d = nms2d
+non_maxima_suppression3d = nms3d
+
 from .laf import (
     extract_patches_from_pyramid,
     extract_patches_simple,
