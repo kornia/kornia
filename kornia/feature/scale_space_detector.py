@@ -97,7 +97,6 @@ class ScaleSpaceDetector(nn.Module):
         # scale_space_response should be True if the response function works on scale space
         # like Difference-of-Gaussians
         self.scale_space_response = scale_space_response
-        return
 
     def __repr__(self):
         return (

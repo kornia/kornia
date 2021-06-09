@@ -127,7 +127,6 @@ class ScalePyramid(nn.Module):
         self.border = min_size // 2 - 1
         self.sigma_step = 2 ** (1.0 / float(self.n_levels))
         self.double_image = double_image
-        return
 
     def __repr__(self) -> str:
         return (
