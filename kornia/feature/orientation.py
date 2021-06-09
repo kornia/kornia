@@ -17,7 +17,7 @@ from kornia.feature import (
 )
 from kornia.geometry import rad2deg
 
-urls: Dict[str, str] = dict()
+urls: Dict[str, str] = {}
 urls["orinet"] = "https://github.com/ducha-aiki/affnet/raw/master/pretrained/OriNet.pth"
 
 
