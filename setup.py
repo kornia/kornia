@@ -43,7 +43,7 @@ kornia_pt_dependencies = {
 
 # version can be overiden eg with KORNIA_BUILD_VERSION so we map each possible kornia version to the dictionary keys
 def dep_version(version):
-    compatible_versions = [v for v in kornia_pt_dependencies.keys() if v >= version]
+    compatible_versions = [v for v in kornia_pt_dependencies if v >= version]
     compatible_versions += [sorted(kornia_pt_dependencies)[-1]]
     return min(compatible_versions)
 
