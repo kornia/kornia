@@ -327,7 +327,7 @@ def get_spatial_gradient_kernel3d(mode: str, order: int, device=torch.device('cp
         )
     if mode == 'sobel':
         raise NotImplementedError("Sobel kernel for 3d gradient is not implemented yet")
-    elif mode == 'diff' and order == 1:
+    if mode == 'diff' and order == 1:
         kernel = get_diff_kernel3d(device, dtype)
     elif mode == 'diff' and order == 2:
         kernel = get_diff_kernel3d_2nd_order(device, dtype)
