@@ -118,7 +118,7 @@ def tensor_to_image(tensor: torch.Tensor) -> np.ndarray:
 
     if len(input_shape) == 2:
         # (H, W) -> (H, W)
-        image = image
+        pass
     elif len(input_shape) == 3:
         # (C, H, W) -> (H, W, C)
         if input_shape[0] == 1:
