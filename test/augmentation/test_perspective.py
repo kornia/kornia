@@ -155,6 +155,7 @@ class TestRandomAffine:
         out = aug(x_data)
         assert out.shape == x_data.shape
         assert aug.inverse(out).shape == x_data.shape
+        assert aug.inverse(out, aug._params).shape == x_data.shape
 
     def test_smoke_no_transform_batch(self, device):
         x_data = torch.rand(2, 2, 8, 9).to(device)
@@ -162,6 +163,7 @@ class TestRandomAffine:
         out = aug(x_data)
         assert out.shape == x_data.shape
         assert aug.inverse(out).shape == x_data.shape
+        assert aug.inverse(out, aug._params).shape == x_data.shape
 
     @pytest.mark.parametrize("degrees", [45.0, (-45.0, 45.0), torch.tensor([45.0, 45.0])])
     @pytest.mark.parametrize("translate", [(0.1, 0.1), torch.tensor([0.1, 0.1])])

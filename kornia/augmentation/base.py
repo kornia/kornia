@@ -341,11 +341,26 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
         **kwargs,
     ) -> torch.Tensor:
         """By default, the exact transformation as ``apply_transform`` will be used."""
-        return self.apply_transform(input, params=self._params, transform=transform)
+        return self.apply_transform(
+            input, params=self._params, transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype)
+        )
 
     def compute_inverse_transformation(self, transform: torch.Tensor):
         """Compute the inverse transform of given transformation matrices."""
         return _torch_inverse_cast(transform)
+
+    def get_transformation_matrix(
+        self, input: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None
+    ) -> torch.Tensor:
+        if params is not None:
+            transform = self.compute_transformation(input, params)
+        elif not hasattr(self, "_transform_matrix"):
+            params = self.forward_parameters(input.shape)
+            transform = self.identity_matrix(input)
+            transform[params['batch_prob']] = self.compute_transformation(input[params['batch_prob']], params)
+        else:
+            transform = self._transform_matrix
+        return torch.as_tensor(transform, device=input.device, dtype=input.dtype)
 
     def inverse(
         self,
@@ -357,7 +372,11 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
         if isinstance(input, (list, tuple)):
             input, transform = input
         else:
-            transform = self._transform_matrix
+            transform = self.get_transformation_matrix(input, params)
+        if params is not None:
+            transform = self.identity_matrix(input)
+            transform[params['batch_prob']] = self.compute_transformation(input[params['batch_prob']], params)
+
         ori_shape = input.shape
         in_tensor = self.transform_tensor(input)
         batch_shape = input.shape
