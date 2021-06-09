@@ -10,24 +10,28 @@ Set of operators to perform data augmentation on 2D image tensors.
 .. autoclass:: ColorJitter
 .. autoclass:: GaussianBlur
 .. autoclass:: RandomAffine
+.. autoclass:: RandomBoxBlur
 .. autoclass:: RandomCrop
+.. autoclass:: RandomChannelShuffle
+.. autoclass:: RandomCutMix
 .. autoclass:: RandomErasing
+.. autoclass:: RandomElasticTransform
+.. autoclass:: RandomEqualize
+.. autoclass:: RandomFisheye
 .. autoclass:: RandomGrayscale
+.. autoclass:: RandomGaussianNoise
 .. autoclass:: RandomHorizontalFlip
-.. autoclass:: RandomVerticalFlip
+.. autoclass:: RandomInvert
+.. autoclass:: RandomMixUp
 .. autoclass:: RandomMotionBlur
 .. autoclass:: RandomPerspective
+.. autoclass:: RandomPosterize
 .. autoclass:: RandomResizedCrop
 .. autoclass:: RandomRotation
-.. autoclass:: RandomSolarize
-.. autoclass:: RandomPosterize
 .. autoclass:: RandomSharpness
-.. autoclass:: RandomEqualize
-.. autoclass:: RandomMixUp
-.. autoclass:: RandomCutMix
-.. autoclass:: RandomInvert
-.. autoclass:: RandomChannelShuffle
-.. autoclass:: RandomGaussianNoise
+.. autoclass:: RandomSolarize
+.. autoclass:: RandomVerticalFlip
+.. autoclass:: RandomThinPlateSpline
 
 .. automodule:: kornia.augmentation.functional.functional
     :members:
