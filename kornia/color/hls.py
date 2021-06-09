@@ -129,9 +129,6 @@ class RgbToHls(nn.Module):
         >>> output = hls(input)  # 2x3x4x5
     """
 
-    def __init__(self) -> None:
-        super(RgbToHls, self).__init__()
-
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgb_to_hls(image)
 
@@ -156,9 +153,6 @@ class HlsToRgb(nn.Module):
         >>> rgb = HlsToRgb()
         >>> output = rgb(input)  # 2x3x4x5
     """
-
-    def __init__(self) -> None:
-        super(HlsToRgb, self).__init__()
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return hls_to_rgb(image)

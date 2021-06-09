@@ -787,7 +787,7 @@ class CenterCrop(GeometricAugmentationBase2D):
             return crop_by_transform_mat(
                 input, transform[:, :2, :], self.size, self.resample.name.lower(), 'zeros', self.align_corners
             )
-        elif self.cropping_mode == 'slice':  # uses advanced slicing to crop
+        if self.cropping_mode == 'slice':  # uses advanced slicing to crop
             # TODO: implement as separated function `crop_and_resize_iterative`
             B, C, _, _ = input.shape
             H, W = self.size
@@ -799,8 +799,7 @@ class CenterCrop(GeometricAugmentationBase2D):
                 y2 = int(params['src'][i, 3, 1]) + 1
                 out[i] = input[i : i + 1, :, y1:y2, x1:x2]
             return out
-        else:
-            raise NotImplementedError(f"Not supported type: {self.cropping_mode}.")
+        raise NotImplementedError(f"Not supported type: {self.cropping_mode}.")
 
     def inverse_transform(
         self,
@@ -1071,7 +1070,7 @@ class RandomCrop(GeometricAugmentationBase2D):
                 padding_mode='zeros',
                 align_corners=self.align_corners,
             )
-        elif self.cropping_mode == 'slice':  # uses advanced slicing to crop
+        if self.cropping_mode == 'slice':  # uses advanced slicing to crop
             B, C, _, _ = input.shape
             out = torch.empty(B, C, *self.size, device=input.device, dtype=input.dtype)
             for i in range(B):
@@ -1081,8 +1080,7 @@ class RandomCrop(GeometricAugmentationBase2D):
                 y2 = int(params['src'][i, 3, 1]) + 1
                 out[i] = input[i : i + 1, :, y1:y2, x1:x2]
             return out
-        else:
-            raise NotImplementedError(f"Not supported type: {self.flags['mode']}.")
+        raise NotImplementedError(f"Not supported type: {self.flags['mode']}.")
 
     def inverse_transform(
         self,
@@ -1146,10 +1144,9 @@ class RandomCrop(GeometricAugmentationBase2D):
             # undo the pre-crop if nothing happened.
             if isinstance(out, tuple) and isinstance(input, tuple):
                 return input[0], out[1]
-            elif isinstance(out, tuple) and not isinstance(input, tuple):
+            if isinstance(out, tuple) and not isinstance(input, tuple):
                 return input, out[1]
-            else:
-                return input
+            return input
         return out
 
 
@@ -1272,7 +1269,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
                 padding_mode='zeros',
                 align_corners=self.align_corners,
             )
-        elif self.cropping_mode == 'slice':  # uses advanced slicing to crop
+        if self.cropping_mode == 'slice':  # uses advanced slicing to crop
             B, C, _, _ = input.shape
             out = torch.empty(B, C, *self.size, device=input.device, dtype=input.dtype)
             for i in range(B):
@@ -1287,8 +1284,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
                     align_corners=self.align_corners,
                 )
             return out
-        else:
-            raise NotImplementedError(f"Not supported type: {self.cropping_mode}.")
+        raise NotImplementedError(f"Not supported type: {self.cropping_mode}.")
 
     def inverse_transform(
         self,

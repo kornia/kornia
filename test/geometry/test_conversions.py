@@ -16,8 +16,7 @@ def atol(device, dtype):
     """Lower tolerance for cuda-float16 only"""
     if 'cuda' in device.type and dtype == torch.float16:
         return 1.0e-3
-    else:
-        return 1.0e-4
+    return 1.0e-4
 
 
 @pytest.fixture
@@ -25,8 +24,7 @@ def rtol(device, dtype):
     """Lower tolerance for cuda-float16 only"""
     if 'cuda' in device.type and dtype == torch.float16:
         return 1.0e-3
-    else:
-        return 1.0e-4
+    return 1.0e-4
 
 
 # based on:

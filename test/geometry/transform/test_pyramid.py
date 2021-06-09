@@ -3,7 +3,7 @@ import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
-import kornia as kornia
+import kornia
 import kornia.testing as utils  # test utils
 
 
@@ -97,7 +97,6 @@ class TestScalePyramid:
                 img = img.squeeze().view(3, -1)
                 max_per_blur_level_val, _ = img.max(dim=1)
                 assert torch.argmax(max_per_blur_level_val).item() == 0
-        return
 
     def test_symmetry_preserving(self, device, dtype):
         PS = 16
@@ -111,7 +110,6 @@ class TestScalePyramid:
                 img = img.squeeze()
                 assert_allclose(img, img.flip(1))
                 assert_allclose(img, img.flip(2))
-        return
 
     def test_gradcheck(self, device, dtype):
         img = torch.rand(1, 2, 7, 9, device=device, dtype=dtype)

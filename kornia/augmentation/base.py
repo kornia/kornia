@@ -186,9 +186,8 @@ class _AugmentationBase(_BasicAugmentationBase):
             in_tensor = input[0]
             in_transformation = input[1]
             return in_tensor, in_transformation
-        else:
-            in_tensor = input
-            return in_tensor, None
+        in_tensor = input
+        return in_tensor, None
 
     def apply_func(  # type: ignore
         self,

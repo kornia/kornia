@@ -13,7 +13,7 @@ import torch
 import kornia
 
 # read the image with OpenCV
-img: np.ndarray = cv2.imread('./data/lena.jpg')
+img: np.ndarray = cv2.imread('./data/doraemon.png')
 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
 # convert to torch tensor

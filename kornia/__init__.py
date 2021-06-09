@@ -75,12 +75,13 @@ from kornia.filters import (
     gaussian_blur2d,
     laplacian,
     sobel,
+    canny,
     spatial_gradient,
     box_blur,
     median_blur,
     motion_blur,
-    filter2D,
-    filter3D,
+    filter2d,
+    filter3d,
     unsharp_mask,
 )
 from kornia.losses import (
