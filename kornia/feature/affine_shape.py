@@ -27,7 +27,6 @@ class PatchAffineShapeEstimator(nn.Module):
         self.eps: float = eps
         sigma: float = float(self.patch_size) / math.sqrt(2.0)
         self.weighting: torch.Tensor = get_gaussian_kernel2d((self.patch_size, self.patch_size), (sigma, sigma), True)
-        return
 
     def __repr__(self):
         return self.__class__.__name__ + '(' 'patch_size=' + str(self.patch_size) + ', ' + 'eps=' + str(self.eps) + ')'
@@ -176,7 +175,6 @@ class LAFAffNetShapeEstimator(nn.Module):
                 urls['affnet'], map_location=lambda storage, loc: storage
             )
             self.load_state_dict(pretrained_dict['state_dict'], strict=False)
-        return
 
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
