@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-urls: Dict[str, str] = dict()
+urls: Dict[str, str] = {}
 urls[
     "liberty"
 ] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-liberty.params"  # noqa pylint: disable
