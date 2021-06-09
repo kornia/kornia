@@ -8,7 +8,7 @@ from kornia.filters import SpatialGradient
 from kornia.feature.laf import ellipse_to_laf, get_laf_scale, raise_error_if_laf_is_not_valid, scale_laf, make_upright
 from kornia.feature import extract_patches_from_pyramid
 
-urls: Dict[str, str] = dict()
+urls: Dict[str, str] = {}
 urls["affnet"] = "https://github.com/ducha-aiki/affnet/raw/master/pretrained/AffNet.pth"
 
 
