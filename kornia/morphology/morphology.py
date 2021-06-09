@@ -5,9 +5,14 @@ from typing import List, Optional
 
 
 # Dilation
-def dilation(tensor: torch.Tensor, kernel: torch.Tensor, structuring_element: Optional[torch.Tensor] = None,
-             origin: Optional[List[int]] = None, border_type: str = 'geodesic', border_value: float = 0.
-             ) -> torch.Tensor:
+def dilation(
+    tensor: torch.Tensor,
+    kernel: torch.Tensor,
+    structuring_element: Optional[torch.Tensor] = None,
+    origin: Optional[List[int]] = None,
+    border_type: str = 'geodesic',
+    border_value: float = 0.0,
+) -> torch.Tensor:
     r"""Returns the dilated image applying the same kernel in each channel.
 
     The kernel must have 2 dimensions.
@@ -36,20 +41,16 @@ def dilation(tensor: torch.Tensor, kernel: torch.Tensor, structuring_element: Op
     """
 
     if not isinstance(tensor, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(tensor)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(tensor)))
 
     if len(tensor.shape) != 4:
-        raise ValueError("Input size must have 4 dimensions. Got {}".format(
-            tensor.dim()))
+        raise ValueError("Input size must have 4 dimensions. Got {}".format(tensor.dim()))
 
     if not isinstance(kernel, torch.Tensor):
-        raise TypeError("Kernel type is not a torch.Tensor. Got {}".format(
-            type(kernel)))
+        raise TypeError("Kernel type is not a torch.Tensor. Got {}".format(type(kernel)))
 
     if len(kernel.shape) != 2:
-        raise ValueError("Kernel size must have 2 dimensions. Got {}".format(
-            kernel.dim()))
+        raise ValueError("Kernel size must have 2 dimensions. Got {}".format(kernel.dim()))
 
     # origin
     se_h, se_w = kernel.shape
@@ -82,9 +83,14 @@ def dilation(tensor: torch.Tensor, kernel: torch.Tensor, structuring_element: Op
 
 
 # Erosion
-def erosion(tensor: torch.Tensor, kernel: torch.Tensor, structuring_element: Optional[torch.Tensor] = None,
-            origin: Optional[List[int]] = None, border_type: str = 'geodesic', border_value: float = 0.
-            ) -> torch.Tensor:
+def erosion(
+    tensor: torch.Tensor,
+    kernel: torch.Tensor,
+    structuring_element: Optional[torch.Tensor] = None,
+    origin: Optional[List[int]] = None,
+    border_type: str = 'geodesic',
+    border_value: float = 0.0,
+) -> torch.Tensor:
     r"""Returns the eroded image applying the same kernel in each channel.
 
     The kernel must have 2 dimensions.
@@ -113,20 +119,16 @@ def erosion(tensor: torch.Tensor, kernel: torch.Tensor, structuring_element: Opt
     """
 
     if not isinstance(tensor, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(tensor)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(tensor)))
 
     if len(tensor.shape) != 4:
-        raise ValueError("Input size must have 4 dimensions. Got {}".format(
-            tensor.dim()))
+        raise ValueError("Input size must have 4 dimensions. Got {}".format(tensor.dim()))
 
     if not isinstance(kernel, torch.Tensor):
-        raise TypeError("Kernel type is not a torch.Tensor. Got {}".format(
-            type(kernel)))
+        raise TypeError("Kernel type is not a torch.Tensor. Got {}".format(type(kernel)))
 
     if len(kernel.shape) != 2:
-        raise ValueError("Kernel size must have 2 dimensions. Got {}".format(
-            kernel.dim()))
+        raise ValueError("Kernel size must have 2 dimensions. Got {}".format(kernel.dim()))
 
     # origin
     se_h, se_w = kernel.shape
@@ -159,9 +161,14 @@ def erosion(tensor: torch.Tensor, kernel: torch.Tensor, structuring_element: Opt
 
 
 # Opening
-def opening(tensor: torch.Tensor, kernel: torch.Tensor, structuring_element: Optional[torch.Tensor] = None,
-            origin: Optional[List[int]] = None, border_type: str = 'geodesic', border_value: float = 0.
-            ) -> torch.Tensor:
+def opening(
+    tensor: torch.Tensor,
+    kernel: torch.Tensor,
+    structuring_element: Optional[torch.Tensor] = None,
+    origin: Optional[List[int]] = None,
+    border_type: str = 'geodesic',
+    border_value: float = 0.0,
+) -> torch.Tensor:
     r"""Returns the opened image, (that means, dilation after an erosion) applying the same kernel in each channel.
 
     The kernel must have 2 dimensions.
@@ -190,31 +197,43 @@ def opening(tensor: torch.Tensor, kernel: torch.Tensor, structuring_element: Opt
     """
 
     if not isinstance(tensor, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(tensor)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(tensor)))
 
     if len(tensor.shape) != 4:
-        raise ValueError("Input size must have 4 dimensions. Got {}".format(
-            tensor.dim()))
+        raise ValueError("Input size must have 4 dimensions. Got {}".format(tensor.dim()))
 
     if not isinstance(kernel, torch.Tensor):
-        raise TypeError("Kernel type is not a torch.Tensor. Got {}".format(
-            type(kernel)))
+        raise TypeError("Kernel type is not a torch.Tensor. Got {}".format(type(kernel)))
 
     if len(kernel.shape) != 2:
-        raise ValueError("Kernel size must have 2 dimensions. Got {}".format(
-            kernel.dim()))
+        raise ValueError("Kernel size must have 2 dimensions. Got {}".format(kernel.dim()))
 
-    return dilation(erosion(tensor, kernel=kernel, structuring_element=structuring_element, origin=origin,
-                            border_type=border_type, border_value=border_value),
-                    kernel=kernel, structuring_element=structuring_element, origin=origin, border_type=border_type,
-                    border_value=border_value)
+    return dilation(
+        erosion(
+            tensor,
+            kernel=kernel,
+            structuring_element=structuring_element,
+            origin=origin,
+            border_type=border_type,
+            border_value=border_value,
+        ),
+        kernel=kernel,
+        structuring_element=structuring_element,
+        origin=origin,
+        border_type=border_type,
+        border_value=border_value,
+    )
 
 
 # Closing
-def closing(tensor: torch.Tensor, kernel: torch.Tensor, structuring_element: Optional[torch.Tensor] = None,
-            origin: Optional[List[int]] = None, border_type: str = 'geodesic', border_value: float = 0.
-            ) -> torch.Tensor:
+def closing(
+    tensor: torch.Tensor,
+    kernel: torch.Tensor,
+    structuring_element: Optional[torch.Tensor] = None,
+    origin: Optional[List[int]] = None,
+    border_type: str = 'geodesic',
+    border_value: float = 0.0,
+) -> torch.Tensor:
     r"""Returns the closed image, (that means, erosion after a dilation) applying the same kernel in each channel.
 
     The kernel must have 2 dimensions.
@@ -243,31 +262,43 @@ def closing(tensor: torch.Tensor, kernel: torch.Tensor, structuring_element: Opt
     """
 
     if not isinstance(tensor, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(tensor)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(tensor)))
 
     if len(tensor.shape) != 4:
-        raise ValueError("Input size must have 4 dimensions. Got {}".format(
-            tensor.dim()))
+        raise ValueError("Input size must have 4 dimensions. Got {}".format(tensor.dim()))
 
     if not isinstance(kernel, torch.Tensor):
-        raise TypeError("Kernel type is not a torch.Tensor. Got {}".format(
-            type(kernel)))
+        raise TypeError("Kernel type is not a torch.Tensor. Got {}".format(type(kernel)))
 
     if len(kernel.shape) != 2:
-        raise ValueError("Kernel size must have 2 dimensions. Got {}".format(
-            kernel.dim()))
+        raise ValueError("Kernel size must have 2 dimensions. Got {}".format(kernel.dim()))
 
-    return erosion(dilation(tensor, kernel=kernel, structuring_element=structuring_element, origin=origin,
-                            border_type=border_type, border_value=border_value),
-                    kernel=kernel, structuring_element=structuring_element, origin=origin, border_type=border_type,
-                    border_value=border_value)
+    return erosion(
+        dilation(
+            tensor,
+            kernel=kernel,
+            structuring_element=structuring_element,
+            origin=origin,
+            border_type=border_type,
+            border_value=border_value,
+        ),
+        kernel=kernel,
+        structuring_element=structuring_element,
+        origin=origin,
+        border_type=border_type,
+        border_value=border_value,
+    )
 
 
 # Morphological Gradient
-def gradient(tensor: torch.Tensor, kernel: torch.Tensor, structuring_element: Optional[torch.Tensor] = None,
-             origin: Optional[List[int]] = None, border_type: str = 'geodesic', border_value: float = 0.
-             ) -> torch.Tensor:
+def gradient(
+    tensor: torch.Tensor,
+    kernel: torch.Tensor,
+    structuring_element: Optional[torch.Tensor] = None,
+    origin: Optional[List[int]] = None,
+    border_type: str = 'geodesic',
+    border_value: float = 0.0,
+) -> torch.Tensor:
     r"""Returns the morphological gradient of an image.
 
     That means, (dilation - erosion) applying the same kernel in each channel.
@@ -296,23 +327,32 @@ def gradient(tensor: torch.Tensor, kernel: torch.Tensor, structuring_element: Op
         >>> gradient_img = gradient(tensor, kernel)
     """
 
-    return dilation(tensor,
-                    kernel=kernel,
-                    structuring_element=structuring_element,
-                    origin=origin,
-                    border_type=border_type,
-                    border_value=border_value) - erosion(tensor,
-                                                         kernel=kernel,
-                                                         structuring_element=structuring_element,
-                                                         origin=origin,
-                                                         border_type=border_type,
-                                                         border_value=border_value)
+    return dilation(
+        tensor,
+        kernel=kernel,
+        structuring_element=structuring_element,
+        origin=origin,
+        border_type=border_type,
+        border_value=border_value,
+    ) - erosion(
+        tensor,
+        kernel=kernel,
+        structuring_element=structuring_element,
+        origin=origin,
+        border_type=border_type,
+        border_value=border_value,
+    )
 
 
 # Top Hat
-def top_hat(tensor: torch.Tensor, kernel: torch.Tensor, structuring_element: Optional[torch.Tensor] = None,
-            origin: Optional[List[int]] = None, border_type: str = 'geodesic', border_value: float = 0.
-            ) -> torch.Tensor:
+def top_hat(
+    tensor: torch.Tensor,
+    kernel: torch.Tensor,
+    structuring_element: Optional[torch.Tensor] = None,
+    origin: Optional[List[int]] = None,
+    border_type: str = 'geodesic',
+    border_value: float = 0.0,
+) -> torch.Tensor:
     r"""Returns the top hat tranformation of an image.
 
     That means, (image - opened_image) applying the same kernel in each channel.
@@ -344,29 +384,36 @@ def top_hat(tensor: torch.Tensor, kernel: torch.Tensor, structuring_element: Opt
     """
 
     if not isinstance(tensor, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(tensor)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(tensor)))
 
     if len(tensor.shape) != 4:
-        raise ValueError("Input size must have 4 dimensions. Got {}".format(
-            tensor.dim()))
+        raise ValueError("Input size must have 4 dimensions. Got {}".format(tensor.dim()))
 
     if not isinstance(kernel, torch.Tensor):
-        raise TypeError("Kernel type is not a torch.Tensor. Got {}".format(
-            type(kernel)))
+        raise TypeError("Kernel type is not a torch.Tensor. Got {}".format(type(kernel)))
 
     if len(kernel.shape) != 2:
-        raise ValueError("Kernel size must have 2 dimensions. Got {}".format(
-            kernel.dim()))
+        raise ValueError("Kernel size must have 2 dimensions. Got {}".format(kernel.dim()))
 
-    return tensor - opening(tensor, kernel=kernel, structuring_element=structuring_element, origin=origin,
-                            border_type=border_type, border_value=border_value)
+    return tensor - opening(
+        tensor,
+        kernel=kernel,
+        structuring_element=structuring_element,
+        origin=origin,
+        border_type=border_type,
+        border_value=border_value,
+    )
 
 
 # Bottom Hat
-def bottom_hat(tensor: torch.Tensor, kernel: torch.Tensor, structuring_element: Optional[torch.Tensor] = None,
-               origin: Optional[List[int]] = None, border_type: str = 'geodesic', border_value: float = 0.
-               ) -> torch.Tensor:
+def bottom_hat(
+    tensor: torch.Tensor,
+    kernel: torch.Tensor,
+    structuring_element: Optional[torch.Tensor] = None,
+    origin: Optional[List[int]] = None,
+    border_type: str = 'geodesic',
+    border_value: float = 0.0,
+) -> torch.Tensor:
     r"""Returns the bottom hat tranformation of an image.
 
     That means, (closed_image - image) applying the same kernel in each channel.
@@ -398,30 +445,37 @@ def bottom_hat(tensor: torch.Tensor, kernel: torch.Tensor, structuring_element: 
     """
 
     if not isinstance(tensor, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(tensor)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(tensor)))
 
     if len(tensor.shape) != 4:
-        raise ValueError("Input size must have 4 dimensions. Got {}".format(
-            tensor.dim()))
+        raise ValueError("Input size must have 4 dimensions. Got {}".format(tensor.dim()))
 
     if not isinstance(kernel, torch.Tensor):
-        raise TypeError("Kernel type is not a torch.Tensor. Got {}".format(
-            type(kernel)))
+        raise TypeError("Kernel type is not a torch.Tensor. Got {}".format(type(kernel)))
 
     if len(kernel.shape) != 2:
-        raise ValueError("Kernel size must have 2 dimensions. Got {}".format(
-            kernel.dim()))
+        raise ValueError("Kernel size must have 2 dimensions. Got {}".format(kernel.dim()))
 
-    return closing(tensor, kernel=kernel, structuring_element=structuring_element, origin=origin,
-                   border_type=border_type, border_value=border_value) - tensor
+    return (
+        closing(
+            tensor,
+            kernel=kernel,
+            structuring_element=structuring_element,
+            origin=origin,
+            border_type=border_type,
+            border_value=border_value,
+        )
+        - tensor
+    )
 
 
 # Infinity values to workaround for JIT
-def _plus_infinity(tensor: torch.Tensor,
-                   plus_infinity_16: float = torch.finfo(torch.float16).max,
-                   plus_infinity_32: float = torch.finfo(torch.float32).max,
-                   plus_infinity_64: float = torch.finfo(torch.float64).max) -> float:
+def _plus_infinity(
+    tensor: torch.Tensor,
+    plus_infinity_16: float = torch.finfo(torch.float16).max,
+    plus_infinity_32: float = torch.finfo(torch.float32).max,
+    plus_infinity_64: float = torch.finfo(torch.float64).max,
+) -> float:
     if tensor.dtype == torch.float16:
         return plus_infinity_16
     elif tensor.dtype == torch.float32:
@@ -432,10 +486,12 @@ def _plus_infinity(tensor: torch.Tensor,
         raise RuntimeError(f"Expected tensor to be floating-point, got {tensor.dtype}")
 
 
-def _minus_infinity(tensor: torch.Tensor,
-                    minus_infinity_16: float = torch.finfo(torch.float16).min,
-                    minus_infinity_32: float = torch.finfo(torch.float32).min,
-                    minus_infinity_64: float = torch.finfo(torch.float64).min) -> float:
+def _minus_infinity(
+    tensor: torch.Tensor,
+    minus_infinity_16: float = torch.finfo(torch.float16).min,
+    minus_infinity_32: float = torch.finfo(torch.float32).min,
+    minus_infinity_64: float = torch.finfo(torch.float64).min,
+) -> float:
     if tensor.dtype == torch.float16:
         return minus_infinity_16
     elif tensor.dtype == torch.float32:
