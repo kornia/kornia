@@ -12,21 +12,21 @@ T = TypeVar('T', bound='ConstantBase')
 class ConstantBase:
     @classmethod
     def get(cls, value: Union[str, int, T]) -> T:  # type: ignore
-        if type(value) == str:
+        if type(value) is str:
             return cls[value.upper()]  # type: ignore
-        if type(value) == int:
+        if type(value) is int:
             return cls(value)  # type: ignore
-        if type(value) == cls:
+        if type(value) is cls:
             return value  # type: ignore
         raise TypeError()
 
 
 class EnumMetaFlags(EnumMeta):
     def __contains__(self, other: Union[str, int, T]) -> bool:  # type: ignore
-        if type(other) == str:
+        if type(other) is str:
             other = cast(str, other)
             return any(val.name == other.upper() for val in self)  # type: ignore
-        if type(other) == int:
+        if type(other) is int:
             return any(val.value == other for val in self)  # type: ignore
         return any(val == other for val in self)  # type: ignore
 
