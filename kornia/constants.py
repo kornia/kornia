@@ -25,10 +25,10 @@ class EnumMetaFlags(EnumMeta):
     def __contains__(self, other: Union[str, int, T]) -> bool:  # type: ignore
         if type(other) == str:
             other = cast(str, other)
-            return any([val.name == other.upper() for val in self])  # type: ignore
+            return any(val.name == other.upper() for val in self)  # type: ignore
         if type(other) == int:
-            return any([val.value == other for val in self])  # type: ignore
-        return any([val == other for val in self])  # type: ignore
+            return any(val.value == other for val in self)  # type: ignore
+        return any(val == other for val in self)  # type: ignore
 
     def __repr__(self):
         return ' | '.join(f"{self.__name__}.{val.name}" for val in self)
