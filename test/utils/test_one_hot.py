@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-import kornia as kornia
+import kornia
 
 
 class TestOneHot:

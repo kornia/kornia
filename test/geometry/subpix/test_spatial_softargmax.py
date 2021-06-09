@@ -4,7 +4,7 @@ from torch.autograd import gradcheck
 from torch.nn.functional import mse_loss
 from torch.testing import assert_allclose
 
-import kornia as kornia
+import kornia
 import kornia.testing as utils  # test utils
 from kornia.geometry.subpix.spatial_soft_argmax import _get_center_kernel2d, _get_center_kernel3d
 
