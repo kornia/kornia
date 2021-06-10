@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.filters import get_gaussian_kernel2d, filter2d
+from kornia.filters import filter2d, get_gaussian_kernel2d
 
 
 def ssim(

@@ -674,8 +674,9 @@ class TestAffine2d:
         matrix = np.array(matrix).reshape(2,3)
         print (matrix)
         """
-        from torch import Tensor as T
         import math
+
+        from torch import Tensor as T
 
         batch_size, ch, height, width = 1, 1, 96, 96
         angle, translations = 6.971339922894188, (0.0, -4.0)

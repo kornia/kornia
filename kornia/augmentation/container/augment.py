@@ -1,11 +1,12 @@
-from typing import Tuple, Union, Optional, List, Dict, cast
+from typing import cast, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 
-from kornia.geometry import transform_points, transform_boxes
-from kornia.augmentation.base import _AugmentationBase, IntensityAugmentationBase2D, GeometricAugmentationBase2D
+from kornia.augmentation.base import _AugmentationBase, GeometricAugmentationBase2D, IntensityAugmentationBase2D
 from kornia.constants import DataKey
+from kornia.geometry import transform_boxes, transform_points
+
 from .image import ImageSequential
 
 

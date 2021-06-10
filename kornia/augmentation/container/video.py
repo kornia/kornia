@@ -5,6 +5,7 @@ import torch.nn as nn
 
 import kornia
 from kornia.augmentation.base import _AugmentationBase
+
 from .image import ImageSequential
 
 

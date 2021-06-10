@@ -1,20 +1,20 @@
-from typing import Tuple, Union, Optional, Dict, cast
 import warnings
+from typing import cast, Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-
 from torch.distributions import Bernoulli
 
 import kornia
 from kornia.utils.helpers import _torch_inverse_cast
+
 from . import functional as F
 from .utils import (
+    _adapted_sampling,
     _transform_input,
     _transform_input3d,
     _transform_output_shape,
     _validate_input_dtype,
-    _adapted_sampling,
 )
 
 

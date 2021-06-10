@@ -5,10 +5,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from kornia.color import rgb_to_grayscale
-
-from kornia.geometry.conversions import rad2deg
-
 from kornia.filters import gaussian_blur2d, spatial_gradient
+from kornia.geometry.conversions import rad2deg
 
 from .kernels import get_canny_nms_kernel, get_hysteresis_kernel
 

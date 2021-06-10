@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 import kornia
-from kornia.filters.kernels_geom import get_motion_kernel3d, get_motion_kernel2d
+from kornia.filters.kernels_geom import get_motion_kernel2d, get_motion_kernel3d
 
 
 class MotionBlur(nn.Module):

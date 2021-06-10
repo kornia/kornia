@@ -1,9 +1,12 @@
+import warnings
 from typing import Tuple
 
-import warnings
 import torch
 import torch.nn as nn  # For doctest
-from kornia.filters.blur_pool import MaxBlurPool2D, BlurPool2D, max_blur_pool2d as _max_blur_pool2d  # For doctest
+
+from kornia.filters.blur_pool import BlurPool2D
+from kornia.filters.blur_pool import max_blur_pool2d as _max_blur_pool2d  # For doctest
+from kornia.filters.blur_pool import MaxBlurPool2D
 
 __all__ = ["max_blur_pool2d", "MaxBlurPool2d"]
 

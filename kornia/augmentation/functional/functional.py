@@ -1,41 +1,40 @@
-from typing import Tuple, List, Union, Dict, cast, Optional
+from typing import cast, Dict, List, Optional, Tuple, Union
 
-import kornia as K
 import torch
 
-from kornia.constants import Resample, BorderType, SamplePadding, pi
-from kornia.geometry import (
-    get_perspective_transform,
-    get_affine_matrix2d,
-    warp_perspective,
-    rotate,
-    crop_by_boxes,
-    bbox_generator,
-    warp_affine,
-    hflip,
-    vflip,
-    deg2rad,
-    bbox_to_mask,
-    infer_box_shape,
-)
+import kornia as K
 from kornia.color import rgb_to_grayscale
+from kornia.constants import BorderType, pi, Resample, SamplePadding
 from kornia.enhance import (
     adjust_brightness,
     adjust_contrast,
-    adjust_saturation,
-    adjust_hue,
     adjust_gamma,
-    solarize,
+    adjust_hue,
+    adjust_saturation,
     equalize,
     posterize,
     sharpness,
+    solarize,
 )
 from kornia.filters import motion_blur
+from kornia.geometry import (
+    bbox_generator,
+    bbox_to_mask,
+    crop_by_boxes,
+    deg2rad,
+    get_affine_matrix2d,
+    get_perspective_transform,
+    hflip,
+    infer_box_shape,
+    rotate,
+    vflip,
+    warp_affine,
+    warp_perspective,
+)
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 
 from .. import random_generator as rg
-from ..utils import _validate_input_shape, _validate_input_dtype, _range_bound, _shape_validation, _validate_input
-
+from ..utils import _range_bound, _shape_validation, _validate_input, _validate_input_dtype, _validate_input_shape
 from .__temp__ import __deprecation_warning, _deprecation_wrapper
 
 

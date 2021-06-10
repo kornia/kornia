@@ -3,8 +3,8 @@ from typing import Tuple
 import torch
 import torch.nn as nn
 
+from .rgb import linear_rgb_to_rgb, rgb_to_linear_rgb
 from .xyz import rgb_to_xyz, xyz_to_rgb
-from .rgb import rgb_to_linear_rgb, linear_rgb_to_rgb
 
 """
 The RGB to Luv color transformations were translated from scikit image's rgb2luv and luv2rgb

@@ -1,7 +1,6 @@
-from typing import Callable
-
 import warnings
 from functools import wraps
+from typing import Callable
 
 warnings.simplefilter('always', DeprecationWarning)
 
