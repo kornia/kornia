@@ -1,5 +1,5 @@
 import math
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 
 import torch
 import torch.nn as nn
@@ -9,8 +9,6 @@ from kornia.constants import pi
 from kornia.feature import (
     extract_patches_from_pyramid,
     get_laf_orientation,
-    make_upright,
-    normalize_laf,
     raise_error_if_laf_is_not_valid,
     set_laf_orientation,
 )

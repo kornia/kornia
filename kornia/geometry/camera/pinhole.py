@@ -1,8 +1,6 @@
-import warnings
-from typing import Iterable, Optional, Union
+from typing import Iterable, Optional
 
 import torch
-import torch.nn as nn
 
 from kornia.geometry.linalg import inverse_transformation, transform_points
 

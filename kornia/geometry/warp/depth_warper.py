@@ -1,9 +1,8 @@
 import warnings
-from typing import Union
 
 import torch
 
-from kornia.geometry.camera import cam2pixel, PinholeCamera, pixel2cam
+from kornia.geometry.camera import PinholeCamera
 from kornia.geometry.depth import depth_warp as _depth_warp
 from kornia.geometry.depth import DepthWarper as _DepthWarper
 

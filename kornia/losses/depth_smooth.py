@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 # Based on
 # https://github.com/tensorflow/models/blob/master/research/struct2depth/model.py#L625-L641

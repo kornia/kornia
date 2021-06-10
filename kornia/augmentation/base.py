@@ -8,7 +8,6 @@ from torch.distributions import Bernoulli
 import kornia
 from kornia.utils.helpers import _torch_inverse_cast
 
-from . import functional as F
 from .utils import (
     _adapted_sampling,
     _transform_input,
