@@ -152,9 +152,7 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
             'order': torch.tensor([3, 2, 0, 1], device=device, dtype=dtype),
         }
 
-        assert set(list(jitter_params.keys())) == set(
-            ['brightness_factor', 'contrast_factor', 'hue_factor', 'saturation_factor', 'order']
-        ), "Redundant keys found apart from \
+        assert set(list(jitter_params.keys())) == {'brightness_factor', 'contrast_factor', 'hue_factor', 'saturation_factor', 'order'}, "Redundant keys found apart from \
                 'brightness_factor', 'contrast_factor', 'hue_factor', 'saturation_factor', 'order'"
 
         assert_allclose(
