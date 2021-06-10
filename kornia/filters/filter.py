@@ -1,7 +1,6 @@
-from typing import List, Tuple
+from typing import List
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 
 from kornia.filters.__tmp__ import _deprecation_wrapper

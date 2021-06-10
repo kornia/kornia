@@ -1,10 +1,8 @@
-import random
-from typing import cast, Dict, List, Optional, Tuple, Union
+from typing import cast, Dict, Optional, Tuple, Union
 
 import torch
 from torch.distributions import Bernoulli
 
-from kornia.constants import BorderType, Resample, SamplePadding
 from kornia.geometry import bbox_generator
 from kornia.utils import _extract_device_dtype
 

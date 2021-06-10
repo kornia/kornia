@@ -3,9 +3,6 @@ import math
 import torch
 import torch.nn as nn
 
-import kornia
-from kornia.constants import pi
-
 
 def rgb_to_hls(image: torch.Tensor) -> torch.Tensor:
     r"""Convert a RGB image to HLS.
