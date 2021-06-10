@@ -4,7 +4,7 @@ from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
 import kornia
-import kornia.filters.kernels_geom
+import kornia.filters.kernels_geometry
 import kornia.testing as utils  # test utils
 
 
@@ -18,7 +18,7 @@ def test_get_motion_kernel2d(batch_size, ksize, angle, direction):
         direction = torch.tensor([direction] * batch_size)
     else:
         batch_size = 1
-    kernel = kornia.filters.kernels_geom.get_motion_kernel2d(ksize, angle, direction)
+    kernel = kornia.filters.kernels_geometry.get_motion_kernel2d(ksize, angle, direction)
     assert kernel.shape == (batch_size, ksize, ksize)
     assert_allclose(kernel.sum(), batch_size)
 

@@ -19,7 +19,7 @@ from .kernels import (
     get_spatial_gradient_kernel3d,
     laplacian_1d,
 )
-from .kernels_geom import get_motion_kernel2d, get_motion_kernel3d
+from .kernels_geometry import get_motion_kernel2d, get_motion_kernel3d
 from .laplacian import Laplacian, laplacian
 from .median import median_blur, MedianBlur
 from .motion import motion_blur, motion_blur3d, MotionBlur, MotionBlur3D
