@@ -4,8 +4,14 @@ from typing import Dict, Optional, Tuple
 import torch
 import torch.nn as nn
 
-from kornia.feature import extract_patches_from_pyramid
-from kornia.feature.laf import ellipse_to_laf, get_laf_scale, make_upright, raise_error_if_laf_is_not_valid, scale_laf
+from kornia.feature.laf import (
+    ellipse_to_laf,
+    extract_patches_from_pyramid,
+    get_laf_scale,
+    make_upright,
+    raise_error_if_laf_is_not_valid,
+    scale_laf,
+)
 from kornia.filters import get_gaussian_kernel2d, SpatialGradient
 
 urls: Dict[str, str] = {}
