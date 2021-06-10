@@ -10,20 +10,7 @@ try:
 except ImportError:
     pass
 
-from kornia import augmentation
-from kornia import color
-from kornia import contrib
-from kornia import enhance
-from kornia import feature
-from kornia import filters
-from kornia import geometry
-from kornia import jit
-from kornia import losses
-from kornia import utils
-from kornia import morphology
-
-# Exposes package functional to top level
-
+from kornia import augmentation, color, contrib, enhance, feature, filters, geometry, jit, losses, morphology, utils
 from kornia.color import (
     bgr_to_grayscale,
     bgr_to_rgb,
@@ -105,5 +92,8 @@ from kornia.utils import (
     save_pointcloud_ply,
     tensor_to_image,
 )
+
+# Exposes package functional to top level
+
 
 # Exposes package functional to top level
