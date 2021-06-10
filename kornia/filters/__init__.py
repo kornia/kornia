@@ -23,9 +23,9 @@ from .kernels import (
     get_gaussian_kernel2d,
     get_laplacian_kernel1d,
     get_laplacian_kernel2d,
-    get_motion_kernel2d,
     get_spatial_gradient_kernel3d,
 )
+from .kernels_geom import get_motion_kernel2d, get_motion_kernel3d
 
 __all__ = [
     "get_gaussian_kernel1d",
@@ -39,7 +39,6 @@ __all__ = [
     "get_sobel_kernel2d",
     "get_diff_kernel2d",
     "gaussian_blur2d",
-    "get_motion_kernel2d",
     "laplacian",
     "unsharp_mask",
     "sobel",

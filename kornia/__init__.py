@@ -72,6 +72,7 @@ from kornia.filters import (
     get_laplacian_kernel1d,
     get_laplacian_kernel2d,
     get_motion_kernel2d,
+    get_motion_kernel3d,
     gaussian_blur2d,
     laplacian,
     sobel,
