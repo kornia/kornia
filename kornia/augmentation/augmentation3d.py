@@ -1,19 +1,17 @@
-from typing import Callable, cast, Dict, List, Optional, Tuple, Union
+from typing import cast, Dict, Optional, Tuple, Union
 
 import torch
 from torch.nn.functional import pad
 
-from kornia.constants import BorderType, pi, Resample
+from kornia.constants import BorderType, Resample
 from kornia.enhance import equalize3d
 from kornia.filters import motion_blur3d
 from kornia.geometry import (
     affine3d,
-    crop_by_boxes3d,
     crop_by_transform_mat3d,
     deg2rad,
     get_affine_matrix3d,
     get_perspective_transform3d,
-    rotate3d,
     warp_affine3d,
     warp_perspective3d,
 )

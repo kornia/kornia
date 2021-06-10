@@ -11,7 +11,7 @@ from kornia.geometry.conversions import (
     normalize_pixel_coordinates,
 )
 from kornia.geometry.linalg import transform_points
-from kornia.geometry.transform.homography_warper import homography_warp, normalize_homography
+from kornia.geometry.transform.homography_warper import normalize_homography
 from kornia.geometry.transform.projwarp import get_projective_transform
 from kornia.utils import create_meshgrid
 from kornia.utils.helpers import _torch_inverse_cast, _torch_solve_cast

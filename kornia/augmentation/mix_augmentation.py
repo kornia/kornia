@@ -1,15 +1,12 @@
-from typing import Callable, cast, Dict, List, Optional, Tuple, Union
+from typing import cast, Dict, Optional, Tuple, Union
 
 import torch
-import torch.nn as nn
-from torch.nn.functional import pad
 
-from kornia.constants import BorderType, Resample
 from kornia.geometry import bbox_to_mask, infer_box_shape
 
 from . import random_generator as rg
 from .base import MixAugmentationBase
-from .utils import _infer_batch_shape, _shape_validation
+from .utils import _shape_validation
 
 
 class RandomMixUp(MixAugmentationBase):

@@ -1,9 +1,9 @@
-from typing import cast, Dict, List, Optional, Tuple, Union
+from typing import cast, Dict
 
 import torch
 
 import kornia as K
-from kornia.constants import BorderType, pi, Resample
+from kornia.constants import BorderType, Resample
 from kornia.enhance import equalize3d
 from kornia.filters import motion_blur3d
 from kornia.geometry import (
@@ -17,9 +17,8 @@ from kornia.geometry import (
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix3d, _compute_tensor_center3d
 from kornia.geometry.transform.projwarp import warp_affine3d
 
-from .. import random_generator as rg
 from ..utils import _validate_input3d
-from .__temp__ import __deprecation_warning, _deprecation_wrapper
+from .__temp__ import _deprecation_wrapper
 
 
 @_deprecation_wrapper

@@ -1,4 +1,4 @@
-from typing import cast, Dict, List, Optional, Tuple, Union
+from typing import cast, Dict, Optional, Tuple
 
 import torch
 
@@ -33,9 +33,8 @@ from kornia.geometry import (
 )
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 
-from .. import random_generator as rg
-from ..utils import _range_bound, _shape_validation, _validate_input, _validate_input_dtype, _validate_input_shape
-from .__temp__ import __deprecation_warning, _deprecation_wrapper
+from ..utils import _shape_validation, _validate_input, _validate_input_shape
+from .__temp__ import _deprecation_wrapper
 
 
 @_deprecation_wrapper

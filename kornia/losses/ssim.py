@@ -1,8 +1,5 @@
-from typing import Tuple
-
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from kornia.filters import filter2d, get_gaussian_kernel2d
 
