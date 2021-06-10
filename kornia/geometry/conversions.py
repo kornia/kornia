@@ -138,7 +138,7 @@ def convert_points_from_homogeneous(points: torch.Tensor, eps: float = 1e-8) -> 
     if len(points.shape) < 2:
         raise ValueError("Input must be at least a 2D tensor. Got {}".format(points.shape))
 
-    # we check for points at infinity
+    # we check for points at max_val
     z_vec: torch.Tensor = points[..., -1:]
 
     # set the results of division by zeror/near-zero to 1.0

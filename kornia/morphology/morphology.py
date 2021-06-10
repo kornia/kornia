@@ -12,7 +12,7 @@ def dilation(
     origin: Optional[List[int]] = None,
     border_type: str = 'geodesic',
     border_value: float = 0.0,
-    infinity: float = 1e4,
+    max_val: float = 1e4,
 ) -> torch.Tensor:
     r"""Returns the dilated image applying the same kernel in each channel.
 
@@ -31,7 +31,7 @@ def dilation(
             when border_type is equal to ‘constant’. Default is ‘geodesic’ which ignores the values that are outside the
             image when applying the operation.
         border_value (float, optional): Value to fill past edges of input if border_type is ‘constant’. Default is 0.0.
-        infinity (float, optional): The value considered to be the infinity for the infinite elements in the kernel.
+        max_val (float, optional): The value of the infinite elements in the kernel.
 
     Returns:
         torch.Tensor: Dilated image with shape :math:`(B, C, H, W)`.
@@ -62,17 +62,17 @@ def dilation(
     # pad
     pad_e: List[int] = [origin[1], se_w - origin[1] - 1, origin[0], se_h - origin[0] - 1]
     if border_type == 'geodesic':
-        border_value = -infinity
+        border_value = -max_val
         border_type = 'constant'
     output: torch.Tensor = F.pad(tensor, pad_e, mode=border_type, value=border_value)
 
     # computation
     if structuring_element is None:
         neighborhood = torch.zeros_like(kernel)
-        neighborhood[kernel == 0] = -infinity
+        neighborhood[kernel == 0] = -max_val
     else:
         neighborhood = structuring_element
-        neighborhood[kernel == 0] = -infinity
+        neighborhood[kernel == 0] = -max_val
 
     output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
     output, _ = torch.max(output + neighborhood.flip((0, 1)), 4)
@@ -89,7 +89,7 @@ def erosion(
     origin: Optional[List[int]] = None,
     border_type: str = 'geodesic',
     border_value: float = 0.0,
-    infinity: float = 1e4,
+    max_val: float = 1e4,
 ) -> torch.Tensor:
     r"""Returns the eroded image applying the same kernel in each channel.
 
@@ -108,7 +108,7 @@ def erosion(
             when border_type is equal to ‘constant’. Default is ‘geodesic’ which ignores the values that are outside the
             image when applying the operation.
         border_value (float, optional): Value to fill past edges of input if border_type is ‘constant’. Default is 0.0.
-        infinity (float, optional): The value considered to be the infinity for the infinite elements in the kernel.
+        max_val (float, optional): The value of the infinite elements in the kernel.
 
     Returns:
         torch.Tensor: Eroded image with shape :math:`(B, C, H, W)`.
@@ -139,17 +139,17 @@ def erosion(
     # pad
     pad_e: List[int] = [origin[1], se_w - origin[1] - 1, origin[0], se_h - origin[0] - 1]
     if border_type == 'geodesic':
-        border_value = infinity
+        border_value = max_val
         border_type = 'constant'
     output: torch.Tensor = F.pad(tensor, pad_e, mode=border_type, value=border_value)
 
     # computation
     if structuring_element is None:
         neighborhood = torch.zeros_like(kernel)
-        neighborhood[kernel == 0] = -infinity
+        neighborhood[kernel == 0] = -max_val
     else:
         neighborhood = structuring_element
-        neighborhood[kernel == 0] = -infinity
+        neighborhood[kernel == 0] = -max_val
 
     output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
     output, _ = torch.min(output - neighborhood, 4)
@@ -166,7 +166,7 @@ def opening(
     origin: Optional[List[int]] = None,
     border_type: str = 'geodesic',
     border_value: float = 0.0,
-    infinity: float = 1e4,
+    max_val: float = 1e4,
 ) -> torch.Tensor:
     r"""Returns the opened image, (that means, dilation after an erosion) applying the same kernel in each channel.
 
@@ -185,7 +185,7 @@ def opening(
             when border_type is equal to ‘constant’. Default is ‘geodesic’ which ignores the values that are outside the
             image when applying the operation.
         border_value (float, optional): Value to fill past edges of input if border_type is ‘constant’. Default is 0.0.
-        infinity (float, optional): The value considered to be the infinity for the infinite elements in the kernel.
+        max_val (float, optional): The value of the infinite elements in the kernel.
 
     Returns:
        torch.Tensor: Opened image with shape :math:`(B, C, H, W)`.
@@ -216,14 +216,14 @@ def opening(
             origin=origin,
             border_type=border_type,
             border_value=border_value,
-            infinity=infinity,
+            max_val=max_val,
         ),
         kernel=kernel,
         structuring_element=structuring_element,
         origin=origin,
         border_type=border_type,
         border_value=border_value,
-        infinity=infinity,
+        max_val=max_val,
     )
 
 
@@ -235,7 +235,7 @@ def closing(
     origin: Optional[List[int]] = None,
     border_type: str = 'geodesic',
     border_value: float = 0.0,
-    infinity: float = 1e4,
+    max_val: float = 1e4,
 ) -> torch.Tensor:
     r"""Returns the closed image, (that means, erosion after a dilation) applying the same kernel in each channel.
 
@@ -254,7 +254,7 @@ def closing(
             when border_type is equal to ‘constant’. Default is ‘geodesic’ which ignores the values that are outside the
             image when applying the operation.
         border_value (float, optional): Value to fill past edges of input if border_type is ‘constant’. Default is 0.0.
-        infinity (float, optional): The value considered to be the infinity for the infinite elements in the kernel.
+        max_val (float, optional): The value of the infinite elements in the kernel.
 
     Returns:
        torch.Tensor: Closed image with shape :math:`(B, C, H, W)`.
@@ -285,14 +285,14 @@ def closing(
             origin=origin,
             border_type=border_type,
             border_value=border_value,
-            infinity=infinity,
+            max_val=max_val,
         ),
         kernel=kernel,
         structuring_element=structuring_element,
         origin=origin,
         border_type=border_type,
         border_value=border_value,
-        infinity=infinity,
+        max_val=max_val,
     )
 
 
@@ -304,7 +304,7 @@ def gradient(
     origin: Optional[List[int]] = None,
     border_type: str = 'geodesic',
     border_value: float = 0.0,
-    infinity: float = 1e4,
+    max_val: float = 1e4,
 ) -> torch.Tensor:
     r"""Returns the morphological gradient of an image.
 
@@ -324,7 +324,7 @@ def gradient(
             when border_type is equal to ‘constant’. Default is ‘geodesic’ which ignores the values that are outside the
             image when applying the operation.
         border_value (float, optional): Value to fill past edges of input if border_type is ‘constant’. Default is 0.0.
-        infinity (float, optional): The value considered to be the infinity for the infinite elements in the kernel.
+        max_val (float, optional): The value of the infinite elements in the kernel.
 
     Returns:
        torch.Tensor: Gradient image with shape :math:`(B, C, H, W)`.
@@ -342,7 +342,7 @@ def gradient(
         origin=origin,
         border_type=border_type,
         border_value=border_value,
-        infinity=infinity,
+        max_val=max_val,
     ) - erosion(
         tensor,
         kernel=kernel,
@@ -350,7 +350,7 @@ def gradient(
         origin=origin,
         border_type=border_type,
         border_value=border_value,
-        infinity=infinity,
+        max_val=max_val,
     )
 
 
@@ -362,7 +362,7 @@ def top_hat(
     origin: Optional[List[int]] = None,
     border_type: str = 'geodesic',
     border_value: float = 0.0,
-    infinity: float = 1e4,
+    max_val: float = 1e4,
 ) -> torch.Tensor:
     r"""Returns the top hat tranformation of an image.
 
@@ -384,7 +384,7 @@ def top_hat(
             when border_type is equal to ‘constant’. Default is ‘geodesic’ which ignores the values that are outside the
             image when applying the operation.
         border_value (float, optional): Value to fill past edges of input if border_type is ‘constant’. Default is 0.0.
-        infinity (float, optional): The value considered to be the infinity for the infinite elements in the kernel.
+        max_val (float, optional): The value of the infinite elements in the kernel.
 
     Returns:
        torch.Tensor: Top hat transformated image with shape :math:`(B, C, H, W)`.
@@ -414,7 +414,7 @@ def top_hat(
         origin=origin,
         border_type=border_type,
         border_value=border_value,
-        infinity=infinity,
+        max_val=max_val,
     )
 
 
@@ -426,7 +426,7 @@ def bottom_hat(
     origin: Optional[List[int]] = None,
     border_type: str = 'geodesic',
     border_value: float = 0.0,
-    infinity: float = 1e4,
+    max_val: float = 1e4,
 ) -> torch.Tensor:
     r"""Returns the bottom hat tranformation of an image.
 
@@ -448,7 +448,7 @@ def bottom_hat(
             when border_type is equal to ‘constant’. Default is ‘geodesic’ which ignores the values that are outside the
             image when applying the operation.
         border_value (float, optional): Value to fill past edges of input if border_type is ‘constant’. Default is 0.0.
-        infinity (float, optional): The value considered to be the infinity for the infinite elements in the kernel.
+        max_val (float, optional): The value of the infinite elements in the kernel.
 
     Returns:
        torch.Tensor: Top hat transformated image with shape :math:`(B, C, H, W)`.
@@ -479,7 +479,7 @@ def bottom_hat(
             origin=origin,
             border_type=border_type,
             border_value=border_value,
-            infinity=infinity,
+            max_val=max_val,
         )
         - tensor
     )
