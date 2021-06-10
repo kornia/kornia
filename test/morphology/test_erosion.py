@@ -3,7 +3,7 @@ import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
-from kornia.morphology.morphology import erosion
+from kornia.morphology import erosion
 
 
 class TestErode:
