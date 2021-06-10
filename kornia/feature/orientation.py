@@ -1,20 +1,20 @@
-from typing import Tuple, Dict, Optional
+import math
+from typing import Dict, Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import math
-from kornia.filters import get_gaussian_kernel2d
-from kornia.filters import SpatialGradient
+
 from kornia.constants import pi
 from kornia.feature import (
     extract_patches_from_pyramid,
+    get_laf_orientation,
     make_upright,
     normalize_laf,
     raise_error_if_laf_is_not_valid,
     set_laf_orientation,
-    get_laf_orientation,
 )
+from kornia.filters import get_gaussian_kernel2d, SpatialGradient
 from kornia.geometry import rad2deg
 
 urls: Dict[str, str] = {}

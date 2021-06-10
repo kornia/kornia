@@ -1,25 +1,24 @@
-from typing import Tuple, List, Union, Dict, cast, Optional
+from typing import cast, Dict, List, Optional, Tuple, Union
 
 import torch
 
 import kornia as K
-from kornia.constants import Resample, BorderType, pi
-from kornia.geometry.transform.affwarp import _compute_rotation_matrix3d, _compute_tensor_center3d
-from kornia.geometry.transform.projwarp import warp_affine3d
+from kornia.constants import BorderType, pi, Resample
+from kornia.enhance import equalize3d
+from kornia.filters import motion_blur3d
 from kornia.geometry import (
     crop_by_boxes3d,
-    warp_perspective3d,
+    deg2rad,
+    get_affine_matrix3d,
     get_perspective_transform3d,
     rotate3d,
-    get_affine_matrix3d,
-    deg2rad,
+    warp_perspective3d,
 )
-from kornia.enhance import equalize3d
+from kornia.geometry.transform.affwarp import _compute_rotation_matrix3d, _compute_tensor_center3d
+from kornia.geometry.transform.projwarp import warp_affine3d
 
 from .. import random_generator as rg
 from ..utils import _validate_input3d
-from kornia.filters import motion_blur3d
-
 from .__temp__ import __deprecation_warning, _deprecation_wrapper
 
 

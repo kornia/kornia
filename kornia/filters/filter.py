@@ -1,11 +1,11 @@
-from typing import Tuple, List
+from typing import List, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.filters.kernels import normalize_kernel2d
 from kornia.filters.__tmp__ import _deprecation_wrapper
+from kornia.filters.kernels import normalize_kernel2d
 
 
 def _compute_padding(kernel_size: List[int]) -> List[int]:

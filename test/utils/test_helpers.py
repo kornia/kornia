@@ -3,8 +3,7 @@ import torch
 from torch.testing import assert_allclose
 
 from kornia.utils import _extract_device_dtype
-from kornia.utils.helpers import _torch_inverse_cast, _torch_histc_cast
-from kornia.utils.helpers import _torch_solve_cast, _torch_svd_cast
+from kornia.utils.helpers import _torch_histc_cast, _torch_inverse_cast, _torch_solve_cast, _torch_svd_cast
 
 
 @pytest.mark.parametrize(

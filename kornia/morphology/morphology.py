@@ -1,7 +1,7 @@
+from typing import List, Optional
+
 import torch
 import torch.nn.functional as F
-
-from typing import List, Optional
 
 
 # Dilation

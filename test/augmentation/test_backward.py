@@ -6,11 +6,11 @@ from kornia.augmentation import (
     ColorJitter,
     RandomAffine,
     RandomErasing,
-    RandomRotation,
-    RandomPerspective,
-    RandomSharpness,
-    RandomResizedCrop,
     RandomMotionBlur,
+    RandomPerspective,
+    RandomResizedCrop,
+    RandomRotation,
+    RandomSharpness,
 )
 
 

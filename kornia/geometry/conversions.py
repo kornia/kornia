@@ -1,9 +1,10 @@
+import enum
 import warnings
 from typing import Tuple
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import enum
 
 from kornia.constants import pi
 

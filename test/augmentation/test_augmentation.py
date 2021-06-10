@@ -1,4 +1,4 @@
-from typing import Union, Tuple, Dict, Any, Optional, Type
+from typing import Any, Dict, Optional, Tuple, Type, Union
 
 import pytest
 import torch
@@ -11,30 +11,29 @@ import kornia.testing as utils  # test utils
 from kornia.augmentation import (
     CenterCrop,
     ColorJitter,
+    Denormalize,
     GaussianBlur,
+    Normalize,
     RandomBoxBlur,
-    RandomHorizontalFlip,
-    RandomVerticalFlip,
-    RandomErasing,
+    RandomChannelShuffle,
+    RandomCrop,
     RandomElasticTransform,
     RandomEqualize,
+    RandomErasing,
     RandomFisheye,
-    RandomGrayscale,
-    RandomRotation,
-    RandomCrop,
-    RandomResizedCrop,
-    Normalize,
-    Denormalize,
-    RandomInvert,
-    RandomChannelShuffle,
     RandomGaussianNoise,
+    RandomGrayscale,
+    RandomHorizontalFlip,
+    RandomInvert,
+    RandomResizedCrop,
+    RandomRotation,
     RandomThinPlateSpline,
+    RandomVerticalFlip,
 )
 from kornia.augmentation.base import AugmentationBase2D
 from kornia.constants import pi, Resample
 from kornia.testing import BaseTester, default_with_one_parameter_changed
 from kornia.utils.helpers import _torch_inverse_cast
-
 
 # TODO same_on_batch tests?
 

@@ -1,5 +1,5 @@
-from typing import Tuple, Optional, Union, List
 from functools import reduce
+from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn

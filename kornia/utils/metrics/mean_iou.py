@@ -1,6 +1,7 @@
 from typing import Optional
 
 import torch
+
 from kornia.utils.metrics.confusion_matrix import confusion_matrix
 
 

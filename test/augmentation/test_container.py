@@ -1,12 +1,11 @@
 import pytest
 import torch
-
 from torch.testing import assert_allclose
 
 import kornia
 import kornia.augmentation as K
-from kornia.geometry.transform import bbox_to_mask
 from kornia.constants import BorderType
+from kornia.geometry.transform import bbox_to_mask
 
 
 class TestVideoSequential:

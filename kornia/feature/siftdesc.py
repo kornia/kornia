@@ -1,10 +1,11 @@
-from typing import Tuple
-import torch
 import math
+from typing import Tuple
+
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from kornia.filters import get_gaussian_kernel2d
-from kornia.filters import spatial_gradient
+
+from kornia.filters import get_gaussian_kernel2d, spatial_gradient
 from kornia.geometry.conversions import pi
 
 

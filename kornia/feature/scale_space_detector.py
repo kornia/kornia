@@ -1,14 +1,13 @@
-from typing import Tuple, List, Optional
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.geometry import angle_to_rotation_matrix
-from kornia.feature.responses import BlobHessian
-from kornia.geometry import ConvSoftArgmax3d
+from kornia.feature.laf import denormalize_laf, laf_is_inside_image, normalize_laf, scale_laf
 from kornia.feature.orientation import PassLAF
-from kornia.feature.laf import denormalize_laf, scale_laf, normalize_laf, laf_is_inside_image
+from kornia.feature.responses import BlobHessian
+from kornia.geometry import angle_to_rotation_matrix, ConvSoftArgmax3d
 from kornia.geometry.transform import ScalePyramid
 
 

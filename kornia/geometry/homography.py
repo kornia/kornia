@@ -1,11 +1,10 @@
 import warnings
+from typing import Optional, Tuple
 
 import torch
-from typing import Tuple, Optional
 
 import kornia
 from kornia.geometry.epipolar import normalize_points
-
 from kornia.utils import _extract_device_dtype
 
 TupleTensor = Tuple[torch.Tensor, torch.Tensor]

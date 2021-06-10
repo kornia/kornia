@@ -1,12 +1,18 @@
-from typing import Tuple, Dict, Optional
+import math
+from typing import Dict, Optional, Tuple
 
 import torch
 import torch.nn as nn
-import math
-from kornia.filters import get_gaussian_kernel2d
-from kornia.filters import SpatialGradient
-from kornia.feature.laf import ellipse_to_laf, get_laf_scale, raise_error_if_laf_is_not_valid, scale_laf, make_upright
-from kornia.feature import extract_patches_from_pyramid
+
+from kornia.feature.laf import (
+    ellipse_to_laf,
+    extract_patches_from_pyramid,
+    get_laf_scale,
+    make_upright,
+    raise_error_if_laf_is_not_valid,
+    scale_laf,
+)
+from kornia.filters import get_gaussian_kernel2d, SpatialGradient
 
 urls: Dict[str, str] = {}
 urls["affnet"] = "https://github.com/ducha-aiki/affnet/raw/master/pretrained/AffNet.pth"

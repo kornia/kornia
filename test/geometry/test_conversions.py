@@ -8,7 +8,7 @@ from torch.testing import assert_allclose
 
 import kornia
 from kornia.geometry.conversions import QuaternionCoeffOrder
-from kornia.testing import tensor_to_gradcheck_var, create_eye_batch
+from kornia.testing import create_eye_batch, tensor_to_gradcheck_var
 
 
 @pytest.fixture

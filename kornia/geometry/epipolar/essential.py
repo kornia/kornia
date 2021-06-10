@@ -1,11 +1,9 @@
 """Module containing functionalities for the Essential matrix."""
-from typing import Tuple, Optional
+from typing import Optional, Tuple
 
 import torch
 
-from kornia.geometry.epipolar import numeric
-from kornia.geometry.epipolar import projection
-from kornia.geometry.epipolar import triangulation
+from kornia.geometry.epipolar import numeric, projection, triangulation
 
 
 def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.Tensor) -> torch.Tensor:
