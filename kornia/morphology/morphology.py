@@ -4,6 +4,10 @@ import torch.nn.functional as F
 from typing import List, Optional
 
 
+MINUS_INFINITY: float = -1e4
+PLUS_INFINITY: float = 1e4
+
+
 # Dilation
 def dilation(
     tensor: torch.Tensor,
@@ -57,23 +61,20 @@ def dilation(
     if origin is None:
         origin = [se_h // 2, se_w // 2]
 
-    # minus infinity
-    minus_infinity: float = _minus_infinity(tensor)
-
     # pad
     pad_e: List[int] = [origin[1], se_w - origin[1] - 1, origin[0], se_h - origin[0] - 1]
     if border_type == 'geodesic':
-        border_value = minus_infinity
+        border_value = MINUS_INFINITY
         border_type = 'constant'
     output: torch.Tensor = F.pad(tensor, pad_e, mode=border_type, value=border_value)
 
     # computation
     if structuring_element is None:
         neighborhood = torch.zeros_like(kernel)
-        neighborhood[kernel == 0] = minus_infinity
+        neighborhood[kernel == 0] = MINUS_INFINITY
     else:
         neighborhood = structuring_element
-        neighborhood[kernel == 0] = minus_infinity
+        neighborhood[kernel == 0] = MINUS_INFINITY
 
     output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
     output, _ = torch.max(output + neighborhood.flip((0, 1)), 4)
@@ -135,23 +136,20 @@ def erosion(
     if origin is None:
         origin = [se_h // 2, se_w // 2]
 
-    # plus infinity
-    plus_infinity: float = _plus_infinity(tensor)
-
     # pad
     pad_e: List[int] = [origin[1], se_w - origin[1] - 1, origin[0], se_h - origin[0] - 1]
     if border_type == 'geodesic':
-        border_value = plus_infinity
+        border_value = PLUS_INFINITY
         border_type = 'constant'
     output: torch.Tensor = F.pad(tensor, pad_e, mode=border_type, value=border_value)
 
     # computation
     if structuring_element is None:
         neighborhood = torch.zeros_like(kernel)
-        neighborhood[kernel == 0] = _minus_infinity(tensor)
+        neighborhood[kernel == 0] = MINUS_INFINITY
     else:
         neighborhood = structuring_element
-        neighborhood[kernel == 0] = _minus_infinity(tensor)
+        neighborhood[kernel == 0] = MINUS_INFINITY
 
     output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
     output, _ = torch.min(output - neighborhood, 4)
@@ -467,36 +465,3 @@ def bottom_hat(
         )
         - tensor
     )
-
-
-# Infinity values to workaround for JIT
-def _plus_infinity(
-    tensor: torch.Tensor,
-    plus_infinity_16: float = torch.finfo(torch.float16).max,
-    plus_infinity_32: float = torch.finfo(torch.float32).max,
-    plus_infinity_64: float = torch.finfo(torch.float64).max,
-) -> float:
-    if tensor.dtype == torch.float16:
-        return plus_infinity_16
-    elif tensor.dtype == torch.float32:
-        return plus_infinity_32
-    elif tensor.dtype == torch.float64:
-        return plus_infinity_64
-    else:
-        raise RuntimeError(f"Expected tensor to be floating-point, got {tensor.dtype}")
-
-
-def _minus_infinity(
-    tensor: torch.Tensor,
-    minus_infinity_16: float = torch.finfo(torch.float16).min,
-    minus_infinity_32: float = torch.finfo(torch.float32).min,
-    minus_infinity_64: float = torch.finfo(torch.float64).min,
-) -> float:
-    if tensor.dtype == torch.float16:
-        return minus_infinity_16
-    elif tensor.dtype == torch.float32:
-        return minus_infinity_32
-    elif tensor.dtype == torch.float64:
-        return minus_infinity_64
-    else:
-        raise RuntimeError(f"Expected tensor to be floating-point, got {tensor.dtype}")
