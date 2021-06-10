@@ -2,7 +2,7 @@ import pytest
 import torch
 import torch.nn as nn
 
-from kornia.augmentation import RandomAffine3D, RandomRotation3D, RandomPerspective3D, RandomMotionBlur3D
+from kornia.augmentation import RandomAffine3D, RandomMotionBlur3D, RandomPerspective3D, RandomRotation3D
 
 
 class TestRandomAffine3DBackward:

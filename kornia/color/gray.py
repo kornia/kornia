@@ -1,6 +1,7 @@
+import warnings
+
 import torch
 import torch.nn as nn
-import warnings
 
 from kornia.color.rgb import bgr_to_rgb
 

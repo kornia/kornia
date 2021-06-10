@@ -1,13 +1,14 @@
-from typing import Tuple, List, Union, Dict, Optional, cast
 import random
+from typing import cast, Dict, List, Optional, Tuple, Union
 
 import torch
 from torch.distributions import Bernoulli
 
-from kornia.constants import Resample, BorderType, SamplePadding
+from kornia.constants import BorderType, Resample, SamplePadding
 from kornia.geometry import bbox_generator
-from ..utils import _adapted_sampling, _adapted_uniform, _adapted_beta, _joint_range_check, _common_param_check
 from kornia.utils import _extract_device_dtype
+
+from ..utils import _adapted_beta, _adapted_sampling, _adapted_uniform, _common_param_check, _joint_range_check
 
 
 def random_prob_generator(

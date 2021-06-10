@@ -1,9 +1,9 @@
+from functools import wraps
 from typing import Optional
 
 import numpy as np
 import torch
 import torch.nn as nn
-from functools import wraps
 
 
 def image_to_tensor(image: np.ndarray, keepdim: bool = True) -> torch.Tensor:

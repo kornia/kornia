@@ -1,9 +1,9 @@
-from typing import Tuple, Union, Optional
+from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 
-from kornia.filters import spatial_gradient, gaussian_blur2d
+from kornia.filters import gaussian_blur2d, spatial_gradient
 
 
 def harris_response(

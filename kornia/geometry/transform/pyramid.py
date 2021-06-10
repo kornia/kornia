@@ -1,12 +1,12 @@
-from typing import Tuple, List
-
 import math
+from typing import List, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.filters import gaussian_blur2d, filter2d
+from kornia.filters.filter import filter2d
+from kornia.filters.gaussian import gaussian_blur2d
 
 __all__ = ["PyrDown", "PyrUp", "ScalePyramid", "pyrdown", "pyrup", "build_pyramid"]
 

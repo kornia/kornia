@@ -1,13 +1,13 @@
-from typing import Union, Tuple, Dict, List
+from typing import Dict, List, Tuple, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from kornia.constants import pi
-from kornia.utils import create_meshgrid
+from kornia.filters import GaussianBlur2d, SpatialGradient
 from kornia.geometry.conversions import cart2pol
-from kornia.filters import SpatialGradient, GaussianBlur2d
+from kornia.utils import create_meshgrid
 
 # Precomputed coefficients for Von Mises kernel, given N and K(appa).
 sqrt2: float = 1.4142135623730951

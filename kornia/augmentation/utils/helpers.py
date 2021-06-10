@@ -1,8 +1,8 @@
-from typing import Tuple, Union, List, Callable, Optional, cast
+from functools import wraps
+from typing import Callable, cast, List, Optional, Tuple, Union
 
 import torch
-from torch.distributions import Uniform, Beta
-from functools import wraps
+from torch.distributions import Beta, Uniform
 
 from kornia.utils import _extract_device_dtype
 

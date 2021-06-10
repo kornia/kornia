@@ -1,10 +1,11 @@
-from typing import Tuple, Union, cast
+from typing import cast, Tuple, Union
 
 import torch
 import torch.nn as nn
 
 import kornia
 from kornia.augmentation.base import _AugmentationBase
+
 from .image import ImageSequential
 
 

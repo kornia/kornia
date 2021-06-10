@@ -1,13 +1,12 @@
 # Welcome to the Kornia setup.py.
 #
+import distutils.command.clean
 import glob
 import os
 import shutil
-
-from setuptools import setup, find_packages
 import subprocess
-import distutils.command.clean
 
+from setuptools import find_packages, setup
 
 ################
 # The variables below define the current version under
