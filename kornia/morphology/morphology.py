@@ -342,7 +342,7 @@ def gradient(
         origin=origin,
         border_type=border_type,
         border_value=border_value,
-        infinity=infinity
+        infinity=infinity,
     ) - erosion(
         tensor,
         kernel=kernel,
@@ -350,7 +350,7 @@ def gradient(
         origin=origin,
         border_type=border_type,
         border_value=border_value,
-        infinity=infinity
+        infinity=infinity,
     )
 
 
@@ -479,7 +479,7 @@ def bottom_hat(
             origin=origin,
             border_type=border_type,
             border_value=border_value,
-            infinity=infinity
+            infinity=infinity,
         )
         - tensor
     )
