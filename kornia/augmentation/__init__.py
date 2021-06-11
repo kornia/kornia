@@ -39,7 +39,7 @@ from .augmentation3d import (
     RandomVerticalFlip3D,
 )
 from .base import AugmentationBase2D, AugmentationBase3D
-from .container import AugmentationSequential, ImageSequential, VideoSequential
+from .container import AugmentationSequential, ImageSequential, PatchSequential, VideoSequential
 from .mix_augmentation import RandomCutMix, RandomMixUp
 
 __all__ = [
@@ -85,5 +85,6 @@ __all__ = [
     "RandomMotionBlur3D",
     "AugmentationSequential",
     "ImageSequential",
+    "PatchSequential",
     "VideoSequential",
 ]
