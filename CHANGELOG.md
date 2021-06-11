@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.4] - 2021-06-11
+
+### Added
+- Add Canny edge detection ([#1020](https://github.com/kornia/kornia/pull/1020))
+- Added Batched forward function ([#1058](https://github.com/kornia/kornia/pull/1058))
+- Added denormalize homography function [(#1061](https://github.com/kornia/kornia/pull/1061))
+- Added more augmentations containers ([#1014](https://github.com/kornia/kornia/pull/1014))
+- Added calibration module and Undistort 2D points function ([#1026](https://github.com/kornia/kornia/pull/1026))
+- Added patch augmentation container ([#1095](https://github.com/kornia/kornia/pull/1095))
+
+### Fixed
+- Remove lena ([#1059](https://github.com/kornia/kornia/pull/1059)) :)
+
+### Changed
+- Resize regardless of number of dims, considering the last two dims as image ([#1047](https://github.com/kornia/kornia/pull/1047))
+- Raise error if converting to unit8 image to gray with float weights ([#1057](https://github.com/kornia/kornia/pull/1057))
+- Filter 2D->2d, 3D->3d ([#1069](https://github.com/kornia/kornia/pull/1069))
+- Removed augmentation functional module. ([#1067](https://github.com/kornia/kornia/pull/1067))
+- Make Morphology compatible with both OpenCV and Scipy ([#1084](https://github.com/kornia/kornia/pull/1084))
+
+
 ## [0.5.3] - 2021-05-29
 
 ### Added
