@@ -79,7 +79,7 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) 
         invTilt = inverseTiltProjection(dist[..., 12], dist[..., 13])
 
         # Transposed untilt points (instead of [x,y,1]^T, we obtain [x,y,1])
-        pointsUntilt = torch.stack([x, y, torch.ones(x.shape, dtype=x.dtype)], -1) @ invTilt.transpose(-2, -1)
+        pointsUntilt = torch.stack([x, y, torch.ones(x.shape, device=x.device, dtype=x.dtype)], -1) @ invTilt.transpose(-2, -1)
         x = pointsUntilt[..., 0] / pointsUntilt[..., 2]
         y = pointsUntilt[..., 1] / pointsUntilt[..., 2]
 
