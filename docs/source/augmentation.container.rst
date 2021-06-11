@@ -34,6 +34,14 @@ mix usage of both image processing and augmentation modules.
    .. automethod:: forward
 
 
+PatchSequential
+---------------
+
+.. autoclass:: PatchSequential
+
+   .. automethod:: forward
+
+
 Video Data Augmentation
 -----------------------
 
