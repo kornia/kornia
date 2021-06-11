@@ -3,10 +3,10 @@ import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
-from kornia.morphology.morphology import bottom_hat
+from kornia.morphology import bottom_hat
 
 
-class TestBlackHat:
+class TestBottomHat:
     def test_smoke(self, device, dtype):
         kernel = torch.rand(3, 3, device=device, dtype=dtype)
         assert kernel is not None
@@ -18,15 +18,29 @@ class TestBlackHat:
         krnl = torch.ones(kernel, device=device, dtype=dtype)
         assert bottom_hat(img, krnl).shape == shape
 
-    def test_value(self, device, dtype):
-        input = torch.tensor([[0.5, 1.0, 0.3], [0.7, 0.3, 0.8], [0.4, 0.9, 0.2]], device=device, dtype=dtype)[
+    def test_kernel(self, device, dtype):
+        tensor = torch.tensor([[0.5, 1.0, 0.3], [0.7, 0.3, 0.8], [0.4, 0.9, 0.2]], device=device, dtype=dtype)[
             None, None, :, :
         ]
-        kernel = torch.tensor([[-1.0, 0.0, -1.0], [0.0, 0.0, 0.0], [-1.0, 0.0, -1.0]], device=device, dtype=dtype)
+        kernel = torch.tensor([[0.0, 1.0, 0.0], [1.0, 1.0, 1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype)
         expected = torch.tensor([[0.2, 0.0, 0.5], [0.0, 0.4, 0.0], [0.3, 0.0, 0.6]], device=device, dtype=dtype)[
             None, None, :, :
         ]
-        assert_allclose(bottom_hat(input, kernel), expected)
+        assert_allclose(bottom_hat(tensor, kernel), expected)
+
+    def test_structural_element(self, device, dtype):
+        tensor = torch.tensor([[0.5, 1.0, 0.3], [0.7, 0.3, 0.8], [0.4, 0.9, 0.2]], device=device, dtype=dtype)[
+            None, None, :, :
+        ]
+        structural_element = torch.tensor(
+            [[-1.0, 0.0, -1.0], [0.0, 0.0, 0.0], [-1.0, 0.0, -1.0]], device=device, dtype=dtype
+        )
+        expected = torch.tensor([[0.2, 0.0, 0.5], [0.0, 0.4, 0.0], [0.3, 0.0, 0.6]], device=device, dtype=dtype)[
+            None, None, :, :
+        ]
+        assert_allclose(
+            bottom_hat(tensor, torch.ones_like(structural_element), structuring_element=structural_element), expected
+        )
 
     def test_exception(self, device, dtype):
         input = torch.ones(1, 1, 3, 4, device=device, dtype=dtype)
