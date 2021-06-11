@@ -31,9 +31,9 @@ def inverseTiltProjection(taux: torch.Tensor, tauy: torch.Tensor) -> torch.Tenso
 
     R = Ry @ Rx
     invR22 = 1 / R[..., 2, 2]
-    invPz = torch.stack([invR22, zero, R[..., 0, 2] * invR22,
-                         zero, invR22, R[..., 1, 2] * invR22,
-                         zero, zero, one], -1).reshape(-1, 3, 3)
+    invPz = torch.stack(
+        [invR22, zero, R[..., 0, 2] * invR22, zero, invR22, R[..., 1, 2] * invR22, zero, zero, one], -1
+    ).reshape(-1, 3, 3)
 
     invTilt = R.transpose(-1, -2) @ invPz
     if ndim == 0:
@@ -88,12 +88,21 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) 
     for _ in range(5):
         r2 = x * x + y * y
 
-        inv_rad_poly = (1 + dist[..., 5:6] * r2 + dist[..., 6:7] * r2 * r2 + dist[..., 7:8] * r2**3) / (
-            1 + dist[..., 0:1] * r2 + dist[..., 1:2] * r2 * r2 + dist[..., 4:5] * r2**3)
-        deltaX = 2 * dist[..., 2:3] * x * y + dist[..., 3:4] * (r2 + 2 * x * x) + \
-            dist[..., 8:9] * r2 + dist[..., 9:10] * r2 * r2
-        deltaY = dist[..., 2:3] * (r2 + 2 * y * y) + 2 * dist[..., 3:4] * x * y + \
-            dist[..., 10:11] * r2 + dist[..., 11:12] * r2 * r2
+        inv_rad_poly = (1 + dist[..., 5:6] * r2 + dist[..., 6:7] * r2 * r2 + dist[..., 7:8] * r2 ** 3) / (
+            1 + dist[..., 0:1] * r2 + dist[..., 1:2] * r2 * r2 + dist[..., 4:5] * r2 ** 3
+        )
+        deltaX = (
+            2 * dist[..., 2:3] * x * y
+            + dist[..., 3:4] * (r2 + 2 * x * x)
+            + dist[..., 8:9] * r2
+            + dist[..., 9:10] * r2 * r2
+        )
+        deltaY = (
+            dist[..., 2:3] * (r2 + 2 * y * y)
+            + 2 * dist[..., 3:4] * x * y
+            + dist[..., 10:11] * r2
+            + dist[..., 11:12] * r2 * r2
+        )
 
         x = (x0 - deltaX) * inv_rad_poly
         y = (y0 - deltaY) * inv_rad_poly
