@@ -186,7 +186,7 @@ class PatchSequential(ImageSequential):
             restored_tensor = torch.nn.functional.pad(restored_tensor, [-i for i in pad])
         return restored_tensor
 
-    def forward_patchwisely(
+    def forward_patchwise(
         self,
         input: torch.Tensor,
         params: Optional[List[Optional[Dict[str, Dict[str, torch.Tensor]]]]] = None,
@@ -201,7 +201,7 @@ class PatchSequential(ImageSequential):
         input = torch.stack(out, dim=1)
         return input
 
-    def forward_batchwisely(
+    def forward_batchwise(
         self,
         input: torch.Tensor,
         params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None,
@@ -248,15 +248,15 @@ class PatchSequential(ImageSequential):
 
         if not self.patchwise_apply:
             if isinstance(input, (tuple,)):
-                input = self.forward_batchwisely(input[0], params), input[1]
+                input = self.forward_batchwise(input[0], params), input[1]
             else:
-                input = self.forward_batchwisely(input, params)
+                input = self.forward_batchwise(input, params)
         else:
             assert params is None, "Passing params to patchwise forward is currently not supported."
             if isinstance(input, (tuple,)):
-                input = self.forward_patchwisely(input[0]), input[1]
+                input = self.forward_patchwise(input[0]), input[1]
             else:
-                input = self.forward_patchwisely(input)
+                input = self.forward_patchwise(input)
 
         if isinstance(input, (tuple,)):
             input = (self.restore_from_patches(input[0], self.grid_size, pad=pad), input[1])
