@@ -299,8 +299,13 @@ class TestPatchSequential:
             keepdim=keepdim
         )
         input = torch.randn(*shape, device=device, dtype=dtype)
+        trans = torch.randn(shape[0], 3, 3, device=device, dtype=dtype)
         out = seq(input)
         assert out.shape[-3:] == input.shape[-3:]
+
+        out = seq((input, trans))
+        assert out[0].shape[-3:] == input.shape[-3:]
+        assert out[1].shape == trans.shape
 
     def test_intensity_only(self,):
         seq = K.PatchSequential(

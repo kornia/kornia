@@ -78,7 +78,7 @@ class AugmentationSequential(ImageSequential):
 
         for arg in args:
             if isinstance(arg, PatchSequential) and not arg.is_intensity_only():
-                warnings.warn(f"Geometric transformation detected in PatchSeqeuntial, which would break bbox, mask.")
+                warnings.warn("Geometric transformation detected in PatchSeqeuntial, which would break bbox, mask.")
 
     def apply_to_mask(
         self, input: torch.Tensor, module: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None
