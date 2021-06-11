@@ -61,6 +61,7 @@ class ExtractTensorPatches(nn.Module):
         >>> patches[:, -1]
         tensor([[[[3., 4., 5.],
                   [6., 7., 8.]]]])
+        >>> patches.shape
     """
 
     def __init__(

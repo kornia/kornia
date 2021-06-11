@@ -1,4 +1,5 @@
 from typing import cast, Dict, List, Optional, Tuple, Union
+import warnings
 
 import torch
 import torch.nn as nn
@@ -8,6 +9,7 @@ from kornia.constants import DataKey
 from kornia.geometry import transform_boxes, transform_points
 
 from .image import ImageSequential
+from .patch import PatchSequential
 
 
 class AugmentationSequential(ImageSequential):
@@ -55,7 +57,7 @@ class AugmentationSequential(ImageSequential):
 
     def __init__(
         self,
-        *args: _AugmentationBase,
+        *args: Union[_AugmentationBase, ImageSequential],
         data_keys: List[Union[str, int, DataKey]] = [DataKey.INPUT],
         same_on_batch: Optional[bool] = None,
         return_transform: Optional[bool] = None,
@@ -73,6 +75,10 @@ class AugmentationSequential(ImageSequential):
 
         if self.data_keys[0] != DataKey.INPUT:
             raise NotImplementedError(f"The first input must be {DataKey.INPUT}.")
+
+        for arg in args:
+            if isinstance(arg, PatchSequential) and not arg.is_intensity_only():
+                warnings.warn(f"Geometric transformation detected in PatchSeqeuntial, which would break bbox, mask.")
 
     def apply_to_mask(
         self, input: torch.Tensor, module: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None
@@ -221,6 +227,8 @@ class AugmentationSequential(ImageSequential):
                     input = self.inverse_by_key(input, module, param, dcate)
                 elif isinstance(module, IntensityAugmentationBase2D) and dcate in DataKey:
                     pass  # Do nothing
+                elif isinstance(module, PatchSequential) and module.is_intensity_only() and dcate in DataKey:
+                    pass  # Do nothing
                 else:
                     raise NotImplementedError(f"data_key {dcate} is not implemented for {module}.")
             outputs.append(input)
@@ -238,11 +246,11 @@ class AugmentationSequential(ImageSequential):
     ) -> Union[
         torch.Tensor, Tuple[torch.Tensor, torch.Tensor], List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]
     ]:
+        """Compute multiple tensors simultaneously according to ``self.data_keys``."""
         if data_keys is None:
             self._params = {}
             data_keys = cast(List[Union[str, int, DataKey]], self.data_keys)
 
-        """Compute multiple tensors simultaneously according to ``self.data_keys``."""
         assert len(args) == len(
             data_keys
         ), f"The number of inputs must align with the number of data_keys. Got {len(args)} and {len(data_keys)}."
@@ -251,7 +259,11 @@ class AugmentationSequential(ImageSequential):
         outputs = []
         for input, dcate in zip(args, data_keys):
             for module in self.children():
-                func_name = module.__class__.__name__
+                if isinstance(module, (ImageSequential,)):
+                    # Avoid same naming for sequential
+                    func_name = f"{module.__class__.__name__}-{hex(id(module))}"
+                else:
+                    func_name = module.__class__.__name__
                 # Check if a param recorded
                 param = self._params[func_name] if func_name in self._params else None
                 # Check if a param provided. If provided, it will overwrite the recorded ones.
@@ -262,6 +274,8 @@ class AugmentationSequential(ImageSequential):
                 elif isinstance(module, GeometricAugmentationBase2D) and dcate in DataKey:
                     input = self.apply_by_key(input, module, param, dcate)
                 elif isinstance(module, IntensityAugmentationBase2D) and dcate in DataKey:
+                    pass  # Do nothing
+                elif isinstance(module, PatchSequential) and module.is_intensity_only() and dcate in DataKey:
                     pass  # Do nothing
                 else:
                     raise NotImplementedError(f"data_key {dcate} is not implemented for {module}.")

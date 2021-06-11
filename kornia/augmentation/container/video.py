@@ -67,10 +67,10 @@ class VideoSequential(ImageSequential):
         elif self.data_format == "BTCHW":
             self._temporal_channel = 1
 
-    def __infer_channel_exclusive_batch_shape__(self, input: torch.Tensor) -> torch.Size:
+    def __infer_channel_exclusive_batch_shape__(self, input: torch.Tensor, chennel_index: int) -> torch.Size:
         batch_shape: torch.Size = input.shape
         # Fix mypy complains: error: Incompatible return value type (got "Tuple[int, ...]", expected "Size")
-        return cast(torch.Size, batch_shape[: self._temporal_channel] + batch_shape[self._temporal_channel + 1 :])
+        return cast(torch.Size, batch_shape[: chennel_index] + batch_shape[chennel_index + 1 :])
 
     def __repeat_param_across_channels__(self, param: torch.Tensor, frame_num: int) -> torch.Tensor:
         """Repeat parameters across channels.
@@ -107,7 +107,7 @@ class VideoSequential(ImageSequential):
         # Size of T
         frame_num = input.size(self._temporal_channel)
         # Got param generation shape to (B, C, H, W). Ignoring T.
-        batch_shape = self.__infer_channel_exclusive_batch_shape__(input)
+        batch_shape = self.__infer_channel_exclusive_batch_shape__(input, self._temporal_channel)
         input = self._input_shape_convert_in(input)
         input = input.reshape(-1, *batch_shape[1:])
         if not self.same_on_frame:

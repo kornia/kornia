@@ -270,3 +270,63 @@ class TestAugmentationSequential:
         )
         op_jit = torch.jit.script(op)
         assert_allclose(op(img), op_jit(img))
+
+
+class TestPatchSequential:
+    @pytest.mark.parametrize('shape', [(2, 3, 24, 24)])
+    @pytest.mark.parametrize('padding', ["same", "valid"])
+    @pytest.mark.parametrize('patchwise_apply', [True, False])
+    @pytest.mark.parametrize('same_on_batch', [True, False, None])
+    @pytest.mark.parametrize('keepdim', [True, False, None])
+    def test_forward(self, shape, padding, patchwise_apply, same_on_batch, keepdim, device, dtype):
+        seq = K.PatchSequential(
+            K.ImageSequential(
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
+                K.RandomPerspective(0.2, p=0.5),
+                K.RandomSolarize(0.1, 0.1, p=0.5),
+            ),
+            K.ColorJitter(0.1, 0.1, 0.1, 0.1),
+            K.ImageSequential(
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
+                K.RandomPerspective(0.2, p=0.5),
+                K.RandomSolarize(0.1, 0.1, p=0.5),
+            ),
+            K.ColorJitter(0.1, 0.1, 0.1, 0.1),
+            grid_size=(2, 2),
+            padding=padding,
+            patchwise_apply=patchwise_apply,
+            same_on_batch=same_on_batch,
+            keepdim=keepdim
+        )
+        input = torch.randn(*shape, device=device, dtype=dtype)
+        out = seq(input)
+        assert out.shape[-3:] == input.shape[-3:]
+
+    def test_intensity_only(self,):
+        seq = K.PatchSequential(
+            K.ImageSequential(
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
+                K.RandomPerspective(0.2, p=0.5),
+                K.RandomSolarize(0.1, 0.1, p=0.5),
+            ),
+            K.ColorJitter(0.1, 0.1, 0.1, 0.1),
+            K.ImageSequential(
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
+                K.RandomPerspective(0.2, p=0.5),
+                K.RandomSolarize(0.1, 0.1, p=0.5),
+            ),
+            K.ColorJitter(0.1, 0.1, 0.1, 0.1),
+            grid_size=(2, 2)
+        )
+        assert not seq.is_intensity_only()
+
+        seq = K.PatchSequential(
+            K.ImageSequential(
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
+            ),
+            K.ColorJitter(0.1, 0.1, 0.1, 0.1),
+            K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
+            K.ColorJitter(0.1, 0.1, 0.1, 0.1),
+            grid_size=(2, 2)
+        )
+        assert seq.is_intensity_only()
