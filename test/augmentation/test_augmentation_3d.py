@@ -131,31 +131,6 @@ class TestRandomHorizontalFlip3D:
         assert (f1(input)[0] == input).all()
         assert (f1(input)[1] == expected_transform).all()
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self, device):
-        @torch.jit.script
-        def op_script(data: torch.Tensor) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-
-            return kornia.apply_hflip3d(data)
-
-        input = torch.tensor([[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]]])  # 1 x 3 x 3
-
-        # Build jit trace
-        op_trace = torch.jit.trace(op_script, (input,))
-
-        # Create new inputs
-        input = torch.tensor([[0.0, 0.0, 0.0], [5.0, 5.0, 0.0], [0.0, 0.0, 0.0]])  # 3 x 3
-
-        input = input.repeat(2, 1, 1)  # 2 x 3 x 3
-
-        expected = torch.tensor([[[0.0, 0.0, 0.0], [0.0, 5.0, 5.0], [0.0, 0.0, 0.0]]])  # 3 x 3
-
-        expected = expected.repeat(2, 1, 1)
-
-        actual = op_trace(input)
-
-        assert_allclose(actual, expected)
-
     def test_gradcheck(self, device):
         input = torch.rand((1, 3, 3)).to(device)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
@@ -282,30 +257,6 @@ class TestRandomVerticalFlip3D:
         assert_allclose(f(input)[1], expected_transform_1)
         assert_allclose(f1(input)[0], input)
         assert_allclose(f1(input)[1], expected_transform)
-
-    @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self, device):
-        @torch.jit.script
-        def op_script(data: torch.Tensor) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-            return kornia.apply_vflip3d(data)
-
-        input = torch.tensor([[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]]])  # 4 x 4
-
-        # Build jit trace
-        op_trace = torch.jit.trace(op_script, (input,))
-
-        # Create new inputs
-        input = torch.tensor([[[0.0, 0.0, 0.0], [5.0, 5.0, 0.0], [0.0, 0.0, 0.0]]])  # 1 x 4 x 4
-
-        input = input.repeat(2, 1, 1)  # 2 x 4 x 4
-
-        expected = torch.tensor([[[[0.0, 0.0, 0.0], [5.0, 5.0, 0.0], [0.0, 0.0, 0.0]]]])  # 1 x 4 x 4
-
-        expected = expected.repeat(2, 1, 1)
-
-        actual = op_trace(input)
-
-        assert_allclose(actual, expected)
 
     def test_gradcheck(self, device):
         input = torch.rand((1, 3, 3)).to(device)  # 4 x 4
@@ -453,30 +404,6 @@ class TestRandomDepthicalFlip3D:
         assert_allclose(f(input)[1], expected_transform_1)
         assert_allclose(f1(input)[0], input)
         assert_allclose(f1(input)[1], expected_transform)
-
-    @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self, device):
-        @torch.jit.script
-        def op_script(data: torch.Tensor) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-            return kornia.apply_vflip3d(data)
-
-        input = torch.tensor([[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]]])  # 4 x 4
-
-        # Build jit trace
-        op_trace = torch.jit.trace(op_script, (input,))
-
-        # Create new inputs
-        input = torch.tensor([[[0.0, 0.0, 0.0], [5.0, 5.0, 0.0], [0.0, 0.0, 0.0]]])  # 1 x 4 x 4
-
-        input = input.repeat(2, 1, 1)  # 2 x 4 x 4
-
-        expected = torch.tensor([[[[0.0, 0.0, 0.0], [5.0, 5.0, 0.0], [0.0, 0.0, 0.0]]]])  # 1 x 4 x 4
-
-        expected = expected.repeat(2, 1, 1)
-
-        actual = op_trace(input)
-
-        assert_allclose(actual, expected)
 
     def test_gradcheck(self, device):
         input = torch.rand((1, 3, 3)).to(device)  # 4 x 4
@@ -747,42 +674,6 @@ class TestRandomRotation3D:
         assert_allclose(out, expected, rtol=1e-6, atol=1e-4)
         assert_allclose(mat, expected_transform, rtol=1e-6, atol=1e-4)
         assert_allclose(mat_2, expected_transform_2, rtol=1e-6, atol=1e-4)
-
-    @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self, device):
-
-        torch.manual_seed(0)  # for random reproductibility
-
-        @torch.jit.script
-        def op_script(data: torch.Tensor) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-            flags = dict(interpolation=torch.tensor(1), align_corners=torch.tensor(True))
-            return kornia.apply_rotation3d(data, params={"degrees": torch.tensor(45.0)}, flags=flags)
-
-        input = torch.tensor(
-            [
-                [[1.0, 0.0, 0.0, 2.0], [0.0, 0.0, 0.0, 0.0], [0.0, 1.0, 2.0, 0.0], [0.0, 0.0, 1.0, 2.0]],
-                [[1.0, 0.0, 0.0, 2.0], [0.0, 0.0, 0.0, 0.0], [0.0, 1.0, 2.0, 0.0], [0.0, 0.0, 1.0, 2.0]],
-                [[1.0, 0.0, 0.0, 2.0], [0.0, 0.0, 0.0, 0.0], [0.0, 1.0, 2.0, 0.0], [0.0, 0.0, 1.0, 2.0]],
-            ]
-        )  # 3 x 4 x 4
-
-        # Build jit trace
-        op_trace = torch.jit.trace(op_script, (input,))
-
-        # Create new inputs
-        input = torch.tensor(
-            [
-                [[0.0, 0.0, 0.0], [5.0, 5.0, 0.0], [0.0, 0.0, 0.0]],
-                [[0.0, 0.0, 0.0], [5.0, 5.0, 0.0], [0.0, 0.0, 0.0]],
-                [[0.0, 0.0, 0.0], [5.0, 5.0, 0.0], [0.0, 0.0, 0.0]],
-            ]
-        )  # 3 x 3 x 3
-
-        expected = torch.tensor([[[0.0000, 0.2584, 0.0000], [2.9552, 5.0000, 0.2584], [1.6841, 0.4373, 0.0000]]])
-
-        actual = op_trace(input)
-
-        assert_allclose(actual, expected, rtol=1e-6, atol=1e-4)
 
     def test_gradcheck(self, device):
 
