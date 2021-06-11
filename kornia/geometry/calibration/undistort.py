@@ -92,16 +92,16 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) 
             1 + dist[..., 0:1] * r2 + dist[..., 1:2] * r2 * r2 + dist[..., 4:5] * r2 ** 3
         )
         deltaX = (
-            2 * dist[..., 2:3] * x * y +
-            dist[..., 3:4] * (r2 + 2 * x * x) +
-            dist[..., 8:9] * r2 +
-            dist[..., 9:10] * r2 * r2
+            2 * dist[..., 2:3] * x * y
+            + dist[..., 3:4] * (r2 + 2 * x * x)
+            + dist[..., 8:9] * r2
+            + dist[..., 9:10] * r2 * r2
         )
         deltaY = (
-            dist[..., 2:3] * (r2 + 2 * y * y) +
-            2 * dist[..., 3:4] * x * y +
-            dist[..., 10:11] * r2 +
-            dist[..., 11:12] * r2 * r2
+            dist[..., 2:3] * (r2 + 2 * y * y)
+            + 2 * dist[..., 3:4] * x * y
+            + dist[..., 10:11] * r2
+            + dist[..., 11:12] * r2 * r2
         )
 
         x = (x0 - deltaX) * inv_rad_poly
