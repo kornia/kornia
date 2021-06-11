@@ -33,17 +33,19 @@ class TestUndistortion:
         pointsu = undistort_points(points, K, distCoeff)
         assert points.shape == (B, N, 2)
 
-    def test_opencv(self, device, dtype):
-        # ----- Test 1: using 5 distortion coefficients
+    def test_opencv_five_coeff(self, device, dtype):
+        # Test using 5 distortion coefficients
         pts = torch.tensor(
-            [[1028.0374, 788.7520], [1025.1218, 716.8726], [1022.1792, 645.1857]], device=device, dtype=dtype
+            [[1028.0374, 788.7520], [1025.1218, 716.8726], [1022.1792, 645.1857]],
+            device=device, dtype=dtype
         )
+
         K = torch.tensor(
             [[1.7315e03, 0.0000e00, 6.2289e02], [0.0000e00, 1.7320e03, 5.3537e02], [0.0000e00, 0.0000e00, 1.0000e00]],
-            device=device,
-            dtype=dtype,
+            device=device, dtype=dtype
         )
-        dist = torch.tensor([[-0.1007, 0.2650, -0.0018, 0.0007, -0.2597]], device=device, dtype=dtype)
+
+        dist = torch.tensor([-0.1007, 0.2650, -0.0018, 0.0007, -0.2597], device=device, dtype=dtype)
 
         # Expected ouput generated with OpenCV:
         # import cv2
@@ -55,28 +57,35 @@ class TestUndistortion:
         ptsu = undistort_points(pts, K, dist)
         assert_allclose(ptsu, ptsu_expected, rtol=1e-4, atol=1e-4)
 
-        # ----- Test 2: using 14 distortion coefficients
+    def test_opencv_all_coeff(self, device, dtype):
+        # Test using 14 distortion coefficients
+        pts = torch.tensor(
+            [[1028.0374, 788.7520], [1025.1218, 716.8726], [1022.1792, 645.1857]],
+            device=device, dtype=dtype
+        )
+
+        K = torch.tensor(
+            [[1.7315e03, 0.0000e00, 6.2289e02], [0.0000e00, 1.7320e03, 5.3537e02], [0.0000e00, 0.0000e00, 1.0000e00]],
+            device=device, dtype=dtype
+        )
+
         dist = torch.tensor(
             [
-                [
-                    -5.6388e-02,
-                    2.3881e-01,
-                    8.3374e-02,
-                    2.0710e-03,
-                    7.1349e00,
-                    5.6335e-02,
-                    -3.1738e-01,
-                    4.9981e00,
-                    -4.0287e-03,
-                    -2.8246e-02,
-                    -8.6064e-02,
-                    1.5543e-02,
-                    -1.7322e-01,
-                    2.3154e-03,
-                ]
-            ],
-            device=device,
-            dtype=dtype,
+                -5.6388e-02,
+                2.3881e-01,
+                8.3374e-02,
+                2.0710e-03,
+                7.1349e00,
+                5.6335e-02,
+                -3.1738e-01,
+                4.9981e00,
+                -4.0287e-03,
+                -2.8246e-02,
+                -8.6064e-02,
+                1.5543e-02,
+                -1.7322e-01,
+                2.3154e-03
+            ], device=device, dtype=dtype
         )
 
         # Expected ouput generated with OpenCV:
@@ -89,14 +98,14 @@ class TestUndistortion:
         ptsu = undistort_points(pts, K, dist)
         assert_allclose(ptsu, ptsu_expected, rtol=1e-4, atol=1e-4)
 
-        # ----- Test 3: udistort stereo points with data given in two batches using 14 distortion coefficients
+    def test_opencv_stereo(self, device, dtype):
+        # Udistort stereo points with data given in two batches using 14 distortion coefficients
         pts = torch.tensor(
             [
                 [[1028.0374, 788.7520], [1025.1218, 716.8726], [1022.1792, 645.1857]],
                 [[345.9135, 847.9113], [344.0880, 773.9890], [342.2381, 700.3029]],
             ],
-            device=device,
-            dtype=dtype,
+            device=device, dtype=dtype
         )
 
         K = torch.tensor(
@@ -112,8 +121,7 @@ class TestUndistortion:
                     [0.0000e00, 0.0000e00, 1.0000e00],
                 ],
             ],
-            device=device,
-            dtype=dtype,
+            device=device, dtype=dtype
         )
 
         dist = torch.tensor(
@@ -151,8 +159,7 @@ class TestUndistortion:
                     -5.7133e-02,
                 ],
             ],
-            device=device,
-            dtype=dtype,
+            device=device, dtype=dtype
         )
 
         # Expected ouput generated with OpenCV:
