@@ -93,8 +93,9 @@ class ImageSequential(nn.Sequential):
         return input
 
     def forward(
-        self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
-        params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None
+        self,
+        input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
+        params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         if params is None:
             params = {}

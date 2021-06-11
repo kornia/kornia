@@ -1,11 +1,12 @@
-from typing import Tuple, Union, Optional, List, Dict
+from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 
-from kornia.contrib.extract_patches import extract_tensor_patches
-from kornia.augmentation.base import _AugmentationBase, IntensityAugmentationBase2D
 from kornia.augmentation.augmentation import ColorJitter
+from kornia.augmentation.base import _AugmentationBase, IntensityAugmentationBase2D
+from kornia.contrib.extract_patches import extract_tensor_patches
+
 from .image import ImageSequential
 
 
@@ -108,7 +109,7 @@ class PatchSequential(ImageSequential):
             grid_size = self.grid_size
         if padding == "valid":
             ph, pw = input.size(-2) // grid_size[0], input.size(-1) // grid_size[1]
-            return (- pw // 2, pw // 2 - pw, - ph // 2, ph // 2 - ph)
+            return (-pw // 2, pw // 2 - pw, -ph // 2, ph // 2 - ph)
         elif padding == 'same':
             ph = input.size(-2) - input.size(-2) // grid_size[0] * grid_size[0]
             pw = input.size(-1) - input.size(-1) // grid_size[1] * grid_size[1]
@@ -117,8 +118,10 @@ class PatchSequential(ImageSequential):
             raise NotImplementedError(f"Expect `padding` as either 'valid' or 'same'. Got {padding}.")
 
     def extract_patches(
-        self, input: torch.Tensor, grid_size: Optional[Tuple[int, int]] = None,
-        pad: Optional[Tuple[int, int, int, int]] = None
+        self,
+        input: torch.Tensor,
+        grid_size: Optional[Tuple[int, int]] = None,
+        pad: Optional[Tuple[int, int, int, int]] = None,
     ) -> torch.Tensor:
         """Extract patches from tensor.
 
@@ -161,8 +164,10 @@ class PatchSequential(ImageSequential):
         return extract_tensor_patches(input, window_size, stride)
 
     def restore_from_patches(
-        self, patches: torch.Tensor, grid_size: Tuple[int, int] = (4, 4),
-        pad: Optional[Tuple[int, int, int, int]] = None
+        self,
+        patches: torch.Tensor,
+        grid_size: Tuple[int, int] = (4, 4),
+        pad: Optional[Tuple[int, int, int, int]] = None,
     ) -> torch.Tensor:
         """Restore input from patches.
 
@@ -187,24 +192,21 @@ class PatchSequential(ImageSequential):
         return restored_tensor
 
     def forward_patchwise(
-        self,
-        input: torch.Tensor,
-        params: Optional[List[Optional[Dict[str, Dict[str, torch.Tensor]]]]] = None,
+        self, input: torch.Tensor, params: Optional[List[Optional[Dict[str, Dict[str, torch.Tensor]]]]] = None
     ) -> torch.Tensor:  # NOTE: return_transform is always False here.
         if params is None:
             assert input.size(1) == len(list(self.children()))
             params = [None] * input.size(1)
         else:
             assert input.size(1) == len(list(self.children())) == len(params)
-        out = [proc(inp, param) for inp, proc, param in zip(
-            input.permute(1, 0, 2, 3, 4), list(self.children()), params)]
+        out = [
+            proc(inp, param) for inp, proc, param in zip(input.permute(1, 0, 2, 3, 4), list(self.children()), params)
+        ]
         input = torch.stack(out, dim=1)
         return input
 
     def forward_batchwise(
-        self,
-        input: torch.Tensor,
-        params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None,
+        self, input: torch.Tensor, params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None
     ) -> torch.Tensor:  # NOTE: return_transform is always False here.
         if self.same_on_batch:
             batch_shape = (input.size(1), *input.shape[-3:])

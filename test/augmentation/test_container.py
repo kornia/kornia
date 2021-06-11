@@ -296,7 +296,7 @@ class TestPatchSequential:
             padding=padding,
             patchwise_apply=patchwise_apply,
             same_on_batch=same_on_batch,
-            keepdim=keepdim
+            keepdim=keepdim,
         )
         input = torch.randn(*shape, device=device, dtype=dtype)
         trans = torch.randn(shape[0], 3, 3, device=device, dtype=dtype)
@@ -307,7 +307,7 @@ class TestPatchSequential:
         assert out[0].shape[-3:] == input.shape[-3:]
         assert out[1].shape == trans.shape
 
-    def test_intensity_only(self,):
+    def test_intensity_only(self):
         seq = K.PatchSequential(
             K.ImageSequential(
                 K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
@@ -321,17 +321,15 @@ class TestPatchSequential:
                 K.RandomSolarize(0.1, 0.1, p=0.5),
             ),
             K.ColorJitter(0.1, 0.1, 0.1, 0.1),
-            grid_size=(2, 2)
+            grid_size=(2, 2),
         )
         assert not seq.is_intensity_only()
 
         seq = K.PatchSequential(
-            K.ImageSequential(
-                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
-            ),
+            K.ImageSequential(K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5)),
             K.ColorJitter(0.1, 0.1, 0.1, 0.1),
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
             K.ColorJitter(0.1, 0.1, 0.1, 0.1),
-            grid_size=(2, 2)
+            grid_size=(2, 2),
         )
         assert seq.is_intensity_only()

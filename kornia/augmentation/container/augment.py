@@ -1,5 +1,5 @@
-from typing import cast, Dict, List, Optional, Tuple, Union
 import warnings
+from typing import cast, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
