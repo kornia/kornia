@@ -3,7 +3,7 @@ import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
-from kornia.morphology.morphology import dilation
+from kornia.morphology import dilation
 
 
 class TestDilate:
@@ -18,15 +18,29 @@ class TestDilate:
         krnl = torch.ones(kernel, device=device, dtype=dtype)
         assert dilation(img, krnl).shape == shape
 
-    def test_value(self, device, dtype):
+    def test_kernel(self, device, dtype):
         tensor = torch.tensor([[0.5, 1.0, 0.3], [0.7, 0.3, 0.8], [0.4, 0.9, 0.2]], device=device, dtype=dtype)[
             None, None, :, :
         ]
-        kernel = torch.tensor([[-1.0, 0.0, -1.0], [0.0, 0.0, 0.0], [-1.0, 0.0, -1.0]], device=device, dtype=dtype)
+        kernel = torch.tensor([[0.0, 1.0, 0.0], [1.0, 1.0, 1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype)
         expected = torch.tensor([[1.0, 1.0, 1.0], [0.7, 1.0, 0.8], [0.9, 0.9, 0.9]], device=device, dtype=dtype)[
             None, None, :, :
         ]
         assert_allclose(dilation(tensor, kernel), expected)
+
+    def test_structural_element(self, device, dtype):
+        tensor = torch.tensor([[0.5, 1.0, 0.3], [0.7, 0.3, 0.8], [0.4, 0.9, 0.2]], device=device, dtype=dtype)[
+            None, None, :, :
+        ]
+        structural_element = torch.tensor(
+            [[-1.0, 0.0, -1.0], [0.0, 0.0, 0.0], [-1.0, 0.0, -1.0]], device=device, dtype=dtype
+        )
+        expected = torch.tensor([[1.0, 1.0, 1.0], [0.7, 1.0, 0.8], [0.9, 0.9, 0.9]], device=device, dtype=dtype)[
+            None, None, :, :
+        ]
+        assert_allclose(
+            dilation(tensor, torch.ones_like(structural_element), structuring_element=structural_element), expected
+        )
 
     def test_exception(self, device, dtype):
         tensor = torch.ones(1, 1, 3, 4, device=device, dtype=dtype)
