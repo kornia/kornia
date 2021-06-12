@@ -16,6 +16,14 @@ class _TestParams:
 
 
 class _RealTestData:
+    @property
+    def height(self):
+        return 576
+
+    @property
+    def width(self):
+        return 720
+
     @staticmethod
     def _get_real_left_camera(batch_size, device, dtype):
         cam = torch.tensor([[996.40068207, 0., 375.02582169, 0.],
@@ -59,11 +67,6 @@ class _SmokeTestData:
         return intrinsics.expand(batch_size, -1, -1)
 
     @staticmethod
-    def _create_disparity_tensor(batch_size, height, width, max_disparity, device):
-        size = (batch_size, height, width)
-        return torch.randint(size=size, low=0, high=max_disparity, device=device, dtype=torch.float32)
-
-    @staticmethod
     def _create_left_camera(batch_size, device, dtype):
         return _SmokeTestData._create_rectified_camera(_TestParams, batch_size, device, dtype)
 
@@ -84,6 +87,11 @@ def batch_size(request):
 
 
 class TestStereoCamera:
+    @staticmethod
+    def _create_disparity_tensor(batch_size, height, width, max_disparity, device):
+        size = (batch_size, height, width)
+        return torch.randint(size=size, low=0, high=max_disparity, device=device, dtype=torch.float32)
+
     def test_stereo_camera_attributes_smoke(self, batch_size, device, dtype):
         tx_fx = -10
         left_rectified_camera, right_rectified_camera = _SmokeTestData._create_stereo_camera(batch_size, device, dtype,
@@ -119,8 +127,8 @@ class TestStereoCamera:
         tx_fx = -10
         left_rectified_camera, right_rectified_camera = _SmokeTestData._create_stereo_camera(batch_size, device, dtype,
                                                                                              tx_fx)
-        disparity_tensor = _SmokeTestData._create_disparity_tensor(batch_size, _TestParams.height, _TestParams.width,
-                                                                   max_disparity=2, device=device)
+        disparity_tensor = self._create_disparity_tensor(batch_size, _TestParams.height, _TestParams.width,
+                                                         max_disparity=2, device=device)
         stereo_camera = kornia.StereoCamera(left_rectified_camera, right_rectified_camera)
         xyz = stereo_camera.reproject_disparity_to_3D(disparity_tensor)
 
@@ -129,14 +137,14 @@ class TestStereoCamera:
         assert xyz.device == device
 
     def test_reproject_disparity_to_3D_real(self, batch_size, device, dtype):
-        import numpy as np
-        import cv2
-        disparity = torch.tensor(np.load("/home/marco/repos/kornia/test/geometry/disparity.npy"), device=device,
-                                 dtype=dtype)
-        disparity = disparity.expand(batch_size, -1, -1)
+        height, width = _RealTestData().height, _RealTestData().width
+        disparity_tensor = self._create_disparity_tensor(batch_size, height, width, max_disparity=80,
+                                                         device=device)
         left_rectified_camera, right_rectified_camera = _RealTestData._get_real_stereo_camera(batch_size, device, dtype)
         stereo_camera = kornia.StereoCamera(left_rectified_camera, right_rectified_camera)
 
-        a = cv2.reprojectImageTo3D(
-            disparity[0].numpy(), stereo_camera.Q[0].numpy())
-        b = stereo_camera.reproject_disparity_to_3D(disparity_tensor=disparity)
+        xyz = stereo_camera.reproject_disparity_to_3D(disparity_tensor)
+
+        assert xyz.shape == (batch_size, height, width, 3)
+        assert xyz.device == device
+        assert xyz.dtype == dtype
