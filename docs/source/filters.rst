@@ -8,8 +8,8 @@ The functions in this sections perform various image filtering operations.
 Blurring
 --------
 
-.. autofunction:: filter2D
-.. autofunction:: filter3D
+.. autofunction:: filter2d
+.. autofunction:: filter3d
 .. autofunction:: box_blur
 .. autofunction:: median_blur
 .. autofunction:: gaussian_blur2d
