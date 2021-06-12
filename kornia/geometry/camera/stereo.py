@@ -1,4 +1,5 @@
 import torch
+from kornia.geometry.conversions import convert_points_from_homogeneous
 
 
 class StereoCameraException(Exception):
@@ -62,13 +63,15 @@ class StereoCamera:
         if not torch.all(torch.eq(ty_fy, 0)):
             raise StereoCameraException("")
 
-    @staticmethod
-    def _check_depth_tensor(depth_tensor: torch.Tensor):
-        pass
+    def _check_disparity_tensor(self, disparity_tensor: torch.Tensor):
+        if disparity_tensor.shape[0] != self.batch_size:
+            raise StereoCameraException("")
 
-    @staticmethod
-    def _check_disparity_tensor(disparity_tensor: torch.Tensor):
-        pass
+        if disparity_tensor.ndim != 3:
+            raise StereoCameraException("")
+
+        if disparity_tensor.dtype != torch.float32:
+            raise StereoCameraException("")
 
     @property
     def batch_size(self) -> int:
@@ -117,18 +120,61 @@ class StereoCamera:
 
     @property
     def tx(self) -> torch.Tensor:
-        return -self.rectified_right_camera[..., 0, 3] / self.fx
+        return self.rectified_right_camera[..., 0, 3] / self.fx
 
     @property
     def Q(self) -> torch.Tensor:
         """
+            [ 1 0   0      -Cx      ]
+        Q = [ 0 1   0      -Cy      ]
+            [ 0 0   0       Fx      ]
+            [ 0 0 -1/Tx (Cx-Cx')/Tx ]
+        https://github.com/opencv/opencv/blob/438e2dc22802e801b65683f7df46eca62b625474/modules/calib3d/src/calibration.cpp#L2698
         """
         Q = torch.zeros((self.batch_size, 4, 4), device=self.device, dtype=self.dtype)
-        Q[:, 0, 0] = self.fy * self.tx
-        Q[:, 0, 3] = -self.fy * self.cx * self.tx
-        Q[:, 1, 1] = self.fx * self.tx
-        Q[:, 1, 3] = -self.fx * self.cy * self.tx
-        Q[:, 2, 3] = self.fx * self.fy * self.tx
-        Q[:, 3, 2] = -self.fy
-        Q[:, 3, 3] = self.fy
+        Q[:, 0, 0] = 1
+        Q[:, 1, 1] = 1
+        Q[:, 0, 3] = -self.cx
+        Q[:, 1, 3] = -self.cy
+        Q[:, 2, 3] = self.fx
+        Q[:, 3, 2] = -1 / self.tx
+        Q[:, 3, 3] = 0  # TODO: Correct for different principal points
         return Q
+
+    def reproject_disparity_to_3D(self, disparity_tensor):
+        """
+
+        Args:
+            disparity_tensor:
+
+        Returns:
+
+        """
+        self._check_disparity_tensor(disparity_tensor)
+        return reproject_disparity_to_3D(disparity_tensor, self.Q)
+
+
+def reproject_disparity_to_3D(disparity_tensor, Q_matrix):
+    """
+
+    Args:
+        disparity_tensor:
+        Q_matrix:
+
+    Returns:
+
+    """
+    batch_size, rows, cols = disparity_tensor.shape
+    if not Q_matrix.shape == (batch_size, 4, 4):
+        raise StereoCameraException("")
+    dtype = disparity_tensor.dtype
+    device = disparity_tensor.device
+    x, y = torch.meshgrid(
+        torch.arange(rows, dtype=dtype, device=device),
+        torch.arange(cols, dtype=dtype, device=device))
+    x = x.expand(batch_size, -1, -1)
+    y = y.expand(batch_size, -1, -1)
+    z = torch.ones((batch_size, rows, cols), dtype=dtype, device=device)
+    xydz = torch.stack((x, y, disparity_tensor, z), -1).permute(0, 3, 1, 2).reshape(batch_size, 4, -1)
+    hom_points = torch.bmm(Q_matrix, xydz)
+    return convert_points_from_homogeneous(hom_points.permute(0, 2, 1)).reshape(batch_size, rows, cols, 3)
