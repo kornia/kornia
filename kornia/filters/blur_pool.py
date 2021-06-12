@@ -1,11 +1,9 @@
-from typing import List, Tuple
+from typing import Tuple
 
 import torch
-import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 
-import kornia
 from .kernels import get_pascal_kernel_2d
 from .median import _compute_zero_padding  # TODO: Move to proper place
 
@@ -34,6 +32,7 @@ class BlurPool2D(nn.Module):
                 \text{kernel\_size}[1]}{\text{stride}[1]} + 1\right\rfloor
 
     Examples:
+        >>> from kornia.filters.blur_pool import BlurPool2D
         >>> input = torch.eye(5)[None, None]
         >>> bp = BlurPool2D(kernel_size=3, stride=2)
         >>> bp(input)
@@ -74,6 +73,8 @@ class MaxBlurPool2D(nn.Module):
         torch.Tensor: the transformed tensor.
 
     Examples:
+        >>> import torch.nn as nn
+        >>> from kornia.filters.blur_pool import BlurPool2D
         >>> input = torch.eye(5)[None, None]
         >>> mbp = MaxBlurPool2D(kernel_size=3, stride=2, max_pool_size=2, ceil_mode=False)
         >>> mbp(input)

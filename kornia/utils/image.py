@@ -1,4 +1,4 @@
-from typing import Optional
+from functools import wraps
 
 import numpy as np
 import torch
@@ -117,7 +117,7 @@ def tensor_to_image(tensor: torch.Tensor) -> np.ndarray:
 
     if len(input_shape) == 2:
         # (H, W) -> (H, W)
-        image = image
+        pass
     elif len(input_shape) == 3:
         # (C, H, W) -> (H, W, C)
         if input_shape[0] == 1:
@@ -152,3 +152,24 @@ class ImageToTensor(nn.Module):
 
     def forward(self, x: np.ndarray) -> torch.Tensor:
         return image_to_tensor(x, keepdim=self.keepdim)
+
+
+def perform_keep_shape(f):
+    """TODO: where can we put this?"""
+
+    @wraps(f)
+    def _wrapper(input, *args, **kwargs):
+        input_shape = input.shape
+        if len(input_shape) == 2:
+            input = input[None]
+
+        dont_care_shape = input.shape[:-3]
+        input = input.view(-1, input.shape[-3], input.shape[-2], input.shape[-1])
+
+        output = f(input, *args, **kwargs)
+        output = output.view(*(dont_care_shape + output.shape[-3:]))
+        if len(input_shape) == 2:
+            output = output[0]
+        return output
+
+    return _wrapper

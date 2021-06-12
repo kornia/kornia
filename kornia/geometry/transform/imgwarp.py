@@ -1,19 +1,19 @@
-from typing import Tuple, Optional
 import warnings
+from typing import Optional, Tuple
 
 import torch
 import torch.nn.functional as F
 
-from kornia.geometry.transform.homography_warper import normalize_homography, homography_warp
 from kornia.geometry.conversions import (
-    deg2rad,
-    normalize_pixel_coordinates,
     convert_affinematrix_to_homography,
     convert_affinematrix_to_homography3d,
+    deg2rad,
+    normalize_pixel_coordinates,
 )
+from kornia.geometry.linalg import transform_points
+from kornia.geometry.transform.homography_warper import normalize_homography
 from kornia.geometry.transform.projwarp import get_projective_transform
 from kornia.utils import create_meshgrid
-from kornia.geometry.linalg import transform_points
 from kornia.utils.helpers import _torch_inverse_cast, _torch_solve_cast
 
 __all__ = [
@@ -574,7 +574,7 @@ def get_affine_matrix2d(
     # pad transform to get Bx3x3
     transform_h = convert_affinematrix_to_homography(transform)
 
-    if any([s is not None for s in [sx, sy]]):
+    if any(s is not None for s in [sx, sy]):
         shear_mat = get_shear_matrix2d(center, sx, sy)
         transform_h = transform_h @ shear_mat
 
@@ -678,7 +678,7 @@ def get_affine_matrix3d(
 
     # pad transform to get Bx3x3
     transform_h = convert_affinematrix_to_homography3d(transform)
-    if any([s is not None for s in [sxy, sxz, syx, syz, szx, szy]]):
+    if any(s is not None for s in [sxy, sxz, syx, syz, szx, szy]):
         shear_mat = get_shear_matrix3d(center, sxy, sxz, syx, syz, szx, szy)
         transform_h = transform_h @ shear_mat
 

@@ -1,23 +1,21 @@
-from typing import Tuple, Dict, Optional
+import math
+from typing import Dict, Optional
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import math
-from kornia.filters import get_gaussian_kernel2d
-from kornia.filters import SpatialGradient
+
 from kornia.constants import pi
 from kornia.feature import (
     extract_patches_from_pyramid,
-    make_upright,
-    normalize_laf,
+    get_laf_orientation,
     raise_error_if_laf_is_not_valid,
     set_laf_orientation,
-    get_laf_orientation,
 )
+from kornia.filters import get_gaussian_kernel2d, SpatialGradient
 from kornia.geometry import rad2deg
 
-urls: Dict[str, str] = dict()
+urls: Dict[str, str] = {}
 urls["orinet"] = "https://github.com/ducha-aiki/affnet/raw/master/pretrained/OriNet.pth"
 
 
@@ -55,7 +53,6 @@ class PatchDominantGradientOrientation(nn.Module):
             self.angular_smooth.weight[:] = torch.tensor([[[0.33, 0.34, 0.33]]])
         sigma: float = float(self.patch_size) / math.sqrt(2.0)
         self.weighting = get_gaussian_kernel2d((self.patch_size, self.patch_size), (sigma, sigma), True)
-        return
 
     def __repr__(self):
         return (
@@ -173,7 +170,6 @@ class OriNet(nn.Module):
                 urls['orinet'], map_location=lambda storage, loc: storage
             )
             self.load_state_dict(pretrained_dict['state_dict'], strict=False)
-        return
 
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
@@ -213,7 +209,6 @@ class LAFOrienter(nn.Module):
             self.angle_detector = PatchDominantGradientOrientation(self.patch_size, self.num_ang_bins)
         else:
             self.angle_detector = angle_detector
-        return
 
     def __repr__(self):
         return (

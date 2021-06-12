@@ -1,9 +1,9 @@
+import enum
 import warnings
 from typing import Tuple
+
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
-import enum
 
 from kornia.constants import pi
 
@@ -138,7 +138,7 @@ def convert_points_from_homogeneous(points: torch.Tensor, eps: float = 1e-8) -> 
     if len(points.shape) < 2:
         raise ValueError("Input must be at least a 2D tensor. Got {}".format(points.shape))
 
-    # we check for points at infinity
+    # we check for points at max_val
     z_vec: torch.Tensor = points[..., -1:]
 
     # set the results of division by zeror/near-zero to 1.0
@@ -368,8 +368,7 @@ def rotation_matrix_to_quaternion(
         qz = safe_zero_division(m10 - m01, sq)
         if order == QuaternionCoeffOrder.XYZW:
             return torch.cat((qx, qy, qz, qw), dim=-1)
-        else:
-            return torch.cat((qw, qx, qy, qz), dim=-1)
+        return torch.cat((qw, qx, qy, qz), dim=-1)
 
     def cond_1():
         sq = torch.sqrt(1.0 + m00 - m11 - m22 + eps) * 2.0  # sq = 4 * qx.
@@ -379,8 +378,7 @@ def rotation_matrix_to_quaternion(
         qz = safe_zero_division(m02 + m20, sq)
         if order == QuaternionCoeffOrder.XYZW:
             return torch.cat((qx, qy, qz, qw), dim=-1)
-        else:
-            return torch.cat((qw, qx, qy, qz), dim=-1)
+        return torch.cat((qw, qx, qy, qz), dim=-1)
 
     def cond_2():
         sq = torch.sqrt(1.0 + m11 - m00 - m22 + eps) * 2.0  # sq = 4 * qy.
@@ -390,8 +388,7 @@ def rotation_matrix_to_quaternion(
         qz = safe_zero_division(m12 + m21, sq)
         if order == QuaternionCoeffOrder.XYZW:
             return torch.cat((qx, qy, qz, qw), dim=-1)
-        else:
-            return torch.cat((qw, qx, qy, qz), dim=-1)
+        return torch.cat((qw, qx, qy, qz), dim=-1)
 
     def cond_3():
         sq = torch.sqrt(1.0 + m22 - m00 - m11 + eps) * 2.0  # sq = 4 * qz.
@@ -401,8 +398,7 @@ def rotation_matrix_to_quaternion(
         qz = 0.25 * sq
         if order == QuaternionCoeffOrder.XYZW:
             return torch.cat((qx, qy, qz, qw), dim=-1)
-        else:
-            return torch.cat((qw, qx, qy, qz), dim=-1)
+        return torch.cat((qw, qx, qy, qz), dim=-1)
 
     where_2 = torch.where(m11 > m22, cond_2(), cond_3())
     where_1 = torch.where((m00 > m11) & (m00 > m22), cond_1(), where_2)

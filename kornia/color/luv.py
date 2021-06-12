@@ -3,8 +3,8 @@ from typing import Tuple
 import torch
 import torch.nn as nn
 
+from .rgb import linear_rgb_to_rgb, rgb_to_linear_rgb
 from .xyz import rgb_to_xyz, xyz_to_rgb
-from .rgb import rgb_to_linear_rgb, linear_rgb_to_rgb
 
 """
 The RGB to Luv color transformations were translated from scikit image's rgb2luv and luv2rgb
@@ -140,9 +140,6 @@ class RgbToLuv(nn.Module):
         [3] http://www.poynton.com/ColorFAQ.html
     """
 
-    def __init__(self) -> None:
-        super(RgbToLuv, self).__init__()
-
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgb_to_luv(image)
 
@@ -169,9 +166,6 @@ class LuvToRgb(nn.Module):
 
         [3] http://www.poynton.com/ColorFAQ.html
     """
-
-    def __init__(self) -> None:
-        super(LuvToRgb, self).__init__()
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return luv_to_rgb(image)

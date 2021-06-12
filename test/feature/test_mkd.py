@@ -3,7 +3,6 @@ from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
 import kornia.testing as utils  # test utils
-from kornia.constants import pi
 from kornia.feature.mkd import *
 
 

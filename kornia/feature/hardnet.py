@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-urls: Dict[str, str] = dict()
+urls: Dict[str, str] = {}
 urls["hardnet++"] = "https://github.com/DagnyT/hardnet/raw/master/pretrained/pretrained_all_datasets/HardNet++.pth"
 urls[
     "liberty_aug"

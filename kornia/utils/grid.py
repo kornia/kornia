@@ -1,7 +1,6 @@
-from typing import Optional, Union
+from typing import Optional
 
 import torch
-import kornia as K
 
 
 def create_meshgrid(

@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 # Based on
 # https://github.com/tensorflow/models/blob/master/research/struct2depth/model.py#L625-L641
@@ -97,9 +96,6 @@ class InverseDepthSmoothnessLoss(nn.Module):
         >>> smooth = InverseDepthSmoothnessLoss()
         >>> loss = smooth(idepth, image)
     """
-
-    def __init__(self) -> None:
-        super(InverseDepthSmoothnessLoss, self).__init__()
 
     def forward(self, idepth: torch.Tensor, image: torch.Tensor) -> torch.Tensor:
         return inverse_depth_smoothness_loss(idepth, image)

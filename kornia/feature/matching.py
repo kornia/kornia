@@ -1,5 +1,6 @@
+from typing import Optional, Tuple
+
 import torch
-from typing import Tuple, Optional
 
 
 def match_nn(

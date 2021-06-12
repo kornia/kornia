@@ -1,14 +1,20 @@
-from typing import Tuple, Dict, Optional
+import math
+from typing import Dict, Optional
 
 import torch
 import torch.nn as nn
-import math
-from kornia.filters import get_gaussian_kernel2d
-from kornia.filters import SpatialGradient
-from kornia.feature.laf import ellipse_to_laf, get_laf_scale, raise_error_if_laf_is_not_valid, scale_laf, make_upright
-from kornia.feature import extract_patches_from_pyramid
 
-urls: Dict[str, str] = dict()
+from kornia.feature.laf import (
+    ellipse_to_laf,
+    extract_patches_from_pyramid,
+    get_laf_scale,
+    make_upright,
+    raise_error_if_laf_is_not_valid,
+    scale_laf,
+)
+from kornia.filters import get_gaussian_kernel2d, SpatialGradient
+
+urls: Dict[str, str] = {}
 urls["affnet"] = "https://github.com/ducha-aiki/affnet/raw/master/pretrained/AffNet.pth"
 
 
@@ -27,7 +33,6 @@ class PatchAffineShapeEstimator(nn.Module):
         self.eps: float = eps
         sigma: float = float(self.patch_size) / math.sqrt(2.0)
         self.weighting: torch.Tensor = get_gaussian_kernel2d((self.patch_size, self.patch_size), (sigma, sigma), True)
-        return
 
     def __repr__(self):
         return self.__class__.__name__ + '(' 'patch_size=' + str(self.patch_size) + ', ' + 'eps=' + str(self.eps) + ')'
@@ -176,7 +181,6 @@ class LAFAffNetShapeEstimator(nn.Module):
                 urls['affnet'], map_location=lambda storage, loc: storage
             )
             self.load_state_dict(pretrained_dict['state_dict'], strict=False)
-        return
 
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:

@@ -1,13 +1,11 @@
-from typing import Tuple, List, Union, Dict, Optional, cast
-import random
-import math
+from typing import Dict, Optional, Tuple, Union
 
 import torch
 
-from kornia.constants import Resample, BorderType
 from kornia.geometry import bbox_generator3d
-from ..utils import _adapted_uniform, _joint_range_check, _tuple_range_reader
 from kornia.utils import _extract_device_dtype
+
+from ..utils import _adapted_uniform, _joint_range_check
 
 
 def random_rotation_generator3d(
@@ -93,7 +91,7 @@ def random_affine_generator3d(
         The generated random numbers are not reproducible across different devices and dtypes.
     """
     assert (
-        type(depth) == int and depth > 0 and type(height) == int and height > 0 and type(width) == int and width > 0
+        type(depth) is int and depth > 0 and type(height) is int and height > 0 and type(width) is int and width > 0
     ), f"'depth', 'height' and 'width' must be integers. Got {depth}, {height}, {width}."
 
     _device, _dtype = _extract_device_dtype([degrees, translate, scale, shears])
@@ -263,7 +261,7 @@ def center_crop_generator3d(
     if not isinstance(size, (tuple, list)) and len(size) == 3:
         raise ValueError("Input size must be a tuple/list of length 3. Got {}".format(size))
     assert (
-        type(depth) == int and depth > 0 and type(height) == int and height > 0 and type(width) == int and width > 0
+        type(depth) is int and depth > 0 and type(height) is int and height > 0 and type(width) is int and width > 0
     ), f"'depth', 'height' and 'width' must be integers. Got {depth}, {height}, {width}."
     assert (
         depth >= size[0] and height >= size[1] and width >= size[2]

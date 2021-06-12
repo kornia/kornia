@@ -1,4 +1,4 @@
-from typing import Tuple, Optional
+from typing import Tuple
 
 import torch
 import torch.nn.functional as F
@@ -78,8 +78,8 @@ def elastic_transform2d(
     disp_x: torch.Tensor = noise[:, :1]
     disp_y: torch.Tensor = noise[:, 1:]
 
-    disp_x = kornia.filters.filter2D(disp_x, kernel=kernel_y, border_type='constant') * alpha[0]
-    disp_y = kornia.filters.filter2D(disp_y, kernel=kernel_x, border_type='constant') * alpha[1]
+    disp_x = kornia.filters.filter2d(disp_x, kernel=kernel_y, border_type='constant') * alpha[0]
+    disp_y = kornia.filters.filter2d(disp_y, kernel=kernel_x, border_type='constant') * alpha[1]
 
     # stack and normalize displacement
     disp = torch.cat([disp_x, disp_y], dim=1).permute(0, 2, 3, 1)

@@ -1,53 +1,45 @@
-from re import S
-from typing import Callable, Tuple, Union, List, Optional, Dict, cast
 import warnings
+from typing import cast, Dict, List, Optional, Tuple, Union
 
 import torch
-from torch.functional import Tensor
-import torch.nn as nn
 from torch.nn.functional import pad
 
-from kornia.constants import Resample, BorderType, SamplePadding, pi
 from kornia.augmentation.base import GeometricAugmentationBase2D, IntensityAugmentationBase2D
-from kornia.filters import gaussian_blur2d, motion_blur
+from kornia.color import rgb_to_grayscale
+from kornia.constants import BorderType, pi, Resample, SamplePadding
+from kornia.enhance import (
+    adjust_brightness,
+    adjust_contrast,
+    adjust_hue,
+    adjust_saturation,
+    equalize,
+    invert,
+    posterize,
+    sharpness,
+    solarize,
+)
+from kornia.enhance.normalize import denormalize, normalize
+from kornia.filters import box_blur, gaussian_blur2d, motion_blur
 from kornia.geometry import (
     affine,
     bbox_generator,
     bbox_to_mask,
-    crop_by_boxes,
     crop_by_transform_mat,
     deg2rad,
     elastic_transform2d,
-    get_perspective_transform,
     get_affine_matrix2d,
+    get_perspective_transform,
     get_tps_transform,
     hflip,
+    remap,
+    resize,
     vflip,
-    rotate,
     warp_affine,
     warp_image_tps,
     warp_perspective,
-    remap,
-    resize,
 )
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
-from kornia.color import rgb_to_grayscale
-from kornia.enhance import (
-    equalize,
-    posterize,
-    solarize,
-    sharpness,
-    adjust_brightness,
-    adjust_contrast,
-    adjust_saturation,
-    adjust_hue,
-    adjust_gamma,
-    Invert,
-)
-from kornia.filters import box_blur
 from kornia.utils import _extract_device_dtype, create_meshgrid
-from kornia.enhance.normalize import normalize, denormalize
-from kornia.enhance import Invert
 
 from . import random_generator as rg
 from .utils import _range_bound, _transform_input
@@ -677,13 +669,13 @@ class RandomAffine(GeometricAugmentationBase2D):
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return get_affine_matrix2d(
-            params['translations'],
-            params['center'],
-            params['scale'],
-            params['angle'],
-            deg2rad(params['sx']),
-            deg2rad(params['sy']),
-        ).type_as(input)
+            torch.as_tensor(params['translations'], device=input.device, dtype=input.dtype),
+            torch.as_tensor(params['center'], device=input.device, dtype=input.dtype),
+            torch.as_tensor(params['scale'], device=input.device, dtype=input.dtype),
+            torch.as_tensor(params['angle'], device=input.device, dtype=input.dtype),
+            deg2rad(torch.as_tensor(params['sx'], device=input.device, dtype=input.dtype)),
+            deg2rad(torch.as_tensor(params['sy'], device=input.device, dtype=input.dtype)),
+        )
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
@@ -794,7 +786,7 @@ class CenterCrop(GeometricAugmentationBase2D):
             return crop_by_transform_mat(
                 input, transform[:, :2, :], self.size, self.resample.name.lower(), 'zeros', self.align_corners
             )
-        elif self.cropping_mode == 'slice':  # uses advanced slicing to crop
+        if self.cropping_mode == 'slice':  # uses advanced slicing to crop
             # TODO: implement as separated function `crop_and_resize_iterative`
             B, C, _, _ = input.shape
             H, W = self.size
@@ -806,8 +798,7 @@ class CenterCrop(GeometricAugmentationBase2D):
                 y2 = int(params['src'][i, 3, 1]) + 1
                 out[i] = input[i : i + 1, :, y1:y2, x1:x2]
             return out
-        else:
-            raise NotImplementedError(f"Not supported type: {self.cropping_mode}.")
+        raise NotImplementedError(f"Not supported type: {self.cropping_mode}.")
 
     def inverse_transform(
         self,
@@ -1078,7 +1069,7 @@ class RandomCrop(GeometricAugmentationBase2D):
                 padding_mode='zeros',
                 align_corners=self.align_corners,
             )
-        elif self.cropping_mode == 'slice':  # uses advanced slicing to crop
+        if self.cropping_mode == 'slice':  # uses advanced slicing to crop
             B, C, _, _ = input.shape
             out = torch.empty(B, C, *self.size, device=input.device, dtype=input.dtype)
             for i in range(B):
@@ -1088,8 +1079,7 @@ class RandomCrop(GeometricAugmentationBase2D):
                 y2 = int(params['src'][i, 3, 1]) + 1
                 out[i] = input[i : i + 1, :, y1:y2, x1:x2]
             return out
-        else:
-            raise NotImplementedError(f"Not supported type: {self.flags['mode']}.")
+        raise NotImplementedError(f"Not supported type: {self.flags['mode']}.")
 
     def inverse_transform(
         self,
@@ -1153,10 +1143,9 @@ class RandomCrop(GeometricAugmentationBase2D):
             # undo the pre-crop if nothing happened.
             if isinstance(out, tuple) and isinstance(input, tuple):
                 return input[0], out[1]
-            elif isinstance(out, tuple) and not isinstance(input, tuple):
+            if isinstance(out, tuple) and not isinstance(input, tuple):
                 return input, out[1]
-            else:
-                return input
+            return input
         return out
 
 
@@ -1279,7 +1268,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
                 padding_mode='zeros',
                 align_corners=self.align_corners,
             )
-        elif self.cropping_mode == 'slice':  # uses advanced slicing to crop
+        if self.cropping_mode == 'slice':  # uses advanced slicing to crop
             B, C, _, _ = input.shape
             out = torch.empty(B, C, *self.size, device=input.device, dtype=input.dtype)
             for i in range(B):
@@ -1294,8 +1283,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
                     align_corners=self.align_corners,
                 )
             return out
-        else:
-            raise NotImplementedError(f"Not supported type: {self.cropping_mode}.")
+        raise NotImplementedError(f"Not supported type: {self.cropping_mode}.")
 
     def inverse_transform(
         self,
@@ -1891,7 +1879,6 @@ class RandomInvert(IntensityAugmentationBase2D):
         super(RandomInvert, self).__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0
         )
-        self.transform = Invert(max_val)
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
@@ -1899,7 +1886,7 @@ class RandomInvert(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        return self.transform(input)
+        return invert(input)
 
 
 class RandomChannelShuffle(IntensityAugmentationBase2D):

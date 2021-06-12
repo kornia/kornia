@@ -1,10 +1,8 @@
-from typing import Tuple
-
 import torch
 import torch.nn as nn
 
+from .rgb import linear_rgb_to_rgb, rgb_to_linear_rgb
 from .xyz import rgb_to_xyz, xyz_to_rgb
-from .rgb import rgb_to_linear_rgb, linear_rgb_to_rgb
 
 """
 The RGB to Lab color transformations were translated from scikit image's rgb2lab and lab2rgb
@@ -146,9 +144,6 @@ class RgbToLab(nn.Module):
         [3] https://github.com/torch/image/blob/dc061b98fb7e946e00034a5fc73e883a299edc7f/generic/image.c#L1467
     """
 
-    def __init__(self) -> None:
-        super(RgbToLab, self).__init__()
-
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgb_to_lab(image)
 
@@ -175,9 +170,6 @@ class LabToRgb(nn.Module):
 
         [3] https://github.com/torch/image/blob/dc061b98fb7e946e00034a5fc73e883a299edc7f/generic/image.c#L1518
     """
-
-    def __init__(self) -> None:
-        super(LabToRgb, self).__init__()
 
     def forward(self, image: torch.Tensor, clip: bool = True) -> torch.Tensor:
         return lab_to_rgb(image, clip)

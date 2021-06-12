@@ -43,7 +43,7 @@ def box_blur(
     kernel: torch.Tensor = get_box_kernel2d(kernel_size)
     if normalized:
         kernel = normalize_kernel2d(kernel)
-    return kornia.filter2D(input, kernel, border_type)
+    return kornia.filter2d(input, kernel, border_type)
 
 
 class BoxBlur(nn.Module):

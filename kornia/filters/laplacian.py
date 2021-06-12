@@ -1,11 +1,8 @@
-from typing import Tuple
-
 import torch
 import torch.nn as nn
 
 import kornia
-from kornia.filters.kernels import get_laplacian_kernel2d
-from kornia.filters.kernels import normalize_kernel2d
+from kornia.filters.kernels import get_laplacian_kernel2d, normalize_kernel2d
 
 
 def laplacian(
@@ -38,7 +35,7 @@ def laplacian(
     if normalized:
         kernel = normalize_kernel2d(kernel)
 
-    return kornia.filter2D(input, kernel, border_type)
+    return kornia.filter2d(input, kernel, border_type)
 
 
 class Laplacian(nn.Module):

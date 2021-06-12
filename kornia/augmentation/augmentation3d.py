@@ -1,27 +1,26 @@
-from typing import Callable, Tuple, Union, List, Optional, Dict, cast
+from typing import cast, Dict, Optional, Tuple, Union
 
 import torch
 from torch.nn.functional import pad
 
-from kornia.constants import Resample, BorderType, pi
-from kornia.geometry.transform.affwarp import _compute_rotation_matrix3d, _compute_tensor_center3d
+from kornia.constants import BorderType, Resample
+from kornia.enhance import equalize3d
+from kornia.filters import motion_blur3d
 from kornia.geometry import (
     affine3d,
-    crop_by_boxes3d,
     crop_by_transform_mat3d,
     deg2rad,
     get_affine_matrix3d,
     get_perspective_transform3d,
-    rotate3d,
     warp_affine3d,
     warp_perspective3d,
 )
-from kornia.filters import motion_blur3d
-from kornia.enhance import equalize3d
+from kornia.geometry.transform.affwarp import _compute_rotation_matrix3d, _compute_tensor_center3d
 from kornia.utils import _extract_device_dtype
-from .base import AugmentationBase3D
+
 from . import random_generator as rg
-from .utils import _range_bound, _tuple_range_reader, _singular_range_check
+from .base import AugmentationBase3D
+from .utils import _range_bound, _singular_range_check, _tuple_range_reader
 
 
 class RandomHorizontalFlip3D(AugmentationBase3D):
@@ -910,7 +909,7 @@ class RandomCrop3D(AugmentationBase3D):
         params: Optional[Dict[str, torch.Tensor]] = None,
         return_transform: Optional[bool] = None,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-        if type(input) == tuple:
+        if type(input) is tuple:
             input = (self.precrop_padding(input[0]), input[1])
         else:
             input = self.precrop_padding(input)  # type:ignore

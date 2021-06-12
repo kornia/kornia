@@ -3,21 +3,21 @@ import torch
 from torch.testing import assert_allclose
 
 from kornia.augmentation.random_generator import (
-    random_prob_generator,
-    random_color_jitter_generator,
-    random_perspective_generator,
+    center_crop_generator,
     random_affine_generator,
-    random_rotation_generator,
+    random_color_jitter_generator,
     random_crop_generator,
     random_crop_size_generator,
-    random_rectangles_params_generator,
-    center_crop_generator,
-    random_motion_blur_generator,
-    random_solarize_generator,
-    random_posterize_generator,
-    random_sharpness_generator,
-    random_mixup_generator,
     random_cutmix_generator,
+    random_mixup_generator,
+    random_motion_blur_generator,
+    random_perspective_generator,
+    random_posterize_generator,
+    random_prob_generator,
+    random_rectangles_params_generator,
+    random_rotation_generator,
+    random_sharpness_generator,
+    random_solarize_generator,
 )
 
 
@@ -152,9 +152,13 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
             'order': torch.tensor([3, 2, 0, 1], device=device, dtype=dtype),
         }
 
-        assert set(list(jitter_params.keys())) == set(
-            ['brightness_factor', 'contrast_factor', 'hue_factor', 'saturation_factor', 'order']
-        ), "Redundant keys found apart from \
+        assert set(list(jitter_params.keys())) == {
+            'brightness_factor',
+            'contrast_factor',
+            'hue_factor',
+            'saturation_factor',
+            'order',
+        }, "Redundant keys found apart from \
                 'brightness_factor', 'contrast_factor', 'hue_factor', 'saturation_factor', 'order'"
 
         assert_allclose(

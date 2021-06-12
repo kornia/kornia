@@ -3,8 +3,7 @@ import torch
 from torch.testing import assert_allclose
 
 from kornia.utils import _extract_device_dtype
-from kornia.utils.helpers import _torch_inverse_cast, _torch_histc_cast
-from kornia.utils.helpers import _torch_solve_cast, _torch_svd_cast
+from kornia.utils.helpers import _torch_histc_cast, _torch_inverse_cast, _torch_solve_cast, _torch_svd_cast
 
 
 @pytest.mark.parametrize(
@@ -54,7 +53,7 @@ def test_extract_device_dtype(tensor_list, out_device, out_dtype, will_throw_err
         assert dtype == out_dtype
 
 
-class TestInverseCast(object):
+class TestInverseCast:
     @pytest.mark.parametrize("input_shape", [(1, 3, 4, 4), (2, 4, 5, 5)])
     def test_smoke(self, device, dtype, input_shape):
         x = torch.rand(input_shape, device=device, dtype=dtype)
@@ -77,7 +76,7 @@ class TestInverseCast(object):
         assert_allclose(op(x), op_jit(x))
 
 
-class TestHistcCast(object):
+class TestHistcCast:
     def test_smoke(self, device, dtype):
         x = torch.tensor([1.0, 2.0, 1.0], device=device, dtype=dtype)
         y_expected = torch.tensor([0.0, 2.0, 1.0, 0.0], device=device, dtype=dtype)
@@ -87,7 +86,7 @@ class TestHistcCast(object):
         assert_allclose(y, y_expected)
 
 
-class TestSvdCast(object):
+class TestSvdCast:
     def test_smoke(self, device, dtype):
         a = torch.randn(5, 3, 3, device=device, dtype=dtype)
         u, s, v = _torch_svd_cast(a)
@@ -96,7 +95,7 @@ class TestSvdCast(object):
         assert_allclose(a, u @ torch.diag_embed(s) @ v.transpose(-2, -1), atol=tol_val, rtol=tol_val)
 
 
-class TestSolveCast(object):
+class TestSolveCast:
     def test_smoke(self, device, dtype):
         A = torch.randn(2, 3, 1, 4, 4, device=device, dtype=dtype)
         B = torch.randn(2, 3, 1, 4, 6, device=device, dtype=dtype)

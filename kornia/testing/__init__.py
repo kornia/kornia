@@ -1,13 +1,13 @@
 """
 The testing package contains testing-specific utilities.
 """
-from abc import ABC, abstractmethod
 import importlib
-from itertools import product
+from abc import ABC, abstractmethod
 from copy import deepcopy
+from itertools import product
 
-import torch
 import numpy as np
+import torch
 
 __all__ = ['tensor_to_gradcheck_var', 'create_eye_batch', 'xla_is_available']
 
@@ -119,7 +119,7 @@ def default_with_one_parameter_changed(*, default={}, **possible_parameters):
 def _get_precision(device: torch.device, dtype: torch.dtype) -> float:
     if 'xla' in device.type:
         return 1e-2
-    elif dtype == torch.float16:
+    if dtype == torch.float16:
         return 1e-3
     return 1e-4
 

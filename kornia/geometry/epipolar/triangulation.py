@@ -1,6 +1,7 @@
 """Module with the functionalites for triangulation."""
 
 import torch
+
 import kornia
 
 # https://github.com/opencv/opencv_contrib/blob/master/modules/sfm/src/triangulation.cpp#L68

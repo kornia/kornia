@@ -1,14 +1,14 @@
 """In this module several equalization methods are exposed: he, ahe, clahe."""
 
-from typing import Tuple
 import math
+from typing import Tuple
 
 import torch
 import torch.nn.functional as F
 
 from kornia.enhance.histogram import histogram
-from kornia.utils.image import _to_bchw
 from kornia.utils.helpers import _torch_histc_cast
+from kornia.utils.image import _to_bchw
 
 __all__ = ["equalize_clahe"]
 

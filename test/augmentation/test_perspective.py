@@ -4,36 +4,7 @@ from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
 import kornia
-import kornia.augmentation.functional as F
 import kornia.testing as utils  # test utils
-
-
-class TestPerspective:
-    def test_smoke(self, device):
-        x_data = torch.rand(1, 2, 3, 4).to(device)
-        batch_prob = torch.rand(1, device=device) < 0.5
-        start_points = torch.rand(1, 4, 2).to(device)
-        end_points = torch.rand(1, 4, 2).to(device)
-
-        params = dict(batch_prob=batch_prob, start_points=start_points, end_points=end_points)
-        flags = dict(interpolation=torch.tensor(1), align_corners=torch.tensor(False))
-        out_data = F.apply_perspective(x_data, params, flags)
-
-        assert out_data.shape == x_data.shape
-
-    def test_gradcheck(self, device):
-        input = torch.rand(1, 2, 3, 4).to(device)
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-
-        start_points = torch.rand(1, 4, 2).to(device)
-        start_points = utils.tensor_to_gradcheck_var(start_points)  # to var
-
-        end_points = torch.rand(1, 4, 2).to(device)
-        end_points = utils.tensor_to_gradcheck_var(end_points)  # to var
-
-        params = dict(start_points=start_points, end_points=end_points)
-        flags = dict(interpolation=torch.tensor(1), align_corners=torch.tensor(False))
-        assert gradcheck(F.apply_perspective, (input, params, flags), raise_exception=True)
 
 
 class TestRandomPerspective:
@@ -155,6 +126,7 @@ class TestRandomAffine:
         out = aug(x_data)
         assert out.shape == x_data.shape
         assert aug.inverse(out).shape == x_data.shape
+        assert aug.inverse(out, aug._params).shape == x_data.shape
 
     def test_smoke_no_transform_batch(self, device):
         x_data = torch.rand(2, 2, 8, 9).to(device)
@@ -162,6 +134,7 @@ class TestRandomAffine:
         out = aug(x_data)
         assert out.shape == x_data.shape
         assert aug.inverse(out).shape == x_data.shape
+        assert aug.inverse(out, aug._params).shape == x_data.shape
 
     @pytest.mark.parametrize("degrees", [45.0, (-45.0, 45.0), torch.tensor([45.0, 45.0])])
     @pytest.mark.parametrize("translate", [(0.1, 0.1), torch.tensor([0.1, 0.1])])

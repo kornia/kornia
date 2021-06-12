@@ -1,13 +1,13 @@
-from typing import Tuple, Union, List, Optional, cast
+from typing import cast, List, Optional, Tuple, Union
 
 import torch
 
 
 def _common_param_check(batch_size: int, same_on_batch: Optional[bool] = None):
     """Valid batch_size and same_on_batch params."""
-    assert type(batch_size) == int and batch_size >= 0, f"`batch_size` shall be a positive integer. Got {batch_size}."
+    assert type(batch_size) is int and batch_size >= 0, f"`batch_size` shall be a positive integer. Got {batch_size}."
     if same_on_batch is not None:
-        assert type(same_on_batch) == bool, f"`same_on_batch` shall be boolean. Got {same_on_batch}."
+        assert type(same_on_batch) is bool, f"`same_on_batch` shall be boolean. Got {same_on_batch}."
 
 
 def _range_bound(
@@ -128,14 +128,14 @@ def _tuple_range_reader(
         elif (
             isinstance(input_range, (tuple, list))
             and len(input_range) == target_shape[0]
-            and all([isinstance(x, (float, int)) for x in input_range])
+            and all(isinstance(x, (float, int)) for x in input_range)
         ):
             input_range_tmp = torch.tensor([(-s, s) for s in input_range], device=device, dtype=dtype)
 
         elif (
             isinstance(input_range, (tuple, list))
             and len(input_range) == target_shape[0]
-            and all([isinstance(x, (tuple, list)) for x in input_range])
+            and all(isinstance(x, (tuple, list)) for x in input_range)
         ):
             input_range_tmp = torch.tensor(input_range, device=device, dtype=dtype)
 

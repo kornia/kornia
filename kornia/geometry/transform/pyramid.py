@@ -1,12 +1,12 @@
-from typing import Tuple, List
-
 import math
+from typing import List, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.filters import gaussian_blur2d, filter2D
+from kornia.filters.filter import filter2d
+from kornia.filters.gaussian import gaussian_blur2d
 
 __all__ = ["PyrDown", "PyrUp", "ScalePyramid", "pyrdown", "pyrup", "build_pyramid"]
 
@@ -127,7 +127,6 @@ class ScalePyramid(nn.Module):
         self.border = min_size // 2 - 1
         self.sigma_step = 2 ** (1.0 / float(self.n_levels))
         self.double_image = double_image
-        return
 
     def __repr__(self) -> str:
         return (
@@ -253,7 +252,7 @@ def pyrdown(input: torch.Tensor, border_type: str = 'reflect', align_corners: bo
     kernel: torch.Tensor = _get_pyramid_gaussian_kernel()
     b, c, height, width = input.shape
     # blur image
-    x_blur: torch.Tensor = filter2D(input, kernel, border_type)
+    x_blur: torch.Tensor = filter2d(input, kernel, border_type)
 
     # downsample.
     out: torch.Tensor = F.interpolate(
@@ -294,7 +293,7 @@ def pyrup(input: torch.Tensor, border_type: str = 'reflect', align_corners: bool
     )
 
     # blurs upsampled tensor
-    x_blur: torch.Tensor = filter2D(x_up, kernel, border_type)
+    x_blur: torch.Tensor = filter2d(x_up, kernel, border_type)
     return x_blur
 
 

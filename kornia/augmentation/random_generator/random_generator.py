@@ -1,13 +1,12 @@
-from typing import Tuple, List, Union, Dict, Optional, cast
-import random
+from typing import cast, Dict, Optional, Tuple, Union
 
 import torch
 from torch.distributions import Bernoulli
 
-from kornia.constants import Resample, BorderType, SamplePadding
 from kornia.geometry import bbox_generator
-from ..utils import _adapted_sampling, _adapted_uniform, _adapted_beta, _joint_range_check, _common_param_check
 from kornia.utils import _extract_device_dtype
+
+from ..utils import _adapted_beta, _adapted_sampling, _adapted_uniform, _common_param_check, _joint_range_check
 
 
 def random_prob_generator(
@@ -141,7 +140,7 @@ def random_perspective_generator(
         distortion_scale.dim() == 0 and 0 <= distortion_scale <= 1
     ), f"'distortion_scale' must be a scalar within [0, 1]. Got {distortion_scale}."
     assert (
-        type(height) == int and height > 0 and type(width) == int and width > 0
+        type(height) is int and height > 0 and type(width) is int and width > 0
     ), f"'height' and 'width' must be integers. Got {height}, {width}."
 
     start_points: torch.Tensor = torch.tensor(
@@ -485,7 +484,7 @@ def random_crop_size_generator(
     _joint_range_check(scale, "scale")
     _joint_range_check(ratio, "ratio")
     assert (
-        len(size) == 2 and type(size[0]) == int and size[1] > 0 and type(size[1]) == int and size[1] > 0
+        len(size) == 2 and type(size[0]) is int and size[1] > 0 and type(size[1]) is int and size[1] > 0
     ), f"'height' and 'width' must be integers. Got {size}."
 
     _device, _dtype = _extract_device_dtype([scale, ratio])
@@ -570,7 +569,7 @@ def random_rectangles_params_generator(
     _common_param_check(batch_size, same_on_batch)
     _device, _dtype = _extract_device_dtype([ratio, scale])
     assert (
-        type(height) == int and height > 0 and type(width) == int and width > 0
+        type(height) is int and height > 0 and type(width) is int and width > 0
     ), f"'height' and 'width' must be integers. Got {height}, {width}."
     assert (
         isinstance(value, (int, float)) and value >= 0 and value <= 1
@@ -687,7 +686,7 @@ def center_crop_generator(
     if not isinstance(size, (tuple, list)) and len(size) == 2:
         raise ValueError("Input size must be a tuple/list of length 2. Got {}".format(size))
     assert (
-        type(height) == int and height > 0 and type(width) == int and width > 0
+        type(height) is int and height > 0 and type(width) is int and width > 0
     ), f"'height' and 'width' must be integers. Got {height}, {width}."
     assert (
         height >= size[0] and width >= size[1]
@@ -1048,7 +1047,7 @@ def random_cutmix_generator(
     cut_size = torch.as_tensor([0.0, 1.0] if cut_size is None else cut_size, device=device, dtype=dtype)
     assert num_mix >= 1 and isinstance(num_mix, (int,)), f"`num_mix` must be an integer greater than 1. Got {num_mix}."
     assert (
-        type(height) == int and height > 0 and type(width) == int and width > 0
+        type(height) is int and height > 0 and type(width) is int and width > 0
     ), f"'height' and 'width' must be integers. Got {height}, {width}."
     _joint_range_check(cut_size, 'cut_size', bounds=(0, 1))
     _common_param_check(batch_size, same_on_batch)

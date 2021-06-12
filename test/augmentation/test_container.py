@@ -1,7 +1,11 @@
 import pytest
 import torch
+from torch.testing import assert_allclose
 
+import kornia
 import kornia.augmentation as K
+from kornia.constants import BorderType
+from kornia.geometry.transform import bbox_to_mask
 
 
 class TestVideoSequential:
@@ -59,7 +63,7 @@ class TestVideoSequential:
         [
             [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)],
             [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0)],
-            [K.RandomAffine(360, p=1.0)],
+            [K.RandomAffine(360, p=1.0), kornia.color.BgrToRgb()],
             [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.0), K.RandomAffine(360, p=0.0)],
             [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.0)],
             [K.RandomAffine(360, p=0.0)],
@@ -117,3 +121,215 @@ class TestVideoSequential:
         op = K.VideoSequential(K.ColorJitter(0.1, 0.1, 0.1, 0.1), same_on_frame=True)
         op_jit = torch.jit.script(op)
         assert_allclose(op(img), op_jit(img))
+
+
+class TestSequential:
+    @pytest.mark.parametrize('same_on_batch', [True, False, None])
+    @pytest.mark.parametrize("return_transform", [True, False, None])
+    @pytest.mark.parametrize("keepdim", [True, False, None])
+    def test_construction(self, same_on_batch, return_transform, keepdim):
+        K.ImageSequential(
+            K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+            K.RandomAffine(360, p=1.0),
+            same_on_batch=same_on_batch,
+            return_transform=return_transform,
+            keepdim=keepdim,
+        )
+
+    @pytest.mark.parametrize("return_transform", [True, False, None])
+    def test_forward(self, return_transform, device, dtype):
+        inp = torch.randn(1, 3, 30, 30, device=device, dtype=dtype)
+        aug = K.ImageSequential(
+            K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+            kornia.filters.MedianBlur((3, 3)),
+            K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0, return_transform=True),
+            K.RandomAffine(360, p=1.0),
+            return_transform=return_transform,
+        )
+        out = aug(inp)
+        if isinstance(out, (tuple,)):
+            assert out[0].shape == inp.shape
+        else:
+            assert out.shape == inp.shape
+
+
+class TestAugmentationSequential:
+    @pytest.mark.parametrize(
+        'data_keys', ["input", ["mask", "input"], ["input", "bbox_yxyx"], [0, 10], [BorderType.REFLECT]]
+    )
+    @pytest.mark.parametrize("augmentation_list", [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0)])
+    def test_exception(self, augmentation_list, data_keys, device, dtype):
+        with pytest.raises(Exception):  # AssertError and NotImplementedError
+            K.AugmentationSequential(augmentation_list, data_keys=data_keys)
+
+    def test_forward_and_inverse(self, device, dtype):
+        inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
+        bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
+        keypoints = torch.tensor([[[465, 115], [545, 116]]], device=device, dtype=dtype)
+        mask = bbox_to_mask(
+            torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 1000, 500
+        )[:, None].float()
+        aug = K.AugmentationSequential(
+            K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+            K.RandomAffine(360, p=1.0),
+            data_keys=["input", "mask", "bbox", "keypoints"],
+        )
+        out = aug(inp, mask, bbox, keypoints)
+        assert out[0].shape == inp.shape
+        assert out[1].shape == mask.shape
+        assert out[2].shape == bbox.shape
+        assert out[3].shape == keypoints.shape
+
+        out_inv = aug.inverse(*out)
+        assert out_inv[0].shape == inp.shape
+        assert out_inv[1].shape == mask.shape
+        assert out_inv[2].shape == bbox.shape
+        assert out_inv[3].shape == keypoints.shape
+
+    def test_individual_forward_and_inverse(self, device, dtype):
+        inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
+        bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
+        keypoints = torch.tensor([[[465, 115], [545, 116]]], device=device, dtype=dtype)
+        mask = bbox_to_mask(
+            torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 1000, 500
+        )[:, None].float()
+
+        aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0, return_transform=True))
+        assert aug(inp, data_keys=['input'])[0].shape == inp.shape
+        aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0, return_transform=False))
+        assert aug(inp, data_keys=['input']).shape == inp.shape
+        assert aug(mask, data_keys=['mask']).shape == mask.shape
+        assert aug(bbox, data_keys=['bbox']).shape == bbox.shape
+        assert aug(keypoints, data_keys=['keypoints']).shape == keypoints.shape
+
+        aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0, return_transform=True))
+        assert aug.inverse(inp, data_keys=['input']).shape == inp.shape
+        aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0, return_transform=True))
+        assert aug.inverse(bbox, data_keys=['bbox']).shape == bbox.shape
+        aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0, return_transform=True))
+        assert aug.inverse(keypoints, data_keys=['keypoints']).shape == keypoints.shape
+        aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0, return_transform=True))
+        assert aug.inverse(mask, data_keys=['mask']).shape == mask.shape
+
+    def test_forward_and_inverse_return_transform(self, device, dtype):
+        inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
+        bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
+        keypoints = torch.tensor([[[465, 115], [545, 116]]], device=device, dtype=dtype)
+        mask = bbox_to_mask(
+            torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 1000, 500
+        )[:, None].float()
+        aug = K.AugmentationSequential(
+            K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0, return_transform=True),
+            K.RandomAffine(360, p=1.0, return_transform=True),
+            data_keys=["input", "mask", "bbox", "keypoints"],
+        )
+        out = aug(inp, mask, bbox, keypoints)
+        assert out[0][0].shape == inp.shape
+        assert out[1].shape == mask.shape
+        assert out[2].shape == bbox.shape
+        assert out[3].shape == keypoints.shape
+
+        out_inv = aug.inverse(*out)
+        assert out_inv[0].shape == inp.shape
+        assert out_inv[1].shape == mask.shape
+        assert out_inv[2].shape == bbox.shape
+        assert out_inv[3].shape == keypoints.shape
+
+    def test_inverse_and_forward_return_transform(self, device, dtype):
+        inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
+        bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
+        keypoints = torch.tensor([[[465, 115], [545, 116]]], device=device, dtype=dtype)
+        mask = bbox_to_mask(
+            torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 1000, 500
+        )[:, None].float()
+        aug = K.AugmentationSequential(
+            K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0, return_transform=True),
+            K.RandomAffine(360, p=1.0, return_transform=True),
+            data_keys=["input", "mask", "bbox", "keypoints"],
+        )
+
+        out_inv = aug.inverse(inp, mask, bbox, keypoints)
+        assert out_inv[0].shape == inp.shape
+        assert out_inv[1].shape == mask.shape
+        assert out_inv[2].shape == bbox.shape
+        assert out_inv[3].shape == keypoints.shape
+
+        out = aug(inp, mask, bbox, keypoints)
+        assert out[0][0].shape == inp.shape
+        assert out[1].shape == mask.shape
+        assert out[2].shape == bbox.shape
+        assert out[3].shape == keypoints.shape
+
+    @pytest.mark.jit
+    @pytest.mark.skip(reason="turn off due to Union Type")
+    def test_jit(self, device, dtype):
+        B, C, H, W = 2, 3, 4, 4
+        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        op = K.AugmentationSequential(
+            K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0), same_on_batch=True
+        )
+        op_jit = torch.jit.script(op)
+        assert_allclose(op(img), op_jit(img))
+
+
+class TestPatchSequential:
+    @pytest.mark.parametrize('shape', [(2, 3, 24, 24)])
+    @pytest.mark.parametrize('padding', ["same", "valid"])
+    @pytest.mark.parametrize('patchwise_apply', [True, False])
+    @pytest.mark.parametrize('same_on_batch', [True, False, None])
+    @pytest.mark.parametrize('keepdim', [True, False, None])
+    def test_forward(self, shape, padding, patchwise_apply, same_on_batch, keepdim, device, dtype):
+        seq = K.PatchSequential(
+            K.ImageSequential(
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
+                K.RandomPerspective(0.2, p=0.5),
+                K.RandomSolarize(0.1, 0.1, p=0.5),
+            ),
+            K.ColorJitter(0.1, 0.1, 0.1, 0.1),
+            K.ImageSequential(
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
+                K.RandomPerspective(0.2, p=0.5),
+                K.RandomSolarize(0.1, 0.1, p=0.5),
+            ),
+            K.ColorJitter(0.1, 0.1, 0.1, 0.1),
+            grid_size=(2, 2),
+            padding=padding,
+            patchwise_apply=patchwise_apply,
+            same_on_batch=same_on_batch,
+            keepdim=keepdim,
+        )
+        input = torch.randn(*shape, device=device, dtype=dtype)
+        trans = torch.randn(shape[0], 3, 3, device=device, dtype=dtype)
+        out = seq(input)
+        assert out.shape[-3:] == input.shape[-3:]
+
+        out = seq((input, trans))
+        assert out[0].shape[-3:] == input.shape[-3:]
+        assert out[1].shape == trans.shape
+
+    def test_intensity_only(self):
+        seq = K.PatchSequential(
+            K.ImageSequential(
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
+                K.RandomPerspective(0.2, p=0.5),
+                K.RandomSolarize(0.1, 0.1, p=0.5),
+            ),
+            K.ColorJitter(0.1, 0.1, 0.1, 0.1),
+            K.ImageSequential(
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
+                K.RandomPerspective(0.2, p=0.5),
+                K.RandomSolarize(0.1, 0.1, p=0.5),
+            ),
+            K.ColorJitter(0.1, 0.1, 0.1, 0.1),
+            grid_size=(2, 2),
+        )
+        assert not seq.is_intensity_only()
+
+        seq = K.PatchSequential(
+            K.ImageSequential(K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5)),
+            K.ColorJitter(0.1, 0.1, 0.1, 0.1),
+            K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
+            K.ColorJitter(0.1, 0.1, 0.1, 0.1),
+            grid_size=(2, 2),
+        )
+        assert seq.is_intensity_only()

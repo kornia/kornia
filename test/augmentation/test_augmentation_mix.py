@@ -1,7 +1,7 @@
 import torch
 from torch.testing import assert_allclose
 
-from kornia.augmentation import RandomMixUp, RandomCutMix
+from kornia.augmentation import RandomCutMix, RandomMixUp
 
 
 class TestRandomMixUp:

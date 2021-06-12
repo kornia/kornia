@@ -1,11 +1,8 @@
-from typing import Iterable, Optional, Union
-import warnings
+from typing import Iterable, Optional
 
 import torch
-import torch.nn as nn
 
-from kornia.geometry.linalg import transform_points
-from kornia.geometry.linalg import inverse_transformation
+from kornia.geometry.linalg import inverse_transformation, transform_points
 
 
 class PinholeCamera:

@@ -1,13 +1,12 @@
 # Welcome to the Kornia setup.py.
 #
+import distutils.command.clean
 import glob
 import os
 import shutil
-
-from setuptools import setup, find_packages
 import subprocess
-import distutils.command.clean
 
+from setuptools import find_packages, setup
 
 ################
 # The variables below define the current version under
@@ -18,7 +17,7 @@ import distutils.command.clean
 
 # NOTE(maintainers): modify this variable each time you do a release
 
-version = '0.5.3'  # this a tag for the current development version
+version = '0.5.4'  # this a tag for the current development version
 
 
 # NOTE(maintainers): update this dictionary each time you do a release
@@ -27,6 +26,7 @@ version = '0.5.3'  # this a tag for the current development version
 # Once a pytorch version (in the future) breaks a kornia version, we could just
 # add a maximal version.
 kornia_pt_dependencies = {
+    '0.5.4': '>=1.6.0',
     '0.5.3': '>=1.6.0',
     '0.5.2': '>=1.6.0',
     '0.5.1': '>=1.6.0',
@@ -43,7 +43,7 @@ kornia_pt_dependencies = {
 
 # version can be overiden eg with KORNIA_BUILD_VERSION so we map each possible kornia version to the dictionary keys
 def dep_version(version):
-    compatible_versions = [v for v in kornia_pt_dependencies.keys() if v >= version]
+    compatible_versions = [v for v in kornia_pt_dependencies if v >= version]
     compatible_versions += [sorted(kornia_pt_dependencies)[-1]]
     return min(compatible_versions)
 
@@ -115,28 +115,48 @@ if __name__ == '__main__':
         version=version,
         author='Edgar Riba',
         author_email='contact@kornia.org',
-        url='https://github.com/kornia/kornia',
+        url='https://www.kornia.org',
+        download_url='https://github.com/kornia/kornia',
+        license='Apache License 2.0',
         description='Open Source Differentiable Computer Vision Library for PyTorch',
         long_description=long_description,
         long_description_content_type='text/markdown',
-        license='Apache License 2.0',
         python_requires='>=3.6',
-        # Test
         setup_requires=['pytest-runner'],
         tests_require=['pytest'],
-        # Package info
         packages=find_packages(exclude=('docs', 'test', 'examples')),
         package_data={"kornia": ["py.typed"]},
         zip_safe=True,
         install_requires=requirements,
+        keywords=['computer vision', 'deep learning', 'pytorch'],
+        project_urls={
+            "Bug Tracker": "https://github.com/kornia/kornia/issues",
+            "Documentation": "https://kornia.readthedocs.io/en/latest",
+            "Source Code": "https://github.com/kornia/kornia",
+        },
         classifiers=[
+            'Environment :: GPU',
+            'Environment :: Console',
+            'Natural Language :: English',
+            # How mature is this project? Common values are
+            #   3 - Alpha, 4 - Beta, 5 - Production/Stable
+            'Development Status :: 4 - Beta',
+            # Indicate who your project is intended for
             'Intended Audience :: Developers',
             'Intended Audience :: Education',
             'Intended Audience :: Science/Research',
-            'Operating System :: POSIX :: Linux',
-            'Programming Language :: Python :: 3 :: Only',
-            'License :: OSI Approved :: Apache Software License',
-            'Topic :: Scientific/Engineering :: Image Recognition',
+            'Intended Audience :: Information Technology',
             'Topic :: Software Development :: Libraries',
+            'Topic :: Scientific/Engineering :: Artificial Intelligence',
+            'Topic :: Scientific/Engineering :: Image Processing',
+            # Pick your license as you wish
+            'License :: OSI Approved :: Apache Software License',
+            'Operating System :: OS Independent',
+            # Specify the Python versions you support here. In particular, ensure
+            # that you indicate whether you support Python 2, Python 3 or both.
+            'Programming Language :: Python :: 3',
+            'Programming Language :: Python :: 3.6',
+            'Programming Language :: Python :: 3.7',
+            'Programming Language :: Python :: 3.8',
         ],
     )

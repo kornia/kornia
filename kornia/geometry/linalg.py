@@ -1,10 +1,7 @@
-from typing import Optional
-
 import torch
 
 import kornia
-from kornia.geometry.conversions import convert_points_to_homogeneous
-from kornia.geometry.conversions import convert_points_from_homogeneous
+from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.testing import check_is_tensor
 
 __all__ = [
@@ -183,12 +180,6 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
     """
     check_is_tensor(trans_01)
     check_is_tensor(points_1)
-    if not (trans_01.device == points_1.device and trans_01.dtype == points_1.dtype):
-        raise TypeError(
-            "Tensor must be in the same device and dtype. "
-            f"Got trans_01 with ({trans_01.dtype}, {points_1.dtype}) and "
-            f"points_1 with ({points_1.dtype}, {points_1.dtype})"
-        )
     if not trans_01.shape[0] == points_1.shape[0] and trans_01.shape[0] != 1:
         raise ValueError("Input batch size must be the same for both tensors or 1")
     if not trans_01.shape[-1] == (points_1.shape[-1] + 1):
@@ -231,12 +222,6 @@ def transform_boxes(trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = "x
 
 
     """
-
-    if not torch.is_tensor(boxes):
-        raise TypeError(f"Boxes type is not a torch.Tensor. Got {type(boxes)}")
-
-    if not torch.is_tensor(trans_mat):
-        raise TypeError(f"Tranformation matrix type is not a torch.Tensor. Got {type(trans_mat)}")
 
     if not isinstance(mode, str):
         raise TypeError(f"Mode must be a string. Got {type(mode)}")

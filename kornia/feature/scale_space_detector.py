@@ -1,14 +1,13 @@
-from typing import Tuple, List, Optional
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.geometry import angle_to_rotation_matrix
+from kornia.feature.laf import denormalize_laf, laf_is_inside_image, normalize_laf
+from kornia.feature.orientation import PassLAF
 from kornia.feature.responses import BlobHessian
 from kornia.geometry import ConvSoftArgmax3d
-from kornia.feature.orientation import PassLAF
-from kornia.feature.laf import denormalize_laf, scale_laf, normalize_laf, laf_is_inside_image
 from kornia.geometry.transform import ScalePyramid
 
 
@@ -97,7 +96,6 @@ class ScaleSpaceDetector(nn.Module):
         # scale_space_response should be True if the response function works on scale space
         # like Difference-of-Gaussians
         self.scale_space_response = scale_space_response
-        return
 
     def __repr__(self):
         return (

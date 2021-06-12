@@ -1,4 +1,4 @@
-from typing import Union, cast
+from typing import cast, Union
 
 import torch
 import torch.nn as nn
@@ -244,9 +244,6 @@ class BgrToRgb(nn.Module):
         >>> output = rgb(input)  # 2x3x4x5
     """
 
-    def __init__(self) -> None:
-        super(BgrToRgb, self).__init__()
-
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return bgr_to_rgb(image)
 
@@ -268,9 +265,6 @@ class RgbToBgr(nn.Module):
         >>> bgr = RgbToBgr()
         >>> output = bgr(input)  # 2x3x4x5
     """
-
-    def __init__(self) -> None:
-        super(RgbToBgr, self).__init__()
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgb_to_bgr(image)
@@ -358,9 +352,6 @@ class RgbaToRgb(nn.Module):
         >>> output = rgba(input)  # 2x3x4x5
     """
 
-    def __init__(self) -> None:
-        super(RgbaToRgb, self).__init__()
-
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgba_to_rgb(image)
 
@@ -382,9 +373,6 @@ class RgbaToBgr(nn.Module):
         >>> rgba = RgbaToBgr()
         >>> output = rgba(input)  # 2x3x4x5
     """
-
-    def __init__(self) -> None:
-        super(RgbaToBgr, self).__init__()
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgba_to_bgr(image)
@@ -416,9 +404,6 @@ class RgbToLinearRgb(nn.Module):
         [3] https://en.wikipedia.org/wiki/SRGB
     """
 
-    def __init__(self) -> None:
-        super(RgbToLinearRgb, self).__init__()
-
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgb_to_linear_rgb(image)
 
@@ -447,9 +432,6 @@ class LinearRgbToRgb(nn.Module):
 
         [3] https://en.wikipedia.org/wiki/SRGB
     """
-
-    def __init__(self) -> None:
-        super(LinearRgbToRgb, self).__init__()
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return linear_rgb_to_rgb(image)

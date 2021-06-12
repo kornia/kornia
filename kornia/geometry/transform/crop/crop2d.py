@@ -1,8 +1,8 @@
-from typing import Tuple, Union, Optional
+from typing import Optional, Tuple
 
 import torch
 
-from kornia.geometry.transform.imgwarp import warp_perspective, get_perspective_transform, warp_affine
+from kornia.geometry.transform.imgwarp import get_perspective_transform, warp_affine
 
 __all__ = [
     "crop_and_resize",
