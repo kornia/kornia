@@ -16,35 +16,54 @@ class _TestParams:
 
 
 class _RealTestData:
+    """
+    From the kitti 2015 dataset.
+    See here for more info:
+    https://github.com/yanii/kitti-pcl/blob/master/KITTI_README.TXT
+    """
     @property
     def height(self):
-        return 576
+        return 375
 
     @property
     def width(self):
-        return 720
+        return 1242
 
     @staticmethod
     def _get_real_left_camera(batch_size, device, dtype):
-        cam = torch.tensor([[996.40068207, 0., 375.02582169, 0.],
-                            [0., 996.40068207, 240.26374817, 0.],
-                            [0., 0., 1., 0.]], device=device, dtype=dtype)
+        """
+        From data_scene_flow_calib/testing/calib_cam_to_cam/000000.txt:P_rect_02
+        Args:
+            batch_size:
+            device:
+            dtype:
+
+        Returns:
+
+        """
+        cam = torch.tensor([7.215377e+02, 0.000000e+00, 6.095593e+02,
+                            4.485728e+01, 0.000000e+00, 7.215377e+02,
+                            1.728540e+02, 2.163791e-01, 0.000000e+00,
+                            0.000000e+00, 1.000000e+00, 2.745884e-03], device=device, dtype=dtype).reshape(3, 4)
         return cam.expand(batch_size, -1, -1)
 
     @staticmethod
     def _get_real_right_camera(batch_size, device, dtype):
-        cam = torch.tensor([[996.40068207, 0., 375.02582169, -5430.17323447],
-                            [0., 996.40068207, 240.26374817, 0.],
-                            [0., 0., 1., 0.]], device=device, dtype=dtype)
-        return cam.expand(batch_size, -1, -1)
+        """
+        From data_scene_flow_calib/testing/calib_cam_to_cam/000000.txt:P_rect_02
+        Args:
+            batch_size:
+            device:
+            dtype:
 
-    @staticmethod
-    def _get_real_Q(batch_size, device, dtype):
-        Q = torch.tensor([[1., 0., 0., -375.02582169],
-                          [0., 1., 0., -240.26374817],
-                          [0., 0., 0., 996.40068207],
-                          [0., 0., 0.18349335, 0.]], device=device, dtype=dtype)
-        return Q.expand(batch_size, -1, -1)
+        Returns:
+
+        """
+        cam = torch.tensor([7.215377e+02, 0.000000e+0, 6.095593e+02,
+                            -3.395242e+02, 0.000000e+00, 7.215377e+02,
+                            1.728540e+02, 2.199936e+00, 0.000000e+00,
+                            0.000000e+00, 1.000000e+00, 2.729905e-03], device=device, dtype=dtype).reshape(3, 4)
+        return cam.expand(batch_size, -1, -1)
 
     @staticmethod
     def _get_real_stereo_camera(batch_size, device, dtype):
@@ -120,8 +139,7 @@ class TestStereoCamera:
         assert_allclose(stereo_camera.cy, left_rectified_camera[..., 1, 2])
         assert_allclose(stereo_camera.tx, right_rectified_camera[..., 0, 3] / right_rectified_camera[..., 0, 0])
 
-        real_Q = _RealTestData._get_real_Q(batch_size, device, dtype)
-        assert_allclose(stereo_camera.Q, real_Q)
+        assert stereo_camera.Q.shape == (batch_size, 4, 4)
 
     def test_reproject_disparity_to_3D_smoke(self, batch_size, device, dtype):
         tx_fx = -10

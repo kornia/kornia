@@ -58,10 +58,6 @@ class StereoCamera:
         if torch.all(torch.gt(tx_fx, 0)):
             raise StereoCameraException("")
 
-        # Ensure we don't have a vertical stereo setup.
-        ty_fy = rectified_right_camera[..., 1, 3]
-        if not torch.all(torch.eq(ty_fy, 0)):
-            raise StereoCameraException("")
 
     def _check_disparity_tensor(self, disparity_tensor: torch.Tensor):
         if disparity_tensor.shape[0] != self.batch_size:
