@@ -119,18 +119,22 @@ class TestNormalize:
         assert_allclose(op(*inputs), op_module(data))
 
     @pytest.mark.parametrize(
-        "mean, std", [((1.0, 1.0, 1.0), (0.5, 0.5, 0.5)), (1, 0.5), (torch.tensor([1.0]), torch.tensor([0.5]))]
+        "mean, std", [((1.0, 1.0, 1.0), (0.5, 0.5, 0.5)), (1.0, 0.5), (torch.tensor([1.0]), torch.tensor([0.5]))]
     )
     def test_random_normalize_different_parameter_types(self, mean, std):
         f = kornia.enhance.Normalize(mean=mean, std=std)
-        inputs = torch.arange(0.0, 16.0, step=1).reshape(1, 4, 4).unsqueeze(0)
-        assert_allclose(f(inputs), inputs, rtol=1e-4, atol=1e-4)
+        data = torch.ones(2, 3, 256, 313)
+        if isinstance(mean, float):
+            expected = (data - torch.tensor(mean)) / torch.tensor(std)
+        else:
+            expected = (data - torch.tensor(mean[0])) / torch.tensor(std[0])
+        assert_allclose(f(data), expected)
 
     @pytest.mark.parametrize("mean, std", [((1.0, 1.0, 1.0, 1.0), (0.5, 0.5, 0.5, 0.5)), ((1.0, 1.0), (0.5, 0.5))])
     def test_random_normalize_invalid_parameter_shape(self, mean, std):
         f = kornia.enhance.Normalize(mean=mean, std=std)
         inputs = torch.arange(0.0, 16.0, step=1).reshape(1, 4, 4).unsqueeze(0)
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             f(inputs)
 
 

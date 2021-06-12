@@ -52,7 +52,9 @@ class Normalize(nn.Module):
             std = torch.tensor([std])
 
         if isinstance(mean, tuple) or isinstance(mean, list):
+            print(f' mean {mean}')
             mean = torch.tensor(mean)
+            print(f' mean {mean}')
 
         if isinstance(std, tuple) or isinstance(std, list):
             std = torch.tensor(std)
@@ -68,7 +70,7 @@ class Normalize(nn.Module):
         return self.__class__.__name__ + repr
 
 
-def normalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]) -> torch.Tensor:
+def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torch.Tensor:
     r"""Normalize a tensor image with mean and standard deviation.
 
     .. math::
@@ -98,11 +100,9 @@ def normalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union[t
         torch.Size([1, 4, 3, 3])
     """
     shape = data.shape
-
-    if len(mean.shape) == 1:
+    if len(mean.shape) == 0 or mean.shape[0] == 1:
         mean = mean.expand(shape[1])
-
-    if len(std.shape) == 1:
+    if len(std.shape) == 0 or std.shape[0] == 1:
         std = std.expand(shape[1])
 
     # Allow broadcast on channel dimension
