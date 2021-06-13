@@ -162,14 +162,6 @@ class StereoCamera:
         the corresponding point cloud. Note that this is in a general form that allows different focal
         lengths in the x and y direction.
 
-        .. math::
-            \begin{bmatrix}
-            fy * tx & 0       & 0   & -fy * cx * tx \\
-            0       & fx * tx & 0   & -fx * cy * tx \\
-            0       & 0       & 0   & fx * fy * tx  \\
-            0       & 0       & -fy & fy * (cx_left -cx_right)
-            \end{bmatrix}
-
         Return:
             torch.Tensor: The Q matrix of shape :math:`(B, 4, 4)`.
         """
@@ -192,7 +184,7 @@ class StereoCamera:
             disparity_tensor (torch.Tensor): Disparity tensor of shape :math:`(B, H, W)`.
 
         Returns:
-            torch.Tensor: The structured 3D point cloud of shape :math:`(B, H, W, 3)`
+            torch.Tensor: The 3D point cloud of shape :math:`(B, H * W, 3)`
         """
         return reproject_disparity_to_3D(disparity_tensor, self.Q)
 
@@ -225,23 +217,9 @@ def _check_Q_matrix(Q_matrix: torch.Tensor):
         raise StereoException("")
 
 
-def reproject_disparity_to_3D(disparity_tensor, Q_matrix):
+def reproject_disparity_to_3D(disparity_tensor: torch.Tensor, Q_matrix: torch.Tensor) -> torch.Tensor:
     """
     Reproject the disparity tensor to a 3D point cloud.
-
-    .. math::
-        \begin{bmatrix}
-        X \\
-        Y \\
-        Z \\
-        W
-        \end{bmatrix} = Q *
-        \begin{bmatrix}
-        u \\
-        v \\
-        disparity(y, v) \\
-        z
-        \end{bmatrix}
 
     Args:
         disparity_tensor (torch.Tensor): Disparity tensor of shape :math:`(B, H, W)`.
