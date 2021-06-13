@@ -1,6 +1,6 @@
 """Module containing functionals for intensity normalisation."""
 
-from typing import Union, Tuple, List
+from typing import List, Tuple, Union
 
 import torch
 import torch.nn as nn
