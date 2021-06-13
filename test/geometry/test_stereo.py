@@ -91,7 +91,8 @@ class TestStereoCamera:
         size = (batch_size, height, width)
         return torch.randint(size=size, low=0, high=max_disparity, device=device, dtype=torch.float32)
 
-    def test_stereo_camera_attributes_smoke(self, batch_size, device, dtype):
+    @staticmethod
+    def test_stereo_camera_attributes_smoke(batch_size, device, dtype):
         """Test proper setup of the class for smoke data."""
         tx_fx = -10
         left_rectified_camera, right_rectified_camera = _SmokeTestData._create_stereo_camera(batch_size, device, dtype,
@@ -110,7 +111,8 @@ class TestStereoCamera:
 
         assert stereo_camera.Q.shape == (batch_size, 4, 4)
 
-    def test_stereo_camera_attributes_real(self, batch_size, device, dtype):
+    @staticmethod
+    def test_stereo_camera_attributes_real(batch_size, device, dtype):
         """Test proper setup of the class for real data."""
         left_rectified_camera, right_rectified_camera = _RealTestData._get_real_stereo_camera(batch_size, device, dtype)
 
