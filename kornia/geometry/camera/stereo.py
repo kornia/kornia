@@ -201,7 +201,7 @@ def _check_disparity_tensor(disparity_tensor: torch.Tensor):
     """
     Utility function to ensure correct user provided correct disparity tensor.
     Args:
-        disparity_tensor: The disparity tensor of shape (B, H, W).
+        disparity_tensor (torch.Tensor): The disparity tensor of shape :math:`(B, H, W)`.
     """
     if disparity_tensor.ndim != 3:
         raise StereoException(f"Expected 'disparity_tensor' to have 3 dimensions."
@@ -213,6 +213,11 @@ def _check_disparity_tensor(disparity_tensor: torch.Tensor):
 
 
 def _check_Q_matrix(Q_matrix: torch.Tensor):
+    """
+    Utility function to ensure Q matrix is of correct form.
+    Args:
+        Q_matrix (torch.Tensor): The Q matrix for reprojecting disparity to a point cloud of shape :math:`(B, 4, 4)`
+    """
     if not Q_matrix.ndim == 3:
         raise StereoException("")
 
@@ -270,6 +275,14 @@ def reproject_disparity_to_3D(disparity_tensor, Q_matrix):
     hom_points = torch.bmm(Q_matrix, uvdz)
 
     # Convert from homogenous to euclidian space.
-    points = (hom_points / hom_points[:, euclidian_observation_ndim])[:, :euclidian_observation_ndim]
+    z_points = torch.unsqueeze(hom_points[:, euclidian_observation_ndim], 1)
+    points = (hom_points / z_points)[:, :euclidian_observation_ndim]
+    points = points.permute(0, 2, 1)
 
-    return points.permute(0, 2, 1)
+    # Final check that everything went well.
+    if not points.shape == (batch_size, rows * cols, euclidian_observation_ndim):
+        raise StereoException(f"Something went wrong in `reproject_disparity_to_3D`. Expected the final output"
+                              f"to be of shape {(batch_size, rows * cols, euclidian_observation_ndim)}."
+                              f"But the computed point cloud had shape {points.shape}. "
+                              f"Please ensure input are correct. If this is an error, please submit an issue.")
+    return points
