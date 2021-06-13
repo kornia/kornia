@@ -11,9 +11,11 @@ class StereoException(Exception):
             *args:
             **kwargs:
         """
-        doc_help = "\n Please check documents here: " \
-                   "https://kornia.readthedocs.io/en/latest/geometry.camera.stereo.html" \
-                   "for further information and examples."
+        doc_help = (
+            "\n Please check documents here: "
+            "https://kornia.readthedocs.io/en/latest/geometry.camera.stereo.html"
+            "for further information and examples."
+        )
         final_msg = msg + doc_help
         super().__init__(final_msg, *args, **kwargs)  # type: ignore
 
@@ -48,44 +50,55 @@ class StereoCamera:
         """
         # Ensure correct shapes
         if rectified_left_camera.ndim != 3:
-            raise StereoException(f"Expected 'rectified_left_camera' to have 3 dimensions. "
-                                  f"Got {rectified_left_camera.ndim}.")
+            raise StereoException(
+                f"Expected 'rectified_left_camera' to have 3 dimensions. " f"Got {rectified_left_camera.ndim}."
+            )
 
         if rectified_right_camera.ndim != 3:
-            raise StereoException(f"Expected 'rectified_right_camera' to have 3 dimension. "
-                                  f"Got {rectified_right_camera.ndim}.")
+            raise StereoException(
+                f"Expected 'rectified_right_camera' to have 3 dimension. " f"Got {rectified_right_camera.ndim}."
+            )
 
         if rectified_left_camera.shape[:1] == (3, 4):
-            raise StereoException(f"Expected each 'rectified_left_camera' to be of shape (3, 4)."
-                                  f"Got {rectified_left_camera.shape[:1]}.")
+            raise StereoException(
+                f"Expected each 'rectified_left_camera' to be of shape (3, 4)."
+                f"Got {rectified_left_camera.shape[:1]}."
+            )
 
         if rectified_right_camera.shape[:1] == (3, 4):
-            raise StereoException(f"Expected each 'rectified_right_camera' to be of shape (3, 4)."
-                                  f"Got {rectified_right_camera.shape[:1]}.")
+            raise StereoException(
+                f"Expected each 'rectified_right_camera' to be of shape (3, 4)."
+                f"Got {rectified_right_camera.shape[:1]}."
+            )
 
         # Ensure same devices for cameras.
         if rectified_left_camera.device != rectified_right_camera.device:
-            raise StereoException(f"Expected 'rectified_left_camera' and 'rectified_right_camera' "
-                                  f"to be on the same devices."
-                                  f"Got {rectified_left_camera.device} and {rectified_right_camera.device}.")
+            raise StereoException(
+                f"Expected 'rectified_left_camera' and 'rectified_right_camera' "
+                f"to be on the same devices."
+                f"Got {rectified_left_camera.device} and {rectified_right_camera.device}."
+            )
 
         # Ensure same dtypes for cameras.
         if rectified_left_camera.dtype != rectified_right_camera.dtype:
-            raise StereoException(f"Expected 'rectified_left_camera' and 'rectified_right_camera' to"
-                                  f"have same dtype."
-                                  f"Got {rectified_left_camera.dtype} and {rectified_right_camera.dtype}.")
+            raise StereoException(
+                f"Expected 'rectified_left_camera' and 'rectified_right_camera' to"
+                f"have same dtype."
+                f"Got {rectified_left_camera.dtype} and {rectified_right_camera.dtype}."
+            )
 
         # Ensure all intrinsics parameters (fx, fy, cx, cy) are the same in both cameras.
         if not torch.all(torch.eq(rectified_left_camera[..., :, :3], rectified_right_camera[..., :, :3])):
-            raise StereoException(f"Expected 'left_rectified_camera' and 'rectified_right_camera' to have"
-                                  f"same parameters except for the last column."
-                                  f"Got {rectified_left_camera[..., :, :3]} and {rectified_right_camera[..., :, :3]}.")
+            raise StereoException(
+                f"Expected 'left_rectified_camera' and 'rectified_right_camera' to have"
+                f"same parameters except for the last column."
+                f"Got {rectified_left_camera[..., :, :3]} and {rectified_right_camera[..., :, :3]}."
+            )
 
         # Ensure that tx * fx is negative and exists.
         tx_fx = rectified_right_camera[..., 0, 3]
         if torch.all(torch.gt(tx_fx, 0)):
-            raise StereoException(f"Expected :math:`T_x * f_x` to be negative."
-                                  f"Got {tx_fx}.")
+            raise StereoException(f"Expected :math:`T_x * f_x` to be negative." f"Got {tx_fx}.")
 
     @property
     def batch_size(self) -> int:
@@ -196,12 +209,12 @@ def _check_disparity_tensor(disparity_tensor: torch.Tensor):
         disparity_tensor (torch.Tensor): The disparity tensor of shape :math:`(B, H, W)`.
     """
     if disparity_tensor.ndim != 3:
-        raise StereoException(f"Expected 'disparity_tensor' to have 3 dimensions."
-                              f"Got {disparity_tensor.ndim}.")
+        raise StereoException(f"Expected 'disparity_tensor' to have 3 dimensions." f"Got {disparity_tensor.ndim}.")
 
     if disparity_tensor.dtype != torch.float32:
-        raise StereoException(f"Expected 'disparity_tensor' to have dtype torch.float32."
-                              f"Got {disparity_tensor.dtype}")
+        raise StereoException(
+            f"Expected 'disparity_tensor' to have dtype torch.float32." f"Got {disparity_tensor.dtype}"
+        )
 
 
 def _check_Q_matrix(Q_matrix: torch.Tensor):
@@ -238,8 +251,9 @@ def reproject_disparity_to_3D(disparity_tensor: torch.Tensor, Q_matrix: torch.Te
     euclidian_observation_ndim = homogenous_observation_ndim - 1
 
     # Construct a mesh grid of uv values, i.e. the tensors will contain 1:rows and 1:cols.
-    u, v = torch.meshgrid(torch.arange(rows, dtype=dtype, device=device),
-                          torch.arange(cols, dtype=dtype, device=device))
+    u, v = torch.meshgrid(
+        torch.arange(rows, dtype=dtype, device=device), torch.arange(cols, dtype=dtype, device=device)
+    )
     u, v = u.expand(batch_size, -1, -1), v.expand(batch_size, -1, -1)
 
     # The z dimension in homogenous coordinates are just 1.
@@ -259,8 +273,10 @@ def reproject_disparity_to_3D(disparity_tensor: torch.Tensor, Q_matrix: torch.Te
 
     # Final check that everything went well.
     if not points.shape == (batch_size, rows * cols, euclidian_observation_ndim):
-        raise StereoException(f"Something went wrong in `reproject_disparity_to_3D`. Expected the final output"
-                              f"to be of shape {(batch_size, rows * cols, euclidian_observation_ndim)}."
-                              f"But the computed point cloud had shape {points.shape}. "
-                              f"Please ensure input are correct. If this is an error, please submit an issue.")
+        raise StereoException(
+            f"Something went wrong in `reproject_disparity_to_3D`. Expected the final output"
+            f"to be of shape {(batch_size, rows * cols, euclidian_observation_ndim)}."
+            f"But the computed point cloud had shape {points.shape}. "
+            f"Please ensure input are correct. If this is an error, please submit an issue."
+        )
     return points

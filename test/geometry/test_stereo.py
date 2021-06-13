@@ -1,9 +1,10 @@
-import torch
-import kornia
+from typing import Type
+
 import pytest
+import torch
 from torch.testing import assert_allclose
 
-from typing import Type
+import kornia
 
 
 @pytest.fixture(params=[1, 2, 4])
@@ -13,6 +14,7 @@ def batch_size(request):
 
 class _TestParams:
     """Collection of test parameters for smoke test."""
+
     height = 4
     width = 6
     fx = 1
@@ -22,7 +24,7 @@ class _TestParams:
 
 
 class _RealTestData:
-    """ Collection of data from a real stereo setup. """
+    """Collection of data from a real stereo setup."""
 
     @property
     def height(self):
@@ -34,26 +36,58 @@ class _RealTestData:
 
     @staticmethod
     def _get_real_left_camera(batch_size, device, dtype):
-        cam = torch.tensor([9.9640068207290187e+02, 0.0, 3.7502582168579102e+02,
-                            0.0, 0.0, 9.9640068207290187e+02, 2.4026374816894531e+02,
-                            0.0, 0.0, 0.0, 1.0, 0.0], device=device, dtype=dtype).reshape(3, 4)
+        cam = torch.tensor(
+            [
+                9.9640068207290187e02,
+                0.0,
+                3.7502582168579102e02,
+                0.0,
+                0.0,
+                9.9640068207290187e02,
+                2.4026374816894531e02,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+            ],
+            device=device,
+            dtype=dtype,
+        ).reshape(3, 4)
         return cam.expand(batch_size, -1, -1)
 
     @staticmethod
     def _get_real_right_camera(batch_size, device, dtype):
-        cam = torch.tensor([9.9640068207290187e+02, 0.0, 3.7502582168579102e+02,
-                            -5.4301732344712009e+03, 0.0, 9.9640068207290187e+02,
-                            2.4026374816894531e+02, 0.0, 0.0, 0.0, 1.0, 0.0], device=device, dtype=dtype).reshape(3, 4)
+        cam = torch.tensor(
+            [
+                9.9640068207290187e02,
+                0.0,
+                3.7502582168579102e02,
+                -5.4301732344712009e03,
+                0.0,
+                9.9640068207290187e02,
+                2.4026374816894531e02,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+            ],
+            device=device,
+            dtype=dtype,
+        ).reshape(3, 4)
         return cam.expand(batch_size, -1, -1)
 
     @staticmethod
     def _get_real_stereo_camera(batch_size, device, dtype):
-        return (_RealTestData._get_real_left_camera(batch_size, device, dtype),
-                _RealTestData._get_real_right_camera(batch_size, device, dtype))
+        return (
+            _RealTestData._get_real_left_camera(batch_size, device, dtype),
+            _RealTestData._get_real_right_camera(batch_size, device, dtype),
+        )
 
 
 class _SmokeTestData:
-    """Collection of smoke test data. """
+    """Collection of smoke test data."""
 
     @staticmethod
     def _create_rectified_camera(params: Type[_TestParams], batch_size, device, dtype, tx_fx=None):
@@ -94,8 +128,9 @@ class TestStereoCamera:
     def test_stereo_camera_attributes_smoke(self, batch_size, device, dtype):
         """Test proper setup of the class for smoke data."""
         tx_fx = -10
-        left_rectified_camera, right_rectified_camera = _SmokeTestData._create_stereo_camera(batch_size, device, dtype,
-                                                                                             tx_fx)
+        left_rectified_camera, right_rectified_camera = _SmokeTestData._create_stereo_camera(
+            batch_size, device, dtype, tx_fx
+        )
 
         stereo_camera = kornia.StereoCamera(left_rectified_camera, right_rectified_camera)
 
@@ -126,10 +161,12 @@ class TestStereoCamera:
     def test_reproject_disparity_to_3D_smoke(self, batch_size, device, dtype):
         """Test reprojecting of disparity to 3D for smoke data."""
         tx_fx = -10
-        left_rectified_camera, right_rectified_camera = _SmokeTestData._create_stereo_camera(batch_size, device, dtype,
-                                                                                             tx_fx)
-        disparity_tensor = self._create_disparity_tensor(batch_size, _TestParams.height, _TestParams.width,
-                                                         max_disparity=2, device=device)
+        left_rectified_camera, right_rectified_camera = _SmokeTestData._create_stereo_camera(
+            batch_size, device, dtype, tx_fx
+        )
+        disparity_tensor = self._create_disparity_tensor(
+            batch_size, _TestParams.height, _TestParams.width, max_disparity=2, device=device
+        )
         stereo_camera = kornia.StereoCamera(left_rectified_camera, right_rectified_camera)
         xyz = stereo_camera.reproject_disparity_to_3D(disparity_tensor)
 
@@ -141,8 +178,9 @@ class TestStereoCamera:
         """Test reprojecting of disparity to 3D for real data."""
         height, width = _RealTestData().height, _RealTestData().width
         max_disparity = 80
-        disparity_tensor = self._create_disparity_tensor(batch_size, height, width, max_disparity=max_disparity,
-                                                         device=device)
+        disparity_tensor = self._create_disparity_tensor(
+            batch_size, height, width, max_disparity=max_disparity, device=device
+        )
         left_rectified_camera, right_rectified_camera = _RealTestData._get_real_stereo_camera(batch_size, device, dtype)
         stereo_camera = kornia.StereoCamera(left_rectified_camera, right_rectified_camera)
 
