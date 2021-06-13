@@ -12,7 +12,7 @@ class TestNormalize:
     def test_smoke(self, device, dtype):
         mean = [0.5]
         std = [0.1]
-        repr = "Normalize(mean=[0.5], std=[0.1])"
+        repr = "Normalize(mean=tensor([0.5000]), std=tensor([0.1000]))"
         assert str(kornia.enhance.Normalize(mean, std)) == repr
 
     def test_normalize(self, device, dtype):
