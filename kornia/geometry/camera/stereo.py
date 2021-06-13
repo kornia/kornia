@@ -158,8 +158,8 @@ class StereoCamera:
     @property
     def Q(self) -> torch.Tensor:
         """
-        The Q matrix of the horizontal stereo setup. This matrix is used for reprojecting a disparitiy tensor to
-        the corresponding structured point cloud. Note that this is in a general form that allows different focal
+        The Q matrix of the horizontal stereo setup. This matrix is used for reprojecting a disparity tensor to
+        the corresponding point cloud. Note that this is in a general form that allows different focal
         lengths in the x and y direction.
 
         .. math::
@@ -223,6 +223,20 @@ def _check_Q_matrix(Q_matrix: torch.Tensor):
 def reproject_disparity_to_3D(disparity_tensor, Q_matrix):
     """
     Reproject the disparity tensor to a 3D point cloud.
+
+    .. math::
+        \begin{bmatrix}
+        X \\
+        Y \\
+        Z \\
+        W
+        \end{bmatrix} = Q *
+        \begin{bmatrix}
+        u \\
+        v \\
+        disparity(y, v) \\
+        z
+        \end{bmatrix}
 
     Args:
         disparity_tensor (torch.Tensor): Disparity tensor of shape :math:`(B, H, W)`.
