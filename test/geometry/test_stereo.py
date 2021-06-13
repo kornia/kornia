@@ -11,6 +11,11 @@ def batch_size(request):
     return request.param
 
 
+@pytest.fixture
+def dtype(scope="module"):
+    return torch.float32
+
+
 class _TestParams:
     """Collection of test parameters for smoke test."""
     height = 4
