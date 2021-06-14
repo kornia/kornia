@@ -7,47 +7,6 @@ import kornia
 import kornia.testing as utils  # test utils
 
 
-class TestBoundingBoxInferring3D:
-    def test_bounding_boxes_dim_inferring(self, device, dtype):
-        boxes = torch.tensor(
-            [
-                [[0, 1, 2], [10, 1, 2], [10, 21, 2], [0, 21, 2], [0, 1, 32], [10, 1, 32], [10, 21, 32], [0, 21, 32]],
-                [[3, 4, 5], [43, 4, 5], [43, 54, 5], [3, 54, 5], [3, 4, 65], [43, 4, 65], [43, 54, 65], [3, 54, 65]],
-            ],
-            device=device,
-            dtype=dtype,
-        )  # 2x8x3
-        d, h, w = kornia.geometry.transform.crop.infer_box_shape3d(boxes)
-
-        assert_allclose(d, torch.tensor([31.0, 61.0], device=device, dtype=dtype))
-        assert_allclose(h, torch.tensor([21.0, 51.0], device=device, dtype=dtype))
-        assert_allclose(w, torch.tensor([11.0, 41.0], device=device, dtype=dtype))
-
-    def test_gradcheck(self, device, dtype):
-        boxes = torch.tensor(
-            [[[0, 1, 2], [10, 1, 2], [10, 21, 2], [0, 21, 2], [0, 1, 32], [10, 1, 32], [10, 21, 32], [0, 21, 32]]],
-            device=device,
-            dtype=dtype,
-        )
-        boxes = utils.tensor_to_gradcheck_var(boxes)
-        assert gradcheck(kornia.kornia.geometry.transform.crop.infer_box_shape3d, (boxes,), raise_exception=True)
-
-    def test_jit(self, device, dtype):
-        # Define script
-        op = kornia.infer_box_shape3d
-        op_script = torch.jit.script(op)
-
-        boxes = torch.tensor(
-            [[[0, 0, 1], [3, 0, 1], [3, 2, 1], [0, 2, 1], [0, 0, 3], [3, 0, 3], [3, 2, 3], [0, 2, 3]]],
-            device=device,
-            dtype=dtype,
-        )  # 1x8x3
-
-        actual = op_script(boxes)
-        expected = op(boxes)
-        assert_allclose(actual, expected)
-
-
 class TestCropAndResize3D:
     def test_crop(self, device, dtype):
         inp = torch.arange(0.0, 64.0, device=device, dtype=dtype).view(1, 1, 4, 4, 4)

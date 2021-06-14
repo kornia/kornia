@@ -1,8 +1,10 @@
 from typing import cast, Dict, Optional, Tuple, Union
 
 import torch
+import torch.nn as nn
+from torch.nn.functional import pad
 
-from kornia.geometry import bbox_to_mask, infer_box_shape
+from kornia.geometry import bbox_to_mask_2d, infer_bbox_shape_2d
 
 from . import random_generator as rg
 from .base import MixAugmentationBase
@@ -265,10 +267,10 @@ class RandomCutMix(MixAugmentationBase):
         for pair, crop in zip(params['mix_pairs'], params['crop_src']):
             input_permute = input.index_select(dim=0, index=pair.to(input.device))
             labels_permute = label.index_select(dim=0, index=pair.to(label.device))
-            w, h = infer_box_shape(crop)
+            w, h = infer_bbox_shape_2d(crop)
             lam = w.to(input.dtype) * h.to(input.dtype) / (width * height)  # width_beta * height_beta
             # compute mask to match input shape
-            mask = bbox_to_mask(crop, width, height).bool().unsqueeze(dim=1).repeat(1, input.size(1), 1, 1)
+            mask = bbox_to_mask_2d(crop, width, height).bool().unsqueeze(dim=1).repeat(1, input.size(1), 1, 1)
             out_inputs[mask] = input_permute[mask]
             out_labels.append(
                 torch.stack([label.to(input.dtype), labels_permute.to(input.dtype), lam.to(label.device)], dim=1)

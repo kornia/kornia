@@ -2,7 +2,7 @@ from typing import Dict, Optional, Tuple, Union
 
 import torch
 
-from kornia.geometry import bbox_generator3d
+from kornia.geometry import bbox_generator_3d
 from kornia.utils import _extract_device_dtype
 
 from ..utils import _adapted_uniform, _joint_range_check
@@ -403,7 +403,7 @@ def random_crop_generator3d(
         y_start = _adapted_uniform((1,), 0, y_diff, same_on_batch).floor()
         z_start = _adapted_uniform((1,), 0, z_diff, same_on_batch).floor()
 
-    crop_src = bbox_generator3d(
+    crop_src = bbox_generator_3d(
         x_start.to(device=_device, dtype=_dtype).view(-1),
         y_start.to(device=_device, dtype=_dtype).view(-1),
         z_start.to(device=_device, dtype=_dtype).view(-1),
@@ -413,7 +413,7 @@ def random_crop_generator3d(
     )
 
     if resize_to is None:
-        crop_dst = bbox_generator3d(
+        crop_dst = bbox_generator_3d(
             torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
             torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
             torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
