@@ -31,8 +31,8 @@ class Normalize(nn.Module):
         torch.Size([1, 4, 3, 3])
 
         >>> x = torch.rand(1, 4, 3, 3)
-        >>> mean = torch.zeros(1, 4)
-        >>> std = 255. * torch.ones(1, 4)
+        >>> mean = torch.zeros(4)
+        >>> std = 255. * torch.ones(4)
         >>> out = Normalize(mean, std)(x)
         >>> out.shape
         torch.Size([1, 4, 3, 3])
@@ -86,7 +86,7 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
 
     Examples:
         >>> x = torch.rand(1, 4, 3, 3)
-        >>> out = normalize(x, 0.0, 255.)
+        >>> out = normalize(x, torch.tensor([0.0]), torch.tensor([255.]))
         >>> out.shape
         torch.Size([1, 4, 3, 3])
 

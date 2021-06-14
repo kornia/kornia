@@ -1321,7 +1321,7 @@ class Normalize(IntensityAugmentationBase2D):
 
     Examples:
 
-        >>> norm = Normalize(mean=torch.zeros(1, 4), std=torch.ones(1, 4))
+        >>> norm = Normalize(mean=torch.zeros(4), std=torch.ones(4))
         >>> x = torch.rand(1, 4, 3, 3)
         >>> out = norm(x)
         >>> out.shape
