@@ -22,7 +22,7 @@ help:
 clean:
 	@echo "Removing everything under 'build'.."
 	@rm -rf $(BUILDDIR)/html/ $(BUILDDIR)/doctrees
-	@rm $(SOURCEDIR)/_static/*.jpg
+	@rm -rf $(SOURCEDIR)/_static/*.jpg
 
 images:
 	python3 generate_example_images.py
