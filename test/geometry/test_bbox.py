@@ -4,12 +4,10 @@ from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
 import kornia.testing as utils
-from kornia.geometry.bbox import validate_bbox_2d, infer_bbox_shape_2d
-from kornia.geometry.bbox import validate_bbox_3d, infer_bbox_shape_3d
+from kornia.geometry.bbox import infer_bbox_shape_2d, infer_bbox_shape_3d, validate_bbox_2d, validate_bbox_3d
 
 
 class TestBbox2D:
-
     def test_smoke(self, device, dtype):
 
         # Sample two points of the rectangle
@@ -60,7 +58,6 @@ class TestBbox2D:
 
 
 class TestBbox3D:
-
     def test_smoke(self, device, dtype):
         # Sample two points of the 3d rect
         points = torch.rand(1, 6, device=device, dtype=dtype)

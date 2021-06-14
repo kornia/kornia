@@ -1,6 +1,7 @@
 from typing import Tuple
 
 import torch
+
 import kornia
 
 
@@ -15,8 +16,9 @@ def validate_bbox_2d(boxes: torch.Tensor) -> bool:
           order: top-left, top-right, bottom-right, bottom-left. The
           coordinates must be in the x, y order.
     """
-    assert len(boxes.shape) == 3 and boxes.shape[1:] == torch.Size([4, 2]), \
-        f"Box shape must be (B, 4, 2). Got {boxes.shape}."
+    assert len(boxes.shape) == 3 and boxes.shape[1:] == torch.Size(
+        [4, 2]
+    ), f"Box shape must be (B, 4, 2). Got {boxes.shape}."
 
     if not torch.allclose((boxes[:, 1, 0] - boxes[:, 0, 0] + 1), (boxes[:, 2, 0] - boxes[:, 3, 0] + 1)):
         raise ValueError(
@@ -43,24 +45,28 @@ def validate_bbox_3d(boxes: torch.Tensor) -> bool:
             order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
             back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in the x, y, z order.
     """
-    assert len(boxes.shape) == 3 and boxes.shape[1:] == torch.Size([8, 3]),\
-        f"Box shape must be (B, 8, 3). Got {boxes.shape}."
+    assert len(boxes.shape) == 3 and boxes.shape[1:] == torch.Size(
+        [8, 3]
+    ), f"Box shape must be (B, 8, 3). Got {boxes.shape}."
 
     left = torch.index_select(boxes, 1, torch.tensor([1, 2, 5, 6], device=boxes.device, dtype=torch.long))[:, :, 0]
     right = torch.index_select(boxes, 1, torch.tensor([0, 3, 4, 7], device=boxes.device, dtype=torch.long))[:, :, 0]
     widths = left - right + 1
-    assert torch.allclose(widths.permute(1, 0), widths[:, 0]), \
-        f"Boxes must have be cube, while get different widths {widths}."
+    assert torch.allclose(
+        widths.permute(1, 0), widths[:, 0]
+    ), f"Boxes must have be cube, while get different widths {widths}."
 
     bot = torch.index_select(boxes, 1, torch.tensor([2, 3, 6, 7], device=boxes.device, dtype=torch.long))[:, :, 1]
     upper = torch.index_select(boxes, 1, torch.tensor([0, 1, 4, 5], device=boxes.device, dtype=torch.long))[:, :, 1]
     heights = bot - upper + 1
-    assert torch.allclose(heights.permute(1, 0), heights[:, 0]), \
-        f"Boxes must have be cube, while get different heights {heights}."
+    assert torch.allclose(
+        heights.permute(1, 0), heights[:, 0]
+    ), f"Boxes must have be cube, while get different heights {heights}."
 
     depths = boxes[:, 4:, 2] - boxes[:, :4, 2] + 1
-    assert torch.allclose(depths.permute(1, 0), depths[:, 0]), \
-        f"Boxes must have be cube, while get different depths {depths}."
+    assert torch.allclose(
+        depths.permute(1, 0), depths[:, 0]
+    ), f"Boxes must have be cube, while get different depths {depths}."
 
     return True
 
@@ -79,8 +85,9 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
             in 3D case. The coordinates must be in the x, y, (and optionally z) order.
     """
 
-    assert len(boxes.shape) == 3 and (boxes.shape[1:] == torch.Size([4, 2]) or boxes.shape[1:] == torch.Size([8, 3])), \
-        f"Box shape must be the shape of (B, 4, 2) for 2D bbox or (B, 8, 3) for 3D bbox. Got {boxes.shape}."
+    assert len(boxes.shape) == 3 and (
+        boxes.shape[1:] == torch.Size([4, 2]) or boxes.shape[1:] == torch.Size([8, 3])
+    ), f"Box shape must be the shape of (B, 4, 2) for 2D bbox or (B, 8, 3) for 3D bbox. Got {boxes.shape}."
 
     # 2D boxes
     if boxes.shape[-1] == 2:
@@ -95,31 +102,31 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
 
 def infer_bbox_shape_2d(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Auto-infer the output sizes for the given 2D bounding boxes.
-        Args:
-            boxes (torch.Tensor): a tensor containing the coordinates of the
-              bounding boxes to be extracted. The tensor must have the shape
-              of Bx4x2, where each box is defined in the following (clockwise)
-              order: top-left, top-right, bottom-right, bottom-left. The
-              coordinates must be in the x, y order.
-        Returns:
-            Tuple[torch.Tensor, torch.Tensor]:
-            - Bounding box heights, shape of :math:`(B,)`.
-            - Boundingbox widths, shape of :math:`(B,)`.
-        Example:
-            >>> boxes = torch.tensor([[
-            ...     [1., 1.],
-            ...     [2., 1.],
-            ...     [2., 2.],
-            ...     [1., 2.],
-            ... ], [
-            ...     [1., 1.],
-            ...     [3., 1.],
-            ...     [3., 2.],
-            ...     [1., 2.],
-            ... ]])  # 2x4x2
-            >>> infer_bbox_shape_2d(boxes)
-            (tensor([2., 2.]), tensor([2., 3.]))
-        """
+    Args:
+        boxes (torch.Tensor): a tensor containing the coordinates of the
+          bounding boxes to be extracted. The tensor must have the shape
+          of Bx4x2, where each box is defined in the following (clockwise)
+          order: top-left, top-right, bottom-right, bottom-left. The
+          coordinates must be in the x, y order.
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor]:
+        - Bounding box heights, shape of :math:`(B,)`.
+        - Boundingbox widths, shape of :math:`(B,)`.
+    Example:
+        >>> boxes = torch.tensor([[
+        ...     [1., 1.],
+        ...     [2., 1.],
+        ...     [2., 2.],
+        ...     [1., 2.],
+        ... ], [
+        ...     [1., 1.],
+        ...     [3., 1.],
+        ...     [3., 2.],
+        ...     [1., 2.],
+        ... ]])  # 2x4x2
+        >>> infer_bbox_shape_2d(boxes)
+        (tensor([2., 2.]), tensor([2., 3.]))
+    """
     validate_bbox(boxes)
     width: torch.Tensor = boxes[:, 1, 0] - boxes[:, 0, 0] + 1
     height: torch.Tensor = boxes[:, 2, 1] - boxes[:, 0, 1] + 1
@@ -128,36 +135,36 @@ def infer_bbox_shape_2d(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor
 
 def infer_bbox_shape_3d(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     r"""Auto-infer the output sizes for the given 3D bounding boxes.
-        Args:
-            boxes (torch.Tensor): a tensor containing the coordinates of the bounding boxes to be extracted.
-                The tensor must have the shape of Bx8x3, where each box is defined in the following (clockwise)
-                order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
-                back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in the x, y, z order.
-        Returns:
-            Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-            - Bounding box depths, shape of :math:`(B,)`.
-            - Bounding box heights, shape of :math:`(B,)`.
-            - Bounding box widths, shape of :math:`(B,)`.
-        Example:
-            >>> boxes = torch.tensor([[[ 0,  1,  2],
-            ...         [10,  1,  2],
-            ...         [10, 21,  2],
-            ...         [ 0, 21,  2],
-            ...         [ 0,  1, 32],
-            ...         [10,  1, 32],
-            ...         [10, 21, 32],
-            ...         [ 0, 21, 32]],
-            ...        [[ 3,  4,  5],
-            ...         [43,  4,  5],
-            ...         [43, 54,  5],
-            ...         [ 3, 54,  5],
-            ...         [ 3,  4, 65],
-            ...         [43,  4, 65],
-            ...         [43, 54, 65],
-            ...         [ 3, 54, 65]]]) # 2x8x3
-            >>> infer_bbox_shape_3d(boxes)
-            (tensor([31, 61]), tensor([21, 51]), tensor([11, 41]))
-        """
+    Args:
+        boxes (torch.Tensor): a tensor containing the coordinates of the bounding boxes to be extracted.
+            The tensor must have the shape of Bx8x3, where each box is defined in the following (clockwise)
+            order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
+            back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in the x, y, z order.
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        - Bounding box depths, shape of :math:`(B,)`.
+        - Bounding box heights, shape of :math:`(B,)`.
+        - Bounding box widths, shape of :math:`(B,)`.
+    Example:
+        >>> boxes = torch.tensor([[[ 0,  1,  2],
+        ...         [10,  1,  2],
+        ...         [10, 21,  2],
+        ...         [ 0, 21,  2],
+        ...         [ 0,  1, 32],
+        ...         [10,  1, 32],
+        ...         [10, 21, 32],
+        ...         [ 0, 21, 32]],
+        ...        [[ 3,  4,  5],
+        ...         [43,  4,  5],
+        ...         [43, 54,  5],
+        ...         [ 3, 54,  5],
+        ...         [ 3,  4, 65],
+        ...         [43,  4, 65],
+        ...         [43, 54, 65],
+        ...         [ 3, 54, 65]]]) # 2x8x3
+        >>> infer_bbox_shape_3d(boxes)
+        (tensor([31, 61]), tensor([21, 51]), tensor([11, 41]))
+    """
     validate_bbox(boxes)
 
     left = torch.index_select(boxes, 1, torch.tensor([1, 2, 5, 6], device=boxes.device, dtype=torch.long))[:, :, 0]

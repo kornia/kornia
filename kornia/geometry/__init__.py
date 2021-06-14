@@ -1,3 +1,4 @@
+from kornia.geometry.bbox import *
 from kornia.geometry.calibration import *
 from kornia.geometry.camera import *
 from kornia.geometry.conversions import *
@@ -7,4 +8,3 @@ from kornia.geometry.homography import *
 from kornia.geometry.linalg import *
 from kornia.geometry.subpix import *
 from kornia.geometry.transform import *
-from kornia.geometry.bbox import *
