@@ -1343,10 +1343,10 @@ class Normalize(IntensityAugmentationBase2D):
         if isinstance(std, float):
             std = torch.tensor([std])
 
-        if isinstance(mean, tuple) or isinstance(mean, list):
+        if isinstance(mean, (tuple, list)):
             mean = torch.tensor(mean)
 
-        if isinstance(std, tuple) or isinstance(std, list):
+        if isinstance(std, (tuple, list)):
             std = torch.tensor(std)
 
         self.mean = mean

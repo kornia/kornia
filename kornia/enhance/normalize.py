@@ -51,12 +51,10 @@ class Normalize(nn.Module):
         if isinstance(std, float):
             std = torch.tensor([std])
 
-        if isinstance(mean, tuple) or isinstance(mean, list):
-            print(f' mean {mean}')
+        if isinstance(mean, (tuple, list)):
             mean = torch.tensor(mean)
-            print(f' mean {mean}')
 
-        if isinstance(std, tuple) or isinstance(std, list):
+        if isinstance(std, (tuple, list)):
             std = torch.tensor(std)
 
         self.mean = mean
