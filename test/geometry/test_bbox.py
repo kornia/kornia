@@ -5,8 +5,13 @@ from torch.testing import assert_allclose
 
 import kornia
 import kornia.testing as utils
-from kornia.geometry.bbox import infer_bbox_shape_2d, infer_bbox_shape_3d, validate_bbox_2d, validate_bbox_3d,\
-    transform_bbox_2d
+from kornia.geometry.bbox import (
+    infer_bbox_shape_2d,
+    infer_bbox_shape_3d,
+    transform_bbox_2d,
+    validate_bbox_2d,
+    validate_bbox_3d,
+)
 
 
 class TestBbox2D:
