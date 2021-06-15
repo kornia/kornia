@@ -4,6 +4,12 @@ import torch
 import torch.nn.functional as F
 
 
+def _neight2channels_like_kernel(kernel):
+    h, w = kernel.size()
+    kernel = torch.eye(h * w, dtype=kernel.dtype, device=kernel.device)
+    return kernel.view(h * w, 1, h, w)
+
+
 # Dilation
 def dilation(
     tensor: torch.Tensor,
@@ -74,9 +80,14 @@ def dilation(
         neighborhood = structuring_element.clone()
         neighborhood[kernel == 0] = -max_val
 
-    output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
-    output, _ = torch.max(output + neighborhood.flip((0, 1)), 4)
-    output, _ = torch.max(output, 4)
+    B, C, H, W = tensor.size()
+    Hpad, Wpad = output.shape[-2:]
+    reshape_kernel = _neight2channels_like_kernel(kernel)
+    output, _ = F.conv2d(output.view(B * C, 1, Hpad, Wpad),
+                         reshape_kernel,
+                         padding=0,
+                         bias=neighborhood.view(-1).flip(0)).max(dim=1)
+    output = output.view(B, C, H, W)
 
     return output
 
@@ -151,10 +162,14 @@ def erosion(
         neighborhood = structuring_element.clone()
         neighborhood[kernel == 0] = -max_val
 
-    output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
-    output, _ = torch.min(output - neighborhood, 4)
-    output, _ = torch.min(output, 4)
-
+    B, C, H, W = tensor.size()
+    Hpad, Wpad = output.shape[-2:]
+    reshape_kernel = _neight2channels_like_kernel(kernel)
+    output, _ = F.conv2d(output.view(B * C, 1, Hpad, Wpad),
+                         reshape_kernel,
+                         padding=0,
+                         bias=-neighborhood.view(-1).flip(0)).min(dim=1)
+    output = output.view(B, C, H, W)
     return output
 
 
