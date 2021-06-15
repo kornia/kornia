@@ -1,6 +1,6 @@
 import importlib
-from pathlib import Path
 import os
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -43,7 +43,7 @@ augmentations_list: dict = {
     "RandomEqualize": (),
     "RandomFisheye": (torch.tensor([-0.3, 0.3]), torch.tensor([-0.3, 0.3]), torch.tensor([0.9, 1.0])),
     "RandomGrayscale": (),
-    "RandomGaussianBlur": ((3,3), (0.1,2.0)),
+    "RandomGaussianBlur": ((3, 3), (0.1, 2.0)),
     "RandomGaussianNoise": (0.0, 0.05),
     "RandomHorizontalFlip": (),
     "RandomInvert": (),
