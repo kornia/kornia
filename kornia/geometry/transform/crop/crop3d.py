@@ -1,11 +1,17 @@
+import warnings
 from typing import Optional, Tuple
 
 import torch
 
-from kornia.geometry.bbox import infer_bbox_shape_3d, validate_bbox_3d
+from kornia.geometry.bbox import bbox_generator_3d as _bbox_generator_3d
+from kornia.geometry.bbox import bbox_to_mask_3d as _bbox_to_mask_3d
+from kornia.geometry.bbox import infer_bbox_shape_3d as _infer_bbox_shape_3d
+from kornia.geometry.bbox import validate_bbox_3d as _validate_bbox_3d
 from kornia.geometry.transform.projwarp import get_perspective_transform3d, warp_affine3d
 
-__all__ = ["crop_and_resize3d", "crop_by_boxes3d", "crop_by_transform_mat3d", "center_crop3d"]
+
+__all__ = ["crop_and_resize3d", "crop_by_boxes3d", "crop_by_transform_mat3d", "center_crop3d", "validate_bboxes3d",
+           "infer_box_shape3d", "bbox_to_mask3d", "bbox_generator3d"]
 
 
 def crop_and_resize3d(
@@ -299,8 +305,8 @@ def crop_by_boxes3d(
                    [45., 46., 47.]]]]])
 
     """
-    validate_bbox_3d(src_box)
-    validate_bbox_3d(dst_box)
+    _validate_bbox_3d(src_box)
+    _validate_bbox_3d(dst_box)
 
     assert len(tensor.shape) == 5, f"Only tensor with shape (B, C, D, H, W) supported. Got {tensor.shape}."
 
@@ -310,7 +316,7 @@ def crop_by_boxes3d(
     # simulate broadcasting
     dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1).type_as(tensor)
 
-    bbox = infer_bbox_shape_3d(dst_box)
+    bbox = _infer_bbox_shape_3d(dst_box)
     assert (bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all() and (bbox[2] == bbox[2][0]).all(), (
         "Cropping height, width and depth must be exact same in a batch."
         f"Got height {bbox[0]}, width {bbox[1]} and depth {bbox[2]}."
@@ -358,3 +364,177 @@ def crop_by_transform_mat3d(
     )
 
     return patches
+
+
+@torch.jit.ignore
+def validate_bboxes3d(boxes: torch.Tensor) -> bool:
+    """Validate if a 3D bounding box usable or not.
+    This function checks if the boxes are cube or not.
+    Args:
+        boxes (torch.Tensor): a tensor containing the coordinates of the bounding boxes to be extracted.
+            The tensor must have the shape of Bx8x3, where each box is defined in the following (clockwise)
+            order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
+            back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in the x, y, z order.
+    """
+    warnings.warn(
+        "`kornia.geometry.transforms.crop.crop3d.validate_bboxes3d` is deprecated and will be removed > 0.6.0. "
+        "Please use `kornia.geometry.bbox.validate_bbox_3d instead.`",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return _validate_bbox_3d(boxes)
+
+
+def infer_box_shape3d(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    r"""Auto-infer the output sizes for the given 3D bounding boxes.
+    Args:
+        boxes (torch.Tensor): a tensor containing the coordinates of the bounding boxes to be extracted.
+            The tensor must have the shape of Bx8x3, where each box is defined in the following (clockwise)
+            order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
+            back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in the x, y, z order.
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        - Bounding box depths, shape of :math:`(B,)`.
+        - Bounding box heights, shape of :math:`(B,)`.
+        - Bounding box widths, shape of :math:`(B,)`.
+    Example:
+        >>> boxes = torch.tensor([[[ 0,  1,  2],
+        ...         [10,  1,  2],
+        ...         [10, 21,  2],
+        ...         [ 0, 21,  2],
+        ...         [ 0,  1, 32],
+        ...         [10,  1, 32],
+        ...         [10, 21, 32],
+        ...         [ 0, 21, 32]],
+        ...        [[ 3,  4,  5],
+        ...         [43,  4,  5],
+        ...         [43, 54,  5],
+        ...         [ 3, 54,  5],
+        ...         [ 3,  4, 65],
+        ...         [43,  4, 65],
+        ...         [43, 54, 65],
+        ...         [ 3, 54, 65]]]) # 2x8x3
+        >>> infer_box_shape3d(boxes)
+        (tensor([31, 61]), tensor([21, 51]), tensor([11, 41]))
+    """
+    warnings.warn(
+        "`kornia.geometry.transforms.crop.crop2d.infer_box_shape3d` is deprecated and will be removed > 0.6.0. "
+        "Please use `kornia.geometry.bbox.infer_bbox_shape_3d instead.`",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return _infer_bbox_shape_3d(boxes)
+
+
+def bbox_to_mask3d(boxes: torch.Tensor, size: Tuple[int, int, int]) -> torch.Tensor:
+    """Convert 3D bounding boxes to masks. Covered area is 1. and the remaining is 0.
+    Args:
+        boxes (torch.Tensor): a tensor containing the coordinates of the bounding boxes to be extracted.
+            The tensor must have the shape of Bx8x3, where each box is defined in the following (clockwise)
+            order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
+            back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in the x, y, z order.
+        size (Tuple[int, int, int]): depth, height and width of the masked image.
+    Returns:
+        torch.Tensor: the output mask tensor.
+    Examples:
+        >>> boxes = torch.tensor([[
+        ...     [1., 1., 1.],
+        ...     [2., 1., 1.],
+        ...     [2., 2., 1.],
+        ...     [1., 2., 1.],
+        ...     [1., 1., 2.],
+        ...     [2., 1., 2.],
+        ...     [2., 2., 2.],
+        ...     [1., 2., 2.],
+        ... ]])  # 1x8x3
+        >>> bbox_to_mask3d(boxes, (4, 5, 5))
+        tensor([[[[[0., 0., 0., 0., 0.],
+                   [0., 0., 0., 0., 0.],
+                   [0., 0., 0., 0., 0.],
+                   [0., 0., 0., 0., 0.],
+                   [0., 0., 0., 0., 0.]],
+        <BLANKLINE>
+                  [[0., 0., 0., 0., 0.],
+                   [0., 1., 1., 0., 0.],
+                   [0., 1., 1., 0., 0.],
+                   [0., 0., 0., 0., 0.],
+                   [0., 0., 0., 0., 0.]],
+        <BLANKLINE>
+                  [[0., 0., 0., 0., 0.],
+                   [0., 1., 1., 0., 0.],
+                   [0., 1., 1., 0., 0.],
+                   [0., 0., 0., 0., 0.],
+                   [0., 0., 0., 0., 0.]],
+        <BLANKLINE>
+                  [[0., 0., 0., 0., 0.],
+                   [0., 0., 0., 0., 0.],
+                   [0., 0., 0., 0., 0.],
+                   [0., 0., 0., 0., 0.],
+                   [0., 0., 0., 0., 0.]]]]])
+    """
+    warnings.warn(
+        "`kornia.geometry.transforms.crop.crop2d.bbox_to_mask3d` is deprecated and will be removed > 0.6.0. "
+        "Please use `kornia.geometry.bbox.bbox_to_mask_3d instead.`",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return _bbox_to_mask_3d(boxes, size)
+
+
+def bbox_generator3d(
+        x_start: torch.Tensor,
+        y_start: torch.Tensor,
+        z_start: torch.Tensor,
+        width: torch.Tensor,
+        height: torch.Tensor,
+        depth: torch.Tensor,
+) -> torch.Tensor:
+    """Generate 3D bounding boxes according to the provided start coords, width, height and depth.
+    Args:
+        x_start (torch.Tensor): a tensor containing the x coordinates of the bounding boxes to be extracted.
+            Shape must be a scalar tensor or :math:`(B,)`.
+        y_start (torch.Tensor): a tensor containing the y coordinates of the bounding boxes to be extracted.
+            Shape must be a scalar tensor or :math:`(B,)`.
+        z_start (torch.Tensor): a tensor containing the z coordinates of the bounding boxes to be extracted.
+            Shape must be a scalar tensor or :math:`(B,)`.
+        width (torch.Tensor): widths of the masked image.
+            Shape must be a scalar tensor or :math:`(B,)`.
+        height (torch.Tensor): heights of the masked image.
+            Shape must be a scalar tensor or :math:`(B,)`.
+        depth (torch.Tensor): depths of the masked image.
+            Shape must be a scalar tensor or :math:`(B,)`.
+    Returns:
+        torch.Tensor: the 3d bounding box tensor :math:`(B, 8, 3)`.
+    Examples:
+        >>> x_start = torch.tensor([0, 3])
+        >>> y_start = torch.tensor([1, 4])
+        >>> z_start = torch.tensor([2, 5])
+        >>> width = torch.tensor([10, 40])
+        >>> height = torch.tensor([20, 50])
+        >>> depth = torch.tensor([30, 60])
+        >>> bbox_generator3d(x_start, y_start, z_start, width, height, depth)
+        tensor([[[ 0,  1,  2],
+                 [10,  1,  2],
+                 [10, 21,  2],
+                 [ 0, 21,  2],
+                 [ 0,  1, 32],
+                 [10,  1, 32],
+                 [10, 21, 32],
+                 [ 0, 21, 32]],
+        <BLANKLINE>
+                [[ 3,  4,  5],
+                 [43,  4,  5],
+                 [43, 54,  5],
+                 [ 3, 54,  5],
+                 [ 3,  4, 65],
+                 [43,  4, 65],
+                 [43, 54, 65],
+                 [ 3, 54, 65]]])
+    """
+    warnings.warn(
+        "`kornia.geometry.transforms.crop.crop2d.bbox_generator3d` is deprecated and will be removed > 0.6.0. "
+        "Please use `kornia.geometry.bbox.bbox_generator_3d instead.`",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return _bbox_generator_3d(x_start, y_start, z_start, width, height, depth)

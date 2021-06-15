@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Union
 
 import torch
 
@@ -94,10 +94,7 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
         return validate_bbox_2d(boxes)
 
     # 3D boxes
-    elif boxes.shape[-1] == 3:
-        return validate_bbox_3d(boxes)
-
-    return True
+    return validate_bbox_3d(boxes)
 
 
 def infer_bbox_shape_2d(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -177,6 +174,49 @@ def infer_bbox_shape_3d(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor
 
     depths = (boxes[:, 4:, 2] - boxes[:, :4, 2] + 1)[:, 0]
     return depths, heights, widths
+
+
+@torch.jit.ignore
+def infer_bbox_shape(boxes: torch.Tensor) -> Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor,
+                                                                                            torch.Tensor]]:
+    r"""Auto-infer the output sizes for the given 2D/3D bounding boxes.
+    Args:
+        boxes (torch.Tensor): a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must
+            have the shape of Bx4x2 for 2D bouding box or Bx8x3 for 3D bouding box, where each box is defined in the
+            following (clockwise) order: top-left, top-right, bottom-right, bottom-left and front-top-left,
+            front-top-right, front-bottom-right, front-bottom-left, back-top-left, back-top-right, back-bottom-right,
+            back-bottom-left in 3D case. The coordinates must be in the x, y, (and optionally z) order.
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor] in 2D case:
+        - Bounding box heights, shape of :math:`(B,)`.
+        - Boundingbox widths, shape of :math:`(B,)`.
+        or Tuple[torch.Tensor, torch.Tensor, torch.Tensor] in 3D case:
+        - Bounding box depths, shape of :math:`(B,)`.
+        - Bounding box heights, shape of :math:`(B,)`.
+        - Bounding box widths, shape of :math:`(B,)`.
+    Example:
+        >>> boxes = torch.tensor([[
+        ...     [1., 1.],
+        ...     [2., 1.],
+        ...     [2., 2.],
+        ...     [1., 2.],
+        ... ], [
+        ...     [1., 1.],
+        ...     [3., 1.],
+        ...     [3., 2.],
+        ...     [1., 2.],
+        ... ]])  # 2x4x2
+        >>> infer_bbox_shape_2d(boxes)
+        (tensor([2., 2.]), tensor([2., 3.]))
+    """
+    validate_bbox(boxes)
+
+    # 2D boxes
+    if boxes.shape[-1] == 2:
+        return infer_bbox_shape_2d(boxes)
+
+    # 3D boxes
+    return infer_bbox_shape_3d(boxes)
 
 
 def bbox_to_mask_2d(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
@@ -478,7 +518,6 @@ def transform_bbox_2d(trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = 
 
 
     """
-
     if not isinstance(mode, str):
         raise TypeError(f"Mode must be a string. Got {type(mode)}")
 
