@@ -73,7 +73,7 @@ class TestTransformBoxes2D:
 
         trans_mat = torch.tensor([[[-1.0, 0.0, 512.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
 
-        out = kornia.transform_bbox_2d(trans_mat, boxes)
+        out = transform_bbox_2d(trans_mat, boxes)
         assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
 
     def test_transform_multiple_boxes(self, device, dtype):
@@ -119,7 +119,7 @@ class TestTransformBoxes2D:
             dtype=dtype,
         )
 
-        out = kornia.transform_bbox_2d(trans_mat, boxes)
+        out = transform_bbox_2d(trans_mat, boxes)
         assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
 
     def test_transform_boxes_wh(self, device, dtype):
@@ -148,7 +148,7 @@ class TestTransformBoxes2D:
 
         trans_mat = torch.tensor([[[-1.0, 0.0, 512.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
 
-        out = kornia.transform_bbox_2d(trans_mat, boxes, mode='xywh')
+        out = transform_bbox_2d(trans_mat, boxes, mode='xywh')
         assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
@@ -169,7 +169,7 @@ class TestTransformBoxes2D:
         trans_mat = utils.tensor_to_gradcheck_var(trans_mat)
         boxes = utils.tensor_to_gradcheck_var(boxes)
 
-        assert gradcheck(kornia.transform_bbox_2d, (trans_mat, boxes), raise_exception=True)
+        assert gradcheck(transform_bbox_2d, (trans_mat, boxes), raise_exception=True)
 
     def test_jit(self, device, dtype):
         boxes = torch.tensor([[139.2640, 103.0150, 258.0480, 307.5075]], device=device, dtype=dtype)

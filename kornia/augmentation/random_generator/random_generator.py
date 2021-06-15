@@ -3,7 +3,7 @@ from typing import cast, Dict, Optional, Tuple, Union
 import torch
 from torch.distributions import Bernoulli
 
-from kornia.geometry import bbox_generator_2d
+from kornia.geometry.bbox import bbox_generator_2d
 from kornia.utils import _extract_device_dtype
 
 from ..utils import _adapted_beta, _adapted_sampling, _adapted_uniform, _common_param_check, _joint_range_check

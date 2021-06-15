@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from torch.nn.functional import pad
 
-from kornia.geometry import bbox_to_mask_2d, infer_bbox_shape_2d
+from kornia.geometry.bbox import bbox_to_mask_2d, infer_bbox_shape_2d
 
 from . import random_generator as rg
 from .base import MixAugmentationBase

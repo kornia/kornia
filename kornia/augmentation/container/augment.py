@@ -6,7 +6,8 @@ import torch.nn as nn
 
 from kornia.augmentation.base import _AugmentationBase, GeometricAugmentationBase2D, IntensityAugmentationBase2D
 from kornia.constants import DataKey
-from kornia.geometry import transform_bbox_2d, transform_points
+from kornia.geometry.bbox import transform_bbox_2d
+from kornia.geometry.linalg import transform_points
 
 from .image import ImageSequential
 from .patch import PatchSequential
