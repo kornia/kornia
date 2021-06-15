@@ -1,14 +1,11 @@
-from typing import Tuple, Callable, Optional
+from typing import Callable, Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Function
 
-__all__ = [
-    "STEFunction",
-    "StraightThroughEstimator",
-]
+__all__ = ["STEFunction", "StraightThroughEstimator"]
 
 
 def _identity(input: torch.Tensor, shape: Optional[torch.Size]) -> torch.Tensor:
@@ -52,10 +49,14 @@ class STEFunction(Function):
             By default, the output gradients will be mapped into [-1, 1] with ``F.hardtanh`` function.
             If None, an identity mapping will be applied.
     """
+
     @staticmethod
     def forward(  # type: ignore
-        ctx, input: torch.Tensor, output: torch.Tensor, transform_fn: Optional[Callable] = None,
-        grad_fn: Optional[Callable] = F.hardtanh
+        ctx,
+        input: torch.Tensor,
+        output: torch.Tensor,
+        transform_fn: Optional[Callable] = None,
+        grad_fn: Optional[Callable] = F.hardtanh,
     ) -> torch.Tensor:
         ctx.shape = input.shape
         if input.shape != output.shape:
@@ -67,15 +68,8 @@ class STEFunction(Function):
         return output
 
     @staticmethod
-    def backward(  # type: ignore
-        ctx, grad_output: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, None, None]:
-        return (
-            ctx.grad_fn(ctx.transform_fn(grad_output, ctx.shape)),
-            ctx.grad_fn(grad_output),
-            None,
-            None
-        )
+    def backward(ctx, grad_output: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, None, None]:  # type: ignore
+        return (ctx.grad_fn(ctx.transform_fn(grad_output, ctx.shape)), ctx.grad_fn(grad_output), None, None)
 
 
 class StraightThroughEstimator(nn.Module):

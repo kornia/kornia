@@ -1,20 +1,13 @@
-from typing import Optional, Callable, Dict, Union, Tuple, List, cast
+from typing import Callable, cast, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 from torch.autograd import Function
 
-from kornia.geometry.transform import (
-    affine,
-)
-from kornia.geometry.transform.affwarp import (
-    _compute_shear_matrix,
-    _compute_tensor_center,
-    _compute_rotation_matrix,
-)
-from kornia.augmentation.core.sampling import (
-    DynamicSampling,
-)
+from kornia.augmentation.core.sampling import DynamicSampling
+from kornia.geometry.transform import affine
+from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_shear_matrix, _compute_tensor_center
+
 from .base import GeometricAugmentOperation
 
 
@@ -42,16 +35,25 @@ class ShearAugment(GeometricAugmentOperation):
         >>> (out[0] == out[1]).all()
         tensor(True)
     """
+
     def __init__(
         self,
-        sampler: List[Union[Tuple[float, float], DynamicSampling]] = [(0., 1.), (0., 1.)],
-        mapper: Optional[List[Callable]] = None, mode: str = 'bilinear',
-        padding_mode: str = 'zeros', align_corners: bool = False, p: float = 0.5, same_on_batch: bool = False,
-        gradients_estimator: Optional[Function] = None
+        sampler: List[Union[Tuple[float, float], DynamicSampling]] = [(0.0, 1.0), (0.0, 1.0)],
+        mapper: Optional[List[Callable]] = None,
+        mode: str = 'bilinear',
+        padding_mode: str = 'zeros',
+        align_corners: bool = False,
+        p: float = 0.5,
+        same_on_batch: bool = False,
+        gradients_estimator: Optional[Function] = None,
     ):
         super().__init__(
-            torch.tensor(p), torch.tensor(1.), sampler=sampler, mapper=mapper,
-            same_on_batch=same_on_batch, gradients_estimator=gradients_estimator
+            torch.tensor(p),
+            torch.tensor(1.0),
+            sampler=sampler,
+            mapper=mapper,
+            same_on_batch=same_on_batch,
+            gradients_estimator=gradients_estimator,
         )
         self.mode = mode
         self.padding_mode = padding_mode
@@ -62,8 +64,13 @@ class ShearAugment(GeometricAugmentOperation):
         return _compute_shear_matrix(mag)
 
     def apply_transform(self, input: torch.Tensor, transform: torch.Tensor) -> torch.Tensor:
-        return affine(input, transform[..., :2, :3], mode=self.mode, padding_mode=self.padding_mode,
-                      align_corners=self.align_corners)
+        return affine(
+            input,
+            transform[..., :2, :3],
+            mode=self.mode,
+            padding_mode=self.padding_mode,
+            align_corners=self.align_corners,
+        )
 
 
 class RotationAugment(GeometricAugmentOperation):
@@ -99,16 +106,25 @@ class RotationAugment(GeometricAugmentOperation):
         >>> out = a(torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5)
         >>> out.mean().backward()
     """
+
     def __init__(
         self,
-        sampler: Union[Tuple[float, float], DynamicSampling] = (0., 360.),
-        mapper: Optional[List[Callable]] = None, mode: str = 'bilinear',
-        padding_mode: str = 'zeros', align_corners: bool = False, p: float = 0.5, same_on_batch: bool = False,
-        gradients_estimator: Optional[Function] = None
+        sampler: Union[Tuple[float, float], DynamicSampling] = (0.0, 360.0),
+        mapper: Optional[List[Callable]] = None,
+        mode: str = 'bilinear',
+        padding_mode: str = 'zeros',
+        align_corners: bool = False,
+        p: float = 0.5,
+        same_on_batch: bool = False,
+        gradients_estimator: Optional[Function] = None,
     ):
         super().__init__(
-            torch.tensor(p), torch.tensor(1.), sampler=[sampler], mapper=mapper,
-            same_on_batch=same_on_batch, gradients_estimator=gradients_estimator
+            torch.tensor(p),
+            torch.tensor(1.0),
+            sampler=[sampler],
+            mapper=mapper,
+            same_on_batch=same_on_batch,
+            gradients_estimator=gradients_estimator,
         )
         self.mode = mode
         self.padding_mode = padding_mode
@@ -117,8 +133,7 @@ class RotationAugment(GeometricAugmentOperation):
     def compute_transform(self, input: torch.Tensor, magnitudes: List[torch.Tensor]) -> torch.Tensor:
 
         center: torch.Tensor = _compute_tensor_center(input)
-        rotation_mat: torch.Tensor = _compute_rotation_matrix(
-            magnitudes[0], center.expand(magnitudes[0].shape[0], -1))
+        rotation_mat: torch.Tensor = _compute_rotation_matrix(magnitudes[0], center.expand(magnitudes[0].shape[0], -1))
 
         # rotation_mat is B x 2 x 3 and we need a B x 3 x 3 matrix
         trans_mat: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
@@ -127,9 +142,19 @@ class RotationAugment(GeometricAugmentOperation):
         return trans_mat
 
     def apply_transform(self, input: torch.Tensor, transform: torch.Tensor) -> torch.Tensor:
-        return affine(input, transform[..., :2, :3], mode=self.mode, padding_mode=self.padding_mode,
-                      align_corners=self.align_corners)
+        return affine(
+            input,
+            transform[..., :2, :3],
+            mode=self.mode,
+            padding_mode=self.padding_mode,
+            align_corners=self.align_corners,
+        )
 
     def inverse_transform(self, input: torch.Tensor, transform: torch.Tensor, output_shape: torch.Size) -> torch.Tensor:
-        return affine(input, transform.inverse()[..., :2, :3], mode=self.mode, padding_mode=self.padding_mode,
-                      align_corners=self.align_corners)
+        return affine(
+            input,
+            transform.inverse()[..., :2, :3],
+            mode=self.mode,
+            padding_mode=self.padding_mode,
+            align_corners=self.align_corners,
+        )
