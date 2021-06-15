@@ -164,9 +164,9 @@ def erosion(
     B, C, H, W = tensor.size()
     Hpad, Wpad = output.shape[-2:]
     reshape_kernel = _neight2channels_like_kernel(kernel)
-    output, _ = F.conv2d(
-        output.view(B * C, 1, Hpad, Wpad), reshape_kernel, padding=0, bias=-neighborhood.view(-1)
-    ).min(dim=1)
+    output, _ = F.conv2d(output.view(B * C, 1, Hpad, Wpad), reshape_kernel, padding=0, bias=-neighborhood.view(-1)).min(
+        dim=1
+    )
     output = output.view(B, C, H, W)
     return output
 
