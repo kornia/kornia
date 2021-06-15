@@ -11,11 +11,12 @@ __all__ = [
 ]
 
 
-def _identity(input: torch.Tensor, shape: torch.Size) -> torch.Tensor:
+def _identity(input: torch.Tensor, shape: Optional[torch.Size]) -> torch.Tensor:
     return input
 
 
 def _resize(input: torch.Tensor, shape: torch.Size) -> torch.Tensor:
+    align_corners: Optional[bool]
     if len(input.shape) == 5:
         mode = "trilinear"
         align_corners = True
@@ -52,7 +53,7 @@ class STEFunction(Function):
             If None, an identity mapping will be applied.
     """
     @staticmethod
-    def forward(
+    def forward(  # type: ignore
         ctx, input: torch.Tensor, output: torch.Tensor, transform_fn: Optional[Callable] = None,
         grad_fn: Optional[Callable] = F.hardtanh
     ) -> torch.Tensor:
@@ -66,7 +67,9 @@ class STEFunction(Function):
         return output
 
     @staticmethod
-    def backward(ctx, grad_output: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, None, None]:
+    def backward(  # type: ignore
+        ctx, grad_output: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, None, None]:
         return (
             ctx.grad_fn(ctx.transform_fn(grad_output, ctx.shape)),
             ctx.grad_fn(grad_output),

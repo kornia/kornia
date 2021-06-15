@@ -1,4 +1,4 @@
-from typing import Optional, Callable, Dict, Union, Tuple, List, cast
+from typing import Optional, Callable, Dict, Union, Tuple, List, NamedTuple
 
 import torch
 import torch.nn as nn
@@ -6,11 +6,13 @@ from torch.autograd import Function
 from torch.distributions import Distribution
 
 from kornia.geometry.epipolar.numeric import eye_like
-from kornia.augmentation.core.smart_sampling import (
-    SmartSampling,
-    SmartBernoulli,
-    SmartUniform,
+from kornia.augmentation.core.sampling import (
+    DynamicSampling,
+    DynamicBernoulli,
+    DynamicUniform,
 )
+
+Parameters = NamedTuple("Parameters", [('probs', torch.Tensor), ('magnitudes', List[torch.Tensor])])
 
 
 class AugmentOperation(nn.Module):
@@ -20,7 +22,7 @@ class AugmentOperation(nn.Module):
         self,
         p: torch.Tensor,
         p_batch: torch.Tensor,
-        sampler: Optional[List[Union[Tuple[float, float], SmartSampling]]] = None,
+        sampler: Optional[List[Union[Tuple[float, float], DynamicSampling]]] = None,
         mapper: Optional[List[Callable]] = None,
         gradients_estimator: Optional[Function] = None,
         same_on_batch: bool = False
@@ -28,29 +30,30 @@ class AugmentOperation(nn.Module):
         super().__init__()
         self.gradients_estimator = gradients_estimator
         self.same_on_batch = same_on_batch
-        self.prob_dist = SmartBernoulli(p, freeze_dtype=True)
-        self.prob_batch_dist = SmartBernoulli(p_batch, freeze_dtype=True)
+        self.prob_dist = DynamicBernoulli(p, freeze_dtype=True)
+        self.prob_batch_dist = DynamicBernoulli(p_batch, freeze_dtype=True)
         self.sampler = self._make_sampler(sampler) if sampler is not None else None
         self.mapper = mapper
 
-    def _make_sampler_one(self, sampler: Union[Tuple[float, float], SmartSampling]) -> Distribution:
+    def _make_sampler_one(self, sampler: Union[Tuple[float, float], DynamicSampling]) -> DynamicSampling:
+        _sampler: DynamicSampling
         if isinstance(sampler, (list, tuple)):
-            _sampler = SmartUniform(
-                torch.tensor(sampler[0]),
-                torch.tensor(sampler[1])
-            )
+            _sampler = DynamicUniform(*sampler)
         else:
             _sampler = sampler
         return _sampler
 
     def _make_sampler(
-            self, sampler: List[Union[Tuple[float, float], SmartSampling]]
+            self, sampler: List[Union[Tuple[float, float], DynamicSampling]]
     ) -> nn.ModuleList:
         """Make a list of distributions according to the parameters.
         """
         return nn.ModuleList([self._make_sampler_one(dist) for dist in sampler])
 
     def distribution_entropy(self, reduce: Optional[str] = None) -> Union[torch.Tensor, List[torch.Tensor]]:
+        if self.sampler is None:
+            raise ValueError(f"No sampler found.")
+
         dists = [dist.entropy() for dist in self.sampler]
         if reduce is None:
             return dists
@@ -82,31 +85,29 @@ class AugmentOperation(nn.Module):
             mags = [mapping(mag) for mapping, mag in zip(self.mapper, mags)]
         return list(mags)
 
-    def generate_parameters(self, input: torch.Tensor) -> Dict[str, torch.Tensor]:
+    # Change to named tuple
+    def generate_parameters(self, input: torch.Tensor) -> Parameters:
         probs = self.get_batch_probabilities(input)
         mags = self.get_param_magnitudes(input)
-        return {"probs": probs.bool(), "magnitudes": mags}
-
-    def apply_transform(self, input: torch.Tensor, magnitude: List[torch.Tensor]) -> torch.Tensor:
-        raise NotImplementedError
+        return Parameters(probs.bool(), mags)
 
     def forwad_transform(
-        self, input: torch.Tensor, params: Dict[str, Union[torch.Tensor, List[torch.Tensor]]]
+        self, input: torch.Tensor, params: Parameters
     ) -> torch.Tensor:
         raise NotImplementedError
 
     def forward(
-        self, input: torch.Tensor, params: Optional[Dict[str, Union[torch.Tensor, List[torch.Tensor]]]] = None
+        self, input: torch.Tensor, params: Optional[Parameters] = None
     ) -> torch.Tensor:
         if params is None:
             params = self.generate_parameters(input)
-        if (params['probs'] == 0).all():
+        if (params.probs == 0).all():
             return input
-        if (params['probs'] == 1).all():
+        if (params.probs == 1).all():
             return self.forwad_transform(input, params)
-        inp = input[params['probs']]
+        inp = input[params.probs]
         out = self.forwad_transform(inp, params)
-        input[params['probs']] = out
+        input[params.probs] = out
         return input
 
 
@@ -117,7 +118,7 @@ class IntensityAugmentOperation(AugmentOperation):
         self,
         p: torch.Tensor,
         p_batch: torch.Tensor,
-        sampler: Optional[List[Union[Tuple[float, float], SmartSampling]]] = None,
+        sampler: Optional[List[Union[Tuple[float, float], DynamicSampling]]] = None,
         mapper: Optional[List[Callable]] = None,
         gradients_estimator: Optional[Function] = None,
         same_on_batch: bool = False
@@ -127,10 +128,13 @@ class IntensityAugmentOperation(AugmentOperation):
             gradients_estimator=gradients_estimator, same_on_batch=same_on_batch
         )
 
+    def apply_transform(self, input: torch.Tensor, magnitude: List[torch.Tensor]) -> torch.Tensor:
+        raise NotImplementedError
+
     def forwad_transform(
-        self, input: torch.Tensor, params: Dict[str, Union[torch.Tensor, List[torch.Tensor]]]
+        self, input: torch.Tensor, params: Parameters
     ) -> torch.Tensor:
-        mag = [_mag[params['probs']] for _mag in params['magnitudes']]
+        mag = [_mag[params.probs] for _mag in params.magnitudes]
         if self.gradients_estimator is not None:
             with torch.no_grad():
                 out = self.apply_transform(input, mag)
@@ -149,7 +153,7 @@ class GeometricAugmentOperation(AugmentOperation):
         self,
         p: torch.Tensor,
         p_batch: torch.Tensor,
-        sampler: Optional[List[Union[Tuple[float, float], SmartSampling]]] = None,
+        sampler: Optional[List[Union[Tuple[float, float], DynamicSampling]]] = None,
         mapper: Optional[List[Callable]] = None,
         gradients_estimator: Optional[Function] = None,
         same_on_batch: bool = False,
@@ -161,6 +165,9 @@ class GeometricAugmentOperation(AugmentOperation):
         )
         self.return_transform = return_transform
 
+    def apply_transform(self, input: torch.Tensor, transform: torch.Tensor) -> torch.Tensor:
+        raise NotImplementedError
+
     def compute_transform(self, input: torch.Tensor, magnitude: List[torch.Tensor]) -> torch.Tensor:
         raise NotImplementedError
 
@@ -169,10 +176,10 @@ class GeometricAugmentOperation(AugmentOperation):
     ) -> torch.Tensor:
         raise NotImplementedError
 
-    def forwad_transform(
-        self, input: torch.Tensor, params: Dict[str, Union[torch.Tensor, List[torch.Tensor]]]
+    def forwad_transform(  # type: ignore
+        self, input: torch.Tensor, params: Parameters
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        mag = [_mag[params['probs']] for _mag in params['magnitudes']]
+        mag = [_mag[params.probs] for _mag in params.magnitudes]
         if self.gradients_estimator is not None:
             with torch.no_grad():
                 trans_mat = self.compute_transform(input, mag)
@@ -184,28 +191,28 @@ class GeometricAugmentOperation(AugmentOperation):
             out = self.apply_transform(input, trans_mat)
         return out, trans_mat
 
-    def forward(
-        self, input: torch.Tensor, params: Optional[Dict[str, Union[torch.Tensor, List[torch.Tensor]]]] = None
-    ) -> torch.Tensor:
+    def forward(  # type: ignore
+        self, input: torch.Tensor, params: Optional[Parameters] = None
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         if params is None:
             params = self.generate_parameters(input)
-        if (params['probs'] == 0).all():
+        if (params.probs == 0).all():
             out, trans_mat = input, eye_like(3, input)
-        elif (params['probs'] == 1).all():
+        elif (params.probs == 1).all():
             out, trans_mat = self.forwad_transform(input, params)
         else:
-            inp = input[params['probs']]
+            inp = input[params.probs]
             in_trans_mat = eye_like(3, input)
             _out, _trans_mat = self.forwad_transform(inp, params)
-            input[params['probs']] = _out
-            in_trans_mat[params['probs']] = _trans_mat
+            input[params.probs] = _out
+            in_trans_mat[params.probs] = _trans_mat
             out, trans_mat = input, in_trans_mat
         if self.return_transform:
             return out, trans_mat
         return out
 
 
-class CropAugmentOperation(GeometricAugmentOperation):
+class PerspectiveAugmentOperation(GeometricAugmentOperation):
     """Base class for applying geometric data augmentation methods.
 
     Allowing apply and inverse transformations made by computed transform matrices.

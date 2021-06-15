@@ -10,25 +10,27 @@ from kornia.geometry.transform import (
     get_perspective_transform,
     crop_by_transform_mat,
 )
-from kornia.augmentation.core.smart_sampling import (
-    SmartSampling,
-    SmartUniform,
+from kornia.augmentation.core.sampling import (
+    DynamicSampling,
+    DynamicUniform,
 )
-from .base import CropAugmentOperation
+from .base import PerspectiveAugmentOperation
 
 
-class PerspectiveAugment(CropAugmentOperation):
-    """
-    >>> a = PerspectiveAugment(p=1.)
-    >>> out = a(torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5)
-    >>> out.shape
-    torch.Size([2, 3, 100, 100])
-    >>> loss = out.mean()
-    >>> loss.backward()
+class PerspectiveAugment(PerspectiveAugmentOperation):
+    """Perform perspective augmentation.
+
+    Examples:
+        >>> a = PerspectiveAugment(p=1.)
+        >>> out = a(torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5)
+        >>> out.shape
+        torch.Size([2, 3, 100, 100])
+        >>> loss = out.mean()
+        >>> loss.backward()
     """
     def __init__(
         self,
-        sampler: Union[Tuple[float, float], SmartSampling] = (0.3, 0.7),
+        sampler: Union[Tuple[float, float], DynamicSampling] = (0.3, 0.7),
         mapper: Optional[Callable] = None, p: float = 0.5,
         same_on_batch: bool = False, mode: str = 'bilinear', align_corners: bool = True,
         gradients_estimator: Optional[Function] = None
@@ -39,7 +41,7 @@ class PerspectiveAugment(CropAugmentOperation):
         )
         self.mode = mode
         self.align_corners = align_corners
-        self.rand_val = SmartUniform(torch.tensor(0.), torch.tensor(1.))
+        self.rand_val = DynamicUniform(torch.tensor(0.), torch.tensor(1.))
 
     def compute_transform(self, input: torch.Tensor, magnitudes: List[torch.Tensor]) -> torch.Tensor:
         batch_size, _, height, width = input.shape
@@ -80,26 +82,28 @@ class PerspectiveAugment(CropAugmentOperation):
         return out_data
 
 
-class CropAugment(CropAugmentOperation):
-    """
-    >>> crop = CropAugment((50, 50), p=1.)
-    >>> out = crop(torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5)
-    >>> out.shape
-    torch.Size([2, 3, 50, 50])
-    >>> loss = (out - 1).mean()
-    >>> loss.backward()
+class CropAugment(PerspectiveAugmentOperation):
+    """Perform crop augmentation.
 
-    Gradients Estimation - 1:
-    >>> from kornia.augmentation.core.gradient_estimator import STEFunction
-    >>> crop = CropAugment((50, 50), p=1., gradients_estimator=STEFunction)
-    >>> inp = torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5
-    >>> out = crop(inp)
-    >>> out.mean().backward()
-    >>> inp.grad
+    Examples:
+        >>> crop = CropAugment((50, 50), p=1.)
+        >>> out = crop(torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5)
+        >>> out.shape
+        torch.Size([2, 3, 50, 50])
+        >>> loss = (out - 1).mean()
+        >>> loss.backward()
+
+        Gradients Estimation - 1:
+        >>> from kornia.augmentation.core.gradient_estimator import STEFunction
+        >>> crop = CropAugment((50, 50), p=1., gradients_estimator=STEFunction)
+        >>> inp = torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5
+        >>> out = crop(inp)
+        >>> out.mean().backward()
+        >>> inp.grad
     """
     def __init__(
         self, size: Tuple[int, int], p: float = 0.5,
-        sampler: Union[List[Tuple[float, float]], List[SmartSampling]] = [(0., 1.), (0., 1.)],
+        sampler: Optional[List[Union[Tuple[float, float], DynamicSampling]]] = [(0., 1.), (0., 1.)],
         mapper: Optional[List[Callable]] = None, same_on_batch: bool = False,
         gradients_estimator: Optional[Function] = None
     ):
@@ -107,8 +111,13 @@ class CropAugment(CropAugmentOperation):
             torch.tensor(1.), torch.tensor(p), sampler=sampler, mapper=mapper,
             gradients_estimator=gradients_estimator, same_on_batch=same_on_batch
         )
+        assert isinstance(sampler, (list,)) and len(sampler) == 2 and \
+            isinstance(sampler[0], (tuple, DynamicSampling)) and isinstance(sampler[1], (tuple, DynamicSampling)), (
+                f"Two samplers (x_start, y_start) needed while got {sampler}."
+        )
+
         self.size = size
-        _crop_dst = torch.tensor([[
+        _crop_dst: torch.Tensor = torch.tensor([[
             [0, 0],
             [size[1] - 1, 0],
             [size[1] - 1, size[0] - 1],
@@ -122,9 +131,9 @@ class CropAugment(CropAugmentOperation):
         y_diff = width - self.size[0] + 1
         x_start = torch.floor(magnitudes[0] * x_diff)
         y_start = torch.floor(magnitudes[1] * y_diff)
-        width = x_start * 0 + self.size[1]
-        height = y_start * 0 + self.size[0]
-        crop_src = bbox_generator(x_start, y_start, width, height)
+        w = x_start * 0 + self.size[1]
+        h = y_start * 0 + self.size[0]
+        crop_src = bbox_generator(x_start, y_start, w, h)
         return get_perspective_transform(crop_src, self.crop_dst.expand(batch_size, -1, -1))
 
     def apply_transform(self, input: torch.Tensor, transform: torch.Tensor) -> torch.Tensor:
@@ -135,6 +144,6 @@ class CropAugment(CropAugmentOperation):
 
     def inverse_transform(self, input: torch.Tensor, transform: torch.Tensor, output_shape: torch.Size) -> torch.Tensor:
         out = crop_by_transform_mat(
-            input, transform.pinverse(), tuple(output_shape[-2:]), mode='bilinear',
+            input, transform.pinverse(), (output_shape[-2], output_shape[-1]), mode='bilinear',
             padding_mode='zeros', align_corners=True)
         return out

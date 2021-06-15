@@ -1,9 +1,9 @@
 from . import gradient_estimator
 from . import operation
-from . import smart_sampling
+from . import sampling
 
 __all__ = [
     "gradient_estimator",
     "operation",
-    "smart_sampling"
+    "sampling"
 ]
