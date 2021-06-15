@@ -9,9 +9,16 @@ from kornia.geometry.bbox import infer_bbox_shape_3d as _infer_bbox_shape_3d
 from kornia.geometry.bbox import validate_bbox_3d as _validate_bbox_3d
 from kornia.geometry.transform.projwarp import get_perspective_transform3d, warp_affine3d
 
-
-__all__ = ["crop_and_resize3d", "crop_by_boxes3d", "crop_by_transform_mat3d", "center_crop3d", "validate_bboxes3d",
-           "infer_box_shape3d", "bbox_to_mask3d", "bbox_generator3d"]
+__all__ = [
+    "crop_and_resize3d",
+    "crop_by_boxes3d",
+    "crop_by_transform_mat3d",
+    "center_crop3d",
+    "validate_bboxes3d",
+    "infer_box_shape3d",
+    "bbox_to_mask3d",
+    "bbox_generator3d",
+]
 
 
 def crop_and_resize3d(
@@ -482,12 +489,12 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: Tuple[int, int, int]) -> torch.Ten
 
 
 def bbox_generator3d(
-        x_start: torch.Tensor,
-        y_start: torch.Tensor,
-        z_start: torch.Tensor,
-        width: torch.Tensor,
-        height: torch.Tensor,
-        depth: torch.Tensor,
+    x_start: torch.Tensor,
+    y_start: torch.Tensor,
+    z_start: torch.Tensor,
+    width: torch.Tensor,
+    height: torch.Tensor,
+    depth: torch.Tensor,
 ) -> torch.Tensor:
     """Generate 3D bounding boxes according to the provided start coords, width, height and depth.
     Args:

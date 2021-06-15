@@ -177,8 +177,9 @@ def infer_bbox_shape_3d(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor
 
 
 @torch.jit.ignore
-def infer_bbox_shape(boxes: torch.Tensor) -> Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor,
-                                                                                            torch.Tensor]]:
+def infer_bbox_shape(
+    boxes: torch.Tensor,
+) -> Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
     r"""Auto-infer the output sizes for the given 2D/3D bounding boxes.
     Args:
         boxes (torch.Tensor): a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must

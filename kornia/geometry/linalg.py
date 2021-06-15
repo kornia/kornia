@@ -3,9 +3,9 @@ import warnings
 import torch
 
 import kornia
+from kornia.geometry.bbox import transform_bbox_2d as _transform_bbox_2d
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.testing import check_is_tensor
-from kornia.geometry.bbox import transform_bbox_2d as _transform_bbox_2d
 
 __all__ = [
     "compose_transformations",
