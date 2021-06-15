@@ -71,7 +71,7 @@ def dilation(
         neighborhood = torch.zeros_like(kernel)
         neighborhood[kernel == 0] = -max_val
     else:
-        neighborhood = structuring_element
+        neighborhood = structuring_element.clone()
         neighborhood[kernel == 0] = -max_val
 
     output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
@@ -148,7 +148,7 @@ def erosion(
         neighborhood = torch.zeros_like(kernel)
         neighborhood[kernel == 0] = -max_val
     else:
-        neighborhood = structuring_element
+        neighborhood = structuring_element.clone()
         neighborhood[kernel == 0] = -max_val
 
     output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
