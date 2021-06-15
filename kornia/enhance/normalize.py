@@ -91,8 +91,8 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
         torch.Size([1, 4, 3, 3])
 
         >>> x = torch.rand(1, 4, 3, 3)
-        >>> mean = torch.zeros(1, 4)
-        >>> std = 255. * torch.ones(1, 4)
+        >>> mean = torch.zeros(4)
+        >>> std = 255. * torch.ones(4)
         >>> out = normalize(x, mean, std)
         >>> out.shape
         torch.Size([1, 4, 3, 3])
