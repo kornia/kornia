@@ -48,7 +48,7 @@ from .utils import _range_bound, _transform_input
 class RandomHorizontalFlip(GeometricAugmentationBase2D):
     r"""Applies a random horizontal flip to a tensor image or a batch of tensor images with a given probability.
 
-    .. image:: _static/RandomHorizontalFlip.jpg
+    .. figure:: _static/RandomHorizontalFlip.png
 
     Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
     If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
@@ -109,7 +109,7 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
 class RandomVerticalFlip(GeometricAugmentationBase2D):
     r"""Applies a random vertical flip to a tensor image or a batch of tensor images with a given probability.
 
-    .. image:: _static/RandomVerticalFlip.jpg
+    .. figure:: _static/RandomVerticalFlip.png
 
     Args:
         p (float): probability of the image being flipped. Default value is 0.5
@@ -164,7 +164,7 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
 class ColorJitter(IntensityAugmentationBase2D):
     r"""Applies a random transformation to the brightness, contrast, saturation and hue of a tensor image.
 
-    .. image:: _static/ColorJitter.jpg
+    .. figure:: _static/ColorJitter.png
 
     Args:
         p (float): probability of applying the transformation. Default value is 1.
@@ -266,7 +266,7 @@ class ColorJitter(IntensityAugmentationBase2D):
 class RandomGrayscale(IntensityAugmentationBase2D):
     r"""Applies random transformation to Grayscale according to a probability p value.
 
-    .. image:: _static/RandomGrayscale.jpg
+    .. figure:: _static/RandomGrayscale.png
 
     Args:
         p (float): probability of the image to be transformed to grayscale. Default value is 0.1.
@@ -326,7 +326,7 @@ class RandomGrayscale(IntensityAugmentationBase2D):
 class RandomErasing(IntensityAugmentationBase2D):
     r"""Erases a random rectangle of a tensor image according to a probability p value.
 
-    .. image:: _static/RandomErasing.jpg
+    .. figure:: _static/RandomErasing.png
 
     The operator removes image parts and fills them with zero values at a selected rectangle
     for each of the images in the batch.
@@ -416,7 +416,7 @@ class RandomErasing(IntensityAugmentationBase2D):
 class RandomPerspective(GeometricAugmentationBase2D):
     r"""Applies a random perspective transformation to an image tensor with a given probability.
 
-    .. image:: _static/RandomPerspective.jpg
+    .. figure:: _static/RandomPerspective.png
 
     Args:
         p (float): probability of the image being perspectively transformed. Default value is 0.5.
@@ -511,7 +511,7 @@ class RandomPerspective(GeometricAugmentationBase2D):
 class RandomAffine(GeometricAugmentationBase2D):
     r"""Applies a random 2D affine transformation to a tensor image.
 
-    .. image:: _static/RandomAffine.jpg
+    .. figure:: _static/RandomAffine.png
 
     The transformation is computed so that the image center is kept invariant.
 
@@ -837,7 +837,7 @@ class CenterCrop(GeometricAugmentationBase2D):
 class RandomRotation(GeometricAugmentationBase2D):
     r"""Applies a random rotation to a tensor image or a batch of tensor images given an amount of degrees.
 
-    .. image:: _static/RandomRotation.jpg
+    .. figure:: _static/RandomRotation.png
 
     Args:
         p (float): probability of applying the transformation. Default value is 0.5.
@@ -1168,7 +1168,7 @@ class RandomCrop(GeometricAugmentationBase2D):
 class RandomResizedCrop(GeometricAugmentationBase2D):
     r"""Crops random patches in an image tensor and resizes to a given size.
 
-    .. image:: _static/RandomResizedCrop.jpg
+    .. figure:: _static/RandomResizedCrop.png
 
     Args:
         size (Tuple[int, int]): Desired output size (out_h, out_w) of each edge.
@@ -1417,7 +1417,7 @@ class Denormalize(IntensityAugmentationBase2D):
 class RandomMotionBlur(IntensityAugmentationBase2D):
     r"""Perform motion blur on 2D images (4D tensor).
 
-    .. image:: _static/RandomMotionBlur.jpg
+    .. figure:: _static/RandomMotionBlur.png
 
     Args:
         p (float): probability of applying the transformation. Default value is 0.5.
@@ -1525,7 +1525,7 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
 class RandomSolarize(IntensityAugmentationBase2D):
     r"""Solarize given tensor image or a batch of tensor images randomly.
 
-    .. image:: _static/RandomSolarize.jpg
+    .. figure:: _static/RandomSolarize.png
 
     Args:
         p (float): probability of applying the transformation. Default value is 0.5.
@@ -1606,7 +1606,7 @@ class RandomSolarize(IntensityAugmentationBase2D):
 class RandomPosterize(IntensityAugmentationBase2D):
     r"""Posterize given tensor image or a batch of tensor images randomly.
 
-    .. image:: _static/RandomPosterize.jpg
+    .. figure:: _static/RandomPosterize.png
 
     Args:
         p (float): probability of applying the transformation. Default value is 0.5.
@@ -1677,7 +1677,7 @@ class RandomPosterize(IntensityAugmentationBase2D):
 class RandomSharpness(IntensityAugmentationBase2D):
     r"""Sharpen given tensor image or a batch of tensor images randomly.
 
-    .. image:: _static/RandomSharpness.jpg
+    .. figure:: _static/RandomSharpness.png
 
     Args:
         p (float): probability of applying the transformation. Default value is 0.5.
@@ -1746,7 +1746,7 @@ class RandomSharpness(IntensityAugmentationBase2D):
 class RandomEqualize(IntensityAugmentationBase2D):
     r"""Equalize given tensor image or a batch of tensor images randomly.
 
-    .. image:: _static/RandomEqualize.jpg
+    .. figure:: _static/RandomEqualize.png
 
     Args:
         p (float): Probability to equalize an image. Default value is 0.5.
@@ -1796,6 +1796,8 @@ class RandomEqualize(IntensityAugmentationBase2D):
 
 class RandomGaussianBlur(IntensityAugmentationBase2D):
     r"""Apply gaussian blur given tensor image or a batch of tensor images randomly.
+
+    .. figure:: _static/RandomGaussianBlur.png
 
     Args:
         kernel_size (Tuple[int, int]): the size of the kernel.
@@ -1865,7 +1867,7 @@ class GaussianBlur(RandomGaussianBlur):
 class RandomInvert(IntensityAugmentationBase2D):
     r"""Invert the tensor images values randomly.
 
-    .. image:: _static/RandomInvert.jpg
+    .. figure:: _static/RandomInvert.png
 
     Args:
         max_val (torch.Tensor): The expected maximum value in the input tensor. The shape has to
@@ -1910,7 +1912,7 @@ class RandomInvert(IntensityAugmentationBase2D):
 class RandomChannelShuffle(IntensityAugmentationBase2D):
     r"""Shuffles the channels of a batch of multi-dimensional images.
 
-    .. image:: _static/RandomChannelShuffle.jpg
+    .. figure:: _static/RandomChannelShuffle.png
 
     Args:
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
@@ -1954,7 +1956,7 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
 class RandomGaussianNoise(IntensityAugmentationBase2D):
     r"""Add gaussian noise to a batch of multi-dimensional images.
 
-    .. image:: _static/RandomGaussianNoise.jpg
+    .. figure:: _static/RandomGaussianNoise.png
 
     Args:
         mean (float): The mean of the gaussian distribution. Default: 0.
@@ -2002,7 +2004,7 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
 class RandomFisheye(GeometricAugmentationBase2D):
     r"""Add random camera radial distortion.
 
-    .. image:: _static/RandomFisheye.jpg
+    .. figure:: _static/RandomFisheye.png
 
     Args:
         center_x (torch.Tensor): Ranges to sample respect to x-coordinate center with shape (2,).
@@ -2084,7 +2086,7 @@ class RandomFisheye(GeometricAugmentationBase2D):
 class RandomElasticTransform(GeometricAugmentationBase2D):
     r"""Add random elastic transformation to a tensor image.
 
-    .. image:: _static/RandomElasticTransform.jpg
+    .. figure:: _static/RandomElasticTransform.png
 
     Args:
         kernel_size (Tuple[int, int]): the size of the Gaussian kernel. Default: (63, 63).
@@ -2147,7 +2149,7 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
 class RandomThinPlateSpline(GeometricAugmentationBase2D):
     r"""Add random noise to the Thin Plate Spline algorithm.
 
-    .. image:: _static/RandomThinPlateSpline.jpg
+    .. figure:: _static/RandomThinPlateSpline.png
 
     Args:
         scale (float): the scale factor to apply to the destionation points. Default: 0.2.
@@ -2203,7 +2205,7 @@ class RandomThinPlateSpline(GeometricAugmentationBase2D):
 class RandomBoxBlur(GeometricAugmentationBase2D):
     """Adds random blur with a box filter to an image tensor.
 
-    .. image:: _static/RandomBoxBlur.jpg
+    .. figure:: _static/RandomBoxBlur.png
 
     Args:
         kernel_size (Tuple[int, int]): the blurring kernel size.

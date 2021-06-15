@@ -1,5 +1,6 @@
 import importlib
 from pathlib import Path
+import os
 
 import cv2
 import numpy as np
@@ -26,6 +27,7 @@ img: np.ndarray = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
 # convert the image to a tensor
 img_t: torch.Tensor = K.utils.image_to_tensor(img, keepdim=False)  # 1xCxHXW
 img_t = img_t.float() / 255.0
+img_t = img_t.repeat(2, 1, 1, 1)
 
 # TODO: make this more generic for modules out of kornia.augmentation
 # Dictionary containing the transforms to generate the sample images:
@@ -41,6 +43,7 @@ augmentations_list: dict = {
     "RandomEqualize": (),
     "RandomFisheye": (torch.tensor([-0.3, 0.3]), torch.tensor([-0.3, 0.3]), torch.tensor([0.9, 1.0])),
     "RandomGrayscale": (),
+    "RandomGaussianBlur": ((3,3), (0.1,2.0)),
     "RandomGaussianNoise": (0.0, 0.05),
     "RandomHorizontalFlip": (),
     "RandomInvert": (),
@@ -63,7 +66,7 @@ for aug_name, args in augmentations_list.items():
     aug = cls(*args, p=1.0)
     # apply the augmentaiton to the image and concat
     out = aug(img_t)
-    out = torch.cat([img_t, out], dim=-1)
+    out = torch.cat([img_t[0], out[0], out[1]], dim=-1)
     # save the output image
     out_np = K.utils.tensor_to_image((out * 255.0).byte())
-    cv2.imwrite(str(OUTPUT_PATH / f"{aug_name}.jpg"), out_np)
+    cv2.imwrite(str(OUTPUT_PATH / f"{aug_name}.png"), out_np)
