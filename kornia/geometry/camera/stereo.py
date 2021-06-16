@@ -2,7 +2,7 @@ import torch
 
 
 class StereoException(Exception):
-    def __init__(self, msg, *args, **kwargs):
+    def __init__(self, msg: str, *args, **kwargs):
         """
         Custom exception for the :module:`~kornia.geometry.camera.stereo` module. Adds a general helper module
         redirecting the user to the proper documentation site.
