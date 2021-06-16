@@ -2,12 +2,12 @@ import torch
 
 
 class StereoException(Exception):
-    def __init__(self, msg, *args, **kwargs):
+    def __init__(self, msg: str, *args, **kwargs):
         """
         Custom exception for the :module:`~kornia.geometry.camera.stereo` module. Adds a general helper module
         redirecting the user to the proper documentation site.
         Args:
-            msg: Custom message to add to the general message.
+            msg (str): Custom message to add to the general message.
             *args:
             **kwargs:
         """
@@ -17,7 +17,7 @@ class StereoException(Exception):
             "for further information and examples."
         )
         final_msg = msg + doc_help
-        super().__init__(final_msg, *args, **kwargs)  # type: ignore
+        super().__init__(final_msg, *args, **kwargs)
 
 
 class StereoCamera:
