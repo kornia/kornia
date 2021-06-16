@@ -224,16 +224,15 @@ def _check_Q_matrix(Q_matrix: torch.Tensor):
         Q_matrix (torch.Tensor): The Q matrix for reprojecting disparity to a point cloud of shape :math:`(B, 4, 4)`
     """
     if not Q_matrix.ndim == 3:
-        raise StereoException(f"Expected 'Q_matrix to have 3 dimenstions."
-                              f"Got {Q_matrix.ndim}")
+        raise StereoException(f"Expected 'Q_matrix to have 3 dimenstions." f"Got {Q_matrix.ndim}")
 
     if not Q_matrix.shape[1:] == (4, 4):
-        raise StereoException(f"Expected last two dimensions of 'Q_matrix' to be of shape (4, 4)."
-                              f"Got {Q_matrix.shape}")
+        raise StereoException(
+            f"Expected last two dimensions of 'Q_matrix' to be of shape (4, 4)." f"Got {Q_matrix.shape}"
+        )
 
     if not Q_matrix.dtype == torch.float32:
-        raise StereoException(f"Expected 'Q_matrix' to be of type torch.float32."
-                              f"Got {Q_matrix.dtype}")
+        raise StereoException(f"Expected 'Q_matrix' to be of type torch.float32." f"Got {Q_matrix.dtype}")
 
 
 def reproject_disparity_to_3D(disparity_tensor: torch.Tensor, Q_matrix: torch.Tensor) -> torch.Tensor:
