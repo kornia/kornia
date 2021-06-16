@@ -17,7 +17,7 @@ class StereoException(Exception):
             "for further information and examples."
         )
         final_msg = msg + doc_help
-        super().__init__(final_msg, *args, **kwargs)  # type: ignore
+        super().__init__(final_msg, *args, **kwargs)
 
 
 class StereoCamera:
