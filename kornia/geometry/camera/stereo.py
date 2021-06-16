@@ -7,7 +7,7 @@ class StereoException(Exception):
         Custom exception for the :module:`~kornia.geometry.camera.stereo` module. Adds a general helper module
         redirecting the user to the proper documentation site.
         Args:
-            msg: Custom message to add to the general message.
+            msg (str): Custom message to add to the general message.
             *args:
             **kwargs:
         """
