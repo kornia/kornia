@@ -94,10 +94,7 @@ class AugmentationSequential(ImageSequential):
 
     @staticmethod
     def apply_to_bbox(
-        input: torch.Tensor,
-        module: nn.Module,
-        param: Optional[Dict[str, torch.Tensor]] = None,
-        mode: str = "xyxy",
+        input: torch.Tensor, module: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None, mode: str = "xyxy"
     ) -> torch.Tensor:
         if isinstance(module, GeometricAugmentationBase2D) and param is None:
             raise ValueError(f"Transformation matrix for {module} has not been computed.")
@@ -160,10 +157,7 @@ class AugmentationSequential(ImageSequential):
 
     @staticmethod
     def inverse_bbox(
-        input: torch.Tensor,
-        module: nn.Module,
-        param: Optional[Dict[str, torch.Tensor]] = None,
-        mode: str = "xyxy",
+        input: torch.Tensor, module: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None, mode: str = "xyxy"
     ) -> torch.Tensor:
         if isinstance(module, GeometricAugmentationBase2D):
             transform = module.compute_inverse_transformation(module.get_transformation_matrix(input, param))
