@@ -39,8 +39,10 @@ class TestErode:
             None, None, :, :
         ]
         assert_allclose(
-            erosion(tensor, torch.ones_like(structural_element), structuring_element=structural_element), expected,
-            atol=1e-4, rtol=1e-4
+            erosion(tensor, torch.ones_like(structural_element), structuring_element=structural_element),
+            expected,
+            atol=1e-4,
+            rtol=1e-4,
         )
 
     def test_flip(self, device, dtype):
