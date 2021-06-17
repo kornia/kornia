@@ -42,6 +42,16 @@ class TestDilate:
             dilation(tensor, torch.ones_like(structural_element), structuring_element=structural_element), expected
         )
 
+    def test_flip(self, device, dtype):
+        tensor = torch.tensor([[0.5, 1.0, 0.3], [0.7, 0.3, 0.8], [0.4, 0.9, 0.2]], device=device, dtype=dtype)[
+            None, None, :, :
+        ]
+        kernel = torch.tensor([[0.0, 1.0, 1.0], [0.0, 1.0, 1.0], [0.0, 1.0, 1.0]], device=device, dtype=dtype)
+        expected = torch.tensor([[0.7, 1.0, 1.0], [0.7, 1.0, 1.0], [0.7, 0.9, 0.9]], device=device, dtype=dtype)[
+            None, None, :, :
+        ]
+        assert_allclose(dilation(tensor, kernel), expected)
+
     def test_exception(self, device, dtype):
         tensor = torch.ones(1, 1, 3, 4, device=device, dtype=dtype)
         kernel = torch.ones(3, 3, device=device, dtype=dtype)
