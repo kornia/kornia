@@ -284,8 +284,7 @@ class BlobDoG(nn.Module):
     def __repr__(self) -> str:
         return self.__class__.__name__
 
-    @staticmethod
-    def forward(input: torch.Tensor, sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:  # type: ignore
+    def forward(self, input: torch.Tensor, sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:  # type: ignore
         return dog_response(input)  # type: ignore
 
 

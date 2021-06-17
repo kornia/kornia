@@ -140,8 +140,7 @@ class RgbToLuv(nn.Module):
         [3] http://www.poynton.com/ColorFAQ.html
     """
 
-    @staticmethod
-    def forward(image: torch.Tensor) -> torch.Tensor:
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgb_to_luv(image)
 
 
@@ -168,6 +167,5 @@ class LuvToRgb(nn.Module):
         [3] http://www.poynton.com/ColorFAQ.html
     """
 
-    @staticmethod
-    def forward(image: torch.Tensor) -> torch.Tensor:
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
         return luv_to_rgb(image)

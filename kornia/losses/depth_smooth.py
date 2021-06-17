@@ -97,6 +97,5 @@ class InverseDepthSmoothnessLoss(nn.Module):
         >>> loss = smooth(idepth, image)
     """
 
-    @staticmethod
-    def forward(idepth: torch.Tensor, image: torch.Tensor) -> torch.Tensor:
+    def forward(self, idepth: torch.Tensor, image: torch.Tensor) -> torch.Tensor:
         return inverse_depth_smoothness_loss(idepth, image)

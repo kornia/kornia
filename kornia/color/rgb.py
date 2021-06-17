@@ -244,8 +244,7 @@ class BgrToRgb(nn.Module):
         >>> output = rgb(input)  # 2x3x4x5
     """
 
-    @staticmethod
-    def forward(image: torch.Tensor) -> torch.Tensor:
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
         return bgr_to_rgb(image)
 
 
@@ -267,8 +266,7 @@ class RgbToBgr(nn.Module):
         >>> output = bgr(input)  # 2x3x4x5
     """
 
-    @staticmethod
-    def forward(image: torch.Tensor) -> torch.Tensor:
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgb_to_bgr(image)
 
 
@@ -354,8 +352,7 @@ class RgbaToRgb(nn.Module):
         >>> output = rgba(input)  # 2x3x4x5
     """
 
-    @staticmethod
-    def forward(image: torch.Tensor) -> torch.Tensor:
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgba_to_rgb(image)
 
 
@@ -377,8 +374,7 @@ class RgbaToBgr(nn.Module):
         >>> output = rgba(input)  # 2x3x4x5
     """
 
-    @staticmethod
-    def forward(image: torch.Tensor) -> torch.Tensor:
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgba_to_bgr(image)
 
 
@@ -408,8 +404,7 @@ class RgbToLinearRgb(nn.Module):
         [3] https://en.wikipedia.org/wiki/SRGB
     """
 
-    @staticmethod
-    def forward(image: torch.Tensor) -> torch.Tensor:
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgb_to_linear_rgb(image)
 
 
@@ -438,6 +433,5 @@ class LinearRgbToRgb(nn.Module):
         [3] https://en.wikipedia.org/wiki/SRGB
     """
 
-    @staticmethod
-    def forward(image: torch.Tensor) -> torch.Tensor:
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
         return linear_rgb_to_rgb(image)
