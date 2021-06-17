@@ -3,6 +3,14 @@ import sys
 
 import sphinx_rtd_theme
 
+import importlib.util
+spec = importlib.util.spec_from_file_location("generate_example_images", "../generate_example_images.py")
+generate_example_images = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(generate_example_images)
+
+# Pre-generate the example images
+generate_example_images.main()
+
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
