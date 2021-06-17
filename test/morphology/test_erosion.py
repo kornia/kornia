@@ -26,7 +26,7 @@ class TestErode:
         expected = torch.tensor([[0.5, 0.3, 0.3], [0.3, 0.3, 0.2], [0.4, 0.2, 0.2]], device=device, dtype=dtype)[
             None, None, :, :
         ]
-        assert_allclose(erosion(tensor, kernel), expected, atol=1e-4, rtol=1e-4)
+        assert_allclose(erosion(tensor, kernel), expected, atol=1e-3, rtol=1e-3)
 
     def test_structural_element(self, device, dtype):
         tensor = torch.tensor([[0.5, 1.0, 0.3], [0.7, 0.3, 0.8], [0.4, 0.9, 0.2]], device=device, dtype=dtype)[
@@ -41,8 +41,8 @@ class TestErode:
         assert_allclose(
             erosion(tensor, torch.ones_like(structural_element), structuring_element=structural_element),
             expected,
-            atol=1e-4,
-            rtol=1e-4,
+            atol=1e-3,
+            rtol=1e-3,
         )
 
     def test_flip(self, device, dtype):
