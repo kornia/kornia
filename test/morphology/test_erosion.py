@@ -53,7 +53,7 @@ class TestErode:
         expected = torch.tensor([[0.3, 0.3, 0.3], [0.3, 0.2, 0.2], [0.3, 0.2, 0.2]], device=device, dtype=dtype)[
             None, None, :, :
         ]
-        assert_allclose(erosion(tensor, kernel), expected)
+        assert_allclose(erosion(tensor, kernel), expected, atol=1e-3, rtol=1e-3)
 
     def test_exception(self, device, dtype):
         tensor = torch.ones(1, 1, 3, 4, device=device, dtype=dtype)

@@ -53,7 +53,7 @@ class TestDilate:
         expected = torch.tensor([[0.7, 1.0, 1.0], [0.7, 1.0, 1.0], [0.7, 0.9, 0.9]], device=device, dtype=dtype)[
             None, None, :, :
         ]
-        assert_allclose(dilation(tensor, kernel), expected)
+        assert_allclose(dilation(tensor, kernel), expected, atol=1e-3, rtol=1e-3)
 
     def test_exception(self, device, dtype):
         tensor = torch.ones(1, 1, 3, 4, device=device, dtype=dtype)
