@@ -8,7 +8,8 @@ from kornia.feature.scale_space_detector import *
 
 
 class TestScaleSpaceDetector:
-    def test_shape(self, device):
+    @staticmethod
+    def test_shape(device):
         inp = torch.rand(1, 1, 32, 32, device=device)
         n_feats = 10
         det = ScaleSpaceDetector(n_feats).to(device)
@@ -16,7 +17,8 @@ class TestScaleSpaceDetector:
         assert lafs.shape == torch.Size([1, n_feats, 2, 3])
         assert resps.shape == torch.Size([1, n_feats])
 
-    def test_shape_batch(self, device):
+    @staticmethod
+    def test_shape_batch(device):
         inp = torch.rand(7, 1, 32, 32, device=device)
         n_feats = 10
         det = ScaleSpaceDetector(n_feats).to(device)
@@ -24,11 +26,13 @@ class TestScaleSpaceDetector:
         assert lafs.shape == torch.Size([7, n_feats, 2, 3])
         assert resps.shape == torch.Size([7, n_feats])
 
-    def test_print(self, device):
+    @staticmethod
+    def test_print(device):
         sift = ScaleSpaceDetector()
         sift.__repr__()
 
-    def test_toy(self, device):
+    @staticmethod
+    def test_toy(device):
         inp = torch.zeros(1, 1, 33, 33, device=device)
         inp[:, :, 13:-13, 13:-13] = 1.0
         n_feats = 1
@@ -39,7 +43,8 @@ class TestScaleSpaceDetector:
         assert_allclose(lafs, expected_laf, rtol=0.001, atol=1e-03)
         assert_allclose(resps, expected_resp, rtol=0.001, atol=1e-03)
 
-    def test_toy_mask(self, device):
+    @staticmethod
+    def test_toy_mask(device):
         if "cuda" in str(device):
             pytest.skip("this cuda test is broken")
 
@@ -57,7 +62,8 @@ class TestScaleSpaceDetector:
         assert_allclose(lafs, expected_laf, rtol=0.001, atol=1e-03)
         assert_allclose(resps, expected_resp, rtol=0.001, atol=1e-03)
 
-    def test_gradcheck(self, device):
+    @staticmethod
+    def test_gradcheck(device):
         batch_size, channels, height, width = 1, 1, 31, 21
         patches = torch.rand(batch_size, channels, height, width, device=device)
         patches = utils.tensor_to_gradcheck_var(patches)  # to var

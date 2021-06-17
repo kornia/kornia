@@ -21,7 +21,8 @@ class TestColorJitterBackward:
     @pytest.mark.parametrize("hue", [0.1, torch.tensor(0.1), torch.tensor([-0.1, 0.1])])
     @pytest.mark.parametrize("return_transform", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False])
-    def test_param(self, brightness, contrast, saturation, hue, return_transform, same_on_batch, device, dtype):
+    @staticmethod
+    def test_param(brightness, contrast, saturation, hue, return_transform, same_on_batch, device, dtype):
         count = 0
 
         _brightness = (
@@ -195,7 +196,8 @@ class TestRandomRotationBackward:
     @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("return_transform", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False])
-    def test_param(self, degrees, resample, align_corners, return_transform, same_on_batch, device, dtype):
+    @staticmethod
+    def test_param(degrees, resample, align_corners, return_transform, same_on_batch, device, dtype):
 
         _degrees = (
             degrees
@@ -245,7 +247,8 @@ class TestRandomPerspectiveBackward:
     @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("return_transform", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False])
-    def test_param(self, distortion_scale, resample, align_corners, return_transform, same_on_batch, device, dtype):
+    @staticmethod
+    def test_param(distortion_scale, resample, align_corners, return_transform, same_on_batch, device, dtype):
 
         _distortion_scale = (
             distortion_scale
@@ -297,7 +300,8 @@ class TestRandomMotionBlurBackward:
     @pytest.mark.parametrize("resample", ['bilinear'])  # TODO: Ignore nearest for now.
     @pytest.mark.parametrize("return_transform", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False])
-    def test_param(self, angle, direction, border_type, resample, return_transform, same_on_batch, device, dtype):
+    @staticmethod
+    def test_param(angle, direction, border_type, resample, return_transform, same_on_batch, device, dtype):
 
         _angle = (
             angle
@@ -355,7 +359,8 @@ class TestRandomSharpnessBackward:
     @pytest.mark.parametrize("sharpness", [0.5, [0, 0.5], torch.tensor([0, 0.5])])
     @pytest.mark.parametrize("return_transform", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False])
-    def test_param(self, sharpness, return_transform, same_on_batch, device, dtype):
+    @staticmethod
+    def test_param(sharpness, return_transform, same_on_batch, device, dtype):
 
         _sharpness = (
             sharpness
@@ -393,7 +398,8 @@ class TestRandomResizedCropBackward:
     @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("return_transform", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False])
-    def test_param(self, scale, ratio, resample, align_corners, return_transform, same_on_batch, device, dtype):
+    @staticmethod
+    def test_param(scale, ratio, resample, align_corners, return_transform, same_on_batch, device, dtype):
 
         _scale = (
             scale if isinstance(scale, (list, tuple)) else nn.Parameter(scale.clone().to(device=device, dtype=dtype))
@@ -443,7 +449,8 @@ class TestRandomErasingBackward:
     @pytest.mark.parametrize("value", [0.0])
     @pytest.mark.parametrize("return_transform", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False])
-    def test_param(self, scale, ratio, value, return_transform, same_on_batch, device, dtype):
+    @staticmethod
+    def test_param(scale, ratio, value, return_transform, same_on_batch, device, dtype):
 
         _scale = (
             scale if isinstance(scale, (list, tuple)) else nn.Parameter(scale.clone().to(device=device, dtype=dtype))

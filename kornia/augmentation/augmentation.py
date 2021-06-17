@@ -2043,7 +2043,8 @@ class RandomFisheye(GeometricAugmentationBase2D):
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
 
-    def _check_tensor(self, data: torch.Tensor) -> torch.Tensor:
+    @staticmethod
+    def _check_tensor(data: torch.Tensor) -> torch.Tensor:
         if not isinstance(data, torch.Tensor):
             raise TypeError(f"Invalid input type. Expected torch.Tensor - got: {type(data)}")
 

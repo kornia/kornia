@@ -28,7 +28,8 @@ class TestEqualization(BaseTester):
         assert res.shape == img.shape
 
     @pytest.mark.parametrize("clip, grid", [(0.0, None), (None, (2, 2)), (2.0, (2, 2))])
-    def test_optional_params(self, clip, grid, device, dtype):
+    @staticmethod
+    def test_optional_params(clip, grid, device, dtype):
         C, H, W = 1, 10, 20
         img = torch.rand(C, H, W, device=device, dtype=dtype)
         if clip is None:
@@ -58,12 +59,14 @@ class TestEqualization(BaseTester):
             enhance.equalize_clahe(img, clip, grid)
 
     @pytest.mark.parametrize("dims", [(1, 1, 1, 1, 1), (1, 1)])
-    def test_exception_tensor_dims(self, dims):
+    @staticmethod
+    def test_exception_tensor_dims(dims):
         img = torch.rand(dims)
         with pytest.raises(ValueError):
             enhance.equalize_clahe(img)
 
-    def test_exception_tensor_type(self):
+    @staticmethod
+    def test_exception_tensor_type():
         with pytest.raises(TypeError):
             enhance.equalize_clahe([1, 2, 3])
 
@@ -89,13 +92,15 @@ class TestEqualization(BaseTester):
         pass
 
     @pytest.fixture()
-    def img(self, device, dtype):
+    @staticmethod
+    def img(device, dtype):
         height, width = 20, 20
         # TODO: test with a more realistic pattern
         img = torch.arange(width, device=device).div(float(width - 1))[None].expand(height, width)[None][None]
         return img
 
-    def test_he(self, img):
+    @staticmethod
+    def test_he(img):
         # should be similar to enhance.equalize but slower. Similar because the lut is computed in a different way.
         clip_limit: float = 0.0
         grid_size: Tuple = (1, 1)
@@ -138,7 +143,8 @@ class TestEqualization(BaseTester):
             rtol=1e-04,
         )
 
-    def test_ahe(self, img):
+    @staticmethod
+    def test_ahe(img):
         clip_limit: float = 0.0
         grid_size: Tuple = (8, 8)
         res = enhance.equalize_clahe(img, clip_limit=clip_limit, grid_size=grid_size)
@@ -180,7 +186,8 @@ class TestEqualization(BaseTester):
             rtol=1e-04,
         )
 
-    def test_clahe(self, img):
+    @staticmethod
+    def test_clahe(img):
         clip_limit: float = 2.0
         grid_size: Tuple = (8, 8)
         res = enhance.equalize_clahe(img, clip_limit=clip_limit, grid_size=grid_size)

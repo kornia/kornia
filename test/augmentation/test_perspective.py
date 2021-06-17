@@ -11,7 +11,8 @@ class TestRandomPerspective:
 
     torch.manual_seed(0)  # for random reproductibility
 
-    def test_smoke_no_transform(self, device):
+    @staticmethod
+    def test_smoke_no_transform(device):
         x_data = torch.rand(1, 2, 8, 9).to(device)
 
         aug = kornia.augmentation.RandomPerspective(0.5, p=0.5, return_transform=False)
@@ -21,7 +22,8 @@ class TestRandomPerspective:
         assert out_perspective.shape == x_data.shape
         assert aug.inverse(out_perspective).shape == x_data.shape
 
-    def test_smoke_no_transform_batch(self, device):
+    @staticmethod
+    def test_smoke_no_transform_batch(device):
         x_data = torch.rand(2, 2, 8, 9).to(device)
 
         aug = kornia.augmentation.RandomPerspective(0.5, p=0.5, return_transform=False)
@@ -31,7 +33,8 @@ class TestRandomPerspective:
         assert out_perspective.shape == x_data.shape
         assert aug.inverse(out_perspective).shape == x_data.shape
 
-    def test_smoke_transform(self, device):
+    @staticmethod
+    def test_smoke_transform(device):
         x_data = torch.rand(1, 2, 4, 5).to(device)
 
         aug = kornia.augmentation.RandomPerspective(0.5, p=0.5, return_transform=True)
@@ -44,14 +47,16 @@ class TestRandomPerspective:
         assert out_perspective[1].shape == (1, 3, 3)
         assert aug.inverse(out_perspective).shape == x_data.shape
 
-    def test_no_transform_module(self, device):
+    @staticmethod
+    def test_no_transform_module(device):
         x_data = torch.rand(1, 2, 8, 9).to(device)
         aug = kornia.augmentation.RandomPerspective()
         out_perspective = aug(x_data)
         assert out_perspective.shape == x_data.shape
         assert aug.inverse(out_perspective).shape == x_data.shape
 
-    def test_transform_module_should_return_identity(self, device):
+    @staticmethod
+    def test_transform_module_should_return_identity(device):
         torch.manual_seed(0)
         x_data = torch.rand(1, 2, 4, 5).to(device)
 
@@ -66,7 +71,8 @@ class TestRandomPerspective:
         assert_allclose(out_perspective[1], torch.eye(3, device=device)[None])
         assert aug.inverse(out_perspective).shape == x_data.shape
 
-    def test_transform_module_should_return_expected_transform(self, device):
+    @staticmethod
+    def test_transform_module_should_return_expected_transform(device):
         torch.manual_seed(0)
         x_data = torch.rand(1, 2, 4, 5).to(device)
 
@@ -109,7 +115,8 @@ class TestRandomPerspective:
         assert_allclose(out_perspective[1], expected_transform, atol=1e-4, rtol=1e-4)
         assert aug.inverse(out_perspective).shape == x_data.shape
 
-    def test_gradcheck(self, device):
+    @staticmethod
+    def test_gradcheck(device):
         input = torch.rand(1, 2, 5, 7).to(device)
         input = utils.tensor_to_gradcheck_var(input)  # to var
         # TODO: turned off with p=0
@@ -120,7 +127,8 @@ class TestRandomAffine:
 
     torch.manual_seed(0)  # for random reproductibility
 
-    def test_smoke_no_transform(self, device):
+    @staticmethod
+    def test_smoke_no_transform(device):
         x_data = torch.rand(1, 2, 8, 9).to(device)
         aug = kornia.augmentation.RandomAffine(0.0)
         out = aug(x_data)
@@ -128,7 +136,8 @@ class TestRandomAffine:
         assert aug.inverse(out).shape == x_data.shape
         assert aug.inverse(out, aug._params).shape == x_data.shape
 
-    def test_smoke_no_transform_batch(self, device):
+    @staticmethod
+    def test_smoke_no_transform_batch(device):
         x_data = torch.rand(2, 2, 8, 9).to(device)
         aug = kornia.augmentation.RandomAffine(0.0)
         out = aug(x_data)
@@ -159,7 +168,8 @@ class TestRandomAffine:
         assert out.shape == x_data.shape
         assert aug.inverse(out).shape == x_data.shape
 
-    def test_smoke_transform(self, device):
+    @staticmethod
+    def test_smoke_transform(device):
         x_data = torch.rand(1, 2, 4, 5).to(device)
         aug = kornia.augmentation.RandomAffine(0.0, return_transform=True)
         out = aug(x_data)
@@ -170,7 +180,8 @@ class TestRandomAffine:
         assert out[1].shape == (1, 3, 3)
         assert aug.inverse(out).shape == x_data.shape
 
-    def test_gradcheck(self, device):
+    @staticmethod
+    def test_gradcheck(device):
         input = torch.rand(1, 2, 5, 7).to(device)
         input = utils.tensor_to_gradcheck_var(input)  # to var
         # TODO: turned off with p=0

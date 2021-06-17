@@ -7,23 +7,27 @@ from kornia.feature.affine_shape import *
 
 
 class TestPatchAffineShapeEstimator:
-    def test_shape(self, device):
+    @staticmethod
+    def test_shape(device):
         inp = torch.rand(1, 1, 32, 32, device=device)
         ori = PatchAffineShapeEstimator(32).to(device)
         ang = ori(inp)
         assert ang.shape == torch.Size([1, 1, 3])
 
-    def test_shape_batch(self, device):
+    @staticmethod
+    def test_shape_batch(device):
         inp = torch.rand(2, 1, 32, 32, device=device)
         ori = PatchAffineShapeEstimator(32).to(device)
         ang = ori(inp)
         assert ang.shape == torch.Size([2, 1, 3])
 
-    def test_print(self, device):
+    @staticmethod
+    def test_print(device):
         sift = PatchAffineShapeEstimator(32)
         sift.__repr__()
 
-    def test_toy(self, device):
+    @staticmethod
+    def test_toy(device):
         aff = PatchAffineShapeEstimator(19).to(device)
         inp = torch.zeros(1, 1, 19, 19, device=device)
         inp[:, :, 5:-5, 1:-1] = 1
@@ -31,7 +35,8 @@ class TestPatchAffineShapeEstimator:
         expected = torch.tensor([[[0.4146, 0.0000, 1.0000]]], device=device)
         assert_allclose(abc, expected, atol=1e-4, rtol=1e-4)
 
-    def test_gradcheck(self, device):
+    @staticmethod
+    def test_gradcheck(device):
         batch_size, channels, height, width = 1, 1, 13, 13
         ori = PatchAffineShapeEstimator(width).to(device)
         patches = torch.rand(batch_size, channels, height, width, device=device)
@@ -39,7 +44,8 @@ class TestPatchAffineShapeEstimator:
         assert gradcheck(ori, (patches,), raise_exception=True, nondet_tol=1e-4)
 
     @pytest.mark.jit
-    def test_jit(self, device, dtype):
+    @staticmethod
+    def test_jit(device, dtype):
         B, C, H, W = 2, 1, 13, 13
         patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
         tfeat = PatchAffineShapeEstimator(W).to(patches.device, patches.dtype).eval()
@@ -48,25 +54,29 @@ class TestPatchAffineShapeEstimator:
 
 
 class TestLAFAffineShapeEstimator:
-    def test_shape(self, device):
+    @staticmethod
+    def test_shape(device):
         inp = torch.rand(1, 1, 32, 32, device=device)
         laf = torch.rand(1, 1, 2, 3, device=device)
         ori = LAFAffineShapeEstimator().to(device)
         out = ori(laf, inp)
         assert out.shape == laf.shape
 
-    def test_shape_batch(self, device):
+    @staticmethod
+    def test_shape_batch(device):
         inp = torch.rand(2, 1, 32, 32, device=device)
         laf = torch.rand(2, 34, 2, 3, device=device)
         ori = LAFAffineShapeEstimator().to(device)
         out = ori(laf, inp)
         assert out.shape == laf.shape
 
-    def test_print(self, device):
+    @staticmethod
+    def test_print(device):
         sift = LAFAffineShapeEstimator()
         sift.__repr__()
 
-    def test_toy(self, device):
+    @staticmethod
+    def test_toy(device):
         aff = LAFAffineShapeEstimator(32).to(device)
         inp = torch.zeros(1, 1, 32, 32, device=device)
         inp[:, :, 15:-15, 9:-9] = 1
@@ -75,7 +85,8 @@ class TestLAFAffineShapeEstimator:
         expected = torch.tensor([[[[36.643, 0.0, 16.0], [0.0, 10.916, 16.0]]]], device=device)
         assert_allclose(new_laf, expected, atol=1e-4, rtol=1e-4)
 
-    def test_gradcheck(self, device):
+    @staticmethod
+    def test_gradcheck(device):
         batch_size, channels, height, width = 1, 1, 40, 40
         patches = torch.rand(batch_size, channels, height, width, device=device)
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
@@ -92,7 +103,8 @@ class TestLAFAffineShapeEstimator:
 
     @pytest.mark.jit
     @pytest.mark.skip("Failing because of extract patches")
-    def test_jit(self, device, dtype):
+    @staticmethod
+    def test_jit(device, dtype):
         B, C, H, W = 1, 1, 13, 13
         inp = torch.zeros(B, C, H, W, device=device)
         inp[:, :, 15:-15, 9:-9] = 1
@@ -103,32 +115,37 @@ class TestLAFAffineShapeEstimator:
 
 
 class TestLAFAffNetShapeEstimator:
-    def test_shape(self, device):
+    @staticmethod
+    def test_shape(device):
         inp = torch.rand(1, 1, 32, 32, device=device)
         laf = torch.rand(1, 1, 2, 3, device=device)
         ori = LAFAffNetShapeEstimator(False).to(device).eval()
         out = ori(laf, inp)
         assert out.shape == laf.shape
 
-    def test_pretrained(self, device):
+    @staticmethod
+    def test_pretrained(device):
         inp = torch.rand(1, 1, 32, 32, device=device)
         laf = torch.rand(1, 1, 2, 3, device=device)
         ori = LAFAffNetShapeEstimator(True).to(device).eval()
         out = ori(laf, inp)
         assert out.shape == laf.shape
 
-    def test_shape_batch(self, device):
+    @staticmethod
+    def test_shape_batch(device):
         inp = torch.rand(2, 1, 32, 32, device=device)
         laf = torch.rand(2, 5, 2, 3, device=device)
         ori = LAFAffNetShapeEstimator().to(device).eval()
         out = ori(laf, inp)
         assert out.shape == laf.shape
 
-    def test_print(self, device):
+    @staticmethod
+    def test_print(device):
         sift = LAFAffNetShapeEstimator()
         sift.__repr__()
 
-    def test_toy(self, device):
+    @staticmethod
+    def test_toy(device):
         aff = LAFAffNetShapeEstimator(True).to(device).eval()
         inp = torch.zeros(1, 1, 32, 32, device=device)
         inp[:, :, 15:-15, 9:-9] = 1
@@ -138,7 +155,8 @@ class TestLAFAffNetShapeEstimator:
         assert_allclose(new_laf, expected, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.skip("jacobian not well computed")
-    def test_gradcheck(self, device):
+    @staticmethod
+    def test_gradcheck(device):
         batch_size, channels, height, width = 1, 1, 35, 35
         patches = torch.rand(batch_size, channels, height, width, device=device)
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
@@ -155,7 +173,8 @@ class TestLAFAffNetShapeEstimator:
 
     @pytest.mark.jit
     @pytest.mark.skip("Laf type is not a torch.Tensor????")
-    def test_jit(self, device, dtype):
+    @staticmethod
+    def test_jit(device, dtype):
         B, C, H, W = 1, 1, 32, 32
         patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
         laf = torch.tensor([[[[8.0, 0.0, 16.0], [0.0, 8.0, 16.0]]]], device=device)

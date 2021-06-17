@@ -32,7 +32,8 @@ class TestRgbToHls(BaseTester):
             img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_hls(img)
 
-    def test_unit(self, device, dtype):
+    @staticmethod
+    def test_unit(device, dtype):
         data = torch.tensor(
             [
                 [
@@ -92,7 +93,8 @@ class TestRgbToHls(BaseTester):
 
         assert_allclose(kornia.color.rgb_to_hls(data), expected)
 
-    def test_nan_rgb_to_hls(self, device, dtype):
+    @staticmethod
+    def test_nan_rgb_to_hls(device, dtype):
         data = torch.ones(2, 3, 5, 5, device=device, dtype=dtype)
 
         # OpenCV
@@ -153,7 +155,8 @@ class TestHlsToRgb(BaseTester):
             img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.hls_to_rgb(img)
 
-    def test_unit(self, device, dtype):
+    @staticmethod
+    def test_unit(device, dtype):
         data = torch.tensor(
             [
                 [

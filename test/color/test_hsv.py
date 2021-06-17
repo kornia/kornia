@@ -32,7 +32,8 @@ class TestRgbToHsv(BaseTester):
             img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_hsv(img)
 
-    def test_unit(self, device, dtype):
+    @staticmethod
+    def test_unit(device, dtype):
         data = torch.tensor(
             [
                 [
@@ -92,7 +93,8 @@ class TestRgbToHsv(BaseTester):
 
         assert_allclose(kornia.color.rgb_to_hsv(data), expected)
 
-    def test_nan_rgb_to_hsv(self, device, dtype):
+    @staticmethod
+    def test_nan_rgb_to_hsv(device, dtype):
         data = torch.zeros(1, 5, 5, device=device, dtype=dtype)  # 3x5x5
         data = data.repeat(3, 1, 1)  # 2x3x5x5
 
@@ -145,7 +147,8 @@ class TestHsvToRgb(BaseTester):
             img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.hsv_to_rgb(img)
 
-    def test_unit(self, device, dtype):
+    @staticmethod
+    def test_unit(device, dtype):
         data = torch.tensor(
             [
                 [

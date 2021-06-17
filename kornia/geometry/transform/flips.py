@@ -25,7 +25,8 @@ class Vflip(nn.Module):
                   [0., 0., 0.]]]])
     """
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
+    @staticmethod
+    def forward(input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return vflip(input)
 
     def __repr__(self):
@@ -55,7 +56,8 @@ class Hflip(nn.Module):
                   [1., 1., 0.]]]])
     """
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
+    @staticmethod
+    def forward(input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return hflip(input)
 
     def __repr__(self):
@@ -83,7 +85,8 @@ class Rot180(nn.Module):
                   [0., 0., 0.]]]])
     """
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
+    @staticmethod
+    def forward(input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return rot180(input)
 
     def __repr__(self):

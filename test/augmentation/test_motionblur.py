@@ -14,7 +14,8 @@ class TestRandomMotionBlur:
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
-    def test_smoke(self, device):
+    @staticmethod
+    def test_smoke(device):
         f = RandomMotionBlur(kernel_size=(3, 5), angle=(10, 30), direction=0.5)
         repr = (
             "RandomMotionBlur(kernel_size=(3, 5), angle=tensor([10., 30.]), direction=tensor([-0.5000, 0.5000]), "
@@ -25,7 +26,8 @@ class TestRandomMotionBlur:
     @pytest.mark.parametrize("same_on_batch", [True, False])
     @pytest.mark.parametrize("return_transform", [True, False])
     @pytest.mark.parametrize("p", [0.0, 1.0])
-    def test_random_motion_blur(self, same_on_batch, return_transform, p, device, dtype):
+    @staticmethod
+    def test_random_motion_blur(same_on_batch, return_transform, p, device, dtype):
         f = RandomMotionBlur(
             kernel_size=(3, 5),
             angle=(10, 30),
@@ -56,7 +58,8 @@ class TestRandomMotionBlur:
         assert output.shape == torch.Size([batch_size, 3, 5, 6])
 
     @pytest.mark.parametrize("input_shape", [(1, 1, 5, 5), (2, 1, 5, 5)])
-    def test_against_functional(self, input_shape):
+    @staticmethod
+    def test_against_functional(input_shape):
 
         input = torch.randn(*input_shape)
 
@@ -73,7 +76,8 @@ class TestRandomMotionBlur:
 
         assert_allclose(output, expected, rtol=1e-4, atol=1e-4)
 
-    def test_gradcheck(self, device):
+    @staticmethod
+    def test_gradcheck(device):
         torch.manual_seed(0)  # for random reproductibility
         inp = torch.rand((1, 3, 11, 7)).to(device)
         inp = tensor_to_gradcheck_var(inp)  # to var
@@ -96,7 +100,8 @@ class TestRandomMotionBlur3D:
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
-    def test_smoke(self, device, dtype):
+    @staticmethod
+    def test_smoke(device, dtype):
         f = RandomMotionBlur3D(kernel_size=(3, 5), angle=(10, 30), direction=0.5)
         repr = (
             "RandomMotionBlur3D(kernel_size=(3, 5), angle=tensor([[10., 30.],"
@@ -108,7 +113,8 @@ class TestRandomMotionBlur3D:
     @pytest.mark.parametrize("same_on_batch", [True, False])
     @pytest.mark.parametrize("return_transform", [True, False])
     @pytest.mark.parametrize("p", [0.0, 1.0])
-    def test_random_motion_blur(self, same_on_batch, return_transform, p, device, dtype):
+    @staticmethod
+    def test_random_motion_blur(same_on_batch, return_transform, p, device, dtype):
         f = RandomMotionBlur3D(
             kernel_size=(3, 5),
             angle=(10, 30),
@@ -138,7 +144,8 @@ class TestRandomMotionBlur3D:
         assert output.shape == torch.Size([batch_size, 3, 5, 6, 7])
 
     @pytest.mark.parametrize("input_shape", [(1, 1, 5, 6, 7), (2, 1, 5, 6, 7)])
-    def test_against_functional(self, input_shape):
+    @staticmethod
+    def test_against_functional(input_shape):
 
         input = torch.randn(*input_shape)
 
@@ -155,7 +162,8 @@ class TestRandomMotionBlur3D:
 
         assert_allclose(output, expected, rtol=1e-4, atol=1e-4)
 
-    def test_gradcheck(self, device, dtype):
+    @staticmethod
+    def test_gradcheck(device, dtype):
         torch.manual_seed(0)  # for random reproductibility
         inp = torch.rand((1, 3, 11, 7)).to(device)
         inp = tensor_to_gradcheck_var(inp)  # to var

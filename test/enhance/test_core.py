@@ -17,7 +17,8 @@ class TestAddWeighted:
 
     fcn = kornia.enhance.add_weighted
 
-    def get_input(self, device, dtype, size, max_elem=10):
+    @staticmethod
+    def get_input(device, dtype, size, max_elem=10):
         shape = random_shape(size, max_elem)
         src1 = torch.randn(shape, device=device, dtype=dtype)
         src2 = torch.randn(shape, device=device, dtype=dtype)

@@ -52,5 +52,6 @@ class TotalVariation(nn.Module):
         [1] https://en.wikipedia.org/wiki/Total_variation
     """
 
-    def forward(self, img) -> torch.Tensor:
+    @staticmethod
+    def forward(img) -> torch.Tensor:
         return total_variation(img)

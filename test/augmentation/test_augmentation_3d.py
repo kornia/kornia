@@ -23,12 +23,14 @@ class TestRandomHorizontalFlip3D:
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
-    def test_smoke(self):
+    @staticmethod
+    def test_smoke():
         f = RandomHorizontalFlip3D(0.5)
         repr = "RandomHorizontalFlip3D(p=0.5, p_batch=1.0, same_on_batch=False, return_transform=0.5)"
         assert str(f) == repr
 
-    def test_random_hflip(self, device):
+    @staticmethod
+    def test_random_hflip(device):
 
         f = RandomHorizontalFlip3D(p=1.0, return_transform=True)
         f1 = RandomHorizontalFlip3D(p=0.0, return_transform=True)
@@ -71,7 +73,8 @@ class TestRandomHorizontalFlip3D:
         assert (f2(input) == expected).all()
         assert (f3(input) == input).all()
 
-    def test_batch_random_hflip(self, device):
+    @staticmethod
+    def test_batch_random_hflip(device):
 
         f = RandomHorizontalFlip3D(p=1.0, return_transform=True)
         f1 = RandomHorizontalFlip3D(p=0.0, return_transform=True)
@@ -102,13 +105,15 @@ class TestRandomHorizontalFlip3D:
         assert (f1(input)[0] == input).all()
         assert (f1(input)[1] == identity).all()
 
-    def test_same_on_batch(self, device):
+    @staticmethod
+    def test_same_on_batch(device):
         f = RandomHorizontalFlip3D(p=0.5, same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 1, 1, 1, 1)
         res = f(input)
         assert (res[0] == res[1]).all()
 
-    def test_sequential(self, device):
+    @staticmethod
+    def test_sequential(device):
 
         f = nn.Sequential(
             RandomHorizontalFlip3D(p=1.0, return_transform=True), RandomHorizontalFlip3D(p=1.0, return_transform=True)
@@ -131,7 +136,8 @@ class TestRandomHorizontalFlip3D:
         assert (f1(input)[0] == input).all()
         assert (f1(input)[1] == expected_transform).all()
 
-    def test_gradcheck(self, device):
+    @staticmethod
+    def test_gradcheck(device):
         input = torch.rand((1, 3, 3)).to(device)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(RandomHorizontalFlip3D(p=1.0), (input,), raise_exception=True)
@@ -142,12 +148,14 @@ class TestRandomVerticalFlip3D:
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
-    def test_smoke(self):
+    @staticmethod
+    def test_smoke():
         f = RandomVerticalFlip3D(0.5)
         repr = "RandomVerticalFlip3D(p=0.5, p_batch=1.0, same_on_batch=False, return_transform=0.5)"
         assert str(f) == repr
 
-    def test_random_vflip(self, device, dtype):
+    @staticmethod
+    def test_random_vflip(device, dtype):
 
         f = RandomVerticalFlip3D(p=1.0, return_transform=True)
         f1 = RandomVerticalFlip3D(p=0.0, return_transform=True)
@@ -199,7 +207,8 @@ class TestRandomVerticalFlip3D:
         assert_allclose(f2(input), expected)
         assert_allclose(f3(input), input)
 
-    def test_batch_random_vflip(self, device):
+    @staticmethod
+    def test_batch_random_vflip(device):
 
         f = RandomVerticalFlip3D(p=1.0, return_transform=True)
         f1 = RandomVerticalFlip3D(p=0.0, return_transform=True)
@@ -230,13 +239,15 @@ class TestRandomVerticalFlip3D:
         assert_allclose(f1(input)[0], input)
         assert_allclose(f1(input)[1], identity)
 
-    def test_same_on_batch(self, device):
+    @staticmethod
+    def test_same_on_batch(device):
         f = RandomVerticalFlip3D(p=0.5, same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 1, 1, 1, 1)
         res = f(input)
         assert (res[0] == res[1]).all()
 
-    def test_sequential(self, device):
+    @staticmethod
+    def test_sequential(device):
 
         f = nn.Sequential(
             RandomVerticalFlip3D(p=1.0, return_transform=True), RandomVerticalFlip3D(p=1.0, return_transform=True)
@@ -258,7 +269,8 @@ class TestRandomVerticalFlip3D:
         assert_allclose(f1(input)[0], input)
         assert_allclose(f1(input)[1], expected_transform)
 
-    def test_gradcheck(self, device):
+    @staticmethod
+    def test_gradcheck(device):
         input = torch.rand((1, 3, 3)).to(device)  # 4 x 4
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(RandomVerticalFlip3D(p=1.0), (input,), raise_exception=True)
@@ -269,12 +281,14 @@ class TestRandomDepthicalFlip3D:
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
-    def test_smoke(self):
+    @staticmethod
+    def test_smoke():
         f = RandomDepthicalFlip3D(0.5)
         repr = "RandomDepthicalFlip3D(p=0.5, p_batch=1.0, same_on_batch=False, return_transform=0.5)"
         assert str(f) == repr
 
-    def test_random_dflip(self, device, dtype):
+    @staticmethod
+    def test_random_dflip(device, dtype):
 
         f = RandomDepthicalFlip3D(p=1.0, return_transform=True)
         f1 = RandomDepthicalFlip3D(p=0.0, return_transform=True)
@@ -326,7 +340,8 @@ class TestRandomDepthicalFlip3D:
         assert_allclose(f2(input), expected)
         assert_allclose(f3(input), input)
 
-    def test_batch_random_dflip(self, device):
+    @staticmethod
+    def test_batch_random_dflip(device):
 
         f = RandomDepthicalFlip3D(p=1.0, return_transform=True)
         f1 = RandomDepthicalFlip3D(p=0.0, return_transform=True)
@@ -368,13 +383,15 @@ class TestRandomDepthicalFlip3D:
         assert_allclose(f1(input)[0], input)
         assert_allclose(f1(input)[1], identity)
 
-    def test_same_on_batch(self, device):
+    @staticmethod
+    def test_same_on_batch(device):
         f = RandomDepthicalFlip3D(p=0.5, same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 1, 2, 1, 1)
         res = f(input)
         assert (res[0] == res[1]).all()
 
-    def test_sequential(self, device):
+    @staticmethod
+    def test_sequential(device):
 
         f = nn.Sequential(
             RandomDepthicalFlip3D(p=1.0, return_transform=True), RandomDepthicalFlip3D(p=1.0, return_transform=True)
@@ -405,7 +422,8 @@ class TestRandomDepthicalFlip3D:
         assert_allclose(f1(input)[0], input)
         assert_allclose(f1(input)[1], expected_transform)
 
-    def test_gradcheck(self, device):
+    @staticmethod
+    def test_gradcheck(device):
         input = torch.rand((1, 3, 3)).to(device)  # 4 x 4
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(RandomDepthicalFlip3D(p=1.0), (input,), raise_exception=True)
@@ -418,7 +436,8 @@ class TestRandomRotation3D:
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
-    def test_smoke(self):
+    @staticmethod
+    def test_smoke():
         f = RandomRotation3D(degrees=45.5)
         repr = (
             """RandomRotation3D(degrees=tensor([[-45.5000, 45.5000],
@@ -428,7 +447,8 @@ class TestRandomRotation3D:
         )
         assert str(f) == repr
 
-    def test_random_rotation(self, device, dtype):
+    @staticmethod
+    def test_random_rotation(device, dtype):
         # This is included in doctest
         torch.manual_seed(0)  # for random reproductibility
 
@@ -494,7 +514,8 @@ class TestRandomRotation3D:
         torch.manual_seed(0)  # for random reproductibility
         assert_allclose(f1(input), expected, rtol=1e-6, atol=1e-4)
 
-    def test_batch_random_rotation(self, device, dtype):
+    @staticmethod
+    def test_batch_random_rotation(device, dtype):
 
         torch.manual_seed(24)  # for random reproductibility
 
@@ -588,13 +609,15 @@ class TestRandomRotation3D:
         assert_allclose(out, expected, rtol=1e-6, atol=1e-4)
         assert_allclose(mat, expected_transform, rtol=1e-6, atol=1e-4)
 
-    def test_same_on_batch(self, device, dtype):
+    @staticmethod
+    def test_same_on_batch(device, dtype):
         f = RandomRotation3D(degrees=40, same_on_batch=True)
         input = torch.eye(6, device=device, dtype=dtype).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 6, 1, 1)
         res = f(input)
         assert (res[0] == res[1]).all()
 
-    def test_sequential(self, device, dtype):
+    @staticmethod
+    def test_sequential(device, dtype):
 
         torch.manual_seed(24)  # for random reproductibility
 
@@ -675,7 +698,8 @@ class TestRandomRotation3D:
         assert_allclose(mat, expected_transform, rtol=1e-6, atol=1e-4)
         assert_allclose(mat_2, expected_transform_2, rtol=1e-6, atol=1e-4)
 
-    def test_gradcheck(self, device):
+    @staticmethod
+    def test_gradcheck(device):
 
         torch.manual_seed(0)  # for random reproductibility
 
@@ -688,7 +712,8 @@ class TestRandomCrop3D:
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
-    def test_smoke(self):
+    @staticmethod
+    def test_smoke():
         f = RandomCrop3D(size=(2, 3, 4), padding=(0, 1, 2), fill=10, pad_if_needed=False, p=1.0)
         repr = (
             "RandomCrop3D(crop_size=(2, 3, 4), padding=(0, 1, 2), fill=10, pad_if_needed=False, "
@@ -698,7 +723,8 @@ class TestRandomCrop3D:
         assert str(f) == repr
 
     @pytest.mark.parametrize("batch_size", [1, 2])
-    def test_no_padding(self, batch_size, device, dtype):
+    @staticmethod
+    def test_no_padding(batch_size, device, dtype):
         torch.manual_seed(42)
         inp = torch.tensor(
             [
@@ -761,14 +787,16 @@ class TestRandomCrop3D:
 
         assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
 
-    def test_same_on_batch(self, device, dtype):
+    @staticmethod
+    def test_same_on_batch(device, dtype):
         f = RandomCrop3D(size=(2, 3, 4), padding=None, align_corners=True, p=1.0, same_on_batch=True)
         input = torch.eye(6).unsqueeze(dim=0).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 5, 1, 1)
         res = f(input)
         assert (res[0] == res[1]).all()
 
     @pytest.mark.parametrize("padding", [1, (1, 1, 1), (1, 1, 1, 1, 1, 1)])
-    def test_padding_batch(self, padding, device, dtype):
+    @staticmethod
+    def test_padding_batch(padding, device, dtype):
         torch.manual_seed(42)
         batch_size = 2
         inp = torch.tensor([[[[0.0, 1.0, 2.0], [3.0, 4.0, 5.0], [6.0, 7.0, 8.0]]]], device=device, dtype=dtype).repeat(
@@ -797,7 +825,8 @@ class TestRandomCrop3D:
 
         assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
 
-    def test_pad_if_needed(self, device, dtype):
+    @staticmethod
+    def test_pad_if_needed(device, dtype):
         torch.manual_seed(42)
         inp = torch.tensor([[[0.0, 1.0, 2.0]]], device=device, dtype=dtype)
         expected = torch.tensor(
@@ -817,14 +846,16 @@ class TestRandomCrop3D:
 
         assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
 
-    def test_gradcheck(self, device, dtype):
+    @staticmethod
+    def test_gradcheck(device, dtype):
         torch.manual_seed(0)  # for random reproductibility
         inp = torch.rand((3, 3, 3), device=device, dtype=dtype)  # 3 x 3
         inp = utils.tensor_to_gradcheck_var(inp)  # to var
         assert gradcheck(RandomCrop3D(size=(3, 3, 3), p=1.0), (inp,), raise_exception=True)
 
     @pytest.mark.skip("Need to fix Union type")
-    def test_jit(self, device, dtype):
+    @staticmethod
+    def test_jit(device, dtype):
         # Define script
         op = RandomCrop(size=(3, 3), p=1.0).forward
         op_script = torch.jit.script(op)
@@ -835,7 +866,8 @@ class TestRandomCrop3D:
         assert_allclose(actual, expected)
 
     @pytest.mark.skip("Need to fix Union type")
-    def test_jit_trace(self, device, dtype):
+    @staticmethod
+    def test_jit_trace(device, dtype):
         # Define script
         op = RandomCrop(size=(3, 3), p=1.0).forward
         op_script = torch.jit.script(op)
@@ -854,24 +886,28 @@ class TestRandomCrop3D:
 
 
 class TestCenterCrop3D:
-    def test_no_transform(self, device, dtype):
+    @staticmethod
+    def test_no_transform(device, dtype):
         inp = torch.rand(1, 2, 4, 4, 4, device=device, dtype=dtype)
         out = kornia.augmentation.CenterCrop3D(2)(inp)
         assert out.shape == (1, 2, 2, 2, 2)
 
-    def test_transform(self, device, dtype):
+    @staticmethod
+    def test_transform(device, dtype):
         inp = torch.rand(1, 2, 5, 4, 8, device=device, dtype=dtype)
         out = kornia.augmentation.CenterCrop3D(2, return_transform=True)(inp)
         assert len(out) == 2
         assert out[0].shape == (1, 2, 2, 2, 2)
         assert out[1].shape == (1, 4, 4)
 
-    def test_no_transform_tuple(self, device, dtype):
+    @staticmethod
+    def test_no_transform_tuple(device, dtype):
         inp = torch.rand(1, 2, 5, 4, 8, device=device, dtype=dtype)
         out = kornia.augmentation.CenterCrop3D((3, 4, 5))(inp)
         assert out.shape == (1, 2, 3, 4, 5)
 
-    def test_gradcheck(self, device, dtype):
+    @staticmethod
+    def test_gradcheck(device, dtype):
         input = torch.rand(1, 2, 3, 4, 5, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(kornia.augmentation.CenterCrop3D(3), (input,), raise_exception=True)
@@ -881,7 +917,8 @@ class TestRandomEqualize3D:
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
-    def test_smoke(self, device, dtype):
+    @staticmethod
+    def test_smoke(device, dtype):
         f = RandomEqualize3D(p=0.5)
         repr = "RandomEqualize3D(p=0.5, p_batch=1.0, same_on_batch=False, return_transform=False)"
         assert str(f) == repr
@@ -934,14 +971,16 @@ class TestRandomEqualize3D:
         assert_allclose(f2(inputs3d), expected, rtol=1e-4, atol=1e-4)
         assert_allclose(f3(inputs3d), inputs3d, rtol=1e-4, atol=1e-4)
 
-    def test_same_on_batch(self, device, dtype):
+    @staticmethod
+    def test_same_on_batch(device, dtype):
         f = RandomEqualize3D(p=0.5, same_on_batch=True)
         input = torch.eye(4, device=device, dtype=dtype)
         input = input.unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 1, 2, 1, 1)
         res = f(input)
         assert (res[0] == res[1]).all()
 
-    def test_gradcheck(self, device, dtype):
+    @staticmethod
+    def test_gradcheck(device, dtype):
         torch.manual_seed(0)  # for random reproductibility
 
         inputs3d = torch.rand((3, 3, 3), device=device, dtype=dtype)  # 3 x 3 x 3

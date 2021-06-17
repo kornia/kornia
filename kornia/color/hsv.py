@@ -147,5 +147,6 @@ class HsvToRgb(nn.Module):
         >>> output = rgb(input)  # 2x3x4x5
     """
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
+    @staticmethod
+    def forward(image: torch.Tensor) -> torch.Tensor:
         return hsv_to_rgb(image)

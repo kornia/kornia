@@ -7,17 +7,20 @@ import kornia.testing as utils  # test utils
 
 
 class TestNMS2d:
-    def test_shape(self, device):
+    @staticmethod
+    def test_shape(device):
         inp = torch.ones(1, 3, 4, 4, device=device)
         nms = kornia.feature.NonMaximaSuppression2d((3, 3)).to(device)
         assert nms(inp).shape == inp.shape
 
-    def test_shape_batch(self, device):
+    @staticmethod
+    def test_shape_batch(device):
         inp = torch.ones(4, 3, 4, 4, device=device)
         nms = kornia.feature.NonMaximaSuppression2d((3, 3)).to(device)
         assert nms(inp).shape == inp.shape
 
-    def test_nms(self, device):
+    @staticmethod
+    def test_nms(device):
         inp = torch.tensor(
             [
                 [
@@ -49,7 +52,8 @@ class TestNMS2d:
         scores = nms(inp)
         assert_allclose(scores, expected, atol=1e-4, rtol=1e-3)
 
-    def test_gradcheck(self, device):
+    @staticmethod
+    def test_gradcheck(device):
         k = 0.04
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width, device=device)
@@ -58,17 +62,20 @@ class TestNMS2d:
 
 
 class TestNMS3d:
-    def test_shape(self, device):
+    @staticmethod
+    def test_shape(device):
         inp = torch.ones(1, 1, 3, 4, 4, device=device)
         nms = kornia.feature.NonMaximaSuppression3d((3, 3, 3)).to(device)
         assert nms(inp).shape == inp.shape
 
-    def test_shape_batch(self, device):
+    @staticmethod
+    def test_shape_batch(device):
         inp = torch.ones(4, 1, 3, 4, 4, device=device)
         nms = kornia.feature.NonMaximaSuppression3d((3, 3, 3)).to(device)
         assert nms(inp).shape == inp.shape
 
-    def test_nms(self, device):
+    @staticmethod
+    def test_nms(device):
         inp = torch.tensor(
             [
                 [
@@ -132,7 +139,8 @@ class TestNMS3d:
         scores = nms(inp)
         assert_allclose(scores, expected, atol=1e-4, rtol=1e-3)
 
-    def test_gradcheck(self, device):
+    @staticmethod
+    def test_gradcheck(device):
         batch_size, channels, depth, height, width = 1, 1, 4, 5, 4
         img = torch.rand(batch_size, channels, depth, height, width, device=device)
         img = utils.tensor_to_gradcheck_var(img)  # to var

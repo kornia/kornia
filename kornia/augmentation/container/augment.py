@@ -80,8 +80,9 @@ class AugmentationSequential(ImageSequential):
             if isinstance(arg, PatchSequential) and not arg.is_intensity_only():
                 warnings.warn("Geometric transformation detected in PatchSeqeuntial, which would break bbox, mask.")
 
+    @staticmethod
     def apply_to_mask(
-        self, input: torch.Tensor, module: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None
+        input: torch.Tensor, module: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None
     ) -> torch.Tensor:
         if isinstance(module, GeometricAugmentationBase2D) and param is None:
             input = module(input, return_transform=False)
@@ -91,8 +92,8 @@ class AugmentationSequential(ImageSequential):
             pass  # No need to update anything
         return input
 
+    @staticmethod
     def apply_to_bbox(
-        self,
         input: torch.Tensor,
         module: nn.Module,
         param: Optional[Dict[str, torch.Tensor]] = None,
@@ -106,8 +107,9 @@ class AugmentationSequential(ImageSequential):
             pass  # No need to update anything
         return input
 
+    @staticmethod
     def apply_to_keypoints(
-        self, input: torch.Tensor, module: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None
+        input: torch.Tensor, module: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None
     ) -> torch.Tensor:
         if isinstance(module, GeometricAugmentationBase2D) and param is None:
             raise ValueError(f"Transformation matrix for {module} has not been computed.")
@@ -144,8 +146,9 @@ class AugmentationSequential(ImageSequential):
             return self.apply_to_keypoints(input, module, param)
         raise NotImplementedError(f"input type of {dcate} is not implemented.")
 
+    @staticmethod
     def inverse_input(
-        self, input: torch.Tensor, module: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None
+        input: torch.Tensor, module: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None
     ) -> torch.Tensor:
         if isinstance(module, GeometricAugmentationBase2D) and param is None:
             input = module.inverse(input)
@@ -155,8 +158,8 @@ class AugmentationSequential(ImageSequential):
             pass  # No need to update anything
         return input
 
+    @staticmethod
     def inverse_bbox(
-        self,
         input: torch.Tensor,
         module: nn.Module,
         param: Optional[Dict[str, torch.Tensor]] = None,
@@ -167,8 +170,9 @@ class AugmentationSequential(ImageSequential):
             input = transform_boxes(torch.as_tensor(transform, device=input.device, dtype=input.dtype), input, mode)
         return input
 
+    @staticmethod
     def inverse_keypoints(
-        self, input: torch.Tensor, module: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None
+        input: torch.Tensor, module: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None
     ) -> torch.Tensor:
         if isinstance(module, GeometricAugmentationBase2D):
             transform = module.compute_inverse_transformation(module.get_transformation_matrix(input, param))

@@ -52,7 +52,8 @@ class _BasicAugmentationBase(nn.Module):
     def __repr__(self) -> str:
         return f"p={self.p}, p_batch={self.p_batch}, same_on_batch={self.same_on_batch}"
 
-    def __unpack_input__(self, input: torch.Tensor) -> torch.Tensor:
+    @staticmethod
+    def __unpack_input__(input: torch.Tensor) -> torch.Tensor:
         return input
 
     def __check_batching__(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]):
@@ -64,7 +65,8 @@ class _BasicAugmentationBase(nn.Module):
         """Standardize input tensors."""
         raise NotImplementedError
 
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+    @staticmethod
+    def generate_parameters(batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return {}
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
@@ -344,7 +346,8 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
             input, params=self._params, transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype)
         )
 
-    def compute_inverse_transformation(self, transform: torch.Tensor):
+    @staticmethod
+    def compute_inverse_transformation(transform: torch.Tensor):
         """Compute the inverse transform of given transformation matrices."""
         return _torch_inverse_cast(transform)
 
