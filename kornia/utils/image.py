@@ -74,8 +74,7 @@ def _to_bcdhw(tensor: torch.Tensor) -> torch.Tensor:
     """Convert a PyTorch tensor image to BCDHW format.
 
     Args:
-        tensor: image of the form :math:`(D, H, W)`, :math:`(C, D, H, W)`, :math:`(D, H, W, C)` or
-            :math:`(B, C, D, H, W)`.
+        tensor (torch.Tensor): image of the form :math:`(*, D, H, W)`.
 
     Returns:
         input tensor of the form :math:`(B, C, D, H, W)`.
@@ -83,7 +82,7 @@ def _to_bcdhw(tensor: torch.Tensor) -> torch.Tensor:
     if not isinstance(tensor, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
 
-    if len(tensor.shape) > 5 or len(tensor.shape) < 3:
+    if len(tensor.shape) < 3:
         raise ValueError(f"Input size must be a three, four or five dimensional tensor. Got {tensor.shape}")
 
     if len(tensor.shape) == 3:
@@ -91,6 +90,9 @@ def _to_bcdhw(tensor: torch.Tensor) -> torch.Tensor:
 
     if len(tensor.shape) == 4:
         tensor = tensor.unsqueeze(0)
+
+    if len(tensor.shape) > 5:
+        tensor = tensor.view(-1, tensor.shape[-4], tensor.shape[-3], tensor.shape[-2], tensor.shape[-1])
 
     return tensor
 
@@ -155,7 +157,7 @@ class ImageToTensor(nn.Module):
         return image_to_tensor(x, keepdim=self.keepdim)
 
 
-def perform_keep_shape(f):
+def perform_keep_shape_image(f):
     """TODO: where can we put this?"""
 
     @wraps(f)
@@ -171,6 +173,27 @@ def perform_keep_shape(f):
 
         if len(input_shape) > 4:
             output = output.view(*(input_shape[:-3] + output.shape[-3:]))
+
+        return output
+
+    return _wrapper
+
+
+def perform_keep_shape_video(f):
+
+    @wraps(f)
+    def _wrapper(input, *args, **kwargs):
+        input_shape = input.shape
+        input = _to_bcdhw(input)
+        output = f(input, *args, **kwargs)
+        if len(input_shape) == 4:
+            output = output[0]
+
+        if len(input_shape) == 3:
+            output = output[0, 0]
+
+        if len(input_shape) > 5:
+            output = output.view(*(input_shape[:-4] + output.shape[-4:]))
 
         return output
 
