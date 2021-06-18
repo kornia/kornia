@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 from kornia.color.hsv import hsv_to_rgb, rgb_to_hsv
 from kornia.utils.helpers import _torch_histc_cast
-from kornia.utils.image import _to_bcdhw, _to_bchw
+from kornia.utils.image import perform_keep_shape_video, perform_keep_shape_image
 
 __all__ = [
     "adjust_brightness",
@@ -481,6 +481,7 @@ def solarize(
     return _solarize(input, thresholds)
 
 
+@perform_keep_shape_image
 def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tensor:
     r"""Reduce the number of bits for each color channel.
 
@@ -489,14 +490,14 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
     Non-differentiable function, ``torch.uint8`` involved.
 
     Args:
-        input: image tensor with shapes like :math:`(B, C, H, W)` to posterize.
+        input: image tensor with shape :math:`(*, C, H, W)` to posterize.
         bits: number of high bits. Must be in range [0, 8].
             If int or one element tensor, input will be posterized by this bits.
-            If 1-d tensor, input will be posterized element-wisely, len(bits) == input.shape[1].
+            If 1-d tensor, input will be posterized element-wisely, len(bits) == input.shape[-3].
             If n-d tensor, input will be posterized element-channel-wisely, bits.shape == input.shape[:len(bits.shape)]
 
     Returns:
-        Image with reduced color channels with shape :math:`(B, C, H, W)`.
+        Image with reduced color channels with shape :math:`(*, C, H, W)`.
 
     Example:
         >>> x = torch.rand(1, 6, 3, 3)
@@ -547,8 +548,6 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
 
     res = []
     if len(bits.shape) == 1:
-        input = _to_bchw(input)
-
         assert (
             bits.shape[0] == input.shape[0]
         ), f"Batch size must be equal between bits and input. Got {bits.shape[0]}, {input.shape[0]}."
@@ -567,6 +566,7 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
     return torch.stack(res, dim=0).reshape(*input.shape)
 
 
+@perform_keep_shape_image
 def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Apply sharpness to the input tensor.
 
@@ -576,20 +576,19 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
     https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L326
 
     Args:
-        input: image tensor with shapes like (C, H, W) or (B, C, H, W) to sharpen.
+        input: image tensor with shape :math:`(*, C, H, W)` to sharpen.
         factor: factor of sharpness strength. Must be above 0.
             If float or one element tensor, input will be sharpened by the same factor across the whole batch.
             If 1-d tensor, input will be sharpened element-wisely, len(factor) == len(input).
 
     Returns:
-        Sharpened image or images with shape :math:`(B, C, H, W)`.
+        Sharpened image or images with shape :math:`(*, C, H, W)`.
 
     Example:
         >>> x = torch.rand(1, 1, 5, 5)
         >>> sharpness(x, 0.5).shape
         torch.Size([1, 1, 5, 5])
     """
-    input = _to_bchw(input)
     if not isinstance(factor, torch.Tensor):
         factor = torch.tensor(factor, device=input.device, dtype=input.dtype)
 
@@ -701,6 +700,7 @@ def _scale_channel(im: torch.Tensor) -> torch.Tensor:
     return result / 255.0
 
 
+@perform_keep_shape_image
 def equalize(input: torch.Tensor) -> torch.Tensor:
     r"""Apply equalize on the input tensor.
 
@@ -710,18 +710,16 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
     https://github.com/tensorflow/tpu/blob/5f71c12a020403f863434e96982a840578fdd127/models/official/efficientnet/autoaugment.py#L355
 
     Args:
-        input: image tensor to equalize with shapes like :math:`(C, H, W)` or :math:`(B, C, H, W)`.
+        input: image tensor to equalize with shape :math:`(*, C, H, W)`.
 
     Returns:
-        Equalized image tensor with shape :math:`(B, C, H, W)`.
+        Equalized image tensor with shape :math:`(*, C, H, W)`.
 
     Example:
         >>> x = torch.rand(1, 2, 3, 3)
         >>> equalize(x).shape
         torch.Size([1, 2, 3, 3])
     """
-    input = _to_bchw(input)
-
     res = []
     for image in input:
         # Assumes RGB for now.  Scales each channel independently
@@ -731,6 +729,7 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
     return torch.stack(res)
 
 
+@perform_keep_shape_video
 def equalize3d(input: torch.Tensor) -> torch.Tensor:
     r"""Equalizes the values for a 3D volumetric tensor.
 
@@ -743,8 +742,6 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
     Returns:
         Equalized volume with shape :math:`(B, C, D, H, W)`.
     """
-    input = _to_bcdhw(input)
-
     res = []
     for volume in input:
         # Assumes RGB for now.  Scales each channel independently
