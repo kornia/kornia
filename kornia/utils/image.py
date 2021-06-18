@@ -180,7 +180,6 @@ def perform_keep_shape_image(f):
 
 
 def perform_keep_shape_video(f):
-
     @wraps(f)
     def _wrapper(input, *args, **kwargs):
         input_shape = input.shape

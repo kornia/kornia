@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 from kornia.color.hsv import hsv_to_rgb, rgb_to_hsv
 from kornia.utils.helpers import _torch_histc_cast
-from kornia.utils.image import perform_keep_shape_video, perform_keep_shape_image
+from kornia.utils.image import perform_keep_shape_image, perform_keep_shape_video
 
 __all__ = [
     "adjust_brightness",
