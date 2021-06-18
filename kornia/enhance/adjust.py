@@ -200,14 +200,14 @@ def adjust_gamma(
     The input image is expected to be in the range of [0, 1].
 
     Args:
-        input: Image to be adjusted in the shape of :math:`(*, N)`.
+        input: Image to be adjusted in the shape of :math:`(*, H, W)`.
         gamma: Non negative real number, same as γ\gammaγ in the equation.
-          gamma larger than 1 make the shadows darker, while gamma smaller than 1 make
-          dark regions lighter.
+            gamma larger than 1 make the shadows darker, while gamma smaller than 1 make
+            dark regions lighter.
         gain: The constant multiplier.
 
     Return:
-        Adjusted image in the shape of :math:`(*, N)`.
+        Adjusted image in the shape of :math:`(*, H, W)`.
 
     .. note::
        See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
@@ -250,8 +250,10 @@ def adjust_gamma(
     if (gain < 0.0).any():
         raise ValueError(f"Gain must be non-negative. Got {gain}")
 
-    for _ in input.shape[1:]:
+    for _ in range(len(input.shape) - len(gamma.shape)):
         gamma = torch.unsqueeze(gamma, dim=-1)
+
+    for _ in range(len(input.shape) - len(gain.shape)):
         gain = torch.unsqueeze(gain, dim=-1)
 
     # Apply the gamma correction
@@ -272,14 +274,14 @@ def adjust_contrast(input: torch.Tensor, contrast_factor: Union[float, torch.Ten
     The input image is expected to be in the range of [0, 1].
 
     Args:
-        input: Image to be adjusted in the shape of :math:`(*, N)`.
+        input: Image to be adjusted in the shape of :math:`(*, H, W)`.
         contrast_factor: Contrast adjust factor per element
-          in the batch. 0 generates a completely black image, 1 does not modify
-          the input image while any other non-negative number modify the
-          brightness by this factor.
+            in the batch. 0 generates a completely black image, 1 does not modify
+            the input image while any other non-negative number modify the
+            brightness by this factor.
 
     Return:
-        Adjusted image in the shape of :math:`(*, N)`.
+        Adjusted image in the shape of :math:`(*, H, W)`.
 
     .. note::
        See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
@@ -311,7 +313,7 @@ def adjust_contrast(input: torch.Tensor, contrast_factor: Union[float, torch.Ten
     if (contrast_factor < 0).any():
         raise ValueError(f"Contrast factor must be non-negative. Got {contrast_factor}")
 
-    for _ in input.shape[1:]:
+    for _ in range(len(input.shape) - len(contrast_factor.shape)):
         contrast_factor = torch.unsqueeze(contrast_factor, dim=-1)
 
     # Apply contrast factor to each channel
@@ -332,13 +334,13 @@ def adjust_brightness(input: torch.Tensor, brightness_factor: Union[float, torch
     The input image is expected to be in the range of [0, 1].
 
     Args:
-        input: image to be adjusted in the shape of :math:`(*, N)`.
+        input: image to be adjusted in the shape of :math:`(*, H, W)`.
         brightness_factor: Brightness adjust factor per element
-          in the batch. 0 does not modify the input image while any other number modify the
-          brightness.
+            in the batch. 0 does not modify the input image while any other number modify the
+            brightness.
 
     Return:
-        Adjusted image in the shape of :math:`(*, N)`.
+        Adjusted image in the shape of :math:`(*, H, W)`.
 
     .. note::
        See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
@@ -367,7 +369,7 @@ def adjust_brightness(input: torch.Tensor, brightness_factor: Union[float, torch
 
     brightness_factor = brightness_factor.to(input.device).to(input.dtype)
 
-    for _ in input.shape[1:]:
+    for _ in range(len(input.shape) - len(brightness_factor.shape)):
         brightness_factor = torch.unsqueeze(brightness_factor, dim=-1)
 
     # Apply brightness factor to each channel
@@ -404,7 +406,7 @@ def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5)
         ), f"threshholds must be a 1-d vector of shape ({input.size(0)},). Got {thresholds}"
         # TODO: I am not happy about this line, but no easy to do batch-wise operation
         thresholds = thresholds.to(input.device).to(input.dtype)
-        thresholds = torch.stack([x.expand(*input.shape[1:]) for x in thresholds])
+        thresholds = torch.stack([x.expand(*input.shape[-3:]) for x in thresholds])
 
     return torch.where(input < thresholds, input, 1.0 - input)
 
@@ -422,7 +424,7 @@ def solarize(
     The value of 'addition' is between -0.5 and 0.5.
 
     Args:
-        input: image tensor with shapes like :math:`(B, C, H, W)` to solarize.
+        input: image tensor with shapes like :math:`(*, C, H, W)` to solarize.
         thresholds: solarize thresholds.
             If int or one element tensor, input will be solarized across the whole batch.
             If 1-d tensor, input will be solarized element-wise, len(thresholds) == len(input).
@@ -432,7 +434,7 @@ def solarize(
             If 1-d tensor, additions will be added element-wisely, len(additions) == len(input).
 
     Returns:
-        The solarized images with shape :math:`(B, C, H, W)`.
+        The solarized images with shape :math:`(*, C, H, W)`.
 
     Example:
         >>> x = torch.rand(1, 4, 3, 3)
@@ -472,7 +474,7 @@ def solarize(
             ), f"additions must be a 1-d vector of shape ({input.size(0)},). Got {additions}"
             # TODO: I am not happy about this line, but no easy to do batch-wise operation
             additions = additions.to(input.device).to(input.dtype)
-            additions = torch.stack([x.expand(*input.shape[1:]) for x in additions])
+            additions = torch.stack([x.expand(*input.shape[-3:]) for x in additions])
         input = input + additions
         input = input.clamp(0.0, 1.0)
 
