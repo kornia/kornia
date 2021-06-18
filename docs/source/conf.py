@@ -1,9 +1,13 @@
 import os
 import sys
+import importlib.util
 
 import sphinx_rtd_theme
 
-import importlib.util
+# readthedocs generated the whole documentation in an isolated environment
+# by cloning the git repo. Thus, any on-the-fly operation will not effect
+# on the resulting documentation. We therefore need to import and run the
+# corresponding code here.
 spec = importlib.util.spec_from_file_location("generate_example_images", "../generate_example_images.py")
 generate_example_images = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(generate_example_images)
