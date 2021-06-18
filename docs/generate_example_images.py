@@ -11,7 +11,7 @@ import kornia as K
 mod = importlib.import_module("kornia.augmentation")
 
 BASE_IMAGE_URL: str = "https://raw.githubusercontent.com/kornia/data/main/panda.jpg"
-OUTPUT_PATH = Path(__file__).absolute().parent / "build/html/_static"
+OUTPUT_PATH = Path(__file__).absolute().parent / "source/_static"
 os.makedirs(OUTPUT_PATH, exist_ok=True)
 
 # perform request
