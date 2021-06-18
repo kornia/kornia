@@ -47,8 +47,7 @@ def _to_bchw(tensor: torch.Tensor) -> torch.Tensor:
     """Convert a PyTorch tensor image to BCHW format.
 
     Args:
-        tensor: image of the form :math:`(H, W)`, :math:`(C, H, W)`, :math:`(H, W, C)` or
-            :math:`(B, C, H, W)`.
+        tensor (torch.Tensor): image of the form :math:`(*, H, W)`.
 
     Returns:
         input tensor of the form :math:`(B, C, H, W)`.
@@ -56,7 +55,7 @@ def _to_bchw(tensor: torch.Tensor) -> torch.Tensor:
     if not isinstance(tensor, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
 
-    if len(tensor.shape) > 4 or len(tensor.shape) < 2:
+    if len(tensor.shape) < 2:
         raise ValueError(f"Input size must be a two, three or four dimensional tensor. Got {tensor.shape}")
 
     if len(tensor.shape) == 2:
@@ -64,6 +63,9 @@ def _to_bchw(tensor: torch.Tensor) -> torch.Tensor:
 
     if len(tensor.shape) == 3:
         tensor = tensor.unsqueeze(0)
+
+    if len(tensor.shape) > 4:
+        tensor = tensor.view(-1, tensor.shape[-3], tensor.shape[-2], tensor.shape[-1])
 
     return tensor
 
@@ -159,16 +161,17 @@ def perform_keep_shape(f):
     @wraps(f)
     def _wrapper(input, *args, **kwargs):
         input_shape = input.shape
-        if len(input_shape) == 2:
-            input = input[None]
-
-        dont_care_shape = input.shape[:-3]
-        input = input.view(-1, input.shape[-3], input.shape[-2], input.shape[-1])
-
+        input = _to_bchw(input)
         output = f(input, *args, **kwargs)
-        output = output.view(*(dont_care_shape + output.shape[-3:]))
-        if len(input_shape) == 2:
+        if len(input_shape) == 3:
             output = output[0]
+
+        if len(input_shape) == 2:
+            output = output[0, 0]
+
+        if len(input_shape) > 4:
+            output = output.view(*(input_shape[:-3] + output.shape[-3:]))
+
         return output
 
     return _wrapper
