@@ -938,6 +938,8 @@ class RandomRotation(GeometricAugmentationBase2D):
 class RandomCrop(GeometricAugmentationBase2D):
     r"""Crops random patches of a tensor image on a given size.
 
+    .. image:: _static/img/RandomCrop.png
+
     Args:
         p (float): probability of applying the transformation for the whole batch. Default value is 1.0.
         size (Tuple[int, int]): Desired output size (out_h, out_w) of the crop.
