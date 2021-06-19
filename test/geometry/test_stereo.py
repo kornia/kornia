@@ -210,7 +210,8 @@ class TestStereoCamera:
         assert xyz.dtype in (torch.float16, torch.float32, torch.float64)
         assert xyz.device == device
 
-    def test_reproject_disparity_to_3D_real(self, batch_size, device, dtype):
+    @staticmethod
+    def test_reproject_disparity_to_3D_real(batch_size, device, dtype):
         """Test reprojecting of disparity to 3D for known outcome."""
         disparity_tensor = _RealTestData._get_real_disparity(batch_size, device, dtype)
         xyz_gt = _RealTestData._get_real_point_cloud(batch_size, device, dtype)
