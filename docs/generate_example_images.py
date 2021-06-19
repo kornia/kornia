@@ -71,21 +71,21 @@ def main():
     }
 
     # ITERATE OVER THE TRANSFORMS
-    # for aug_name, (args, num_samples, seed) in augmentations_list.items():
-    #     img_in = img.repeat(num_samples, 1, 1, 1)
-    #     # dynamically create the class instance
-    #     cls = getattr(mod, aug_name)
-    #     aug = cls(*args, p=1.0)
-    #     # set seed
-    #     torch.manual_seed(seed)
-    #     # apply the augmentaiton to the image and concat
-    #     out = aug(img_in)
-    #     out = torch.cat([img_in[0], *[out[i] for i in range(out.size(0))]], dim=-1)
-    #     # save the output image
-    #     out_np = K.utils.tensor_to_image((out * 255.0).byte())
-    #     cv2.imwrite(str(OUTPUT_PATH / f"{aug_name}.png"), out_np)
-    #     sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
-    #     print(f"Generated image example for {aug_name}. {sig}")
+    for aug_name, (args, num_samples, seed) in augmentations_list.items():
+        img_in = img.repeat(num_samples, 1, 1, 1)
+        # dynamically create the class instance
+        cls = getattr(mod, aug_name)
+        aug = cls(*args, p=1.0)
+        # set seed
+        torch.manual_seed(seed)
+        # apply the augmentaiton to the image and concat
+        out = aug(img_in)
+        out = torch.cat([img_in[0], *[out[i] for i in range(out.size(0))]], dim=-1)
+        # save the output image
+        out_np = K.utils.tensor_to_image((out * 255.0).byte())
+        cv2.imwrite(str(OUTPUT_PATH / f"{aug_name}.png"), out_np)
+        sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
+        print(f"Generated image example for {aug_name}. {sig}")
 
     mix_augmentations_list: dict = {
         "RandomMixUp": (((.3, .4),), 2, 20),
