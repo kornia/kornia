@@ -1,17 +1,46 @@
-from typing import Callable, cast, Dict, List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 import torch
-import torch.nn as nn
 from torch.autograd import Function
 
 from kornia.augmentation.core.sampling import DynamicSampling, DynamicUniform
-from kornia.geometry.transform import bbox_generator, crop_by_transform_mat, get_perspective_transform, warp_perspective
+from kornia.geometry.transform import (
+    bbox_generator,
+    crop_by_transform_mat,
+    get_perspective_transform,
+    warp_perspective
+)
+from kornia.constants import Resample
 
-from .base import PerspectiveAugmentOperation
+from .base import PerspectiveAugmentOperation, Parameters
+
+__all__ = [
+    "PerspectiveAugment",
+    "CropAugment",
+]
 
 
 class PerspectiveAugment(PerspectiveAugmentOperation):
     """Perform perspective augmentation.
+
+    Args:
+        sampler (List[Union[Tuple[float, float], DynamicSampling]]): sampler for sampling perspective
+            factors to perform the transformation. If a tuple (a, b), it will sample from (a, b) uniformly.
+            Otherwise, it will sample from the pointed sampling distribution. Default is (0.3, 0.7).
+        mapper(Union[Tuple[float, float], Callable]], Optional): the mapping function to map the sampled perspective
+            factors to any range. If a tuple (a, b), it will map to (a, b) by `torch.clamp` by default, in which
+            ``a`` and ``b`` can be None to indicate infinity. Otherwise, it will by mapped by the provided function.
+            Default is None.
+        gradient_estimator(Function, optional): gradient estimator for this operation. Default is None.
+        resample (int, str or kornia.Resample): resample mode from "nearest" (0) or "bilinear" (1).
+            Default: Resample.BILINEAR.
+        padding_mode (int, str or kornia.SamplePadding): padding mode from "zeros" (0), "border" (1)
+            or "refection" (2). Default: SamplePadding.ZEROS.
+        align_corners(bool): interpolation flag. Default: False.
+        p (float): probability of the image being flipped. Default value is 0.5.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+            input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
 
     Examples:
         >>> a = PerspectiveAugment(p=1.)
@@ -25,24 +54,36 @@ class PerspectiveAugment(PerspectiveAugmentOperation):
     def __init__(
         self,
         sampler: Union[Tuple[float, float], DynamicSampling] = (0.3, 0.7),
-        mapper: Optional[Callable] = None,
+        mapper: Optional[Union[Tuple[float, float], Callable]] = None,
+        gradient_estimator: Optional[Function] = None,
+        resample: Union[str, int, Resample] = Resample.BILINEAR.name,
+        align_corners: bool = True,
         p: float = 0.5,
         same_on_batch: bool = False,
-        mode: str = 'bilinear',
-        align_corners: bool = True,
-        gradients_estimator: Optional[Function] = None,
+        return_transform: bool = False,
     ):
         super().__init__(
             torch.tensor(p),
             torch.tensor(1.0),
-            sampler=[sampler],
-            mapper=None if mapper is None else [mapper],
-            gradients_estimator=gradients_estimator,
+            sampler_list=[sampler],
+            mapper_list=[mapper],
+            gradient_estimator=gradient_estimator,
             same_on_batch=same_on_batch,
+            return_transform=return_transform,
         )
-        self.mode = mode
+        self.resample = Resample.get(resample).name.lower()
         self.align_corners = align_corners
         self.rand_val = DynamicUniform(torch.tensor(0.0), torch.tensor(1.0))
+
+    def generate_parameters(self, input: torch.Tensor) -> Parameters:
+        p = super().generate_parameters(input)
+
+        with torch.no_grad():
+            # No need to be trainable here. We wish to keep it as a uniform distribution
+            rand_val = self.rand_val.rsample(input.shape[:1], self.same_on_batch)
+        p.magnitudes.append(rand_val)
+
+        return p
 
     def compute_transform(self, input: torch.Tensor, magnitudes: List[torch.Tensor]) -> torch.Tensor:
         batch_size, _, height, width = input.shape
@@ -59,24 +100,48 @@ class PerspectiveAugment(PerspectiveAugmentOperation):
 
         factor = torch.stack([fx, fy], dim=0).view(-1, 1, 2)
 
-        with torch.no_grad():
-            # No need to be trainable here. We wish to keep it as a uniform distribution
-            rand_val = self.rand_val.rsample(input.shape[:1], self.same_on_batch)
-
         pts_norm = torch.tensor([[[1, 1], [-1, 1], [-1, -1], [1, -1]]], device=input.device, dtype=input.dtype)
-        end_points = start_points + factor * rand_val * pts_norm
+        end_points = start_points + factor * magnitudes[-1] * pts_norm  # the last magnitude is the rand_val
 
         transform: torch.Tensor = get_perspective_transform(start_points, end_points)
         return transform
 
     def apply_transform(self, input: torch.Tensor, transform: torch.Tensor) -> torch.Tensor:
         _, _, height, width = input.shape
-        out_data = warp_perspective(input, transform, (height, width), mode=self.mode, align_corners=self.align_corners)
+        out_data = warp_perspective(
+            input, transform, (height, width), mode=self.resample,
+            padding_mode='zeros', align_corners=self.align_corners)
         return out_data
 
 
 class CropAugment(PerspectiveAugmentOperation):
     """Perform crop augmentation.
+
+    Args:
+        x_sampler (List[Union[Tuple[float, float], DynamicSampling]]): sampler for sampling starting x-axis
+            points to perform the transformation. If a tuple (a, b), it will sample from (a, b) uniformly.
+            Otherwise, it will sample from the pointed sampling distribution. Default is (0., 1.).
+        y_sampler (List[Union[Tuple[float, float], DynamicSampling]]): sampler for sampling starting y-axis
+            points to perform the transformation. If a tuple (a, b), it will sample from (a, b) uniformly.
+            Otherwise, it will sample from the pointed sampling distribution. Default is (0., 1.).
+        x_mapper(Union[Tuple[float, float], Callable]], Optional): the mapping function to map the sampled x-axis
+            coordinates to any range. If a tuple (a, b), it will map to (a, b) by `torch.clamp` by default, in which
+            ``a`` and ``b`` can be None to indicate infinity. Otherwise, it will by mapped by the provided function.
+            Default is None.
+        y_mapper(Union[Tuple[float, float], Callable]], Optional): the mapping function to map the sampled y-axis
+            coordinates to any range. If a tuple (a, b), it will map to (a, b) by `torch.clamp` by default, in which
+            ``a`` and ``b`` can be None to indicate infinity. Otherwise, it will by mapped by the provided function.
+            Default is None.
+        gradient_estimator(Function, optional): gradient estimator for this operation. Default is None.
+        resample (int, str or kornia.Resample): resample mode from "nearest" (0) or "bilinear" (1).
+            Default: Resample.BILINEAR.
+        padding_mode (int, str or kornia.SamplePadding): padding mode from "zeros" (0), "border" (1)
+            or "refection" (2). Default: SamplePadding.ZEROS.
+        align_corners(bool): interpolation flag. Default: False.
+        p (float): probability of the image being flipped. Default value is 0.5.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+            input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
 
     Examples:
         >>> crop = CropAugment((50, 50), p=1.)
@@ -88,7 +153,7 @@ class CropAugment(PerspectiveAugmentOperation):
 
         Gradients Estimation - 1:
         >>> from kornia.augmentation.core.gradient_estimator import STEFunction
-        >>> crop = CropAugment((50, 50), p=1., gradients_estimator=STEFunction)
+        >>> crop = CropAugment((50, 50), p=1., gradient_estimator=STEFunction)
         >>> inp = torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5
         >>> out = crop(inp)
         >>> out.mean().backward()
@@ -98,27 +163,24 @@ class CropAugment(PerspectiveAugmentOperation):
     def __init__(
         self,
         size: Tuple[int, int],
+        x_sampler: Union[Tuple[float, float], DynamicSampling] = (0.0, 1.0),
+        y_sampler: Union[Tuple[float, float], DynamicSampling] = (0.0, 1.0),
+        x_mapper: Optional[Union[Tuple[float, float], Callable]] = None,
+        y_mapper: Optional[Union[Tuple[float, float], Callable]] = None,
+        gradient_estimator: Optional[Function] = None,
         p: float = 0.5,
-        sampler: Optional[List[Union[Tuple[float, float], DynamicSampling]]] = [(0.0, 1.0), (0.0, 1.0)],
-        mapper: Optional[List[Callable]] = None,
         same_on_batch: bool = False,
-        gradients_estimator: Optional[Function] = None,
+        return_transform: bool = False,
     ):
         super().__init__(
             torch.tensor(1.0),
             torch.tensor(p),
-            sampler=sampler,
-            mapper=mapper,
-            gradients_estimator=gradients_estimator,
+            sampler_list=[x_sampler, y_sampler],
+            mapper_list=[x_mapper, y_mapper],
+            gradient_estimator=gradient_estimator,
             same_on_batch=same_on_batch,
+            return_transform=return_transform,
         )
-        assert (
-            isinstance(sampler, (list,))
-            and len(sampler) == 2
-            and isinstance(sampler[0], (tuple, DynamicSampling))
-            and isinstance(sampler[1], (tuple, DynamicSampling))
-        ), f"Two samplers (x_start, y_start) needed while got {sampler}."
-
         self.size = size
         _crop_dst: torch.Tensor = torch.tensor(
             [[[0, 0], [size[1] - 1, 0], [size[1] - 1, size[0] - 1], [0, size[0] - 1]]]

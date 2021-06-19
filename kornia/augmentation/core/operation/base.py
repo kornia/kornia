@@ -1,14 +1,18 @@
-from typing import Callable, Dict, List, NamedTuple, Optional, Tuple, Union
+from typing import Callable, List, NamedTuple, Optional, Tuple, Union
+from functools import partial
 
 import torch
 import torch.nn as nn
 from torch.autograd import Function
-from torch.distributions import Distribution
 
 from kornia.augmentation.core.sampling import DynamicBernoulli, DynamicSampling, DynamicUniform
 from kornia.geometry.epipolar.numeric import eye_like
 
 Parameters = NamedTuple("Parameters", [('probs', torch.Tensor), ('magnitudes', List[torch.Tensor])])
+
+
+def _identity(input: torch.Tensor) -> torch.Tensor:
+    return input
 
 
 class AugmentOperation(nn.Module):
@@ -18,20 +22,19 @@ class AugmentOperation(nn.Module):
         self,
         p: torch.Tensor,
         p_batch: torch.Tensor,
-        sampler: Optional[List[Union[Tuple[float, float], DynamicSampling]]] = None,
-        mapper: Optional[List[Callable]] = None,
-        gradients_estimator: Optional[Function] = None,
+        sampler_list: List[Union[Tuple[float, float], DynamicSampling]] = [],
+        mapper_list: List[Optional[Union[Tuple[float, float], Callable]]] = [],
+        gradient_estimator: Optional[Function] = None,
         same_on_batch: bool = False,
     ):
         super().__init__()
-        self.gradients_estimator = gradients_estimator
+        self.gradient_estimator = gradient_estimator
         self.same_on_batch = same_on_batch
         self.prob_dist = DynamicBernoulli(p, freeze_dtype=True)
         self.prob_batch_dist = DynamicBernoulli(p_batch, freeze_dtype=True)
-        self.sampler = self._make_sampler(sampler) if sampler is not None else None
-        self.mapper = mapper
+        self.sampler_list, self.mapper_list = self._reconstruct_sampler_mapper(sampler_list, mapper_list)
 
-    def _make_sampler_one(self, sampler: Union[Tuple[float, float], DynamicSampling]) -> DynamicSampling:
+    def _make_sampler(self, sampler: Union[Tuple[float, float], DynamicSampling]) -> DynamicSampling:
         _sampler: DynamicSampling
         if isinstance(sampler, (list, tuple)):
             _sampler = DynamicUniform(*sampler)
@@ -39,15 +42,31 @@ class AugmentOperation(nn.Module):
             _sampler = sampler
         return _sampler
 
-    def _make_sampler(self, sampler: List[Union[Tuple[float, float], DynamicSampling]]) -> nn.ModuleList:
-        """Make a list of distributions according to the parameters."""
-        return nn.ModuleList([self._make_sampler_one(dist) for dist in sampler])
+    def _make_mapper(self, mapper: Optional[Union[Tuple[float, float], Callable]]) -> Callable:
+        _mapper: Callable
+        if mapper is None:
+            _mapper = _identity
+        elif isinstance(mapper, (list, tuple)):
+            _mapper = partial(torch.clamp, min=mapper[0], max=mapper[1])
+        else:
+            _mapper = mapper
+        return _mapper
+
+    def _reconstruct_sampler_mapper(
+        self,
+        sampler: Optional[List[Union[Tuple[float, float], DynamicSampling]]],
+        mapper: Optional[List[Optional[Callable]]]
+    ) -> Union[nn.ModuleList, List[Callable]]:
+        assert isinstance(sampler, (list,)) and isinstance(mapper, (list,)) and len(sampler) == len(mapper), \
+            f"`sampler` and `mapper` must be a list, while got {sampler}, {mapper}."
+
+        _sampler = nn.ModuleList([self._make_sampler(dist) for dist in sampler])
+        _mapper = [self._make_mapper(m) for m in mapper]
+
+        return _sampler, _mapper
 
     def distribution_entropy(self, reduce: Optional[str] = None) -> Union[torch.Tensor, List[torch.Tensor]]:
-        if self.sampler is None:
-            raise ValueError(f"No sampler found.")
-
-        dists = [dist.entropy() for dist in self.sampler]
+        dists = [dist.entropy() for dist in self.sampler_list]
         if reduce is None:
             return dists
         if reduce == "sum":
@@ -59,9 +78,10 @@ class AugmentOperation(nn.Module):
     def get_batch_probabilities(self, input: torch.Tensor) -> torch.Tensor:
         """Generate batch probabilites."""
         batch_shape = input.shape
-        batch_probs = self.prob_batch_dist.rsample([1], self.same_on_batch).squeeze()
+        batch_probs = self.prob_batch_dist.rsample((1,), self.same_on_batch).squeeze()
         if batch_probs.bool().item():
             probs = self.prob_dist.rsample(batch_shape[:1], self.same_on_batch).squeeze()
+            probs = probs.unsqueeze(0) if probs.dim() == 0 else probs
         else:
             probs = batch_probs.expand(batch_shape[0])
         return probs
@@ -70,10 +90,8 @@ class AugmentOperation(nn.Module):
         """Parameter sampling methods."""
         batch_shape = input.shape
         mags: List[torch.Tensor] = []
-        if self.sampler is not None:
-            mags = [dist.rsample(batch_shape[:1], self.same_on_batch) for dist in self.sampler]
-        if self.mapper is not None:
-            mags = [mapping(mag) for mapping, mag in zip(self.mapper, mags)]
+        mags = [dist.rsample(batch_shape[:1], self.same_on_batch) for dist in self.sampler_list]
+        mags = [mapping(mag) for mapping, mag in zip(self.mapper_list, mags)]
         return list(mags)
 
     # Change to named tuple
@@ -105,17 +123,17 @@ class IntensityAugmentOperation(AugmentOperation):
         self,
         p: torch.Tensor,
         p_batch: torch.Tensor,
-        sampler: Optional[List[Union[Tuple[float, float], DynamicSampling]]] = None,
-        mapper: Optional[List[Callable]] = None,
-        gradients_estimator: Optional[Function] = None,
+        sampler_list: List[Union[Tuple[float, float], DynamicSampling]] = [],
+        mapper_list: List[Optional[Union[Tuple[float, float], Callable]]] = [],
+        gradient_estimator: Optional[Function] = None,
         same_on_batch: bool = False,
     ):
         super().__init__(
             p=p,
             p_batch=p_batch,
-            sampler=sampler,
-            mapper=mapper,
-            gradients_estimator=gradients_estimator,
+            sampler_list=sampler_list,
+            mapper_list=mapper_list,
+            gradient_estimator=gradient_estimator,
             same_on_batch=same_on_batch,
         )
 
@@ -124,12 +142,13 @@ class IntensityAugmentOperation(AugmentOperation):
 
     def forwad_transform(self, input: torch.Tensor, params: Parameters) -> torch.Tensor:
         mag = [_mag[params.probs] for _mag in params.magnitudes]
-        if self.gradients_estimator is not None:
+        out = input.clone()
+        if self.gradient_estimator is not None:
             with torch.no_grad():
-                out = self.apply_transform(input, mag)
-            out = self.gradients_estimator.apply(input, out)
+                out[params.probs] = self.apply_transform(input[params.probs], mag)
+            out = self.gradient_estimator.apply(input, out)
         else:
-            out = self.apply_transform(input, mag)
+            out[params.probs] = self.apply_transform(out[params.probs], mag)
         return out
 
 
@@ -143,18 +162,18 @@ class GeometricAugmentOperation(AugmentOperation):
         self,
         p: torch.Tensor,
         p_batch: torch.Tensor,
-        sampler: Optional[List[Union[Tuple[float, float], DynamicSampling]]] = None,
-        mapper: Optional[List[Callable]] = None,
-        gradients_estimator: Optional[Function] = None,
+        sampler_list: List[Union[Tuple[float, float], DynamicSampling]] = [],
+        mapper_list: List[Optional[Union[Tuple[float, float], Callable]]] = [],
+        gradient_estimator: Optional[Function] = None,
         same_on_batch: bool = False,
         return_transform: bool = False,
     ):
         super().__init__(
             p=p,
             p_batch=p_batch,
-            sampler=sampler,
-            mapper=mapper,
-            gradients_estimator=gradients_estimator,
+            sampler_list=sampler_list,
+            mapper_list=mapper_list,
+            gradient_estimator=gradient_estimator,
             same_on_batch=same_on_batch,
         )
         self.return_transform = return_transform
@@ -172,11 +191,11 @@ class GeometricAugmentOperation(AugmentOperation):
         self, input: torch.Tensor, params: Parameters
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         mag = [_mag[params.probs] for _mag in params.magnitudes]
-        if self.gradients_estimator is not None:
+        if self.gradient_estimator is not None:
             with torch.no_grad():
                 trans_mat = self.compute_transform(input, mag)
                 out = self.apply_transform(input, trans_mat)
-            out = self.gradients_estimator.apply(
+            out = self.gradient_estimator.apply(
                 input, out, lambda x, shape: self.inverse_transform(x, trans_mat, shape)
             )
         else:
@@ -206,7 +225,7 @@ class GeometricAugmentOperation(AugmentOperation):
 
 
 class PerspectiveAugmentOperation(GeometricAugmentOperation):
-    """Base class for applying geometric data augmentation methods.
+    """Base class for applying shape-non-persistent geometric data augmentation methods.
 
     Allowing apply and inverse transformations made by computed transform matrices.
     """
