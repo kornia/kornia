@@ -210,7 +210,7 @@ class StereoCamera:
             disparity_tensor (torch.Tensor): Disparity tensor of shape :math:`(B, 1, H, W)`.
 
         Returns:
-            torch.Tensor: The 3D point cloud of shape :math:`(B, H * W, 3)`
+            torch.Tensor: The 3D point cloud of shape :math:`(B, H, W, 3)`
         """
         return reproject_disparity_to_3D(disparity_tensor, self.Q)
 
@@ -219,7 +219,7 @@ def _check_disparity_tensor(disparity_tensor: torch.Tensor):
     """
     Utility function to ensure correct user provided correct disparity tensor.
     Args:
-        disparity_tensor (torch.Tensor): The disparity tensor of shape :math:`(B, H, W)`.
+        disparity_tensor (torch.Tensor): The disparity tensor of shape :math:`(B, 1, H, W)`.
     """
     if disparity_tensor.ndim != 4:
         raise StereoException(f"Expected 'disparity_tensor' to have 4 dimensions." f"Got {disparity_tensor.ndim}.")
@@ -264,7 +264,7 @@ def reproject_disparity_to_3D(disparity_tensor: torch.Tensor, Q_matrix: torch.Te
         Q_matrix (torch.Tensor): Tensor of Q matrices of shapes :math:`(B, 4, 4)`.
 
     Returns:
-        torch.Tensor: The 3D point cloud of shape :math:`(B, H * W, 3)`
+        torch.Tensor: The 3D point cloud of shape :math:`(B, H, W, 3)`
     """
     _check_Q_matrix(Q_matrix)
     _check_disparity_tensor(disparity_tensor)
@@ -285,12 +285,13 @@ def reproject_disparity_to_3D(disparity_tensor: torch.Tensor, Q_matrix: torch.Te
     # Matrix multiply all vectors with the Q matrix
     hom_points = torch.bmm(Q_matrix, uvdz)
     points = convert_points_from_homogeneous(hom_points.permute(0, 2, 1))
+    points = points.reshape(batch_size, rows, cols, 3)
 
     # Final check that everything went well.
-    if not points.shape == (batch_size, rows * cols, 3):
+    if not points.shape == (batch_size, rows, cols, 3):
         raise StereoException(
             f"Something went wrong in `reproject_disparity_to_3D`. Expected the final output"
-            f"to be of shape {(batch_size, rows * cols, 3)}."
+            f"to be of shape {(batch_size, rows, cols, 3)}."
             f"But the computed point cloud had shape {points.shape}. "
             f"Please ensure input are correct. If this is an error, please submit an issue."
         )

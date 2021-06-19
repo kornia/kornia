@@ -174,7 +174,7 @@ class TestStereoCamera:
         stereo_camera = StereoCamera(left_rectified_camera, right_rectified_camera)
         xyz = stereo_camera.reproject_disparity_to_3D(disparity_tensor)
 
-        assert xyz.shape == (batch_size, _TestParams.height * _TestParams.width, 3)
+        assert xyz.shape == (batch_size, _TestParams.height, _TestParams.width, 3)
         assert xyz.dtype in (torch.float16, torch.float32, torch.float64)
         assert xyz.device == device
 
@@ -190,6 +190,6 @@ class TestStereoCamera:
 
         xyz = stereo_camera.reproject_disparity_to_3D(disparity_tensor)
 
-        assert xyz.shape == (batch_size, height * width, 3)
+        assert xyz.shape == (batch_size, height, width, 3)
         assert xyz.dtype in (torch.float16, torch.float32, torch.float64)
         assert xyz.dtype == dtype
