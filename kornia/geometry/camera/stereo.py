@@ -226,7 +226,8 @@ def _check_disparity_tensor(disparity_tensor: torch.Tensor):
     """
     if not isinstance(disparity_tensor, torch.Tensor):
         raise StereoException(
-            f"Expected 'disparity_tensor' to be an instance of torch.Tensor but got {type(disparity_tensor)}.")
+            f"Expected 'disparity_tensor' to be an instance of torch.Tensor but got {type(disparity_tensor)}."
+        )
 
     if disparity_tensor.ndim != 4:
         raise StereoException(f"Expected 'disparity_tensor' to have 4 dimensions." f"Got {disparity_tensor.ndim}.")
