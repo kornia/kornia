@@ -1,4 +1,6 @@
 import torch
+from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
+from kornia.utils.grid import create_meshgrid
 
 
 class StereoException(Exception):
@@ -273,26 +275,18 @@ def reproject_disparity_to_3D(disparity_tensor: torch.Tensor, Q_matrix: torch.Te
     homogenous_observation_ndim = 4
     euclidian_observation_ndim = homogenous_observation_ndim - 1
 
-    # Construct a mesh grid of uv values, i.e. the tensors will contain 1:rows and 1:cols.
-    u, v = torch.meshgrid(
-        torch.arange(rows, dtype=dtype, device=device), torch.arange(cols, dtype=dtype, device=device)
-    )
+    uv = create_meshgrid(rows, cols, normalized_coordinates=False, device=device, dtype=dtype)
+    v, u = uv[..., 0], uv[..., 1]
     u, v = u.expand(batch_size, channels, -1, -1), v.expand(batch_size, channels, -1, -1)
-
-    # The z dimension in homogenous coordinates are just 1.
-    z = torch.ones((batch_size, channels, rows, cols), dtype=dtype, device=device)
 
     # Stack the observations into a tensor of shape (batch_size, 4, -1) that contains all
     # 4 dimensional vectors [u v disparity 1].
-    uvdz = torch.stack((u, v, disparity_tensor, z), 1).reshape(batch_size, homogenous_observation_ndim, -1)
+    uvd = torch.stack((u, v, disparity_tensor), 1).reshape(batch_size, 3, -1).permute(0, 2, 1)
+    uvdz = convert_points_to_homogeneous(uvd).permute(0, 2, 1)
 
     # Matrix multiply all vectors with the Q matrix
     hom_points = torch.bmm(Q_matrix, uvdz)
-
-    # Convert from homogenous to euclidian space.
-    z_points = torch.unsqueeze(hom_points[:, euclidian_observation_ndim], 1)
-    points = (hom_points / z_points)[:, :euclidian_observation_ndim]
-    points = points.permute(0, 2, 1)
+    points = convert_points_from_homogeneous(hom_points.permute(0, 2, 1))
 
     # Final check that everything went well.
     if not points.shape == (batch_size, rows * cols, euclidian_observation_ndim):
