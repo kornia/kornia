@@ -4,17 +4,12 @@ import pytest
 import torch
 from torch.testing import assert_allclose
 
-import kornia
+from kornia.geometry.camera.stereo import StereoCamera
 
 
 @pytest.fixture(params=[1, 2, 4])
 def batch_size(request):
     return request.param
-
-
-@pytest.fixture
-def dtype(scope="module"):
-    return torch.float32
 
 
 class _TestParams:
@@ -126,9 +121,9 @@ class TestStereoCamera:
     """Test class for :class:`~kornia.geometry.camera.stereo.StereoCamera`"""
 
     @staticmethod
-    def _create_disparity_tensor(batch_size, height, width, max_disparity, device):
+    def _create_disparity_tensor(batch_size, height, width, max_disparity, device, dtype):
         size = (batch_size, height, width)
-        return torch.randint(size=size, low=0, high=max_disparity, device=device, dtype=torch.float32)
+        return torch.randint(size=size, low=0, high=max_disparity, device=device, dtype=dtype)
 
     @staticmethod
     def test_stereo_camera_attributes_smoke(batch_size, device, dtype):
@@ -138,7 +133,7 @@ class TestStereoCamera:
             batch_size, device, dtype, tx_fx
         )
 
-        stereo_camera = kornia.StereoCamera(left_rectified_camera, right_rectified_camera)
+        stereo_camera = StereoCamera(left_rectified_camera, right_rectified_camera)
 
         def _assert_all(x, y):
             assert torch.all(torch.eq(x, y))
@@ -150,13 +145,14 @@ class TestStereoCamera:
         _assert_all(stereo_camera.tx, -tx_fx / _TestParams.fx)
 
         assert stereo_camera.Q.shape == (batch_size, 4, 4)
+        assert stereo_camera.Q.dtype in (torch.float16, torch.float32, torch.float64)
 
     @staticmethod
     def test_stereo_camera_attributes_real(batch_size, device, dtype):
         """Test proper setup of the class for real data."""
         left_rectified_camera, right_rectified_camera = _RealTestData._get_real_stereo_camera(batch_size, device, dtype)
 
-        stereo_camera = kornia.StereoCamera(left_rectified_camera, right_rectified_camera)
+        stereo_camera = StereoCamera(left_rectified_camera, right_rectified_camera)
         assert_allclose(stereo_camera.fx, left_rectified_camera[..., 0, 0])
         assert_allclose(stereo_camera.fy, left_rectified_camera[..., 1, 1])
         assert_allclose(stereo_camera.cx_left, left_rectified_camera[..., 0, 2])
@@ -164,6 +160,7 @@ class TestStereoCamera:
         assert_allclose(stereo_camera.tx, -right_rectified_camera[..., 0, 3] / right_rectified_camera[..., 0, 0])
 
         assert stereo_camera.Q.shape == (batch_size, 4, 4)
+        assert stereo_camera.Q.dtype in (torch.float16, torch.float32, torch.float64)
 
     def test_reproject_disparity_to_3D_smoke(self, batch_size, device, dtype):
         """Test reprojecting of disparity to 3D for smoke data."""
@@ -172,13 +169,13 @@ class TestStereoCamera:
             batch_size, device, dtype, tx_fx
         )
         disparity_tensor = self._create_disparity_tensor(
-            batch_size, _TestParams.height, _TestParams.width, max_disparity=2, device=device
+            batch_size, _TestParams.height, _TestParams.width, max_disparity=2, device=device, dtype=dtype
         )
-        stereo_camera = kornia.StereoCamera(left_rectified_camera, right_rectified_camera)
+        stereo_camera = StereoCamera(left_rectified_camera, right_rectified_camera)
         xyz = stereo_camera.reproject_disparity_to_3D(disparity_tensor)
 
         assert xyz.shape == (batch_size, _TestParams.height * _TestParams.width, 3)
-        assert xyz.dtype == torch.float32
+        assert xyz.dtype in (torch.float16, torch.float32, torch.float64)
         assert xyz.device == device
 
     def test_reproject_disparity_to_3D_real(self, batch_size, device, dtype):
@@ -186,13 +183,13 @@ class TestStereoCamera:
         height, width = _RealTestData().height, _RealTestData().width
         max_disparity = 80
         disparity_tensor = self._create_disparity_tensor(
-            batch_size, height, width, max_disparity=max_disparity, device=device
+            batch_size, height, width, max_disparity=max_disparity, device=device, dtype=dtype
         )
         left_rectified_camera, right_rectified_camera = _RealTestData._get_real_stereo_camera(batch_size, device, dtype)
-        stereo_camera = kornia.StereoCamera(left_rectified_camera, right_rectified_camera)
+        stereo_camera = StereoCamera(left_rectified_camera, right_rectified_camera)
 
         xyz = stereo_camera.reproject_disparity_to_3D(disparity_tensor)
 
         assert xyz.shape == (batch_size, height * width, 3)
-        assert xyz.device == device
+        assert xyz.dtype in (torch.float16, torch.float32, torch.float64)
         assert xyz.dtype == dtype

@@ -14,7 +14,7 @@ class StereoException(Exception):
         doc_help = (
             "\n Please check documents here: "
             "https://kornia.readthedocs.io/en/latest/geometry.camera.stereo.html"
-            "for further information and examples."
+            "\n for further information and examples."
         )
         final_msg = msg + doc_help
         super().__init__(final_msg, *args, **kwargs)
@@ -211,9 +211,10 @@ def _check_disparity_tensor(disparity_tensor: torch.Tensor):
     if disparity_tensor.ndim != 3:
         raise StereoException(f"Expected 'disparity_tensor' to have 3 dimensions." f"Got {disparity_tensor.ndim}.")
 
-    if disparity_tensor.dtype != torch.float32:
+    if disparity_tensor.dtype not in (torch.float16, torch.float32, torch.float64):
         raise StereoException(
-            f"Expected 'disparity_tensor' to have dtype torch.float32." f"Got {disparity_tensor.dtype}"
+            f"Expected 'disparity_tensor' to have dtype torch.float16, torch.float32 or torch.float64."
+            f"Got {disparity_tensor.dtype}"
         )
 
 
@@ -231,8 +232,9 @@ def _check_Q_matrix(Q_matrix: torch.Tensor):
             f"Expected last two dimensions of 'Q_matrix' to be of shape (4, 4)." f"Got {Q_matrix.shape}"
         )
 
-    if not Q_matrix.dtype == torch.float32:
-        raise StereoException(f"Expected 'Q_matrix' to be of type torch.float32." f"Got {Q_matrix.dtype}")
+    if Q_matrix.dtype not in (torch.float16, torch.float32, torch.float64):
+        raise StereoException(
+            f"Expected 'Q_matrix' to be of type torch.float16, torch.float32 or torch.float64." f"Got {Q_matrix.dtype}")
 
 
 def reproject_disparity_to_3D(disparity_tensor: torch.Tensor, Q_matrix: torch.Tensor) -> torch.Tensor:
