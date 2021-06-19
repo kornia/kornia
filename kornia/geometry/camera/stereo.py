@@ -19,7 +19,9 @@ class StereoException(Exception):
             "https://kornia.readthedocs.io/en/latest/geometry.camera.stereo.html for further information and examples."
         )
         final_msg = msg + doc_help
-        super().__init__(final_msg, *args, **kwargs)
+        # type ignore becauce of mypy error:
+        # Too many arguments for "__init__" of "BaseException"
+        super().__init__(final_msg, *args, **kwargs)  # type: ignore
 
 
 class StereoCamera:
