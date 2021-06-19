@@ -13,8 +13,7 @@ class StereoException(Exception):
         """
         doc_help = (
             "\n Please check documents here: "
-            "https://kornia.readthedocs.io/en/latest/geometry.camera.stereo.html"
-            "\n for further information and examples."
+            "https://kornia.readthedocs.io/en/latest/geometry.camera.stereo.html for further information and examples."
         )
         final_msg = msg + doc_help
         super().__init__(final_msg, *args, **kwargs)
@@ -206,7 +205,7 @@ class StereoCamera:
         Reproject the disparity tensor to a 3D point cloud.
 
         Args:
-            disparity_tensor (torch.Tensor): Disparity tensor of shape :math:`(B, H, W)`.
+            disparity_tensor (torch.Tensor): Disparity tensor of shape :math:`(B, 1, H, W)`.
 
         Returns:
             torch.Tensor: The 3D point cloud of shape :math:`(B, H * W, 3)`
@@ -220,8 +219,13 @@ def _check_disparity_tensor(disparity_tensor: torch.Tensor):
     Args:
         disparity_tensor (torch.Tensor): The disparity tensor of shape :math:`(B, H, W)`.
     """
-    if disparity_tensor.ndim != 3:
-        raise StereoException(f"Expected 'disparity_tensor' to have 3 dimensions." f"Got {disparity_tensor.ndim}.")
+    if disparity_tensor.ndim != 4:
+        raise StereoException(f"Expected 'disparity_tensor' to have 4 dimensions." f"Got {disparity_tensor.ndim}.")
+
+    if disparity_tensor.shape[1] != 1:
+        raise StereoException(
+            f"Expected dimension 1 of 'disparity_tensor' to be 1 for as single channeled disparity map."
+            f"Got {disparity_tensor.shape}.")
 
     if disparity_tensor.dtype not in (torch.float16, torch.float32, torch.float64):
         raise StereoException(
@@ -237,7 +241,7 @@ def _check_Q_matrix(Q_matrix: torch.Tensor):
         Q_matrix (torch.Tensor): The Q matrix for reprojecting disparity to a point cloud of shape :math:`(B, 4, 4)`
     """
     if not Q_matrix.ndim == 3:
-        raise StereoException(f"Expected 'Q_matrix to have 3 dimenstions." f"Got {Q_matrix.ndim}")
+        raise StereoException(f"Expected 'Q_matrix' to have 3 dimenstions." f"Got {Q_matrix.ndim}")
 
     if not Q_matrix.shape[1:] == (4, 4):
         raise StereoException(
@@ -254,7 +258,7 @@ def reproject_disparity_to_3D(disparity_tensor: torch.Tensor, Q_matrix: torch.Te
     Reproject the disparity tensor to a 3D point cloud.
 
     Args:
-        disparity_tensor (torch.Tensor): Disparity tensor of shape :math:`(B, H, W)`.
+        disparity_tensor (torch.Tensor): Disparity tensor of shape :math:`(B, 1, H, W)`.
         Q_matrix (torch.Tensor): Tensor of Q matrices of shapes :math:`(B, 4, 4)`.
 
     Returns:
@@ -263,7 +267,7 @@ def reproject_disparity_to_3D(disparity_tensor: torch.Tensor, Q_matrix: torch.Te
     _check_Q_matrix(Q_matrix)
     _check_disparity_tensor(disparity_tensor)
 
-    batch_size, rows, cols = disparity_tensor.shape
+    batch_size, channels, rows, cols = disparity_tensor.shape
     dtype = disparity_tensor.dtype
     device = disparity_tensor.device
     homogenous_observation_ndim = 4
@@ -273,10 +277,10 @@ def reproject_disparity_to_3D(disparity_tensor: torch.Tensor, Q_matrix: torch.Te
     u, v = torch.meshgrid(
         torch.arange(rows, dtype=dtype, device=device), torch.arange(cols, dtype=dtype, device=device)
     )
-    u, v = u.expand(batch_size, -1, -1), v.expand(batch_size, -1, -1)
+    u, v = u.expand(batch_size, channels, -1, -1), v.expand(batch_size, channels, -1, -1)
 
     # The z dimension in homogenous coordinates are just 1.
-    z = torch.ones((batch_size, rows, cols), dtype=dtype, device=device)
+    z = torch.ones((batch_size, channels, rows, cols), dtype=dtype, device=device)
 
     # Stack the observations into a tensor of shape (batch_size, 4, -1) that contains all
     # 4 dimensional vectors [u v disparity 1].
