@@ -38,6 +38,8 @@ class StereoCamera:
         self.device: torch.device = self.rectified_left_camera.device
         self.dtype: torch.dtype = self.rectified_left_camera.dtype
 
+        self._Q_matrix = self._init_Q_matrix()
+
     @staticmethod
     def _check_stereo_camera(rectified_left_camera: torch.Tensor, rectified_right_camera: torch.Tensor):
         """
@@ -177,6 +179,16 @@ class StereoCamera:
 
         Return:
             torch.Tensor: The Q matrix of shape :math:`(B, 4, 4)`.
+        """
+        return self._Q_matrix
+
+    def _init_Q_matrix(self) -> torch.Tensor:
+        """
+        Initialized the Q matrix of the horizontal stereo setup. See the Q property.
+
+        Returns:
+            torch.Tensor: The Q matrix of shape :math:`(B, 4, 4)`.
+
         """
         Q = torch.zeros((self.batch_size, 4, 4), device=self.device, dtype=self.dtype)
         baseline = -self.tx
