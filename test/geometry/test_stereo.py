@@ -85,6 +85,38 @@ class _RealTestData:
             _RealTestData._get_real_right_camera(batch_size, device, dtype),
         )
 
+    @staticmethod
+    def _get_real_disparity(batch_size, device, dtype):
+        # First 10 cols of 1 row in a real disparity map.
+        disp = torch.tensor([[[[67.5039],
+                               [67.5078],
+                               [67.5117],
+                               [67.5156],
+                               [67.5195],
+                               [67.5234],
+                               [67.5273],
+                               [67.5312],
+                               [67.5352],
+                               [67.5391]]]], device=device, dtype=dtype)
+
+        return disp.expand(batch_size, -1, -1, -1)
+
+    @staticmethod
+    def _get_real_point_cloud(batch_size, device, dtype):
+        # First 10 cols of 1 row in the ground truth point cloud computed from above disparity map.
+        pc = torch.tensor([[[[-30.2769, -19.3972, 80.4424]],
+                            [[-30.1945, -19.3961, 80.4377]],
+                            [[-30.1120, -19.3950, 80.4330]],
+                            [[-30.0295, -19.3938, 80.4284]],
+                            [[-29.9471, -19.3927, 80.4237]],
+                            [[-29.8646, -19.3916, 80.4191]],
+                            [[-29.7822, -19.3905, 80.4144]],
+                            [[-29.6998, -19.3893, 80.4098]],
+                            [[-29.6174, -19.3882, 80.4051]],
+                            [[-29.5350, -19.3871, 80.4005]]]], device=device, dtype=dtype)
+
+        return pc.expand(batch_size, -1, -1, -1)
+
 
 class _SmokeTestData:
     """Collection of smoke test data."""
@@ -179,6 +211,18 @@ class TestStereoCamera:
         assert xyz.device == device
 
     def test_reproject_disparity_to_3D_real(self, batch_size, device, dtype):
+        """Test reprojecting of disparity to 3D for known outcome."""
+        disparity_tensor = _RealTestData._get_real_disparity(batch_size, device, dtype)
+        xyz_gt = _RealTestData._get_real_point_cloud(batch_size, device, dtype)
+
+        left_rectified_camera, right_rectified_camera = _RealTestData._get_real_stereo_camera(batch_size, device, dtype)
+        stereo_camera = StereoCamera(left_rectified_camera, right_rectified_camera)
+
+        xyz = stereo_camera.reproject_disparity_to_3D(disparity_tensor)
+
+        assert_allclose(xyz, xyz_gt)
+
+    def test_reproject_disparity_to_3D_simple(self, batch_size, device, dtype):
         """Test reprojecting of disparity to 3D for real data."""
         height, width = _RealTestData().height, _RealTestData().width
         max_disparity = 80

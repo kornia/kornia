@@ -221,6 +221,10 @@ def _check_disparity_tensor(disparity_tensor: torch.Tensor):
     Args:
         disparity_tensor (torch.Tensor): The disparity tensor of shape :math:`(B, 1, H, W)`.
     """
+    if not isinstance(disparity_tensor, torch.Tensor):
+        raise StereoException(
+            f"Expected 'disparity_tensor' to be an instance of torch.Tensor but got {type(disparity_tensor)}.")
+
     if disparity_tensor.ndim != 4:
         raise StereoException(f"Expected 'disparity_tensor' to have 4 dimensions." f"Got {disparity_tensor.ndim}.")
 
@@ -242,6 +246,10 @@ def _check_Q_matrix(Q_matrix: torch.Tensor):
     Args:
         Q_matrix (torch.Tensor): The Q matrix for reprojecting disparity to a point cloud of shape :math:`(B, 4, 4)`
     """
+
+    if not isinstance(Q_matrix, torch.Tensor):
+        raise StereoException(f"Expected 'Q_matrix' to be an instance of torch.Tensor but got {type(Q_matrix)}.")
+
     if not Q_matrix.ndim == 3:
         raise StereoException(f"Expected 'Q_matrix' to have 3 dimenstions." f"Got {Q_matrix.ndim}")
 
