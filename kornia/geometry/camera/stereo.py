@@ -1,4 +1,5 @@
 import torch
+
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.utils.grid import create_meshgrid
 
@@ -231,7 +232,8 @@ def _check_disparity_tensor(disparity_tensor: torch.Tensor):
     if disparity_tensor.shape[1] != 1:
         raise StereoException(
             f"Expected dimension 1 of 'disparity_tensor' to be 1 for as single channeled disparity map."
-            f"Got {disparity_tensor.shape}.")
+            f"Got {disparity_tensor.shape}."
+        )
 
     if disparity_tensor.dtype not in (torch.float16, torch.float32, torch.float64):
         raise StereoException(
@@ -260,7 +262,8 @@ def _check_Q_matrix(Q_matrix: torch.Tensor):
 
     if Q_matrix.dtype not in (torch.float16, torch.float32, torch.float64):
         raise StereoException(
-            f"Expected 'Q_matrix' to be of type torch.float16, torch.float32 or torch.float64." f"Got {Q_matrix.dtype}")
+            f"Expected 'Q_matrix' to be of type torch.float16, torch.float32 or torch.float64." f"Got {Q_matrix.dtype}"
+        )
 
 
 def reproject_disparity_to_3D(disparity_tensor: torch.Tensor, Q_matrix: torch.Tensor) -> torch.Tensor:
