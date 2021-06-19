@@ -272,8 +272,6 @@ def reproject_disparity_to_3D(disparity_tensor: torch.Tensor, Q_matrix: torch.Te
     batch_size, channels, rows, cols = disparity_tensor.shape
     dtype = disparity_tensor.dtype
     device = disparity_tensor.device
-    homogenous_observation_ndim = 4
-    euclidian_observation_ndim = homogenous_observation_ndim - 1
 
     uv = create_meshgrid(rows, cols, normalized_coordinates=False, device=device, dtype=dtype)
     v, u = uv[..., 0], uv[..., 1]
@@ -289,10 +287,10 @@ def reproject_disparity_to_3D(disparity_tensor: torch.Tensor, Q_matrix: torch.Te
     points = convert_points_from_homogeneous(hom_points.permute(0, 2, 1))
 
     # Final check that everything went well.
-    if not points.shape == (batch_size, rows * cols, euclidian_observation_ndim):
+    if not points.shape == (batch_size, rows * cols, 3):
         raise StereoException(
             f"Something went wrong in `reproject_disparity_to_3D`. Expected the final output"
-            f"to be of shape {(batch_size, rows * cols, euclidian_observation_ndim)}."
+            f"to be of shape {(batch_size, rows * cols, 3)}."
             f"But the computed point cloud had shape {points.shape}. "
             f"Please ensure input are correct. If this is an error, please submit an issue."
         )
