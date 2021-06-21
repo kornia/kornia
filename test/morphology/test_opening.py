@@ -39,8 +39,10 @@ class TestOpening:
             None, None, :, :
         ]
         assert_allclose(
-            opening(tensor, torch.ones_like(structural_element), structuring_element=structural_element), expected,
-            atol=1e-4, rtol=1e-4
+            opening(tensor, torch.ones_like(structural_element), structuring_element=structural_element),
+            expected,
+            atol=1e-4,
+            rtol=1e-4,
         )
 
     def test_exception(self, device, dtype):
