@@ -6,7 +6,6 @@ from abc import ABC, abstractmethod
 from copy import deepcopy
 from itertools import product
 
-import numpy as np
 import torch
 
 __all__ = ['tensor_to_gradcheck_var', 'create_eye_batch', 'xla_is_available']
