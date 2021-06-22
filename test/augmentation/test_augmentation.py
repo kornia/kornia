@@ -12,7 +12,6 @@ from kornia.augmentation import (
     CenterCrop,
     ColorJitter,
     Denormalize,
-    GaussianBlur,
     Normalize,
     RandomBoxBlur,
     RandomChannelShuffle,
@@ -21,6 +20,7 @@ from kornia.augmentation import (
     RandomEqualize,
     RandomErasing,
     RandomFisheye,
+    RandomGaussianBlur,
     RandomGaussianNoise,
     RandomGrayscale,
     RandomHorizontalFlip,
@@ -2557,8 +2557,8 @@ class TestGaussianBlur:
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self):
-        f = GaussianBlur((3, 3), (0.1, 2.0), p=1.0)
-        repr = "GaussianBlur(p=1.0, p_batch=1.0, same_on_batch=False, return_transform=False)"
+        f = RandomGaussianBlur((3, 3), (0.1, 2.0), p=1.0)
+        repr = "RandomGaussianBlur(p=1.0, p_batch=1.0, same_on_batch=False, return_transform=False)"
         assert str(f) == repr
 
 
