@@ -2,6 +2,8 @@ from typing import Any, Optional, Union
 
 import torch
 import torch.nn as nn
+from torch.distributions.transformed_distribution import TransformedDistribution
+from torch.distributions.transforms import Transform
 from torch.distributions import Distribution, Normal, RelaxedBernoulli, Uniform
 
 __all__ = ["DynamicSampling", "DynamicUniform", "DynamicGaussian", "DynamicBernoulli"]
@@ -17,8 +19,12 @@ class DynamicSampling(nn.Module):
             that contain unsupoorted dtypes.
     """
 
-    def __init__(self, validate_args: Optional[bool] = None, if_rsample: bool = True, freeze_dtype: bool = False):
+    def __init__(
+        self, transform: Optional[Transform] = None, validate_args: Optional[bool] = None,
+        if_rsample: bool = True, freeze_dtype: bool = False
+    ) -> None:
         super().__init__()
+        self.transform = transform
         self.validate_args = validate_args
         self.if_rsample = if_rsample
         self.freeze_dtype = freeze_dtype
@@ -52,7 +58,16 @@ class DynamicSampling(nn.Module):
         self.if_rsample = mode
         return out
 
-    def reconstruct_sampler(self) -> Distribution:
+    def construct(self) -> None:
+        dist = self.construct_sampler()
+        transform: Transform
+        if self.transform is None:
+            transform = torch.distributions.transforms.ComposeTransform([])
+        else:
+            transform = self.transform
+        self.dist = TransformedDistribution(dist, transform)
+
+    def construct_sampler(self) -> Distribution:
         """When .cuda(), .cpu(), .double() is called, the sampler will need to be resampled."""
         raise NotImplementedError
 
@@ -129,15 +144,16 @@ class DynamicUniform(DynamicSampling):
         self,
         low: Union[torch.Tensor, float],
         high: Union[torch.Tensor, float],
+        transform: Optional[Transform] = None,
         validate_args: Optional[bool] = None,
         freeze_dtype: bool = False,
     ):
-        super().__init__(validate_args, freeze_dtype=freeze_dtype)
+        super().__init__(transform, validate_args, freeze_dtype=freeze_dtype)
         self.dynamic_register('low', low)
         self.dynamic_register('high', high)
-        self.dist = self.reconstruct_sampler()
+        self.construct()
 
-    def reconstruct_sampler(self) -> Distribution:
+    def construct_sampler(self) -> Distribution:
         """When .cuda(), .cpu(), .double() is called, the sampler will need to be resampled."""
         return Uniform(self.low, self.high, validate_args=self.validate_args)
 
@@ -164,17 +180,22 @@ class DynamicGaussian(DynamicSampling):
         self,
         loc: Union[torch.Tensor, float],
         scale: Union[torch.Tensor, float],
+        transform: Optional[Transform] = None,
         validate_args: Optional[bool] = None,
+        eps: float = 1e-7,
         freeze_dtype: bool = False,
     ):
-        super().__init__(validate_args, freeze_dtype=freeze_dtype)
-        self.dynamic_register('loc', loc)
-        self.dynamic_register('scale', scale)
-        self.dist = self.reconstruct_sampler()
+        super().__init__(transform, validate_args, freeze_dtype=freeze_dtype)
+        self.dynamic_register('_loc', loc)
+        self.dynamic_register('_scale', scale)
+        self.construct()
+        self.eps = eps
 
-    def reconstruct_sampler(self) -> Distribution:
+    def construct_sampler(self) -> Distribution:
         """When .cuda(), .cpu(), .double() is called, the sampler will need to be resampled."""
-        return Normal(self.loc, self.scale, validate_args=self.validate_args)
+        return Normal(
+            self._loc, torch.maximum(self._scale, self._scale * 0. + self.eps),  # type: ignore
+            validate_args=self.validate_args)
 
 
 class DynamicBernoulli(DynamicSampling):
@@ -195,15 +216,16 @@ class DynamicBernoulli(DynamicSampling):
         self,
         p: torch.Tensor,
         temperature: float = 1e-7,
+        transform: Optional[Transform] = None,
         validate_args: Optional[bool] = None,
         freeze_dtype: bool = True,
     ):
         # dtype is frozen to avoid `RuntimeError: "clamp_cpu" not implemented for 'Half'`.
-        super().__init__(validate_args, freeze_dtype=freeze_dtype)
+        super().__init__(transform, validate_args, freeze_dtype=freeze_dtype)
         self.dynamic_register("p", p)
         self.dynamic_register("temperature", temperature)
-        self.dist = self.reconstruct_sampler()
+        self.construct()
 
-    def reconstruct_sampler(self) -> Distribution:
+    def construct_sampler(self) -> Distribution:
         """When .cuda(), .cpu(), .double() is called, the sampler will need to be resampled."""
         return RelaxedBernoulli(self.temperature, self.p, validate_args=self.validate_args)

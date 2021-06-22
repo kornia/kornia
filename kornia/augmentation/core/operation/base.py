@@ -11,10 +11,6 @@ from kornia.geometry.epipolar.numeric import eye_like
 Parameters = NamedTuple("Parameters", [('probs', torch.Tensor), ('magnitudes', List[torch.Tensor])])
 
 
-def _identity(input: torch.Tensor) -> torch.Tensor:
-    return input
-
-
 class AugmentOperation(nn.Module):
     """ """
 
@@ -22,8 +18,7 @@ class AugmentOperation(nn.Module):
         self,
         p: torch.Tensor,
         p_batch: torch.Tensor,
-        sampler_list: List[Union[Tuple[float, float], DynamicSampling]] = [],
-        mapper_list: List[Optional[Union[Tuple[float, float], Callable]]] = [],
+        sampler_list: Optional[List[Union[Tuple[float, float], DynamicSampling]]] = [],
         gradient_estimator: Optional[Function] = None,
         same_on_batch: bool = False,
     ):
@@ -32,7 +27,11 @@ class AugmentOperation(nn.Module):
         self.same_on_batch = same_on_batch
         self.prob_dist = DynamicBernoulli(p, freeze_dtype=True)
         self.prob_batch_dist = DynamicBernoulli(p_batch, freeze_dtype=True)
-        self.sampler_list, self.mapper_list = self._reconstruct_sampler_mapper(sampler_list, mapper_list)
+        self.sampler_list: Optional[nn.ModuleList]
+        if sampler_list is not None:
+            self.sampler_list = nn.ModuleList([self._make_sampler(dist) for dist in sampler_list])
+        else:
+            self.sampler_list = None
 
     def _make_sampler(self, sampler: Union[Tuple[float, float], DynamicSampling]) -> DynamicSampling:
         _sampler: DynamicSampling
@@ -42,30 +41,10 @@ class AugmentOperation(nn.Module):
             _sampler = sampler
         return _sampler
 
-    def _make_mapper(self, mapper: Optional[Union[Tuple[float, float], Callable]]) -> Callable:
-        _mapper: Callable
-        if mapper is None:
-            _mapper = _identity
-        elif isinstance(mapper, (list, tuple)):
-            _mapper = partial(torch.clamp, min=mapper[0], max=mapper[1])
-        else:
-            _mapper = mapper
-        return _mapper
-
-    def _reconstruct_sampler_mapper(
-        self,
-        sampler: Optional[List[Union[Tuple[float, float], DynamicSampling]]],
-        mapper: Optional[List[Optional[Callable]]]
-    ) -> Union[nn.ModuleList, List[Callable]]:
-        assert isinstance(sampler, (list,)) and isinstance(mapper, (list,)) and len(sampler) == len(mapper), \
-            f"`sampler` and `mapper` must be a list, while got {sampler}, {mapper}."
-
-        _sampler = nn.ModuleList([self._make_sampler(dist) for dist in sampler])
-        _mapper = [self._make_mapper(m) for m in mapper]
-
-        return _sampler, _mapper
-
     def distribution_entropy(self, reduce: Optional[str] = None) -> Union[torch.Tensor, List[torch.Tensor]]:
+        if self.sampler_list is None:
+            raise NotImplementedError(
+                f"This method is invalid since `sampler_list` is passed as None.")
         dists = [dist.entropy() for dist in self.sampler_list]
         if reduce is None:
             return dists
@@ -88,10 +67,12 @@ class AugmentOperation(nn.Module):
 
     def get_param_magnitudes(self, input: torch.Tensor) -> List[torch.Tensor]:
         """Parameter sampling methods."""
+        if self.sampler_list is None:
+            raise NotImplementedError(
+                f"This method may need to be overrided since `sampler_list` is passed as None.")
         batch_shape = input.shape
         mags: List[torch.Tensor] = []
         mags = [dist.rsample(batch_shape[:1], self.same_on_batch) for dist in self.sampler_list]
-        mags = [mapping(mag) for mapping, mag in zip(self.mapper_list, mags)]
         return list(mags)
 
     # Change to named tuple
@@ -123,8 +104,7 @@ class IntensityAugmentOperation(AugmentOperation):
         self,
         p: torch.Tensor,
         p_batch: torch.Tensor,
-        sampler_list: List[Union[Tuple[float, float], DynamicSampling]] = [],
-        mapper_list: List[Optional[Union[Tuple[float, float], Callable]]] = [],
+        sampler_list: Optional[List[Union[Tuple[float, float], DynamicSampling]]] = [],
         gradient_estimator: Optional[Function] = None,
         same_on_batch: bool = False,
     ):
@@ -132,7 +112,6 @@ class IntensityAugmentOperation(AugmentOperation):
             p=p,
             p_batch=p_batch,
             sampler_list=sampler_list,
-            mapper_list=mapper_list,
             gradient_estimator=gradient_estimator,
             same_on_batch=same_on_batch,
         )
@@ -162,8 +141,7 @@ class GeometricAugmentOperation(AugmentOperation):
         self,
         p: torch.Tensor,
         p_batch: torch.Tensor,
-        sampler_list: List[Union[Tuple[float, float], DynamicSampling]] = [],
-        mapper_list: List[Optional[Union[Tuple[float, float], Callable]]] = [],
+        sampler_list: Optional[List[Union[Tuple[float, float], DynamicSampling]]] = [],
         gradient_estimator: Optional[Function] = None,
         same_on_batch: bool = False,
         return_transform: bool = False,
@@ -172,7 +150,6 @@ class GeometricAugmentOperation(AugmentOperation):
             p=p,
             p_batch=p_batch,
             sampler_list=sampler_list,
-            mapper_list=mapper_list,
             gradient_estimator=gradient_estimator,
             same_on_batch=same_on_batch,
         )

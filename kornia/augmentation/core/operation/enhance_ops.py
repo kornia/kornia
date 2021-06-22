@@ -63,7 +63,6 @@ class EqualizeAugment(IntensityAugmentOperation):
             torch.tensor(p),
             torch.tensor(1.0),
             sampler_list=[],
-            mapper_list=[],
             gradient_estimator=gradient_estimator,
             same_on_batch=same_on_batch,
         )
@@ -79,10 +78,6 @@ class BrightnessAugment(IntensityAugmentOperation):
         sampler (List[Union[Tuple[float, float], DynamicSampling]]): sampler for sampling brightness
             parameter to perform the transformation. If a tuple (a, b), it will sample from (a, b) uniformly.
             Otherwise, it will sample from the pointed sampling distribution. Default is (-0.7, 0.7).
-        mapper(Union[Tuple[float, float], Callable]], Optional): the mapping function to map the sampled brightness
-            parameter to any range. If a tuple (a, b), it will map to (a, b) by `torch.clamp` by default, in which
-            ``a`` and ``b`` can be None to indicate infinity. Otherwise, it will by mapped by the provided function.
-            Default is None.
         gradient_estimator(Function, optional): gradient estimator for this operation. Default is None.
         p (float): probability of the image being flipped. Default value is 0.5
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
@@ -99,7 +94,6 @@ class BrightnessAugment(IntensityAugmentOperation):
     def __init__(
         self,
         sampler: Union[Tuple[float, float], DynamicSampling] = (-0.7, 0.7),
-        mapper: Optional[Union[Tuple[float, float], Callable]] = None,
         gradient_estimator: Optional[Function] = None,
         p: float = 0.5,
         same_on_batch: bool = False,
@@ -108,7 +102,6 @@ class BrightnessAugment(IntensityAugmentOperation):
             torch.tensor(p),
             torch.tensor(1.0),
             sampler_list=[sampler],
-            mapper_list=[mapper],
             gradient_estimator=gradient_estimator,
             same_on_batch=same_on_batch,
         )
@@ -124,10 +117,6 @@ class ContrastAugment(IntensityAugmentOperation):
         sampler (List[Union[Tuple[float, float], DynamicSampling]]): sampler for sampling contrast
             parameter to perform the transformation. If a tuple (a, b), it will sample from (a, b) uniformly.
             Otherwise, it will sample from the pointed sampling distribution. Default is (0.3, 1.7).
-        mapper(Union[Tuple[float, float], Callable]], Optional): the mapping function to map the sampled contrast
-            parameter to any range. If a tuple (a, b), it will map to (a, b) by `torch.clamp` by default, in which
-            ``a`` and ``b`` can be None to indicate infinity. Otherwise, it will by mapped by the provided function.
-            Default is (0., None).
         gradient_estimator(Function, optional): gradient estimator for this operation. Default is None.
         p (float): probability of the image being flipped. Default value is 0.5
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
@@ -144,7 +133,6 @@ class ContrastAugment(IntensityAugmentOperation):
     def __init__(
         self,
         sampler: Union[Tuple[float, float], DynamicSampling] = (0.3, 1.7),
-        mapper: Optional[Union[Tuple[float, float], Callable]] = (0., None),
         gradient_estimator: Optional[Function] = None,
         p: float = 0.5,
         same_on_batch: bool = False,
@@ -153,7 +141,6 @@ class ContrastAugment(IntensityAugmentOperation):
             torch.tensor(p),
             torch.tensor(1.0),
             sampler_list=[sampler],
-            mapper_list=[mapper],
             gradient_estimator=gradient_estimator,
             same_on_batch=same_on_batch,
         )
@@ -189,7 +176,6 @@ class SaturationAugment(IntensityAugmentOperation):
     def __init__(
         self,
         sampler: Union[Tuple[float, float], DynamicSampling] = (0.3, 1.7),
-        mapper: Optional[Union[Tuple[float, float], Callable]] = (0., None),
         gradient_estimator: Optional[Function] = None,
         p: float = 0.5,
         same_on_batch: bool = False,
@@ -198,7 +184,6 @@ class SaturationAugment(IntensityAugmentOperation):
             torch.tensor(p),
             torch.tensor(1.0),
             sampler_list=[sampler],
-            mapper_list=[mapper],
             gradient_estimator=gradient_estimator,
             same_on_batch=same_on_batch,
         )
@@ -214,10 +199,6 @@ class HueAugment(IntensityAugmentOperation):
         sampler (List[Union[Tuple[float, float], DynamicSampling]]): sampler for sampling hue
             parameter to perform the transformation. If a tuple (a, b), it will sample from (a, b) uniformly.
             Otherwise, it will sample from the pointed sampling distribution. Default is (-0.3, 0.3).
-        mapper(Union[Tuple[float, float], Callable]], Optional): the mapping function to map the sampled hue
-            parameter to any range. If a tuple (a, b), it will map to (a, b) by `torch.clamp` by default, in which
-            ``a`` and ``b`` can be None to indicate infinity. Otherwise, it will by mapped by the provided function.
-            Default is (-0.5, 0.5).
         gradient_estimator(Function, optional): gradient estimator for this operation. Default is None.
         p (float): probability of the image being flipped. Default value is 0.5
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
@@ -234,7 +215,6 @@ class HueAugment(IntensityAugmentOperation):
     def __init__(
         self,
         sampler: Union[Tuple[float, float], DynamicSampling] = (-0.3, 0.3),
-        mapper: Optional[Union[Tuple[float, float], Callable]] = (-0.5, 0.5),
         gradient_estimator: Optional[Function] = None,
         p: float = 0.5,
         same_on_batch: bool = False,
@@ -243,7 +223,6 @@ class HueAugment(IntensityAugmentOperation):
             torch.tensor(p),
             torch.tensor(1.0),
             sampler_list=[sampler],
-            mapper_list=[mapper],
             gradient_estimator=gradient_estimator,
             same_on_batch=same_on_batch,
         )
@@ -268,22 +247,6 @@ class ColorJitter(IntensityAugmentOperation):
         hue_sampler (List[Union[Tuple[float, float], DynamicSampling]]): sampler for sampling hue
             parameter to perform the transformation. If a tuple (a, b), it will sample from (a, b) uniformly.
             Otherwise, it will sample from the pointed sampling distribution. Default is (-0., 0.).
-        brightness_mapper (Union[Tuple[float, float], Callable]], Optional): the mapping function to map the
-            sampled brightness to any range. If a tuple (a, b), it will map to (a, b) by `torch.clamp` by
-            default, in which ``a`` and ``b`` can be None to indicate infinity. Otherwise, it will by mapped
-            by the provided function. Default is None.
-        contrast_mapper (Union[Tuple[float, float], Callable]], Optional): the mapping function to map the
-            sampled contrast to any range. If a tuple (a, b), it will map to (a, b) by `torch.clamp` by
-            default, in which ``a`` and ``b`` can be None to indicate infinity. Otherwise, it will by mapped
-            by the provided function. Default is (0., None).
-        saturation_mapper (Union[Tuple[float, float], Callable]], Optional): the mapping function to map the
-            sampled saturation to any range. If a tuple (a, b), it will map to (a, b) by `torch.clamp` by
-            default, in which ``a`` and ``b`` can be None to indicate infinity. Otherwise, it will by mapped
-            by the provided function. Default is (0., None).
-        hue_mapper (Union[Tuple[float, float], Callable]], Optional): the mapping function to map the
-            sampled hue parameter to any range. If a tuple (a, b), it will map to (a, b) by `torch.clamp` by
-            default, in which ``a`` and ``b`` can be None to indicate infinity. Otherwise, it will by mapped
-            by the provided function. Default is (-0.5, 0.5).
         gradient_estimator(Function, optional): gradient estimator for this operation. Default is None.
         p (float): probability of applying the transformation. Default value is 1.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
@@ -321,10 +284,6 @@ class ColorJitter(IntensityAugmentOperation):
         contrast_sampler: Union[Tuple[float, float], DynamicSampling] = (0., 0.),
         saturation_sampler: Union[Tuple[float, float], DynamicSampling] = (0., 0.),
         hue_sampler: Union[Tuple[float, float], DynamicSampling] = (0., 0.),
-        brightness_mapper: Optional[Union[Tuple[float, float], Callable]] = None,
-        contrast_mapper: Optional[Union[Tuple[float, float], Callable]] = (0., None),
-        saturation_mapper: Optional[Union[Tuple[float, float], Callable]] = (0., None),
-        hue_mapper: Optional[Union[Tuple[float, float], Callable]] = (-0.5, 0.5),
         gradient_estimator: Optional[Function] = None,
         p: float = 0.5,
         same_on_batch: bool = False,
@@ -333,7 +292,6 @@ class ColorJitter(IntensityAugmentOperation):
             torch.tensor(p),
             torch.tensor(1.0),
             sampler_list=[brightness_sampler, contrast_sampler, saturation_sampler, hue_sampler],
-            mapper_list=[brightness_mapper, contrast_mapper, saturation_mapper, hue_mapper],
             gradient_estimator=gradient_estimator,
             same_on_batch=same_on_batch,
         )

@@ -26,14 +26,6 @@ class ShearAugment(GeometricAugmentOperation):
         y_sampler (List[Union[Tuple[float, float], DynamicSampling]]): sampler for sampling y-direction shearing
             parameters to perform the transformation. If a tuple (a, b), it will sample from (a, b) uniformly.
             Otherwise, it will sample from the pointed sampling distribution. Default is (0., 1.).
-        x_mapper(Union[Tuple[float, float], Callable]], Optional): the mapping function to map the sampled x
-            parameters to any range. If a tuple (a, b), it will map to (a, b) by `torch.clamp` by default, in which
-            ``a`` and ``b`` can be None to indicate infinity. Otherwise, it will by mapped by the provided function.
-            Default is None.
-        y_mapper(Union[Tuple[float, float], Callable]], Optional): the mapping function to map the sampled y
-            parameters to any range. If a tuple (a, b), it will map to (a, b) by `torch.clamp` by default, in which
-            ``a`` and ``b`` can be None to indicate infinity. Otherwise, it will by mapped by the provided function.
-            Default is None.
         gradient_estimator(Function, optional): gradient estimator for this operation. Default is None.
         resample (int, str or kornia.Resample): resample mode from "nearest" (0) or "bilinear" (1).
             Default: Resample.BILINEAR.
@@ -58,12 +50,14 @@ class ShearAugment(GeometricAugmentOperation):
 
         Custom mapping with 'torch.tanh' and DynamicGaussian:
         >>> from kornia.augmentation.core.sampling import DynamicGaussian
-        >>> a = ShearAugment(
-        ...     x_sampler=DynamicGaussian(torch.tensor(1.), torch.tensor(1.)),
-        ...     y_sampler=(0., 1.),
-        ...     x_mapper=lambda x: torch.tanh(x) * 100,
-        ...     y_mapper=lambda x: torch.tanh(x) * 100,
-        ...     same_on_batch=True, p=1.)
+        >>> x_sampler = DynamicGaussian(
+        ...     torch.tensor(1.), torch.tensor(1.),
+        ...     torch.distributions.transforms.ComposeTransform([
+        ...         torch.distributions.transforms.TanhTransform(),
+        ...         torch.distributions.transforms.AffineTransform(0, 10),
+        ...     ])
+        ... )
+        >>> a = ShearAugment(x_sampler=x_sampler, y_sampler=(0., 1.), same_on_batch=True, p=1.)
         >>> out = a(torch.randn(1, 3, 100, 100).repeat(2, 1, 1, 1))
         >>> (out[0] == out[1]).all()
         tensor(True)
@@ -73,8 +67,6 @@ class ShearAugment(GeometricAugmentOperation):
         self,
         x_sampler: Union[Tuple[float, float], DynamicSampling] = (0.0, 1.0),
         y_sampler: Union[Tuple[float, float], DynamicSampling] = (0.0, 1.0),
-        x_mapper: Optional[Union[Tuple[float, float], Callable]] = None,
-        y_mapper: Optional[Union[Tuple[float, float], Callable]] = None,
         gradient_estimator: Optional[Function] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         padding_mode: Union[str, int, SamplePadding] = SamplePadding.ZEROS.name,
@@ -87,7 +79,6 @@ class ShearAugment(GeometricAugmentOperation):
             torch.tensor(p),
             torch.tensor(1.0),
             sampler_list=[x_sampler, y_sampler],
-            mapper_list=[x_mapper, y_mapper],
             same_on_batch=same_on_batch,
             gradient_estimator=gradient_estimator,
             return_transform=return_transform,
@@ -117,10 +108,6 @@ class RotationAugment(GeometricAugmentOperation):
         rot_sampler (List[Union[Tuple[float, float], DynamicSampling]]): sampler for sampling rotation
             degrees to perform the transformation. If a tuple (a, b), it will sample from (a, b) uniformly.
             Otherwise, it will sample from the pointed sampling distribution. Default is (0., 1.).
-        rot_mapper(Union[Tuple[float, float], Callable]], Optional): the mapping function to map the sampled rotation
-            degrees to any range. If a tuple (a, b), it will map to (a, b) by `torch.clamp` by default, in which
-            ``a`` and ``b`` can be None to indicate infinity. Otherwise, it will by mapped by the provided function.
-            Default is None.
         gradient_estimator(Function, optional): gradient estimator for this operation. Default is None.
         resample (int, str or kornia.Resample): resample mode from "nearest" (0) or "bilinear" (1).
             Default: Resample.BILINEAR.
@@ -166,7 +153,6 @@ class RotationAugment(GeometricAugmentOperation):
     def __init__(
         self,
         rot_sampler: Union[Tuple[float, float], DynamicSampling] = (-180., 180.),
-        rot_mapper: Optional[Union[Tuple[float, float], Callable]] = None,
         gradient_estimator: Optional[Function] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         padding_mode: Union[str, int, SamplePadding] = SamplePadding.ZEROS.name,
@@ -179,7 +165,6 @@ class RotationAugment(GeometricAugmentOperation):
             torch.tensor(p),
             torch.tensor(1.0),
             sampler_list=[rot_sampler],
-            mapper_list=[rot_mapper],
             same_on_batch=same_on_batch,
             gradient_estimator=gradient_estimator,
             return_transform=return_transform,

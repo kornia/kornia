@@ -1,4 +1,4 @@
-from typing import Callable, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 from torch.autograd import Function
@@ -27,10 +27,6 @@ class PerspectiveAugment(PerspectiveAugmentOperation):
         sampler (List[Union[Tuple[float, float], DynamicSampling]]): sampler for sampling perspective
             factors to perform the transformation. If a tuple (a, b), it will sample from (a, b) uniformly.
             Otherwise, it will sample from the pointed sampling distribution. Default is (0.3, 0.7).
-        mapper(Union[Tuple[float, float], Callable]], Optional): the mapping function to map the sampled perspective
-            factors to any range. If a tuple (a, b), it will map to (a, b) by `torch.clamp` by default, in which
-            ``a`` and ``b`` can be None to indicate infinity. Otherwise, it will by mapped by the provided function.
-            Default is None.
         gradient_estimator(Function, optional): gradient estimator for this operation. Default is None.
         resample (int, str or kornia.Resample): resample mode from "nearest" (0) or "bilinear" (1).
             Default: Resample.BILINEAR.
@@ -54,7 +50,6 @@ class PerspectiveAugment(PerspectiveAugmentOperation):
     def __init__(
         self,
         sampler: Union[Tuple[float, float], DynamicSampling] = (0.3, 0.7),
-        mapper: Optional[Union[Tuple[float, float], Callable]] = None,
         gradient_estimator: Optional[Function] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         align_corners: bool = True,
@@ -66,7 +61,6 @@ class PerspectiveAugment(PerspectiveAugmentOperation):
             torch.tensor(p),
             torch.tensor(1.0),
             sampler_list=[sampler],
-            mapper_list=[mapper],
             gradient_estimator=gradient_estimator,
             same_on_batch=same_on_batch,
             return_transform=return_transform,
@@ -124,14 +118,6 @@ class CropAugment(PerspectiveAugmentOperation):
         y_sampler (List[Union[Tuple[float, float], DynamicSampling]]): sampler for sampling starting y-axis
             points to perform the transformation. If a tuple (a, b), it will sample from (a, b) uniformly.
             Otherwise, it will sample from the pointed sampling distribution. Default is (0., 1.).
-        x_mapper(Union[Tuple[float, float], Callable]], Optional): the mapping function to map the sampled x-axis
-            coordinates to any range. If a tuple (a, b), it will map to (a, b) by `torch.clamp` by default, in which
-            ``a`` and ``b`` can be None to indicate infinity. Otherwise, it will by mapped by the provided function.
-            Default is None.
-        y_mapper(Union[Tuple[float, float], Callable]], Optional): the mapping function to map the sampled y-axis
-            coordinates to any range. If a tuple (a, b), it will map to (a, b) by `torch.clamp` by default, in which
-            ``a`` and ``b`` can be None to indicate infinity. Otherwise, it will by mapped by the provided function.
-            Default is None.
         gradient_estimator(Function, optional): gradient estimator for this operation. Default is None.
         resample (int, str or kornia.Resample): resample mode from "nearest" (0) or "bilinear" (1).
             Default: Resample.BILINEAR.
@@ -165,8 +151,6 @@ class CropAugment(PerspectiveAugmentOperation):
         size: Tuple[int, int],
         x_sampler: Union[Tuple[float, float], DynamicSampling] = (0.0, 1.0),
         y_sampler: Union[Tuple[float, float], DynamicSampling] = (0.0, 1.0),
-        x_mapper: Optional[Union[Tuple[float, float], Callable]] = None,
-        y_mapper: Optional[Union[Tuple[float, float], Callable]] = None,
         gradient_estimator: Optional[Function] = None,
         p: float = 0.5,
         same_on_batch: bool = False,
@@ -176,7 +160,6 @@ class CropAugment(PerspectiveAugmentOperation):
             torch.tensor(1.0),
             torch.tensor(p),
             sampler_list=[x_sampler, y_sampler],
-            mapper_list=[x_mapper, y_mapper],
             gradient_estimator=gradient_estimator,
             same_on_batch=same_on_batch,
             return_transform=return_transform,
