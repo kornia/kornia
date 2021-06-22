@@ -18,11 +18,6 @@ def xla_is_available() -> bool:
     return False
 
 
-def create_checkerboard(h, w, nw):
-    """Creates a synthetic checkered board of shape HxW and window size `nw`."""
-    return np.kron([[1, 0] * nw, [0, 1] * nw] * nw, np.ones((h // (2 * nw), w // (2 * nw)))).astype(np.float32)
-
-
 # TODO: Isn't this function duplicated with eye_like?
 def create_eye_batch(batch_size, eye_size, device=None, dtype=None):
     """Creates a batch of identity matrices of shape Bx3x3"""

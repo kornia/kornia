@@ -186,14 +186,7 @@ class TestHomographyWarper:
         height, width = 128, 64
         eye_size = 3  # identity 3x3
 
-        # create checkerboard
-        board = utils.create_checkerboard(height, width, 4)
-        patch_src = (
-            torch.from_numpy(board)
-            .to(device=device, dtype=dtype)
-            .view(1, 1, height, width)
-            .expand(batch_size, 1, height, width)
-        )
+        patch_src = torch.ones(batch_size, 1, height, width, device=device, dtype=dtype)
 
         # create base homography
         dst_homo_src = utils.create_eye_batch(batch_size, eye_size, device=device, dtype=dtype)
@@ -256,14 +249,7 @@ class TestHomographyWarper:
         height, width = 128, 64
         eye_size = 3  # identity 3x3
 
-        # create checkerboard
-        board = utils.create_checkerboard(height, width, 4)
-        patch_src = (
-            torch.from_numpy(board)
-            .to(device=device, dtype=dtype)
-            .view(1, 1, height, width)
-            .expand(batch_size, 1, height, width)
-        )
+        patch_src = torch.rand(batch_size, 1, height, width, device=device, dtype=dtype)
 
         # create base homography
         dst_homo_src = utils.create_eye_batch(batch_size, eye_size, device=device, dtype=dtype)
