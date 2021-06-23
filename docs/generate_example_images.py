@@ -45,6 +45,7 @@ def main():
     # Key: Name of the transform class.
     # Value: (parameters, num_samples, seed)
     augmentations_list: dict = {
+        "CenterCrop": ((96, 96), 1, 2018),
         "ColorJitter": ((0.3, 0.3, 0.3, 0.3), 2, 2018),
         "RandomAffine": (((-15.0, 20.0), (0.1, 0.1), (0.7, 1.3), 20), 2, 2019),
         "RandomBoxBlur": (((7, 7),), 1, 2020),
@@ -80,6 +81,10 @@ def main():
         torch.manual_seed(seed)
         # apply the augmentaiton to the image and concat
         out = aug(img_in)
+
+        if aug_name == "CenterCrop":
+            out = K.geometry.resize(out, img_in.shape[-2:])
+
         out = torch.cat([img_in[0], *[out[i] for i in range(out.size(0))]], dim=-1)
         # save the output image
         out_np = K.utils.tensor_to_image((out * 255.0).byte())

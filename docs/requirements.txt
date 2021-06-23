@@ -4,9 +4,8 @@ torchvision
 opencv-python
 matplotlib
 # sphinx
-sphinx >=2.1, <3
+sphinx==2.4.4
 sphinx_rtd_theme
 sphinxcontrib-bibtex<2.0.0
 nbsphinx
 nbconvert
-notebook

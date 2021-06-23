@@ -709,6 +709,8 @@ class RandomAffine(GeometricAugmentationBase2D):
 class CenterCrop(GeometricAugmentationBase2D):
     r"""Crops a given image tensor at the center.
 
+    .. image:: _static/img/CenterCrop.png
+
     Args:
         p (float): probability of applying the transformation for the whole batch. Default value is 1.
         size (Tuple[int, int] or int): Desired output size (out_h, out_w) of the crop.
