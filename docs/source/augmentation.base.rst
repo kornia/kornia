@@ -57,5 +57,3 @@ Create your own transformations with the following snippet:
    .. automethod:: generate_parameters
    .. automethod:: compute_transformation
    .. automethod:: apply_transform
-
-
