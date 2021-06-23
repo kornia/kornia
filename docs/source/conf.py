@@ -42,12 +42,14 @@ extensions = [
     'sphinx.ext.napoleon',
     'sphinx.ext.viewcode',
     'sphinx.ext.githubpages',
-    'nbsphinx',
+    #'nbsphinx',
     'sphinxcontrib.bibtex',
 ]
 
+bibtex_bibfiles = ['references.bib']
 napoleon_use_ivar = True
 
+# TODO: review this number
 googleanalytics_id = 'UA-90545585-1'
 googleanalytics_enabled = True
 
