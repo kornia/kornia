@@ -220,7 +220,7 @@ class TestHomographyWarper:
                 _torch_inverse_cast(dst_homo_src_i),
                 (height, width),
                 align_corners=True,
-                normalized_homography=True
+                normalized_homography=True,
             )
 
             assert_allclose(patch_dst_to_src, patch_dst_to_src_functional, atol=1e-4, rtol=1e-4)

@@ -1,10 +1,9 @@
+import warnings
 from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-import warnings
 
 from kornia.geometry.linalg import transform_points
 from kornia.testing import check_is_tensor
@@ -113,7 +112,8 @@ def warp_perspective(
         # this piece of code substitutes F.affine_grid since it does not support 3x3
         grid = (
             create_meshgrid(h_out, w_out, normalized_coordinates=normalized_coordinates, device=src.device)
-            .to(src.dtype).repeat(B, 1, 1, 1)
+            .to(src.dtype)
+            .repeat(B, 1, 1, 1)
         )
         grid = transform_points(src_norm_trans_dst_norm[:, None, None], grid)
 
@@ -238,7 +238,7 @@ def homography_warp(
         padding_mode=padding_mode,
         align_corners=align_corners,
         normalized_homography=True,
-        normalized_coordinates=normalized_coordinates
+        normalized_coordinates=normalized_coordinates,
     )
 
 
