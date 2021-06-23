@@ -1,6 +1,6 @@
+import importlib.util
 import os
 import sys
-import importlib.util
 
 import sphinx_rtd_theme
 

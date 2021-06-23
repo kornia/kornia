@@ -65,7 +65,7 @@ def main():
         "RandomResizedCrop": ((img.shape[-2:], (1.0, 2.0), (1.0, 2.0)), 2, 2020),
         "RandomRotation": ((45.0,), 2, 2019),
         "RandomSharpness": ((16.0,), 1, 2019),
-        "RandomSolarize": ((0.2, 0.2,), 2, 2019),
+        "RandomSolarize": ((0.2, 0.2), 2, 2019),
         "RandomVerticalFlip": ((), 1, 2020),
         "RandomThinPlateSpline": ((), 1, 2020),
     }
@@ -88,7 +88,7 @@ def main():
         print(f"Generated image example for {aug_name}. {sig}")
 
     mix_augmentations_list: dict = {
-        "RandomMixUp": (((.3, .4),), 2, 20),
+        "RandomMixUp": (((0.3, 0.4),), 2, 20),
         "RandomCutMix": ((img.shape[-2], img.shape[-1]), 2, 2019),
     }
     # ITERATE OVER THE TRANSFORMS
