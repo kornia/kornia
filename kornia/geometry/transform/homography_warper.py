@@ -4,12 +4,15 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import warnings
+
 from kornia.geometry.linalg import transform_points
 from kornia.testing import check_is_tensor
 from kornia.utils import create_meshgrid, create_meshgrid3d
 from kornia.utils.helpers import _torch_inverse_cast
 
 __all__ = [
+    "warp_perspective",
     "HomographyWarper",
     "homography_warp",
     "homography_warp3d",
@@ -21,6 +24,116 @@ __all__ = [
     "normal_transform_pixel",
     "normal_transform_pixel3d",
 ]
+
+
+def warp_perspective(
+    src: torch.Tensor,
+    M: torch.Tensor,
+    dsize: Tuple[int, int],
+    mode: str = 'bilinear',
+    padding_mode: str = 'zeros',
+    align_corners: Optional[bool] = None,
+    normalized_homography: bool = False,
+    normalized_coordinates: bool = True,
+) -> torch.Tensor:
+    r"""Applies a perspective transformation to an image.
+
+    The function warp_perspective transforms the source image using
+    the specified matrix:
+
+    .. math::
+        \text{dst} (x, y) = \text{src} \left(
+        \frac{M^{-1}_{11} x + M^{-1}_{12} y + M^{-1}_{13}}{M^{-1}_{31} x + M^{-1}_{32} y + M^{-1}_{33}} ,
+        \frac{M^{-1}_{21} x + M^{-1}_{22} y + M^{-1}_{23}}{M^{-1}_{31} x + M^{-1}_{32} y + M^{-1}_{33}}
+        \right )
+
+    Args:
+        src (torch.Tensor): input image with shape :math:`(B, C, H, W)`.
+        M (torch.Tensor): transformation matrix with shape :math:`(B, 3, 3)`.
+        dsize (tuple): size of the output image (height, width).
+        mode (str): interpolation mode to calculate output values
+          'bilinear' | 'nearest'. Default: 'bilinear'.
+        padding_mode (str): padding mode for outside grid values
+          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
+        align_corners(bool, optional): interpolation flag. Default: None.
+        normalized_homography(bool): Warp image patchs or tensors by normalized 2D homographies.
+                                      See :class:`~kornia.geometry.warp.HomographyWarper` for details.
+        normalized_coordinates (bool): Whether the homography assumes [-1, 1] normalized
+                                      coordinates or not.
+
+    Returns:
+        torch.Tensor: the warped input image :math:`(B, C, H, W)`.
+
+    Example:
+       >>> img = torch.rand(1, 4, 5, 6)
+       >>> H = torch.eye(3)[None]
+       >>> out = warp_perspective(img, H, (4, 2), align_corners=True)
+       >>> print(out.shape)
+       torch.Size([1, 4, 4, 2])
+
+    .. note::
+        This function is often used in conjuntion with :func:`get_perspective_transform`.
+
+    .. note::
+        See a working example `here <https://kornia.readthedocs.io/en/latest/
+        tutorials/warp_perspective.html>`_.
+    """
+    if not isinstance(src, torch.Tensor):
+        raise TypeError("Input src type is not a torch.Tensor. Got {}".format(type(src)))
+
+    if not isinstance(M, torch.Tensor):
+        raise TypeError("Input M type is not a torch.Tensor. Got {}".format(type(M)))
+
+    if not len(src.shape) == 4:
+        raise ValueError("Input src must be a BxCxHxW tensor. Got {}".format(src.shape))
+
+    if not (len(M.shape) == 3 and M.shape[-2:] == (3, 3)):
+        raise ValueError("Input M must be a Bx3x3 tensor. Got {}".format(M.shape))
+
+    if not normalized_homography:
+        # TODO: remove the statement below in kornia v0.6
+        if align_corners is None:
+            message: str = (
+                "The align_corners default value has been changed. By default now is set True "
+                "in order to match cv2.warpPerspective. In case you want to keep your previous "
+                "behaviour set it to False. This warning will disappear in kornia > v0.6."
+            )
+            warnings.warn(message)
+            # set default value for align corners
+            align_corners = True
+
+        B, C, H, W = src.size()
+        h_out, w_out = dsize
+
+        # we normalize the 3x3 transformation matrix and convert to 3x4
+        dst_norm_trans_src_norm: torch.Tensor = normalize_homography(M, (H, W), (h_out, w_out))  # Bx3x3
+
+        src_norm_trans_dst_norm = _torch_inverse_cast(dst_norm_trans_src_norm)  # Bx3x3
+
+        # this piece of code substitutes F.affine_grid since it does not support 3x3
+        grid = (
+            create_meshgrid(h_out, w_out, normalized_coordinates=normalized_coordinates, device=src.device)
+            .to(src.dtype).repeat(B, 1, 1, 1)
+        )
+        grid = transform_points(src_norm_trans_dst_norm[:, None, None], grid)
+
+    else:
+        if align_corners is None:
+            align_corners = False
+
+        if not M.device == src.device:
+            raise TypeError(
+                "Patch and homography must be on the same device. \
+                            Got patch.device: {} M.device: {}.".format(
+                    src.device, M.device
+                )
+            )
+
+        height, width = dsize
+        grid = create_meshgrid(height, width, normalized_coordinates=normalized_coordinates)
+        grid = warp_grid(grid, M)
+
+    return F.grid_sample(src, grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
 
 
 def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
@@ -109,19 +222,24 @@ def homography_warp(
         >>> homography = torch.eye(3).view(1, 3, 3)
         >>> output = homography_warp(input, homography, (32, 32))
     """
-    if not src_homo_dst.device == patch_src.device:
-        raise TypeError(
-            "Patch and homography must be on the same device. \
-                         Got patch.device: {} src_H_dst.device: {}.".format(
-                patch_src.device, src_homo_dst.device
-            )
-        )
 
-    height, width = dsize
-    grid = create_meshgrid(height, width, normalized_coordinates=normalized_coordinates)
-    warped_grid = warp_grid(grid, src_homo_dst)
+    warnings.warn(
+        "`homography_warp` is deprecated and will be removed > 0.6.0."
+        "Please use `kornia.geometry.transform.warp_perspective instead.`",
+        DeprecationWarning,
+        stacklevel=2,
+    )
 
-    return F.grid_sample(patch_src, warped_grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
+    return warp_perspective(
+        patch_src,
+        src_homo_dst,
+        dsize,
+        mode=mode,
+        padding_mode=padding_mode,
+        align_corners=align_corners,
+        normalized_homography=True,
+        normalized_coordinates=normalized_coordinates
+    )
 
 
 def homography_warp3d(
@@ -263,13 +381,14 @@ class HomographyWarper(nn.Module):
         """
         _warped_grid = self._warped_grid
         if src_homo_dst is not None:
-            warped_patch = homography_warp(
+            warped_patch = warp_perspective(
                 patch_src,
                 src_homo_dst,
                 (self.height, self.width),
                 mode=self.mode,
                 padding_mode=self.padding_mode,
                 align_corners=self.align_corners,
+                normalized_homography=True,
                 normalized_coordinates=self.normalized_coordinates,
             )
         elif _warped_grid is not None:

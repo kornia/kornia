@@ -52,11 +52,11 @@ def homography_warp(
     __doc__ = HMW.homography_warp.__doc__
     warnings.warn(
         "`homography_warp` is deprecated and will be removed > 0.6.0."
-        "Please use `kornia.geometry.transform.homography_warp instead.`",
+        "Please use `kornia.geometry.transform.warp_perspective instead.`",
         DeprecationWarning,
         stacklevel=2,
     )
-    return HMW.homography_warp(
+    return HMW.warp_perspective(
         patch_src, src_homo_dst, dsize, mode, padding_mode, align_corners, normalized_coordinates
     )
 

@@ -215,8 +215,12 @@ class TestHomographyWarper:
             assert error.item() < self.threshold
 
             # check functional api
-            patch_dst_to_src_functional = kornia.homography_warp(
-                patch_dst, _torch_inverse_cast(dst_homo_src_i), (height, width), align_corners=True
+            patch_dst_to_src_functional = kornia.warp_perspective(
+                patch_dst,
+                _torch_inverse_cast(dst_homo_src_i),
+                (height, width),
+                align_corners=True,
+                normalized_homography=True
             )
 
             assert_allclose(patch_dst_to_src, patch_dst_to_src_functional, atol=1e-4, rtol=1e-4)
@@ -261,18 +265,20 @@ class TestHomographyWarper:
             dst_homo_src_i = dst_homo_src + homo_delta
 
             # transform the points with and without jit
-            patch_dst = kornia.homography_warp(
+            patch_dst = kornia.warp_perspective(
                 patch_src,
                 dst_homo_src_i,
                 (height, width),
                 align_corners=align_corners,
+                normalized_homography=True,
                 normalized_coordinates=normalized_coordinates,
             )
-            patch_dst_jit = torch.jit.script(kornia.homography_warp)(
+            patch_dst_jit = torch.jit.script(kornia.warp_perspective)(
                 patch_src,
                 dst_homo_src_i,
                 (height, width),
                 align_corners=align_corners,
+                normalized_homography=True,
                 normalized_coordinates=normalized_coordinates,
             )
 

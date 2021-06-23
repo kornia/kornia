@@ -11,7 +11,7 @@ from kornia.geometry.conversions import (
     normalize_pixel_coordinates,
 )
 from kornia.geometry.linalg import transform_points
-from kornia.geometry.transform.homography_warper import normalize_homography
+from kornia.geometry.transform.homography_warper import normalize_homography, warp_perspective as hmw_warp_perspective
 from kornia.geometry.transform.projwarp import get_projective_transform
 from kornia.utils import create_meshgrid
 from kornia.utils.helpers import _torch_inverse_cast, _torch_solve_cast
@@ -38,6 +38,8 @@ def warp_perspective(
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
     align_corners: Optional[bool] = None,
+    normalized_homography: bool = False,
+    normalized_coordinates: bool = True,
 ) -> torch.Tensor:
     r"""Applies a perspective transformation to an image.
 
@@ -59,6 +61,10 @@ def warp_perspective(
         padding_mode (str): padding mode for outside grid values
           'zeros' | 'border' | 'reflection'. Default: 'zeros'.
         align_corners(bool, optional): interpolation flag. Default: None.
+        normalized_homography(bool): Warp image patchs or tensors by normalized 2D homographies.
+                                      See :class:`~kornia.geometry.warp.HomographyWarper` for details.
+        normalized_coordinates (bool): Whether the homography assumes [-1, 1] normalized
+                                      coordinates or not.
 
     Returns:
         torch.Tensor: the warped input image :math:`(B, C, H, W)`.
@@ -77,44 +83,8 @@ def warp_perspective(
         See a working example `here <https://kornia.readthedocs.io/en/latest/
         tutorials/warp_perspective.html>`_.
     """
-    if not isinstance(src, torch.Tensor):
-        raise TypeError("Input src type is not a torch.Tensor. Got {}".format(type(src)))
 
-    if not isinstance(M, torch.Tensor):
-        raise TypeError("Input M type is not a torch.Tensor. Got {}".format(type(M)))
-
-    if not len(src.shape) == 4:
-        raise ValueError("Input src must be a BxCxHxW tensor. Got {}".format(src.shape))
-
-    if not (len(M.shape) == 3 and M.shape[-2:] == (3, 3)):
-        raise ValueError("Input M must be a Bx3x3 tensor. Got {}".format(M.shape))
-
-    # TODO: remove the statement below in kornia v0.6
-    if align_corners is None:
-        message: str = (
-            "The align_corners default value has been changed. By default now is set True "
-            "in order to match cv2.warpPerspective. In case you want to keep your previous "
-            "behaviour set it to False. This warning will disappear in kornia > v0.6."
-        )
-        warnings.warn(message)
-        # set default value for align corners
-        align_corners = True
-
-    B, C, H, W = src.size()
-    h_out, w_out = dsize
-
-    # we normalize the 3x3 transformation matrix and convert to 3x4
-    dst_norm_trans_src_norm: torch.Tensor = normalize_homography(M, (H, W), (h_out, w_out))  # Bx3x3
-
-    src_norm_trans_dst_norm = _torch_inverse_cast(dst_norm_trans_src_norm)  # Bx3x3
-
-    # this piece of code substitutes F.affine_grid since it does not support 3x3
-    grid = (
-        create_meshgrid(h_out, w_out, normalized_coordinates=True, device=src.device).to(src.dtype).repeat(B, 1, 1, 1)
-    )
-    grid = transform_points(src_norm_trans_dst_norm[:, None, None], grid)
-
-    return F.grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
+    return hmw_warp_perspective(src, M, dsize, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
 
 
 def warp_affine(
