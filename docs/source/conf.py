@@ -191,11 +191,3 @@ intersphinx_mapping = {
     'numpy': ('http://numpy.org/doc/stable/', None),
     'torch': ('http://pytorch.org/docs/stable/', None),
 }
-
-examples_dir = os.path.join(current_path, "tutorials")
-sphinx_gallery_conf = {
-    'doc_module': 'kornia',
-    'examples_dirs': [examples_dir],  # path to your example scripts
-    'gallery_dirs': ['tutorials'],  # path where to save gallery generated output
-    'filename_pattern': './',
-}
