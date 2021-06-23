@@ -36,14 +36,20 @@ extensions = [
     'sphinx.ext.autosummary',
     'sphinx.ext.doctest',
     'sphinx.ext.intersphinx',
-    'sphinx.ext.todo',
-    'sphinx.ext.coverage',
+    # 'sphinx.ext.todo',
+    # 'sphinx.ext.coverage',
     'sphinx.ext.mathjax',
     'sphinx.ext.napoleon',
+    'sphinx_autodoc_typehints',
+    'sphinx_autodoc_defaultargs',
+    'sphinx_copybutton',
     'sphinx.ext.viewcode',
     'sphinx.ext.githubpages',
     'sphinxcontrib.bibtex',
 ]
+
+# subsitutes the default values
+docstring_default_arg_substitution = 'Default: '
 
 bibtex_bibfiles = ['references.bib']
 napoleon_use_ivar = True

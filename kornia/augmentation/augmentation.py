@@ -57,13 +57,13 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
     previous one. This is especially useful when using this functionality as part of an ``nn.Sequential`` module.
 
     Args:
-        p (float): probability of the image being flipped. Default value is 0.5
-        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
-                                      input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
+        p: probability of the image being flipped.
+        return_transform: if ``True`` return the matrix describing the transformation applied to each
+                          input tensor. If ``False`` and the input is a tuple the applied transformation
+                          wont be concatenated.
+        same_on_batch: apply the same transformation across the batch.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+                 to the batch form (False).
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -112,13 +112,13 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
     .. image:: _static/img/RandomVerticalFlip.png
 
     Args:
-        p (float): probability of the image being flipped. Default value is 0.5
-        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
-                                      input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
+        p: probability of the image being flipped.
+        return_transform: if ``True`` return the matrix describing the transformation applied to each
+                          input tensor. If ``False`` and the input is a tuple the applied transformation
+                          wont be concatenated.
+        same_on_batch: apply the same transformation across the batch.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False).
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -167,17 +167,17 @@ class ColorJitter(IntensityAugmentationBase2D):
     .. image:: _static/img/ColorJitter.png
 
     Args:
-        p (float): probability of applying the transformation. Default value is 1.
-        brightness (float or tuple): Default value is 0.
-        contrast (float or tuple): Default value is 0.
-        saturation (float or tuple): Default value is 0.
-        hue (float or tuple): Default value is 0.
-        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
-                                      input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
+        p: probability of applying the transformation.
+        brightness: The brightness factor to apply.
+        contrast: The contrast factor to apply.
+        saturation: The saturation factor to apply.
+        hue: The hue factor to apply.
+        return_transform: if ``True`` return the matrix describing the transformation applied to each
+                          input tensor. If ``False`` and the input is a tuple the applied transformation
+                          wont be concatenated.
+        same_on_batch: apply the same transformation across the batch.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+                 to the batch form (False).
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -269,13 +269,13 @@ class RandomGrayscale(IntensityAugmentationBase2D):
     .. image:: _static/img/RandomGrayscale.png
 
     Args:
-        p (float): probability of the image to be transformed to grayscale. Default value is 0.1.
-        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
-                                      input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
+        p: probability of the image to be transformed to grayscale.
+        return_transform: if ``True`` return the matrix describing the transformation applied to each
+                          input tensor. If ``False`` and the input is a tuple the applied transformation
+                          wont be concatenated.
+        same_on_batch: apply the same transformation across the batch.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False).
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -336,12 +336,12 @@ class RandomErasing(IntensityAugmentationBase2D):
     between [ratio[0], ratio[1])
 
     Args:
-        p (float): probability that the random erasing operation will be performed. Default value is 0.5.
-        scale (Tuple[float, float]): range of proportion of erased area against input image.
-        ratio (Tuple[float, float]): range of aspect ratio of erased area.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
+        p: probability that the random erasing operation will be performed.
+        scale: range of proportion of erased area against input image.
+        ratio: range of aspect ratio of erased area.
+        same_on_batch: apply the same transformation across the batch.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False).
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -419,15 +419,15 @@ class RandomPerspective(GeometricAugmentationBase2D):
     .. image:: _static/img/RandomPerspective.png
 
     Args:
-        p (float): probability of the image being perspectively transformed. Default value is 0.5.
-        distortion_scale(float): it controls the degree of distortion and ranges from 0 to 1. Default value is 0.5.
-        resample (int, str or kornia.Resample): Default: Resample.BILINEAR.
-        return_transform (bool): if ``True`` return the matrix describing the transformation
-                                 applied to each. Default: False.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        align_corners(bool): interpolation flag. Default: False.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
+        p: probability of the image being perspectively transformed..
+        distortion_scale: it controls the degree of distortion and ranges from 0 to 1.
+        resample: the interpolation method to use.
+        return_transform: if ``True`` return the matrix describing the transformation
+                          applied to each.
+        same_on_batch: apply the same transformation across the batch. Default: False.
+        align_corners: interpolation flag.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+                 to the batch form (False).
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -516,33 +516,29 @@ class RandomAffine(GeometricAugmentationBase2D):
     The transformation is computed so that the image center is kept invariant.
 
     Args:
-        p (float): probability of applying the transformation. Default value is 0.5.
-        degrees (float or tuple): Range of degrees to select from.
+        p: probability of applying the transformation.
+        degrees: Range of degrees to select from.
             If degrees is a number instead of sequence like (min, max), the range of degrees
             will be (-degrees, +degrees). Set to 0 to deactivate rotations.
-        translate (tuple, optional): tuple of maximum absolute fraction for horizontal
+        translate: tuple of maximum absolute fraction for horizontal
             and vertical translations. For example translate=(a, b), then horizontal shift
             is randomly sampled in the range -img_width * a < dx < img_width * a and vertical shift is
             randomly sampled in the range -img_height * b < dy < img_height * b. Will not translate by default.
-        scale (tuple, optional): scaling factor interval.
+        scale: scaling factor interval.
             If (a, b) represents isotropic scaling, the scale is randomly sampled from the range a <= scale <= b.
             If (a, b, c, d), the scale is randomly sampled from the range a <= scale_x <= b, c <= scale_y <= d.
             Will keep original scale by default.
-        shear (sequence or float, optional): Range of degrees to select from.
+        shear: Range of degrees to select from.
             If float, a shear parallel to the x axis in the range (-shear, +shear) will be apllied.
             If (a, b), a shear parallel to the x axis in the range (-shear, +shear) will be apllied.
             If (a, b, c, d), then x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3])
             will be applied. Will not apply shear by default.
-        resample (int, str or kornia.Resample): resample mode from "nearest" (0) or "bilinear" (1).
-            Default: Resample.BILINEAR.
-        padding_mode (int, str or kornia.SamplePadding): padding mode from "zeros" (0), "border" (1)
-            or "refection" (2). Default: SamplePadding.ZEROS.
-        return_transform (bool): if ``True`` return the matrix describing the transformation
-            applied to each. Default: False.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        align_corners(bool): interpolation flag. Default: False.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
+        resample: resample mode from "nearest" (0) or "bilinear" (1).
+        padding_mode: padding mode from "zeros" (0), "border" (1) or "refection" (2).
+        return_transform: if ``True`` return the matrix describing the transformation applied to each.
+        same_on_batch: apply the same transformation across the batch.
+        align_corners: interpolation flag.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it to the batch form (False).
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -712,18 +708,20 @@ class CenterCrop(GeometricAugmentationBase2D):
     .. image:: _static/img/CenterCrop.png
 
     Args:
-        p (float): probability of applying the transformation for the whole batch. Default value is 1.
-        size (Tuple[int, int] or int): Desired output size (out_h, out_w) of the crop.
+        size: Desired output size (out_h, out_w) of the crop.
             If integer,  out_h = out_w = size.
             If Tuple[int, int], out_h = size[0], out_w = size[1].
-        return_transform (bool): if ``True`` return the matrix describing the transformation
-            applied to each. Default: False.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
-        cropping_mode (str): The used algorithm to crop. ``slice`` will use advanced slicing to extract the tensor based
-                             on the sampled indices. ``resample`` will use `warp_affine` using the affine transformation
-                             to extract and resize at once. Use `slice` for efficiency, or `resample` for proper
-                             differentiability. Default: `slice`.
+        align_corners: interpolation flag.
+        resample: The interpolation mode.
+        return_transform: if ``True`` return the matrix describing the transformation
+            applied to each.
+        p: probability of applying the transformation for the whole batch.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False).
+        cropping_mode: The used algorithm to crop. ``slice`` will use advanced slicing to extract the tensor based
+                       on the sampled indices. ``resample`` will use `warp_affine` using the affine transformation
+                       to extract and resize at once. Use `slice` for efficiency, or `resample` for proper
+                       differentiability.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -842,17 +840,17 @@ class RandomRotation(GeometricAugmentationBase2D):
     .. image:: _static/img/RandomRotation.png
 
     Args:
-        p (float): probability of applying the transformation. Default value is 0.5.
-        degrees (sequence or float or tensor): range of degrees to select from. If degrees is a number the
+        p: probability of applying the transformation.
+        degrees: range of degrees to select from. If degrees is a number the
           range of degrees to select from will be (-degrees, +degrees).
-        resample (int, str or kornia.Resample): Default: Resample.BILINEAR.
-        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
-                                      input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        align_corners(bool): interpolation flag. Default: False.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
+        resample: Default: the interpolation mode.
+        return_transform: if ``True`` return the matrix describing the transformation applied to each
+                          input tensor. If ``False`` and the input is a tuple the applied transformation
+                          wont be concatenated.
+        same_on_batch: apply the same transformation across the batch.
+        align_corners: interpolation flag.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+                 to the batch form (False).
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -943,33 +941,33 @@ class RandomCrop(GeometricAugmentationBase2D):
     .. image:: _static/img/RandomCrop.png
 
     Args:
-        p (float): probability of applying the transformation for the whole batch. Default value is 1.0.
-        size (Tuple[int, int]): Desired output size (out_h, out_w) of the crop.
+        p: probability of applying the transformation for the whole batch.
+        size: Desired output size (out_h, out_w) of the crop.
             Must be Tuple[int, int], then out_h = size[0], out_w = size[1].
-        padding (int or sequence, optional): Optional padding on each border
+        padding: Optional padding on each border
             of the image. Default is None, i.e no padding. If a sequence of length
             4 is provided, it is used to pad left, top, right, bottom borders
             respectively. If a sequence of length 2 is provided, it is used to
             pad left/right, top/bottom borders, respectively.
-        pad_if_needed (boolean): It will pad the image if smaller than the
+        pad_if_needed: It will pad the image if smaller than the
             desired size to avoid raising an exception. Since cropping is done
             after padding, the padding seems to be done at a random offset.
         fill: Pixel fill value for constant fill. Default is 0. If a tuple of
             length 3, it is used to fill R, G, B channels respectively.
-            This value is only used when the padding_mode is constant
-        padding_mode: Type of padding. Should be: constant, edge, reflect or symmetric. Default is constant.
-        resample (int, str or kornia.Resample): Default: Resample.BILINEAR
-        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
-                                      input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
-        align_corners(bool): interpolation flag. Default: True.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
-        cropping_mode (str): The used algorithm to crop. ``slice`` will use advanced slicing to extract the tensor based
-                             on the sampled indices. ``resample`` will use `warp_affine` using the affine transformation
-                             to extract and resize at once. Use `slice` for efficiency, or `resample` for proper
-                             differentiability. Default: `slice`.
+            This value is only used when the padding_mode is constant.
+        padding_mode: Type of padding. Should be: constant, edge, reflect or symmetric.
+        resample: the interpolation mode.
+        return_transform: if ``True`` return the matrix describing the transformation applied to each
+                          input tensor. If ``False`` and the input is a tuple the applied transformation
+                          wont be concatenated.
+        same_on_batch: apply the same transformation across the batch.
+        align_corners: interpolation flag.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+                 to the batch form (False).
+        cropping_mode: The used algorithm to crop. ``slice`` will use advanced slicing to extract the tensor based
+                       on the sampled indices. ``resample`` will use `warp_affine` using the affine transformation
+                       to extract and resize at once. Use `slice` for efficiency, or `resample` for proper
+                       differentiability.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -1175,22 +1173,22 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
     .. image:: _static/img/RandomResizedCrop.png
 
     Args:
-        size (Tuple[int, int]): Desired output size (out_h, out_w) of each edge.
+        size: Desired output size (out_h, out_w) of each edge.
             Must be Tuple[int, int], then out_h = size[0], out_w = size[1].
         scale: range of size of the origin size cropped.
         ratio: range of aspect ratio of the origin aspect ratio cropped.
-        resample (int, str or kornia.Resample): Default: Resample.BILINEAR.
-        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
-                                      input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        align_corners(bool): interpolation flag. Default: False.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
-        cropping_mode (str): The used algorithm to crop. ``slice`` will use advanced slicing to extract the tensor based
-                             on the sampled indices. ``resample`` will use `warp_affine` using the affine transformation
-                             to extract and resize at once. Use `slice` for efficiency, or `resample` for proper
-                             differentiability. Default: `slice`.
+        resample: the interpolation mode.
+        return_transform: if ``True`` return the matrix describing the transformation applied to each
+                          input tensor. If ``False`` and the input is a tuple the applied transformation
+                          wont be concatenated.
+        same_on_batch: apply the same transformation across the batch.
+        align_corners: interpolation flag.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False).
+        cropping_mode: The used algorithm to crop. ``slice`` will use advanced slicing to extract the tensor based
+                       on the sampled indices. ``resample`` will use `warp_affine` using the affine transformation
+                       to extract and resize at once. Use `slice` for efficiency, or `resample` for proper
+                       differentiability.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -1335,11 +1333,11 @@ class Normalize(IntensityAugmentationBase2D):
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 
     Args:
-        mean (torch.Tensor): Mean for each channel.
-        std (torch.Tensor): Standard deviations for each channel.
+        mean: Mean for each channel.
+        std: Standard deviations for each channel.
 
     Return:
-        torch.Tensor: Normalised tensor with same size as input :math:`(*, C, H, W)`.
+        Normalised tensor with same size as input :math:`(*, C, H, W)`.
 
     Examples:
 
@@ -1381,11 +1379,11 @@ class Denormalize(IntensityAugmentationBase2D):
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 
     Args:
-        mean (torch.Tensor): Mean for each channel.
-        std (torch.Tensor): Standard deviations for each channel.
+        mean: Mean for each channel.
+        std: Standard deviations for each channel.
 
     Return:
-        torch.Tensor: Denormalised tensor with same size as input :math:`(*, C, H, W)`.
+        Denormalised tensor with same size as input :math:`(*, C, H, W)`.
 
     Examples:
 
@@ -1424,23 +1422,23 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
     .. image:: _static/img/RandomMotionBlur.png
 
     Args:
-        p (float): probability of applying the transformation. Default value is 0.5.
-        kernel_size (int or Tuple[int, int]): motion kernel size (odd and positive).
+        p: probability of applying the transformation.
+        kernel_size: motion kernel size (odd and positive).
             If int, the kernel will have a fixed size.
             If Tuple[int, int], it will randomly generate the value from the range batch-wisely.
-        angle (float or Tuple[float, float]): angle of the motion blur in degrees (anti-clockwise rotation).
+        angle: angle of the motion blur in degrees (anti-clockwise rotation).
             If float, it will generate the value from (-angle, angle).
-        direction (float or Tuple[float, float]): forward/backward direction of the motion blur.
+        direction: forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
             while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
             uniformly (but still angled) motion blur.
             If float, it will generate the value from (-direction, direction).
             If Tuple[int, int], it will randomly generate the value from the range.
-        border_type (int, str or kornia.BorderType): the padding mode to be applied before convolving.
-            CONSTANT = 0, REFLECT = 1, REPLICATE = 2, CIRCULAR = 3. Default: BorderType.CONSTANT.
-        resample (int, str or kornia.Resample): Default: Resample.NEAREST.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
+        border_type: the padding mode to be applied before convolving.
+            CONSTANT = 0, REFLECT = 1, REPLICATE = 2, CIRCULAR = 3.
+        resample: the interpolation mode.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+                 to the batch form (False).
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -1532,18 +1530,18 @@ class RandomSolarize(IntensityAugmentationBase2D):
     .. image:: _static/img/RandomSolarize.png
 
     Args:
-        p (float): probability of applying the transformation. Default value is 0.5.
-        thresholds (float or tuple): Default value is 0.1.
+        p: probability of applying the transformation.
+        thresholds:
             If float x, threshold will be generated from (0.5 - x, 0.5 + x).
             If tuple (x, y), threshold will be generated from (x, y).
-        additions (float or tuple): Default value is 0.1.
+        additions:
             If float x, addition will be generated from (-x, x).
             If tuple (x, y), addition will be generated from (x, y).
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+        same_on_batch: apply the same transformation across the batch.
+        return_transform: if ``True`` return the matrix describing the transformation applied to each
             input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+                 to the batch form (False).
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -1613,16 +1611,15 @@ class RandomPosterize(IntensityAugmentationBase2D):
     .. image:: _static/img/RandomPosterize.png
 
     Args:
-        p (float): probability of applying the transformation. Default value is 0.5.
-        bits (int or tuple): Integer that ranged from (0, 8], in which 0 gives black image and 8 gives the original.
+        p: probability of applying the transformation.
+        bits: Integer that ranged from (0, 8], in which 0 gives black image and 8 gives the original.
             If int x, bits will be generated from (x, 8).
             If tuple (x, y), bits will be generated from (x, y).
-            Default value is 3.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+        same_on_batch: apply the same transformation across the batch.
+        return_transform: if ``True`` return the matrix describing the transformation applied to each
             input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+                 to the batch form (False).
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -1684,13 +1681,13 @@ class RandomSharpness(IntensityAugmentationBase2D):
     .. image:: _static/img/RandomSharpness.png
 
     Args:
-        p (float): probability of applying the transformation. Default value is 0.5.
-        sharpness (float or tuple): factor of sharpness strength. Must be above 0. Default value is 0.5.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+        p: probability of applying the transformation.
+        sharpness: factor of sharpness strength. Must be above 0.
+        same_on_batch: apply the same transformation across the batch.
+        return_transform: if ``True`` return the matrix describing the transformation applied to each
             input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+                 to the batch form (False).
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -1753,13 +1750,13 @@ class RandomEqualize(IntensityAugmentationBase2D):
     .. image:: _static/img/RandomEqualize.png
 
     Args:
-        p (float): Probability to equalize an image. Default value is 0.5.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
-                                      input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
+        p: Probability to equalize an image.
+        same_on_batch: apply the same transformation across the batch.
+        return_transform: if ``True`` return the matrix describing the transformation applied to each
+                          input tensor. If ``False`` and the input is a tuple the applied transformation
+                          wont be concatenated.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+                 to the batch form (False).
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -1804,15 +1801,14 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
     .. image:: _static/img/RandomGaussianBlur.png
 
     Args:
-        kernel_size (Tuple[int, int]): the size of the kernel.
-        sigma (Tuple[float, float]): the standard deviation of the kernel.
-        border_type (str): the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
-        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+        kernel_size: the size of the kernel.
+        sigma: the standard deviation of the kernel.
+        border_type: the padding mode to be applied before convolving.
+          The expected modes are: ``constant``, ``reflect``, ``replicate`` or ``circular``.
+        return_transform: if ``True`` return the matrix describing the transformation applied to each
             input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        p (float): probability of applying the transformation. Default value is 0.5.
+        same_on_batch: apply the same transformation across the batch.
+        p: probability of applying the transformation.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -1874,12 +1870,12 @@ class RandomInvert(IntensityAugmentationBase2D):
     .. image:: _static/img/RandomInvert.png
 
     Args:
-        max_val (torch.Tensor): The expected maximum value in the input tensor. The shape has to
-          according to the input tensor shape, or at least has to work with broadcasting. Default: 1.0.
-        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+        max_val: The expected maximum value in the input tensor. The shape has to
+          according to the input tensor shape, or at least has to work with broadcasting.
+        return_transform: if ``True`` return the matrix describing the transformation applied to each
             input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        p (float): probability of applying the transformation. Default value is 0.5.
+        same_on_batch: apply the same transformation across the batch.
+        p: probability of applying the transformation.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -1919,10 +1915,10 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
     .. image:: _static/img/RandomChannelShuffle.png
 
     Args:
-        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+        return_transform: if ``True`` return the matrix describing the transformation applied to each
             input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        p (float): probability of applying the transformation. Default value is 0.5.
+        same_on_batch: apply the same transformation across the batch.
+        p: probability of applying the transformation.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -1963,12 +1959,12 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
     .. image:: _static/img/RandomGaussianNoise.png
 
     Args:
-        mean (float): The mean of the gaussian distribution. Default: 0.
-        std (float): The standard deviation of the gaussian distribution. Default: 1.
-        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+        mean: The mean of the gaussian distribution.
+        std: The standard deviation of the gaussian distribution.
+        return_transform: if ``True`` return the matrix describing the transformation applied to each
             input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        p (float): probability of applying the transformation. Default value is 0.5.
+        same_on_batch: apply the same transformation across the batch.
+        p: probability of applying the transformation.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -2011,13 +2007,13 @@ class RandomFisheye(GeometricAugmentationBase2D):
     .. image:: _static/img/RandomFisheye.png
 
     Args:
-        center_x (torch.Tensor): Ranges to sample respect to x-coordinate center with shape (2,).
-        center_y (torch.Tensor): Ranges to sample respect to y-coordinate center with shape (2,).
-        gamma (torch.Tensor): Ranges to sample for the gamma values respect to optical center with shape (2,).
-        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+        center_x: Ranges to sample respect to x-coordinate center with shape (2,).
+        center_y: Ranges to sample respect to y-coordinate center with shape (2,).
+        gamma: Ranges to sample for the gamma values respect to optical center with shape (2,).
+        return_transform: if ``True`` return the matrix describing the transformation applied to each
             input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        p (float): probability of applying the transformation. Default value is 0.5.
+        same_on_batch: apply the same transformation across the batch.
+        p: probability of applying the transformation.
 
     Examples:
         >>> img = torch.ones(1, 1, 2, 2)
@@ -2093,17 +2089,17 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
     .. image:: _static/img/RandomElasticTransform.png
 
     Args:
-        kernel_size (Tuple[int, int]): the size of the Gaussian kernel. Default: (63, 63).
-        sigma (Tuple[float, float]): The standard deviation of the Gaussian in the y and x directions,
-          respecitvely. Larger sigma results in smaller pixel displacements. Default: (32, 32).
-        alpha (Tuple[float, float]): The scaling factor that controls the intensity of the deformation
-          in the y and x directions, respectively. Default: 1.
-        align_corners (bool): Interpolation flag used by `grid_sample`. Default: False.
-        mode (str): Interpolation mode used by `grid_sample`. Either 'bilinear' or 'nearest'. Default: 'bilinear'.
-        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+        kernel_size: the size of the Gaussian kernel.
+        sigma: The standard deviation of the Gaussian in the y and x directions,
+          respecitvely. Larger sigma results in smaller pixel displacements.
+        alpha: The scaling factor that controls the intensity of the deformation
+          in the y and x directions, respectively.
+        align_corners: Interpolation flag used by `grid_sample`.
+        mode: Interpolation mode used by `grid_sample`. Either 'bilinear' or 'nearest'.
+        return_transform: if ``True`` return the matrix describing the transformation applied to each
             input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        p (float): probability of applying the transformation. Default value is 0.5.
+        same_on_batch: apply the same transformation across the batch.
+        p: probability of applying the transformation.
 
     Examples:
         >>> img = torch.ones(1, 1, 2, 2)
@@ -2156,13 +2152,13 @@ class RandomThinPlateSpline(GeometricAugmentationBase2D):
     .. image:: _static/img/RandomThinPlateSpline.png
 
     Args:
-        scale (float): the scale factor to apply to the destionation points. Default: 0.2.
-        align_corners (bool): Interpolation flag used by `grid_sample`. Default: False.
-        mode (str): Interpolation mode used by `grid_sample`. Either 'bilinear' or 'nearest'. Default: 'bilinear'.
-        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+        scale: the scale factor to apply to the destionation points.
+        align_corners: Interpolation flag used by ``grid_sample``.
+        mode: Interpolation mode used by `grid_sample`. Either 'bilinear' or 'nearest'.
+        return_transform: if ``True`` return the matrix describing the transformation applied to each
             input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        p (float): probability of applying the transformation. Default value is 0.5.
+        same_on_batch: apply the same transformation across the batch.
+        p: probability of applying the transformation.
 
     Examples:
         >>> img = torch.ones(1, 1, 2, 2)
@@ -2212,15 +2208,14 @@ class RandomBoxBlur(GeometricAugmentationBase2D):
     .. image:: _static/img/RandomBoxBlur.png
 
     Args:
-        kernel_size (Tuple[int, int]): the blurring kernel size.
-        border_type (str): the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
-        normalized (bool): if True, L1 norm of the kernel is set to 1.
-        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+        kernel_size: the blurring kernel size.
+        border_type: the padding mode to be applied before convolving.
+          The expected modes are: ``constant``, ``reflect``, ``replicate`` or ``circular``.
+        normalized: if True, L1 norm of the kernel is set to 1.
+        return_transform: if ``True`` return the matrix describing the transformation applied to each
             input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        p (float): probability of applying the transformation. Default value is 0.5.
+        same_on_batch (bool): apply the same transformation across the batch.
+        p: probability of applying the transformation.
 
     Examples:
         >>> img = torch.ones(1, 1, 24, 24)

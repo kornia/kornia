@@ -7,3 +7,6 @@ matplotlib
 sphinx >=2.1, <3
 sphinx_rtd_theme>0.5
 sphinxcontrib-bibtex
+sphinx_autodoc_typehints
+sphinx_copybutton
+sphinx_autodoc_defaultargs
