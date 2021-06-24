@@ -4,9 +4,10 @@ torchvision
 opencv-python
 matplotlib
 # sphinx
-sphinx >=2.1, <3
+sphinx>=4.0
 sphinx_rtd_theme>0.5
 sphinxcontrib-bibtex
-sphinx_autodoc_typehints
-# sphinx_copybutton>=0.3
-sphinx_autodoc_defaultargs
+sphinx-autodoc-typehints>=1.0
+sphinx-copybutton>=0.3
+sphinx-autodoc-defaultargs
+PyYAML>=5.1,<=5.4.1
