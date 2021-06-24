@@ -4,7 +4,7 @@ import torch.nn as nn
 
 def rgb_to_ycbcr(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an RGB image to YCbCr.
-    
+
     .. image:: _static/img/rgb_to_ycbcr.png
 
     Args:

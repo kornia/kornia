@@ -6,7 +6,7 @@ import torch.nn as nn
 
 def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
     r"""Convert an image from RGB to HSV.
-    
+
     .. image:: _static/img/rgb_to_hsv.png
 
     The image data is assumed to be in the range of (0, 1).

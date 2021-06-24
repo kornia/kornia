@@ -6,7 +6,7 @@ import torch.nn as nn
 
 def rgb_to_hls(image: torch.Tensor) -> torch.Tensor:
     r"""Convert a RGB image to HLS.
-    
+
     .. image:: _static/img/rgb_to_hls.png
 
     The image data is assumed to be in the range of (0, 1).
@@ -138,7 +138,7 @@ class HlsToRgb(nn.Module):
     The image data is assumed to be in the range of (0, 1).
 
     Returns:
-    	RGB version of the image.
+        RGB version of the image.
 
     Shape:
         - input: :math:`(*, 3, H, W)`

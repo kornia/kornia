@@ -4,7 +4,7 @@ import torch.nn as nn
 
 def rgb_to_yuv(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an RGB image to YUV.
-    
+
     .. image:: _static/img/rgb_to_yuv.png
 
     The image data is assumed to be in the range of (0, 1).

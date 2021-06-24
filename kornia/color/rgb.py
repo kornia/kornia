@@ -6,7 +6,7 @@ import torch.nn as nn
 
 def rgb_to_bgr(image: torch.Tensor) -> torch.Tensor:
     r"""Convert a RGB image to BGR.
-    
+
     .. image:: _static/img/rgb_to_bgr.png
 
     Args:
@@ -177,7 +177,7 @@ def rgba_to_bgr(image: torch.Tensor) -> torch.Tensor:
 
 def rgb_to_linear_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an sRGB image to linear RGB. Used in colorspace conversions.
-    
+
     .. image:: _static/img/rgb_to_linear_rgb.png
 
     Args:

@@ -10,7 +10,7 @@ def rgb_to_grayscale(
     image: torch.Tensor, rgb_weights: torch.Tensor = torch.tensor([0.299, 0.587, 0.114])
 ) -> torch.Tensor:
     r"""Convert a RGB image to grayscale version of image.
-    
+
     .. image:: _static/img/rgb_to_grayscale.png
 
     The image data is assumed to be in the range of (0, 1).

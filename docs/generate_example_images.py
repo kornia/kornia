@@ -121,7 +121,7 @@ def main():
         "rgb_to_hls": ((), 1),
         "rgb_to_luv": ((), 1),
         "rgb_to_lab": ((), 1),
-        #"rgb_to_rgba": ((1.,), 1),
+        # "rgb_to_rgba": ((1.,), 1),
         "rgb_to_xyz": ((), 1),
         "rgb_to_ycbcr": ((), 1),
         "rgb_to_yuv": ((), 1),

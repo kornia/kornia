@@ -16,7 +16,7 @@ https://github.com/scikit-image/scikit-image/blob/a48bf6774718c64dade4548153ae16
 
 def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     r"""Converts a RGB image to Luv.
-    
+
     .. image:: _static/img/rgb_to_luv.png
 
     The image data is assumed to be in the range of :math:`[0, 1]`. Luv

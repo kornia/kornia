@@ -4,7 +4,7 @@ import torch.nn as nn
 
 def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
     r"""Converts a RGB image to XYZ.
-    
+
     .. image:: _static/img/rgb_to_xyz.png
 
     Args:

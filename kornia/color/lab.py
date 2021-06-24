@@ -14,7 +14,7 @@ https://github.com/scikit-image/scikit-image/blob/a48bf6774718c64dade4548153ae16
 
 def rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
     r"""Converts a RGB image to Lab.
-    
+
     .. image:: _static/img/rgb_to_lab.png
 
     The image data is assumed to be in the range of :math:`[0, 1]`. Lab
