@@ -1,4 +1,5 @@
-from typing import cast, Tuple, Union, Optional
+from typing import cast, Tuple, Dict, Union, Optional
+from collections import OrderedDict
 
 import torch
 import torch.nn as nn
@@ -63,6 +64,11 @@ class VideoSequential(ImageSequential):
         torch.Size([2, 3, 4, 5, 6])
         >>> (output[0, :, 0] == output[0, :, 1]).all()
         tensor(False)
+
+        Reproduce with provided params.
+        >>> out2 = aug_list(input, params=aug_list._params)
+        >>> torch.equal(output[0], out2[0])
+        True
     """
 
     def __init__(
@@ -117,9 +123,16 @@ class VideoSequential(ImageSequential):
             pass
         return input
 
-    def forward(self, input: torch.Tensor) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:  # type: ignore
+    def forward(  # type: ignore
+        self,
+        input: torch.Tensor,
+        params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None,
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """Define the video computation performed."""
+        if params is None:
+            params = OrderedDict()
         assert len(input.shape) == 5, f"Input must be a 5-dim tensor. Got {input.shape}."
+
         # Size of T
         frame_num = input.size(self._temporal_channel)
         # Got param generation shape to (B, C, H, W). Ignoring T.
@@ -129,18 +142,18 @@ class VideoSequential(ImageSequential):
         if not self.same_on_frame:
             # Overwrite param generation shape to (B * T, C, H, W).
             batch_shape = input.shape
-        for aug in self._select_arglist():
-            if isinstance(aug, _AugmentationBase):
-                param = aug.forward_parameters(batch_shape)
+
+        for name, module in self.get_forward_sequence(params):
+            param = params[name] if name in params else None
+            if param is None and isinstance(module, _AugmentationBase):
+                param = module.forward_parameters(batch_shape)
                 if self.same_on_frame:
                     for k, v in param.items():
                         # TODO: revise colorjitter order param in the future to align the standard.
-                        if not (k == "order" and isinstance(aug, kornia.augmentation.ColorJitter)):
+                        if not (k == "order" and isinstance(module, kornia.augmentation.ColorJitter)):
                             param.update({k: self.__repeat_param_across_channels__(v, frame_num)})
-            else:
-                param = None
 
-            input = self.apply_to_input(input, aug, param=param)  # type: ignore
+            input = self.apply_to_input(input, name, module, param=param)  # type: ignore
 
         if isinstance(input, (tuple, list)):
             input[0] = self._input_shape_convert_back(input[0], frame_num)

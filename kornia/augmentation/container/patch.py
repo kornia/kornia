@@ -201,6 +201,7 @@ class PatchSequential(ImageSequential):
             restored_tensor = torch.nn.functional.pad(restored_tensor, [-i for i in pad])
         return restored_tensor
 
+    # TODO: Update this.
     def forward_patchwise(
         self, input: torch.Tensor, params: Optional[List[Optional[Dict[str, Dict[str, torch.Tensor]]]]] = None
     ) -> torch.Tensor:  # NOTE: return_transform is always False here.
@@ -226,8 +227,7 @@ class PatchSequential(ImageSequential):
 
         if params is None:
             params = {}
-            for aug in self.children():
-                func_name = aug.__class__.__name__
+            for name, aug in self.get_forward_sequence(params):
                 if isinstance(aug, _AugmentationBase):
                     aug.same_on_batch = False
                     param = aug.forward_parameters(batch_shape)
@@ -239,7 +239,7 @@ class PatchSequential(ImageSequential):
                     aug.same_on_batch = True
                 else:
                     param = None
-                params.update({func_name: param})
+                params.update({name: param})
 
         input = super().forward(input.view(-1, *input.shape[-3:]), params)  # type: ignore
 

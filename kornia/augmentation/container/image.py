@@ -1,4 +1,5 @@
-from typing import Dict, Optional, Tuple, List, Union
+from typing import Dict, Iterator, Optional, Tuple, List, Union
+from collections import OrderedDict
 
 import torch
 import torch.nn as nn
@@ -65,11 +66,12 @@ class ImageSequential(nn.Sequential):
         keepdim: Optional[bool] = None,
         random_apply: Optional[Union[int, Tuple[int, int]]] = None,
     ) -> None:
-        super(ImageSequential, self).__init__(*args)
         self.same_on_batch = same_on_batch
         self.return_transform = return_transform
         self.keepdim = keepdim
-        for arg in args:
+        # To name the modules properly
+        _args = OrderedDict()
+        for idx, arg in enumerate(args):
             if not isinstance(arg, nn.Module):
                 raise NotImplementedError(f"Only nn.Module are supported at this moment. Got {arg}.")
             if isinstance(arg, _AugmentationBase):
@@ -79,7 +81,11 @@ class ImageSequential(nn.Sequential):
                     arg.return_transform = return_transform
                 if keepdim is not None:
                     arg.keepdim = keepdim
-        self._params: Dict[str, Dict[str, torch.Tensor]] = {}
+            _args.update({f"{arg.__class__.__name__}_{idx}": arg})
+        super(ImageSequential, self).__init__(_args)
+
+        self._params: Dict[str, Dict[str, torch.Tensor]] = OrderedDict()
+        self.random_apply: Optional[Tuple[int, int]]
         if random_apply is not None:
             if isinstance(random_apply, (int,)):
                 self.random_apply = (random_apply, random_apply + 1)
@@ -89,43 +95,60 @@ class ImageSequential(nn.Sequential):
                 isinstance(self.random_apply[0], (int,)) and isinstance(self.random_apply[0], (int,)), \
                 f"Expect a tuple of (int, int). Got {self.random_apply}."
             self._uniform = torch.distributions.Uniform(0., 1.)
-
-    def _select_arglist(self):
-        if self.random_apply is not None:
-            indicies = self._generate_random_indicies()
-            return self._select_arglist_by_indicies(indicies)
         else:
-            return self.children()
+            self.random_apply = None
 
-    def _select_arglist_by_indicies(self, indicies: torch.Tensor) -> List[nn.Module]:
-        for idx in indicies:
-            yield self.get_submodule(str(idx.item()))
-
-    def _generate_random_indicies(self)-> torch.Tensor:
+    def _get_child_sequence(self) -> Iterator[Tuple[str, nn.Module]]:
         if self.random_apply is not None:
             probs = self._uniform.rsample((len(self),))
-            return torch.topk(probs, torch.randint(*self.random_apply, (1,)).item())
-        return torch.arange(0, len(self))
+            indicies = torch.topk(probs, int(torch.randint(*self.random_apply, (1,)).item()))[1]
+            return self._get_children_by_indicies(indicies)
+        else:
+            return self.named_children()
+
+    def _get_children_by_indicies(self, indicies: torch.Tensor) -> Iterator[Tuple[str, nn.Module]]:
+        for idx, named_child in enumerate(self.named_children()):
+            if idx in indicies:
+                yield named_child
+
+    def _get_children_by_module_names(self, names: List[str]) -> Iterator[Tuple[str, nn.Module]]:
+        for name, module in self.named_children():
+            if name in names:
+                yield (name, module)
+
+    def get_forward_sequence(
+        self, params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None
+    ) -> Iterator[Tuple[str, nn.Module]]:
+        if params is None:
+            named_modules = self._get_child_sequence()
+        else:
+            named_modules = self._get_children_by_module_names(list(params.keys()))
+        return named_modules
 
     def apply_to_input(
         self,
         input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
-        module: nn.Module,
+        module_name: str,
+        module: Optional[nn.Module] = None,
         param: Optional[Dict[str, torch.Tensor]] = None,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-        func_name = module.__class__.__name__
+        if module is None:
+            module = self.get_submodule(module_name)
         if isinstance(module, _AugmentationBase) and param is None:
             input = module(input)
-            self._params.update({func_name: module._params})
+            self._params.update({module_name: module._params})
         elif isinstance(module, _AugmentationBase) and param is not None:
             input = module(input, param)
-            self._params.update({func_name: param})
+            self._params.update({module_name: param})
         else:
+            assert param == {} or param is None, \
+                f"Non-augmentaion operation {module_name} require empty parameters. Got {module}."
             # In case of return_transform = True
             if isinstance(input, (tuple, list)):
                 input = (module(input[0]), input[1])
             else:
                 input = module(input)
+            self._params.update({module_name: {}})
         return input
 
     def forward(
@@ -135,9 +158,8 @@ class ImageSequential(nn.Sequential):
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         if params is None:
             params = {}
-        self._params = {}
-        for module in self._select_arglist():
-            func_name = module.__class__.__name__
-            param = params[func_name] if func_name in params else None
-            input = self.apply_to_input(input, module, param)  # type: ignore
+        self._params = OrderedDict()
+        for name, module in self.get_forward_sequence(params):
+            param = params[name] if name in params else None
+            input = self.apply_to_input(input, name, module, param=param)  # type: ignore
         return input

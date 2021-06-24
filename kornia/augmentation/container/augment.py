@@ -1,5 +1,6 @@
 import warnings
 from typing import cast, Dict, List, Optional, Tuple, Union
+from collections import OrderedDict
 
 import torch
 import torch.nn as nn
@@ -126,12 +127,15 @@ class AugmentationSequential(ImageSequential):
     def apply_by_key(
         self,
         input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
-        module: nn.Module,
+        module_name: str,
+        module: Optional[nn.Module] = None,
         param: Optional[Dict[str, torch.Tensor]] = None,
         dcate: Union[str, int, DataKey] = DataKey.INPUT,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        if module is None:
+            module = self.get_submodule(module_name)
         if DataKey.get(dcate) in [DataKey.INPUT]:
-            return self.apply_to_input(input, module, param)
+            return self.apply_to_input(input, module_name, module, param)
         if DataKey.get(dcate) in [DataKey.MASK]:
             if isinstance(input, (tuple,)):
                 return (self.apply_to_mask(input[0], module, param), *input[1:])
@@ -214,18 +218,17 @@ class AugmentationSequential(ImageSequential):
         assert len(args) == len(data_keys), (
             "The number of inputs must align with the number of data_keys, " f"Got {len(args)} and {len(data_keys)}."
         )
-        self._params = {}
-        params = params if params is not None else {}
+        if params is None:
+            params = OrderedDict()
 
         outputs = []
         for input, dcate in zip(args, data_keys):
-            for module in list(self.children())[::-1]:
+            for name, module in list(self.get_forward_sequence(params))[::-1]:
                 if isinstance(module, _AugmentationBase):
-                    func_name = module.__class__.__name__
                     # Check if a param recorded
-                    param = self._params[func_name] if func_name in self._params else None
+                    param = self._params[name] if name in self._params else None
                     # Check if a param provided. If provided, it will overwrite the recorded ones.
-                    param = params[func_name] if func_name in params else param
+                    param = params[name] if name in params else param
                 else:
                     param = None
                 if isinstance(module, GeometricAugmentationBase2D) and dcate in DataKey:
@@ -254,8 +257,13 @@ class AugmentationSequential(ImageSequential):
     ]:
         """Compute multiple tensors simultaneously according to ``self.data_keys``."""
         if data_keys is None:
-            self._params = {}
             data_keys = cast(List[Union[str, int, DataKey]], self.data_keys)
+
+        if params is None:
+            params = OrderedDict()
+            named_modules = self._get_child_sequence()
+        else:
+            named_modules = self._get_children_by_module_names(list(params.keys()))
 
         assert len(args) == len(
             data_keys
@@ -263,22 +271,16 @@ class AugmentationSequential(ImageSequential):
         params = params if params is not None else {}
 
         outputs = []
+        self._params = OrderedDict()
         for input, dcate in zip(args, data_keys):
-            for module in self.children():
-                if isinstance(module, (ImageSequential,)):
-                    # Avoid same naming for sequential
-                    func_name = f"{module.__class__.__name__}-{hex(id(module))}"
-                else:
-                    func_name = module.__class__.__name__
-                # Check if a param recorded
-                param = self._params[func_name] if func_name in self._params else None
-                # Check if a param provided. If provided, it will overwrite the recorded ones.
-                param = params[func_name] if func_name in params else param
+            for name, module in named_modules:
+                # Check if a param provided.
+                param = params[name] if name in params else None
 
                 if dcate == DataKey.INPUT:
-                    input = self.apply_to_input(input, module, param)
+                    input = self.apply_to_input(input, name, module, param)
                 elif isinstance(module, GeometricAugmentationBase2D) and dcate in DataKey:
-                    input = self.apply_by_key(input, module, param, dcate)
+                    input = self.apply_by_key(input, name, module, param, dcate)
                 elif isinstance(module, IntensityAugmentationBase2D) and dcate in DataKey:
                     pass  # Do nothing
                 elif isinstance(module, PatchSequential) and module.is_intensity_only() and dcate in DataKey:
