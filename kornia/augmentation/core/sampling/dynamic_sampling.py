@@ -73,7 +73,7 @@ class DynamicSampling(nn.Module):
 
     def _apply(self, fn):
         out = super()._apply(fn)
-        self.dist = self.reconstruct_sampler()
+        self.dist = self.construct_sampler()
         return out
 
     def float(self):
@@ -188,8 +188,8 @@ class DynamicGaussian(DynamicSampling):
         super().__init__(transform, validate_args, freeze_dtype=freeze_dtype)
         self.dynamic_register('_loc', loc)
         self.dynamic_register('_scale', scale)
-        self.construct()
         self.eps = eps
+        self.construct()
 
     def construct_sampler(self) -> Distribution:
         """When .cuda(), .cpu(), .double() is called, the sampler will need to be resampled."""
