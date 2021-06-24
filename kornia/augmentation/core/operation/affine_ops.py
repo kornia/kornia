@@ -4,16 +4,13 @@ import torch
 from torch.autograd import Function
 
 from kornia.augmentation.core.sampling import DynamicSampling
-from kornia.geometry.transform import affine
 from kornia.constants import BorderType, Resample, SamplePadding
+from kornia.geometry.transform import affine
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_shear_matrix, _compute_tensor_center
 
 from .base import GeometricAugmentOperation
 
-__all__ = [
-    "ShearAugment",
-    "RotationAugment",
-]
+__all__ = ["ShearAugment", "RotationAugment"]
 
 
 class ShearAugment(GeometricAugmentOperation):
@@ -152,7 +149,7 @@ class RotationAugment(GeometricAugmentOperation):
 
     def __init__(
         self,
-        rot_sampler: Union[Tuple[float, float], DynamicSampling] = (-180., 180.),
+        rot_sampler: Union[Tuple[float, float], DynamicSampling] = (-180.0, 180.0),
         gradient_estimator: Optional[Function] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         padding_mode: Union[str, int, SamplePadding] = SamplePadding.ZEROS.name,

@@ -1,31 +1,18 @@
-from typing import Callable, List, Optional, Tuple, Union
 from functools import partial
+from typing import Callable, List, Optional, Tuple, Union
 
 import torch
 from torch.autograd import Function
+from torch.autograd.grad_mode import F
 
 from kornia.augmentation.core.gradient_estimator import STEFunction
 from kornia.augmentation.core.sampling import DynamicSampling
-from kornia.enhance import (
-    adjust_brightness,
-    adjust_contrast,
-    adjust_hue,
-    adjust_saturation,
-    equalize,
-)
 from kornia.constants import pi
-from torch.autograd.grad_mode import F
+from kornia.enhance import adjust_brightness, adjust_contrast, adjust_hue, adjust_saturation, equalize
 
 from .base import IntensityAugmentOperation, Parameters
 
-__all__ = [
-    "BrightnessAugment",
-    "ColorJitter",
-    "ContrastAugment",
-    "EqualizeAugment",
-    "HueAugment",
-    "SaturationAugment",
-]
+__all__ = ["BrightnessAugment", "ColorJitter", "ContrastAugment", "EqualizeAugment", "HueAugment", "SaturationAugment"]
 
 
 class EqualizeAugment(IntensityAugmentOperation):
@@ -280,10 +267,10 @@ class ColorJitter(IntensityAugmentOperation):
 
     def __init__(
         self,
-        brightness_sampler: Union[Tuple[float, float], DynamicSampling] = (1., 1.),
-        contrast_sampler: Union[Tuple[float, float], DynamicSampling] = (0., 0.),
-        saturation_sampler: Union[Tuple[float, float], DynamicSampling] = (0., 0.),
-        hue_sampler: Union[Tuple[float, float], DynamicSampling] = (0., 0.),
+        brightness_sampler: Union[Tuple[float, float], DynamicSampling] = (1.0, 1.0),
+        contrast_sampler: Union[Tuple[float, float], DynamicSampling] = (0.0, 0.0),
+        saturation_sampler: Union[Tuple[float, float], DynamicSampling] = (0.0, 0.0),
+        hue_sampler: Union[Tuple[float, float], DynamicSampling] = (0.0, 0.0),
         gradient_estimator: Optional[Function] = None,
         p: float = 0.5,
         same_on_batch: bool = False,

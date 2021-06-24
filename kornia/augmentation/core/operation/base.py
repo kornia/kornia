@@ -1,5 +1,5 @@
-from typing import Callable, List, NamedTuple, Optional, Tuple, Union
 from functools import partial
+from typing import Callable, List, NamedTuple, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -43,8 +43,7 @@ class AugmentOperation(nn.Module):
 
     def distribution_entropy(self, reduce: Optional[str] = None) -> Union[torch.Tensor, List[torch.Tensor]]:
         if self.sampler_list is None:
-            raise NotImplementedError(
-                f"This method is invalid since `sampler_list` is passed as None.")
+            raise NotImplementedError(f"This method is invalid since `sampler_list` is passed as None.")
         dists = [dist.entropy() for dist in self.sampler_list]
         if reduce is None:
             return dists
@@ -68,8 +67,7 @@ class AugmentOperation(nn.Module):
     def get_param_magnitudes(self, input: torch.Tensor) -> List[torch.Tensor]:
         """Parameter sampling methods."""
         if self.sampler_list is None:
-            raise NotImplementedError(
-                f"This method may need to be overrided since `sampler_list` is passed as None.")
+            raise NotImplementedError(f"This method may need to be overrided since `sampler_list` is passed as None.")
         batch_shape = input.shape
         mags: List[torch.Tensor] = []
         mags = [dist.rsample(batch_shape[:1], self.same_on_batch) for dist in self.sampler_list]

@@ -2,9 +2,9 @@ from typing import Any, Optional, Union
 
 import torch
 import torch.nn as nn
+from torch.distributions import Distribution, Normal, RelaxedBernoulli, Uniform
 from torch.distributions.transformed_distribution import TransformedDistribution
 from torch.distributions.transforms import Transform
-from torch.distributions import Distribution, Normal, RelaxedBernoulli, Uniform
 
 __all__ = ["DynamicSampling", "DynamicUniform", "DynamicGaussian", "DynamicBernoulli"]
 
@@ -20,8 +20,11 @@ class DynamicSampling(nn.Module):
     """
 
     def __init__(
-        self, transform: Optional[Transform] = None, validate_args: Optional[bool] = None,
-        if_rsample: bool = True, freeze_dtype: bool = False
+        self,
+        transform: Optional[Transform] = None,
+        validate_args: Optional[bool] = None,
+        if_rsample: bool = True,
+        freeze_dtype: bool = False,
     ) -> None:
         super().__init__()
         self.transform = transform
@@ -194,8 +197,10 @@ class DynamicGaussian(DynamicSampling):
     def construct_sampler(self) -> Distribution:
         """When .cuda(), .cpu(), .double() is called, the sampler will need to be resampled."""
         return Normal(
-            self._loc, torch.maximum(self._scale, self._scale * 0. + self.eps),  # type: ignore
-            validate_args=self.validate_args)
+            self._loc,
+            torch.maximum(self._scale, self._scale * 0.0 + self.eps),  # type: ignore
+            validate_args=self.validate_args,
+        )
 
 
 class DynamicBernoulli(DynamicSampling):

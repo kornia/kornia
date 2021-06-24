@@ -4,20 +4,12 @@ import torch
 from torch.autograd import Function
 
 from kornia.augmentation.core.sampling import DynamicSampling, DynamicUniform
-from kornia.geometry.transform import (
-    bbox_generator,
-    crop_by_transform_mat,
-    get_perspective_transform,
-    warp_perspective
-)
 from kornia.constants import Resample
+from kornia.geometry.transform import bbox_generator, crop_by_transform_mat, get_perspective_transform, warp_perspective
 
-from .base import PerspectiveAugmentOperation, Parameters
+from .base import Parameters, PerspectiveAugmentOperation
 
-__all__ = [
-    "PerspectiveAugment",
-    "CropAugment",
-]
+__all__ = ["PerspectiveAugment", "CropAugment"]
 
 
 class PerspectiveAugment(PerspectiveAugmentOperation):
@@ -103,8 +95,13 @@ class PerspectiveAugment(PerspectiveAugmentOperation):
     def apply_transform(self, input: torch.Tensor, transform: torch.Tensor) -> torch.Tensor:
         _, _, height, width = input.shape
         out_data = warp_perspective(
-            input, transform, (height, width), mode=self.resample,
-            padding_mode='zeros', align_corners=self.align_corners)
+            input,
+            transform,
+            (height, width),
+            mode=self.resample,
+            padding_mode='zeros',
+            align_corners=self.align_corners,
+        )
         return out_data
 
 
