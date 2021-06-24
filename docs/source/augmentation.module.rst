@@ -8,7 +8,6 @@ Set of operators to perform data augmentation on 2D image tensors.
 
 .. autoclass:: CenterCrop
 .. autoclass:: ColorJitter
-.. autoclass:: GaussianBlur
 .. autoclass:: RandomAffine
 .. autoclass:: RandomBoxBlur
 .. autoclass:: RandomCrop
@@ -19,6 +18,7 @@ Set of operators to perform data augmentation on 2D image tensors.
 .. autoclass:: RandomEqualize
 .. autoclass:: RandomFisheye
 .. autoclass:: RandomGrayscale
+.. autoclass:: RandomGaussianBlur
 .. autoclass:: RandomGaussianNoise
 .. autoclass:: RandomHorizontalFlip
 .. autoclass:: RandomInvert
