@@ -14,15 +14,17 @@ https://github.com/scikit-image/scikit-image/blob/a48bf6774718c64dade4548153ae16
 
 def rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
     r"""Converts a RGB image to Lab.
+    
+    .. image:: _static/img/rgb_to_lab.png
 
     The image data is assumed to be in the range of :math:`[0, 1]`. Lab
     color is computed using the D65 illuminant and Observer 2.
 
     Args:
-        image (torch.Tensor): RGB Image to be converted to Lab with shape :math:`(*, 3, H, W)`.
+        image: RGB Image to be converted to Lab with shape :math:`(*, 3, H, W)`.
 
     Returns:
-        torch.Tensor: Lab version of the image with shape :math:`(*, 3, H, W)`.
+        Lab version of the image with shape :math:`(*, 3, H, W)`.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -65,11 +67,11 @@ def lab_to_rgb(image: torch.Tensor, clip: bool = True) -> torch.Tensor:
     r"""Converts a Lab image to RGB.
 
     Args:
-        image (torch.Tensor): Lab image to be converted to RGB with shape :math:`(*, 3, H, W)`.
-        clip (bool): Whether to apply clipping to insure output RGB values in range :math:`[0, 1]`. Default is True
+        image: Lab image to be converted to RGB with shape :math:`(*, 3, H, W)`.
+        clip: Whether to apply clipping to insure output RGB values in range :math:`[0, 1]`.
 
     Returns:
-        torch.Tensor: Lab version of the image with shape :math:`(*, 3, H, W)`.
+        Lab version of the image with shape :math:`(*, 3, H, W)`.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -125,7 +127,7 @@ class RgbToLab(nn.Module):
     color is computed using the D65 illuminant and Observer 2.
 
     Returns:
-        torch.Tensor: Lab version of the image.
+        Lab version of the image.
 
     Shape:
         - image: :math:`(*, 3, H, W)`
@@ -152,7 +154,7 @@ class LabToRgb(nn.Module):
     r"""Converts an image from Lab to RGB.
 
     Returns:
-        torch.Tensor: RGB version of the image. Range may not be in :math:`[0, 1]`.
+        RGB version of the image. Range may not be in :math:`[0, 1]`.
 
     Shape:
         - image: :math:`(*, 3, H, W)`

@@ -29,9 +29,7 @@ def read_img_from_url(url: str, resize_to: Optional[Tuple[int, int]] = None) -> 
 
 
 def main():
-
-    mod = importlib.import_module("kornia.augmentation")
-
+    # load the images
     BASE_IMAGE_URL: str = "https://raw.githubusercontent.com/kornia/data/main/panda.jpg"
     BASE_IMAGE_URL2: str = "https://raw.githubusercontent.com/kornia/data/main/simba.png"
     OUTPUT_PATH = Path(__file__).absolute().parent / "source/_static/img"
@@ -44,6 +42,7 @@ def main():
     # Dictionary containing the transforms to generate the sample images:
     # Key: Name of the transform class.
     # Value: (parameters, num_samples, seed)
+    mod = importlib.import_module("kornia.augmentation")
     augmentations_list: dict = {
         "CenterCrop": ((96, 96), 1, 2018),
         "ColorJitter": ((0.3, 0.3, 0.3, 0.3), 2, 2018),
@@ -92,6 +91,7 @@ def main():
         sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
         print(f"Generated image example for {aug_name}. {sig}")
 
+    mod = importlib.import_module("kornia.augmentation")
     mix_augmentations_list: dict = {
         "RandomMixUp": (((0.3, 0.4),), 2, 20),
         "RandomCutMix": ((img.shape[-2], img.shape[-1]), 2, 2019),
@@ -112,6 +112,33 @@ def main():
         cv2.imwrite(str(OUTPUT_PATH / f"{aug_name}.png"), out_np)
         sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
         print(f"Generated image example for {aug_name}. {sig}")
+
+    mod = importlib.import_module("kornia.color")
+    color_transforms_list: dict = {
+        "rgb_to_bgr": ((), 1),
+        "rgb_to_grayscale": ((), 1),
+        "rgb_to_hsv": ((), 1),
+        "rgb_to_hls": ((), 1),
+        "rgb_to_luv": ((), 1),
+        "rgb_to_lab": ((), 1),
+        #"rgb_to_rgba": ((1.,), 1),
+        "rgb_to_xyz": ((), 1),
+        "rgb_to_ycbcr": ((), 1),
+        "rgb_to_yuv": ((), 1),
+        "rgb_to_linear_rgb": ((), 1),
+    }
+    # ITERATE OVER THE TRANSFORMS
+    for fn_name, (args, num_samples) in color_transforms_list.items():
+        fn = getattr(mod, fn_name)
+        out = fn(img2, *args)
+        # save the output image
+        if out.shape[1] != 3:
+            out = out.repeat(1, 3, 1, 1)
+        out = torch.cat([img2[0], *[out[i] for i in range(out.size(0))]], dim=-1)
+        out_np = K.utils.tensor_to_image((out * 255.0).byte())
+        cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
+        sig = f"{fn_name}({', '.join([str(a) for a in args])})"
+        print(f"Generated image example for {fn_name}. {sig}")
 
 
 if __name__ == "__main__":

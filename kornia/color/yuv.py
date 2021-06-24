@@ -4,14 +4,16 @@ import torch.nn as nn
 
 def rgb_to_yuv(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an RGB image to YUV.
+    
+    .. image:: _static/img/rgb_to_yuv.png
 
     The image data is assumed to be in the range of (0, 1).
 
     Args:
-        image (torch.Tensor): RGB Image to be converted to YUV with shape :math:`(*, 3, H, W)`.
+        image: RGB Image to be converted to YUV with shape :math:`(*, 3, H, W)`.
 
     Returns:
-        torch.Tensor: YUV version of the image with shape :math:`(*, 3, H, W)`.
+        YUV version of the image with shape :math:`(*, 3, H, W)`.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -42,10 +44,10 @@ def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     The image data is assumed to be in the range of (0, 1).
 
     Args:
-        image (torch.Tensor): YUV Image to be converted to RGB with shape :math:`(*, 3, H, W)`.
+        image: YUV Image to be converted to RGB with shape :math:`(*, 3, H, W)`.
 
     Returns:
-        torch.Tensor: RGB version of the image with shape :math:`(*, 3, H, W)`.
+        RGB version of the image with shape :math:`(*, 3, H, W)`.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -76,7 +78,7 @@ class RgbToYuv(nn.Module):
     The image data is assumed to be in the range of (0, 1).
 
     Returns:
-        torch.Tensor: YUV version of the image.
+        YUV version of the image.
 
     Shape:
         - image: :math:`(*, 3, H, W)`
@@ -101,7 +103,7 @@ class YuvToRgb(nn.Module):
     The image data is assumed to be in the range of (0, 1).
 
     Returns:
-        torch.Tensor: RGB version of the image.
+        RGB version of the image.
 
     Shape:
         - image: :math:`(*, 3, H, W)`
