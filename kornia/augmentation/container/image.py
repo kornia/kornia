@@ -1,9 +1,13 @@
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple, List, Union
 
 import torch
 import torch.nn as nn
 
 from kornia.augmentation.base import _AugmentationBase
+
+__all__ = [
+    "ImageSequential"
+]
 
 
 class ImageSequential(nn.Sequential):
@@ -17,6 +21,11 @@ class ImageSequential(nn.Sequential):
             applied to each. If None, it will not overwrite the function-wise settings. Default: None.
         keepdim (bool, optional): whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False). If None, it will not overwrite the function-wise settings. Default: None.
+        random_apply(int, (int, int), optional): randomly select a sublist (order agnostic) of args to
+            apply transformation.
+            If int, a fixed number of transformations will be selected.
+            If (a, b), x number of transformations (a <= x <= b) will be selected.
+            If None, the whole list of args will be processed as a sequence.
 
     Returns:
         Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]: the tensor (, and the transformation matrix)
@@ -54,6 +63,7 @@ class ImageSequential(nn.Sequential):
         same_on_batch: Optional[bool] = None,
         return_transform: Optional[bool] = None,
         keepdim: Optional[bool] = None,
+        random_apply: Optional[Union[int, Tuple[int, int]]] = None,
     ) -> None:
         super(ImageSequential, self).__init__(*args)
         self.same_on_batch = same_on_batch
@@ -70,6 +80,32 @@ class ImageSequential(nn.Sequential):
                 if keepdim is not None:
                     arg.keepdim = keepdim
         self._params: Dict[str, Dict[str, torch.Tensor]] = {}
+        if random_apply is not None:
+            if isinstance(random_apply, (int,)):
+                self.random_apply = (random_apply, random_apply + 1)
+            else:
+                self.random_apply = (random_apply[0], random_apply[1] + 1)
+            assert isinstance(self.random_apply, (tuple,)) and len(self.random_apply) == 2 and \
+                isinstance(self.random_apply[0], (int,)) and isinstance(self.random_apply[0], (int,)), \
+                f"Expect a tuple of (int, int). Got {self.random_apply}."
+            self._uniform = torch.distributions.Uniform(0., 1.)
+
+    def _select_arglist(self):
+        if self.random_apply is not None:
+            indicies = self._generate_random_indicies()
+            return self._select_arglist_by_indicies(indicies)
+        else:
+            return self.children()
+
+    def _select_arglist_by_indicies(self, indicies: torch.Tensor) -> List[nn.Module]:
+        for idx in indicies:
+            yield self.get_submodule(str(idx.item()))
+
+    def _generate_random_indicies(self)-> torch.Tensor:
+        if self.random_apply is not None:
+            probs = self._uniform.rsample((len(self),))
+            return torch.topk(probs, torch.randint(*self.random_apply, (1,)).item())
+        return torch.arange(0, len(self))
 
     def apply_to_input(
         self,
@@ -100,7 +136,7 @@ class ImageSequential(nn.Sequential):
         if params is None:
             params = {}
         self._params = {}
-        for module in self.children():
+        for module in self._select_arglist():
             func_name = module.__class__.__name__
             param = params[func_name] if func_name in params else None
             input = self.apply_to_input(input, module, param)  # type: ignore

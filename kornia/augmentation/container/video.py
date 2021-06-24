@@ -1,4 +1,4 @@
-from typing import cast, Tuple, Union
+from typing import cast, Tuple, Union, Optional
 
 import torch
 import torch.nn as nn
@@ -7,6 +7,10 @@ import kornia
 from kornia.augmentation.base import _AugmentationBase
 
 from .image import ImageSequential
+
+__all__ = [
+    "VideoSequential"
+]
 
 
 # TODO: Rewrite this to support inverse operation by having a generic AugmentationSequential.
@@ -22,6 +26,11 @@ class VideoSequential(ImageSequential):
         *args (_AugmentationBase): a list of augmentation module.
         data_format (str): only BCTHW and BTCHW are supported. Default: BTCHW.
         same_on_frame (bool): apply the same transformation across the channel per frame. Default: True.
+        random_apply(int, (int, int), optional): randomly select a sublist (order agnostic) of args to
+            apply transformation.
+            If int, a fixed number of transformations will be selected.
+            If (a, b), x number of transformations (a <= x <= b) will be selected.
+            If None, the whole list of args will be processed as a sequence.
 
     Example:
         If set `same_on_frame` to True, we would expect the same augmentation has been applied to each
@@ -56,8 +65,15 @@ class VideoSequential(ImageSequential):
         tensor(False)
     """
 
-    def __init__(self, *args: nn.Module, data_format="BTCHW", same_on_frame: bool = True) -> None:
-        super(VideoSequential, self).__init__(*args, same_on_batch=None, return_transform=None, keepdim=None)
+    def __init__(
+        self,
+        *args: nn.Module,
+        data_format="BTCHW",
+        same_on_frame: bool = True,
+        random_apply: Optional[Union[int, Tuple[int, int]]] = None,
+    ) -> None:
+        super(VideoSequential, self).__init__(
+            *args, same_on_batch=None, return_transform=None, keepdim=None, random_apply=random_apply)
         self.same_on_frame = same_on_frame
         self.data_format = data_format.upper()
         assert self.data_format in ["BCTHW", "BTCHW"], f"Only `BCTHW` and `BTCHW` are supported. Got `{data_format}`."
@@ -113,7 +129,7 @@ class VideoSequential(ImageSequential):
         if not self.same_on_frame:
             # Overwrite param generation shape to (B * T, C, H, W).
             batch_shape = input.shape
-        for aug in self.children():
+        for aug in self._select_arglist():
             if isinstance(aug, _AugmentationBase):
                 param = aug.forward_parameters(batch_shape)
                 if self.same_on_frame:

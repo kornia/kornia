@@ -11,6 +11,10 @@ from kornia.geometry import transform_boxes, transform_points
 from .image import ImageSequential
 from .patch import PatchSequential
 
+__all__ = [
+    "AugmentationSequential"
+]
+
 
 class AugmentationSequential(ImageSequential):
     r"""AugmentationSequential for handling multiple input types like inputs, masks, keypoints at once.
@@ -62,9 +66,11 @@ class AugmentationSequential(ImageSequential):
         same_on_batch: Optional[bool] = None,
         return_transform: Optional[bool] = None,
         keepdim: Optional[bool] = None,
+        random_apply: Optional[Union[int, Tuple[int, int]]] = None,
     ) -> None:
         super(AugmentationSequential, self).__init__(
-            *args, same_on_batch=same_on_batch, return_transform=return_transform, keepdim=keepdim
+            *args, same_on_batch=same_on_batch, return_transform=return_transform, keepdim=keepdim,
+            random_apply=random_apply
         )
 
         self.data_keys = [DataKey.get(inp) for inp in data_keys]

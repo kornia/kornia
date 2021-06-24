@@ -9,6 +9,10 @@ from kornia.contrib.extract_patches import extract_tensor_patches
 
 from .image import ImageSequential
 
+__all__ = [
+    "PatchSequential"
+]
+
 
 class PatchSequential(ImageSequential):
     r"""Container for performing patch-level image processing.
@@ -24,7 +28,12 @@ class PatchSequential(ImageSequential):
             to the batch form (False). If None, it will not overwrite the function-wise settings. Default: None.
         patchwise_apply (bool, optional): apply image processing args will be applied patch-wisely.
             if ``True``, the number of args must be equal to grid number.
-            if ``False``, the image processing args will be applied as a whole to all patches. Default: False.
+            if ``False``, the image processing args will be applied as a sequence to all patches. Default: False.
+        random_apply(int, (int, int), optional): randomly select a sublist (order agnostic) of args to
+            apply transformation.
+            If int, a fixed number of transformations will be selected.
+            If (a, b), x number of transformations (a <= x <= b) will be selected.
+            If None, the whole list of args will be processed as a sequence.
 
     Return:
         List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]: the tensor (, and the transformation matrix)
@@ -62,9 +71,10 @@ class PatchSequential(ImageSequential):
         same_on_batch: Optional[bool] = None,
         keepdim: Optional[bool] = None,
         patchwise_apply: bool = False,
+        random_apply: Optional[Union[int, Tuple[int, int]]] = None,
     ) -> None:
         super(PatchSequential, self).__init__(
-            *args, same_on_batch=same_on_batch, return_transform=False, keepdim=keepdim
+            *args, same_on_batch=same_on_batch, return_transform=False, keepdim=keepdim, random_apply=random_apply
         )
         assert padding in ["same", "valid"], f"`padding` must be either `same` or `valid`. Got {padding}."
         self.grid_size = grid_size
