@@ -1820,7 +1820,7 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
     Examples:
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 5, 5)
-        >>> blur = GaussianBlur((3, 3), (0.1, 2.0), p=1.)
+        >>> blur = RandomGaussianBlur((3, 3), (0.1, 2.0), p=1.)
         >>> blur(input)
         tensor([[[[0.6699, 0.4645, 0.3193, 0.1741, 0.1955],
                   [0.5422, 0.6657, 0.6261, 0.6527, 0.5195],

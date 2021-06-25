@@ -6,7 +6,6 @@ from abc import ABC, abstractmethod
 from copy import deepcopy
 from itertools import product
 
-import numpy as np
 import torch
 
 __all__ = ['tensor_to_gradcheck_var', 'create_eye_batch', 'xla_is_available']
@@ -17,11 +16,6 @@ def xla_is_available() -> bool:
     if importlib.util.find_spec("torch_xla") is not None:
         return True
     return False
-
-
-def create_checkerboard(h, w, nw):
-    """Creates a synthetic checkered board of shape HxW and window size `nw`."""
-    return np.kron([[1, 0] * nw, [0, 1] * nw] * nw, np.ones((h // (2 * nw), w // (2 * nw)))).astype(np.float32)
 
 
 # TODO: Isn't this function duplicated with eye_like?
