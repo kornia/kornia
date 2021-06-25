@@ -84,7 +84,7 @@ def dilation(
     h_pad, w_pad = output.shape[-2:]
     reshape_kernel = _neight2channels_like_kernel(kernel)
     output, _ = F.conv2d(
-        output.view(B * C, 1, Hpad, Wpad), reshape_kernel, padding=0, bias=neighborhood.view(-1).flip(0)
+        output.view(B * C, 1, h_pad, w_pad), reshape_kernel, padding=0, bias=neighborhood.view(-1).flip(0)
     ).max(dim=1)
     output = output.view(B, C, H, W)
 
