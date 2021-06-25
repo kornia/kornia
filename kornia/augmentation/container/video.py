@@ -1,13 +1,16 @@
-from typing import Tuple, Union, cast
+from typing import cast, Tuple, Union
 
 import torch
 import torch.nn as nn
 
 import kornia
-from kornia.augmentation.base import _AugmentationBase, MixAugmentationBase
+from kornia.augmentation.base import _AugmentationBase
+
+from .image import ImageSequential
 
 
-class VideoSequential(nn.Sequential):
+# TODO: Rewrite this to support inverse operation by having a generic AugmentationSequential.
+class VideoSequential(ImageSequential):
     r"""VideoSequential for processing 5-dim video data like (B, T, C, H, W) and (B, C, T, H, W).
 
     `VideoSequential` is used to replace `nn.Sequential` for processing video data augmentations.
@@ -27,6 +30,7 @@ class VideoSequential(nn.Sequential):
         >>> input = torch.randn(2, 3, 1, 5, 6).repeat(1, 1, 4, 1, 1)
         >>> aug_list = VideoSequential(
         ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...     kornia.color.BgrToRgb(),
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
         ... data_format="BCTHW",
         ... same_on_frame=True)
@@ -52,25 +56,21 @@ class VideoSequential(nn.Sequential):
         tensor(False)
     """
 
-    def __init__(self, *args: _AugmentationBase, data_format="BTCHW", same_on_frame: bool = True) -> None:
-        super(VideoSequential, self).__init__(*args)
+    def __init__(self, *args: nn.Module, data_format="BTCHW", same_on_frame: bool = True) -> None:
+        super(VideoSequential, self).__init__(*args, same_on_batch=None, return_transform=None, keepdim=None)
         self.same_on_frame = same_on_frame
-        for aug in args:
-            if isinstance(aug, MixAugmentationBase):
-                raise NotImplementedError(f"MixAugmentations are not supported at this moment. Got {aug}.")
         self.data_format = data_format.upper()
-        assert self.data_format in ["BCTHW", "BTCHW"], \
-            f"Only `BCTHW` and `BTCHW` are supported. Got `{data_format}`."
+        assert self.data_format in ["BCTHW", "BTCHW"], f"Only `BCTHW` and `BTCHW` are supported. Got `{data_format}`."
         self._temporal_channel: int
         if self.data_format == "BCTHW":
             self._temporal_channel = 2
         elif self.data_format == "BTCHW":
             self._temporal_channel = 1
 
-    def __infer_channel_exclusive_batch_shape__(self, input: torch.Tensor) -> torch.Size:
+    def __infer_channel_exclusive_batch_shape__(self, input: torch.Tensor, chennel_index: int) -> torch.Size:
         batch_shape: torch.Size = input.shape
         # Fix mypy complains: error: Incompatible return value type (got "Tuple[int, ...]", expected "Size")
-        return cast(torch.Size, batch_shape[:self._temporal_channel] + batch_shape[self._temporal_channel + 1:])
+        return cast(torch.Size, batch_shape[:chennel_index] + batch_shape[chennel_index + 1 :])
 
     def __repeat_param_across_channels__(self, param: torch.Tensor, frame_num: int) -> torch.Tensor:
         """Repeat parameters across channels.
@@ -101,26 +101,30 @@ class VideoSequential(nn.Sequential):
             pass
         return input
 
-    def forward(self, input: torch.Tensor) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    def forward(self, input: torch.Tensor) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:  # type: ignore
+        """Define the video computation performed."""
         assert len(input.shape) == 5, f"Input must be a 5-dim tensor. Got {input.shape}."
         # Size of T
         frame_num = input.size(self._temporal_channel)
         # Got param generation shape to (B, C, H, W). Ignoring T.
-        batch_shape = self.__infer_channel_exclusive_batch_shape__(input)
+        batch_shape = self.__infer_channel_exclusive_batch_shape__(input, self._temporal_channel)
         input = self._input_shape_convert_in(input)
         input = input.reshape(-1, *batch_shape[1:])
         if not self.same_on_frame:
             # Overwrite param generation shape to (B * T, C, H, W).
             batch_shape = input.shape
         for aug in self.children():
-            aug = cast(_AugmentationBase, aug)
-            param = aug.forward_parameters(batch_shape)
-            if self.same_on_frame:
-                for k, v in param.items():
-                    # TODO: revise colorjitter order param in the future to align the standard.
-                    if not (k == "order" and isinstance(aug, kornia.augmentation.ColorJitter)):
-                        param.update({k: self.__repeat_param_across_channels__(v, frame_num)})
-            input = aug(input, params=param)
+            if isinstance(aug, _AugmentationBase):
+                param = aug.forward_parameters(batch_shape)
+                if self.same_on_frame:
+                    for k, v in param.items():
+                        # TODO: revise colorjitter order param in the future to align the standard.
+                        if not (k == "order" and isinstance(aug, kornia.augmentation.ColorJitter)):
+                            param.update({k: self.__repeat_param_across_channels__(v, frame_num)})
+            else:
+                param = None
+
+            input = self.apply_to_input(input, aug, param=param)  # type: ignore
 
         if isinstance(input, (tuple, list)):
             input[0] = self._input_shape_convert_back(input[0], frame_num)

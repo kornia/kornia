@@ -1,16 +1,13 @@
-import pytest
-
-import kornia
 import numpy as np
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
+import kornia
+
 
 class MyHomography(nn.Module):
-
     def __init__(self, init_homo: torch.Tensor) -> None:
         super().__init__()
         self.homo = nn.Parameter(init_homo.clone().detach())
@@ -30,11 +27,7 @@ class TestWarping:
         img_dst_t: torch.Tensor = torch.rand(1, 3, 120, 120).to(device)
 
         init_homo: torch.Tensor = torch.from_numpy(
-            np.array([
-                [0.0415, 1.2731, -1.1731],
-                [-0.9094, 0.5072, 0.4272],
-                [0.0762, 1.3981, 1.0646]
-            ])
+            np.array([[0.0415, 1.2731, -1.1731], [-0.9094, 0.5072, 0.4272], [0.0762, 1.3981, 1.0646]])
         ).float()
 
         height, width = img_dst_t.shape[-2:]

@@ -6,6 +6,7 @@ kornia.geometry
 .. toctree::
    :maxdepth: 2
 
+   geometry.calibration
    geometry.camera
    geometry.conversions
    geometry.depth

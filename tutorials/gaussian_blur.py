@@ -5,15 +5,15 @@ Blur image using GaussianBlur operator
 
 """
 
-import torch
-import kornia
 import cv2
-import numpy as np
-
 import matplotlib.pyplot as plt
+import numpy as np
+import torch
+
+import kornia
 
 # read the image with OpenCV
-img: np.ndarray = cv2.imread('./data/lena.jpg')
+img: np.ndarray = cv2.imread('./data/doraemon.png')
 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
 # convert to torch tensor

@@ -1,11 +1,10 @@
 import pytest
-
-import kornia
-import kornia.testing as utils  # test utils
-
 import torch
 from torch.autograd import gradcheck
 from test.utils import assert_close
+
+import kornia
+import kornia.testing as utils  # test utils
 
 
 @pytest.mark.parametrize("window_size", [5])
@@ -59,8 +58,7 @@ class TestLaplacian:
         # evaluate function gradient
         input = torch.rand(batch_shape, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)
-        assert gradcheck(
-            kornia.laplacian, (input, kernel_size), raise_exception=True)
+        assert gradcheck(kornia.laplacian, (input, kernel_size), raise_exception=True)
 
     def test_jit(self, device, dtype):
         op = kornia.filters.laplacian

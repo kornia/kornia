@@ -4,9 +4,7 @@ import torch
 import torch.nn as nn
 
 import kornia
-from kornia.filters.kernels import (
-    get_motion_kernel2d, get_motion_kernel3d
-)
+from kornia.filters.kernels_geometry import get_motion_kernel2d, get_motion_kernel3d
 
 
 class MotionBlur(nn.Module):
@@ -35,9 +33,7 @@ class MotionBlur(nn.Module):
         >>> output = motion_blur(input)  # 2x4x5x7
     """
 
-    def __init__(
-            self, kernel_size: int, angle: float, direction: float, border_type: str = 'constant'
-    ) -> None:
+    def __init__(self, kernel_size: int, angle: float, direction: float, border_type: str = 'constant') -> None:
         super(MotionBlur, self).__init__()
         self.kernel_size = kernel_size
         self.angle: float = angle
@@ -45,8 +41,10 @@ class MotionBlur(nn.Module):
         self.border_type: str = border_type
 
     def __repr__(self) -> str:
-        return f'{self.__class__.__name__} (kernel_size={self.kernel_size}, ' \
-               f'angle={self.angle}, direction={self.direction}, border_type={self.border_type})'
+        return (
+            f'{self.__class__.__name__} (kernel_size={self.kernel_size}, '
+            f'angle={self.angle}, direction={self.direction}, border_type={self.border_type})'
+        )
 
     def forward(self, x: torch.Tensor):
         return motion_blur(x, self.kernel_size, self.angle, self.direction, self.border_type)
@@ -79,8 +77,11 @@ class MotionBlur3D(nn.Module):
     """
 
     def __init__(
-            self, kernel_size: int, angle: Union[float, Tuple[float, float, float]],
-            direction: float, border_type: str = 'constant'
+        self,
+        kernel_size: int,
+        angle: Union[float, Tuple[float, float, float]],
+        direction: float,
+        border_type: str = 'constant',
     ) -> None:
         super(MotionBlur3D, self).__init__()
         self.kernel_size = kernel_size
@@ -95,8 +96,10 @@ class MotionBlur3D(nn.Module):
         self.border_type: str = border_type
 
     def __repr__(self) -> str:
-        return f'{self.__class__.__name__} (kernel_size={self.kernel_size}, ' \
-               f'angle={self.angle}, direction={self.direction}, border_type={self.border_type})'
+        return (
+            f'{self.__class__.__name__} (kernel_size={self.kernel_size}, '
+            f'angle={self.angle}, direction={self.direction}, border_type={self.border_type})'
+        )
 
     def forward(self, x: torch.Tensor):
         return motion_blur3d(x, self.kernel_size, self.angle, self.direction, self.border_type)
@@ -108,7 +111,7 @@ def motion_blur(
     angle: Union[float, torch.Tensor],
     direction: Union[float, torch.Tensor],
     border_type: str = 'constant',
-    mode: str = 'nearest'
+    mode: str = 'nearest',
 ) -> torch.Tensor:
     r"""Perform motion blur on 2D images (4D tensor).
 
@@ -143,7 +146,7 @@ def motion_blur(
     """
     assert border_type in ["constant", "reflect", "replicate", "circular"]
     kernel: torch.Tensor = get_motion_kernel2d(kernel_size, angle, direction, mode)
-    return kornia.filter2D(input, kernel, border_type)
+    return kornia.filter2d(input, kernel, border_type)
 
 
 def motion_blur3d(
@@ -152,7 +155,7 @@ def motion_blur3d(
     angle: Union[Tuple[float, float, float], torch.Tensor],
     direction: Union[float, torch.Tensor],
     border_type: str = 'constant',
-    mode: str = 'nearest'
+    mode: str = 'nearest',
 ) -> torch.Tensor:
     r"""Perform motion blur on 3D volumes (5D tensor).
 
@@ -187,4 +190,4 @@ def motion_blur3d(
     """
     assert border_type in ["constant", "reflect", "replicate", "circular"]
     kernel: torch.Tensor = get_motion_kernel3d(kernel_size, angle, direction, mode)
-    return kornia.filter3D(input, kernel, border_type)
+    return kornia.filter3d(input, kernel, border_type)

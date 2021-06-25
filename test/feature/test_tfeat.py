@@ -1,11 +1,10 @@
 import pytest
-
 import torch
-from test.utils import assert_close
 from torch.autograd import gradcheck
+from torch.testing import assert_allclose
 
-from kornia.feature import TFeat
 import kornia.testing as utils  # test utils
+from kornia.feature import TFeat
 
 
 class TestTFeat:
@@ -34,8 +33,7 @@ class TestTFeat:
         patches = torch.rand(2, 1, 32, 32, device=device)
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
         tfeat = TFeat().to(patches.device, patches.dtype)
-        assert gradcheck(tfeat, (patches,), eps=1e-2, atol=1e-2,
-                         raise_exception=True, )
+        assert gradcheck(tfeat, (patches,), eps=1e-2, atol=1e-2, raise_exception=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):

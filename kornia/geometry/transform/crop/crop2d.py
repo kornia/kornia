@@ -1,10 +1,8 @@
-from typing import Tuple, Union, Optional
+from typing import Optional, Tuple
 
 import torch
 
-from kornia.geometry.transform.imgwarp import (
-    warp_perspective, get_perspective_transform, warp_affine
-)
+from kornia.geometry.transform.imgwarp import get_perspective_transform, warp_affine
 
 __all__ = [
     "crop_and_resize",
@@ -18,9 +16,14 @@ __all__ = [
 ]
 
 
-def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, int],
-                    mode: str = 'bilinear', padding_mode: str = 'zeros',
-                    align_corners: Optional[bool] = None) -> torch.Tensor:
+def crop_and_resize(
+    tensor: torch.Tensor,
+    boxes: torch.Tensor,
+    size: Tuple[int, int],
+    mode: str = 'bilinear',
+    padding_mode: str = 'zeros',
+    align_corners: Optional[bool] = None,
+) -> torch.Tensor:
     r"""Extract crops from 2D images (4D tensor) and resize given a bounding box.
 
     Args:
@@ -58,16 +61,13 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, 
                   [10., 11.]]]])
     """
     if not isinstance(tensor, torch.Tensor):
-        raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
-                        .format(type(tensor)))
+        raise TypeError("Input tensor type is not a torch.Tensor. Got {}".format(type(tensor)))
 
     if not isinstance(boxes, torch.Tensor):
-        raise TypeError("Input boxes type is not a torch.Tensor. Got {}"
-                        .format(type(boxes)))
+        raise TypeError("Input boxes type is not a torch.Tensor. Got {}".format(type(boxes)))
 
-    if not isinstance(size, (tuple, list,)) and len(size) == 2:
-        raise ValueError("Input size must be a tuple/list of length 2. Got {}"
-                         .format(size))
+    if not isinstance(size, (tuple, list)) and len(size) == 2:
+        raise ValueError("Input size must be a tuple/list of length 2. Got {}".format(size))
 
     assert len(tensor.shape) == 4, f"Only tensor with shape (B, C, H, W) supported. Got {tensor.shape}."
 
@@ -80,19 +80,20 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, 
 
     # [x, y] destination
     # top-left, top-right, bottom-right, bottom-left
-    points_dst: torch.Tensor = torch.tensor([[
-        [0, 0],
-        [dst_w - 1, 0],
-        [dst_w - 1, dst_h - 1],
-        [0, dst_h - 1],
-    ]], device=tensor.device, dtype=tensor.dtype).expand(points_src.shape[0], -1, -1)
+    points_dst: torch.Tensor = torch.tensor(
+        [[[0, 0], [dst_w - 1, 0], [dst_w - 1, dst_h - 1], [0, dst_h - 1]]], device=tensor.device, dtype=tensor.dtype
+    ).expand(points_src.shape[0], -1, -1)
 
     return crop_by_boxes(tensor, points_src, points_dst, mode, padding_mode, align_corners)
 
 
-def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
-                mode: str = 'bilinear', padding_mode: str = 'zeros',
-                align_corners: Optional[bool] = None) -> torch.Tensor:
+def center_crop(
+    tensor: torch.Tensor,
+    size: Tuple[int, int],
+    mode: str = 'bilinear',
+    padding_mode: str = 'zeros',
+    align_corners: Optional[bool] = None,
+) -> torch.Tensor:
     r"""Crop the 2D images (4D tensor) from the center.
 
     Args:
@@ -120,12 +121,10 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
                   [ 9., 10., 11., 12.]]]])
     """
     if not isinstance(tensor, torch.Tensor):
-        raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
-                        .format(type(tensor)))
+        raise TypeError("Input tensor type is not a torch.Tensor. Got {}".format(type(tensor)))
 
-    if not isinstance(size, (tuple, list,)) and len(size) == 2:
-        raise ValueError("Input size must be a tuple/list of length 2. Got {}"
-                         .format(size))
+    if not isinstance(size, (tuple, list)) and len(size) == 2:
+        raise ValueError("Input size must be a tuple/list of length 2. Got {}".format(size))
 
     assert len(tensor.shape) == 4, f"Only tensor with shape (B, C, H, W) supported. Got {tensor.shape}."
 
@@ -147,29 +146,29 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
 
     # [y, x] origin
     # top-left, top-right, bottom-right, bottom-left
-    points_src: torch.Tensor = torch.tensor([[
-        [start_x, start_y],
-        [end_x, start_y],
-        [end_x, end_y],
-        [start_x, end_y],
-    ]], device=tensor.device, dtype=tensor.dtype)
+    points_src: torch.Tensor = torch.tensor(
+        [[[start_x, start_y], [end_x, start_y], [end_x, end_y], [start_x, end_y]]],
+        device=tensor.device,
+        dtype=tensor.dtype,
+    )
 
     # [y, x] destination
     # top-left, top-right, bottom-right, bottom-left
-    points_dst: torch.Tensor = torch.tensor([[
-        [0, 0],
-        [dst_w - 1, 0],
-        [dst_w - 1, dst_h - 1],
-        [0, dst_h - 1],
-    ]], device=tensor.device, dtype=tensor.dtype).expand(points_src.shape[0], -1, -1)
+    points_dst: torch.Tensor = torch.tensor(
+        [[[0, 0], [dst_w - 1, 0], [dst_w - 1, dst_h - 1], [0, dst_h - 1]]], device=tensor.device, dtype=tensor.dtype
+    ).expand(points_src.shape[0], -1, -1)
 
-    return crop_by_boxes(tensor, points_src, points_dst,
-                         mode, padding_mode, align_corners)
+    return crop_by_boxes(tensor, points_src, points_dst, mode, padding_mode, align_corners)
 
 
-def crop_by_boxes(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.Tensor,
-                  mode: str = 'bilinear', padding_mode: str = 'zeros',
-                  align_corners: Optional[bool] = None) -> torch.Tensor:
+def crop_by_boxes(
+    tensor: torch.Tensor,
+    src_box: torch.Tensor,
+    dst_box: torch.Tensor,
+    mode: str = 'bilinear',
+    padding_mode: str = 'zeros',
+    align_corners: Optional[bool] = None,
+) -> torch.Tensor:
     """Perform crop transform on 2D images (4D tensor) given two bounding boxes.
 
     Given an input tensor, this function selected the interested areas by the provided bounding boxes (src_box).
@@ -224,25 +223,28 @@ def crop_by_boxes(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.Te
 
     # compute transformation between points and warp
     # Note: Tensor.dtype must be float. "solve_cpu" not implemented for 'Long'
-    dst_trans_src: torch.Tensor = get_perspective_transform(
-        src_box.to(tensor), dst_box.to(tensor))
+    dst_trans_src: torch.Tensor = get_perspective_transform(src_box.to(tensor), dst_box.to(tensor))
 
     bbox: Tuple[torch.Tensor, torch.Tensor] = infer_box_shape(dst_box)
     assert (bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all(), (
-        f"Cropping height, width and depth must be exact same in a batch. "
-        f"Got height {bbox[0]} and width {bbox[1]}.")
+        f"Cropping height, width and depth must be exact same in a batch. " f"Got height {bbox[0]} and width {bbox[1]}."
+    )
 
     h_out: int = int(bbox[0][0].item())
     w_out: int = int(bbox[1][0].item())
 
     return crop_by_transform_mat(
-        tensor, dst_trans_src, (h_out, w_out),
-        mode=mode, padding_mode=padding_mode, align_corners=align_corners)
+        tensor, dst_trans_src, (h_out, w_out), mode=mode, padding_mode=padding_mode, align_corners=align_corners
+    )
 
 
 def crop_by_transform_mat(
-    tensor: torch.Tensor, transform: torch.Tensor, out_size: Tuple[int, int],
-    mode: str = 'bilinear', padding_mode: str = 'zeros', align_corners: Optional[bool] = None
+    tensor: torch.Tensor,
+    transform: torch.Tensor,
+    out_size: Tuple[int, int],
+    mode: str = 'bilinear',
+    padding_mode: str = 'zeros',
+    align_corners: Optional[bool] = None,
 ) -> torch.Tensor:
     """Perform crop transform on 2D images (4D tensor) given a perspective transformation matrix.
 
@@ -260,12 +262,11 @@ def crop_by_transform_mat(
         torch.Tensor: the output tensor with patches.
     """
     # simulate broadcasting
-    dst_trans_src = torch.as_tensor(
-        transform.expand(tensor.shape[0], -1, -1), device=tensor.device, dtype=tensor.dtype)
+    dst_trans_src = torch.as_tensor(transform.expand(tensor.shape[0], -1, -1), device=tensor.device, dtype=tensor.dtype)
 
     patches: torch.Tensor = warp_affine(
-        tensor, dst_trans_src[:, :2, :], out_size,
-        mode=mode, padding_mode=padding_mode, align_corners=align_corners)
+        tensor, dst_trans_src[:, :2, :], out_size, mode=mode, padding_mode=padding_mode, align_corners=align_corners
+    )
 
     return patches
 
@@ -301,8 +302,8 @@ def infer_box_shape(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         (tensor([2., 2.]), tensor([2., 3.]))
     """
     validate_bboxes(boxes)
-    width: torch.Tensor = (boxes[:, 1, 0] - boxes[:, 0, 0] + 1)
-    height: torch.Tensor = (boxes[:, 2, 1] - boxes[:, 0, 1] + 1)
+    width: torch.Tensor = boxes[:, 1, 0] - boxes[:, 0, 0] + 1
+    height: torch.Tensor = boxes[:, 2, 1] - boxes[:, 0, 1] + 1
     return (height, width)
 
 
@@ -319,17 +320,17 @@ def validate_bboxes(boxes: torch.Tensor) -> bool:
           order: top-left, top-right, bottom-right, bottom-left. The
           coordinates must be in the x, y order.
     """
-    if not torch.allclose((boxes[:, 1, 0] - boxes[:, 0, 0] + 1),
-                          (boxes[:, 2, 0] - boxes[:, 3, 0] + 1)):
-        raise ValueError("Boxes must have be rectangular, while get widths %s and %s" %
-                         (str(boxes[:, 1, 0] - boxes[:, 0, 0] + 1),
-                          str(boxes[:, 2, 0] - boxes[:, 3, 0] + 1)))
+    if not torch.allclose((boxes[:, 1, 0] - boxes[:, 0, 0] + 1), (boxes[:, 2, 0] - boxes[:, 3, 0] + 1)):
+        raise ValueError(
+            "Boxes must have be rectangular, while get widths %s and %s"
+            % (str(boxes[:, 1, 0] - boxes[:, 0, 0] + 1), str(boxes[:, 2, 0] - boxes[:, 3, 0] + 1))
+        )
 
-    if not torch.allclose((boxes[:, 2, 1] - boxes[:, 0, 1] + 1),
-                          (boxes[:, 3, 1] - boxes[:, 1, 1] + 1)):
-        raise ValueError("Boxes must have be rectangular, while get heights %s and %s" %
-                         (str(boxes[:, 2, 1] - boxes[:, 0, 1] + 1),
-                          str(boxes[:, 3, 1] - boxes[:, 1, 1] + 1)))
+    if not torch.allclose((boxes[:, 2, 1] - boxes[:, 0, 1] + 1), (boxes[:, 3, 1] - boxes[:, 1, 1] + 1)):
+        raise ValueError(
+            "Boxes must have be rectangular, while get heights %s and %s"
+            % (str(boxes[:, 2, 1] - boxes[:, 0, 1] + 1), str(boxes[:, 3, 1] - boxes[:, 1, 1] + 1))
+        )
 
     return True
 
@@ -418,10 +419,14 @@ def bbox_generator(
                  [3, 3],
                  [1, 3]]])
     """
-    assert x_start.shape == y_start.shape and x_start.dim() in [0, 1], \
-        f"`x_start` and `y_start` must be a scalar or (B,). Got {x_start}, {y_start}."
-    assert width.shape == height.shape and width.dim() in [0, 1], \
-        f"`width` and `height` must be a scalar or (B,). Got {width}, {height}."
+    assert x_start.shape == y_start.shape and x_start.dim() in [
+        0,
+        1,
+    ], f"`x_start` and `y_start` must be a scalar or (B,). Got {x_start}, {y_start}."
+    assert width.shape == height.shape and width.dim() in [
+        0,
+        1,
+    ], f"`width` and `height` must be a scalar or (B,). Got {width}, {height}."
     assert x_start.dtype == y_start.dtype == width.dtype == height.dtype, (
         "All tensors must be in the same dtype. Got "
         f"`x_start`({x_start.dtype}), `y_start`({x_start.dtype}), `width`({width.dtype}), `height`({height.dtype})."
@@ -431,12 +436,9 @@ def bbox_generator(
         f"`x_start`({x_start.device}), `y_start`({x_start.device}), `width`({width.device}), `height`({height.device})."
     )
 
-    bbox = torch.tensor([[
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-    ]], device=x_start.device, dtype=x_start.dtype).repeat(1 if x_start.dim() == 0 else len(x_start), 1, 1)
+    bbox = torch.tensor([[[0, 0], [0, 0], [0, 0], [0, 0]]], device=x_start.device, dtype=x_start.dtype).repeat(
+        1 if x_start.dim() == 0 else len(x_start), 1, 1
+    )
 
     bbox[:, :, 0] += x_start.view(-1, 1)
     bbox[:, :, 1] += y_start.view(-1, 1)

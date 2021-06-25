@@ -1,33 +1,30 @@
-from typing import Union, Tuple, Dict, List
+from typing import Dict, List, Tuple, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from kornia.constants import pi
-from kornia.utils import create_meshgrid
+from kornia.filters import GaussianBlur2d, SpatialGradient
 from kornia.geometry.conversions import cart2pol
-from kornia.filters import SpatialGradient, GaussianBlur2d
-
+from kornia.utils import create_meshgrid
 
 # Precomputed coefficients for Von Mises kernel, given N and K(appa).
 sqrt2: float = 1.4142135623730951
 COEFFS_N1_K1: List[float] = [0.38214156, 0.48090413]
 COEFFS_N2_K8: List[float] = [0.14343168, 0.268285, 0.21979234]
 COEFFS_N3_K8: List[float] = [0.14343168, 0.268285, 0.21979234, 0.15838885]
-COEFFS: Dict[str, List[float]] = {'xy': COEFFS_N1_K1,
-                                  'rhophi': COEFFS_N2_K8,
-                                  'theta': COEFFS_N3_K8}
+COEFFS: Dict[str, List[float]] = {'xy': COEFFS_N1_K1, 'rhophi': COEFFS_N2_K8, 'theta': COEFFS_N3_K8}
 
-urls: Dict[str, str] = {k: f'https://github.com/manyids2/mkd_pytorch/raw/master/mkd_pytorch/mkd-{k}-64.pth'
-                        for k in ['cart', 'polar', 'concat']}
+urls: Dict[str, str] = {
+    k: f'https://github.com/manyids2/mkd_pytorch/raw/master/mkd_pytorch/mkd-{k}-64.pth'
+    for k in ['cart', 'polar', 'concat']
+}
 
 
 def get_grid_dict(patch_size: int = 32) -> Dict[str, torch.Tensor]:
-    """Gets cartesian and polar parametrizations of grid. """
-    kgrid = create_meshgrid(height=patch_size,
-                            width=patch_size,
-                            normalized_coordinates=True)
+    """Gets cartesian and polar parametrizations of grid."""
+    kgrid = create_meshgrid(height=patch_size, width=patch_size, normalized_coordinates=True)
     x = kgrid[0, :, :, 0]
     y = kgrid[0, :, :, 1]
     rho, phi = cart2pol(x, y)
@@ -36,7 +33,7 @@ def get_grid_dict(patch_size: int = 32) -> Dict[str, torch.Tensor]:
 
 
 def get_kron_order(d1: int, d2: int) -> torch.Tensor:
-    """Gets order for doing kronecker product. """
+    """Gets order for doing kronecker product."""
     kron_order = torch.zeros([d1 * d2, 2], dtype=torch.int64)
     for i in range(d1):
         for j in range(d2):
@@ -73,11 +70,9 @@ class MKDGradients(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if not isinstance(x, torch.Tensor):
-            raise TypeError("Input type is not a torch.Tensor. Got {}"
-                            .format(type(x)))
+            raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(x)))
         if not len(x.shape) == 4:
-            raise ValueError("Invalid input shape, we expect Bx1xHxW. Got: {}"
-                             .format(x.shape))
+            raise ValueError("Invalid input shape, we expect Bx1xHxW. Got: {}".format(x.shape))
         # Modify 'diff' gradient. Before we had lambda function, but it is not jittable
         grads_xy = -self.grad(x)
         gx = grads_xy[:, :, 0, :, :]
@@ -111,9 +106,7 @@ class VonMisesKernel(nn.Module):
         >>> emb = vm(oris) # 23x7x32x32
     """
 
-    def __init__(self,
-                 patch_size: int,
-                 coeffs: Union[list, tuple]) -> None:
+    def __init__(self, patch_size: int, coeffs: Union[list, tuple]) -> None:
         super().__init__()
 
         self.patch_size = patch_size
@@ -130,8 +123,8 @@ class VonMisesKernel(nn.Module):
         frange = torch.arange(n) + 1
         frange = frange.reshape(-1, 1, 1)
         weights = torch.zeros([2 * n + 1])
-        weights[:n + 1] = torch.sqrt(b_coeffs)
-        weights[n + 1:] = torch.sqrt(b_coeffs[1:])
+        weights[: n + 1] = torch.sqrt(b_coeffs)
+        weights[n + 1 :] = torch.sqrt(b_coeffs[1:])
         weights = weights.reshape(-1, 1, 1)
         self.register_buffer('emb0', emb0)
         self.register_buffer('frange', frange)
@@ -139,12 +132,10 @@ class VonMisesKernel(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if not isinstance(x, torch.Tensor):
-            raise TypeError("Input type is not a torch.Tensor. Got {}"
-                            .format(type(x)))
+            raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(x)))
 
         if not len(x.shape) == 4 or x.shape[1] != 1:
-            raise ValueError("Invalid input shape, we expect Bx1xHxW. Got: {}"
-                             .format(x.shape))
+            raise ValueError("Invalid input shape, we expect Bx1xHxW. Got: {}".format(x.shape))
 
         # TODO: unify the two lines below when pytorch 1.6 support is dropped
         emb0: torch.Tensor = torch.jit.annotate(torch.Tensor, self.emb0)
@@ -157,11 +148,22 @@ class VonMisesKernel(nn.Module):
         return embedding
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ +\
-            '(' + 'patch_size=' + str(self.patch_size) +\
-            ', ' + 'n=' + str(self.n) +\
-            ', ' + 'd=' + str(self.d) +\
-            ', ' + 'coeffs=' + str(self.coeffs) + ')'
+        return (
+            self.__class__.__name__
+            + '('
+            + 'patch_size='
+            + str(self.patch_size)
+            + ', '
+            + 'n='
+            + str(self.n)
+            + ', '
+            + 'd='
+            + str(self.d)
+            + ', '
+            + 'coeffs='
+            + str(self.coeffs)
+            + ')'
+        )
 
 
 class EmbedGradients(nn.Module):
@@ -183,37 +185,30 @@ class EmbedGradients(nn.Module):
         >>> emb = emb_grads(grads) # 23x7x32x32
     """
 
-    def __init__(self,
-                 patch_size: int = 32,
-                 relative: bool = False) -> None:
+    def __init__(self, patch_size: int = 32, relative: bool = False) -> None:
         super().__init__()
         self.patch_size = patch_size
         self.relative = relative
         self.eps = 1e-8
 
         # Theta kernel for gradients.
-        self.kernel = VonMisesKernel(patch_size=patch_size,
-                                     coeffs=COEFFS['theta'])
+        self.kernel = VonMisesKernel(patch_size=patch_size, coeffs=COEFFS['theta'])
 
         # Relative gradients.
-        kgrid = create_meshgrid(height=patch_size,
-                                width=patch_size,
-                                normalized_coordinates=True)
+        kgrid = create_meshgrid(height=patch_size, width=patch_size, normalized_coordinates=True)
         _, phi = cart2pol(kgrid[:, :, :, 0], kgrid[:, :, :, 1])
         self.register_buffer('phi', phi)
 
     def emb_mags(self, mags: torch.Tensor) -> torch.Tensor:
-        """Embed square roots of magnitudes with eps for numerical reasons. """
+        """Embed square roots of magnitudes with eps for numerical reasons."""
         mags = torch.sqrt(mags + self.eps)
         return mags
 
     def forward(self, grads: torch.Tensor) -> torch.Tensor:
         if not isinstance(grads, torch.Tensor):
-            raise TypeError("Input type is not a torch.Tensor. Got {}"
-                            .format(type(grads)))
+            raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(grads)))
         if not len(grads.shape) == 4:
-            raise ValueError("Invalid input shape, we expect Bx2xHxW. Got: {}"
-                             .format(grads.shape))
+            raise ValueError("Invalid input shape, we expect Bx2xHxW. Got: {}".format(grads.shape))
         mags = grads[:, :1, :, :]
         oris = grads[:, 1:, :, :]
         if self.relative:
@@ -222,13 +217,20 @@ class EmbedGradients(nn.Module):
         return y
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ +\
-            '(' + 'patch_size=' + str(self.patch_size) +\
-            ', ' + 'relative=' + str(self.relative) + ')'
+        return (
+            self.__class__.__name__
+            + '('
+            + 'patch_size='
+            + str(self.patch_size)
+            + ', '
+            + 'relative='
+            + str(self.relative)
+            + ')'
+        )
 
 
 def spatial_kernel_embedding(kernel_type, grids: dict) -> torch.Tensor:
-    """Compute embeddings for cartesian and polar parametrizations. """
+    """Compute embeddings for cartesian and polar parametrizations."""
     factors = {"phi": 1.0, "rho": pi / sqrt2, "x": pi / 2, "y": pi / 2}
     if kernel_type == 'cart':
         coeffs_ = 'xy'
@@ -243,8 +245,7 @@ def spatial_kernel_embedding(kernel_type, grids: dict) -> torch.Tensor:
 
     # Scale appropriately.
     grids_normed = {k: v * factors[k] for k, v in grids.items()}
-    grids_normed = {k: v.unsqueeze(0).unsqueeze(0).float()
-                    for k, v in grids_normed.items()}
+    grids_normed = {k: v.unsqueeze(0).unsqueeze(0).float() for k, v in grids_normed.items()}
 
     # x,y/rho,phi kernels.
     vm_a = VonMisesKernel(patch_size=patch_size, coeffs=COEFFS[coeffs_])
@@ -255,8 +256,7 @@ def spatial_kernel_embedding(kernel_type, grids: dict) -> torch.Tensor:
 
     # Final precomputed position embedding.
     kron_order = get_kron_order(vm_a.d, vm_b.d)
-    spatial_kernel = emb_a.index_select(0,
-                                        kron_order[:, 0]) * emb_b.index_select(0, kron_order[:, 1])
+    spatial_kernel = emb_a.index_select(0, kron_order[:, 0]) * emb_b.index_select(0, kron_order[:, 1])
     return spatial_kernel
 
 
@@ -285,12 +285,14 @@ class ExplicitSpacialEncoding(nn.Module):
         >>> desc = ese(emb_ori) # 23x175x32x32
     """
 
-    def __init__(self,
-                 kernel_type: str = 'polar',
-                 fmap_size: int = 32,
-                 in_dims: int = 7,
-                 do_gmask: bool = True,
-                 do_l2: bool = True) -> None:
+    def __init__(
+        self,
+        kernel_type: str = 'polar',
+        fmap_size: int = 32,
+        in_dims: int = 7,
+        do_gmask: bool = True,
+        do_l2: bool = True,
+    ) -> None:
         super().__init__()
 
         if kernel_type not in ['polar', 'cart']:
@@ -324,13 +326,13 @@ class ExplicitSpacialEncoding(nn.Module):
         self.register_buffer('idx1', idx1)
 
     def get_gmask(self, sigma: float) -> torch.Tensor:
-        """Compute Gaussian mask. """
+        """Compute Gaussian mask."""
         norm_rho = self.grid['rho'] / self.grid['rho'].max()
-        gmask = torch.exp(-1 * norm_rho**2 / sigma**2)
+        gmask = torch.exp(-1 * norm_rho ** 2 / sigma ** 2)
         return gmask
 
     def init_kron(self) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Initialize helper variables to calculate kronecker. """
+        """Initialize helper variables to calculate kronecker."""
         kron = get_kron_order(self.in_dims, self.d_emb)
         _emb = torch.jit.annotate(torch.Tensor, self.emb)
         emb2 = torch.index_select(_emb, 1, kron[:, 1])
@@ -338,11 +340,9 @@ class ExplicitSpacialEncoding(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if not isinstance(x, torch.Tensor):
-            raise TypeError("Input type is not a torch.Tensor. Got {}"
-                            .format(type(x)))
+            raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(x)))
         if not ((len(x.shape) == 4) | (x.shape[1] == self.in_dims)):
-            raise ValueError("Invalid input shape, we expect Bx{}xHxW. Got: {}"
-                             .format(self.in_dims, x.shape))
+            raise ValueError("Invalid input shape, we expect Bx{}xHxW. Got: {}".format(self.in_dims, x.shape))
         idx1 = torch.jit.annotate(torch.Tensor, self.idx1)
         emb1 = torch.index_select(x, 1, idx1)
         output = emb1 * self.emb2
@@ -352,13 +352,28 @@ class ExplicitSpacialEncoding(nn.Module):
         return output
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ +\
-            '(' + 'kernel_type=' + str(self.kernel_type) +\
-            ', ' + 'fmap_size=' + str(self.fmap_size) +\
-            ', ' + 'in_dims=' + str(self.in_dims) +\
-            ', ' + 'out_dims=' + str(self.out_dims) +\
-            ', ' + 'do_gmask=' + str(self.do_gmask) +\
-            ', ' + 'do_l2=' + str(self.do_l2) + ')'
+        return (
+            self.__class__.__name__
+            + '('
+            + 'kernel_type='
+            + str(self.kernel_type)
+            + ', '
+            + 'fmap_size='
+            + str(self.fmap_size)
+            + ', '
+            + 'in_dims='
+            + str(self.in_dims)
+            + ', '
+            + 'out_dims='
+            + str(self.out_dims)
+            + ', '
+            + 'do_gmask='
+            + str(self.do_gmask)
+            + ', '
+            + 'do_l2='
+            + str(self.do_l2)
+            + ')'
+        )
 
 
 class Whitening(nn.Module):
@@ -396,13 +411,15 @@ class Whitening(nn.Module):
         >>> wdescs = whitening(descs) # 23x128
     """
 
-    def __init__(self,
-                 xform: str,
-                 whitening_model: Union[Dict[str, Dict[str, torch.Tensor]], None],
-                 in_dims: int,
-                 output_dims: int = 128,
-                 keval: int = 40,
-                 t: float = 0.7) -> None:
+    def __init__(
+        self,
+        xform: str,
+        whitening_model: Union[Dict[str, Dict[str, torch.Tensor]], None],
+        in_dims: int,
+        output_dims: int = 128,
+        keval: int = 40,
+        t: float = 0.7,
+    ) -> None:
         super().__init__()
 
         self.xform = xform
@@ -423,57 +440,65 @@ class Whitening(nn.Module):
         if whitening_model is not None:
             self.load_whitening_parameters(whitening_model)
 
-    def load_whitening_parameters(self,
-                                  whitening_model: Dict[str, Dict[str, torch.Tensor]]) -> None:
+    def load_whitening_parameters(self, whitening_model: Dict[str, Dict[str, torch.Tensor]]) -> None:
         algo = 'lw' if self.xform == 'lw' else 'pca'
         wh_model = whitening_model[algo]
         self.mean.data = wh_model['mean']
-        self.evecs.data = wh_model['eigvecs'][:, :self.output_dims]
-        self.evals.data = wh_model['eigvals'][:self.output_dims]
+        self.evecs.data = wh_model['eigvecs'][:, : self.output_dims]
+        self.evals.data = wh_model['eigvals'][: self.output_dims]
 
-        modifications = {'pca': self._modify_pca,
-                         'lw': self._modify_lw,
-                         'pcaws': self._modify_pcaws,
-                         'pcawt': self._modify_pcawt}
+        modifications = {
+            'pca': self._modify_pca,
+            'lw': self._modify_lw,
+            'pcaws': self._modify_pcaws,
+            'pcawt': self._modify_pcawt,
+        }
 
         # Call modification.
         modifications[self.xform]()
 
     def _modify_pca(self) -> None:
-        """ Modify powerlaw parameter."""
+        """Modify powerlaw parameter."""
         self.pval = 0.5
 
     def _modify_lw(self) -> None:
-        """ No modification required."""
+        """No modification required."""
 
     def _modify_pcaws(self) -> None:
-        """ Shrinkage for eigenvalues."""
+        """Shrinkage for eigenvalues."""
         alpha = self.evals[self.keval]
         evals = ((1 - alpha) * self.evals) + alpha
         self.evecs.data = self.evecs @ torch.diag(torch.pow(evals, -0.5))
 
     def _modify_pcawt(self) -> None:
-        """ Attenuation for eigenvalues."""
+        """Attenuation for eigenvalues."""
         m = -0.5 * self.t
         self.evecs.data = self.evecs @ torch.diag(torch.pow(self.evals, m))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if not isinstance(x, torch.Tensor):
-            raise TypeError("Input type is not a torch.Tensor. Got {}"
-                            .format(type(x)))
+            raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(x)))
         if not len(x.shape) == 2:
-            raise ValueError("Invalid input shape, we expect NxD. Got: {}"
-                             .format(x.shape))
+            raise ValueError("Invalid input shape, we expect NxD. Got: {}".format(x.shape))
         x = x - self.mean  # Center the data.
         x = x @ self.evecs  # Apply rotation and/or scaling.
         x = torch.sign(x) * torch.pow(torch.abs(x), self.pval)  # Powerlaw.
         return F.normalize(x, dim=1)
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ +\
-            '(' + 'xform=' + str(self.xform) +\
-            ', ' + 'in_dims=' + str(self.in_dims) +\
-            ', ' + 'output_dims=' + str(self.output_dims) + ')'
+        return (
+            self.__class__.__name__
+            + '('
+            + 'xform='
+            + str(self.xform)
+            + ', '
+            + 'in_dims='
+            + str(self.in_dims)
+            + ', '
+            + 'output_dims='
+            + str(self.output_dims)
+            + ')'
+        )
 
 
 class MKDDescriptor(nn.Module):
@@ -509,12 +534,14 @@ class MKDDescriptor(nn.Module):
         >>> desc = mkd(patches) # 23x128
     """
 
-    def __init__(self,
-                 patch_size: int = 32,
-                 kernel_type: str = 'concat',
-                 whitening: str = 'pcawt',
-                 training_set: str = 'liberty',
-                 output_dims: int = 128) -> None:
+    def __init__(
+        self,
+        patch_size: int = 32,
+        kernel_type: str = 'concat',
+        whitening: str = 'pcawt',
+        training_set: str = 'liberty',
+        output_dims: int = 128,
+    ) -> None:
         super().__init__()
 
         self.patch_size: int = patch_size
@@ -523,9 +550,7 @@ class MKDDescriptor(nn.Module):
         self.training_set: str = training_set
 
         self.sigma = 1.4 * (patch_size / 64)
-        self.smoothing = GaussianBlur2d((5, 5),
-                                        (self.sigma, self.sigma),
-                                        'replicate')
+        self.smoothing = GaussianBlur2d((5, 5), (self.sigma, self.sigma), 'replicate')
         self.gradients = MKDGradients()
         # This stupid thing needed for jitting...
         polar_s: str = 'polar'
@@ -537,11 +562,10 @@ class MKDDescriptor(nn.Module):
         relative_orientations = {polar_s: True, cart_s: False}
         self.feats = {}
         for parametrization in self.parametrizations:
-            gradient_embedding = EmbedGradients(patch_size=patch_size,
-                                                relative=relative_orientations[parametrization])
-            spatial_encoding = ExplicitSpacialEncoding(kernel_type=parametrization,
-                                                       fmap_size=patch_size,
-                                                       in_dims=gradient_embedding.kernel.d)
+            gradient_embedding = EmbedGradients(patch_size=patch_size, relative=relative_orientations[parametrization])
+            spatial_encoding = ExplicitSpacialEncoding(
+                kernel_type=parametrization, fmap_size=patch_size, in_dims=gradient_embedding.kernel.d
+            )
 
             self.feats[parametrization] = nn.Sequential(gradient_embedding, spatial_encoding)
             self.odims += spatial_encoding.odims
@@ -554,19 +578,16 @@ class MKDDescriptor(nn.Module):
                 urls[self.kernel_type], map_location=lambda storage, loc: storage
             )
             whitening_model = whitening_models[training_set]
-            self.whitening_layer = Whitening(whitening,
-                                             whitening_model,
-                                             in_dims=self.odims,
-                                             output_dims=self.output_dims)
+            self.whitening_layer = Whitening(
+                whitening, whitening_model, in_dims=self.odims, output_dims=self.output_dims
+            )
             self.odims = self.output_dims
 
     def forward(self, patches: torch.Tensor) -> torch.Tensor:
         if not isinstance(patches, torch.Tensor):
-            raise TypeError("Input type is not a torch.Tensor. Got {}"
-                            .format(type(patches)))
+            raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(patches)))
         if not len(patches.shape) == 4:
-            raise ValueError("Invalid input shape, we expect Bx1xHxW. Got: {}"
-                             .format(patches.shape))
+            raise ValueError("Invalid input shape, we expect Bx1xHxW. Got: {}".format(patches.shape))
         # Extract gradients.
         g = self.smoothing(patches)
         g = self.gradients(g)
@@ -590,31 +611,44 @@ class MKDDescriptor(nn.Module):
         return y
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ +\
-            '(' + 'patch_size=' + str(self.patch_size) +\
-            ', ' + 'kernel_type=' + str(self.kernel_type) +\
-            ', ' + 'whitening=' + str(self.whitening) +\
-            ', ' + 'training_set=' + str(self.training_set) +\
-            ', ' + 'output_dims=' + str(self.output_dims) + ')'
+        return (
+            self.__class__.__name__
+            + '('
+            + 'patch_size='
+            + str(self.patch_size)
+            + ', '
+            + 'kernel_type='
+            + str(self.kernel_type)
+            + ', '
+            + 'whitening='
+            + str(self.whitening)
+            + ', '
+            + 'training_set='
+            + str(self.training_set)
+            + ', '
+            + 'output_dims='
+            + str(self.output_dims)
+            + ')'
+        )
 
 
 def load_whitening_model(kernel_type: str, training_set: str) -> Dict:
-    whitening_models = torch.hub.load_state_dict_from_url(
-        urls[kernel_type], map_location=lambda storage, loc: storage
-    )
+    whitening_models = torch.hub.load_state_dict_from_url(urls[kernel_type], map_location=lambda storage, loc: storage)
     whitening_model = whitening_models[training_set]
     return whitening_model
 
 
 class SimpleKD(nn.Module):
-    """Example to write custom Kernel Descriptors. """
+    """Example to write custom Kernel Descriptors."""
 
-    def __init__(self,
-                 patch_size: int = 32,
-                 kernel_type: str = 'polar',  # 'cart' 'polar'
-                 whitening: str = 'pcawt',  # 'lw', 'pca', 'pcaws', 'pcawt
-                 training_set: str = 'liberty',  # 'liberty', 'notredame', 'yosemite'
-                 output_dims: int = 128) -> None:
+    def __init__(
+        self,
+        patch_size: int = 32,
+        kernel_type: str = 'polar',  # 'cart' 'polar'
+        whitening: str = 'pcawt',  # 'lw', 'pca', 'pcaws', 'pcawt
+        training_set: str = 'liberty',  # 'liberty', 'notredame', 'yosemite'
+        output_dims: int = 128,
+    ) -> None:
         super().__init__()
 
         relative: bool = kernel_type == 'polar'
@@ -624,18 +658,12 @@ class SimpleKD(nn.Module):
         smoothing = GaussianBlur2d((5, 5), (sigma, sigma), 'replicate')
         gradients = MKDGradients()
         ori = EmbedGradients(patch_size=patch_size, relative=relative)
-        ese = ExplicitSpacialEncoding(kernel_type=kernel_type,
-                                      fmap_size=patch_size, in_dims=ori.kernel.d)
-        wh = Whitening(whitening,
-                       load_whitening_model(kernel_type, training_set),
-                       in_dims=ese.odims,
-                       output_dims=output_dims)
+        ese = ExplicitSpacialEncoding(kernel_type=kernel_type, fmap_size=patch_size, in_dims=ori.kernel.d)
+        wh = Whitening(
+            whitening, load_whitening_model(kernel_type, training_set), in_dims=ese.odims, output_dims=output_dims
+        )
 
-        self.features = nn.Sequential(smoothing,
-                                      gradients,
-                                      ori,
-                                      ese,
-                                      wh)
+        self.features = nn.Sequential(smoothing, gradients, ori, ese, wh)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.features(x)

@@ -2,6 +2,7 @@ build/
 dist/
 *version.py
 kornia.egg-info/
+.idea
 */**/__pycache__
 */**/*.pyc
 */**/*~
@@ -9,6 +10,7 @@ kornia.egg-info/
 *.swp
 *.swo
 *.swn
+*.swm
 .eggs/*
 .cache/*
 .pytest_cache/*
@@ -17,3 +19,4 @@ kornia.egg-info/
 .coverage
 *bak
 *ipynb_checkpoints*
+docs/source/_static/*jpg

@@ -1,14 +1,12 @@
-from typing import Optional
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from kornia.utils.one_hot import one_hot
 
-
 # based on:
 # https://github.com/kevinzakka/pytorch-goodies/blob/master/losses.py
+
 
 def dice_loss(input: torch.Tensor, target: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     r"""Criterion that computes Sørensen-Dice Coefficient loss.
@@ -49,38 +47,33 @@ def dice_loss(input: torch.Tensor, target: torch.Tensor, eps: float = 1e-8) -> t
         >>> output.backward()
     """
     if not isinstance(input, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}"
-                        .format(type(input)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
 
     if not len(input.shape) == 4:
-        raise ValueError("Invalid input shape, we expect BxNxHxW. Got: {}"
-                         .format(input.shape))
+        raise ValueError("Invalid input shape, we expect BxNxHxW. Got: {}".format(input.shape))
 
     if not input.shape[-2:] == target.shape[-2:]:
-        raise ValueError("input and target shapes must be the same. Got: {} and {}"
-                         .format(input.shape, target.shape))
+        raise ValueError("input and target shapes must be the same. Got: {} and {}".format(input.shape, target.shape))
 
     if not input.device == target.device:
         raise ValueError(
-            "input and target must be in the same device. Got: {} and {}" .format(
-                input.device, target.device))
+            "input and target must be in the same device. Got: {} and {}".format(input.device, target.device)
+        )
 
     # compute softmax over the classes axis
     input_soft: torch.Tensor = F.softmax(input, dim=1)
 
     # create the labels one hot tensor
-    target_one_hot: torch.Tensor = one_hot(
-        target, num_classes=input.shape[1],
-        device=input.device, dtype=input.dtype)
+    target_one_hot: torch.Tensor = one_hot(target, num_classes=input.shape[1], device=input.device, dtype=input.dtype)
 
     # compute the actual dice score
     dims = (1, 2, 3)
     intersection = torch.sum(input_soft * target_one_hot, dims)
     cardinality = torch.sum(input_soft + target_one_hot, dims)
 
-    dice_score = 2. * intersection / (cardinality + eps)
+    dice_score = 2.0 * intersection / (cardinality + eps)
 
-    return torch.mean(-dice_score + 1.)
+    return torch.mean(-dice_score + 1.0)
 
 
 class DiceLoss(nn.Module):

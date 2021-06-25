@@ -1,4 +1,4 @@
-from typing import Optional
+from functools import wraps
 
 import numpy as np
 import torch
@@ -19,12 +19,10 @@ def image_to_tensor(image: np.ndarray, keepdim: bool = True) -> torch.Tensor:
             :math:`(C, H, W)` otherwise.
     """
     if not isinstance(image, (np.ndarray,)):
-        raise TypeError("Input type must be a numpy.ndarray. Got {}".format(
-            type(image)))
+        raise TypeError("Input type must be a numpy.ndarray. Got {}".format(type(image)))
 
     if len(image.shape) > 4 or len(image.shape) < 2:
-        raise ValueError(
-            "Input size must be a two, three or four dimensional array")
+        raise ValueError("Input size must be a two, three or four dimensional array")
 
     input_shape = image.shape
     tensor: torch.Tensor = torch.from_numpy(image)
@@ -40,8 +38,7 @@ def image_to_tensor(image: np.ndarray, keepdim: bool = True) -> torch.Tensor:
         tensor = tensor.permute(0, 3, 1, 2)
         keepdim = True  # no need to unsqueeze
     else:
-        raise ValueError(
-            "Cannot process image with shape {}".format(input_shape))
+        raise ValueError("Cannot process image with shape {}".format(input_shape))
 
     return tensor.unsqueeze(0) if not keepdim else tensor
 
@@ -110,19 +107,17 @@ def tensor_to_image(tensor: torch.Tensor) -> np.ndarray:
 
     """
     if not isinstance(tensor, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(tensor)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(tensor)))
 
     if len(tensor.shape) > 4 or len(tensor.shape) < 2:
-        raise ValueError(
-            "Input size must be a two, three or four dimensional tensor")
+        raise ValueError("Input size must be a two, three or four dimensional tensor")
 
     input_shape = tensor.shape
     image: np.ndarray = tensor.cpu().detach().numpy()
 
     if len(input_shape) == 2:
         # (H, W) -> (H, W)
-        image = image
+        pass
     elif len(input_shape) == 3:
         # (C, H, W) -> (H, W, C)
         if input_shape[0] == 1:
@@ -138,8 +133,7 @@ def tensor_to_image(tensor: torch.Tensor) -> np.ndarray:
         if input_shape[1] == 1:
             image = image.squeeze(-1)
     else:
-        raise ValueError(
-            "Cannot process tensor with shape {}".format(input_shape))
+        raise ValueError("Cannot process tensor with shape {}".format(input_shape))
 
     return image
 
@@ -158,3 +152,24 @@ class ImageToTensor(nn.Module):
 
     def forward(self, x: np.ndarray) -> torch.Tensor:
         return image_to_tensor(x, keepdim=self.keepdim)
+
+
+def perform_keep_shape(f):
+    """TODO: where can we put this?"""
+
+    @wraps(f)
+    def _wrapper(input, *args, **kwargs):
+        input_shape = input.shape
+        if len(input_shape) == 2:
+            input = input[None]
+
+        dont_care_shape = input.shape[:-3]
+        input = input.view(-1, input.shape[-3], input.shape[-2], input.shape[-1])
+
+        output = f(input, *args, **kwargs)
+        output = output.view(*(dont_care_shape + output.shape[-3:]))
+        if len(input_shape) == 2:
+            output = output[0]
+        return output
+
+    return _wrapper

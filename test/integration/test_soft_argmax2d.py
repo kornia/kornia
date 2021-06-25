@@ -1,9 +1,7 @@
 import logging
-import pytest
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
 from test.utils import assert_close
 
@@ -44,8 +42,7 @@ class TestIntegrationSoftArgmax2d:
         criterion = nn.MSELoss()
 
         # spatial soft-argmax2d module
-        soft_argmax2d = kornia.geometry.SpatialSoftArgmax2d(
-            normalized_coordinates=False)
+        soft_argmax2d = kornia.geometry.SpatialSoftArgmax2d(normalized_coordinates=False)
 
         # NOTE: check where this comes from
         temperature = (self.height * self.width) ** (0.5)

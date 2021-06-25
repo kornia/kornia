@@ -18,12 +18,10 @@ def rgb_to_yuv(image: torch.Tensor) -> torch.Tensor:
         >>> output = rgb_to_yuv(input)  # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(image)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(image)))
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
-                         .format(image.shape))
+        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}".format(image.shape))
 
     r: torch.Tensor = image[..., 0, :, :]
     g: torch.Tensor = image[..., 1, :, :]
@@ -54,12 +52,10 @@ def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
         >>> output = yuv_to_rgb(input)  # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(image)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(image)))
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
-                         .format(image.shape))
+        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}".format(image.shape))
 
     y: torch.Tensor = image[..., 0, :, :]
     u: torch.Tensor = image[..., 1, :, :]
@@ -95,9 +91,6 @@ class RgbToYuv(nn.Module):
         [1] https://es.wikipedia.org/wiki/YUV#RGB_a_Y'UV
     """
 
-    def __init__(self) -> None:
-        super(RgbToYuv, self).__init__()
-
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return rgb_to_yuv(input)
 
@@ -119,9 +112,6 @@ class YuvToRgb(nn.Module):
         >>> rgb = YuvToRgb()
         >>> output = rgb(input)  # 2x3x4x5
     """
-
-    def __init__(self) -> None:
-        super(YuvToRgb, self).__init__()
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return yuv_to_rgb(input)

@@ -4,17 +4,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.2] - 2021-MM-DD
+## [0.5.4] - 2021-06-11
+
+### Added
+- Add Canny edge detection ([#1020](https://github.com/kornia/kornia/pull/1020))
+- Added Batched forward function ([#1058](https://github.com/kornia/kornia/pull/1058))
+- Added denormalize homography function [(#1061](https://github.com/kornia/kornia/pull/1061))
+- Added more augmentations containers ([#1014](https://github.com/kornia/kornia/pull/1014))
+- Added calibration module and Undistort 2D points function ([#1026](https://github.com/kornia/kornia/pull/1026))
+- Added patch augmentation container ([#1095](https://github.com/kornia/kornia/pull/1095))
+
+### Fixed
+- Remove lena ([#1059](https://github.com/kornia/kornia/pull/1059)) :)
+
+### Changed
+- Resize regardless of number of dims, considering the last two dims as image ([#1047](https://github.com/kornia/kornia/pull/1047))
+- Raise error if converting to unit8 image to gray with float weights ([#1057](https://github.com/kornia/kornia/pull/1057))
+- Filter 2D->2d, 3D->3d ([#1069](https://github.com/kornia/kornia/pull/1069))
+- Removed augmentation functional module. ([#1067](https://github.com/kornia/kornia/pull/1067))
+- Make Morphology compatible with both OpenCV and Scipy ([#1084](https://github.com/kornia/kornia/pull/1084))
+
+
+## [0.5.3] - 2021-05-29
+
+### Added
+- Added inverse for augmentations ([#1013](https://github.com/kornia/kornia/pull/1013))
+- Add advanced augmentations: RandomFisheye, RandomElasticTransform, RandomThinPlateSpline, RandomBloxBlur ([#1015](https://github.com/kornia/kornia/pull/1015)
+
+### Fixed
+- Correct Sobel test_noncontiguous. Nothing was tested before. ([#1018](https://github.com/kornia/kornia/pull/1018))
+- Fixing #795: find_homography_dlt_iterated sometimes fails ([#1022](https://github.com/kornia/kornia/pull/1022))
+
+### Changed
+- Refactorization of the morphology package ([#1034](https://github.com/kornia/kornia/pull/1034))
+- Optimised clipping in clahe and some other minor optimisation ([#1035](https://github.com/kornia/kornia/pull/1035))
+
+
+## [0.5.2] - 2021-05-14
 
 ## Added
 - Added unsharp mask filtering ([#1004](https://github.com/kornia/kornia/pull/1004))
 
 ### Fixed
-- Fixed angle axis to quaternion order bug ([#926](https://github.com/kornia/kornia/pull/926)) 
+- Fixed angle axis to quaternion order bug ([#926](https://github.com/kornia/kornia/pull/926))
 - Fixed type error for lab_to_rgb conversion when using coremltools. ([#1002](https://github.com/kornia/kornia/pull/1002))
 
 ### Changed
-- Mask with unbatched motion from essential choose solution ([#998](https://github.com/kornia/kornia/pull/998)) 
+- Mask with unbatched motion from essential choose solution ([#998](https://github.com/kornia/kornia/pull/998))
 
 
 ## [0.5.1] - 2021-04-30
@@ -33,17 +69,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improve kornia porphology ([#965](https://github.com/kornia/kornia/pull/965))
 - Improve cuda ci workflow speed ([#975](https://github.com/kornia/kornia/pull/975))
 - Refactor augmentation module ([#948](https://github.com/kornia/kornia/pull/948))
-- Implement fast version of crop function in augmentations ([#967](https://github.com/kornia/kornia/pull/967)) 
-- Implement missing jit ops in kornia.geometry.transform ([#981](https://github.com/kornia/kornia/pull/981)) 
+- Implement fast version of crop function in augmentations ([#967](https://github.com/kornia/kornia/pull/967))
+- Implement missing jit ops in kornia.geometry.transform ([#981](https://github.com/kornia/kornia/pull/981))
 
 ### Fixed
-- Fixed RandomAffine translation range check ([#917](https://github.com/kornia/kornia/pull/917) 
+- Fixed RandomAffine translation range check ([#917](https://github.com/kornia/kornia/pull/917)
 - Fixed the issue of NaN gradients by adding epsilon in focal loss ([#924](https://github.com/kornia/kornia/pull/924))
 - Allow crop size greater than input size. ([#957](https://github.com/kornia/kornia/pull/957))
-- Fixed RandomCrop bug ([#951](https://github.com/kornia/kornia/pull/951)) 
+- Fixed RandomCrop bug ([#951](https://github.com/kornia/kornia/pull/951))
 
 ### Removed
--  Deprecate some augmentation functionals ([#943](https://github.com/kornia/kornia/pull/943)) 
+-  Deprecate some augmentation functionals ([#943](https://github.com/kornia/kornia/pull/943))
 
 
 ## [0.4.1] - 2020-10-20

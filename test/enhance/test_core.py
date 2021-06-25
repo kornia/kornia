@@ -1,12 +1,12 @@
-import pytest
 import random
 
-import kornia
-import kornia.testing as utils  # test utils
-
+import pytest
 import torch
 from torch.autograd import gradcheck
 from test.utils import assert_close
+
+import kornia
+import kornia.testing as utils  # test utils
 
 
 def random_shape(dim, min_elem=1, max_elem=10):
@@ -29,10 +29,7 @@ class TestAddWeighted:
     @pytest.mark.parametrize("size", [2, 3, 4, 5])
     def test_smoke(self, device, dtype, size):
         src1, src2, alpha, beta, gamma = self.get_input(device, dtype, size=3)
-        assert_close(
-            TestAddWeighted.fcn(src1, alpha, src2, beta, gamma),
-            src1 * alpha + src2 * beta + gamma
-        )
+        assert_allclose(TestAddWeighted.fcn(src1, alpha, src2, beta, gamma), src1 * alpha + src2 * beta + gamma)
 
     def test_jit(self, device, dtype):
         src1, src2, alpha, beta, gamma = self.get_input(device, dtype, size=3)
@@ -45,12 +42,10 @@ class TestAddWeighted:
 
     @pytest.mark.parametrize("size", [2, 3])
     def test_gradcheck(self, size, device, dtype):
-        src1, src2, alpha, beta, gamma = self.get_input(
-            device, dtype, size=3, max_elem=5)  # to shave time on gradcheck
+        src1, src2, alpha, beta, gamma = self.get_input(device, dtype, size=3, max_elem=5)  # to shave time on gradcheck
         src1 = utils.tensor_to_gradcheck_var(src1)  # to var
         src2 = utils.tensor_to_gradcheck_var(src2)  # to var
-        assert gradcheck(kornia.enhance.AddWeighted(alpha, beta, gamma), (src1, src2),
-                         raise_exception=True)
+        assert gradcheck(kornia.enhance.AddWeighted(alpha, beta, gamma), (src1, src2), raise_exception=True)
 
     def test_module(self, device, dtype):
         src1, src2, alpha, beta, gamma = self.get_input(device, dtype, size=3)

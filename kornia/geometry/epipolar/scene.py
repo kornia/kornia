@@ -2,8 +2,8 @@
 from typing import Dict
 
 import torch
-import kornia
 
+import kornia
 from kornia.geometry import epipolar
 
 
@@ -12,10 +12,10 @@ def generate_scene(num_views: int, num_points: int) -> Dict[str, torch.Tensor]:
     points3d = torch.rand(1, num_points, 3)  # NxMx3
 
     # Create random camera matrix
-    K = epipolar.random_intrinsics(0., 100.)  # 1x3x3
+    K = epipolar.random_intrinsics(0.0, 100.0)  # 1x3x3
 
     # Create random rotation per view
-    ang = torch.rand(num_views, 1) * kornia.pi * 2.
+    ang = torch.rand(num_views, 1) * kornia.pi * 2.0
 
     rvec = torch.rand(num_views, 3)
     rvec = ang * rvec / torch.norm(rvec, dim=1, keepdim=True)  # Nx3
@@ -31,7 +31,7 @@ def generate_scene(num_views: int, num_points: int) -> Dict[str, torch.Tensor]:
     # Make sure the shape is in front of the camera
     points3d_trans = (rot_mat @ points3d.transpose(-2, -1)) + tvec
     min_dist = torch.min(points3d_trans[:, 2], dim=1)[0]
-    tvec[:, 2, 0] = torch.where(min_dist < 0, tz - min_dist + 1., tz)
+    tvec[:, 2, 0] = torch.where(min_dist < 0, tz - min_dist + 1.0, tz)
 
     # compute projection matrices
     P = epipolar.projection_from_KRt(K, rot_mat, tvec)

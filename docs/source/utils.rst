@@ -28,3 +28,8 @@ Metrics
 .. autofunction:: confusion_matrix
 .. autofunction:: mean_iou
 .. autofunction:: one_hot
+
+Memory
+-------
+
+.. autofunction:: batched_forward

@@ -1,14 +1,11 @@
 from typing import Optional
 
 import torch
+
 from kornia.utils.metrics.confusion_matrix import confusion_matrix
 
 
-def mean_iou(
-        input: torch.Tensor,
-        target: torch.Tensor,
-        num_classes: int,
-        eps: Optional[float] = 1e-6) -> torch.Tensor:
+def mean_iou(input: torch.Tensor, target: torch.Tensor, num_classes: int, eps: Optional[float] = 1e-6) -> torch.Tensor:
     r"""Calculate mean Intersection-Over-Union (mIOU).
 
     The function internally computes the confusion matrix.
@@ -28,20 +25,19 @@ def mean_iou(
         with shape :math:`(B, K)` where K is the number of classes.
     """
     if not torch.is_tensor(input) and input.dtype is not torch.int64:
-        raise TypeError("Input input type is not a torch.Tensor with "
-                        "torch.int64 dtype. Got {}".format(type(input)))
+        raise TypeError("Input input type is not a torch.Tensor with " "torch.int64 dtype. Got {}".format(type(input)))
     if not torch.is_tensor(target) and target.dtype is not torch.int64:
-        raise TypeError("Input target type is not a torch.Tensor with "
-                        "torch.int64 dtype. Got {}".format(type(target)))
+        raise TypeError(
+            "Input target type is not a torch.Tensor with " "torch.int64 dtype. Got {}".format(type(target))
+        )
     if not input.shape == target.shape:
-        raise ValueError("Inputs input and target must have the same shape. "
-                         "Got: {} and {}".format(input.shape, target.shape))
+        raise ValueError(
+            "Inputs input and target must have the same shape. " "Got: {} and {}".format(input.shape, target.shape)
+        )
     if not input.device == target.device:
-        raise ValueError("Inputs must be in the same device. "
-                         "Got: {} - {}".format(input.device, target.device))
+        raise ValueError("Inputs must be in the same device. " "Got: {} - {}".format(input.device, target.device))
     if not isinstance(num_classes, int) or num_classes < 2:
-        raise ValueError("The number of classes must be an integer bigger "
-                         "than two. Got: {}".format(num_classes))
+        raise ValueError("The number of classes must be an integer bigger " "than two. Got: {}".format(num_classes))
     # we first compute the confusion matrix
     conf_mat: torch.Tensor = confusion_matrix(input, target, num_classes)
 

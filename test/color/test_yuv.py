@@ -1,12 +1,10 @@
 import pytest
-
-import kornia
-import kornia.testing as utils  # test utils
-from kornia.testing import BaseTester
-
 import torch
 from torch.autograd import gradcheck
 from test.utils import assert_close
+
+import kornia
+from kornia.testing import BaseTester
 
 
 class TestRgbToYuv(BaseTester):
@@ -15,15 +13,14 @@ class TestRgbToYuv(BaseTester):
         img = torch.rand(C, H, W, device=device, dtype=dtype)
         assert isinstance(kornia.color.rgb_to_yuv(img), torch.Tensor)
 
-    @pytest.mark.parametrize(
-        "shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 1)])
+    @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 1)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.ones(shape, device=device, dtype=dtype)
         assert kornia.color.rgb_to_yuv(img).shape == shape
 
     def test_exception(self, device, dtype):
         with pytest.raises(TypeError):
-            assert kornia.color.rgb_to_yuv([0.])
+            assert kornia.color.rgb_to_yuv([0.0])
 
         with pytest.raises(ValueError):
             img = torch.ones(1, 1, device=device, dtype=dtype)
@@ -75,15 +72,14 @@ class TestYuvToRgb(BaseTester):
         img = torch.rand(C, H, W, device=device, dtype=dtype)
         assert isinstance(kornia.color.yuv_to_rgb(img), torch.Tensor)
 
-    @pytest.mark.parametrize(
-        "shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 1)])
+    @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 1)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.ones(shape, device=device, dtype=dtype)
         assert kornia.color.yuv_to_rgb(img).shape == shape
 
     def test_exception(self, device, dtype):
         with pytest.raises(TypeError):
-            assert kornia.color.yuv_to_rgb([0.])
+            assert kornia.color.yuv_to_rgb([0.0])
 
         with pytest.raises(ValueError):
             img = torch.ones(1, 1, device=device, dtype=dtype)

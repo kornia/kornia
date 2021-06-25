@@ -15,14 +15,10 @@ from kornia.utils.grid import create_meshgrid
 def _validate_batched_image_tensor_input(tensor):
     check_is_tensor(tensor)
     if not len(tensor.shape) == 4:
-        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
-                         .format(tensor.shape))
+        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}".format(tensor.shape))
 
 
-def spatial_softmax2d(
-        input: torch.Tensor,
-        temperature: torch.Tensor = torch.tensor(1.0),
-) -> torch.Tensor:
+def spatial_softmax2d(input: torch.Tensor, temperature: torch.Tensor = torch.tensor(1.0)) -> torch.Tensor:
     r"""Applies the Softmax function over features in each image channel.
 
     Note that this function behaves differently to `torch.nn.Softmax2d`, which
@@ -60,10 +56,7 @@ def spatial_softmax2d(
     return x_soft.view(batch_size, channels, height, width)
 
 
-def spatial_expectation2d(
-        input: torch.Tensor,
-        normalized_coordinates: bool = True,
-) -> torch.Tensor:
+def spatial_expectation2d(input: torch.Tensor, normalized_coordinates: bool = True) -> torch.Tensor:
     r"""Computes the expectation of coordinate values using spatial probabilities.
 
     The input heatmap is assumed to represent a valid spatial probability
@@ -114,19 +107,12 @@ def spatial_expectation2d(
     return output.view(batch_size, channels, 2)  # BxNx2
 
 
-def _safe_zero_division(
-        numerator: torch.Tensor,
-        denominator: torch.Tensor,
-        eps: float = 1e-32,
-) -> torch.Tensor:
+def _safe_zero_division(numerator: torch.Tensor, denominator: torch.Tensor, eps: float = 1e-32) -> torch.Tensor:
     return numerator / torch.clamp(denominator, min=eps)
 
 
 def render_gaussian2d(
-        mean: torch.Tensor,
-        std: torch.Tensor,
-        size: Tuple[int, int],
-        normalized_coordinates: bool = True,
+    mean: torch.Tensor, std: torch.Tensor, size: Tuple[int, int], normalized_coordinates: bool = True
 ):
     r"""Renders the PDF of a 2D Gaussian distribution.
 

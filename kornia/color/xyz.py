@@ -16,12 +16,10 @@ def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
         >>> output = rgb_to_xyz(input)  # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(image)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(image)))
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
-                         .format(image.shape))
+        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}".format(image.shape))
 
     r: torch.Tensor = image[..., 0, :, :]
     g: torch.Tensor = image[..., 1, :, :]
@@ -50,12 +48,10 @@ def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
         >>> output = xyz_to_rgb(input)  # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(image)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(image)))
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
-                         .format(image.shape))
+        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}".format(image.shape))
 
     x: torch.Tensor = image[..., 0, :, :]
     y: torch.Tensor = image[..., 1, :, :]
@@ -91,9 +87,6 @@ class RgbToXyz(nn.Module):
         [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
     """
 
-    def __init__(self) -> None:
-        super(RgbToXyz, self).__init__()
-
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgb_to_xyz(image)
 
@@ -116,9 +109,6 @@ class XyzToRgb(nn.Module):
     Reference:
         [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
     """
-
-    def __init__(self) -> None:
-        super(XyzToRgb, self).__init__()
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return xyz_to_rgb(image)

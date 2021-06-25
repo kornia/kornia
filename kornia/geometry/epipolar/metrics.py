@@ -1,14 +1,13 @@
 """Module including useful metrics for Structure from Motion."""
 
 import torch
+
 import kornia
 
 
-def sampson_epipolar_distance(pts1: torch.Tensor,
-                              pts2: torch.Tensor,
-                              Fm: torch.Tensor,
-                              squared: bool = True,
-                              eps: float = 1e-8) -> torch.Tensor:
+def sampson_epipolar_distance(
+    pts1: torch.Tensor, pts2: torch.Tensor, Fm: torch.Tensor, squared: bool = True, eps: float = 1e-8
+) -> torch.Tensor:
     r"""Returns Sampson distance for correspondences given the fundamental matrix.
 
     Args:
@@ -26,13 +25,10 @@ def sampson_epipolar_distance(pts1: torch.Tensor,
 
     """
     if not isinstance(Fm, torch.Tensor):
-        raise TypeError("Fm type is not a torch.Tensor. Got {}".format(
-            type(Fm)))
+        raise TypeError("Fm type is not a torch.Tensor. Got {}".format(type(Fm)))
 
     if (len(Fm.shape) != 3) or not Fm.shape[-2:] == (3, 3):
-        raise ValueError(
-            "Fm must be a (*, 3, 3) tensor. Got {}".format(
-                Fm.shape))
+        raise ValueError("Fm must be a (*, 3, 3) tensor. Got {}".format(Fm.shape))
 
     if pts1.size(-1) == 2:
         pts1 = kornia.convert_points_to_homogeneous(pts1)
@@ -61,11 +57,9 @@ def sampson_epipolar_distance(pts1: torch.Tensor,
     return (out + eps).sqrt()
 
 
-def symmetrical_epipolar_distance(pts1: torch.Tensor,
-                                  pts2: torch.Tensor,
-                                  Fm: torch.Tensor,
-                                  squared: bool = True,
-                                  eps: float = 1e-8) -> torch.Tensor:
+def symmetrical_epipolar_distance(
+    pts1: torch.Tensor, pts2: torch.Tensor, Fm: torch.Tensor, squared: bool = True, eps: float = 1e-8
+) -> torch.Tensor:
     r"""Returns symmetrical epipolar distance for correspondences given the fundamental matrix.
 
     Args:
@@ -83,13 +77,10 @@ def symmetrical_epipolar_distance(pts1: torch.Tensor,
 
     """
     if not isinstance(Fm, torch.Tensor):
-        raise TypeError("Fm type is not a torch.Tensor. Got {}".format(
-            type(Fm)))
+        raise TypeError("Fm type is not a torch.Tensor. Got {}".format(type(Fm)))
 
     if (len(Fm.shape) != 3) or not Fm.shape[-2:] == (3, 3):
-        raise ValueError(
-            "Fm must be a (*, 3, 3) tensor. Got {}".format(
-                Fm.shape))
+        raise ValueError("Fm must be a (*, 3, 3) tensor. Got {}".format(Fm.shape))
 
     if pts1.size(-1) == 2:
         pts1 = kornia.convert_points_to_homogeneous(pts1)
@@ -112,8 +103,9 @@ def symmetrical_epipolar_distance(pts1: torch.Tensor,
     numerator: torch.Tensor = (pts2 * line1_in_2).sum(2).pow(2)
 
     # denominator_inv =  1/ (((Fx)_1**2) + (Fx)_2**2)) +  1/ (((F^Tx')_1**2) + (F^Tx')_2**2))
-    denominator_inv: torch.Tensor = (1. / (line1_in_2[..., :2].norm(2, dim=2).pow(2)) +
-                                     1. / (line2_in_1[..., :2].norm(2, dim=2).pow(2)))
+    denominator_inv: torch.Tensor = 1.0 / (line1_in_2[..., :2].norm(2, dim=2).pow(2)) + 1.0 / (
+        line2_in_1[..., :2].norm(2, dim=2).pow(2)
+    )
     out: torch.Tensor = numerator * denominator_inv
     if squared:
         return out

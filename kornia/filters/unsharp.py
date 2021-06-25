@@ -3,15 +3,12 @@ from typing import Tuple
 import torch
 import torch.nn as nn
 
-import kornia
 from kornia.filters import gaussian_blur2d
 
 
 def unsharp_mask(
-        input: torch.Tensor,
-        kernel_size: Tuple[int, int],
-        sigma: Tuple[float, float],
-        border_type: str = 'reflect') -> torch.Tensor:
+    input: torch.Tensor, kernel_size: Tuple[int, int], sigma: Tuple[float, float], border_type: str = 'reflect'
+) -> torch.Tensor:
     r"""Creates an operator that blurs a tensor using the existing Gaussian filter available with the Kornia library.
 
     Arguments:
@@ -62,9 +59,7 @@ class UnsharpMask(nn.Module):
         torch.Size([2, 4, 5, 5])
     """
 
-    def __init__(self, kernel_size: Tuple[int, int],
-                 sigma: Tuple[float, float],
-                 border_type: str = 'reflect') -> None:
+    def __init__(self, kernel_size: Tuple[int, int], sigma: Tuple[float, float], border_type: str = 'reflect') -> None:
         super(UnsharpMask, self).__init__()
         self.kernel_size: Tuple[int, int] = kernel_size
         self.sigma: Tuple[float, float] = sigma

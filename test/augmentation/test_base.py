@@ -1,44 +1,42 @@
 from unittest.mock import patch
-from typing import Union, Tuple
 
 import pytest
 import torch
-import torch.nn as nn
-
-from test.utils import assert_close
 from torch.autograd import gradcheck
+from torch.testing import assert_allclose
 
-import kornia
 import kornia.testing as utils  # test utils
-from kornia.augmentation.base import _BasicAugmentationBase, _AugmentationBase, AugmentationBase2D, AugmentationBase3D
+from kornia.augmentation.base import _BasicAugmentationBase, AugmentationBase2D
 
 
 class TestBasicAugmentationBase:
-
     def test_smoke(self, device, dtype):
-        base = _BasicAugmentationBase(p=0.5, p_batch=1., same_on_batch=True)
+        base = _BasicAugmentationBase(p=0.5, p_batch=1.0, same_on_batch=True)
         __repr__ = "p=0.5, p_batch=1.0, same_on_batch=True"
         assert str(base) == __repr__
 
     def test_infer_input(self, device, dtype):
         input = torch.rand((2, 3, 4, 5), device=device, dtype=dtype)
-        augmentation = _BasicAugmentationBase(p=1., p_batch=1)
+        augmentation = _BasicAugmentationBase(p=1.0, p_batch=1)
         with patch.object(augmentation, "transform_tensor", autospec=True) as transform_tensor:
             transform_tensor.side_effect = lambda x: x.unsqueeze(dim=2)
             output = augmentation.transform_tensor(input)
             assert output.shape == torch.Size([2, 3, 1, 4, 5])
             assert_close(input, output[:, :, 0, :, :])
 
-    @pytest.mark.parametrize("p,p_batch,same_on_batch,num,seed", [
-        (1., 1., False, 12, 1),
-        (1., 0., False, 0, 1),
-        (0., 1., False, 0, 1),
-        (0., 0., False, 0, 1),
-        (.5, .1, False, 7, 3),
-        (.5, .1, True, 12, 3),
-        (.3, 1., False, 2, 1),
-        (.3, 1., True, 0, 1),
-    ])
+    @pytest.mark.parametrize(
+        "p,p_batch,same_on_batch,num,seed",
+        [
+            (1.0, 1.0, False, 12, 1),
+            (1.0, 0.0, False, 0, 1),
+            (0.0, 1.0, False, 0, 1),
+            (0.0, 0.0, False, 0, 1),
+            (0.5, 0.1, False, 7, 3),
+            (0.5, 0.1, True, 12, 3),
+            (0.3, 1.0, False, 2, 1),
+            (0.3, 1.0, True, 0, 1),
+        ],
+    )
     def test_forward_params(self, p, p_batch, same_on_batch, num, seed, device, dtype):
         input_shape = (12,)
         torch.manual_seed(seed)
@@ -56,11 +54,14 @@ class TestBasicAugmentationBase:
         torch.manual_seed(42)
         input = torch.rand((12, 3, 4, 5), device=device, dtype=dtype)
         expected_output = input[..., :2, :2] if keepdim else input.unsqueeze(dim=0)[..., :2, :2]
-        augmentation = _BasicAugmentationBase(p=.3, p_batch=1., keepdim=keepdim)
-        with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform, \
-                patch.object(augmentation, "generate_parameters", autospec=True) as generate_parameters, \
-                patch.object(augmentation, "transform_tensor", autospec=True) as transform_tensor, \
-                patch.object(augmentation, "__check_batching__", autospec=True) as check_batching:
+        augmentation = _BasicAugmentationBase(p=0.3, p_batch=1.0, keepdim=keepdim)
+        with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform, patch.object(
+            augmentation, "generate_parameters", autospec=True
+        ) as generate_parameters, patch.object(
+            augmentation, "transform_tensor", autospec=True
+        ) as transform_tensor, patch.object(
+            augmentation, "__check_batching__", autospec=True
+        ) as check_batching:
 
             generate_parameters.side_effect = lambda shape: {
                 'degrees': torch.arange(0, shape[0], device=device, dtype=dtype)
@@ -74,19 +75,21 @@ class TestBasicAugmentationBase:
 
 
 class TestAugmentationBase2D:
-
-    @pytest.mark.parametrize('input_shape, in_trans_shape', [
-        ((2, 3, 4, 5), (2, 3, 3)),
-        ((3, 4, 5), (3, 3)),
-        ((4, 5), (3, 3)),
-        pytest.param((1, 2, 3, 4, 5), (2, 3, 3), marks=pytest.mark.xfail),
-        pytest.param((2, 3, 4, 5), (1, 3, 3), marks=pytest.mark.xfail),
-        pytest.param((2, 3, 4, 5), (3, 3), marks=pytest.mark.xfail),
-    ])
+    @pytest.mark.parametrize(
+        'input_shape, in_trans_shape',
+        [
+            ((2, 3, 4, 5), (2, 3, 3)),
+            ((3, 4, 5), (3, 3)),
+            ((4, 5), (3, 3)),
+            pytest.param((1, 2, 3, 4, 5), (2, 3, 3), marks=pytest.mark.xfail),
+            pytest.param((2, 3, 4, 5), (1, 3, 3), marks=pytest.mark.xfail),
+            pytest.param((2, 3, 4, 5), (3, 3), marks=pytest.mark.xfail),
+        ],
+    )
     def test_check_batching(self, device, dtype, input_shape, in_trans_shape):
         input = torch.rand(input_shape, device=device, dtype=dtype)
         in_trans = torch.rand(in_trans_shape, device=device, dtype=dtype)
-        augmentation = AugmentationBase2D(p=1., p_batch=1)
+        augmentation = AugmentationBase2D(p=1.0, p_batch=1)
         augmentation.__check_batching__(input)
         augmentation.__check_batching__((input, in_trans))
 
@@ -96,11 +99,13 @@ class TestAugmentationBase2D:
         input_transform = torch.rand((2, 3, 3), device=device, dtype=dtype)
         expected_output = torch.rand((2, 3, 4, 5), device=device, dtype=dtype)
         expected_transform = torch.rand((2, 3, 3), device=device, dtype=dtype)
-        augmentation = AugmentationBase2D(return_transform=False, p=1.)
+        augmentation = AugmentationBase2D(return_transform=False, p=1.0)
 
-        with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform, \
-                patch.object(augmentation, "generate_parameters", autospec=True) as generate_parameters, \
-                patch.object(augmentation, "compute_transformation", autospec=True) as compute_transformation:
+        with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform, patch.object(
+            augmentation, "generate_parameters", autospec=True
+        ) as generate_parameters, patch.object(
+            augmentation, "compute_transformation", autospec=True
+        ) as compute_transformation:
 
             # Calling the augmentation with a single tensor shall return the expected tensor using the generated params.
             params = {'params': {}, 'flags': {'foo': 0}}
@@ -155,11 +160,13 @@ class TestAugmentationBase2D:
 
         input_param = {'batch_prob': torch.tensor([True]), 'params': {'x': input_transform}, 'flags': {}}
 
-        augmentation = AugmentationBase2D(return_transform=True, p=1.)
+        augmentation = AugmentationBase2D(return_transform=True, p=1.0)
 
-        with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform, \
-                patch.object(augmentation, "generate_parameters", autospec=True) as generate_parameters, \
-                patch.object(augmentation, "compute_transformation", autospec=True) as compute_transformation:
+        with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform, patch.object(
+            augmentation, "generate_parameters", autospec=True
+        ) as generate_parameters, patch.object(
+            augmentation, "compute_transformation", autospec=True
+        ) as compute_transformation:
 
             apply_transform.return_value = output
             compute_transformation.return_value = other_transform

@@ -1,15 +1,36 @@
+<div align="center">
 <p align="center">
   <img width="50%" src="https://github.com/kornia/kornia/blob/master/docs/source/_static/img/kornia_logo.svg" />
 </p>
 
---------------------------------------------------------------------------------
+**The open-source and Computer Vision 2.0 library**
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+---
+
+<!-- prettier-ignore -->
+<a href="https://kornia.org">Website</a> •
+<a href="https://kornia.readthedocs.io">Docs</a> •
+<a href="https://colab.research.google.com/github/kornia/tutorials/blob/master/source/hello_world_tutorial.ipynb">Try it Now</a> •
+<a href="https://kornia-tutorials.readthedocs.io">Tutorials</a> •
+<a href="https://github.com/kornia/kornia-examples">Examples</a> •
+<a href="https://kornia.github.io//kornia-blog">Blog</a> •
+<a href="https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-CnydWe5fmvkcktIeRFGCEQ">Community</a>
+
+[![PyPI python](https://img.shields.io/pypi/pyversions/kornia)](https://pypi.org/project/kornia)
+[![PyPI version](https://badge.fury.io/py/kornia.svg)](https://pypi.org/project/kornia)
+[![Downloads](https://pepy.tech/badge/kornia)](https://pepy.tech/project/kornia)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENCE)
+[![Slack](https://img.shields.io/badge/Slack-4A154B?logo=slack&logoColor=white)](https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-CnydWe5fmvkcktIeRFGCEQ)
+[![Twitter](https://img.shields.io/twitter/follow/kornia_foss?style=social)](https://twitter.com/kornia_foss)
+
 [![tests-cpu-versions](https://github.com/kornia/kornia/actions/workflows/tests_cpu_versions.yml/badge.svg)](https://github.com/kornia/kornia/actions/workflows/tests_cpu_versions.yml)
 [![tests-cuda](https://github.com/kornia/kornia/actions/workflows/tests_cuda.yml/badge.svg)](https://github.com/kornia/kornia/actions/workflows/tests_cuda.yml)
 [![codecov](https://codecov.io/gh/kornia/kornia/branch/master/graph/badge.svg?token=FzCb7e0Bso)](https://codecov.io/gh/kornia/kornia)
-[![PyPI version](https://badge.fury.io/py/kornia.svg)](https://badge.fury.io/py/kornia)
 [![Documentation Status](https://readthedocs.org/projects/kornia/badge/?version=latest)](https://kornia.readthedocs.io/en/latest/?badge=latest)
+[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/kornia/kornia/master.svg)](https://results.pre-commit.ci/latest/github/kornia/kornia/master)
+
+</p>
+</div>
 
 *Kornia* is a differentiable computer vision library for [PyTorch](https://pytorch.org).
 
@@ -55,7 +76,7 @@ At a granular level, Kornia is a library that consists of the following componen
   <summary>Other installation options</summary>
 
   #### From source:
-      
+
   ```bash
   python setup.py install
   ```
@@ -81,7 +102,7 @@ Run our Jupyter notebooks [tutorials](https://kornia-tutorials.readthedocs.io/en
 
 <div align="center">
   <a href="https://colab.research.google.com/github/kornia/tutorials/blob/master/source/hello_world_tutorial.ipynb" target="_blank">
-    <img src="https://kornia-tutorials.readthedocs.io/en/latest/_images/hello_world_tutorial_17_0.png" width="75%" height="75%">
+    <img src="https://raw.githubusercontent.com/kornia/data/main/hello_world_arturito.png" width="75%" height="75%">
   </a>
 </div>
 

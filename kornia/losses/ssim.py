@@ -1,14 +1,12 @@
-from typing import Tuple
-
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
-from kornia.filters import get_gaussian_kernel2d, filter2D
+from kornia.filters import filter2d, get_gaussian_kernel2d
 
 
-def ssim(img1: torch.Tensor, img2: torch.Tensor, window_size: int,
-         max_val: float = 1.0, eps: float = 1e-12) -> torch.Tensor:
+def ssim(
+    img1: torch.Tensor, img2: torch.Tensor, window_size: int, max_val: float = 1.0, eps: float = 1e-12
+) -> torch.Tensor:
     r"""Function that computes the Structural Similarity (SSIM) index map between two images.
 
     Measures the (SSIM) index between each element in the input `x` and target `y`.
@@ -42,61 +40,58 @@ def ssim(img1: torch.Tensor, img2: torch.Tensor, window_size: int,
         >>> ssim_map = ssim(input1, input2, 5)  # 1x4x5x5
     """
     if not isinstance(img1, torch.Tensor):
-        raise TypeError("Input img1 type is not a torch.Tensor. Got {}"
-                        .format(type(img1)))
+        raise TypeError("Input img1 type is not a torch.Tensor. Got {}".format(type(img1)))
 
     if not isinstance(img2, torch.Tensor):
-        raise TypeError("Input img2 type is not a torch.Tensor. Got {}"
-                        .format(type(img2)))
+        raise TypeError("Input img2 type is not a torch.Tensor. Got {}".format(type(img2)))
 
     if not isinstance(max_val, float):
         raise TypeError(f"Input max_val type is not a float. Got {type(max_val)}")
 
     if not len(img1.shape) == 4:
-        raise ValueError("Invalid img1 shape, we expect BxCxHxW. Got: {}"
-                         .format(img1.shape))
+        raise ValueError("Invalid img1 shape, we expect BxCxHxW. Got: {}".format(img1.shape))
 
     if not len(img2.shape) == 4:
-        raise ValueError("Invalid img2 shape, we expect BxCxHxW. Got: {}"
-                         .format(img2.shape))
+        raise ValueError("Invalid img2 shape, we expect BxCxHxW. Got: {}".format(img2.shape))
 
     if not img1.shape == img2.shape:
-        raise ValueError("img1 and img2 shapes must be the same. Got: {} and {}"
-                         .format(img1.shape, img2.shape))
+        raise ValueError("img1 and img2 shapes must be the same. Got: {} and {}".format(img1.shape, img2.shape))
 
     # prepare kernel
-    kernel: torch.Tensor = (
-        get_gaussian_kernel2d((window_size, window_size), (1.5, 1.5)).unsqueeze(0)
-    )
+    kernel: torch.Tensor = get_gaussian_kernel2d((window_size, window_size), (1.5, 1.5)).unsqueeze(0)
 
     # compute coefficients
     C1: float = (0.01 * max_val) ** 2
     C2: float = (0.03 * max_val) ** 2
 
     # compute local mean per channel
-    mu1: torch.Tensor = filter2D(img1, kernel)
-    mu2: torch.Tensor = filter2D(img2, kernel)
+    mu1: torch.Tensor = filter2d(img1, kernel)
+    mu2: torch.Tensor = filter2d(img2, kernel)
 
     mu1_sq = mu1 ** 2
     mu2_sq = mu2 ** 2
     mu1_mu2 = mu1 * mu2
 
     # compute local sigma per channel
-    sigma1_sq = filter2D(img1 ** 2, kernel) - mu1_sq
-    sigma2_sq = filter2D(img2 ** 2, kernel) - mu2_sq
-    sigma12 = filter2D(img1 * img2, kernel) - mu1_mu2
+    sigma1_sq = filter2d(img1 ** 2, kernel) - mu1_sq
+    sigma2_sq = filter2d(img2 ** 2, kernel) - mu2_sq
+    sigma12 = filter2d(img1 * img2, kernel) - mu1_mu2
 
     # compute the similarity index map
-    num: torch.Tensor = (2. * mu1_mu2 + C1) * (2. * sigma12 + C2)
-    den: torch.Tensor = (
-        (mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2)
-    )
+    num: torch.Tensor = (2.0 * mu1_mu2 + C1) * (2.0 * sigma12 + C2)
+    den: torch.Tensor = (mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2)
 
     return num / (den + eps)
 
 
-def ssim_loss(img1: torch.Tensor, img2: torch.Tensor, window_size: int,
-              max_val: float = 1.0, eps: float = 1e-12, reduction: str = 'mean') -> torch.Tensor:
+def ssim_loss(
+    img1: torch.Tensor,
+    img2: torch.Tensor,
+    window_size: int,
+    max_val: float = 1.0,
+    eps: float = 1e-12,
+    reduction: str = 'mean',
+) -> torch.Tensor:
     r"""Function that computes a loss based on the SSIM measurement.
 
     The loss, or the Structural dissimilarity (DSSIM) is described as:
@@ -130,7 +125,7 @@ def ssim_loss(img1: torch.Tensor, img2: torch.Tensor, window_size: int,
     ssim_map: torch.Tensor = ssim(img1, img2, window_size, max_val, eps)
 
     # compute and reduce the loss
-    loss = torch.clamp((1. - ssim_map) / 2, min=0, max=1)
+    loss = torch.clamp((1.0 - ssim_map) / 2, min=0, max=1)
 
     if reduction == "mean":
         loss = torch.mean(loss)
@@ -216,8 +211,7 @@ class SSIMLoss(nn.Module):
         >>> loss = criterion(input1, input2)
     """
 
-    def __init__(self, window_size: int, max_val: float = 1.0,
-                 eps: float = 1e-12, reduction: str = 'mean') -> None:
+    def __init__(self, window_size: int, max_val: float = 1.0, eps: float = 1e-12, reduction: str = 'mean') -> None:
         super(SSIMLoss, self).__init__()
         self.window_size: int = window_size
         self.max_val: float = max_val

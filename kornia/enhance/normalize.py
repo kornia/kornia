@@ -5,14 +5,7 @@ from typing import Union
 import torch
 import torch.nn as nn
 
-
-__all__ = [
-    "normalize",
-    "normalize_min_max",
-    "denormalize",
-    "Normalize",
-    "Denormalize",
-]
+__all__ = ["normalize", "normalize_min_max", "denormalize", "Normalize", "Denormalize"]
 
 
 class Normalize(nn.Module):
@@ -60,9 +53,7 @@ class Normalize(nn.Module):
         return self.__class__.__name__ + repr
 
 
-def normalize(
-    data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]
-) -> torch.Tensor:
+def normalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]) -> torch.Tensor:
     r"""Normalize a tensor image with mean and standard deviation.
 
     .. math::
@@ -176,9 +167,7 @@ class Denormalize(nn.Module):
         return self.__class__.__name__ + repr
 
 
-def denormalize(
-    data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]
-) -> torch.Tensor:
+def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]) -> torch.Tensor:
     r"""Denormalize a tensor image with mean and standard deviation.
 
     .. math::
@@ -247,7 +236,7 @@ def denormalize(
     return out.view(shape)
 
 
-def normalize_min_max(x: torch.Tensor, min_val: float = 0., max_val: float = 1., eps: float = 1e-6) -> torch.Tensor:
+def normalize_min_max(x: torch.Tensor, min_val: float = 0.0, max_val: float = 1.0, eps: float = 1e-6) -> torch.Tensor:
     r"""Normalise an image tensor by MinMax and re-scales the value between a range.
 
     The data is normalised using the following formulation:
@@ -292,7 +281,5 @@ def normalize_min_max(x: torch.Tensor, min_val: float = 0., max_val: float = 1.,
     x_min: torch.Tensor = x.view(B, C, -1).min(-1)[0].view(B, C, 1)
     x_max: torch.Tensor = x.view(B, C, -1).max(-1)[0].view(B, C, 1)
 
-    x_out: torch.Tensor = (
-        (max_val - min_val) * (x.view(B, C, -1) - x_min) / (x_max - x_min + eps) + min_val
-    )
+    x_out: torch.Tensor = (max_val - min_val) * (x.view(B, C, -1) - x_min) / (x_max - x_min + eps) + min_val
     return x_out.view(shape)

@@ -1,15 +1,11 @@
-import pytest
-
 import torch
 from torch.autograd import gradcheck
-from test.utils import assert_close
 
 import kornia.geometry.epipolar as epi
 import kornia.testing as utils
 
 
 class TestSymmetricalEpipolarDistance:
-
     def test_smoke(self, device, dtype):
         pts1 = torch.rand(1, 4, 3, device=device, dtype=dtype)
         pts2 = torch.rand(1, 4, 3, device=device, dtype=dtype)
@@ -29,12 +25,10 @@ class TestSymmetricalEpipolarDistance:
         points1 = torch.rand(batch_size, num_points, num_dims, device=device, dtype=torch.float64, requires_grad=True)
         points2 = torch.rand(batch_size, num_points, num_dims, device=device, dtype=torch.float64)
         Fm = utils.create_random_fundamental_matrix(batch_size).type_as(points2)
-        assert gradcheck(epi.symmetrical_epipolar_distance, (points1, points2, Fm),
-                         raise_exception=True)
+        assert gradcheck(epi.symmetrical_epipolar_distance, (points1, points2, Fm), raise_exception=True)
 
 
 class TestSampsonEpipolarDistance:
-
     def test_smoke(self, device, dtype):
         pts1 = torch.rand(1, 4, 3, device=device, dtype=dtype)
         pts2 = torch.rand(1, 4, 3, device=device, dtype=dtype)
@@ -54,5 +48,4 @@ class TestSampsonEpipolarDistance:
         points1 = torch.rand(batch_size, num_points, num_dims, device=device, dtype=torch.float64, requires_grad=True)
         points2 = torch.rand(batch_size, num_points, num_dims, device=device, dtype=torch.float64)
         Fm = utils.create_random_fundamental_matrix(batch_size).type_as(points2)
-        assert gradcheck(epi.sampson_epipolar_distance, (points1, points2, Fm),
-                         raise_exception=True)
+        assert gradcheck(epi.sampson_epipolar_distance, (points1, points2, Fm), raise_exception=True)
