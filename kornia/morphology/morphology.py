@@ -81,7 +81,7 @@ def dilation(
         neighborhood[kernel == 0] = -max_val
 
     B, C, H, W = tensor.size()
-    Hpad, Wpad = output.shape[-2:]
+    h_pad, w_pad = output.shape[-2:]
     reshape_kernel = _neight2channels_like_kernel(kernel)
     output, _ = F.conv2d(
         output.view(B * C, 1, Hpad, Wpad), reshape_kernel, padding=0, bias=neighborhood.view(-1).flip(0)
