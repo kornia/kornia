@@ -1,4 +1,5 @@
 import importlib
+import math
 import os
 from pathlib import Path
 from typing import Optional, Tuple
@@ -129,11 +130,20 @@ def main():
     }
     # ITERATE OVER THE TRANSFORMS
     for fn_name, (args, num_samples) in color_transforms_list.items():
+        # import function and apply
         fn = getattr(mod, fn_name)
         out = fn(img2, *args)
-        # save the output image
+        # perform normalization to visualize
+        if fn_name == "rgb_to_lab":
+            out = out[:, :1] / 100.
+        elif fn_name == "rgb_to_hsv":
+            out[:,:1] = out[:, :1] / 2 * math.pi
+        elif fn_name == "rgb_to_luv":
+            out = out[:, :1] / 116.
+        # repeat channels for grayscale
         if out.shape[1] != 3:
             out = out.repeat(1, 3, 1, 1)
+        # save the output image
         out = torch.cat([img2[0], *[out[i] for i in range(out.size(0))]], dim=-1)
         out_np = K.utils.tensor_to_image((out * 255.0).byte())
         cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)

@@ -93,8 +93,8 @@ def bgr_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> t
     r"""Convert an image from BGR to RGBA.
 
     Args:
-        image (torch.Tensor): BGR Image to be converted to RGBA of shape :math:`(*,3,H,W)`.
-        alpha_val (float, torch.Tensor): A float number for the alpha value or a tensor
+        image: BGR Image to be converted to RGBA of shape :math:`(*,3,H,W)`.
+        alpha_val: A float number for the alpha value or a tensor
           of shape :math:`(*,1,H,W)`.
 
     Returns:
