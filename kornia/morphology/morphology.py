@@ -88,7 +88,7 @@ def dilation(
     ).max(dim=1)
     output = output.view(B, C, H, W)
 
-    return output
+    return output.view_as(tensor)
 
 
 # Erosion
