@@ -1,7 +1,7 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from kornia.testing import assert_close
 
 import kornia
 from kornia.augmentation import RandomMotionBlur, RandomMotionBlur3D

@@ -1,7 +1,7 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from kornia.testing import assert_close
 
 import kornia
 import kornia.testing as utils  # test utils
@@ -108,8 +108,8 @@ class TestScalePyramid:
         for i, pyr_level in enumerate(sp):
             for ii, img in enumerate(pyr_level):
                 img = img.squeeze()
-                assert_allclose(img, img.flip(1))
-                assert_allclose(img, img.flip(2))
+                assert_close(img, img.flip(1))
+                assert_close(img, img.flip(2))
 
     def test_gradcheck(self, device, dtype):
         img = torch.rand(1, 2, 7, 9, device=device, dtype=dtype)

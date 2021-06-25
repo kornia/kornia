@@ -3,7 +3,7 @@ import random
 import pytest
 import torch
 from torch.autograd import gradcheck
-from test.utils import assert_close
+from kornia.testing import assert_close
 
 import kornia
 import kornia.testing as utils  # test utils
@@ -29,7 +29,7 @@ class TestAddWeighted:
     @pytest.mark.parametrize("size", [2, 3, 4, 5])
     def test_smoke(self, device, dtype, size):
         src1, src2, alpha, beta, gamma = self.get_input(device, dtype, size=3)
-        assert_allclose(TestAddWeighted.fcn(src1, alpha, src2, beta, gamma), src1 * alpha + src2 * beta + gamma)
+        assert_close(TestAddWeighted.fcn(src1, alpha, src2, beta, gamma), src1 * alpha + src2 * beta + gamma)
 
     def test_jit(self, device, dtype):
         src1, src2, alpha, beta, gamma = self.get_input(device, dtype, size=3)

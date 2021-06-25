@@ -1,5 +1,5 @@
 import torch
-from torch.testing import assert_allclose
+from kornia.testing import assert_close
 
 from kornia.augmentation import RandomCutMix, RandomMixUp
 
@@ -196,7 +196,7 @@ class TestRandomCutMix:
         assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
         assert (out_label[:, :, 0] == label).all()
         assert (out_label[:, :, 1] == torch.tensor([[1, 0], [1, 0], [1, 0], [1, 0], [0, 1]], device=device)).all()
-        assert_allclose(
+        assert_close(
             out_label[:, :, 2],
             torch.tensor(
                 [[0.0833, 0.3333], [0.0, 0.1667], [0.5, 0.0833], [0.0833, 0.0], [0.5, 0.3333]],
@@ -231,6 +231,6 @@ class TestRandomCutMix:
         assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
         assert (out_label[0, :, 0] == label).all()
         assert (out_label[0, :, 1] == torch.tensor([0, 1], device=device, dtype=dtype)).all()
-        assert_allclose(
+        assert_close(
             out_label[0, :, 2], torch.tensor([0.5000, 0.5000], device=device, dtype=dtype), rtol=1e-4, atol=1e-4
         )

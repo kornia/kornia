@@ -1,7 +1,7 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from kornia.testing import assert_close
 
 import kornia
 import kornia.testing as utils  # test utils
@@ -270,7 +270,7 @@ class TestNormalizeMinMax(BaseTester):
         )
 
         actual = kornia.normalize_min_max(x, min_val=-1.0, max_val=1.0)
-        assert_allclose(actual, expected, atol=1e-6, rtol=1e-6)
+        assert_close(actual, expected, atol=1e-6, rtol=1e-6)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):

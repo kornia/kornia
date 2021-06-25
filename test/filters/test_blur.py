@@ -1,6 +1,6 @@
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from kornia.testing import assert_close
 
 import kornia
 import kornia.testing as utils  # test utils
@@ -38,7 +38,7 @@ class TestBoxBlur:
         actual = kornia.filters.box_blur(inp, kernel_size)
 
         tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
-        assert_allclose(actual.sum(), torch.tensor(35.0).to(actual), rtol=tol_val, atol=tol_val)
+        assert_close(actual.sum(), torch.tensor(35.0).to(actual), rtol=tol_val, atol=tol_val)
 
     # TODO(dmytro): normalized does not make any effect
     def test_kernel_3x3_nonormalize(self, device, dtype):
@@ -62,7 +62,7 @@ class TestBoxBlur:
         actual = kornia.filters.box_blur(inp, kernel_size, normalized=False)
 
         tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
-        assert_allclose(actual.sum(), torch.tensor(35.0).to(actual), rtol=tol_val, atol=tol_val)
+        assert_close(actual.sum(), torch.tensor(35.0).to(actual), rtol=tol_val, atol=tol_val)
 
     def test_kernel_5x5(self, device, dtype):
         inp = torch.tensor(

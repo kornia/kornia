@@ -1,7 +1,7 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from test.utils import assert_close
+from kornia.testing import assert_close
 
 import kornia
 import kornia.testing as utils  # test utils
@@ -16,17 +16,17 @@ class TestResize:
         # 2D
         inp = torch.rand(3, 4, device=device, dtype=dtype)
         out = kornia.resize(inp, (3, 4))
-        assert_allclose(inp, out, atol=1e-4, rtol=1e-4)
+        assert_close(inp, out, atol=1e-4, rtol=1e-4)
 
         # 3D
         inp = torch.rand(3, 3, 4, device=device, dtype=dtype)
         out = kornia.resize(inp, (3, 4))
-        assert_allclose(inp, out, atol=1e-4, rtol=1e-4)
+        assert_close(inp, out, atol=1e-4, rtol=1e-4)
 
         # arbitrary dim
         inp = torch.rand(1, 2, 3, 2, 1, 3, 3, 4, device=device, dtype=dtype)
         out = kornia.resize(inp, (3, 4))
-        assert_allclose(inp, out, atol=1e-4, rtol=1e-4)
+        assert_close(inp, out, atol=1e-4, rtol=1e-4)
 
     def test_upsize(self, device, dtype):
         inp = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
@@ -212,7 +212,7 @@ class TestRescale:
             device=device,
             dtype=dtype,
         )
-        assert_allclose(out, expected, atol=1e-3, rtol=1e-3)
+        assert_close(out, expected, atol=1e-3, rtol=1e-3)
 
     def test_downscale_values_AA(self, device, dtype):
         inp_x = torch.arange(20, device=device, dtype=dtype) / 20.0
@@ -234,7 +234,7 @@ class TestRescale:
             device=device,
             dtype=dtype,
         )
-        assert_allclose(out, expected, atol=1e-3, rtol=1e-3)
+        assert_close(out, expected, atol=1e-3, rtol=1e-3)
 
     def test_one_param(self, device, dtype):
         input = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)

@@ -1,7 +1,7 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from test.utils import assert_close
+from kornia.testing import assert_close
 
 import kornia
 import kornia.geometry.transform.projwarp as proj
@@ -233,7 +233,7 @@ class TestGetRotationMatrix3d:
         P_expected = torch.tensor(
             [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]], device=device, dtype=dtype
         ).unsqueeze(0)
-        assert_allclose(P, P_expected, atol=1e-4, rtol=1e-4)
+        assert_close(P, P_expected, atol=1e-4, rtol=1e-4)
 
     def test_rot90x(self, device, dtype):
         center = torch.zeros(1, 3, device=device, dtype=dtype)
@@ -243,7 +243,7 @@ class TestGetRotationMatrix3d:
         P_expected = torch.tensor(
             [[1.0, 0.0, 0.0, 0.0], [0.0, 0.0, -1.0, 0.0], [0.0, 1.0, 0.0, 0.0]], device=device, dtype=dtype
         ).unsqueeze(0)
-        assert_allclose(P, P_expected, atol=1e-4, rtol=1e-4)
+        assert_close(P, P_expected, atol=1e-4, rtol=1e-4)
 
     def test_rot90y(self, device, dtype):
         center = torch.zeros(1, 3, device=device, dtype=dtype)
@@ -253,7 +253,7 @@ class TestGetRotationMatrix3d:
         P_expected = torch.tensor(
             [[0.0, 0.0, 1.0, 0.0], [0.0, 1.0, 0.0, 0.0], [-1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype
         ).unsqueeze(0)
-        assert_allclose(P, P_expected, atol=1e-4, rtol=1e-4)
+        assert_close(P, P_expected, atol=1e-4, rtol=1e-4)
 
     def test_rot90z(self, device, dtype):
         center = torch.zeros(1, 3, device=device, dtype=dtype)
@@ -263,7 +263,7 @@ class TestGetRotationMatrix3d:
         P_expected = torch.tensor(
             [[0.0, -1.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]], device=device, dtype=dtype
         ).unsqueeze(0)
-        assert_allclose(P, P_expected, atol=1e-4, rtol=1e-4)
+        assert_close(P, P_expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         # generate input data
@@ -292,7 +292,7 @@ class TestPerspectiveTransform3D:
 
         # TODO: get_perspective_transform3d seems to be correct since it would result in the
         # expected output for cropping volumes. Not sure what is going on here.
-        assert_allclose(kornia.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-4, atol=1e-4)
+        assert_close(kornia.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-4, atol=1e-4)
 
         # compute gradient check
         points_src = utils.tensor_to_gradcheck_var(points_src)  # to var

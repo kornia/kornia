@@ -1,6 +1,6 @@
 import pytest
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from kornia.testing import assert_close
 
 import kornia
 import kornia.testing as utils  # test utils
@@ -64,7 +64,7 @@ class TestPatchDominantGradientOrientation:
         inp[:, :, :10, :] = 1
         ang = ori(inp)
         expected = torch.tensor([90.0], device=device)
-        assert_allclose(kornia.rad2deg(ang), expected)
+        assert_close(kornia.rad2deg(ang), expected)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 13, 13
@@ -157,7 +157,7 @@ class TestLAFOrienter:
         laf = torch.tensor([[[[0, 5.0, 8.0], [5.0, 0.0, 8.0]]]], device=device)
         new_laf = ori(laf, inp)
         expected = torch.tensor([[[[0.0, 5.0, 8.0], [-5.0, 0, 8.0]]]], device=device)
-        assert_allclose(new_laf, expected)
+        assert_close(new_laf, expected)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 21, 21

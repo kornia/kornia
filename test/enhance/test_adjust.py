@@ -1,7 +1,7 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from kornia.testing import assert_close
 
 import kornia
 import kornia.testing as utils
@@ -28,7 +28,7 @@ class TestInvert:
     def test_max_val_255(self, device, dtype):
         img = 255.0 * torch.ones(1, 3, 4, 4, device=device, dtype=dtype)
         out = kornia.enhance.invert(img, torch.tensor(255.0))
-        assert_allclose(out, torch.zeros_like(out))
+        assert_close(out, torch.zeros_like(out))
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
@@ -65,7 +65,7 @@ class TestAdjustSaturation:
         expected = data.clone()
 
         f = kornia.enhance.AdjustSaturation(1.0)
-        assert_allclose(f(data), expected)
+        assert_close(f(data), expected)
 
     def test_saturation_one_batch(self, device, dtype):
         data = torch.tensor(
@@ -99,7 +99,7 @@ class TestAdjustHue:
         expected = data.clone()
 
         f = kornia.enhance.AdjustHue(0.0)
-        assert_allclose(f(data), expected)
+        assert_close(f(data), expected)
 
     def test_hue_one_batch(self, device, dtype):
         data = torch.tensor(
@@ -149,7 +149,7 @@ class TestAdjustGamma:
         expected = torch.ones_like(data)
 
         f = kornia.enhance.AdjustGamma(0.0)
-        assert_allclose(f(data), expected)
+        assert_close(f(data), expected)
 
     def test_gamma_one(self, device, dtype):
         data = torch.tensor(
@@ -161,7 +161,7 @@ class TestAdjustGamma:
         expected = data.clone()
 
         f = kornia.enhance.AdjustGamma(1.0)
-        assert_allclose(f(data), expected)
+        assert_close(f(data), expected)
 
     def test_gamma_one_gain_two(self, device, dtype):
         data = torch.tensor(
@@ -175,7 +175,7 @@ class TestAdjustGamma:
         )  # 3x2x2
 
         f = kornia.enhance.AdjustGamma(1.0, 2.0)
-        assert_allclose(f(data), expected)
+        assert_close(f(data), expected)
 
     def test_gamma_two(self, device, dtype):
         data = torch.tensor(
@@ -191,7 +191,7 @@ class TestAdjustGamma:
         )  # 3x2x2
 
         f = kornia.enhance.AdjustGamma(2.0)
-        assert_allclose(f(data), expected)
+        assert_close(f(data), expected)
 
     def test_gamma_two_batch(self, device, dtype):
         data = torch.tensor(
@@ -237,7 +237,7 @@ class TestAdjustContrast:
         expected = torch.zeros_like(data)
 
         f = kornia.enhance.AdjustContrast(0.0)
-        assert_allclose(f(data), expected)
+        assert_close(f(data), expected)
 
     def test_factor_one(self, device, dtype):
         # prepare input data
@@ -250,7 +250,7 @@ class TestAdjustContrast:
         expected = data.clone()
 
         f = kornia.enhance.AdjustContrast(1.0)
-        assert_allclose(f(data), expected)
+        assert_close(f(data), expected)
 
     def test_factor_two(self, device, dtype):
         # prepare input data
@@ -265,7 +265,7 @@ class TestAdjustContrast:
         )  # 3x2x2
 
         f = kornia.enhance.AdjustContrast(2.0)
-        assert_allclose(f(data), expected)
+        assert_close(f(data), expected)
 
     def test_factor_tensor(self, device, dtype):
         # prepare input data
@@ -381,7 +381,7 @@ class TestAdjustBrightness:
         expected = data.clone()
 
         f = kornia.enhance.AdjustBrightness(0.0)
-        assert_allclose(f(data), expected)
+        assert_close(f(data), expected)
 
     def test_factor_one(self, device, dtype):
         # prepare input data
@@ -394,7 +394,7 @@ class TestAdjustBrightness:
         expected = torch.ones_like(data)
 
         f = kornia.enhance.AdjustBrightness(1.0)
-        assert_allclose(f(data), expected)
+        assert_close(f(data), expected)
 
     def test_factor_minus(self, device, dtype):
         # prepare input data
@@ -715,9 +715,9 @@ class TestSharpness(BaseTester):
 
         # If factor == 1, shall return original
         # TODO(jian): add test for this case
-        # assert_allclose(TestSharpness.f(inputs, 0.), inputs, rtol=1e-4, atol=1e-4)
-        assert_allclose(TestSharpness.f(inputs, 1.0), inputs, rtol=1e-4, atol=1e-4)
-        assert_allclose(TestSharpness.f(inputs, 0.8), expected, rtol=1e-4, atol=1e-4)
+        # assert_close(TestSharpness.f(inputs, 0.), inputs, rtol=1e-4, atol=1e-4)
+        assert_close(TestSharpness.f(inputs, 1.0), inputs, rtol=1e-4, atol=1e-4)
+        assert_close(TestSharpness.f(inputs, 0.8), expected, rtol=1e-4, atol=1e-4)
 
     def test_value_batch(self, device, dtype):
         torch.manual_seed(0)
@@ -748,10 +748,10 @@ class TestSharpness(BaseTester):
 
         # If factor == 1, shall return original
         tol_val: float = utils._get_precision(device, dtype)
-        assert_allclose(TestSharpness.f(inputs, 1), inputs, rtol=tol_val, atol=tol_val)
-        assert_allclose(TestSharpness.f(inputs, torch.tensor([1.0, 1.0])), inputs, rtol=tol_val, atol=tol_val)
-        assert_allclose(TestSharpness.f(inputs, 0.8), expected_08, rtol=tol_val, atol=tol_val)
-        assert_allclose(TestSharpness.f(inputs, torch.tensor([0.8, 1.3])), expected_08_13, rtol=tol_val, atol=tol_val)
+        assert_close(TestSharpness.f(inputs, 1), inputs, rtol=tol_val, atol=tol_val)
+        assert_close(TestSharpness.f(inputs, torch.tensor([1.0, 1.0])), inputs, rtol=tol_val, atol=tol_val)
+        assert_close(TestSharpness.f(inputs, 0.8), expected_08, rtol=tol_val, atol=tol_val)
+        assert_close(TestSharpness.f(inputs, torch.tensor([0.8, 1.3])), expected_08_13, rtol=tol_val, atol=tol_val)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):

@@ -1,6 +1,6 @@
 import pytest
 import torch
-from test.utils import assert_close
+from kornia.testing import assert_close
 
 from kornia.augmentation.random_generator import (
     center_crop_generator,
@@ -161,17 +161,17 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
         }, "Redundant keys found apart from \
                 'brightness_factor', 'contrast_factor', 'hue_factor', 'saturation_factor', 'order'"
 
-        assert_allclose(
+        assert_close(
             jitter_params['brightness_factor'], expected_jitter_params['brightness_factor'], rtol=1e-4, atol=1e-4
         )
-        assert_allclose(
+        assert_close(
             jitter_params['contrast_factor'], expected_jitter_params['contrast_factor'], rtol=1e-4, atol=1e-4
         )
-        assert_allclose(jitter_params['hue_factor'], expected_jitter_params['hue_factor'], rtol=1e-4, atol=1e-4)
-        assert_allclose(
+        assert_close(jitter_params['hue_factor'], expected_jitter_params['hue_factor'], rtol=1e-4, atol=1e-4)
+        assert_close(
             jitter_params['saturation_factor'], expected_jitter_params['saturation_factor'], rtol=1e-4, atol=1e-4
         )
-        assert_allclose(jitter_params['order'].to(dtype), expected_jitter_params['order'], rtol=1e-4, atol=1e-4)
+        assert_close(jitter_params['order'].to(dtype), expected_jitter_params['order'], rtol=1e-4, atol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
         torch.manual_seed(42)
@@ -193,11 +193,11 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
             'order': torch.tensor([2, 3, 0, 1], device=device, dtype=dtype),
         }
 
-        assert_allclose(jitter_params['brightness_factor'], expected_res['brightness_factor'], rtol=1e-4, atol=1e-4)
-        assert_allclose(jitter_params['contrast_factor'], expected_res['contrast_factor'], rtol=1e-4, atol=1e-4)
-        assert_allclose(jitter_params['hue_factor'], expected_res['hue_factor'], rtol=1e-4, atol=1e-4)
-        assert_allclose(jitter_params['saturation_factor'], expected_res['saturation_factor'], rtol=1e-4, atol=1e-4)
-        assert_allclose(jitter_params['order'].to(dtype), expected_res['order'], rtol=1e-4, atol=1e-4)
+        assert_close(jitter_params['brightness_factor'], expected_res['brightness_factor'], rtol=1e-4, atol=1e-4)
+        assert_close(jitter_params['contrast_factor'], expected_res['contrast_factor'], rtol=1e-4, atol=1e-4)
+        assert_close(jitter_params['hue_factor'], expected_res['hue_factor'], rtol=1e-4, atol=1e-4)
+        assert_close(jitter_params['saturation_factor'], expected_res['saturation_factor'], rtol=1e-4, atol=1e-4)
+        assert_close(jitter_params['order'].to(dtype), expected_res['order'], rtol=1e-4, atol=1e-4)
 
 
 class TestRandomPerspectiveGen(RandomGeneratorBaseTests):

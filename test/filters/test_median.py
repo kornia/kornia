@@ -1,7 +1,7 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from kornia.testing import assert_close
 
 import kornia
 import kornia.testing as utils  # test utils
@@ -40,8 +40,8 @@ class TestMedianBlur:
 
         kernel_size = (3, 3)
         actual = kornia.filters.median_blur(inp, kernel_size)
-        assert_allclose(actual[0, 0, 2, 2], torch.tensor(3.0).to(actual))
-        assert_allclose(actual[0, 1, 1, 1], torch.tensor(14.0).to(actual))
+        assert_close(actual[0, 0, 2, 2], torch.tensor(3.0).to(actual))
+        assert_close(actual[0, 1, 1, 1], torch.tensor(14.0).to(actual))
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3

@@ -1,7 +1,7 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from test.utils import assert_close
+from kornia.testing import assert_close
 
 from kornia.morphology import erosion
 
@@ -26,7 +26,7 @@ class TestErode:
         expected = torch.tensor([[0.5, 0.3, 0.3], [0.3, 0.3, 0.2], [0.4, 0.2, 0.2]], device=device, dtype=dtype)[
             None, None, :, :
         ]
-        assert_allclose(erosion(tensor, kernel), expected, atol=1e-4, rtol=1e-4)
+        assert_close(erosion(tensor, kernel), expected, atol=1e-4, rtol=1e-4)
 
     def test_structural_element(self, device, dtype):
         tensor = torch.tensor([[0.5, 1.0, 0.3], [0.7, 0.3, 0.8], [0.4, 0.9, 0.2]], device=device, dtype=dtype)[
@@ -38,7 +38,7 @@ class TestErode:
         expected = torch.tensor([[0.5, 0.3, 0.3], [0.3, 0.3, 0.2], [0.4, 0.2, 0.2]], device=device, dtype=dtype)[
             None, None, :, :
         ]
-        assert_allclose(
+        assert_close(
             erosion(tensor, torch.ones_like(structural_element), structuring_element=structural_element),
             expected,
             atol=1e-4,

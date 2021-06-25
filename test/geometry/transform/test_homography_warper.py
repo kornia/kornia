@@ -1,7 +1,7 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from test.utils import assert_close
+from kornia.testing import assert_close
 
 import kornia
 import kornia.testing as utils  # test utils
@@ -42,7 +42,7 @@ class TestHomographyWarper:
         res = torch.tensor(
             [[[4.0, 0.0, 3.0], [0.0, 1 / 3, -2 / 3], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
         ).repeat(batch_size, 1, 1)
-        assert_allclose(norm_homo, res, atol=1e-4, rtol=1e-4)
+        assert_close(norm_homo, res, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 3])
     def test_denormalize_homography_identity(self, batch_size, device, dtype):
@@ -61,7 +61,7 @@ class TestHomographyWarper:
         res = torch.tensor([[[0.25, 0.0, 0.0], [0.0, 3.0, 0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype).repeat(
             batch_size, 1, 1
         )
-        assert_allclose(denorm_homo, res, atol=1e-4, rtol=1e-4)
+        assert_close(denorm_homo, res, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 3])
     def test_normalize_homography_general(self, batch_size, device, dtype):
@@ -123,8 +123,8 @@ class TestHomographyWarper:
 
         # the grid the src plus the offset should be equal to the flow
         # on the x-axis, y-axis remains the same.
-        assert_allclose(grid[..., 0].to(device=device, dtype=dtype) + offset, flow[..., 0])
-        assert_allclose(grid[..., 1].to(device=device, dtype=dtype), flow[..., 1])
+        assert_close(grid[..., 0].to(device=device, dtype=dtype) + offset, flow[..., 0])
+        assert_close(grid[..., 1].to(device=device, dtype=dtype), flow[..., 1])
 
     @pytest.mark.parametrize("batch_shape", [(1, 1, 4, 5), (2, 2, 4, 6), (3, 1, 5, 7)])
     def test_identity_resize(self, batch_shape, device, dtype):
@@ -138,10 +138,10 @@ class TestHomographyWarper:
         patch_dst = warper(patch_src, dst_homo_src)
 
         # check the corners
-        assert_allclose(patch_src[..., 0, 0], patch_dst[..., 0, 0], atol=1e-4, rtol=1e-4)
-        assert_allclose(patch_src[..., 0, -1], patch_dst[..., 0, -1], atol=1e-4, rtol=1e-4)
-        assert_allclose(patch_src[..., -1, 0], patch_dst[..., -1, 0], atol=1e-4, rtol=1e-4)
-        assert_allclose(patch_src[..., -1, -1], patch_dst[..., -1, -1], atol=1e-4, rtol=1e-4)
+        assert_close(patch_src[..., 0, 0], patch_dst[..., 0, 0], atol=1e-4, rtol=1e-4)
+        assert_close(patch_src[..., 0, -1], patch_dst[..., 0, -1], atol=1e-4, rtol=1e-4)
+        assert_close(patch_src[..., -1, 0], patch_dst[..., -1, 0], atol=1e-4, rtol=1e-4)
+        assert_close(patch_src[..., -1, -1], patch_dst[..., -1, -1], atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("shape", [(4, 5), (2, 6), (4, 3), (5, 7)])
     def test_translation(self, shape, device, dtype):
@@ -175,10 +175,10 @@ class TestHomographyWarper:
         patch_dst = warper(patch_src, dst_homo_src)
 
         # check the corners
-        assert_allclose(patch_src[..., 0, 0], patch_dst[..., 0, -1], atol=1e-4, rtol=1e-4)
-        assert_allclose(patch_src[..., 0, -1], patch_dst[..., -1, -1], atol=1e-4, rtol=1e-4)
-        assert_allclose(patch_src[..., -1, 0], patch_dst[..., 0, 0], atol=1e-4, rtol=1e-4)
-        assert_allclose(patch_src[..., -1, -1], patch_dst[..., -1, 0], atol=1e-4, rtol=1e-4)
+        assert_close(patch_src[..., 0, 0], patch_dst[..., 0, -1], atol=1e-4, rtol=1e-4)
+        assert_close(patch_src[..., 0, -1], patch_dst[..., -1, -1], atol=1e-4, rtol=1e-4)
+        assert_close(patch_src[..., -1, 0], patch_dst[..., 0, 0], atol=1e-4, rtol=1e-4)
+        assert_close(patch_src[..., -1, -1], patch_dst[..., -1, 0], atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 3])
     def test_homography_warper(self, batch_size, device, dtype):
@@ -219,7 +219,7 @@ class TestHomographyWarper:
                 patch_dst, _torch_inverse_cast(dst_homo_src_i), (height, width), align_corners=True
             )
 
-            assert_allclose(patch_dst_to_src, patch_dst_to_src_functional, atol=1e-4, rtol=1e-4)
+            assert_close(patch_dst_to_src, patch_dst_to_src_functional, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_shape", [(1, 1, 7, 5), (2, 3, 8, 5), (1, 1, 7, 16)])
     def test_gradcheck(self, batch_shape, device, dtype):
@@ -351,13 +351,13 @@ class TestHomographyWarper3D:
         norm = kornia.normal_transform_pixel3d(input_shape[0], input_shape[1], input_shape[2]).to(
             device=device, dtype=dtype
         )
-        assert_allclose(norm, res, rtol=1e-4, atol=1e-4)
+        assert_close(norm, res, rtol=1e-4, atol=1e-4)
 
         norm_homo = kornia.normalize_homography3d(dst_homo_src, input_shape, input_shape).to(device=device, dtype=dtype)
-        assert_allclose(norm_homo, dst_homo_src, rtol=1e-4, atol=1e-4)
+        assert_close(norm_homo, dst_homo_src, rtol=1e-4, atol=1e-4)
 
         norm_homo = kornia.normalize_homography3d(dst_homo_src, input_shape, input_shape).to(device=device, dtype=dtype)
-        assert_allclose(norm_homo, dst_homo_src, rtol=1e-4, atol=1e-4)
+        assert_close(norm_homo, dst_homo_src, rtol=1e-4, atol=1e-4)
 
         # change output scale
         norm_homo = kornia.normalize_homography3d(
@@ -368,7 +368,7 @@ class TestHomographyWarper3D:
             device=device,
             dtype=dtype,
         ).repeat(batch_size, 1, 1)
-        assert_allclose(norm_homo, res, rtol=1e-4, atol=1e-4)
+        assert_close(norm_homo, res, rtol=1e-4, atol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 3])
     def test_normalize_homography_general(self, batch_size, device, dtype):
@@ -402,6 +402,6 @@ class TestHomographyWarper3D:
 
         # the grid the src plus the offset should be equal to the flow
         # on the x-axis, y-axis remains the same.
-        assert_allclose(grid[..., 0].to(device=device, dtype=dtype) + offset, flow[..., 0], atol=1e-4, rtol=1e-4)
-        assert_allclose(grid[..., 1].to(device=device, dtype=dtype), flow[..., 1], atol=1e-4, rtol=1e-4)
-        assert_allclose(grid[..., 2].to(device=device, dtype=dtype), flow[..., 2], atol=1e-4, rtol=1e-4)
+        assert_close(grid[..., 0].to(device=device, dtype=dtype) + offset, flow[..., 0], atol=1e-4, rtol=1e-4)
+        assert_close(grid[..., 1].to(device=device, dtype=dtype), flow[..., 1], atol=1e-4, rtol=1e-4)
+        assert_close(grid[..., 2].to(device=device, dtype=dtype), flow[..., 2], atol=1e-4, rtol=1e-4)

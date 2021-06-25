@@ -1,6 +1,6 @@
 import pytest
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from kornia.testing import assert_close
 
 import kornia.testing as utils  # test utils
 from kornia.feature.affine_shape import *
@@ -73,7 +73,7 @@ class TestLAFAffineShapeEstimator:
         laf = torch.tensor([[[[20.0, 0.0, 16.0], [0.0, 20.0, 16.0]]]], device=device)
         new_laf = aff(laf, inp)
         expected = torch.tensor([[[[36.643, 0.0, 16.0], [0.0, 10.916, 16.0]]]], device=device)
-        assert_allclose(new_laf, expected, atol=1e-4, rtol=1e-4)
+        assert_close(new_laf, expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 40, 40
@@ -135,7 +135,7 @@ class TestLAFAffNetShapeEstimator:
         laf = torch.tensor([[[[20.0, 0.0, 16.0], [0.0, 20.0, 16.0]]]], device=device)
         new_laf = aff(laf, inp)
         expected = torch.tensor([[[[40.8758, 0.0, 16.0], [-0.3824, 9.7857, 16.0]]]], device=device)
-        assert_allclose(new_laf, expected, atol=1e-4, rtol=1e-4)
+        assert_close(new_laf, expected, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device):

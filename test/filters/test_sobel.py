@@ -1,7 +1,7 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from kornia.testing import assert_close
 
 import kornia
 import kornia.testing as utils  # test utils
@@ -154,7 +154,7 @@ class TestSpatialGradient:
         )
 
         edges = kornia.filters.spatial_gradient(inp, 'diff', normalized=False)
-        assert_allclose(edges, expected)
+        assert_close(edges, expected)
 
     def test_edges_sep_norm(self, device, dtype):
         inp = torch.tensor(
@@ -202,7 +202,7 @@ class TestSpatialGradient:
         )
 
         edges = kornia.filters.spatial_gradient(inp, 'diff', normalized=True)
-        assert_allclose(edges, expected)
+        assert_close(edges, expected)
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
@@ -433,7 +433,7 @@ class TestSobel:
         )
 
         edges = kornia.filters.sobel(inp, normalized=False, eps=0.0)
-        assert_allclose(edges, expected)
+        assert_close(edges, expected)
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3

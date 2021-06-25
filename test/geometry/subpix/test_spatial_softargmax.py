@@ -2,7 +2,7 @@ import pytest
 import torch
 from torch.autograd import gradcheck
 from torch.nn.functional import mse_loss
-from torch.testing import assert_allclose
+from kornia.testing import assert_close
 
 import kornia
 import kornia.testing as utils  # test utils
@@ -30,7 +30,7 @@ class TestCenterKernel2d:
             device=device,
             dtype=dtype,
         )
-        assert_allclose(kernel, expected, atol=1e-4, rtol=1e-4)
+        assert_close(kernel, expected, atol=1e-4, rtol=1e-4)
 
     def test_even(self, device, dtype):
         kernel = _get_center_kernel2d(2, 2, device=device).to(dtype=dtype)
@@ -51,7 +51,7 @@ class TestCenterKernel3d:
         expected[0, 0, 1, 2, 3] = 1.0
         expected[1, 1, 1, 2, 3] = 1.0
         expected[2, 2, 1, 2, 3] = 1.0
-        assert_allclose(kernel, expected, atol=1e-4, rtol=1e-4)
+        assert_close(kernel, expected, atol=1e-4, rtol=1e-4)
 
     def test_even(self, device, dtype):
         kernel = _get_center_kernel3d(2, 4, 3, device=device).to(dtype=dtype)
@@ -133,12 +133,12 @@ class TestSpatialSoftArgmax2d:
         std = torch.tensor([1.0, 1.0], device=device, dtype=dtype)
 
         hm = kornia.geometry.dsnt.spatial_softmax2d(input)
-        assert_allclose(
+        assert_close(
             hm.sum(-1).sum(-1), torch.tensor([[1.0, 1.0]], device=device, dtype=dtype), atol=1e-4, rtol=1e-4
         )
 
         pred = kornia.geometry.dsnt.spatial_expectation2d(hm)
-        assert_allclose(
+        assert_close(
             pred, torch.as_tensor([[[0.0, 0.0], [0.0, 0.0]]], device=device, dtype=dtype), atol=1e-4, rtol=1e-4
         )
 

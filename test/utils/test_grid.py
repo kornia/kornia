@@ -1,6 +1,6 @@
 import pytest
 import torch
-from torch.testing import assert_allclose
+from kornia.testing import assert_close
 
 import kornia
 

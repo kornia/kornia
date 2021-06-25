@@ -1,6 +1,6 @@
 import pytest
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from kornia.testing import assert_close
 
 import kornia.testing as utils  # test utils
 from kornia.feature.mkd import *
@@ -137,7 +137,7 @@ class TestVonMisesKernel:
         model_jit = torch.jit.script(
             VonMisesKernel(patch_size=13, coeffs=[0.38214156, 0.48090413]).to(patches.device, patches.dtype).eval()
         )  # noqa
-        assert_allclose(model(patches), model_jit(patches))
+        assert_close(model(patches), model_jit(patches))
 
 
 class TestEmbedGradients:
@@ -165,8 +165,8 @@ class TestEmbedGradients:
         emb_grads = EmbedGradients(patch_size=6, relative=True).to(device)
         out = emb_grads(grads)
         expected = torch.ones_like(out[0, 0, :, :3]).to(device)
-        assert_allclose(out[0, 0, :, :3], expected * 0.3787, atol=1e-3, rtol=1e-3)
-        assert_allclose(out[0, 0, :, 3:], expected * 0, atol=1e-3, rtol=1e-3)
+        assert_close(out[0, 0, :, :3], expected * 0.3787, atol=1e-3, rtol=1e-3)
+        assert_close(out[0, 0, :, 3:], expected * 0, atol=1e-3, rtol=1e-3)
 
     # TODO: review this test implementation
     @pytest.mark.xfail(reason="RuntimeError: Jacobian mismatch for output 0 with respect to input 0,")
@@ -190,7 +190,7 @@ class TestEmbedGradients:
         model_jit = torch.jit.script(
             EmbedGradients(patch_size=W, relative=True).to(patches.device, patches.dtype).eval()
         )  # noqa
-        assert_allclose(model(patches), model_jit(patches))
+        assert_close(model(patches), model_jit(patches))
 
 
 @pytest.mark.parametrize("kernel_type,d,ps", [('cart', 9, 9), ('polar', 25, 9), ('cart', 9, 16), ('polar', 25, 16)])
@@ -264,7 +264,7 @@ class TestExplicitSpacialEncoding:
         model_jit = torch.jit.script(
             ExplicitSpacialEncoding(kernel_type='cart', fmap_size=W, in_dims=2).to(patches.device, patches.dtype).eval()
         )  # noqa
-        assert_allclose(model(patches), model_jit(patches))
+        assert_close(model(patches), model_jit(patches))
 
 
 class TestWhitening:
@@ -324,7 +324,7 @@ class TestWhitening:
         model_jit = torch.jit.script(
             Whitening(xform='lw', whitening_model=None, in_dims=in_dims).to(patches.device, patches.dtype).eval()
         )  # noqa
-        assert_allclose(model(patches), model_jit(patches))
+        assert_close(model(patches), model_jit(patches))
 
 
 class TestMKDDescriptor:
@@ -402,7 +402,7 @@ class TestMKDDescriptor:
         model_jit = torch.jit.script(
             MKDDescriptor(patch_size=ps, kernel_type=kt, whitening=wt).to(patches.device, patches.dtype).eval()
         )  # noqa
-        assert_allclose(model(patches), model_jit(patches))
+        assert_close(model(patches), model_jit(patches))
 
 
 class TestSimpleKD:
@@ -448,4 +448,4 @@ class TestSimpleKD:
         model_jit = torch.jit.script(
             SimpleKD(patch_size=ps, kernel_type='polar', whitening='lw').to(patches.device, patches.dtype).eval()
         )  # noqa
-        assert_allclose(model(patches), model_jit(patches))
+        assert_close(model(patches), model_jit(patches))

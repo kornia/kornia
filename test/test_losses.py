@@ -3,7 +3,7 @@ import math
 import pytest
 import torch
 from torch.autograd import gradcheck
-from test.utils import assert_close
+from kornia.testing import assert_close
 
 import kornia
 import kornia.testing as utils  # test utils
@@ -381,7 +381,7 @@ class TestDivergenceLoss:
     )
     def test_js_div_loss_2d(self, device, dtype, input, target, expected):
         actual = kornia.losses.js_div_loss_2d(input.to(device, dtype), target.to(device, dtype))
-        assert_allclose(actual.item(), expected)
+        assert_close(actual.item(), expected)
 
     @pytest.mark.parametrize(
         'input,target,expected',
@@ -394,7 +394,7 @@ class TestDivergenceLoss:
     )
     def test_kl_div_loss_2d(self, device, dtype, input, target, expected):
         actual = kornia.losses.kl_div_loss_2d(input.to(device, dtype), target.to(device, dtype))
-        assert_allclose(actual.item(), expected)
+        assert_close(actual.item(), expected)
 
     @pytest.mark.parametrize(
         'input,target,expected',
@@ -407,7 +407,7 @@ class TestDivergenceLoss:
     )
     def test_kl_div_loss_2d_without_reduction(self, device, dtype, input, target, expected):
         actual = kornia.losses.kl_div_loss_2d(input.to(device, dtype), target.to(device, dtype), reduction='none')
-        assert_allclose(actual, expected.to(device, dtype))
+        assert_close(actual, expected.to(device, dtype))
 
     @pytest.mark.parametrize(
         'input,target,expected',
@@ -621,13 +621,13 @@ class TestPSNRLoss:
         input = torch.ones(1, device=device, dtype=dtype)
         expected = torch.tensor(20.0, device=device, dtype=dtype)
         actual = kornia.losses.psnr(input, 1.2 * input, 2.0)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_loss(self, device, dtype):
         input = torch.ones(1, device=device, dtype=dtype)
         expected = torch.tensor(-20.0, device=device, dtype=dtype)
         actual = kornia.losses.psnr_loss(input, 1.2 * input, 2.0)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_jit(self, device, dtype):
         input = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)

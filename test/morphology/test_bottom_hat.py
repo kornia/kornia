@@ -1,7 +1,7 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from kornia.testing import assert_close
 
 from kornia.morphology import bottom_hat
 
@@ -26,7 +26,7 @@ class TestBottomHat:
         expected = torch.tensor([[0.2, 0.0, 0.5], [0.0, 0.4, 0.0], [0.3, 0.0, 0.6]], device=device, dtype=dtype)[
             None, None, :, :
         ]
-        assert_allclose(bottom_hat(tensor, kernel), expected, atol=1e-3, rtol=1e-3)
+        assert_close(bottom_hat(tensor, kernel), expected, atol=1e-3, rtol=1e-3)
 
     def test_structural_element(self, device, dtype):
         tensor = torch.tensor([[0.5, 1.0, 0.3], [0.7, 0.3, 0.8], [0.4, 0.9, 0.2]], device=device, dtype=dtype)[
@@ -38,7 +38,7 @@ class TestBottomHat:
         expected = torch.tensor([[0.2, 0.0, 0.5], [0.0, 0.4, 0.0], [0.3, 0.0, 0.6]], device=device, dtype=dtype)[
             None, None, :, :
         ]
-        assert_allclose(
+        assert_close(
             bottom_hat(tensor, torch.ones_like(structural_element), structuring_element=structural_element),
             expected,
             atol=1e-3,
@@ -80,4 +80,4 @@ class TestBottomHat:
         actual = op_script(input, kernel)
         expected = op(input, kernel)
 
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)

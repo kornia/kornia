@@ -2,7 +2,7 @@ import pytest
 import test_common as utils
 import torch
 from torch.autograd import gradcheck
-from test.utils import assert_close
+from kornia.testing import assert_close
 
 import kornia.geometry.epipolar as epi
 
@@ -29,7 +29,7 @@ class TestNormalizePoints:
         points_norm, trans = epi.normalize_points(points)
         points_std, points_mean = torch.std_mean(points_norm, dim=1)
 
-        assert_allclose(points_mean, torch.zeros_like(points_mean))
+        assert_close(points_mean, torch.zeros_like(points_mean))
         assert (points_std < 2.0).all()
 
     def test_gradcheck(self, device):
@@ -162,7 +162,7 @@ class TestFindFundamental:
         F_est = epi.find_fundamental(x1, x2, weights)
 
         error = epi.sampson_epipolar_distance(x1, x2, F_est)
-        assert_allclose(error, torch.tensor(0.0, device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
+        assert_close(error, torch.tensor(0.0, device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         points1 = torch.rand(1, 10, 2, device=device, dtype=torch.float64, requires_grad=True)

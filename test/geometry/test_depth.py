@@ -1,7 +1,7 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from test.utils import assert_close
+from kornia.testing import assert_close
 
 import kornia
 import kornia.testing as utils  # test utils
@@ -262,7 +262,7 @@ class TestWarpFrameDepth:
         image_dst = kornia.warp_frame_depth(
             image_src, depth_dst, src_trans_dst, camera_matrix
         )  # default is normalize_points=False
-        assert_allclose(image_dst, image_dst_expected, 1e-3, 1e-3)
+        assert_close(image_dst, image_dst_expected, rtol=1e-3, atol=1e-3)
 
     def test_translation_normalized(self, device, dtype):
         # this is for normalize_points=True
@@ -301,7 +301,7 @@ class TestWarpFrameDepth:
         )
 
         image_dst = kornia.warp_frame_depth(image_src, depth_dst, src_trans_dst, camera_matrix, normalize_points=True)
-        assert_allclose(image_dst, image_dst_expected, 1e-3, 1e-3)
+        assert_close(image_dst, image_dst_expected, rtol=1e-3, atol=1e-3)
 
     def test_gradcheck(self, device, dtype):
         image_src = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)

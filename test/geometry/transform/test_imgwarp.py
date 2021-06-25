@@ -1,7 +1,7 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from test.utils import assert_close
+from kornia.testing import assert_close
 
 import kornia
 import kornia.testing as utils  # test utils
@@ -25,7 +25,7 @@ def test_get_perspective_transform(batch_size, device, dtype):
     # compute transform from source to target
     dst_homo_src = kornia.get_perspective_transform(points_src, points_dst)
 
-    assert_allclose(kornia.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-4, atol=1e-4)
+    assert_close(kornia.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-4, atol=1e-4)
 
     # compute gradient check
     points_src = utils.tensor_to_gradcheck_var(points_src)  # to var
@@ -277,7 +277,7 @@ class TestWarpPerspective:
 
         # warp and assert
         patch_warped = kornia.warp_perspective(patch, dst_trans_src, (dst_h, dst_w))
-        assert_allclose(patch_warped, expected)
+        assert_close(patch_warped, expected)
 
     def test_crop_center_resize(self, device, dtype):
         # generate input data
@@ -318,7 +318,7 @@ class TestWarpPerspective:
 
         # warp and assert
         patch_warped = kornia.warp_perspective(patch, dst_trans_src, (dst_h, dst_w))
-        assert_allclose(patch_warped, expected)
+        assert_close(patch_warped, expected)
 
     def test_jit(self, device, dtype):
         img = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
@@ -418,7 +418,7 @@ class TestRemap:
         input_warped = kornia.remap(
             inp, grid[..., 0], grid[..., 1], align_corners=True, normalized_coordinates=normalized_coordinates
         )
-        assert_allclose(input_warped, expected, rtol=1e-4, atol=1e-4)
+        assert_close(input_warped, expected, rtol=1e-4, atol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         batch_size, channels, height, width = 1, 2, 3, 4

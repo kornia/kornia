@@ -4,7 +4,7 @@ import pytest
 import torch
 import torch.nn as nn
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from kornia.testing import assert_close
 
 import kornia
 import kornia.testing as utils  # test utils

@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 import torch
-from test.utils import assert_close
+from kornia.testing import assert_close
 
 import kornia
 

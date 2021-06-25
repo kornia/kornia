@@ -1,7 +1,7 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from test.utils import assert_close
+from kornia.testing import assert_close
 
 from kornia import enhance
 from kornia.testing import BaseTester, tensor_to_gradcheck_var

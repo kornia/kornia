@@ -1,6 +1,6 @@
 import pytest
 import torch
-from test.utils import assert_close
+from kornia.testing import assert_close
 
 from kornia.augmentation.random_generator import (
     center_crop_generator3d,

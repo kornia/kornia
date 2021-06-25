@@ -1,7 +1,7 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from test.utils import assert_close
+from kornia.testing import assert_close
 
 import kornia
 import kornia.testing as utils  # test utils
@@ -110,10 +110,10 @@ class TestExtractTensorPatches:
         patches = m(input)
         assert patches.shape == (batch_size, 16, 1, 2, 2)
         for i in range(batch_size):
-            assert_allclose(input[i, :, 0:2, 0:2], patches[i, 5])
-            assert_allclose(input[i, :, 0:2, 1:3], patches[i, 6])
-            assert_allclose(input[i, :, 1:3, 0:2], patches[i, 9])
-            assert_allclose(input[i, :, 1:3, 1:3], patches[i, 10])
+            assert_close(input[i, :, 0:2, 0:2], patches[i, 5])
+            assert_close(input[i, :, 0:2, 1:3], patches[i, 6])
+            assert_close(input[i, :, 1:3, 0:2], patches[i, 9])
+            assert_close(input[i, :, 1:3, 1:3], patches[i, 10])
 
     def test_b1_ch1_h3w3_ws23(self, device):
         input = torch.arange(9.0).view(1, 1, 3, 3).to(device)

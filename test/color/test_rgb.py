@@ -1,7 +1,7 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from test.utils import assert_close
+from kornia.testing import assert_close
 
 import kornia
 from kornia.testing import BaseTester
@@ -213,7 +213,7 @@ class TestRgbToRgba(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.rgb_to_rgba
         op_jit = torch.jit.script(op)
-        assert_allclose(op(img, 1.0), op_jit(img, 1.0))
+        assert_close(op(img, 1.0), op_jit(img, 1.0))
         aval = torch.ones(B, 1, H, W, device=device, dtype=dtype)
         assert_close(op(img, aval), op_jit(img, aval))
 
@@ -223,7 +223,7 @@ class TestRgbToRgba(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.RgbToRgba(1.0).to(device, dtype)
         fcn = kornia.color.rgb_to_rgba
-        assert_allclose(ops(img), fcn(img, 1.0))
+        assert_close(ops(img), fcn(img, 1.0))
 
     @pytest.mark.nn
     def test_module_bgr(self, device, dtype):
@@ -231,7 +231,7 @@ class TestRgbToRgba(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.BgrToRgba(1.0).to(device, dtype)
         fcn = kornia.color.bgr_to_rgba
-        assert_allclose(ops(img), fcn(img, 1.0))
+        assert_close(ops(img), fcn(img, 1.0))
 
     @pytest.mark.nn
     def test_module_bgra2rgb(self, device, dtype):

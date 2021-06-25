@@ -1,7 +1,7 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from test.utils import assert_close
+from kornia.testing import assert_close
 
 import kornia
 import kornia.testing as utils  # test utils
@@ -54,7 +54,7 @@ class TestFilter2D:
         )
 
         actual = kornia.filter2d(input, kernel)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_mean_filter_2batch_2ch(self, device, dtype):
         kernel = torch.ones(1, 3, 3, device=device, dtype=dtype)
@@ -91,7 +91,7 @@ class TestFilter2D:
         ).expand(2, 2, -1, -1)
 
         actual = kornia.filter2d(input, kernel)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_normalized_mean_filter(self, device, dtype):
         kernel = torch.ones(1, 3, 3).to(device)
@@ -168,7 +168,7 @@ class TestFilter2D:
         )
 
         actual = kornia.filter2d(input, kernel)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
@@ -279,7 +279,7 @@ class TestFilter3D:
         )
 
         actual = kornia.filter3d(input, kernel)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_mean_filter_2batch_2ch(self, device, dtype):
         kernel = torch.ones(1, 3, 3, 3, device=device, dtype=dtype)
@@ -350,7 +350,7 @@ class TestFilter3D:
         expected = expected.expand(2, 2, -1, -1, -1)
 
         actual = kornia.filter3d(input, kernel)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_normalized_mean_filter(self, device, dtype):
         kernel = torch.ones(1, 3, 3, 3, device=device, dtype=dtype)
@@ -493,7 +493,7 @@ class TestFilter3D:
         )
 
         actual = kornia.filter3d(input, kernel)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3

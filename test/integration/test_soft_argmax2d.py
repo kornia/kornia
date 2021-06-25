@@ -3,7 +3,7 @@ import logging
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from test.utils import assert_close
+from kornia.testing import assert_close
 
 import kornia
 

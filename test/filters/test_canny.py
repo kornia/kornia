@@ -1,7 +1,7 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from kornia.testing import assert_close
 
 import kornia
 import kornia.testing as utils  # test utils
@@ -93,8 +93,8 @@ class TestCanny:
         magnitude, edges = kornia.filters.canny(inp)
 
         tol_val: float = utils._get_precision(device, dtype)
-        assert_allclose(magnitude, expected_magnitude, rtol=tol_val, atol=tol_val)
-        assert_allclose(edges, expected_edges, rtol=tol_val, atol=tol_val)
+        assert_close(magnitude, expected_magnitude, rtol=tol_val, atol=tol_val)
+        assert_close(edges, expected_edges, rtol=tol_val, atol=tol_val)
 
     def test_magnitude_hyst(self, device, dtype):
         inp = torch.tensor(
@@ -148,8 +148,8 @@ class TestCanny:
         magnitude, edges = kornia.filters.canny(inp, hysteresis=True)
 
         tol_val: float = utils._get_precision(device, dtype)
-        assert_allclose(magnitude, expected_magnitude, rtol=tol_val, atol=tol_val)
-        assert_allclose(edges, expected_edges, rtol=tol_val, atol=tol_val)
+        assert_close(magnitude, expected_magnitude, rtol=tol_val, atol=tol_val)
+        assert_close(edges, expected_edges, rtol=tol_val, atol=tol_val)
 
     def test_magnitude_hyst_false(self, device, dtype):
         inp = torch.tensor(
@@ -203,8 +203,8 @@ class TestCanny:
         magnitude, edges = kornia.filters.canny(inp, hysteresis=False)
 
         tol_val: float = utils._get_precision(device, dtype)
-        assert_allclose(magnitude, expected_magnitude, rtol=tol_val, atol=tol_val)
-        assert_allclose(edges, expected_edges, rtol=tol_val, atol=tol_val)
+        assert_close(magnitude, expected_magnitude, rtol=tol_val, atol=tol_val)
+        assert_close(edges, expected_edges, rtol=tol_val, atol=tol_val)
 
     def test_magnitude_threshold(self, device, dtype):
         inp = torch.tensor(
@@ -258,8 +258,8 @@ class TestCanny:
         magnitude, edges = kornia.filters.canny(inp, low_threshold=0.3, high_threshold=0.9)
 
         tol_val: float = utils._get_precision(device, dtype)
-        assert_allclose(magnitude, expected_magnitude, rtol=tol_val, atol=tol_val)
-        assert_allclose(edges, expected_edges, rtol=tol_val, atol=tol_val)
+        assert_close(magnitude, expected_magnitude, rtol=tol_val, atol=tol_val)
+        assert_close(edges, expected_edges, rtol=tol_val, atol=tol_val)
 
     def test_gradcheck(self, device, dtype):
         if "cuda" in str(device):
@@ -275,8 +275,8 @@ class TestCanny:
         op_script = torch.jit.script(op)
         expected_magnitude, expected_edges = op(img)
         actual_magnitude, actual_edges = op_script(img)
-        assert_allclose(actual_magnitude, expected_magnitude)
-        assert_allclose(actual_edges, expected_edges)
+        assert_close(actual_magnitude, expected_magnitude)
+        assert_close(actual_edges, expected_edges)
 
     def test_module(self, device, dtype):
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
@@ -284,5 +284,5 @@ class TestCanny:
         op_module = kornia.filters.Canny()
         expected_magnitude, expected_edges = op(img)
         actual_magnitude, actual_edges = op(img)
-        assert_allclose(actual_magnitude, expected_magnitude)
-        assert_allclose(actual_edges, expected_edges)
+        assert_close(actual_magnitude, expected_magnitude)
+        assert_close(actual_edges, expected_edges)

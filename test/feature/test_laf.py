@@ -1,7 +1,7 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from kornia.testing import assert_close
 
 import kornia
 import kornia.geometry.transform.imgwarp
@@ -138,7 +138,7 @@ class TestScaleLAF:
         scale = torch.tensor([[[[2.0]]]], device=device).float()
         out = kornia.feature.scale_laf(inp, scale)
         expected = torch.tensor([[[[10.0, 2, 0.8], [2, 2, -4.0]]]], device=device).float()
-        assert_allclose(out, expected)
+        assert_close(out, expected)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 2, 3
@@ -171,7 +171,7 @@ class TestSetLAFOri:
         ori = torch.zeros(1, 1, 1, 1, device=device).float()
         out = kornia.feature.set_laf_orientation(inp, ori)
         expected = torch.tensor([[[[5.0, 0.0, 0.8], [0.0, 5.0, -4.0]]]], device=device).float()
-        assert_allclose(out, expected)
+        assert_close(out, expected)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 2, 3

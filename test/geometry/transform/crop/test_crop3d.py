@@ -1,7 +1,7 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from kornia.testing import assert_close
 
 import kornia
 import kornia.testing as utils  # test utils
@@ -19,9 +19,9 @@ class TestBoundingBoxInferring3D:
         )  # 2x8x3
         d, h, w = kornia.geometry.transform.crop.infer_box_shape3d(boxes)
 
-        assert_allclose(d, torch.tensor([31.0, 61.0], device=device, dtype=dtype))
-        assert_allclose(h, torch.tensor([21.0, 51.0], device=device, dtype=dtype))
-        assert_allclose(w, torch.tensor([11.0, 41.0], device=device, dtype=dtype))
+        assert_close(d, torch.tensor([31.0, 61.0], device=device, dtype=dtype))
+        assert_close(h, torch.tensor([21.0, 51.0], device=device, dtype=dtype))
+        assert_close(w, torch.tensor([11.0, 41.0], device=device, dtype=dtype))
 
     def test_gradcheck(self, device, dtype):
         boxes = torch.tensor(

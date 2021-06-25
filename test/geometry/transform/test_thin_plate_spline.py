@@ -1,7 +1,7 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from test.utils import assert_close
+from kornia.testing import assert_close
 
 import kornia
 
@@ -27,8 +27,8 @@ class TestTransformParameters:
         target_kernel = torch.zeros(batch_size, 5, 2, device=device)
         target_affine = torch.zeros(batch_size, 3, 2, device=device)
         target_affine[:, [1, 2], [0, 1]] = 1.0
-        assert_allclose(kernel, target_kernel, atol=1e-4, rtol=1e-4)
-        assert_allclose(affine, target_affine, atol=1e-4, rtol=1e-4)
+        assert_close(kernel, target_kernel, atol=1e-4, rtol=1e-4)
+        assert_close(affine, target_affine, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize('batch_size', [1, 3])
     def test_affine_only(self, batch_size, device, dtype):
