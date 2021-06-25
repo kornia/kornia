@@ -1,9 +1,9 @@
 import numpy as np
 import pytest
 import torch
-from kornia.testing import assert_close
 
 import kornia
+from kornia.testing import assert_close
 
 
 @pytest.mark.parametrize(

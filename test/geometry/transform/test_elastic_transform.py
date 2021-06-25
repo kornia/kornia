@@ -1,10 +1,10 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from kornia.testing import assert_close
 
 import kornia
 from kornia.geometry.transform import elastic_transform2d
+from kornia.testing import assert_close
 
 
 class TestElasticTransform:

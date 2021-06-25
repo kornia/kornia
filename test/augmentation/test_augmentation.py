@@ -4,7 +4,6 @@ import pytest
 import torch
 import torch.nn as nn
 from torch.autograd import gradcheck
-from kornia.testing import assert_close
 
 import kornia
 import kornia.testing as utils  # test utils
@@ -32,7 +31,7 @@ from kornia.augmentation import (
 )
 from kornia.augmentation.base import AugmentationBase2D
 from kornia.constants import pi, Resample
-from kornia.testing import BaseTester, default_with_one_parameter_changed
+from kornia.testing import assert_close, BaseTester, default_with_one_parameter_changed
 from kornia.utils.helpers import _torch_inverse_cast
 
 # TODO same_on_batch tests?

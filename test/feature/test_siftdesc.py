@@ -1,9 +1,9 @@
 import pytest
 from torch.autograd import gradcheck
-from kornia.testing import assert_close
 
 import kornia.testing as utils  # test utils
 from kornia.feature.siftdesc import *
+from kornia.testing import assert_close
 
 
 @pytest.mark.parametrize("ksize", [5, 13, 25])

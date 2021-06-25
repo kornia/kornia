@@ -1,7 +1,7 @@
 import pytest
 import torch
-from kornia.testing import assert_close
 
+from kornia.testing import assert_close
 from kornia.utils import _extract_device_dtype
 from kornia.utils.helpers import _torch_histc_cast, _torch_inverse_cast, _torch_solve_cast, _torch_svd_cast
 

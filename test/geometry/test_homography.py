@@ -3,10 +3,10 @@ import random
 import pytest
 import torch
 from torch.autograd import gradcheck
-from kornia.testing import assert_close
 
 import kornia
 from kornia.geometry.homography import find_homography_dlt, find_homography_dlt_iterated
+from kornia.testing import assert_close
 
 
 class TestFindHomographyDLT:

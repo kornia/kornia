@@ -1,10 +1,10 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from kornia.testing import assert_close
 
 import kornia
 import kornia.testing as utils  # test utils
+from kornia.testing import assert_close
 
 
 @pytest.mark.parametrize("batch_size", [1, 2, 5])

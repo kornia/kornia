@@ -1,10 +1,10 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from kornia.testing import assert_close
 
 import kornia
 from kornia.testing import BaseTester  # test utils
+from kornia.testing import assert_close
 
 
 class TestRgbToGrayscale(BaseTester):

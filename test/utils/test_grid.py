@@ -1,8 +1,8 @@
 import pytest
 import torch
-from kornia.testing import assert_close
 
 import kornia
+from kornia.testing import assert_close
 
 
 def test_create_meshgrid(device, dtype):

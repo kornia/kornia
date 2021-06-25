@@ -1,10 +1,9 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from kornia.testing import assert_close
 
 from kornia import enhance
-from kornia.testing import BaseTester, tensor_to_gradcheck_var
+from kornia.testing import assert_close, BaseTester, tensor_to_gradcheck_var
 
 
 class TestEqualization(BaseTester):

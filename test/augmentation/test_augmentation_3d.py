@@ -4,7 +4,6 @@ import pytest
 import torch
 import torch.nn as nn
 from torch.autograd import gradcheck
-from kornia.testing import assert_close
 
 import kornia
 import kornia.testing as utils  # test utils
@@ -16,6 +15,7 @@ from kornia.augmentation import (
     RandomRotation3D,
     RandomVerticalFlip3D,
 )
+from kornia.testing import assert_close
 
 
 class TestRandomHorizontalFlip3D:

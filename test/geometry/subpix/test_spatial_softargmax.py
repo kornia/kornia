@@ -2,11 +2,11 @@ import pytest
 import torch
 from torch.autograd import gradcheck
 from torch.nn.functional import mse_loss
-from kornia.testing import assert_close
 
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.geometry.subpix.spatial_soft_argmax import _get_center_kernel2d, _get_center_kernel3d
+from kornia.testing import assert_close
 
 
 class TestCenterKernel2d:
@@ -133,9 +133,7 @@ class TestSpatialSoftArgmax2d:
         std = torch.tensor([1.0, 1.0], device=device, dtype=dtype)
 
         hm = kornia.geometry.dsnt.spatial_softmax2d(input)
-        assert_close(
-            hm.sum(-1).sum(-1), torch.tensor([[1.0, 1.0]], device=device, dtype=dtype), atol=1e-4, rtol=1e-4
-        )
+        assert_close(hm.sum(-1).sum(-1), torch.tensor([[1.0, 1.0]], device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
         pred = kornia.geometry.dsnt.spatial_expectation2d(hm)
         assert_close(

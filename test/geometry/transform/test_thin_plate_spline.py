@@ -1,9 +1,9 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from kornia.testing import assert_close
 
 import kornia
+from kornia.testing import assert_close
 
 
 def _sample_points(batch_size, device, dtype=torch.float32):

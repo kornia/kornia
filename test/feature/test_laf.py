@@ -1,11 +1,11 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from kornia.testing import assert_close
 
 import kornia
 import kornia.geometry.transform.imgwarp
 import kornia.testing as utils  # test utils
+from kornia.testing import assert_close
 
 
 class TestAngleToRotationMatrix:

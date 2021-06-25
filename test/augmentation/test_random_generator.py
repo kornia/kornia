@@ -1,6 +1,5 @@
 import pytest
 import torch
-from kornia.testing import assert_close
 
 from kornia.augmentation.random_generator import (
     center_crop_generator,
@@ -19,6 +18,7 @@ from kornia.augmentation.random_generator import (
     random_sharpness_generator,
     random_solarize_generator,
 )
+from kornia.testing import assert_close
 
 
 class RandomGeneratorBaseTests:
@@ -164,9 +164,7 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
         assert_close(
             jitter_params['brightness_factor'], expected_jitter_params['brightness_factor'], rtol=1e-4, atol=1e-4
         )
-        assert_close(
-            jitter_params['contrast_factor'], expected_jitter_params['contrast_factor'], rtol=1e-4, atol=1e-4
-        )
+        assert_close(jitter_params['contrast_factor'], expected_jitter_params['contrast_factor'], rtol=1e-4, atol=1e-4)
         assert_close(jitter_params['hue_factor'], expected_jitter_params['hue_factor'], rtol=1e-4, atol=1e-4)
         assert_close(
             jitter_params['saturation_factor'], expected_jitter_params['saturation_factor'], rtol=1e-4, atol=1e-4

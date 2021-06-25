@@ -1,6 +1,5 @@
 import pytest
 import torch
-from kornia.testing import assert_close
 
 from kornia.augmentation.random_generator import (
     center_crop_generator3d,
@@ -10,6 +9,7 @@ from kornia.augmentation.random_generator import (
     random_perspective_generator3d,
     random_rotation_generator3d,
 )
+from kornia.testing import assert_close
 
 
 class RandomGeneratorBaseTests:

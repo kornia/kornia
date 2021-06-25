@@ -3,10 +3,10 @@ import random
 import pytest
 import torch
 from torch.autograd import gradcheck
-from kornia.testing import assert_close
 
 import kornia
 import kornia.testing as utils  # test utils
+from kornia.testing import assert_close
 
 
 def random_shape(dim, min_elem=1, max_elem=10):

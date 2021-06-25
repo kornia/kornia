@@ -1,9 +1,9 @@
 import os
 
 import torch
-from kornia.testing import assert_close
 
 import kornia
+from kornia.testing import assert_close
 
 
 class TestSaveLoadPointCloud:

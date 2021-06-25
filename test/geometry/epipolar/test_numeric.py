@@ -1,9 +1,9 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from kornia.testing import assert_close
 
 import kornia.geometry.epipolar as epi
+from kornia.testing import assert_close
 
 
 class TestSkewSymmetric:

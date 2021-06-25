@@ -1,10 +1,10 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from kornia.testing import assert_close
 
 import kornia
 import kornia.testing as utils  # test utils
+from kornia.testing import assert_close
 from kornia.utils.helpers import _torch_inverse_cast
 
 

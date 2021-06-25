@@ -4,11 +4,10 @@ import numpy as np
 import pytest
 import torch
 from torch.autograd import gradcheck
-from kornia.testing import assert_close
 
 import kornia
 from kornia.geometry.conversions import QuaternionCoeffOrder
-from kornia.testing import create_eye_batch, tensor_to_gradcheck_var
+from kornia.testing import assert_close, create_eye_batch, tensor_to_gradcheck_var
 
 
 @pytest.fixture

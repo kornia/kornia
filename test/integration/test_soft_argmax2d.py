@@ -3,9 +3,9 @@ import logging
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from kornia.testing import assert_close
 
 import kornia
+from kornia.testing import assert_close
 
 logger = logging.getLogger(__name__)
 

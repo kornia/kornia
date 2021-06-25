@@ -1,9 +1,9 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from kornia.testing import assert_close
 
 from kornia.morphology import erosion
+from kornia.testing import assert_close
 
 
 class TestErode:

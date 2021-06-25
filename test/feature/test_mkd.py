@@ -1,9 +1,9 @@
 import pytest
 from torch.autograd import gradcheck
-from kornia.testing import assert_close
 
 import kornia.testing as utils  # test utils
 from kornia.feature.mkd import *
+from kornia.testing import assert_close
 
 
 @pytest.mark.parametrize("ps", [5, 13, 25])

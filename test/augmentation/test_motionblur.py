@@ -1,12 +1,11 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from kornia.testing import assert_close
 
 import kornia
 from kornia.augmentation import RandomMotionBlur, RandomMotionBlur3D
 from kornia.filters import motion_blur, motion_blur3d
-from kornia.testing import tensor_to_gradcheck_var
+from kornia.testing import assert_close, tensor_to_gradcheck_var
 
 
 class TestRandomMotionBlur:
