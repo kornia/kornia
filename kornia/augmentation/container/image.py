@@ -84,7 +84,7 @@ class ImageSequential(nn.Sequential):
             _args.update({f"{arg.__class__.__name__}_{idx}": arg})
         super(ImageSequential, self).__init__(_args)
 
-        self._params: Dict[str, Dict[str, torch.Tensor]] = OrderedDict()
+        self._params: Dict[str, dict] = OrderedDict()
         self.random_apply: Union[Tuple[int, int], bool]
         if random_apply:
             if isinstance(random_apply, (bool,)) and random_apply is True:
