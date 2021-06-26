@@ -13,14 +13,14 @@ class ImageSequential(nn.Sequential):
     r"""Sequential for creating kornia image processing pipeline.
 
     Args:
-        *args (nn.Module): a list of kornia augmentation and image operation modules.
-        same_on_batch (bool, optional): apply the same transformation across the batch.
-            If None, it will not overwrite the function-wise settings. Default: None.
-        return_transform (bool, optional): if ``True`` return the matrix describing the transformation
-            applied to each. If None, it will not overwrite the function-wise settings. Default: None.
-        keepdim (bool, optional): whether to keep the output shape the same as input (True) or broadcast it
-            to the batch form (False). If None, it will not overwrite the function-wise settings. Default: None.
-        random_apply(int, (int, int), optional): randomly select a sublist (order agnostic) of args to
+        *args : a list of kornia augmentation and image operation modules.
+        same_on_batch: apply the same transformation across the batch.
+            If None, it will not overwrite the function-wise settings.
+        return_transform: if ``True`` return the matrix describing the transformation
+            applied to each. If None, it will not overwrite the function-wise settings.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+            to the batch form (False). If None, it will not overwrite the function-wise settings.
+        random_apply: randomly select a sublist (order agnostic) of args to
             apply transformation.
             If int, a fixed number of transformations will be selected.
             If (a,), x number of transformations (a <= x <= len(args)) will be selected.
@@ -113,17 +113,17 @@ class ImageSequential(nn.Sequential):
 
     def _get_child_sequence(self) -> Iterator[Tuple[str, nn.Module]]:
         if self.random_apply:
-            num_samples = int(torch.randint(*self.random_apply, (1,)).item())
-            indicies = torch.multinomial(
+            # random_apply will not be boolean here.
+            num_samples = int(torch.randint(*self.random_apply, (1,)).item())  # type: ignore
+            indices = torch.multinomial(
                 torch.ones((len(self),)), num_samples, replacement=True if num_samples > len(self) else False
             )
-            return self._get_children_by_indicies(indicies)
-        else:
-            return self.named_children()
+            return self._get_children_by_indices(indices)
+        return self.named_children()
 
-    def _get_children_by_indicies(self, indicies: torch.Tensor) -> Iterator[Tuple[str, nn.Module]]:
+    def _get_children_by_indices(self, indices: torch.Tensor) -> Iterator[Tuple[str, nn.Module]]:
         modules = list(self.named_children())
-        for idx in indicies:
+        for idx in indices:
             yield modules[idx]
 
     def _get_children_by_module_names(self, names: List[str]) -> Iterator[Tuple[str, nn.Module]]:

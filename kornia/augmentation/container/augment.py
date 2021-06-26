@@ -19,16 +19,16 @@ class AugmentationSequential(ImageSequential):
     r"""AugmentationSequential for handling multiple input types like inputs, masks, keypoints at once.
 
     Args:
-        *args (_AugmentationBase): a list of kornia augmentation modules.
-        data_keys (List[str]): the input type sequential for applying augmentations.
+        *args: a list of kornia augmentation modules.
+        data_keys: the input type sequential for applying augmentations.
             Accepts "input", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints".
-        same_on_batch (bool, optional): apply the same transformation across the batch.
-            If None, it will not overwrite the function-wise settings. Default: None.
-        return_transform (bool, optional): if ``True`` return the matrix describing the transformation
-            applied to each. If None, it will not overwrite the function-wise settings. Default: None.
-        keepdim (bool, optional): whether to keep the output shape the same as input (True) or broadcast it
-            to the batch form (False). If None, it will not overwrite the function-wise settings. Default: None.
-        random_apply(int, (int, int), optional): randomly select a sublist (order agnostic) of args to
+        same_on_batch: apply the same transformation across the batch.
+            If None, it will not overwrite the function-wise settings.
+        return_transform: if ``True`` return the matrix describing the transformation
+            applied to each. If None, it will not overwrite the function-wise settings.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+            to the batch form (False). If None, it will not overwrite the function-wise settings.
+        random_apply: randomly select a sublist (order agnostic) of args to
             apply transformation.
             If int, a fixed number of transformations will be selected.
             If (a,), x number of transformations (a <= x <= len(args)) will be selected.

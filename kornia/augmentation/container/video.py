@@ -22,10 +22,10 @@ class VideoSequential(ImageSequential):
     settings on `same_on_batch`, etc.
 
     Args:
-        *args (_AugmentationBase): a list of augmentation module.
-        data_format (str): only BCTHW and BTCHW are supported. Default: BTCHW.
-        same_on_frame (bool): apply the same transformation across the channel per frame. Default: True.
-        random_apply(int, (int, int), optional): randomly select a sublist (order agnostic) of args to
+        *args: a list of augmentation module.
+        data_format: only BCTHW and BTCHW are supported.
+        same_on_frame: apply the same transformation across the channel per frame.
+        random_apply: randomly select a sublist (order agnostic) of args to
             apply transformation.
             If int, a fixed number of transformations will be selected.
             If (a,), x number of transformations (a <= x <= len(args)) will be selected.

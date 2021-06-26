@@ -20,24 +20,24 @@ class PatchSequential(ImageSequential):
     afterwards. Different image processing and augmentation methods will be performed on each patch region.
 
     Args:
-        *args (nn.Module): a list of processing modules.
-        grid_size ((int, int)): controls the grid board seperation.
-        padding (str): same or valid padding. If same padding, it will pad to include all pixels if the input
+        *args: a list of processing modules.
+        grid_size: controls the grid board seperation.
+        padding: same or valid padding. If same padding, it will pad to include all pixels if the input
             tensor cannot be divisible by grid_size. If valid padding, the redundent border will be removed.
-        same_on_batch (bool, optional): apply the same transformation across the batch.
-            If None, it will not overwrite the function-wise settings. Default: None.
-        keepdim (bool, optional): whether to keep the output shape the same as input (True) or broadcast it
-            to the batch form (False). If None, it will not overwrite the function-wise settings. Default: None.
-        patchwise_apply (bool, optional): apply image processing args will be applied patch-wisely.
+        same_on_batch: apply the same transformation across the batch.
+            If None, it will not overwrite the function-wise settings.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+            to the batch form (False). If None, it will not overwrite the function-wise settings.
+        patchwise_apply: apply image processing args will be applied patch-wisely.
             if ``True``, the number of args must be equal to grid number.
             if ``False``, the image processing args will be applied as a sequence to all patches. Default: False.
-        random_apply(int, (int, int), optional): randomly select a sublist (order agnostic) of args to
+        random_apply: randomly select a sublist (order agnostic) of args to
             apply transformation.
-            If ```int``` (batchwise mode only), a fixed number of transformations will be selected.
-            If ```(a,)``` (batchwise mode only), x number of transformations (a <= x <= len(args)) will be selected.
-            If ```(a, b)``` (batchwise mode only), x number of transformations (a <= x <= b) will be selected.
-            If ```True```, the whole list of args will be processed in a random order.
-            If ```False```, the whole list of args will be processed in original order.
+            If ``int`` (batchwise mode only), a fixed number of transformations will be selected.
+            If ``(a,)`` (batchwise mode only), x number of transformations (a <= x <= len(args)) will be selected.
+            If ``(a, b)`` (batchwise mode only), x number of transformations (a <= x <= b) will be selected.
+            If ``True``, the whole list of args will be processed in a random order.
+            If ``False``, the whole list of args will be processed in original order.
 
     Return:
         List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]: the tensor (, and the transformation matrix)
