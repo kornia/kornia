@@ -108,6 +108,11 @@ class ImageSequential(nn.Sequential):
                 and isinstance(self.random_apply[0], (int,))
                 and isinstance(self.random_apply[0], (int,))
             ), f"Expect a tuple of (int, int). Got {self.random_apply}."
+
+            assert self.random_apply[1] <= len(args) + 1, (
+                "`random_apply` with replacement is not currently supported. "
+                f"Please set the upper bounds to be smaller than {len(args)}."
+            )
         else:
             self.random_apply = False
 
@@ -149,11 +154,11 @@ class ImageSequential(nn.Sequential):
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         if module is None:
             module = self.get_submodule(module_name)
-        if isinstance(module, _AugmentationBase) and param is None:
+        if isinstance(module, (_AugmentationBase, ImageSequential)) and param is None:
             input = module(input)
             self._params.update({module_name: module._params})
-        elif isinstance(module, _AugmentationBase) and param is not None:
-            input = module(input, param)
+        elif isinstance(module, (_AugmentationBase, ImageSequential)) and param is not None:
+            input = module(input, params=param)
             self._params.update({module_name: param})
         else:
             assert (

@@ -1,3 +1,4 @@
+from collections import OrderedDict
 import warnings
 from typing import Dict, List, Optional, Tuple, Union
 
@@ -60,7 +61,7 @@ class PatchSequential(ImageSequential):
         ...     ),
         ...     K.RandomSolarize(0.1, 0.1, p=0.1),
         ... grid_size=(2,2),
-        ... patchwise_apply=True,
+        ... patchwise_apply=False,
         ... same_on_batch=True,
         ... random_apply=True,
         ... )
@@ -258,7 +259,7 @@ class PatchSequential(ImageSequential):
             batch_shape = (input.size(0) * input.size(1), *input.shape[-3:])
 
         if params is None:
-            params = {}
+            params = OrderedDict()
             for name, aug in self.get_forward_sequence():
                 if isinstance(aug, _AugmentationBase):
                     aug.same_on_batch = False

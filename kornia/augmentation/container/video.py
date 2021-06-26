@@ -66,7 +66,7 @@ class VideoSequential(ImageSequential):
 
         Reproduce with provided params.
         >>> out2 = aug_list(input, params=aug_list._params)
-        >>> torch.equal(output[0], out2[0])
+        >>> torch.equal(output, out2)
         True
     """
 
