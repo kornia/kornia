@@ -285,7 +285,7 @@ def reproject_disparity_to_3D(disparity_tensor: torch.Tensor, Q_matrix: torch.Te
     _check_Q_matrix(Q_matrix)
     _check_disparity_tensor(disparity_tensor)
 
-    batch_size, rows, cols, channels = disparity_tensor.shape
+    batch_size, rows, cols, _ = disparity_tensor.shape
     dtype = disparity_tensor.dtype
     device = disparity_tensor.device
 
