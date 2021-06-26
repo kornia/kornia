@@ -195,7 +195,7 @@ class StereoCamera:
 
         """
         Q = torch.zeros((self.batch_size, 4, 4), device=self.device, dtype=self.dtype)
-        baseline = -self.tx
+        baseline: torch.Tensor = -self.tx
         Q[:, 0, 0] = self.fy * baseline
         Q[:, 0, 3] = -self.fy * self.cx_left * baseline
         Q[:, 1, 1] = self.fx * baseline
