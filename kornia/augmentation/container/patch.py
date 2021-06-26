@@ -23,6 +23,9 @@ class PatchSequential(ImageSequential):
 
     Args:
         *args (nn.Module): a list of processing modules.
+        grid_size ((int, int)): controls the grid board seperation.
+        padding (str): same or valid padding. If same padding, it will pad to include all pixels if the input
+            tensor cannot be divisible by grid_size. If valid padding, the redundent border will be removed.
         same_on_batch (bool, optional): apply the same transformation across the batch.
             If None, it will not overwrite the function-wise settings. Default: None.
         keepdim (bool, optional): whether to keep the output shape the same as input (True) or broadcast it
@@ -34,8 +37,8 @@ class PatchSequential(ImageSequential):
             apply transformation.
             If int, a fixed number of transformations will be selected.
             If (a, b), x number of transformations (a <= x <= b) will be selected.
-            If None, the whole list of args will be processed as a sequence.
-            When ``patchwise_apply`` is set to True, ``random_apply``
+            If True, the whole list of args will be processed as a sequence in a random order.
+            If False, the whole list of args will be processed as a sequence in original order.
 
     Return:
         List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]: the tensor (, and the transformation matrix)
@@ -60,9 +63,14 @@ class PatchSequential(ImageSequential):
         ... grid_size=(2,2),
         ... patchwise_apply=True,
         ... same_on_batch=True,
+        ... random_apply=True,
         ... )
-        >>> seq(input).shape
+        >>> out = seq(input)
+        >>> out.shape
         torch.Size([2, 3, 224, 224])
+        >>> out1 = seq(input, seq._params)
+        >>> torch.equal(out, out1)
+        True
     """
 
     def __init__(
@@ -73,13 +81,20 @@ class PatchSequential(ImageSequential):
         same_on_batch: Optional[bool] = None,
         keepdim: Optional[bool] = None,
         patchwise_apply: bool = False,
-        random_apply: Optional[Union[int, Tuple[int, int], bool]] = None,
+        random_apply: Union[int, bool, Tuple[int, int]] = False,
     ) -> None:
         _random_apply: Optional[Union[int, Tuple[int, int]]]
-        if isinstance(random_apply, bool) and patchwise_apply:
+        if patchwise_apply and random_apply == True:
             _random_apply = (grid_size[0] * grid_size[1], grid_size[0] * grid_size[1])
-        elif isinstance(random_apply, bool) and not patchwise_apply:
-            raise ValueError(f"`random_apply` cannot be boolean if patchwise_apply is set to False.")
+        elif patchwise_apply and random_apply == False:
+            assert len(args) == grid_size[0] * grid_size[1], (
+                "The number of processing modules must be equal with grid size."
+                f"Got {len(args)} and {grid_size[0] * grid_size[1]}."
+            )
+            _random_apply = random_apply
+        elif patchwise_apply and isinstance(random_apply, (int, tuple,)):
+            raise ValueError(
+                f"Only boolean value allowed when `patchwise_apply` is set to True. Got {random_apply}.")
         else:
             _random_apply = random_apply
         super(PatchSequential, self).__init__(
@@ -89,11 +104,6 @@ class PatchSequential(ImageSequential):
         self.grid_size = grid_size
         self.padding = padding
         self.patchwise_apply = patchwise_apply
-        if patchwise_apply:
-            assert len(args) == grid_size[0] * grid_size[1], (
-                "The number of processing modules must be equal with grid size."
-                f"Got {len(args)} and {grid_size[0] * grid_size[1]}."
-            )
 
     def is_intensity_only(self) -> bool:
         """Check if all transformations are intensity-based.
@@ -217,8 +227,8 @@ class PatchSequential(ImageSequential):
             params = [{}] * input.size(1)
             auglist = [self.get_forward_sequence() for _ in range(input.size(1))]
         else:
-            assert input.size(1) == len(list(self.children())) == len(params) and isinstance(params, (list,))
             auglist = [self.get_forward_sequence(p) for p in params]
+            assert input.size(0) == len(auglist) == len(params)
 
         # TODO: This will need an optimization later.
         out = []
@@ -227,11 +237,10 @@ class PatchSequential(ImageSequential):
             o = []
             _p = {}
             for inp_pat, (proc_name, proc_pat) in zip(inp, proc):
-                if isinstance(proc_pat, (_AugmentationBase,)):
+                if isinstance(proc_pat, (_AugmentationBase, ImageSequential)):
                     o.append(proc_pat(inp_pat[None], param[proc_name] if proc_name in param else None))
                     _p.update({proc_name: proc_pat._params})
                 else:
-                    assert proc_name not in param
                     o.append(proc_pat(inp_pat[None]))
             out.append(torch.cat(o, dim=0))
             ps.append(_p)
@@ -252,7 +261,7 @@ class PatchSequential(ImageSequential):
 
         if params is None:
             params = {}
-            for name, aug in self.get_forward_sequence(params):
+            for name, aug in self.get_forward_sequence():
                 if isinstance(aug, _AugmentationBase):
                     aug.same_on_batch = False
                     param = aug.forward_parameters(batch_shape)
@@ -285,6 +294,8 @@ class PatchSequential(ImageSequential):
             input = self.extract_patches(input, self.grid_size, pad)
 
         if not self.patchwise_apply:
+            assert params is None or isinstance(params, (dict,)), \
+                f"params for batchwise forward is required to be a dict or None, while got {type(params)}."
             if isinstance(input, (tuple,)):
                 input = self.forward_batchwise(input[0], params), input[1]
             else:

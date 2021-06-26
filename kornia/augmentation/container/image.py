@@ -26,7 +26,8 @@ class ImageSequential(nn.Sequential):
             apply transformation.
             If int, a fixed number of transformations will be selected.
             If (a, b), x number of transformations (a <= x <= b) will be selected.
-            If None, the whole list of args will be processed as a sequence.
+            If True, the whole list of args will be processed as a sequence in a random order.
+            If False, the whole list of args will be processed as a sequence in original order.
 
     Returns:
         Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]: the tensor (, and the transformation matrix)
@@ -64,7 +65,7 @@ class ImageSequential(nn.Sequential):
         same_on_batch: Optional[bool] = None,
         return_transform: Optional[bool] = None,
         keepdim: Optional[bool] = None,
-        random_apply: Optional[Union[int, Tuple[int, int]]] = None,
+        random_apply: Union[int, bool, Tuple[int, int]] = False,
     ) -> None:
         self.same_on_batch = same_on_batch
         self.return_transform = return_transform
@@ -86,19 +87,24 @@ class ImageSequential(nn.Sequential):
 
         self._params: Dict[str, Dict[str, torch.Tensor]] = OrderedDict()
         self.random_apply: Optional[Tuple[int, int]]
-        if random_apply is not None:
-            if isinstance(random_apply, (int,)):
+        if random_apply:
+            if isinstance(random_apply, (bool,)) and random_apply == True:
+                self.random_apply = (len(args), len(args) + 1)
+            elif isinstance(random_apply, (int,)):
                 self.random_apply = (random_apply, random_apply + 1)
-            else:
+            elif isinstance(random_apply, (tuple,)) and \
+                isinstance(random_apply[0], (int,)) and isinstance(random_apply[1], (int,)):
                 self.random_apply = (random_apply[0], random_apply[1] + 1)
+            else:
+                raise ValueError(f"Non-readable random_apply. Got {random_apply}.")
             assert isinstance(self.random_apply, (tuple,)) and len(self.random_apply) == 2 and \
                 isinstance(self.random_apply[0], (int,)) and isinstance(self.random_apply[0], (int,)), \
                 f"Expect a tuple of (int, int). Got {self.random_apply}."
         else:
-            self.random_apply = None
+            self.random_apply = False
 
     def _get_child_sequence(self) -> Iterator[Tuple[str, nn.Module]]:
-        if self.random_apply is not None:
+        if self.random_apply:
             num_samples = int(torch.randint(*self.random_apply, (1,)).item())
             indicies = torch.multinomial(
                 torch.ones((len(self),)),
@@ -159,10 +165,8 @@ class ImageSequential(nn.Sequential):
         input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
         params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-        if params is None:
-            params = {}
         self._params = OrderedDict()
         for name, module in self.get_forward_sequence(params):
-            param = params[name] if name in params else None
+            param = params[name] if params is not None and name in params else None
             input = self.apply_to_input(input, name, module, param=param)  # type: ignore
         return input

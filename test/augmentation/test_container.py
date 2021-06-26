@@ -1,5 +1,6 @@
 import pytest
 import torch
+from torch import random
 from torch.testing import assert_allclose
 
 import kornia
@@ -47,17 +48,6 @@ class TestVideoSequential:
         aug_list = K.VideoSequential(augmentation, data_format=data_format, same_on_frame=True)
         output = aug_list(input)
 
-    @pytest.mark.parametrize('augmentations', [[K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5), K.RandomAffine(360, p=0.5)]])
-    @pytest.mark.parametrize('data_format', ["BCTHW", "BTCHW"])
-    def test_p_half(self, augmentations, data_format, device, dtype):
-        input = torch.randn(1, 3, 3, 5, 6, device=device, dtype=dtype).repeat(2, 1, 1, 1, 1)
-        torch.manual_seed(21)
-        aug_list = K.VideoSequential(*augmentations, data_format=data_format, same_on_frame=True)
-        output = aug_list(input)
-
-        assert not (output[0] == input[0]).all()
-        assert (output[1] == input[1]).all()
-
     @pytest.mark.parametrize(
         'augmentations',
         [
@@ -70,8 +60,10 @@ class TestVideoSequential:
         ],
     )
     @pytest.mark.parametrize('data_format', ["BCTHW", "BTCHW"])
-    def test_same_on_frame(self, augmentations, data_format, device, dtype):
-        aug_list = K.VideoSequential(*augmentations, data_format=data_format, same_on_frame=True)
+    @pytest.mark.parametrize('random_apply', [2, (2, 2), (2, 3), True, False])
+    def test_same_on_frame(self, augmentations, data_format, random_apply, device, dtype):
+        aug_list = K.VideoSequential(
+            *augmentations, data_format=data_format, same_on_frame=True, random_apply=random_apply)
 
         if data_format == 'BCTHW':
             input = torch.randn(2, 3, 1, 5, 6, device=device, dtype=dtype).repeat(1, 1, 4, 1, 1)
@@ -101,17 +93,15 @@ class TestVideoSequential:
 
         torch.manual_seed(0)
         output_1 = aug_list_1(input)
-        param_1 = list(aug_list_1.children())[0]._params
 
         torch.manual_seed(0)
         if data_format == 'BCTHW':
             input = input.transpose(1, 2)
         output_2 = aug_list_2(input.reshape(-1, 3, 5, 6))
-        param_2 = list(aug_list_2.children())[0]._params
         output_2 = output_2.view(2, 4, 3, 5, 6)
         if data_format == 'BCTHW':
             output_2 = output_2.transpose(1, 2)
-        assert (output_1 == output_2).all()
+        assert (output_1 == output_2).all(), (dict(aug_list_1._params))
 
     @pytest.mark.jit
     @pytest.mark.skip(reason="turn off due to Union Type")
@@ -127,17 +117,20 @@ class TestSequential:
     @pytest.mark.parametrize('same_on_batch', [True, False, None])
     @pytest.mark.parametrize("return_transform", [True, False, None])
     @pytest.mark.parametrize("keepdim", [True, False, None])
-    def test_construction(self, same_on_batch, return_transform, keepdim):
+    @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), False])
+    def test_construction(self, same_on_batch, return_transform, keepdim, random_apply):
         K.ImageSequential(
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
             K.RandomAffine(360, p=1.0),
             same_on_batch=same_on_batch,
             return_transform=return_transform,
             keepdim=keepdim,
+            random_apply=random_apply
         )
 
     @pytest.mark.parametrize("return_transform", [True, False, None])
-    def test_forward(self, return_transform, device, dtype):
+    @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), False])
+    def test_forward(self, return_transform, random_apply, device, dtype):
         inp = torch.randn(1, 3, 30, 30, device=device, dtype=dtype)
         aug = K.ImageSequential(
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
@@ -145,6 +138,7 @@ class TestSequential:
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0, return_transform=True),
             K.RandomAffine(360, p=1.0),
             return_transform=return_transform,
+            random_apply=random_apply,
         )
         out = aug(inp)
         if isinstance(out, (tuple,)):
@@ -162,7 +156,8 @@ class TestAugmentationSequential:
         with pytest.raises(Exception):  # AssertError and NotImplementedError
             K.AugmentationSequential(augmentation_list, data_keys=data_keys)
 
-    def test_forward_and_inverse(self, device, dtype):
+    @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), True, False])
+    def test_forward_and_inverse(self, random_apply, device, dtype):
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
         bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
         keypoints = torch.tensor([[[465, 115], [545, 116]]], device=device, dtype=dtype)
@@ -173,6 +168,7 @@ class TestAugmentationSequential:
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
             K.RandomAffine(360, p=1.0),
             data_keys=["input", "mask", "bbox", "keypoints"],
+            random_apply=random_apply,
         )
         out = aug(inp, mask, bbox, keypoints)
         assert out[0].shape == inp.shape
@@ -199,8 +195,6 @@ class TestAugmentationSequential:
         aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0, return_transform=False))
         assert aug(inp, data_keys=['input']).shape == inp.shape
         assert aug(mask, data_keys=['mask']).shape == mask.shape
-        assert aug(bbox, data_keys=['bbox']).shape == bbox.shape
-        assert aug(keypoints, data_keys=['keypoints']).shape == keypoints.shape
 
         aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0, return_transform=True))
         assert aug.inverse(inp, data_keys=['input']).shape == inp.shape
@@ -211,7 +205,8 @@ class TestAugmentationSequential:
         aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0, return_transform=True))
         assert aug.inverse(mask, data_keys=['mask']).shape == mask.shape
 
-    def test_forward_and_inverse_return_transform(self, device, dtype):
+    @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), False])
+    def test_forward_and_inverse_return_transform(self, random_apply, device, dtype):
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
         bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
         keypoints = torch.tensor([[[465, 115], [545, 116]]], device=device, dtype=dtype)
@@ -222,6 +217,7 @@ class TestAugmentationSequential:
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0, return_transform=True),
             K.RandomAffine(360, p=1.0, return_transform=True),
             data_keys=["input", "mask", "bbox", "keypoints"],
+            random_apply=random_apply,
         )
         out = aug(inp, mask, bbox, keypoints)
         assert out[0][0].shape == inp.shape
@@ -235,7 +231,8 @@ class TestAugmentationSequential:
         assert out_inv[2].shape == bbox.shape
         assert out_inv[3].shape == keypoints.shape
 
-    def test_inverse_and_forward_return_transform(self, device, dtype):
+    @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), False])
+    def test_inverse_and_forward_return_transform(self, random_apply, device, dtype):
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
         bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
         keypoints = torch.tensor([[[465, 115], [545, 116]]], device=device, dtype=dtype)
@@ -246,6 +243,7 @@ class TestAugmentationSequential:
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0, return_transform=True),
             K.RandomAffine(360, p=1.0, return_transform=True),
             data_keys=["input", "mask", "bbox", "keypoints"],
+            random_apply=random_apply,
         )
 
         out_inv = aug.inverse(inp, mask, bbox, keypoints)
@@ -273,31 +271,63 @@ class TestAugmentationSequential:
 
 
 class TestPatchSequential:
+    
+    @pytest.mark.parametrize(
+        'error_param', [
+            {"random_apply": False, "patchwise_apply": True, "grid_size": (2, 3)},
+            {"random_apply": 2, "patchwise_apply": True},
+            {"random_apply": (2, 3), "patchwise_apply": True},
+        ]
+    )
+    def test_exception(self, error_param):
+        with pytest.raises(Exception):  # AssertError and NotImplementedError
+            K.PatchSequential(
+                K.ImageSequential(
+                    K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
+                    K.RandomPerspective(0.2, p=0.5),
+                    K.RandomSolarize(0.1, 0.1, p=0.5),
+                ),
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1),
+                K.ImageSequential(
+                    K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
+                    K.RandomPerspective(0.2, p=0.5),
+                    K.RandomSolarize(0.1, 0.1, p=0.5),
+                ),
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1),
+                **error_param,
+            )
+
     @pytest.mark.parametrize('shape', [(2, 3, 24, 24)])
     @pytest.mark.parametrize('padding', ["same", "valid"])
     @pytest.mark.parametrize('patchwise_apply', [True, False])
     @pytest.mark.parametrize('same_on_batch', [True, False, None])
     @pytest.mark.parametrize('keepdim', [True, False, None])
-    def test_forward(self, shape, padding, patchwise_apply, same_on_batch, keepdim, device, dtype):
-        seq = K.PatchSequential(
-            K.ImageSequential(
-                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
-                K.RandomPerspective(0.2, p=0.5),
-                K.RandomSolarize(0.1, 0.1, p=0.5),
-            ),
-            K.ColorJitter(0.1, 0.1, 0.1, 0.1),
-            K.ImageSequential(
-                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
-                K.RandomPerspective(0.2, p=0.5),
-                K.RandomSolarize(0.1, 0.1, p=0.5),
-            ),
-            K.ColorJitter(0.1, 0.1, 0.1, 0.1),
-            grid_size=(2, 2),
-            padding=padding,
-            patchwise_apply=patchwise_apply,
-            same_on_batch=same_on_batch,
-            keepdim=keepdim,
-        )
+    @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), True, False])
+    def test_forward(self, shape, padding, patchwise_apply, same_on_batch, keepdim, random_apply, device, dtype):
+        try:  # skip wrong param settings.
+            seq = K.PatchSequential(
+                K.ImageSequential(
+                    K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
+                    K.RandomPerspective(0.2, p=0.5),
+                    K.RandomSolarize(0.1, 0.1, p=0.5),
+                ),
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1),
+                K.ImageSequential(
+                    K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
+                    K.RandomPerspective(0.2, p=0.5),
+                    K.RandomSolarize(0.1, 0.1, p=0.5),
+                ),
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1),
+                grid_size=(2, 2),
+                padding=padding,
+                patchwise_apply=patchwise_apply,
+                same_on_batch=same_on_batch,
+                keepdim=keepdim,
+                random_apply=random_apply,
+            )
+        except:
+            return
+
         input = torch.randn(*shape, device=device, dtype=dtype)
         trans = torch.randn(shape[0], 3, 3, device=device, dtype=dtype)
         out = seq(input)

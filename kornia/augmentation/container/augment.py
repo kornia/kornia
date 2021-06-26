@@ -51,6 +51,7 @@ class AugmentationSequential(ImageSequential):
         ... data_keys=["input", "mask", "bbox", "keypoints"],
         ... return_transform=False,
         ... same_on_batch=False,
+        ... random_apply=True,
         ... )
         >>> out = aug_list(input, input, bbox, points)
         >>> [o.shape for o in out]
@@ -67,7 +68,7 @@ class AugmentationSequential(ImageSequential):
         same_on_batch: Optional[bool] = None,
         return_transform: Optional[bool] = None,
         keepdim: Optional[bool] = None,
-        random_apply: Optional[Union[int, Tuple[int, int]]] = None,
+        random_apply: Union[int, bool, Tuple[int, int]] = False,
     ) -> None:
         super(AugmentationSequential, self).__init__(
             *args, same_on_batch=same_on_batch, return_transform=return_transform, keepdim=keepdim,
@@ -219,7 +220,7 @@ class AugmentationSequential(ImageSequential):
             "The number of inputs must align with the number of data_keys, " f"Got {len(args)} and {len(data_keys)}."
         )
         if params is None:
-            params = OrderedDict()
+            params = self._params
 
         outputs = []
         for input, dcate in zip(args, data_keys):

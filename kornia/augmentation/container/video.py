@@ -74,9 +74,9 @@ class VideoSequential(ImageSequential):
     def __init__(
         self,
         *args: nn.Module,
-        data_format="BTCHW",
+        data_format: str="BTCHW",
         same_on_frame: bool = True,
-        random_apply: Optional[Union[int, Tuple[int, int]]] = None,
+        random_apply: Union[int, bool, Tuple[int, int]] = False,
     ) -> None:
         super(VideoSequential, self).__init__(
             *args, same_on_batch=None, return_transform=None, keepdim=None, random_apply=random_apply)
@@ -129,9 +129,8 @@ class VideoSequential(ImageSequential):
         params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """Define the video computation performed."""
-        if params is None:
-            params = OrderedDict()
         assert len(input.shape) == 5, f"Input must be a 5-dim tensor. Got {input.shape}."
+        self._params = OrderedDict()
 
         # Size of T
         frame_num = input.size(self._temporal_channel)
@@ -144,7 +143,7 @@ class VideoSequential(ImageSequential):
             batch_shape = input.shape
 
         for name, module in self.get_forward_sequence(params):
-            param = params[name] if name in params else None
+            param = params[name] if params is not None and name in params else None
             if param is None and isinstance(module, _AugmentationBase):
                 param = module.forward_parameters(batch_shape)
                 if self.same_on_frame:
