@@ -221,6 +221,7 @@ class StereoCamera:
 def _check_disparity_tensor(disparity_tensor: torch.Tensor):
     """
     Utility function to ensure correct user provided correct disparity tensor.
+
     Args:
         disparity_tensor (torch.Tensor): The disparity tensor of shape :math:`(B, 1, H, W)`.
     """
