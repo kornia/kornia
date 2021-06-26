@@ -35,10 +35,11 @@ class PatchSequential(ImageSequential):
             if ``False``, the image processing args will be applied as a sequence to all patches. Default: False.
         random_apply(int, (int, int), optional): randomly select a sublist (order agnostic) of args to
             apply transformation.
-            If int, a fixed number of transformations will be selected.
-            If (a, b), x number of transformations (a <= x <= b) will be selected.
-            If True, the whole list of args will be processed as a sequence in a random order.
-            If False, the whole list of args will be processed as a sequence in original order.
+            If ```int``` (batchwise mode only), a fixed number of transformations will be selected.
+            If ```(a,)``` (batchwise mode only), x number of transformations (a <= x <= len(args)) will be selected.
+            If ```(a, b)``` (batchwise mode only), x number of transformations (a <= x <= b) will be selected.
+            If ```True```, the whole list of args will be processed in a random order.
+            If ```False```, the whole list of args will be processed in original order.
 
     Return:
         List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]: the tensor (, and the transformation matrix)
@@ -84,9 +85,9 @@ class PatchSequential(ImageSequential):
         random_apply: Union[int, bool, Tuple[int, int]] = False,
     ) -> None:
         _random_apply: Optional[Union[int, Tuple[int, int]]]
-        if patchwise_apply and random_apply == True:
+        if patchwise_apply and random_apply is True:
             _random_apply = (grid_size[0] * grid_size[1], grid_size[0] * grid_size[1])
-        elif patchwise_apply and random_apply == False:
+        elif patchwise_apply and random_apply is False:
             assert len(args) == grid_size[0] * grid_size[1], (
                 "The number of processing modules must be equal with grid size."
                 f"Got {len(args)} and {grid_size[0] * grid_size[1]}."

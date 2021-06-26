@@ -25,6 +25,7 @@ class ImageSequential(nn.Sequential):
         random_apply(int, (int, int), optional): randomly select a sublist (order agnostic) of args to
             apply transformation.
             If int, a fixed number of transformations will be selected.
+            If (a,), x number of transformations (a <= x <= len(args)) will be selected.
             If (a, b), x number of transformations (a <= x <= b) will be selected.
             If True, the whole list of args will be processed as a sequence in a random order.
             If False, the whole list of args will be processed as a sequence in original order.
@@ -86,15 +87,17 @@ class ImageSequential(nn.Sequential):
         super(ImageSequential, self).__init__(_args)
 
         self._params: Dict[str, Dict[str, torch.Tensor]] = OrderedDict()
-        self.random_apply: Optional[Tuple[int, int]]
+        self.random_apply: Union[Tuple[int, int], bool]
         if random_apply:
-            if isinstance(random_apply, (bool,)) and random_apply == True:
+            if isinstance(random_apply, (bool,)) and random_apply is True:
                 self.random_apply = (len(args), len(args) + 1)
             elif isinstance(random_apply, (int,)):
                 self.random_apply = (random_apply, random_apply + 1)
-            elif isinstance(random_apply, (tuple,)) and \
+            elif isinstance(random_apply, (tuple,)) and len(random_apply) == 2 and \
                 isinstance(random_apply[0], (int,)) and isinstance(random_apply[1], (int,)):
                 self.random_apply = (random_apply[0], random_apply[1] + 1)
+            elif isinstance(random_apply, (tuple,)) and len(random_apply) == 1 and isinstance(random_apply[0], (int,)):
+                self.random_apply = (random_apply[0], len(args) + 1)
             else:
                 raise ValueError(f"Non-readable random_apply. Got {random_apply}.")
             assert isinstance(self.random_apply, (tuple,)) and len(self.random_apply) == 2 and \

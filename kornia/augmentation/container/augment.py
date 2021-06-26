@@ -30,6 +30,13 @@ class AugmentationSequential(ImageSequential):
             applied to each. If None, it will not overwrite the function-wise settings. Default: None.
         keepdim (bool, optional): whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False). If None, it will not overwrite the function-wise settings. Default: None.
+        random_apply(int, (int, int), optional): randomly select a sublist (order agnostic) of args to
+            apply transformation.
+            If int, a fixed number of transformations will be selected.
+            If (a,), x number of transformations (a <= x <= len(args)) will be selected.
+            If (a, b), x number of transformations (a <= x <= b) will be selected.
+            If True, the whole list of args will be processed as a sequence in a random order.
+            If False, the whole list of args will be processed as a sequence in original order.
 
     Return:
         List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]: the tensor (, and the transformation matrix)
