@@ -1,6 +1,6 @@
 import warnings
-from typing import cast, Dict, List, Optional, Tuple, Union
 from collections import OrderedDict
+from typing import cast, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -12,9 +12,7 @@ from kornia.geometry import transform_boxes, transform_points
 from .image import ImageSequential
 from .patch import PatchSequential
 
-__all__ = [
-    "AugmentationSequential"
-]
+__all__ = ["AugmentationSequential"]
 
 
 class AugmentationSequential(ImageSequential):
@@ -78,8 +76,11 @@ class AugmentationSequential(ImageSequential):
         random_apply: Union[int, bool, Tuple[int, int]] = False,
     ) -> None:
         super(AugmentationSequential, self).__init__(
-            *args, same_on_batch=same_on_batch, return_transform=return_transform, keepdim=keepdim,
-            random_apply=random_apply
+            *args,
+            same_on_batch=same_on_batch,
+            return_transform=return_transform,
+            keepdim=keepdim,
+            random_apply=random_apply,
         )
 
         self.data_keys = [DataKey.get(inp) for inp in data_keys]

@@ -1,5 +1,5 @@
-from typing import cast, Tuple, Dict, Union, Optional
 from collections import OrderedDict
+from typing import cast, Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -9,9 +9,7 @@ from kornia.augmentation.base import _AugmentationBase
 
 from .image import ImageSequential
 
-__all__ = [
-    "VideoSequential"
-]
+__all__ = ["VideoSequential"]
 
 
 # TODO: Rewrite this to support inverse operation by having a generic AugmentationSequential.
@@ -75,12 +73,13 @@ class VideoSequential(ImageSequential):
     def __init__(
         self,
         *args: nn.Module,
-        data_format: str="BTCHW",
+        data_format: str = "BTCHW",
         same_on_frame: bool = True,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
     ) -> None:
         super(VideoSequential, self).__init__(
-            *args, same_on_batch=None, return_transform=None, keepdim=None, random_apply=random_apply)
+            *args, same_on_batch=None, return_transform=None, keepdim=None, random_apply=random_apply
+        )
         self.same_on_frame = same_on_frame
         self.data_format = data_format.upper()
         assert self.data_format in ["BCTHW", "BTCHW"], f"Only `BCTHW` and `BTCHW` are supported. Got `{data_format}`."
@@ -125,9 +124,7 @@ class VideoSequential(ImageSequential):
         return input
 
     def forward(  # type: ignore
-        self,
-        input: torch.Tensor,
-        params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None,
+        self, input: torch.Tensor, params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """Define the video computation performed."""
         assert len(input.shape) == 5, f"Input must be a 5-dim tensor. Got {input.shape}."

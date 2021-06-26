@@ -1,14 +1,12 @@
-from typing import Dict, Iterator, Optional, Tuple, List, Union
 from collections import OrderedDict
+from typing import Dict, Iterator, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 
 from kornia.augmentation.base import _AugmentationBase
 
-__all__ = [
-    "ImageSequential"
-]
+__all__ = ["ImageSequential"]
 
 
 class ImageSequential(nn.Sequential):
@@ -93,16 +91,23 @@ class ImageSequential(nn.Sequential):
                 self.random_apply = (len(args), len(args) + 1)
             elif isinstance(random_apply, (int,)):
                 self.random_apply = (random_apply, random_apply + 1)
-            elif isinstance(random_apply, (tuple,)) and len(random_apply) == 2 and \
-                isinstance(random_apply[0], (int,)) and isinstance(random_apply[1], (int,)):
+            elif (
+                isinstance(random_apply, (tuple,))
+                and len(random_apply) == 2
+                and isinstance(random_apply[0], (int,))
+                and isinstance(random_apply[1], (int,))
+            ):
                 self.random_apply = (random_apply[0], random_apply[1] + 1)
             elif isinstance(random_apply, (tuple,)) and len(random_apply) == 1 and isinstance(random_apply[0], (int,)):
                 self.random_apply = (random_apply[0], len(args) + 1)
             else:
                 raise ValueError(f"Non-readable random_apply. Got {random_apply}.")
-            assert isinstance(self.random_apply, (tuple,)) and len(self.random_apply) == 2 and \
-                isinstance(self.random_apply[0], (int,)) and isinstance(self.random_apply[0], (int,)), \
-                f"Expect a tuple of (int, int). Got {self.random_apply}."
+            assert (
+                isinstance(self.random_apply, (tuple,))
+                and len(self.random_apply) == 2
+                and isinstance(self.random_apply[0], (int,))
+                and isinstance(self.random_apply[0], (int,))
+            ), f"Expect a tuple of (int, int). Got {self.random_apply}."
         else:
             self.random_apply = False
 
@@ -110,9 +115,7 @@ class ImageSequential(nn.Sequential):
         if self.random_apply:
             num_samples = int(torch.randint(*self.random_apply, (1,)).item())
             indicies = torch.multinomial(
-                torch.ones((len(self),)),
-                num_samples,
-                replacement=True if num_samples > len(self) else False
+                torch.ones((len(self),)), num_samples, replacement=True if num_samples > len(self) else False
             )
             return self._get_children_by_indicies(indicies)
         else:
@@ -153,8 +156,9 @@ class ImageSequential(nn.Sequential):
             input = module(input, param)
             self._params.update({module_name: param})
         else:
-            assert param == {} or param is None, \
-                f"Non-augmentaion operation {module_name} require empty parameters. Got {module}."
+            assert (
+                param == {} or param is None
+            ), f"Non-augmentaion operation {module_name} require empty parameters. Got {module}."
             # In case of return_transform = True
             if isinstance(input, (tuple, list)):
                 input = (module(input[0]), input[1])

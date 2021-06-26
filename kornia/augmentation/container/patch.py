@@ -1,5 +1,5 @@
-from typing import Dict, List, Optional, Tuple, Union
 import warnings
+from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -10,9 +10,7 @@ from kornia.contrib.extract_patches import extract_tensor_patches
 
 from .image import ImageSequential
 
-__all__ = [
-    "PatchSequential"
-]
+__all__ = ["PatchSequential"]
 
 
 class PatchSequential(ImageSequential):
@@ -93,9 +91,8 @@ class PatchSequential(ImageSequential):
                 f"Got {len(args)} and {grid_size[0] * grid_size[1]}."
             )
             _random_apply = random_apply
-        elif patchwise_apply and isinstance(random_apply, (int, tuple,)):
-            raise ValueError(
-                f"Only boolean value allowed when `patchwise_apply` is set to True. Got {random_apply}.")
+        elif patchwise_apply and isinstance(random_apply, (int, tuple)):
+            raise ValueError(f"Only boolean value allowed when `patchwise_apply` is set to True. Got {random_apply}.")
         else:
             _random_apply = random_apply
         super(PatchSequential, self).__init__(
@@ -295,15 +292,17 @@ class PatchSequential(ImageSequential):
             input = self.extract_patches(input, self.grid_size, pad)
 
         if not self.patchwise_apply:
-            assert params is None or isinstance(params, (dict,)), \
-                f"params for batchwise forward is required to be a dict or None, while got {type(params)}."
+            assert params is None or isinstance(
+                params, (dict,)
+            ), f"params for batchwise forward is required to be a dict or None, while got {type(params)}."
             if isinstance(input, (tuple,)):
                 input = self.forward_batchwise(input[0], params), input[1]
             else:
                 input = self.forward_batchwise(input, params)
         else:
-            assert params is None or isinstance(params, (list,)), \
-                f"params for patchwise forward is required to be a list or None, while got {type(params)}."
+            assert params is None or isinstance(
+                params, (list,)
+            ), f"params for patchwise forward is required to be a list or None, while got {type(params)}."
             if isinstance(input, (tuple,)):
                 input = self.forward_patchwise(input[0], params), input[1]
             else:

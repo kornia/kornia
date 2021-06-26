@@ -63,7 +63,8 @@ class TestVideoSequential:
     @pytest.mark.parametrize('random_apply', [2, (2, 2), (1,), (2, 3), True, False])
     def test_same_on_frame(self, augmentations, data_format, random_apply, device, dtype):
         aug_list = K.VideoSequential(
-            *augmentations, data_format=data_format, same_on_frame=True, random_apply=random_apply)
+            *augmentations, data_format=data_format, same_on_frame=True, random_apply=random_apply
+        )
 
         if data_format == 'BCTHW':
             input = torch.randn(2, 3, 1, 5, 6, device=device, dtype=dtype).repeat(1, 1, 4, 1, 1)
@@ -101,7 +102,7 @@ class TestVideoSequential:
         output_2 = output_2.view(2, 4, 3, 5, 6)
         if data_format == 'BCTHW':
             output_2 = output_2.transpose(1, 2)
-        assert (output_1 == output_2).all(), (dict(aug_list_1._params))
+        assert (output_1 == output_2).all(), dict(aug_list_1._params)
 
     @pytest.mark.jit
     @pytest.mark.skip(reason="turn off due to Union Type")
@@ -125,7 +126,7 @@ class TestSequential:
             same_on_batch=same_on_batch,
             return_transform=return_transform,
             keepdim=keepdim,
-            random_apply=random_apply
+            random_apply=random_apply,
         )
 
     @pytest.mark.parametrize("return_transform", [True, False, None])
@@ -271,13 +272,13 @@ class TestAugmentationSequential:
 
 
 class TestPatchSequential:
-    
     @pytest.mark.parametrize(
-        'error_param', [
+        'error_param',
+        [
             {"random_apply": False, "patchwise_apply": True, "grid_size": (2, 3)},
             {"random_apply": 2, "patchwise_apply": True},
             {"random_apply": (2, 3), "patchwise_apply": True},
-        ]
+        ],
     )
     def test_exception(self, error_param):
         with pytest.raises(Exception):  # AssertError and NotImplementedError
