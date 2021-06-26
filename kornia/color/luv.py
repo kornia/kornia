@@ -17,15 +17,17 @@ https://github.com/scikit-image/scikit-image/blob/a48bf6774718c64dade4548153ae16
 def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     r"""Converts a RGB image to Luv.
 
+    .. image:: _static/img/rgb_to_luv.png
+
     The image data is assumed to be in the range of :math:`[0, 1]`. Luv
     color is computed using the D65 illuminant and Observer 2.
 
     Args:
-        image (torch.Tensor): RGB Image to be converted to Luv with shape :math:`(*, 3, H, W)`.
-        eps (float): for numerically stability when dividing. Default: 1e-12.
+        image: RGB Image to be converted to Luv with shape :math:`(*, 3, H, W)`.
+        eps: for numerically stability when dividing.
 
     Returns:
-        torch.Tensor: Luv version of the image with shape :math:`(*, 3, H, W)`.
+        Luv version of the image with shape :math:`(*, 3, H, W)`.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -69,11 +71,11 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     r"""Converts a Luv image to RGB.
 
     Args:
-        image (torch.Tensor): Luv image to be converted to RGB with shape :math:`(*, 3, H, W)`.
-        eps (float): for numerically stability when dividing. Default: 1e-12.
+        image: Luv image to be converted to RGB with shape :math:`(*, 3, H, W)`.
+        eps: for numerically stability when dividing.
 
     Returns:
-        torch.Tensor: Luv version of the image with shape :math:`(*, 3, H, W)`.
+        Luv version of the image with shape :math:`(*, 3, H, W)`.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -121,7 +123,7 @@ class RgbToLuv(nn.Module):
     color is computed using the D65 illuminant and Observer 2.
 
     Returns:
-        torch.Tensor: Luv version of the image.
+        Luv version of the image.
 
     Shape:
         - image: :math:`(*, 3, H, W)`
@@ -148,7 +150,7 @@ class LuvToRgb(nn.Module):
     r"""Converts an image from Luv to RGB.
 
     Returns:
-        torch.Tensor: RGB version of the image.
+        RGB version of the image.
 
     Shape:
         - image: :math:`(*, 3, H, W)`

@@ -1,7 +1,19 @@
+import importlib.util
 import os
 import sys
 
 import sphinx_rtd_theme
+
+# readthedocs generated the whole documentation in an isolated environment
+# by cloning the git repo. Thus, any on-the-fly operation will not effect
+# on the resulting documentation. We therefore need to import and run the
+# corresponding code here.
+spec = importlib.util.spec_from_file_location("generate_example_images", "../generate_example_images.py")
+generate_example_images = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(generate_example_images)
+
+# Pre-generate the example images
+generate_example_images.main()
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
@@ -24,18 +36,25 @@ extensions = [
     'sphinx.ext.autosummary',
     'sphinx.ext.doctest',
     'sphinx.ext.intersphinx',
-    'sphinx.ext.todo',
-    'sphinx.ext.coverage',
+    # 'sphinx.ext.todo',
+    # 'sphinx.ext.coverage',
     'sphinx.ext.mathjax',
     'sphinx.ext.napoleon',
+    'sphinx_autodoc_typehints',
+    'sphinx_autodoc_defaultargs',
+    'sphinx_copybutton',
     'sphinx.ext.viewcode',
     'sphinx.ext.githubpages',
-    'nbsphinx',
     'sphinxcontrib.bibtex',
 ]
 
+# subsitutes the default values
+docstring_default_arg_substitution = 'Default: '
+
+bibtex_bibfiles = ['references.bib']
 napoleon_use_ivar = True
 
+# TODO: review this number
 googleanalytics_id = 'UA-90545585-1'
 googleanalytics_enabled = True
 
@@ -177,12 +196,4 @@ intersphinx_mapping = {
     'python': ('https://docs.python.org/3/', None),
     'numpy': ('http://numpy.org/doc/stable/', None),
     'torch': ('http://pytorch.org/docs/stable/', None),
-}
-
-examples_dir = os.path.join(current_path, "tutorials")
-sphinx_gallery_conf = {
-    'doc_module': 'kornia',
-    'examples_dirs': [examples_dir],  # path to your example scripts
-    'gallery_dirs': ['tutorials'],  # path where to save gallery generated output
-    'filename_pattern': './',
 }

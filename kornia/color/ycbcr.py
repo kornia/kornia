@@ -5,11 +5,13 @@ import torch.nn as nn
 def rgb_to_ycbcr(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an RGB image to YCbCr.
 
+    .. image:: _static/img/rgb_to_ycbcr.png
+
     Args:
-        image (torch.Tensor): RGB Image to be converted to YCbCr with shape :math:`(*, 3, H, W)`.
+        image: RGB Image to be converted to YCbCr with shape :math:`(*, 3, H, W)`.
 
     Returns:
-        torch.Tensor: YCbCr version of the image with shape :math:`(*, 3, H, W)`.
+        YCbCr version of the image with shape :math:`(*, 3, H, W)`.
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -38,10 +40,10 @@ def ycbcr_to_rgb(image: torch.Tensor) -> torch.Tensor:
     The image data is assumed to be in the range of (0, 1).
 
     Args:
-        image (torch.Tensor): YCbCr Image to be converted to RGB with shape :math:`(*, 3, H, W)`.
+        image: YCbCr Image to be converted to RGB with shape :math:`(*, 3, H, W)`.
 
     Returns:
-        torch.Tensor: RGB version of the image with shape :math:`(*, 3, H, W)`.
+        RGB version of the image with shape :math:`(*, 3, H, W)`.
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -73,7 +75,7 @@ class RgbToYcbcr(nn.Module):
     The image data is assumed to be in the range of (0, 1).
 
     Returns:
-        torch.Tensor: YCbCr version of the image.
+        YCbCr version of the image.
 
     Shape:
         - image: :math:`(*, 3, H, W)`
@@ -95,7 +97,7 @@ class YcbcrToRgb(nn.Module):
     The image data is assumed to be in the range of (0, 1).
 
     Returns:
-        torch.Tensor: RGB version of the image.
+        RGB version of the image.
 
     Shape:
         - image: :math:`(*, 3, H, W)`
