@@ -196,7 +196,7 @@ class StereoCamera:
 
         """
         Q = torch.zeros((self.batch_size, 4, 4), device=self.device, dtype=self.dtype)
-        baseline = -self.tx
+        baseline: torch.Tensor = -self.tx
         Q[:, 0, 0] = self.fy * baseline
         Q[:, 0, 3] = -self.fy * self.cx_left * baseline
         Q[:, 1, 1] = self.fx * baseline
@@ -222,6 +222,7 @@ class StereoCamera:
 def _check_disparity_tensor(disparity_tensor: torch.Tensor):
     """
     Utility function to ensure correct user provided correct disparity tensor.
+
     Args:
         disparity_tensor (torch.Tensor): The disparity tensor of shape :math:`(B, 1, H, W)`.
     """
