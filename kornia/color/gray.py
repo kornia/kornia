@@ -11,14 +11,16 @@ def rgb_to_grayscale(
 ) -> torch.Tensor:
     r"""Convert a RGB image to grayscale version of image.
 
+    .. image:: _static/img/rgb_to_grayscale.png
+
     The image data is assumed to be in the range of (0, 1).
 
     Args:
-        image (torch.Tensor): RGB image to be converted to grayscale with shape :math:`(*,3,H,W)`.
-        rgb_weights (torch.Tensor): Weights that will be applied on each channel (RGB).
+        image: RGB image to be converted to grayscale with shape :math:`(*,3,H,W)`.
+        rgb_weights: Weights that will be applied on each channel (RGB).
             The sum of the weights should add up to one.
     Returns:
-        torch.Tensor: grayscale version of the image with shape :math:`(*,1,H,W)`.
+        grayscale version of the image with shape :math:`(*,1,H,W)`.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -57,10 +59,10 @@ def bgr_to_grayscale(image: torch.Tensor) -> torch.Tensor:
     The image data is assumed to be in the range of (0, 1). First flips to RGB, then converts.
 
     Args:
-        image (torch.Tensor): BGR image to be converted to grayscale with shape :math:`(*,3,H,W)`.
+        image: BGR image to be converted to grayscale with shape :math:`(*,3,H,W)`.
 
     Returns:
-        torch.Tensor: grayscale version of the image with shape :math:`(*,1,H,W)`.
+        grayscale version of the image with shape :math:`(*,1,H,W)`.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
