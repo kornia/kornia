@@ -1,4 +1,5 @@
 from typing import Dict, List, Optional, Tuple, Union
+import warnings
 
 import torch
 import torch.nn as nn
@@ -34,6 +35,7 @@ class PatchSequential(ImageSequential):
             If int, a fixed number of transformations will be selected.
             If (a, b), x number of transformations (a <= x <= b) will be selected.
             If None, the whole list of args will be processed as a sequence.
+            When ``patchwise_apply`` is set to True, ``random_apply``
 
     Return:
         List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]: the tensor (, and the transformation matrix)
@@ -56,7 +58,7 @@ class PatchSequential(ImageSequential):
         ...     ),
         ...     K.RandomSolarize(0.1, 0.1, p=0.1),
         ... grid_size=(2,2),
-        ... patchwise_apply=False,
+        ... patchwise_apply=True,
         ... same_on_batch=True,
         ... )
         >>> seq(input).shape
@@ -71,10 +73,17 @@ class PatchSequential(ImageSequential):
         same_on_batch: Optional[bool] = None,
         keepdim: Optional[bool] = None,
         patchwise_apply: bool = False,
-        random_apply: Optional[Union[int, Tuple[int, int]]] = None,
+        random_apply: Optional[Union[int, Tuple[int, int], bool]] = None,
     ) -> None:
+        _random_apply: Optional[Union[int, Tuple[int, int]]]
+        if isinstance(random_apply, bool) and patchwise_apply:
+            _random_apply = (grid_size[0] * grid_size[1], grid_size[0] * grid_size[1])
+        elif isinstance(random_apply, bool) and not patchwise_apply:
+            raise ValueError(f"`random_apply` cannot be boolean if patchwise_apply is set to False.")
+        else:
+            _random_apply = random_apply
         super(PatchSequential, self).__init__(
-            *args, same_on_batch=same_on_batch, return_transform=False, keepdim=keepdim, random_apply=random_apply
+            *args, same_on_batch=same_on_batch, return_transform=False, keepdim=keepdim, random_apply=_random_apply
         )
         assert padding in ["same", "valid"], f"`padding` must be either `same` or `valid`. Got {padding}."
         self.grid_size = grid_size
@@ -201,19 +210,35 @@ class PatchSequential(ImageSequential):
             restored_tensor = torch.nn.functional.pad(restored_tensor, [-i for i in pad])
         return restored_tensor
 
-    # TODO: Update this.
     def forward_patchwise(
-        self, input: torch.Tensor, params: Optional[List[Optional[Dict[str, Dict[str, torch.Tensor]]]]] = None
+        self, input: torch.Tensor, params: Optional[List[Dict[str, Dict[str, torch.Tensor]]]] = None
     ) -> torch.Tensor:  # NOTE: return_transform is always False here.
         if params is None:
-            assert input.size(1) == len(list(self.children()))
-            params = [None] * input.size(1)
+            params = [{}] * input.size(1)
+            auglist = [self.get_forward_sequence() for _ in range(input.size(1))]
         else:
-            assert input.size(1) == len(list(self.children())) == len(params)
-        out = [
-            proc(inp, param) for inp, proc, param in zip(input.permute(1, 0, 2, 3, 4), list(self.children()), params)
-        ]
-        input = torch.stack(out, dim=1)
+            assert input.size(1) == len(list(self.children())) == len(params) and isinstance(params, (list,))
+            auglist = [self.get_forward_sequence(p) for p in params]
+
+        # TODO: This will need an optimization later.
+        out = []
+        ps = []
+        for inp, proc, param in zip(input, auglist, params):
+            o = []
+            _p = {}
+            for inp_pat, (proc_name, proc_pat) in zip(inp, proc):
+                if isinstance(proc_pat, (_AugmentationBase,)):
+                    o.append(proc_pat(inp_pat[None], param[proc_name] if proc_name in param else None))
+                    _p.update({proc_name: proc_pat._params})
+                else:
+                    assert proc_name not in param
+                    o.append(proc_pat(inp_pat[None]))
+            out.append(torch.cat(o, dim=0))
+            ps.append(_p)
+
+        # This is a special parameter that contains a list
+        self._params = ps  # type: ignore
+        input = torch.stack(out, dim=0)
         return input
 
     def forward_batchwise(
@@ -251,6 +276,7 @@ class PatchSequential(ImageSequential):
         params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:  # NOTE: return_transform is always False here.
         """Input transformation will be returned if input is a tuple."""
+        # BCHW -> B(patch)CHW
         if isinstance(input, (tuple,)):
             pad = self.compute_padding(input[0], self.padding)
             input = self.extract_patches(input[0], self.grid_size, pad), input[1]
@@ -264,11 +290,12 @@ class PatchSequential(ImageSequential):
             else:
                 input = self.forward_batchwise(input, params)
         else:
-            assert params is None, "Passing params to patchwise forward is currently not supported."
+            assert params is None or isinstance(params, (list,)), \
+                f"params for patchwise forward is required to be a list or None, while got {type(params)}."
             if isinstance(input, (tuple,)):
-                input = self.forward_patchwise(input[0]), input[1]
+                input = self.forward_patchwise(input[0], params), input[1]
             else:
-                input = self.forward_patchwise(input)
+                input = self.forward_patchwise(input, params)
 
         if isinstance(input, (tuple,)):
             input = (self.restore_from_patches(input[0], self.grid_size, pad=pad), input[1])

@@ -94,27 +94,30 @@ class ImageSequential(nn.Sequential):
             assert isinstance(self.random_apply, (tuple,)) and len(self.random_apply) == 2 and \
                 isinstance(self.random_apply[0], (int,)) and isinstance(self.random_apply[0], (int,)), \
                 f"Expect a tuple of (int, int). Got {self.random_apply}."
-            self._uniform = torch.distributions.Uniform(0., 1.)
         else:
             self.random_apply = None
 
     def _get_child_sequence(self) -> Iterator[Tuple[str, nn.Module]]:
         if self.random_apply is not None:
-            probs = self._uniform.rsample((len(self),))
-            indicies = torch.topk(probs, int(torch.randint(*self.random_apply, (1,)).item()))[1]
+            num_samples = int(torch.randint(*self.random_apply, (1,)).item())
+            indicies = torch.multinomial(
+                torch.ones((len(self),)),
+                num_samples,
+                replacement=True if num_samples > len(self) else False
+            )
             return self._get_children_by_indicies(indicies)
         else:
             return self.named_children()
 
     def _get_children_by_indicies(self, indicies: torch.Tensor) -> Iterator[Tuple[str, nn.Module]]:
-        for idx, named_child in enumerate(self.named_children()):
-            if idx in indicies:
-                yield named_child
+        modules = list(self.named_children())
+        for idx in indicies:
+            yield modules[idx]
 
     def _get_children_by_module_names(self, names: List[str]) -> Iterator[Tuple[str, nn.Module]]:
-        for name, module in self.named_children():
-            if name in names:
-                yield (name, module)
+        modules = list(self.named_children())
+        for name in names:
+            yield modules[list(dict(self.named_children()).keys()).index(name)]
 
     def get_forward_sequence(
         self, params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None
