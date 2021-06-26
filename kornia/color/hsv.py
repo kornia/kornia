@@ -7,14 +7,16 @@ import torch.nn as nn
 def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
     r"""Convert an image from RGB to HSV.
 
+    .. image:: _static/img/rgb_to_hsv.png
+
     The image data is assumed to be in the range of (0, 1).
 
     Args:
-        image (torch.Tensor): RGB Image to be converted to HSV with shape of :math:`(*, 3, H, W)`.
-        eps (float, optional): scalar to enforce numarical stability. Default: 1e-6.
+        image: RGB Image to be converted to HSV with shape of :math:`(*, 3, H, W)`.
+        eps: scalar to enforce numarical stability.
 
     Returns:
-        torch.Tensor: HSV version of the image with shape of :math:`(*, 3, H, W)`.
+        HSV version of the image with shape of :math:`(*, 3, H, W)`.
         The H channel values are in the range 0..2pi. S and V are in the range 0..1.
 
     Example:
@@ -66,10 +68,10 @@ def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     The H channel values are assumed to be in the range 0..2pi. S and V are in the range 0..1.
 
     Args:
-        image (torch.Tensor): HSV Image to be converted to HSV with shape of :math:`(*, 3, H, W)`.
+        image: HSV Image to be converted to HSV with shape of :math:`(*, 3, H, W)`.
 
     Returns:
-        torch.Tensor: RGB version of the image with shape of :math:`(*, 3, H, W)`.
+        RGB version of the image with shape of :math:`(*, 3, H, W)`.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -106,10 +108,10 @@ class RgbToHsv(nn.Module):
     The image data is assumed to be in the range of (0, 1).
 
     Args:
-        eps (float, optional): scalar to enforce numarical stability. Default: 1e-6.
+        eps: scalar to enforce numarical stability.
 
     Returns:
-        torch.tensor: HSV version of the image.
+        HSV version of the image.
 
     Shape:
         - image: :math:`(*, 3, H, W)`
@@ -135,7 +137,7 @@ class HsvToRgb(nn.Module):
     H channel values are assumed to be in the range 0..2pi. S and V are in the range 0..1.
 
     Returns:
-        torch.Tensor: RGB version of the image.
+        RGB version of the image.
 
     Shape:
         - image: :math:`(*, 3, H, W)`
