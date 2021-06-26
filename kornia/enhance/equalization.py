@@ -14,7 +14,9 @@ __all__ = ["equalize_clahe"]
 
 
 def _compute_tiles(
-    imgs: torch.Tensor, grid_size: Tuple[int, int], even_tile_size: bool = False
+    imgs: torch.Tensor,
+    grid_size: Tuple[int, int],
+    even_tile_size: bool = False
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Compute tiles on an image according to a grid size.
 
@@ -22,13 +24,13 @@ def _compute_tiles(
     So, the grid_size (GH, GW) x tile_size (TH, TW) >= image_size (H, W)
 
     Args:
-        imgs (torch.Tensor): batch of 2D images with shape (B, C, H, W) or (C, H, W).
-        grid_size (Tuple[int, int]): number of tiles to be cropped in each direction (GH, GW)
-        even_tile_size (bool, optional): Determine if the width and height of the tiles must be even. Default: False.
+        imgs: batch of 2D images with shape (B, C, H, W) or (C, H, W).
+        grid_size: number of tiles to be cropped in each direction (GH, GW)
+        even_tile_size: Determine if the width and height of the tiles must be even.
 
     Returns:
-        torch.Tensor: tensor with tiles (B, GH, GW, C, TH, TW). B = 1 in case of a single image is provided.
-        torch.Tensor: tensor with the padded batch of 2D imageswith shape (B, C, H', W')
+        tensor with tiles (B, GH, GW, C, TH, TW). B = 1 in case of a single image is provided.
+        tensor with the padded batch of 2D imageswith shape (B, C, H', W').
 
     """
     batch: torch.Tensor = _to_bchw(imgs)  # B x C x H x W
@@ -68,13 +70,13 @@ def _compute_interpolation_tiles(padded_imgs: torch.Tensor, tile_size: Tuple[int
     Note that images must be padded. So, the tile_size (TH, TW) * grid_size (GH, GW) = image_size (H, W)
 
     Args:
-        padded_imgs (torch.Tensor): batch of 2D images with shape (B, C, H, W) already padded to extract tiles
+        padded_imgs: batch of 2D images with shape (B, C, H, W) already padded to extract tiles
                                     of size (TH, TW).
-        tile_size (Tuple[int, int]): shape of the current tiles (TH, TW).
+        tile_size: shape of the current tiles (TH, TW).
 
     Returns:
-        torch.Tensor: tensor with the interpolation tiles (B, 2GH, 2GW, C, TH/2, TW/2).
-
+        tensor with the interpolation tiles (B, 2GH, 2GW, C, TH/2, TW/2).
+        
     """
     assert padded_imgs.dim() == 4, "Images Tensor must be 4D."
     assert padded_imgs.shape[-2] % tile_size[0] == 0, "Images are not correctly padded."
@@ -109,14 +111,14 @@ def _compute_luts(
     Same approach as in OpenCV (https://github.com/opencv/opencv/blob/master/modules/imgproc/src/clahe.cpp)
 
     Args:
-        tiles_x_im (torch.Tensor): set of tiles per image to apply the lut. (B, GH, GW, C, TH, TW)
-        num_bins (int, optional): number of bins. default: 256
-        clip (float): threshold value for contrast limiting. If it is 0 then the clipping is disabled. Default: 40.
-        diff (bool, optional): denote if the differentiable histagram will be used. Default: False
+        tiles_x_im: set of tiles per image to apply the lut. (B, GH, GW, C, TH, TW)
+        num_bins: number of bins. default: 256
+        clip: threshold value for contrast limiting. If it is 0 then the clipping is disabled.
+        diff: denote if the differentiable histagram will be used. Default: False
 
     Returns:
-        torch.Tensor: Lut for each tile (B, GH, GW, C, 256)
-
+        Lut for each tile (B, GH, GW, C, 256).
+        
     """
     assert tiles_x_im.dim() == 6, "Tensor must be 6D."
 
@@ -156,12 +158,12 @@ def _map_luts(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
     r"""Assign the required luts to each tile.
 
     Args:
-        interp_tiles (torch.Tensor): set of interpolation tiles. (B, 2GH, 2GW, C, TH/2, TW/2)
-        luts (torch.Tensor): luts for each one of the original tiles. (B, GH, GW, C, 256)
+        interp_tiles: set of interpolation tiles. (B, 2GH, 2GW, C, TH/2, TW/2)
+        luts: luts for each one of the original tiles. (B, GH, GW, C, 256)
 
     Returns:
-        torch.Tensor: mapped luts (B, 2GH, 2GW, 4, C, 256)
-
+         mapped luts (B, 2GH, 2GW, 4, C, 256)
+         
     """
     assert interp_tiles.dim() == 6, "interp_tiles tensor must be 6D."
     assert luts.dim() == 5, "luts tensor must be 5D."
@@ -209,13 +211,13 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
     r"""Equalize the tiles.
 
     Args:
-        interp_tiles (torch.Tensor): set of interpolation tiles, values must be in the range [0, 1].
-                                     (B, 2GH, 2GW, C, TH/2, TW/2)
-        luts (torch.Tensor): luts for each one of the original tiles. (B, GH, GW, C, 256)
+        interp_tiles: set of interpolation tiles, values must be in the range [0, 1].
+          (B, 2GH, 2GW, C, TH/2, TW/2)
+        luts: luts for each one of the original tiles. (B, GH, GW, C, 256)
 
     Returns:
-        torch.Tensor: equalized tiles (B, 2GH, 2GW, C, TH/2, TW/2)
-
+        equalized tiles (B, 2GH, 2GW, C, TH/2, TW/2)
+        
     """
     assert interp_tiles.dim() == 6, "interp_tiles tensor must be 6D."
     assert luts.dim() == 5, "luts tensor must be 5D."
@@ -284,17 +286,19 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
 
 def equalize_clahe(input: torch.Tensor, clip_limit: float = 40.0, grid_size: Tuple[int, int] = (8, 8)) -> torch.Tensor:
     r"""Apply clahe equalization on the input tensor.
+    
+    .. image:: _static/img/equalize_clahe.png
 
     NOTE: Lut computation uses the same approach as in OpenCV, in next versions this can change.
 
     Args:
-        input (torch.Tensor): images tensor to equalize with values in the range [0, 1] and shapes like
-                              :math:`(C, H, W)` or :math:`(B, C, H, W)`.
-        clip_limit (float): threshold value for contrast limiting. If 0 clipping is disabled. Default: 40.
-        grid_size (Tuple[int, int]): number of tiles to be cropped in each direction (GH, GW). Default: (8, 8).
+        input: images tensor to equalize with values in the range [0, 1] and shapes like 
+          :math:`(C, H, W)` or :math:`(B, C, H, W)`.
+        clip_limit: threshold value for contrast limiting. If 0 clipping is disabled.
+        grid_size: number of tiles to be cropped in each direction (GH, GW).
 
     Returns:
-        torch.Tensor: Equalized image or images with shape as the input.
+        Equalized image or images with shape as the input.
 
     Examples:
         >>> img = torch.rand(1, 10, 20)

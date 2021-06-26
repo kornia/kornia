@@ -17,8 +17,8 @@ def read_img_from_url(url: str, resize_to: Optional[Tuple[int, int]] = None) -> 
     response = requests.get(url).content
     # convert to array of ints
     nparr = np.frombuffer(response, np.uint8)
-    # convert to image array
-    img: np.ndarray = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
+    # convert to image array and resize
+    img: np.ndarray = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)[..., :3]
     if resize_to is None:
         img = cv2.resize(img, (186, int(img.shape[0] / img.shape[1] * 224)))
     else:
@@ -31,13 +31,16 @@ def read_img_from_url(url: str, resize_to: Optional[Tuple[int, int]] = None) -> 
 
 def main():
     # load the images
-    BASE_IMAGE_URL: str = "https://raw.githubusercontent.com/kornia/data/main/panda.jpg"
+    BASE_IMAGE_URL1: str = "https://raw.githubusercontent.com/kornia/data/main/panda.jpg"
     BASE_IMAGE_URL2: str = "https://raw.githubusercontent.com/kornia/data/main/simba.png"
+    BASE_IMAGE_URL3: str = "https://raw.githubusercontent.com/kornia/data/main/girona.png"
     OUTPUT_PATH = Path(__file__).absolute().parent / "source/_static/img"
+
     os.makedirs(OUTPUT_PATH, exist_ok=True)
     print(f"Pointing images to path {OUTPUT_PATH}.")
-    img = read_img_from_url(BASE_IMAGE_URL)
-    img2 = read_img_from_url(BASE_IMAGE_URL2, img.shape[-2:][::-1])
+    img1 = read_img_from_url(BASE_IMAGE_URL1)
+    img2 = read_img_from_url(BASE_IMAGE_URL2, img1.shape[-2:][::-1])
+    img3 = read_img_from_url(BASE_IMAGE_URL3, img1.shape[-2:][::-1])
 
     # TODO: make this more generic for modules out of kornia.augmentation
     # Dictionary containing the transforms to generate the sample images:
@@ -49,7 +52,7 @@ def main():
         "ColorJitter": ((0.3, 0.3, 0.3, 0.3), 2, 2018),
         "RandomAffine": (((-15.0, 20.0), (0.1, 0.1), (0.7, 1.3), 20), 2, 2019),
         "RandomBoxBlur": (((7, 7),), 1, 2020),
-        "RandomCrop": ((img.shape[-2:], (50, 50)), 2, 2020),
+        "RandomCrop": ((img1.shape[-2:], (50, 50)), 2, 2020),
         "RandomChannelShuffle": ((), 1, 2020),
         "RandomElasticTransform": (((63, 63), (32, 32), (2.0, 2.0)), 2, 2018),
         "RandomEqualize": ((), 1, 2020),
@@ -63,7 +66,7 @@ def main():
         "RandomMotionBlur": ((7, 35.0, 0.5), 2, 2020),
         "RandomPerspective": ((0.2,), 2, 2020),
         "RandomPosterize": (((1, 4),), 2, 2016),
-        "RandomResizedCrop": ((img.shape[-2:], (1.0, 2.0), (1.0, 2.0)), 2, 2020),
+        "RandomResizedCrop": ((img1.shape[-2:], (1.0, 2.0), (1.0, 2.0)), 2, 2020),
         "RandomRotation": ((45.0,), 2, 2019),
         "RandomSharpness": ((16.0,), 1, 2019),
         "RandomSolarize": ((0.2, 0.2), 2, 2019),
@@ -73,7 +76,7 @@ def main():
 
     # ITERATE OVER THE TRANSFORMS
     for aug_name, (args, num_samples, seed) in augmentations_list.items():
-        img_in = img.repeat(num_samples, 1, 1, 1)
+        img_in = img1.repeat(num_samples, 1, 1, 1)
         # dynamically create the class instance
         cls = getattr(mod, aug_name)
         aug = cls(*args, p=1.0)
@@ -95,11 +98,11 @@ def main():
     mod = importlib.import_module("kornia.augmentation")
     mix_augmentations_list: dict = {
         "RandomMixUp": (((0.3, 0.4),), 2, 20),
-        "RandomCutMix": ((img.shape[-2], img.shape[-1]), 2, 2019),
+        "RandomCutMix": ((img1.shape[-2], img1.shape[-1]), 2, 2019),
     }
     # ITERATE OVER THE TRANSFORMS
     for aug_name, (args, num_samples, seed) in mix_augmentations_list.items():
-        img_in = torch.cat([img, img2])
+        img_in = torch.cat([img1, img2])
         # dynamically create the class instance
         cls = getattr(mod, aug_name)
         aug = cls(*args, p=1.0)
@@ -150,6 +153,39 @@ def main():
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {fn_name}. {sig}")
 
+    # korna.enhance module
+    mod = importlib.import_module("kornia.enhance")
+    transforms: dict = {
+        "adjust_brightness": ((torch.tensor([.25, .5]),), 2),
+        "adjust_contrast": ((torch.tensor([.65, .5]),), 2),
+        "adjust_gamma": ((torch.tensor([.85, .75]), 2.,), 2),
+        "adjust_hue": ((torch.tensor([-math.pi/4, math.pi/4]),), 2),
+        "adjust_saturation": ((torch.tensor([1., 2.]),), 2),
+        "solarize": ((torch.tensor([0.8, 0.5]), torch.tensor([-0.25, 0.25]),), 2),
+        "posterize": ((torch.tensor([4, 2]),), 2),
+        "sharpness": ((torch.tensor([1., 2.5]),), 2),
+        "equalize": ((), 1),
+        "invert": ((), 1),
+        "equalize_clahe": ((), 1),
+        "add_weighted": ((0.75, 0.25, 2.0), 1),
+    }
+    # ITERATE OVER THE TRANSFORMS
+    for fn_name, (args, num_samples) in transforms.items():
+        img_in = img3.repeat(num_samples, 1, 1, 1)
+        if fn_name == "add_weighted":
+            args_in = (img_in, args[0], img2, args[1], args[2])
+        else:
+            args_in = (img_in, *args)
+        # import function and apply
+        #import pdb;pdb.set_trace()
+        fn = getattr(mod, fn_name)
+        out = fn(*args_in)
+        # save the output image
+        out = torch.cat([img_in[0], *[out[i] for i in range(out.size(0))]], dim=-1)
+        out_np = K.utils.tensor_to_image((out * 255.0).byte())
+        cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
+        sig = f"{fn_name}({', '.join([str(a) for a in args])})"
+        print(f"Generated image example for {fn_name}. {sig}")
 
 if __name__ == "__main__":
     main()
