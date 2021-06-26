@@ -2,6 +2,7 @@ import torch
 
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.utils.grid import create_meshgrid
+from kornia.geometry.linalg import transform_points
 
 
 class StereoException(Exception):
@@ -232,7 +233,7 @@ def _check_disparity_tensor(disparity_tensor: torch.Tensor):
     if disparity_tensor.ndim != 4:
         raise StereoException(f"Expected 'disparity_tensor' to have 4 dimensions." f"Got {disparity_tensor.ndim}.")
 
-    if disparity_tensor.shape[1] != 1:
+    if disparity_tensor.shape[-1] != 1:
         raise StereoException(
             f"Expected dimension 1 of 'disparity_tensor' to be 1 for as single channeled disparity map."
             f"Got {disparity_tensor.shape}."
@@ -283,23 +284,16 @@ def reproject_disparity_to_3D(disparity_tensor: torch.Tensor, Q_matrix: torch.Te
     _check_Q_matrix(Q_matrix)
     _check_disparity_tensor(disparity_tensor)
 
-    batch_size, channels, rows, cols = disparity_tensor.shape
+    batch_size, rows, cols, channels = disparity_tensor.shape
     dtype = disparity_tensor.dtype
     device = disparity_tensor.device
 
     uv = create_meshgrid(rows, cols, normalized_coordinates=False, device=device, dtype=dtype)
-    v, u = uv[..., 0], uv[..., 1]
-    u, v = u.expand(batch_size, channels, -1, -1), v.expand(batch_size, channels, -1, -1)
+    v, u = uv[..., 0:1], uv[..., 1:2]  # One index slicing to keep dims
+    u, v = u.expand(batch_size, -1, -1, channels), v.expand(batch_size, -1, -1, channels)
 
-    # Stack the observations into a tensor of shape (batch_size, 4, -1) that contains all
-    # 4 dimensional vectors [u v disparity 1].
     uvd = torch.stack((u, v, disparity_tensor), 1).reshape(batch_size, 3, -1).permute(0, 2, 1)
-    uvdz = convert_points_to_homogeneous(uvd).permute(0, 2, 1)
-
-    # Matrix multiply all vectors with the Q matrix
-    hom_points = torch.bmm(Q_matrix, uvdz)
-    points = convert_points_from_homogeneous(hom_points.permute(0, 2, 1))
-    points = points.reshape(batch_size, rows, cols, 3)
+    points = transform_points(Q_matrix, uvd).reshape(batch_size, rows, cols, 3)
 
     # Final check that everything went well.
     if not points.shape == (batch_size, rows, cols, 3):

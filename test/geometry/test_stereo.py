@@ -107,8 +107,7 @@ class _RealTestData:
             ],
             device=device,
             dtype=dtype,
-        )
-
+        ).permute(0, 2, 3, 1)
         return disp.expand(batch_size, -1, -1, -1)
 
     @staticmethod
@@ -172,7 +171,7 @@ class TestStereoCamera:
 
     @staticmethod
     def _create_disparity_tensor(batch_size, height, width, max_disparity, device, dtype):
-        size = (batch_size, 1, height, width)
+        size = (batch_size, height, width, 1)
         return torch.randint(size=size, low=0, high=max_disparity, device=device, dtype=dtype)
 
     @staticmethod
