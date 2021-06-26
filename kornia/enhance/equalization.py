@@ -14,9 +14,7 @@ __all__ = ["equalize_clahe"]
 
 
 def _compute_tiles(
-    imgs: torch.Tensor,
-    grid_size: Tuple[int, int],
-    even_tile_size: bool = False
+    imgs: torch.Tensor, grid_size: Tuple[int, int], even_tile_size: bool = False
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Compute tiles on an image according to a grid size.
 
@@ -76,7 +74,7 @@ def _compute_interpolation_tiles(padded_imgs: torch.Tensor, tile_size: Tuple[int
 
     Returns:
         tensor with the interpolation tiles (B, 2GH, 2GW, C, TH/2, TW/2).
-        
+
     """
     assert padded_imgs.dim() == 4, "Images Tensor must be 4D."
     assert padded_imgs.shape[-2] % tile_size[0] == 0, "Images are not correctly padded."
@@ -118,7 +116,7 @@ def _compute_luts(
 
     Returns:
         Lut for each tile (B, GH, GW, C, 256).
-        
+
     """
     assert tiles_x_im.dim() == 6, "Tensor must be 6D."
 
@@ -163,7 +161,7 @@ def _map_luts(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
 
     Returns:
          mapped luts (B, 2GH, 2GW, 4, C, 256)
-         
+
     """
     assert interp_tiles.dim() == 6, "interp_tiles tensor must be 6D."
     assert luts.dim() == 5, "luts tensor must be 5D."
@@ -217,7 +215,7 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
 
     Returns:
         equalized tiles (B, 2GH, 2GW, C, TH/2, TW/2)
-        
+
     """
     assert interp_tiles.dim() == 6, "interp_tiles tensor must be 6D."
     assert luts.dim() == 5, "luts tensor must be 5D."
@@ -286,13 +284,13 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
 
 def equalize_clahe(input: torch.Tensor, clip_limit: float = 40.0, grid_size: Tuple[int, int] = (8, 8)) -> torch.Tensor:
     r"""Apply clahe equalization on the input tensor.
-    
+
     .. image:: _static/img/equalize_clahe.png
 
     NOTE: Lut computation uses the same approach as in OpenCV, in next versions this can change.
 
     Args:
-        input: images tensor to equalize with values in the range [0, 1] and shapes like 
+        input: images tensor to equalize with values in the range [0, 1] and shapes like
           :math:`(C, H, W)` or :math:`(B, C, H, W)`.
         clip_limit: threshold value for contrast limiting. If 0 clipping is disabled.
         grid_size: number of tiles to be cropped in each direction (GH, GW).

@@ -13,6 +13,8 @@ from .image import ImageSequential
 class PatchSequential(ImageSequential):
     r"""Container for performing patch-level image processing.
 
+    .. image:: https://kornia-tutorials.readthedocs.io/en/latest/_images/data_patch_sequential_5_1.png
+
     PatchSequential breaks input images into patches by a given grid size, which will be resembled back
     afterwards. Different image processing and augmentation methods will be performed on each patch region.
 

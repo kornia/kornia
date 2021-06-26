@@ -69,7 +69,7 @@ def adjust_saturation_raw(input: torch.Tensor, saturation_factor: Union[float, t
 
 def adjust_saturation(input: torch.Tensor, saturation_factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust color saturation of an image.
-    
+
     .. image:: _static/img/adjust_saturation.png
 
     The input image is expected to be an RGB image in the range of [0, 1].
@@ -85,7 +85,7 @@ def adjust_saturation(input: torch.Tensor, saturation_factor: Union[float, torch
     Example:
         >>> x = torch.ones(1, 3, 3, 3)
         >>> adjust_saturation(x, 2.).shape
-        torch.Size([1, 3, 3, 3)
+        torch.Size([1, 3, 3, 3])
 
         >>> x = torch.ones(2, 3, 3, 3)
         >>> y = torch.tensor([1., 2.])
@@ -163,7 +163,7 @@ def adjust_hue(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) -> t
         >>> x = torch.ones(1, 3, 2, 2)
         >>> adjust_hue(x, 3.141516).shape
         torch.Size([1, 3, 2, 2])
-        
+
         >>> x = torch.ones(2, 3, 3, 3)
         >>> y = torch.ones(2) * 3.141516
         >>> adjust_hue(x, y).shape
@@ -186,7 +186,7 @@ def adjust_gamma(
     input: torch.Tensor, gamma: Union[float, torch.Tensor], gain: Union[float, torch.Tensor] = 1.0
 ) -> torch.Tensor:
     r"""Perform gamma correction on an image.
-    
+
     .. image:: _static/img/adjust_contrast.png
 
     The input image is expected to be in the range of [0, 1].
@@ -253,7 +253,7 @@ def adjust_gamma(
 
 def adjust_contrast(input: torch.Tensor, contrast_factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust Contrast of an image.
-    
+
     .. image:: _static/img/adjust_contrast.png
 
     This implementation aligns OpenCV, not PIL. Hence, the output differs from TorchVision.
@@ -309,7 +309,7 @@ def adjust_contrast(input: torch.Tensor, contrast_factor: Union[float, torch.Ten
 
 def adjust_brightness(input: torch.Tensor, brightness_factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust Brightness of an image.
-    
+
     .. image:: _static/img/adjust_brightness.png
 
     This implementation aligns OpenCV, not PIL. Hence, the output differs from TorchVision.
@@ -395,7 +395,7 @@ def solarize(
     additions: Optional[Union[float, torch.Tensor]] = None,
 ) -> torch.Tensor:
     r"""For each pixel in the image less than threshold.
-    
+
     .. image:: _static/img/solarize.png
 
     We add 'addition' amount to it and then clip the pixel value to be between 0 and 1.0.
@@ -461,7 +461,7 @@ def solarize(
 
 def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tensor:
     r"""Reduce the number of bits for each color channel.
-    
+
     .. image:: _static/img/posterize.png
 
     Non-differentiable function, ``torch.uint8`` involved.
@@ -547,7 +547,7 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
 
 def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Apply sharpness to the input tensor.
-    
+
     .. image:: _static/img/sharpness.png
 
     Implemented Sharpness function from PIL using torch ops. This implementation refers to:
@@ -565,7 +565,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
     Example:
         >>> x = torch.rand(1, 1, 5, 5)
         >>> sharpness(x, 0.5).shape
-        >>> torch.Size([1, 1, 5, 5])
+        torch.Size([1, 1, 5, 5])
     """
     input = _to_bchw(input)
     if not isinstance(factor, torch.Tensor):
@@ -681,7 +681,7 @@ def _scale_channel(im: torch.Tensor) -> torch.Tensor:
 
 def equalize(input: torch.Tensor) -> torch.Tensor:
     r"""Apply equalize on the input tensor.
-    
+
     .. image:: _static/img/equalize.png
 
     Implements Equalize function from PIL using PyTorch ops based on uint8 format:
@@ -735,7 +735,7 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
 
 def invert(input: torch.Tensor, max_val: torch.Tensor = torch.tensor(1.0)) -> torch.Tensor:
     r"""Inverts the values of an input tensor by its maximum value.
-    
+
     .. image:: _static/img/invert.png
 
     Args:

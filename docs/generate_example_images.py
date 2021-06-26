@@ -156,14 +156,14 @@ def main():
     # korna.enhance module
     mod = importlib.import_module("kornia.enhance")
     transforms: dict = {
-        "adjust_brightness": ((torch.tensor([.25, .5]),), 2),
-        "adjust_contrast": ((torch.tensor([.65, .5]),), 2),
-        "adjust_gamma": ((torch.tensor([.85, .75]), 2.,), 2),
-        "adjust_hue": ((torch.tensor([-math.pi/4, math.pi/4]),), 2),
-        "adjust_saturation": ((torch.tensor([1., 2.]),), 2),
-        "solarize": ((torch.tensor([0.8, 0.5]), torch.tensor([-0.25, 0.25]),), 2),
+        "adjust_brightness": ((torch.tensor([0.25, 0.5]),), 2),
+        "adjust_contrast": ((torch.tensor([0.65, 0.5]),), 2),
+        "adjust_gamma": ((torch.tensor([0.85, 0.75]), 2.0), 2),
+        "adjust_hue": ((torch.tensor([-math.pi / 4, math.pi / 4]),), 2),
+        "adjust_saturation": ((torch.tensor([1.0, 2.0]),), 2),
+        "solarize": ((torch.tensor([0.8, 0.5]), torch.tensor([-0.25, 0.25])), 2),
         "posterize": ((torch.tensor([4, 2]),), 2),
-        "sharpness": ((torch.tensor([1., 2.5]),), 2),
+        "sharpness": ((torch.tensor([1.0, 2.5]),), 2),
         "equalize": ((), 1),
         "invert": ((), 1),
         "equalize_clahe": ((), 1),
@@ -177,7 +177,7 @@ def main():
         else:
             args_in = (img_in, *args)
         # import function and apply
-        #import pdb;pdb.set_trace()
+        # import pdb;pdb.set_trace()
         fn = getattr(mod, fn_name)
         out = fn(*args_in)
         # save the output image
@@ -186,6 +186,7 @@ def main():
         cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {fn_name}. {sig}")
+
 
 if __name__ == "__main__":
     main()

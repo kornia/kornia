@@ -10,7 +10,7 @@ __all__ = ["zca_mean", "zca_whiten", "linear_transform", "ZCAWhitening"]
 
 class ZCAWhitening(nn.Module):
     r"""Computes the ZCA whitening matrix transform and the mean vector and applies the transform to the data.
-    
+
     The data tensor is flattened, and the mean :math:`\mathbf{\mu}`
     and covariance matrix :math:`\mathbf{\Sigma}` are computed from
     the flattened data :math:`\mathbf{X} \in \mathbb{R}^{N \times D}`, where
@@ -157,13 +157,14 @@ def zca_mean(
     inp: torch.Tensor, dim: int = 0, unbiased: bool = True, eps: float = 1e-6, return_inverse: bool = False
 ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
     r"""Computes the ZCA whitening matrix and mean vector.
-    
-    The output can be used with :py:meth:`~kornia.color.linear_transform`. See :class:`~kornia.color.ZCAWhitening` for details.
+
+    The output can be used with :py:meth:`~kornia.color.linear_transform`.
+    See :class:`~kornia.color.ZCAWhitening` for details.
 
     Args:
         inp: input data tensor.
         dim: Specifies the dimension that serves as the samples dimension.
-        unbiased: Whether to use the unbiased estimate of the covariance matrix. 
+        unbiased: Whether to use the unbiased estimate of the covariance matrix.
         eps: a small number used for numerical stability.
         return_inverse: Whether to return the inverse ZCA transform.
 

@@ -6,7 +6,7 @@ __all__ = ["add_weighted", "AddWeighted"]
 
 def add_weighted(src1: torch.Tensor, alpha: float, src2: torch.Tensor, beta: float, gamma: float) -> torch.Tensor:
     r"""Calculates the weighted sum of two Tensors.
-    
+
     .. image:: _static/img/add_weighted.png
 
     The function calculates the weighted sum of two Tensors as follows:
