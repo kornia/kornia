@@ -289,8 +289,8 @@ def reproject_disparity_to_3D(disparity_tensor: torch.Tensor, Q_matrix: torch.Te
     device = disparity_tensor.device
 
     uv = create_meshgrid(rows, cols, normalized_coordinates=False, device=device, dtype=dtype)
+    uv = uv.expand(batch_size, -1, -1, -1)
     v, u = uv[..., 0:1], uv[..., 1:2]  # One index slicing to keep dims
-    u, v = u.expand(batch_size, -1, -1, channels), v.expand(batch_size, -1, -1, channels)
 
     uvd = torch.stack((u, v, disparity_tensor), 1).reshape(batch_size, 3, -1).permute(0, 2, 1)
     points = transform_points(Q_matrix, uvd).reshape(batch_size, rows, cols, 3)
