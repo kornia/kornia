@@ -5,7 +5,12 @@ from typing import cast, Dict, List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
-from kornia.augmentation.base import _AugmentationBase, GeometricAugmentationBase2D, IntensityAugmentationBase2D
+from kornia.augmentation.base import (
+    TensorWithTransMat,
+    _AugmentationBase,
+    GeometricAugmentationBase2D,
+    IntensityAugmentationBase2D
+)
 from kornia.constants import DataKey
 from kornia.geometry.bbox import transform_bbox
 from kornia.geometry.linalg import transform_points
@@ -43,7 +48,8 @@ class AugmentationSequential(ImageSequential):
             If False, the whole list of args will be processed as a sequence in original order.
 
     Return:
-        the tensor (, and the transformation matrix) has been sequentially modified by the args.
+        List[TensorWithTransMat]: the tensor (, and the transformation matrix)
+            has been sequentially modified by the args.
 
     Examples:
         >>> import kornia
@@ -149,35 +155,36 @@ class AugmentationSequential(ImageSequential):
 
     def apply_by_key(
         self,
-        input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
+        input: TensorWithTransMat,
+        label: Optional[torch.Tensor],
         module_name: str,
         module: Optional[nn.Module] = None,
         param: Optional[ParamItem] = None,
         dcate: Union[str, int, DataKey] = DataKey.INPUT,
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    ) -> Tuple[TensorWithTransMat, Optional[torch.Tensor]]:
         if param is not None:
             assert module_name == param.name
         if module is None:
             # TODO (jian): double check why typing is crashing
             module = self.get_submodule(module_name)  # type: ignore
         if DataKey.get(dcate) in [DataKey.INPUT]:
-            return self.apply_to_input(input, module_name, module, param)
+            return self.apply_to_input(input, label, module_name, module, param)
         if DataKey.get(dcate) in [DataKey.MASK]:
             if isinstance(input, (tuple,)):
-                return (self.apply_to_mask(input[0], module, param), *input[1:])
-            return self.apply_to_mask(input, module, param)
+                return (self.apply_to_mask(input[0], module, param), *input[1:]), None
+            return self.apply_to_mask(input, module, param), None
         if DataKey.get(dcate) in [DataKey.BBOX, DataKey.BBOX_XYXY]:
             if isinstance(input, (tuple,)):
-                return (self.apply_to_bbox(input[0], module, param, mode='xyxy'), *input[1:])
-            return self.apply_to_bbox(input, module, param, mode='xyxy')
+                return (self.apply_to_bbox(input[0], module, param, mode='xyxy'), *input[1:]), None
+            return self.apply_to_bbox(input, module, param, mode='xyxy'), None
         if DataKey.get(dcate) in [DataKey.BBOX_XYHW]:
             if isinstance(input, (tuple,)):
-                return (self.apply_to_bbox(input[0], module, param, mode='xyhw'), *input[1:])
-            return self.apply_to_bbox(input, module, param, mode='xyhw')
+                return (self.apply_to_bbox(input[0], module, param, mode='xyhw'), *input[1:]), None
+            return self.apply_to_bbox(input, module, param, mode='xyhw'), None
         if DataKey.get(dcate) in [DataKey.KEYPOINTS]:
             if isinstance(input, (tuple,)):
-                return (self.apply_to_keypoints(input[0], module, param), *input[1:])
-            return self.apply_to_keypoints(input, module, param)
+                return (self.apply_to_keypoints(input[0], module, param), *input[1:]), None
+            return self.apply_to_keypoints(input, module, param), None
         raise NotImplementedError(f"input type of {dcate} is not implemented.")
 
     def inverse_input(
@@ -279,13 +286,16 @@ class AugmentationSequential(ImageSequential):
 
     def forward(  # type: ignore
         self,
-        *args: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
+        *args: TensorWithTransMat,
+        label: Optional[torch.Tensor] = None,
         params: Optional[List[ParamItem]] = None,
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
     ) -> Union[
-        torch.Tensor, Tuple[torch.Tensor, torch.Tensor], List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]
+        TensorWithTransMat, Tuple[TensorWithTransMat, Optional[torch.Tensor]],
+        List[TensorWithTransMat], Tuple[List[TensorWithTransMat], Optional[torch.Tensor]]
     ]:
         """Compute multiple tensors simultaneously according to ``self.data_keys``."""
+        to_output_label = label is not None
         if data_keys is None:
             data_keys = cast(List[Union[str, int, DataKey]], self.data_keys)
 
@@ -301,9 +311,9 @@ class AugmentationSequential(ImageSequential):
             params = self._params if params is None or len(params) == 0 else params
             for param, (name, module) in zip_longest(params, named_modules):
                 if dcate == DataKey.INPUT:
-                    input = self.apply_to_input(input, name, module, param)
+                    input, label = self.apply_to_input(input, label, name, module, param)
                 elif isinstance(module, GeometricAugmentationBase2D) and dcate in DataKey:
-                    input = self.apply_by_key(input, name, module, param, dcate)
+                    input, label = self.apply_by_key(input, label, name, module, param, dcate)
                 elif isinstance(module, IntensityAugmentationBase2D) and dcate in DataKey:
                     pass  # Do nothing
                 elif isinstance(module, PatchSequential) and module.is_intensity_only() and dcate in DataKey:
@@ -311,7 +321,11 @@ class AugmentationSequential(ImageSequential):
                 else:
                     raise NotImplementedError(f"data_key {dcate} is not implemented for {module}.")
             outputs.append(input)
-        if len(outputs) == 1:
+        if len(outputs) == 1 and to_output_label:
+            return outputs[0], label
+        elif len(outputs) == 1:
             return outputs[0]
-
-        return outputs
+        elif to_output_label:
+            return outputs, label
+        else:
+            return outputs

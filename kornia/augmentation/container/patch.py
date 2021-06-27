@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 
 from kornia.augmentation.augmentation import ColorJitter
-from kornia.augmentation.base import _AugmentationBase, IntensityAugmentationBase2D
+from kornia.augmentation.base import TensorWithTransMat, _AugmentationBase, IntensityAugmentationBase2D
 from kornia.contrib.extract_patches import extract_tensor_patches
 
 from .image import ImageSequential, ParamItem
@@ -42,7 +42,8 @@ class PatchSequential(ImageSequential):
             If ``False``, the whole list of args will be processed in original order.
 
     Return:
-        the tensor (, and the transformation matrix) has been sequentially modified by the args.
+        List[TensorWithTransMat]: the tensor (, and the transformation matrix)
+            has been sequentially modified by the args.
 
     Examples:
         >>> import kornia.augmentation as K
@@ -279,9 +280,10 @@ class PatchSequential(ImageSequential):
 
     def forward(  # type: ignore
         self,
-        input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
+        input: TensorWithTransMat,
+        label: Optional[torch.Tensor] = None,
         params: Optional[Union[List[ParamItem], List[List[ParamItem]]]] = None,
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:  # NOTE: return_transform is always False here.
+    ) -> Union[TensorWithTransMat, Tuple[TensorWithTransMat, torch.Tensor]]:
         """Input transformation will be returned if input is a tuple."""
         # BCHW -> B(patch)CHW
         if isinstance(input, (tuple,)):

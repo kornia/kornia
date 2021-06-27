@@ -1,11 +1,12 @@
 from collections import OrderedDict
 from itertools import zip_longest
 from typing import Any, Iterator, List, NamedTuple, Optional, Tuple, Union
+import warnings
 
 import torch
 import torch.nn as nn
 
-from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.base import MixAugmentationBase, TensorWithTransMat, _AugmentationBase
 
 __all__ = ["ImageSequential"]
 
@@ -35,29 +36,35 @@ class ImageSequential(nn.Sequential):
             If False, the whole list of args will be processed as a sequence in original order.
 
     Returns:
-        the tensor (, and the transformation matrix) has been sequentially modified by the args.
+        TensorWithTransMat: the tensor (, and the transformation matrix)
+            has been sequentially modified by the args.
 
     Examples:
+        >>> _ = torch.manual_seed(77)
         >>> import kornia
-        >>> input = torch.randn(2, 3, 5, 6)
+        >>> input, label = torch.randn(2, 3, 5, 6), torch.tensor([0, 1])
         >>> aug_list = ImageSequential(
         ...     kornia.color.BgrToRgb(),
         ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...     kornia.filters.MedianBlur((3, 3)),
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
         ...     kornia.enhance.Invert(),
+        ...     kornia.augmentation.RandomMixUp(p=1.0),
         ... return_transform=True,
         ... same_on_batch=True,
         ... random_apply=10,
         ... )
-        >>> out = aug_list(input)
+        >>> out, lab = aug_list(input, label=label)
+        >>> lab
+        tensor([[0.0000, 0.0000, 0.2746],
+                [1.0000, 1.0000, 0.1576]])
         >>> out[0].shape, out[1].shape
         (torch.Size([2, 3, 5, 6]), torch.Size([2, 3, 3]))
 
         Reproduce with provided params.
-        >>> out2 = aug_list(input, params=aug_list._params)
-        >>> torch.equal(out[0], out2[0]), torch.equal(out[1], out2[1])
-        (True, True)
+        >>> out2, lab2 = aug_list(input, label=label, params=aug_list._params)
+        >>> torch.equal(out[0], out2[0]), torch.equal(out[1], out2[1]), torch.equal(lab[1], lab2[1])
+        (True, True, True)
 
     Note:
         Transformation matrix returned only considers the transformation applied in ``kornia.augmentation`` module.
@@ -71,6 +78,7 @@ class ImageSequential(nn.Sequential):
         return_transform: Optional[bool] = None,
         keepdim: Optional[bool] = None,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
+        validate_args: bool = True,
     ) -> None:
         self.same_on_batch = same_on_batch
         self.return_transform = return_transform
@@ -116,15 +124,55 @@ class ImageSequential(nn.Sequential):
             ), f"Expect a tuple of (int, int). Got {self.random_apply}."
         else:
             self.random_apply = False
+        self._multiple_mix_augmentation_warning(*args, validate_args=validate_args)
+
+    def _multiple_mix_augmentation_warning(self, *args: nn.Module, validate_args: bool = True) -> None:
+        mix_count = 0
+        for arg in args:
+            if isinstance(arg, (MixAugmentationBase,)):
+                mix_count += 1
+        if self.random_apply is False and mix_count > 1 and validate_args:
+            raise ValueError(
+                f"Multiple mix augmentation is prohibited without enabling random_apply. Detected {mix_count}.")
+        if mix_count > 1 and validate_args:
+            warnings.warn(
+                f"Multiple ({mix_count}) mix augmentation detected and at most one mix augmenation can"
+                "be applied at each forward. To silence this warning, please set `validate_args` to False.",
+                category=UserWarning
+            )
 
     def _get_child_sequence(self) -> Iterator[Tuple[str, nn.Module]]:
+        mix_indices = []
+        for i, child in enumerate(self.children()):
+            if isinstance(child, (MixAugmentationBase,)):
+                mix_indices.append(i)
+
         if self.random_apply:
             # random_apply will not be boolean here.
             num_samples = int(torch.randint(*self.random_apply, (1,)).item())  # type: ignore
+            multinomial_weights = torch.ones((len(self),))
+            # kick out the mix augmentations
+            multinomial_weights[mix_indices] = 0
             indices = torch.multinomial(
-                torch.ones((len(self),)), num_samples, replacement=True if num_samples > len(self) else False
+                multinomial_weights, num_samples,
+                # enable replacement if non-mix augmentation is less than required
+                replacement=True if num_samples > multinomial_weights.sum() else False
             )
+
+            if len(mix_indices) != 0:
+                # Make the selection fair.
+                if (torch.rand(1) < ((len(mix_indices) + num_samples) / len(self))).item():
+                    indices[-1] = torch.multinomial((~multinomial_weights.bool()).float(), 1)
+                    indices = indices[torch.randperm(len(indices))]
+
             return self._get_children_by_indices(indices)
+
+        if len(mix_indices) > 1:
+            raise ValueError(
+                "Multiple mix augmentation is prohibited without enabling random_apply."
+                f"Detected {len(mix_indices)}."
+            )
+
         return self.named_children()
 
     def _get_children_by_indices(self, indices: torch.Tensor) -> Iterator[Tuple[str, nn.Module]]:
@@ -146,11 +194,12 @@ class ImageSequential(nn.Sequential):
 
     def apply_to_input(
         self,
-        input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
+        input: TensorWithTransMat,
+        label: Optional[torch.Tensor],
         module_name: str,
         module: Optional[nn.Module] = None,
         param: Optional[ParamItem] = None,
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    ) -> Tuple[TensorWithTransMat, Optional[torch.Tensor]]:
         if module is None:
             # TODO (jian): double check why typing is crashing
             module = self.get_submodule(module_name)  # type: ignore
@@ -160,7 +209,13 @@ class ImageSequential(nn.Sequential):
         else:
             _param = None  # type: ignore
 
-        if isinstance(module, (_AugmentationBase, ImageSequential)) and _param is None:
+        if isinstance(module, (MixAugmentationBase,)) and _param is None:
+            input, label = module(input, label)
+            self._params.append(ParamItem(module_name, module._params))
+        elif isinstance(module, (MixAugmentationBase,)) and _param is not None:
+            input, label = module(input, label, params=_param)
+            self._params.append(ParamItem(module_name, _param))
+        elif isinstance(module, (_AugmentationBase, ImageSequential)) and _param is None:
             input = module(input)
             self._params.append(ParamItem(module_name, module._params))
         elif isinstance(module, (_AugmentationBase, ImageSequential)) and _param is not None:
@@ -176,14 +231,22 @@ class ImageSequential(nn.Sequential):
             else:
                 input = module(input)
             self._params.append(ParamItem(module_name, {}))
-        return input
 
-    def forward(
-        self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]], params: Optional[List[ParamItem]] = None
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        return input, label
+
+    def forward(  # type: ignore
+        self,
+        input: TensorWithTransMat,
+        label: Optional[torch.Tensor] = None,
+        params: Optional[List[ParamItem]] = None,
+    ) -> Union[TensorWithTransMat, Tuple[TensorWithTransMat, torch.Tensor]]:
+        to_output_label = label is not None
         self._params = []
         named_modules = self.get_forward_sequence(params)
         params = [] if params is None else params
         for (name, module), param in zip_longest(named_modules, params):
-            input = self.apply_to_input(input, name, module, param=param)  # type: ignore
+            input, label = self.apply_to_input(input, label, name, module, param=param)
+        if to_output_label:
+            # stupid mypy: implicit indication of input label is not None
+            return input, label  # type:ignore
         return input

@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 
 import kornia
-from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.base import TensorWithTransMat, _AugmentationBase
 
 from .image import ImageSequential, ParamItem
 
@@ -126,7 +126,7 @@ class VideoSequential(ImageSequential):
 
     def forward(  # type: ignore
         self, input: torch.Tensor, params: Optional[List[ParamItem]] = None
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    ) -> TensorWithTransMat:
         """Define the video computation performed."""
         assert len(input.shape) == 5, f"Input must be a 5-dim tensor. Got {input.shape}."
         self._params = []
