@@ -1341,7 +1341,7 @@ class Normalize(IntensityAugmentationBase2D):
 
     Examples:
 
-        >>> norm = Normalize(mean=torch.zeros(1, 4), std=torch.ones(1, 4))
+        >>> norm = Normalize(mean=torch.zeros(4), std=torch.ones(4))
         >>> x = torch.rand(1, 4, 3, 3)
         >>> out = norm(x)
         >>> out.shape
@@ -1350,13 +1350,25 @@ class Normalize(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        mean: torch.Tensor,
-        std: torch.Tensor,
+        mean: Union[torch.Tensor, Tuple[float], List[float], float],
+        std: Union[torch.Tensor, Tuple[float], List[float], float],
         return_transform: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
     ) -> None:
         super(Normalize, self).__init__(p=p, return_transform=return_transform, same_on_batch=True, keepdim=keepdim)
+        if isinstance(mean, float):
+            mean = torch.tensor([mean])
+
+        if isinstance(std, float):
+            std = torch.tensor([std])
+
+        if isinstance(mean, (tuple, list)):
+            mean = torch.tensor(mean)
+
+        if isinstance(std, (tuple, list)):
+            std = torch.tensor(std)
+
         self.mean = mean
         self.std = std
 

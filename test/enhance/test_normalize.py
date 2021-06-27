@@ -11,7 +11,7 @@ class TestNormalize:
     def test_smoke(self, device, dtype):
         mean = [0.5]
         std = [0.1]
-        repr = "Normalize(mean=[0.5], std=[0.1])"
+        repr = "Normalize(mean=tensor([0.5000]), std=tensor([0.1000]))"
         assert str(kornia.enhance.Normalize(mean, std)) == repr
 
     def test_normalize(self, device, dtype):
@@ -116,6 +116,27 @@ class TestNormalize:
         op_module = kornia.enhance.Normalize(mean, std)
 
         assert_close(op(*inputs), op_module(data))
+
+    @staticmethod
+    @pytest.mark.parametrize(
+        "mean, std", [((1.0, 1.0, 1.0), (0.5, 0.5, 0.5)), (1.0, 0.5), (torch.tensor([1.0]), torch.tensor([0.5]))]
+    )
+    def test_random_normalize_different_parameter_types(mean, std):
+        f = kornia.enhance.Normalize(mean=mean, std=std)
+        data = torch.ones(2, 3, 256, 313)
+        if isinstance(mean, float):
+            expected = (data - torch.tensor(mean)) / torch.tensor(std)
+        else:
+            expected = (data - torch.tensor(mean[0])) / torch.tensor(std[0])
+        assert_close(f(data), expected)
+
+    @staticmethod
+    @pytest.mark.parametrize("mean, std", [((1.0, 1.0, 1.0, 1.0), (0.5, 0.5, 0.5, 0.5)), ((1.0, 1.0), (0.5, 0.5))])
+    def test_random_normalize_invalid_parameter_shape(mean, std):
+        f = kornia.enhance.Normalize(mean=mean, std=std)
+        inputs = torch.arange(0.0, 16.0, step=1).reshape(1, 4, 4).unsqueeze(0)
+        with pytest.raises(ValueError):
+            f(inputs)
 
 
 class TestDenormalize:
