@@ -207,32 +207,6 @@ def main():
         img_in = img4.repeat(num_samples, 1, 1, 1)
         args_in = (img_in, *args)
         # import function and apply
-        fn = getattr(mod, fn_name)
-        out = fn(*args_in)
-        # save the output image
-        out = torch.cat([img_in[0], *[out[i] for i in range(out.size(0))]], dim=-1)
-        out_np = K.utils.tensor_to_image((out * 255.0).byte())
-        cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
-        sig = f"{fn_name}({', '.join([str(a) for a in args])})"
-        print(f"Generated image example for {fn_name}. {sig}")
-
-    # korna.morphology module
-    mod = importlib.import_module("kornia.morphology")
-    kernel = torch.tensor([[0, 1, 0], [1, 1, 1], [0, 1, 0]])
-    transforms: dict = {
-        "dilation": ((kernel,), 1),
-        "erosion": ((kernel,), 1),
-        "opening": ((kernel,), 1),
-        "closing": ((kernel,), 1),
-        "gradient": ((kernel,), 1),
-        "top_hat": ((kernel,), 1),
-        "bottom_hat": ((kernel,), 1),
-    }
-    # ITERATE OVER THE TRANSFORMS
-    for fn_name, (args, num_samples) in transforms.items():
-        img_in = img4.repeat(num_samples, 1, 1, 1)
-        args_in = (img_in, *args)
-        # import function and apply
         # import pdb;pdb.set_trace()
         fn = getattr(mod, fn_name)
         out = fn(*args_in)
@@ -251,6 +225,8 @@ def main():
         "median_blur": (((5, 5),), 1),
         "gaussian_blur2d": (((5, 5), (1.5, 1.5)), 1),
         "motion_blur": ((5, 90.0, 1.0), 1),
+        "max_blur_pool2d": ((5,), 1),
+        "blur_pool2d": ((5,), 1),
         "unsharp_mask": (((5, 5), (1.5, 1.5)), 1),
         "laplacian": ((5,), 1),
         "sobel": ((), 1),
@@ -264,6 +240,8 @@ def main():
         # import function and apply
         fn = getattr(mod, fn_name)
         out = fn(*args_in)
+        if fn_name in ("max_blur_pool2d", "blur_pool2d",):
+            out = K.geometry.resize(out, img_in.shape[-2:])
         if fn_name == "canny":
             out = out[1].repeat(1, 3, 1, 1)
         if isinstance(out, torch.Tensor):
