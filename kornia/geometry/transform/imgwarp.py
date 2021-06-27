@@ -41,6 +41,8 @@ def warp_perspective(
 ) -> torch.Tensor:
     r"""Applies a perspective transformation to an image.
 
+    .. image:: https://kornia-tutorials.readthedocs.io/en/latest/_images/warp_perspective_10_2.png
+
     The function warp_perspective transforms the source image using
     the specified matrix:
 
@@ -51,17 +53,15 @@ def warp_perspective(
         \right )
 
     Args:
-        src (torch.Tensor): input image with shape :math:`(B, C, H, W)`.
-        M (torch.Tensor): transformation matrix with shape :math:`(B, 3, 3)`.
-        dsize (tuple): size of the output image (height, width).
-        mode (str): interpolation mode to calculate output values
-          'bilinear' | 'nearest'. Default: 'bilinear'.
-        padding_mode (str): padding mode for outside grid values
-          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners(bool, optional): interpolation flag. Default: None.
+        src: input image with shape :math:`(B, C, H, W)`.
+        M: transformation matrix with shape :math:`(B, 3, 3)`.
+        dsize: size of the output image (height, width).
+        mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
+        padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``.
+        align_corners(bool, optional): interpolation flag.
 
     Returns:
-        torch.Tensor: the warped input image :math:`(B, C, H, W)`.
+        the warped input image :math:`(B, C, H, W)`.
 
     Example:
        >>> img = torch.rand(1, 4, 5, 6)
@@ -74,8 +74,8 @@ def warp_perspective(
         This function is often used in conjuntion with :func:`get_perspective_transform`.
 
     .. note::
-        See a working example `here <https://kornia.readthedocs.io/en/latest/
-        tutorials/warp_perspective.html>`_.
+        See a working example `here <https://kornia-tutorials.readthedocs.io/en/
+        latest/warp_perspective.html>`_.
     """
     if not isinstance(src, torch.Tensor):
         raise TypeError("Input src type is not a torch.Tensor. Got {}".format(type(src)))
@@ -127,6 +127,8 @@ def warp_affine(
 ) -> torch.Tensor:
     r"""Applies an affine transformation to a tensor.
 
+    .. image:: _static/img/warp_affine.png
+
     The function warp_affine transforms the source tensor using
     the specified matrix:
 
@@ -135,17 +137,15 @@ def warp_affine(
         M_{21} x + M_{22} y + M_{23} \right )
 
     Args:
-        src (torch.Tensor): input tensor of shape :math:`(B, C, H, W)`.
-        M (torch.Tensor): affine transformation of shape :math:`(B, 2, 3)`.
-        dsize (Tuple[int, int]): size of the output image (height, width).
-        mode (str): interpolation mode to calculate output values
-          'bilinear' | 'nearest'. Default: 'bilinear'.
-        padding_mode (str): padding mode for outside grid values
-          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners (bool, optional): mode for grid_generation. Default: None.
+        src: input tensor of shape :math:`(B, C, H, W)`.
+        M: affine transformation of shape :math:`(B, 2, 3)`.
+        dsize: size of the output image (height, width).
+        mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
+        padding_mode (str): padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``.
+        align_corners : mode for grid_generation.
 
     Returns:
-        torch.Tensor: the warped tensor with shape :math:`(B, C, H, W)`.
+        the warped tensor with shape :math:`(B, C, H, W)`.
 
     Example:
        >>> img = torch.rand(1, 4, 5, 6)
@@ -226,12 +226,12 @@ def get_perspective_transform(src, dst):
         dst(i) = (x_{i}^{'},y_{i}^{'}), src(i) = (x_{i}, y_{i}), i = 0,1,2,3
 
     Args:
-        src (torch.Tensor): coordinates of quadrangle vertices in the source image with shape :math:`(B, 4, 2)`.
-        dst (torch.Tensor): coordinates of the corresponding quadrangle vertices in
+        src: coordinates of quadrangle vertices in the source image with shape :math:`(B, 4, 2)`.
+        dst: coordinates of the corresponding quadrangle vertices in
             the destination image with shape :math:`(B, 4, 2)`.
 
     Returns:
-        torch.Tensor: the perspective transformation with shape :math:`(B, 3, 3)`.
+        the perspective transformation with shape :math:`(B, 3, 3)`.
 
     .. note::
         This function is often used in conjuntion with :func:`warp_perspective`.
@@ -308,11 +308,12 @@ def _build_perspective_param(p: torch.Tensor, q: torch.Tensor, axis: str) -> tor
 
 def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
     r"""Create a rotation matrix out of angles in degrees.
+
     Args:
-        angle: (torch.Tensor): tensor of angles in degrees, any shape.
+        angle: tensor of angles in degrees, any shape.
 
     Returns:
-        torch.Tensor: tensor of *x2x2 rotation matrices.
+        tensor of *x2x2 rotation matrices.
 
     Shape:
         - Input: :math:`(*)`
@@ -351,14 +352,14 @@ def get_rotation_matrix2d(center: torch.Tensor, angle: torch.Tensor, scale: torc
     If this is not the target, adjust the shift.
 
     Args:
-        center (torch.Tensor): center of the rotation in the source image with shape :math:`(B, 2)`.
-        angle (torch.Tensor): rotation angle in degrees. Positive values mean
+        center: center of the rotation in the source image with shape :math:`(B, 2)`.
+        angle: rotation angle in degrees. Positive values mean
             counter-clockwise rotation (the coordinate origin is assumed to
             be the top-left corner) with shape :math:`(B)`.
-        scale (torch.Tensor): scale factor for x, y scaling with shape :math:`(B, 2)`.
+        scale: scale factor for x, y scaling with shape :math:`(B, 2)`.
 
     Returns:
-        torch.Tensor: the affine matrix of 2D rotation with shape :math:`(B, 2, 3)`.
+        the affine matrix of 2D rotation with shape :math:`(B, 2, 3)`.
 
     Example:
         >>> center = torch.zeros(1, 2)
@@ -442,28 +443,30 @@ def remap(
 ) -> torch.Tensor:
     r"""Applies a generic geometrical transformation to a tensor.
 
+    .. image:: _static/img/remap.png
+
     The function remap transforms the source tensor using the specified map:
 
     .. math::
         \text{dst}(x, y) = \text{src}(map_x(x, y), map_y(x, y))
 
     Args:
-        tensor (torch.Tensor): the tensor to remap with shape (B, D, H, W).
+        tensor: the tensor to remap with shape (B, D, H, W).
           Where D is the number of channels.
-        map_x (torch.Tensor): the flow in the x-direction in pixel coordinates.
+        map_x: the flow in the x-direction in pixel coordinates.
           The tensor must be in the shape of (B, H, W).
-        map_y (torch.Tensor): the flow in the y-direction in pixel coordinates.
+        map_y: the flow in the y-direction in pixel coordinates.
           The tensor must be in the shape of (B, H, W).
-        mode (str): interpolation mode to calculate output values
-          'bilinear' | 'nearest'. Default: 'bilinear'.
-        padding_mode (str): padding mode for outside grid values
-          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners (bool, optional): mode for grid_generation. Default: None.
-        normalized_coordinates (bool): whether the input coordinates are
-           normalised in the range of [-1, 1]. Default: False
+        mode: interpolation mode to calculate output values
+          ``'bilinear'`` | ``'nearest'``.
+        padding_mode: padding mode for outside grid values
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
+        align_corners: mode for grid_generation.
+        normalized_coordinates: whether the input coordinates are
+           normalised in the range of [-1, 1].
 
     Returns:
-        torch.Tensor: the warped tensor with same shape as the input grid maps.
+        the warped tensor with same shape as the input grid maps.
 
     Example:
         >>> from kornia.utils import create_meshgrid
@@ -523,11 +526,11 @@ def invert_affine_transform(matrix: torch.Tensor) -> torch.Tensor:
     The result is also a 2×3 matrix of the same type as M.
 
     Args:
-        matrix (torch.Tensor): original affine transform. The tensor must be
+        matrix: original affine transform. The tensor must be
           in the shape of :math:`(B, 2, 3)`.
 
     Return:
-        torch.Tensor: the reverse affine transform with shape :math:`(B, 2, 3)`.
+        the reverse affine transform with shape :math:`(B, 2, 3)`.
 
     .. note::
         This function is often used in conjuntion with :func:`warp_affine`.
@@ -555,15 +558,15 @@ def get_affine_matrix2d(
     r"""Composes affine matrix from the components.
 
     Args:
-        translations (torch.Tensor): tensor containing the translation vector with shape :math:`(B, 2)`.
-        center (torch.Tensor): tensor containing the center vector with shape :math:`(B, 2)`.
-        scale (torch.Tensor): tensor containing the scale factor with shape :math:`(B, 2)`.
-        angle (torch.Tensor): tensor of angles in degrees :math:`(B)`.
-        sx (torch.Tensor, optional): tensor containing the shear factor in the x-direction with shape :math:`(B)`.
-        sy (torch.Tensor, optional): tensor containing the shear factor in the y-direction with shape :math:`(B)`.
+        translations: tensor containing the translation vector with shape :math:`(B, 2)`.
+        center: tensor containing the center vector with shape :math:`(B, 2)`.
+        scale: tensor containing the scale factor with shape :math:`(B, 2)`.
+        angle: tensor of angles in degrees :math:`(B)`.
+        sx: tensor containing the shear factor in the x-direction with shape :math:`(B)`.
+        sy: tensor containing the shear factor in the y-direction with shape :math:`(B)`.
 
     Returns:
-        torch.Tensor: the affine transformation matrix :math:`(B, 3, 3)`.
+        the affine transformation matrix :math:`(B, 3, 3)`.
 
     .. note::
         This function is often used in conjuntion with :func:`warp_affine`, :func:`warp_perspective`.
@@ -593,12 +596,12 @@ def get_shear_matrix2d(center: torch.Tensor, sx: Optional[torch.Tensor] = None, 
         \end{bmatrix}
 
     Args:
-        center (torch.Tensor): shearing center coordinates of (x, y).
-        sx (torch.Tensor, optional): shearing degree along x axis.
-        sy (torch.Tensor, optional): shearing degree along y axis.
+        center: shearing center coordinates of (x, y).
+        sx: shearing degree along x axis.
+        sy: shearing degree along y axis.
 
     Returns:
-        torch.Tensor: params to be passed to the affine transformation with shape :math:`(B, 3, 3)`.
+        params to be passed to the affine transformation with shape :math:`(B, 3, 3)`.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -654,21 +657,21 @@ def get_affine_matrix3d(
     r"""Composes 3d affine matrix from the components.
 
     Args:
-        translations (torch.Tensor): tensor containing the translation vector (dx,dy,dz) with shape :math:`(B, 3)`.
-        center (torch.Tensor): tensor containing the center vector (x,y,z) with shape :math:`(B, 3)`.
-        scale (torch.Tensor): tensor containing the scale factor with shape :math:`(B)`.
-        angle: (torch.Tensor): angle axis vector containing the rotation angles in degrees in the form
+        translations: tensor containing the translation vector (dx,dy,dz) with shape :math:`(B, 3)`.
+        center: tensor containing the center vector (x,y,z) with shape :math:`(B, 3)`.
+        scale: tensor containing the scale factor with shape :math:`(B)`.
+        angle: angle axis vector containing the rotation angles in degrees in the form
             of (rx, ry, rz) with shape :math:`(B, 3)`. Internally it calls Rodrigues to compute
             the rotation matrix from axis-angle.
-        sxy (torch.Tensor, optional): tensor containing the shear factor in the xy-direction with shape :math:`(B)`.
-        sxz (torch.Tensor, optional): tensor containing the shear factor in the xz-direction with shape :math:`(B)`.
-        syx (torch.Tensor, optional): tensor containing the shear factor in the yx-direction with shape :math:`(B)`.
-        syz (torch.Tensor, optional): tensor containing the shear factor in the yz-direction with shape :math:`(B)`.
-        szx (torch.Tensor, optional): tensor containing the shear factor in the zx-direction with shape :math:`(B)`.
-        szy (torch.Tensor, optional): tensor containing the shear factor in the zy-direction with shape :math:`(B)`.
+        sxy: tensor containing the shear factor in the xy-direction with shape :math:`(B)`.
+        sxz: tensor containing the shear factor in the xz-direction with shape :math:`(B)`.
+        syx: tensor containing the shear factor in the yx-direction with shape :math:`(B)`.
+        syz: tensor containing the shear factor in the yz-direction with shape :math:`(B)`.
+        szx: tensor containing the shear factor in the zx-direction with shape :math:`(B)`.
+        szy: tensor containing the shear factor in the zy-direction with shape :math:`(B)`.
 
     Returns:
-        torch.Tensor: the 3d affine transformation matrix :math:`(B, 3, 3)`.
+        the 3d affine transformation matrix :math:`(B, 3, 3)`.
 
     .. note::
         This function is often used in conjuntion with :func:`warp_perspective`.
@@ -715,16 +718,16 @@ def get_shear_matrix3d(
         t = S_{xz}S_{zx} + (S_{xz}S_{yx} + S_{yz})S_{zy} + 1
 
     Params:
-        center (torch.Tensor): shearing center coordinates of (x, y, z).
-        sxy (torch.Tensor, optional): shearing degree along x axis, towards y plane.
-        sxz (torch.Tensor, optional): shearing degree along x axis, towards z plane.
-        syx (torch.Tensor, optional): shearing degree along y axis, towards x plane.
-        syz (torch.Tensor, optional): shearing degree along y axis, towards z plane.
-        szx (torch.Tensor, optional): shearing degree along z axis, towards x plane.
-        szy (torch.Tensor, optional): shearing degree along z axis, towards y plane.
+        center: shearing center coordinates of (x, y, z).
+        sxy: shearing degree along x axis, towards y plane.
+        sxz: shearing degree along x axis, towards z plane.
+        syx: shearing degree along y axis, towards x plane.
+        syz: shearing degree along y axis, towards z plane.
+        szx: shearing degree along z axis, towards x plane.
+        szy: shearing degree along z axis, towards y plane.
 
     Returns:
-        torch.Tensor: params to be passed to the affine transformation.
+        params to be passed to the affine transformation.
 
     Examples:
         >>> rng = torch.manual_seed(0)

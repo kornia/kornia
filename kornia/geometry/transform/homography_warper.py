@@ -28,12 +28,12 @@ def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
 
     Args:
         grid: Unwrapped grid of the shape :math:`(1, N, W, 2)`.
-        src_homo_dst (torch.Tensor): Homography or homographies (stacked) to
+        src_homo_dst: Homography or homographies (stacked) to
           transform all points in the grid. Shape of the homography
           has to be :math:`(1, 3, 3)` or :math:`(N, 1, 3, 3)`.
 
     Returns:
-        torch.Tensor: the transformed grid of shape :math:`(N, H, W, 2)`.
+        the transformed grid of shape :math:`(N, H, W, 2)`.
     """
     batch_size: int = src_homo_dst.size(0)
     _, height, width, _ = grid.size()
@@ -52,12 +52,12 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
 
     Args:
         grid: Unwrapped grid of the shape :math:`(1, D, H, W, 3)`.
-        src_homo_dst (torch.Tensor): Homography or homographies (stacked) to
+        src_homo_dst: Homography or homographies (stacked) to
           transform all points in the grid. Shape of the homography
           has to be :math:`(1, 4, 4)` or :math:`(N, 1, 4, 4)`.
 
     Returns:
-        torch.Tensor: the transformed grid of shape :math:`(N, H, W, 3)`.
+        the transformed grid of shape :math:`(N, H, W, 3)`.
     """
     batch_size: int = src_homo_dst.size(0)
     _, depth, height, width, _ = grid.size()
@@ -86,23 +86,17 @@ def homography_warp(
     See :class:`~kornia.geometry.warp.HomographyWarper` for details.
 
     Args:
-        patch_src (torch.Tensor): The image or tensor to warp. Should be from
-                                  source of shape :math:`(N, C, H, W)`.
-        src_homo_dst (torch.Tensor): The homography or stack of homographies
-                                     from destination to source of shape
-                                     :math:`(N, 3, 3)`.
-        dsize (Tuple[int, int]): The height and width of the image to warp.
-        mode (str): interpolation mode to calculate output values
-          'bilinear' | 'nearest'. Default: 'bilinear'.
-        padding_mode (str): padding mode for outside grid values
-          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners(bool): interpolation flag. Default: False. See
-          https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
-        normalized_coordinates (bool): Whether the homography assumes [-1, 1] normalized
-                                       coordinates or not.
+        patch_src: The image or tensor to warp. Should be from source of shape :math:`(N, C, H, W)`.
+        src_homo_dst: The homography or stack of homographies from destination to source of shape
+          :math:`(N, 3, 3)`.
+        dsize: The height and width of the image to warp.
+        mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
+        padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``.
+        align_corners: interpolation flag.
+        normalized_coordinates: Whether the homography assumes [-1, 1] normalized coordinates or not.
 
     Return:
-        torch.Tensor: Patch sampled at locations from source to destination.
+        Patch sampled at locations from source to destination.
 
     Example:
         >>> input = torch.rand(1, 3, 32, 32)
@@ -136,23 +130,17 @@ def homography_warp3d(
     r"""Warp image patchs or tensors by normalized 3D homographies.
 
     Args:
-        patch_src (torch.Tensor): The image or tensor to warp. Should be from
-                                  source of shape :math:`(N, C, D, H, W)`.
-        src_homo_dst (torch.Tensor): The homography or stack of homographies
-                                     from destination to source of shape
-                                     :math:`(N, 4, 4)`.
-        dsize (Tuple[int, int, int]): The height and width of the image to warp.
-        mode (str): interpolation mode to calculate output values
-          'bilinear' | 'nearest'. Default: 'bilinear'.
-        padding_mode (str): padding mode for outside grid values
-          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners(bool): interpolation flag. Default: False. See
-            https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details.
-        normalized_coordinates (bool): Whether the homography assumes [-1, 1] normalized
-            coordinates or not.
+        patch_src: The image or tensor to warp. Should be from source of shape :math:`(N, C, D, H, W)`.
+        src_homo_dst: The homography or stack of homographies from destination to source of shape
+          :math:`(N, 4, 4)`.
+        dsize: The height and width of the image to warp.
+        mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
+        padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``.
+        align_corners: interpolation flag.
+        normalized_coordinates: Whether the homography assumes [-1, 1] normalized coordinates or not.
 
     Return:
-        torch.Tensor: Patch sampled at locations from source to destination.
+        Patch sampled at locations from source to destination.
 
     Example:
         >>> input = torch.rand(1, 3, 32, 32)
@@ -185,16 +173,13 @@ class HomographyWarper(nn.Module):
         X_{dst} = H_{src}^{\{dst\}} * X_{src}
 
     Args:
-        height (int): The height of the destination tensor.
-        width (int): The width of the destination tensor.
-        mode (str): interpolation mode to calculate output values
-          'bilinear' | 'nearest'. Default: 'bilinear'.
-        padding_mode (str): padding mode for outside grid values
-          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        normalized_coordinates (bool): wether to use a grid with
-          normalized coordinates.
-        align_corners(bool): interpolation flag. Default: False. See
-        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
+        height: The height of the destination tensor.
+        width: The width of the destination tensor.
+        mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
+        padding_mode: padding mode for outside grid values
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
+        normalized_coordinates: wether to use a grid with normalized coordinates.
+        align_corners: interpolation flag.
     """
     _warped_grid: Optional[torch.Tensor]
 
@@ -226,7 +211,7 @@ class HomographyWarper(nn.Module):
         Useful when the same homography/homographies are reused.
 
         Args:
-            src_homo_dst (torch.Tensor): Homography or homographies (stacked) to
+            src_homo_dst: Homography or homographies (stacked) to
               transform all points in the grid. Shape of the homography
               has to be :math:`(1, 3, 3)` or :math:`(N, 1, 3, 3)`.
               The homography assumes normalized coordinates [-1, 1] if
@@ -238,14 +223,13 @@ class HomographyWarper(nn.Module):
         r"""Warp a tensor from source into reference frame.
 
         Args:
-            patch_src (torch.Tensor): The tensor to warp.
-            src_homo_dst (torch.Tensor, optional): The homography or stack of
+            patch_src: The tensor to warp.
+            src_homo_dst: The homography or stack of
               homographies from destination to source. The homography assumes
               normalized coordinates [-1, 1] if normalized_coordinates is True.
-              Default: None.
 
         Return:
-            torch.Tensor: Patch sampled at locations from source to destination.
+            Patch sampled at locations from source to destination.
 
         Shape:
             - Input: :math:`(N, C, H, W)` and :math:`(N, 3, 3)`
@@ -309,12 +293,12 @@ def normal_transform_pixel(
     r"""Compute the normalization matrix from image size in pixels to [-1, 1].
 
     Args:
-        height (int): image height.
-        width (int): image width.
-        eps (float): epsilon to prevent divide-by-zero errors
+        height image height.
+        width: image width.
+        eps: epsilon to prevent divide-by-zero errors
 
     Returns:
-        torch.Tensor: normalized transform with shape :math:`(1, 3, 3)`.
+        normalized transform with shape :math:`(1, 3, 3)`.
     """
     tr_mat = torch.tensor([[1.0, 0.0, -1.0], [0.0, 1.0, -1.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)  # 3x3
 
@@ -339,13 +323,13 @@ def normal_transform_pixel3d(
     r"""Compute the normalization matrix from image size in pixels to [-1, 1].
 
     Args:
-        depth (int): image depth.
-        height (int): image height.
-        width (int): image width.
-        eps (float): epsilon to prevent divide-by-zero errors
+        depth: image depth.
+        height: image height.
+        width: image width.
+        eps: epsilon to prevent divide-by-zero errors
 
     Returns:
-        Tensor: normalized transform with shape :math:`(1, 4, 4)`.
+        normalized transform with shape :math:`(1, 4, 4)`.
     """
     tr_mat = torch.tensor(
         [[1.0, 0.0, 0.0, -1.0], [0.0, 1.0, 0.0, -1.0], [0.0, 0.0, 1.0, -1.0], [0.0, 0.0, 0.0, 1.0]],
@@ -371,13 +355,13 @@ def normalize_homography(
     r"""Normalize a given homography in pixels to [-1, 1].
 
     Args:
-        dst_pix_trans_src_pix (torch.Tensor): homography/ies from source to destination to be
+        dst_pix_trans_src_pix: homography/ies from source to destination to be
           normalized. :math:`(B, 3, 3)`
-        dsize_src (tuple): size of the source image (height, width).
-        dsize_dst (tuple): size of the destination image (height, width).
+        dsize_src: size of the source image (height, width).
+        dsize_dst: size of the destination image (height, width).
 
     Returns:
-        torch.Tensor: the normalized homography of shape :math:`(B, 3, 3)`.
+        the normalized homography of shape :math:`(B, 3, 3)`.
     """
     check_is_tensor(dst_pix_trans_src_pix)
 
@@ -407,13 +391,13 @@ def denormalize_homography(
     r"""De-normalize a given homography in pixels from [-1, 1] to actual height and width.
 
     Args:
-        dst_pix_trans_src_pix (torch.Tensor): homography/ies from source to destination to be
+        dst_pix_trans_src_pix: homography/ies from source to destination to be
           denormalized. :math:`(B, 3, 3)`
-        dsize_src (tuple): size of the source image (height, width).
-        dsize_dst (tuple): size of the destination image (height, width).
+        dsize_src: size of the source image (height, width).
+        dsize_dst: size of the destination image (height, width).
 
     Returns:
-        torch.Tensor: the denormalized homography of shape :math:`(B, 3, 3)`.
+        the denormalized homography of shape :math:`(B, 3, 3)`.
     """
     check_is_tensor(dst_pix_trans_src_pix)
 
@@ -442,13 +426,13 @@ def normalize_homography3d(
     r"""Normalize a given homography in pixels to [-1, 1].
 
     Args:
-        dst_pix_trans_src_pix (torch.Tensor): homography/ies from source to destination to be
+        dst_pix_trans_src_pix: homography/ies from source to destination to be
           normalized. :math:`(B, 4, 4)`
-        dsize_src (tuple): size of the source image (depth, height, width).
-        dsize_src (tuple): size of the destination image (depth, height, width).
+        dsize_src: size of the source image (depth, height, width).
+        dsize_src: size of the destination image (depth, height, width).
 
     Returns:
-        Tensor: the normalized homography.
+        the normalized homography.
 
     Shape:
         Output: :math:`(B, 4, 4)`
