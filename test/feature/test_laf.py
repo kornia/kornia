@@ -1,11 +1,11 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
 
 import kornia
 import kornia.geometry.transform.imgwarp
 import kornia.testing as utils  # test utils
+from kornia.testing import assert_close
 
 
 class TestAngleToRotationMatrix:
@@ -18,7 +18,7 @@ class TestAngleToRotationMatrix:
         ang_deg = torch.tensor([0, 90.0], device=device)
         expected = torch.tensor([[[1.0, 0.0], [0.0, 1.0]], [[0, 1.0], [-1.0, 0]]], device=device)
         rotmat = kornia.geometry.transform.imgwarp.angle_to_rotation_matrix(ang_deg)
-        assert_allclose(rotmat, expected)
+        assert_close(rotmat, expected)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 5, 4
@@ -33,7 +33,7 @@ class TestAngleToRotationMatrix:
         patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
         model = kornia.geometry.transform.imgwarp.angle_to_rotation_matrix
         model_jit = torch.jit.script(kornia.geometry.transform.imgwarp.angle_to_rotation_matrix)
-        assert_allclose(model(patches), model_jit(patches))
+        assert_close(model(patches), model_jit(patches))
 
 
 class TestGetLAFScale:
@@ -47,7 +47,7 @@ class TestGetLAFScale:
         inp = inp.view(1, 1, 2, 3)
         expected = torch.tensor([[[[2]]]], device=device).float()
         rotmat = kornia.feature.get_laf_scale(inp)
-        assert_allclose(rotmat, expected)
+        assert_close(rotmat, expected)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 2, 3
@@ -61,7 +61,7 @@ class TestGetLAFScale:
         img = torch.rand(batch_size, channels, height, width, device=device)
         model = kornia.feature.get_laf_scale
         model_jit = torch.jit.script(kornia.feature.get_laf_scale)
-        assert_allclose(model(img), model_jit(img))
+        assert_close(model(img), model_jit(img))
 
 
 class TestGetLAFCenter:
@@ -75,7 +75,7 @@ class TestGetLAFCenter:
         inp = inp.view(1, 1, 2, 3)
         expected = torch.tensor([[[2, 3]]], device=device).float()
         xy = kornia.feature.get_laf_center(inp)
-        assert_allclose(xy, expected)
+        assert_close(xy, expected)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 2, 3
@@ -89,7 +89,7 @@ class TestGetLAFCenter:
         img = torch.rand(batch_size, channels, height, width, device=device)
         model = kornia.feature.get_laf_center
         model_jit = torch.jit.script(kornia.feature.get_laf_center)
-        assert_allclose(model(img), model_jit(img))
+        assert_close(model(img), model_jit(img))
 
 
 class TestGetLAFOri:
@@ -103,7 +103,7 @@ class TestGetLAFOri:
         inp = inp.view(1, 1, 2, 3)
         expected = torch.tensor([[[45.0]]], device=device).float()
         angle = kornia.feature.get_laf_orientation(inp)
-        assert_allclose(angle, expected)
+        assert_close(angle, expected)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 2, 3
@@ -118,7 +118,7 @@ class TestGetLAFOri:
         img = torch.rand(batch_size, channels, height, width, device=device)
         model = kornia.feature.get_laf_orientation
         model_jit = torch.jit.script(kornia.feature.get_laf_orientation)
-        assert_allclose(model(img), model_jit(img))
+        assert_close(model(img), model_jit(img))
 
 
 class TestScaleLAF:
@@ -138,7 +138,7 @@ class TestScaleLAF:
         scale = torch.tensor([[[[2.0]]]], device=device).float()
         out = kornia.feature.scale_laf(inp, scale)
         expected = torch.tensor([[[[10.0, 2, 0.8], [2, 2, -4.0]]]], device=device).float()
-        assert_allclose(out, expected)
+        assert_close(out, expected)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 2, 3
@@ -156,7 +156,7 @@ class TestScaleLAF:
         scale = torch.rand(batch_size, device=device)
         model = kornia.feature.scale_laf
         model_jit = torch.jit.script(kornia.feature.scale_laf)
-        assert_allclose(model(laf, scale), model_jit(laf, scale))
+        assert_close(model(laf, scale), model_jit(laf, scale))
 
 
 class TestSetLAFOri:
@@ -171,7 +171,7 @@ class TestSetLAFOri:
         ori = torch.zeros(1, 1, 1, 1, device=device).float()
         out = kornia.feature.set_laf_orientation(inp, ori)
         expected = torch.tensor([[[[5.0, 0.0, 0.8], [0.0, 5.0, -4.0]]]], device=device).float()
-        assert_allclose(out, expected)
+        assert_close(out, expected)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 2, 3
@@ -189,7 +189,7 @@ class TestSetLAFOri:
         ori = torch.rand(batch_size, channels, 1, 1, device=device)
         model = kornia.feature.set_laf_orientation
         model_jit = torch.jit.script(kornia.feature.set_laf_orientation)
-        assert_allclose(model(laf, ori), model_jit(laf, ori))
+        assert_close(model(laf, ori), model_jit(laf, ori))
 
 
 class TestMakeUpright:
@@ -203,20 +203,20 @@ class TestMakeUpright:
         inp = inp.view(1, 1, 2, 3)
         expected = torch.tensor([[[[1, 0, 0], [0, 1, 0]]]], device=device).float()
         laf = kornia.feature.make_upright(inp)
-        assert_allclose(laf, expected)
+        assert_close(laf, expected)
 
     def test_do_nothing_with_scalea(self, device):
         inp = torch.tensor([[2, 0, 0], [0, 2, 0]], device=device).float()
         inp = inp.view(1, 1, 2, 3)
         expected = torch.tensor([[[[2, 0, 0], [0, 2, 0]]]], device=device).float()
         laf = kornia.feature.make_upright(inp)
-        assert_allclose(laf, expected)
+        assert_close(laf, expected)
 
     def test_check_zeros(self, device):
         inp = torch.rand(4, 5, 2, 3, device=device)
         laf = kornia.feature.make_upright(inp)
         must_be_zeros = laf[:, :, 0, 1]
-        assert_allclose(must_be_zeros, torch.zeros_like(must_be_zeros))
+        assert_close(must_be_zeros, torch.zeros_like(must_be_zeros))
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 14, 2, 2, 3
@@ -231,7 +231,7 @@ class TestMakeUpright:
         img = torch.rand(batch_size, channels, height, width, device=device)
         model = kornia.feature.make_upright
         model_jit = torch.jit.script(kornia.feature.make_upright)
-        assert_allclose(model(img), model_jit(img))
+        assert_close(model(img), model_jit(img))
 
 
 class TestELL2LAF:
@@ -247,7 +247,7 @@ class TestELL2LAF:
         expected = torch.tensor([[10, 0, 10.0], [0, 10, -20]], device=device).float()
         expected = expected.view(1, 1, 2, 3)
         laf = kornia.feature.ellipse_to_laf(inp)
-        assert_allclose(laf, expected)
+        assert_close(laf, expected)
 
     def test_gradcheck(self, device):
         batch_size, channels, height = 1, 2, 5
@@ -266,7 +266,7 @@ class TestELL2LAF:
         img[:, :, 4] += 1.0
         model = kornia.feature.ellipse_to_laf
         model_jit = torch.jit.script(kornia.feature.ellipse_to_laf)
-        assert_allclose(model(img), model_jit(img))
+        assert_close(model(img), model_jit(img))
 
 
 class TestNormalizeLAF:
@@ -282,7 +282,7 @@ class TestNormalizeLAF:
         img = torch.rand(1, 3, h, w)
         expected = torch.tensor([[[[0.2, 0, 0.1], [0, 0.2, 0.2]]]]).float()
         lafn = kornia.feature.normalize_laf(laf, img)
-        assert_allclose(lafn, expected)
+        assert_close(lafn, expected)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 2, 3
@@ -301,7 +301,7 @@ class TestNormalizeLAF:
         img = torch.rand(batch_size, 3, 10, 32)
         model = kornia.feature.normalize_laf
         model_jit = torch.jit.script(kornia.feature.normalize_laf)
-        assert_allclose(model(laf, img), model_jit(laf, img))
+        assert_close(model(laf, img), model_jit(laf, img))
 
 
 class TestLAF2pts:
@@ -316,7 +316,7 @@ class TestLAF2pts:
         n_pts = 6
         expected = torch.tensor([[[[1, 1], [1, 2], [2, 1], [1, 0], [0, 1], [1, 2]]]], device=device).float()
         pts = kornia.feature.laf_to_boundary_points(laf, n_pts)
-        assert_allclose(pts, expected)
+        assert_close(pts, expected)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 3, 2, 2, 3
@@ -330,7 +330,7 @@ class TestLAF2pts:
         laf = torch.rand(batch_size, channels, height, width, device=device)
         model = kornia.feature.laf_to_boundary_points
         model_jit = torch.jit.script(kornia.feature.laf_to_boundary_points)
-        assert_allclose(model(laf), model_jit(laf))
+        assert_close(model(laf), model_jit(laf))
 
 
 class TestDenormalizeLAF:
@@ -346,7 +346,7 @@ class TestDenormalizeLAF:
         img = torch.rand(1, 3, h, w, device=device)
         lafn = torch.tensor([[0.2, 0, 0.1], [0, 0.2, 0.2]], device=device).float()
         laf = kornia.feature.denormalize_laf(lafn.view(1, 1, 2, 3), img)
-        assert_allclose(laf, expected)
+        assert_close(laf, expected)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 2, 3
@@ -365,7 +365,7 @@ class TestDenormalizeLAF:
         img = torch.rand(batch_size, 3, 10, 32)
         model = kornia.feature.denormalize_laf
         model_jit = torch.jit.script(kornia.feature.denormalize_laf)
-        assert_allclose(model(laf, img), model_jit(laf, img))
+        assert_close(model(laf, img), model_jit(laf, img))
 
 
 class TestGenPatchGrid:
@@ -449,7 +449,7 @@ class TestLAFIsTouchingBoundary:
         laf = torch.tensor([[[[10, 0, 3], [0, 10, 3]], [[1, 0, 5], [0, 1, 2]]]], device=device).float()
         model = kornia.feature.laf_is_inside_image
         model_jit = torch.jit.script(kornia.feature.laf_is_inside_image)
-        assert_allclose(model(laf, img), model_jit(laf, img))
+        assert_close(model(laf, img), model_jit(laf, img))
 
 
 class TestGetCreateLAF:
@@ -466,7 +466,7 @@ class TestGetCreateLAF:
         scale = 5 * torch.ones(1, 1, 1, 1, device=device)
         expected = torch.tensor([[[[5, 0, 1], [0, 5, 1]]]], device=device).float()
         laf = kornia.feature.laf_from_center_scale_ori(xy, scale, ori)
-        assert_allclose(laf, expected)
+        assert_close(laf, expected)
 
     def test_cross_consistency(self, device):
         batch_size, channels = 3, 2
@@ -475,11 +475,11 @@ class TestGetCreateLAF:
         scale = torch.abs(torch.rand(batch_size, channels, 1, 1, device=device))
         laf = kornia.feature.laf_from_center_scale_ori(xy, scale, ori)
         scale2 = kornia.feature.get_laf_scale(laf)
-        assert_allclose(scale, scale2)
+        assert_close(scale, scale2)
         xy2 = kornia.feature.get_laf_center(laf)
-        assert_allclose(xy2, xy)
+        assert_close(xy2, xy)
         ori2 = kornia.feature.get_laf_orientation(laf)
-        assert_allclose(ori2, ori)
+        assert_close(ori2, ori)
 
     def test_gradcheck(self, device):
         batch_size, channels = 3, 2
@@ -497,7 +497,7 @@ class TestGetCreateLAF:
         scale = torch.abs(torch.rand(batch_size, channels, 1, 1, device=device))
         model = kornia.feature.laf_from_center_scale_ori
         model_jit = torch.jit.script(kornia.feature.laf_from_center_scale_ori)
-        assert_allclose(model(xy, scale, ori), model_jit(xy, scale, ori))
+        assert_close(model(xy, scale, ori), model_jit(xy, scale, ori))
 
 
 class TestGetLAF3pts:
@@ -515,7 +515,7 @@ class TestGetLAF3pts:
         inp = torch.tensor([[1, 0, 2], [0, 1, 3]], device=device).float().view(1, 1, 2, 3)
         expected = torch.tensor([[3, 2, 2], [3, 4, 3]], device=device).float().view(1, 1, 2, 3)
         threepts = kornia.feature.laf_to_three_points(inp)
-        assert_allclose(threepts, expected)
+        assert_close(threepts, expected)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 3, 2, 2, 3
@@ -529,7 +529,7 @@ class TestGetLAF3pts:
         inp = torch.rand(batch_size, channels, height, width, device=device)
         model = kornia.feature.laf_to_three_points
         model_jit = torch.jit.script(kornia.feature.laf_to_three_points)
-        assert_allclose(model(inp), model_jit(inp))
+        assert_close(model(inp), model_jit(inp))
 
 
 class TestGetLAFFrom3pts:
@@ -547,14 +547,14 @@ class TestGetLAFFrom3pts:
         expected = torch.tensor([[1, 0, 2], [0, 1, 3]], device=device).float().view(1, 1, 2, 3)
         inp = torch.tensor([[3, 2, 2], [3, 4, 3]], device=device).float().view(1, 1, 2, 3)
         threepts = kornia.feature.laf_from_three_points(inp)
-        assert_allclose(threepts, expected)
+        assert_close(threepts, expected)
 
     def test_cross_consistency(self, device):
         batch_size, channels, height, width = 3, 2, 2, 3
         inp = torch.rand(batch_size, channels, height, width, device=device)
         inp_2 = kornia.feature.laf_from_three_points(inp)
         inp_2 = kornia.feature.laf_to_three_points(inp_2)
-        assert_allclose(inp_2, inp)
+        assert_close(inp_2, inp)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 3, 2, 2, 3
@@ -568,4 +568,4 @@ class TestGetLAFFrom3pts:
         inp = torch.rand(batch_size, channels, height, width, device=device)
         model = kornia.feature.laf_from_three_points
         model_jit = torch.jit.script(kornia.feature.laf_from_three_points)
-        assert_allclose(model(inp), model_jit(inp))
+        assert_close(model(inp), model_jit(inp))

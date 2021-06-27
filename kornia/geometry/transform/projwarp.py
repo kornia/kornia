@@ -33,14 +33,14 @@ def warp_affine3d(
         This API signature it is experimental and might suffer some changes in the future.
 
     Args:
-        src (torch.Tensor): input tensor of shape :math:`(B, C, D, H, W)`.
-        M (torch.Tensor): projective transformation matrix of shape :math:`(B, 3, 4)`.
-        dsize (Tuple[int, int, int]): size of the output image (depth, height, width).
-        mode (str): interpolation mode to calculate output values
-          'bilinear' | 'nearest'. Default: 'bilinear'.
-        padding_mode (str): padding mode for outside grid values
-          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners (bool): mode for grid_generation. Default: True.
+        src : input tensor of shape :math:`(B, C, D, H, W)`.
+        M: projective transformation matrix of shape :math:`(B, 3, 4)`.
+        dsize: size of the output image (depth, height, width).
+        mode: interpolation mode to calculate output values
+          ``'bilinear'`` | ``'nearest'``.
+        padding_mode: padding mode for outside grid values
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
+        align_corners : mode for grid_generation.
 
     Returns:
         torch.Tensor: the warped 3d tensor with shape :math:`(B, C, D, H, W)`.
@@ -92,11 +92,11 @@ def projection_from_Rt(rmat: torch.Tensor, tvec: torch.Tensor) -> torch.Tensor:
     Concatenates the batch of rotations and translations such that :math:`P = [R | t]`.
 
     Args:
-       rmat (torch.Tensor): the rotation matrix with shape :math:`(*, 3, 3)`.
-       tvec (torch.Tensor): the translation vector with shape :math:`(*, 3, 1)`.
+       rmat: the rotation matrix with shape :math:`(*, 3, 3)`.
+       tvec: the translation vector with shape :math:`(*, 3, 1)`.
 
     Returns:
-       torch.Tensor: the projection matrix with shape :math:`(*, 3, 4)`.
+       the projection matrix with shape :math:`(*, 3, 4)`.
 
     """
     assert len(rmat.shape) >= 2 and rmat.shape[-2:] == (3, 3), rmat.shape
@@ -114,14 +114,14 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
     The function computes the projection matrix given the center and angles per axis.
 
     Args:
-        center (torch.Tensor): center of the rotation (x,y,z) in the source with shape :math:`(B, 3)`.
-        angles (torch.Tensor): angle axis vector containing the rotation angles in degrees in the form
+        center: center of the rotation (x,y,z) in the source with shape :math:`(B, 3)`.
+        angles: angle axis vector containing the rotation angles in degrees in the form
             of (rx, ry, rz) with shape :math:`(B, 3)`. Internally it calls Rodrigues to compute
             the rotation matrix from axis-angle.
-        scales (torch.Tensor): scale factor for x-y-z-directions with shape :math:`(B, 3)`.
+        scales: scale factor for x-y-z-directions with shape :math:`(B, 3)`.
 
     Returns:
-        torch.Tensor: the projection matrix of 3D rotation with shape :math:`(B, 3, 4)`.
+        the projection matrix of 3D rotation with shape :math:`(B, 3, 4)`.
 
     .. note::
         This function is often used in conjuntion with :func:`warp_affine3d`.
@@ -214,12 +214,12 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
         \end{pmatrix}
 
     Args:
-        src (torch.Tensor): coordinates of quadrangle vertices in the source image with shape :math:`(B, 8, 3)`.
-        dst (torch.Tensor): coordinates of the corresponding quadrangle vertices in
+        src: coordinates of quadrangle vertices in the source image with shape :math:`(B, 8, 3)`.
+        dst: coordinates of the corresponding quadrangle vertices in
             the destination image with shape :math:`(B, 8, 3)`.
 
     Returns:
-        torch.Tensor: the perspective transformation with shape :math:`(B, 4, 4)`.
+        the perspective transformation with shape :math:`(B, 4, 4)`.
 
     .. note::
         This function is often used in conjuntion with :func:`warp_perspective3d`.
@@ -388,17 +388,17 @@ def warp_perspective3d(
         \right )
 
     Args:
-        src (torch.Tensor): input image with shape :math:`(B, C, D, H, W)`.
-        M (torch.Tensor): transformation matrix with shape :math:`(B, 4, 4)`.
-        dsize (tuple): size of the output image (height, width).
-        flags (str): interpolation mode to calculate output values
-          'bilinear' | 'nearest'. Default: 'bilinear'.
-        border_mode (str): padding mode for outside grid values
-          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners(bool): interpolation flag. Default: False.
+        src: input image with shape :math:`(B, C, D, H, W)`.
+        M: transformation matrix with shape :math:`(B, 4, 4)`.
+        dsize: size of the output image (height, width).
+        flags: interpolation mode to calculate output values
+          ``'bilinear'`` | ``'nearest'``.
+        border_mode: padding mode for outside grid values
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
+        align_corners: interpolation flag.
 
     Returns:
-        torch.Tensor: the warped input image :math:`(B, C, D, H, W)`.
+        the warped input image :math:`(B, C, D, H, W)`.
 
     .. note::
         This function is often used in conjuntion with :func:`get_perspective_transform3d`.

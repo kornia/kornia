@@ -12,19 +12,21 @@ def gaussian_blur2d(
 ) -> torch.Tensor:
     r"""Creates an operator that blurs a tensor using a Gaussian filter.
 
+    .. image:: _static/img/gaussian_blur2d.png
+
     The operator smooths the given tensor with a gaussian kernel by convolving
     it to each channel. It supports batched operation.
 
     Arguments:
-        input (torch.Tensor): the input tensor with shape :math:`(B,C,H,W)`.
-        kernel_size (Tuple[int, int]): the size of the kernel.
-        sigma (Tuple[float, float]): the standard deviation of the kernel.
-        border_type (str): the padding mode to be applied before convolving.
+        input: the input tensor with shape :math:`(B,C,H,W)`.
+        kernel_size: the size of the kernel.
+        sigma: the standard deviation of the kernel.
+        border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
 
     Returns:
-        torch.Tensor: the blurred tensor with shape :math:`(B, C, H, W)`.
+        the blurred tensor with shape :math:`(B, C, H, W)`.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
@@ -44,14 +46,14 @@ class GaussianBlur2d(nn.Module):
     it to each channel. It supports batched operation.
 
     Arguments:
-        kernel_size (Tuple[int, int]): the size of the kernel.
-        sigma (Tuple[float, float]): the standard deviation of the kernel.
-        border_type (str): the padding mode to be applied before convolving.
+        kernel_size: the size of the kernel.
+        sigma: the standard deviation of the kernel.
+        border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
 
     Returns:
-        Tensor: the blurred tensor.
+        the blurred tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`

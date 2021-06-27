@@ -16,8 +16,8 @@ class BlurPool2D(nn.Module):
     See :cite:`zhang2019shiftinvar` for more details.
 
     Args:
-        kernel_size (int): the kernel size for max pooling.
-        stride (int): stride for pooling.
+        kernel_size: the kernel size for max pooling.
+        stride: stride for pooling.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -57,13 +57,14 @@ class MaxBlurPool2D(nn.Module):
     r"""Compute pools and blurs and downsample a given feature map.
 
     Equivalent to ```nn.Sequential(nn.MaxPool2d(...), BlurPool2D(...))```
+
     See :cite:`zhang2019shiftinvar` for more details.
 
     Args:
-        kernel_size (int): the kernel size for max pooling.
-        stride (int): stride for pooling.
-        max_pool_size (int): the kernel size for max pooling.
-        ceil_mode (bool): should be true to match output size of conv2d with same kernel size.
+        kernel_size: the kernel size for max pooling.
+        stride: stride for pooling.
+        max_pool_size: the kernel size for max pooling.
+        ceil_mode: should be true to match output size of conv2d with same kernel size.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -105,11 +106,15 @@ class MaxBlurPool2D(nn.Module):
 def blur_pool2d(input: torch.Tensor, kernel_size: int, stride: int = 2):
     r"""Compute blurs and downsample a given feature map.
 
+    .. image:: _static/img/blur_pool2d.png
+
+    See :class:`~kornia.filters.BlurPool2D` for details.
+
     See :cite:`zhang2019shiftinvar` for more details.
 
     Args:
-        kernel_size (int): the kernel size for max pooling..
-        ceil_mode (bool): should be true to match output size of conv2d with same kernel size.
+        kernel_size: the kernel size for max pooling..
+        ceil_mode: should be true to match output size of conv2d with same kernel size.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -124,7 +129,7 @@ def blur_pool2d(input: torch.Tensor, kernel_size: int, stride: int = 2):
                 \text{kernel\_size}[1]}{\text{stride}[1]} + 1\right\rfloor
 
     Returns:
-        torch.Tensor: the transformed tensor.
+        the transformed tensor.
 
     Note:
         This function is tested against https://github.com/adobe/antialiased-cnns.
@@ -145,13 +150,15 @@ def max_blur_pool2d(
 ) -> torch.Tensor:
     r"""Compute pools and blurs and downsample a given feature map.
 
-    See :class:`~kornia.filters.MaxBlurPool2d` for details.
+    .. image:: _static/img/max_blur_pool2d.png
+
+    See :class:`~kornia.filters.MaxBlurPool2D` for details.
 
     Args:
-        kernel_size (int): the kernel size for max pooling.
-        stride (int): stride for pooling.
-        max_pool_size (int): the kernel size for max pooling.
-        ceil_mode (bool): should be true to match output size of conv2d with same kernel size.
+        kernel_size: the kernel size for max pooling.
+        stride: stride for pooling.
+        max_pool_size: the kernel size for max pooling.
+        ceil_mode: should be true to match output size of conv2d with same kernel size.
 
     Note:
         This function is tested against https://github.com/adobe/antialiased-cnns.

@@ -1,11 +1,11 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
 
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.geometry.conversions import normalize_pixel_coordinates
+from kornia.testing import assert_close
 
 
 class TestDepthWarper:
@@ -47,7 +47,7 @@ class TestDepthWarper:
         dst_proj_src_expected[..., 0, -2] += pinhole_src.cx
         dst_proj_src_expected[..., 1, -2] += pinhole_src.cy
         dst_proj_src_expected[..., 0, -1] += 1.0  # offset to x-axis
-        assert_allclose(dst_proj_src, dst_proj_src_expected)
+        assert_close(dst_proj_src, dst_proj_src_expected)
 
     @pytest.mark.parametrize("batch_size", (1, 2))
     def test_warp_grid_offset_x1_depth1(self, batch_size, device, dtype):
@@ -70,9 +70,9 @@ class TestDepthWarper:
         grid_norm = normalize_pixel_coordinates(grid, height, width)
 
         # check offset in x-axis
-        assert_allclose(grid_warped[..., -2, 0], grid_norm[..., -1, 0].repeat(batch_size, 1), atol=1e-4, rtol=1e-4)
+        assert_close(grid_warped[..., -2, 0], grid_norm[..., -1, 0].repeat(batch_size, 1), atol=1e-4, rtol=1e-4)
         # check that y-axis remain the same
-        assert_allclose(grid_warped[..., -1, 1], grid_norm[..., -1, 1].repeat(batch_size, 1), rtol=1e-4, atol=1e-4)
+        assert_close(grid_warped[..., -1, 1], grid_norm[..., -1, 1].repeat(batch_size, 1), rtol=1e-4, atol=1e-4)
 
     @pytest.mark.parametrize("batch_size", (1, 2))
     def test_warp_grid_offset_x1y1_depth1(self, batch_size, device, dtype):
@@ -96,11 +96,9 @@ class TestDepthWarper:
         grid_norm = normalize_pixel_coordinates(grid, height, width)
 
         # check offset in x-axis
-        assert_allclose(grid_warped[..., -2, 0], grid_norm[..., -1, 0].repeat(batch_size, 1), atol=1e-4, rtol=1e-4)
+        assert_close(grid_warped[..., -2, 0], grid_norm[..., -1, 0].repeat(batch_size, 1), atol=1e-4, rtol=1e-4)
         # check that y-axis remain the same
-        assert_allclose(
-            grid_warped[..., -2, :, 1], grid_norm[..., -1, :, 1].repeat(batch_size, 1), rtol=1e-4, atol=1e-4
-        )
+        assert_close(grid_warped[..., -2, :, 1], grid_norm[..., -1, :, 1].repeat(batch_size, 1), rtol=1e-4, atol=1e-4)
 
     @pytest.mark.parametrize("batch_size", (1, 2))
     def test_warp_tensor_offset_x1y1(self, batch_size, device, dtype):
@@ -127,7 +125,7 @@ class TestDepthWarper:
         patch_src = warper(depth_src, patch_dst)
 
         # compare patches
-        assert_allclose(patch_dst[..., 1:, 1:], patch_src[..., :2, :4], atol=1e-4, rtol=1e-4)
+        assert_close(patch_dst[..., 1:, 1:], patch_src[..., :2, :4], atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", (1, 2))
     def test_compute_projection(self, batch_size, device, dtype):

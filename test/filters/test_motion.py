@@ -1,11 +1,11 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
 
 import kornia
 import kornia.filters.kernels_geometry
 import kornia.testing as utils  # test utils
+from kornia.testing import assert_close
 
 
 @pytest.mark.parametrize("batch_size", [0, 1, 5])
@@ -20,7 +20,7 @@ def test_get_motion_kernel2d(batch_size, ksize, angle, direction):
         batch_size = 1
     kernel = kornia.filters.kernels_geometry.get_motion_kernel2d(ksize, angle, direction)
     assert kernel.shape == (batch_size, ksize, ksize)
-    assert_allclose(kernel.sum(), batch_size)
+    assert kernel.sum().item() == pytest.approx(batch_size)
 
 
 class TestMotionBlur:
@@ -43,7 +43,7 @@ class TestMotionBlur:
         direction = 0.3
         actual = kornia.filters.motion_blur(inp, kernel_size, angle, direction)
         expected = actual
-        assert_allclose(actual, actual)
+        assert_close(actual, actual)
 
     def test_gradcheck(self, device, dtype):
         batch_shape = (1, 3, 4, 5)
@@ -65,4 +65,4 @@ class TestMotionBlur:
         op_script = torch.jit.script(op)
         actual = op_script(img, ksize, angle, direction)
         expected = op(img, ksize, angle, direction)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)

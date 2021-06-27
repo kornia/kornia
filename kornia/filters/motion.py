@@ -11,17 +11,17 @@ class MotionBlur(nn.Module):
     r"""Blur 2D images (4D tensor) using the motion filter.
 
     Args:
-        kernel_size (int): motion kernel width and height. It should be odd and positive.
-        angle (float): angle of the motion blur in degrees (anti-clockwise rotation).
-        direction (float): forward/backward direction of the motion blur.
+        kernel_size: motion kernel width and height. It should be odd and positive.
+        angle: angle of the motion blur in degrees (anti-clockwise rotation).
+        direction: forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
             while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
             uniformly (but still angled) motion blur.
-        border_type (str): the padding mode to be applied before convolving. The expected modes are:
-            ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``. Default: ``'constant'``.
+        border_type: the padding mode to be applied before convolving. The expected modes are:
+            ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
 
     Returns:
-        torch.Tensor: the blurred input tensor.
+        the blurred input tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -54,17 +54,17 @@ class MotionBlur3D(nn.Module):
     r"""Blur 3D volumes (5D tensor) using the motion filter.
 
     Args:
-        kernel_size (int): motion kernel width and height. It should be odd and positive.
-        angle (float or tuple): Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from.
-        direction (float): forward/backward direction of the motion blur.
+        kernel_size: motion kernel width and height. It should be odd and positive.
+        angle: Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from.
+        direction: forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
             while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
             uniformly (but still angled) motion blur.
-        border_type (str): the padding mode to be applied before convolving. The expected modes are:
-            ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``. Default: ``'constant'``.
+        border_type: the padding mode to be applied before convolving. The expected modes are:
+            ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
 
     Returns:
-        torch.Tensor: the blurred input tensor.
+        the blurred input tensor.
 
     Shape:
         - Input: :math:`(B, C, D, H, W)`
@@ -113,25 +113,26 @@ def motion_blur(
     border_type: str = 'constant',
     mode: str = 'nearest',
 ) -> torch.Tensor:
-    r"""Perform motion blur on 2D images (4D tensor).
+    r"""Perform motion blur on tensor images.
+
+    .. image:: _static/img/motion_blur.png
 
     Args:
-        input (torch.Tensor): the input tensor with shape :math:`(B, C, H, W)`.
-        kernel_size (int): motion kernel width and height. It should be odd and positive.
+        input: the input tensor with shape :math:`(B, C, H, W)`.
+        kernel_size: motion kernel width and height. It should be odd and positive.
         angle (Union[torch.Tensor, float]): angle of the motion blur in degrees (anti-clockwise rotation).
             If tensor, it must be :math:`(B,)`.
-        direction (tensor or float): forward/backward direction of the motion blur.
+        direction : forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
             while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
             uniformly (but still angled) motion blur.
             If tensor, it must be :math:`(B,)`.
-        border_type (str): the padding mode to be applied before convolving. The expected modes are:
+        border_type: the padding mode to be applied before convolving. The expected modes are:
             ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``. Default: ``'constant'``.
-        mode (str): interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
-            Default: ``'nearest'``
+        mode: interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
 
     Return:
-        torch.Tensor: the blurred image with shape :math:`(B, C, H, W)`.
+        the blurred image with shape :math:`(B, C, H, W)`.
 
     Example:
         >>> input = torch.randn(1, 3, 80, 90).repeat(2, 1, 1, 1)
@@ -160,22 +161,21 @@ def motion_blur3d(
     r"""Perform motion blur on 3D volumes (5D tensor).
 
     Args:
-        input (torch.Tensor): the input tensor with shape :math:`(B, C, D, H, W)`.
-        kernel_size (int): motion kernel width, height and depth. It should be odd and positive.
-        angle (torch.Tensor or tuple): Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from.
+        input: the input tensor with shape :math:`(B, C, D, H, W)`.
+        kernel_size: motion kernel width, height and depth. It should be odd and positive.
+        angle: Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from.
             If tensor, it must be :math:`(B, 3)`.
-        direction (tensor or float): forward/backward direction of the motion blur.
+        direction: forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
             while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
             uniformly (but still angled) motion blur.
             If tensor, it must be :math:`(B,)`.
-        border_type (str): the padding mode to be applied before convolving. The expected modes are:
+        border_type: the padding mode to be applied before convolving. The expected modes are:
             ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``. Default: ``'constant'``.
-        mode (str): interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
-            Default: ``'nearest'``
+        mode: interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
 
     Return:
-        torch.Tensor: the blurred image with shape :math:`(B, C, D, H, W)`.
+        the blurred image with shape :math:`(B, C, D, H, W)`.
 
     Example:
         >>> input = torch.randn(1, 3, 120, 80, 90).repeat(2, 1, 1, 1, 1)

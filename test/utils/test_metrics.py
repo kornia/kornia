@@ -1,7 +1,7 @@
 import torch
-from torch.testing import assert_allclose
 
 import kornia
+from kornia.testing import assert_close
 
 
 class TestMeanIoU:
@@ -14,7 +14,7 @@ class TestMeanIoU:
         mean_iou = kornia.utils.metrics.mean_iou(predicted, actual, num_classes)
         mean_iou_real = torch.tensor([[1.0, 1.0]], dtype=torch.float32)
         assert mean_iou.shape == (batch_size, num_classes)
-        assert_allclose(mean_iou, mean_iou_real)
+        assert_close(mean_iou, mean_iou_real)
 
     def test_two_classes_perfect_batch2(self):
         batch_size = 2
@@ -25,7 +25,7 @@ class TestMeanIoU:
         mean_iou = kornia.utils.metrics.mean_iou(predicted, actual, num_classes)
         mean_iou_real = torch.tensor([[1.0, 1.0], [1.0, 1.0]], dtype=torch.float32)
         assert mean_iou.shape == (batch_size, num_classes)
-        assert_allclose(mean_iou, mean_iou_real)
+        assert_close(mean_iou, mean_iou_real)
 
     def test_two_classes(self):
         batch_size = 1
@@ -37,7 +37,7 @@ class TestMeanIoU:
         mean_iou = kornia.utils.metrics.mean_iou(predicted, actual, num_classes)
         mean_iou_real = torch.tensor([[0.75, 0.80]], dtype=torch.float32)
         assert mean_iou.shape == (batch_size, num_classes)
-        assert_allclose(mean_iou, mean_iou_real)
+        assert_close(mean_iou, mean_iou_real)
 
     def test_four_classes_2d_perfect(self):
         batch_size = 1
@@ -48,7 +48,7 @@ class TestMeanIoU:
         mean_iou = kornia.utils.metrics.mean_iou(predicted, actual, num_classes)
         mean_iou_real = torch.tensor([[1.0, 1.0, 1.0, 1.0]], dtype=torch.float32)
         assert mean_iou.shape == (batch_size, num_classes)
-        assert_allclose(mean_iou, mean_iou_real)
+        assert_close(mean_iou, mean_iou_real)
 
     def test_four_classes_one_missing(self):
         batch_size = 1
@@ -59,7 +59,7 @@ class TestMeanIoU:
         mean_iou = kornia.utils.metrics.mean_iou(predicted, actual, num_classes)
         mean_iou_real = torch.tensor([[0.0, 1.0, 0.5, 0.5]], dtype=torch.float32)
         assert mean_iou.shape == (batch_size, num_classes)
-        assert_allclose(mean_iou, mean_iou_real)
+        assert_close(mean_iou, mean_iou_real)
 
 
 class TestConfusionMatrix:
@@ -70,7 +70,7 @@ class TestConfusionMatrix:
 
         conf_mat = kornia.utils.metrics.confusion_matrix(predicted, actual, num_classes)
         conf_mat_real = torch.tensor([[[3, 1], [0, 4]]], dtype=torch.float32)
-        assert_allclose(conf_mat, conf_mat_real)
+        assert_close(conf_mat, conf_mat_real)
 
     def test_two_classes_batch2(self):
         batch_size = 2
@@ -80,7 +80,7 @@ class TestConfusionMatrix:
 
         conf_mat = kornia.utils.metrics.confusion_matrix(predicted, actual, num_classes)
         conf_mat_real = torch.tensor([[[3, 1], [0, 4]], [[3, 1], [0, 4]]], dtype=torch.float32)
-        assert_allclose(conf_mat, conf_mat_real)
+        assert_close(conf_mat, conf_mat_real)
 
     def test_three_classes(self):
         num_classes = 3
@@ -89,7 +89,7 @@ class TestConfusionMatrix:
 
         conf_mat = kornia.utils.metrics.confusion_matrix(predicted, actual, num_classes)
         conf_mat_real = torch.tensor([[[4, 1, 2], [3, 0, 2], [1, 2, 1]]], dtype=torch.float32)
-        assert_allclose(conf_mat, conf_mat_real)
+        assert_close(conf_mat, conf_mat_real)
 
     def test_four_classes_one_missing(self):
         num_classes = 4
@@ -98,7 +98,7 @@ class TestConfusionMatrix:
 
         conf_mat = kornia.utils.metrics.confusion_matrix(predicted, actual, num_classes)
         conf_mat_real = torch.tensor([[[0, 0, 0, 0], [0, 4, 1, 2], [0, 3, 0, 2], [0, 1, 2, 1]]], dtype=torch.float32)
-        assert_allclose(conf_mat, conf_mat_real)
+        assert_close(conf_mat, conf_mat_real)
 
     def test_three_classes_normalized(self):
         num_classes = 3
@@ -111,7 +111,7 @@ class TestConfusionMatrix:
         conf_mat_real = torch.tensor(
             [[[0.5000, 0.3333, 0.4000], [0.3750, 0.0000, 0.4000], [0.1250, 0.6667, 0.2000]]], dtype=torch.float32
         )
-        assert_allclose(conf_mat, conf_mat_real)
+        assert_close(conf_mat, conf_mat_real)
 
     def test_four_classes_2d_perfect(self):
         num_classes = 4
@@ -120,7 +120,7 @@ class TestConfusionMatrix:
 
         conf_mat = kornia.utils.metrics.confusion_matrix(predicted, actual, num_classes)
         conf_mat_real = torch.tensor([[[4, 0, 0, 0], [0, 4, 0, 0], [0, 0, 4, 0], [0, 0, 0, 4]]], dtype=torch.float32)
-        assert_allclose(conf_mat, conf_mat_real)
+        assert_close(conf_mat, conf_mat_real)
 
     def test_four_classes_2d_one_class_nonperfect(self):
         num_classes = 4
@@ -129,7 +129,7 @@ class TestConfusionMatrix:
 
         conf_mat = kornia.utils.metrics.confusion_matrix(predicted, actual, num_classes)
         conf_mat_real = torch.tensor([[[3, 0, 0, 1], [1, 3, 0, 0], [0, 0, 4, 0], [0, 1, 0, 3]]], dtype=torch.float32)
-        assert_allclose(conf_mat, conf_mat_real)
+        assert_close(conf_mat, conf_mat_real)
 
     def test_four_classes_2d_one_class_missing(self):
         num_classes = 4
@@ -138,7 +138,7 @@ class TestConfusionMatrix:
 
         conf_mat = kornia.utils.metrics.confusion_matrix(predicted, actual, num_classes)
         conf_mat_real = torch.tensor([[[0, 0, 0, 4], [0, 4, 0, 0], [0, 0, 4, 0], [0, 0, 0, 4]]], dtype=torch.float32)
-        assert_allclose(conf_mat, conf_mat_real)
+        assert_close(conf_mat, conf_mat_real)
 
     def test_four_classes_2d_one_class_no_predicted(self):
         num_classes = 4
@@ -147,4 +147,4 @@ class TestConfusionMatrix:
 
         conf_mat = kornia.utils.metrics.confusion_matrix(predicted, actual, num_classes)
         conf_mat_real = torch.tensor([[[0, 0, 4, 4], [0, 0, 0, 0], [0, 0, 4, 0], [0, 0, 0, 4]]], dtype=torch.float32)
-        assert_allclose(conf_mat, conf_mat_real)
+        assert_close(conf_mat, conf_mat_real)

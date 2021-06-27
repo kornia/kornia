@@ -1,9 +1,9 @@
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
 
 import kornia
 import kornia.testing as utils  # test utils
+from kornia.testing import assert_close
 
 
 class TestNMS2d:
@@ -47,7 +47,7 @@ class TestNMS2d:
         ).float()
         nms = kornia.feature.NonMaximaSuppression2d((3, 3)).to(device)
         scores = nms(inp)
-        assert_allclose(scores, expected, atol=1e-4, rtol=1e-3)
+        assert_close(scores, expected, atol=1e-4, rtol=1e-3)
 
     def test_gradcheck(self, device):
         k = 0.04
@@ -130,7 +130,7 @@ class TestNMS3d:
         ).to(device)
         nms = kornia.feature.NonMaximaSuppression3d((3, 3, 3)).to(device)
         scores = nms(inp)
-        assert_allclose(scores, expected, atol=1e-4, rtol=1e-3)
+        assert_close(scores, expected, atol=1e-4, rtol=1e-3)
 
     def test_gradcheck(self, device):
         batch_size, channels, depth, height, width = 1, 1, 4, 5, 4
