@@ -218,7 +218,7 @@ def main():
 
     # korna.morphology module
     mod = importlib.import_module("kornia.morphology")
-    kernel = torch.tensor([[0, 1, 0],[1, 1, 1],[0, 1, 0]])
+    kernel = torch.tensor([[0, 1, 0], [1, 1, 1], [0, 1, 0]])
     transforms: dict = {
         "dilation": ((kernel,), 1),
         "erosion": ((kernel,), 1),
@@ -245,13 +245,13 @@ def main():
 
     # korna.filters module
     mod = importlib.import_module("kornia.filters")
-    kernel = torch.tensor([[0, 1, 0],[1, 1, 1],[0, 1, 0]])
+    kernel = torch.tensor([[0, 1, 0], [1, 1, 1], [0, 1, 0]])
     transforms: dict = {
-        "box_blur": (((5,5),), 1),
-        "median_blur": (((5,5),), 1),
-        "gaussian_blur2d": (((5,5),(1.5,1.5),), 1),
-        "motion_blur": ((5, 90., 1.,), 1),
-        "unsharp_mask": (((5,5),(1.5,1.5),), 1),
+        "box_blur": (((5, 5),), 1),
+        "median_blur": (((5, 5),), 1),
+        "gaussian_blur2d": (((5, 5), (1.5, 1.5)), 1),
+        "motion_blur": ((5, 90.0, 1.0), 1),
+        "unsharp_mask": (((5, 5), (1.5, 1.5)), 1),
         "laplacian": ((5,), 1),
         "sobel": ((), 1),
         "spatial_gradient": ((), 1),
@@ -267,8 +267,8 @@ def main():
         if fn_name == "canny":
             out = out[1].repeat(1, 3, 1, 1)
         if isinstance(out, torch.Tensor):
-            out = out.clamp(min=0., max=1.)
-        if fn_name in ("laplacian", "sobel", "spatial_gradient", "canny",):
+            out = out.clamp(min=0.0, max=1.0)
+        if fn_name in ("laplacian", "sobel", "spatial_gradient", "canny"):
             out = K.enhance.normalize_min_max(out)
         if fn_name == "spatial_gradient":
             out = out.permute(2, 1, 0, 3, 4).squeeze()
