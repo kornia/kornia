@@ -158,7 +158,8 @@ class AugmentationSequential(ImageSequential):
         if param is not None:
             assert module_name == param.name
         if module is None:
-            module = self.get_submodule(module_name)
+            # TODO (jian): double check why typing is crashing
+            module = self.get_submodule(module_name)  # type: ignore
         if DataKey.get(dcate) in [DataKey.INPUT]:
             return self.apply_to_input(input, module_name, module, param)
         if DataKey.get(dcate) in [DataKey.MASK]:
