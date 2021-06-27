@@ -17,8 +17,8 @@ class Normalize(nn.Module):
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 
     Args:
-        mean (Union[torch.Tensor, float]): Mean for each channel.
-        std (Union[torch.Tensor, float]): Standard deviations for each channel.
+        mean: Mean for each channel.
+        std: Standard deviations for each channel.
 
     Shape:
         - Input: Image tensor of size :math:`(*, C, ...)`.
@@ -62,12 +62,12 @@ def normalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union[t
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 
     Args:
-        data (torch.Tensor): Image tensor of size :math:`(*, C, ...)`.
-        mean (Union[torch.Tensor, float]): Mean for each channel.
-        std (Union[torch.Tensor, float]): Standard deviations for each channel.
+        data: Image tensor of size :math:`(*, C, ...)`.
+        mean: Mean for each channel.
+        std: Standard deviations for each channel.
 
     Return:
-        torch.Tensor: Normalised tensor with same size as input :math:`(*, C, ...)`.
+        Normalised tensor with same size as input :math:`(*, C, ...)`.
 
     Examples:
         >>> x = torch.rand(1, 4, 3, 3)
@@ -131,8 +131,8 @@ class Denormalize(nn.Module):
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 
     Args:
-        mean (Union[torch.Tensor, float]): Mean for each channel.
-        std (Union[torch.Tensor, float]): Standard deviations for each channel.
+        mean: Mean for each channel.
+        std: Standard deviations for each channel.
 
     Shape:
         - Input: Image tensor of size :math:`(*, C, ...)`.
@@ -176,12 +176,12 @@ def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 
     Args:
-        input (torch.Tensor): Image tensor of size :math:`(*, C, ...)`.
-        mean (Union[torch.Tensor, float]): Mean for each channel.
-        std (Union[torch.Tensor, float]): Standard deviations for each channel.
+        input: Image tensor of size :math:`(*, C, ...)`.
+        mean: Mean for each channel.
+        std: Standard deviations for each channel.
 
     Return:
-        torch.Tensor: Denormalised tensor with same size as input :math:`(*, C, ...)`.
+        Denormalised tensor with same size as input :math:`(*, C, ...)`.
 
     Examples:
         >>> x = torch.rand(1, 4, 3, 3)
@@ -247,13 +247,13 @@ def normalize_min_max(x: torch.Tensor, min_val: float = 0.0, max_val: float = 1.
     where :math:`a` is :math:`\text{min_val}` and :math:`b` is :math:`\text{max_val}`.
 
     Args:
-        x (torch.Tensor): The image tensor to be normalised with shape :math:`(B, C, ...)`.
-        min_val (float): The minimum value for the new range. Default: 0.
-        max_val (float): The maximum value for the new range. Default: 1.
-        eps (float): Float number to avoid zero division. Default: 1e-6.
+        x: The image tensor to be normalised with shape :math:`(B, C, ...)`.
+        min_val: The minimum value for the new range.
+        max_val: The maximum value for the new range.
+        eps: Float number to avoid zero division.
 
     Returns:
-        torch.Tensor: The normalised image tensor with same shape as input :math:`(B, C, ...)`.
+        The normalised image tensor with same shape as input :math:`(B, C, ...)`.
 
     Example:
         >>> x = torch.rand(1, 5, 3, 3)
