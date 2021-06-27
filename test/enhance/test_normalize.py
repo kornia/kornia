@@ -128,7 +128,7 @@ class TestNormalize:
             expected = (data - torch.tensor(mean)) / torch.tensor(std)
         else:
             expected = (data - torch.tensor(mean[0])) / torch.tensor(std[0])
-        assert_allclose(f(data), expected)
+        assert_close(f(data), expected)
 
     @staticmethod
     @pytest.mark.parametrize("mean, std", [((1.0, 1.0, 1.0, 1.0), (0.5, 0.5, 0.5, 0.5)), ((1.0, 1.0), (0.5, 0.5))])
