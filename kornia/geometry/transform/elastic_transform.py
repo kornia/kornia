@@ -20,25 +20,27 @@ def elastic_transform2d(
 ) -> torch.Tensor:
     r"""Applies elastic transform of images as described in :cite:`Simard2003BestPF`.
 
+    .. image:: _static/img/elastic_transform2d.png
+
     Args:
-        image (torch.Tensor): Input image to be transformed with shape :math:`(B, C, H, W)`.
-        noise (torch.Tensor): Noise image used to spatially transform the input image. Same
+        image: Input image to be transformed with shape :math:`(B, C, H, W)`.
+        noise: Noise image used to spatially transform the input image. Same
           resolution as the input image with shape :math:`(B, 2, H, W)`. The coordinates order
           it is expected to be in x-y.
-        kernel_size (Tuple[int, int]): the size of the Gaussian kernel. Default: (63, 63).
-        sigma (Tuple[float, float]): The standard deviation of the Gaussian in the y and x directions,
-          respecitvely. Larger sigma results in smaller pixel displacements. Default: (32, 32).
-        alpha (Tuple[float, float]): The scaling factor that controls the intensity of the deformation
-          in the y and x directions, respectively. Default: 1.
-        align_corners (bool): Interpolation flag used by `grid_sample`. Default: False.
-        mode (str): Interpolation mode used by `grid_sample`. Either 'bilinear' or 'nearest'. Default: 'bilinear'.
+        kernel_size: the size of the Gaussian kernel.
+        sigma: The standard deviation of the Gaussian in the y and x directions,
+          respecitvely. Larger sigma results in smaller pixel displacements.
+        alpha : The scaling factor that controls the intensity of the deformation
+          in the y and x directions, respectively.
+        align_corners: Interpolation flag used by ```grid_sample```.
+        mode: Interpolation mode used by ```grid_sample```. Either ``'bilinear'`` or ``'nearest'``.
 
     .. note:
-        `sigma` and `alpha` can also be a `torch.Tensor`. However, you could not torchscript
+        ```sigma``` and ```alpha``` can also be a ``torch.Tensor``. However, you could not torchscript
          this function with tensor until PyTorch 1.8 is released.
 
     Returns:
-        torch.Tensor: the elastically transformed input image with shape :math:`(B,C,H,W)`.
+        the elastically transformed input image with shape :math:`(B,C,H,W)`.
 
     Example:
         >>> image = torch.rand(1, 3, 5, 5)
