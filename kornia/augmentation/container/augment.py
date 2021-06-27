@@ -16,8 +16,9 @@ class AugmentationSequential(ImageSequential):
     r"""AugmentationSequential for handling multiple input types like inputs, masks, keypoints at once.
 
     .. image:: https://kornia-tutorials.readthedocs.io/en/latest/_images/data_augmentation_sequential_5_1.png
-
+        :width: 49 %
     .. image:: https://kornia-tutorials.readthedocs.io/en/latest/_images/data_augmentation_sequential_7_2.png
+        :width: 49 %
 
     Args:
         *args (_AugmentationBase): a list of kornia augmentation modules.
