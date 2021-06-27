@@ -19,28 +19,30 @@ def read_img_from_url(url: str, resize_to: Optional[Tuple[int, int]] = None) -> 
     nparr = np.frombuffer(response, np.uint8)
     # convert to image array and resize
     img: np.ndarray = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)[..., :3]
-    if resize_to is None:
-        img = cv2.resize(img, (186, int(img.shape[0] / img.shape[1] * 224)))
-    else:
-        img = cv2.resize(img, resize_to)
     # convert the image to a tensor
     img_t: torch.Tensor = K.utils.image_to_tensor(img, keepdim=False)  # 1xCxHXW
     img_t = img_t.float() / 255.0
+    if resize_to is None:
+        img_t = K.geometry.resize(img_t, 184)
+    else:
+        img_t = K.geometry.resize(img_t, resize_to)
     return img_t
 
 
 def main():
     # load the images
-    BASE_IMAGE_URL1: str = "https://raw.githubusercontent.com/kornia/data/main/panda.jpg"
-    BASE_IMAGE_URL2: str = "https://raw.githubusercontent.com/kornia/data/main/simba.png"
-    BASE_IMAGE_URL3: str = "https://raw.githubusercontent.com/kornia/data/main/girona.png"
+    BASE_IMAGE_URL1: str = "https://raw.githubusercontent.com/kornia/data/main/panda.jpg"  # augmentation
+    BASE_IMAGE_URL2: str = "https://raw.githubusercontent.com/kornia/data/main/simba.png"  # color
+    BASE_IMAGE_URL3: str = "https://raw.githubusercontent.com/kornia/data/main/girona.png"  # enhance
+    BASE_IMAGE_URL4: str = "https://raw.githubusercontent.com/kornia/data/main/baby_giraffe.png"  # morphology
     OUTPUT_PATH = Path(__file__).absolute().parent / "source/_static/img"
 
     os.makedirs(OUTPUT_PATH, exist_ok=True)
     print(f"Pointing images to path {OUTPUT_PATH}.")
     img1 = read_img_from_url(BASE_IMAGE_URL1)
-    img2 = read_img_from_url(BASE_IMAGE_URL2, img1.shape[-2:][::-1])
-    img3 = read_img_from_url(BASE_IMAGE_URL3, img1.shape[-2:][::-1])
+    img2 = read_img_from_url(BASE_IMAGE_URL2, img1.shape[-2:])
+    img3 = read_img_from_url(BASE_IMAGE_URL3, img1.shape[-2:])
+    img4 = read_img_from_url(BASE_IMAGE_URL4)
 
     # TODO: make this more generic for modules out of kornia.augmentation
     # Dictionary containing the transforms to generate the sample images:
@@ -177,7 +179,6 @@ def main():
         else:
             args_in = (img_in, *args)
         # import function and apply
-        # import pdb;pdb.set_trace()
         fn = getattr(mod, fn_name)
         out = fn(*args_in)
         # save the output image
@@ -187,6 +188,32 @@ def main():
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {fn_name}. {sig}")
 
+    # korna.morphology module
+    mod = importlib.import_module("kornia.morphology")
+    kernel = torch.tensor([[0, 1, 0],[1, 1, 1],[0, 1, 0]])
+    transforms: dict = {
+        "dilation": ((kernel,), 1),
+        "erosion": ((kernel,), 1),
+        "opening": ((kernel,), 1),
+        "closing": ((kernel,), 1),
+        "gradient": ((kernel,), 1),
+        "top_hat": ((kernel,), 1),
+        "bottom_hat": ((kernel,), 1),
+    }
+    # ITERATE OVER THE TRANSFORMS
+    for fn_name, (args, num_samples) in transforms.items():
+        img_in = img4.repeat(num_samples, 1, 1, 1)
+        args_in = (img_in, *args)
+        # import function and apply
+        # import pdb;pdb.set_trace()
+        fn = getattr(mod, fn_name)
+        out = fn(*args_in)
+        # save the output image
+        out = torch.cat([img_in[0], *[out[i] for i in range(out.size(0))]], dim=-1)
+        out_np = K.utils.tensor_to_image((out * 255.0).byte())
+        cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
+        sig = f"{fn_name}({', '.join([str(a) for a in args])})"
+        print(f"Generated image example for {fn_name}. {sig}")
 
 if __name__ == "__main__":
     main()
