@@ -190,7 +190,7 @@ def main():
 
     # korna.morphology module
     mod = importlib.import_module("kornia.morphology")
-    kernel = torch.tensor([[0, 1, 0],[1, 1, 1],[0, 1, 0]])
+    kernel = torch.tensor([[0, 1, 0], [1, 1, 1], [0, 1, 0]])
     transforms: dict = {
         "dilation": ((kernel,), 1),
         "erosion": ((kernel,), 1),
@@ -214,6 +214,7 @@ def main():
         cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {fn_name}. {sig}")
+
 
 if __name__ == "__main__":
     main()
