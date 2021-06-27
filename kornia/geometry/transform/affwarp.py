@@ -125,18 +125,19 @@ def affine(
 ) -> torch.Tensor:
     r"""Apply an affine transformation to the image.
 
+    .. image:: _static/img/warp_affine.png
+
     Args:
-        tensor (torch.Tensor): The image tensor to be warped in shapes of
+        tensor: The image tensor to be warped in shapes of
             :math:`(H, W)`, :math:`(D, H, W)` and :math:`(B, C, H, W)`.
-        matrix (torch.Tensor): The 2x3 affine transformation matrix.
-        mode (str): interpolation mode to calculate output values
-          'bilinear' | 'nearest'. Default: 'bilinear'.
-        padding_mode (str): padding mode for outside grid values
-          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners(bool, optional): interpolation flag. Default: None.
+        matrix: The 2x3 affine transformation matrix.
+        mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
+        padding_mode: padding mode for outside grid values
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
+        align_corners: interpolation flag.
 
     Returns:
-        torch.Tensor: The warped image with the same shape as the input.
+        The warped image with the same shape as the input.
 
     Example:
         >>> img = torch.rand(1, 2, 3, 5)
@@ -176,17 +177,17 @@ def affine3d(
     r"""Apply an affine transformation to the 3d volume.
 
     Args:
-        tensor (torch.Tensor): The image tensor to be warped in shapes of
+        tensor: The image tensor to be warped in shapes of
             :math:`(D, H, W)`, :math:`(C, D, H, W)` and :math:`(B, C, D, H, W)`.
-        matrix (torch.Tensor): The affine transformation matrix with shape :math:`(B, 3, 4)`.
-        mode (str): interpolation mode to calculate output values
-          'bilinear' | 'nearest'. Default: 'bilinear'.
-        padding_mode (str): padding mode for outside grid values
-          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners(bool, optional): interpolation flag. Default: False.
+        matrix: The affine transformation matrix with shape :math:`(B, 3, 4)`.
+        mode: interpolation mode to calculate output values
+          ``'bilinear'`` | ``'nearest'``.
+        padding_mode: padding mode for outside grid values
+         `` 'zeros'`` | ``'border'`` | ``'reflection'``.
+        align_corners: interpolation flag.
 
     Returns:
-        torch.Tensor: The warped image.
+        The warped image.
 
     Example:
         >>> img = torch.rand(1, 2, 4, 3, 5)
@@ -229,23 +230,25 @@ def rotate(
     padding_mode: str = 'zeros',
     align_corners: Optional[bool] = None,
 ) -> torch.Tensor:
-    r"""Rotate the tensor anti-clockwise about the centre.
+    r"""Rotate the tensor anti-clockwise about the center.
+
+    .. image:: _static/img/rotate.png
 
     Args:
-        tensor (torch.Tensor): The image tensor to be warped in shapes of :math:`(B, C, H, W)`.
-        angle (torch.Tensor): The angle through which to rotate. The tensor
+        tensor: The image tensor to be warped in shapes of :math:`(B, C, H, W)`.
+        angle: The angle through which to rotate. The tensor
           must have a shape of (B), where B is batch size.
-        center (torch.Tensor): The center through which to rotate. The tensor
+        center: The center through which to rotate. The tensor
           must have a shape of (B, 2), where B is batch size and last
           dimension contains cx and cy.
-        mode (str): interpolation mode to calculate output values
-          'bilinear' | 'nearest'. Default: 'bilinear'.
-        padding_mode (str): padding mode for outside grid values
-          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners(bool, optional): interpolation flag. Default: None.
+        mode: interpolation mode to calculate output values
+          ``'bilinear'`` | ``'nearest'``.
+        padding_mode: padding mode for outside grid values
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
+        align_corners: interpolation flag.
 
     Returns:
-        torch.Tensor: The rotated tensor with shape as input.
+        The rotated tensor with shape as input.
 
     Example:
         >>> img = torch.rand(1, 3, 4, 4)
@@ -293,21 +296,21 @@ def rotate3d(
     r"""Rotate 3D the tensor anti-clockwise about the centre.
 
     Args:
-        tensor (torch.Tensor): The image tensor to be warped in shapes of :math:`(B, C, D, H, W)`.
-        yaw(torch.Tensor): The yaw angle through which to rotate. The tensor
+        tensor: The image tensor to be warped in shapes of :math:`(B, C, D, H, W)`.
+        yaw: The yaw angle through which to rotate. The tensor
           must have a shape of (B), where B is batch size.
-        pitch (torch.Tensor): The pitch angle through which to rotate. The tensor
+        pitch: The pitch angle through which to rotate. The tensor
           must have a shape of (B), where B is batch size.
-        roll (torch.Tensor): The roll angle through which to rotate. The tensor
+        roll: The roll angle through which to rotate. The tensor
           must have a shape of (B), where B is batch size.
-        center (torch.Tensor): The center through which to rotate. The tensor
+        center: The center through which to rotate. The tensor
           must have a shape of (B, 2), where B is batch size and last
           dimension contains cx and cy.
-        mode (str): interpolation mode to calculate output values
-          'bilinear' | 'nearest'. Default: 'bilinear'.
-        padding_mode (str): padding mode for outside grid values
-          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners(bool, optional): interpolation flag. Default: False.
+        mode: interpolation mode to calculate output values
+          ``'bilinear'`` | ``'nearest'``.
+        padding_mode: padding mode for outside grid values
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
+        align_corners: interpolation flag.
 
     Returns:
         torch.Tensor: The rotated tensor with shape as input.
@@ -355,19 +358,21 @@ def translate(
 ) -> torch.Tensor:
     r"""Translate the tensor in pixel units.
 
+    .. image:: _static/img/translate.png
+
     Args:
-        tensor (torch.Tensor): The image tensor to be warped in shapes of :math:`(B, C, H, W)`.
-        translation (torch.Tensor): tensor containing the amount of pixels to
+        tensor: The image tensor to be warped in shapes of :math:`(B, C, H, W)`.
+        translation: tensor containing the amount of pixels to
           translate in the x and y direction. The tensor must have a shape of
           (B, 2), where B is batch size, last dimension contains dx dy.
-        mode (str): interpolation mode to calculate output values
-          'bilinear' | 'nearest'. Default: 'bilinear'.
-        padding_mode (str): padding mode for outside grid values
-          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners(bool, optional): interpolation flag. Default: None.
+        mode: interpolation mode to calculate output values
+          ``'bilinear'`` | ``'nearest'``.
+        padding_mode: padding mode for outside grid values
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
+        align_corners: interpolation flag.
 
     Returns:
-        torch.Tensor: The translated tensor with shape as input.
+        The translated tensor with shape as input.
 
     Example:
         >>> img = torch.rand(1, 3, 4, 4)
@@ -402,23 +407,25 @@ def scale(
 ) -> torch.Tensor:
     r"""Scale the tensor by a factor.
 
+    .. image:: _static/img/scale.png
+
     Args:
-        tensor (torch.Tensor): The image tensor to be warped in shapes of :math:`(B, C, H, W)`.
-        scale_factor (torch.Tensor): The scale factor apply. The tensor
+        tensor: The image tensor to be warped in shapes of :math:`(B, C, H, W)`.
+        scale_factor: The scale factor apply. The tensor
           must have a shape of (B) or (B, 2), where B is batch size.
           If (B), isotropic scaling will perform.
           If (B, 2), x-y-direction specific scaling will perform.
-        center (torch.Tensor): The center through which to scale. The tensor
+        center: The center through which to scale. The tensor
           must have a shape of (B, 2), where B is batch size and last
           dimension contains cx and cy.
-        mode (str): interpolation mode to calculate output values
-          'bilinear' | 'nearest'. Default: 'bilinear'.
-        padding_mode (str): padding mode for outside grid values
-          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners(bool, optional): interpolation flag. Default: None.
+        mode: interpolation mode to calculate output values
+          ``'bilinear'`` | ``'nearest'``.
+        padding_mode: padding mode for outside grid values
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
+        align_corners: interpolation flag.
 
     Returns:
-        torch.Tensor: The scaled tensor with the same shape as the input.
+        The scaled tensor with the same shape as the input.
 
     Example:
         >>> img = torch.rand(1, 3, 4, 4)
@@ -460,19 +467,21 @@ def shear(
 ) -> torch.Tensor:
     r"""Shear the tensor.
 
+    .. image:: _static/img/shear.png
+
     Args:
-        tensor (torch.Tensor): The image tensor to be skewed with shape of :math:`(B, C, H, W)`.
-        shear (torch.Tensor): tensor containing the angle to shear
+        tensor: The image tensor to be skewed with shape of :math:`(B, C, H, W)`.
+        shear: tensor containing the angle to shear
           in the x and y direction. The tensor must have a shape of
           (B, 2), where B is batch size, last dimension contains shx shy.
-        mode (str): interpolation mode to calculate output values
-          'bilinear' | 'nearest'. Default: 'bilinear'.
-        padding_mode (str): padding mode for outside grid values
-          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners(bool, optional): interpolation flag. Default: None.
+        mode: interpolation mode to calculate output values
+          ``'bilinear'`` | ``'nearest'``.
+        padding_mode: padding mode for outside grid values
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
+        align_corners: interpolation flag.
 
     Returns:
-        torch.Tensor: The skewed tensor with shape same as the input.
+        The skewed tensor with shape same as the input.
 
     Example:
         >>> img = torch.rand(1, 3, 4, 4)
@@ -520,25 +529,25 @@ def resize(
 ) -> torch.Tensor:
     r"""Resize the input torch.Tensor to the given size.
 
+    .. image:: _static/img/resize.png
+
     Args:
-        tensor (torch.Tensor): The image tensor to be skewed with shape of :math:`(..., H, W)`.
+        tensor: The image tensor to be skewed with shape of :math:`(..., H, W)`.
             `...` means there can be any number of dimensions.
-        size (int, tuple(int, int)): Desired output size. If size is a sequence like (h, w),
+        size: Desired output size. If size is a sequence like (h, w),
             output size will be matched to this. If size is an int, smaller edge of the image will
             be matched to this number. i.e, if height > width, then image will be rescaled
             to (size * height / width, size)
-        interpolation (str):  algorithm used for upsampling: 'nearest' | 'linear' | 'bilinear' |
-            'bicubic' | 'trilinear' | 'area'. Default: 'bilinear'.
-        align_corners(bool): interpolation flag. Default: None. See
-            https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
-        side (str): Corresponding side if ``size`` is an integer. Can be one of ``"short"``, ``"long"``, ``"vert"``,
-            or ``"horz"``. Defaults to ``"short"``.
-        antialias (bool): if True, then image will be filtered with Gaussian before downscaling.
-            No effect for upscaling. Default: False
-
+        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
+            'bicubic' | 'trilinear' | 'area'.
+        align_corners: interpolation flag.
+        side: Corresponding side if ``size`` is an integer. Can be one of ``'short'``, ``'long'``, ``'vert'``,
+            or ``'horz'``.
+        antialias: if True, then image will be filtered with Gaussian before downscaling.
+            No effect for upscaling.
 
     Returns:
-        torch.Tensor: The resized tensor with the shape as the specified size.
+        The resized tensor with the shape as the specified size.
 
     Example:
         >>> img = torch.rand(1, 3, 4, 4)
@@ -588,19 +597,22 @@ def rescale(
 ) -> torch.Tensor:
     r"""Rescale the input torch.Tensor with the given factor.
 
+    .. image:: _static/img/rescale.png
+
     Args:
-        input(torch.Tensor): The image tensor to be scale with shape of :math:`(B, C, H, W)`.
-        interpolation (str):  algorithm used for upsampling: 'nearest' | 'linear' | 'bilinear' |
-            'bicubic' | 'trilinear' | 'area'. Default: 'bilinear'.
-        align_corners(bool): interpolation flag. Default: None. See
-            https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
-        side (str): Corresponding side if ``size`` is an integer. Can be one of ``"short"``, ``"long"``, ``"vert"``,
-            or ``"horz"``. Defaults to ``"short"``.
-        antialias (bool): if True, then image will be filtered with Gaussian before downscaling.
-            No effect for upscaling. Default: False
+        input: The image tensor to be scale with shape of :math:`(B, C, H, W)`.
+        factor: Desired scaling factor in each direction. If scalar, the value is used
+            for both the x- and y-direction.
+        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
+            ``'bicubic'`` | ``'trilinear'`` | ``'area'``.
+        align_corners: interpolation flag.
+        side: Corresponding side if ``size`` is an integer. Can be one of ``'short'``, ``'long'``, ``'vert'``,
+            or ``'horz'``.
+        antialias: if True, then image will be filtered with Gaussian before downscaling.
+            No effect for upscaling.
 
     Returns:
-        torch.Tensor: The rescaled tensor with the shape as the specified size.
+        The rescaled tensor with the shape as the specified size.
 
     Example:
         >>> img = torch.rand(1, 3, 4, 4)
@@ -622,21 +634,20 @@ class Resize(nn.Module):
     r"""Resize the input torch.Tensor to the given size.
 
     Args:
-        size (int, tuple(int, int)): Desired output size. If size is a sequence like (h, w),
+        size: Desired output size. If size is a sequence like (h, w),
             output size will be matched to this. If size is an int, smaller edge of the image will
             be matched to this number. i.e, if height > width, then image will be rescaled
             to (size * height / width, size)
-        interpolation (str):  algorithm used for upsampling: 'nearest' | 'linear' | 'bilinear' |
-            'bicubic' | 'trilinear' | 'area'. Default: 'bilinear'.
-        align_corners(bool): interpolation flag. Default: None. See
-            https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
-        side (str): Corresponding side if ``size`` is an integer. Can be one of ``"short"``, ``"long"``, ``"vert"``,
-            or ``"horz"``. Defaults to ``"short"``.
-        antialias (bool): if True, then image will be filtered with Gaussian before downscaling.
-            No effect for upscaling. Default: False
+        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
+            'bicubic' | 'trilinear' | 'area'.
+        align_corners: interpolation flag.
+        side: Corresponding side if ``size`` is an integer. Can be one of ``'short'``, ``'long'``, ``'vert'``,
+            or ``'horz'``.
+        antialias: if True, then image will be filtered with Gaussian before downscaling.
+            No effect for upscaling.
 
     Returns:
-        torch.Tensor: The resized tensor with the shape of the given size.
+        The resized tensor with the shape of the given size.
 
     Example:
         >>> img = torch.rand(1, 3, 4, 4)
@@ -675,28 +686,28 @@ class Affine(nn.Module):
     r"""Apply multiple elementary affine transforms simultaneously.
 
     Args:
-        angle (torch.Tensor, optional): Angle in degrees for counter-clockwise rotation around the center. The tensor
+        angle: Angle in degrees for counter-clockwise rotation around the center. The tensor
             must have a shape of (B), where B is the batch size.
-        translation (torch.Tensor, optional): Amount of pixels for translation in x- and y-direction. The tensor must
+        translation: Amount of pixels for translation in x- and y-direction. The tensor must
             have a shape of (B, 2), where B is the batch size and the last dimension contains dx and dy.
-        scale_factor (torch.Tensor, optional): Factor for scaling. The tensor must have a shape of (B), where B is the
+        scale_factor: Factor for scaling. The tensor must have a shape of (B), where B is the
             batch size.
-        shear (torch.Tensor, optional): Angles in degrees for shearing in x- and y-direction around the center. The
+        shear: Angles in degrees for shearing in x- and y-direction around the center. The
             tensor must have a shape of (B, 2), where B is the batch size and the last dimension contains sx and sy.
-        center (torch.Tensor, optional): Transformation center in pixels. The tensor must have a shape of (B, 2), where
+        center: Transformation center in pixels. The tensor must have a shape of (B, 2), where
             B is the batch size and the last dimension contains cx and cy. Defaults to the center of image to be
             transformed.
-        mode (str): interpolation mode to calculate output values
-          'bilinear' | 'nearest'. Default: 'bilinear'.
-        padding_mode (str): padding mode for outside grid values
-          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners(bool, optional): interpolation flag. Default: None.
+        mode: interpolation mode to calculate output values
+          ``'bilinear'`` | ``'nearest'``.
+        padding_mode: padding mode for outside grid values
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
+        align_corners: interpolation flag.
 
     Raises:
         RuntimeError: If not one of ``angle``, ``translation``, ``scale_factor``, or ``shear`` is set.
 
     Returns:
-        torch.Tensor: The transformed tensor with same shape as input.
+        The transformed tensor with same shape as input.
 
     Example:
         >>> img = torch.rand(1, 2, 3, 5)
@@ -771,17 +782,18 @@ class Rescale(nn.Module):
     r"""Rescale the input torch.Tensor with the given factor.
 
     Args:
-        factor (float, tuple(float, float)): Desired scaling factor in each direction. If scalar, the value is used
+        factor: Desired scaling factor in each direction. If scalar, the value is used
             for both the x- and y-direction.
-        interpolation (str):  Algorithm used for upsampling. Can be one of ``"nearest"``, ``"linear"``, ``"bilinear"``,
-            ``"bicubic"``, ``"trilinear"``, or ``"area"``. Default: ``"bilinear"``.
-        align_corners(bool): Interpolation flag. Default: None. See :func:`~torch.nn.functional.interpolate` for
-            details.
-        antialias (bool): if True, then image will be filtered with Gaussian before downscaling.
-            No effect for upscaling. Default: False
+        interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
+            ``'bicubic'`` | ``'trilinear'`` | ``'area'``.
+        align_corners: interpolation flag.
+        side: Corresponding side if ``size`` is an integer. Can be one of ``'short'``, ``'long'``, ``'vert'``,
+            or ``'horz'``.
+        antialias: if True, then image will be filtered with Gaussian before downscaling.
+            No effect for upscaling.
 
     Returns:
-        torch.Tensor: The rescaled tensor with the shape according to the given factor.
+        The rescaled tensor with the shape according to the given factor.
 
     Example:
         >>> img = torch.rand(1, 3, 4, 4)
@@ -813,19 +825,19 @@ class Rotate(nn.Module):
     r"""Rotate the tensor anti-clockwise about the centre.
 
     Args:
-        angle (torch.Tensor): The angle through which to rotate. The tensor
+        angle: The angle through which to rotate. The tensor
           must have a shape of (B), where B is batch size.
-        center (torch.Tensor): The center through which to rotate. The tensor
+        center: The center through which to rotate. The tensor
           must have a shape of (B, 2), where B is batch size and last
           dimension contains cx and cy.
-        mode (str): interpolation mode to calculate output values
-          'bilinear' | 'nearest'. Default: 'bilinear'.
-        padding_mode (str): padding mode for outside grid values
-          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners(bool, optional): interpolation flag. Default: None.
+        mode: interpolation mode to calculate output values
+          ``'bilinear'`` | ``'nearest'``.
+        padding_mode: padding mode for outside grid values
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
+        align_corners: interpolation flag.
 
     Returns:
-        torch.Tensor: The rotated tensor with the same shape as the input.
+        The rotated tensor with the same shape as the input.
 
     Example:
         >>> img = torch.rand(1, 3, 4, 4)
@@ -858,17 +870,17 @@ class Translate(nn.Module):
     r"""Translate the tensor in pixel units.
 
     Args:
-        translation (torch.Tensor): tensor containing the amount of pixels to
+        translation: tensor containing the amount of pixels to
           translate in the x and y direction. The tensor must have a shape of
           (B, 2), where B is batch size, last dimension contains dx dy.
-        mode (str): interpolation mode to calculate output values
-          'bilinear' | 'nearest'. Default: 'bilinear'.
-        padding_mode (str): padding mode for outside grid values
-          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners(bool, optional): interpolation flag. Default: None.
+        mode: interpolation mode to calculate output values
+          ``'bilinear'`` | ``'nearest'``.
+        padding_mode: padding mode for outside grid values
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
+        align_corners: interpolation flag.
 
     Returns:
-        torch.Tensor: The translated tensor with the same shape as the input.
+        The translated tensor with the same shape as the input.
 
     Example:
         >>> img = torch.rand(1, 3, 4, 4)
@@ -899,21 +911,21 @@ class Scale(nn.Module):
     r"""Scale the tensor by a factor.
 
     Args:
-        scale_factor (torch.Tensor): The scale factor apply. The tensor
+        scale_factor: The scale factor apply. The tensor
           must have a shape of (B) or (B, 2), where B is batch size.
           If (B), isotropic scaling will perform.
           If (B, 2), x-y-direction specific scaling will perform.
-        center (torch.Tensor): The center through which to scale. The tensor
+        center: The center through which to scale. The tensor
           must have a shape of (B, 2), where B is batch size and last
           dimension contains cx and cy.
-        mode (str): interpolation mode to calculate output values
-          'bilinear' | 'nearest'. Default: 'bilinear'.
-        padding_mode (str): padding mode for outside grid values
-          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners(bool, optional): interpolation flag. Default: None.
+        mode: interpolation mode to calculate output values
+          ``'bilinear'`` | ``'nearest'``.
+        padding_mode: padding mode for outside grid values
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
+        align_corners: interpolation flag.
 
     Returns:
-        torch.Tensor: The scaled tensor with the same shape as the input.
+        The scaled tensor with the same shape as the input.
 
     Example:
         >>> img = torch.rand(1, 3, 4, 4)
@@ -946,18 +958,17 @@ class Shear(nn.Module):
     r"""Shear the tensor.
 
     Args:
-        tensor (torch.Tensor): The image tensor to be skewed.
-        shear (torch.Tensor): tensor containing the angle to shear
+        shear: tensor containing the angle to shear
           in the x and y direction. The tensor must have a shape of
           (B, 2), where B is batch size, last dimension contains shx shy.
-        mode (str): interpolation mode to calculate output values
-          'bilinear' | 'nearest'. Default: 'bilinear'.
-        padding_mode (str): padding mode for outside grid values
-          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners(bool, optional): interpolation flag. Default: False.
+        mode: interpolation mode to calculate output values
+          ``'bilinear'`` | ``'nearest'``.
+        padding_mode: padding mode for outside grid values
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
+        align_corners: interpolation flag.
 
     Returns:
-        torch.Tensor: The skewed tensor with the same shape as the input.
+        The skewed tensor with the same shape as the input.
 
     Example:
         >>> img = torch.rand(1, 3, 4, 4)
