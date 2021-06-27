@@ -1,6 +1,5 @@
-from collections import OrderedDict
-import warnings
-from typing import Dict, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, cast
+from itertools import zip_longest
 
 import torch
 import torch.nn as nn
@@ -9,7 +8,7 @@ from kornia.augmentation.augmentation import ColorJitter
 from kornia.augmentation.base import _AugmentationBase, IntensityAugmentationBase2D
 from kornia.contrib.extract_patches import extract_tensor_patches
 
-from .image import ImageSequential
+from .image import ImageSequential, ParamItem
 
 __all__ = ["PatchSequential"]
 
@@ -220,37 +219,36 @@ class PatchSequential(ImageSequential):
         return restored_tensor
 
     def forward_patchwise(
-        self, input: torch.Tensor, params: Optional[List[Dict[str, Dict[str, torch.Tensor]]]] = None
+        self, input: torch.Tensor, params: Optional[List[List[ParamItem]]] = None
     ) -> torch.Tensor:  # NOTE: return_transform is always False here.
         if params is None:
-            params = [{}] * input.size(1)
+            params = [[]] * input.size(1)
             auglist = [self.get_forward_sequence() for _ in range(input.size(1))]
         else:
             auglist = [self.get_forward_sequence(p) for p in params]
             assert input.size(0) == len(auglist) == len(params)
 
-        # TODO: This will need an optimization later.
         out = []
-        ps = []
+        self._params = []
+        # TODO: This will need an optimization later.
         for inp, proc, param in zip(input, auglist, params):
             o = []
-            _p = {}
-            for inp_pat, (proc_name, proc_pat) in zip(inp, proc):
+            p = []
+            for inp_pat, (proc_name, proc_pat), _param in zip_longest(inp, proc, param):
                 if isinstance(proc_pat, (_AugmentationBase, ImageSequential)):
-                    o.append(proc_pat(inp_pat[None], param[proc_name] if proc_name in param else None))
-                    _p.update({proc_name: proc_pat._params})
+                    o.append(proc_pat(inp_pat[None], _param.data if _param is not None else None))
+                    p.append(ParamItem(proc_name, proc_pat._params))
                 else:
                     o.append(proc_pat(inp_pat[None]))
+                    p.append(ParamItem(proc_name, {}))
             out.append(torch.cat(o, dim=0))
-            ps.append(_p)
+            self._params.append(p)
 
-        # This is a special parameter that contains a list
-        self._params = ps  # type: ignore
         input = torch.stack(out, dim=0)
         return input
 
     def forward_batchwise(
-        self, input: torch.Tensor, params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None
+        self, input: torch.Tensor, params: Optional[List[ParamItem]] = None
     ) -> torch.Tensor:  # NOTE: return_transform is always False here.
         if self.same_on_batch:
             batch_shape = (input.size(1), *input.shape[-3:])
@@ -259,7 +257,7 @@ class PatchSequential(ImageSequential):
             batch_shape = (input.size(0) * input.size(1), *input.shape[-3:])
 
         if params is None:
-            params = OrderedDict()
+            params = []
             for name, aug in self.get_forward_sequence():
                 if isinstance(aug, _AugmentationBase):
                     aug.same_on_batch = False
@@ -272,7 +270,7 @@ class PatchSequential(ImageSequential):
                     aug.same_on_batch = True
                 else:
                     param = None
-                params.update({name: param})
+                params.append(ParamItem(name, param))
 
         input = super().forward(input.view(-1, *input.shape[-3:]), params)  # type: ignore
 
@@ -281,7 +279,7 @@ class PatchSequential(ImageSequential):
     def forward(  # type: ignore
         self,
         input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
-        params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None,
+        params: Optional[Union[List[ParamItem], List[List[ParamItem]]]] = None,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:  # NOTE: return_transform is always False here.
         """Input transformation will be returned if input is a tuple."""
         # BCHW -> B(patch)CHW
@@ -293,17 +291,13 @@ class PatchSequential(ImageSequential):
             input = self.extract_patches(input, self.grid_size, pad)
 
         if not self.patchwise_apply:
-            assert params is None or isinstance(
-                params, (dict,)
-            ), f"params for batchwise forward is required to be a dict or None, while got {type(params)}."
+            params = cast(List[ParamItem], params)
             if isinstance(input, (tuple,)):
                 input = self.forward_batchwise(input[0], params), input[1]
             else:
                 input = self.forward_batchwise(input, params)
         else:
-            assert params is None or isinstance(
-                params, (list,)
-            ), f"params for patchwise forward is required to be a list or None, while got {type(params)}."
+            params = cast(List[List[ParamItem]], params)
             if isinstance(input, (tuple,)):
                 input = self.forward_patchwise(input[0], params), input[1]
             else:

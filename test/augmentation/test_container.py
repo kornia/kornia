@@ -81,7 +81,7 @@ class TestVideoSequential:
         ],
     )
     @pytest.mark.parametrize('data_format', ["BCTHW", "BTCHW"])
-    @pytest.mark.parametrize('random_apply', [1, (1, 1), (1,), True, False])
+    @pytest.mark.parametrize('random_apply', [1, (1, 1), (1,), 10, True, False])
     def test_same_on_frame(self, augmentations, data_format, random_apply, device, dtype):
         aug_list = K.VideoSequential(
             *augmentations, data_format=data_format, same_on_frame=True, random_apply=random_apply
@@ -140,7 +140,7 @@ class TestSequential:
     @pytest.mark.parametrize('same_on_batch', [True, False, None])
     @pytest.mark.parametrize("return_transform", [True, False, None])
     @pytest.mark.parametrize("keepdim", [True, False, None])
-    @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), True, False])
+    @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
     def test_construction(self, same_on_batch, return_transform, keepdim, random_apply):
         K.ImageSequential(
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
@@ -152,7 +152,7 @@ class TestSequential:
         )
 
     @pytest.mark.parametrize("return_transform", [True, False, None])
-    @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), True, False])
+    @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
     def test_forward(self, return_transform, random_apply, device, dtype):
         inp = torch.randn(1, 3, 30, 30, device=device, dtype=dtype)
         aug = K.ImageSequential(
@@ -180,7 +180,7 @@ class TestAugmentationSequential:
         with pytest.raises(Exception):  # AssertError and NotImplementedError
             K.AugmentationSequential(augmentation_list, data_keys=data_keys)
 
-    @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), True, False])
+    @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
     def test_forward_and_inverse(self, random_apply, device, dtype):
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
         bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
@@ -236,7 +236,7 @@ class TestAugmentationSequential:
         aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0, return_transform=True))
         assert aug.inverse(mask, data_keys=['mask']).shape == mask.shape
 
-    @pytest.mark.parametrize('random_apply', [2, (1, 2), (2,), True, False])
+    @pytest.mark.parametrize('random_apply', [2, (1, 2), (2,), 10, True, False])
     def test_forward_and_inverse_return_transform(self, random_apply, device, dtype):
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
         bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
@@ -264,7 +264,7 @@ class TestAugmentationSequential:
         assert out_inv[2].shape == bbox.shape
         assert out_inv[3].shape == keypoints.shape
 
-    @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), True, False])
+    @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
     def test_inverse_and_forward_return_transform(self, random_apply, device, dtype):
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
         bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
@@ -337,7 +337,7 @@ class TestPatchSequential:
     @pytest.mark.parametrize('patchwise_apply', [True, False])
     @pytest.mark.parametrize('same_on_batch', [True, False, None])
     @pytest.mark.parametrize('keepdim', [True, False, None])
-    @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), True, False])
+    @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
     def test_forward(self, shape, padding, patchwise_apply, same_on_batch, keepdim, random_apply, device, dtype):
         try:  # skip wrong param settings.
             seq = K.PatchSequential(

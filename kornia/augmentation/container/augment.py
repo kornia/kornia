@@ -1,6 +1,6 @@
-import warnings
-from collections import OrderedDict
 from typing import cast, Dict, List, Optional, Tuple, Union
+from itertools import zip_longest
+import warnings
 
 import torch
 import torch.nn as nn
@@ -9,7 +9,7 @@ from kornia.augmentation.base import _AugmentationBase, GeometricAugmentationBas
 from kornia.constants import DataKey
 from kornia.geometry import transform_boxes, transform_points
 
-from .image import ImageSequential
+from .image import ImageSequential, ParamItem
 from .patch import PatchSequential
 
 __all__ = ["AugmentationSequential"]
@@ -56,7 +56,7 @@ class AugmentationSequential(ImageSequential):
         ... data_keys=["input", "mask", "bbox", "keypoints"],
         ... return_transform=False,
         ... same_on_batch=False,
-        ... random_apply=True,
+        ... random_apply=10,
         ... )
         >>> out = aug_list(input, input, bbox, points)
         >>> [o.shape for o in out]
@@ -97,12 +97,17 @@ class AugmentationSequential(ImageSequential):
                 warnings.warn("Geometric transformation detected in PatchSeqeuntial, which would break bbox, mask.")
 
     def apply_to_mask(
-        self, input: torch.Tensor, module: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None
+        self, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None,
     ) -> torch.Tensor:
-        if isinstance(module, GeometricAugmentationBase2D) and param is None:
+        if param is not None:
+            _param = cast(Dict[str, torch.Tensor], param.data)
+        else:
+            _param = None  # type: ignore
+
+        if isinstance(module, GeometricAugmentationBase2D) and _param is None:
             input = module(input, return_transform=False)
-        elif isinstance(module, GeometricAugmentationBase2D) and param is not None:
-            input = module(input, param, return_transform=False)
+        elif isinstance(module, GeometricAugmentationBase2D) and _param is not None:
+            input = module(input, _param, return_transform=False)
         else:
             pass  # No need to update anything
         return input
@@ -111,24 +116,34 @@ class AugmentationSequential(ImageSequential):
         self,
         input: torch.Tensor,
         module: nn.Module,
-        param: Optional[Dict[str, torch.Tensor]] = None,
+        param: Optional[ParamItem] = None,
         mode: str = "xyxy",
     ) -> torch.Tensor:
-        if isinstance(module, GeometricAugmentationBase2D) and param is None:
+        if param is not None:
+            _param = cast(Dict[str, torch.Tensor], param.data)
+        else:
+            _param = None  # type: ignore
+
+        if isinstance(module, GeometricAugmentationBase2D) and _param is None:
             raise ValueError(f"Transformation matrix for {module} has not been computed.")
-        if isinstance(module, GeometricAugmentationBase2D) and param is not None:
-            input = transform_boxes(module.get_transformation_matrix(input, param), input, mode)
+        if isinstance(module, GeometricAugmentationBase2D) and _param is not None:
+            input = transform_boxes(module.get_transformation_matrix(input, _param), input, mode)
         else:
             pass  # No need to update anything
         return input
 
     def apply_to_keypoints(
-        self, input: torch.Tensor, module: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None
+        self, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None,
     ) -> torch.Tensor:
-        if isinstance(module, GeometricAugmentationBase2D) and param is None:
+        if param is not None:
+            _param = cast(Dict[str, torch.Tensor], param.data)
+        else:
+            _param = None  # type: ignore
+
+        if isinstance(module, GeometricAugmentationBase2D) and _param is None:
             raise ValueError(f"Transformation matrix for {module} has not been computed.")
-        if isinstance(module, GeometricAugmentationBase2D) and param is not None:
-            input = transform_points(module.get_transformation_matrix(input, param), input)
+        if isinstance(module, GeometricAugmentationBase2D) and _param is not None:
+            input = transform_points(module.get_transformation_matrix(input, _param), input)
         else:
             pass  # No need to update anything
         return input
@@ -138,9 +153,11 @@ class AugmentationSequential(ImageSequential):
         input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
         module_name: str,
         module: Optional[nn.Module] = None,
-        param: Optional[Dict[str, torch.Tensor]] = None,
+        param: Optional[ParamItem] = None,
         dcate: Union[str, int, DataKey] = DataKey.INPUT,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        if param is not None:
+            assert module_name == param.name
         if module is None:
             module = self.get_submodule(module_name)
         if DataKey.get(dcate) in [DataKey.INPUT]:
@@ -214,7 +231,7 @@ class AugmentationSequential(ImageSequential):
     def inverse(
         self,
         *args: torch.Tensor,
-        params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None,
+        params: Optional[List[ParamItem]] = None,
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
     ) -> Union[torch.Tensor, List[torch.Tensor]]:
         """Reverse the transformation applied.
@@ -227,12 +244,14 @@ class AugmentationSequential(ImageSequential):
         assert len(args) == len(data_keys), (
             "The number of inputs must align with the number of data_keys, " f"Got {len(args)} and {len(data_keys)}."
         )
-        if params is None:
+        if params is None and self._params is None:
+            raise ValueError("No parameters avaliable for inversing.")
+        else:
             params = self._params
 
         outputs = []
         for input, dcate in zip(args, data_keys):
-            for name, module in list(self.get_forward_sequence(params))[::-1]:
+            for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
                 if isinstance(module, _AugmentationBase):
                     # Check if a param recorded
                     param = self._params[name] if name in self._params else None
@@ -259,7 +278,7 @@ class AugmentationSequential(ImageSequential):
     def forward(  # type: ignore
         self,
         *args: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
-        params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None,
+        params: Optional[List[ParamItem]] = None,
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
     ) -> Union[
         torch.Tensor, Tuple[torch.Tensor, torch.Tensor], List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]
@@ -268,24 +287,17 @@ class AugmentationSequential(ImageSequential):
         if data_keys is None:
             data_keys = cast(List[Union[str, int, DataKey]], self.data_keys)
 
-        if params is None:
-            params = OrderedDict()
-            named_modules = self._get_child_sequence()
-        else:
-            named_modules = self._get_children_by_module_names(list(params.keys()))
-
         assert len(args) == len(
             data_keys
         ), f"The number of inputs must align with the number of data_keys. Got {len(args)} and {len(data_keys)}."
-        params = params if params is not None else {}
 
         outputs = []
-        self._params = OrderedDict()
+        self._params = []
+        named_modules = list(self.get_forward_sequence(params))
         for input, dcate in zip(args, data_keys):
-            for name, module in named_modules:
-                # Check if a param provided.
-                param = params[name] if name in params else None
-
+            # use the parameter if the first round has been finished.
+            params = self._params if params is None or len(params) == 0 else params
+            for param, (name, module) in zip_longest(params, named_modules):
                 if dcate == DataKey.INPUT:
                     input = self.apply_to_input(input, name, module, param)
                 elif isinstance(module, GeometricAugmentationBase2D) and dcate in DataKey:

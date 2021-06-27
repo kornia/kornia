@@ -1,5 +1,6 @@
+from typing import Any, Iterator, List, Optional, Tuple, Union, NamedTuple
+from itertools import zip_longest
 from collections import OrderedDict
-from typing import Dict, Iterator, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -7,6 +8,11 @@ import torch.nn as nn
 from kornia.augmentation.base import _AugmentationBase
 
 __all__ = ["ImageSequential"]
+
+
+class ParamItem(NamedTuple):
+    name: str
+    data: Union[dict, list]
 
 
 class ImageSequential(nn.Sequential):
@@ -43,6 +49,7 @@ class ImageSequential(nn.Sequential):
         ...     kornia.enhance.Invert(),
         ... return_transform=True,
         ... same_on_batch=True,
+        ... random_apply=10,
         ... )
         >>> out = aug_list(input)
         >>> out[0].shape, out[1].shape
@@ -84,7 +91,7 @@ class ImageSequential(nn.Sequential):
             _args.update({f"{arg.__class__.__name__}_{idx}": arg})
         super(ImageSequential, self).__init__(_args)
 
-        self._params: Dict[str, dict] = OrderedDict()
+        self._params: List[Any] = []
         self.random_apply: Union[Tuple[int, int], bool]
         if random_apply:
             if isinstance(random_apply, (bool,)) and random_apply is True:
@@ -108,11 +115,6 @@ class ImageSequential(nn.Sequential):
                 and isinstance(self.random_apply[0], (int,))
                 and isinstance(self.random_apply[0], (int,))
             ), f"Expect a tuple of (int, int). Got {self.random_apply}."
-
-            assert self.random_apply[1] <= len(args) + 1, (
-                "`random_apply` with replacement is not currently supported. "
-                f"Please set the upper bounds to be smaller than {len(args)}."
-            )
         else:
             self.random_apply = False
 
@@ -137,12 +139,12 @@ class ImageSequential(nn.Sequential):
             yield modules[list(dict(self.named_children()).keys()).index(name)]
 
     def get_forward_sequence(
-        self, params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None
+        self, params: Optional[List[ParamItem]] = None
     ) -> Iterator[Tuple[str, nn.Module]]:
         if params is None:
             named_modules = self._get_child_sequence()
         else:
-            named_modules = self._get_children_by_module_names(list(params.keys()))
+            named_modules = self._get_children_by_module_names([p.name for p in params])
         return named_modules
 
     def apply_to_input(
@@ -150,35 +152,42 @@ class ImageSequential(nn.Sequential):
         input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
         module_name: str,
         module: Optional[nn.Module] = None,
-        param: Optional[Dict[str, torch.Tensor]] = None,
+        param: Optional[ParamItem] = None,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         if module is None:
             module = self.get_submodule(module_name)
-        if isinstance(module, (_AugmentationBase, ImageSequential)) and param is None:
+        if param is not None:
+            assert module_name == param.name
+            _param = param.data
+        else:
+            _param = None  # type: ignore
+
+        if isinstance(module, (_AugmentationBase, ImageSequential)) and _param is None:
             input = module(input)
-            self._params.update({module_name: module._params})
-        elif isinstance(module, (_AugmentationBase, ImageSequential)) and param is not None:
-            input = module(input, params=param)
-            self._params.update({module_name: param})
+            self._params.append(ParamItem(module_name, module._params))
+        elif isinstance(module, (_AugmentationBase, ImageSequential)) and _param is not None:
+            input = module(input, params=_param)
+            self._params.append(ParamItem(module_name, _param))
         else:
             assert (
-                param == {} or param is None
+                _param == {} or _param is None
             ), f"Non-augmentaion operation {module_name} require empty parameters. Got {module}."
             # In case of return_transform = True
             if isinstance(input, (tuple, list)):
                 input = (module(input[0]), input[1])
             else:
                 input = module(input)
-            self._params.update({module_name: {}})
+            self._params.append(ParamItem(module_name, {}))
         return input
 
     def forward(
         self,
         input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
-        params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None,
+        params: Optional[List[ParamItem]] = None,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-        self._params = OrderedDict()
-        for name, module in self.get_forward_sequence(params):
-            param = params[name] if params is not None and name in params else None
+        self._params = []
+        named_modules = self.get_forward_sequence(params)
+        params = [] if params is None else params
+        for (name, module), param in zip_longest(named_modules, params):
             input = self.apply_to_input(input, name, module, param=param)  # type: ignore
         return input
