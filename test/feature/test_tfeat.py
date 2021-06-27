@@ -1,10 +1,10 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
 
 import kornia.testing as utils  # test utils
 from kornia.feature import TFeat
+from kornia.testing import assert_close
 
 
 class TestTFeat:
@@ -41,4 +41,4 @@ class TestTFeat:
         patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
         tfeat = TFeat(True).to(patches.device, patches.dtype).eval()
         tfeat_jit = torch.jit.script(TFeat(True).to(patches.device, patches.dtype).eval())
-        assert_allclose(tfeat_jit(patches), tfeat(patches))
+        assert_close(tfeat_jit(patches), tfeat(patches))

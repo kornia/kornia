@@ -1,12 +1,11 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
 
 import kornia
 from kornia.augmentation import RandomMotionBlur, RandomMotionBlur3D
 from kornia.filters import motion_blur, motion_blur3d
-from kornia.testing import tensor_to_gradcheck_var
+from kornia.testing import assert_close, tensor_to_gradcheck_var
 
 
 class TestRandomMotionBlur:
@@ -44,12 +43,12 @@ class TestRandomMotionBlur:
             assert len(output) == 2, f"must return a length 2 tuple if return_transform is True. Got {len(output)}."
             identity = kornia.eye_like(3, input)
             output, mat = output
-            assert_allclose(mat, identity, rtol=1e-4, atol=1e-4)
+            assert_close(mat, identity, rtol=1e-4, atol=1e-4)
 
         if same_on_batch:
-            assert_allclose(output[0], output[1], rtol=1e-4, atol=1e-4)
+            assert_close(output[0], output[1], rtol=1e-4, atol=1e-4)
         elif p == 0:
-            assert_allclose(output, input, rtol=1e-4, atol=1e-4)
+            assert_close(output, input, rtol=1e-4, atol=1e-4)
         else:
             assert not torch.allclose(output[0], output[1], rtol=1e-4, atol=1e-4)
 
@@ -71,7 +70,7 @@ class TestRandomMotionBlur:
             f.border_type.name.lower(),
         )
 
-        assert_allclose(output, expected, rtol=1e-4, atol=1e-4)
+        assert_close(output, expected, rtol=1e-4, atol=1e-4)
 
     def test_gradcheck(self, device):
         torch.manual_seed(0)  # for random reproductibility
@@ -126,12 +125,12 @@ class TestRandomMotionBlur3D:
             assert len(output) == 2, f"must return a length 2 tuple if return_transform is True. Got {len(output)}."
             identity = kornia.eye_like(4, input)
             output, mat = output
-            assert_allclose(mat, identity, rtol=1e-4, atol=1e-4)
+            assert_close(mat, identity, rtol=1e-4, atol=1e-4)
 
         if same_on_batch:
-            assert_allclose(output[0], output[1], rtol=1e-4, atol=1e-4)
+            assert_close(output[0], output[1], rtol=1e-4, atol=1e-4)
         elif p == 0:
-            assert_allclose(output, input, rtol=1e-4, atol=1e-4)
+            assert_close(output, input, rtol=1e-4, atol=1e-4)
         else:
             assert not torch.allclose(output[0], output[1], rtol=1e-4, atol=1e-4)
 
@@ -153,7 +152,7 @@ class TestRandomMotionBlur3D:
             f.border_type.name.lower(),
         )
 
-        assert_allclose(output, expected, rtol=1e-4, atol=1e-4)
+        assert_close(output, expected, rtol=1e-4, atol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         torch.manual_seed(0)  # for random reproductibility

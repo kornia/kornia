@@ -1,10 +1,10 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
 
 import kornia
 import kornia.testing as utils  # test utils
+from kornia.testing import assert_close
 
 
 class TestPyrUp:
@@ -27,7 +27,7 @@ class TestPyrUp:
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
         op = kornia.geometry.pyrup
         op_jit = torch.jit.script(op)
-        assert_allclose(op(img), op_jit(img))
+        assert_close(op(img), op_jit(img))
 
 
 class TestPyrDown:
@@ -45,8 +45,8 @@ class TestPyrDown:
         inp = torch.zeros(1, 1, 6, 6, device=device, dtype=dtype)
         inp[:, :, 2:4, 2:4] = 1.0
         pyr_out = kornia.geometry.PyrDown()(inp).squeeze()
-        assert_allclose(pyr_out, pyr_out.flip(0))
-        assert_allclose(pyr_out, pyr_out.flip(1))
+        assert_close(pyr_out, pyr_out.flip(0))
+        assert_close(pyr_out, pyr_out.flip(1))
 
     def test_gradcheck(self, device, dtype):
         img = torch.rand(1, 2, 5, 4, device=device, dtype=dtype)
@@ -57,7 +57,7 @@ class TestPyrDown:
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
         op = kornia.geometry.pyrdown
         op_jit = torch.jit.script(op)
-        assert_allclose(op(img), op_jit(img))
+        assert_close(op(img), op_jit(img))
 
 
 class TestScalePyramid:
@@ -108,8 +108,8 @@ class TestScalePyramid:
         for i, pyr_level in enumerate(sp):
             for ii, img in enumerate(pyr_level):
                 img = img.squeeze()
-                assert_allclose(img, img.flip(1))
-                assert_allclose(img, img.flip(2))
+                assert_close(img, img.flip(1))
+                assert_close(img, img.flip(2))
 
     def test_gradcheck(self, device, dtype):
         img = torch.rand(1, 2, 7, 9, device=device, dtype=dtype)

@@ -1,10 +1,9 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
 
 import kornia
-from kornia.testing import BaseTester
+from kornia.testing import assert_close, BaseTester
 
 
 class TestRgbToYuv(BaseTester):
@@ -41,7 +40,7 @@ class TestRgbToYuv(BaseTester):
         rgb = kornia.color.yuv_to_rgb
 
         data_out = rgb(yuv(data))
-        assert_allclose(data_out, data, rtol=1e-2, atol=1e-2)
+        assert_close(data_out, data, rtol=1e-2, atol=1e-2)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
@@ -55,7 +54,7 @@ class TestRgbToYuv(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.rgb_to_yuv
         op_jit = torch.jit.script(op)
-        assert_allclose(op(img), op_jit(img))
+        assert_close(op(img), op_jit(img))
 
     @pytest.mark.nn
     def test_module(self, device, dtype):
@@ -63,7 +62,7 @@ class TestRgbToYuv(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.RgbToYuv().to(device, dtype)
         fcn = kornia.color.rgb_to_yuv
-        assert_allclose(ops(img), fcn(img))
+        assert_close(ops(img), fcn(img))
 
 
 class TestYuvToRgb(BaseTester):
@@ -100,7 +99,7 @@ class TestYuvToRgb(BaseTester):
         yuv = kornia.color.rgb_to_yuv
 
         data_out = rgb(yuv(data))
-        assert_allclose(data_out, data, rtol=1e-2, atol=1e-2)
+        assert_close(data_out, data, rtol=1e-2, atol=1e-2)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
@@ -114,7 +113,7 @@ class TestYuvToRgb(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.yuv_to_rgb
         op_jit = torch.jit.script(op)
-        assert_allclose(op(img), op_jit(img))
+        assert_close(op(img), op_jit(img))
 
     @pytest.mark.nn
     def test_module(self, device, dtype):
@@ -122,4 +121,4 @@ class TestYuvToRgb(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.YuvToRgb().to(device, dtype)
         fcn = kornia.color.yuv_to_rgb
-        assert_allclose(ops(img), fcn(img))
+        assert_close(ops(img), fcn(img))
