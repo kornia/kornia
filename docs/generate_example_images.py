@@ -94,8 +94,8 @@ def main():
         if aug_name == "CenterCrop":
             h, w = img1.shape[-2:]
             h_new, w_new = out.shape[-2:]
-            h_dif, w_dif = int(h-h_new), int(w-w_new)
-            out = torch.nn.functional.pad(out, (w_dif//2,w_dif//2,0,h_dif))
+            h_dif, w_dif = int(h - h_new), int(w - w_new)
+            out = torch.nn.functional.pad(out, (w_dif // 2, w_dif // 2, 0, h_dif))
 
         out = torch.cat([img_in[0], *[out[i] for i in range(out.size(0))]], dim=-1)
         # save the output image
@@ -265,29 +265,47 @@ def main():
     # korna.geometry.transform module
     mod = importlib.import_module("kornia.geometry.transform")
     h, w = img6.shape[-2:]
+
     def _get_tps_args():
         src = torch.tensor([[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, -1.0], [0.0, 0.0]]]).repeat(2, 1, 1)  # Bx5x2
         dst = src + torch.distributions.Uniform(-0.2, 0.2).rsample((2, 5, 2))
         kernel, affine = K.geometry.transform.get_tps_transform(dst, src)
         return src, kernel, affine
+
     transforms: dict = {
-        "warp_affine": ((K.geometry.transform.get_affine_matrix2d(
-            translations=torch.zeros(2,2),
-            center=(torch.tensor([w, h])/2).repeat(2,1),
-            scale=torch.distributions.Uniform(0.5, 1.5).rsample((2,2)),
-            angle=torch.tensor([-25., 25.]))[:,:2,:3],(h,w)), 2),
-        "remap": ((*(K.utils.create_meshgrid(h,w,normalized_coordinates=True)-0.25).unbind(-1),'bilinear','zeros',True,True,), 1),
+        "warp_affine": (
+            (
+                K.geometry.transform.get_affine_matrix2d(
+                    translations=torch.zeros(2, 2),
+                    center=(torch.tensor([w, h]) / 2).repeat(2, 1),
+                    scale=torch.distributions.Uniform(0.5, 1.5).rsample((2, 2)),
+                    angle=torch.tensor([-25.0, 25.0]),
+                )[:, :2, :3],
+                (h, w),
+            ),
+            2,
+        ),
+        "remap": (
+            (
+                *(K.utils.create_meshgrid(h, w, normalized_coordinates=True) - 0.25).unbind(-1),
+                'bilinear',
+                'zeros',
+                True,
+                True,
+            ),
+            1,
+        ),
         "warp_image_tps": ((_get_tps_args()), 2),
-        "rotate": ((torch.tensor([-15., 25.]),), 2),
-        "translate": ((torch.tensor([[10.,-15],[50., -25.]]),), 2),
-        "scale": ((torch.tensor([[0.5, 1.25], [1., 1.5]]),), 2),
-        "shear": ((torch.tensor([[0.1, -0.2], [-.2, .1]]),), 2),
+        "rotate": ((torch.tensor([-15.0, 25.0]),), 2),
+        "translate": ((torch.tensor([[10.0, -15], [50.0, -25.0]]),), 2),
+        "scale": ((torch.tensor([[0.5, 1.25], [1.0, 1.5]]),), 2),
+        "shear": ((torch.tensor([[0.1, -0.2], [-0.2, 0.1]]),), 2),
         "rot180": ((), 1),
         "hflip": ((), 1),
         "vflip": ((), 1),
         "resize": (((120, 220),), 1),
         "rescale": ((0.5,), 1),
-        "elastic_transform2d": ((torch.rand(1, 2, h, w) * 2 - 1, (63,63), (32,32), (4., 4.),), 1),
+        "elastic_transform2d": ((torch.rand(1, 2, h, w) * 2 - 1, (63, 63), (32, 32), (4.0, 4.0)), 1),
         "pyrdown": ((), 1),
         "pyrup": ((), 1),
         "build_pyramid": ((3,), 1),
@@ -299,14 +317,14 @@ def main():
         # import function and apply
         fn = getattr(mod, fn_name)
         out = fn(*args_in)
-        if fn_name in ("resize", "rescale", "pyrdown", "pyrup",):
+        if fn_name in ("resize", "rescale", "pyrdown", "pyrup"):
             h_new, w_new = out.shape[-2:]
-            out = torch.nn.functional.pad(out, (0,(w-w_new),0,(h-h_new)))
+            out = torch.nn.functional.pad(out, (0, (w - w_new), 0, (h - h_new)))
         if fn_name == "build_pyramid":
             _out = []
             for pyr in out[1:]:
                 h_new, w_new = pyr.shape[-2:]
-                out_tmp = torch.nn.functional.pad(pyr, (0,(w-w_new),0,(h-h_new)))
+                out_tmp = torch.nn.functional.pad(pyr, (0, (w - w_new), 0, (h - h_new)))
                 _out.append(out_tmp)
             out = torch.cat(_out)
         # save the output image
