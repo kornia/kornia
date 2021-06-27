@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Change GaussianBlur to RandomGaussianBlur ([#1118](https://github.com/kornia/kornia/pull/1118))
 - Update ci with pytorch 1.9.0 ([#1120](https://github.com/kornia/kornia/pull/1120))
 - Changed option for mean and std to be tuples in normalization ([#987](https://github.com/kornia/kornia/pull/987))
-- Adopt torch.testing.assert_close ([#1031](https://github.com/kornia/kornia/pull/1031)) 
+- Adopt torch.testing.assert_close ([#1031](https://github.com/kornia/kornia/pull/1031))
 
 ### Removed
 - Remove numpy import ([#1116](https://github.com/kornia/kornia/pull/1116))
