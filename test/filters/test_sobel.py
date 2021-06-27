@@ -1,10 +1,10 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
 
 import kornia
 import kornia.testing as utils  # test utils
+from kornia.testing import assert_close
 
 
 class TestSpatialGradient:
@@ -61,7 +61,7 @@ class TestSpatialGradient:
         )
 
         edges = kornia.filters.spatial_gradient(inp, normalized=False)
-        assert_allclose(edges, expected)
+        assert_close(edges, expected)
 
     def test_edges_norm(self, device, dtype):
         inp = torch.tensor(
@@ -109,7 +109,7 @@ class TestSpatialGradient:
         )
 
         edges = kornia.filters.spatial_gradient(inp, normalized=True)
-        assert_allclose(edges, expected)
+        assert_close(edges, expected)
 
     def test_edges_sep(self, device, dtype):
         inp = torch.tensor(
@@ -154,7 +154,7 @@ class TestSpatialGradient:
         )
 
         edges = kornia.filters.spatial_gradient(inp, 'diff', normalized=False)
-        assert_allclose(edges, expected)
+        assert_close(edges, expected)
 
     def test_edges_sep_norm(self, device, dtype):
         inp = torch.tensor(
@@ -202,7 +202,7 @@ class TestSpatialGradient:
         )
 
         edges = kornia.filters.spatial_gradient(inp, 'diff', normalized=True)
-        assert_allclose(edges, expected)
+        assert_close(edges, expected)
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
@@ -226,7 +226,7 @@ class TestSpatialGradient:
         op_script = torch.jit.script(op)
         actual = op_script(img)
         expected = op(img)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_module(self, device, dtype):
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
@@ -234,7 +234,7 @@ class TestSpatialGradient:
         op_module = kornia.filters.SpatialGradient()
         expected = op(img)
         actual = op_module(img)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
 
 class TestSpatialGradient3d:
@@ -363,7 +363,7 @@ class TestSpatialGradient3d:
         )
 
         edges = kornia.filters.spatial_gradient3d(inp)
-        assert_allclose(edges, expected)
+        assert_close(edges, expected)
 
     def test_gradcheck(self, device, dtype):
         img = torch.rand(1, 1, 1, 3, 4, device=device, dtype=dtype)
@@ -377,7 +377,7 @@ class TestSpatialGradient3d:
         op_script = torch.jit.script(op)
         expected = op(img)
         actual = op_script(img)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_module(self, device, dtype):
         img = torch.rand(2, 3, 1, 4, 5, device=device, dtype=dtype)
@@ -385,7 +385,7 @@ class TestSpatialGradient3d:
         op_module = kornia.filters.SpatialGradient3d()
         expected = op(img)
         actual = op_module(img)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
 
 class TestSobel:
@@ -433,7 +433,7 @@ class TestSobel:
         )
 
         edges = kornia.filters.sobel(inp, normalized=False, eps=0.0)
-        assert_allclose(edges, expected)
+        assert_close(edges, expected)
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
@@ -468,7 +468,7 @@ class TestSobel:
         op_script = torch.jit.script(op)
         expected = op(img)
         actual = op_script(img)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_module(self, device, dtype):
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
@@ -476,4 +476,4 @@ class TestSobel:
         op_module = kornia.filters.Sobel()
         expected = op(img)
         actual = op_module(img)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)

@@ -1,9 +1,9 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
 
 import kornia.geometry.epipolar as epi
+from kornia.testing import assert_close
 
 
 class TestIntrinsicsLike:
@@ -56,7 +56,7 @@ class TestScaleIntrinsics:
         )
 
         camera_matrix_scale = epi.scale_intrinsics(camera_matrix, scale_factor)
-        assert_allclose(camera_matrix_scale, camera_matrix_expected, atol=1e-4, rtol=1e-4)
+        assert_close(camera_matrix_scale, camera_matrix_expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         scale_factor = torch.ones(1, device=device, dtype=torch.float64, requires_grad=True)
@@ -93,7 +93,7 @@ class TestProjectionFromKRt:
         )
 
         P_estimated = epi.projection_from_KRt(K, R, t)
-        assert_allclose(P_estimated, P_expected, atol=1e-4, rtol=1e-4)
+        assert_close(P_estimated, P_expected, atol=1e-4, rtol=1e-4)
 
     def test_krt_from_projection(self, device, dtype):
         P = torch.tensor(
@@ -107,9 +107,9 @@ class TestProjectionFromKRt:
         t_expected = torch.tensor([[[1.0], [2.0], [3.0]]], device=device, dtype=dtype)
 
         K_estimated, R_estimated, t_estimated = epi.KRt_from_projection(P)
-        assert_allclose(K_estimated, K_expected, atol=1e-4, rtol=1e-4)
-        assert_allclose(R_estimated, R_expected, atol=1e-4, rtol=1e-4)
-        assert_allclose(t_estimated, t_expected, atol=1e-4, rtol=1e-4)
+        assert_close(K_estimated, K_expected, atol=1e-4, rtol=1e-4)
+        assert_close(R_estimated, R_expected, atol=1e-4, rtol=1e-4)
+        assert_close(t_estimated, t_expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         K = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
@@ -176,9 +176,9 @@ class TestKRtFromProjection:
         t_expected = torch.tensor([[[-6.477699], [1.129624], [0.143123]]], device=device, dtype=dtype)
 
         K_estimated, R_estimated, t_estimated = epi.KRt_from_projection(P)
-        assert_allclose(K_estimated, K_expected, atol=1e-4, rtol=1e-4)
-        assert_allclose(R_estimated, R_expected, atol=1e-4, rtol=1e-4)
-        assert_allclose(t_estimated, t_expected, atol=1e-4, rtol=1e-4)
+        assert_close(K_estimated, K_expected, atol=1e-4, rtol=1e-4)
+        assert_close(R_estimated, R_expected, atol=1e-4, rtol=1e-4)
+        assert_close(t_estimated, t_expected, atol=1e-4, rtol=1e-4)
 
     def test_projection_from_krt(self, device, dtype):
         K = torch.tensor(
@@ -202,7 +202,7 @@ class TestKRtFromProjection:
         )
 
         P_estimated = epi.projection_from_KRt(K, R, t)
-        assert_allclose(P_estimated, P_expected, atol=1e-4, rtol=1e-4)
+        assert_close(P_estimated, P_expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         P_mat = torch.rand(1, 3, 4, device=device, dtype=torch.float64, requires_grad=True)

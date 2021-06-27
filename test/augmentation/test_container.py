@@ -1,11 +1,11 @@
 import pytest
 import torch
-from torch.testing import assert_allclose
 
 import kornia
 import kornia.augmentation as K
 from kornia.constants import BorderType
 from kornia.geometry.transform import bbox_to_mask
+from kornia.testing import assert_close
 
 
 def reproducibility_test(input, seq):
@@ -135,7 +135,7 @@ class TestVideoSequential:
         img = torch.ones(B, C, D, H, W, device=device, dtype=dtype)
         op = K.VideoSequential(K.ColorJitter(0.1, 0.1, 0.1, 0.1), same_on_frame=True)
         op_jit = torch.jit.script(op)
-        assert_allclose(op(img), op_jit(img))
+        assert_close(op(img), op_jit(img))
 
 
 class TestSequential:
@@ -303,7 +303,7 @@ class TestAugmentationSequential:
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0), same_on_batch=True
         )
         op_jit = torch.jit.script(op)
-        assert_allclose(op(img), op_jit(img))
+        assert_close(op(img), op_jit(img))
 
 
 class TestPatchSequential:

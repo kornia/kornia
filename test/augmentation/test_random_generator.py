@@ -1,6 +1,5 @@
 import pytest
 import torch
-from torch.testing import assert_allclose
 
 from kornia.augmentation.random_generator import (
     center_crop_generator,
@@ -19,6 +18,7 @@ from kornia.augmentation.random_generator import (
     random_sharpness_generator,
     random_solarize_generator,
 )
+from kornia.testing import assert_close
 
 
 class RandomGeneratorBaseTests:
@@ -161,17 +161,15 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
         }, "Redundant keys found apart from \
                 'brightness_factor', 'contrast_factor', 'hue_factor', 'saturation_factor', 'order'"
 
-        assert_allclose(
+        assert_close(
             jitter_params['brightness_factor'], expected_jitter_params['brightness_factor'], rtol=1e-4, atol=1e-4
         )
-        assert_allclose(
-            jitter_params['contrast_factor'], expected_jitter_params['contrast_factor'], rtol=1e-4, atol=1e-4
-        )
-        assert_allclose(jitter_params['hue_factor'], expected_jitter_params['hue_factor'], rtol=1e-4, atol=1e-4)
-        assert_allclose(
+        assert_close(jitter_params['contrast_factor'], expected_jitter_params['contrast_factor'], rtol=1e-4, atol=1e-4)
+        assert_close(jitter_params['hue_factor'], expected_jitter_params['hue_factor'], rtol=1e-4, atol=1e-4)
+        assert_close(
             jitter_params['saturation_factor'], expected_jitter_params['saturation_factor'], rtol=1e-4, atol=1e-4
         )
-        assert_allclose(jitter_params['order'].to(dtype), expected_jitter_params['order'], rtol=1e-4, atol=1e-4)
+        assert_close(jitter_params['order'].to(dtype), expected_jitter_params['order'], rtol=1e-4, atol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
         torch.manual_seed(42)
@@ -193,11 +191,11 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
             'order': torch.tensor([2, 3, 0, 1], device=device, dtype=dtype),
         }
 
-        assert_allclose(jitter_params['brightness_factor'], expected_res['brightness_factor'], rtol=1e-4, atol=1e-4)
-        assert_allclose(jitter_params['contrast_factor'], expected_res['contrast_factor'], rtol=1e-4, atol=1e-4)
-        assert_allclose(jitter_params['hue_factor'], expected_res['hue_factor'], rtol=1e-4, atol=1e-4)
-        assert_allclose(jitter_params['saturation_factor'], expected_res['saturation_factor'], rtol=1e-4, atol=1e-4)
-        assert_allclose(jitter_params['order'].to(dtype), expected_res['order'], rtol=1e-4, atol=1e-4)
+        assert_close(jitter_params['brightness_factor'], expected_res['brightness_factor'], rtol=1e-4, atol=1e-4)
+        assert_close(jitter_params['contrast_factor'], expected_res['contrast_factor'], rtol=1e-4, atol=1e-4)
+        assert_close(jitter_params['hue_factor'], expected_res['hue_factor'], rtol=1e-4, atol=1e-4)
+        assert_close(jitter_params['saturation_factor'], expected_res['saturation_factor'], rtol=1e-4, atol=1e-4)
+        assert_close(jitter_params['order'].to(dtype), expected_res['order'], rtol=1e-4, atol=1e-4)
 
 
 class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
@@ -257,8 +255,8 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
             ),
         )
         assert res.keys() == expected.keys()
-        assert_allclose(res['start_points'], expected['start_points'])
-        assert_allclose(res['end_points'], expected['end_points'])
+        assert_close(res['start_points'], expected['start_points'])
+        assert_close(res['end_points'], expected['end_points'])
 
     def test_same_on_batch(self, device, dtype):
         torch.manual_seed(42)
@@ -277,8 +275,8 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
             ).repeat(2, 1, 1),
         )
         assert res.keys() == expected.keys()
-        assert_allclose(res['start_points'], expected['start_points'])
-        assert_allclose(res['end_points'], expected['end_points'])
+        assert_close(res['start_points'], expected['start_points'])
+        assert_close(res['end_points'], expected['end_points'])
 
 
 class TestRandomAffineGen(RandomGeneratorBaseTests):
@@ -359,12 +357,12 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
             sy=torch.tensor([19.3460, 15.9358], device=device, dtype=dtype),
         )
         assert res.keys() == expected.keys()
-        assert_allclose(res['translations'], expected['translations'], rtol=1e-4, atol=1e-4)
-        assert_allclose(res['center'], expected['center'], rtol=1e-4, atol=1e-4)
-        assert_allclose(res['scale'], expected['scale'], rtol=1e-4, atol=1e-4)
-        assert_allclose(res['angle'], expected['angle'], rtol=1e-4, atol=1e-4)
-        assert_allclose(res['sx'], expected['sx'], rtol=1e-4, atol=1e-4)
-        assert_allclose(res['sy'], expected['sy'], rtol=1e-4, atol=1e-4)
+        assert_close(res['translations'], expected['translations'], rtol=1e-4, atol=1e-4)
+        assert_close(res['center'], expected['center'], rtol=1e-4, atol=1e-4)
+        assert_close(res['scale'], expected['scale'], rtol=1e-4, atol=1e-4)
+        assert_close(res['angle'], expected['angle'], rtol=1e-4, atol=1e-4)
+        assert_close(res['sx'], expected['sx'], rtol=1e-4, atol=1e-4)
+        assert_close(res['sy'], expected['sy'], rtol=1e-4, atol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
         torch.manual_seed(42)
@@ -391,12 +389,12 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
             sy=torch.tensor([16.0090, 16.0090], device=device, dtype=dtype),
         )
         assert res.keys() == expected.keys()
-        assert_allclose(res['translations'], expected['translations'], rtol=1e-4, atol=1e-4)
-        assert_allclose(res['center'], expected['center'], rtol=1e-4, atol=1e-4)
-        assert_allclose(res['scale'], expected['scale'], rtol=1e-4, atol=1e-4)
-        assert_allclose(res['angle'], expected['angle'], rtol=1e-4, atol=1e-4)
-        assert_allclose(res['sx'], expected['sx'], rtol=1e-4, atol=1e-4)
-        assert_allclose(res['sy'], expected['sy'], rtol=1e-4, atol=1e-4)
+        assert_close(res['translations'], expected['translations'], rtol=1e-4, atol=1e-4)
+        assert_close(res['center'], expected['center'], rtol=1e-4, atol=1e-4)
+        assert_close(res['scale'], expected['scale'], rtol=1e-4, atol=1e-4)
+        assert_close(res['angle'], expected['angle'], rtol=1e-4, atol=1e-4)
+        assert_close(res['sx'], expected['sx'], rtol=1e-4, atol=1e-4)
+        assert_close(res['sy'], expected['sy'], rtol=1e-4, atol=1e-4)
 
 
 class TestRandomRotationGen(RandomGeneratorBaseTests):
@@ -422,7 +420,7 @@ class TestRandomRotationGen(RandomGeneratorBaseTests):
         )
         expected = dict(degrees=torch.tensor([18.8227, 19.1500], device=device, dtype=dtype))
         assert res.keys() == expected.keys()
-        assert_allclose(res['degrees'], expected['degrees'])
+        assert_close(res['degrees'], expected['degrees'])
 
     def test_same_on_batch(self, device, dtype):
         torch.manual_seed(42)
@@ -432,7 +430,7 @@ class TestRandomRotationGen(RandomGeneratorBaseTests):
         )
         expected = dict(degrees=torch.tensor([18.8227, 18.8227], device=device, dtype=dtype))
         assert res.keys() == expected.keys()
-        assert_allclose(res['degrees'], expected['degrees'])
+        assert_close(res['degrees'], expected['degrees'])
 
 
 class TestRandomCropGen(RandomGeneratorBaseTests):
@@ -491,8 +489,8 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
             input_size=torch.tensor([[100, 100], [100, 100]], device=device, dtype=torch.long),
         )
         assert res.keys() == expected.keys()
-        assert_allclose(res['src'], expected['src'])
-        assert_allclose(res['dst'], expected['dst'])
+        assert_close(res['src'], expected['src'])
+        assert_close(res['dst'], expected['dst'])
 
     def test_same_on_batch(self, device, dtype):
         torch.manual_seed(42)
@@ -518,8 +516,8 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
             input_size=torch.tensor([[100, 100], [100, 100]], device=device, dtype=torch.long),
         )
         assert res.keys() == expected.keys()
-        assert_allclose(res['src'], expected['src'])
-        assert_allclose(res['dst'], expected['dst'])
+        assert_close(res['src'], expected['src'])
+        assert_close(res['dst'], expected['dst'])
 
 
 class TestRandomCropSizeGen(RandomGeneratorBaseTests):
@@ -576,7 +574,7 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
             )
         )
         assert res.keys() == expected.keys()
-        assert_allclose(res['size'], expected['size'])
+        assert_close(res['size'], expected['size'])
 
         res = random_crop_size_generator(
             batch_size=100,
@@ -587,7 +585,7 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
         )
         expected = dict(size=torch.tensor([[100, 100]], device=device, dtype=dtype).repeat(100, 1))
         assert res.keys() == expected.keys()
-        assert_allclose(res['size'], expected['size'])
+        assert_close(res['size'], expected['size'])
 
     def test_same_on_batch(self, device, dtype):
         torch.manual_seed(42)
@@ -607,7 +605,7 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
             )
         )
         assert res.keys() == expected.keys()
-        assert_allclose(res['size'], expected['size'])
+        assert_close(res['size'], expected['size'])
 
 
 class TestRandomRectangleGen(RandomGeneratorBaseTests):
@@ -675,11 +673,11 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
             values=torch.tensor([0.5000, 0.5000], device=device, dtype=dtype),
         )
         assert res.keys() == expected.keys()
-        assert_allclose(res['widths'], expected['widths'])
-        assert_allclose(res['widths'], expected['widths'])
-        assert_allclose(res['xs'], expected['xs'])
-        assert_allclose(res['ys'], expected['ys'])
-        assert_allclose(res['values'], expected['values'])
+        assert_close(res['widths'], expected['widths'])
+        assert_close(res['widths'], expected['widths'])
+        assert_close(res['xs'], expected['xs'])
+        assert_close(res['ys'], expected['ys'])
+        assert_close(res['values'], expected['values'])
 
     def test_same_on_batch(self, device, dtype):
         torch.manual_seed(42)
@@ -698,11 +696,11 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
             values=torch.tensor([0.5000, 0.5000], device=device, dtype=dtype),
         )
         assert res.keys() == expected.keys()
-        assert_allclose(res['widths'], expected['widths'])
-        assert_allclose(res['widths'], expected['widths'])
-        assert_allclose(res['xs'], expected['xs'])
-        assert_allclose(res['ys'], expected['ys'])
-        assert_allclose(res['values'], expected['values'])
+        assert_close(res['widths'], expected['widths'])
+        assert_close(res['widths'], expected['widths'])
+        assert_close(res['xs'], expected['xs'])
+        assert_close(res['ys'], expected['ys'])
+        assert_close(res['values'], expected['values'])
 
 
 class TestCenterCropGen(RandomGeneratorBaseTests):
@@ -745,8 +743,8 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
             input_size=torch.tensor([[200, 200], [200, 200]], device=device, dtype=torch.long),
         )
         assert res.keys() == expected.keys()
-        assert_allclose(res['src'].to(device=device), expected['src'])
-        assert_allclose(res['dst'].to(device=device), expected['dst'])
+        assert_close(res['src'].to(device=device), expected['src'])
+        assert_close(res['dst'].to(device=device), expected['dst'])
 
     def test_same_on_batch(self, device, dtype):
         pass
@@ -803,9 +801,9 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
             direction_factor=torch.tensor([-0.2343, 0.9186], device=device, dtype=dtype),
         )
         assert res.keys() == expected.keys()
-        assert_allclose(res['ksize_factor'], expected['ksize_factor'], rtol=1e-4, atol=1e-4)
-        assert_allclose(res['angle_factor'], expected['angle_factor'], rtol=1e-4, atol=1e-4)
-        assert_allclose(res['direction_factor'], expected['direction_factor'], rtol=1e-4, atol=1e-4)
+        assert_close(res['ksize_factor'], expected['ksize_factor'], rtol=1e-4, atol=1e-4)
+        assert_close(res['angle_factor'], expected['angle_factor'], rtol=1e-4, atol=1e-4)
+        assert_close(res['direction_factor'], expected['direction_factor'], rtol=1e-4, atol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
         torch.manual_seed(42)
@@ -824,9 +822,9 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
             direction_factor=torch.tensor([0.8300, 0.8300], device=device, dtype=dtype),
         )
         assert res.keys() == expected.keys()
-        assert_allclose(res['ksize_factor'], expected['ksize_factor'], rtol=1e-4, atol=1e-4)
-        assert_allclose(res['angle_factor'], expected['angle_factor'], rtol=1e-4, atol=1e-4)
-        assert_allclose(res['direction_factor'], expected['direction_factor'], rtol=1e-4, atol=1e-4)
+        assert_close(res['ksize_factor'], expected['ksize_factor'], rtol=1e-4, atol=1e-4)
+        assert_close(res['angle_factor'], expected['angle_factor'], rtol=1e-4, atol=1e-4)
+        assert_close(res['direction_factor'], expected['direction_factor'], rtol=1e-4, atol=1e-4)
 
 
 class TestRandomSolarizeGen(RandomGeneratorBaseTests):
@@ -879,8 +877,8 @@ class TestRandomSolarizeGen(RandomGeneratorBaseTests):
             ),
         )
         assert res.keys() == expected.keys()
-        assert_allclose(res['thresholds_factor'], expected['thresholds_factor'], rtol=1e-4, atol=1e-4)
-        assert_allclose(res['additions_factor'], expected['additions_factor'], rtol=1e-4, atol=1e-4)
+        assert_close(res['thresholds_factor'], expected['thresholds_factor'], rtol=1e-4, atol=1e-4)
+        assert_close(res['additions_factor'], expected['additions_factor'], rtol=1e-4, atol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
         torch.manual_seed(42)
@@ -900,8 +898,8 @@ class TestRandomSolarizeGen(RandomGeneratorBaseTests):
             ),
         )
         assert res.keys() == expected.keys()
-        assert_allclose(res['thresholds_factor'], expected['thresholds_factor'], rtol=1e-4, atol=1e-4)
-        assert_allclose(res['additions_factor'], expected['additions_factor'], rtol=1e-4, atol=1e-4)
+        assert_close(res['thresholds_factor'], expected['thresholds_factor'], rtol=1e-4, atol=1e-4)
+        assert_close(res['additions_factor'], expected['additions_factor'], rtol=1e-4, atol=1e-4)
 
 
 class TestRandomPosterizeGen(RandomGeneratorBaseTests):
@@ -928,7 +926,7 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
         )
         expected = dict(bits_factor=torch.tensor([5, 2, 3, 6, 7, 7, 2, 7], device=device, dtype=torch.int32))
         assert res.keys() == expected.keys()
-        assert_allclose(res['bits_factor'], expected['bits_factor'], rtol=1e-4, atol=1e-4)
+        assert_close(res['bits_factor'], expected['bits_factor'], rtol=1e-4, atol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
         torch.manual_seed(9)
@@ -938,7 +936,7 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
         )
         expected = dict(bits_factor=torch.tensor([5, 5, 5, 5, 5, 5, 5, 5], device=device, dtype=torch.int32))
         assert res.keys() == expected.keys()
-        assert_allclose(res['bits_factor'], expected['bits_factor'], rtol=1e-4, atol=1e-4)
+        assert_close(res['bits_factor'], expected['bits_factor'], rtol=1e-4, atol=1e-4)
 
 
 class TestRandomSharpnessGen(RandomGeneratorBaseTests):
@@ -969,7 +967,7 @@ class TestRandomSharpnessGen(RandomGeneratorBaseTests):
             )
         )
         assert res.keys() == expected.keys()
-        assert_allclose(res['sharpness_factor'], expected['sharpness_factor'], rtol=1e-4, atol=1e-4)
+        assert_close(res['sharpness_factor'], expected['sharpness_factor'], rtol=1e-4, atol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
         torch.manual_seed(42)
@@ -983,7 +981,7 @@ class TestRandomSharpnessGen(RandomGeneratorBaseTests):
             )
         )
         assert res.keys() == expected.keys()
-        assert_allclose(res['sharpness_factor'], expected['sharpness_factor'], rtol=1e-4, atol=1e-4)
+        assert_close(res['sharpness_factor'], expected['sharpness_factor'], rtol=1e-4, atol=1e-4)
 
 
 class TestRandomMixUpGen(RandomGeneratorBaseTests):
@@ -1024,8 +1022,8 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
             ),
         )
         assert res.keys() == expected.keys()
-        assert_allclose(res['mixup_pairs'], expected['mixup_pairs'], rtol=1e-4, atol=1e-4)
-        assert_allclose(res['mixup_lambdas'], expected['mixup_lambdas'], rtol=1e-4, atol=1e-4)
+        assert_close(res['mixup_pairs'], expected['mixup_pairs'], rtol=1e-4, atol=1e-4)
+        assert_close(res['mixup_lambdas'], expected['mixup_lambdas'], rtol=1e-4, atol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
         torch.manual_seed(9)
@@ -1043,8 +1041,8 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
             ),
         )
         assert res.keys() == expected.keys()
-        assert_allclose(res['mixup_pairs'], expected['mixup_pairs'], rtol=1e-4, atol=1e-4)
-        assert_allclose(res['mixup_lambdas'], expected['mixup_lambdas'], rtol=1e-4, atol=1e-4)
+        assert_close(res['mixup_pairs'], expected['mixup_pairs'], rtol=1e-4, atol=1e-4)
+        assert_close(res['mixup_lambdas'], expected['mixup_lambdas'], rtol=1e-4, atol=1e-4)
 
 
 class TestRandomCutMixGen(RandomGeneratorBaseTests):
@@ -1117,8 +1115,8 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
             ),
         )
         assert res.keys() == expected.keys()
-        assert_allclose(res['mix_pairs'], expected['mix_pairs'], rtol=1e-4, atol=1e-4)
-        assert_allclose(res['crop_src'], expected['crop_src'], rtol=1e-4, atol=1e-4)
+        assert_close(res['mix_pairs'], expected['mix_pairs'], rtol=1e-4, atol=1e-4)
+        assert_close(res['crop_src'], expected['crop_src'], rtol=1e-4, atol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
         torch.manual_seed(42)
@@ -1142,5 +1140,5 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
             ),
         )
         assert res.keys() == expected.keys()
-        assert_allclose(res['mix_pairs'], expected['mix_pairs'], rtol=1e-4, atol=1e-4)
-        assert_allclose(res['crop_src'], expected['crop_src'], rtol=1e-4, atol=1e-4)
+        assert_close(res['mix_pairs'], expected['mix_pairs'], rtol=1e-4, atol=1e-4)
+        assert_close(res['crop_src'], expected['crop_src'], rtol=1e-4, atol=1e-4)
