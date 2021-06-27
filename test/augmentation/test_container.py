@@ -235,7 +235,7 @@ class TestAugmentationSequential:
         aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0, return_transform=True))
         assert aug.inverse(mask, data_keys=['mask']).shape == mask.shape
 
-    @pytest.mark.parametrize('random_apply', [2, (1, 2), (2,), 10, True, False])
+    @pytest.mark.parametrize('random_apply', [2, (1, 1), (2,), 10, True, False])
     def test_forward_and_inverse_return_transform(self, random_apply, device, dtype):
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
         bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)

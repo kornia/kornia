@@ -251,6 +251,8 @@ class AugmentationSequential(ImageSequential):
 
         outputs = []
         for input, dcate in zip(args, data_keys):
+            if dcate == DataKey.INPUT and isinstance(input, (tuple, list)):
+                input, _ = input  # ignore the transformation matrix whilst inverse
             for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
                 if isinstance(module, _AugmentationBase):
                     # Check if a param recorded
