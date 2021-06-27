@@ -18,16 +18,16 @@ def reproducibility_test(input, seq):
 
     if isinstance(output_1, (tuple, list)) and isinstance(output_2, (tuple, list)):
         [
-            assert_allclose(o1, o2)
+            assert_close(o1, o2)
             for o1, o2 in zip(output_1, output_2)
             if isinstance(o1, (torch.Tensor,)) and isinstance(o2, (torch.Tensor,))
         ]
     elif isinstance(output_1, (tuple, list)) and isinstance(output_2, (torch.Tensor,)):
-        assert_allclose(output_1[0], output_2)
+        assert_close(output_1[0], output_2)
     elif isinstance(output_2, (tuple, list)) and isinstance(output_1, (torch.Tensor,)):
-        assert_allclose(output_1, output_2[0])
+        assert_close(output_1, output_2[0])
     elif isinstance(output_2, (torch.Tensor,)) and isinstance(output_1, (torch.Tensor,)):
-        assert_allclose(output_1, output_2, msg=f"{seq._params}")
+        assert_close(output_1, output_2, msg=f"{seq._params}")
     else:
         assert False, ("cannot compare", type(output_1), type(output_2))
 
