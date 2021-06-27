@@ -56,14 +56,14 @@ class StereoCamera:
                                                     of shape :math:`(B, 3, 4)`
         """
         # Ensure correct shapes
-        if rectified_left_camera.ndim != 3:
+        if len(rectified_left_camera.shape) != 3:
             raise StereoException(
-                f"Expected 'rectified_left_camera' to have 3 dimensions. " f"Got {rectified_left_camera.ndim}."
+                f"Expected 'rectified_left_camera' to have 3 dimensions. " f"Got {rectified_left_camera.shape}."
             )
 
-        if rectified_right_camera.ndim != 3:
+        if len(rectified_right_camera.shape) != 3:
             raise StereoException(
-                f"Expected 'rectified_right_camera' to have 3 dimension. " f"Got {rectified_right_camera.ndim}."
+                f"Expected 'rectified_right_camera' to have 3 dimension. " f"Got {rectified_right_camera.shape}."
             )
 
         if rectified_left_camera.shape[:1] == (3, 4):
@@ -231,8 +231,8 @@ def _check_disparity_tensor(disparity_tensor: torch.Tensor):
             f"Expected 'disparity_tensor' to be an instance of torch.Tensor but got {type(disparity_tensor)}."
         )
 
-    if disparity_tensor.ndim != 4:
-        raise StereoException(f"Expected 'disparity_tensor' to have 4 dimensions." f"Got {disparity_tensor.ndim}.")
+    if len(disparity_tensor.shape) != 4:
+        raise StereoException(f"Expected 'disparity_tensor' to have 4 dimensions." f"Got {disparity_tensor.shape}.")
 
     if disparity_tensor.shape[-1] != 1:
         raise StereoException(
@@ -257,8 +257,8 @@ def _check_Q_matrix(Q_matrix: torch.Tensor):
     if not isinstance(Q_matrix, torch.Tensor):
         raise StereoException(f"Expected 'Q_matrix' to be an instance of torch.Tensor but got {type(Q_matrix)}.")
 
-    if not Q_matrix.ndim == 3:
-        raise StereoException(f"Expected 'Q_matrix' to have 3 dimenstions." f"Got {Q_matrix.ndim}")
+    if not len(Q_matrix.shape) == 3:
+        raise StereoException(f"Expected 'Q_matrix' to have 3 dimenstions." f"Got {Q_matrix.shape}")
 
     if not Q_matrix.shape[1:] == (4, 4):
         raise StereoException(

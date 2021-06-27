@@ -153,7 +153,8 @@ class ImageSequential(nn.Sequential):
         param: Optional[ParamItem] = None,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         if module is None:
-            module = self.get_submodule(module_name)
+            # TODO (jian): double check why typing is crashing
+            module = self.get_submodule(module_name)  # type: ignore
         if param is not None:
             assert module_name == param.name
             _param = param.data
