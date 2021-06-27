@@ -10,19 +10,21 @@ def laplacian(
 ) -> torch.Tensor:
     r"""Creates an operator that returns a tensor using a Laplacian filter.
 
+    .. image:: _static/img/laplacian.png
+
     The operator smooths the given tensor with a laplacian kernel by convolving
     it to each channel. It supports batched operation.
 
-    Arguments:
-        input (torch.Tensor): the input image tensor with shape :math:`(B, C, H, W)`.
-        kernel_size (int): the size of the kernel.
-        border_type (str): the padding mode to be applied before convolving.
+    Args:
+        input: the input image tensor with shape :math:`(B, C, H, W)`.
+        kernel_size: the size of the kernel.
+        border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
-        normalized (bool): if True, L1 norm of the kernel is set to 1.
+          ``'replicate'`` or ``'circular'``.
+        normalized: if True, L1 norm of the kernel is set to 1.
 
     Return:
-        torch.Tensor: the blurred image with shape :math:`(B, C, H, W)`.
+        the blurred image with shape :math:`(B, C, H, W)`.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
@@ -44,12 +46,12 @@ class Laplacian(nn.Module):
     The operator smooths the given tensor with a laplacian kernel by convolving
     it to each channel. It supports batched operation.
 
-    Arguments:
-        kernel_size (int): the size of the kernel.
-        border_type (str): the padding mode to be applied before convolving.
+    Args:
+        kernel_size: the size of the kernel.
+        border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
-        normalized (bool): if True, L1 norm of the kernel is set to 1.
+          ``'replicate'`` or ``'circular'``.
+        normalized: if True, L1 norm of the kernel is set to 1.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
