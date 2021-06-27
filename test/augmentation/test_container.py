@@ -1,6 +1,5 @@
 import pytest
 import torch
-from torch.functional import Tensor
 from torch.testing import assert_allclose
 
 import kornia
