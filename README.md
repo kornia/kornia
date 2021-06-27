@@ -7,6 +7,8 @@
 
 ---
 
+English | [简体中文](README_zh-CN.md)
+
 <!-- prettier-ignore -->
 <a href="https://kornia.org">Website</a> •
 <a href="https://kornia.readthedocs.io">Docs</a> •

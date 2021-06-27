@@ -1,10 +1,9 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
 
 import kornia
-from kornia.testing import BaseTester
+from kornia.testing import assert_close, BaseTester
 
 
 class TestRgbToBgr(BaseTester):
@@ -45,7 +44,7 @@ class TestRgbToBgr(BaseTester):
         data_bgr = torch.rand(1, 3, 3, 2, device=device, dtype=dtype)
         data_rgb = kornia.color.bgr_to_rgb(data_bgr)
         data_bgr_new = kornia.color.rgb_to_bgr(data_rgb)
-        assert_allclose(data_bgr, data_bgr_new)
+        assert_close(data_bgr, data_bgr_new)
 
     def test_unit(self, device, dtype):
         data = torch.tensor(
@@ -57,7 +56,7 @@ class TestRgbToBgr(BaseTester):
         )  # 3x2x2
 
         f = kornia.color.rgb_to_bgr
-        assert_allclose(f(data), expected)
+        assert_close(f(data), expected)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
@@ -71,7 +70,7 @@ class TestRgbToBgr(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.rgb_to_bgr
         op_jit = torch.jit.script(op)
-        assert_allclose(op(img), op_jit(img))
+        assert_close(op(img), op_jit(img))
 
     @pytest.mark.nn
     def test_module(self, device, dtype):
@@ -79,7 +78,7 @@ class TestRgbToBgr(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.RgbToBgr().to(device, dtype)
         fcn = kornia.color.rgb_to_bgr
-        assert_allclose(ops(img), fcn(img))
+        assert_close(ops(img), fcn(img))
 
     @pytest.mark.nn
     def test_module_bgr(self, device, dtype):
@@ -87,7 +86,7 @@ class TestRgbToBgr(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.BgrToRgb().to(device, dtype)
         fcn = kornia.color.bgr_to_rgb
-        assert_allclose(ops(img), fcn(img))
+        assert_close(ops(img), fcn(img))
 
 
 class TestRgbToRgba(BaseTester):
@@ -141,14 +140,14 @@ class TestRgbToRgba(BaseTester):
         x_rgb = torch.ones(3, 4, 4, device=device, dtype=dtype)
         x_rgba = kornia.color.rgb_to_rgba(x_rgb, a_val)
         x_rgb_new = kornia.color.rgba_to_rgb(x_rgba)
-        assert_allclose(x_rgb, x_rgb_new)
+        assert_close(x_rgb, x_rgb_new)
 
     def test_back_and_forth_bgr(self, device, dtype):
         a_val: float = 1.0
         x_bgr = torch.ones(3, 4, 4, device=device, dtype=dtype)
         x_rgba = kornia.color.bgr_to_rgba(x_bgr, a_val)
         x_bgr_new = kornia.color.rgba_to_bgr(x_rgba)
-        assert_allclose(x_bgr, x_bgr_new)
+        assert_close(x_bgr, x_bgr_new)
 
     @pytest.mark.parametrize("aval", [0.4, 45.0])
     def test_unit(self, device, dtype, aval):
@@ -169,7 +168,7 @@ class TestRgbToRgba(BaseTester):
             dtype=dtype,
         )  # Bx4x2x2
 
-        assert_allclose(kornia.rgb_to_rgba(data, aval), expected)
+        assert_close(kornia.rgb_to_rgba(data, aval), expected)
 
     @pytest.mark.parametrize("aval", [0.4, 45.0])
     def test_unit_aval_th(self, device, dtype, aval):
@@ -191,7 +190,7 @@ class TestRgbToRgba(BaseTester):
         )  # Bx4x2x2
 
         aval = torch.full_like(data[:, :1], aval)  # Bx1xHxW
-        assert_allclose(kornia.rgb_to_rgba(data, aval), expected)
+        assert_close(kornia.rgb_to_rgba(data, aval), expected)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
@@ -213,9 +212,9 @@ class TestRgbToRgba(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.rgb_to_rgba
         op_jit = torch.jit.script(op)
-        assert_allclose(op(img, 1.0), op_jit(img, 1.0))
+        assert_close(op(img, 1.0), op_jit(img, 1.0))
         aval = torch.ones(B, 1, H, W, device=device, dtype=dtype)
-        assert_allclose(op(img, aval), op_jit(img, aval))
+        assert_close(op(img, aval), op_jit(img, aval))
 
     @pytest.mark.nn
     def test_module(self, device, dtype):
@@ -223,7 +222,7 @@ class TestRgbToRgba(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.RgbToRgba(1.0).to(device, dtype)
         fcn = kornia.color.rgb_to_rgba
-        assert_allclose(ops(img), fcn(img, 1.0))
+        assert_close(ops(img), fcn(img, 1.0))
 
     @pytest.mark.nn
     def test_module_bgr(self, device, dtype):
@@ -231,7 +230,7 @@ class TestRgbToRgba(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.BgrToRgba(1.0).to(device, dtype)
         fcn = kornia.color.bgr_to_rgba
-        assert_allclose(ops(img), fcn(img, 1.0))
+        assert_close(ops(img), fcn(img, 1.0))
 
     @pytest.mark.nn
     def test_module_bgra2rgb(self, device, dtype):
@@ -239,7 +238,7 @@ class TestRgbToRgba(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.RgbaToRgb().to(device, dtype)
         fcn = kornia.color.rgba_to_rgb
-        assert_allclose(ops(img), fcn(img))
+        assert_close(ops(img), fcn(img))
 
     @pytest.mark.nn
     def test_module_bgra2bgr(self, device, dtype):
@@ -247,7 +246,7 @@ class TestRgbToRgba(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.RgbaToBgr().to(device, dtype)
         fcn = kornia.color.rgba_to_bgr
-        assert_allclose(ops(img), fcn(img))
+        assert_close(ops(img), fcn(img))
 
 
 class TestLinearRgb(BaseTester):
@@ -290,7 +289,7 @@ class TestLinearRgb(BaseTester):
         data_bgr = torch.rand(1, 3, 3, 2, device=device, dtype=dtype)
         data_rgb = kornia.color.rgb_to_linear_rgb(data_bgr)
         data_bgr_new = kornia.color.linear_rgb_to_rgb(data_rgb)
-        assert_allclose(data_bgr, data_bgr_new)
+        assert_close(data_bgr, data_bgr_new)
 
     def test_unit(self, device, dtype):
         data = torch.tensor(
@@ -308,7 +307,7 @@ class TestLinearRgb(BaseTester):
         )  # 3x2x2
 
         f = kornia.color.rgb_to_linear_rgb
-        assert_allclose(f(data), expected)
+        assert_close(f(data), expected)
 
     def test_unit_linear(self, device, dtype):
         data = torch.tensor(
@@ -326,7 +325,7 @@ class TestLinearRgb(BaseTester):
         )  # 3x2x2
 
         f = kornia.color.linear_rgb_to_rgb
-        assert_allclose(f(data), expected)
+        assert_close(f(data), expected)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
@@ -341,7 +340,7 @@ class TestLinearRgb(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.rgb_to_linear_rgb
         op_jit = torch.jit.script(op)
-        assert_allclose(op(img), op_jit(img))
+        assert_close(op(img), op_jit(img))
 
     @pytest.mark.jit
     def test_jit_linear(self, device, dtype):
@@ -349,7 +348,7 @@ class TestLinearRgb(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.linear_rgb_to_rgb
         op_jit = torch.jit.script(op)
-        assert_allclose(op(img), op_jit(img))
+        assert_close(op(img), op_jit(img))
 
     @pytest.mark.nn
     def test_module(self, device, dtype):
@@ -357,7 +356,7 @@ class TestLinearRgb(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.RgbToLinearRgb().to(device, dtype)
         fcn = kornia.color.rgb_to_linear_rgb
-        assert_allclose(ops(img), fcn(img))
+        assert_close(ops(img), fcn(img))
 
     @pytest.mark.nn
     def test_module_linear(self, device, dtype):
@@ -365,4 +364,4 @@ class TestLinearRgb(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.LinearRgbToRgb().to(device, dtype)
         fcn = kornia.color.linear_rgb_to_rgb
-        assert_allclose(ops(img), fcn(img))
+        assert_close(ops(img), fcn(img))

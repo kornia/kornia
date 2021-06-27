@@ -1,10 +1,10 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
 
 import kornia
 import kornia.testing as utils  # test utils
+from kornia.testing import assert_close
 
 
 class TestFilter2D:
@@ -54,7 +54,7 @@ class TestFilter2D:
         )
 
         actual = kornia.filter2d(input, kernel)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_mean_filter_2batch_2ch(self, device, dtype):
         kernel = torch.ones(1, 3, 3, device=device, dtype=dtype)
@@ -91,7 +91,7 @@ class TestFilter2D:
         ).expand(2, 2, -1, -1)
 
         actual = kornia.filter2d(input, kernel)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_normalized_mean_filter(self, device, dtype):
         kernel = torch.ones(1, 3, 3).to(device)
@@ -131,7 +131,7 @@ class TestFilter2D:
         actual = kornia.filter2d(input, kernel, normalized=True)
 
         tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
-        assert_allclose(actual, expected, rtol=tol_val, atol=tol_val)
+        assert_close(actual, expected, rtol=tol_val, atol=tol_val)
 
     def test_even_sized_filter(self, device, dtype):
         kernel = torch.ones(1, 2, 2, device=device, dtype=dtype)
@@ -168,7 +168,7 @@ class TestFilter2D:
         )
 
         actual = kornia.filter2d(input, kernel)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
@@ -177,7 +177,7 @@ class TestFilter2D:
 
         actual = kornia.filter2d(inp, kernel)
         expected = actual
-        assert_allclose(actual, actual)
+        assert_close(actual, actual)
 
     def test_gradcheck(self, device):
         kernel = torch.rand(1, 3, 3, device=device)
@@ -196,7 +196,7 @@ class TestFilter2D:
         input = torch.ones(1, 1, 7, 8, device=device, dtype=dtype)
         expected = op(input, kernel)
         actual = op_script(input, kernel)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
 
 class TestFilter3D:
@@ -279,7 +279,7 @@ class TestFilter3D:
         )
 
         actual = kornia.filter3d(input, kernel)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_mean_filter_2batch_2ch(self, device, dtype):
         kernel = torch.ones(1, 3, 3, 3, device=device, dtype=dtype)
@@ -350,7 +350,7 @@ class TestFilter3D:
         expected = expected.expand(2, 2, -1, -1, -1)
 
         actual = kornia.filter3d(input, kernel)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_normalized_mean_filter(self, device, dtype):
         kernel = torch.ones(1, 3, 3, 3, device=device, dtype=dtype)
@@ -424,7 +424,7 @@ class TestFilter3D:
         actual = kornia.filter3d(input, kernel, normalized=True)
 
         tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
-        assert_allclose(actual, expected, rtol=tol_val, atol=tol_val)
+        assert_close(actual, expected, rtol=tol_val, atol=tol_val)
 
     def test_even_sized_filter(self, device, dtype):
         kernel = torch.ones(1, 2, 2, 2, device=device, dtype=dtype)
@@ -493,7 +493,7 @@ class TestFilter3D:
         )
 
         actual = kornia.filter3d(input, kernel)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
@@ -502,7 +502,7 @@ class TestFilter3D:
 
         actual = kornia.filter3d(inp, kernel)
         expected = actual
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_gradcheck(self, device):
         kernel = torch.rand(1, 3, 3, 3, device=device)
@@ -521,4 +521,4 @@ class TestFilter3D:
         input = torch.ones(1, 1, 2, 7, 8, device=device, dtype=dtype)
         expected = op(input, kernel)
         actual = op_script(input, kernel)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)

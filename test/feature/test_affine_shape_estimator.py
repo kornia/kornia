@@ -1,9 +1,9 @@
 import pytest
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
 
 import kornia.testing as utils  # test utils
 from kornia.feature.affine_shape import *
+from kornia.testing import assert_close
 
 
 class TestPatchAffineShapeEstimator:
@@ -29,7 +29,7 @@ class TestPatchAffineShapeEstimator:
         inp[:, :, 5:-5, 1:-1] = 1
         abc = aff(inp)
         expected = torch.tensor([[[0.4146, 0.0000, 1.0000]]], device=device)
-        assert_allclose(abc, expected, atol=1e-4, rtol=1e-4)
+        assert_close(abc, expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 13, 13
@@ -44,7 +44,7 @@ class TestPatchAffineShapeEstimator:
         patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
         tfeat = PatchAffineShapeEstimator(W).to(patches.device, patches.dtype).eval()
         tfeat_jit = torch.jit.script(PatchAffineShapeEstimator(W).to(patches.device, patches.dtype).eval())
-        assert_allclose(tfeat_jit(patches), tfeat(patches))
+        assert_close(tfeat_jit(patches), tfeat(patches))
 
 
 class TestLAFAffineShapeEstimator:
@@ -73,7 +73,7 @@ class TestLAFAffineShapeEstimator:
         laf = torch.tensor([[[[20.0, 0.0, 16.0], [0.0, 20.0, 16.0]]]], device=device)
         new_laf = aff(laf, inp)
         expected = torch.tensor([[[[36.643, 0.0, 16.0], [0.0, 10.916, 16.0]]]], device=device)
-        assert_allclose(new_laf, expected, atol=1e-4, rtol=1e-4)
+        assert_close(new_laf, expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 40, 40
@@ -99,7 +99,7 @@ class TestLAFAffineShapeEstimator:
         laf = torch.tensor([[[[20.0, 0.0, 16.0], [0.0, 20.0, 16.0]]]], device=device)
         tfeat = LAFAffineShapeEstimator(W).to(inp.device, inp.dtype).eval()
         tfeat_jit = torch.jit.script(LAFAffineShapeEstimator(W).to(inp.device, inp.dtype).eval())
-        assert_allclose(tfeat_jit(laf, inp), tfeat(laf, inp))
+        assert_close(tfeat_jit(laf, inp), tfeat(laf, inp))
 
 
 class TestLAFAffNetShapeEstimator:
@@ -135,7 +135,7 @@ class TestLAFAffNetShapeEstimator:
         laf = torch.tensor([[[[20.0, 0.0, 16.0], [0.0, 20.0, 16.0]]]], device=device)
         new_laf = aff(laf, inp)
         expected = torch.tensor([[[[40.8758, 0.0, 16.0], [-0.3824, 9.7857, 16.0]]]], device=device)
-        assert_allclose(new_laf, expected, atol=1e-4, rtol=1e-4)
+        assert_close(new_laf, expected, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device):
@@ -161,4 +161,4 @@ class TestLAFAffNetShapeEstimator:
         laf = torch.tensor([[[[8.0, 0.0, 16.0], [0.0, 8.0, 16.0]]]], device=device)
         laf_estimator = LAFAffNetShapeEstimator(True).to(device, dtype=patches.dtype).eval()
         laf_estimator_jit = torch.jit.script(LAFAffNetShapeEstimator(True).to(device, dtype=patches.dtype).eval())
-        assert_allclose(laf_estimator(laf, patches), laf_estimator_jit(laf, patches))
+        assert_close(laf_estimator(laf, patches), laf_estimator_jit(laf, patches))

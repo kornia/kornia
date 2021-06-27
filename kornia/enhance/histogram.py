@@ -12,10 +12,10 @@ def marginal_pdf(
         based on the number of histogram bins.
 
     Args:
-        values (torch.Tensor): shape [BxNx1].
-        bins (torch.Tensor): shape [NUM_BINS].
-        sigma (torch.Tensor): shape [1], gaussian smoothing factor.
-        epsilon: (float), scalar, for numerical stability.
+        values: shape [BxNx1].
+        bins: shape [NUM_BINS].
+        sigma: shape [1], gaussian smoothing factor.
+        epsilon: scalar, for numerical stability.
 
     Returns:
         Tuple[torch.Tensor, torch.Tensor]:
@@ -57,12 +57,12 @@ def joint_pdf(kernel_values1: torch.Tensor, kernel_values2: torch.Tensor, epsilo
        based on the number of histogram bins.
 
     Args:
-        kernel_values1 (torch.Tensor): shape [BxNxNUM_BINS].
-        kernel_values2 (torch.Tensor): shape [BxNxNUM_BINS].
-        epsilon (float): scalar, for numerical stability.
+        kernel_values1: shape [BxNxNUM_BINS].
+        kernel_values2: shape [BxNxNUM_BINS].
+        epsilon: scalar, for numerical stability.
 
     Returns:
-        torch.Tensor: shape [BxNUM_BINSxNUM_BINS].
+        shape [BxNUM_BINSxNUM_BINS].
 
     """
 
@@ -97,13 +97,13 @@ def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsi
     The calculation uses kernel density estimation which requires a bandwidth (smoothing) parameter.
 
     Args:
-        x (torch.Tensor): Input tensor to compute the histogram with shape :math:`(B, D)`.
-        bins (torch.Tensor): The number of bins to use the histogram :math:`(N_{bins})`.
-        bandwidth (torch.Tensor): Gaussian smoothing factor with shape shape [1].
-        epsilon (float): A scalar, for numerical stability. Default: 1e-10.
+        x: Input tensor to compute the histogram with shape :math:`(B, D)`.
+        bins: The number of bins to use the histogram :math:`(N_{bins})`.
+        bandwidth: Gaussian smoothing factor with shape shape [1].
+        epsilon: A scalar, for numerical stability.
 
     Returns:
-        torch.Tensor: Computed histogram of shape :math:`(B, N_{bins})`.
+        Computed histogram of shape :math:`(B, N_{bins})`.
 
     Examples:
         >>> x = torch.rand(1, 10)
@@ -126,14 +126,14 @@ def histogram2d(
     The calculation uses kernel density estimation which requires a bandwidth (smoothing) parameter.
 
     Args:
-        x1 (torch.Tensor): Input tensor to compute the histogram with shape :math:`(B, D1)`.
-        x2 (torch.Tensor): Input tensor to compute the histogram with shape :math:`(B, D2)`.
-        bins (torch.Tensor): The number of bins to use the histogram :math:`(N_{bins})`.
-        bandwidth (torch.Tensor): Gaussian smoothing factor with shape shape [1].
-        epsilon (float): A scalar, for numerical stability. Default: 1e-10.
+        x1: Input tensor to compute the histogram with shape :math:`(B, D1)`.
+        x2: Input tensor to compute the histogram with shape :math:`(B, D2)`.
+        bins: The number of bins to use the histogram :math:`(N_{bins})`.
+        bandwidth: Gaussian smoothing factor with shape shape [1].
+        epsilon: A scalar, for numerical stability. Default: 1e-10.
 
     Returns:
-        torch.Tensor: Computed histogram of shape :math:`(B, N_{bins}), N_{bins})`.
+        Computed histogram of shape :math:`(B, N_{bins}), N_{bins})`.
 
     Examples:
         >>> x1 = torch.rand(2, 32)

@@ -1,10 +1,10 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
 
 import kornia.testing as utils  # test utils
 from kornia.feature import HardNet, HardNet8
+from kornia.testing import assert_close
 
 
 class TestHardNet:
@@ -34,7 +34,7 @@ class TestHardNet:
         patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
         model = HardNet().to(patches.device, patches.dtype).eval()
         model_jit = torch.jit.script(HardNet().to(patches.device, patches.dtype).eval())
-        assert_allclose(model(patches), model_jit(patches))
+        assert_close(model(patches), model_jit(patches))
 
 
 class TestHardNet8:
@@ -64,4 +64,4 @@ class TestHardNet8:
         patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
         model = HardNet8().to(patches.device, patches.dtype).eval()
         model_jit = torch.jit.script(HardNet8().to(patches.device, patches.dtype).eval())
-        assert_allclose(model(patches), model_jit(patches))
+        assert_close(model(patches), model_jit(patches))

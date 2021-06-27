@@ -36,20 +36,17 @@ class ExtractTensorPatches(nn.Module):
         - a ``tuple`` of two ints -- in which case, the first `int` is used for
           the height dimension, and the second `int` for the width dimension.
 
-    Arguments:
-        window_size (Union[int, Tuple[int, int]]): the size of the sliding
-          window and the output patch size.
-        stride (Optional[Union[int, Tuple[int, int]]]): stride of the
-          sliding window. Default is 1.
-        padding (Optional[Union[int, Tuple[int, int]]]): Zero-padding added to
-          both side of the input. Default is 0.
+    Args:
+        window_size: the size of the sliding window and the output patch size.
+        stride: stride of the sliding window.
+        padding: Zero-padding added to both side of the input.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
         - Output: :math:`(B, N, C, H_{out}, W_{out})`
 
     Returns:
-        torch.Tensor: the tensor with the extracted patches.
+        the tensor with the extracted patches.
 
     Examples:
         >>> input = torch.arange(9.).view(1, 1, 3, 3)

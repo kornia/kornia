@@ -1,10 +1,10 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
 
 import kornia
 import kornia.geometry.epipolar as epi
+from kornia.testing import assert_close
 
 
 class TestTriangulation:
@@ -40,8 +40,8 @@ class TestTriangulation:
         X = epi.triangulate_points(P1, P2, x1, x2)
         x_reprojected = kornia.transform_points(scene['P'], X.expand(num_views, -1, -1))
 
-        assert_allclose(scene['points3d'], X, rtol=1e-4, atol=1e-4)
-        assert_allclose(scene['points2d'], x_reprojected, rtol=1e-4, atol=1e-4)
+        assert_close(scene['points3d'], X, rtol=1e-4, atol=1e-4)
+        assert_close(scene['points2d'], x_reprojected, rtol=1e-4, atol=1e-4)
 
     def test_gradcheck(self, device):
         points1 = torch.rand(1, 8, 2, device=device, dtype=torch.float64, requires_grad=True)

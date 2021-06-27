@@ -1,9 +1,9 @@
 import os
 
 import torch
-from torch.testing import assert_allclose
 
 import kornia
+from kornia.testing import assert_close
 
 
 class TestSaveLoadPointCloud:
@@ -17,7 +17,7 @@ class TestSaveLoadPointCloud:
 
         # load file
         xyz_load = kornia.load_pointcloud_ply(filename)
-        assert_allclose(xyz_save.reshape(-1, 3), xyz_load)
+        assert_close(xyz_save.reshape(-1, 3), xyz_load)
 
         # remove the temporal file
         if os.path.exists(filename):

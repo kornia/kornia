@@ -1,10 +1,10 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
 
 import kornia
 import kornia.testing as utils  # test utils
+from kornia.testing import assert_close
 
 
 class TestDepthTo3d:
@@ -52,7 +52,7 @@ class TestDepthTo3d:
         )
 
         points3d = kornia.depth_to_3d(depth, camera_matrix)  # default is normalize_points=False
-        assert_allclose(points3d, points3d_expected, atol=1e-4, rtol=1e-4)
+        assert_close(points3d, points3d_expected, atol=1e-4, rtol=1e-4)
 
     def test_unproject_normalized(self, device, dtype):
         # this is for normalize_points=True
@@ -90,7 +90,7 @@ class TestDepthTo3d:
         )
 
         points3d = kornia.depth_to_3d(depth, camera_matrix, normalize_points=True)
-        assert_allclose(points3d, points3d_expected, atol=1e-4, rtol=1e-4)
+        assert_close(points3d, points3d_expected, atol=1e-4, rtol=1e-4)
 
     def test_unproject_and_project(self, device, dtype):
         depth = 2 * torch.tensor(
@@ -102,7 +102,7 @@ class TestDepthTo3d:
         points3d = kornia.depth_to_3d(depth, camera_matrix)
         points2d = kornia.project_points(points3d.permute(0, 2, 3, 1), camera_matrix[:, None, None])
         points2d_expected = kornia.create_meshgrid(4, 3, False, device=device).to(dtype=dtype)
-        assert_allclose(points2d, points2d_expected, atol=1e-4, rtol=1e-4)
+        assert_close(points2d, points2d_expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         # generate input data
@@ -161,7 +161,7 @@ class TestDepthToNormals:
         )
 
         normals = kornia.depth_to_normals(depth, camera_matrix)  # default is normalize_points=False
-        assert_allclose(normals, normals_expected, 1e-3, 1e-3)
+        assert_close(normals, normals_expected, rtol=1e-3, atol=1e-3)
 
     def test_simple_normalized(self, device, dtype):
         # this is for default normalize_points=False
@@ -199,7 +199,7 @@ class TestDepthToNormals:
         )
 
         normals = kornia.depth_to_normals(depth, camera_matrix, normalize_points=True)
-        assert_allclose(normals, normals_expected, 1e-3, 1e-3)
+        assert_close(normals, normals_expected, rtol=1e-3, atol=1e-3)
 
     def test_gradcheck(self, device, dtype):
         # generate input data
@@ -262,7 +262,7 @@ class TestWarpFrameDepth:
         image_dst = kornia.warp_frame_depth(
             image_src, depth_dst, src_trans_dst, camera_matrix
         )  # default is normalize_points=False
-        assert_allclose(image_dst, image_dst_expected, 1e-3, 1e-3)
+        assert_close(image_dst, image_dst_expected, rtol=1e-3, atol=1e-3)
 
     def test_translation_normalized(self, device, dtype):
         # this is for normalize_points=True
@@ -301,7 +301,7 @@ class TestWarpFrameDepth:
         )
 
         image_dst = kornia.warp_frame_depth(image_src, depth_dst, src_trans_dst, camera_matrix, normalize_points=True)
-        assert_allclose(image_dst, image_dst_expected, 1e-3, 1e-3)
+        assert_close(image_dst, image_dst_expected, rtol=1e-3, atol=1e-3)
 
     def test_gradcheck(self, device, dtype):
         image_src = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)

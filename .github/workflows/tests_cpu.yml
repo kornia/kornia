@@ -16,7 +16,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: [3.6, 3.7, 3.8]
-        pytorch-version: [1.8.0]
+        pytorch-version: [1.9.0]
 
     steps:
     - uses: actions/checkout@v2
@@ -47,7 +47,7 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         python-version: [3.7]
-        pytorch-version: [1.6.0, 1.7.0, 1.7.1, 1.8.0]
+        pytorch-version: [1.6.0, 1.7.0, 1.7.1, 1.8.0, 1.9.0]
 
     steps:
     - uses: actions/checkout@v2

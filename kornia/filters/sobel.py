@@ -9,14 +9,16 @@ def spatial_gradient(input: torch.Tensor, mode: str = 'sobel', order: int = 1, n
     r"""Computes the first order image derivative in both x and y using a Sobel
     operator.
 
+    .. image:: _static/img/spatial_gradient.png
+
     Args:
-        input (torch.Tensor): input image tensor with shape :math:`(B, C, H, W)`.
-        mode (str): derivatives modality, can be: `sobel` or `diff`. Default: `sobel`.
-        order (int): the order of the derivatives. Default: 1.
-        normalized (bool): whether the output is normalized. Default: True.
+        input: input image tensor with shape :math:`(B, C, H, W)`.
+        mode: derivatives modality, can be: `sobel` or `diff`.
+        order: the order of the derivatives.
+        normalized: whether the output is normalized.
 
     Return:
-        torch.Tensor: the derivatives of the input feature map. with shape :math:`(B, C, 2, H, W)`.
+        the derivatives of the input feature map. with shape :math:`(B, C, 2, H, W)`.
 
     Examples:
         >>> input = torch.rand(1, 3, 4, 4)
@@ -55,12 +57,12 @@ def spatial_gradient3d(input: torch.Tensor, mode: str = 'diff', order: int = 1) 
     operator.
 
     Args:
-        input (torch.Tensor): input features tensor with shape :math:`(B, C, D, H, W)`.
-        mode (str): derivatives modality, can be: `sobel` or `diff`. Default: `diff`.
-        order (int): the order of the derivatives. Default: 1.
+        input: input features tensor with shape :math:`(B, C, D, H, W)`.
+        mode: derivatives modality, can be: `sobel` or `diff`.
+        order: the order of the derivatives.
 
     Return:
-        torch.Tensor: the spatial gradients of the input feature map.
+        the spatial gradients of the input feature map.
 
     Shape:
         - Input: :math:`(B, C, D, H, W)`. D, H, W are spatial dimensions, gradient is calculated w.r.t to them.
@@ -106,13 +108,15 @@ def spatial_gradient3d(input: torch.Tensor, mode: str = 'diff', order: int = 1) 
 def sobel(input: torch.Tensor, normalized: bool = True, eps: float = 1e-6) -> torch.Tensor:
     r"""Computes the Sobel operator and returns the magnitude per channel.
 
+    .. image:: _static/img/sobel.png
+
     Args:
-        input (torch.Tensor): the input image with shape :math:`(B,C,H,W)`.
-        normalized (bool): if True, L1 norm of the kernel is set to 1.
-        eps (float): regularization number to avoid NaN during backprop. Default: 1e-6.
+        input: the input image with shape :math:`(B,C,H,W)`.
+        normalized: if True, L1 norm of the kernel is set to 1.
+        eps: regularization number to avoid NaN during backprop.
 
     Return:
-        torch.Tensor: the sobel edge gradient magnitudes map with shape :math:`(B,C,H,W)`.
+        the sobel edge gradient magnitudes map with shape :math:`(B,C,H,W)`.
 
     Example:
         >>> input = torch.rand(1, 3, 4, 4)
@@ -144,12 +148,12 @@ class SpatialGradient(nn.Module):
     operator.
 
     Args:
-        mode (str): derivatives modality, can be: `sobel` or `diff`. Default: `sobel`.
-        order (int): the order of the derivatives. Default: 1.
-        normalized (bool): whether the output is normalized. Default: True.
+        mode: derivatives modality, can be: `sobel` or `diff`.
+        order: the order of the derivatives.
+        normalized: whether the output is normalized.
 
     Return:
-        torch.Tensor: the sobel edges of the input feature map.
+        the sobel edges of the input feature map.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -181,11 +185,11 @@ class SpatialGradient3d(nn.Module):
     operator.
 
     Args:
-        mode (str): derivatives modality, can be: `sobel` or `diff`. Default: `sobel`.
-        order (int): the order of the derivatives. Default: 1.
+        mode: derivatives modality, can be: `sobel` or `diff`.
+        order: the order of the derivatives.
 
     Return:
-        torch.Tensor: the spatial gradients of the input feature map.
+        the spatial gradients of the input feature map.
 
     Shape:
         - Input: :math:`(B, C, D, H, W)`. D, H, W are spatial dimensions, gradient is calculated w.r.t to them.
@@ -216,11 +220,11 @@ class Sobel(nn.Module):
     r"""Computes the Sobel operator and returns the magnitude per channel.
 
     Args:
-        normalized (bool): if True, L1 norm of the kernel is set to 1.
-        eps (float): regularization number to avoid NaN during backprop. Default: 1e-6.
+        normalized: if True, L1 norm of the kernel is set to 1.
+        eps: regularization number to avoid NaN during backprop.
 
     Return:
-        torch.Tensor: the sobel edge gradient magnitudes map.
+        the sobel edge gradient magnitudes map.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
