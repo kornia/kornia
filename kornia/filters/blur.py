@@ -12,6 +12,8 @@ def box_blur(
 ) -> torch.Tensor:
     r"""Blurs an image using the box filter.
 
+    .. image:: _static/img/box_blur.png
+
     The function smooths an image using the kernel:
 
     .. math::
@@ -24,15 +26,14 @@ def box_blur(
         \end{bmatrix}
 
     Args:
-        image (torch.Tensor): the image to blur with shape :math:`(B,C,H,W)`.
-        kernel_size (Tuple[int, int]): the blurring kernel size.
-        border_type (str): the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
-        normalized (bool): if True, L1 norm of the kernel is set to 1.
+        image: the image to blur with shape :math:`(B,C,H,W)`.
+        kernel_size: the blurring kernel size.
+        border_type: the padding mode to be applied before convolving.
+          The expected modes are: ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
+        normalized: if True, L1 norm of the kernel is set to 1.
 
     Returns:
-        torch.Tensor: the blurred tensor with shape :math:`(B,C,H,W)`.
+        the blurred tensor with shape :math:`(B,C,H,W)`.
 
     Example:
         >>> input = torch.rand(2, 4, 5, 7)
@@ -61,14 +62,14 @@ class BoxBlur(nn.Module):
         \end{bmatrix}
 
     Args:
-        kernel_size (Tuple[int, int]): the blurring kernel size.
-        border_type (str): the padding mode to be applied before convolving.
+        kernel_size: the blurring kernel size.
+        border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
-        normalized (bool): if True, L1 norm of the kernel is set to 1.
+        normalized: if True, L1 norm of the kernel is set to 1.
 
     Returns:
-        torch.Tensor: the blurred input tensor.
+        the blurred input tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`

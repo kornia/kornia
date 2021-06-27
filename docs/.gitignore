@@ -2,3 +2,4 @@ build/doctest
 build/html/.buildinfo
 build/html/objects.inv
 source/tutorials/*
+source/_static/img/*.png

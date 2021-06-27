@@ -35,6 +35,7 @@ def main():
     BASE_IMAGE_URL2: str = "https://raw.githubusercontent.com/kornia/data/main/simba.png"  # color
     BASE_IMAGE_URL3: str = "https://raw.githubusercontent.com/kornia/data/main/girona.png"  # enhance
     BASE_IMAGE_URL4: str = "https://raw.githubusercontent.com/kornia/data/main/baby_giraffe.png"  # morphology
+    BASE_IMAGE_URL5: str = "https://raw.githubusercontent.com/kornia/data/main/persistencia_memoria.jpg"  # filters
     OUTPUT_PATH = Path(__file__).absolute().parent / "source/_static/img"
 
     os.makedirs(OUTPUT_PATH, exist_ok=True)
@@ -43,6 +44,7 @@ def main():
     img2 = read_img_from_url(BASE_IMAGE_URL2, img1.shape[-2:])
     img3 = read_img_from_url(BASE_IMAGE_URL3, img1.shape[-2:])
     img4 = read_img_from_url(BASE_IMAGE_URL4)
+    img5 = read_img_from_url(BASE_IMAGE_URL5, (234, 320))
 
     # TODO: make this more generic for modules out of kornia.augmentation
     # Dictionary containing the transforms to generate the sample images:
@@ -208,6 +210,46 @@ def main():
         # import pdb;pdb.set_trace()
         fn = getattr(mod, fn_name)
         out = fn(*args_in)
+        # save the output image
+        out = torch.cat([img_in[0], *[out[i] for i in range(out.size(0))]], dim=-1)
+        out_np = K.utils.tensor_to_image((out * 255.0).byte())
+        cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
+        sig = f"{fn_name}({', '.join([str(a) for a in args])})"
+        print(f"Generated image example for {fn_name}. {sig}")
+
+    # korna.filters module
+    mod = importlib.import_module("kornia.filters")
+    kernel = torch.tensor([[0, 1, 0], [1, 1, 1], [0, 1, 0]])
+    transforms: dict = {
+        "box_blur": (((5, 5),), 1),
+        "median_blur": (((5, 5),), 1),
+        "gaussian_blur2d": (((5, 5), (1.5, 1.5)), 1),
+        "motion_blur": ((5, 90.0, 1.0), 1),
+        "max_blur_pool2d": ((5,), 1),
+        "blur_pool2d": ((5,), 1),
+        "unsharp_mask": (((5, 5), (1.5, 1.5)), 1),
+        "laplacian": ((5,), 1),
+        "sobel": ((), 1),
+        "spatial_gradient": ((), 1),
+        "canny": ((), 1),
+    }
+    # ITERATE OVER THE TRANSFORMS
+    for fn_name, (args, num_samples) in transforms.items():
+        img_in = img5.repeat(num_samples, 1, 1, 1)
+        args_in = (img_in, *args)
+        # import function and apply
+        fn = getattr(mod, fn_name)
+        out = fn(*args_in)
+        if fn_name in ("max_blur_pool2d", "blur_pool2d"):
+            out = K.geometry.resize(out, img_in.shape[-2:])
+        if fn_name == "canny":
+            out = out[1].repeat(1, 3, 1, 1)
+        if isinstance(out, torch.Tensor):
+            out = out.clamp(min=0.0, max=1.0)
+        if fn_name in ("laplacian", "sobel", "spatial_gradient", "canny"):
+            out = K.enhance.normalize_min_max(out)
+        if fn_name == "spatial_gradient":
+            out = out.permute(2, 1, 0, 3, 4).squeeze()
         # save the output image
         out = torch.cat([img_in[0], *[out[i] for i in range(out.size(0))]], dim=-1)
         out_np = K.utils.tensor_to_image((out * 255.0).byte())

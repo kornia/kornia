@@ -23,18 +23,19 @@ def canny(
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Finds edges of the input image and filters them using the Canny algorithm.
 
+    .. image:: _static/img/canny.png
+
     Args:
-        input (torch.Tensor): input image tensor with shape :math:`(B,C,H,W)`.
-        low_threshold (float): lower threshold for the hysteresis procedure. Default: 0.1.
-        high_threshold (float): upper threshold for the hysteresis procedure. Default: 0.1.
-        kernel_size (Tuple[int, int]): the size of the kernel for the gaussian blur.
-        sigma (Tuple[float, float]): the standard deviation of the kernel for the gaussian blur.
-        hysteresis (bool): if True, applies the hysteresis edge tracking.
+        input: input image tensor with shape :math:`(B,C,H,W)`.
+        low_threshold: lower threshold for the hysteresis procedure.
+        high_threshold: upper threshold for the hysteresis procedure.
+        kernel_size: the size of the kernel for the gaussian blur.
+        sigma: the standard deviation of the kernel for the gaussian blur.
+        hysteresis: if True, applies the hysteresis edge tracking.
             Otherwise, the edges are divided between weak (0.5) and strong (1) edges.
-        eps (float): regularization number to avoid NaN during backprop. Default: 1e-6.
+        eps: regularization number to avoid NaN during backprop.
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor]:
         - the canny edge magnitudes map, shape of :math:`(B,1,H,W)`.
         - the canny edge detection filtered by thresholds and hysteresis, shape of :math:`(B,1,H,W)`.
 
@@ -155,14 +156,14 @@ class Canny(nn.Module):
     r"""Module that finds edges of the input image and filters them using the Canny algorithm.
 
     Args:
-        input (torch.Tensor): input image tensor with shape :math:`(B,C,H,W)`.
-        low_threshold (float): lower threshold for the hysteresis procedure. Default: 0.1.
-        high_threshold (float): upper threshold for the hysteresis procedure. Default: 0.1.
-        kernel_size (Tuple[int, int]): the size of the kernel for the gaussian blur.
-        sigma (Tuple[float, float]): the standard deviation of the kernel for the gaussian blur.
-        hysteresis (bool): if True, applies the hysteresis edge tracking.
+        input: input image tensor with shape :math:`(B,C,H,W)`.
+        low_threshold: lower threshold for the hysteresis procedure.
+        high_threshold: upper threshold for the hysteresis procedure.
+        kernel_size: the size of the kernel for the gaussian blur.
+        sigma: the standard deviation of the kernel for the gaussian blur.
+        hysteresis: if True, applies the hysteresis edge tracking.
             Otherwise, the edges are divided between weak (0.5) and strong (1) edges.
-        eps (float): regularization number to avoid NaN during backprop. Default: 1e-6.
+        eps: regularization number to avoid NaN during backprop.
 
     Returns:
         Tuple[torch.Tensor, torch.Tensor]:
