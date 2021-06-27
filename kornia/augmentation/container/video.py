@@ -1,4 +1,5 @@
-from typing import cast, Tuple, Union
+from itertools import zip_longest
+from typing import cast, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -6,7 +7,9 @@ import torch.nn as nn
 import kornia
 from kornia.augmentation.base import _AugmentationBase
 
-from .image import ImageSequential
+from .image import ImageSequential, ParamItem
+
+__all__ = ["VideoSequential"]
 
 
 # TODO: Rewrite this to support inverse operation by having a generic AugmentationSequential.
@@ -19,9 +22,15 @@ class VideoSequential(ImageSequential):
     settings on `same_on_batch`, etc.
 
     Args:
-        *args (_AugmentationBase): a list of augmentation module.
-        data_format (str): only BCTHW and BTCHW are supported. Default: BTCHW.
-        same_on_frame (bool): apply the same transformation across the channel per frame. Default: True.
+        *args: a list of augmentation module.
+        data_format: only BCTHW and BTCHW are supported.
+        same_on_frame: apply the same transformation across the channel per frame.
+        random_apply: randomly select a sublist (order agnostic) of args to
+            apply transformation.
+            If int, a fixed number of transformations will be selected.
+            If (a,), x number of transformations (a <= x <= len(args)) will be selected.
+            If (a, b), x number of transformations (a <= x <= b) will be selected.
+            If None, the whole list of args will be processed as a sequence.
 
     Example:
         If set `same_on_frame` to True, we would expect the same augmentation has been applied to each
@@ -32,6 +41,7 @@ class VideoSequential(ImageSequential):
         ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...     kornia.color.BgrToRgb(),
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
+        ... random_apply=10,
         ... data_format="BCTHW",
         ... same_on_frame=True)
         >>> output = aug_list(input)
@@ -54,10 +64,23 @@ class VideoSequential(ImageSequential):
         torch.Size([2, 3, 4, 5, 6])
         >>> (output[0, :, 0] == output[0, :, 1]).all()
         tensor(False)
+
+        Reproduce with provided params.
+        >>> out2 = aug_list(input, params=aug_list._params)
+        >>> torch.equal(output, out2)
+        True
     """
 
-    def __init__(self, *args: nn.Module, data_format="BTCHW", same_on_frame: bool = True) -> None:
-        super(VideoSequential, self).__init__(*args, same_on_batch=None, return_transform=None, keepdim=None)
+    def __init__(
+        self,
+        *args: nn.Module,
+        data_format: str = "BTCHW",
+        same_on_frame: bool = True,
+        random_apply: Union[int, bool, Tuple[int, int]] = False,
+    ) -> None:
+        super(VideoSequential, self).__init__(
+            *args, same_on_batch=None, return_transform=None, keepdim=None, random_apply=random_apply
+        )
         self.same_on_frame = same_on_frame
         self.data_format = data_format.upper()
         assert self.data_format in ["BCTHW", "BTCHW"], f"Only `BCTHW` and `BTCHW` are supported. Got `{data_format}`."
@@ -101,9 +124,16 @@ class VideoSequential(ImageSequential):
             pass
         return input
 
-    def forward(self, input: torch.Tensor) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:  # type: ignore
+    def forward(  # type: ignore
+        self, input: torch.Tensor, params: Optional[List[ParamItem]] = None
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """Define the video computation performed."""
         assert len(input.shape) == 5, f"Input must be a 5-dim tensor. Got {input.shape}."
+        self._params = []
+
+        named_modules = self.get_forward_sequence(params)
+        params = [] if params is None else params
+
         # Size of T
         frame_num = input.size(self._temporal_channel)
         # Got param generation shape to (B, C, H, W). Ignoring T.
@@ -113,18 +143,18 @@ class VideoSequential(ImageSequential):
         if not self.same_on_frame:
             # Overwrite param generation shape to (B * T, C, H, W).
             batch_shape = input.shape
-        for aug in self.children():
-            if isinstance(aug, _AugmentationBase):
-                param = aug.forward_parameters(batch_shape)
-                if self.same_on_frame:
-                    for k, v in param.items():
-                        # TODO: revise colorjitter order param in the future to align the standard.
-                        if not (k == "order" and isinstance(aug, kornia.augmentation.ColorJitter)):
-                            param.update({k: self.__repeat_param_across_channels__(v, frame_num)})
-            else:
-                param = None
 
-            input = self.apply_to_input(input, aug, param=param)  # type: ignore
+        for (name, module), param in zip_longest(named_modules, params):
+            if param is None and isinstance(module, _AugmentationBase):
+                mod_param = module.forward_parameters(batch_shape)
+                if self.same_on_frame:
+                    for k, v in mod_param.items():
+                        # TODO: revise colorjitter order param in the future to align the standard.
+                        if not (k == "order" and isinstance(module, kornia.augmentation.ColorJitter)):
+                            mod_param.update({k: self.__repeat_param_across_channels__(v, frame_num)})
+                param = ParamItem(name, mod_param)
+
+            input = self.apply_to_input(input, name, module, param=param)  # type: ignore
 
         if isinstance(input, (tuple, list)):
             input[0] = self._input_shape_convert_back(input[0], frame_num)
