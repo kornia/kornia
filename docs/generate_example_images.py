@@ -240,7 +240,7 @@ def main():
         # import function and apply
         fn = getattr(mod, fn_name)
         out = fn(*args_in)
-        if fn_name in ("max_blur_pool2d", "blur_pool2d",):
+        if fn_name in ("max_blur_pool2d", "blur_pool2d"):
             out = K.geometry.resize(out, img_in.shape[-2:])
         if fn_name == "canny":
             out = out[1].repeat(1, 3, 1, 1)
