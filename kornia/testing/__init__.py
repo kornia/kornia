@@ -154,6 +154,7 @@ try:
 
 except ImportError:
     # Partial backport of torch.testing.assert_close for torch<1.9
+    # TODO: remove this branch if kornia relies on torch>=1.9
     from torch.testing import assert_allclose as _assert_allclose
 
     class UsageError(Exception):
