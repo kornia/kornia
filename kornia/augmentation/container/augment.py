@@ -1,6 +1,6 @@
-from typing import cast, Dict, List, Optional, Tuple, Union
-from itertools import zip_longest
 import warnings
+from itertools import zip_longest
+from typing import cast, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -96,9 +96,7 @@ class AugmentationSequential(ImageSequential):
             if isinstance(arg, PatchSequential) and not arg.is_intensity_only():
                 warnings.warn("Geometric transformation detected in PatchSeqeuntial, which would break bbox, mask.")
 
-    def apply_to_mask(
-        self, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None,
-    ) -> torch.Tensor:
+    def apply_to_mask(self, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None) -> torch.Tensor:
         if param is not None:
             _param = cast(Dict[str, torch.Tensor], param.data)
         else:
@@ -113,11 +111,7 @@ class AugmentationSequential(ImageSequential):
         return input
 
     def apply_to_bbox(
-        self,
-        input: torch.Tensor,
-        module: nn.Module,
-        param: Optional[ParamItem] = None,
-        mode: str = "xyxy",
+        self, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None, mode: str = "xyxy"
     ) -> torch.Tensor:
         if param is not None:
             _param = cast(Dict[str, torch.Tensor], param.data)
@@ -133,7 +127,7 @@ class AugmentationSequential(ImageSequential):
         return input
 
     def apply_to_keypoints(
-        self, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None,
+        self, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None
     ) -> torch.Tensor:
         if param is not None:
             _param = cast(Dict[str, torch.Tensor], param.data)

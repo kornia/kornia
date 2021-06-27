@@ -1,6 +1,6 @@
-from typing import Any, Iterator, List, Optional, Tuple, Union, NamedTuple
-from itertools import zip_longest
 from collections import OrderedDict
+from itertools import zip_longest
+from typing import Any, Iterator, List, NamedTuple, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -138,9 +138,7 @@ class ImageSequential(nn.Sequential):
         for name in names:
             yield modules[list(dict(self.named_children()).keys()).index(name)]
 
-    def get_forward_sequence(
-        self, params: Optional[List[ParamItem]] = None
-    ) -> Iterator[Tuple[str, nn.Module]]:
+    def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, nn.Module]]:
         if params is None:
             named_modules = self._get_child_sequence()
         else:
@@ -181,9 +179,7 @@ class ImageSequential(nn.Sequential):
         return input
 
     def forward(
-        self,
-        input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
-        params: Optional[List[ParamItem]] = None,
+        self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]], params: Optional[List[ParamItem]] = None
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         self._params = []
         named_modules = self.get_forward_sequence(params)
