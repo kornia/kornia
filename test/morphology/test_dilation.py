@@ -1,9 +1,9 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
 
 from kornia.morphology import dilation
+from kornia.testing import assert_close
 
 
 class TestDilate:
@@ -26,7 +26,7 @@ class TestDilate:
         expected = torch.tensor([[1.0, 1.0, 1.0], [0.7, 1.0, 0.8], [0.9, 0.9, 0.9]], device=device, dtype=dtype)[
             None, None, :, :
         ]
-        assert_allclose(dilation(tensor, kernel), expected)
+        assert_close(dilation(tensor, kernel), expected, atol=1e-4, rtol=1e-4)
 
     def test_structural_element(self, device, dtype):
         tensor = torch.tensor([[0.5, 1.0, 0.3], [0.7, 0.3, 0.8], [0.4, 0.9, 0.2]], device=device, dtype=dtype)[
@@ -38,8 +38,11 @@ class TestDilate:
         expected = torch.tensor([[1.0, 1.0, 1.0], [0.7, 1.0, 0.8], [0.9, 0.9, 0.9]], device=device, dtype=dtype)[
             None, None, :, :
         ]
-        assert_allclose(
-            dilation(tensor, torch.ones_like(structural_element), structuring_element=structural_element), expected
+        assert_close(
+            dilation(tensor, torch.ones_like(structural_element), structuring_element=structural_element),
+            expected,
+            atol=1e-4,
+            rtol=1e-4,
         )
 
     def test_exception(self, device, dtype):
@@ -77,4 +80,4 @@ class TestDilate:
         actual = op_script(tensor, kernel)
         expected = op(tensor, kernel)
 
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)

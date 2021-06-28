@@ -1,9 +1,9 @@
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
 
 import kornia
 import kornia.testing as utils  # test utils
+from kornia.testing import assert_close
 
 
 class TestCropAndResize:
@@ -22,7 +22,7 @@ class TestCropAndResize:
 
         # default should use align_coners True
         patches = kornia.crop_and_resize(inp, boxes, (height, width))
-        assert_allclose(patches, expected, rtol=1e-4, atol=1e-4)
+        assert_close(patches, expected, rtol=1e-4, atol=1e-4)
 
     def test_align_corners_false(self, device, dtype):
         inp = torch.tensor(
@@ -37,7 +37,7 @@ class TestCropAndResize:
         boxes = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)  # 1x4x2
 
         patches = kornia.crop_and_resize(inp, boxes, (height, width), align_corners=False)
-        assert_allclose(patches, expected, rtol=1e-4, atol=1e-4)
+        assert_close(patches, expected, rtol=1e-4, atol=1e-4)
 
     def test_crop_batch(self, device, dtype):
         inp = torch.tensor(
@@ -60,7 +60,7 @@ class TestCropAndResize:
         )  # 2x4x2
 
         patches = kornia.crop_and_resize(inp, boxes, (2, 2))
-        assert_allclose(patches, expected, rtol=1e-4, atol=1e-4)
+        assert_close(patches, expected, rtol=1e-4, atol=1e-4)
 
     def test_crop_batch_broadcast(self, device, dtype):
         inp = torch.tensor(
@@ -79,7 +79,7 @@ class TestCropAndResize:
         boxes = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)  # 1x4x2
 
         patches = kornia.crop_and_resize(inp, boxes, (2, 2))
-        assert_allclose(patches, expected, rtol=1e-4, atol=1e-4)
+        assert_close(patches, expected, rtol=1e-4, atol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         img = torch.rand(1, 2, 5, 4, device=device, dtype=dtype)
@@ -105,7 +105,7 @@ class TestCropAndResize:
         crop_height, crop_width = 4, 2
         actual = op_script(img, boxes, (crop_height, crop_width))
         expected = op(img, boxes, (crop_height, crop_width))
-        assert_allclose(actual, expected, rtol=1e-4, atol=1e-4)
+        assert_close(actual, expected, rtol=1e-4, atol=1e-4)
 
 
 class TestCenterCrop:
@@ -119,7 +119,7 @@ class TestCenterCrop:
         expected = torch.tensor([[[[5.0, 6.0, 7.0, 8.0], [9.0, 10.0, 11.0, 12.0]]]], device=device, dtype=dtype)
 
         out_crop = kornia.center_crop(inp, (2, 4))
-        assert_allclose(out_crop, expected, rtol=1e-4, atol=1e-4)
+        assert_close(out_crop, expected, rtol=1e-4, atol=1e-4)
 
     def test_center_crop_h4_w2(self, device, dtype):
         inp = torch.tensor(
@@ -132,7 +132,7 @@ class TestCenterCrop:
         expected = torch.tensor([[[[2.0, 3.0], [6.0, 7.0], [10.0, 11.0], [14.0, 15.0]]]], device=device, dtype=dtype)
 
         out_crop = kornia.center_crop(inp, (height, width))
-        assert_allclose(out_crop, expected, rtol=1e-4, atol=1e-4)
+        assert_close(out_crop, expected, rtol=1e-4, atol=1e-4)
 
     def test_center_crop_h4_w2_batch(self, device, dtype):
         inp = torch.tensor(
@@ -154,7 +154,7 @@ class TestCenterCrop:
         )
 
         out_crop = kornia.center_crop(inp, (4, 2))
-        assert_allclose(out_crop, expected, rtol=1e-4, atol=1e-4)
+        assert_close(out_crop, expected, rtol=1e-4, atol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         img = torch.rand(1, 2, 5, 4, device=device, dtype=dtype)
@@ -171,7 +171,7 @@ class TestCenterCrop:
 
         actual = op_script(img, (4, 2))
         expected = op(img, (4, 2))
-        assert_allclose(actual, expected, rtol=1e-4, atol=1e-4)
+        assert_close(actual, expected, rtol=1e-4, atol=1e-4)
 
     def test_jit_trace(self, device, dtype):
         # Define script
@@ -184,7 +184,7 @@ class TestCenterCrop:
         # Run
         actual = op_trace(img, (torch.tensor(2), torch.tensor(3)))
         expected = op(img, (2, 3))
-        assert_allclose(actual, expected, rtol=1e-4, atol=1e-4)
+        assert_close(actual, expected, rtol=1e-4, atol=1e-4)
 
 
 class TestCropByBoxes:
@@ -202,7 +202,7 @@ class TestCropByBoxes:
         expected = torch.tensor([[[[6.0, 7.0], [10.0, 11.0]]]], device=device, dtype=dtype)
 
         patches = kornia.geometry.transform.crop.crop_by_boxes(inp, src, dst)
-        assert_allclose(patches, expected)
+        assert_close(patches, expected)
 
     def test_crop_by_boxes_resizing(self, device, dtype):
         inp = torch.tensor(
@@ -218,7 +218,7 @@ class TestCropByBoxes:
         expected = torch.tensor([[[[6.0, 6.5, 7.0], [10.0, 10.5, 11.0]]]], device=device, dtype=dtype)
 
         patches = kornia.geometry.transform.crop.crop_by_boxes(inp, src, dst)
-        assert_allclose(patches, expected, rtol=1e-4, atol=1e-4)
+        assert_close(patches, expected, rtol=1e-4, atol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         inp = torch.randn((1, 1, 3, 3), device=device, dtype=dtype)
@@ -245,7 +245,7 @@ class TestCropByTransform:
         expected = torch.tensor([[[[6.0, 7.0], [10.0, 11.0]]]], device=device, dtype=dtype)
 
         patches = kornia.geometry.transform.crop.crop_by_transform_mat(inp, transform, (2, 2))
-        assert_allclose(patches, expected)
+        assert_close(patches, expected)
 
     def test_crop_by_boxes_resizing(self, device, dtype):
         inp = torch.tensor(
@@ -261,7 +261,7 @@ class TestCropByTransform:
         expected = torch.tensor([[[[6.0, 6.5, 7.0], [10.0, 10.5, 11.0]]]], device=device, dtype=dtype)
 
         patches = kornia.geometry.transform.crop.crop_by_transform_mat(inp, transform, (2, 3))
-        assert_allclose(patches, expected, rtol=1e-4, atol=1e-4)
+        assert_close(patches, expected, rtol=1e-4, atol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         inp = torch.randn((1, 1, 3, 3), device=device, dtype=dtype)

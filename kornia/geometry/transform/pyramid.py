@@ -33,14 +33,13 @@ class PyrDown(nn.Module):
     r"""Blurs a tensor and downsamples it.
 
     Args:
-        border_type (str): the padding mode to be applied before convolving.
+        border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
-        align_corners(bool): interpolation flag. Default: False. See
-        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
+          ``'replicate'`` or ``'circular'``.
+        align_corners: interpolation flag.
 
     Return:
-        torch.Tensor: the downsampled tensor.
+        the downsampled tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -64,14 +63,13 @@ class PyrUp(nn.Module):
     r"""Upsamples a tensor and then blurs it.
 
     Args:
-        borde_type (str): the padding mode to be applied before convolving.
+        borde_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
-        align_corners(bool): interpolation flag. Default: False. See
-        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
+          ``'replicate'`` or ``'circular'``.
+        align_corners: interpolation flag.
 
     Return:
-        torch.Tensor: the upsampled tensor.
+        the upsampled tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -92,16 +90,17 @@ class PyrUp(nn.Module):
 
 
 class ScalePyramid(nn.Module):
-    r"""Creates an scale pyramid of image, usually used for local feature
-    detection. Images are consequently smoothed with Gaussian blur and
-    downscaled.
-    Arguments:
-        n_levels (int): number of the levels in octave.
-        init_sigma (float): initial blur level.
-        min_size (int): the minimum size of the octave in pixels. Default is 5
-        double_image (bool): add 2x upscaled image as 1st level of pyramid. OpenCV SIFT does this. Default is False
+    r"""Creates an scale pyramid of image, usually used for local feature detection.
+
+    Images are consequently smoothed with Gaussian blur and downscaled.
+
+    Args:
+        n_levels: number of the levels in octave.
+        init_sigma: initial blur level.
+        min_size: the minimum size of the octave in pixels.
+        double_image: add 2x upscaled image as 1st level of pyramid. OpenCV SIFT does this.
+
     Returns:
-        Tuple(List(Tensors), List(Tensors), List(Tensors)):
         1st output: images
         2nd output: sigmas (coefficients for scale conversion)
         3rd output: pixelDists (coefficients for coordinate conversion)
@@ -112,7 +111,7 @@ class ScalePyramid(nn.Module):
         - Output 2nd: :math:`[(B, NL), (B, NL), (B, NL), ...]`
         - Output 3rd: :math:`[(B, NL), (B, NL), (B, NL), ...]`
 
-    Examples::
+    Examples:
         >>> input = torch.rand(2, 4, 100, 100)
         >>> sp, sigmas, pds = ScalePyramid(3, 15)(input)
     """
@@ -230,16 +229,17 @@ class ScalePyramid(nn.Module):
 def pyrdown(input: torch.Tensor, border_type: str = 'reflect', align_corners: bool = False) -> torch.Tensor:
     r"""Blurs a tensor and downsamples it.
 
+    .. image:: _static/img/pyrdown.png
+
     Args:
-        input (tensor): the tensor to be downsampled.
-        border_type (str): the padding mode to be applied before convolving.
+        input: the tensor to be downsampled.
+        border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
-        align_corners(bool): interpolation flag. Default: False. See
-        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail.
+          ``'replicate'`` or ``'circular'``.
+        align_corners: interpolation flag.
 
     Return:
-        torch.Tensor: the downsampled tensor.
+        the downsampled tensor.
 
     Examples:
         >>> input = torch.arange(16, dtype=torch.float32).reshape(1, 1, 4, 4)
@@ -264,16 +264,16 @@ def pyrdown(input: torch.Tensor, border_type: str = 'reflect', align_corners: bo
 def pyrup(input: torch.Tensor, border_type: str = 'reflect', align_corners: bool = False) -> torch.Tensor:
     r"""Upsamples a tensor and then blurs it.
 
+    .. image:: _static/img/pyrup.png
+
     Args:
-        input (tensor): the tensor to be downsampled.
-        border_type (str): the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
-        align_corners(bool): interpolation flag. Default: False. See
-        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail.
+        input: the tensor to be downsampled.
+        border_type: the padding mode to be applied before convolving.
+          The expected modes are: ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
+        align_corners: interpolation flag.
 
     Return:
-        torch.Tensor: the downsampled tensor.
+        the downsampled tensor.
 
     Examples:
         >>> input = torch.arange(4, dtype=torch.float32).reshape(1, 1, 2, 2)
@@ -302,17 +302,19 @@ def build_pyramid(
 ) -> List[torch.Tensor]:
     r"""Constructs the Gaussian pyramid for an image.
 
+    .. image:: _static/img/build_pyramid.png
+
     The function constructs a vector of images and builds the Gaussian pyramid
     by recursively applying pyrDown to the previously built pyramid layers.
 
     Args:
-        input (torch.Tensor): the tensor to be used to construct the pyramid.
-        max_level (int): 0-based index of the last (the smallest) pyramid layer.
+        input : the tensor to be used to construct the pyramid.
+        max_level: 0-based index of the last (the smallest) pyramid layer.
           It must be non-negative.
-        border_type (str): the padding mode to be applied before convolving.
+        border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
-        align_corners(bool): interpolation flag. Default: False. See
+          ``'replicate'`` or ``'circular'``.
+        align_corners: interpolation flag.
 
     Shape:
         - Input: :math:`(B, C, H, W)`

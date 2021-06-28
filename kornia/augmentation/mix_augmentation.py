@@ -14,6 +14,8 @@ from .utils import _shape_validation
 class RandomMixUp(MixAugmentationBase):
     r"""Apply MixUp augmentation to a batch of tensor images.
 
+    .. image:: _static/img/RandomMixUp.png
+
     Implemention for `mixup: BEYOND EMPIRICAL RISK MINIMIZATION` :cite:`zhang2018mixup`.
 
     The function returns (inputs, labels), in which the inputs is the tensor that contains the mixup images
@@ -124,6 +126,8 @@ class RandomMixUp(MixAugmentationBase):
 
 class RandomCutMix(MixAugmentationBase):
     r"""Apply CutMix augmentation to a batch of tensor images.
+
+    .. image:: _static/img/RandomCutMix.png
 
     Implemention for `CutMix: Regularization Strategy to Train Strong Classifiers with
     Localizable Features` :cite:`yun2019cutmix`.

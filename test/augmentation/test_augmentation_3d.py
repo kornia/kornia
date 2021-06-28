@@ -4,7 +4,6 @@ import pytest
 import torch
 import torch.nn as nn
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
 
 import kornia
 import kornia.testing as utils  # test utils
@@ -16,6 +15,7 @@ from kornia.augmentation import (
     RandomRotation3D,
     RandomVerticalFlip3D,
 )
+from kornia.testing import assert_close
 
 
 class TestRandomHorizontalFlip3D:
@@ -192,12 +192,12 @@ class TestRandomVerticalFlip3D:
             dtype=dtype,
         )  # 1 x 4 x 4
 
-        assert_allclose(f(input)[0], expected)
-        assert_allclose(f(input)[1], expected_transform)
-        assert_allclose(f1(input)[0], input)
-        assert_allclose(f1(input)[1], identity)
-        assert_allclose(f2(input), expected)
-        assert_allclose(f3(input), input)
+        assert_close(f(input)[0], expected)
+        assert_close(f(input)[1], expected_transform)
+        assert_close(f1(input)[0], input)
+        assert_close(f1(input)[1], identity)
+        assert_close(f2(input), expected)
+        assert_close(f3(input), input)
 
     def test_batch_random_vflip(self, device):
 
@@ -225,10 +225,10 @@ class TestRandomVerticalFlip3D:
         expected_transform = expected_transform.repeat(5, 1, 1)  # 5 x 4 x 4
         identity = identity.repeat(5, 1, 1)  # 5 x 4 x 4
 
-        assert_allclose(f(input)[0], expected)
-        assert_allclose(f(input)[1], expected_transform)
-        assert_allclose(f1(input)[0], input)
-        assert_allclose(f1(input)[1], identity)
+        assert_close(f(input)[0], expected)
+        assert_close(f(input)[1], expected_transform)
+        assert_close(f1(input)[0], input)
+        assert_close(f1(input)[1], identity)
 
     def test_same_on_batch(self, device):
         f = RandomVerticalFlip3D(p=0.5, same_on_batch=True)
@@ -253,10 +253,10 @@ class TestRandomVerticalFlip3D:
 
         expected_transform_1 = expected_transform @ expected_transform
 
-        assert_allclose(f(input)[0], input)
-        assert_allclose(f(input)[1], expected_transform_1)
-        assert_allclose(f1(input)[0], input)
-        assert_allclose(f1(input)[1], expected_transform)
+        assert_close(f(input)[0], input)
+        assert_close(f(input)[1], expected_transform_1)
+        assert_close(f1(input)[0], input)
+        assert_close(f1(input)[1], expected_transform)
 
     def test_gradcheck(self, device):
         input = torch.rand((1, 3, 3)).to(device)  # 4 x 4
@@ -319,12 +319,12 @@ class TestRandomDepthicalFlip3D:
             dtype=dtype,
         )  # 4 x 4
 
-        assert_allclose(f(input)[0], expected)
-        assert_allclose(f(input)[1], expected_transform)
-        assert_allclose(f1(input)[0], input)
-        assert_allclose(f1(input)[1], identity)
-        assert_allclose(f2(input), expected)
-        assert_allclose(f3(input), input)
+        assert_close(f(input)[0], expected)
+        assert_close(f(input)[1], expected_transform)
+        assert_close(f1(input)[0], input)
+        assert_close(f1(input)[1], identity)
+        assert_close(f2(input), expected)
+        assert_close(f3(input), input)
 
     def test_batch_random_dflip(self, device):
 
@@ -363,10 +363,10 @@ class TestRandomDepthicalFlip3D:
         expected_transform = expected_transform.repeat(5, 1, 1)  # 5 x 4 x 4
         identity = identity.repeat(5, 1, 1)  # 5 x 4 x 4
 
-        assert_allclose(f(input)[0], expected)
-        assert_allclose(f(input)[1], expected_transform)
-        assert_allclose(f1(input)[0], input)
-        assert_allclose(f1(input)[1], identity)
+        assert_close(f(input)[0], expected)
+        assert_close(f(input)[1], expected_transform)
+        assert_close(f1(input)[0], input)
+        assert_close(f1(input)[1], identity)
 
     def test_same_on_batch(self, device):
         f = RandomDepthicalFlip3D(p=0.5, same_on_batch=True)
@@ -400,10 +400,10 @@ class TestRandomDepthicalFlip3D:
 
         expected_transform_1 = expected_transform @ expected_transform
 
-        assert_allclose(f(input)[0], input)
-        assert_allclose(f(input)[1], expected_transform_1)
-        assert_allclose(f1(input)[0], input)
-        assert_allclose(f1(input)[1], expected_transform)
+        assert_close(f(input)[0], input)
+        assert_close(f(input)[1], expected_transform_1)
+        assert_close(f1(input)[0], input)
+        assert_close(f1(input)[1], expected_transform)
 
     def test_gradcheck(self, device):
         input = torch.rand((1, 3, 3)).to(device)  # 4 x 4
@@ -488,11 +488,11 @@ class TestRandomRotation3D:
         )
 
         out, mat = f(input)
-        assert_allclose(out, expected, rtol=1e-6, atol=1e-4)
-        assert_allclose(mat, expected_transform, rtol=1e-6, atol=1e-4)
+        assert_close(out, expected, rtol=1e-6, atol=1e-4)
+        assert_close(mat, expected_transform, rtol=1e-6, atol=1e-4)
 
         torch.manual_seed(0)  # for random reproductibility
-        assert_allclose(f1(input), expected, rtol=1e-6, atol=1e-4)
+        assert_close(f1(input), expected, rtol=1e-6, atol=1e-4)
 
     def test_batch_random_rotation(self, device, dtype):
 
@@ -585,8 +585,8 @@ class TestRandomRotation3D:
         input = input.repeat(2, 1, 1, 1, 1)  # 5 x 4 x 4 x 3
 
         out, mat = f(input)
-        assert_allclose(out, expected, rtol=1e-6, atol=1e-4)
-        assert_allclose(mat, expected_transform, rtol=1e-6, atol=1e-4)
+        assert_close(out, expected, rtol=1e-6, atol=1e-4)
+        assert_close(mat, expected_transform, rtol=1e-6, atol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
         f = RandomRotation3D(degrees=40, same_on_batch=True)
@@ -671,9 +671,9 @@ class TestRandomRotation3D:
 
         out, mat = f(input)
         _, mat_2 = f1(input)
-        assert_allclose(out, expected, rtol=1e-6, atol=1e-4)
-        assert_allclose(mat, expected_transform, rtol=1e-6, atol=1e-4)
-        assert_allclose(mat_2, expected_transform_2, rtol=1e-6, atol=1e-4)
+        assert_close(out, expected, rtol=1e-6, atol=1e-4)
+        assert_close(mat, expected_transform, rtol=1e-6, atol=1e-4)
+        assert_close(mat_2, expected_transform_2, rtol=1e-6, atol=1e-4)
 
     def test_gradcheck(self, device):
 
@@ -759,7 +759,7 @@ class TestRandomCrop3D:
                 dtype=dtype,
             )
 
-        assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
+        assert_close(out, expected, atol=1e-4, rtol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
         f = RandomCrop3D(size=(2, 3, 4), padding=None, align_corners=True, p=1.0, same_on_batch=True)
@@ -795,7 +795,7 @@ class TestRandomCrop3D:
         f = RandomCrop3D(size=(2, 3, 4), fill=10.0, padding=padding, align_corners=True, p=1.0)
         out = f(inp)
 
-        assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
+        assert_close(out, expected, atol=1e-4, rtol=1e-4)
 
     def test_pad_if_needed(self, device, dtype):
         torch.manual_seed(42)
@@ -815,7 +815,7 @@ class TestRandomCrop3D:
         rc = RandomCrop3D(size=(2, 3, 4), pad_if_needed=True, fill=9, align_corners=True, p=1.0)
         out = rc(inp)
 
-        assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
+        assert_close(out, expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         torch.manual_seed(0)  # for random reproductibility
@@ -832,7 +832,7 @@ class TestRandomCrop3D:
 
         actual = op_script(img)
         expected = kornia.center_crop3d(img)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     @pytest.mark.skip("Need to fix Union type")
     def test_jit_trace(self, device, dtype):
@@ -850,7 +850,7 @@ class TestRandomCrop3D:
         # 3. Evaluate
         actual = op_trace(img)
         expected = op(img)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
 
 class TestCenterCrop3D:
@@ -905,12 +905,12 @@ class TestRandomEqualize3D:
 
         identity = kornia.eye_like(4, expected)
 
-        assert_allclose(f(inputs3d)[0], expected, rtol=1e-4, atol=1e-4)
-        assert_allclose(f(inputs3d)[1], identity, rtol=1e-4, atol=1e-4)
-        assert_allclose(f1(inputs3d)[0], inputs3d, rtol=1e-4, atol=1e-4)
-        assert_allclose(f1(inputs3d)[1], identity, rtol=1e-4, atol=1e-4)
-        assert_allclose(f2(inputs3d), expected, rtol=1e-4, atol=1e-4)
-        assert_allclose(f3(inputs3d), inputs3d, rtol=1e-4, atol=1e-4)
+        assert_close(f(inputs3d)[0], expected, rtol=1e-4, atol=1e-4)
+        assert_close(f(inputs3d)[1], identity, rtol=1e-4, atol=1e-4)
+        assert_close(f1(inputs3d)[0], inputs3d, rtol=1e-4, atol=1e-4)
+        assert_close(f1(inputs3d)[1], identity, rtol=1e-4, atol=1e-4)
+        assert_close(f2(inputs3d), expected, rtol=1e-4, atol=1e-4)
+        assert_close(f3(inputs3d), inputs3d, rtol=1e-4, atol=1e-4)
 
     def test_batch_random_equalize(self, device, dtype):
         f = RandomEqualize3D(p=1.0, return_transform=True)
@@ -927,12 +927,12 @@ class TestRandomEqualize3D:
 
         identity = kornia.eye_like(4, expected)  # 2 x 4 x 4
 
-        assert_allclose(f(inputs3d)[0], expected, rtol=1e-4, atol=1e-4)
-        assert_allclose(f(inputs3d)[1], identity, rtol=1e-4, atol=1e-4)
-        assert_allclose(f1(inputs3d)[0], inputs3d, rtol=1e-4, atol=1e-4)
-        assert_allclose(f1(inputs3d)[1], identity, rtol=1e-4, atol=1e-4)
-        assert_allclose(f2(inputs3d), expected, rtol=1e-4, atol=1e-4)
-        assert_allclose(f3(inputs3d), inputs3d, rtol=1e-4, atol=1e-4)
+        assert_close(f(inputs3d)[0], expected, rtol=1e-4, atol=1e-4)
+        assert_close(f(inputs3d)[1], identity, rtol=1e-4, atol=1e-4)
+        assert_close(f1(inputs3d)[0], inputs3d, rtol=1e-4, atol=1e-4)
+        assert_close(f1(inputs3d)[1], identity, rtol=1e-4, atol=1e-4)
+        assert_close(f2(inputs3d), expected, rtol=1e-4, atol=1e-4)
+        assert_close(f3(inputs3d), inputs3d, rtol=1e-4, atol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
         f = RandomEqualize3D(p=0.5, same_on_batch=True)

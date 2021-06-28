@@ -1,9 +1,9 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
 
 from kornia.geometry.calibration.undistort import undistort_points
+from kornia.testing import assert_close
 
 
 class TestUndistortion:
@@ -55,7 +55,7 @@ class TestUndistortion:
             [[1030.5992, 790.65533], [1027.3059, 718.10020], [1024.0700, 645.90600]], device=device, dtype=dtype
         )
         ptsu = undistort_points(pts, K, dist)
-        assert_allclose(ptsu, ptsu_expected, rtol=1e-4, atol=1e-4)
+        assert_close(ptsu, ptsu_expected, rtol=1e-4, atol=1e-4)
 
     def test_opencv_all_coeff(self, device, dtype):
         # Test using 14 distortion coefficients
@@ -98,7 +98,7 @@ class TestUndistortion:
             [[1030.8245, 786.3807], [1027.5505, 715.0732], [1024.2753, 644.0319]], device=device, dtype=dtype
         )
         ptsu = undistort_points(pts, K, dist)
-        assert_allclose(ptsu, ptsu_expected, rtol=1e-4, atol=1e-4)
+        assert_close(ptsu, ptsu_expected, rtol=1e-4, atol=1e-4)
 
     def test_opencv_stereo(self, device, dtype):
         # Udistort stereo points with data given in two batches using 14 distortion coefficients
@@ -182,8 +182,8 @@ class TestUndistortion:
         )
 
         ptsu = undistort_points(pts, K, dist)
-        assert_allclose(ptsu[0], ptsu_expected1, rtol=1e-4, atol=1e-4)
-        assert_allclose(ptsu[1], ptsu_expected2, rtol=1e-4, atol=1e-4)
+        assert_close(ptsu[0], ptsu_expected1, rtol=1e-4, atol=1e-4)
+        assert_close(ptsu[1], ptsu_expected2, rtol=1e-4, atol=1e-4)
 
     def test_gradcheck(self, device):
         points = torch.rand(1, 8, 2, device=device, dtype=torch.float64, requires_grad=True)

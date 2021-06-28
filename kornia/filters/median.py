@@ -16,12 +16,14 @@ def _compute_zero_padding(kernel_size: Tuple[int, int]) -> Tuple[int, int]:
 def median_blur(input: torch.Tensor, kernel_size: Tuple[int, int]) -> torch.Tensor:
     r"""Blurs an image using the median filter.
 
+    .. image:: _static/img/median_blur.png
+
     Args:
-        input (torch.Tensor): the input image with shape :math:`(B,C,H,W)`.
-        kernel_size (Tuple[int, int]): the blurring kernel size.
+        input: the input image with shape :math:`(B,C,H,W)`.
+        kernel_size: the blurring kernel size.
 
     Returns:
-        torch.Tensor: the blurred input tensor with shape :math:`(B,C,H,W)`.
+        the blurred input tensor with shape :math:`(B,C,H,W)`.
 
     Example:
         >>> input = torch.rand(2, 4, 5, 7)
@@ -55,10 +57,10 @@ class MedianBlur(nn.Module):
     r"""Blurs an image using the median filter.
 
     Args:
-        kernel_size (Tuple[int, int]): the blurring kernel size.
+        kernel_size: the blurring kernel size.
 
     Returns:
-        torch.Tensor: the blurred input tensor.
+        the blurred input tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`

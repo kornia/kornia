@@ -31,19 +31,18 @@ def crop_and_resize3d(
     r"""Extract crops from 3D volumes (5D tensor) and resize them.
 
     Args:
-        tensor (torch.Tensor): the 3D volume tensor with shape (B, C, D, H, W).
-        boxes (torch.Tensor): a tensor with shape (B, 8, 3) containing the coordinates of the bounding boxes
+        tensor: the 3D volume tensor with shape (B, C, D, H, W).
+        boxes: a tensor with shape (B, 8, 3) containing the coordinates of the bounding boxes
             to be extracted. The tensor must have the shape of Bx8x3, where each box is defined in the clockwise
             order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
             back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in x, y, z order.
-        size (Tuple[int, int, int]): a tuple with the height and width that will be
+        size: a tuple with the height and width that will be
             used to resize the extracted patches.
-        interpolation (str): Interpolation flag. Default: 'bilinear'.
-        align_corners (bool): mode for grid_generation. Default: False. See
-            https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details.
+        interpolation: Interpolation flag.
+        align_corners: mode for grid_generation.
 
     Returns:
-        torch.Tensor: tensor containing the patches with shape (Bx)CxN1xN2xN3.
+        tensor containing the patches with shape (Bx)CxN1xN2xN3.
 
     Example:
         >>> input = torch.arange(64, dtype=torch.float32).view(1, 1, 4, 4, 4)
@@ -128,15 +127,14 @@ def center_crop3d(
     r"""Crop the 3D volumes (5D tensor) at the center.
 
     Args:
-        tensor (torch.Tensor): the 3D volume tensor with shape (B, C, D, H, W).
-        size (Tuple[int, int, int]): a tuple with the expected depth, height and width
+        tensor: the 3D volume tensor with shape (B, C, D, H, W).
+        size: a tuple with the expected depth, height and width
             of the output patch.
-        interpolation (str): Interpolation flag. Default: 'bilinear'.
-        align_corners (bool): mode for grid_generation. Default: False. See
-            https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details.
+        interpolation: Interpolation flag.
+        align_corners : mode for grid_generation.
 
     Returns:
-        torch.Tensor: the output tensor with patches.
+        the output tensor with patches.
 
     Examples:
         >>> input = torch.arange(64, dtype=torch.float32).view(1, 1, 4, 4, 4)
@@ -252,21 +250,20 @@ def crop_by_boxes3d(
     in a batch must be rectangles with same width, height and depth.
 
     Args:
-        tensor (torch.Tensor): the 3D volume tensor with shape (B, C, D, H, W).
-        src_box (torch.Tensor): a tensor with shape (B, 8, 3) containing the coordinates of the bounding boxes
+        tensor : the 3D volume tensor with shape (B, C, D, H, W).
+        src_box : a tensor with shape (B, 8, 3) containing the coordinates of the bounding boxes
             to be extracted. The tensor must have the shape of Bx8x3, where each box is defined in the clockwise
             order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
             back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in x, y, z order.
-        dst_box (torch.Tensor): a tensor with shape (B, 8, 3) containing the coordinates of the bounding boxes
+        dst_box: a tensor with shape (B, 8, 3) containing the coordinates of the bounding boxes
             to be placed. The tensor must have the shape of Bx8x3, where each box is defined in the clockwise
             order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
             back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in x, y, z order.
-        interpolation (str): Interpolation flag. Default: 'bilinear'.
-        align_corners (bool): mode for grid_generation. Default: False. See
-            https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details.
+        interpolation: Interpolation flag.
+        align_corners: mode for grid_generation.
 
     Returns:
-        torch.Tensor: the output tensor with patches.
+        the output tensor with patches.
 
     Examples:
         >>> input = torch.tensor([[[
@@ -351,17 +348,17 @@ def crop_by_transform_mat3d(
     """Perform crop transform on 3D volumes (5D tensor) given a perspective transformation matrix.
 
     Args:
-        tensor (torch.Tensor): the 2D image tensor with shape (B, C, H, W).
-        transform (torch.Tensor): a perspective transformation matrix with shape (B, 4, 4).
-        out_size (Tuple[int, int, int]): size of the output image (depth, height, width).
-        mode (str): interpolation mode to calculate output values
-          'bilinear' | 'nearest'. Default: 'bilinear'.
-        padding_mode (str): padding mode for outside grid values
-          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners (bool, optional): mode for grid_generation. Default: None.
+        tensor: the 2D image tensor with shape (B, C, H, W).
+        transform: a perspective transformation matrix with shape (B, 4, 4).
+        out_size: size of the output image (depth, height, width).
+        mode: interpolation mode to calculate output values
+          ``'bilinear'`` | ``'nearest'``.
+        padding_mode: padding mode for outside grid values
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
+        align_corners: mode for grid_generation.
 
     Returns:
-        torch.Tensor: the output tensor with patches.
+        the output tensor with patches.
     """
     # simulate broadcasting
     dst_trans_src = transform.expand(tensor.shape[0], -1, -1)
