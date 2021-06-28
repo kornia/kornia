@@ -51,6 +51,10 @@ class AugmentationSequential(ImageSequential):
         List[TensorWithTransMat]: the tensor (, and the transformation matrix)
             has been sequentially modified by the args.
 
+    Note:
+        Mix augmentations (e.g. RandomMixUp, RandomCutMix) can only be working with "input" data key.
+        It is not clear how to deal with the conversions of the other data keys.
+
     Examples:
         >>> import kornia
         >>> input = torch.randn(2, 3, 5, 6)
@@ -284,6 +288,18 @@ class AugmentationSequential(ImageSequential):
 
         return outputs
 
+    def __packup_output__(
+        self, output: TensorWithTransMat, label: Optional[torch.Tensor] = None
+    ) -> Union[TensorWithTransMat, Tuple[TensorWithTransMat, torch.Tensor]]:
+        if len(output) == 1 and self.has_mix_augmentations:
+            return output[0], label
+        elif len(output) == 1:
+            return output[0]
+        elif self.has_mix_augmentations:
+            return output, label
+        else:
+            return output
+
     def forward(  # type: ignore
         self,
         *args: TensorWithTransMat,
@@ -295,7 +311,6 @@ class AugmentationSequential(ImageSequential):
         List[TensorWithTransMat], Tuple[List[TensorWithTransMat], Optional[torch.Tensor]]
     ]:
         """Compute multiple tensors simultaneously according to ``self.data_keys``."""
-        to_output_label = label is not None
         if data_keys is None:
             data_keys = cast(List[Union[str, int, DataKey]], self.data_keys)
 
@@ -321,11 +336,5 @@ class AugmentationSequential(ImageSequential):
                 else:
                     raise NotImplementedError(f"data_key {dcate} is not implemented for {module}.")
             outputs.append(input)
-        if len(outputs) == 1 and to_output_label:
-            return outputs[0], label
-        elif len(outputs) == 1:
-            return outputs[0]
-        elif to_output_label:
-            return outputs, label
-        else:
-            return outputs
+
+        return self.__packup_output__(outputs, label)

@@ -124,9 +124,9 @@ class ImageSequential(nn.Sequential):
             ), f"Expect a tuple of (int, int). Got {self.random_apply}."
         else:
             self.random_apply = False
-        self._multiple_mix_augmentation_warning(*args, validate_args=validate_args)
+        self.has_mix_augmentations = self._validate_mix_augmentation(*args, validate_args=validate_args)
 
-    def _multiple_mix_augmentation_warning(self, *args: nn.Module, validate_args: bool = True) -> None:
+    def _validate_mix_augmentation(self, *args: nn.Module, validate_args: bool = True) -> bool:
         mix_count = 0
         for arg in args:
             if isinstance(arg, (MixAugmentationBase,)):
@@ -140,6 +140,9 @@ class ImageSequential(nn.Sequential):
                 "be applied at each forward. To silence this warning, please set `validate_args` to False.",
                 category=UserWarning
             )
+        if mix_count == 0:
+            return False
+        return True
 
     def _get_child_sequence(self) -> Iterator[Tuple[str, nn.Module]]:
         mix_indices = []
@@ -234,19 +237,22 @@ class ImageSequential(nn.Sequential):
 
         return input, label
 
+    def __packup_output__(
+        self, output: TensorWithTransMat, label: Optional[torch.Tensor] = None
+    ) -> Union[TensorWithTransMat, Tuple[TensorWithTransMat, torch.Tensor]]:
+        if self.has_mix_augmentations:
+            return output, label
+        return output
+
     def forward(  # type: ignore
         self,
         input: TensorWithTransMat,
         label: Optional[torch.Tensor] = None,
         params: Optional[List[ParamItem]] = None,
     ) -> Union[TensorWithTransMat, Tuple[TensorWithTransMat, torch.Tensor]]:
-        to_output_label = label is not None
         self._params = []
         named_modules = self.get_forward_sequence(params)
         params = [] if params is None else params
         for (name, module), param in zip_longest(named_modules, params):
             input, label = self.apply_to_input(input, label, name, module, param=param)
-        if to_output_label:
-            # stupid mypy: implicit indication of input label is not None
-            return input, label  # type:ignore
-        return input
+        return self.__packup_output__(input, label)

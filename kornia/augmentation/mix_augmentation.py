@@ -104,7 +104,7 @@ class RandomMixUp(MixAugmentationBase):
         return rg.random_mixup_generator(batch_shape[0], self.p, lambda_val, same_on_batch=self.same_on_batch)
 
     def apply_transform(  # type: ignore
-        self, input: torch.Tensor, label: torch.Tensor, params: Dict[str, torch.Tensor]  # type: ignore
+        self, input: torch.Tensor, label: torch.Tensor, params: Dict[str, torch.Tensor]
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         input_permute = input.index_select(dim=0, index=params['mixup_pairs'].to(input.device))
         labels_permute = label.index_select(dim=0, index=params['mixup_pairs'].to(label.device))
