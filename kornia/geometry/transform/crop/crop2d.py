@@ -9,8 +9,16 @@ from kornia.geometry.bbox import infer_bbox_shape as _infer_bbox_shape
 from kornia.geometry.bbox import validate_bbox as _validate_bbox
 from kornia.geometry.transform.imgwarp import get_perspective_transform, warp_affine
 
-__all__ = ["crop_and_resize", "crop_by_boxes", "crop_by_transform_mat", "center_crop", "validate_bboxes",
-           "infer_box_shape", "bbox_to_mask", "bbox_generator"]
+__all__ = [
+    "crop_and_resize",
+    "crop_by_boxes",
+    "crop_by_transform_mat",
+    "center_crop",
+    "validate_bboxes",
+    "infer_box_shape",
+    "bbox_to_mask",
+    "bbox_generator",
+]
 
 
 def crop_and_resize(
@@ -370,35 +378,35 @@ def bbox_generator(
 ) -> torch.Tensor:
     """Generate 2D bounding boxes according to the provided start coords, width and height.
 
-        Args:
-            x_start (torch.Tensor): a tensor containing the x coordinates of the bounding boxes to be extracted.
-                Shape must be a scalar tensor or :math:`(B,)`.
-            y_start (torch.Tensor): a tensor containing the y coordinates of the bounding boxes to be extracted.
-                Shape must be a scalar tensor or :math:`(B,)`.
-            width (torch.Tensor): widths of the masked image.
-                Shape must be a scalar tensor or :math:`(B,)`.
-            height (torch.Tensor): heights of the masked image.
-                Shape must be a scalar tensor or :math:`(B,)`.
+    Args:
+        x_start (torch.Tensor): a tensor containing the x coordinates of the bounding boxes to be extracted.
+            Shape must be a scalar tensor or :math:`(B,)`.
+        y_start (torch.Tensor): a tensor containing the y coordinates of the bounding boxes to be extracted.
+            Shape must be a scalar tensor or :math:`(B,)`.
+        width (torch.Tensor): widths of the masked image.
+            Shape must be a scalar tensor or :math:`(B,)`.
+        height (torch.Tensor): heights of the masked image.
+            Shape must be a scalar tensor or :math:`(B,)`.
 
-        Returns:
-            torch.Tensor: the bounding box tensor.
+    Returns:
+        torch.Tensor: the bounding box tensor.
 
-        Examples:
-            >>> x_start = torch.tensor([0, 1])
-            >>> y_start = torch.tensor([1, 0])
-            >>> width = torch.tensor([5, 3])
-            >>> height = torch.tensor([7, 4])
-            >>> bbox_generator(x_start, y_start, width, height)
-            tensor([[[0, 1],
-                     [4, 1],
-                     [4, 7],
-                     [0, 7]],
-            <BLANKLINE>
-                    [[1, 0],
-                     [3, 0],
-                     [3, 3],
-                     [1, 3]]])
-        """
+    Examples:
+        >>> x_start = torch.tensor([0, 1])
+        >>> y_start = torch.tensor([1, 0])
+        >>> width = torch.tensor([5, 3])
+        >>> height = torch.tensor([7, 4])
+        >>> bbox_generator(x_start, y_start, width, height)
+        tensor([[[0, 1],
+                 [4, 1],
+                 [4, 7],
+                 [0, 7]],
+        <BLANKLINE>
+                [[1, 0],
+                 [3, 0],
+                 [3, 3],
+                 [1, 3]]])
+    """
     warnings.warn(
         "`kornia.geometry.transforms.crop.crop2d.bbox_generator` is deprecated and will be removed > 0.6.0. "
         "Please use `kornia.geometry.bbox.bbox_generator instead.`",
