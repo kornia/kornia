@@ -1,6 +1,6 @@
 <div align="center">
 <p align="center">
-  <img width="50%" src="https://github.com/kornia/kornia/blob/master/docs/source/_static/img/kornia_logo.svg" />
+  <img width="50%" src="https://github.com/kornia/kornia/blob/master/docs/source/_static/img/kornia_logo.png" />
 </p>
 
 **The open-source and Computer Vision 2.0 library**
