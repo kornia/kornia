@@ -42,7 +42,7 @@ Module-level maintainers
 - Edgar Riba (`edgarriba <https://github.com/edgarriba>`__)
 - Dmytro Mishkin (`ducha-aiki <https://github.com/ducha-aiki>`__)
 - Daniel Koguciuk (`dkoguciuk <https://github.com/dkoguciuk>`__)
-- Duc Nguyen (`justanhduc <https://github.com/justanhduc>`__) 
+- Duc Nguyen (`justanhduc <https://github.com/justanhduc>`__)
 
 **kornia.feature**
 ~~~~~~~~~~~~~~~~~~
