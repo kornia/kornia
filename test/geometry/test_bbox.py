@@ -5,7 +5,7 @@ from torch.testing import assert_allclose
 
 import kornia
 import kornia.testing as utils
-from kornia.geometry.bbox import infer_bbox_shape, infer_bbox_shape_3d, transform_bbox, validate_bbox, validate_bbox_3d
+from kornia.geometry.bbox import infer_bbox_shape, infer_bbox_shape3d, transform_bbox, validate_bbox, validate_bbox3d
 
 
 class TestBbox2D:
@@ -203,7 +203,7 @@ class TestBbox3D:
         bbox[0, 7, 2] = points[0][5]
 
         # Validate
-        assert validate_bbox_3d(bbox)
+        assert validate_bbox3d(bbox)
 
     def test_bounding_boxes_dim_inferring(self, device, dtype):
         boxes = torch.tensor(
@@ -214,7 +214,7 @@ class TestBbox3D:
             device=device,
             dtype=dtype,
         )  # 2x8x3
-        d, h, w = infer_bbox_shape_3d(boxes)
+        d, h, w = infer_bbox_shape3d(boxes)
 
         assert_allclose(d, torch.tensor([31.0, 61.0], device=device, dtype=dtype))
         assert_allclose(h, torch.tensor([21.0, 51.0], device=device, dtype=dtype))
@@ -227,11 +227,11 @@ class TestBbox3D:
             dtype=dtype,
         )
         boxes = utils.tensor_to_gradcheck_var(boxes)
-        assert gradcheck(infer_bbox_shape_3d, (boxes,), raise_exception=True)
+        assert gradcheck(infer_bbox_shape3d, (boxes,), raise_exception=True)
 
     def test_jit(self, device, dtype):
         # Define script
-        op = infer_bbox_shape_3d
+        op = infer_bbox_shape3d
         op_script = torch.jit.script(op)
 
         boxes = torch.tensor(

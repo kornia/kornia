@@ -1,8 +1,6 @@
 from typing import cast, Dict, Optional, Tuple, Union
 
 import torch
-import torch.nn as nn
-from torch.nn.functional import pad
 
 from kornia.geometry.bbox import bbox_to_mask, infer_bbox_shape
 

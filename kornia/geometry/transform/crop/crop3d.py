@@ -3,10 +3,10 @@ from typing import Optional, Tuple
 
 import torch
 
-from kornia.geometry.bbox import bbox_generator_3d as _bbox_generator_3d
-from kornia.geometry.bbox import bbox_to_mask_3d as _bbox_to_mask_3d
-from kornia.geometry.bbox import infer_bbox_shape_3d as _infer_bbox_shape_3d
-from kornia.geometry.bbox import validate_bbox_3d as _validate_bbox_3d
+from kornia.geometry.bbox import bbox_generator3d as _bbox_generator3d
+from kornia.geometry.bbox import bbox_to_mask3d as _bbox_to_mask3d
+from kornia.geometry.bbox import infer_bbox_shape3d as _infer_bbox_shape3d
+from kornia.geometry.bbox import validate_bbox3d as _validate_bbox3d
 from kornia.geometry.transform.projwarp import get_perspective_transform3d, warp_affine3d
 
 __all__ = [
@@ -309,8 +309,8 @@ def crop_by_boxes3d(
                    [45., 46., 47.]]]]])
 
     """
-    _validate_bbox_3d(src_box)
-    _validate_bbox_3d(dst_box)
+    _validate_bbox3d(src_box)
+    _validate_bbox3d(dst_box)
 
     assert len(tensor.shape) == 5, f"Only tensor with shape (B, C, D, H, W) supported. Got {tensor.shape}."
 
@@ -320,7 +320,7 @@ def crop_by_boxes3d(
     # simulate broadcasting
     dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1).type_as(tensor)
 
-    bbox = _infer_bbox_shape_3d(dst_box)
+    bbox = _infer_bbox_shape3d(dst_box)
     assert (bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all() and (bbox[2] == bbox[2][0]).all(), (
         "Cropping height, width and depth must be exact same in a batch."
         f"Got height {bbox[0]}, width {bbox[1]} and depth {bbox[2]}."
@@ -382,25 +382,28 @@ def validate_bboxes3d(boxes: torch.Tensor) -> bool:
     """
     warnings.warn(
         "`kornia.geometry.transforms.crop.crop3d.validate_bboxes3d` is deprecated and will be removed > 0.6.0. "
-        "Please use `kornia.geometry.bbox.validate_bbox_3d instead.`",
+        "Please use `kornia.geometry.bbox.validate_bbox3d instead.`",
         DeprecationWarning,
         stacklevel=2,
     )
-    return _validate_bbox_3d(boxes)
+    return _validate_bbox3d(boxes)
 
 
 def infer_box_shape3d(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     r"""Auto-infer the output sizes for the given 3D bounding boxes.
+
     Args:
         boxes (torch.Tensor): a tensor containing the coordinates of the bounding boxes to be extracted.
             The tensor must have the shape of Bx8x3, where each box is defined in the following (clockwise)
             order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
             back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in the x, y, z order.
+
     Returns:
         Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         - Bounding box depths, shape of :math:`(B,)`.
         - Bounding box heights, shape of :math:`(B,)`.
         - Bounding box widths, shape of :math:`(B,)`.
+
     Example:
         >>> boxes = torch.tensor([[[ 0,  1,  2],
         ...         [10,  1,  2],
@@ -423,23 +426,26 @@ def infer_box_shape3d(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, 
     """
     warnings.warn(
         "`kornia.geometry.transforms.crop.crop2d.infer_box_shape3d` is deprecated and will be removed > 0.6.0. "
-        "Please use `kornia.geometry.bbox.infer_bbox_shape_3d instead.`",
+        "Please use `kornia.geometry.bbox.infer_bbox_shape3d instead.`",
         DeprecationWarning,
         stacklevel=2,
     )
-    return _infer_bbox_shape_3d(boxes)
+    return _infer_bbox_shape3d(boxes)
 
 
 def bbox_to_mask3d(boxes: torch.Tensor, size: Tuple[int, int, int]) -> torch.Tensor:
     """Convert 3D bounding boxes to masks. Covered area is 1. and the remaining is 0.
+
     Args:
         boxes (torch.Tensor): a tensor containing the coordinates of the bounding boxes to be extracted.
             The tensor must have the shape of Bx8x3, where each box is defined in the following (clockwise)
             order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
             back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in the x, y, z order.
         size (Tuple[int, int, int]): depth, height and width of the masked image.
+
     Returns:
         torch.Tensor: the output mask tensor.
+
     Examples:
         >>> boxes = torch.tensor([[
         ...     [1., 1., 1.],
@@ -478,11 +484,11 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: Tuple[int, int, int]) -> torch.Ten
     """
     warnings.warn(
         "`kornia.geometry.transforms.crop.crop2d.bbox_to_mask3d` is deprecated and will be removed > 0.6.0. "
-        "Please use `kornia.geometry.bbox.bbox_to_mask_3d instead.`",
+        "Please use `kornia.geometry.bbox.bbox_to_mask3d instead.`",
         DeprecationWarning,
         stacklevel=2,
     )
-    return _bbox_to_mask_3d(boxes, size)
+    return _bbox_to_mask3d(boxes, size)
 
 
 def bbox_generator3d(
@@ -494,6 +500,7 @@ def bbox_generator3d(
     depth: torch.Tensor,
 ) -> torch.Tensor:
     """Generate 3D bounding boxes according to the provided start coords, width, height and depth.
+
     Args:
         x_start (torch.Tensor): a tensor containing the x coordinates of the bounding boxes to be extracted.
             Shape must be a scalar tensor or :math:`(B,)`.
@@ -507,8 +514,10 @@ def bbox_generator3d(
             Shape must be a scalar tensor or :math:`(B,)`.
         depth (torch.Tensor): depths of the masked image.
             Shape must be a scalar tensor or :math:`(B,)`.
+
     Returns:
         torch.Tensor: the 3d bounding box tensor :math:`(B, 8, 3)`.
+
     Examples:
         >>> x_start = torch.tensor([0, 3])
         >>> y_start = torch.tensor([1, 4])
@@ -537,8 +546,8 @@ def bbox_generator3d(
     """
     warnings.warn(
         "`kornia.geometry.transforms.crop.crop2d.bbox_generator3d` is deprecated and will be removed > 0.6.0. "
-        "Please use `kornia.geometry.bbox.bbox_generator_3d instead.`",
+        "Please use `kornia.geometry.bbox.bbox_generator3d instead.`",
         DeprecationWarning,
         stacklevel=2,
     )
-    return _bbox_generator_3d(x_start, y_start, z_start, width, height, depth)
+    return _bbox_generator3d(x_start, y_start, z_start, width, height, depth)

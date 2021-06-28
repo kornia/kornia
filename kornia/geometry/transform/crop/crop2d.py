@@ -299,6 +299,7 @@ def validate_bboxes(boxes: torch.Tensor) -> bool:
 
 def infer_box_shape(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Auto-infer the output sizes for the given 2D bounding boxes.
+
     Args:
         boxes (torch.Tensor): a tensor containing the coordinates of the
           bounding boxes to be extracted. The tensor must have the shape
@@ -310,6 +311,7 @@ def infer_box_shape(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         Tuple[torch.Tensor, torch.Tensor]:
         - Bounding box heights, shape of :math:`(B,)`.
         - Boundingbox widths, shape of :math:`(B,)`.
+
     Example:
         >>> boxes = torch.tensor([[
         ...     [1., 1.],
