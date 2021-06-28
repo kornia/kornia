@@ -509,11 +509,15 @@ class MixAugmentationBase(_BasicAugmentationBase):
         return output, label
 
     def forward(  # type: ignore
-        self, input: TensorWithTransMat, label: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None
+        self, input: TensorWithTransMat, label: Optional[torch.Tensor] = None,
+        params: Optional[Dict[str, torch.Tensor]] = None
     ) -> Tuple[TensorWithTransMat, torch.Tensor]:
         in_tensor, in_trans = self.__unpack_input__(input)
         ori_shape = in_tensor.shape
         in_tensor = self.transform_tensor(in_tensor)
+        # If label is not provided, it would output the indices instead.
+        if label is None:
+            label = torch.arange(0, in_tensor.size(0))
         if params is None:
             batch_shape = in_tensor.shape
             params = self.forward_parameters(batch_shape)
