@@ -3,7 +3,7 @@ from typing import cast, Dict, Optional, Tuple, Union
 import torch
 from torch.distributions import Bernoulli
 
-from kornia.geometry.bbox import bbox_generator_2d
+from kornia.geometry.bbox import bbox_generator
 from kornia.utils import _extract_device_dtype
 
 from ..utils import _adapted_beta, _adapted_sampling, _adapted_uniform, _common_param_check, _joint_range_check
@@ -413,7 +413,7 @@ def random_crop_generator(
     else:
         x_start = _adapted_uniform((1,), 0, x_diff.to(device=device, dtype=dtype), same_on_batch).floor()
         y_start = _adapted_uniform((1,), 0, y_diff.to(device=device, dtype=dtype), same_on_batch).floor()
-    crop_src = bbox_generator_2d(
+    crop_src = bbox_generator(
         x_start.view(-1).to(device=_device, dtype=_dtype),
         y_start.view(-1).to(device=_device, dtype=_dtype),
         torch.where(size[:, 1] == 0, torch.tensor(input_size[1], device=_device, dtype=_dtype), size[:, 1]),
@@ -421,7 +421,7 @@ def random_crop_generator(
     )
 
     if resize_to is None:
-        crop_dst = bbox_generator_2d(
+        crop_dst = bbox_generator(
             torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
             torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
             size[:, 1],
@@ -1099,7 +1099,7 @@ def random_cutmix_generator(
         .to(device=device, dtype=_dtype)
     )
 
-    crop_src = bbox_generator_2d(x_start.squeeze(), y_start.squeeze(), cut_width, cut_height)
+    crop_src = bbox_generator(x_start.squeeze(), y_start.squeeze(), cut_width, cut_height)
 
     # (B * num_mix, 4, 2) => (num_mix, batch_size, 4, 2)
     crop_src = crop_src.view(num_mix, batch_size, 4, 2)

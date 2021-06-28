@@ -22,8 +22,8 @@ from kornia.enhance.normalize import denormalize, normalize
 from kornia.filters import box_blur, gaussian_blur2d, motion_blur
 from kornia.geometry import (
     affine,
-    bbox_generator_2d,
-    bbox_to_mask_2d,
+    bbox_generator,
+    bbox_to_mask,
     crop_by_transform_mat,
     deg2rad,
     elastic_transform2d,
@@ -396,8 +396,8 @@ class RandomErasing(IntensityAugmentationBase2D):
         _, c, h, w = input.size()
         values = params['values'].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).repeat(1, *input.shape[1:]).to(input)
 
-        bboxes = bbox_generator_2d(params['xs'], params['ys'], params['widths'], params['heights'])
-        mask = bbox_to_mask_2d(bboxes, w, h)  # Returns B, H, W
+        bboxes = bbox_generator(params['xs'], params['ys'], params['widths'], params['heights'])
+        mask = bbox_to_mask(bboxes, w, h)  # Returns B, H, W
         mask = mask.unsqueeze(1).repeat(1, c, 1, 1).to(input)  # Transform to B, c, H, W
         transformed = torch.where(mask == 1.0, values, input)
         return transformed

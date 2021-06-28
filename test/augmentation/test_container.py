@@ -5,7 +5,7 @@ from torch.testing import assert_allclose
 import kornia
 import kornia.augmentation as K
 from kornia.constants import BorderType
-from kornia.geometry.bbox import bbox_to_mask_2d
+from kornia.geometry.bbox import bbox_to_mask
 
 
 class TestVideoSequential:
@@ -166,7 +166,7 @@ class TestAugmentationSequential:
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
         bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
         keypoints = torch.tensor([[[465, 115], [545, 116]]], device=device, dtype=dtype)
-        mask = bbox_to_mask_2d(
+        mask = bbox_to_mask(
             torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 1000, 500
         )[:, None].float()
         aug = K.AugmentationSequential(
@@ -190,7 +190,7 @@ class TestAugmentationSequential:
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
         bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
         keypoints = torch.tensor([[[465, 115], [545, 116]]], device=device, dtype=dtype)
-        mask = bbox_to_mask_2d(
+        mask = bbox_to_mask(
             torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 1000, 500
         )[:, None].float()
 
@@ -215,7 +215,7 @@ class TestAugmentationSequential:
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
         bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
         keypoints = torch.tensor([[[465, 115], [545, 116]]], device=device, dtype=dtype)
-        mask = bbox_to_mask_2d(
+        mask = bbox_to_mask(
             torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 1000, 500
         )[:, None].float()
         aug = K.AugmentationSequential(
@@ -239,7 +239,7 @@ class TestAugmentationSequential:
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
         bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
         keypoints = torch.tensor([[[465, 115], [545, 116]]], device=device, dtype=dtype)
-        mask = bbox_to_mask_2d(
+        mask = bbox_to_mask(
             torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 1000, 500
         )[:, None].float()
         aug = K.AugmentationSequential(

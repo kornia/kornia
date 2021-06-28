@@ -5,7 +5,7 @@ import torch
 import kornia
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.testing import check_is_tensor
-from kornia.geometry.bbox import transform_bbox_2d as _transform_bbox_2d
+from kornia.geometry.bbox import transform_bbox as _transform_bbox
 
 __all__ = [
     "compose_transformations",
@@ -227,11 +227,11 @@ def transform_boxes(trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = "x
     """
     warnings.warn(
         "`kornia.geometry.linalg.transform_boxes` is deprecated and will be removed > 0.6.0. "
-        "Please use `kornia.geometry.bbox.transform_bbox_2d instead.`",
+        "Please use `kornia.geometry.bbox.transform_bbox instead.`",
         DeprecationWarning,
         stacklevel=2,
     )
-    return _transform_bbox_2d(trans_mat, boxes, mode)
+    return _transform_bbox(trans_mat, boxes, mode)
 
 
 def perspective_transform_lafs(trans_01: torch.Tensor, lafs_1: torch.Tensor) -> torch.Tensor:
