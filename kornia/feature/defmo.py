@@ -51,7 +51,7 @@ class RenderingDeFMO(nn.Module):
         shuffled_times = []
         for ki in range(times.shape[0]):
             shuffled_times.append(torch.randperm(times.shape[1]))
-        shuffled_times = torch.stack(shuffled_times, 1).contiguous().transpose() 
+        shuffled_times = torch.stack(shuffled_times, 1).contiguous().transpose()
         for ki in range(times.shape[1]):
             t_tensor = (
                 times[range(times.shape[0]), shuffled_times[:, ki]]
