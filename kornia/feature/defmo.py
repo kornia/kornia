@@ -84,6 +84,7 @@ class DeFMO(nn.Module):
     Shape:
         - Input: (B, 6, H, W)
         - Output: (B, S, 4, H, W)
+
     Examples:
         >>> input = torch.rand(16, 6, 240, 320)
         >>> defmo = DeFMO()
