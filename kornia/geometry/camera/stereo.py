@@ -7,8 +7,8 @@ from kornia.utils.grid import create_meshgrid
 
 class StereoException(Exception):
     def __init__(self, msg: str, *args, **kwargs):
-        r""" Custom exception for the :module:`~kornia.geometry.camera.stereo` module.
-        
+        r"""Custom exception for the :module:`~kornia.geometry.camera.stereo` module.
+
         Adds a general helper module redirecting the user to the proper documentation site.
 
         Args:
@@ -47,7 +47,7 @@ class StereoCamera:
 
     @staticmethod
     def _check_stereo_camera(rectified_left_camera: torch.Tensor, rectified_right_camera: torch.Tensor):
-        r""" Utility function to ensure user specified correct camera matrices.
+        r"""Utility function to ensure user specified correct camera matrices.
 
         Args:
             rectified_left_camera: The rectified left camera projection matrix
@@ -119,7 +119,7 @@ class StereoCamera:
     @property
     def fx(self) -> torch.Tensor:
         r"""Returns the focal length in the x-direction.
-        
+
         Note that the focal lengths of the rectified left and right
         camera are assumed to be equal.
 
@@ -131,7 +131,7 @@ class StereoCamera:
     @property
     def fy(self) -> torch.Tensor:
         r"""Returns the focal length in the y-direction.
-        
+
         Note that the focal lengths of the rectified left and right
         camera are assumed to be equal.
 
@@ -161,7 +161,7 @@ class StereoCamera:
     @property
     def cy(self) -> torch.Tensor:
         r"""Returns the y-coordinate of the principal point.
-        
+
         Note that the y-coordinate of the principal points
         is assumed to be equal for the left and right camera.
 
@@ -182,8 +182,8 @@ class StereoCamera:
 
     @property
     def Q(self) -> torch.Tensor:
-        r""" The Q matrix of the horizontal stereo setup.
-        
+        r"""The Q matrix of the horizontal stereo setup.
+
         This matrix is used for reprojecting a disparity tensor to
         the corresponding point cloud. Note that this is in a general form that allows different focal
         lengths in the x and y direction.

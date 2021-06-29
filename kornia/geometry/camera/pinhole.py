@@ -135,8 +135,7 @@ class PinholeCamera:
 
     @tx.setter
     def tx(self, value) -> 'PinholeCamera':
-        r"""Set the x-coordinate of the translation vector with the given value.
-        """
+        r"""Set the x-coordinate of the translation vector with the given value."""
         self.extrinsics[..., 0, -1] = value
         return self
 
@@ -151,8 +150,7 @@ class PinholeCamera:
 
     @ty.setter
     def ty(self, value) -> 'PinholeCamera':
-        r"""Set the y-coordinate of the translation vector with the given value.
-        """
+        r"""Set the y-coordinate of the translation vector with the given value."""
         self.extrinsics[..., 1, -1] = value
         return self
 
@@ -167,8 +165,7 @@ class PinholeCamera:
 
     @tz.setter
     def tz(self, value) -> 'PinholeCamera':
-        r"""Set the y-coordinate of the translation vector with the given value.
-        """
+        r"""Set the y-coordinate of the translation vector with the given value."""
         self.extrinsics[..., 2, -1] = value
         return self
 
@@ -361,7 +358,7 @@ class PinholeCamerasList(PinholeCamera):
         return PinholeCamera(intrinsics, extrinsics, height, width)
 
 
-def pinhole_matrix(pinholes: torch.Tensor, eps: float =1e-6) -> torch.Tensor:
+def pinhole_matrix(pinholes: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
     r"""Function that returns the pinhole matrix from a pinhole model
 
     .. note::
@@ -404,7 +401,7 @@ def pinhole_matrix(pinholes: torch.Tensor, eps: float =1e-6) -> torch.Tensor:
     return k
 
 
-def inverse_pinhole_matrix(pinhole: torch.Tensor, eps: float =1e-6) -> torch.Tensor:
+def inverse_pinhole_matrix(pinhole: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
     r"""Returns the inverted pinhole matrix from a pinhole model
 
     .. note::

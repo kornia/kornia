@@ -45,7 +45,7 @@ def inverseTiltProjection(taux: torch.Tensor, tauy: torch.Tensor) -> torch.Tenso
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/undistort.dispatch.cpp#L384
 def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) -> torch.Tensor:
     r"""Compensate for lens distortion a set of 2D image points.
-    
+
     Radial :math:`(k_1, k_2, k_3, k_4, k_4, k_6)`,
     tangential :math:`(p_1, p_2)`, thin prism :math:`(s_1, s_2, s_3, s_4)`, and tilt :math:`(\tau_x, \tau_y)`
     distortion models are considered in this function.
