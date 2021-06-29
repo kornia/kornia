@@ -120,9 +120,10 @@ class ImageSequential(nn.Sequential):
         else:
             self.random_apply = False
         self.has_mix_augmentations = self._validate_mix_augmentation(*args, validate_args=validate_args)
-    
+
     def update_attribute(
-        self, same_on_batch: Optional[bool] = None, return_transform: Optional[bool] = None, keepdim: Optional[bool] = None
+        self, same_on_batch: Optional[bool] = None, return_transform: Optional[bool] = None,
+        keepdim: Optional[bool] = None
     ) -> None:
         for arg in self.children():
             if isinstance(arg, _AugmentationBase):
@@ -134,26 +135,26 @@ class ImageSequential(nn.Sequential):
                     arg.keepdim = keepdim
 
     @property
-    def same_on_batch(self) -> None:
+    def same_on_batch(self) -> Optional[bool]:
         return self._same_on_batch
-
-    @property
-    def return_transform(self) -> None:
-        return self._return_transform
-
-    @property
-    def keepdim(self) -> None:
-        return self._keepdim
 
     @same_on_batch.setter
     def same_on_batch(self, same_on_batch: Optional[bool]) -> None:
         self._same_on_batch = same_on_batch
         self.update_attribute(same_on_batch=same_on_batch)
 
+    @property
+    def return_transform(self) -> Optional[bool]:
+        return self._return_transform
+
     @return_transform.setter
     def return_transform(self, return_transform: Optional[bool]) -> None:
         self._return_transform = return_transform
         self.update_attribute(return_transform=return_transform)
+
+    @property
+    def keepdim(self) -> Optional[bool]:
+        return self._keepdim
 
     @keepdim.setter
     def keepdim(self, keepdim: Optional[bool]) -> None:
@@ -300,7 +301,6 @@ class ImageSequential(nn.Sequential):
     ) -> Union[TensorWithTransMat, Tuple[TensorWithTransMat, torch.Tensor]]:
         self.clear_state()
         named_modules = self.get_forward_sequence(params)
-        params = [] if params is None else params
-        for (name, module), param in zip_longest(named_modules, params):
+        for (name, module), param in zip_longest(named_modules, [] if params is None else params):
             input, label = self.apply_to_input(input, label, name, module, param=param)
         return self.__packup_output__(input, label)

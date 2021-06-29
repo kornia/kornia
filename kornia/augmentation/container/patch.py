@@ -1,11 +1,9 @@
-from itertools import zip_longest, repeat
-from typing import Iterator, cast, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, NamedTuple
+from itertools import zip_longest, cycle, islice
 
 import torch
-from torch import random
 import torch.nn as nn
 
-from kornia.augmentation.augmentation import ColorJitter
 from kornia.augmentation.base import (
     MixAugmentationBase,
     TensorWithTransMat,
@@ -17,6 +15,11 @@ from kornia.contrib.extract_patches import extract_tensor_patches
 from .image import ImageSequential, ParamItem
 
 __all__ = ["PatchSequential"]
+
+
+class PatchParamItem(NamedTuple):
+    apply: str
+    param: List[Optional[ParamItem]]
 
 
 class PatchSequential(ImageSequential):
@@ -46,7 +49,8 @@ class PatchSequential(ImageSequential):
             If ``(a, b)`` (batchwise mode only), x number of transformations (a <= x <= b) will be selected.
             If ``True``, the whole list of args will be processed in a random order.
             If ``False`` and not ``patchwise_apply``, the whole list of args will be processed in original order.
-            If ``False`` and ``patchwise_apply``, the whole list of args will be processed in original order location-wisely.
+            If ``False`` and ``patchwise_apply``, the whole list of args will be processed in original order
+            location-wisely.
 
     Return:
         List[TensorWithTransMat]: the tensor (, and the transformation matrix)
@@ -69,11 +73,12 @@ class PatchSequential(ImageSequential):
         ...     ),
         ...     K.RandomSolarize(0.1, 0.1, p=0.1),
         ... grid_size=(2,2),
-        ... patchwise_apply=False,
+        ... patchwise_apply=True,
         ... same_on_batch=True,
-        ... random_apply=True,
+        ... random_apply=False,
         ... )
         >>> out = seq(input)
+        >>> aa = seq._params
         >>> out.shape
         torch.Size([2, 3, 224, 224])
         >>> out1 = seq(input, params=seq._params)
@@ -230,7 +235,7 @@ class PatchSequential(ImageSequential):
 
     def __elementwise_apply__(
         self, input: torch.Tensor, label: Optional[torch.Tensor], params: List[List[ParamItem]],
-        auglist: List[Iterator[Tuple[str, nn.Module]]], batch_mix: bool = False
+        auglist: List[List[Tuple[str, nn.Module]]], batch_mix: bool = False
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         in_shape = input.shape
 
@@ -241,12 +246,16 @@ class PatchSequential(ImageSequential):
                 if isinstance(proc_pat, (_AugmentationBase, ImageSequential)):
                     _same_on_batch = proc_pat.same_on_batch
                     proc_pat.same_on_batch = self.same_on_batch
-                    out[idx] = proc_pat(input[idx], _param.data if _param is not None else None)
+                    if isinstance(proc_pat, (ImageSequential,)):
+                        out[idx] = proc_pat(input[idx], label, params=_param.data if _param is not None else None)
+                    else:
+                        out[idx] = proc_pat(input[idx], params=_param.data if _param is not None else None)
                     proc_pat.same_on_batch = _same_on_batch
                     p.append(ParamItem(proc_name, proc_pat._params))
                 elif isinstance(proc_pat, (MixAugmentationBase,)):
                     _same_on_batch = proc_pat.same_on_batch
-                    proc_pat.same_on_batch = self.same_on_batch
+                    if self.same_on_batch is not None:
+                        proc_pat.same_on_batch = self.same_on_batch
                     if len(out.shape) == 5 and not batch_mix:  # If apply patch-location-wisely
                         out[idx], label = proc_pat(out[idx], label, _param.data if _param is not None else None)
                     elif len(out.shape) == 5 and batch_mix:
@@ -265,7 +274,7 @@ class PatchSequential(ImageSequential):
 
         return out.reshape(*in_shape), label
 
-    def get_multiple_forward_sequence(self, sequence_num: int) -> Iterator[Tuple[str, nn.Module]]:
+    def get_multiple_forward_sequence(self, sequence_num: int) -> List[List[Tuple[str, nn.Module]]]:
         """Get mulitple forward sequence but maximumly one mix augmentation in between."""
         if not self.same_on_batch and self.random_apply:
             with_mix = False
@@ -273,8 +282,13 @@ class PatchSequential(ImageSequential):
                 seq, mix_added = self.__sample_forward_indices__(with_mix=with_mix)
                 with_mix = mix_added
                 yield seq
-        elif not self.random_apply:
-            for nchild in self.named_children():
+        elif not self.same_on_batch and not self.random_apply:
+            # TODO: The mixup shall happen location-wisely
+            for nchild in islice(cycle(self.named_children()), sequence_num):
+                yield [nchild]
+        elif self.same_on_batch and not self.random_apply:
+            # TODO: The mixup shall happen image-wisely
+            for nchild in islice(cycle(self.named_children()), sequence_num):
                 yield [nchild]
         else:
             nchildren = list(self.named_children())
@@ -287,12 +301,14 @@ class PatchSequential(ImageSequential):
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         # NOTE: return_transform is always False here.
         """Params: params[img_idx][patch_idx][aug_idx]
+
+        Every single patch will get its own transformation.
         """
         if params is None:
             params = [[]] * (input.size(0) * input.size(1))
             auglist = list(self.get_multiple_forward_sequence(input.size(0) * input.size(1)))
         else:
-            auglist = [self.get_forward_sequence(p) for p in params]  # type: ignore
+            auglist = [list(self.get_forward_sequence(p)) for p in params]  # type: ignore
 
         in_shape = input.shape
         output, label = self.__elementwise_apply__(
@@ -305,38 +321,49 @@ class PatchSequential(ImageSequential):
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         # NOTE: return_transform is always False here.
         """Params: params[patch_idx][aug_idx]
+
+        Every patch location will perform the similar transformations (in a batch).
+        Mix augmentation happens among all patches in the same location.
         """
         if params is None:
             params = [[]] * input.size(1)
             auglist = list(self.get_multiple_forward_sequence(input.size(1)))
         else:
-            auglist = [self.get_forward_sequence(p) for p in params]
+            auglist = [list(self.get_forward_sequence(p)) for p in params]
             assert input.size(1) == len(auglist) == len(params)
 
-        output, label = self.__elementwise_apply__(input.permute(1, 0, 2, 3, 4), label, params, auglist, batch_mix=False)  # type: ignore
+        output, label = self.__elementwise_apply__(
+            input.permute(1, 0, 2, 3, 4), label, params, auglist, batch_mix=False)  # type: ignore
         return output.permute(1, 0, 2, 3, 4), label
 
     def forward_batchwise(
-        self, input: torch.Tensor, label: Optional[torch.Tensor] = None, params: Optional[List[ParamItem]] = None
+        self, input: torch.Tensor, label: Optional[torch.Tensor] = None,
+        params: Optional[List[List[ParamItem]]] = None
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         # NOTE: return_transform is always False here.
-        """Params: params[patch_idx][aug_idx]
+        """Params: params[patch_idx][aug_idx].
+
+        All patch locations will perform the similar transformations (in a batch).
+        While mix augmentation happens among all patches.
         """
         if params is None:
-            params = [[]] * input.size(1)
-            auglist = list(self.get_multiple_forward_sequence(input.size(1)))
+            params = [[]]
+            auglist = [list(self.get_forward_sequence())]
         else:
-            auglist = [self.get_forward_sequence(p) for p in params]
-            assert input.size(1) == len(auglist) == len(params)
+            assert len(params) == 1
+            auglist = [list(self.get_forward_sequence(params[0]))]
 
-        output, label = self.__elementwise_apply__(input.permute(1, 0, 2, 3, 4), label, params, auglist, batch_mix=True)  # type: ignore
-        return output.permute(1, 0, 2, 3, 4), label
+        in_shape = input.shape
+        # Fake to 5 dim
+        output, label = self.__elementwise_apply__(
+            input.reshape(1, -1, *in_shape[-3:]), label, params, auglist, batch_mix=True)
+        return output.reshape(in_shape), label
 
     def forward(  # type: ignore
         self,
         input: TensorWithTransMat,
         label: Optional[torch.Tensor] = None,
-        params: Optional[Union[List[ParamItem], List[List[ParamItem]]]] = None,
+        params: Optional[List[List[ParamItem]]] = None,
     ) -> Union[TensorWithTransMat, Tuple[TensorWithTransMat, torch.Tensor]]:
         """Input transformation will be returned if input is a tuple."""
         self.clear_state()
@@ -349,7 +376,6 @@ class PatchSequential(ImageSequential):
             input = self.extract_patches(input, self.grid_size, pad)
 
         if not self.patchwise_apply:
-            params = cast(List[ParamItem], params)
             if isinstance(input, (tuple,)):
                 in_trans = input[1]
                 input, label = self.forward_batchwise(input[0], label, params)
@@ -357,7 +383,6 @@ class PatchSequential(ImageSequential):
             else:
                 input, label = self.forward_batchwise(input, label, params)
         else:
-            params = cast(List[List[ParamItem]], params)
             if isinstance(input, (tuple,)):
                 in_trans = input[1]
                 if not self.same_on_batch:

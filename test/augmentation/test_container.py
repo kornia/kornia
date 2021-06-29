@@ -371,6 +371,7 @@ class TestPatchSequential:
     @pytest.mark.parametrize('keepdim', [True, False, None])
     @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
     def test_forward(self, shape, padding, patchwise_apply, same_on_batch, keepdim, random_apply, device, dtype):
+        torch.manual_seed(11)
         try:  # skip wrong param settings.
             seq = K.PatchSequential(
                 K.ImageSequential(
