@@ -74,7 +74,7 @@ class PatchSequential(ImageSequential):
         >>> out = seq(input)
         >>> out.shape
         torch.Size([2, 3, 224, 224])
-        >>> out1 = seq(input, seq._params)
+        >>> out1 = seq(input, params=seq._params)
         >>> torch.equal(out, out1)
         True
     """
@@ -228,52 +228,31 @@ class PatchSequential(ImageSequential):
             restored_tensor = torch.nn.functional.pad(restored_tensor, [-i for i in pad])
         return restored_tensor
 
-    # def __elementwise_apply__(
-    #     self, input: torch.Tensor, label: Optional[torch.Tensor], params: List[List[ParamItem]],
-    #     auglist: List[Iterator[Tuple[str, nn.Module]]]
-    # ):
-    #     assert input.size(0) == len(auglist) == len(params)
-    #     out = []
-    #     for inp, proc, param in zip_longest(input, auglist, params):
-    #         o = []
-    #         p = []
-    #         for (proc_name, proc_pat), _param in zip_longest(proc, param):  # loop on patches
-    #             if isinstance(proc_pat, (_AugmentationBase, ImageSequential)):
-    #                 o.append(proc_pat(inp, _param.data if _param is not None else None))
-    #                 p.append(ParamItem(proc_name, proc_pat._params))
-    #             else:
-    #                 o.append(proc_pat(inp))
-    #                 p.append(ParamItem(proc_name, {}))
-    #         out.append(torch.cat(o, dim=0))
-    #         self._params.append(p)
-
-    #     input = torch.stack(out, dim=0)
-    #     return input, label
-
     def __elementwise_apply__(
         self, input: torch.Tensor, label: Optional[torch.Tensor], params: List[List[ParamItem]],
         auglist: List[Iterator[Tuple[str, nn.Module]]]
     ):
-        assert input.size(0) == len(auglist) == len(params)
+        assert input.size(0) == len(auglist) == len(params), (input.shape, len(auglist), len(params))
 
-        flat_input = input.view(-1, *input.shape[3:])
-        flat_params: List[ParamItem] = list(chain.from_iterable(params))
-        flat_auglist: List[Tuple[str, nn.Module]] = list(chain.from_iterable(auglist))
+        in_shape = input.shape
+        flat_input = input.view(-1, *input.shape[-3:])
 
-        o = torch.empty_like(flat_input)
-        p = []
-        for idx, (inp, (proc_name, proc_pat), param) in enumerate(zip_longest(flat_input, flat_auglist, flat_params)):
-            if isinstance(proc_pat, (_AugmentationBase, ImageSequential)):
-                o[idx] = proc_pat(inp, param.data if param is not None else None)
-                p.append(ParamItem(proc_name, proc_pat._params))
-            else:
-                o[idx] = proc_pat(inp)
-                p.append(ParamItem(proc_name, {}))
-            # out.append(torch.cat(o, dim=0))
-            # self._params.append(p)
+        o = flat_input.clone()
+        for idx, (proc, param) in enumerate(zip_longest(auglist, params)):
+            p = []
+            for (proc_name, proc_pat), _param in zip_longest(proc, param):
+                if isinstance(proc_pat, (_AugmentationBase, ImageSequential)):
+                    o[idx] = proc_pat(flat_input[idx], _param.data if _param is not None else None)
+                    p.append(ParamItem(proc_name, proc_pat._params))
+                elif isinstance(proc_pat, (MixAugmentationBase,)):
+                    o, label = proc_pat(o, label, _param.data if _param is not None else None)
+                    p.append(ParamItem(proc_name, proc_pat._params))
+                else:
+                    o[idx] = proc_pat(flat_input[idx])
+                    p.append(ParamItem(proc_name, {}))
+            self._params.append(p)
 
-        # input = torch.stack(out, dim=0)
-        return input, label
+        return input.reshape(*in_shape), label
 
     def forward_patchwise(
         self, input: torch.Tensor, label: Optional[torch.Tensor] = None,
@@ -290,8 +269,11 @@ class PatchSequential(ImageSequential):
             auglist = [self.get_forward_sequence(p) for p in params]  # type: ignore
 
         in_shape = input.shape
-        output, label = self.__elementwise_apply__(
-            input.reshape(-1, 1, *input.shape[3:]), label, params, auglist)
+        try:
+            output, label = self.__elementwise_apply__(
+                input.reshape(-1, 1, *input.shape[-3:]), label, params, auglist)
+        except:
+            assert False, input.shape
         return output.reshape(*in_shape), label
 
     def forward_locationwise(
@@ -322,11 +304,14 @@ class PatchSequential(ImageSequential):
             patch_num = input.size(0)
         else:
             batch_shape = (input.size(0) * input.size(1), *input.shape[-3:])
+        in_shape = input.shape
+        input = input.view(-1, *input.shape[-3:])
 
         if params is None:
+            auglist = list(self.get_forward_sequence())
             params = []
-            for name, aug in self.get_forward_sequence():
-                if isinstance(aug, (_AugmentationBase, MixAugmentationBase)):
+            for name, aug in auglist:
+                if isinstance(aug, (_AugmentationBase,)):
                     aug.same_on_batch = False
                     param = aug.forward_parameters(batch_shape)
                     if self.same_on_batch:
@@ -335,13 +320,24 @@ class PatchSequential(ImageSequential):
                             if not (k == "order" and isinstance(aug, ColorJitter)):
                                 param.update({k: self.__repeat_param_across_patches__(v, patch_num)})
                     aug.same_on_batch = True
+                elif isinstance(aug, (MixAugmentationBase,)):
+                    aug.same_on_batch = False
+                    param = aug.forward_parameters(batch_shape)
+                    if self.same_on_batch:
+                        for k, v in param.items():
+                            # TODO: Need to update mix indices for mix augmentations
+                            param.update({k: self.__repeat_param_across_patches__(v, patch_num)})
+                    aug.same_on_batch = True
                 else:
                     param = None
                 params.append(ParamItem(name, param))
+        else:
+            auglist = self.get_forward_sequence(params)
 
-        input, label = super().forward(input.view(-1, *input.shape[-3:]), label, params)  # type: ignore
+        for (name, module), param in zip_longest(auglist, params):
+            input, label = self.apply_to_input(input, label, name, module, param=param)
 
-        return input, label
+        return input.reshape(in_shape), label
 
     def forward(  # type: ignore
         self,
