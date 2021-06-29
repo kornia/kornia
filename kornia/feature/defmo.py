@@ -1,4 +1,4 @@
-from typing import Callable, Dict, List, Optional, Type
+from typing import Dict, Optional, Callable, List, Type
 
 import torch
 import torch.nn as nn
@@ -10,25 +10,14 @@ urls["defmo_rendering"] = "http://ptak.felk.cvut.cz/personal/rozumden/defmo_save
 
 # conv1x1, conv3x3, Bottleneck, ResNet taken from https://github.com/pytorch/vision/blob/master/torchvision/models/resnet.py
 
-
 def conv1x1(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv2d:
     """1x1 convolution"""
     return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
 
-
 def conv3x3(in_planes: int, out_planes: int, stride: int = 1, groups: int = 1, dilation: int = 1) -> nn.Conv2d:
     """3x3 convolution with padding"""
-    return nn.Conv2d(
-        in_planes,
-        out_planes,
-        kernel_size=3,
-        stride=stride,
-        padding=dilation,
-        groups=groups,
-        bias=False,
-        dilation=dilation,
-    )
-
+    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
+                     padding=dilation, groups=groups, bias=False, dilation=dilation)
 
 class Bottleneck(nn.Module):
     # Bottleneck in torchvision places the stride for downsampling at 3x3 convolution(self.conv2)
@@ -145,7 +134,12 @@ class ResNet(nn.Module):
                     nn.init.constant_(m.bn3.weight, 0)  # type: ignore[arg-type]
 
     def _make_layer(
-        self, block: Type[Bottleneck], planes: int, blocks: int, stride: int = 1, dilate: bool = False
+        self,
+        block: Type[Bottleneck],
+        planes: int,
+        blocks: int,
+        stride: int = 1,
+        dilate: bool = False,
     ) -> nn.Sequential:
         norm_layer = self._norm_layer
         downsample = None
@@ -207,10 +201,7 @@ class EncoderDeFMO(nn.Module):
         model = ResNet(Bottleneck, [3, 4, 6, 3])  # ResNet50
         modelc1 = nn.Sequential(*list(model.children())[:3])
         modelc2 = nn.Sequential(*list(model.children())[4:8])
-        pretrained_weights = modelc1[0].weight
         modelc1[0] = nn.Conv2d(6, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
-        modelc1[0].weight.data[:, :3, :, :] = nn.Parameter(pretrained_weights)
-        modelc1[0].weight.data[:, 3:, :, :] = nn.Parameter(pretrained_weights)
         self.net = nn.Sequential(modelc1, modelc2)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
@@ -220,6 +211,7 @@ class EncoderDeFMO(nn.Module):
 class RenderingDeFMO(nn.Module):
     def __init__(self):
         super(RenderingDeFMO, self).__init__()
+        self.tsr_steps: int = 24
         model = nn.Sequential(
             nn.Conv2d(2049, 1024, kernel_size=3, stride=1, padding=1, bias=False),
             nn.BatchNorm2d(1024, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
@@ -237,16 +229,14 @@ class RenderingDeFMO(nn.Module):
             nn.Conv2d(4, 4, kernel_size=3, stride=1, padding=1, bias=True),
         )
         self.net = model
+        self.times = torch.linspace(0, 1, self.tsr_steps)
 
-    def forward(self, latent, times):
+    def forward(self, latent: torch.Tensor) -> torch.Tensor:
+        times = self.times.to(latent.device).unsqueeze(0).repeat(latent.shape[0], 1)
         renders = []
-        shuffled_times = []
-        for ki in range(times.shape[0]):
-            shuffled_times.append(torch.randperm(times.shape[1]))
-        shuffled_times = torch.stack(shuffled_times, 1).contiguous().transpose(1, 0)
         for ki in range(times.shape[1]):
             t_tensor = (
-                times[range(times.shape[0]), shuffled_times[:, ki]]
+                times[range(times.shape[0]), ki]
                 .unsqueeze(-1)
                 .unsqueeze(-1)
                 .unsqueeze(-1)
@@ -257,8 +247,6 @@ class RenderingDeFMO(nn.Module):
             renders.append(result)
         renders = torch.stack(renders, 1).contiguous()
         renders[:, :, :4] = torch.sigmoid(renders[:, :, :4])
-        for ki in range(times.shape[0]):
-            renders[ki, shuffled_times[ki, :]] = renders[ki, :].clone()
         return renders
 
 
@@ -285,7 +273,6 @@ class DeFMO(nn.Module):
 
     def __init__(self, pretrained: bool = False) -> None:
         super(DeFMO, self).__init__()
-        self.tsr_steps: int = 24
         self.encoder = EncoderDeFMO()
         self.rendering = RenderingDeFMO()
 
@@ -302,6 +289,6 @@ class DeFMO(nn.Module):
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         latent = self.encoder(input)
-        times = torch.linspace(0, 1, self.tsr_steps).to(input.device)[None].repeat(input.shape[0], 1)
-        x_out = self.rendering(latent, times)
+        x_out = self.rendering(latent)
         return x_out
+    
