@@ -16,6 +16,7 @@ class ParamItem(NamedTuple):
     data: Union[dict, list]
 
 
+# TODO: Add forward_parameters for ImageSequential
 class ImageSequential(nn.Sequential):
     r"""Sequential for creating kornia image processing pipeline.
 
@@ -80,23 +81,17 @@ class ImageSequential(nn.Sequential):
         random_apply: Union[int, bool, Tuple[int, int]] = False,
         validate_args: bool = True,
     ) -> None:
-        self.same_on_batch = same_on_batch
-        self.return_transform = return_transform
-        self.keepdim = keepdim
+        self._same_on_batch = same_on_batch
+        self._return_transform = return_transform
+        self._keepdim = keepdim
         # To name the modules properly
         _args = OrderedDict()
         for idx, arg in enumerate(args):
             if not isinstance(arg, nn.Module):
                 raise NotImplementedError(f"Only nn.Module are supported at this moment. Got {arg}.")
-            if isinstance(arg, _AugmentationBase):
-                if same_on_batch is not None:
-                    arg.same_on_batch = same_on_batch
-                if return_transform is not None:
-                    arg.return_transform = return_transform
-                if keepdim is not None:
-                    arg.keepdim = keepdim
             _args.update({f"{arg.__class__.__name__}_{idx}": arg})
         super(ImageSequential, self).__init__(_args)
+        self.update_attribute(same_on_batch, return_transform, keepdim)
 
         self._params: List[Any] = []
         self.random_apply: Union[Tuple[int, int], bool]
@@ -125,6 +120,45 @@ class ImageSequential(nn.Sequential):
         else:
             self.random_apply = False
         self.has_mix_augmentations = self._validate_mix_augmentation(*args, validate_args=validate_args)
+    
+    def update_attribute(
+        self, same_on_batch: Optional[bool] = None, return_transform: Optional[bool] = None, keepdim: Optional[bool] = None
+    ) -> None:
+        for arg in self.children():
+            if isinstance(arg, _AugmentationBase):
+                if same_on_batch is not None:
+                    arg.same_on_batch = same_on_batch
+                if return_transform is not None:
+                    arg.return_transform = return_transform
+                if keepdim is not None:
+                    arg.keepdim = keepdim
+
+    @property
+    def same_on_batch(self):
+        return self._same_on_batch
+
+    @property
+    def return_transform(self):
+        return self._return_transform
+
+    @property
+    def keepdim(self):
+        return self._keepdim
+
+    @same_on_batch.setter
+    def same_on_batch(self, same_on_batch: Optional[bool]):
+        self._same_on_batch = same_on_batch
+        self.update_attribute(same_on_batch=same_on_batch)
+
+    @return_transform.setter
+    def return_transform(self, return_transform: Optional[bool]):
+        self._return_transform = return_transform
+        self.update_attribute(return_transform=return_transform)
+
+    @keepdim.setter
+    def keepdim(self, keepdim: Optional[bool]):
+        self._keepdim = keepdim
+        self.update_attribute(keepdim=keepdim)
 
     def clear_state(self) -> None:
         self._params = []

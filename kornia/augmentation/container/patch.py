@@ -232,40 +232,50 @@ class PatchSequential(ImageSequential):
         self, input: torch.Tensor, label: Optional[torch.Tensor], params: List[List[ParamItem]],
         auglist: List[Iterator[Tuple[str, nn.Module]]]
     ):
-        assert input.size(0) == len(auglist) == len(params), (input.shape, len(auglist), len(params))
 
         in_shape = input.shape
-        flat_input = input.reshape(-1, *input.shape[-3:])
 
-        o = flat_input.clone()
+        out = input.clone()
         for idx, (proc, param) in enumerate(zip_longest(auglist, params)):
             p = []
             for (proc_name, proc_pat), _param in zip_longest(proc, param):
                 if isinstance(proc_pat, (_AugmentationBase, ImageSequential)):
-                    o[idx] = proc_pat(flat_input[idx], _param.data if _param is not None else None)
+                    _same_on_batch = proc_pat.same_on_batch
+                    proc_pat.same_on_batch = self.same_on_batch
+                    out[idx] = proc_pat(input[idx], _param.data if _param is not None else None)
+                    proc_pat.same_on_batch = _same_on_batch
                     p.append(ParamItem(proc_name, proc_pat._params))
                 elif isinstance(proc_pat, (MixAugmentationBase,)):
-                    o, label = proc_pat(o, label, _param.data if _param is not None else None)
+                    _same_on_batch = proc_pat.same_on_batch
+                    proc_pat.same_on_batch = self.same_on_batch
+                    if len(out.shape) == 5:  # If apply patch-location-wisely
+                        out[idx], label = proc_pat(out[idx], label, _param.data if _param is not None else None)
+                    else:
+                        out, label = proc_pat(out, label, _param.data if _param is not None else None)
+                    proc_pat.same_on_batch = _same_on_batch
                     p.append(ParamItem(proc_name, proc_pat._params))
                 else:
-                    o[idx] = proc_pat(flat_input[idx])
+                    out[idx] = proc_pat(input[idx])
                     p.append(ParamItem(proc_name, {}))
             self._params.append(p)
 
-        return input.reshape(*in_shape), label
+        return out.reshape(*in_shape), label
 
     def get_multiple_forward_sequence(self, sequence_num: int) -> Iterator[Tuple[str, nn.Module]]:
         """Get mulitple forward sequence but maximumly one mix augmentation in between."""
-        with_mix = False
-        if self.random_apply:
+        if not self.same_on_batch and self.random_apply:
+            with_mix = False
             for _ in range(sequence_num):
                 seq, mix_added = self.__sample_forward_indices__(with_mix=with_mix)
                 with_mix = mix_added
                 yield seq
-        else:
-            # TODO: This can be actually moved to location-wise
+        elif not self.random_apply:
             for nchild in self.named_children():
                 yield [nchild]
+        else:
+            nchildren = list(self.named_children())
+            for idx in torch.randperm(len(nchildren)):
+                yield [nchildren[idx]]
 
     def forward_patchwise(
         self, input: torch.Tensor, label: Optional[torch.Tensor] = None,
@@ -282,7 +292,7 @@ class PatchSequential(ImageSequential):
 
         in_shape = input.shape
         output, label = self.__elementwise_apply__(
-            input.reshape(-1, 1, *input.shape[-3:]), label, params, auglist)
+            input.reshape(-1, *input.shape[-3:]), label, params, auglist)
         return output.reshape(*in_shape), label
 
     def forward_locationwise(
@@ -320,7 +330,7 @@ class PatchSequential(ImageSequential):
             auglist = list(self.get_forward_sequence())
             params = []
             for name, aug in auglist:
-                if isinstance(aug, (_AugmentationBase,)):
+                if isinstance(aug, (_AugmentationBase, ImageSequential)):
                     aug.same_on_batch = False
                     param = aug.forward_parameters(batch_shape)
                     if self.same_on_batch:
@@ -345,7 +355,7 @@ class PatchSequential(ImageSequential):
 
         for (name, module), param in zip_longest(auglist, params):
             input, label = self.apply_to_input(input, label, name, module, param=param)
-
+        assert False, self._params
         return input.reshape(in_shape), label
 
     def forward(  # type: ignore
@@ -376,13 +386,13 @@ class PatchSequential(ImageSequential):
             params = cast(List[List[ParamItem]], params)
             if isinstance(input, (tuple,)):
                 in_trans = input[1]
-                if self.random_apply:
+                if not self.same_on_batch:
                     input, label = self.forward_patchwise(input[0], label, params)
                 else:
                     input, label = self.forward_locationwise(input[0], label, params)
                 input = (input, in_trans)
             else:
-                if self.random_apply:
+                if not self.same_on_batch:
                     input, label = self.forward_patchwise(input, label, params)
                 else:
                     input, label = self.forward_locationwise(input, label, params)
@@ -391,4 +401,4 @@ class PatchSequential(ImageSequential):
             input = (self.restore_from_patches(input[0], self.grid_size, pad=pad), input[1])
         else:
             input = self.restore_from_patches(input, self.grid_size, pad=pad)
-        return input, label
+        return self.__packup_output__(input, label)
