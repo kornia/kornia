@@ -8,6 +8,7 @@ urls: Dict[str, str] = {}
 urls["defmo_encoder"] = "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/encoder_best.pt"
 urls["defmo_rendering"] = "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/rendering_best.pt"
 
+
 class Bottleneck(nn.Module):
     # Bottleneck in torchvision places the stride for downsampling at 3x3 convolution(self.conv2)
     # while original implementation places the stride at the first 1x1 convolution(self.conv1)
@@ -26,12 +27,12 @@ class Bottleneck(nn.Module):
         groups: int = 1,
         base_width: int = 64,
         dilation: int = 1,
-        norm_layer: Optional[Callable[..., nn.Module]] = None
+        norm_layer: Optional[Callable[..., nn.Module]] = None,
     ) -> None:
         super(Bottleneck, self).__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
-        width = int(planes * (base_width / 64.)) * groups
+        width = int(planes * (base_width / 64.0)) * groups
         # Both self.conv2 and self.downsample layers downsample the input when stride != 1
         self.conv1 = conv1x1(inplanes, width)
         self.bn1 = norm_layer(width)
@@ -64,6 +65,7 @@ class Bottleneck(nn.Module):
         out = self.relu(out)
 
         return out
+
 
 class EncoderDeFMO(nn.Module):
     def __init__(self):
