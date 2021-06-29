@@ -73,6 +73,7 @@ class RenderingDeFMO(nn.Module):
 class DeFMO(nn.Module):
     """
     Module that disentangle a fast-moving object from the background and performs deblurring.
+
     This is based on the original code from paper "DeFMO: Deblurring and Shape Recovery
         of Fast Moving Objects". See :cite:`DeFMO2021` for more details.
 
