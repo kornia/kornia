@@ -230,9 +230,8 @@ class PatchSequential(ImageSequential):
 
     def __elementwise_apply__(
         self, input: torch.Tensor, label: Optional[torch.Tensor], params: List[List[ParamItem]],
-        auglist: List[Iterator[Tuple[str, nn.Module]]]
-    ):
-
+        auglist: List[Iterator[Tuple[str, nn.Module]]], batch_mix: bool = False
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         in_shape = input.shape
 
         out = input.clone()
@@ -248,8 +247,13 @@ class PatchSequential(ImageSequential):
                 elif isinstance(proc_pat, (MixAugmentationBase,)):
                     _same_on_batch = proc_pat.same_on_batch
                     proc_pat.same_on_batch = self.same_on_batch
-                    if len(out.shape) == 5:  # If apply patch-location-wisely
+                    if len(out.shape) == 5 and not batch_mix:  # If apply patch-location-wisely
                         out[idx], label = proc_pat(out[idx], label, _param.data if _param is not None else None)
+                    elif len(out.shape) == 5 and batch_mix:
+                        out_shape = out.shape
+                        out = out.reshape(-1, *out_shape[-3:])
+                        out, label = proc_pat(out, label, _param.data if _param is not None else None)
+                        out = out.reshape(out_shape)
                     else:
                         out, label = proc_pat(out, label, _param.data if _param is not None else None)
                     proc_pat.same_on_batch = _same_on_batch
@@ -309,54 +313,24 @@ class PatchSequential(ImageSequential):
             auglist = [self.get_forward_sequence(p) for p in params]
             assert input.size(1) == len(auglist) == len(params)
 
-        output, label = self.__elementwise_apply__(input.permute(1, 0, 2, 3, 4), label, params, auglist)  # type: ignore
+        output, label = self.__elementwise_apply__(input.permute(1, 0, 2, 3, 4), label, params, auglist, batch_mix=False)  # type: ignore
         return output.permute(1, 0, 2, 3, 4), label
 
     def forward_batchwise(
         self, input: torch.Tensor, label: Optional[torch.Tensor] = None, params: Optional[List[ParamItem]] = None
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         # NOTE: return_transform is always False here.
-        """Params: params[aug_idx]
+        """Params: params[patch_idx][aug_idx]
         """
-        if self.same_on_batch:
-            batch_shape = (input.size(1), *input.shape[-3:])
-            patch_num = input.size(0)
-        else:
-            batch_shape = (input.size(0) * input.size(1), *input.shape[-3:])
-        in_shape = input.shape
-        input = input.view(-1, *input.shape[-3:])
-
         if params is None:
-            auglist = list(self.get_forward_sequence())
-            params = []
-            for name, aug in auglist:
-                if isinstance(aug, (_AugmentationBase, ImageSequential)):
-                    aug.same_on_batch = False
-                    param = aug.forward_parameters(batch_shape)
-                    if self.same_on_batch:
-                        for k, v in param.items():
-                            # TODO: revise colorjitter order param in the future to align the standard.
-                            if not (k == "order" and isinstance(aug, ColorJitter)):
-                                param.update({k: self.__repeat_param_across_patches__(v, patch_num)})
-                    aug.same_on_batch = True
-                elif isinstance(aug, (MixAugmentationBase,)):
-                    aug.same_on_batch = False
-                    param = aug.forward_parameters(batch_shape)
-                    if self.same_on_batch:
-                        for k, v in param.items():
-                            # TODO: Need to update mix indices for mix augmentations
-                            param.update({k: self.__repeat_param_across_patches__(v, patch_num)})
-                    aug.same_on_batch = True
-                else:
-                    param = None
-                params.append(ParamItem(name, param))
+            params = [[]] * input.size(1)
+            auglist = list(self.get_multiple_forward_sequence(input.size(1)))
         else:
-            auglist = self.get_forward_sequence(params)
+            auglist = [self.get_forward_sequence(p) for p in params]
+            assert input.size(1) == len(auglist) == len(params)
 
-        for (name, module), param in zip_longest(auglist, params):
-            input, label = self.apply_to_input(input, label, name, module, param=param)
-        assert False, self._params
-        return input.reshape(in_shape), label
+        output, label = self.__elementwise_apply__(input.permute(1, 0, 2, 3, 4), label, params, auglist, batch_mix=True)  # type: ignore
+        return output.permute(1, 0, 2, 3, 4), label
 
     def forward(  # type: ignore
         self,

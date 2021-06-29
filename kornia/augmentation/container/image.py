@@ -134,29 +134,29 @@ class ImageSequential(nn.Sequential):
                     arg.keepdim = keepdim
 
     @property
-    def same_on_batch(self):
+    def same_on_batch(self) -> None:
         return self._same_on_batch
 
     @property
-    def return_transform(self):
+    def return_transform(self) -> None:
         return self._return_transform
 
     @property
-    def keepdim(self):
+    def keepdim(self) -> None:
         return self._keepdim
 
     @same_on_batch.setter
-    def same_on_batch(self, same_on_batch: Optional[bool]):
+    def same_on_batch(self, same_on_batch: Optional[bool]) -> None:
         self._same_on_batch = same_on_batch
         self.update_attribute(same_on_batch=same_on_batch)
 
     @return_transform.setter
-    def return_transform(self, return_transform: Optional[bool]):
+    def return_transform(self, return_transform: Optional[bool]) -> None:
         self._return_transform = return_transform
         self.update_attribute(return_transform=return_transform)
 
     @keepdim.setter
-    def keepdim(self, keepdim: Optional[bool]):
+    def keepdim(self, keepdim: Optional[bool]) -> None:
         self._keepdim = keepdim
         self.update_attribute(keepdim=keepdim)
 
