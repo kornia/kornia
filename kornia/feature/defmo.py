@@ -77,7 +77,7 @@ class DeFMO(nn.Module):
         of Fast Moving Objects". See :cite:`DeFMO2021` for more details.
  
     Args:
-        pretrained: (bool) Download and set pretrained weights to the model. Default: false.
+        pretrained: Download and set pretrained weights to the model. Default: false.
     Returns:
         torch.Tensor: Temporal super-resolution without background.
     Shape:
