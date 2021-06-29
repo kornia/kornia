@@ -111,7 +111,7 @@ class VideoSequential(ImageSequential):
 
     def _input_shape_convert_in(
         self, input: torch.Tensor, label: Optional[torch.Tensor], frame_num: int
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         # Convert any shape to (B, T, C, H, W)
         if self.data_format == "BCTHW":
             # Convert (B, C, T, H, W) to (B, T, C, H, W)
@@ -132,7 +132,7 @@ class VideoSequential(ImageSequential):
 
     def _input_shape_convert_back(
         self, input: torch.Tensor, label: Optional[torch.Tensor], frame_num: int
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         input = input.view(-1, frame_num, *input.shape[1:])
         if self.data_format == "BCTHW":
             input = input.transpose(1, 2)
@@ -148,7 +148,7 @@ class VideoSequential(ImageSequential):
     ) -> Union[TensorWithTransMat, Tuple[TensorWithTransMat, torch.Tensor]]:
         """Define the video computation performed."""
         assert len(input.shape) == 5, f"Input must be a 5-dim tensor. Got {input.shape}."
-        self._params = []
+        self.clear_state()
 
         named_modules = self.get_forward_sequence(params)
         params = [] if params is None else params
@@ -172,7 +172,7 @@ class VideoSequential(ImageSequential):
                             mod_param.update({k: self.__repeat_param_across_channels__(v, frame_num)})
                 param = ParamItem(name, mod_param)
 
-            input, label = self.apply_to_input(input, label, name, module, param=param)
+            input, label = self.apply_to_input(input, label, name, module, param=param)  # type: ignore
 
         if isinstance(input, (tuple, list)):
             input[0], label = self._input_shape_convert_back(input[0], label, frame_num)

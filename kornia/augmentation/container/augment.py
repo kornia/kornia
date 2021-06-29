@@ -288,9 +288,12 @@ class AugmentationSequential(ImageSequential):
 
         return outputs
 
-    def __packup_output__(
-        self, output: TensorWithTransMat, label: Optional[torch.Tensor] = None
-    ) -> Union[TensorWithTransMat, Tuple[TensorWithTransMat, torch.Tensor]]:
+    def __packup_output__(  # type: ignore
+        self, output: List[TensorWithTransMat], label: Optional[torch.Tensor] = None
+    ) -> Union[
+        TensorWithTransMat, Tuple[TensorWithTransMat, Optional[torch.Tensor]],
+        List[TensorWithTransMat], Tuple[List[TensorWithTransMat], Optional[torch.Tensor]]
+    ]:
         if len(output) == 1 and self.has_mix_augmentations:
             return output[0], label
         elif len(output) == 1:
@@ -318,8 +321,8 @@ class AugmentationSequential(ImageSequential):
             data_keys
         ), f"The number of inputs must align with the number of data_keys. Got {len(args)} and {len(data_keys)}."
 
+        self.clear_state()
         outputs = []
-        self._params = []
         named_modules = list(self.get_forward_sequence(params))
         for input, dcate in zip(args, data_keys):
             # use the parameter if the first round has been finished.

@@ -1,11 +1,16 @@
-from itertools import zip_longest
-from typing import cast, List, Optional, Tuple, Union
+from itertools import zip_longest, chain
+from typing import Iterator, cast, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 
 from kornia.augmentation.augmentation import ColorJitter
-from kornia.augmentation.base import TensorWithTransMat, _AugmentationBase, IntensityAugmentationBase2D
+from kornia.augmentation.base import (
+    MixAugmentationBase,
+    TensorWithTransMat,
+    _AugmentationBase,
+    IntensityAugmentationBase2D
+)
 from kornia.contrib.extract_patches import extract_tensor_patches
 
 from .image import ImageSequential, ParamItem
@@ -81,10 +86,12 @@ class PatchSequential(ImageSequential):
         padding: str = "same",
         same_on_batch: Optional[bool] = None,
         keepdim: Optional[bool] = None,
-        patchwise_apply: bool = False,
+        patchwise_apply: bool = None,
+        apply_strategy: str = "locwise",
         random_apply: Union[int, bool, Tuple[int, int]] = False,
     ) -> None:
         _random_apply: Optional[Union[int, Tuple[int, int]]]
+        # TODO: deprecate patchwise_apply
         if patchwise_apply and random_apply is True:
             _random_apply = (grid_size[0] * grid_size[1], grid_size[0] * grid_size[1])
         elif patchwise_apply and random_apply is False:
@@ -104,6 +111,7 @@ class PatchSequential(ImageSequential):
         self.grid_size = grid_size
         self.padding = padding
         self.patchwise_apply = patchwise_apply
+        self.apply_strategy = apply_strategy
 
     def is_intensity_only(self) -> bool:
         """Check if all transformations are intensity-based.
@@ -220,38 +228,95 @@ class PatchSequential(ImageSequential):
             restored_tensor = torch.nn.functional.pad(restored_tensor, [-i for i in pad])
         return restored_tensor
 
+    # def __elementwise_apply__(
+    #     self, input: torch.Tensor, label: Optional[torch.Tensor], params: List[List[ParamItem]],
+    #     auglist: List[Iterator[Tuple[str, nn.Module]]]
+    # ):
+    #     assert input.size(0) == len(auglist) == len(params)
+    #     out = []
+    #     for inp, proc, param in zip_longest(input, auglist, params):
+    #         o = []
+    #         p = []
+    #         for (proc_name, proc_pat), _param in zip_longest(proc, param):  # loop on patches
+    #             if isinstance(proc_pat, (_AugmentationBase, ImageSequential)):
+    #                 o.append(proc_pat(inp, _param.data if _param is not None else None))
+    #                 p.append(ParamItem(proc_name, proc_pat._params))
+    #             else:
+    #                 o.append(proc_pat(inp))
+    #                 p.append(ParamItem(proc_name, {}))
+    #         out.append(torch.cat(o, dim=0))
+    #         self._params.append(p)
+
+    #     input = torch.stack(out, dim=0)
+    #     return input, label
+
+    def __elementwise_apply__(
+        self, input: torch.Tensor, label: Optional[torch.Tensor], params: List[List[ParamItem]],
+        auglist: List[Iterator[Tuple[str, nn.Module]]]
+    ):
+        assert input.size(0) == len(auglist) == len(params)
+
+        flat_input = input.view(-1, *input.shape[3:])
+        flat_params: List[ParamItem] = list(chain.from_iterable(params))
+        flat_auglist: List[Tuple[str, nn.Module]] = list(chain.from_iterable(auglist))
+
+        o = torch.empty_like(flat_input)
+        p = []
+        for idx, (inp, (proc_name, proc_pat), param) in enumerate(zip_longest(flat_input, flat_auglist, flat_params)):
+            if isinstance(proc_pat, (_AugmentationBase, ImageSequential)):
+                o[idx] = proc_pat(inp, param.data if param is not None else None)
+                p.append(ParamItem(proc_name, proc_pat._params))
+            else:
+                o[idx] = proc_pat(inp)
+                p.append(ParamItem(proc_name, {}))
+            # out.append(torch.cat(o, dim=0))
+            # self._params.append(p)
+
+        # input = torch.stack(out, dim=0)
+        return input, label
+
     def forward_patchwise(
-        self, input: torch.Tensor, params: Optional[List[List[ParamItem]]] = None
-    ) -> torch.Tensor:  # NOTE: return_transform is always False here.
+        self, input: torch.Tensor, label: Optional[torch.Tensor] = None,
+        params: Optional[List[List[ParamItem]]] = None
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        # NOTE: return_transform is always False here.
+        """Params: params[img_idx][patch_idx][aug_idx]
+        """
+        if params is None:
+            params = [[]] * (input.size(0) * input.size(1))
+            auglist = [self.get_forward_sequence() for _ in range(input.size(0) * input.size(1))]
+        else:
+            # params: List[List[ParamItem]] = list(chain.from_iterable(params))  # type: ignore
+            auglist = [self.get_forward_sequence(p) for p in params]  # type: ignore
+
+        in_shape = input.shape
+        output, label = self.__elementwise_apply__(
+            input.reshape(-1, 1, *input.shape[3:]), label, params, auglist)
+        return output.reshape(*in_shape), label
+
+    def forward_locationwise(
+        self, input: torch.Tensor, label: Optional[torch.Tensor] = None,
+        params: Optional[List[List[ParamItem]]] = None
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        # NOTE: return_transform is always False here.
+        """Params: params[patch_idx][aug_idx]
+        """
         if params is None:
             params = [[]] * input.size(1)
             auglist = [self.get_forward_sequence() for _ in range(input.size(1))]
         else:
             auglist = [self.get_forward_sequence(p) for p in params]
-            assert input.size(0) == len(auglist) == len(params)
+            assert input.size(1) == len(auglist) == len(params)
 
-        out = []
-        self._params = []
-        # TODO: This will need an optimization later.
-        for inp, proc, param in zip(input, auglist, params):
-            o = []
-            p = []
-            for inp_pat, (proc_name, proc_pat), _param in zip_longest(inp, proc, param):
-                if isinstance(proc_pat, (_AugmentationBase, ImageSequential)):
-                    o.append(proc_pat(inp_pat[None], _param.data if _param is not None else None))
-                    p.append(ParamItem(proc_name, proc_pat._params))
-                else:
-                    o.append(proc_pat(inp_pat[None]))
-                    p.append(ParamItem(proc_name, {}))
-            out.append(torch.cat(o, dim=0))
-            self._params.append(p)
-
-        input = torch.stack(out, dim=0)
-        return input
+        output, label = self.__elementwise_apply__(input.permute(1, 0, 2, 3, 4), label, params, auglist)  # type: ignore
+        return output.permute(1, 0, 2, 3, 4), label
 
     def forward_batchwise(
-        self, input: torch.Tensor, params: Optional[List[ParamItem]] = None
-    ) -> torch.Tensor:  # NOTE: return_transform is always False here.
+        self, input: torch.Tensor, label: Optional[torch.Tensor] = None, params: Optional[List[ParamItem]] = None
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        # NOTE: return_transform is always False here.
+        """Params: params[aug_idx]
+        """
         if self.same_on_batch:
             batch_shape = (input.size(1), *input.shape[-3:])
             patch_num = input.size(0)
@@ -261,7 +326,7 @@ class PatchSequential(ImageSequential):
         if params is None:
             params = []
             for name, aug in self.get_forward_sequence():
-                if isinstance(aug, _AugmentationBase):
+                if isinstance(aug, (_AugmentationBase, MixAugmentationBase)):
                     aug.same_on_batch = False
                     param = aug.forward_parameters(batch_shape)
                     if self.same_on_batch:
@@ -274,9 +339,9 @@ class PatchSequential(ImageSequential):
                     param = None
                 params.append(ParamItem(name, param))
 
-        input = super().forward(input.view(-1, *input.shape[-3:]), params)  # type: ignore
+        input, label = super().forward(input.view(-1, *input.shape[-3:]), label, params)  # type: ignore
 
-        return input
+        return input, label
 
     def forward(  # type: ignore
         self,
@@ -285,6 +350,7 @@ class PatchSequential(ImageSequential):
         params: Optional[Union[List[ParamItem], List[List[ParamItem]]]] = None,
     ) -> Union[TensorWithTransMat, Tuple[TensorWithTransMat, torch.Tensor]]:
         """Input transformation will be returned if input is a tuple."""
+        self.clear_state()
         # BCHW -> B(patch)CHW
         if isinstance(input, (tuple,)):
             pad = self.compute_padding(input[0], self.padding)
@@ -296,15 +362,19 @@ class PatchSequential(ImageSequential):
         if not self.patchwise_apply:
             params = cast(List[ParamItem], params)
             if isinstance(input, (tuple,)):
-                input = self.forward_batchwise(input[0], params), input[1]
+                in_trans = input[1]
+                input, label = self.forward_batchwise(input[0], label, params)
+                input = (input, in_trans)
             else:
-                input = self.forward_batchwise(input, params)
+                input, label = self.forward_batchwise(input, label, params)
         else:
             params = cast(List[List[ParamItem]], params)
             if isinstance(input, (tuple,)):
-                input = self.forward_patchwise(input[0], params), input[1]
+                in_trans = input[1]
+                input, label = self.forward_patchwise(input[0], label, params)
+                input = (input, in_trans)
             else:
-                input = self.forward_patchwise(input, params)
+                input, label = self.forward_patchwise(input, label, params)
 
         if isinstance(input, (tuple,)):
             input = (self.restore_from_patches(input[0], self.grid_size, pad=pad), input[1])

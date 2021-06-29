@@ -126,6 +126,9 @@ class ImageSequential(nn.Sequential):
             self.random_apply = False
         self.has_mix_augmentations = self._validate_mix_augmentation(*args, validate_args=validate_args)
 
+    def clear_state(self) -> None:
+        self._params = []
+
     def _validate_mix_augmentation(self, *args: nn.Module, validate_args: bool = True) -> bool:
         mix_count = 0
         for arg in args:
@@ -241,7 +244,7 @@ class ImageSequential(nn.Sequential):
         self, output: TensorWithTransMat, label: Optional[torch.Tensor] = None
     ) -> Union[TensorWithTransMat, Tuple[TensorWithTransMat, torch.Tensor]]:
         if self.has_mix_augmentations:
-            return output, label
+            return output, label  # type: ignore
         return output
 
     def forward(  # type: ignore
@@ -250,7 +253,7 @@ class ImageSequential(nn.Sequential):
         label: Optional[torch.Tensor] = None,
         params: Optional[List[ParamItem]] = None,
     ) -> Union[TensorWithTransMat, Tuple[TensorWithTransMat, torch.Tensor]]:
-        self._params = []
+        self.clear_state()
         named_modules = self.get_forward_sequence(params)
         params = [] if params is None else params
         for (name, module), param in zip_longest(named_modules, params):
