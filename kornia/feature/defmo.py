@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Callable, List, Type
+from typing import Callable, Dict, List, Optional, Type
 
 import torch
 import torch.nn as nn
@@ -10,14 +10,25 @@ urls["defmo_rendering"] = "http://ptak.felk.cvut.cz/personal/rozumden/defmo_save
 
 # conv1x1, conv3x3, Bottleneck, ResNet taken from https://github.com/pytorch/vision/blob/master/torchvision/models/resnet.py
 
+
 def conv1x1(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv2d:
     """1x1 convolution"""
     return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
 
+
 def conv3x3(in_planes: int, out_planes: int, stride: int = 1, groups: int = 1, dilation: int = 1) -> nn.Conv2d:
     """3x3 convolution with padding"""
-    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
-                     padding=dilation, groups=groups, bias=False, dilation=dilation)
+    return nn.Conv2d(
+        in_planes,
+        out_planes,
+        kernel_size=3,
+        stride=stride,
+        padding=dilation,
+        groups=groups,
+        bias=False,
+        dilation=dilation,
+    )
+
 
 class Bottleneck(nn.Module):
     # Bottleneck in torchvision places the stride for downsampling at 3x3 convolution(self.conv2)
@@ -134,12 +145,7 @@ class ResNet(nn.Module):
                     nn.init.constant_(m.bn3.weight, 0)  # type: ignore[arg-type]
 
     def _make_layer(
-        self,
-        block: Type[Bottleneck],
-        planes: int,
-        blocks: int,
-        stride: int = 1,
-        dilate: bool = False,
+        self, block: Type[Bottleneck], planes: int, blocks: int, stride: int = 1, dilate: bool = False
     ) -> nn.Sequential:
         norm_layer = self._norm_layer
         downsample = None
@@ -237,7 +243,7 @@ class RenderingDeFMO(nn.Module):
         shuffled_times = []
         for ki in range(times.shape[0]):
             shuffled_times.append(torch.randperm(times.shape[1]))
-        shuffled_times = torch.stack(shuffled_times, 1).contiguous().transpose(1,0)
+        shuffled_times = torch.stack(shuffled_times, 1).contiguous().transpose(1, 0)
         for ki in range(times.shape[1]):
             t_tensor = (
                 times[range(times.shape[0]), shuffled_times[:, ki]]
