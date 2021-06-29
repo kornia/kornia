@@ -44,19 +44,21 @@ def inverseTiltProjection(taux: torch.Tensor, tauy: torch.Tensor) -> torch.Tenso
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/undistort.dispatch.cpp#L384
 def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) -> torch.Tensor:
-    r"""Compensate for lens distortion a set of 2D image points. Radial :math:`(k_1, k_2, k_3, k_4, k_4, k_6)`,
+    r"""Compensate for lens distortion a set of 2D image points.
+    
+    Radial :math:`(k_1, k_2, k_3, k_4, k_4, k_6)`,
     tangential :math:`(p_1, p_2)`, thin prism :math:`(s_1, s_2, s_3, s_4)`, and tilt :math:`(\tau_x, \tau_y)`
     distortion models are considered in this function.
 
     Args:
-        points (torch.Tensor): Input image points with shape :math:`(*, N, 2)`.
-        K (torch.Tensor): Intrinsic camera matrix with shape :math:`(*, 3, 3)`.
-        dist (torch.Tensor): Distortion coefficients
+        points: Input image points with shape :math:`(*, N, 2)`.
+        K: Intrinsic camera matrix with shape :math:`(*, 3, 3)`.
+        dist: Distortion coefficients
             :math:`(k_1,k_2,p_1,p_2[,k_3[,k_4,k_5,k_6[,s_1,s_2,s_3,s_4[,\tau_x,\tau_y]]]])`. This is
             a vector with 4, 5, 8, 12 or 14 elements with shape :math:`(*, n)`
 
     Returns:
-        torch.Tensor: Undistorted 2D points with shape :math:`(*, N, 2)`.
+        Undistorted 2D points with shape :math:`(*, N, 2)`.
     """
     assert points.dim() >= 2 and points.shape[-1] == 2
     assert K.shape[-2:] == (3, 3)
