@@ -91,7 +91,7 @@ class DeFMO(nn.Module):
 
     def __init__(self, pretrained: bool = False) -> None:
         super(DeFMO, self).__init__()
-        self.tsr_steps = 24
+        self.tsr_steps: int = 24
         self.encoder = EncoderDeFMO()
         self.rendering = RenderingDeFMO()
 
