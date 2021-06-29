@@ -64,7 +64,7 @@ class PinholeCamera:
         r"""The full 4x4 intrinsics matrix.
 
         Returns:
-            tensor of shape :math:`(B, 4, 4)`
+            tensor of shape :math:`(B, 4, 4)`.
         """
         assert self._check_valid_params(self._intrinsics, "intrinsics")
         return self._intrinsics
@@ -74,7 +74,7 @@ class PinholeCamera:
         r"""The full 4x4 extrinsics matrix.
 
         Returns:
-            tensor of shape :math:`(B, 4, 4)`
+            tensor of shape :math:`(B, 4, 4)`.
         """
         assert self._check_valid_params(self._extrinsics, "extrinsics")
         return self._extrinsics
@@ -84,7 +84,7 @@ class PinholeCamera:
         r"""Returns the batch size of the storage.
 
         Returns:
-            scalar with the batch size
+            scalar with the batch size.
         """
         return self.intrinsics.shape[0]
 
@@ -93,7 +93,7 @@ class PinholeCamera:
         r"""Returns the focal lenght in the x-direction.
 
         Returns:
-            tensor of shape :math:`(B)`
+            tensor of shape :math:`(B)`.
         """
         return self.intrinsics[..., 0, 0]
 
@@ -102,7 +102,7 @@ class PinholeCamera:
         r"""Returns the focal length in the y-direction.
 
         Returns:
-            tensor of shape :math:`(B)`
+            tensor of shape :math:`(B)`.
         """
         return self.intrinsics[..., 1, 1]
 
@@ -111,7 +111,7 @@ class PinholeCamera:
         r"""Returns the x-coordinate of the principal point.
 
         Returns:
-            tensor of shape :math:`(B)`
+            tensor of shape :math:`(B)`.
         """
         return self.intrinsics[..., 0, 2]
 
@@ -120,7 +120,7 @@ class PinholeCamera:
         r"""Returns the y-coordinate of the principal point.
 
         Returns:
-            tensor of shape :math:`(B)`
+            tensor of shape :math:`(B)`.
         """
         return self.intrinsics[..., 1, 2]
 
@@ -129,7 +129,7 @@ class PinholeCamera:
         r"""Returns the x-coordinate of the translation vector.
 
         Returns:
-            tensor of shape :math:`(B)`
+            tensor of shape :math:`(B)`.
         """
         return self.extrinsics[..., 0, -1]
 
@@ -144,7 +144,7 @@ class PinholeCamera:
         r"""Returns the y-coordinate of the translation vector.
 
         Returns:
-            tensor of shape :math:`(B)`
+            tensor of shape :math:`(B)`.
         """
         return self.extrinsics[..., 1, -1]
 
@@ -159,7 +159,7 @@ class PinholeCamera:
         r"""Returns the z-coordinate of the translation vector.
 
         Returns:
-            tensor of shape :math:`(B)`
+            tensor of shape :math:`(B)`.
         """
         return self.extrinsics[..., 2, -1]
 
@@ -174,7 +174,7 @@ class PinholeCamera:
         r"""Returns the 3x4 rotation-translation matrix.
 
         Returns:
-            tensor of shape :math:`(B, 3, 4)`
+            tensor of shape :math:`(B, 3, 4)`.
         """
         return self.extrinsics[..., :3, :4]
 
@@ -183,7 +183,7 @@ class PinholeCamera:
         r"""Returns the 3x3 camera matrix containing the intrinsics.
 
         Returns:
-            tensor of shape :math:`(B, 3, 3)`
+            tensor of shape :math:`(B, 3, 3)`.
         """
         return self.intrinsics[..., :3, :3]
 
@@ -192,7 +192,7 @@ class PinholeCamera:
         r"""Returns the 3x3 rotation matrix from the extrinsics.
 
         Returns:
-            tensor of shape :math:`(B, 3, 3)`
+            tensor of shape :math:`(B, 3, 3)`.
         """
         return self.extrinsics[..., :3, :3]
 
@@ -201,7 +201,7 @@ class PinholeCamera:
         r"""Returns the translation vector from the extrinsics.
 
         Returns:
-            tensor of shape :math:`(B, 3, 1)`
+            tensor of shape :math:`(B, 3, 1)`.
         """
         return self.extrinsics[..., :3, -1:]
 
@@ -217,7 +217,7 @@ class PinholeCamera:
         r"""Returns the inverse of the 4x4 instrisics matrix.
 
         Returns:
-            tensor of shape :math:`(B, 4, 4)`
+            tensor of shape :math:`(B, 4, 4)`.
         """
         return self.intrinsics.inverse()
 
@@ -534,7 +534,7 @@ def homography_i_H_ref(pinhole_i: torch.Tensor, pinhole_ref: torch.Tensor) -> to
         homography_i_H_ref(pinhole_i, pinhole_ref)  # Nx4x4
     """
     # TODO: Add doctest once having `rtvec_to_pose`.
-    assert len(pinhole_i.shape) == 2 and pinhole_i.shape[1] == 12, pinhole.shape
+    assert len(pinhole_i.shape) == 2 and pinhole_i.shape[1] == 12, pinhole_i.shape
     assert pinhole_i.shape == pinhole_ref.shape, pinhole_ref.shape
     i_pose_base = get_optical_pose_base(pinhole_i)
     ref_pose_base = get_optical_pose_base(pinhole_ref)
@@ -571,7 +571,7 @@ def pixel2cam(depth: torch.Tensor, intrinsics_inv: torch.Tensor, pixel_coords: t
 # https://github.com/ClementPinard/SfmLearner-Pytorch/blob/master/inverse_warp.py#L43
 
 
-def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: Optional[float] = 1e-6) -> torch.Tensor:
+def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
     r"""Transform coordinates in the camera frame to the pixel frame.
 
     Args:

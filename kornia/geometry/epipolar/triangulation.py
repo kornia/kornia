@@ -19,15 +19,15 @@ def triangulate_points(
     correspondences. The method does not perform any robust estimation.
 
     Args:
-        P1 (torch.Tensor): The projection matrix for the first camera with shape :math:`(*, 3, 4)`.
-        P2 (torch.Tensor): The projection matrix for the second camera with shape :math:`(*, 3, 4)`.
-        points1 (torch.Tensor): The set of points seen from the first camera frame in the camera plane
+        P1: The projection matrix for the first camera with shape :math:`(*, 3, 4)`.
+        P2: The projection matrix for the second camera with shape :math:`(*, 3, 4)`.
+        points1: The set of points seen from the first camera frame in the camera plane
           coordinates with shape :math:`(*, N, 2)`.
-        points2 (torch.Tensor): The set of points seen from the second camera frame in the camera plane
+        points2: The set of points seen from the second camera frame in the camera plane
           coordinates with shape :math:`(*, N, 2)`.
 
     Returns:
-        torch.Tensor: The reconstructed 3d points in the world frame with shape :math:`(*, N, 3)`.
+        The reconstructed 3d points in the world frame with shape :math:`(*, N, 3)`.
 
     """
     assert len(P1.shape) >= 2 and P1.shape[-2:] == (3, 4), P1.shape
