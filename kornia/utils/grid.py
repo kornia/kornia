@@ -12,22 +12,37 @@ def create_meshgrid(
 ) -> torch.Tensor:
     """Generates a coordinate grid for an image.
 
-    When the flag `normalized_coordinates` is set to True, the grid is
-    normalized to be in the range [-1,1] to be consistent with the pytorch
-    function grid_sample.
-    http://pytorch.org/docs/master/nn.html#torch.nn.functional.grid_sample
+    When the flag ``normalized_coordinates`` is set to True, the grid is
+    normalized to be in the range :math:`[-1,1]` to be consistent with the pytorch
+    function :py:func:`torch.nn.functional.grid_sample`.
 
     Args:
-        height (int): the image height (rows).
-        width (int): the image width (cols).
-        normalized_coordinates (bool): whether to normalize
-          coordinates in the range [-1, 1] in order to be consistent with the
-          PyTorch function grid_sample.
-        device (torch.device): the device on which the grid will be generated. Default: cpu.
-        dtype (torch.dtype): the data type of the generated gird. Default: float32.
+        height: the image height (rows).
+        width: the image width (cols).
+        normalized_coordinates: whether to normalize
+          coordinates in the range :math:`[-1,1]` in order to be consistent with the
+          PyTorch function :py:func:`torch.nn.functional.grid_sample`.
+        device: the device on which the grid will be generated.
+        dtype: the data type of the generated grid.
 
     Return:
-        torch.Tensor: returns a grid tensor with shape :math:`(1, H, W, 2)`.
+        grid tensor with shape :math:`(1, H, W, 2)`.
+
+    Example:
+        >>> create_meshgrid(2, 2)
+        tensor([[[[-1., -1.],
+                  [ 1., -1.]],
+        <BLANKLINE>
+                 [[-1.,  1.],
+                  [ 1.,  1.]]]])
+
+        >>> create_meshgrid(2, 2, normalized_coordinates=False)
+        tensor([[[[0., 0.],
+                  [1., 0.]],
+        <BLANKLINE>
+                 [[0., 1.],
+                 [1., 1.]]]])
+
     """
     xs: torch.Tensor = torch.linspace(0, width - 1, width, device=device, dtype=dtype)
     ys: torch.Tensor = torch.linspace(0, height - 1, height, device=device, dtype=dtype)
@@ -57,23 +72,22 @@ def create_meshgrid3d(
 ) -> torch.Tensor:
     """Generates a coordinate grid for an image.
 
-    When the flag `normalized_coordinates` is set to True, the grid is
-    normalized to be in the range [-1,1] to be consistent with the pytorch
-    function grid_sample.
-    http://pytorch.org/docs/master/nn.html#torch.nn.functional.grid_sample
+    When the flag ``normalized_coordinates`` is set to True, the grid is
+    normalized to be in the range :math:`[-1,1]` to be consistent with the pytorch
+    function :py:func:`torch.nn.functional.grid_sample`.
 
     Args:
-        depth (int): the image depth (channels).
-        height (int): the image height (rows).
-        width (int): the image width (cols).
-        normalized_coordinates (bool): whether to normalize
-          coordinates in the range [-1, 1] in order to be consistent with the
-          PyTorch function grid_sample.
-        device (torch.device): the device on which the grid will be generated. Default: cpu.
-        dtype (torch.dtype): the data type of the generated gird. Default: float32.
+        depth: the image depth (channels).
+        height: the image height (rows).
+        width: the image width (cols).
+        normalized_coordinates: whether to normalize
+          coordinates in the range :math:`[-1,1]` in order to be consistent with the
+          PyTorch function :py:func:`torch.nn.functional.grid_sample`.
+        device: the device on which the grid will be generated.
+        dtype: the data type of the generated grid.
 
     Return:
-        torch.Tensor: returns a grid tensor with shape :math:`(1, D, H, W, 3)`.
+        grid tensor with shape :math:`(1, D, H, W, 3)`.
     """
     xs: torch.Tensor = torch.linspace(0, width - 1, width, device=device, dtype=dtype)
     ys: torch.Tensor = torch.linspace(0, height - 1, height, device=device, dtype=dtype)
