@@ -64,7 +64,7 @@ class RenderingDeFMO(nn.Module):
             result = self.net(latenti)
             renders.append(result)
         renders = torch.stack(renders, 1).contiguous()
-        renders[:, :, :4] = nn.Sigmoid()(renders[:, :, :4])
+        renders[:, :, :4] = torch.sigmoid(renders[:, :, :4])
         for ki in range(times.shape[0]):
             renders[ki, shuffled_times[ki, :]] = renders[ki, :].clone()
         return renders
