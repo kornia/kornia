@@ -162,6 +162,12 @@ def perform_keep_shape_image(f):
 
     @wraps(f)
     def _wrapper(input, *args, **kwargs):
+        if not isinstance(input, torch.Tensor):
+            raise TypeError(f"Input input type is not a torch.Tensor. Got {type(input)}")
+
+        if input.numel() == 0:
+            raise ValueError("Invalid input tensor, it is empty.")
+
         input_shape = input.shape
         input = _to_bchw(input)
         output = f(input, *args, **kwargs)
@@ -182,6 +188,12 @@ def perform_keep_shape_image(f):
 def perform_keep_shape_video(f):
     @wraps(f)
     def _wrapper(input, *args, **kwargs):
+        if not isinstance(input, torch.Tensor):
+            raise TypeError(f"Input input type is not a torch.Tensor. Got {type(input)}")
+
+        if input.numel() == 0:
+            raise ValueError("Invalid input tensor, it is empty.")
+
         input_shape = input.shape
         input = _to_bcdhw(input)
         output = f(input, *args, **kwargs)
