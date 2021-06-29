@@ -31,13 +31,13 @@ def dice_loss(input: torch.Tensor, target: torch.Tensor, eps: float = 1e-8) -> t
         [1] https://en.wikipedia.org/wiki/S%C3%B8rensen%E2%80%93Dice_coefficient
 
     Args:
-        input (torch.Tensor): logits tensor with shape :math:`(N, C, H, W)` where C = number of classes.
-        labels (torch.Tensor): labels tensor with shape :math:`(N, H, W)` where each value
+        input: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes.
+        labels: labels tensor with shape :math:`(N, H, W)` where each value
           is :math:`0 ≤ targets[i] ≤ C−1`.
-        eps (float, optional): Scalar to enforce numerical stabiliy. Default: 1e-8.
+        eps: Scalar to enforce numerical stabiliy.
 
     Return:
-        torch.Tensor: the computed loss.
+        the computed loss.
 
     Example:
         >>> N = 5  # num_classes
@@ -99,7 +99,7 @@ class DiceLoss(nn.Module):
         [1] https://en.wikipedia.org/wiki/S%C3%B8rensen%E2%80%93Dice_coefficient
 
     Args:
-        eps (float, optional): Scalar to enforce numerical stabiliy. Default: 1e-8.
+        eps: Scalar to enforce numerical stabiliy.
 
     Shape:
         - Input: :math:`(N, C, H, W)` where C = number of classes.
