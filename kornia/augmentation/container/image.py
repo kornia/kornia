@@ -147,31 +147,42 @@ class ImageSequential(nn.Sequential):
             return False
         return True
 
-    def _get_child_sequence(self) -> Iterator[Tuple[str, nn.Module]]:
+    def __get_mix_indices__(self, args: Iterator) -> List[int]:
         mix_indices = []
-        for i, child in enumerate(self.children()):
+        for i, child in enumerate(args):
             if isinstance(child, (MixAugmentationBase,)):
                 mix_indices.append(i)
+        return mix_indices
+
+    def __sample_forward_indices__(self, with_mix: bool = True) -> Tuple[Iterator[Tuple[str, nn.Module]], bool]:
+        num_samples = int(torch.randint(*self.random_apply, (1,)).item())  # type: ignore
+        multinomial_weights = torch.ones((len(self),))
+        # Mix augmentation can only be applied once per forward
+        mix_indices = self.__get_mix_indices__(self.children())
+        # kick out the mix augmentations
+        multinomial_weights[mix_indices] = 0
+        indices = torch.multinomial(
+            multinomial_weights, num_samples,
+            # enable replacement if non-mix augmentation is less than required
+            replacement=True if num_samples > multinomial_weights.sum() else False
+        )
+
+        mix_added = False
+        if with_mix and len(mix_indices) != 0:
+            # Make the selection fair.
+            if (torch.rand(1) < ((len(mix_indices) + len(indices)) / len(self))).item():
+                indices[-1] = torch.multinomial((~multinomial_weights.bool()).float(), 1)
+                indices = indices[torch.randperm(len(indices))]
+                mix_added = True
+
+        return self._get_children_by_indices(indices), mix_added
+
+    def _get_child_sequence(self) -> Iterator[Tuple[str, nn.Module]]:
+        # Mix augmentation can only be applied once per forward
+        mix_indices = self.__get_mix_indices__(self.children())
 
         if self.random_apply:
-            # random_apply will not be boolean here.
-            num_samples = int(torch.randint(*self.random_apply, (1,)).item())  # type: ignore
-            multinomial_weights = torch.ones((len(self),))
-            # kick out the mix augmentations
-            multinomial_weights[mix_indices] = 0
-            indices = torch.multinomial(
-                multinomial_weights, num_samples,
-                # enable replacement if non-mix augmentation is less than required
-                replacement=True if num_samples > multinomial_weights.sum() else False
-            )
-
-            if len(mix_indices) != 0:
-                # Make the selection fair.
-                if (torch.rand(1) < ((len(mix_indices) + num_samples) / len(self))).item():
-                    indices[-1] = torch.multinomial((~multinomial_weights.bool()).float(), 1)
-                    indices = indices[torch.randperm(len(indices))]
-
-            return self._get_children_by_indices(indices)
+            return self.__sample_forward_indices__()[0]
 
         if len(mix_indices) > 1:
             raise ValueError(

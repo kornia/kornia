@@ -1,7 +1,8 @@
-from itertools import zip_longest, chain
+from itertools import zip_longest, repeat
 from typing import Iterator, cast, List, Optional, Tuple, Union
 
 import torch
+from torch import random
 import torch.nn as nn
 
 from kornia.augmentation.augmentation import ColorJitter
@@ -44,7 +45,8 @@ class PatchSequential(ImageSequential):
             If ``(a,)`` (batchwise mode only), x number of transformations (a <= x <= len(args)) will be selected.
             If ``(a, b)`` (batchwise mode only), x number of transformations (a <= x <= b) will be selected.
             If ``True``, the whole list of args will be processed in a random order.
-            If ``False``, the whole list of args will be processed in original order.
+            If ``False`` and not ``patchwise_apply``, the whole list of args will be processed in original order.
+            If ``False`` and ``patchwise_apply``, the whole list of args will be processed in original order location-wisely.
 
     Return:
         List[TensorWithTransMat]: the tensor (, and the transformation matrix)
@@ -87,7 +89,6 @@ class PatchSequential(ImageSequential):
         same_on_batch: Optional[bool] = None,
         keepdim: Optional[bool] = None,
         patchwise_apply: bool = None,
-        apply_strategy: str = "locwise",
         random_apply: Union[int, bool, Tuple[int, int]] = False,
     ) -> None:
         _random_apply: Optional[Union[int, Tuple[int, int]]]
@@ -111,7 +112,6 @@ class PatchSequential(ImageSequential):
         self.grid_size = grid_size
         self.padding = padding
         self.patchwise_apply = patchwise_apply
-        self.apply_strategy = apply_strategy
 
     def is_intensity_only(self) -> bool:
         """Check if all transformations are intensity-based.
@@ -235,7 +235,7 @@ class PatchSequential(ImageSequential):
         assert input.size(0) == len(auglist) == len(params), (input.shape, len(auglist), len(params))
 
         in_shape = input.shape
-        flat_input = input.view(-1, *input.shape[-3:])
+        flat_input = input.reshape(-1, *input.shape[-3:])
 
         o = flat_input.clone()
         for idx, (proc, param) in enumerate(zip_longest(auglist, params)):
@@ -254,6 +254,19 @@ class PatchSequential(ImageSequential):
 
         return input.reshape(*in_shape), label
 
+    def get_multiple_forward_sequence(self, sequence_num: int) -> Iterator[Tuple[str, nn.Module]]:
+        """Get mulitple forward sequence but maximumly one mix augmentation in between."""
+        with_mix = False
+        if self.random_apply:
+            for _ in range(sequence_num):
+                seq, mix_added = self.__sample_forward_indices__(with_mix=with_mix)
+                with_mix = mix_added
+                yield seq
+        else:
+            # TODO: This can be actually moved to location-wise
+            for nchild in self.named_children():
+                yield [nchild]
+
     def forward_patchwise(
         self, input: torch.Tensor, label: Optional[torch.Tensor] = None,
         params: Optional[List[List[ParamItem]]] = None
@@ -263,17 +276,13 @@ class PatchSequential(ImageSequential):
         """
         if params is None:
             params = [[]] * (input.size(0) * input.size(1))
-            auglist = [self.get_forward_sequence() for _ in range(input.size(0) * input.size(1))]
+            auglist = list(self.get_multiple_forward_sequence(input.size(0) * input.size(1)))
         else:
-            # params: List[List[ParamItem]] = list(chain.from_iterable(params))  # type: ignore
             auglist = [self.get_forward_sequence(p) for p in params]  # type: ignore
 
         in_shape = input.shape
-        try:
-            output, label = self.__elementwise_apply__(
-                input.reshape(-1, 1, *input.shape[-3:]), label, params, auglist)
-        except:
-            assert False, input.shape
+        output, label = self.__elementwise_apply__(
+            input.reshape(-1, 1, *input.shape[-3:]), label, params, auglist)
         return output.reshape(*in_shape), label
 
     def forward_locationwise(
@@ -285,7 +294,7 @@ class PatchSequential(ImageSequential):
         """
         if params is None:
             params = [[]] * input.size(1)
-            auglist = [self.get_forward_sequence() for _ in range(input.size(1))]
+            auglist = list(self.get_multiple_forward_sequence(input.size(1)))
         else:
             auglist = [self.get_forward_sequence(p) for p in params]
             assert input.size(1) == len(auglist) == len(params)
@@ -367,13 +376,19 @@ class PatchSequential(ImageSequential):
             params = cast(List[List[ParamItem]], params)
             if isinstance(input, (tuple,)):
                 in_trans = input[1]
-                input, label = self.forward_patchwise(input[0], label, params)
+                if self.random_apply:
+                    input, label = self.forward_patchwise(input[0], label, params)
+                else:
+                    input, label = self.forward_locationwise(input[0], label, params)
                 input = (input, in_trans)
             else:
-                input, label = self.forward_patchwise(input, label, params)
+                if self.random_apply:
+                    input, label = self.forward_patchwise(input, label, params)
+                else:
+                    input, label = self.forward_locationwise(input, label, params)
 
         if isinstance(input, (tuple,)):
             input = (self.restore_from_patches(input[0], self.grid_size, pad=pad), input[1])
         else:
             input = self.restore_from_patches(input, self.grid_size, pad=pad)
-        return input
+        return input, label
