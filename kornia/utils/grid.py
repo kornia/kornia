@@ -41,7 +41,7 @@ def create_meshgrid(
                   [1., 0.]],
         <BLANKLINE>
                  [[0., 1.],
-                 [1., 1.]]]])
+                  [1., 1.]]]])
 
     """
     xs: torch.Tensor = torch.linspace(0, width - 1, width, device=device, dtype=dtype)

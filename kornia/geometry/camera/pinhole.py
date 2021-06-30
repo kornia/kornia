@@ -494,7 +494,7 @@ def get_optical_pose_base(pinholes: torch.Tensor) -> torch.Tensor:
     assert len(pinholes.shape) == 2 and pinholes.shape[1] == 12, pinholes.shape
     optical_pose_parent = pinholes[..., 6:]
     # TODO: where is rtvec_to_pose?
-    return rtvec_to_pose(optical_pose_parent)
+    return rtvec_to_pose(optical_pose_parent)  # type: ignore
 
 
 def homography_i_H_ref(pinhole_i: torch.Tensor, pinhole_ref: torch.Tensor) -> torch.Tensor:
