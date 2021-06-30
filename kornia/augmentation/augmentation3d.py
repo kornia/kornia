@@ -27,13 +27,13 @@ class RandomHorizontalFlip3D(AugmentationBase3D):
     r"""Apply random horizontal flip to 3D volumes (5D tensor).
 
     Args:
-        p (float): probability of the image being flipped. Default value is 0.5.
-        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
-                                      input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
+        p: probability of the image being flipped.
+        return_transform: if ``True`` return the matrix describing the transformation applied to each
+          input tensor. If ``False`` and the input is a tuple the applied transformation
+          wont be concatenated.
+        same_on_batch: apply the same transformation across the batch.
+        keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
+          to the batch form ``False``.
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -97,13 +97,13 @@ class RandomVerticalFlip3D(AugmentationBase3D):
     previous one. This is especially useful when using this functionality as part of an ``nn.Sequential`` module.
 
     Args:
-        p (float): probability of the image being flipped. Default value is 0.5.
-        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
-                                      input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
+        p: probability of the image being flipped.
+        return_transform: if ``True`` return the matrix describing the transformation applied to each
+          input tensor. If ``False`` and the input is a tuple the applied transformation
+          wont be concatenated.
+        same_on_batch: apply the same transformation across the batch.
+        keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
+          to the batch form ``False``.
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -167,13 +167,13 @@ class RandomDepthicalFlip3D(AugmentationBase3D):
     previous one. This is especially useful when using this functionality as part of an ``nn.Sequential`` module.
 
     Args:
-        p (float): probability of the image being flipped. Default value is 0.5.
-        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
-                                      input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
+        p: probability of the image being flipped.
+        return_transform: if ``True`` return the matrix describing the transformation applied to each
+          input tensor. If ``False`` and the input is a tuple the applied transformation
+          wont be concatenated.
+        same_on_batch: apply the same transformation across the batch.
+        keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
+          to the batch form ``False``.
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -234,7 +234,7 @@ class RandomAffine3D(AugmentationBase3D):
     The transformation is computed so that the center is kept invariant.
 
     Args:
-        degrees (float or tuple or list): Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from.
+        degrees: Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from.
             If degrees is a number, then yaw, pitch, roll will be generated from the range of (-degrees, +degrees).
             If degrees is a tuple of (min, max), then yaw, pitch, roll will be generated from the range of (min, max).
             If degrees is a list of floats [a, b, c], then yaw, pitch, roll will be generated from (-a, a), (-b, b)
@@ -242,30 +242,30 @@ class RandomAffine3D(AugmentationBase3D):
             If degrees is a list of tuple ((a, b), (m, n), (x, y)), then yaw, pitch, roll will be generated from
             (a, b), (m, n) and (x, y).
             Set to 0 to deactivate rotations.
-        translate (tuple, optional): tuple of maximum absolute fraction for horizontal, vertical and
+        translate: tuple of maximum absolute fraction for horizontal, vertical and
         depthical translations (dx,dy,dz). For example translate=(a, b, c), then
             horizontal shift will be randomly sampled in the range -img_width * a < dx < img_width * a
             vertical shift will be randomly sampled in the range -img_height * b < dy < img_height * b.
             depthical shift will be randomly sampled in the range -img_depth * c < dz < img_depth * c.
             Will not translate by default.
-        scale (tuple, optional): scaling factor interval.
+        scale: scaling factor interval.
             If (a, b) represents isotropic scaling, the scale is randomly sampled from the range a <= scale <= b.
             If ((a, b), (c, d), (e, f)), the scale is randomly sampled from the range a <= scale_x <= b,
             c <= scale_y <= d, e <= scale_z <= f. Will keep original scale by default.
-        shear (sequence or float, optional): Range of degrees to select from.
+        shear: Range of degrees to select from.
             If shear is a number, a shear to the 6 facets in the range (-shear, +shear) will be applied.
             If shear is a tuple of 2 values, a shear to the 6 facets in the range (shear[0], shear[1]) will be applied.
             If shear is a tuple of 6 values, a shear to the i-th facet in the range (-shear[i], shear[i])
             will be applied.
             If shear is a tuple of 6 tuples, a shear to the i-th facet in the range (-shear[i, 0], shear[i, 1])
             will be applied.
-        resample (int, str or kornia.Resample): Default: Resample.BILINEAR.
-        return_transform (bool): if ``True`` return the matrix describing the transformation
-            applied to each. Default: False.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        align_corners(bool): interpolation flag. Default: False.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
+        resample:
+        return_transform: if ``True`` return the matrix describing the transformation
+            applied to each.
+        same_on_batch: apply the same transformation across the batch.
+        align_corners: interpolation flag.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+          to the batch form (False). Default: False.
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -430,7 +430,7 @@ class RandomRotation3D(AugmentationBase3D):
     previous one. This is especially useful when using this functionality as part of an ``nn.Sequential`` module.
 
     Args:
-        degrees (float or tuple or list): Range of degrees to select from.
+        degrees: Range of degrees to select from.
             If degrees is a number, then yaw, pitch, roll will be generated from the range of (-degrees, +degrees).
             If degrees is a tuple of (min, max), then yaw, pitch, roll will be generated from the range of (min, max).
             If degrees is a list of floats [a, b, c], then yaw, pitch, roll will be generated from (-a, a), (-b, b)
@@ -438,14 +438,13 @@ class RandomRotation3D(AugmentationBase3D):
             If degrees is a list of tuple ((a, b), (m, n), (x, y)), then yaw, pitch, roll will be generated from
             (a, b), (m, n) and (x, y).
             Set to 0 to deactivate rotations.
-        resample (int, str or kornia.Resample): Default: Resample.BILINEAR
-        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
-                                      input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        align_corners(bool): interpolation flag. Default: False.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
+        resample:
+        return_transform: if ``True`` return the matrix describing the transformation applied to each
+          input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+        same_on_batch: apply the same transformation across the batch.
+        align_corners: interpolation flag.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+          to the batch form (False).
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -538,11 +537,11 @@ class RandomMotionBlur3D(AugmentationBase3D):
     r"""Apply random motion blur on 3D volumes (5D tensor).
 
     Args:
-        p (float): probability of applying the transformation. Default value is 0.5.
-        kernel_size (int or Tuple[int, int]): motion kernel size (odd and positive).
+        p: probability of applying the transformation.
+        kernel_size: motion kernel size (odd and positive).
             If int, the kernel will have a fixed size.
             If Tuple[int, int], it will randomly generate the value from the range batch-wisely.
-        angle (float or tuple or list): Range of degrees to select from.
+        angle: Range of degrees to select from.
             If angle is a number, then yaw, pitch, roll will be generated from the range of (-angle, +angle).
             If angle is a tuple of (min, max), then yaw, pitch, roll will be generated from the range of (min, max).
             If angle is a list of floats [a, b, c], then yaw, pitch, roll will be generated from (-a, a), (-b, b)
@@ -550,18 +549,16 @@ class RandomMotionBlur3D(AugmentationBase3D):
             If angle is a list of tuple ((a, b), (m, n), (x, y)), then yaw, pitch, roll will be generated from
             (a, b), (m, n) and (x, y).
             Set to 0 to deactivate rotations.
-        direction (float or Tuple[float, float]): forward/backward direction of the motion blur.
+        direction: forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
             while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
             uniformly (but still angled) motion blur.
             If float, it will generate the value from (-direction, direction).
             If Tuple[int, int], it will randomly generate the value from the range.
-        border_type (int, str or kornia.BorderType): the padding mode to be applied before convolving.
+        border_type: the padding mode to be applied before convolving.
             CONSTANT = 0, REFLECT = 1, REPLICATE = 2, CIRCULAR = 3. Default: BorderType.CONSTANT.
-        resample (int, str or kornia.Resample): resample mode from "nearest" (0) or "bilinear" (1).
-            Default: Resample.NEAREST.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
+        resample: resample mode from "nearest" (0) or "bilinear" (1).
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it to the batch form (False).
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -661,17 +658,16 @@ class CenterCrop3D(AugmentationBase3D):
     r"""Apply center crop on 3D volumes (5D tensor).
 
     Args:
-        p (float): probability of applying the transformation for the whole batch. Default value is 1.
+        p: probability of applying the transformation for the whole batch.
         size (Tuple[int, int, int] or int): Desired output size (out_d, out_h, out_w) of the crop.
             If integer, out_d = out_h = out_w = size.
             If Tuple[int, int, int], out_d = size[0], out_h = size[1], out_w = size[2].
-        resample (int, str or kornia.Resample): Default: Resample.BILINEAR
-        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
-                                      input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated.
-        align_corners(bool): interpolation flag. Default: True.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
+        resample:
+        return_transform: if ``True`` return the matrix describing the transformation applied to each
+          input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+        align_corners: interpolation flag.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+          to the batch form (False).
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -759,29 +755,28 @@ class RandomCrop3D(AugmentationBase3D):
     Crops random sub-volumes on a given size.
 
     Args:
-        p (float): probability of applying the transformation for the whole batch. Default value is 1.0.
-        size (Tuple[int, int, int]): Desired output size (out_d, out_h, out_w) of the crop.
+        p: probability of applying the transformation for the whole batch.
+        size: Desired output size (out_d, out_h, out_w) of the crop.
             Must be Tuple[int, int, int], then out_d = size[0], out_h = size[1], out_w = size[2].
-        padding (int or sequence, optional): Optional padding on each border of the image.
+        padding: Optional padding on each border of the image.
             Default is None, i.e no padding. If a sequence of length 6 is provided, it is used to pad
             left, top, right, bottom, front, back borders respectively.
             If a sequence of length 3 is provided, it is used to pad left/right,
             top/bottom, front/back borders, respectively.
-        pad_if_needed (boolean): It will pad the image if smaller than the
+        pad_if_needed: It will pad the image if smaller than the
             desired size to avoid raising an exception. Since cropping is done
             after padding, the padding seems to be done at a random offset.
         fill: Pixel fill value for constant fill. Default is 0. If a tuple of
             length 3, it is used to fill R, G, B channels respectively.
             This value is only used when the padding_mode is constant.
         padding_mode: Type of padding. Should be: constant, edge, reflect or symmetric. Default is constant.
-        resample (int, str or kornia.Resample): Default: Resample.BILINEAR
-        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
-                                      input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        align_corners(bool): interpolation flag. Default: True.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
+        resample:
+        return_transform: if ``True`` return the matrix describing the transformation applied to each
+          input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated
+        same_on_batch: apply the same transformation across the batch.
+        align_corners: interpolation flag.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+          to the batch form (False).
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -920,15 +915,14 @@ class RandomPerspective3D(AugmentationBase3D):
     r"""Apply andom perspective transformation to 3D volumes (5D tensor).
 
     Args:
-        p (float): probability of the image being perspectively transformed. Default value is 0.5.
-        distortion_scale(float): it controls the degree of distortion and ranges from 0 to 1. Default value is 0.5.
-        resample (int, str or kornia.Resample): Default: Resample.BILINEAR.
-        return_transform (bool): if ``True`` return the matrix describing the transformation
-                                 applied to each. Default: False.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        align_corners(bool): interpolation flag. Default: False.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
+        p: probability of the image being perspectively transformed.
+        distortion_scale: it controls the degree of distortion and ranges from 0 to 1.
+        resample:
+        return_transform: if ``True`` return the matrix describing the transformation applied to each.
+        same_on_batch: apply the same transformation across the batch.
+        align_corners: interpolation flag.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+          to the batch form (False).
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -1028,14 +1022,12 @@ class RandomEqualize3D(AugmentationBase3D):
     r"""Apply random equalization to 3D volumes (5D tensor).
 
     Args:
-        p (float): probability of the image being equalized. Default value is 0.5.
-
-        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
-                                      input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
+        p: probability of the image being equalized.
+        return_transform: if ``True`` return the matrix describing the transformation applied to each
+          input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+        same_on_batch): apply the same transformation across the batch.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+          to the batch form (False).
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`

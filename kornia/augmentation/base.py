@@ -25,13 +25,12 @@ class _BasicAugmentationBase(nn.Module):
     To change this behaviour, please use ``set_rng_device_and_dtype``.
 
     Args:
-        p (float): probability for applying an augmentation. This param controls the augmentation
-                   probabilities element-wisely.
-        p_batch (float): probability for applying an augmentation to a batch. This param controls the augmentation
-                         probabilities batch-wisely.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
+        p: probability for applying an augmentation. This param controls the augmentation probabilities element-wise.
+        p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
+          probabilities batch-wise.
+        same_on_batch: apply the same transformation across the batch.
+        keepdim: whether to keep the output shape the same as input ``True`` or broadcast it to
+          the batch form ``False``.
     """
 
     def __init__(
@@ -139,16 +138,15 @@ class _AugmentationBase(_BasicAugmentationBase):
     Advanced augmentation base class with the functionality of transformation matrix calculations.
 
     Args:
-        p (float): probability for applying an augmentation. This param controls the augmentation probabilities
-                   element-wisely for a batch.
-        p_batch (float): probability for applying an augmentation to a batch. This param controls the augmentation
-                         probabilities batch-wisely.
-        return_transform (bool): if ``True`` return the matrix describing the geometric transformation applied to each
-                                      input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
+        pprobability for applying an augmentation. This param controls the augmentation probabilities
+          element-wise for a batch.
+        p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
+          probabilities batch-wise.
+        return_transform: if ``True`` return the matrix describing the geometric transformation applied to each
+          input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+        same_on_batch: apply the same transformation across the batch.
+        keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
+          to the batch form ``False``.
     """
 
     def __init__(
@@ -255,16 +253,15 @@ class AugmentationBase2D(_AugmentationBase):
     "compute_transformation" is only required when passing "return_transform" as True.
 
     Args:
-        p (float): probability for applying an augmentation. This param controls the augmentation probabilities
-                   element-wisely for a batch.
-        p_batch (float): probability for applying an augmentation to a batch. This param controls the augmentation
-                         probabilities batch-wisely.
-        return_transform (bool): if ``True`` return the matrix describing the geometric transformation applied to each
-                                      input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
+        p: probability for applying an augmentation. This param controls the augmentation probabilities
+          element-wise for a batch.
+        p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
+          probabilities batch-wise.
+        return_transform: if ``True`` return the matrix describing the geometric transformation applied to each
+          input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+        same_on_batch: apply the same transformation across the batch.
+        keepdim: whether to keep the output shape the same as input ``True`` or broadcast it to the batch
+          form ``False``.
     """
 
     def __check_batching__(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]):
@@ -297,16 +294,15 @@ class IntensityAugmentationBase2D(AugmentationBase2D):
     "compute_transformation" is only required when passing "return_transform" as True.
 
     Args:
-        p (float): probability for applying an augmentation. This param controls the augmentation probabilities
-                   element-wisely for a batch.
-        p_batch (float): probability for applying an augmentation to a batch. This param controls the augmentation
-                         probabilities batch-wisely.
-        return_transform (bool): if ``True`` return the matrix describing the geometric transformation applied to each
-                                      input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
+        p: probability for applying an augmentation. This param controls the augmentation probabilities
+          element-wise for a batch.
+        p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
+          probabilities batch-wise.
+        return_transform: if ``True`` return the matrix describing the geometric transformation applied to each
+          input tensor. If ``False`` and the input is a tuple the applied transformation  wont be concatenated.
+        same_on_batch: apply the same transformation across the batch.
+        keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
+          to the batch form ``False``.
     """
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
@@ -320,16 +316,15 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
     "compute_transformation" is only required when passing "return_transform" as True.
 
     Args:
-        p (float): probability for applying an augmentation. This param controls the augmentation probabilities
-                   element-wisely for a batch.
-        p_batch (float): probability for applying an augmentation to a batch. This param controls the augmentation
-                         probabilities batch-wisely.
-        return_transform (bool): if ``True`` return the matrix describing the geometric transformation applied to each
-                                      input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
+        p: probability for applying an augmentation. This param controls the augmentation probabilities
+          element-wise for a batch.
+        p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
+          probabilities batch-wise.
+        return_transform: if ``True`` return the matrix describing the geometric transformation applied to each
+          input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+        same_on_batch: apply the same transformation across the batch.
+        keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
+          to the batch form ``False``.
     """
 
     def inverse_transform(
@@ -410,14 +405,13 @@ class AugmentationBase3D(_AugmentationBase):
     "compute_transformation" is only required when passing "return_transform" as True.
 
     Args:
-        p (float): probability for applying an augmentation. This param controls the augmentation probabilities
-                   element-wisely for a batch.
-        p_batch (float): probability for applying an augmentation to a batch. This param controls the augmentation
-                         probabilities batch-wisely.
-        return_transform (bool): if ``True`` return the matrix describing the geometric transformation applied to each
-                                      input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        p: probability for applying an augmentation. This param controls the augmentation probabilities
+          element-wise for a batch.
+        p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
+          probabilities batch-wise.
+        return_transform: if ``True`` return the matrix describing the geometric transformation applied to each
+          input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+        same_on_batch: apply the same transformation across the batch.
     """
 
     def __check_batching__(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]):
@@ -450,13 +444,12 @@ class MixAugmentationBase(_BasicAugmentationBase):
     "apply_transform" will need to handle the probabilities internally.
 
     Args:
-        p (float): probability for applying an augmentation.
-            This param controls if to apply the augmentation for the batch.
-        p_batch (float): probability for applying an augmentation to a batch. This param controls the augmentation
-                         probabilities batch-wisely.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False.
+        p: probability for applying an augmentation. This param controls if to apply the augmentation for the batch.
+        p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
+          probabilities batch-wise.
+        same_on_batch: apply the same transformation across the batch.
+        keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
+          to the batch form ``False``.
     """
 
     def __init__(self, p: float, p_batch: float, same_on_batch: bool = False, keepdim: bool = False) -> None:
