@@ -5,12 +5,32 @@ kornia.enhance
 
 The functions in this section perform normalisations and intensity transformations.
 
+Adjustment
+----------
+
+.. autofunction:: add_weighted
 .. autofunction:: adjust_brightness
 .. autofunction:: adjust_contrast
 .. autofunction:: adjust_gamma
 .. autofunction:: adjust_hue
 .. autofunction:: adjust_saturation
-.. autofunction:: add_weighted
+.. autofunction:: invert
+.. autofunction:: posterize
+.. autofunction:: sharpness
+.. autofunction:: solarize
+
+Equalization
+------------
+
+.. autofunction:: equalize
+.. autofunction:: equalize_clahe
+.. autofunction:: equalize3d
+
+.. autofunction:: histogram
+.. autofunction:: histogram2d
+
+Normalizations
+--------------
 
 .. autofunction:: normalize
 .. autofunction:: normalize_min_max
@@ -18,18 +38,7 @@ The functions in this section perform normalisations and intensity transformatio
 .. autofunction:: zca_mean
 .. autofunction:: zca_whiten
 .. autofunction:: linear_transform
-.. autofunction:: invert
 
-.. autofunction:: histogram
-.. autofunction:: histogram2d
-
-.. autofunction:: solarize
-.. autofunction:: posterize
-.. autofunction:: sharpness
-.. autofunction:: equalize
-.. autofunction:: equalize3d
-
-.. autofunction:: equalize_clahe
 
 Modules
 -------

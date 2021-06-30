@@ -8,13 +8,28 @@ The functions in this sections perform various image filtering operations.
 Blurring
 --------
 
-.. autofunction:: filter2d
-.. autofunction:: filter3d
+.. autofunction:: blur_pool2d
 .. autofunction:: box_blur
-.. autofunction:: median_blur
 .. autofunction:: gaussian_blur2d
+.. autofunction:: max_blur_pool2d
+.. autofunction:: median_blur
 .. autofunction:: motion_blur
 .. autofunction:: unsharp_mask
+
+Edge detection
+--------------
+
+.. autofunction:: canny
+.. autofunction:: laplacian
+.. autofunction:: sobel
+.. autofunction:: spatial_gradient
+.. autofunction:: spatial_gradient3d
+
+Filtering API
+-------------
+
+.. autofunction:: filter2d
+.. autofunction:: filter3d
 
 Kernels
 -------
@@ -27,20 +42,12 @@ Kernels
 .. autofunction:: get_laplacian_kernel2d
 .. autofunction:: get_motion_kernel2d
 
-
-Edge detection
---------------
-
-.. autofunction:: laplacian
-.. autofunction:: sobel
-.. autofunction:: canny
-.. autofunction:: spatial_gradient
-.. autofunction:: spatial_gradient3d
-
 Module
 ------
 
+.. autoclass:: BlurPool2D
 .. autoclass:: BoxBlur
+.. autoclass:: MaxBlurPool2D
 .. autoclass:: MedianBlur
 .. autoclass:: GaussianBlur2d
 .. autoclass:: Laplacian

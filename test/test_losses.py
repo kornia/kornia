@@ -3,10 +3,10 @@ import math
 import pytest
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
 
 import kornia
 import kornia.testing as utils  # test utils
+from kornia.testing import assert_close
 
 
 class TestBinaryFocalLossWithLogits:
@@ -58,7 +58,7 @@ class TestBinaryFocalLossWithLogits:
         op_script = torch.jit.script(op)
         actual = op_script(logits, labels, alpha=0.5, gamma=2.0, reduction="none")
         expected = op(logits, labels, alpha=0.5, gamma=2.0, reduction="none")
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_gradcheck(self, device):
         num_classes = 1
@@ -138,7 +138,7 @@ class TestFocalLoss:
 
         actual = op_script(logits, labels, *params)
         expected = op(logits, labels, *params)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_module(self, device, dtype):
         num_classes = 3
@@ -152,7 +152,7 @@ class TestFocalLoss:
 
         actual = op_module(logits, labels)
         expected = op(logits, labels, *params)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
 
 class TestTverskyLoss:
@@ -175,7 +175,7 @@ class TestTverskyLoss:
 
         criterion = kornia.losses.TverskyLoss(alpha=0.5, beta=0.5)
         loss = criterion(logits, labels)
-        assert_allclose(loss, torch.zeros_like(loss), atol=1e-3, rtol=1e-3)
+        assert_close(loss, torch.zeros_like(loss), atol=1e-3, rtol=1e-3)
 
     def test_gradcheck(self, device, dtype):
         num_classes = 3
@@ -199,7 +199,7 @@ class TestTverskyLoss:
 
         actual = op_script(logits, labels, *params)
         expected = op(logits, labels, *params)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_module(self, device, dtype):
         num_classes = 3
@@ -213,7 +213,7 @@ class TestTverskyLoss:
 
         actual = op_module(logits, labels)
         expected = op(logits, labels, *params)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
 
 class TestDiceLoss:
@@ -236,7 +236,7 @@ class TestDiceLoss:
 
         criterion = kornia.losses.DiceLoss()
         loss = criterion(logits, labels)
-        assert_allclose(loss, torch.zeros_like(loss), rtol=1e-3, atol=1e-3)
+        assert_close(loss, torch.zeros_like(loss), rtol=1e-3, atol=1e-3)
 
     def test_gradcheck(self, device, dtype):
         num_classes = 3
@@ -256,7 +256,7 @@ class TestDiceLoss:
         op = kornia.losses.dice_loss
         op_script = torch.jit.script(op)
 
-        assert_allclose(op(logits, labels), op_script(logits, labels))
+        assert_close(op(logits, labels), op_script(logits, labels))
 
     def test_module(self, device, dtype):
         num_classes = 3
@@ -267,7 +267,7 @@ class TestDiceLoss:
         op = kornia.losses.dice_loss
         op_module = kornia.losses.DiceLoss()
 
-        assert_allclose(op(logits, labels), op_module(logits, labels))
+        assert_close(op(logits, labels), op_module(logits, labels))
 
 
 class TestDepthSmoothnessLoss:
@@ -286,7 +286,7 @@ class TestDepthSmoothnessLoss:
         op = kornia.losses.inverse_depth_smoothness_loss
         op_script = torch.jit.script(op)
 
-        assert_allclose(op(image, depth), op_script(image, depth))
+        assert_close(op(image, depth), op_script(image, depth))
 
     def test_module(self, device, dtype):
         image = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
@@ -295,7 +295,7 @@ class TestDepthSmoothnessLoss:
         op = kornia.losses.inverse_depth_smoothness_loss
         op_module = kornia.losses.InverseDepthSmoothnessLoss()
 
-        assert_allclose(op(image, depth), op_module(image, depth))
+        assert_close(op(image, depth), op_module(image, depth))
 
     def test_gradcheck(self, device, dtype):
         image = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
@@ -315,8 +315,8 @@ class TestSSIMLoss:
         ssim2 = kornia.losses.ssim_loss(img2, img2, window_size=5, reduction="none")
 
         tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
-        assert_allclose(ssim1, torch.zeros_like(img1), rtol=tol_val, atol=tol_val)
-        assert_allclose(ssim2, torch.zeros_like(img2), rtol=tol_val, atol=tol_val)
+        assert_close(ssim1, torch.zeros_like(img1), rtol=tol_val, atol=tol_val)
+        assert_close(ssim2, torch.zeros_like(img2), rtol=tol_val, atol=tol_val)
 
     @pytest.mark.parametrize("window_size", [5, 11])
     @pytest.mark.parametrize("reduction_type", ["mean", "sum"])
@@ -331,7 +331,7 @@ class TestSSIMLoss:
         loss = kornia.losses.ssim_loss(img, img, window_size, reduction=reduction_type)
 
         tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
-        assert_allclose(loss.item(), 0.0, rtol=tol_val, atol=tol_val)
+        assert_close(loss.item(), 0.0, rtol=tol_val, atol=tol_val)
 
     def test_jit(self, device, dtype):
         img1 = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
@@ -342,7 +342,7 @@ class TestSSIMLoss:
         op = kornia.losses.ssim_loss
         op_script = torch.jit.script(op)
 
-        assert_allclose(op(*args), op_script(*args))
+        assert_close(op(*args), op_script(*args))
 
     def test_module(self, device, dtype):
         img1 = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
@@ -353,7 +353,7 @@ class TestSSIMLoss:
         op = kornia.losses.ssim_loss
         op_module = kornia.losses.SSIMLoss(*args[2:])
 
-        assert_allclose(op(*args), op_module(*args[:2]))
+        assert_close(op(*args), op_module(*args[:2]))
 
     def test_gradcheck(self, device, dtype):
         # input data
@@ -381,7 +381,7 @@ class TestDivergenceLoss:
     )
     def test_js_div_loss_2d(self, device, dtype, input, target, expected):
         actual = kornia.losses.js_div_loss_2d(input.to(device, dtype), target.to(device, dtype))
-        assert_allclose(actual.item(), expected)
+        assert_close(actual.item(), expected)
 
     @pytest.mark.parametrize(
         'input,target,expected',
@@ -394,7 +394,7 @@ class TestDivergenceLoss:
     )
     def test_kl_div_loss_2d(self, device, dtype, input, target, expected):
         actual = kornia.losses.kl_div_loss_2d(input.to(device, dtype), target.to(device, dtype))
-        assert_allclose(actual.item(), expected)
+        assert_close(actual.item(), expected)
 
     @pytest.mark.parametrize(
         'input,target,expected',
@@ -407,7 +407,7 @@ class TestDivergenceLoss:
     )
     def test_kl_div_loss_2d_without_reduction(self, device, dtype, input, target, expected):
         actual = kornia.losses.kl_div_loss_2d(input.to(device, dtype), target.to(device, dtype), reduction='none')
-        assert_allclose(actual, expected.to(device, dtype))
+        assert_close(actual, expected.to(device, dtype))
 
     @pytest.mark.parametrize(
         'input,target,expected',
@@ -422,7 +422,7 @@ class TestDivergenceLoss:
         input = input.to(device, dtype).view(input.shape[::-1]).T
         target = target.to(device, dtype).view(target.shape[::-1]).T
         actual = kornia.losses.kl_div_loss_2d(input, target).item()
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     @pytest.mark.parametrize(
         'input,target,expected',
@@ -437,7 +437,7 @@ class TestDivergenceLoss:
         input = input.to(device, dtype).view(input.shape[::-1]).T
         target = target.to(device, dtype).view(target.shape[::-1]).T
         actual = kornia.losses.js_div_loss_2d(input, target).item()
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_gradcheck_kl(self, device, dtype):
         input = torch.rand(1, 1, 10, 16, device=device, dtype=dtype)
@@ -463,7 +463,7 @@ class TestDivergenceLoss:
         args = (input, target)
         op = kornia.losses.kl_div_loss_2d
         op_jit = torch.jit.script(op, args)
-        assert_allclose(op(*args), op_jit(*args), rtol=0, atol=1e-5)
+        assert_close(op(*args), op_jit(*args), rtol=0, atol=1e-5)
 
     def test_jit_js(self, device, dtype):
         input = torch.randn((2, 4, 10, 16), dtype=dtype, device=device)
@@ -471,7 +471,7 @@ class TestDivergenceLoss:
         args = (input, target)
         op = kornia.losses.js_div_loss_2d
         op_jit = torch.jit.script(op, args)
-        assert_allclose(op(*args), op_jit(*args), rtol=0, atol=1e-5)
+        assert_close(op(*args), op_jit(*args), rtol=0, atol=1e-5)
 
 
 class TestTotalVariation:
@@ -481,7 +481,7 @@ class TestTotalVariation:
     )
     def test_tv_on_constant(self, device, dtype, input, expected):
         actual = kornia.losses.total_variation(input.to(device, dtype))
-        assert_allclose(actual, expected.to(device, dtype))
+        assert_close(actual, expected.to(device, dtype))
 
     # Total variation for 3D tensors
     @pytest.mark.parametrize(
@@ -520,7 +520,7 @@ class TestTotalVariation:
     )
     def test_tv_on_3d(self, device, dtype, input, expected):
         actual = kornia.losses.total_variation(input.to(device, dtype))
-        assert_allclose(actual, expected.to(device, dtype))
+        assert_close(actual, expected.to(device, dtype))
 
     # Total variation for 4D tensors
     @pytest.mark.parametrize(
@@ -557,7 +557,7 @@ class TestTotalVariation:
     )
     def test_tv_on_4d(self, device, dtype, input, expected):
         actual = kornia.losses.total_variation(input.to(device, dtype))
-        assert_allclose(actual, expected.to(device, dtype), rtol=1e-4, atol=1e-4)
+        assert_close(actual, expected.to(device, dtype), rtol=1e-4, atol=1e-4)
 
     # Expect ValueError to be raised when tensors of ndim != 3 or 4 are passed
     @pytest.mark.parametrize('input', [torch.rand(2, 3, 4, 5, 3), torch.rand(3, 1)])
@@ -577,7 +577,7 @@ class TestTotalVariation:
         op = kornia.losses.total_variation
         op_script = torch.jit.script(op)
 
-        assert_allclose(op(image), op_script(image))
+        assert_close(op(image), op_script(image))
 
     def test_module(self, device, dtype):
         image = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
@@ -585,7 +585,7 @@ class TestTotalVariation:
         op = kornia.losses.total_variation
         op_module = kornia.losses.TotalVariation()
 
-        assert_allclose(op(image), op_module(image))
+        assert_close(op(image), op_module(image))
 
     def test_gradcheck(self, device, dtype):
         image = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
@@ -621,13 +621,13 @@ class TestPSNRLoss:
         input = torch.ones(1, device=device, dtype=dtype)
         expected = torch.tensor(20.0, device=device, dtype=dtype)
         actual = kornia.losses.psnr(input, 1.2 * input, 2.0)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_loss(self, device, dtype):
         input = torch.ones(1, device=device, dtype=dtype)
         expected = torch.tensor(-20.0, device=device, dtype=dtype)
         actual = kornia.losses.psnr_loss(input, 1.2 * input, 2.0)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_jit(self, device, dtype):
         input = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
@@ -638,7 +638,7 @@ class TestPSNRLoss:
         op = kornia.losses.psnr_loss
         op_script = torch.jit.script(op)
 
-        assert_allclose(op(*args), op_script(*args))
+        assert_close(op(*args), op_script(*args))
 
     def test_module(self, device, dtype):
         input = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
@@ -649,7 +649,7 @@ class TestPSNRLoss:
         op = kornia.losses.psnr_loss
         op_module = kornia.losses.PSNRLoss(1.0)
 
-        assert_allclose(op(*args), op_module(input, target))
+        assert_close(op(*args), op_module(input, target))
 
     def test_gradcheck(self, device, dtype):
         input = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)

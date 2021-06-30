@@ -1,7 +1,12 @@
+import warnings
 from typing import Optional, Tuple
 
 import torch
 
+from kornia.geometry.bbox import bbox_generator3d as _bbox_generator3d
+from kornia.geometry.bbox import bbox_to_mask3d as _bbox_to_mask3d
+from kornia.geometry.bbox import infer_bbox_shape3d as _infer_bbox_shape3d
+from kornia.geometry.bbox import validate_bbox3d as _validate_bbox3d
 from kornia.geometry.transform.projwarp import get_perspective_transform3d, warp_affine3d
 
 __all__ = [
@@ -9,9 +14,9 @@ __all__ = [
     "crop_by_boxes3d",
     "crop_by_transform_mat3d",
     "center_crop3d",
-    "bbox_to_mask3d",
-    "infer_box_shape3d",
     "validate_bboxes3d",
+    "infer_box_shape3d",
+    "bbox_to_mask3d",
     "bbox_generator3d",
 ]
 
@@ -26,19 +31,18 @@ def crop_and_resize3d(
     r"""Extract crops from 3D volumes (5D tensor) and resize them.
 
     Args:
-        tensor (torch.Tensor): the 3D volume tensor with shape (B, C, D, H, W).
-        boxes (torch.Tensor): a tensor with shape (B, 8, 3) containing the coordinates of the bounding boxes
+        tensor: the 3D volume tensor with shape (B, C, D, H, W).
+        boxes: a tensor with shape (B, 8, 3) containing the coordinates of the bounding boxes
             to be extracted. The tensor must have the shape of Bx8x3, where each box is defined in the clockwise
             order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
             back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in x, y, z order.
-        size (Tuple[int, int, int]): a tuple with the height and width that will be
+        size: a tuple with the height and width that will be
             used to resize the extracted patches.
-        interpolation (str): Interpolation flag. Default: 'bilinear'.
-        align_corners (bool): mode for grid_generation. Default: False. See
-            https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details.
+        interpolation: Interpolation flag.
+        align_corners: mode for grid_generation.
 
     Returns:
-        torch.Tensor: tensor containing the patches with shape (Bx)CxN1xN2xN3.
+        tensor containing the patches with shape (Bx)CxN1xN2xN3.
 
     Example:
         >>> input = torch.arange(64, dtype=torch.float32).view(1, 1, 4, 4, 4)
@@ -123,15 +127,14 @@ def center_crop3d(
     r"""Crop the 3D volumes (5D tensor) at the center.
 
     Args:
-        tensor (torch.Tensor): the 3D volume tensor with shape (B, C, D, H, W).
-        size (Tuple[int, int, int]): a tuple with the expected depth, height and width
+        tensor: the 3D volume tensor with shape (B, C, D, H, W).
+        size: a tuple with the expected depth, height and width
             of the output patch.
-        interpolation (str): Interpolation flag. Default: 'bilinear'.
-        align_corners (bool): mode for grid_generation. Default: False. See
-            https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details.
+        interpolation: Interpolation flag.
+        align_corners : mode for grid_generation.
 
     Returns:
-        torch.Tensor: the output tensor with patches.
+        the output tensor with patches.
 
     Examples:
         >>> input = torch.arange(64, dtype=torch.float32).view(1, 1, 4, 4, 4)
@@ -247,21 +250,20 @@ def crop_by_boxes3d(
     in a batch must be rectangles with same width, height and depth.
 
     Args:
-        tensor (torch.Tensor): the 3D volume tensor with shape (B, C, D, H, W).
-        src_box (torch.Tensor): a tensor with shape (B, 8, 3) containing the coordinates of the bounding boxes
+        tensor : the 3D volume tensor with shape (B, C, D, H, W).
+        src_box : a tensor with shape (B, 8, 3) containing the coordinates of the bounding boxes
             to be extracted. The tensor must have the shape of Bx8x3, where each box is defined in the clockwise
             order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
             back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in x, y, z order.
-        dst_box (torch.Tensor): a tensor with shape (B, 8, 3) containing the coordinates of the bounding boxes
+        dst_box: a tensor with shape (B, 8, 3) containing the coordinates of the bounding boxes
             to be placed. The tensor must have the shape of Bx8x3, where each box is defined in the clockwise
             order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
             back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in x, y, z order.
-        interpolation (str): Interpolation flag. Default: 'bilinear'.
-        align_corners (bool): mode for grid_generation. Default: False. See
-            https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details.
+        interpolation: Interpolation flag.
+        align_corners: mode for grid_generation.
 
     Returns:
-        torch.Tensor: the output tensor with patches.
+        the output tensor with patches.
 
     Examples:
         >>> input = torch.tensor([[[
@@ -307,8 +309,8 @@ def crop_by_boxes3d(
                    [45., 46., 47.]]]]])
 
     """
-    validate_bboxes3d(src_box)
-    validate_bboxes3d(dst_box)
+    _validate_bbox3d(src_box)
+    _validate_bbox3d(dst_box)
 
     assert len(tensor.shape) == 5, f"Only tensor with shape (B, C, D, H, W) supported. Got {tensor.shape}."
 
@@ -318,7 +320,7 @@ def crop_by_boxes3d(
     # simulate broadcasting
     dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1).type_as(tensor)
 
-    bbox = infer_box_shape3d(dst_box)
+    bbox = _infer_bbox_shape3d(dst_box)
     assert (bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all() and (bbox[2] == bbox[2][0]).all(), (
         "Cropping height, width and depth must be exact same in a batch."
         f"Got height {bbox[0]}, width {bbox[1]} and depth {bbox[2]}."
@@ -346,17 +348,17 @@ def crop_by_transform_mat3d(
     """Perform crop transform on 3D volumes (5D tensor) given a perspective transformation matrix.
 
     Args:
-        tensor (torch.Tensor): the 2D image tensor with shape (B, C, H, W).
-        transform (torch.Tensor): a perspective transformation matrix with shape (B, 4, 4).
-        out_size (Tuple[int, int, int]): size of the output image (depth, height, width).
-        mode (str): interpolation mode to calculate output values
-          'bilinear' | 'nearest'. Default: 'bilinear'.
-        padding_mode (str): padding mode for outside grid values
-          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners (bool, optional): mode for grid_generation. Default: None.
+        tensor: the 2D image tensor with shape (B, C, H, W).
+        transform: a perspective transformation matrix with shape (B, 4, 4).
+        out_size: size of the output image (depth, height, width).
+        mode: interpolation mode to calculate output values
+          ``'bilinear'`` | ``'nearest'``.
+        padding_mode: padding mode for outside grid values
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
+        align_corners: mode for grid_generation.
 
     Returns:
-        torch.Tensor: the output tensor with patches.
+        the output tensor with patches.
     """
     # simulate broadcasting
     dst_trans_src = transform.expand(tensor.shape[0], -1, -1)
@@ -366,6 +368,25 @@ def crop_by_transform_mat3d(
     )
 
     return patches
+
+
+@torch.jit.ignore
+def validate_bboxes3d(boxes: torch.Tensor) -> bool:
+    """Validate if a 3D bounding box usable or not.
+    This function checks if the boxes are cube or not.
+    Args:
+        boxes (torch.Tensor): a tensor containing the coordinates of the bounding boxes to be extracted.
+            The tensor must have the shape of Bx8x3, where each box is defined in the following (clockwise)
+            order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
+            back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in the x, y, z order.
+    """
+    warnings.warn(
+        "`kornia.geometry.transforms.crop.crop3d.validate_bboxes3d` is deprecated and will be removed > 0.6.0. "
+        "Please use `kornia.geometry.bbox.validate_bbox3d instead.`",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return _validate_bbox3d(boxes)
 
 
 def infer_box_shape3d(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -403,53 +424,13 @@ def infer_box_shape3d(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, 
         >>> infer_box_shape3d(boxes)
         (tensor([31, 61]), tensor([21, 51]), tensor([11, 41]))
     """
-    validate_bboxes3d(boxes)
-
-    left = torch.index_select(boxes, 1, torch.tensor([1, 2, 5, 6], device=boxes.device, dtype=torch.long))[:, :, 0]
-    right = torch.index_select(boxes, 1, torch.tensor([0, 3, 4, 7], device=boxes.device, dtype=torch.long))[:, :, 0]
-    widths = (left - right + 1)[:, 0]
-
-    bot = torch.index_select(boxes, 1, torch.tensor([2, 3, 6, 7], device=boxes.device, dtype=torch.long))[:, :, 1]
-    upper = torch.index_select(boxes, 1, torch.tensor([0, 1, 4, 5], device=boxes.device, dtype=torch.long))[:, :, 1]
-    heights = (bot - upper + 1)[:, 0]
-
-    depths = (boxes[:, 4:, 2] - boxes[:, :4, 2] + 1)[:, 0]
-    return (depths, heights, widths)
-
-
-def validate_bboxes3d(boxes: torch.Tensor) -> None:
-    """Validate if a 3D bounding box usable or not.
-
-    This function checks if the boxes are cube or not.
-
-    Args:
-        boxes (torch.Tensor): a tensor containing the coordinates of the bounding boxes to be extracted.
-            The tensor must have the shape of Bx8x3, where each box is defined in the following (clockwise)
-            order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
-            back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in the x, y, z order.
-    """
-    assert len(boxes.shape) == 3 and boxes.shape[1:] == torch.Size(
-        [8, 3]
-    ), f"Box shape must be (B, 8, 3). Got {boxes.shape}."
-
-    left = torch.index_select(boxes, 1, torch.tensor([1, 2, 5, 6], device=boxes.device, dtype=torch.long))[:, :, 0]
-    right = torch.index_select(boxes, 1, torch.tensor([0, 3, 4, 7], device=boxes.device, dtype=torch.long))[:, :, 0]
-    widths = left - right + 1
-    assert torch.allclose(
-        widths.permute(1, 0), widths[:, 0]
-    ), f"Boxes must have be cube, while get different widths {widths}."
-
-    bot = torch.index_select(boxes, 1, torch.tensor([2, 3, 6, 7], device=boxes.device, dtype=torch.long))[:, :, 1]
-    upper = torch.index_select(boxes, 1, torch.tensor([0, 1, 4, 5], device=boxes.device, dtype=torch.long))[:, :, 1]
-    heights = bot - upper + 1
-    assert torch.allclose(
-        heights.permute(1, 0), heights[:, 0]
-    ), f"Boxes must have be cube, while get different heights {heights}."
-
-    depths = boxes[:, 4:, 2] - boxes[:, :4, 2] + 1
-    assert torch.allclose(
-        depths.permute(1, 0), depths[:, 0]
-    ), f"Boxes must have be cube, while get different depths {depths}."
+    warnings.warn(
+        "`kornia.geometry.transforms.crop.crop2d.infer_box_shape3d` is deprecated and will be removed > 0.6.0. "
+        "Please use `kornia.geometry.bbox.infer_bbox_shape3d instead.`",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return _infer_bbox_shape3d(boxes)
 
 
 def bbox_to_mask3d(boxes: torch.Tensor, size: Tuple[int, int, int]) -> torch.Tensor:
@@ -501,35 +482,13 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: Tuple[int, int, int]) -> torch.Ten
                    [0., 0., 0., 0., 0.],
                    [0., 0., 0., 0., 0.]]]]])
     """
-    validate_bboxes3d(boxes)
-    mask = torch.zeros((len(boxes), *size))
-
-    mask_out = []
-    # TODO: Looking for a vectorized way
-    for m, box in zip(mask, boxes):
-        m = m.index_fill(
-            0,
-            torch.arange(box[0, 2].item(), box[4, 2].item() + 1, device=box.device, dtype=torch.long),
-            torch.tensor(1, device=box.device, dtype=box.dtype),
-        )
-        m = m.index_fill(
-            1,
-            torch.arange(box[1, 1].item(), box[2, 1].item() + 1, device=box.device, dtype=torch.long),
-            torch.tensor(1, device=box.device, dtype=box.dtype),
-        )
-        m = m.index_fill(
-            2,
-            torch.arange(box[0, 0].item(), box[1, 0].item() + 1, device=box.device, dtype=torch.long),
-            torch.tensor(1, device=box.device, dtype=box.dtype),
-        )
-        m = m.unsqueeze(dim=0)
-        m_out = torch.ones_like(m)
-        m_out = m_out * (m == 1).all(dim=2, keepdim=True).all(dim=1, keepdim=True)
-        m_out = m_out * (m == 1).all(dim=3, keepdim=True).all(dim=1, keepdim=True)
-        m_out = m_out * (m == 1).all(dim=2, keepdim=True).all(dim=3, keepdim=True)
-        mask_out.append(m_out)
-
-    return torch.stack(mask_out, dim=0).float()
+    warnings.warn(
+        "`kornia.geometry.transforms.crop.crop2d.bbox_to_mask3d` is deprecated and will be removed > 0.6.0. "
+        "Please use `kornia.geometry.bbox.bbox_to_mask3d instead.`",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return _bbox_to_mask3d(boxes, size)
 
 
 def bbox_generator3d(
@@ -585,41 +544,10 @@ def bbox_generator3d(
                  [43, 54, 65],
                  [ 3, 54, 65]]])
     """
-    assert x_start.shape == y_start.shape == z_start.shape and x_start.dim() in [
-        0,
-        1,
-    ], f"`x_start`, `y_start` and `z_start` must be a scalar or (B,). Got {x_start}, {y_start}, {z_start}."
-    assert width.shape == height.shape == depth.shape and width.dim() in [
-        0,
-        1,
-    ], f"`width`, `height` and `depth` must be a scalar or (B,). Got {width}, {height}, {depth}."
-    assert x_start.dtype == y_start.dtype == z_start.dtype == width.dtype == height.dtype == depth.dtype, (
-        "All tensors must be in the same dtype. "
-        f"Got `x_start`({x_start.dtype}), `y_start`({x_start.dtype}), `z_start`({x_start.dtype}), "
-        f"`width`({width.dtype}), `height`({height.dtype}) and `depth`({depth.dtype})."
+    warnings.warn(
+        "`kornia.geometry.transforms.crop.crop2d.bbox_generator3d` is deprecated and will be removed > 0.6.0. "
+        "Please use `kornia.geometry.bbox.bbox_generator3d instead.`",
+        DeprecationWarning,
+        stacklevel=2,
     )
-    assert x_start.device == y_start.device == z_start.device == width.device == height.device == depth.device, (
-        "All tensors must be in the same device. "
-        f"Got `x_start`({x_start.device}), `y_start`({x_start.device}), `z_start`({x_start.device}), "
-        f"`width`({width.device}), `height`({height.device}) and `depth`({depth.device})."
-    )
-
-    # front
-    bbox = torch.tensor(
-        [[[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]], device=x_start.device, dtype=x_start.dtype
-    ).repeat(len(x_start), 1, 1)
-
-    bbox[:, :, 0] += x_start.view(-1, 1)
-    bbox[:, :, 1] += y_start.view(-1, 1)
-    bbox[:, :, 2] += z_start.view(-1, 1)
-    bbox[:, 1, 0] += width
-    bbox[:, 2, 0] += width
-    bbox[:, 2, 1] += height
-    bbox[:, 3, 1] += height
-
-    # back
-    bbox_back = bbox.clone()
-    bbox_back[:, :, -1] += depth.unsqueeze(dim=1).repeat(1, 4)
-    bbox = torch.cat([bbox, bbox_back], dim=1)
-
-    return bbox
+    return _bbox_generator3d(x_start, y_start, z_start, width, height, depth)

@@ -7,13 +7,15 @@ import torch.nn as nn
 def rgb_to_hls(image: torch.Tensor) -> torch.Tensor:
     r"""Convert a RGB image to HLS.
 
+    .. image:: _static/img/rgb_to_hls.png
+
     The image data is assumed to be in the range of (0, 1).
 
     Args:
-        image (torch.Tensor): RGB image to be converted to HLS with shape :math:`(*, 3, H, W)`.
+        image: RGB image to be converted to HLS with shape :math:`(*, 3, H, W)`.
 
     Returns:
-        torch.Tensor: HLS version of the image with shape :math:`(*, 3, H, W)`.
+        HLS version of the image with shape :math:`(*, 3, H, W)`.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -67,10 +69,10 @@ def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
     The image data is assumed to be in the range of (0, 1).
 
     Args:
-        image (torch.Tensor): HLS image to be converted to RGB with shape :math:`(*, 3, H, W)`.
+        image: HLS image to be converted to RGB with shape :math:`(*, 3, H, W)`.
 
     Returns:
-        torch.Tensor: RGB version of the image with shape :math:`(*, 3, H, W)`.
+        RGB version of the image with shape :math:`(*, 3, H, W)`.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -114,7 +116,7 @@ class RgbToHls(nn.Module):
     The image data is assumed to be in the range of (0, 1).
 
     Returns:
-        torch.Tensor: HLS version of the image.
+        HLS version of the image.
 
     Shape:
         - image: :math:`(*, 3, H, W)`
@@ -136,7 +138,7 @@ class HlsToRgb(nn.Module):
     The image data is assumed to be in the range of (0, 1).
 
     Returns:
-        torch.Tensor: RGB version of the image.
+        RGB version of the image.
 
     Shape:
         - input: :math:`(*, 3, H, W)`

@@ -1,7 +1,12 @@
+import warnings
 from typing import Optional, Tuple
 
 import torch
 
+from kornia.geometry.bbox import bbox_generator as _bbox_generator
+from kornia.geometry.bbox import bbox_to_mask as _bbox_to_mask
+from kornia.geometry.bbox import infer_bbox_shape as _infer_bbox_shape
+from kornia.geometry.bbox import validate_bbox as _validate_bbox
 from kornia.geometry.transform.imgwarp import get_perspective_transform, warp_affine
 
 __all__ = [
@@ -9,9 +14,9 @@ __all__ = [
     "crop_by_boxes",
     "crop_by_transform_mat",
     "center_crop",
-    "bbox_to_mask",
-    "infer_box_shape",
     "validate_bboxes",
+    "infer_box_shape",
+    "bbox_to_mask",
     "bbox_generator",
 ]
 
@@ -27,18 +32,18 @@ def crop_and_resize(
     r"""Extract crops from 2D images (4D tensor) and resize given a bounding box.
 
     Args:
-        tensor (torch.Tensor): the 2D image tensor with shape (B, C, H, W).
-        boxes (torch.Tensor): a tensor containing the coordinates of the bounding boxes to be extracted.
+        tensor: the 2D image tensor with shape (B, C, H, W).
+        boxes : a tensor containing the coordinates of the bounding boxes to be extracted.
             The tensor must have the shape of Bx4x2, where each box is defined in the following (clockwise)
             order: top-left, top-right, bottom-right and bottom-left. The coordinates must be in the x, y order.
             The coordinates would compose a rectangle with a shape of (N1, N2).
-        size (Tuple[int, int]): a tuple with the height and width that will be
+        size: a tuple with the height and width that will be
             used to resize the extracted patches.
-        mode (str): interpolation mode to calculate output values
-          'bilinear' | 'nearest'. Default: 'bilinear'.
-        padding_mode (str): padding mode for outside grid values
-          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners (bool, optional): mode for grid_generation. Default: None.
+        mode: interpolation mode to calculate output values
+          ``'bilinear'`` | ``'nearest'``.
+        padding_mode: padding mode for outside grid values
+          ``'zeros'`` | ``'border'`` | 'reflection'.
+        align_corners: mode for grid_generation.
 
     Returns:
         torch.Tensor: tensor containing the patches with shape BxCxN1xN2.
@@ -97,17 +102,17 @@ def center_crop(
     r"""Crop the 2D images (4D tensor) from the center.
 
     Args:
-        tensor (torch.Tensor): the 2D image tensor with shape (B, C, H, W).
-        size (Tuple[int, int]): a tuple with the expected height and width
+        tensor: the 2D image tensor with shape (B, C, H, W).
+        size: a tuple with the expected height and width
           of the output patch.
-        mode (str): interpolation mode to calculate output values
-          'bilinear' | 'nearest'. Default: 'bilinear'.
-        padding_mode (str): padding mode for outside grid values
-          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners (bool, optional): mode for grid_generation. Default: None.
+        mode: interpolation mode to calculate output values
+          ``'bilinear'`` | ``'nearest'``.
+        padding_mode: padding mode for outside grid values
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
+        align_corners: mode for grid_generation.
 
     Returns:
-        torch.Tensor: the output tensor with patches.
+        the output tensor with patches.
 
     Examples:
         >>> input = torch.tensor([[[
@@ -177,18 +182,18 @@ def crop_by_boxes(
     in a batch must be rectangles with same width and height.
 
     Args:
-        tensor (torch.Tensor): the 2D image tensor with shape (B, C, H, W).
-        src_box (torch.Tensor): a tensor with shape (B, 4, 2) containing the coordinates of the bounding boxes
+        tensor: the 2D image tensor with shape (B, C, H, W).
+        src_box: a tensor with shape (B, 4, 2) containing the coordinates of the bounding boxes
             to be extracted. The tensor must have the shape of Bx4x2, where each box is defined in the clockwise
             order: top-left, top-right, bottom-right and bottom-left. The coordinates must be in x, y order.
-        dst_box (torch.Tensor): a tensor with shape (B, 4, 2) containing the coordinates of the bounding boxes
+        dst_box: a tensor with shape (B, 4, 2) containing the coordinates of the bounding boxes
             to be placed. The tensor must have the shape of Bx4x2, where each box is defined in the clockwise
             order: top-left, top-right, bottom-right and bottom-left. The coordinates must be in x, y order.
-        mode (str): interpolation mode to calculate output values
-          'bilinear' | 'nearest'. Default: 'bilinear'.
-        padding_mode (str): padding mode for outside grid values
-          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners (bool, optional): mode for grid_generation. Default: None.
+        mode: interpolation mode to calculate output values
+          ``'bilinear'`` | ``'nearest'``.
+        padding_mode: padding mode for outside grid values
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
+        align_corners: mode for grid_generation.
 
     Returns:
         torch.Tensor: the output tensor with patches.
@@ -216,8 +221,8 @@ def crop_by_boxes(
         RuntimeError: solve_cpu: For batch 0: U(2,2) is zero, singular U.
     """
     # TODO: improve this since might slow down the function
-    validate_bboxes(src_box)
-    validate_bboxes(dst_box)
+    _validate_bbox(src_box)
+    _validate_bbox(dst_box)
 
     assert len(tensor.shape) == 4, f"Only tensor with shape (B, C, H, W) supported. Got {tensor.shape}."
 
@@ -225,7 +230,7 @@ def crop_by_boxes(
     # Note: Tensor.dtype must be float. "solve_cpu" not implemented for 'Long'
     dst_trans_src: torch.Tensor = get_perspective_transform(src_box.to(tensor), dst_box.to(tensor))
 
-    bbox: Tuple[torch.Tensor, torch.Tensor] = infer_box_shape(dst_box)
+    bbox: Tuple[torch.Tensor, torch.Tensor] = _infer_bbox_shape(dst_box)
     assert (bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all(), (
         f"Cropping height, width and depth must be exact same in a batch. " f"Got height {bbox[0]} and width {bbox[1]}."
     )
@@ -249,17 +254,17 @@ def crop_by_transform_mat(
     """Perform crop transform on 2D images (4D tensor) given a perspective transformation matrix.
 
     Args:
-        tensor (torch.Tensor): the 2D image tensor with shape (B, C, H, W).
-        transform (torch.Tensor): a perspective transformation matrix with shape (B, 3, 3).
-        out_size (Tuple[int, int]): size of the output image (height, width).
-        mode (str): interpolation mode to calculate output values
-          'bilinear' | 'nearest'. Default: 'bilinear'.
+        tensor: the 2D image tensor with shape (B, C, H, W).
+        transform: a perspective transformation matrix with shape (B, 3, 3).
+        out_size: size of the output image (height, width).
+        mode: interpolation mode to calculate output values
+          ``'bilinear'`` | ``'nearest'``.
         padding_mode (str): padding mode for outside grid values
-          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners (bool, optional): mode for grid_generation. Default: None.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
+        align_corners: mode for grid_generation.
 
     Returns:
-        torch.Tensor: the output tensor with patches.
+        the output tensor with patches.
     """
     # simulate broadcasting
     dst_trans_src = torch.as_tensor(transform.expand(tensor.shape[0], -1, -1), device=tensor.device, dtype=tensor.dtype)
@@ -269,6 +274,27 @@ def crop_by_transform_mat(
     )
 
     return patches
+
+
+@torch.jit.ignore
+def validate_bboxes(boxes: torch.Tensor) -> bool:
+    """Validate if a 2D bounding box usable or not.
+    This function checks if the boxes are rectangular or not.
+    Args:
+        boxes (torch.Tensor): a tensor containing the coordinates of the
+          bounding boxes to be extracted. The tensor must have the shape
+          of Bx4x2, where each box is defined in the following (clockwise)
+          order: top-left, top-right, bottom-right, bottom-left. The
+          coordinates must be in the x, y order.
+
+    """
+    warnings.warn(
+        "`kornia.geometry.transforms.crop.crop2d.validate_bboxes` is deprecated and will be removed > 0.6.0. "
+        "Please use `kornia.geometry.bbox.validate_bbox instead.`",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return _validate_bbox(boxes)
 
 
 def infer_box_shape(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -301,38 +327,13 @@ def infer_box_shape(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         >>> infer_box_shape(boxes)
         (tensor([2., 2.]), tensor([2., 3.]))
     """
-    validate_bboxes(boxes)
-    width: torch.Tensor = boxes[:, 1, 0] - boxes[:, 0, 0] + 1
-    height: torch.Tensor = boxes[:, 2, 1] - boxes[:, 0, 1] + 1
-    return (height, width)
-
-
-@torch.jit.ignore
-def validate_bboxes(boxes: torch.Tensor) -> bool:
-    """Validate if a 2D bounding box usable or not.
-
-    This function checks if the boxes are rectangular or not.
-
-    Args:
-        boxes (torch.Tensor): a tensor containing the coordinates of the
-          bounding boxes to be extracted. The tensor must have the shape
-          of Bx4x2, where each box is defined in the following (clockwise)
-          order: top-left, top-right, bottom-right, bottom-left. The
-          coordinates must be in the x, y order.
-    """
-    if not torch.allclose((boxes[:, 1, 0] - boxes[:, 0, 0] + 1), (boxes[:, 2, 0] - boxes[:, 3, 0] + 1)):
-        raise ValueError(
-            "Boxes must have be rectangular, while get widths %s and %s"
-            % (str(boxes[:, 1, 0] - boxes[:, 0, 0] + 1), str(boxes[:, 2, 0] - boxes[:, 3, 0] + 1))
-        )
-
-    if not torch.allclose((boxes[:, 2, 1] - boxes[:, 0, 1] + 1), (boxes[:, 3, 1] - boxes[:, 1, 1] + 1)):
-        raise ValueError(
-            "Boxes must have be rectangular, while get heights %s and %s"
-            % (str(boxes[:, 2, 1] - boxes[:, 0, 1] + 1), str(boxes[:, 3, 1] - boxes[:, 1, 1] + 1))
-        )
-
-    return True
+    warnings.warn(
+        "`kornia.geometry.transforms.crop.crop2d.infer_box_shape` is deprecated and will be removed > 0.6.0. "
+        "Please use `kornia.geometry.bbox.infer_bbox_shape instead.`",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return _infer_bbox_shape(boxes)
 
 
 def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
@@ -365,24 +366,13 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
                  [0., 0., 0., 0., 0.],
                  [0., 0., 0., 0., 0.]]])
     """
-    validate_bboxes(boxes)
-    # zero padding the surroudings
-    mask = torch.zeros((len(boxes), height + 2, width + 2))
-    # push all points one pixel off
-    # in order to zero-out the fully filled rows or columns
-    boxes += 1
-
-    mask_out = []
-    # TODO: Looking for a vectorized way
-    for m, box in zip(mask, boxes):
-        m = m.index_fill(1, torch.arange(box[0, 0].item(), box[1, 0].item() + 1, dtype=torch.long), torch.tensor(1))
-        m = m.index_fill(0, torch.arange(box[1, 1].item(), box[2, 1].item() + 1, dtype=torch.long), torch.tensor(1))
-        m = m.unsqueeze(dim=0)
-        m_out = (m == 1).all(dim=1) * (m == 1).all(dim=2).T
-        m_out = m_out[1:-1, 1:-1]
-        mask_out.append(m_out)
-
-    return torch.stack(mask_out, dim=0).float()
+    warnings.warn(
+        "`kornia.geometry.transforms.crop.crop2d.bbox_to_mask` is deprecated and will be removed > 0.6.0. "
+        "Please use `kornia.geometry.bbox.bbox_to_mask instead.`",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return _bbox_to_mask(boxes, width, height)
 
 
 def bbox_generator(
@@ -419,32 +409,10 @@ def bbox_generator(
                  [3, 3],
                  [1, 3]]])
     """
-    assert x_start.shape == y_start.shape and x_start.dim() in [
-        0,
-        1,
-    ], f"`x_start` and `y_start` must be a scalar or (B,). Got {x_start}, {y_start}."
-    assert width.shape == height.shape and width.dim() in [
-        0,
-        1,
-    ], f"`width` and `height` must be a scalar or (B,). Got {width}, {height}."
-    assert x_start.dtype == y_start.dtype == width.dtype == height.dtype, (
-        "All tensors must be in the same dtype. Got "
-        f"`x_start`({x_start.dtype}), `y_start`({x_start.dtype}), `width`({width.dtype}), `height`({height.dtype})."
+    warnings.warn(
+        "`kornia.geometry.transforms.crop.crop2d.bbox_generator` is deprecated and will be removed > 0.6.0. "
+        "Please use `kornia.geometry.bbox.bbox_generator instead.`",
+        DeprecationWarning,
+        stacklevel=2,
     )
-    assert x_start.device == y_start.device == width.device == height.device, (
-        "All tensors must be in the same device. Got "
-        f"`x_start`({x_start.device}), `y_start`({x_start.device}), `width`({width.device}), `height`({height.device})."
-    )
-
-    bbox = torch.tensor([[[0, 0], [0, 0], [0, 0], [0, 0]]], device=x_start.device, dtype=x_start.dtype).repeat(
-        1 if x_start.dim() == 0 else len(x_start), 1, 1
-    )
-
-    bbox[:, :, 0] += x_start.view(-1, 1)
-    bbox[:, :, 1] += y_start.view(-1, 1)
-    bbox[:, 1, 0] += width - 1
-    bbox[:, 2, 0] += width - 1
-    bbox[:, 2, 1] += height - 1
-    bbox[:, 3, 1] += height - 1
-
-    return bbox
+    return _bbox_generator(x_start, y_start, width, height)

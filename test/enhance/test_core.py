@@ -3,10 +3,10 @@ import random
 import pytest
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
 
 import kornia
 import kornia.testing as utils  # test utils
+from kornia.testing import assert_close
 
 
 def random_shape(dim, min_elem=1, max_elem=10):
@@ -29,7 +29,7 @@ class TestAddWeighted:
     @pytest.mark.parametrize("size", [2, 3, 4, 5])
     def test_smoke(self, device, dtype, size):
         src1, src2, alpha, beta, gamma = self.get_input(device, dtype, size=3)
-        assert_allclose(TestAddWeighted.fcn(src1, alpha, src2, beta, gamma), src1 * alpha + src2 * beta + gamma)
+        assert_close(TestAddWeighted.fcn(src1, alpha, src2, beta, gamma), src1 * alpha + src2 * beta + gamma)
 
     def test_jit(self, device, dtype):
         src1, src2, alpha, beta, gamma = self.get_input(device, dtype, size=3)
@@ -38,7 +38,7 @@ class TestAddWeighted:
         op = TestAddWeighted.fcn
         op_script = torch.jit.script(op)
 
-        assert_allclose(op(*inputs), op_script(*inputs), atol=1e-4, rtol=1e-4)
+        assert_close(op(*inputs), op_script(*inputs), atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("size", [2, 3])
     def test_gradcheck(self, size, device, dtype):
@@ -54,4 +54,4 @@ class TestAddWeighted:
         op = TestAddWeighted.fcn
         op_module = kornia.enhance.AddWeighted(alpha, beta, gamma)
 
-        assert_allclose(op(*inputs), op_module(src1, src2))
+        assert_close(op(*inputs), op_module(src1, src2))

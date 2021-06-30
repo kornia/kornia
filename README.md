@@ -1,11 +1,13 @@
 <div align="center">
 <p align="center">
-  <img width="50%" src="https://github.com/kornia/kornia/blob/master/docs/source/_static/img/kornia_logo.svg" />
+  <img width="50%" src="https://github.com/kornia/kornia/blob/master/docs/source/_static/img/kornia_logo.png" />
 </p>
 
 **The open-source and Computer Vision 2.0 library**
 
 ---
+
+English | [简体中文](README_zh-CN.md)
 
 <!-- prettier-ignore -->
 <a href="https://kornia.org">Website</a> •

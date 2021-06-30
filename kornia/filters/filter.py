@@ -40,14 +40,14 @@ def filter2d(
     that the output remains in the same shape.
 
     Args:
-        input (torch.Tensor): the input tensor with shape of
+        input: the input tensor with shape of
           :math:`(B, C, H, W)`.
-        kernel (torch.Tensor): the kernel to be convolved with the input
+        kernel: the kernel to be convolved with the input
           tensor. The kernel shape must be :math:`(1, kH, kW)` or :math:`(B, kH, kW)`.
-        border_type (str): the padding mode to be applied before convolving.
+        border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
-        normalized (bool): If True, kernel will be L1 normalized.
+          ``'replicate'`` or ``'circular'``.
+        normalized: If True, kernel will be L1 normalized.
 
     Return:
         torch.Tensor: the convolved tensor of same size and numbers of channels
@@ -118,17 +118,17 @@ def filter3d(
     that the output remains in the same shape.
 
     Args:
-        input (torch.Tensor): the input tensor with shape of
+        input: the input tensor with shape of
           :math:`(B, C, D, H, W)`.
-        kernel (torch.Tensor): the kernel to be convolved with the input
+        kernel: the kernel to be convolved with the input
           tensor. The kernel shape must be :math:`(1, kD, kH, kW)`  or :math:`(B, kD, kH, kW)`.
-        border_type (str): the padding mode to be applied before convolving.
+        border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'replicate'``.
-        normalized (bool): If True, kernel will be L1 normalized.
+          ``'replicate'`` or ``'circular'``.
+        normalized: If True, kernel will be L1 normalized.
 
     Return:
-        torch.Tensor: the convolved tensor of same size and numbers of channels
+        the convolved tensor of same size and numbers of channels
         as the input with shape :math:`(B, C, D, H, W)`.
 
     Example:

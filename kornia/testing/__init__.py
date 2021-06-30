@@ -1,14 +1,16 @@
 """
 The testing package contains testing-specific utilities.
 """
+import contextlib
 import importlib
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from itertools import product
+from typing import Any, Optional
 
 import torch
 
-__all__ = ['tensor_to_gradcheck_var', 'create_eye_batch', 'xla_is_available']
+__all__ = ['tensor_to_gradcheck_var', 'create_eye_batch', 'xla_is_available', 'assert_close']
 
 
 def xla_is_available() -> bool:
@@ -128,3 +130,45 @@ def _get_precision_by_name(
         return tol_val
 
     return tol_val_default
+
+
+try:
+    # torch.testing.assert_close is only available for torch>=1.9
+    from torch.testing import assert_close as _assert_close  # type: ignore
+    from torch.testing._core import _get_default_tolerance
+
+    def assert_close(
+        actual: torch.Tensor,
+        expected: torch.Tensor,
+        *,
+        rtol: Optional[float] = None,
+        atol: Optional[float] = None,
+        **kwargs: Any,
+    ) -> None:
+        if rtol is None and atol is None:
+            with contextlib.suppress(Exception):
+                rtol, atol = _get_default_tolerance(actual, expected)
+
+        return _assert_close(actual, expected, rtol=rtol, atol=atol, check_stride=False, equal_nan=True, **kwargs)
+
+
+except ImportError:
+    # Partial backport of torch.testing.assert_close for torch<1.9
+    # TODO: remove this branch if kornia relies on torch>=1.9
+    from torch.testing import assert_allclose as _assert_allclose
+
+    class UsageError(Exception):
+        pass
+
+    def assert_close(
+        actual: torch.Tensor,
+        expected: torch.Tensor,
+        *,
+        rtol: Optional[float] = None,
+        atol: Optional[float] = None,
+        **kwargs: Any,
+    ) -> None:
+        try:
+            return _assert_allclose(actual, expected, rtol=rtol, atol=atol, **kwargs)
+        except ValueError as error:
+            raise UsageError(str(error)) from error

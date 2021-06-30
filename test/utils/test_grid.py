@@ -1,8 +1,8 @@
 import pytest
 import torch
-from torch.testing import assert_allclose
 
 import kornia
+from kornia.testing import assert_close
 
 
 def test_create_meshgrid(device, dtype):
@@ -48,8 +48,8 @@ def test_normalize_pixel_grid(device, dtype):
     # transform grids
     grid_pix_to_norm = kornia.transform_points(norm_trans_pix, grid_pix)
     grid_norm_to_pix = kornia.transform_points(pix_trans_norm, grid_norm)
-    assert_allclose(grid_pix, grid_norm_to_pix)
-    assert_allclose(grid_norm, grid_pix_to_norm)
+    assert_close(grid_pix, grid_norm_to_pix)
+    assert_close(grid_norm, grid_pix_to_norm)
 
 
 def test_create_meshgrid3d(device, dtype):

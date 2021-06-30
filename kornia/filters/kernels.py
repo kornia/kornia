@@ -337,12 +337,12 @@ def get_gaussian_kernel1d(kernel_size: int, sigma: float, force_even: bool = Fal
     r"""Function that returns Gaussian filter coefficients.
 
     Args:
-        kernel_size (int): filter size. It should be odd and positive.
-        sigma (float): gaussian standard deviation.
-        force_even (bool): overrides requirement for odd kernel size.
+        kernel_size: filter size. It should be odd and positive.
+        sigma: gaussian standard deviation.
+        force_even: overrides requirement for odd kernel size.
 
     Returns:
-        Tensor: 1D tensor with gaussian filter coefficients.
+        1D tensor with gaussian filter coefficients.
 
     Shape:
         - Output: :math:`(\text{kernel_size})`
@@ -367,12 +367,12 @@ def get_gaussian_discrete_kernel1d(kernel_size: int, sigma: float, force_even: b
     https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
 
     Args:
-        kernel_size (int): filter size. It should be odd and positive.
-        sigma (float): gaussian standard deviation.
-        force_even (bool): overrides requirement for odd kernel size.
+        kernel_size: filter size. It should be odd and positive.
+        sigma: gaussian standard deviation.
+        force_even: overrides requirement for odd kernel size.
 
     Returns:
-        Tensor: 1D tensor with gaussian filter coefficients.
+        1D tensor with gaussian filter coefficients.
 
     Shape:
         - Output: :math:`(\text{kernel_size})`
@@ -397,12 +397,12 @@ def get_gaussian_erf_kernel1d(kernel_size: int, sigma: float, force_even: bool =
     https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
 
     Args:
-        kernel_size (int): filter size. It should be odd and positive.
-        sigma (float): gaussian standard deviation.
-        force_even (bool): overrides requirement for odd kernel size.
+        kernel_size: filter size. It should be odd and positive.
+        sigma: gaussian standard deviation.
+        force_even: overrides requirement for odd kernel size.
 
     Returns:
-        Tensor: 1D tensor with gaussian filter coefficients.
+        1D tensor with gaussian filter coefficients.
 
     Shape:
         - Output: :math:`(\text{kernel_size})`
@@ -427,14 +427,14 @@ def get_gaussian_kernel2d(
     r"""Function that returns Gaussian filter matrix coefficients.
 
     Args:
-        kernel_size (Tuple[int, int]): filter sizes in the x and y direction.
+        kernel_size: filter sizes in the x and y direction.
          Sizes should be odd and positive.
-        sigma (Tuple[int, int]): gaussian standard deviation in the x and y
+        sigma: gaussian standard deviation in the x and y
          direction.
-        force_even (bool): overrides requirement for odd kernel size.
+        force_even: overrides requirement for odd kernel size.
 
     Returns:
-        Tensor: 2D tensor with gaussian filter matrix coefficients.
+        2D tensor with gaussian filter matrix coefficients.
 
     Shape:
         - Output: :math:`(\text{kernel_size}_x, \text{kernel_size}_y)`
@@ -465,10 +465,10 @@ def get_laplacian_kernel1d(kernel_size: int) -> torch.Tensor:
     r"""Function that returns the coefficients of a 1D Laplacian filter.
 
     Args:
-        kernel_size (int): filter size. It should be odd and positive.
+        kernel_size: filter size. It should be odd and positive.
 
     Returns:
-        Tensor (float): 1D tensor with laplacian filter coefficients.
+        1D tensor with laplacian filter coefficients.
 
     Shape:
         - Output: math:`(\text{kernel_size})`
@@ -490,10 +490,10 @@ def get_laplacian_kernel2d(kernel_size: int) -> torch.Tensor:
     r"""Function that returns Gaussian filter matrix coefficients.
 
     Args:
-        kernel_size (int): filter size should be odd.
+        kernel_size: filter size should be odd.
 
     Returns:
-        Tensor: 2D tensor with laplacian filter matrix coefficients.
+        2D tensor with laplacian filter matrix coefficients.
 
     Shape:
         - Output: :math:`(\text{kernel_size}_x, \text{kernel_size}_y)`
@@ -524,11 +524,11 @@ def get_pascal_kernel_2d(kernel_size: int, norm: bool = True) -> torch.Tensor:
     """Generate pascal filter kernel by kernel size.
 
     Args:
-        kernel_size (int): height and width of the kernel.
-        norm (bool): if to normalize the kernel or not. Default: True.
+        kernel_size: height and width of the kernel.
+        norm: if to normalize the kernel or not. Default: True.
 
     Returns:
-        torch.Tensor: kernel shaped as :math:`(kernel_size, kernel_size)`
+        kernel shaped as :math:`(kernel_size, kernel_size)`
 
     Examples:
     >>> get_pascal_kernel_2d(1)
@@ -556,11 +556,11 @@ def get_pascal_kernel_1d(kernel_size: int, norm: bool = False) -> torch.Tensor:
     """Generate Yang Hui triangle (Pascal's triangle) by a given number.
 
     Args:
-        kernel_size (int): height and width of the kernel.
-        norm (bool): if to normalize the kernel or not. Default: False.
+        kernel_size: height and width of the kernel.
+        norm: if to normalize the kernel or not. Default: False.
 
     Returns:
-        torch.Tensor: kernel shaped as :math:`(kernel_size,)`
+        kernel shaped as :math:`(kernel_size,)`
 
     Examples:
     >>> get_pascal_kernel_1d(1)

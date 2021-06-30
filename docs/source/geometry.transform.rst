@@ -12,9 +12,27 @@ Warp operators
 .. autofunction:: warp_perspective3d
 .. autofunction:: warp_affine
 .. autofunction:: warp_affine3d
-.. autofunction:: warp_points_tps
 .. autofunction:: warp_image_tps
+.. autofunction:: warp_points_tps
 .. autofunction:: remap
+
+Image 2d transforms
+-------------------
+
+.. autofunction:: affine
+.. autofunction:: rotate
+.. autofunction:: translate
+.. autofunction:: scale
+.. autofunction:: shear
+.. autofunction:: hflip
+.. autofunction:: vflip
+.. autofunction:: rot180
+.. autofunction:: resize
+.. autofunction:: rescale
+.. autofunction:: elastic_transform2d
+.. autofunction:: pyrdown
+.. autofunction:: pyrup
+.. autofunction:: build_pyramid
 
 Matrix transformations
 ----------------------
@@ -39,31 +57,6 @@ Crop operators
 .. autofunction:: crop_by_boxes
 .. autofunction:: center_crop
 .. autofunction:: crop_and_resize
-
-Bounding Box
-------------
-
-.. autofunction:: bbox_to_mask
-.. autofunction:: infer_box_shape
-.. autofunction:: validate_bboxes
-
-Image 2d transforms
--------------------
-
-.. autofunction:: affine
-.. autofunction:: rotate
-.. autofunction:: translate
-.. autofunction:: scale
-.. autofunction:: shear
-.. autofunction:: hflip
-.. autofunction:: vflip
-.. autofunction:: rot180
-.. autofunction:: resize
-.. autofunction:: rescale
-.. autofunction:: elastic_transform2d
-.. autofunction:: pyrdown
-.. autofunction:: pyrup
-.. autofunction:: build_pyramid
 
 Module
 ------

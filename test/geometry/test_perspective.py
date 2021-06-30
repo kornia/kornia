@@ -1,9 +1,8 @@
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
 
 import kornia
-from kornia.testing import tensor_to_gradcheck_var
+from kornia.testing import assert_close, tensor_to_gradcheck_var
 
 
 class TestProjectPoints:
@@ -33,7 +32,7 @@ class TestProjectPoints:
         )
         point_2d = kornia.geometry.camera.project_points(point_3d, camera_matrix)
         point_3d_hat = kornia.geometry.camera.unproject_points(point_2d, depth, camera_matrix)
-        assert_allclose(point_3d, point_3d_hat, atol=1e-4, rtol=1e-4)
+        assert_close(point_3d, point_3d_hat, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         # TODO: point [0, 0, 0] crashes
@@ -50,7 +49,7 @@ class TestProjectPoints:
         camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(1, -1, -1)
         op = kornia.geometry.camera.project_points
         op_jit = torch.jit.script(op)
-        assert_allclose(op(points_3d, camera_matrix), op_jit(points_3d, camera_matrix))
+        assert_close(op(points_3d, camera_matrix), op_jit(points_3d, camera_matrix))
 
 
 class TestUnprojectPoints:
@@ -81,7 +80,7 @@ class TestUnprojectPoints:
         camera_matrix = torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
         expected = torch.tensor([[0.0, 0.0, 2.0]], device=device, dtype=dtype)
         actual = kornia.geometry.camera.unproject_points(point_2d, depth, camera_matrix)
-        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
+        assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
     def test_unproject_center_normalize(self, device, dtype):
         point_2d = torch.tensor([[0.0, 0.0]], device=device, dtype=dtype)
@@ -89,7 +88,7 @@ class TestUnprojectPoints:
         camera_matrix = torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
         expected = torch.tensor([[0.0, 0.0, 2.0]], device=device, dtype=dtype)
         actual = kornia.geometry.camera.unproject_points(point_2d, depth, camera_matrix, True)
-        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
+        assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
     def test_unproject_and_project(self, device, dtype):
         point_2d = torch.tensor([[0.0, 0.0]], device=device, dtype=dtype)
@@ -97,7 +96,7 @@ class TestUnprojectPoints:
         camera_matrix = torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
         point_3d = kornia.geometry.camera.unproject_points(point_2d, depth, camera_matrix)
         point_2d_hat = kornia.geometry.camera.project_points(point_3d, camera_matrix)
-        assert_allclose(point_2d, point_2d_hat, atol=1e-4, rtol=1e-4)
+        assert_close(point_2d, point_2d_hat, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         points_2d = torch.zeros(1, 2, device=device, dtype=dtype)
@@ -119,4 +118,4 @@ class TestUnprojectPoints:
         args = (points_2d, depth, camera_matrix)
         op = kornia.geometry.camera.unproject_points
         op_jit = torch.jit.script(op)
-        assert_allclose(op(*args), op_jit(*args))
+        assert_close(op(*args), op_jit(*args))

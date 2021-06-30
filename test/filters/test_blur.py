@@ -1,9 +1,9 @@
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
 
 import kornia
 import kornia.testing as utils  # test utils
+from kornia.testing import assert_close
 
 
 class TestBoxBlur:
@@ -38,7 +38,7 @@ class TestBoxBlur:
         actual = kornia.filters.box_blur(inp, kernel_size)
 
         tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
-        assert_allclose(actual.sum(), torch.tensor(35.0).to(actual), rtol=tol_val, atol=tol_val)
+        assert_close(actual.sum(), torch.tensor(35.0).to(actual), rtol=tol_val, atol=tol_val)
 
     # TODO(dmytro): normalized does not make any effect
     def test_kernel_3x3_nonormalize(self, device, dtype):
@@ -62,7 +62,7 @@ class TestBoxBlur:
         actual = kornia.filters.box_blur(inp, kernel_size, normalized=False)
 
         tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
-        assert_allclose(actual.sum(), torch.tensor(35.0).to(actual), rtol=tol_val, atol=tol_val)
+        assert_close(actual.sum(), torch.tensor(35.0).to(actual), rtol=tol_val, atol=tol_val)
 
     def test_kernel_5x5(self, device, dtype):
         inp = torch.tensor(
@@ -87,7 +87,7 @@ class TestBoxBlur:
         actual = kornia.filters.box_blur(inp, kernel_size)
 
         tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
-        assert_allclose(actual[:, 0, 2, 2], expected, rtol=tol_val, atol=tol_val)
+        assert_close(actual[:, 0, 2, 2], expected, rtol=tol_val, atol=tol_val)
 
     def test_kernel_5x5_batch(self, device, dtype):
         batch_size = 3
@@ -113,7 +113,7 @@ class TestBoxBlur:
         actual = kornia.filters.box_blur(inp, kernel_size)
 
         tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
-        assert_allclose(actual[:, 0, 2, 2], expected, rtol=tol_val, atol=tol_val)
+        assert_close(actual[:, 0, 2, 2], expected, rtol=tol_val, atol=tol_val)
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
@@ -122,7 +122,7 @@ class TestBoxBlur:
         kernel_size = (3, 3)
         actual = kornia.filters.box_blur(inp, kernel_size)
         expected = actual
-        assert_allclose(actual, actual)
+        assert_close(actual, actual)
 
     def test_gradcheck(self, device, dtype):
         batch_size, channels, height, width = 1, 2, 5, 4
@@ -138,7 +138,7 @@ class TestBoxBlur:
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
         actual = op_script(img, kernel_size)
         expected = op(img, kernel_size)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_module(self, device, dtype):
         op = kornia.filters.box_blur
@@ -148,4 +148,4 @@ class TestBoxBlur:
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
         actual = op_module(kernel_size)(img)
         expected = op(img, kernel_size)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)

@@ -3,9 +3,9 @@ import logging
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.testing import assert_allclose
 
 import kornia
+from kornia.testing import assert_close
 
 logger = logging.getLogger(__name__)
 
@@ -58,5 +58,5 @@ class TestIntegrationSoftArgmax2d:
             loss.backward()
             optimizer.step()
 
-        assert_allclose(pred[..., 0], target[..., 0], rtol=1e-2, atol=1e-2)
-        assert_allclose(pred[..., 1], target[..., 1], rtol=1e-2, atol=1e-2)
+        assert_close(pred[..., 0], target[..., 0], rtol=1e-2, atol=1e-2)
+        assert_close(pred[..., 1], target[..., 1], rtol=1e-2, atol=1e-2)

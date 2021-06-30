@@ -1,51 +1,10 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
 
 import kornia
 import kornia.testing as utils  # test utils
-
-
-class TestBoundingBoxInferring3D:
-    def test_bounding_boxes_dim_inferring(self, device, dtype):
-        boxes = torch.tensor(
-            [
-                [[0, 1, 2], [10, 1, 2], [10, 21, 2], [0, 21, 2], [0, 1, 32], [10, 1, 32], [10, 21, 32], [0, 21, 32]],
-                [[3, 4, 5], [43, 4, 5], [43, 54, 5], [3, 54, 5], [3, 4, 65], [43, 4, 65], [43, 54, 65], [3, 54, 65]],
-            ],
-            device=device,
-            dtype=dtype,
-        )  # 2x8x3
-        d, h, w = kornia.geometry.transform.crop.infer_box_shape3d(boxes)
-
-        assert_allclose(d, torch.tensor([31.0, 61.0], device=device, dtype=dtype))
-        assert_allclose(h, torch.tensor([21.0, 51.0], device=device, dtype=dtype))
-        assert_allclose(w, torch.tensor([11.0, 41.0], device=device, dtype=dtype))
-
-    def test_gradcheck(self, device, dtype):
-        boxes = torch.tensor(
-            [[[0, 1, 2], [10, 1, 2], [10, 21, 2], [0, 21, 2], [0, 1, 32], [10, 1, 32], [10, 21, 32], [0, 21, 32]]],
-            device=device,
-            dtype=dtype,
-        )
-        boxes = utils.tensor_to_gradcheck_var(boxes)
-        assert gradcheck(kornia.kornia.geometry.transform.crop.infer_box_shape3d, (boxes,), raise_exception=True)
-
-    def test_jit(self, device, dtype):
-        # Define script
-        op = kornia.infer_box_shape3d
-        op_script = torch.jit.script(op)
-
-        boxes = torch.tensor(
-            [[[0, 0, 1], [3, 0, 1], [3, 2, 1], [0, 2, 1], [0, 0, 3], [3, 0, 3], [3, 2, 3], [0, 2, 3]]],
-            device=device,
-            dtype=dtype,
-        )  # 1x8x3
-
-        actual = op_script(boxes)
-        expected = op(boxes)
-        assert_allclose(actual, expected)
+from kornia.testing import assert_close
 
 
 class TestCropAndResize3D:
@@ -66,7 +25,7 @@ class TestCropAndResize3D:
         )  # 1x8x3
 
         patches = kornia.crop_and_resize3d(inp, boxes, (depth, height, width))
-        assert_allclose(patches, expected)
+        assert_close(patches, expected)
 
     def test_crop_batch(self, device, dtype):
         inp = torch.cat(
@@ -97,7 +56,7 @@ class TestCropAndResize3D:
         )  # 2x8x3
 
         patches = kornia.crop_and_resize3d(inp, boxes, (depth, height, width), align_corners=True)
-        assert_allclose(patches, expected)
+        assert_close(patches, expected)
 
     def test_gradcheck(self, device, dtype):
         img = torch.arange(0.0, 64.0, device=device, dtype=dtype).view(1, 1, 4, 4, 4)
@@ -127,7 +86,7 @@ class TestCropAndResize3D:
 
         actual = op_script(img, boxes, (4, 3, 2))
         expected = op(img, boxes, (4, 3, 2))
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
 
 class TestCenterCrop3D:
@@ -142,7 +101,7 @@ class TestCenterCrop3D:
             (inp.size(4) // 2 - crop_size[2] // 2) : (inp.size(4) // 2 + crop_size[2] // 2 + 1),
         ]
         out_crop = kornia.center_crop3d(inp, crop_size, align_corners=True)
-        assert_allclose(out_crop, expected, rtol=1e-4, atol=1e-4)
+        assert_close(out_crop, expected, rtol=1e-4, atol=1e-4)
 
     @pytest.mark.parametrize("crop_size", [(3, 5, 7), (5, 3, 7), (7, 3, 5)])
     def test_center_crop_357_batch(self, crop_size, device, dtype):
@@ -160,7 +119,7 @@ class TestCenterCrop3D:
             (inp.size(4) // 2 - crop_size[2] // 2) : (inp.size(4) // 2 + crop_size[2] // 2 + 1),
         ]
         out_crop = kornia.center_crop3d(inp, crop_size, align_corners=True)
-        assert_allclose(out_crop, expected, rtol=1e-4, atol=1e-4)
+        assert_close(out_crop, expected, rtol=1e-4, atol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         img = torch.arange(0.0, 343.0, device=device, dtype=dtype).view(1, 1, 7, 7, 7)
@@ -176,7 +135,7 @@ class TestCenterCrop3D:
 
         actual = op_script(img, (4, 3, 2))
         expected = kornia.center_crop3d(img, (4, 3, 2))
-        assert_allclose(actual, expected, rtol=1e-4, atol=1e-4)
+        assert_close(actual, expected, rtol=1e-4, atol=1e-4)
 
 
 class TestCropByBoxes3D:
@@ -218,7 +177,7 @@ class TestCropByBoxes3D:
         expected = inp[:, :, 1:3, 1:4, 1:4]
 
         patches = kornia.geometry.transform.crop.crop_by_boxes3d(inp, src_box, dst_box, align_corners=True)
-        assert_allclose(patches, expected, rtol=1e-4, atol=1e-4)
+        assert_close(patches, expected, rtol=1e-4, atol=1e-4)
 
     def test_crop_by_boxes_resizing(self, device, dtype):
         inp = torch.arange(0.0, 343.0, device=device, dtype=dtype).view(1, 1, 7, 7, 7)
@@ -262,7 +221,7 @@ class TestCropByBoxes3D:
         )
 
         patches = kornia.geometry.transform.crop.crop_by_boxes3d(inp, src_box, dst_box, align_corners=True)
-        assert_allclose(patches, expected, rtol=1e-4, atol=1e-4)
+        assert_close(patches, expected, rtol=1e-4, atol=1e-4)
 
     def test_jit(self, device, dtype):
         # Define script
@@ -305,7 +264,7 @@ class TestCropByBoxes3D:
 
         actual = op_script(inp, src_box, dst_box, align_corners=True)
         expected = op(inp, src_box, dst_box, align_corners=True)
-        assert_allclose(actual, expected, rtol=1e-4, atol=1e-4)
+        assert_close(actual, expected, rtol=1e-4, atol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         inp = torch.randn((1, 1, 7, 7, 7), device=device, dtype=dtype)

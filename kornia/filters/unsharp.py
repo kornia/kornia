@@ -11,16 +11,18 @@ def unsharp_mask(
 ) -> torch.Tensor:
     r"""Creates an operator that blurs a tensor using the existing Gaussian filter available with the Kornia library.
 
-    Arguments:
-        input (torch.Tensor): the input tensor with shape :math:`(B,C,H,W)`.
-        kernel_size (Tuple[int, int]): the size of the kernel.
-        sigma (Tuple[float, float]): the standard deviation of the kernel.
-        border_type (str): the padding mode to be applied before convolving.
+    .. image:: _static/img/unsharp_mask.png
+
+    Args:
+        input: the input tensor with shape :math:`(B,C,H,W)`.
+        kernel_size: the size of the kernel.
+        sigma: the standard deviation of the kernel.
+        border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+          ``'replicate'`` or ``'circular'``.
 
     Returns:
-        torch.Tensor: the blurred tensor with shape :math:`(B,C,H,W)`.
+        the blurred tensor with shape :math:`(B,C,H,W)`.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
@@ -36,15 +38,15 @@ def unsharp_mask(
 class UnsharpMask(nn.Module):
     r"""Creates an operator that sharpens image using the existing Gaussian filter available with the Kornia library..
 
-    Arguments:
-        kernel_size (Tuple[int, int]): the size of the kernel.
-        sigma (Tuple[float, float]): the standard deviation of the kernel.
-        border_type (str): the padding mode to be applied before convolving.
+    Args:
+        kernel_size: the size of the kernel.
+        sigma: the standard deviation of the kernel.
+        border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+          ``'replicate'`` or ``'circular'``.
 
     Returns:
-        Tensor: the sharpened tensor with shape :math:`(B,C,H,W)`.
+        the sharpened tensor with shape :math:`(B,C,H,W)`.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
