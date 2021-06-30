@@ -43,7 +43,7 @@ def get_kron_order(d1: int, d2: int) -> torch.Tensor:
 
 
 class MKDGradients(nn.Module):
-    r""" Module, which computes gradients of given patches, stacked as [magnitudes, orientations].
+    r"""Module, which computes gradients of given patches, stacked as [magnitudes, orientations].
 
     Given gradients $g_x$, $g_y$ with respect to $x$, $y$ respectively,
       - $\mathbox{mags} = $\sqrt{g_x^2 + g_y^2 + eps}$
@@ -88,7 +88,7 @@ class MKDGradients(nn.Module):
 
 
 class VonMisesKernel(nn.Module):
-    r""" Module, which computes parameters of Von Mises kernel given coefficients, and embeds given patches.
+    r"""Module, which computes parameters of Von Mises kernel given coefficients, and embeds given patches.
 
     Args:
         patch_size: Input patch size in pixels.
@@ -171,7 +171,7 @@ class VonMisesKernel(nn.Module):
 
 
 class EmbedGradients(nn.Module):
-    r""" Module that computes gradient embedding, weighted by sqrt of magnitudes of given patches.
+    r"""Module that computes gradient embedding, weighted by sqrt of magnitudes of given patches.
 
     Args:
         patch_size: Input patch size in pixels.
@@ -267,7 +267,7 @@ def spatial_kernel_embedding(kernel_type, grids: dict) -> torch.Tensor:
 
 
 class ExplicitSpacialEncoding(nn.Module):
-    r""" Module that computes explicit cartesian or polar embedding.
+    r"""Module that computes explicit cartesian or polar embedding.
 
     Args:
         kernel_type: Parametrization of kernel ``'polar'`` or ``'cart'``.
@@ -385,7 +385,7 @@ class ExplicitSpacialEncoding(nn.Module):
 
 
 class Whitening(nn.Module):
-    r""" Module, performs supervised or unsupervised whitening.
+    r"""Module, performs supervised or unsupervised whitening.
 
     This is based on the paper "Understanding and Improving Kernel Local Descriptors".
     See :cite:`mukundan2019understanding` for more details.

@@ -13,7 +13,7 @@ urls["hardnet8v2"] = "http://cmp.felk.cvut.cz/~mishkdmy/hardnet8v2.pt"  # noqa p
 
 
 class HardNet(nn.Module):
-    r""" Module, which computes HardNet descriptors of given grayscale patches of 32x32.
+    r"""Module, which computes HardNet descriptors of given grayscale patches of 32x32.
 
     This is based on the original code from paper "Working hard to know your neighbor's
     margins: Local descriptor learning loss". See :cite:`HardNet2017` for more details.

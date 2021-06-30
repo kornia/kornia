@@ -145,7 +145,7 @@ def laf_from_center_scale_ori(xy: torch.Tensor, scale: torch.Tensor, ori: torch.
 
 
 def scale_laf(laf: torch.Tensor, scale_coef: Union[float, torch.Tensor]) -> torch.Tensor:
-    """ Multiplies region part of LAF ([:, :, :2, :2]) by a scale_coefficient.
+    """Multiplies region part of LAF ([:, :, :2, :2]) by a scale_coefficient.
 
     So the center, shape and orientation of the local feature stays the same, but the region area changes.
 
@@ -174,7 +174,7 @@ def scale_laf(laf: torch.Tensor, scale_coef: Union[float, torch.Tensor]) -> torc
 
 
 def make_upright(laf: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
-    """ Rectifies the affine matrix, so that it becomes upright.
+    """Rectifies the affine matrix, so that it becomes upright.
 
     Args:
         laf: tensor of LAFs.
@@ -259,7 +259,7 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
 
 
 def laf_to_boundary_points(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
-    """ Converts LAFs to boundary points of the regions + center.
+    """Converts LAFs to boundary points of the regions + center.
 
     Used for local features visualization, see visualize_laf function.
 

@@ -81,9 +81,9 @@ class PatchAffineShapeEstimator(nn.Module):
 
 class LAFAffineShapeEstimator(nn.Module):
     """Module, which extracts patches using input images and local affine frames (LAFs).
-    
+
     Then runs :class:`~kornia.feature.PatchAffineShapeEstimator` on patches to estimate LAFs shape.
-    
+
     Then original LAF shape is replaced with estimated one. The original LAF orientation is not preserved,
     so it is recommended to first run LAFAffineShapeEstimator and then LAFOrienter.
 

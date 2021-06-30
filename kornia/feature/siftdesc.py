@@ -49,7 +49,7 @@ def get_sift_bin_ksize_stride_pad(patch_size: int, num_spatial_bins: int) -> Tup
 
 
 class SIFTDescriptor(nn.Module):
-    r""" Module which computes SIFT descriptors of given patches.
+    r"""Module which computes SIFT descriptors of given patches.
 
     Args:
         patch_size: Input patch size in pixels.
