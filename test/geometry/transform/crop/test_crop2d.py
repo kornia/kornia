@@ -6,39 +6,6 @@ import kornia.testing as utils  # test utils
 from kornia.testing import assert_close
 
 
-class TestBoundingBoxInferring:
-    def test_bounding_boxes_dim_inferring(self, device, dtype):
-        boxes = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
-
-        h, w = kornia.geometry.transform.crop.infer_box_shape(boxes)
-        assert (h, w) == (2, 3)
-
-    def test_bounding_boxes_dim_inferring_batch(self, device, dtype):
-        boxes = torch.tensor(
-            [[[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]], [[2.0, 2.0], [4.0, 2.0], [4.0, 3.0], [2.0, 3.0]]],
-            device=device,
-            dtype=dtype,
-        )
-        h, w = kornia.geometry.transform.crop.infer_box_shape(boxes)
-        assert (h.unique().item(), w.unique().item()) == (2, 3)
-
-    def test_gradcheck(self, device, dtype):
-        boxes = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
-        boxes = utils.tensor_to_gradcheck_var(boxes)
-        assert gradcheck(kornia.kornia.geometry.transform.crop.infer_box_shape, (boxes,), raise_exception=True)
-
-    def test_jit(self, device, dtype):
-        # Define script
-        op = kornia.geometry.transform.crop.infer_box_shape
-        op_script = torch.jit.script(op)
-        # Define input
-        boxes = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
-
-        actual = op_script(boxes)
-        expected = op(boxes)
-        assert_close(actual, expected)
-
-
 class TestCropAndResize:
     def test_align_corners_true(self, device, dtype):
         inp = torch.tensor(
