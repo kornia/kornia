@@ -23,7 +23,7 @@ urls: Dict[str, str] = {
 
 
 def get_grid_dict(patch_size: int = 32) -> Dict[str, torch.Tensor]:
-    """Gets cartesian and polar parametrizations of grid."""
+    r"""Gets cartesian and polar parametrizations of grid."""
     kgrid = create_meshgrid(height=patch_size, width=patch_size, normalized_coordinates=True)
     x = kgrid[0, :, :, 0]
     y = kgrid[0, :, :, 1]
@@ -33,7 +33,7 @@ def get_grid_dict(patch_size: int = 32) -> Dict[str, torch.Tensor]:
 
 
 def get_kron_order(d1: int, d2: int) -> torch.Tensor:
-    """Gets order for doing kronecker product."""
+    r"""Gets order for doing kronecker product."""
     kron_order = torch.zeros([d1 * d2, 2], dtype=torch.int64)
     for i in range(d1):
         for j in range(d2):
@@ -43,20 +43,23 @@ def get_kron_order(d1: int, d2: int) -> torch.Tensor:
 
 
 class MKDGradients(nn.Module):
-    r"""
-    Module, which computes gradients of given patches,
-    stacked as [magnitudes, orientations].
+    r""" Module, which computes gradients of given patches, stacked as [magnitudes, orientations].
+
     Given gradients $g_x$, $g_y$ with respect to $x$, $y$ respectively,
       - $\mathbox{mags} = $\sqrt{g_x^2 + g_y^2 + eps}$
       - $\mathbox{oris} = $\mbox{tan}^{-1}(\nicefrac{g_y}{g_x})$.
+
     Args:
-        patch_size: (int) Input patch size in pixels (32 is default)
+        patch_size: Input patch size in pixels.
+
     Returns:
-        Tensor: gradients of given patches
+        gradients of given patches.
+
     Shape:
         - Input: (B, 1, patch_size, patch_size)
         - Output: (B, 2, patch_size, patch_size)
-    Examples::
+
+    Example:
         >>> patches = torch.rand(23, 1, 32, 32)
         >>> gradient = MKDGradients()
         >>> g = gradient(patches) # 23x2x32x32
@@ -85,19 +88,20 @@ class MKDGradients(nn.Module):
 
 
 class VonMisesKernel(nn.Module):
-    """
-    Module, which computes parameters of Von Mises kernel given coefficients,
-    and embeds given patches.
+    r""" Module, which computes parameters of Von Mises kernel given coefficients, and embeds given patches.
+
     Args:
-        patch_size: (int) Input patch size in pixels (32 is default)
-        coeffs: (list) List of coefficients
-              Some examples are hardcoded in COEFFS
+        patch_size: Input patch size in pixels.
+        coeffs: List of coefficients. Some examples are hardcoded in COEFFS,
+
     Returns:
-        Tensor: Von Mises embedding of given parametrization
+        Von Mises embedding of given parametrization.
+
     Shape:
         - Input: (B, 1, patch_size, patch_size)
         - Output: (B, d, patch_size, patch_size)
-    Examples::
+
+    Examples:
         >>> oris = torch.rand(23, 1, 32, 32)
         >>> vm = VonMisesKernel(patch_size=32,
         ...                     coeffs=[0.14343168,
@@ -167,18 +171,20 @@ class VonMisesKernel(nn.Module):
 
 
 class EmbedGradients(nn.Module):
-    """
-    Module that computes gradient embedding,
-    weighted by sqrt of magnitudes of given patches.
+    r""" Module that computes gradient embedding, weighted by sqrt of magnitudes of given patches.
+
     Args:
-        patch_size: (int) Input patch size in pixels (32 is default)
-        relative: (bool) absolute or relative gradients (False is default)
+        patch_size: Input patch size in pixels.
+        relative: absolute or relative gradients.
+
     Returns:
-        torch.Tensor: Gradient embedding
+        Gradient embedding.
+
     Shape:
         - Input: (B, 2, patch_size, patch_size)
         - Output: (B, 7, patch_size, patch_size)
-    Examples::
+
+    Examples:
         >>> grads = torch.rand(23, 2, 32, 32)
         >>> emb_grads = EmbedGradients(patch_size=32,
         ...                            relative=False)
@@ -230,7 +236,7 @@ class EmbedGradients(nn.Module):
 
 
 def spatial_kernel_embedding(kernel_type, grids: dict) -> torch.Tensor:
-    """Compute embeddings for cartesian and polar parametrizations."""
+    r"""Compute embeddings for cartesian and polar parametrizations."""
     factors = {"phi": 1.0, "rho": pi / sqrt2, "x": pi / 2, "y": pi / 2}
     if kernel_type == 'cart':
         coeffs_ = 'xy'
@@ -261,21 +267,23 @@ def spatial_kernel_embedding(kernel_type, grids: dict) -> torch.Tensor:
 
 
 class ExplicitSpacialEncoding(nn.Module):
-    """
-    Module that computes explicit cartesian or polar embedding.
+    r""" Module that computes explicit cartesian or polar embedding.
+
     Args:
-        kernel_type: (str) Parametrization of kernel.
-                     'polar', 'cart' ('polar' is default)
-        fmap_size: (int) Input feature map size in pixels (32 is default)
-        in_dims: (int) Dimensionality of input feature map (7 is default)
-        do_gmask: (bool) Apply gaussian mask (True is default)
-        do_l2: (bool) Apply l2-normalization (True is default)
+        kernel_type: Parametrization of kernel ``'polar'`` or ``'cart'``.
+        fmap_size: Input feature map size in pixels.
+        in_dims: Dimensionality of input feature map.
+        do_gmask: Apply gaussian mask.
+        do_l2: Apply l2-normalization.
+
     Returns:
-        Tensor: Explicit cartesian or polar embedding
+        Explicit cartesian or polar embedding.
+
     Shape:
         - Input: (B, in_dims, fmap_size, fmap_size)
         - Output: (B, out_dims, fmap_size, fmap_size)
-    Examples::
+
+    Example:
         >>> emb_ori = torch.rand(23, 7, 32, 32)
         >>> ese = ExplicitSpacialEncoding(kernel_type='polar',
         ...                               fmap_size=32,
@@ -377,27 +385,27 @@ class ExplicitSpacialEncoding(nn.Module):
 
 
 class Whitening(nn.Module):
-    """
-    Module, performs supervised or unsupervised whitening.
+    r""" Module, performs supervised or unsupervised whitening.
 
     This is based on the paper "Understanding and Improving Kernel Local Descriptors".
     See :cite:`mukundan2019understanding` for more details.
 
     Args:
-        xform: (str) Variant of whitening to use.
-                     None, 'lw', 'pca', 'pcaws', 'pcawt'
-        whitening_model: (dict) Dictionary with keys
-                    'mean', 'eigvecs', 'eigvals' holding torch.Tensors
-        in_dims: (int) Dimensionality of input descriptors
-        output_dims: (int) Dimensionality reduction (128 is default)
-        keval: (int) Shrinkage parameter (40 is default)
-        t: (float) Attenuation parameter (0.7 is default)
+        xform: Variant of whitening to use. None, 'lw', 'pca', 'pcaws', 'pcawt'.
+        whitening_model: Dictionary with keys 'mean', 'eigvecs', 'eigvals' holding torch.Tensors.
+        in_dims: Dimensionality of input descriptors.
+        output_dims: (int) Dimensionality reduction.
+        keval: Shrinkage parameter.
+        t: Attenuation parameter.
+
     Returns:
-        Tensor: l2-normalized, whitened descriptors
+        l2-normalized, whitened descriptors.
+
     Shape:
         - Input: (B, in_dims, fmap_size, fmap_size)
         - Output: (B, out_dims, fmap_size, fmap_size)
-    Examples::
+
+    Examples:
         >>> descs = torch.rand(23, 238)
         >>> whitening_model = {'pca': {'mean': torch.zeros(238),
         ...                            'eigvecs': torch.eye(238),
@@ -508,21 +516,18 @@ class MKDDescriptor(nn.Module):
     See :cite:`mukundan2019understanding` for more details.
 
     Args:
-        patch_size: (int) Input patch size in pixels (32 is default).
-        kernel_type: (str) Parametrization of kernel
-                     'concat', 'cart', 'polar' ('concat' is default).
-        whitening: (str) Whitening transform to apply
-                     None, 'lw', 'pca', 'pcawt', 'pcaws' ('pcawt' is default).
-        training_set: (str) Set that model was trained on
-                    'liberty', 'notredame', 'yosemite' ('liberty' is default).
-        output_dims: (int) Dimensionality reduction (128 is default).
+        patch_size: Input patch size in pixels.
+        kernel_type: Parametrization of kernel ``'concat'``, ``'cart'``, ``'polar'``.
+        whitening: Whitening transform to apply ``None``, ``'lw'``, ``'pca'``, ``'pcawt'``, ``'pcaws'``.
+        training_set: Set that model was trained on ``'liberty'``, ``'notredame'``, ``'yosemite'``.
+        output_dims: Dimensionality reduction.
 
     Returns:
-        torch.Tensor: Explicit cartesian or polar embedding.
+        Explicit cartesian or polar embedding.
 
     Shape:
-        - Input: :math:`(B, in_dims, fmap_size, fmap_size)`.
-        - Output: :math:`(B, out_dims, fmap_size, fmap_size)`,
+        - Input: :math:`(B, in_{dims}, fmap_{size}, fmap_{size})`.
+        - Output: :math:`(B, out_{dims}, fmap_{size}, fmap_{size})`,
 
     Examples:
         >>> patches = torch.rand(23, 1, 32, 32)

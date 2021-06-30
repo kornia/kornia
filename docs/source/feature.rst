@@ -3,14 +3,6 @@ kornia.feature
 
 .. currentmodule:: kornia.feature
 
-Non Maxima Suppression
-----------------------
-
-.. autofunction:: non_maxima_suppression2d
-.. autofunction:: non_maxima_suppression3d
-.. autofunction:: nms2d
-.. autofunction:: nms3d
-
 Detectors
 ---------
 
@@ -60,6 +52,13 @@ Local Affine Frames (LAF)
 .. autofunction:: laf_from_three_points
 .. autofunction:: raise_error_if_laf_is_not_valid
 
+Non Maxima Suppression
+----------------------
+
+.. autofunction:: non_maxima_suppression2d
+.. autofunction:: non_maxima_suppression3d
+.. autofunction:: nms2d
+.. autofunction:: nms3d
 
 Module
 ------

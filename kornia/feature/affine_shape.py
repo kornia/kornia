@@ -19,12 +19,14 @@ urls["affnet"] = "https://github.com/ducha-aiki/affnet/raw/master/pretrained/Aff
 
 
 class PatchAffineShapeEstimator(nn.Module):
-    """Module, which estimates the second moment matrix of the patch gradients in order to determine the
-    affine shape of the local feature as in :cite:`baumberg2000`.
+    r"""Module, which estimates the second moment matrix of the patch gradients.
+
+    The method determines the affine shape of the local feature as in :cite:`baumberg2000`.
 
     Args:
-        patch_size: int, default = 19
-        eps: float, for safe division, default is 1e-10"""
+        patch_size: the input image patch size.
+        eps: for safe division.
+    """
 
     def __init__(self, patch_size: int = 19, eps: float = 1e-10):
         super(PatchAffineShapeEstimator, self).__init__()
@@ -78,15 +80,17 @@ class PatchAffineShapeEstimator(nn.Module):
 
 
 class LAFAffineShapeEstimator(nn.Module):
-    """Module, which extracts patches using input images and local affine frames (LAFs),
-    then runs :class:`~kornia.feature.PatchAffineShapeEstimator`
-    on patches to estimate LAFs shape.
+    """Module, which extracts patches using input images and local affine frames (LAFs).
+    
+    Then runs :class:`~kornia.feature.PatchAffineShapeEstimator` on patches to estimate LAFs shape.
+    
     Then original LAF shape is replaced with estimated one. The original LAF orientation is not preserved,
     so it is recommended to first run LAFAffineShapeEstimator and then LAFOrienter.
 
     Args:
-            patch_size: int, default = 32
-            affine_shape_detector: nn.Module. Patch affine shape estimator, e.g. PatchAffineShapeEstimator. Default: None"""  # noqa pylint: disable
+        patch_size: the input image patch size.
+        affine_shape_detector: Patch affine shape estimator, :class:`~kornia.feature.PatchAffineShapeEstimator`.
+    """  # noqa pylint: disable
 
     def __init__(self, patch_size: int = 32, affine_shape_detector: Optional[nn.Module] = None) -> None:
         super(LAFAffineShapeEstimator, self).__init__()
@@ -136,16 +140,17 @@ class LAFAffineShapeEstimator(nn.Module):
 
 
 class LAFAffNetShapeEstimator(nn.Module):
-    """Module, which extracts patches using input images and local affine frames (LAFs),
-    then runs AffNet on patches to estimate LAFs shape.
-    This is based on the original code from paper "Repeatability Is Not Enough:
-    Learning Discriminative Affine Regions via Discriminability"".
+    """Module, which extracts patches using input images and local affine frames (LAFs).
+
+    Then runs AffNet on patches to estimate LAFs shape. This is based on the original code from paper
+    "Repeatability Is Not Enough: Learning Discriminative Affine Regions via Discriminability"".
     See :cite:`AffNet2018` for more details.
+
     Then original LAF shape is replaced with estimated one. The original LAF orientation is not preserved,
     so it is recommended to first run LAFAffineShapeEstimator and then LAFOrienter.
 
     Args:
-        pretrained: (bool) Download and set pretrained weights to the model. Default: false.
+        pretrained: Download and set pretrained weights to the model.
     """
 
     def __init__(self, pretrained: bool = False):
@@ -194,11 +199,12 @@ class LAFAffNetShapeEstimator(nn.Module):
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            laf: (torch.Tensor) shape [BxNx2x3]
-            img: (torch.Tensor) shape [Bx1xHxW]
+            laf: shape [BxNx2x3]
+            img: shape [Bx1xHxW]
 
         Returns:
-            torch.Tensor: laf_out shape [BxNx2x3]"""
+            laf_out shape [BxNx2x3]
+        """
         raise_error_if_laf_is_not_valid(laf)
         img_message: str = "Invalid img shape, we expect BxCxHxW. Got: {}".format(img.shape)
         if not torch.is_tensor(img):

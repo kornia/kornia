@@ -13,17 +13,16 @@ urls["hardnet8v2"] = "http://cmp.felk.cvut.cz/~mishkdmy/hardnet8v2.pt"  # noqa p
 
 
 class HardNet(nn.Module):
-    """
-    Module, which computes HardNet descriptors of given grayscale patches of 32x32.
+    r""" Module, which computes HardNet descriptors of given grayscale patches of 32x32.
 
     This is based on the original code from paper "Working hard to know your neighbor's
     margins: Local descriptor learning loss". See :cite:`HardNet2017` for more details.
 
     Args:
-        pretrained: (bool) Download and set pretrained weights to the model. Default: false.
+        pretrained: Download and set pretrained weights to the model.
 
     Returns:
-        torch.Tensor: HardNet descriptor of the patches.
+        HardNet descriptor of the patches.
 
     Shape:
         - Input: (B, 1, 32, 32)
@@ -85,17 +84,16 @@ class HardNet(nn.Module):
 
 
 class HardNet8(nn.Module):
-    """
-    Module, which computes HardNet8 descriptors of given grayscale patches of 32x32.
+    r"""Module, which computes HardNet8 descriptors of given grayscale patches of 32x32.
 
     This is based on the original code from paper "Improving the HardNet Descriptor".
     See :cite:`HardNet2020` for more details.
 
     Args:
-        pretrained: (bool) Download and set pretrained weights to the model. Default: false.
+        pretrained: Download and set pretrained weights to the model.
 
     Returns:
-        torch.Tensor: HardNet8 descriptor of the patches.
+        HardNet8 descriptor of the patches.
 
     Shape:
         - Input: (B, 1, 32, 32)

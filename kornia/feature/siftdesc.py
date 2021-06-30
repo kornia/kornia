@@ -10,16 +10,13 @@ from kornia.geometry.conversions import pi
 
 
 def get_sift_pooling_kernel(ksize: int = 25) -> torch.Tensor:
-    """Returns a weighted pooling kernel for SIFT descriptor
+    r"""Returns a weighted pooling kernel for SIFT descriptor.
 
     Args:
-        ksize: (int): kernel_size
+        ksize: kernel_size.
 
     Returns:
-        torch.Tensor: kernel
-
-    Shape:
-        Output: :math: `(ksize,ksize)`
+        the pooling kernel with shape :math:`(ksize, ksize)`.
     """
     ks_2: float = float(ksize) / 2.0
     xc2: torch.Tensor = ks_2 - (torch.arange(ksize).float() + 0.5 - ks_2).abs()  # type: ignore # noqa
@@ -28,15 +25,14 @@ def get_sift_pooling_kernel(ksize: int = 25) -> torch.Tensor:
 
 
 def get_sift_bin_ksize_stride_pad(patch_size: int, num_spatial_bins: int) -> Tuple:
-    """Returns a tuple with SIFT parameters, given the patch size
-    and number of spatial bins.
+    r"""Returns a tuple with SIFT parameters.
 
     Args:
-        patch_size: (int)
-        num_spatial_bins: (int)
+        patch_size: the given patch size.
+        num_spatial_bins: the ggiven number of spatial bins.
 
     Returns:
-        ksize, stride, pad: ints
+        ksize, stride, pad.
     """
     ksize: int = 2 * int(patch_size / (num_spatial_bins + 1))
     stride: int = patch_size // num_spatial_bins
@@ -53,25 +49,23 @@ def get_sift_bin_ksize_stride_pad(patch_size: int, num_spatial_bins: int) -> Tup
 
 
 class SIFTDescriptor(nn.Module):
-    """
-    Module, which computes SIFT descriptors of given patches
+    r""" Module which computes SIFT descriptors of given patches.
 
     Args:
-        patch_size: (int) Input patch size in pixels (41 is default)
-        num_ang_bins: (int) Number of angular bins. (8 is default)
-        num_spatial_bins: (int) Number of spatial bins (4 is default)
-        clipval: (float) default 0.2
-        rootsift: (bool) if True, RootSIFT (Arandjelović et. al, 2012)
-        is computed
+        patch_size: Input patch size in pixels.
+        num_ang_bins: Number of angular bins.
+        num_spatial_bins: Number of spatial bins.
+        clipval:
+        rootsift: if ``True``, RootSIFT (Arandjelović et. al, 2012) is computed.
 
     Returns:
-        torch.Tensor: SIFT descriptor of the patches
+        SIFT descriptor of the patches with shape.
 
     Shape:
         - Input: (B, 1, num_spatial_bins, num_spatial_bins)
         - Output: (B, num_ang_bins * num_spatial_bins ** 2)
 
-    Examples::
+    Example:
         >>> input = torch.rand(23, 1, 32, 32)
         >>> SIFT = SIFTDescriptor(32, 8, 4)
         >>> descs = SIFT(input) # 23x128
@@ -194,5 +188,4 @@ def sift_describe(
 
     See :class:`~kornia.feature.SIFTDescriptor` for details.
     """
-
     return SIFTDescriptor(patch_size, num_ang_bins, num_spatial_bins, rootsift, clipval)(input)

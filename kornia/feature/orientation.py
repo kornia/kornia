@@ -25,8 +25,8 @@ class PassLAF(nn.Module):
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            laf: torch.Tensor: 4d tensor
-            img (torch.Tensor): the input image tensor
+            laf: 4d tensor.
+            img: the input image tensor.
 
         Return:
             torch.Tensor: unchanged laf from the input."""
@@ -35,12 +35,14 @@ class PassLAF(nn.Module):
 
 class PatchDominantGradientOrientation(nn.Module):
     """Module, which estimates the dominant gradient orientation of the given patches, in radians.
+
     Zero angle points towards right.
 
     Args:
-            patch_size: int, default = 32
-            num_angular_bins: int, default is 36
-            eps: float, for safe division, and arctan, default is 1e-8"""
+        patch_size:
+        num_angular_bins:
+        eps: for safe division, and arctan.
+    """
 
     def __init__(self, patch_size: int = 32, num_angular_bins: int = 36, eps: float = 1e-8):
         super(PatchDominantGradientOrientation, self).__init__()
@@ -115,17 +117,17 @@ class PatchDominantGradientOrientation(nn.Module):
 
 class OriNet(nn.Module):
     """Network, which estimates the canonical orientation of the given 32x32 patches, in radians.
-    Zero angle points towards right.
-    This is based on the original code from paper "Repeatability Is Not Enough:
-    Learning Discriminative Affine Regions via Discriminability"".
+
+    Zero angle points towards right. This is based on the original code from paper
+    "Repeatability Is Not Enough: Learning Discriminative Affine Regions via Discriminability"".
     See :cite:`AffNet2018` for more details.
 
     Args:
-        pretrained: (bool) Download and set pretrained weights to the model. Default: false.
-        eps: (float) to avoid division by zero in atan2. Default: 1e-6.
+        pretrained: Download and set pretrained weights to the model.
+        eps: to avoid division by zero in atan2.
 
     Returns:
-        torch.Tensor: Angle in radians.
+        Angle in radians.
 
     Shape:
         - Input: (B, 1, 32, 32)
@@ -191,14 +193,17 @@ class OriNet(nn.Module):
 
 
 class LAFOrienter(nn.Module):
-    """Module, which extracts patches using input images and local affine frames (LAFs),
-    then runs :class:`~kornia.feature.PatchDominantGradientOrientation` or
+    """Module, which extracts patches using input images and local affine frames (LAFs).
+
+    Then runs :class:`~kornia.feature.PatchDominantGradientOrientation` or
     :class:`~kornia.feature.OriNet` on patches and then rotates the LAFs by the estimated angles
 
     Args:
-            patch_size: int, default = 32
-            num_angular_bins: int, default is 36
-            angle_detector: nn.Module. Patch orientation estimator, e.g. PatchDominantGradientOrientation or OriNet. Default: None"""  # noqa pylint: disable
+        patch_size:
+        num_angular_bins:
+        angle_detector: Patch orientation estimator, e.g. :class:`~kornia.feature.PatchDominantGradientOrientation`
+          or OriNet.
+    """  # noqa pylint: disable
 
     def __init__(self, patch_size: int = 32, num_angular_bins: int = 36, angle_detector: Optional[nn.Module] = None):
         super(LAFOrienter, self).__init__()
@@ -219,11 +224,12 @@ class LAFOrienter(nn.Module):
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            laf: (torch.Tensor), shape [BxNx2x3]
-            img: (torch.Tensor), shape [Bx1xHxW]
+            laf: shape [BxNx2x3]
+            img: shape [Bx1xHxW]
 
         Returns:
-            torch.Tensor: laf_out, shape [BxNx2x3]"""
+            laf_out, shape [BxNx2x3]
+        """
         raise_error_if_laf_is_not_valid(laf)
         img_message: str = "Invalid img shape, we expect BxCxHxW. Got: {}".format(img.shape)
         if not isinstance(img, torch.Tensor):
