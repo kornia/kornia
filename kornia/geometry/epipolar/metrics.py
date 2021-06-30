@@ -11,17 +11,17 @@ def sampson_epipolar_distance(
     r"""Returns Sampson distance for correspondences given the fundamental matrix.
 
     Args:
-        pts1 (torch.Tensor): correspondences from the left images with shape
+        pts1: correspondences from the left images with shape
           (B, N, 2 or 3). If they are not homogeneous, converted automatically.
-        pts2 (torch.Tensor): correspondences from the right images with shape
+        pts2: correspondences from the right images with shape
           (B, N, 2 or 3). If they are not homogeneous, converted automatically.
-        Fm (torch.Tensor): Fundamental matrices with shape :math:`(B, 3, 3)`. Called Fm to
+        Fm: Fundamental matrices with shape :math:`(B, 3, 3)`. Called Fm to
           avoid ambiguity with torch.nn.functional.
-        squared (bool): if True (default), the squared distance is returned.
-        eps (float): Small constant for safe sqrt. Default 1e-9.
+        squared: if True (default), the squared distance is returned.
+        eps: Small constant for safe sqrt.
 
     Returns:
-        torch.Tensor: the computed Sampson distance with shape :math:`(B, N)`.
+        the computed Sampson distance with shape :math:`(B, N)`.
 
     """
     if not isinstance(Fm, torch.Tensor):
@@ -63,17 +63,17 @@ def symmetrical_epipolar_distance(
     r"""Returns symmetrical epipolar distance for correspondences given the fundamental matrix.
 
     Args:
-       pts1 (torch.Tensor): correspondences from the left images with shape
+       pts1: correspondences from the left images with shape
          (B, N, 2 or 3). If they are not homogeneous, converted automatically.
-       pts2 (torch.Tensor): correspondences from the right images with shape
+       pts2: correspondences from the right images with shape
          (B, N, 2 or 3). If they are not homogeneous, converted automatically.
-       Fm (torch.Tensor): Fundamental matrices with shape :math:`(B, 3, 3)`. Called Fm to
+       Fm: Fundamental matrices with shape :math:`(B, 3, 3)`. Called Fm to
          avoid ambiguity with torch.nn.functional.
-       squared (bool): if True (default), the squared distance is returned.
-       eps (float): Small constant for safe sqrt. Default 1e-9.
+       squared: if True (default), the squared distance is returned.
+       eps: Small constant for safe sqrt.
 
     Returns:
-        torch.Tensor: the computed Symmetrical distance with shape :math:`(B, N)`.
+        the computed Symmetrical distance with shape :math:`(B, N)`.
 
     """
     if not isinstance(Fm, torch.Tensor):

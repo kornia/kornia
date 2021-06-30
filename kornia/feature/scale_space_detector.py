@@ -12,14 +12,15 @@ from kornia.geometry.transform import ScalePyramid
 
 
 def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor, num_levels: int) -> torch.Tensor:
-    """Auxiliary function for ScaleSpaceDetector. Converts scale level index from ConvSoftArgmax3d
-    to the actual scale, using the sigmas from the ScalePyramid output
+    r"""Auxiliary function for ScaleSpaceDetector. Converts scale level index from ConvSoftArgmax3d
+    to the actual scale, using the sigmas from the ScalePyramid output.
+
     Args:
-        max_coords: (torch.Tensor): tensor [BxNx3].
-        sigmas: (torch.Tensor): tensor [BxNxD], D >= 1
+        max_coords: tensor [BxNx3].
+        sigmas: tensor [BxNxD], D >= 1
 
     Returns:
-        torch.Tensor:  tensor [BxNx3].
+        tensor [BxNx3].
     """
     # depth (scale) in coord_max is represented as (float) index, not the scale yet.
     # we will interpolate the scale using pytorch.grid_sample function
@@ -38,36 +39,37 @@ def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor, num_le
 
 
 def _create_octave_mask(mask: torch.Tensor, octave_shape: List[int]) -> torch.Tensor:
-    """Downsamples a mask based on the given octave shape."""
+    r"""Downsamples a mask based on the given octave shape."""
     mask_shape = octave_shape[-2:]
     mask_octave = F.interpolate(mask, mask_shape, mode='bilinear', align_corners=False)  # type: ignore
     return mask_octave.unsqueeze(1)
 
 
 class ScaleSpaceDetector(nn.Module):
-    """Module for differentiable local feature detection, as close as possible to classical
-     local feature detectors like Harris, Hessian-Affine or SIFT (DoG).
-     It has 5 modules inside: scale pyramid generator, response ("cornerness") function,
-     soft nms function, affine shape estimator and patch orientation estimator.
-     Each of those modules could be replaced with learned custom one, as long, as
-     they respect output shape.
+    r"""Module for differentiable local feature detection, as close as possible to classical
+    local feature detectors like Harris, Hessian-Affine or SIFT (DoG).
+
+    It has 5 modules inside: scale pyramid generator, response ("cornerness") function,
+    soft nms function, affine shape estimator and patch orientation estimator.
+    Each of those modules could be replaced with learned custom one, as long, as
+    they respect output shape.
 
     Args:
-        num_features: (int) Number of features to detect. default = 500. In order to keep everything batchable,
-                      output would always have num_features output, even for completely homogeneous images.
-        mr_size: (float), default 6.0. Multiplier for local feature scale compared to the detection scale.
-                    6.0 is matching OpenCV 12.0 convention for SIFT.
-        scale_pyr_module: (nn.Module), which generates scale pyramid.
-                         See :class:`~kornia.geometry.ScalePyramid` for details. Default is ScalePyramid(3, 1.6, 10)
-        resp_module: (nn.Module), which calculates 'cornerness' of the pixel. Default is BlobHessian().
-        nms_module: (nn.Module), which outputs per-patch coordinates of the response maxima.
-                    See :class:`~kornia.geometry.ConvSoftArgmax3d` for details.
-        ori_module: (nn.Module) for local feature orientation estimation.  Default is :class:`~kornia.feature.PassLAF`,
-                    which does nothing. See :class:`~kornia.feature.LAFOrienter` for details.
-        aff_module:  (nn.Module) for local feature affine shape estimation. Default is :class:`~kornia.feature.PassLAF`,
-                    which does nothing. See :class:`~kornia.feature.LAFAffineShapeEstimator` for details.
-        minima_are_also_good:  (bool) if True, then both response function minima and maxima are detected
-                                Useful for symmetric response functions like DoG or Hessian. Default is False
+        num_features: Number of features to detect. In order to keep everything batchable,
+          output would always have num_features output, even for completely homogeneous images.
+        mr_size: multiplier for local feature scale compared to the detection scale.
+          6.0 is matching OpenCV 12.0 convention for SIFT.
+        scale_pyr_module: generates scale pyramid. See :class:`~kornia.geometry.ScalePyramid` for details.
+          Default: ScalePyramid(3, 1.6, 10).
+        resp_module: calculates ``'cornerness'`` of the pixel.
+        nms_module: outputs per-patch coordinates of the response maxima.
+          See :class:`~kornia.geometry.ConvSoftArgmax3d` for details.
+        ori_module: for local feature orientation estimation. Default:class:`~kornia.feature.PassLAF`,
+           which does nothing. See :class:`~kornia.feature.LAFOrienter` for details.
+        aff_module: for local feature affine shape estimation. Default: :class:`~kornia.feature.PassLAF`,
+            which does nothing. See :class:`~kornia.feature.LAFAffineShapeEstimator` for details.
+        minima_are_also_good: if True, then both response function minima and maxima are detected
+            Useful for symmetric response functions like DoG or Hessian. Default is False
     """
 
     def __init__(
@@ -212,13 +214,14 @@ class ScaleSpaceDetector(nn.Module):
         detect function. Then affine shape and orientation.
 
         Args:
-            img (torch.Tensor): image to extract features with shape [BxCxHxW]
-            mask (torch.Tensor, optional): a mask with weights where to apply the
-            response function. The shape must be the same as the input image.
+            img: image to extract features with shape [BxCxHxW]
+            mask: a mask with weights where to apply the response function. The shape must be the same as
+              the input image.
 
         Returns:
-            lafs (torch.Tensor): shape [BxNx2x3]. Detected local affine frames.
-            responses (torch.Tensor): shape [BxNx1]. Response function values for corresponding lafs"""
+            lafs: shape [BxNx2x3]. Detected local affine frames.
+            responses: shape [BxNx1]. Response function values for corresponding lafs
+        """
         responses, lafs = self.detect(img, self.num_features, mask)
         lafs = self.aff(lafs, img)
         lafs = self.ori(lafs, img)

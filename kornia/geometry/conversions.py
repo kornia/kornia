@@ -42,10 +42,10 @@ def rad2deg(tensor: torch.Tensor) -> torch.Tensor:
     r"""Function that converts angles from radians to degrees.
 
     Args:
-        tensor (torch.Tensor): Tensor of arbitrary shape.
+        tensor: Tensor of arbitrary shape.
 
     Returns:
-        torch.Tensor: Tensor with same shape as input.
+        Tensor with same shape as input.
 
     Example:
         >>> input = torch.tensor(3.1415926535) * torch.rand(1, 3, 3)
@@ -61,13 +61,12 @@ def deg2rad(tensor: torch.Tensor) -> torch.Tensor:
     r"""Function that converts angles from degrees to radians.
 
     Args:
-        tensor (torch.Tensor): Tensor of arbitrary shape.
+        tensor: Tensor of arbitrary shape.
 
     Returns:
-        torch.Tensor: tensor with same shape as input.
+        tensor with same shape as input.
 
-    Examples::
-
+    Examples:
         >>> input = 360. * torch.rand(1, 3, 3)
         >>> output = deg2rad(input)
     """
@@ -81,11 +80,11 @@ def pol2cart(rho: torch.Tensor, phi: torch.Tensor) -> Tuple[torch.Tensor, torch.
     r"""Function that converts polar coordinates to cartesian coordinates.
 
     Args:
-        rho (torch.Tensor): Tensor of arbitrary shape.
-        phi (torch.Tensor): Tensor of same arbitrary shape.
+        rho: Tensor of arbitrary shape.
+        phi: Tensor of same arbitrary shape.
 
     Returns:
-        torch.Tensor, torch.Tensor: Tensor with same shape as input.
+        Tensor with same shape as input.
 
     Example:
         >>> rho = torch.rand(1, 3, 3)
@@ -104,12 +103,12 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> Tuple[tor
     """Function that converts cartesian coordinates to polar coordinates.
 
     Args:
-        rho (torch.Tensor): Tensor of arbitrary shape.
-        phi (torch.Tensor): Tensor of same arbitrary shape.
-        eps (float): To avoid division by zero. Default is 1e-8
+        rho: Tensor of arbitrary shape.
+        phi: Tensor of same arbitrary shape.
+        eps: To avoid division by zero.
 
     Returns:
-        torch.Tensor, torch.Tensor: Tensor with same shape as input.
+        Tensor with same shape as input.
 
     Example:
         >>> x = torch.rand(1, 3, 3)
@@ -127,8 +126,14 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> Tuple[tor
 def convert_points_from_homogeneous(points: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     r"""Function that converts points from homogeneous to Euclidean space.
 
-    Examples::
+    Args:
+        points: the points to be transformed.
+        eps: to avoid division by zero.
 
+    Returns:
+        the points in Euclidean space.
+
+    Examples:
         >>> input = torch.rand(2, 4, 3)  # BxNx3
         >>> output = convert_points_from_homogeneous(input)  # BxNx2
     """
@@ -153,8 +158,13 @@ def convert_points_from_homogeneous(points: torch.Tensor, eps: float = 1e-8) -> 
 def convert_points_to_homogeneous(points: torch.Tensor) -> torch.Tensor:
     r"""Function that converts points from Euclidean to homogeneous space.
 
-    Examples::
+    Args:
+        points: the points to be transformed.
 
+    Returns:
+        the points in homogeneous coordinates.
+
+    Examples:
         >>> input = torch.rand(2, 4, 3)  # BxNx3
         >>> output = convert_points_to_homogeneous(input)  # BxNx4
     """
@@ -173,10 +183,15 @@ def _convert_affinematrix_to_homography_impl(A: torch.Tensor) -> torch.Tensor:
 
 
 def convert_affinematrix_to_homography(A: torch.Tensor) -> torch.Tensor:
-    r"""Function that converts batch of affine matrices from [Bx2x3] to [Bx3x3].
+    r"""Function that converts batch of affine matrices.
 
-    Examples::
+    Args:
+        A: the affine matrix with shape :math:`(B,2,3)`.
 
+    Returns:
+         the homography matrix with shape of :math:`(B,3,3)`.
+
+    Examples:
         >>> input = torch.rand(2, 2, 3)  # Bx2x3
         >>> output = convert_affinematrix_to_homography(input)  # Bx3x3
     """
@@ -188,10 +203,15 @@ def convert_affinematrix_to_homography(A: torch.Tensor) -> torch.Tensor:
 
 
 def convert_affinematrix_to_homography3d(A: torch.Tensor) -> torch.Tensor:
-    r"""Function that converts batch of affine matrices from [Bx3x4] to [Bx4x4].
+    r"""Function that converts batch of 3d affine matrices.
 
-    Examples::
+    Args:
+        A: the affine matrix with shape :math:`(B,3,4)`.
 
+    Returns:
+         the homography matrix with shape of :math:`(B,4,4)`.
+
+    Examples:
         >>> input = torch.rand(2, 3, 4)  # Bx3x4
         >>> output = convert_affinematrix_to_homography3d(input)  # Bx4x4
     """
@@ -203,13 +223,13 @@ def convert_affinematrix_to_homography3d(A: torch.Tensor) -> torch.Tensor:
 
 
 def angle_axis_to_rotation_matrix(angle_axis: torch.Tensor) -> torch.Tensor:
-    r"""Convert 3d vector of axis-angle rotation to 3x3 rotation matrix
+    r"""Convert 3d vector of axis-angle rotation to 3x3 rotation matrix.
 
     Args:
-        angle_axis (torch.Tensor): tensor of 3d vector of axis-angle rotations.
+        angle_axis: tensor of 3d vector of axis-angle rotations.
 
     Returns:
-        torch.Tensor: tensor of 3x3 rotation matrices.
+        tensor of 3x3 rotation matrices.
 
     Shape:
         - Input: :math:`(N, 3)`
@@ -283,10 +303,10 @@ def rotation_matrix_to_angle_axis(rotation_matrix: torch.Tensor) -> torch.Tensor
     r"""Convert 3x3 rotation matrix to Rodrigues vector.
 
     Args:
-        rotation_matrix (torch.Tensor): rotation matrix.
+        rotation_matrix: rotation matrix.
 
     Returns:
-        torch.Tensor: Rodrigues vector transformation.
+        Rodrigues vector transformation.
 
     Shape:
         - Input: :math:`(N, 3, 3)`
@@ -316,13 +336,12 @@ def rotation_matrix_to_quaternion(
         The (x, y, z, w) order is going to be deprecated in favor of efficiency.
 
     Args:
-        rotation_matrix (torch.Tensor): the rotation matrix to convert.
-        eps (float): small value to avoid zero division. Default: 1e-8.
-        order (QuaternionCoeffOrder): quaternion coefficient order. Default: 'xyzw'.
-          Note: 'xyzw' will be deprecated in favor of 'wxyz'.
+        rotation_matrix: the rotation matrix to convert.
+        eps: small value to avoid zero division.
+        order: quaternion coefficient order. Note: 'xyzw' will be deprecated in favor of 'wxyz'.
 
     Return:
-        torch.Tensor: the rotation in quaternion.
+        the rotation in quaternion.
 
     Shape:
         - Input: :math:`(*, 3, 3)`
@@ -413,13 +432,12 @@ def normalize_quaternion(quaternion: torch.Tensor, eps: float = 1.0e-12) -> torc
     The quaternion should be in (x, y, z, w) format.
 
     Args:
-        quaternion (torch.Tensor): a tensor containing a quaternion to be
-          normalized. The tensor can be of shape :math:`(*, 4)`.
-        eps (Optional[bool]): small value to avoid division by zero.
-          Default: 1e-12.
+        quaternion: a tensor containing a quaternion to be normalized.
+          The tensor can be of shape :math:`(*, 4)`.
+        eps: small value to avoid division by zero.
 
     Return:
-        torch.Tensor: the normalized quaternion of shape :math:`(*, 4)`.
+        the normalized quaternion of shape :math:`(*, 4)`.
 
     Example:
         >>> quaternion = torch.tensor((1., 0., 1., 0.))
@@ -447,13 +465,12 @@ def quaternion_to_rotation_matrix(
     The quaternion should be in (x, y, z, w) or (w, x, y, z) format.
 
     Args:
-        quaternion (torch.Tensor): a tensor containing a quaternion to be
-          converted. The tensor can be of shape :math:`(*, 4)`.
-        order (QuaternionCoeffOrder): quaternion coefficient order. Default: 'xyzw'.
-          Note: 'xyzw' will be deprecated in favor of 'wxyz'.
+        quaternion: a tensor containing a quaternion to be converted.
+          The tensor can be of shape :math:`(*, 4)`.
+        order: quaternion coefficient order. Note: 'xyzw' will be deprecated in favor of 'wxyz'.
 
     Return:
-        torch.Tensor: the rotation matrix of shape :math:`(*, 3, 3)`.
+        the rotation matrix of shape :math:`(*, 3, 3)`.
 
     Example:
         >>> quaternion = torch.tensor((0., 0., 0., 1.))
@@ -533,12 +550,11 @@ def quaternion_to_angle_axis(
     Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
 
     Args:
-        quaternion (torch.Tensor): tensor with quaternions.
-        order (QuaternionCoeffOrder): quaternion coefficient order. Default: 'xyzw'.
-          Note: 'xyzw' will be deprecated in favor of 'wxyz'.
+        quaternion: tensor with quaternions.
+        order: quaternion coefficient order. Note: 'xyzw' will be deprecated in favor of 'wxyz'.
 
     Return:
-        torch.Tensor: tensor with angle axis of rotation.
+        tensor with angle axis of rotation.
 
     Shape:
         - Input: :math:`(*, 4)` where `*` means, any number of dimensions
@@ -607,13 +623,12 @@ def quaternion_log_to_exp(
     The quaternion should be in (x, y, z, w) or (w, x, y, z) format.
 
     Args:
-        quaternion (torch.Tensor): a tensor containing a quaternion to be
-          converted. The tensor can be of shape :math:`(*, 3)`.
-        order (QuaternionCoeffOrder): quaternion coefficient order. Default: 'xyzw'.
-          Note: 'xyzw' will be deprecated in favor of 'wxyz'.
+        quaternion: a tensor containing a quaternion to be converted.
+          The tensor can be of shape :math:`(*, 3)`.
+        order: quaternion coefficient order. Note: 'xyzw' will be deprecated in favor of 'wxyz'.
 
     Return:
-        torch.Tensor: the quaternion exponential map of shape :math:`(*, 4)`.
+        the quaternion exponential map of shape :math:`(*, 4)`.
 
     Example:
         >>> quaternion = torch.tensor((0., 0., 0.))
@@ -663,14 +678,13 @@ def quaternion_exp_to_log(
     The quaternion should be in (x, y, z, w) format.
 
     Args:
-        quaternion (torch.Tensor): a tensor containing a quaternion to be
-          converted. The tensor can be of shape :math:`(*, 4)`.
-        eps (float): A small number for clamping.
-        order (QuaternionCoeffOrder): quaternion coefficient order. Default: 'xyzw'.
-          Note: 'xyzw' will be deprecated in favor of 'wxyz'.
+        quaternion: a tensor containing a quaternion to be converted.
+          The tensor can be of shape :math:`(*, 4)`.
+        eps: A small number for clamping.
+        order: quaternion coefficient order. Note: 'xyzw' will be deprecated in favor of 'wxyz'.
 
     Return:
-        torch.Tensor: the quaternion log map of shape :math:`(*, 3)`.
+        the quaternion log map of shape :math:`(*, 3)`.
 
     Example:
         >>> quaternion = torch.tensor((1., 0., 0., 0.))
@@ -731,12 +745,11 @@ def angle_axis_to_quaternion(
     Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
 
     Args:
-        angle_axis (torch.Tensor): tensor with angle axis.
-        order (QuaternionCoeffOrder): quaternion coefficient order. Default: 'xyzw'.
-          Note: 'xyzw' will be deprecated in favor of 'wxyz'.
+        angle_axis: tensor with angle axis.
+        order: quaternion coefficient order. Note: 'xyzw' will be deprecated in favor of 'wxyz'.
 
     Return:
-        torch.Tensor: tensor with quaternion.
+        tensor with quaternion.
 
     Shape:
         - Input: :math:`(*, 3)` where `*` means, any number of dimensions
@@ -808,14 +821,13 @@ def normalize_pixel_coordinates(
     Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1).
 
     Args:
-        pixel_coordinates (torch.Tensor): the grid with pixel coordinates.
-          Shape can be :math:`(*, 2)`.
-        width (int): the maximum width in the x-axis.
-        height (int): the maximum height in the y-axis.
-        eps (float): safe division by zero. (default 1e-8).
+        pixel_coordinates: the grid with pixel coordinates. Shape can be :math:`(*, 2)`.
+        width: the maximum width in the x-axis.
+        height: the maximum height in the y-axis.
+        eps: safe division by zero.
 
     Return:
-        torch.Tensor: the normalized pixel coordinates.
+        the normalized pixel coordinates.
     """
     if pixel_coordinates.shape[-1] != 2:
         raise ValueError("Input pixel_coordinates must be of shape (*, 2). " "Got {}".format(pixel_coordinates.shape))
@@ -839,18 +851,16 @@ def denormalize_pixel_coordinates(
 ) -> torch.Tensor:
     r"""Denormalize pixel coordinates.
 
-    The input is assumed to be -1 if on extreme left, 1 if on
-    extreme right (x = w-1).
+    The input is assumed to be -1 if on extreme left, 1 if on extreme right (x = w-1).
 
     Args:
-        pixel_coordinates (torch.Tensor): the normalized grid coordinates.
-          Shape can be :math:`(*, 2)`.
-        width (int): the maximum width in the x-axis.
-        height (int): the maximum height in the y-axis.
-        eps (float): safe division by zero. (default 1e-8).
+        pixel_coordinates: the normalized grid coordinates. Shape can be :math:`(*, 2)`.
+        width: the maximum width in the x-axis.
+        height: the maximum height in the y-axis.
+        eps: safe division by zero.
 
     Return:
-        torch.Tensor: the denormalized pixel coordinates.
+        the denormalized pixel coordinates.
     """
     if pixel_coordinates.shape[-1] != 2:
         raise ValueError("Input pixel_coordinates must be of shape (*, 2). " "Got {}".format(pixel_coordinates.shape))
@@ -874,15 +884,14 @@ def normalize_pixel_coordinates3d(
     Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1).
 
     Args:
-        pixel_coordinates (torch.Tensor): the grid with pixel coordinates.
-          Shape can be :math:`(*, 3)`.
-        depth (int): the maximum depth in the z-axis.
-        height (int): the maximum height in the y-axis.
-        width (int): the maximum width in the x-axis.
-        eps (float): safe division by zero. (default 1e-8).
+        pixel_coordinates: the grid with pixel coordinates. Shape can be :math:`(*, 3)`.
+        depth: the maximum depth in the z-axis.
+        height: the maximum height in the y-axis.
+        width: the maximum width in the x-axis.
+        eps: safe division by zero.
 
     Return:
-        torch.Tensor: the normalized pixel coordinates.
+        the normalized pixel coordinates.
     """
     if pixel_coordinates.shape[-1] != 3:
         raise ValueError("Input pixel_coordinates must be of shape (*, 3). " "Got {}".format(pixel_coordinates.shape))
@@ -903,20 +912,17 @@ def denormalize_pixel_coordinates3d(
 ) -> torch.Tensor:
     r"""Denormalize pixel coordinates.
 
-    The input is assumed to be -1 if on extreme left, 1 if on
-    extreme right (x = w-1).
+    The input is assumed to be -1 if on extreme left, 1 if on extreme right (x = w-1).
 
     Args:
-        pixel_coordinates (torch.Tensor): the normalized grid coordinates.
-          Shape can be :math:`(*, 3)`.
-        depth (int): the maximum depth in the x-axis.
-        height (int): the maximum height in the y-axis.
-        width (int): the maximum width in the x-axis.
-        eps (float): safe division by zero. (default 1e-8).
-
+        pixel_coordinates: the normalized grid coordinates. Shape can be :math:`(*, 3)`.
+        depth: the maximum depth in the x-axis.
+        height: the maximum height in the y-axis.
+        width: the maximum width in the x-axis.
+        eps: safe division by zero.
 
     Return:
-        torch.Tensor: the denormalized pixel coordinates.
+        the denormalized pixel coordinates.
     """
     if pixel_coordinates.shape[-1] != 3:
         raise ValueError("Input pixel_coordinates must be of shape (*, 3). " "Got {}".format(pixel_coordinates.shape))

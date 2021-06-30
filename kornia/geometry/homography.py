@@ -18,13 +18,12 @@ def find_homography_dlt(
     The linear system is solved by using the Weighted Least Squares Solution for the 4 Points algorithm.
 
     Args:
-        points1 (torch.Tensor): A set of points in the first image with a tensor shape :math:`(B, N, 2)`.
-        points2 (torch.Tensor): A set of points in the second image with a tensor shape :math:`(B, N, 2)`.
-        weights (torch.Tensor, optional): Tensor containing the weights per point correspondence with a shape of
-                :math:`(B, N)`. Defaults to all ones.
+        points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`.
+        points2: A set of points in the second image with a tensor shape :math:`(B, N, 2)`.
+        weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
 
     Returns:
-        torch.Tensor: the computed homography matrix with shape :math:`(B, 3, 3)`.
+        the computed homography matrix with shape :math:`(B, 3, 3)`.
     """
     assert points1.shape == points2.shape, points1.shape
     assert len(points1.shape) >= 1 and points1.shape[-1] == 2, points1.shape
@@ -74,15 +73,15 @@ def find_homography_dlt_iterated(
     The linear system is solved by using the Reweighted Least Squares Solution for the 4 Points algorithm.
 
     Args:
-        points1 (torch.Tensor): A set of points in the first image with a tensor shape :math:`(B, N, 2)`.
-        points2 (torch.Tensor): A set of points in the second image with a tensor shape :math:`(B, N, 2)`.
-        weights (torch.Tensor): Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
+        points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`.
+        points2: A set of points in the second image with a tensor shape :math:`(B, N, 2)`.
+        weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
           Used for the first iteration of the IRWLS.
-        soft_inl_th (float): Soft inlier threshold used for weight calculation.
-        n_iter (int): number of iterations. Default is 5.
+        soft_inl_th: Soft inlier threshold used for weight calculation.
+        n_iter: number of iterations.
 
     Returns:
-        torch.Tensor: the computed homography matrix with shape :math:`(B, 3, 3)`.
+        the computed homography matrix with shape :math:`(B, 3, 3)`.
     """
     '''Function, which finds homography via iteratively-reweighted
     least squares ToDo: add citation'''

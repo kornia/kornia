@@ -32,15 +32,15 @@ def tversky_loss(
        - :math:`\alpha + \beta = 1` => F beta coeff
 
     Args:
-        input (torch.Tensor): logits tensor with shape :math:`(N, C, H, W)` where C = number of classes.
-        target (torch.Tensor): labels tensor with shape :math:`(N, H, W)` where each value
+        input: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes.
+        target: labels tensor with shape :math:`(N, H, W)` where each value
           is :math:`0 ≤ targets[i] ≤ C−1`.
-        alpha (float): the first coefficient in the denominator.
-        beta (float): the second coefficient in the denominator.
-        eps (float, optional): scalar for numerical stability. Default: 1e-8.
+        alpha: the first coefficient in the denominator.
+        beta: the second coefficient in the denominator.
+        eps: scalar for numerical stability.
 
     Return:
-        torch.Tensor: the computed loss.
+        the computed loss.
 
     Example:
         >>> N = 5  # num_classes
@@ -104,9 +104,9 @@ class TverskyLoss(nn.Module):
        - :math:`\alpha + \beta = 1` => F beta coeff
 
     Args:
-        alpha (float): the first coefficient in the denominator.
-        beta (float): the second coefficient in the denominator.
-        eps (float, optional): scalar for numerical stability. Default: 1e-8.
+        alpha: the first coefficient in the denominator.
+        beta: the second coefficient in the denominator.
+        eps: scalar for numerical stability.
 
     Shape:
         - Input: :math:`(N, C, H, W)` where C = number of classes.

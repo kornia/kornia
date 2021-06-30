@@ -21,19 +21,15 @@ def _validate_batched_image_tensor_input(tensor):
 def spatial_softmax2d(input: torch.Tensor, temperature: torch.Tensor = torch.tensor(1.0)) -> torch.Tensor:
     r"""Applies the Softmax function over features in each image channel.
 
-    Note that this function behaves differently to `torch.nn.Softmax2d`, which
+    Note that this function behaves differently to :py:class:`torch.nn.Softmax2d`, which
     instead applies Softmax over features at each spatial location.
 
-    Returns a 2D probability distribution per image channel.
+    Args:
+        input: the input tensor with shape :math:`(B, N, H, W)`.
+        temperature: factor to apply to input, adjusting the "smoothness" of the output distribution.
 
-    Arguments:
-        input (torch.Tensor): the input tensor.
-        temperature (torch.Tensor): factor to apply to input, adjusting the
-          "smoothness" of the output distribution. Default is 1.
-
-    Shape:
-        - Input: :math:`(B, N, H, W)`
-        - Output: :math:`(B, N, H, W)`
+    Returns:
+       a 2D probability distribution per image channel with shape :math:`(B, N, H, W)`.
 
     Examples:
         >>> heatmaps = torch.tensor([[[
@@ -59,23 +55,16 @@ def spatial_softmax2d(input: torch.Tensor, temperature: torch.Tensor = torch.ten
 def spatial_expectation2d(input: torch.Tensor, normalized_coordinates: bool = True) -> torch.Tensor:
     r"""Computes the expectation of coordinate values using spatial probabilities.
 
-    The input heatmap is assumed to represent a valid spatial probability
-    distribution, which can be achieved using
-    :class:`~kornia.geometry.dsnt.spatial_softmax2d`.
+    The input heatmap is assumed to represent a valid spatial probability distribution,
+    which can be achieved using :func:`~kornia.geometry.subpixel.spatial_softmax2d`.
 
-    Returns the expected value of the 2D coordinates.
-    The output order of the coordinates is (x, y).
+    Args:
+        input: the input tensor representing dense spatial probabilities with shape :math:`(B, N, H, W)`.
+        normalized_coordinates: whether to return the coordinates normalized in the range
+          of :math:`[-1, 1]`. Otherwise, it will return the coordinates in the range of the input shape.
 
-    Arguments:
-        input (torch.Tensor): the input tensor representing dense spatial probabilities.
-        normalized_coordinates (bool): whether to return the
-          coordinates normalized in the range of [-1, 1]. Otherwise,
-          it will return the coordinates in the range of the input shape.
-          Default is True.
-
-    Shape:
-        - Input: :math:`(B, N, H, W)`
-        - Output: :math:`(B, N, 2)`
+    Returns:
+       expected value of the 2D coordinates with shape :math:`(B, N, 2)`. Output order of the coordinates is (x, y).
 
     Examples:
         >>> heatmaps = torch.tensor([[[
@@ -116,24 +105,20 @@ def render_gaussian2d(
 ):
     r"""Renders the PDF of a 2D Gaussian distribution.
 
-    Arguments:
-        mean (torch.Tensor): the mean location of the Gaussian to render,
-          :math:`(\mu_x, \mu_y)`.
-        std (torch.Tensor): the standard deviation of the Gaussian to render,
-          :math:`(\sigma_x, \sigma_y)`.
-        size (list): the (height, width) of the output image.
-        normalized_coordinates: whether `mean` and `std` are assumed to use
-          coordinates normalized in the range of [-1, 1]. Otherwise,
-          coordinates are assumed to be in the range of the output shape.
-          Default is True.
+    Args:
+        mean: the mean location of the Gaussian to render, :math:`(\mu_x, \mu_y)`. Shape: :math:`(*, 2)`.
+        std: the standard deviation of the Gaussian to render, :math:`(\sigma_x, \sigma_y)`.
+          Shape :math:`(*, 2)`. Should be able to be broadcast with `mean`.
+        size: the (height, width) of the output image.
+        normalized_coordinates: whether ``mean`` and ``std`` are assumed to use coordinates normalized
+          in the range of :math:`[-1, 1]`. Otherwise, coordinates are assumed to be in the range of the output shape.
 
-    Shape:
-        - `mean`: :math:`(*, 2)`
-        - `std`: :math:`(*, 2)`. Should be able to be broadcast with `mean`.
-        - Output: :math:`(*, H, W)`
+    Returns:
+        tensor including rendered points with shape :math:`(*, H, W)`.
     """
     if not (std.dtype == mean.dtype and std.device == mean.device):
         raise TypeError("Expected inputs to have the same dtype and device")
+
     height, width = size
 
     # Create coordinates grid.

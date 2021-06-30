@@ -15,12 +15,12 @@ def _get_window_grid_kernel2d(h: int, w: int, device: torch.device = torch.devic
        residual to window center.
 
     Args:
-         h (int): kernel height.
-         w (int): kernel width.
-         device (torch.device): device, on which generate.
+         h: kernel height.
+         : kernel width.
+         device: device, on which generate.
 
     Returns:
-        conv_kernel (torch.Tensor) [2x1xhxw]
+        conv_kernel [2x1xhxw]
     """
     window_grid2d = create_meshgrid(h, w, False, device=device)
     window_grid2d = normalize_pixel_coordinates(window_grid2d, h, w)
@@ -33,12 +33,12 @@ def _get_center_kernel2d(h: int, w: int, device: torch.device = torch.device('cp
        when applied with F.conv2d to 2d coordinates grid.
 
     Args:
-         h (int): kernel height.
-         w (int): kernel width.
-         device (torch.device): device, on which generate.
+        h: kernel height.
+        w: kernel width.
+        device: device, on which generate.
 
     Returns:
-        conv_kernel (torch.Tensor) [2x2xhxw]
+        conv_kernel [2x2xhxw].
     """
     center_kernel = torch.zeros(2, 2, h, w, device=device)
 
@@ -64,13 +64,13 @@ def _get_center_kernel3d(d: int, h: int, w: int, device: torch.device = torch.de
        when applied with F.conv2d to 3d coordinates grid.
 
     Args:
-         d (int): kernel depth.
-         h (int): kernel height.
-         w (int): kernel width.
-         device (torch.device): device, on which generate.
+        d: kernel depth.
+        h: kernel height.
+        w: kernel width.
+        device: device, on which generate.
 
     Returns:
-        conv_kernel (torch.Tensor) [3x3xdxhxw]
+        conv_kernel [3x3xdxhxw].
     """
     center_kernel = torch.zeros(3, 3, d, h, w, device=device)
     #  If the size is odd, we have one pixel for center, if even - 2
@@ -102,13 +102,13 @@ def _get_window_grid_kernel3d(d: int, h: int, w: int, device: torch.device = tor
        residual to window center.
 
     Args:
-         d (int): kernel depth.
-         h (int): kernel height.
-         w (int): kernel width.
-         device (torch.device): device, on which generate.
+        d: kernel depth.
+        h: kernel height.
+        w: kernel width.
+        device: device, on which generate.
 
     Returns:
-        conv_kernel (torch.Tensor) [3x1xdxhxw]
+        conv_kernel [3x1xdxhxw]
     """
     grid2d = create_meshgrid(h, w, True, device=device)
     if d > 1:
@@ -267,41 +267,43 @@ def conv_soft_argmax2d(
     eps: float = 1e-8,
     output_value: bool = False,
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-    r"""Function that computes the convolutional spatial Soft-Argmax 2D over the windows
-    of a given input heatmap. Function has two outputs: argmax coordinates and the softmaxpooled heatmap values
-    themselves. On each window, the function computed is
+    r"""Computes the convolutional spatial Soft-Argmax 2D over the windows of a given heatmap.
 
     .. math::
-             ij(X) = \frac{\sum{(i,j)} * exp(x / T)  \in X} {\sum{exp(x / T)  \in X}}
+        ij(X) = \frac{\sum{(i,j)} * exp(x / T)  \in X} {\sum{exp(x / T)  \in X}}
 
     .. math::
-             val(X) = \frac{\sum{x * exp(x / T)  \in X}} {\sum{exp(x / T)  \in X}}
+        val(X) = \frac{\sum{x * exp(x / T)  \in X}} {\sum{exp(x / T)  \in X}}
 
-    where T is temperature.
+    where :math:`T` is temperature.
 
     Args:
-        kernel_size (Tuple[int,int]): the size of the window
-        stride  (Tuple[int,int]): the stride of the window.
-        padding (Tuple[int,int]): input zero padding
-        temperature (torch.Tensor): factor to apply to input. Default is 1.
-        normalized_coordinates (bool): whether to return the coordinates normalized in the range of [-1, 1]. Otherwise,
-                                       it will return the coordinates in the range of the input shape. Default is True.
-        eps (float): small value to avoid zero division. Default is 1e-8.
-        output_value (bool): if True, val is output, if False, only ij
+        input: the given heatmap with shape :math:`(N, C, H_{in}, W_{in})`.
+        kernel_size: the size of the window.
+        stride: the stride of the window.
+        padding: input zero padding.
+        temperature: factor to apply to input.
+        normalized_coordinates: whether to return the coordinates normalized in the range of :math:`[-1, 1]`.
+            Otherwise, it will return the coordinates in the range of the input shape.
+        eps: small value to avoid zero division.
+        output_value: if True, val is output, if False, only ij.
 
-    Shape:
-        - Input: :math:`(N, C, H_{in}, W_{in})`
-        - Output: :math:`(N, C, 2, H_{out}, W_{out})`, :math:`(N, C, H_{out}, W_{out})`, where
+    Returns:
+        Function has two outputs - argmax coordinates and the softmaxpooled heatmap values themselves.
+        On each window, the function computed returns with shapes :math:`(N, C, 2, H_{out},
+        W_{out})`, :math:`(N, C, H_{out}, W_{out})`,
+
+        where
 
          .. math::
-                  H_{out} = \left\lfloor\frac{H_{in}  + 2 \times \text{padding}[0] -
-                  (\text{kernel\_size}[0] - 1) - 1}{\text{stride}[0]} + 1\right\rfloor
+             H_{out} = \left\lfloor\frac{H_{in}  + 2 \times \text{padding}[0] -
+               (\text{kernel\_size}[0] - 1) - 1}{\text{stride}[0]} + 1\right\rfloor
 
          .. math::
-                  W_{out} = \left\lfloor\frac{W_{in}  + 2 \times \text{padding}[1] -
-                  (\text{kernel\_size}[1] - 1) - 1}{\text{stride}[1]} + 1\right\rfloor
+             W_{out} = \left\lfloor\frac{W_{in}  + 2 \times \text{padding}[1] -
+               (\text{kernel\_size}[1] - 1) - 1}{\text{stride}[1]} + 1\right\rfloor
 
-    Examples::
+    Examples:
         >>> input = torch.randn(20, 16, 50, 32)
         >>> nms_coords, nms_val = conv_soft_argmax2d(input, (3,3), (2,2), (1,1), output_value=True)
     """
@@ -379,10 +381,7 @@ def conv_soft_argmax3d(
     output_value: bool = True,
     strict_maxima_bonus: float = 0.0,
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-    r"""Function that computes the convolutional spatial Soft-Argmax 3D over the windows
-    of a given input heatmap. Function has two outputs: argmax coordinates and the softmaxpooled heatmap values
-    themselves.
-    On each window, the function computed is:
+    r"""Computes the convolutional spatial Soft-Argmax 3D over the windows of a given heatmap.
 
     .. math::
              ijk(X) = \frac{\sum{(i,j,k)} * exp(x / T)  \in X} {\sum{exp(x / T)  \in X}}
@@ -390,22 +389,27 @@ def conv_soft_argmax3d(
     .. math::
              val(X) = \frac{\sum{x * exp(x / T)  \in X}} {\sum{exp(x / T)  \in X}}
 
-    where T is temperature.
+    where ``T`` is temperature.
 
     Args:
-        kernel_size (Tuple[int,int,int]):  size of the window
-        stride (Tuple[int,int,int]): stride of the window.
-        padding (Tuple[int,int,int]): input zero padding
-        temperature (torch.Tensor): factor to apply to input. Default is 1.
-        normalized_coordinates (bool): whether to return the coordinates normalized in the range of [-1, 1]. Otherwise,
-                                       it will return the coordinates in the range of the input shape. Default is False.
-        eps (float): small value to avoid zero division. Default is 1e-8.
-        output_value (bool): if True, val is output, if False, only ij
-        strict_maxima_bonus (float): pixels, which are strict maxima will score (1 + strict_maxima_bonus) * value.
-                                     This is needed for mimic behavior of strict NMS in classic local features
-    Shape:
-        - Input: :math:`(N, C, D_{in}, H_{in}, W_{in})`
-        - Output: :math:`(N, C, 3, D_{out}, H_{out}, W_{out})`, :math:`(N, C, D_{out}, H_{out}, W_{out})`, where
+        input: the given heatmap with shape :math:`(N, C, D_{in}, H_{in}, W_{in})`.
+        kernel_size:  size of the window.
+        stride: stride of the window.
+        padding: input zero padding.
+        temperature: factor to apply to input.
+        normalized_coordinates: whether to return the coordinates normalized in the range of :math:[-1, 1]`.
+            Otherwise, it will return the coordinates in the range of the input shape.
+        eps: small value to avoid zero division.
+        output_value: if True, val is output, if False, only ij.
+        strict_maxima_bonus: pixels, which are strict maxima will score (1 + strict_maxima_bonus) * value.
+          This is needed for mimic behavior of strict NMS in classic local features
+
+    Returns:
+        Function has two outputs - argmax coordinates and the softmaxpooled heatmap values themselves.
+        On each window, the function computed returns with shapes :math:`(N, C, 3, D_{out}, H_{out}, W_{out})`,
+        :math:`(N, C, D_{out}, H_{out}, W_{out})`,
+
+        where
 
          .. math::
              D_{out} = \left\lfloor\frac{D_{in}  + 2 \times \text{padding}[0] -
@@ -479,6 +483,7 @@ def conv_soft_argmax3d(
 
     if not output_value:
         return coords_max
+
     x_softmaxpool = (
         pool_coef * F.avg_pool3d(x_exp.view(input.size()) * input, kernel_size, stride=stride, padding=padding) / den
     )
@@ -499,23 +504,18 @@ def spatial_soft_argmax2d(
     normalized_coordinates: bool = True,
     eps: float = 1e-8,
 ) -> torch.Tensor:
-    r"""Function that computes the Spatial Soft-Argmax 2D
-    of a given input heatmap.
+    r"""Function that computes the Spatial Soft-Argmax 2D of a given input heatmap.
 
-    Returns the index of the maximum 2d coordinates of the give map.
-    The output order is x-coord and y-coord.
+    Args:
+        input: the given heatmap with shape :math:`(B, N, H, W)`.
+        temperature: factor to apply to input.
+        normalized_coordinates: whether to return the coordinates normalized in the range of :math:`[-1, 1]`.
+            Otherwise, it will return the coordinates in the range of the input shape.
+        eps: small value to avoid zero division.
 
-    Arguments:
-        temperature (torch.Tensor): factor to apply to input. Default is 1.
-        normalized_coordinates (bool): whether to return the
-          coordinates normalized in the range of [-1, 1]. Otherwise,
-          it will return the coordinates in the range of the input shape.
-          Default is True.
-        eps (float): small value to avoid zero division. Default is 1e-8.
-
-    Shape:
-        - Input: :math:`(B, N, H, W)`
-        - Output: :math:`(B, N, 2)`
+    Returns:
+        the index of the maximum 2d coordinates of the give map :math:`(B, N, 2)`.
+        The output order is x-coord and y-coord.
 
     Examples:
         >>> input = torch.tensor([[[
@@ -562,17 +562,22 @@ class SpatialSoftArgmax2d(nn.Module):
         return spatial_soft_argmax2d(input, self.temperature, self.normalized_coordinates, self.eps)
 
 
-def conv_quad_interp3d(input: torch.Tensor, strict_maxima_bonus: float = 10.0, eps: float = 1e-7):
-    r"""Function that computes the single iteration of quadratic interpolation of of the extremum (max or min) location
-    and value per each 3x3x3 window which contains strict extremum, similar to one done is SIFT
+def conv_quad_interp3d(
+    input: torch.Tensor, strict_maxima_bonus: float = 10.0, eps: float = 1e-7
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    r"""Function that computes the single iteration of quadratic interpolation of the extremum (max or min).
 
     Args:
-        strict_maxima_bonus (float): pixels, which are strict maxima will score (1 + strict_maxima_bonus) * value.
-                                     This is needed for mimic behavior of strict NMS in classic local features
-        eps (float): parameter to control the hessian matrix ill-condition number.
-    Shape:
-        - Input: :math:`(N, C, D_{in}, H_{in}, W_{in})`
-        - Output: :math:`(N, C, 3, D_{out}, H_{out}, W_{out})`, :math:`(N, C, D_{out}, H_{out}, W_{out})`, where
+        input: the given heatmap with shape :math:`(N, C, D_{in}, H_{in}, W_{in})`.
+        strict_maxima_bonus: pixels, which are strict maxima will score (1 + strict_maxima_bonus) * value.
+          This is needed for mimic behavior of strict NMS in classic local features
+        eps: parameter to control the hessian matrix ill-condition number.
+
+    Returns:
+        the location and value per each 3x3x3 window which contains strict extremum, similar to one done is SIFT.
+        :math:`(N, C, 3, D_{out}, H_{out}, W_{out})`, :math:`(N, C, D_{out}, H_{out}, W_{out})`,
+
+        where
 
          .. math::
              D_{out} = \left\lfloor\frac{D_{in}  + 2 \times \text{padding}[0] -
@@ -592,8 +597,10 @@ def conv_quad_interp3d(input: torch.Tensor, strict_maxima_bonus: float = 10.0, e
     """
     if not torch.is_tensor(input):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
+
     if not len(input.shape) == 5:
         raise ValueError("Invalid input shape, we expect BxCxDxHxW. Got: {}".format(input.shape))
+
     B, CH, D, H, W = input.shape
     dev: torch.device = input.device
     grid_global: torch.Tensor = create_meshgrid3d(D, H, W, False, device=input.device).permute(0, 4, 1, 2, 3)
@@ -640,6 +647,7 @@ def conv_quad_interp3d(input: torch.Tensor, strict_maxima_bonus: float = 10.0, e
 
 class ConvQuadInterp3d(nn.Module):
     r"""Module that calculates soft argmax 3d per window
+
     See :func:`~kornia.geometry.subpix.conv_quad_interp3d` for details.
     """
 

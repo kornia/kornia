@@ -35,8 +35,7 @@ class ImageSequential(nn.Sequential):
             If False, the whole list of args will be processed as a sequence in original order.
 
     Returns:
-        Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]: the tensor (, and the transformation matrix)
-            has been sequentially modified by the args.
+        the tensor (, and the transformation matrix) has been sequentially modified by the args.
 
     Examples:
         >>> import kornia

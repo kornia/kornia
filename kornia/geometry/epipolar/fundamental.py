@@ -18,12 +18,12 @@ def normalize_points(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Ten
     the result as optimal.
 
     Args:
-       points (torch.Tensor): Tensor containing the points to be normalized with shape :math:`(B, N, 2)`.
-       eps (float): epsilon value to avoid numerical instabilities. Default: 1e-8.
+       points: Tensor containing the points to be normalized with shape :math:`(B, N, 2)`.
+       eps: epsilon value to avoid numerical instabilities.
 
     Returns:
-       Tuple[torch.Tensor, torch.Tensor]: tuple containing the normalized points in the
-       shape :math:`(B, N, 2)` and the transformation matrix in the shape :math:`(B, 3, 3)`.
+       tuple containing the normalized points in the shape :math:`(B, N, 2)` and the transformation matrix
+       in the shape :math:`(B, 3, 3)`.
 
     """
     assert len(points.shape) == 3, points.shape
@@ -53,11 +53,11 @@ def normalize_transformation(M: torch.Tensor, eps: float = 1e-8) -> torch.Tensor
     the last row and column is one.
 
     Args:
-        M (torch.Tensor): The transformation to be normalized of any shape with a minimum size of 2x2.
-        eps (float): small value to avoid unstabilities during the backpropagation.
+        M: The transformation to be normalized of any shape with a minimum size of 2x2.
+        eps: small value to avoid unstabilities during the backpropagation.
 
     Returns:
-        torch.Tensor: the normalized transformation matrix with same shape as the input.
+        the normalized transformation matrix with same shape as the input.
 
     """
     assert len(M.shape) >= 2, M.shape
@@ -71,12 +71,12 @@ def find_fundamental(points1: torch.Tensor, points2: torch.Tensor, weights: torc
     The linear system is solved by using the Weighted Least Squares Solution for the 8 Points algorithm.
 
     Args:
-        points1 (torch.Tensor): A set of points in the first image with a tensor shape :math:`(B, N, 2)`.
-        points2 (torch.Tensor): A set of points in the second image with a tensor shape :math:`(B, N, 2)`.
-        weights (torch.Tensor): Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
+        points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`.
+        points2: A set of points in the second image with a tensor shape :math:`(B, N, 2)`.
+        weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
 
     Returns:
-        torch.Tensor: the computed fundamental matrix with shape :math:`(B, 3, 3)`.
+        the computed fundamental matrix with shape :math:`(B, 3, 3)`.
 
     """
     assert points1.shape == points2.shape, (points1.shape, points2.shape)
@@ -118,13 +118,11 @@ def compute_correspond_epilines(points: torch.Tensor, F_mat: torch.Tensor) -> to
     r"""Computes the corresponding epipolar line for a given set of points.
 
     Args:
-        points (torch.Tensor): tensor containing the set of points to project in
-          the shape of :math:`(B, N, 2)`.
-        F_mat (torch.Tensor): the fundamental to use for projection the points in
-          the shape of :math:`(B, 3, 3)`.
+        points: tensor containing the set of points to project in the shape of :math:`(B, N, 2)`.
+        F_mat: the fundamental to use for projection the points in the shape of :math:`(B, 3, 3)`.
 
     Returns:
-        torch.Tensor: a tensor with shape :math:`(B, N, 3)` containing a vector of the epipolar
+        a tensor with shape :math:`(B, N, 3)` containing a vector of the epipolar
         lines corresponding to the points to the other image. Each line is described as
         :math:`ax + by + c = 0` and encoding the vectors as :math:`(a, b, c)`.
 
@@ -151,12 +149,12 @@ def fundamental_from_essential(E_mat: torch.Tensor, K1: torch.Tensor, K2: torch.
     Uses the method from Hartley/Zisserman 9.6 pag 257 (formula 9.12).
 
     Args:
-        E_mat (torch.Tensor): The essential matrix with shape of :math:`(*, 3, 3)`.
-        K1 (torch.Tensor): The camera matrix from first camera with shape :math:`(*, 3, 3)`.
-        K2 (torch.Tensor): The camera matrix from second camera with shape :math:`(*, 3, 3)`.
+        E_mat: The essential matrix with shape of :math:`(*, 3, 3)`.
+        K1: The camera matrix from first camera with shape :math:`(*, 3, 3)`.
+        K2: The camera matrix from second camera with shape :math:`(*, 3, 3)`.
 
     Returns:
-         torch.Tensor: The fundamental matrix with shape :math:`(*, 3, 3)`.
+        The fundamental matrix with shape :math:`(*, 3, 3)`.
 
     """
     assert len(E_mat.shape) >= 2 and E_mat.shape[-2:] == (3, 3), E_mat.shape
@@ -176,11 +174,11 @@ def fundamental_from_projections(P1: torch.Tensor, P2: torch.Tensor) -> torch.Te
     r"""Get the Fundamental matrix from Projection matrices.
 
     Args:
-        P1 (torch.Tensor): The projection matrix from first camera with shape :math:`(*, 3, 4)`.
-        P2 (torch.Tensor): The projection matrix from second camera with shape :math:`(*, 3, 4)`.
+        P1: The projection matrix from first camera with shape :math:`(*, 3, 4)`.
+        P2: The projection matrix from second camera with shape :math:`(*, 3, 4)`.
 
     Returns:
-         torch.Tensor: The fundamental matrix with shape :math:`(*, 3, 3)`.
+         The fundamental matrix with shape :math:`(*, 3, 3)`.
 
     """
     assert len(P1.shape) >= 2 and P1.shape[-2:] == (3, 4), P1.shape

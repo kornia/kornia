@@ -7,28 +7,28 @@ import torch
 
 
 def confusion_matrix(
-    input: torch.Tensor, target: torch.Tensor, num_classes: int, normalized: Optional[bool] = False
+    input: torch.Tensor, target: torch.Tensor, num_classes: int, normalized: bool = False
 ) -> torch.Tensor:
     r"""Compute confusion matrix to evaluate the accuracy of a classification.
 
     Args:
-        input (torch.Tensor) : tensor with estimated targets returned by a
+        input: tensor with estimated targets returned by a
           classifier. The shape can be :math:`(B, *)` and must contain integer
           values between 0 and K-1.
-        target (torch.Tensor) : tensor with ground truth (correct) target
+        target: tensor with ground truth (correct) target
           values. The shape can be :math:`(B, *)` and must contain integer
           values between 0 and K-1, where targets are assumed to be provided as
           one-hot vectors.
-        num_classes (int): total possible number of classes in target.
-        normalized: (Optional[bool]): wether to return the confusion matrix
-          normalized. Default: False.
+        num_classes: total possible number of classes in target.
+        normalized: wether to return the confusion matrix normalized.
 
     Returns:
-        torch.Tensor: a tensor containing the confusion matrix with shape
+        a tensor containing the confusion matrix with shape
         :math:`(B, K, K)` where K is the number of classes.
     """
     if not torch.is_tensor(input) and input.dtype is not torch.int64:
         raise TypeError("Input input type is not a torch.Tensor with " "torch.int64 dtype. Got {}".format(type(input)))
+
     if not torch.is_tensor(target) and target.dtype is not torch.int64:
         raise TypeError(
             "Input target type is not a torch.Tensor with " "torch.int64 dtype. Got {}".format(type(target))
@@ -39,8 +39,10 @@ def confusion_matrix(
         )
     if not input.device == target.device:
         raise ValueError("Inputs must be in the same device. " "Got: {} - {}".format(input.device, target.device))
+
     if not isinstance(num_classes, int) or num_classes < 2:
         raise ValueError("The number of classes must be an integer bigger " "than two. Got: {}".format(num_classes))
+
     batch_size: int = input.shape[0]
 
     # hack for bitcounting 2 arrays together

@@ -6,25 +6,29 @@ import kornia
 def batched_forward(
     model: torch.nn.Module, data: torch.Tensor, device: torch.device, batch_size: int = 128, **kwargs
 ) -> torch.Tensor:
-    r'''Convenience function, which allows to run the forward in micro-batches,
-    when the just model.forward(data) does not fit into device memory, e.g. on laptop GPU.
+    r"""Convenience function, which allows to run the forward in micro-batches.
+
+    When the just model.forward(data) does not fit into device memory, e.g. on laptop GPU.
     In the end, it transfers the output to the device of the input data tensor.
     E.g. running HardNet on 8000x1x32x32 tensor.
+
     Args:
-        model (torch.nn.Module): Any torch model, which outputs a single tensor as an output
-        data (torch.Tensor): Input data of Bx(Any) shape
-        device (torch.device): which device should we run on
-        batch_size (int): "micro-batch" size. Default: 128
-        **kwargs: any other arguments, which accepts model
+        model: Any torch model, which outputs a single tensor as an output.
+        data: Input data of Bx(Any) shape.
+        device: which device should we run on.
+        batch_size: "micro-batch" size.
+        **kwargs: any other arguments, which accepts model.
+
     Returns:
-        torch.Tensor: output of the model
+        output of the model.
 
     Example:
         >>> patches = torch.rand(8000, 1, 32, 32)
         >>> sift = kornia.feature.SIFTDescriptor(32)
         >>> desc_batched = batched_forward(sift, patches, torch.device('cpu'), 128)
         >>> desc = sift(patches)
-        >>> assert torch.allclose(desc, desc_batched)'''
+        >>> assert torch.allclose(desc, desc_batched)
+    """
     model_dev = model.to(device)
     B: int = len(data)
     bs: int = batch_size

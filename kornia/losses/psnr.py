@@ -23,12 +23,12 @@ def psnr(input: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Ten
     (e.g for floating point images :math:`\text{MAX}_I=1`).
 
     Args:
-        input (torch.Tensor): the input image with arbitrary shape :math:`(*)`.
-        labels (torch.Tensor): the labels image with arbitrary shape :math:`(*)`.
-        max_val (float): The maximum value in the input tensor.
+        input: the input image with arbitrary shape :math:`(*)`.
+        labels: the labels image with arbitrary shape :math:`(*)`.
+        max_val: The maximum value in the input tensor.
 
     Return:
-        torch.Tensor: the computed loss as a scalar.
+        the computed loss as a scalar.
 
     Examples:
         >>> ones = torch.ones(1)
@@ -62,12 +62,12 @@ def psnr_loss(input: torch.Tensor, target: torch.Tensor, max_val: float) -> torc
     See :meth:`~kornia.losses.psnr` for details abut PSNR.
 
     Args:
-        input (torch.Tensor): the input image with shape :math:`(*)`.
-        labels (torch.Tensor): the labels image with shape :math:`(*)`.
-        max_val (float): The maximum value in the input tensor.
+        input: the input image with shape :math:`(*)`.
+        labels : the labels image with shape :math:`(*)`.
+        max_val: The maximum value in the input tensor.
 
     Return:
-        torch.Tensor: the computed loss as a scalar.
+        the computed loss as a scalar.
 
     Examples:
         >>> ones = torch.ones(1)
@@ -88,6 +88,9 @@ class PSNRLoss(nn.Module):
         \text{loss} = -\text{psnr(x, y)}
 
     See :meth:`~kornia.losses.psnr` for details abut PSNR.
+
+    Args:
+        max_val: The maximum value in the input tensor.
 
     Shape:
         - Input: arbitrary dimensional tensor :math:`(*)`.

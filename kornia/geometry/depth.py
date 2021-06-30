@@ -23,19 +23,17 @@ def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_poin
     """Compute a 3d point per pixel given its depth value and the camera intrinsics.
 
     Args:
-        depth (torch.Tensor): image tensor containing a depth value per pixel.
-        camera_matrix (torch.Tensor): tensor containing the camera intrinsics.
-        normalize_points (bool): whether to normalise the pointcloud. This
-            must be set to `True` when the depth is represented as the Euclidean
-            ray length from the camera position. Default is `False`.
+        depth: image tensor containing a depth value per pixel.
+        camera_matrix: tensor containing the camera intrinsics.
+        normalize_points: whether to normalise the pointcloud. This must be set to `True` when the depth is
+          represented as the Euclidean ray length from the camera position.
 
     Shape:
         - Input: :math:`(B, 1, H, W)` and :math:`(B, 3, 3)`
         - Output: :math:`(B, 3, H, W)`
 
     Return:
-        torch.Tensor: tensor with a 3d point per pixel of the same resolution as the input.
-
+        tensor with a 3d point per pixel of the same resolution as the input.
     """
     if not isinstance(depth, torch.Tensor):
         raise TypeError(f"Input depht type is not a torch.Tensor. Got {type(depth)}.")
@@ -70,19 +68,17 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
     """Compute the normal surface per pixel.
 
     Args:
-        depth (torch.Tensor): image tensor containing a depth value per pixel.
-        camera_matrix (torch.Tensor): tensor containing the camera intrinsics.
-        normalize_points (bool): whether to normalise the pointcloud. This
-            must be set to `True` when the depth is represented as the Euclidean
-            ray length from the camera position. Default is `False`.
+        depth: image tensor containing a depth value per pixel.
+        camera_matrix: tensor containing the camera intrinsics.
+        normalize_points: whether to normalise the pointcloud. This must be set to `True` when the depth is
+        represented as the Euclidean ray length from the camera position.
 
     Shape:
         - Input: :math:`(B, 1, H, W)` and :math:`(B, 3, 3)`
         - Output: :math:`(B, 3, H, W)`
 
     Return:
-        torch.Tensor: tensor with a normal surface vector per pixel of the same resolution as the input.
-
+        tensor with a normal surface vector per pixel of the same resolution as the input.
     """
     if not isinstance(depth, torch.Tensor):
         raise TypeError(f"Input depht type is not a torch.Tensor. Got {type(depth)}.")
@@ -122,17 +118,15 @@ def warp_frame_depth(
     image plane.
 
     Args:
-        image_src (torch.Tensor): image tensor in the source frame with shape (BxDxHxW).
-        depth_dst (torch.Tensor): depth tensor in the destination frame with shape (Bx1xHxW).
-        src_trans_dst (torch.Tensor): transformation matrix from destination to source with shape (Bx4x4).
-        camera_matrix (torch.Tensor): tensor containing the camera intrinsics with shape (Bx3x3).
-        normalize_points (bool): whether to normalise the pointcloud. This
-            must be set to `True` when the depth is represented as the Euclidean
-            ray length from the camera position. Default is `False`.
+        image_src: image tensor in the source frame with shape :math:`(B,D,H,W)`.
+        depth_dst: depth tensor in the destination frame with shape :math:`(B,1,H,W)`.
+        src_trans_dst: transformation matrix from destination to source with shape :math:`(B,4,4)`.
+        camera_matrix: tensor containing the camera intrinsics with shape :math:`(B,3,3)`.
+        normalize_points: whether to normalise the pointcloud. This must be set to ``True`` when the depth
+           is represented as the Euclidean ray length from the camera position.
 
     Return:
-        torch.Tensor: the warped tensor in the source frame with shape (Bx3xHxW).
-
+        the warped tensor in the source frame with shape :math:`(B,3,H,W)`.
     """
     if not isinstance(image_src, torch.Tensor):
         raise TypeError(f"Input image_src type is not a torch.Tensor. Got {type(image_src)}.")
@@ -186,16 +180,12 @@ class DepthWarper(nn.Module):
         I_{src} = \\omega(I_{dst}, P_{src}^{\{dst\}}, D_{src})
 
     Args:
-        pinholes_dst (PinholeCamera): the pinhole models for the destination
-          frame.
-        height (int): the height of the image to warp.
-        width (int): the width of the image to warp.
-        mode (str): interpolation mode to calculate output values
-          'bilinear' | 'nearest'. Default: 'bilinear'.
-        padding_mode (str): padding mode for outside grid values
-           'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners(bool): interpolation flag. Default: True. See
-          https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
+        pinholes_dst: the pinhole models for the destination frame.
+        height: the height of the image to warp.
+        width: the width of the image to warp.
+        mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
+        padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``.
+        align_corners: interpolation flag.
     """
 
     def __init__(
@@ -281,8 +271,7 @@ class DepthWarper(nn.Module):
         return torch.min(0.5 / dxdd)
 
     def warp_grid(self, depth_src: torch.Tensor) -> torch.Tensor:
-        """Computes a grid for warping a given the depth from the reference
-        pinhole camera.
+        """Computes a grid for warping a given the depth from the reference pinhole camera.
 
         The function `compute_projection_matrix` has to be called beforehand in
         order to have precomputed the relative projection matrices encoding the
@@ -318,18 +307,15 @@ class DepthWarper(nn.Module):
         pixel_coords_src_norm: torch.Tensor = normalize_pixel_coordinates(pixel_coords_src, self.height, self.width)
         return pixel_coords_src_norm
 
-    def forward(self, depth_src: torch.Tensor, patch_dst: torch.Tensor) -> torch.Tensor:  # type: ignore
-        """Warps a tensor from destination frame to reference given the depth
-        in the reference frame.
+    def forward(self, depth_src: torch.Tensor, patch_dst: torch.Tensor) -> torch.Tensor:
+        """Warps a tensor from destination frame to reference given the depth in the reference frame.
 
         Args:
-            depth_src (torch.Tensor): the depth in the reference frame. The
-              tensor must have a shape :math:`(B, 1, H, W)`.
-            patch_dst (torch.Tensor): the patch in the destination frame. The
-              tensor must have a shape :math:`(B, C, H, W)`.
+            depth_src: the depth in the reference frame. The tensor must have a shape :math:`(B, 1, H, W)`.
+            patch_dst: the patch in the destination frame. The tensor must have a shape :math:`(B, C, H, W)`.
 
         Return:
-            torch.Tensor: the warped patch from destination frame to reference.
+            the warped patch from destination frame to reference.
 
         Shape:
             - Output: :math:`(N, C, H, W)` where C = number of channels.

@@ -9,10 +9,10 @@ def cross_product_matrix(x: torch.Tensor) -> torch.Tensor:
     r"""Returns the cross_product_matrix symmetric matrix of a vector.
 
     Args:
-        x (torch.Tensor): The input vector to construct the matrix in the shape :math:`(B, 3)`.
+        x: The input vector to construct the matrix in the shape :math:`(B, 3)`.
 
     Returns:
-        torch.Tensor: The constructed cross_product_matrix symmetric matrix with shape :math:`(B, 3, 3)`.
+        The constructed cross_product_matrix symmetric matrix with shape :math:`(B, 3, 3)`.
 
     """
     assert len(x.shape) == 2 and x.shape[1] == 3, x.shape
@@ -31,12 +31,12 @@ def eye_like(n: int, input: torch.Tensor) -> torch.Tensor:
     r"""Returns a 2-D tensor with ones on the diagonal and zeros elsewhere with same size as the input.
 
     Args:
-        n (int): the number of rows :math:`(N)`.
-        input (torch.Tensor): image tensor that will determine the batch size of the output matrix.
+        n: the number of rows :math:`(N)`.
+        input: image tensor that will determine the batch size of the output matrix.
           The expected shape is :math:`(B, *)`.
 
     Returns:
-        torch.Tensor: The identity matrix with same size as input :math:`(*, N, N)`.
+       The identity matrix with same size as input :math:`(*, N, N)`.
 
     """
     assert n > 0, (type(n), n)
@@ -50,12 +50,12 @@ def vec_like(n, tensor):
     r"""Returns a 2-D tensor with a vector containing zeros with same size as the input.
 
     Args:
-        n (int): the number of rows :math:`(N)`.
-        input (torch.Tensor): image tensor that will determine the batch size of the output matrix.
+        n: the number of rows :math:`(N)`.
+        input: image tensor that will determine the batch size of the output matrix.
           The expected shape is :math:`(B, *)`.
 
     Returns:
-        torch.Tensor: The vector with same size as input :math:`(*, N, 1)`.
+        The vector with same size as input :math:`(*, N, 1)`.
 
     """
     assert n > 0, (type(n), n)

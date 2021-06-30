@@ -25,14 +25,14 @@ def ssim(
         :math:`2^{\#\text{bits per pixel}}-1`).
 
     Args:
-        img1 (torch.Tensor): the first input image with shape :math:`(B, C, H, W)`.
-        img2 (torch.Tensor): the second input image with shape :math:`(B, C, H, W)`.
-        window_size (int): the size of the gaussian kernel to smooth the images.
-        max_val (float): the dynamic range of the images. Default: 1.
-        eps (float): Small value for numerically stability when dividing. Default: 1e-12.
+        img1: the first input image with shape :math:`(B, C, H, W)`.
+        img2: the second input image with shape :math:`(B, C, H, W)`.
+        window_size: the size of the gaussian kernel to smooth the images.
+        max_val: the dynamic range of the images.
+        eps: Small value for numerically stability when dividing.
 
     Returns:
-        torch.Tensor: The ssim index map with shape :math:`(B, C, H, W)`.
+       The ssim index map with shape :math:`(B, C, H, W)`.
 
     Examples:
         >>> input1 = torch.rand(1, 4, 5, 5)
@@ -103,18 +103,18 @@ def ssim_loss(
     See :meth:`~kornia.losses.ssim` for details about SSIM.
 
     Args:
-        img1 (torch.Tensor): the first input image with shape :math:`(B, C, H, W)`.
-        img2 (torch.Tensor): the second input image with shape :math:`(B, C, H, W)`.
-        window_size (int): the size of the gaussian kernel to smooth the images.
-        max_val (float): the dynamic range of the images. Default: 1.
-        eps (float): Small value for numerically stability when dividing. Default: 1e-12.
-        reduction (str, optional): Specifies the reduction to apply to the
-         output: 'none' | 'mean' | 'sum'. 'none': no reduction will be applied,
-         'mean': the sum of the output will be divided by the number of elements
-         in the output, 'sum': the output will be summed. Default: 'mean'.
+        img1: the first input image with shape :math:`(B, C, H, W)`.
+        img2: the second input image with shape :math:`(B, C, H, W)`.
+        window_size: the size of the gaussian kernel to smooth the images.
+        max_val: the dynamic range of the images.
+        eps: Small value for numerically stability when dividing.
+        reduction : Specifies the reduction to apply to the
+         output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
+         ``'mean'``: the sum of the output will be divided by the number of elements
+         in the output, ``'sum'``: the output will be summed.
 
     Returns:
-        torch.Tensor: The loss based on the ssim index.
+        The loss based on the ssim index.
 
     Examples:
         >>> input1 = torch.rand(1, 4, 5, 5)
@@ -155,9 +155,9 @@ class SSIM(nn.Module):
         :math:`2^{\#\text{bits per pixel}}-1`).
 
     Args:
-        window_size (int): the size of the gaussian kernel to smooth the images.
-        max_val (float): the dynamic range of the images. Default: 1.
-        eps (float): Small value for numerically stability when dividing. Default: 1e-12.
+        window_size: the size of the gaussian kernel to smooth the images.
+        max_val: the dynamic range of the images.
+        eps: Small value for numerically stability when dividing.
 
     Shape:
         - Input: :math:`(B, C, H, W)`.
@@ -193,16 +193,16 @@ class SSIMLoss(nn.Module):
     See :meth:`~kornia.losses.ssim_loss` for details about SSIM.
 
     Args:
-        window_size (int): the size of the gaussian kernel to smooth the images.
-        max_val (float): the dynamic range of the images. Default: 1.
-        eps (float): Small value for numerically stability when dividing. Default: 1e-12.
-        reduction (str, optional): Specifies the reduction to apply to the
-         output: 'none' | 'mean' | 'sum'. 'none': no reduction will be applied,
-         'mean': the sum of the output will be divided by the number of elements
-         in the output, 'sum': the output will be summed. Default: 'mean'.
+        window_size: the size of the gaussian kernel to smooth the images.
+        max_val: the dynamic range of the images.
+        eps: Small value for numerically stability when dividing.
+        reduction : Specifies the reduction to apply to the
+         output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
+         ``'mean'``: the sum of the output will be divided by the number of elements
+         in the output, ``'sum'``: the output will be summed.
 
     Returns:
-        torch.Tensor: The loss based on the ssim index.
+        The loss based on the ssim index.
 
     Examples:
         >>> input1 = torch.rand(1, 4, 5, 5)
