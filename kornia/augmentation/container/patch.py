@@ -1,7 +1,8 @@
-from typing import List, Optional, Tuple, Union, NamedTuple
+from typing import Iterator, List, Optional, Tuple, Union, NamedTuple
 from itertools import zip_longest, cycle, islice
 
 import torch
+from torch.functional import Tensor
 import torch.nn as nn
 
 from kornia.augmentation.base import (
@@ -315,49 +316,120 @@ class PatchSequential(ImageSequential):
             input.reshape(-1, *input.shape[-3:]), label, params, auglist)
         return output.reshape(*in_shape), label
 
-    def forward_locationwise(
-        self, input: torch.Tensor, label: Optional[torch.Tensor] = None,
-        params: Optional[List[List[ParamItem]]] = None
+    # def forward_locationwise(
+    #     self, input: torch.Tensor, label: Optional[torch.Tensor] = None,
+    #     params: Optional[List[List[ParamItem]]] = None
+    # ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    #     # NOTE: return_transform is always False here.
+    #     """Params: params[patch_idx][aug_idx]
+
+    #     Every patch location will perform the similar transformations (in a batch).
+    #     Mix augmentation happens among all patches in the same location.
+    #     """
+    #     if params is None:
+    #         params = [[]] * input.size(1)
+    #         auglist = list(self.get_multiple_forward_sequence(input.size(1)))
+    #     else:
+    #         auglist = [list(self.get_forward_sequence(p)) for p in params]
+    #         assert input.size(1) == len(auglist) == len(params)
+
+    #     output, label = self.__elementwise_apply__(
+    #         input.permute(1, 0, 2, 3, 4), label, params, auglist, batch_mix=False)  # type: ignore
+    #     return output.permute(1, 0, 2, 3, 4), label
+
+    # def forward_batchwise(
+    #     self, input: torch.Tensor, label: Optional[torch.Tensor] = None,
+    #     params: Optional[List[List[ParamItem]]] = None
+    # ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    #     # NOTE: return_transform is always False here.
+    #     """Params: params[patch_idx][aug_idx].
+
+    #     All patch locations will perform the similar transformations (in a batch).
+    #     While mix augmentation happens among all patches.
+    #     """
+    #     if params is None:
+    #         params = [[]]
+    #         auglist = [list(self.get_forward_sequence())]
+    #     else:
+    #         assert len(params) == 1
+    #         auglist = [list(self.get_forward_sequence(params[0]))]
+
+    #     in_shape = input.shape
+    #     # Fake to 5 dim
+    #     output, label = self.__elementwise_apply__(
+    #         input.reshape(1, -1, *in_shape[-3:]), label, params, auglist, batch_mix=True)
+    #     return output.reshape(in_shape), label
+
+    def split_batchwise_sequence(self, sequence: List[Tuple[str, nn.Module]]) -> Tuple[
+        List[Tuple[str, nn.Module]], Optional[Tuple[str, nn.Module]], List[Tuple[str, nn.Module]],
+    ]:
+        index = None
+        for idx, (_, module) in enumerate(sequence):
+            if isinstance(module, (MixAugmentationBase,)):
+                index = idx
+        if index is None:
+            return sequence, None, []
+        return sequence[:index], sequence[index], sequence[index + 1:]
+
+    def split_locationwise_sequence(self, sequence: List[List[Tuple[str, nn.Module]]]) -> Tuple[
+        List[List[Tuple[str, nn.Module]]], List[Optional[Tuple[str, nn.Module]]], List[List[Tuple[str, nn.Module]]],
+    ]:
+        seq_list = []
+        for seq in sequence:
+            seq_list.append(self.split_batchwise_sequence(seq))
+        out = list(map(list, zip(*seq_list)))
+        return out[0], out[1], out[2]
+
+    def apply_batchwise(self, input: torch.Tensor, sequence: List[Tuple[str, nn.Module]]) -> torch.Tensor:
+        # TODO: update parameter
+        in_shape = input.shape
+        input = input.reshape(-1, *input.shape[-3:])
+        for name, module in sequence:
+            input = module(input)
+        return input.reshape(in_shape)
+
+    def apply_locationwise(self, input: torch.Tensor, sequence: List[List[Tuple[str, nn.Module]]]) -> torch.Tensor:
+        # TODO: update parameter
+        input = input.permute(1, 0, 2, 3, 4)
+        for idx, seq in enumerate(sequence):
+            for name, module in seq:
+                input[idx] = module(input[idx])
+        return input.permute(1, 0, 2, 3, 4)
+
+    def apply_mix_augment(
+        self, module: Tuple[str, nn.Module], input: torch.Tensor, label: Optional[torch.Tensor]
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-        # NOTE: return_transform is always False here.
-        """Params: params[patch_idx][aug_idx]
-
-        Every patch location will perform the similar transformations (in a batch).
-        Mix augmentation happens among all patches in the same location.
-        """
-        if params is None:
-            params = [[]] * input.size(1)
-            auglist = list(self.get_multiple_forward_sequence(input.size(1)))
-        else:
-            auglist = [list(self.get_forward_sequence(p)) for p in params]
-            assert input.size(1) == len(auglist) == len(params)
-
-        output, label = self.__elementwise_apply__(
-            input.permute(1, 0, 2, 3, 4), label, params, auglist, batch_mix=False)  # type: ignore
-        return output.permute(1, 0, 2, 3, 4), label
+        # TODO: update parameter
+        return module[1](input, label)
 
     def forward_batchwise(
         self, input: torch.Tensor, label: Optional[torch.Tensor] = None,
         params: Optional[List[List[ParamItem]]] = None
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-        # NOTE: return_transform is always False here.
-        """Params: params[patch_idx][aug_idx].
+        aug_seq = self.get_forward_sequence(params[0] if params is not None else params)
+        pre_list, mix_aug, post_list = self.split_batchwise_sequence(list(aug_seq))
+        input = self.apply_batchwise(input, pre_list)
+        if mix_aug is not None:
+            input, label = self.apply_mix_augment(mix_aug, input, label)
+        input = self.apply_batchwise(input, post_list)
+        return input, label
 
-        All patch locations will perform the similar transformations (in a batch).
-        While mix augmentation happens among all patches.
-        """
+    def forward_locationwise(
+        self, input: torch.Tensor, label: Optional[torch.Tensor] = None,
+        params: Optional[List[List[ParamItem]]] = None
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         if params is None:
-            params = [[]]
-            auglist = [list(self.get_forward_sequence())]
+            params = [[]] * input.size(1)
+            aug_seq = list(self.get_multiple_forward_sequence(input.size(1)))
         else:
-            assert len(params) == 1
-            auglist = [list(self.get_forward_sequence(params[0]))]
+            aug_seq = [list(self.get_forward_sequence(p)) for p in params]
 
-        in_shape = input.shape
-        # Fake to 5 dim
-        output, label = self.__elementwise_apply__(
-            input.reshape(1, -1, *in_shape[-3:]), label, params, auglist, batch_mix=True)
-        return output.reshape(in_shape), label
+        pre_list, mix_aug, post_list = self.split_locationwise_sequence(list(aug_seq))
+        input = self.apply_locationwise(input, pre_list)
+        if mix_aug is not None:
+            input, label = self.apply_mix_augment(mix_aug, input, label)
+        input = self.apply_locationwise(input, post_list)
+        return input, label
 
     def forward(  # type: ignore
         self,
