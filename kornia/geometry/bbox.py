@@ -10,11 +10,9 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
     """Validate if a 2D bounding box usable or not. This function checks if the boxes are rectangular or not.
 
     Args:
-        boxes (torch.Tensor): a tensor containing the coordinates of the
-          bounding boxes to be extracted. The tensor must have the shape
-          of Bx4x2, where each box is defined in the following (clockwise)
-          order: top-left, top-right, bottom-right, bottom-left. The
-          coordinates must be in the x, y order.
+        boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
+            of Bx4x2, where each box is defined in the following ``clockwise`` order: top-left, top-right, bottom-right,
+            bottom-left. The coordinates must be in the x, y order.
     """
     assert len(boxes.shape) == 3 and boxes.shape[1:] == torch.Size(
         [4, 2]
@@ -40,10 +38,10 @@ def validate_bbox3d(boxes: torch.Tensor) -> bool:
     """Validate if a 3D bounding box usable or not. This function checks if the boxes are cube or not.
 
     Args:
-        boxes (torch.Tensor): a tensor containing the coordinates of the bounding boxes to be extracted.
-            The tensor must have the shape of Bx8x3, where each box is defined in the following (clockwise)
-            order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
-            back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in the x, y, z order.
+        boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
+            of Bx8x3, where each box is defined in the following ``clockwise`` order: front-top-left, front-top-right,
+            front-bottom-right, front-bottom-left, back-top-left, back-top-right, back-bottom-right, back-bottom-left.
+            The coordinates must be in the x, y, z order.
     """
     assert len(boxes.shape) == 3 and boxes.shape[1:] == torch.Size(
         [8, 3]
@@ -75,14 +73,11 @@ def infer_bbox_shape(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Auto-infer the output sizes for the given 2D bounding boxes.
 
     Args:
-        boxes (torch.Tensor): a tensor containing the coordinates of the
-          bounding boxes to be extracted. The tensor must have the shape
-          of Bx4x2, where each box is defined in the following (clockwise)
-          order: top-left, top-right, bottom-right, bottom-left. The
-          coordinates must be in the x, y order.
+        boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
+            of Bx4x2, where each box is defined in the following ``clockwise`` order: top-left, top-right, bottom-right,
+            bottom-left. The coordinates must be in the x, y order.
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor]:
         - Bounding box heights, shape of :math:`(B,)`.
         - Boundingbox widths, shape of :math:`(B,)`.
 
@@ -111,13 +106,12 @@ def infer_bbox_shape3d(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor,
     r"""Auto-infer the output sizes for the given 3D bounding boxes.
 
     Args:
-        boxes (torch.Tensor): a tensor containing the coordinates of the bounding boxes to be extracted.
-            The tensor must have the shape of Bx8x3, where each box is defined in the following (clockwise)
-            order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
-            back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in the x, y, z order.
+        boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
+            of Bx8x3, where each box is defined in the following ``clockwise`` order: front-top-left, front-top-right,
+            front-bottom-right, front-bottom-left, back-top-left, back-top-right, back-bottom-right, back-bottom-left.
+            The coordinates must be in the x, y, z order.
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         - Bounding box depths, shape of :math:`(B,)`.
         - Bounding box heights, shape of :math:`(B,)`.
         - Bounding box widths, shape of :math:`(B,)`.
@@ -160,14 +154,14 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
     """Convert 2D bounding boxes to masks. Covered area is 1. and the remaining is 0.
 
     Args:
-        boxes (torch.Tensor): a tensor containing the coordinates of the bounding boxes to be extracted.
-            The tensor must have the shape of Bx4x2, where each box is defined in the following (clockwise)
-            order: top-left, top-right, bottom-right and bottom-left. The coordinates must be in the x, y order.
-        width (int): width of the masked image.
-        height (int): height of the masked image.
+        boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
+            of Bx4x2, where each box is defined in the following ``clockwise`` order: top-left, top-right, bottom-right
+            and bottom-left. The coordinates must be in the x, y order.
+        width: width of the masked image.
+        height: height of the masked image.
 
     Returns:
-        torch.Tensor: the output mask tensor.
+        the output mask tensor.
 
     Note:
         It is currently non-differentiable.
@@ -210,14 +204,14 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: Tuple[int, int, int]) -> torch.Ten
     """Convert 3D bounding boxes to masks. Covered area is 1. and the remaining is 0.
 
     Args:
-        boxes (torch.Tensor): a tensor containing the coordinates of the bounding boxes to be extracted.
-            The tensor must have the shape of Bx8x3, where each box is defined in the following (clockwise)
-            order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
-            back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in the x, y, z order.
-        size (Tuple[int, int, int]): depth, height and width of the masked image.
+        boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
+            of Bx8x3, where each box is defined in the following ``clockwise`` order: front-top-left, front-top-right,
+            front-bottom-right, front-bottom-left, back-top-left, back-top-right, back-bottom-right, back-bottom-left.
+            The coordinates must be in the x, y, z order.
+        size: depth, height and width of the masked image.
 
     Returns:
-        torch.Tensor: the output mask tensor.
+        the output mask tensor.
 
     Examples:
         >>> boxes = torch.tensor([[
@@ -292,17 +286,15 @@ def bbox_generator(
     """Generate 2D bounding boxes according to the provided start coords, width and height.
 
     Args:
-        x_start (torch.Tensor): a tensor containing the x coordinates of the bounding boxes to be extracted.
-            Shape must be a scalar tensor or :math:`(B,)`.
-        y_start (torch.Tensor): a tensor containing the y coordinates of the bounding boxes to be extracted.
-            Shape must be a scalar tensor or :math:`(B,)`.
-        width (torch.Tensor): widths of the masked image.
-            Shape must be a scalar tensor or :math:`(B,)`.
-        height (torch.Tensor): heights of the masked image.
-            Shape must be a scalar tensor or :math:`(B,)`.
+        x_start: a tensor containing the x coordinates of the bounding boxes to be extracted. Shape must be a scalar
+            tensor or :math:`(B,)`.
+        y_start: a tensor containing the y coordinates of the bounding boxes to be extracted. Shape must be a scalar
+            tensor or :math:`(B,)`.
+        width: widths of the masked image. Shape must be a scalar tensor or :math:`(B,)`.
+        height: heights of the masked image. Shape must be a scalar tensor or :math:`(B,)`.
 
     Returns:
-        torch.Tensor: the bounding box tensor.
+        the bounding box tensor.
 
     Examples:
         >>> x_start = torch.tensor([0, 1])
@@ -362,21 +354,18 @@ def bbox_generator3d(
     """Generate 3D bounding boxes according to the provided start coords, width, height and depth.
 
     Args:
-        x_start (torch.Tensor): a tensor containing the x coordinates of the bounding boxes to be extracted.
-            Shape must be a scalar tensor or :math:`(B,)`.
-        y_start (torch.Tensor): a tensor containing the y coordinates of the bounding boxes to be extracted.
-            Shape must be a scalar tensor or :math:`(B,)`.
-        z_start (torch.Tensor): a tensor containing the z coordinates of the bounding boxes to be extracted.
-            Shape must be a scalar tensor or :math:`(B,)`.
-        width (torch.Tensor): widths of the masked image.
-            Shape must be a scalar tensor or :math:`(B,)`.
-        height (torch.Tensor): heights of the masked image.
-            Shape must be a scalar tensor or :math:`(B,)`.
-        depth (torch.Tensor): depths of the masked image.
-            Shape must be a scalar tensor or :math:`(B,)`.
+        x_start: a tensor containing the x coordinates of the bounding boxes to be extracted. Shape must be a scalar
+            tensor or :math:`(B,)`.
+        y_start: a tensor containing the y coordinates of the bounding boxes to be extracted. Shape must be a scalar
+            tensor or :math:`(B,)`.
+        z_start: a tensor containing the z coordinates of the bounding boxes to be extracted. Shape must be a scalar
+            tensor or :math:`(B,)`.
+        width: widths of the masked image. Shape must be a scalar tensor or :math:`(B,)`.
+        height: heights of the masked image. Shape must be a scalar tensor or :math:`(B,)`.
+        depth: depths of the masked image. Shape must be a scalar tensor or :math:`(B,)`.
 
     Returns:
-        torch.Tensor: the 3d bounding box tensor :math:`(B, 8, 3)`.
+        the 3d bounding box tensor :math:`(B, 8, 3)`.
 
     Examples:
         >>> x_start = torch.tensor([0, 3])
@@ -450,14 +439,13 @@ def transform_bbox(trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = "xy
     transformation matrix or a batch of transformation matrices (B, 3, 3)
 
     Args:
-        trans_mat (torch.Tensor): The transformation matrix to be applied
-        boxes (torch.Tensor): The boxes to be transformed
-        mode (str): The format in which the boxes are provided. If set to 'xyxy' the boxes
-                    are assumed to be in the format (xmin, ymin, xmax, ymax). If set to 'xywh'
-                    the boxes are assumed to be in the format (xmin, ymin, width, height).
-                    Default: 'xyxy'
+        trans_mat: The transformation matrix to be applied
+        boxes: The boxes to be transformed
+        mode: The format in which the boxes are provided. If set to 'xyxy' the boxes are assumed to be in the format
+            ``xmin, ymin, xmax, ymax``. If set to 'xywh' the boxes are assumed to be in the format
+            ``xmin, ymin, width, height``
     Returns:
-        torch.Tensor: The set of transformed points in the specified mode
+        The set of transformed points in the specified mode
 
 
     """
