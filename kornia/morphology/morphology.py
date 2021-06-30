@@ -9,7 +9,7 @@ def _neight2channels_like_kernel(kernel: torch.Tensor) -> torch.Tensor:
     kernel = torch.eye(h * w, dtype=kernel.dtype, device=kernel.device)
     return kernel.view(h * w, 1, h, w)
 
-  
+
 def dilation(
     tensor: torch.Tensor,
     kernel: torch.Tensor,
