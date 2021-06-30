@@ -13,8 +13,8 @@ __all__ = ["ImageSequential"]
 
 class ParamItem(NamedTuple):
     name: str
-    data: Union[dict, list]
-
+    data: Optional[Union[dict, list]
+]
 
 # TODO: Add forward_parameters for ImageSequential
 class ImageSequential(nn.Sequential):
