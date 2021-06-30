@@ -25,11 +25,11 @@ def inverse_depth_smoothness_loss(idepth: torch.Tensor, image: torch.Tensor) -> 
         \partial_y d_{ij} \right | e^{-\left \| \partial_y I_{ij} \right \|}
 
     Args:
-        idepth (torch.Tensor): tensor with the inverse depth with shape :math:`(N, 1, H, W)`.
-        image (torch.Tensor): tensor with the input image with shape :math:`(N, 3, H, W)`.
+        idepth: tensor with the inverse depth with shape :math:`(N, 1, H, W)`.
+        image: tensor with the input image with shape :math:`(N, 3, H, W)`.
 
     Return:
-        torch.Tensor: a scalar with the computed loss.
+        a scalar with the computed loss.
 
     Examples:
         >>> idepth = torch.rand(1, 1, 4, 5)

@@ -43,8 +43,7 @@ class AugmentationSequential(ImageSequential):
             If False, the whole list of args will be processed as a sequence in original order.
 
     Return:
-        List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]: the tensor (, and the transformation matrix)
-            has been sequentially modified by the args.
+        the tensor (, and the transformation matrix) has been sequentially modified by the args.
 
     Examples:
         >>> import kornia

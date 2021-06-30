@@ -16,18 +16,17 @@ urls[
 
 
 class TFeat(nn.Module):
-    """
-    Module, which computes TFeat descriptors of given grayscale patches of 32x32.
+    r"""Module, which computes TFeat descriptors of given grayscale patches of 32x32.
 
     This is based on the original code from paper "Learning local feature descriptors
     with triplets and shallow convolutional neural networks".
     See :cite:`TFeat2016` for more details
 
     Args:
-        pretrained: (bool) Download and set pretrained weights to the model. Default: false.
+        pretrained: Download and set pretrained weights to the model.
 
     Returns:
-        torch.Tensor: TFeat descriptor of the patches.
+        TFeat descriptor of the patches.
 
     Shape:
         - Input: (B, 1, 32, 32)

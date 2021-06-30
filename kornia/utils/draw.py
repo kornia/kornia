@@ -13,16 +13,16 @@ def draw_rectangle(
     r"""Draws N rectangles on a batch of image tensors.
 
     Args:
-        image (torch.Tensor): is tensor of BxCxHxW.
-        rectangle (torch.Tensor): represents number of rectangles to draw in BxNx4
+        image: is tensor of BxCxHxW.
+        rectangle: represents number of rectangles to draw in BxNx4
             N is the number of boxes to draw per batch index[x1, y1, x2, y2]
             4 is in (top_left.x, top_left.y, bot_right.x, bot_right.y).
-        color (torch.Tensor, optional): a size 1, size 3, BxNx1, or BxNx3 tensor.
-            If C is 3, and color is 1 channel it will be broadcasted Default: None (black).
-        fill (bool, optional): is a flag used to fill the boxes with color if True. Default: False.
-        width (int): The line width. Default: 1. (Not implemented yet).
+        color: a size 1, size 3, BxNx1, or BxNx3 tensor.
+            If C is 3, and color is 1 channel it will be broadcasted.
+        fill: is a flag used to fill the boxes with color if True.
+        width: The line width (Not implemented yet).
     Returns:
-        torch.Tensor: This operation modifies image inplace but also returns the drawn tensor for
+        This operation modifies image inplace but also returns the drawn tensor for
         convenience with same shape the of the input BxCxHxW.
 
     Example:

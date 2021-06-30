@@ -8,13 +8,13 @@ def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch
     r"""Projects a 3d point onto the 2d camera plane.
 
     Args:
-        point3d (torch.Tensor): tensor containing the 3d points to be projected
+        point3d: tensor containing the 3d points to be projected
             to the camera plane. The shape of the tensor can be :math:`(*, 3)`.
-        camera_matrix (torch.Tensor): tensor containing the intrinsics camera
+        camera_matrix: tensor containing the intrinsics camera
             matrix. The tensor shape must be :math:`(*, 3, 3)`.
 
     Returns:
-        torch.Tensor: array of (u, v) cam coordinates with shape :math:`(*, 2)`.
+        tensor of (u, v) cam coordinates with shape :math:`(*, 2)`.
     """
     if not isinstance(point_3d, torch.Tensor):
         raise TypeError("Input point_3d type is not a torch.Tensor. Got {}".format(type(point_3d)))
@@ -61,19 +61,18 @@ def unproject_points(
     Transform coordinates in the pixel frame to the camera frame.
 
     Args:
-        point2d (torch.Tensor): tensor containing the 2d to be projected to
+        point2d: tensor containing the 2d to be projected to
             world coordinates. The shape of the tensor can be :math:`(*, 2)`.
-        depth (torch.Tensor): tensor containing the depth value of each 2d
+        depth: tensor containing the depth value of each 2d
             points. The tensor shape must be equal to point2d :math:`(*, 1)`.
-        camera_matrix (torch.Tensor): tensor containing the intrinsics camera
+        camera_matrix: tensor containing the intrinsics camera
             matrix. The tensor shape must be :math:`(*, 3, 3)`.
-        normalize (bool, optional): whether to normalize the pointcloud. This
+        normalize: whether to normalize the pointcloud. This
             must be set to `True` when the depth is represented as the Euclidean
-            ray length from the camera position. Default is `False`.
+            ray length from the camera position.
 
     Returns:
-        torch.Tensor: tensor of (x, y, z) world coordinates with shape
-        :math:`(*, 3)`.
+        tensor of (x, y, z) world coordinates with shape :math:`(*, 3)`.
     """
     if not isinstance(point_2d, torch.Tensor):
         raise TypeError("Input point_2d type is not a torch.Tensor. Got {}".format(type(point_2d)))

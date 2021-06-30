@@ -12,12 +12,12 @@ def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.
     Uses the method from Hartley/Zisserman 9.6 pag 257 (formula 9.12).
 
     Args:
-        F_mat (torch.Tensor): The fundamental matrix with shape of :math:`(*, 3, 3)`.
-        K1 (torch.Tensor): The camera matrix from first camera with shape :math:`(*, 3, 3)`.
-        K2 (torch.Tensor): The camera matrix from second camera with shape :math:`(*, 3, 3)`.
+        F_mat: The fundamental matrix with shape of :math:`(*, 3, 3)`.
+        K1: The camera matrix from first camera with shape :math:`(*, 3, 3)`.
+        K2: The camera matrix from second camera with shape :math:`(*, 3, 3)`.
 
     Returns:
-        torch.Tensor: The essential matrix with shape :math:`(*, 3, 3)`.
+        The essential matrix with shape :math:`(*, 3, 3)`.
 
     """
     assert len(F_mat.shape) >= 2 and F_mat.shape[-2:] == (3, 3), F_mat.shape
@@ -35,12 +35,11 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
     and give the possible solutions: :math:`R1, R2, t`.
 
     Args:
-       E_mat (torch.Tensor): The essential matrix in the form of :math:`(*, 3, 3)`.
+       E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
 
     Returns:
-       Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: A tuple containing the first and
-       second possible rotation matrices and the translation vector. The shape of the tensors
-       with be same input :math:`[(*, 3, 3), (*, 3, 3), (*, 3, 1)]`.
+       A tuple containing the first and second possible rotation matrices and the translation vector.
+       The shape of the tensors with be same input :math:`[(*, 3, 3), (*, 3, 3), (*, 3, 1)]`.
 
     """
     assert len(E_mat.shape) >= 2 and E_mat.shape[-2:], E_mat.shape
@@ -78,13 +77,13 @@ def essential_from_Rt(R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: 
     Reference: Hartley/Zisserman 9.6 pag 257 (formula 9.12)
 
     Args:
-        R1 (torch.Tensor): The first camera rotation matrix with shape :math:`(*, 3, 3)`.
-        t1 (torch.Tensor): The first camera translation vector with shape :math:`(*, 3, 1)`.
-        R2 (torch.Tensor): The second camera rotation matrix with shape :math:`(*, 3, 3)`.
-        t2 (torch.Tensor): The second camera translation vector with shape :math:`(*, 3, 1)`.
+        R1: The first camera rotation matrix with shape :math:`(*, 3, 3)`.
+        t1: The first camera translation vector with shape :math:`(*, 3, 1)`.
+        R2: The second camera rotation matrix with shape :math:`(*, 3, 3)`.
+        t2: The second camera translation vector with shape :math:`(*, 3, 1)`.
 
     Returns:
-        torch.Tensor: The Essential matrix with the shape :math:`(*, 3, 3)`.
+        The Essential matrix with the shape :math:`(*, 3, 3)`.
 
     """
     assert len(R1.shape) >= 2 and R1.shape[-2:] == (3, 3), R1.shape
@@ -108,11 +107,11 @@ def motion_from_essential(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tens
     matrix. The posible solutions are :math:`[R1,t], [R1,−t], [R2,t], [R2,−t]`.
 
     Args:
-        E_mat (torch.Tensor): The essential matrix in the form of :math:`(*, 3, 3)`.
+        E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor]: The rotation and translation containing the four
-        possible combination for the retrieved motion. The tuple is as following :math:`[(*, 4, 3, 3), (*, 4, 3, 1)]`.
+        The rotation and translation containing the four possible combination for the retrieved motion.
+        The tuple is as following :math:`[(*, 4, 3, 3), (*, 4, 3, 1)]`.
 
     """
     assert len(E_mat.shape) >= 2 and E_mat.shape[-2:], E_mat.shape
@@ -143,21 +142,21 @@ def motion_from_essential_choose_solution(
     :py:meth:`~kornia.geometry.epipolar.triangulate_points`.
 
     Args:
-        E_mat (torch.Tensor): The essential matrix in the form of :math:`(*, 3, 3)`.
-        K1 (torch.Tensor): The camera matrix from first camera with shape :math:`(*, 3, 3)`.
-        K2 (torch.Tensor): The camera matrix from second camera with shape :math:`(*, 3, 3)`.
-        x1 (torch.Tensor): The set of points seen from the first camera frame in the camera plane
+        E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
+        K1: The camera matrix from first camera with shape :math:`(*, 3, 3)`.
+        K2: The camera matrix from second camera with shape :math:`(*, 3, 3)`.
+        x1: The set of points seen from the first camera frame in the camera plane
           coordinates with shape :math:`(*, N, 2)`.
-        x2 (torch.Tensor): The set of points seen from the first camera frame in the camera plane
+        x2: The set of points seen from the first camera frame in the camera plane
           coordinates with shape :math:`(*, N, 2)`.
-        mask (torch.Tensor): A boolean mask which can be used to exclude some points from choosing
+        mask: A boolean mask which can be used to exclude some points from choosing
           the best solution. This is useful for using this function with sets of points of
           different cardinality (for instance after filtering with RANSAC) while keeping batch
           semantics. Mask is of shape :math:`(*, N)`.
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: The rotation and translation plus the
-        3d triangulated points. The tuple is as following :math:`[(*, 3, 3), (*, 3, 1), (*, N, 3)]`.
+        The rotation and translation plus the 3d triangulated points.
+        The tuple is as following :math:`[(*, 3, 3), (*, 3, 1), (*, N, 3)]`.
 
     """
     assert len(E_mat.shape) >= 2 and E_mat.shape[-2:], E_mat.shape
@@ -241,13 +240,13 @@ def relative_camera_motion(
     the computed relative motion is :math:`T = T_{2}T^{−1}_{1}`.
 
     Args:
-        R1 (torch.Tensor): The first camera rotation matrix with shape :math:`(*, 3, 3)`.
-        t1 (torch.Tensor): The first camera translation vector with shape :math:`(*, 3, 1)`.
-        R2 (torch.Tensor): The second camera rotation matrix with shape :math:`(*, 3, 3)`.
-        t2 (torch.Tensor): The second camera translation vector with shape :math:`(*, 3, 1)`.
+        R1: The first camera rotation matrix with shape :math:`(*, 3, 3)`.
+        t1: The first camera translation vector with shape :math:`(*, 3, 1)`.
+        R2: The second camera rotation matrix with shape :math:`(*, 3, 3)`.
+        t2: The second camera translation vector with shape :math:`(*, 3, 1)`.
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor]: A tuple with the relative rotation matrix and
+        A tuple with the relative rotation matrix and
         translation vector with the shape of :math:`[(*, 3, 3), (*, 3, 1)]`.
 
     """

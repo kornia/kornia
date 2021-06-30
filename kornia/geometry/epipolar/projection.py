@@ -12,12 +12,12 @@ def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:
     The center of projection will be based in the input image size.
 
     Args:
-        focal (float): the focal length for tha camera matrix.
-        input (torch.Tensor): image tensor that will determine the batch size and image height
+        focal: the focal length for tha camera matrix.
+        input: image tensor that will determine the batch size and image height
           and width. It is assumed to be a tensor in the shape of :math:`(B, C, H, W)`.
 
     Returns:
-        torch.Tensor: The camera matrix with the shape of :math:`(B, 3, 3)`.
+        The camera matrix with the shape of :math:`(B, 3, 3)`.
 
     """
     assert len(input.shape) == 4, input.shape
@@ -37,11 +37,11 @@ def random_intrinsics(low: Union[float, torch.Tensor], high: Union[float, torch.
     r"""Generates a random camera matrix based on a given uniform distribution.
 
     Args:
-        low (Union[float, torch.Tensor]): lower range (inclusive).
-        high (Union[float, torch.Tensor]): upper range (exclusive).
+        low: lower range (inclusive).
+        high: upper range (exclusive).
 
     Returns:
-        torch.Tensor: The random camera matrix with the shape of :math:`(1, 3, 3)`.
+        the random camera matrix with the shape of :math:`(1, 3, 3)`.
 
     """
     sampler = torch.distributions.Uniform(low, high)
@@ -57,12 +57,12 @@ def scale_intrinsics(camera_matrix: torch.Tensor, scale_factor: Union[float, tor
     Applies the scaling factor to the focal length and center of projection.
 
     Args:
-        camera_matrix (torch.Tensor): the camera calibration matrix containing the intrinsic
+        camera_matrix: the camera calibration matrix containing the intrinsic
           parameters. The expected shape for the tensor is :math:`(B, 3, 3)`.
-        scale_factor (Union[float, torch.Tensor]): the scaling factor to be applied.
+        scale_factor: the scaling factor to be applied.
 
     Returns:
-        torch.Tensor: The scaled camera matrix with shame shape as input :math:`(B, 3, 3)`.
+        The scaled camera matrix with shame shape as input :math:`(B, 3, 3)`.
 
     """
     K_scale = camera_matrix.clone()
@@ -79,12 +79,12 @@ def projection_from_KRt(K: torch.Tensor, R: torch.Tensor, t: torch.Tensor) -> to
     This function estimate the projection matrix by solving the following equation: :math:`P = K * [R|t]`.
 
     Args:
-       K (torch.Tensor): the camera matrix with the instrinsics with shape :math:`(B, 3, 3)`.
-       R (torch.Tensor): The rotation matrix with shape :math:`(B, 3, 3)`.
-       t (torch.Tensor): The translation vector with shape :math:`(B, 3, 1)`.
+       K: the camera matrix with the instrinsics with shape :math:`(B, 3, 3)`.
+       R: The rotation matrix with shape :math:`(B, 3, 3)`.
+       t: The translation vector with shape :math:`(B, 3, 1)`.
 
     Returns:
-       torch.Tensor: The projection matrix P with shape :math:`(B, 4, 4)`.
+       The projection matrix P with shape :math:`(B, 4, 4)`.
 
     """
     assert K.shape[-2:] == (3, 3), K.shape
@@ -106,10 +106,9 @@ def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tenso
     r"""This function decomposes the Projection matrix into Camera-Matrix, Rotation Matrix and Translation vector.
 
     Args:
-        P (torch.Tensor): the projection matrix with shape :math:`(B, 3, 4)`.
+        P: the projection matrix with shape :math:`(B, 3, 4)`.
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         - The Camera matrix with shape :math:`(B, 3, 3)`.
         - The Rotation matrix with shape :math:`(B, 3, 3)`.
         - The Translation vector with shape :math:`(B, 3)`.
@@ -144,12 +143,12 @@ def depth(R: torch.Tensor, t: torch.Tensor, X: torch.Tensor) -> torch.Tensor:
     r"""Returns the depth of a point transformed by a rigid transform.
 
     Args:
-       R (torch.Tensor): The rotation matrix with shape :math:`(*, 3, 3)`.
-       t (torch.Tensor): The translation vector with shape :math:`(*, 3, 1)`.
-       X (torch.Tensor): The 3d points with shape :math:`(*, 3)`.
+       R: The rotation matrix with shape :math:`(*, 3, 3)`.
+       t: The translation vector with shape :math:`(*, 3, 1)`.
+       X: The 3d points with shape :math:`(*, 3)`.
 
     Returns:
-       torch.Tensor: The depth value per point with shape :math:`(*, 1)`.
+       The depth value per point with shape :math:`(*, 1)`.
 
     """
     X_tmp = R @ X.transpose(-2, -1)
@@ -174,10 +173,10 @@ def projections_from_fundamental(F_mat: torch.Tensor) -> torch.Tensor:
     r"""Get the projection matrices from the Fundamental Matrix.
 
     Args:
-       F_mat (torch.Tensor): the fundamental matrix with the shape :math:`(*, 3, 3)`.
+       F_mat: the fundamental matrix with the shape :math:`(*, 3, 3)`.
 
     Returns:
-        torch.Tensor: The projection matrices with shape :math:`(*, 4, 4, 2)`.
+        The projection matrices with shape :math:`(*, 4, 4, 2)`.
 
     """
     assert len(F_mat.shape) >= 2, F_mat.shape

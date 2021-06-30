@@ -12,8 +12,9 @@ def harris_response(
     grads_mode: str = 'sobel',
     sigmas: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    r"""Computes the Harris cornerness function. Function does not do
-    any normalization or nms.The response map is computed according the following formulation:
+    r"""Computes the Harris cornerness function.
+
+    Function does not do any normalization or nms. The response map is computed according the following formulation:
 
     .. math::
         R = max(0, det(M) - k \cdot trace(M)^2)
@@ -31,23 +32,17 @@ def harris_response(
     :math:`k ∈ [ 0.04 , 0.06 ]`
 
     Args:
-        input: torch.Tensor: 4d tensor
-        k (torch.Tensor): the Harris detector free parameter.
-        grads_mode (string): can be 'sobel' for standalone use or 'diff' for use on Gaussian pyramid
-        sigmas (optional, torch.Tensor): coefficients to be multiplied by multichannel response. \n
-                                         Should be shape of (B)
-                                         It is necessary for performing non-maxima-suppression
-                                         across different scale pyramid levels.\
-                                         See `vlfeat <https://github.com/vlfeat/vlfeat/blob/master/vl/covdet.c#L874>`_
+        input: input image with shape :math:`(B, C, H, W)`.
+        k: the Harris detector free parameter.
+        grads_mode: can be ``'sobel'`` for standalone use or ``'diff'`` for use on Gaussian pyramid.
+        sigmas: coefficients to be multiplied by multichannel response. Should be shape of :math:`(B)`
+          It is necessary for performing non-maxima-suppression across different scale pyramid levels.
+          See `vlfeat <https://github.com/vlfeat/vlfeat/blob/master/vl/covdet.c#L874>`_.
 
     Return:
-        torch.Tensor: the response map per channel.
+        the response map per channel with shape :math:`(B, C, H, W)`.
 
-    Shape:
-      - Input: :math:`(B, C, H, W)`
-      - Output: :math:`(B, C, H, W)`
-
-    Examples:
+    Example:
         >>> input = torch.tensor([[[
         ...    [0., 0., 0., 0., 0., 0., 0.],
         ...    [0., 1., 1., 1., 1., 1., 0.],
@@ -70,13 +65,16 @@ def harris_response(
     # TODO: Recompute doctest
     if not isinstance(input, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
+
     if not len(input.shape) == 4:
         raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}".format(input.shape))
+
     if sigmas is not None:
         if not isinstance(sigmas, torch.Tensor):
             raise TypeError("sigmas type is not a torch.Tensor. Got {}".format(type(sigmas)))
         if (not len(sigmas.shape) == 1) or (sigmas.size(0) != input.size(0)):
             raise ValueError("Invalid sigmas shape, we expect B == input.size(0). Got: {}".format(sigmas.shape))
+
     gradients: torch.Tensor = spatial_gradient(input, grads_mode)
     dx: torch.Tensor = gradients[:, :, 0]
     dy: torch.Tensor = gradients[:, :, 1]
@@ -89,18 +87,22 @@ def harris_response(
 
     det_m: torch.Tensor = dx2 * dy2 - dxy * dxy
     trace_m: torch.Tensor = dx2 + dy2
+
     # compute the response map
     scores: torch.Tensor = det_m - k * (trace_m ** 2)
+
     if sigmas is not None:
         scores = scores * sigmas.pow(4).view(-1, 1, 1, 1)
+
     return scores
 
 
 def gftt_response(
     input: torch.Tensor, grads_mode: str = 'sobel', sigmas: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
-    r"""Computes the Shi-Tomasi cornerness function. Function does not do any normalization or nms.
-    The response map is computed according the following formulation:
+    r"""Computes the Shi-Tomasi cornerness function.
+
+    Function does not do any normalization or nms. The response map is computed according the following formulation:
 
     .. math::
         R = min(eig(M))
@@ -115,22 +117,16 @@ def gftt_response(
         \end{bmatrix}
 
     Args:
-        input (torch.Tensor): 4d tensor
-        grads_mode (string): can be 'sobel' for standalone use or 'diff' for use on Gaussian pyramid
-        sigmas (optional, torch.Tensor): coefficients to be multiplied by multichannel response. \n
-                                         Should be shape of (B)
-                                         It is necessary for performing non-maxima-suppression
-                                         across different scale pyramid levels.\
-                                         See `vlfeat <https://github.com/vlfeat/vlfeat/blob/master/vl/covdet.c#L874>`_
+        input: input image with shape :math:`(B, C, H, W)`.
+        grads_mode: can be ``'sobel'`` for standalone use or ``'diff'`` for use on Gaussian pyramid.
+        sigmas: coefficients to be multiplied by multichannel response. Should be shape of :math:`(B)`
+          It is necessary for performing non-maxima-suppression across different scale pyramid levels.
+          See `vlfeat <https://github.com/vlfeat/vlfeat/blob/master/vl/covdet.c#L874>`_.
 
     Return:
-        torch.Tensor: the response map per channel.
+        the response map per channel with shape :math:`(B, C, H, W)`.
 
-    Shape:
-      - Input: :math:`(B, C, H, W)`
-      - Output: :math:`(B, C, H, W)`
-
-    Examples:
+    Example:
         >>> input = torch.tensor([[[
         ...    [0., 0., 0., 0., 0., 0., 0.],
         ...    [0., 1., 1., 1., 1., 1., 0.],
@@ -153,8 +149,10 @@ def gftt_response(
     # TODO: Recompute doctest
     if not isinstance(input, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
+
     if not len(input.shape) == 4:
         raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}".format(input.shape))
+
     gradients: torch.Tensor = spatial_gradient(input, grads_mode)
     dx: torch.Tensor = gradients[:, :, 0]
     dy: torch.Tensor = gradients[:, :, 1]
@@ -170,16 +168,19 @@ def gftt_response(
     e2: torch.Tensor = 0.5 * (trace_m - torch.sqrt((trace_m ** 2 - 4 * det_m).abs()))
 
     scores: torch.Tensor = torch.min(e1, e2)
+
     if sigmas is not None:
         scores = scores * sigmas.pow(4).view(-1, 1, 1, 1)
+
     return scores
 
 
 def hessian_response(
     input: torch.Tensor, grads_mode: str = 'sobel', sigmas: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
-    r"""Computes the absolute of determinant of the Hessian matrix. Function does not do any normalization or nms.
-    The response map is computed according the following formulation:
+    r"""Computes the absolute of determinant of the Hessian matrix.
+
+    Function does not do any normalization or nms. The response map is computed according the following formulation:
 
     .. math::
         R = det(H)
@@ -194,16 +195,14 @@ def hessian_response(
         \end{bmatrix}
 
     Args:
-        input: torch.Tensor: 4d tensor
-        grads_mode (string): can be 'sobel' for standalone use or 'diff' for use on Gaussian pyramid
-        sigmas (optional, torch.Tensor): coefficients to be multiplied by multichannel response. \n
-                                         Should be shape of (B)
-                                         It is necessary for performing non-maxima-suppression
-                                         across different scale pyramid levels.\
-                                         See `vlfeat <https://github.com/vlfeat/vlfeat/blob/master/vl/covdet.c#L874>`_
+        input: input image with shape :math:`(B, C, H, W)`.
+        grads_mode: can be ``'sobel'`` for standalone use or ``'diff'`` for use on Gaussian pyramid.
+        sigmas: coefficients to be multiplied by multichannel response. Should be shape of :math:`(B)`
+          It is necessary for performing non-maxima-suppression across different scale pyramid levels.
+          See `vlfeat <https://github.com/vlfeat/vlfeat/blob/master/vl/covdet.c#L874>`_.
 
     Return:
-         torch.Tensor: the response map per channel.
+        the response map per channel with shape :math:`(B, C, H, W)`.
 
     Shape:
        - Input: :math:`(B, C, H, W)`
@@ -232,48 +231,52 @@ def hessian_response(
     # TODO: Recompute doctest
     if not isinstance(input, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
+
     if not len(input.shape) == 4:
         raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}".format(input.shape))
+
     if sigmas is not None:
         if not isinstance(sigmas, torch.Tensor):
             raise TypeError("sigmas type is not a torch.Tensor. Got {}".format(type(sigmas)))
+
         if (not len(sigmas.shape) == 1) or (sigmas.size(0) != input.size(0)):
             raise ValueError("Invalid sigmas shape, we expect B == input.size(0). Got: {}".format(sigmas.shape))
+
     gradients: torch.Tensor = spatial_gradient(input, grads_mode, 2)
     dxx: torch.Tensor = gradients[:, :, 0]
     dxy: torch.Tensor = gradients[:, :, 1]
     dyy: torch.Tensor = gradients[:, :, 2]
 
     scores: torch.Tensor = dxx * dyy - dxy ** 2
+
     if sigmas is not None:
         scores = scores * sigmas.pow(4).view(-1, 1, 1, 1)
+
     return scores
 
 
 def dog_response(input: torch.Tensor) -> torch.Tensor:
-    r"""Computes the Difference-of-Gaussian response given the Gaussian 5d input:
-
+    r"""Computes the Difference-of-Gaussian response.
 
     Args:
-        input: torch.Tensor: 5d tensor
+        input: a given the gaussian 5d tensor :math:`(B, C, D, H, W)`.
 
     Return:
-        torch.Tensor: the response map per channel.
-
-    Shape:
-      - Input: :math:`(B, C, D, H, W)`
-      - Output: :math:`(B, C, D-1, H, W)`
+        the response map per channel with shape :math:`(B, C, D-1, H, W)`.
 
     """
     if not isinstance(input, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
+
     if not len(input.shape) == 5:
         raise ValueError("Invalid input shape, we expect BxCxDxHxW. Got: {}".format(input.shape))
+
     return input[:, :, 1:] - input[:, :, :-1]
 
 
 class BlobDoG(nn.Module):
-    r"""nn.Module that calculates Difference-of-Gaussians blobs
+    r"""Module that calculates Difference-of-Gaussians blobs.
+
     See :func:`~kornia.feature.dog_response` for details.
     """
 
@@ -289,7 +292,8 @@ class BlobDoG(nn.Module):
 
 
 class CornerHarris(nn.Module):
-    r"""nn.Module that calculates Harris corners
+    r"""Module that calculates Harris corners.
+
     See :func:`~kornia.feature.harris_response` for details.
     """
 
@@ -310,7 +314,8 @@ class CornerHarris(nn.Module):
 
 
 class CornerGFTT(nn.Module):
-    r"""nn.Module that calculates Shi-Tomasi corners
+    r"""Module that calculates Shi-Tomasi corners.
+
     See :func:`~kornia.feature.gfft_response` for details.
     """
 
@@ -327,7 +332,8 @@ class CornerGFTT(nn.Module):
 
 
 class BlobHessian(nn.Module):
-    r"""nn.Module that calculates Hessian blobs
+    r"""Module that calculates Hessian blobs.
+
     See :func:`~kornia.feature.hessian_response` for details.
     """
 

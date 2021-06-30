@@ -8,16 +8,15 @@ def match_nn(
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Function, which finds nearest neighbors in desc2 for each vector in desc1.
 
-    If the distance matrix dm is not provided, torch.cdist(desc1, desc2) is used.
+    If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
 
     Args:
-        desc1 (torch.Tensor): Batch of descriptors of a shape :math:`(B1, D)`.
-        desc2 (torch.Tensor): Batch of descriptors of a shape :math:`(B2, D)`.
-        dm (torch.Tensor, optional): Tensor containing the distances from each descriptor in desc1
+        desc1: Batch of descriptors of a shape :math:`(B1, D)`.
+        desc2: Batch of descriptors of a shape :math:`(B2, D)`.
+        dm: Tensor containing the distances from each descriptor in desc1
           to each descriptor in desc2, shape of :math:`(B1, B2)`.
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor]:
         - Descriptor distance of matching descriptors, shape of :math:`(B1, 1)`.
         - Long tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(B1, 2)`.
     """
@@ -40,16 +39,15 @@ def match_mnn(
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Function, which finds mutual nearest neighbors in desc2 for each vector in desc1.
 
-    If the distance matrix dm is not provided, torch.cdist(desc1, desc2) is used.
+    If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
 
     Args:
-        desc1 (torch.Tensor): Batch of descriptors of a shape :math:`(B1, D)`.
-        desc2 (torch.Tensor): Batch of descriptors of a shape :math:`(B2, D)`.
-        dm (torch.Tensor, optional): Tensor containing the distances from each descriptor in desc1
+        desc1: Batch of descriptors of a shape :math:`(B1, D)`.
+        desc2: Batch of descriptors of a shape :math:`(B2, D)`.
+        dm: Tensor containing the distances from each descriptor in desc1
           to each descriptor in desc2, shape of :math:`(B1, B2)`.
 
     Return:
-        Tuple[torch.Tensor, torch.Tensor]:
         - Descriptor distance of matching descriptors, shape of. :math:`(B3, 1)`.
         - Long tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(B3, 2)`,
           where 0 <= B3 <= min(B1, B2)
@@ -82,19 +80,19 @@ def match_snn(
     desc1: torch.Tensor, desc2: torch.Tensor, th: float = 0.8, dm: Optional[torch.Tensor] = None
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Function, which finds nearest neighbors in desc2 for each vector in desc1.
-    which satisfy first to second nearest neighbor distance <= th.
 
-    If the distance matrix dm is not provided, torch.cdist(desc1, desc2) is used.
+    The method satisfies first to second nearest neighbor distance <= th.
+
+    If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
 
     Args:
-        desc1 (torch.Tensor): Batch of descriptors of a shape :math:`(B1, D)`.
-        desc2 (torch.Tensor): Batch of descriptors of a shape :math:`(B2, D)`.
-        th (float): distance ratio threshold.
-        dm (torch.Tensor, optional): Tensor containing the distances from each descriptor in desc1
+        desc1: Batch of descriptors of a shape :math:`(B1, D)`.
+        desc2: Batch of descriptors of a shape :math:`(B2, D)`.
+        th: distance ratio threshold.
+        dm: Tensor containing the distances from each descriptor in desc1
           to each descriptor in desc2, shape of :math:`(B1, B2)`.
 
     Return:
-        Tuple[torch.Tensor, torch.Tensor]:
         - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
         - Long tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)`,
           where 0 <= B3 <= B1.
@@ -122,19 +120,19 @@ def match_smnn(
     desc1: torch.Tensor, desc2: torch.Tensor, th: float = 0.8, dm: Optional[torch.Tensor] = None
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Function, which finds mutual nearest neighbors in desc2 for each vector in desc1.
-    which satisfy first to second nearest neighbor distance <= th.
 
-    If the distance matrix dm is not provided, torch.cdist(desc1, desc2) is used.
+    the method satisfies first to second nearest neighbor distance <= th.
+
+    If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
 
     Args:
-        desc1 (torch.Tensor): Batch of descriptors of a shape :math:`(B1, D)`.
-        desc2 (torch.Tensor): Batch of descriptors of a shape :math:`(B2, D)`.
-        th (float): distance ratio threshold.
-        dm (torch.Tensor, optional): Tensor containing the distances from each descriptor in desc1
+        desc1: Batch of descriptors of a shape :math:`(B1, D)`.
+        desc2: Batch of descriptors of a shape :math:`(B2, D)`.
+        th: distance ratio threshold.
+        dm: Tensor containing the distances from each descriptor in desc1
           to each descriptor in desc2, shape of :math:`(B1, B2)`.
 
     Return:
-        Tuple[torch.Tensor, torch.Tensor]:
         - Descriptor distance of matching descriptors, shape of. :math:`(B3, 1)`.
         - Long tensor indexes of matching descriptors in desc1 and desc2,
           shape of :math:`(B3, 2)` where 0 <= B3 <= B1.

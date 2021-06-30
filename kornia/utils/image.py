@@ -9,13 +9,13 @@ def image_to_tensor(image: np.ndarray, keepdim: bool = True) -> torch.Tensor:
     """Converts a numpy image to a PyTorch 4d tensor image.
 
     Args:
-        image (numpy.ndarray): image of the form :math:`(H, W, C)`, :math:`(H, W)` or
+        image: image of the form :math:`(H, W, C)`, :math:`(H, W)` or
             :math:`(B, H, W, C)`.
-        keepdim (bool): If ``False`` unsqueeze the input image to match the shape
-            :math:`(B, H, W, C)`. Default: ``True``
+        keepdim: If ``False`` unsqueeze the input image to match the shape
+            :math:`(B, H, W, C)`.
 
     Returns:
-        torch.Tensor: tensor of the form :math:`(B, C, H, W)` if keepdim is ``False``,
+        tensor of the form :math:`(B, C, H, W)` if keepdim is ``False``,
             :math:`(C, H, W)` otherwise.
     """
     if not isinstance(image, (np.ndarray,)):
@@ -47,11 +47,11 @@ def _to_bchw(tensor: torch.Tensor) -> torch.Tensor:
     """Converts a PyTorch tensor image to BCHW format.
 
     Args:
-        tensor (torch.Tensor): image of the form :math:`(H, W)`, :math:`(C, H, W)`, :math:`(H, W, C)` or
+        tensor: image of the form :math:`(H, W)`, :math:`(C, H, W)`, :math:`(H, W, C)` or
             :math:`(B, C, H, W)`.
 
     Returns:
-        torch.Tensor: input tensor of the form :math:`(B, C, H, W)`.
+        input tensor of the form :math:`(B, C, H, W)`.
     """
     if not isinstance(tensor, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
@@ -72,11 +72,11 @@ def _to_bcdhw(tensor: torch.Tensor) -> torch.Tensor:
     """Converts a PyTorch tensor image to BCDHW format.
 
     Args:
-        tensor (torch.Tensor): image of the form :math:`(D, H, W)`, :math:`(C, D, H, W)`, :math:`(D, H, W, C)` or
+        tensor: image of the form :math:`(D, H, W)`, :math:`(C, D, H, W)`, :math:`(D, H, W, C)` or
             :math:`(B, C, D, H, W)`.
 
     Returns:
-        torch.Tensor: input tensor of the form :math:`(B, C, D, H, W)`.
+        input tensor of the form :math:`(B, C, D, H, W)`.
     """
     if not isinstance(tensor, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
@@ -99,11 +99,11 @@ def tensor_to_image(tensor: torch.Tensor) -> np.ndarray:
     In case the tensor is in the GPU, it will be copied back to CPU.
 
     Args:
-        tensor (torch.Tensor): image of the form :math:`(H, W)`, :math:`(C, H, W)` or
+        tensor: image of the form :math:`(H, W)`, :math:`(C, H, W)` or
             :math:`(B, C, H, W)`.
 
     Returns:
-        numpy.ndarray: image of the form :math:`(H, W)`, :math:`(H, W, C)` or :math:`(B, H, W, C)`.
+        image of the form :math:`(H, W)`, :math:`(H, W, C)` or :math:`(B, H, W, C)`.
 
     """
     if not isinstance(tensor, torch.Tensor):
@@ -142,8 +142,7 @@ class ImageToTensor(nn.Module):
     """Converts a numpy image to a PyTorch 4d tensor image.
 
     Args:
-        keepdim (bool): If ``False`` unsqueeze the input image to match the shape
-            :math:`(B, H, W, C)`. Default: ``True``
+        keepdim: If ``False`` unsqueeze the input image to match the shape :math:`(B, H, W, C)`.
     """
 
     def __init__(self, keepdim: bool = False):

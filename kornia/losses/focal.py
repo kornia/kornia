@@ -28,18 +28,19 @@ def focal_loss(
        - :math:`p_t` is the model's estimated probability for each class.
 
     Args:
-        input (torch.Tensor): logits tensor with shape :math:`(N, C, *)` where C = number of classes.
-        target (torch.Tensor): labels tensor with shape :math:`(N, *)` where each value is :math:`0 ≤ targets[i] ≤ C−1`.
-        alpha (float): Weighting factor :math:`\alpha \in [0, 1]`.
-        gamma (float, optional): Focusing parameter :math:`\gamma >= 0`. Default 2.
-        reduction (str, optional): Specifies the reduction to apply to the
-         output: ‘none’ | ‘mean’ | ‘sum’. ‘none’: no reduction will be applied,
-         ‘mean’: the sum of the output will be divided by the number of elements
-         in the output, ‘sum’: the output will be summed. Default: ‘none’.
-        eps (float, optional): Scalar to enforce numerical stabiliy. Default: 1e-8.
+        input: logits tensor with shape :math:`(N, C, *)` where C = number of classes.
+        target: labels tensor with shape :math:`(N, *)` where each value is :math:`0 ≤ targets[i] ≤ C−1`.
+        alpha: Weighting factor :math:`\alpha \in [0, 1]`.
+        gamma: Focusing parameter :math:`\gamma >= 0`.
+        reduction: Specifies the reduction to apply to the
+          output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
+          will be applied, ``'mean'``: the sum of the output will be divided by
+          the number of elements in the output, ``'sum'``: the output will be
+          summed.
+        eps: Scalar to enforce numerical stabiliy.
 
     Return:
-        torch.Tensor: the computed loss.
+        the computed loss.
 
     Example:
         >>> N = 5  # num_classes
@@ -105,13 +106,14 @@ class FocalLoss(nn.Module):
        - :math:`p_t` is the model's estimated probability for each class.
 
     Args:
-        alpha (float): Weighting factor :math:`\alpha \in [0, 1]`.
-        gamma (float, optional): Focusing parameter :math:`\gamma >= 0`. Default 2.
-        reduction (str, optional): Specifies the reduction to apply to the
-         output: ‘none’ | ‘mean’ | ‘sum’. ‘none’: no reduction will be applied,
-         ‘mean’: the sum of the output will be divided by the number of elements
-         in the output, ‘sum’: the output will be summed. Default: ‘none’.
-        eps (float, optional): Scalar to enforce numerical stabiliy. Default: 1e-8.
+        alpha: Weighting factor :math:`\alpha \in [0, 1]`.
+        gamma: Focusing parameter :math:`\gamma >= 0`.
+        reduction: Specifies the reduction to apply to the
+          output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
+          will be applied, ``'mean'``: the sum of the output will be divided by
+          the number of elements in the output, ``'sum'``: the output will be
+          summed.
+        eps: Scalar to enforce numerical stabiliy.
 
     Shape:
         - Input: :math:`(N, C, *)` where C = number of classes.
@@ -157,15 +159,19 @@ def binary_focal_loss_with_logits(
        - :math:`p_t` is the model's estimated probability for each class.
 
     Args:
-        input (torch.Tensor): input data tensor with shape :math:`(N, 1, *)`.
-        target (torch.Tensor): the target tensor with shape :math:`(N, 1, *)`.
-        alpha (float): Weighting factor for the rare class :math:`\alpha \in [0, 1]`. Default: 0.25.
-        gamma (float): Focusing parameter :math:`\gamma >= 0`. Default: 2.0.
-        reduction (str, optional): Specifies the reduction to apply to the. Default: 'none'.
-        eps (float): for numerically stability when dividing. Default: 1e-8.
+        input: input data tensor with shape :math:`(N, 1, *)`.
+        target: the target tensor with shape :math:`(N, 1, *)`.
+        alpha: Weighting factor for the rare class :math:`\alpha \in [0, 1]`.
+        gamma: Focusing parameter :math:`\gamma >= 0`.
+        reduction: Specifies the reduction to apply to the
+          output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
+          will be applied, ``'mean'``: the sum of the output will be divided by
+          the number of elements in the output, ``'sum'``: the output will be
+          summed.
+        eps: for numerically stability when dividing.
 
     Returns:
-        torch.tensor: the computed loss.
+        the computed loss.
 
     Examples:
         >>> num_classes = 1
@@ -209,7 +215,7 @@ def binary_focal_loss_with_logits(
 class BinaryFocalLossWithLogits(nn.Module):
     r"""Criterion that computes Focal loss.
 
-    According to :cite:`lin2017focal`, the Focal loss is computed as follows:
+    According to :cite:`lin2018focal`, the Focal loss is computed as follows:
 
     .. math::
 
@@ -219,12 +225,13 @@ class BinaryFocalLossWithLogits(nn.Module):
        - :math:`p_t` is the model's estimated probability for each class.
 
     Args:
-        alpha (float): Weighting factor for the rare class :math:`\alpha \in [0, 1]`.
-        gamma (float): Focusing parameter :math:`\gamma >= 0`.
-        reduction (str, optional): Specifies the reduction to apply to the
-         output: ‘none’ | ‘mean’ | ‘sum’. ‘none’: no reduction will be applied,
-         ‘mean’: the sum of the output will be divided by the number of elements
-         in the output, ‘sum’: the output will be summed. Default: ‘none’.
+        alpha): Weighting factor for the rare class :math:`\alpha \in [0, 1]`.
+        gamma: Focusing parameter :math:`\gamma >= 0`.
+        reduction: Specifies the reduction to apply to the
+          output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
+          will be applied, ``'mean'``: the sum of the output will be divided by
+          the number of elements in the output, ``'sum'``: the output will be
+          summed.
 
     Shape:
         - Input: :math:`(N, 1, *)`.

@@ -6,10 +6,10 @@ def total_variation(img: torch.Tensor) -> torch.Tensor:
     r"""Function that computes Total Variation according to [1].
 
     Args:
-        img (torch.Tensor): the input image with shape :math:`(N, C, H, W)` or :math:`(C, H, W)`.
+        img: the input image with shape :math:`(N, C, H, W)` or :math:`(C, H, W)`.
 
     Return:
-        torch.Tensor: a scalar with the computer loss.
+         a scalar with the computer loss.
 
     Examples:
         >>> total_variation(torch.ones(3, 4, 4))
