@@ -7,7 +7,8 @@ import torch.nn as nn
 
 from kornia.augmentation.base import _AugmentationBase, GeometricAugmentationBase2D, IntensityAugmentationBase2D
 from kornia.constants import DataKey
-from kornia.geometry import transform_boxes, transform_points
+from kornia.geometry.bbox import transform_bbox
+from kornia.geometry.linalg import transform_points
 
 from .image import ImageSequential, ParamItem
 from .patch import PatchSequential
@@ -125,7 +126,7 @@ class AugmentationSequential(ImageSequential):
         if isinstance(module, GeometricAugmentationBase2D) and _param is None:
             raise ValueError(f"Transformation matrix for {module} has not been computed.")
         if isinstance(module, GeometricAugmentationBase2D) and _param is not None:
-            input = transform_boxes(module.get_transformation_matrix(input, _param), input, mode)
+            input = transform_bbox(module.get_transformation_matrix(input, _param), input, mode)
         else:
             pass  # No need to update anything
         return input
@@ -199,7 +200,7 @@ class AugmentationSequential(ImageSequential):
     ) -> torch.Tensor:
         if isinstance(module, GeometricAugmentationBase2D):
             transform = module.compute_inverse_transformation(module.get_transformation_matrix(input, param))
-            input = transform_boxes(torch.as_tensor(transform, device=input.device, dtype=input.dtype), input, mode)
+            input = transform_bbox(torch.as_tensor(transform, device=input.device, dtype=input.dtype), input, mode)
         return input
 
     def inverse_keypoints(

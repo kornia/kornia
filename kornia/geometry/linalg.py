@@ -1,6 +1,9 @@
+import warnings
+
 import torch
 
 import kornia
+from kornia.geometry.bbox import transform_bbox as _transform_bbox
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.testing import check_is_tensor
 
@@ -212,26 +215,13 @@ def transform_boxes(trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = "x
     Returns:
         The set of transformed points in the specified mode.
     """
-
-    if not isinstance(mode, str):
-        raise TypeError(f"Mode must be a string. Got {type(mode)}")
-
-    if mode not in ("xyxy", "xywh"):
-        raise ValueError(f"Mode must be one of 'xyxy', 'xywh'. Got {mode}")
-
-    # convert boxes to format xyxy
-    if mode == "xywh":
-        boxes[..., -2] = boxes[..., 0] + boxes[..., -2]  # x + w
-        boxes[..., -1] = boxes[..., 1] + boxes[..., -1]  # y + h
-
-    transformed_boxes: torch.Tensor = kornia.transform_points(trans_mat, boxes.view(boxes.shape[0], -1, 2))
-    transformed_boxes = transformed_boxes.view_as(boxes)
-
-    if mode == 'xywh':
-        transformed_boxes[..., 2] = transformed_boxes[..., 2] - transformed_boxes[..., 0]
-        transformed_boxes[..., 3] = transformed_boxes[..., 3] - transformed_boxes[..., 1]
-
-    return transformed_boxes
+    warnings.warn(
+        "`kornia.geometry.linalg.transform_boxes` is deprecated and will be removed > 0.6.0. "
+        "Please use `kornia.geometry.bbox.transform_bbox instead.`",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return _transform_bbox(trans_mat, boxes, mode)
 
 
 def perspective_transform_lafs(trans_01: torch.Tensor, lafs_1: torch.Tensor) -> torch.Tensor:

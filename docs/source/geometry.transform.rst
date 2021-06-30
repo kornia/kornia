@@ -58,13 +58,6 @@ Crop operators
 .. autofunction:: center_crop
 .. autofunction:: crop_and_resize
 
-Bounding Box
-------------
-
-.. autofunction:: bbox_to_mask
-.. autofunction:: infer_box_shape
-.. autofunction:: validate_bboxes
-
 Module
 ------
 
