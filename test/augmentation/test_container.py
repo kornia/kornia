@@ -94,7 +94,7 @@ class TestVideoSequential:
         if data_format == 'BCTHW':
             input = torch.randn(2, 3, 1, 5, 6, device=device, dtype=dtype).repeat(1, 1, 4, 1, 1)
             output = aug_list(input)
-            if aug_list.has_mix_augmentations:
+            if aug_list.has_mix_augmentation:
                 output, label = output
             assert (output[:, :, 0] == output[:, :, 1]).all()
             assert (output[:, :, 1] == output[:, :, 2]).all()
@@ -102,7 +102,7 @@ class TestVideoSequential:
         if data_format == 'BTCHW':
             input = torch.randn(2, 1, 3, 5, 6, device=device, dtype=dtype).repeat(1, 4, 1, 1, 1)
             output = aug_list(input)
-            if aug_list.has_mix_augmentations:
+            if aug_list.has_mix_augmentation:
                 output, label = output
             assert (output[:, 0] == output[:, 1]).all()
             assert (output[:, 1] == output[:, 2]).all()
@@ -179,7 +179,7 @@ class TestSequential:
             random_apply=random_apply,
         )
         out = aug(inp)
-        if aug.has_mix_augmentations:
+        if aug.has_mix_augmentation:
             out, label = out
         if isinstance(out, (tuple,)):
             assert out[0].shape == inp.shape
@@ -208,7 +208,7 @@ class TestAugmentationSequential:
             random_apply=random_apply,
         )
         out = aug(inp)
-        if aug.has_mix_augmentations:
+        if aug.has_mix_augmentation:
             out, label = out
         assert out.shape == inp.shape
         reproducibility_test(inp, aug)
@@ -399,12 +399,12 @@ class TestPatchSequential:
         input = torch.randn(*shape, device=device, dtype=dtype)
         trans = torch.randn(shape[0], 3, 3, device=device, dtype=dtype)
         out = seq(input)
-        if seq.has_mix_augmentations:
+        if seq.has_mix_augmentation:
             out, label = out
         assert out.shape[-3:] == input.shape[-3:]
 
         out = seq((input, trans))
-        if seq.has_mix_augmentations:
+        if seq.has_mix_augmentation:
             out, label = out
         assert out[0].shape[-3:] == input.shape[-3:]
         assert out[1].shape == trans.shape

@@ -119,7 +119,8 @@ class ImageSequential(nn.Sequential):
             ), f"Expect a tuple of (int, int). Got {self.random_apply}."
         else:
             self.random_apply = False
-        self.has_mix_augmentations = self._validate_mix_augmentation(*args, validate_args=validate_args)
+        self._validate_mix_augmentation(*args, validate_args=validate_args)
+        self.has_mix_augmentation = len(self.__get_mix_indices__(args)) > 0
 
     def update_attribute(
         self, same_on_batch: Optional[bool] = None, return_transform: Optional[bool] = None,
@@ -164,7 +165,7 @@ class ImageSequential(nn.Sequential):
     def clear_state(self) -> None:
         self._params = []
 
-    def _validate_mix_augmentation(self, *args: nn.Module, validate_args: bool = True) -> bool:
+    def _validate_mix_augmentation(self, *args: nn.Module, validate_args: bool = True):
         mix_count = 0
         for arg in args:
             if isinstance(arg, (MixAugmentationBase,)):
@@ -178,9 +179,6 @@ class ImageSequential(nn.Sequential):
                 "be applied at each forward. To silence this warning, please set `validate_args` to False.",
                 category=UserWarning
             )
-        if mix_count == 0:
-            return False
-        return True
 
     def __get_mix_indices__(self, args: Iterator) -> List[int]:
         mix_indices = []
@@ -226,6 +224,12 @@ class ImageSequential(nn.Sequential):
             )
 
         return self.named_children()
+
+    def contains_mix_augmentation(self, params: List[ParamItem]) -> bool:
+        for param in params:
+            if param.name.startswith("RandomMixUP") or param.name.startswith("RandomCutMix"):
+                return True
+        return False
 
     def _get_children_by_indices(self, indices: torch.Tensor) -> Iterator[Tuple[str, nn.Module]]:
         modules = list(self.named_children())
@@ -302,7 +306,7 @@ class ImageSequential(nn.Sequential):
     def __packup_output__(
         self, output: TensorWithTransMat, label: Optional[torch.Tensor] = None
     ) -> Union[TensorWithTransMat, Tuple[TensorWithTransMat, torch.Tensor]]:
-        if self.has_mix_augmentations:
+        if self.has_mix_augmentation:
             return output, label  # type: ignore
         return output
 
@@ -314,6 +318,14 @@ class ImageSequential(nn.Sequential):
     ) -> Union[TensorWithTransMat, Tuple[TensorWithTransMat, torch.Tensor]]:
         self.clear_state()
         named_modules = self.get_forward_sequence(params)
+        if params is not None:
+            self.has_mix_augmentation = self.contains_mix_augmentation(params)
+        else:
+            self.has_mix_augmentation = False
+            for name, child in enumerate(named_modules):
+                if isinstance(child, (MixAugmentationBase,)):
+                    self.has_mix_augmentation = True
+                    break
         for (name, module), param in zip_longest(named_modules, [] if params is None else params):
             input, label = self.apply_to_input(input, label, name, module, param=param)
         return self.__packup_output__(input, label)

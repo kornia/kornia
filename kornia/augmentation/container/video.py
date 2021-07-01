@@ -151,6 +151,14 @@ class VideoSequential(ImageSequential):
         self.clear_state()
 
         named_modules = self.get_forward_sequence(params)
+        if params is not None:
+            self.has_mix_augmentation = self.contains_mix_augmentation(params)
+        else:
+            self.has_mix_augmentation = False
+            for name, child in enumerate(named_modules):
+                if isinstance(child, (MixAugmentationBase,)):
+                    self.has_mix_augmentation = True
+                    break
         params = [] if params is None else params
 
         # Size of T

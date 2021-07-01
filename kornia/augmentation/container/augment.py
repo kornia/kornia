@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 
 from kornia.augmentation.base import (
+    MixAugmentationBase,
     TensorWithTransMat,
     _AugmentationBase,
     GeometricAugmentationBase2D,
@@ -294,11 +295,11 @@ class AugmentationSequential(ImageSequential):
         TensorWithTransMat, Tuple[TensorWithTransMat, Optional[torch.Tensor]],
         List[TensorWithTransMat], Tuple[List[TensorWithTransMat], Optional[torch.Tensor]]
     ]:
-        if len(output) == 1 and self.has_mix_augmentations:
+        if len(output) == 1 and self.has_mix_augmentation:
             return output[0], label
         elif len(output) == 1:
             return output[0]
-        elif self.has_mix_augmentations:
+        elif self.has_mix_augmentation:
             return output, label
         else:
             return output
@@ -324,6 +325,15 @@ class AugmentationSequential(ImageSequential):
         self.clear_state()
         outputs = []
         named_modules = list(self.get_forward_sequence(params))
+        if params is not None:
+            self.has_mix_augmentation = self.contains_mix_augmentation(params)
+        else:
+            self.has_mix_augmentation = False
+            for name, child in enumerate(named_modules):
+                if isinstance(child, (MixAugmentationBase,)):
+                    self.has_mix_augmentation = True
+                    break
+
         for input, dcate in zip(args, data_keys):
             # use the parameter if the first round has been finished.
             params = self._params if params is None or len(params) == 0 else params
