@@ -339,9 +339,9 @@ class AugmentationSequential(ImageSequential):
             params = self._params if params is None or len(params) == 0 else params
             for param, (name, module) in zip_longest(params, named_modules):
                 if dcate == DataKey.INPUT:
-                    input, label = self.apply_to_input(input, label, name, module, param)
+                    input, label = self.apply_to_input(input, label, str(name), module, param)
                 elif isinstance(module, GeometricAugmentationBase2D) and dcate in DataKey:
-                    input, label = self.apply_by_key(input, label, name, module, param, dcate)
+                    input, label = self.apply_by_key(input, label, str(name), module, param, dcate)
                 elif isinstance(module, IntensityAugmentationBase2D) and dcate in DataKey:
                     pass  # Do nothing
                 elif isinstance(module, PatchSequential) and module.is_intensity_only() and dcate in DataKey:

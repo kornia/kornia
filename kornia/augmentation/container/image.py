@@ -13,8 +13,8 @@ __all__ = ["ImageSequential"]
 
 class ParamItem(NamedTuple):
     name: str
-    data: Optional[Union[dict, list]
-]
+    data: Optional[Union[dict, list]]
+
 
 # TODO: Add forward_parameters for ImageSequential
 class ImageSequential(nn.Sequential):
@@ -120,7 +120,7 @@ class ImageSequential(nn.Sequential):
         else:
             self.random_apply = False
         self._validate_mix_augmentation(*args, validate_args=validate_args)
-        self.has_mix_augmentation = len(self.__get_mix_indices__(args)) > 0
+        self.has_mix_augmentation = len(self.__get_mix_indices__(iter(args))) > 0
 
     def update_attribute(
         self, same_on_batch: Optional[bool] = None, return_transform: Optional[bool] = None,
@@ -308,6 +308,7 @@ class ImageSequential(nn.Sequential):
     ) -> Union[TensorWithTransMat, Tuple[TensorWithTransMat, torch.Tensor]]:
         if self.has_mix_augmentation:
             return output, label  # type: ignore
+            # Implicitly indicating the label cannot be optional since there is a mix aug
         return output
 
     def forward(  # type: ignore
@@ -318,14 +319,8 @@ class ImageSequential(nn.Sequential):
     ) -> Union[TensorWithTransMat, Tuple[TensorWithTransMat, torch.Tensor]]:
         self.clear_state()
         named_modules = self.get_forward_sequence(params)
-        if params is not None:
-            self.has_mix_augmentation = self.contains_mix_augmentation(params)
-        else:
-            self.has_mix_augmentation = False
-            for name, child in enumerate(named_modules):
-                if isinstance(child, (MixAugmentationBase,)):
-                    self.has_mix_augmentation = True
-                    break
+        params = [] if params is None else params
+        self.has_mix_augmentation = self.contains_mix_augmentation(params)
         for (name, module), param in zip_longest(named_modules, [] if params is None else params):
             input, label = self.apply_to_input(input, label, name, module, param=param)
         return self.__packup_output__(input, label)

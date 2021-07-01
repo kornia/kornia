@@ -397,17 +397,10 @@ class TestPatchSequential:
             return
 
         input = torch.randn(*shape, device=device, dtype=dtype)
-        trans = torch.randn(shape[0], 3, 3, device=device, dtype=dtype)
         out = seq(input)
         if seq.has_mix_augmentation:
             out, label = out
         assert out.shape[-3:] == input.shape[-3:]
-
-        out = seq((input, trans))
-        if seq.has_mix_augmentation:
-            out, label = out
-        assert out[0].shape[-3:] == input.shape[-3:]
-        assert out[1].shape == trans.shape
 
         reproducibility_test(input, seq)
 

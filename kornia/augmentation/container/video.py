@@ -1,6 +1,5 @@
 from itertools import zip_longest
 from typing import cast, List, Optional, Tuple, Union
-from kornia.color import lab
 
 import torch
 import torch.nn as nn
@@ -13,7 +12,6 @@ from .image import ImageSequential, ParamItem
 __all__ = ["VideoSequential"]
 
 
-# TODO: Rewrite this to support inverse operation by having a generic AugmentationSequential.
 class VideoSequential(ImageSequential):
     r"""VideoSequential for processing 5-dim video data like (B, T, C, H, W) and (B, C, T, H, W).
 
@@ -151,15 +149,9 @@ class VideoSequential(ImageSequential):
         self.clear_state()
 
         named_modules = self.get_forward_sequence(params)
-        if params is not None:
-            self.has_mix_augmentation = self.contains_mix_augmentation(params)
-        else:
-            self.has_mix_augmentation = False
-            for name, child in enumerate(named_modules):
-                if isinstance(child, (MixAugmentationBase,)):
-                    self.has_mix_augmentation = True
-                    break
+
         params = [] if params is None else params
+        self.has_mix_augmentation = self.contains_mix_augmentation(params)
 
         # Size of T
         frame_num = input.size(self._temporal_channel)

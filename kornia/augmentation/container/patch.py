@@ -1,17 +1,14 @@
-from typing import List, Optional, Tuple, Union, NamedTuple, cast
-from itertools import chain, cycle, islice
+from typing import Iterator, List, Optional, Tuple, Union, NamedTuple
+from itertools import cycle, islice
 
 import torch
 import torch.nn as nn
 
 from kornia.augmentation.base import (
-    MixAugmentationBase,
     TensorWithTransMat,
-    _AugmentationBase,
     IntensityAugmentationBase2D
 )
 from kornia.contrib.extract_patches import extract_tensor_patches
-from kornia.constants import ConstantBase, Enum, EnumMetaFlags
 
 from .image import ImageSequential, ParamItem
 
@@ -132,9 +129,9 @@ class PatchSequential(ImageSequential):
                 return False
         return True
 
-    def contains_mix_augmentation(self, params: List[PatchParamItem]) -> bool:
+    def contains_mix_augmentation(self, params: List[PatchParamItem]) -> bool:  # type: ignore
         for param in params:
-            if param.param.name.startswith("RandomMixUP") or param.param.name.startswith("RandomCutMix"):
+            if param.param.name.startswith("RandomMixUp") or param.param.name.startswith("RandomCutMix"):
                 return True
         return False
 
@@ -232,44 +229,85 @@ class PatchSequential(ImageSequential):
         if not self.patchwise_apply:
             params = self.get_parameter_sequence(1)
             indices = torch.arange(0, batch_shape[0] * batch_shape[1]).numpy().tolist()
-            [out_param.append(PatchParamItem(indices, p)) for p in params]
+            [out_param.append(PatchParamItem(indices, p)) for p, _ in params]  # type: ignore
+            # "append" of "list" does not return a value
         elif not self.same_on_batch:
             params = self.get_parameter_sequence(batch_shape[0] * batch_shape[1])
-            [out_param.append(PatchParamItem(idx, p)) for idx, p in enumerate(params)]
+            [out_param.append(PatchParamItem([i], p)) for p, i in params]  # type: ignore
+            # "append" of "list" does not return a value
         else:
             params = self.get_parameter_sequence(batch_shape[1])
             indices = torch.arange(0, batch_shape[0] * batch_shape[1], step=batch_shape[1])
-            [out_param.append(PatchParamItem((indices + idx).numpy().tolist(), p)) for idx, p in enumerate(params)]
+            [out_param.append(PatchParamItem((indices + i).numpy().tolist(), p))  # type: ignore
+                for p, i in params]
+            # "append" of "list" does not return a value
         return out_param
 
-    def get_parameter_sequence(self, sequence_num: int) -> List[ParamItem]:
+    def get_parameter_sequence(self, sequence_num: int) -> Iterator[Tuple[ParamItem, int]]:
         """Get mulitple forward sequence but maximumly one mix augmentation in between."""
         if not self.same_on_batch and self.random_apply:
             with_mix = False
-            for _ in range(sequence_num):
+            for i in range(sequence_num):
                 seq, mix_added = self.__sample_forward_indices__(with_mix=with_mix)
                 with_mix = mix_added
                 for s in seq:
-                    yield ParamItem(s[0], None)
+                    yield ParamItem(s[0], None), i
         elif not self.random_apply:
-            for nchild in islice(cycle(self.named_children()), sequence_num):
-                yield ParamItem(nchild[0], None)
+            for i, nchild in enumerate(islice(cycle(self.named_children()), sequence_num)):
+                yield ParamItem(nchild[0], None), i
         else:
             nchildren = list(self.named_children())
-            for idx in torch.randperm(len(nchildren)):
-                yield ParamItem(nchildren[idx], None)
+            for i, idx in enumerate(torch.randperm(len(nchildren))):
+                yield ParamItem(nchildren[idx][0], None), i
 
     def apply_by_param(
-        self, input: torch.Tensor, label: Optional[torch.Tensor], params: PatchParamItem
+        self, input: TensorWithTransMat, label: Optional[torch.Tensor], params: PatchParamItem
     ) -> Tuple[TensorWithTransMat, Optional[torch.Tensor], PatchParamItem]:
-        if label is not None:
-            input[params.indices], label[params.indices], out_param = self._apply_operation(
-                input[params.indices], label[params.indices], params.param.name,
-                self.get_submodule(params.param.name), params.param.data)
+        _input: TensorWithTransMat
+        if isinstance(input, (tuple,)):
+            in_shape = input[0].shape
+            _input = (input[0][params.indices], input[1][params.indices])
         else:
-            input[params.indices], label, out_param = self._apply_operation(
-                input[params.indices], label, params.param.name,
-                self.get_submodule(params.param.name), params.param.data)
+            in_shape = input.shape
+            _input = input[params.indices]
+
+        _label: Optional[torch.Tensor]
+        if label is not None:
+            _label = label[params.indices]
+        else:
+            _label = label
+
+        output, out_label, out_param = self._apply_operation(
+            _input, _label, params.param.name, self.get_submodule(params.param.name), params.param.data)
+
+        if isinstance(output, (tuple,)) and isinstance(input, (tuple,)):
+            input[0][params.indices] = output[0]
+            input[1][params.indices] = output[1]
+        elif isinstance(output, (tuple,)) and not isinstance(input, (tuple,)):
+            input[params.indices] = output[0]
+            input = (input, output[1])
+        elif not isinstance(output, (tuple,)) and isinstance(input, (tuple,)):
+            input[0][params.indices] = output
+        elif not isinstance(output, (tuple,)) and not isinstance(input, (tuple,)):
+            input[params.indices] = output
+
+        # TODO: this label handling is naive that may not be able to handle complex cases.
+        _label = None
+        if label is not None and out_label is not None:
+            if len(out_label.shape) == 1:
+                _label = torch.ones((in_shape[0] * in_shape[1],)) * -1
+                _label = label
+            else:
+                _label = torch.ones((in_shape[0], *out_label.shape[1:])) * -1
+                _label[:, 0] = label
+            label[params.indices] = out_label
+        elif label is None and out_label is not None:
+            if len(out_label.shape) == 1:
+                _label = torch.ones((in_shape[0] * in_shape[1],)) * -1
+            else:
+                _label = torch.ones((in_shape[0], *out_label.shape[1:])) * -1
+            _label[params.indices] = out_label
+
         return input, label, PatchParamItem(params.indices, param=out_param)
 
     def forward_by_params(
@@ -277,19 +315,28 @@ class PatchSequential(ImageSequential):
         input: torch.Tensor,
         label: Optional[torch.Tensor],
         params: List[PatchParamItem],
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    ) -> Union[TensorWithTransMat, Tuple[TensorWithTransMat, Optional[torch.Tensor]]]:
         p = []
+        _input: TensorWithTransMat
         in_shape = input.shape
-        input = input.reshape(-1, *in_shape[-3:])
+        _input = input.reshape(-1, *in_shape[-3:])
+
+        if label is not None:
+            label = torch.cat([label] * in_shape[1], dim=0)
+
         for patch_param in params:
-            input, label, out_param = self.apply_by_param(input, label, params=patch_param)
+            _input, label, out_param = self.apply_by_param(_input, label, params=patch_param)
             p.append(out_param)
         self._params = p
-        return input.reshape(in_shape), label
+        if isinstance(_input, (tuple,)):
+            _input = (_input[0].reshape(in_shape), _input[1])
+        else:
+            _input = _input.reshape(in_shape)
+        return _input, label
 
     def forward(  # type: ignore
         self,
-        input: TensorWithTransMat,
+        input: torch.Tensor,
         label: Optional[torch.Tensor] = None,
         params: Optional[List[PatchParamItem]] = None,
     ) -> Union[TensorWithTransMat, Tuple[TensorWithTransMat, torch.Tensor]]:
@@ -297,20 +344,20 @@ class PatchSequential(ImageSequential):
         self.clear_state()
         # BCHW -> B(patch)CHW
         if isinstance(input, (tuple,)):
-            pad = self.compute_padding(input[0], self.padding)
-            input, tran = self.extract_patches(input[0], self.grid_size, pad), input[1]
-        else:
-            pad = self.compute_padding(input, self.padding)
-            input = self.extract_patches(input, self.grid_size, pad)
+            raise ValueError(f"tuple input is not currently supported.")
+        _input: TensorWithTransMat
 
+        pad = self.compute_padding(input, self.padding)
+        input = self.extract_patches(input, self.grid_size, pad)
         if params is None:
             params = self.forward_parameters(input.shape)
+
         self.has_mix_augmentation = self.contains_mix_augmentation(params)
 
-        input, label = self.forward_by_params(input, label, params)
+        _input, label = self.forward_by_params(input, label, params)
 
-        if isinstance(input, (tuple,)):
-            input = (self.restore_from_patches(input[0], self.grid_size, pad=pad), tran)
+        if isinstance(_input, (tuple,)):
+            _input = (self.restore_from_patches(_input[0], self.grid_size, pad=pad), _input[1])
         else:
-            input = self.restore_from_patches(input, self.grid_size, pad=pad)
-        return self.__packup_output__(input, label)
+            _input = self.restore_from_patches(_input, self.grid_size, pad=pad)
+        return self.__packup_output__(_input, label)
