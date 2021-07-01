@@ -90,17 +90,18 @@ class PatchSequential(ImageSequential):
         padding: str = "same",
         same_on_batch: Optional[bool] = None,
         keepdim: Optional[bool] = None,
-        patchwise_apply: bool = None,
+        patchwise_apply: bool = True,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
     ) -> None:
         _random_apply: Optional[Union[int, Tuple[int, int]]]
-        # TODO: deprecate patchwise_apply
+
         if patchwise_apply and random_apply is True:
-            _random_apply = (grid_size[0] * grid_size[1], grid_size[0] * grid_size[1])
+            # will only apply [1, 4] augmentations per patch
+            _random_apply = (1, 4)
         elif patchwise_apply and random_apply is False:
             assert len(args) == grid_size[0] * grid_size[1], (
                 "The number of processing modules must be equal with grid size."
-                f"Got {len(args)} and {grid_size[0] * grid_size[1]}."
+                f"Got {len(args)} and {grid_size[0] * grid_size[1]}. Or set random_apply = True."
             )
             _random_apply = random_apply
         elif patchwise_apply and isinstance(random_apply, (int, tuple)):
@@ -246,6 +247,7 @@ class PatchSequential(ImageSequential):
     def get_parameter_sequence(self, sequence_num: int) -> Iterator[Tuple[ParamItem, int]]:
         """Get mulitple forward sequence but maximumly one mix augmentation in between."""
         if not self.same_on_batch and self.random_apply:
+            # diff_on_batch and random_apply => patch-wise augmentation
             with_mix = False
             for i in range(sequence_num):
                 seq, mix_added = self.__sample_forward_indices__(with_mix=with_mix)
@@ -253,12 +255,17 @@ class PatchSequential(ImageSequential):
                 for s in seq:
                     yield ParamItem(s[0], None), i
         elif not self.random_apply:
+            # same_on_batch + not random_apply => location-wise augmentation
             for i, nchild in enumerate(islice(cycle(self.named_children()), sequence_num)):
                 yield ParamItem(nchild[0], None), i
         else:
-            nchildren = list(self.named_children())
-            for i, idx in enumerate(torch.randperm(len(nchildren))):
-                yield ParamItem(nchildren[idx][0], None), i
+            # same_on_batch + random_apply => location-wise augmentation
+            with_mix = False
+            for i in range(sequence_num):
+                seq, mix_added = self.__sample_forward_indices__(with_mix=with_mix)
+                with_mix = mix_added
+                for s in seq:
+                    yield ParamItem(s[0], None), i
 
     def apply_by_param(
         self, input: TensorWithTransMat, label: Optional[torch.Tensor], params: PatchParamItem
