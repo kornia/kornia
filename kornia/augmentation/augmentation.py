@@ -1911,6 +1911,7 @@ class RandomInvert(IntensityAugmentationBase2D):
         super(RandomInvert, self).__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0
         )
+        self.max_val = max_val
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
@@ -1918,7 +1919,7 @@ class RandomInvert(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        return invert(input)
+        return invert(input, torch.as_tensor(self.max_val, device=input.device, dtype=input.dtype))
 
 
 class RandomChannelShuffle(IntensityAugmentationBase2D):
