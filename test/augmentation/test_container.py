@@ -1,9 +1,9 @@
-from kornia.augmentation.base import MixAugmentationBase
 import pytest
 import torch
 
 import kornia
 import kornia.augmentation as K
+from kornia.augmentation.base import MixAugmentationBase
 from kornia.constants import BorderType
 from kornia.geometry.bbox import bbox_to_mask
 from kornia.testing import assert_close
@@ -81,7 +81,7 @@ class TestVideoSequential:
             [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.0), K.RandomAffine(360, p=0.0)],
             [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.0)],
             [K.RandomAffine(360, p=0.0)],
-            [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0), K.RandomMixUp(p=1.)],
+            [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0), K.RandomMixUp(p=1.0)],
         ],
     )
     @pytest.mark.parametrize('data_format', ["BCTHW", "BTCHW"])
@@ -153,7 +153,7 @@ class TestSequential:
         aug = K.ImageSequential(
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
             K.RandomAffine(360, p=1.0),
-            K.RandomMixUp(p=1.),
+            K.RandomMixUp(p=1.0),
             same_on_batch=same_on_batch,
             return_transform=return_transform,
             keepdim=keepdim,
@@ -174,7 +174,7 @@ class TestSequential:
             kornia.filters.MedianBlur((3, 3)),
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0, return_transform=True),
             K.RandomAffine(360, p=1.0),
-            K.RandomMixUp(p=1.),
+            K.RandomMixUp(p=1.0),
             return_transform=return_transform,
             random_apply=random_apply,
         )

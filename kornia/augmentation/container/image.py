@@ -1,12 +1,12 @@
+import warnings
 from collections import OrderedDict
 from itertools import zip_longest
 from typing import Any, Iterator, List, NamedTuple, Optional, Tuple, Union
-import warnings
 
 import torch
 import torch.nn as nn
 
-from kornia.augmentation.base import MixAugmentationBase, TensorWithTransMat, _AugmentationBase
+from kornia.augmentation.base import _AugmentationBase, MixAugmentationBase, TensorWithTransMat
 
 __all__ = ["ImageSequential"]
 
@@ -123,8 +123,10 @@ class ImageSequential(nn.Sequential):
         self.has_mix_augmentation = len(self.__get_mix_indices__(iter(args))) > 0
 
     def update_attribute(
-        self, same_on_batch: Optional[bool] = None, return_transform: Optional[bool] = None,
-        keepdim: Optional[bool] = None
+        self,
+        same_on_batch: Optional[bool] = None,
+        return_transform: Optional[bool] = None,
+        keepdim: Optional[bool] = None,
     ) -> None:
         for arg in self.children():
             if isinstance(arg, _AugmentationBase):
@@ -172,12 +174,13 @@ class ImageSequential(nn.Sequential):
                 mix_count += 1
         if self.random_apply is False and mix_count > 1 and validate_args:
             raise ValueError(
-                f"Multiple mix augmentation is prohibited without enabling random_apply. Detected {mix_count}.")
+                f"Multiple mix augmentation is prohibited without enabling random_apply. Detected {mix_count}."
+            )
         if mix_count > 1 and validate_args:
             warnings.warn(
                 f"Multiple ({mix_count}) mix augmentation detected and at most one mix augmenation can"
                 "be applied at each forward. To silence this warning, please set `validate_args` to False.",
-                category=UserWarning
+                category=UserWarning,
             )
 
     def __get_mix_indices__(self, args: Iterator) -> List[int]:
@@ -195,9 +198,10 @@ class ImageSequential(nn.Sequential):
         # kick out the mix augmentations
         multinomial_weights[mix_indices] = 0
         indices = torch.multinomial(
-            multinomial_weights, num_samples,
+            multinomial_weights,
+            num_samples,
             # enable replacement if non-mix augmentation is less than required
-            replacement=True if num_samples > multinomial_weights.sum() else False
+            replacement=True if num_samples > multinomial_weights.sum() else False,
         )
 
         mix_added = False
@@ -219,8 +223,7 @@ class ImageSequential(nn.Sequential):
 
         if len(mix_indices) > 1:
             raise ValueError(
-                "Multiple mix augmentation is prohibited without enabling random_apply."
-                f"Detected {len(mix_indices)}."
+                "Multiple mix augmentation is prohibited without enabling random_apply." f"Detected {len(mix_indices)}."
             )
 
         return self.named_children()
@@ -297,8 +300,7 @@ class ImageSequential(nn.Sequential):
         else:
             _param = None  # type: ignore
 
-        input, label, out_param = self._apply_operation(
-            input, label, module_name, module, _param)
+        input, label, out_param = self._apply_operation(input, label, module_name, module, _param)
         self._params.append(out_param)
 
         return input, label
@@ -312,10 +314,7 @@ class ImageSequential(nn.Sequential):
         return output
 
     def forward(  # type: ignore
-        self,
-        input: TensorWithTransMat,
-        label: Optional[torch.Tensor] = None,
-        params: Optional[List[ParamItem]] = None,
+        self, input: TensorWithTransMat, label: Optional[torch.Tensor] = None, params: Optional[List[ParamItem]] = None
     ) -> Union[TensorWithTransMat, Tuple[TensorWithTransMat, torch.Tensor]]:
         self.clear_state()
         named_modules = self.get_forward_sequence(params)

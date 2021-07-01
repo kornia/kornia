@@ -6,11 +6,11 @@ import torch
 import torch.nn as nn
 
 from kornia.augmentation.base import (
-    MixAugmentationBase,
-    TensorWithTransMat,
     _AugmentationBase,
     GeometricAugmentationBase2D,
-    IntensityAugmentationBase2D
+    IntensityAugmentationBase2D,
+    MixAugmentationBase,
+    TensorWithTransMat,
 )
 from kornia.constants import DataKey
 from kornia.geometry.bbox import transform_bbox
@@ -292,8 +292,10 @@ class AugmentationSequential(ImageSequential):
     def __packup_output__(  # type: ignore
         self, output: List[TensorWithTransMat], label: Optional[torch.Tensor] = None
     ) -> Union[
-        TensorWithTransMat, Tuple[TensorWithTransMat, Optional[torch.Tensor]],
-        List[TensorWithTransMat], Tuple[List[TensorWithTransMat], Optional[torch.Tensor]]
+        TensorWithTransMat,
+        Tuple[TensorWithTransMat, Optional[torch.Tensor]],
+        List[TensorWithTransMat],
+        Tuple[List[TensorWithTransMat], Optional[torch.Tensor]],
     ]:
         if len(output) == 1 and self.has_mix_augmentation:
             return output[0], label
@@ -311,8 +313,10 @@ class AugmentationSequential(ImageSequential):
         params: Optional[List[ParamItem]] = None,
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
     ) -> Union[
-        TensorWithTransMat, Tuple[TensorWithTransMat, Optional[torch.Tensor]],
-        List[TensorWithTransMat], Tuple[List[TensorWithTransMat], Optional[torch.Tensor]]
+        TensorWithTransMat,
+        Tuple[TensorWithTransMat, Optional[torch.Tensor]],
+        List[TensorWithTransMat],
+        Tuple[List[TensorWithTransMat], Optional[torch.Tensor]],
     ]:
         """Compute multiple tensors simultaneously according to ``self.data_keys``."""
         if data_keys is None:

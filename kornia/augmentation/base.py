@@ -112,9 +112,7 @@ class _BasicAugmentationBase(nn.Module):
         _params['batch_prob'] = to_apply
         return _params
 
-    def apply_func(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor]
-    ) -> TensorWithTransMat:
+    def apply_func(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> TensorWithTransMat:
         input = self.transform_tensor(input)
         return self.apply_transform(input, params)
 
@@ -509,8 +507,10 @@ class MixAugmentationBase(_BasicAugmentationBase):
         return output, label
 
     def forward(  # type: ignore
-        self, input: TensorWithTransMat, label: Optional[torch.Tensor] = None,
-        params: Optional[Dict[str, torch.Tensor]] = None
+        self,
+        input: TensorWithTransMat,
+        label: Optional[torch.Tensor] = None,
+        params: Optional[Dict[str, torch.Tensor]] = None,
     ) -> Tuple[TensorWithTransMat, torch.Tensor]:
         in_tensor, in_trans = self.__unpack_input__(input)
         ori_shape = in_tensor.shape

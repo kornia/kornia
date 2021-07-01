@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 
 import kornia
-from kornia.augmentation.base import MixAugmentationBase, TensorWithTransMat, _AugmentationBase
+from kornia.augmentation.base import _AugmentationBase, MixAugmentationBase, TensorWithTransMat
 
 from .image import ImageSequential, ParamItem
 

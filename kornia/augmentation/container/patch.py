@@ -1,13 +1,10 @@
-from typing import Iterator, List, Optional, Tuple, Union, NamedTuple
 from itertools import cycle, islice
+from typing import Iterator, List, NamedTuple, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 
-from kornia.augmentation.base import (
-    TensorWithTransMat,
-    IntensityAugmentationBase2D
-)
+from kornia.augmentation.base import IntensityAugmentationBase2D, TensorWithTransMat
 from kornia.contrib.extract_patches import extract_tensor_patches
 
 from .image import ImageSequential, ParamItem
@@ -239,8 +236,7 @@ class PatchSequential(ImageSequential):
         else:
             params = self.get_parameter_sequence(batch_shape[1])
             indices = torch.arange(0, batch_shape[0] * batch_shape[1], step=batch_shape[1])
-            [out_param.append(PatchParamItem((indices + i).numpy().tolist(), p))  # type: ignore
-                for p, i in params]
+            [out_param.append(PatchParamItem((indices + i).numpy().tolist(), p)) for p, i in params]  # type: ignore
             # "append" of "list" does not return a value
         return out_param
 
@@ -285,7 +281,8 @@ class PatchSequential(ImageSequential):
             _label = label
 
         output, out_label, out_param = self._apply_operation(
-            _input, _label, params.param.name, self.get_submodule(params.param.name), params.param.data)
+            _input, _label, params.param.name, self.get_submodule(params.param.name), params.param.data
+        )
 
         if isinstance(output, (tuple,)) and isinstance(input, (tuple,)):
             input[0][params.indices] = output[0]
@@ -318,10 +315,7 @@ class PatchSequential(ImageSequential):
         return input, label, PatchParamItem(params.indices, param=out_param)
 
     def forward_by_params(
-        self,
-        input: torch.Tensor,
-        label: Optional[torch.Tensor],
-        params: List[PatchParamItem],
+        self, input: torch.Tensor, label: Optional[torch.Tensor], params: List[PatchParamItem]
     ) -> Union[TensorWithTransMat, Tuple[TensorWithTransMat, Optional[torch.Tensor]]]:
         p = []
         _input: TensorWithTransMat
@@ -342,10 +336,7 @@ class PatchSequential(ImageSequential):
         return _input, label
 
     def forward(  # type: ignore
-        self,
-        input: torch.Tensor,
-        label: Optional[torch.Tensor] = None,
-        params: Optional[List[PatchParamItem]] = None,
+        self, input: torch.Tensor, label: Optional[torch.Tensor] = None, params: Optional[List[PatchParamItem]] = None
     ) -> Union[TensorWithTransMat, Tuple[TensorWithTransMat, torch.Tensor]]:
         """Input transformation will be returned if input is a tuple."""
         self.clear_state()
