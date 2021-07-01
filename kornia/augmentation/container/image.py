@@ -244,6 +244,38 @@ class ImageSequential(nn.Sequential):
             named_modules = self._get_children_by_module_names([p.name for p in params])
         return named_modules
 
+    def _apply_operation(
+        self,
+        input: TensorWithTransMat,
+        label: Optional[torch.Tensor],
+        module_name: str,
+        module: nn.Module,
+        param: Optional[Union[dict, list]],
+    ) -> Tuple[TensorWithTransMat, Optional[torch.Tensor], ParamItem]:
+        if isinstance(module, (MixAugmentationBase,)) and param is None:
+            input, label = module(input, label)
+            out_param = ParamItem(module_name, module._params)
+        elif isinstance(module, (MixAugmentationBase,)) and param is not None:
+            input, label = module(input, label, params=param)
+            out_param = ParamItem(module_name, param)
+        elif isinstance(module, (_AugmentationBase, ImageSequential)) and param is None:
+            input = module(input)
+            out_param = ParamItem(module_name, module._params)
+        elif isinstance(module, (_AugmentationBase, ImageSequential)) and param is not None:
+            input = module(input, params=param)
+            out_param = ParamItem(module_name, param)
+        else:
+            assert (
+                param == {} or param is None
+            ), f"Non-augmentaion operation {module_name} require empty parameters. Got {param}."
+            # In case of return_transform = True
+            if isinstance(input, (tuple, list)):
+                input = (module(input[0]), input[1])
+            else:
+                input = module(input)
+            out_param = ParamItem(module_name, {})
+        return input, label, out_param
+
     def apply_to_input(
         self,
         input: TensorWithTransMat,
@@ -261,28 +293,9 @@ class ImageSequential(nn.Sequential):
         else:
             _param = None  # type: ignore
 
-        if isinstance(module, (MixAugmentationBase,)) and _param is None:
-            input, label = module(input, label)
-            self._params.append(ParamItem(module_name, module._params))
-        elif isinstance(module, (MixAugmentationBase,)) and _param is not None:
-            input, label = module(input, label, params=_param)
-            self._params.append(ParamItem(module_name, _param))
-        elif isinstance(module, (_AugmentationBase, ImageSequential)) and _param is None:
-            input = module(input)
-            self._params.append(ParamItem(module_name, module._params))
-        elif isinstance(module, (_AugmentationBase, ImageSequential)) and _param is not None:
-            input = module(input, params=_param)
-            self._params.append(ParamItem(module_name, _param))
-        else:
-            assert (
-                _param == {} or _param is None
-            ), f"Non-augmentaion operation {module_name} require empty parameters. Got {module}."
-            # In case of return_transform = True
-            if isinstance(input, (tuple, list)):
-                input = (module(input[0]), input[1])
-            else:
-                input = module(input)
-            self._params.append(ParamItem(module_name, {}))
+        input, label, out_param = self._apply_operation(
+            input, label, module_name, module, _param)
+        self._params.append(out_param)
 
         return input, label
 
