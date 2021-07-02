@@ -120,11 +120,12 @@ def bgr_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> t
     return rgb_to_rgba(x_rgb, alpha_val)
 
 
-def rgba_to_rgb(image: torch.Tensor) -> torch.Tensor:
+def rgba_to_rgb(image: torch.Tensor, bg_rgb: Tuple = (0, 0, 0)) -> torch.Tensor:
     r"""Convert an image from RGBA to RGB.
 
     Args:
         image: RGBA Image to be converted to RGB of shape :math:`(*,4,H,W)`.
+        bg_rgb: background RGB.
 
     Returns:
         RGB version of the image with shape :math:`(*,3,H,W)`.
@@ -141,14 +142,15 @@ def rgba_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     # unpack channels
     r, g, b, a = torch.chunk(image, image.shape[-3], dim=-3)
+    r_bg, g_bg, b_bg = bg_rgb
 
     # compute new channels
     a_one = torch.tensor(1.0) - a
-    r_new: torch.Tensor = a_one * r + a * r
-    g_new: torch.Tensor = a_one * g + a * g
-    b_new: torch.Tensor = a_one * b + a * b
+    r_new: torch.Tensor = a_one * r_bg + a * r
+    g_new: torch.Tensor = a_one * g_bg + a * g
+    b_new: torch.Tensor = a_one * b_bg + a * b
 
-    return torch.cat([r, g, b], dim=-3)
+    return torch.cat([r_new, g_new, b_new], dim=-3)
 
 
 def rgba_to_bgr(image: torch.Tensor) -> torch.Tensor:
