@@ -10,7 +10,7 @@ from kornia.augmentation.base import (
     GeometricAugmentationBase2D,
     IntensityAugmentationBase2D,
     MixAugmentationBase,
-    TensorWithTransMat,
+    TensorWithTransformMat,
 )
 from kornia.constants import DataKey
 from kornia.geometry.bbox import transform_bbox
@@ -49,8 +49,7 @@ class AugmentationSequential(ImageSequential):
             If False, the whole list of args will be processed as a sequence in original order.
 
     Return:
-        List[TensorWithTransMat]: the tensor (, and the transformation matrix)
-            has been sequentially modified by the args.
+        the tensor (, and the transformation matrix) has been sequentially modified by the args.
 
     Note:
         Mix augmentations (e.g. RandomMixUp, RandomCutMix) can only be working with "input" data key.
@@ -160,20 +159,17 @@ class AugmentationSequential(ImageSequential):
 
     def apply_by_key(
         self,
-        input: TensorWithTransMat,
+        input: TensorWithTransformMat,
         label: Optional[torch.Tensor],
-        module_name: str,
-        module: Optional[nn.Module] = None,
-        param: Optional[ParamItem] = None,
+        module: Optional[nn.Module],
+        param: ParamItem,
         dcate: Union[str, int, DataKey] = DataKey.INPUT,
-    ) -> Tuple[TensorWithTransMat, Optional[torch.Tensor]]:
-        if param is not None:
-            assert module_name == param.name
+    ) -> Tuple[TensorWithTransformMat, Optional[torch.Tensor]]:
         if module is None:
             # TODO (jian): double check why typing is crashing
-            module = self.get_submodule(module_name)  # type: ignore
+            module = self.get_submodule(param.name)  # type: ignore
         if DataKey.get(dcate) in [DataKey.INPUT]:
-            return self.apply_to_input(input, label, module_name, module, param)
+            return self.apply_to_input(input, label, module=module, param=param)
         if DataKey.get(dcate) in [DataKey.MASK]:
             if isinstance(input, (tuple,)):
                 return (self.apply_to_mask(input[0], module, param), *input[1:]), None
@@ -290,12 +286,12 @@ class AugmentationSequential(ImageSequential):
         return outputs
 
     def __packup_output__(  # type: ignore
-        self, output: List[TensorWithTransMat], label: Optional[torch.Tensor] = None
+        self, output: List[TensorWithTransformMat], label: Optional[torch.Tensor] = None
     ) -> Union[
-        TensorWithTransMat,
-        Tuple[TensorWithTransMat, Optional[torch.Tensor]],
-        List[TensorWithTransMat],
-        Tuple[List[TensorWithTransMat], Optional[torch.Tensor]],
+        TensorWithTransformMat,
+        Tuple[TensorWithTransformMat, Optional[torch.Tensor]],
+        List[TensorWithTransformMat],
+        Tuple[List[TensorWithTransformMat], Optional[torch.Tensor]],
     ]:
         if len(output) == 1 and self.has_mix_augmentation:
             return output[0], label
@@ -308,15 +304,15 @@ class AugmentationSequential(ImageSequential):
 
     def forward(  # type: ignore
         self,
-        *args: TensorWithTransMat,
+        *args: TensorWithTransformMat,
         label: Optional[torch.Tensor] = None,
         params: Optional[List[ParamItem]] = None,
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
     ) -> Union[
-        TensorWithTransMat,
-        Tuple[TensorWithTransMat, Optional[torch.Tensor]],
-        List[TensorWithTransMat],
-        Tuple[List[TensorWithTransMat], Optional[torch.Tensor]],
+        TensorWithTransformMat,
+        Tuple[TensorWithTransformMat, Optional[torch.Tensor]],
+        List[TensorWithTransformMat],
+        Tuple[List[TensorWithTransformMat], Optional[torch.Tensor]],
     ]:
         """Compute multiple tensors simultaneously according to ``self.data_keys``."""
         if data_keys is None:
@@ -328,24 +324,19 @@ class AugmentationSequential(ImageSequential):
 
         self.clear_state()
         outputs = []
-        named_modules = list(self.get_forward_sequence(params))
-        if params is not None:
-            self.has_mix_augmentation = self.contains_mix_augmentation(params)
-        else:
-            self.has_mix_augmentation = False
-            for name, child in enumerate(named_modules):
-                if isinstance(child, (MixAugmentationBase,)):
-                    self.has_mix_augmentation = True
-                    break
+        named_modules = self.get_forward_sequence(params)
+        if params is None:
+            params = list(self.get_params_by_module(named_modules))
+        self.return_label = self.get_mix_augmentation_indices(named_modules)
 
         for input, dcate in zip(args, data_keys):
             # use the parameter if the first round has been finished.
             params = self._params if params is None or len(params) == 0 else params
-            for param, (name, module) in zip_longest(params, named_modules):
+            for param, (_, module) in zip_longest(params, named_modules):
                 if dcate == DataKey.INPUT:
-                    input, label = self.apply_to_input(input, label, str(name), module, param)
+                    input, label = self.apply_to_input(input, label, module=module, param=param)
                 elif isinstance(module, GeometricAugmentationBase2D) and dcate in DataKey:
-                    input, label = self.apply_by_key(input, label, str(name), module, param, dcate)
+                    input, label = self.apply_by_key(input, label, module, param, dcate)
                 elif isinstance(module, IntensityAugmentationBase2D) and dcate in DataKey:
                     pass  # Do nothing
                 elif isinstance(module, PatchSequential) and module.is_intensity_only() and dcate in DataKey:

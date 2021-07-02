@@ -19,7 +19,7 @@ from kornia.geometry.transform.affwarp import _compute_rotation_matrix3d, _compu
 from kornia.utils import _extract_device_dtype
 
 from . import random_generator as rg
-from .base import AugmentationBase3D, TensorWithTransMat
+from .base import AugmentationBase3D, TensorWithTransformMat
 from .utils import _range_bound, _singular_range_check, _tuple_range_reader
 
 
@@ -900,10 +900,10 @@ class RandomCrop3D(AugmentationBase3D):
 
     def forward(  # type: ignore
         self,
-        input: TensorWithTransMat,
+        input: TensorWithTransformMat,
         params: Optional[Dict[str, torch.Tensor]] = None,
         return_transform: Optional[bool] = None,
-    ) -> TensorWithTransMat:
+    ) -> TensorWithTransformMat:
         if type(input) is tuple:
             input = (self.precrop_padding(input[0]), input[1])
         else:

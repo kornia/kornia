@@ -4,7 +4,7 @@ from typing import Iterator, List, NamedTuple, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
-from kornia.augmentation.base import IntensityAugmentationBase2D, TensorWithTransMat
+from kornia.augmentation.base import IntensityAugmentationBase2D, TensorWithTransformMat
 from kornia.contrib.extract_patches import extract_tensor_patches
 
 from .image import ImageSequential, ParamItem
@@ -48,8 +48,7 @@ class PatchSequential(ImageSequential):
             location-wisely.
 
     Return:
-        List[TensorWithTransMat]: the tensor (, and the transformation matrix)
-            has been sequentially modified by the args.
+        the tensor (, and the transformation matrix) has been sequentially modified by the args.
 
     Examples:
         >>> import kornia.augmentation as K
@@ -226,8 +225,8 @@ class PatchSequential(ImageSequential):
         out_param: List[PatchParamItem] = []
         if not self.patchwise_apply:
             params = self.get_parameter_sequence(1)
-            indices = torch.arange(0, batch_shape[0] * batch_shape[1]).numpy().tolist()
-            [out_param.append(PatchParamItem(indices, p)) for p, _ in params]  # type: ignore
+            indices = torch.arange(0, batch_shape[0] * batch_shape[1])
+            [out_param.append(PatchParamItem(indices.tolist(), p)) for p, _ in params]  # type: ignore
             # "append" of "list" does not return a value
         elif not self.same_on_batch:
             params = self.get_parameter_sequence(batch_shape[0] * batch_shape[1])
@@ -236,7 +235,7 @@ class PatchSequential(ImageSequential):
         else:
             params = self.get_parameter_sequence(batch_shape[1])
             indices = torch.arange(0, batch_shape[0] * batch_shape[1], step=batch_shape[1])
-            [out_param.append(PatchParamItem((indices + i).numpy().tolist(), p)) for p, i in params]  # type: ignore
+            [out_param.append(PatchParamItem((indices + i).tolist(), p)) for p, i in params]  # type: ignore
             # "append" of "list" does not return a value
         return out_param
 
@@ -246,7 +245,7 @@ class PatchSequential(ImageSequential):
             # diff_on_batch and random_apply => patch-wise augmentation
             with_mix = False
             for i in range(sequence_num):
-                seq, mix_added = self.__sample_forward_indices__(with_mix=with_mix)
+                seq, mix_added = self.get_random_forward_sequence(with_mix=with_mix)
                 with_mix = mix_added
                 for s in seq:
                     yield ParamItem(s[0], None), i
@@ -258,15 +257,15 @@ class PatchSequential(ImageSequential):
             # same_on_batch + random_apply => location-wise augmentation
             with_mix = False
             for i in range(sequence_num):
-                seq, mix_added = self.__sample_forward_indices__(with_mix=with_mix)
+                seq, mix_added = self.get_random_forward_sequence(with_mix=with_mix)
                 with_mix = mix_added
                 for s in seq:
                     yield ParamItem(s[0], None), i
 
     def apply_by_param(
-        self, input: TensorWithTransMat, label: Optional[torch.Tensor], params: PatchParamItem
-    ) -> Tuple[TensorWithTransMat, Optional[torch.Tensor], PatchParamItem]:
-        _input: TensorWithTransMat
+        self, input: TensorWithTransformMat, label: Optional[torch.Tensor], params: PatchParamItem
+    ) -> Tuple[TensorWithTransformMat, Optional[torch.Tensor], PatchParamItem]:
+        _input: TensorWithTransformMat
         if isinstance(input, (tuple,)):
             in_shape = input[0].shape
             _input = (input[0][params.indices], input[1][params.indices])
@@ -281,7 +280,7 @@ class PatchSequential(ImageSequential):
             _label = label
 
         output, out_label, out_param = self._apply_operation(
-            _input, _label, params.param.name, self.get_submodule(params.param.name), params.param.data
+            _input, _label, self.get_submodule(params.param.name), params.param
         )
 
         if isinstance(output, (tuple,)) and isinstance(input, (tuple,)):
@@ -316,9 +315,9 @@ class PatchSequential(ImageSequential):
 
     def forward_by_params(
         self, input: torch.Tensor, label: Optional[torch.Tensor], params: List[PatchParamItem]
-    ) -> Union[TensorWithTransMat, Tuple[TensorWithTransMat, Optional[torch.Tensor]]]:
+    ) -> Union[TensorWithTransformMat, Tuple[TensorWithTransformMat, Optional[torch.Tensor]]]:
         p = []
-        _input: TensorWithTransMat
+        _input: TensorWithTransformMat
         in_shape = input.shape
         _input = input.reshape(-1, *in_shape[-3:])
 
@@ -337,13 +336,13 @@ class PatchSequential(ImageSequential):
 
     def forward(  # type: ignore
         self, input: torch.Tensor, label: Optional[torch.Tensor] = None, params: Optional[List[PatchParamItem]] = None
-    ) -> Union[TensorWithTransMat, Tuple[TensorWithTransMat, torch.Tensor]]:
+    ) -> Union[TensorWithTransformMat, Tuple[TensorWithTransformMat, torch.Tensor]]:
         """Input transformation will be returned if input is a tuple."""
         self.clear_state()
         # BCHW -> B(patch)CHW
         if isinstance(input, (tuple,)):
             raise ValueError(f"tuple input is not currently supported.")
-        _input: TensorWithTransMat
+        _input: TensorWithTransformMat
 
         pad = self.compute_padding(input, self.padding)
         input = self.extract_patches(input, self.grid_size, pad)

@@ -16,7 +16,7 @@ from .utils import (
     _validate_input_dtype,
 )
 
-TensorWithTransMat = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
+TensorWithTransformMat = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
 
 
 class _BasicAugmentationBase(nn.Module):
@@ -56,7 +56,7 @@ class _BasicAugmentationBase(nn.Module):
     def __unpack_input__(self, input: torch.Tensor) -> torch.Tensor:
         return input
 
-    def __check_batching__(self, input: TensorWithTransMat):
+    def __check_batching__(self, input: TensorWithTransformMat):
         """Check if a transformation matrix is returned,
         it has to be in the same batching mode as output."""
         raise NotImplementedError
@@ -112,13 +112,13 @@ class _BasicAugmentationBase(nn.Module):
         _params['batch_prob'] = to_apply
         return _params
 
-    def apply_func(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> TensorWithTransMat:
+    def apply_func(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> TensorWithTransformMat:
         input = self.transform_tensor(input)
         return self.apply_transform(input, params)
 
     def forward(  # type: ignore
         self, input: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None  # type: ignore
-    ) -> TensorWithTransMat:
+    ) -> TensorWithTransformMat:
         in_tensor = self.__unpack_input__(input)
         self.__check_batching__(input)
         ori_shape = in_tensor.shape
@@ -177,7 +177,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         raise NotImplementedError
 
     def __unpack_input__(  # type: ignore
-        self, input: TensorWithTransMat
+        self, input: TensorWithTransformMat
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         if isinstance(input, tuple):
             in_tensor = input[0]
@@ -192,7 +192,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         in_transform: Optional[torch.Tensor],  # type: ignore
         params: Dict[str, torch.Tensor],
         return_transform: bool = False,
-    ) -> TensorWithTransMat:
+    ) -> TensorWithTransformMat:
         to_apply = params['batch_prob']
 
         # if no augmentation needed
@@ -222,10 +222,10 @@ class _AugmentationBase(_BasicAugmentationBase):
 
     def forward(  # type: ignore
         self,
-        input: TensorWithTransMat,
+        input: TensorWithTransformMat,
         params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
         return_transform: Optional[bool] = None,
-    ) -> TensorWithTransMat:
+    ) -> TensorWithTransformMat:
         in_tensor, in_transform = self.__unpack_input__(input)
         self.__check_batching__(input)
         ori_shape = in_tensor.shape
@@ -264,7 +264,7 @@ class AugmentationBase2D(_AugmentationBase):
           form ``False``.
     """
 
-    def __check_batching__(self, input: TensorWithTransMat):
+    def __check_batching__(self, input: TensorWithTransformMat):
         if isinstance(input, tuple):
             inp, mat = input
             if len(inp.shape) == 4:
@@ -358,7 +358,7 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
 
     def inverse(
         self,
-        input: TensorWithTransMat,
+        input: TensorWithTransformMat,
         params: Optional[Dict[str, torch.Tensor]] = None,
         size: Optional[Tuple[int, int]] = None,
         **kwargs,
@@ -414,7 +414,7 @@ class AugmentationBase3D(_AugmentationBase):
         same_on_batch: apply the same transformation across the batch.
     """
 
-    def __check_batching__(self, input: TensorWithTransMat):
+    def __check_batching__(self, input: TensorWithTransformMat):
         if isinstance(input, tuple):
             inp, mat = input
             if len(inp.shape) == 5:
@@ -455,7 +455,7 @@ class MixAugmentationBase(_BasicAugmentationBase):
     def __init__(self, p: float, p_batch: float, same_on_batch: bool = False, keepdim: bool = False) -> None:
         super(MixAugmentationBase, self).__init__(p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=keepdim)
 
-    def __check_batching__(self, input: TensorWithTransMat):
+    def __check_batching__(self, input: TensorWithTransformMat):
         if isinstance(input, tuple):
             inp, mat = input
             if len(inp.shape) == 4:
@@ -469,7 +469,7 @@ class MixAugmentationBase(_BasicAugmentationBase):
                 raise ValueError(f'Unrecognized output shape. Expected 2, 3, or 4, got {len(inp.shape)}')
 
     def __unpack_input__(  # type: ignore
-        self, input: TensorWithTransMat
+        self, input: TensorWithTransformMat
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         if isinstance(input, tuple):
             in_tensor = input[0]
@@ -508,10 +508,10 @@ class MixAugmentationBase(_BasicAugmentationBase):
 
     def forward(  # type: ignore
         self,
-        input: TensorWithTransMat,
+        input: TensorWithTransformMat,
         label: Optional[torch.Tensor] = None,
         params: Optional[Dict[str, torch.Tensor]] = None,
-    ) -> Tuple[TensorWithTransMat, torch.Tensor]:
+    ) -> Tuple[TensorWithTransformMat, torch.Tensor]:
         in_tensor, in_trans = self.__unpack_input__(input)
         ori_shape = in_tensor.shape
         in_tensor = self.transform_tensor(in_tensor)

@@ -4,7 +4,7 @@ from typing import cast, Dict, List, Optional, Tuple, Union
 import torch
 from torch.nn.functional import pad
 
-from kornia.augmentation.base import GeometricAugmentationBase2D, IntensityAugmentationBase2D, TensorWithTransMat
+from kornia.augmentation.base import GeometricAugmentationBase2D, IntensityAugmentationBase2D, TensorWithTransformMat
 from kornia.color import rgb_to_grayscale
 from kornia.constants import BorderType, pi, Resample, SamplePadding
 from kornia.enhance import (
@@ -1119,7 +1119,7 @@ class RandomCrop(GeometricAugmentationBase2D):
 
     def inverse(
         self,
-        input: TensorWithTransMat,
+        input: TensorWithTransformMat,
         params: Optional[Dict[str, torch.Tensor]] = None,
         size: Optional[Tuple[int, int]] = None,
         **kwargs,
@@ -1136,10 +1136,10 @@ class RandomCrop(GeometricAugmentationBase2D):
 
     def forward(
         self,
-        input: TensorWithTransMat,
+        input: TensorWithTransformMat,
         params: Optional[Dict[str, torch.Tensor]] = None,
         return_transform: Optional[bool] = None,
-    ) -> TensorWithTransMat:
+    ) -> TensorWithTransformMat:
         if isinstance(input, (tuple, list)):
             input_temp = _transform_input(input[0])
             input_pad = self.compute_padding(input[0].shape)
@@ -1903,7 +1903,7 @@ class RandomInvert(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        max_val: torch.Tensor = torch.tensor(1.0),
+        max_val: Union[float, torch.Tensor] = torch.tensor(1.0),
         return_transform: bool = False,
         same_on_batch: bool = False,
         p: float = 0.5,

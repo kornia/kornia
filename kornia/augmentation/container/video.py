@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 
 import kornia
-from kornia.augmentation.base import _AugmentationBase, MixAugmentationBase, TensorWithTransMat
+from kornia.augmentation.base import _AugmentationBase, MixAugmentationBase, TensorWithTransformMat
 
 from .image import ImageSequential, ParamItem
 
@@ -143,15 +143,15 @@ class VideoSequential(ImageSequential):
 
     def forward(  # type: ignore
         self, input: torch.Tensor, label: Optional[torch.Tensor] = None, params: Optional[List[ParamItem]] = None
-    ) -> Union[TensorWithTransMat, Tuple[TensorWithTransMat, torch.Tensor]]:
+    ) -> Union[TensorWithTransformMat, Tuple[TensorWithTransformMat, torch.Tensor]]:
         """Define the video computation performed."""
         assert len(input.shape) == 5, f"Input must be a 5-dim tensor. Got {input.shape}."
         self.clear_state()
 
         named_modules = self.get_forward_sequence(params)
-
-        params = [] if params is None else params
-        self.has_mix_augmentation = self.contains_mix_augmentation(params)
+        if params is None:
+            params = list(self.get_params_by_module(named_modules))
+        self.return_label = self.get_mix_augmentation_indices(named_modules)
 
         # Size of T
         frame_num = input.size(self._temporal_channel)
