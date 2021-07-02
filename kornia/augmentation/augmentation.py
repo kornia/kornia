@@ -22,8 +22,6 @@ from kornia.enhance.normalize import denormalize, normalize
 from kornia.filters import box_blur, gaussian_blur2d, motion_blur
 from kornia.geometry import (
     affine,
-    bbox_generator,
-    bbox_to_mask,
     crop_by_transform_mat,
     deg2rad,
     elastic_transform2d,
@@ -38,6 +36,7 @@ from kornia.geometry import (
     warp_image_tps,
     warp_perspective,
 )
+from kornia.geometry.bbox import bbox_generator, bbox_to_mask
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 from kornia.utils import _extract_device_dtype, create_meshgrid
 
