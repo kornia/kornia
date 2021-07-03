@@ -1,15 +1,12 @@
-from typing import Iterator, Optional, Union, Tuple, NamedTuple, List, Any
 from collections import OrderedDict
+from typing import Any, Iterator, List, NamedTuple, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 
-from kornia.augmentation.base import MixAugmentationBase, _AugmentationBase
+from kornia.augmentation.base import _AugmentationBase, MixAugmentationBase
 
-__all__ = [
-    "SequentialBase",
-    "ParamItem",
-]
+__all__ = ["SequentialBase", "ParamItem"]
 
 
 class ParamItem(NamedTuple):

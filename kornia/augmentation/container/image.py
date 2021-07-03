@@ -4,8 +4,9 @@ from typing import Iterator, List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
-from .base import SequentialBase, ParamItem
 from kornia.augmentation.base import _AugmentationBase, MixAugmentationBase, TensorWithTransformMat
+
+from .base import ParamItem, SequentialBase
 
 __all__ = ["ImageSequential"]
 
@@ -75,7 +76,8 @@ class ImageSequential(SequentialBase):
         random_apply: Union[int, bool, Tuple[int, int]] = False,
     ) -> None:
         super(ImageSequential, self).__init__(
-            *args, same_on_batch=same_on_batch, return_transform=return_transform, keepdim=keepdim)
+            *args, same_on_batch=same_on_batch, return_transform=return_transform, keepdim=keepdim
+        )
 
         self.random_apply: Union[Tuple[int, int], bool] = self._read_random_apply(random_apply, len(args))
 
@@ -159,11 +161,7 @@ class ImageSequential(SequentialBase):
         return named_modules
 
     def _apply_operation(
-        self,
-        input: TensorWithTransformMat,
-        label: Optional[torch.Tensor],
-        module: nn.Module,
-        param: ParamItem,
+        self, input: TensorWithTransformMat, label: Optional[torch.Tensor], module: nn.Module, param: ParamItem
     ) -> Tuple[TensorWithTransformMat, Optional[torch.Tensor], ParamItem]:
         if isinstance(module, (MixAugmentationBase,)):
             input, label = module(input, label, params=param.data)
@@ -172,8 +170,7 @@ class ImageSequential(SequentialBase):
             input = module(input, params=param.data)
             out_param = ParamItem(param.name, module._params)
         else:
-            assert param.data is None, \
-                f"Non-augmentaion operation {param.name} require empty parameters. Got {param}."
+            assert param.data is None, f"Non-augmentaion operation {param.name} require empty parameters. Got {param}."
             # In case of return_transform = True
             if isinstance(input, (tuple, list)):
                 input = (module(input[0]), input[1])
@@ -206,8 +203,10 @@ class ImageSequential(SequentialBase):
         return output
 
     def forward(  # type: ignore
-        self, input: TensorWithTransformMat, label: Optional[torch.Tensor] = None,
-        params: Optional[List[ParamItem]] = None
+        self,
+        input: TensorWithTransformMat,
+        label: Optional[torch.Tensor] = None,
+        params: Optional[List[ParamItem]] = None,
     ) -> Union[TensorWithTransformMat, Tuple[TensorWithTransformMat, torch.Tensor]]:
         self.clear_state()
         named_modules = list(self.get_forward_sequence(params))
