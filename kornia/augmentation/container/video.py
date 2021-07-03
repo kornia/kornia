@@ -154,7 +154,7 @@ class VideoSequential(ImageSequential):
         named_modules = list(self.get_forward_sequence(params))
         if params is None:
             params = list(self.get_params_by_module(iter(named_modules)))
-        self.return_label = self.get_mix_augmentation_indices(iter(named_modules))
+        self.return_label = len(self.get_mix_augmentation_indices(iter(named_modules))) > 0
 
         # Size of T
         frame_num = input.size(self._temporal_channel)

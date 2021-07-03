@@ -517,7 +517,11 @@ class MixAugmentationBase(_BasicAugmentationBase):
         in_tensor = self.transform_tensor(in_tensor)
         # If label is not provided, it would output the indices instead.
         if label is None:
-            label = torch.arange(0, in_tensor.size(0))
+            if isinstance(input, (tuple, list)):
+                device = input[0].device
+            else:
+                device = input.device
+            label = torch.arange(0, in_tensor.size(0), device=device, dtype=torch.long)
         if params is None:
             batch_shape = in_tensor.shape
             params = self.forward_parameters(batch_shape)

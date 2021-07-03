@@ -1878,7 +1878,7 @@ class GaussianBlur(RandomGaussianBlur):
         same_on_batch: bool = False,
         p: float = 0.5,
     ) -> None:
-        super(RandomGaussianBlur, self).__init__(
+        super(GaussianBlur, self).__init__(
             kernel_size=kernel_size, sigma=sigma, border_type=border_type, return_transform=return_transform,
             same_on_batch=same_on_batch, p=p
         )

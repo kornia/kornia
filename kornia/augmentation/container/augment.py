@@ -324,7 +324,7 @@ class AugmentationSequential(ImageSequential):
         self.clear_state()
         outputs = []
         named_modules = list(self.get_forward_sequence(params))
-        self.return_label = self.get_mix_augmentation_indices(iter(named_modules))
+        self.return_label = len(self.get_mix_augmentation_indices(iter(named_modules))) > 0
 
         for input, dcate in zip(args, data_keys):
             # use the parameter if the first round has been finished.
