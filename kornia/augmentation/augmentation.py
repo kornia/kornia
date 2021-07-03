@@ -1869,11 +1869,24 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
 
 
 class GaussianBlur(RandomGaussianBlur):
-    warnings.warn(
-        "GaussianBlur is no longer maintained and will be removed from the future versions. "
-        "Please use RandomGaussianBlur instead.",
-        category=DeprecationWarning,
-    )
+    def __init__(
+        self,
+        kernel_size: Tuple[int, int],
+        sigma: Tuple[float, float],
+        border_type: str = 'reflect',
+        return_transform: bool = False,
+        same_on_batch: bool = False,
+        p: float = 0.5,
+    ) -> None:
+        super(RandomGaussianBlur, self).__init__(
+            kernel_size=kernel_size, sigma=sigma, border_type=border_type, return_transform=return_transform,
+            same_on_batch=same_on_batch, p=p
+        )
+        warnings.warn(
+            "GaussianBlur is no longer maintained and will be removed from the future versions. "
+            "Please use RandomGaussianBlur instead.",
+            category=DeprecationWarning,
+        )
 
 
 class RandomInvert(IntensityAugmentationBase2D):

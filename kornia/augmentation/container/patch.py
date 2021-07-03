@@ -97,7 +97,8 @@ class PatchSequential(ImageSequential):
         elif patchwise_apply and random_apply is False:
             assert len(args) == grid_size[0] * grid_size[1], (
                 "The number of processing modules must be equal with grid size."
-                f"Got {len(args)} and {grid_size[0] * grid_size[1]}. Or set random_apply = True."
+                f"Got {len(args)} and {grid_size[0] * grid_size[1]}. "
+                "Please set random_apply = True or patchwise_apply = False."
             )
             _random_apply = random_apply
         elif patchwise_apply and isinstance(random_apply, (int, tuple)):
@@ -157,7 +158,7 @@ class PatchSequential(ImageSequential):
 
         Example:
             >>> import kornia.augmentation as K
-            >>> pas = PatchSequential(K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0))
+            >>> pas = PatchSequential(K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), patchwise_apply=False)
             >>> pas.extract_patches(torch.arange(16).view(1, 1, 4, 4), grid_size=(2, 2))
             tensor([[[[[ 0,  1],
                        [ 4,  5]]],
@@ -203,7 +204,7 @@ class PatchSequential(ImageSequential):
 
         Example:
             >>> import kornia.augmentation as K
-            >>> pas = PatchSequential(K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0))
+            >>> pas = PatchSequential(K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), patchwise_apply=False)
             >>> out = pas.extract_patches(torch.arange(16).view(1, 1, 4, 4), grid_size=(2, 2))
             >>> pas.restore_from_patches(out, grid_size=(2, 2))
             tensor([[[[ 0,  1,  2,  3],
@@ -298,17 +299,21 @@ class PatchSequential(ImageSequential):
         _label = None
         if label is not None and out_label is not None:
             if len(out_label.shape) == 1:
-                _label = torch.ones((in_shape[0] * in_shape[1],)) * -1
+                _label = torch.ones(
+                    (in_shape[0] * in_shape[1],), device=out_label.device, out_label=label.dtype) * -1
                 _label = label
             else:
-                _label = torch.ones((in_shape[0], *out_label.shape[1:])) * -1
+                _label = torch.ones(
+                    (in_shape[0], *out_label.shape[1:]), device=out_label.device, dtype=out_label.dtype) * -1
                 _label[:, 0] = label
             label[params.indices] = out_label
         elif label is None and out_label is not None:
             if len(out_label.shape) == 1:
-                _label = torch.ones((in_shape[0] * in_shape[1],)) * -1
+                _label = torch.ones(
+                    (in_shape[0] * in_shape[1],), device=out_label.device, dtype=out_label.dtype) * -1
             else:
-                _label = torch.ones((in_shape[0], *out_label.shape[1:])) * -1
+                _label = torch.ones(
+                    (in_shape[0], *out_label.shape[1:]), device=out_label.device, dtype=out_label.dtype) * -1
             _label[params.indices] = out_label
 
         return input, label, PatchParamItem(params.indices, param=out_param)

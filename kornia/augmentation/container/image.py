@@ -52,8 +52,8 @@ class ImageSequential(SequentialBase):
         ... )
         >>> out, lab = aug_list(input, label=label)
         >>> lab
-        tensor([[0.0000, 0.0000, 0.2746],
-                [1.0000, 1.0000, 0.1576]])
+        tensor([[0.0000, 1.0000, 0.1214],
+                [1.0000, 0.0000, 0.1214]])
         >>> out[0].shape, out[1].shape
         (torch.Size([2, 3, 5, 6]), torch.Size([2, 3, 3]))
 
@@ -212,7 +212,7 @@ class ImageSequential(SequentialBase):
         named_modules = list(self.get_forward_sequence(params))
         if params is None:
             params = list(self.get_params_by_module(iter(named_modules)))
-        self.return_label = self.get_mix_augmentation_indices(iter(named_modules))
+        self.return_label = len(self.get_mix_augmentation_indices(iter(named_modules))) > 0
         for (_, module), param in zip_longest(named_modules, params):
             input, label = self.apply_to_input(input, label, module=module, param=param)
         return self.__packup_output__(input, label)
