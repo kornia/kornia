@@ -295,12 +295,11 @@ class AugmentationSequential(ImageSequential):
     ]:
         if len(output) == 1 and self.return_label:
             return output[0], label
-        elif len(output) == 1:
+        if len(output) == 1:
             return output[0]
-        elif self.return_label:
+        if self.return_label:
             return output, label
-        else:
-            return output
+        return output
 
     def forward(  # type: ignore
         self,

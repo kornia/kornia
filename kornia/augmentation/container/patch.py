@@ -346,7 +346,7 @@ class PatchSequential(ImageSequential):
         self.clear_state()
         # BCHW -> B(patch)CHW
         if isinstance(input, (tuple,)):
-            raise ValueError(f"tuple input is not currently supported.")
+            raise ValueError("tuple input is not currently supported.")
         _input: TensorWithTransformMat
 
         pad = self.compute_padding(input, self.padding)

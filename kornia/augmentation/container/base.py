@@ -43,7 +43,7 @@ class SequentialBase(nn.Sequential):
     ) -> None:
         for mod in self.children():
             # MixAugmentation does not have return transform
-            if isinstance(mod, _AugmentationBase) or isinstance(mod, MixAugmentationBase):
+            if isinstance(mod, (_AugmentationBase, MixAugmentationBase,)):
                 if same_on_batch is not None:
                     mod.same_on_batch = same_on_batch
                 if keepdim is not None:

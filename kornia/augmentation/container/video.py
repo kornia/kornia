@@ -117,14 +117,17 @@ class VideoSequential(ImageSequential):
         if self.data_format == "BTCHW":
             pass
 
-        if label is not None and label.shape == input.shape[:2]:
-            # if label is provided as (B, T)
-            label = label.view(-1)
-        elif label is not None and label.shape == input.shape[:1]:
-            label = label[..., None].repeat(1, frame_num).view(-1)
-        elif label is not None and torch.Size([input.shape[0] * input.shape[1]]):
-            # Skip the conversion if label is provided as (B * T,)
-            pass
+        if label is not None:
+            if label.shape == input.shape[:2]:
+                # if label is provided as (B, T)
+                label = label.view(-1)
+            elif label.shape == input.shape[:1]:
+                label = label[..., None].repeat(1, frame_num).view(-1)
+            elif label.shape == torch.Size([input.shape[0] * input.shape[1]]):
+                # Skip the conversion if label is provided as (B * T,)
+                pass
+            else:
+                raise NotImplementedError(f"Invalid label shape of {label.shape}.")
         input = input.reshape(-1, *input.shape[2:])
         return input, label
 

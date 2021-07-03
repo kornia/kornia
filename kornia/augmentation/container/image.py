@@ -80,6 +80,7 @@ class ImageSequential(SequentialBase):
         )
 
         self.random_apply: Union[Tuple[int, int], bool] = self._read_random_apply(random_apply, len(args))
+        self.return_label: Optional[bool] = None
 
     def _read_random_apply(
         self, random_apply: Union[int, bool, Tuple[int, int]], max_length: int
@@ -156,9 +157,8 @@ class ImageSequential(SequentialBase):
                 )
 
             return self.named_children()
-        else:
-            named_modules = self.get_children_by_params(params)
-        return named_modules
+
+        return self.get_children_by_params(params)
 
     def _apply_operation(
         self, input: TensorWithTransformMat, label: Optional[torch.Tensor], module: nn.Module, param: ParamItem
