@@ -1879,8 +1879,12 @@ class GaussianBlur(RandomGaussianBlur):
         p: float = 0.5,
     ) -> None:
         super(GaussianBlur, self).__init__(
-            kernel_size=kernel_size, sigma=sigma, border_type=border_type, return_transform=return_transform,
-            same_on_batch=same_on_batch, p=p
+            kernel_size=kernel_size,
+            sigma=sigma,
+            border_type=border_type,
+            return_transform=return_transform,
+            same_on_batch=same_on_batch,
+            p=p,
         )
         warnings.warn(
             "GaussianBlur is no longer maintained and will be removed from the future versions. "

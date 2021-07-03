@@ -300,21 +300,21 @@ class PatchSequential(ImageSequential):
         _label = None
         if label is not None and out_label is not None:
             if len(out_label.shape) == 1:
-                _label = torch.ones(
-                    in_shape[0] * in_shape[1], device=out_label.device, out_label=label.dtype) * -1
+                _label = torch.ones(in_shape[0] * in_shape[1], device=out_label.device, out_label=label.dtype) * -1
                 _label = label
             else:
-                _label = torch.ones(
-                    in_shape[0], *out_label.shape[1:], device=out_label.device, dtype=out_label.dtype) * -1
+                _label = (
+                    torch.ones(in_shape[0], *out_label.shape[1:], device=out_label.device, dtype=out_label.dtype) * -1
+                )
                 _label[:, 0] = label
             label[params.indices] = out_label
         elif label is None and out_label is not None:
             if len(out_label.shape) == 1:
-                _label = torch.ones(
-                    in_shape[0] * in_shape[1], device=out_label.device, dtype=out_label.dtype) * -1
+                _label = torch.ones(in_shape[0] * in_shape[1], device=out_label.device, dtype=out_label.dtype) * -1
             else:
-                _label = torch.ones(
-                    in_shape[0], *out_label.shape[1:], device=out_label.device, dtype=out_label.dtype) * -1
+                _label = (
+                    torch.ones(in_shape[0], *out_label.shape[1:], device=out_label.device, dtype=out_label.dtype) * -1
+                )
             _label[params.indices] = out_label
 
         return input, label, PatchParamItem(params.indices, param=out_param)

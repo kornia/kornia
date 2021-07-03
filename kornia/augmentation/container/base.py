@@ -26,6 +26,7 @@ class SequentialBase(nn.Sequential):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False). If None, it will not overwrite the function-wise settings.
     """
+
     def __init__(
         self,
         *args: nn.Module,
@@ -54,7 +55,7 @@ class SequentialBase(nn.Sequential):
     ) -> None:
         for mod in self.children():
             # MixAugmentation does not have return transform
-            if isinstance(mod, (_AugmentationBase, MixAugmentationBase,)):
+            if isinstance(mod, (_AugmentationBase, MixAugmentationBase)):
                 if same_on_batch is not None:
                     mod.same_on_batch = same_on_batch
                 if keepdim is not None:
@@ -92,14 +93,12 @@ class SequentialBase(nn.Sequential):
         for item in atoms:
 
             if not hasattr(mod, item):
-                raise AttributeError(mod._get_name() + " has no "
-                                     "attribute `" + item + "`")
+                raise AttributeError(mod._get_name() + " has no " "attribute `" + item + "`")
 
             mod = getattr(mod, item)
 
             if not isinstance(mod, torch.nn.Module):
-                raise AttributeError("`" + item + "` is not "
-                                     "an nn.Module")
+                raise AttributeError("`" + item + "` is not " "an nn.Module")
 
         return mod
 
