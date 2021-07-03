@@ -349,7 +349,7 @@ class PatchSequential(ImageSequential):
         if params is None:
             params = self.forward_parameters(input.shape)
 
-        self.has_mix_augmentation = self.contains_mix_augmentation(params)
+        self.return_label = self.contains_mix_augmentation(params)
 
         _input, label = self.forward_by_params(input, label, params)
 

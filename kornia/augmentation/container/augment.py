@@ -293,11 +293,11 @@ class AugmentationSequential(ImageSequential):
         List[TensorWithTransformMat],
         Tuple[List[TensorWithTransformMat], Optional[torch.Tensor]],
     ]:
-        if len(output) == 1 and self.has_mix_augmentation:
+        if len(output) == 1 and self.return_label:
             return output[0], label
         elif len(output) == 1:
             return output[0]
-        elif self.has_mix_augmentation:
+        elif self.return_label:
             return output, label
         else:
             return output
@@ -324,15 +324,15 @@ class AugmentationSequential(ImageSequential):
 
         self.clear_state()
         outputs = []
-        named_modules = self.get_forward_sequence(params)
-        if params is None:
-            params = list(self.get_params_by_module(named_modules))
-        self.return_label = self.get_mix_augmentation_indices(named_modules)
+        named_modules = list(self.get_forward_sequence(params))
+        self.return_label = self.get_mix_augmentation_indices(iter(named_modules))
 
         for input, dcate in zip(args, data_keys):
             # use the parameter if the first round has been finished.
             params = self._params if params is None or len(params) == 0 else params
-            for param, (_, module) in zip_longest(params, named_modules):
+            for param, (name, module) in zip_longest(params, named_modules):
+                if param is None:
+                    param = ParamItem(name, param)
                 if dcate == DataKey.INPUT:
                     input, label = self.apply_to_input(input, label, module=module, param=param)
                 elif isinstance(module, GeometricAugmentationBase2D) and dcate in DataKey:

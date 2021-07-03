@@ -99,12 +99,13 @@ class ImageSequential(SequentialBase):
             random_apply = (random_apply[0], max_length + 1)
         else:
             raise ValueError(f"Non-readable random_apply. Got {random_apply}.")
-        assert (
-            isinstance(random_apply, (tuple,))
-            and len(random_apply) == 2
-            and isinstance(random_apply[0], (int,))
-            and isinstance(random_apply[0], (int,))
-        ), f"Expect a tuple of (int, int). Got {random_apply}."
+        if random_apply is not False:
+            assert (
+                isinstance(random_apply, (tuple,))
+                and len(random_apply) == 2
+                and isinstance(random_apply[0], (int,))
+                and isinstance(random_apply[0], (int,))
+            ), f"Expect a tuple of (int, int). Got {random_apply}."
         return random_apply
 
     def get_random_forward_sequence(self, with_mix: bool = True) -> Tuple[Iterator[Tuple[str, nn.Module]], bool]:
@@ -164,22 +165,15 @@ class ImageSequential(SequentialBase):
         module: nn.Module,
         param: ParamItem,
     ) -> Tuple[TensorWithTransformMat, Optional[torch.Tensor], ParamItem]:
-        if isinstance(module, (MixAugmentationBase,)) and param is None:
-            input, label = module(input, label)
+        if isinstance(module, (MixAugmentationBase,)):
+            input, label = module(input, label, params=param.data)
             out_param = ParamItem(param.name, module._params)
-        elif isinstance(module, (MixAugmentationBase,)) and param is not None:
-            input, label = module(input, label, params=param)
-            out_param = ParamItem(param.name, param.data)
-        elif isinstance(module, (_AugmentationBase, ImageSequential)) and param is None:
-            input = module(input)
+        elif isinstance(module, (_AugmentationBase, ImageSequential)):
+            input = module(input, params=param.data)
             out_param = ParamItem(param.name, module._params)
-        elif isinstance(module, (_AugmentationBase, ImageSequential)) and param is not None:
-            input = module(input, params=param)
-            out_param = ParamItem(param.name, param.data)
         else:
-            assert (
-                param == {} or param is None
-            ), f"Non-augmentaion operation {param.name} require empty parameters. Got {param}."
+            assert param.data is None, \
+                f"Non-augmentaion operation {param.name} require empty parameters. Got {param}."
             # In case of return_transform = True
             if isinstance(input, (tuple, list)):
                 input = (module(input[0]), input[1])
@@ -216,10 +210,10 @@ class ImageSequential(SequentialBase):
         params: Optional[List[ParamItem]] = None
     ) -> Union[TensorWithTransformMat, Tuple[TensorWithTransformMat, torch.Tensor]]:
         self.clear_state()
-        named_modules = self.get_forward_sequence(params)
+        named_modules = list(self.get_forward_sequence(params))
         if params is None:
-            params = list(self.get_params_by_module(named_modules))
-        self.return_label = self.get_mix_augmentation_indices(named_modules)
+            params = list(self.get_params_by_module(iter(named_modules)))
+        self.return_label = self.get_mix_augmentation_indices(iter(named_modules))
         for (_, module), param in zip_longest(named_modules, params):
             input, label = self.apply_to_input(input, label, module=module, param=param)
         return self.__packup_output__(input, label)
