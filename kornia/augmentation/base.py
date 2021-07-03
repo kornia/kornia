@@ -104,7 +104,7 @@ class _BasicAugmentationBase(nn.Module):
             batch_prob = batch_prob.repeat(batch_shape[0])
         return batch_prob
 
-    def forward_parameters(self, batch_shape):
+    def forward_parameters(self, batch_shape) -> Dict[str, torch.Tensor]:
         to_apply = self.__batch_prob_generator__(batch_shape, self.p, self.p_batch, self.same_on_batch)
         _params = self.generate_parameters(torch.Size((int(to_apply.sum().item()), *batch_shape[1:])))
         if _params is None:

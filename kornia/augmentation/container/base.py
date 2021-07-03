@@ -15,6 +15,17 @@ class ParamItem(NamedTuple):
 
 
 class SequentialBase(nn.Sequential):
+    r"""SequentialBase for creating kornia modulized processing pipeline.
+
+    Args:
+        *args : a list of kornia augmentation and image operation modules.
+        same_on_batch: apply the same transformation across the batch.
+            If None, it will not overwrite the function-wise settings.
+        return_transform: if ``True`` return the matrix describing the transformation
+            applied to each. If None, it will not overwrite the function-wise settings.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+            to the batch form (False). If None, it will not overwrite the function-wise settings.
+    """
     def __init__(
         self,
         *args: nn.Module,
@@ -121,6 +132,10 @@ class SequentialBase(nn.Sequential):
 
     def clear_state(self) -> None:
         self._params = []
+
+    # TODO: Implement this for all submodules.
+    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
+        raise NotImplementedError
 
     def get_children_by_indices(self, indices: torch.Tensor) -> Iterator[Tuple[str, nn.Module]]:
         modules = list(self.named_children())

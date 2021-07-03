@@ -31,9 +31,9 @@ class ImageSequential(SequentialBase):
             If True, the whole list of args will be processed as a sequence in a random order.
             If False, the whole list of args will be processed as a sequence in original order.
 
-    Returns:
-        TensorWithTransformMat: the tensor (, and the transformation matrix)
-            has been sequentially modified by the args.
+    Note:
+        Transformation matrix returned only considers the transformation applied in ``kornia.augmentation`` module.
+        Those transformations in ``kornia.geometry`` will not be taken into account.
 
     Examples:
         >>> _ = torch.manual_seed(77)
@@ -61,10 +61,6 @@ class ImageSequential(SequentialBase):
         >>> out2, lab2 = aug_list(input, label=label, params=aug_list._params)
         >>> torch.equal(out[0], out2[0]), torch.equal(out[1], out2[1]), torch.equal(lab[1], lab2[1])
         (True, True, True)
-
-    Note:
-        Transformation matrix returned only considers the transformation applied in ``kornia.augmentation`` module.
-        Those transformations in ``kornia.geometry`` will not be taken into account.
     """
 
     def __init__(
@@ -212,7 +208,7 @@ class ImageSequential(SequentialBase):
         named_modules = list(self.get_forward_sequence(params))
         if params is None:
             params = list(self.get_params_by_module(iter(named_modules)))
-        self.return_label = len(self.get_mix_augmentation_indices(iter(named_modules))) > 0
+        self.return_label = label is not None or len(self.get_mix_augmentation_indices(iter(named_modules))) > 0
         for (_, module), param in zip_longest(named_modules, params):
             input, label = self.apply_to_input(input, label, module=module, param=param)
         return self.__packup_output__(input, label)

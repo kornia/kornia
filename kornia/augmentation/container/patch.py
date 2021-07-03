@@ -47,8 +47,9 @@ class PatchSequential(ImageSequential):
             If ``False`` and ``patchwise_apply``, the whole list of args will be processed in original order
             location-wisely.
 
-    Return:
-        the tensor (, and the transformation matrix) has been sequentially modified by the args.
+    Note:
+        Transformation matrix returned only considers the transformation applied in ``kornia.augmentation`` module.
+        Those transformations in ``kornia.geometry`` will not be taken into account.
 
     Examples:
         >>> import kornia.augmentation as K
@@ -300,20 +301,20 @@ class PatchSequential(ImageSequential):
         if label is not None and out_label is not None:
             if len(out_label.shape) == 1:
                 _label = torch.ones(
-                    (in_shape[0] * in_shape[1],), device=out_label.device, out_label=label.dtype) * -1
+                    in_shape[0] * in_shape[1], device=out_label.device, out_label=label.dtype) * -1
                 _label = label
             else:
                 _label = torch.ones(
-                    (in_shape[0], *out_label.shape[1:]), device=out_label.device, dtype=out_label.dtype) * -1
+                    in_shape[0], *out_label.shape[1:], device=out_label.device, dtype=out_label.dtype) * -1
                 _label[:, 0] = label
             label[params.indices] = out_label
         elif label is None and out_label is not None:
             if len(out_label.shape) == 1:
                 _label = torch.ones(
-                    (in_shape[0] * in_shape[1],), device=out_label.device, dtype=out_label.dtype) * -1
+                    in_shape[0] * in_shape[1], device=out_label.device, dtype=out_label.dtype) * -1
             else:
                 _label = torch.ones(
-                    (in_shape[0], *out_label.shape[1:]), device=out_label.device, dtype=out_label.dtype) * -1
+                    in_shape[0], *out_label.shape[1:], device=out_label.device, dtype=out_label.dtype) * -1
             _label[params.indices] = out_label
 
         return input, label, PatchParamItem(params.indices, param=out_param)
@@ -354,7 +355,7 @@ class PatchSequential(ImageSequential):
         if params is None:
             params = self.forward_parameters(input.shape)
 
-        self.return_label = self.contains_mix_augmentation(params)
+        self.return_label = label is not None or self.contains_mix_augmentation(params)
 
         _input, label = self.forward_by_params(input, label, params)
 

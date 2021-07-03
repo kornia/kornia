@@ -31,6 +31,10 @@ class VideoSequential(ImageSequential):
             If (a, b), x number of transformations (a <= x <= b) will be selected.
             If None, the whole list of args will be processed as a sequence.
 
+    Note:
+        Transformation matrix returned only considers the transformation applied in ``kornia.augmentation`` module.
+        Those transformations in ``kornia.geometry`` will not be taken into account.
+
     Example:
         If set `same_on_frame` to True, we would expect the same augmentation has been applied to each
         timeframe.
@@ -154,7 +158,7 @@ class VideoSequential(ImageSequential):
         named_modules = list(self.get_forward_sequence(params))
         if params is None:
             params = list(self.get_params_by_module(iter(named_modules)))
-        self.return_label = len(self.get_mix_augmentation_indices(iter(named_modules))) > 0
+        self.return_label = label is not None or len(self.get_mix_augmentation_indices(iter(named_modules))) > 0
 
         # Size of T
         frame_num = input.size(self._temporal_channel)

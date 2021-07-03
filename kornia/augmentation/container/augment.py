@@ -9,7 +9,6 @@ from kornia.augmentation.base import (
     _AugmentationBase,
     GeometricAugmentationBase2D,
     IntensityAugmentationBase2D,
-    MixAugmentationBase,
     TensorWithTransformMat,
 )
 from kornia.constants import DataKey
@@ -48,12 +47,9 @@ class AugmentationSequential(ImageSequential):
             If True, the whole list of args will be processed as a sequence in a random order.
             If False, the whole list of args will be processed as a sequence in original order.
 
-    Return:
-        the tensor (, and the transformation matrix) has been sequentially modified by the args.
-
     Note:
         Mix augmentations (e.g. RandomMixUp, RandomCutMix) can only be working with "input" data key.
-        It is not clear how to deal with the conversions of the other data keys.
+        It is not clear how to deal with the conversions of masks, bounding boxes and keypoints.
 
     Examples:
         >>> import kornia
@@ -324,7 +320,7 @@ class AugmentationSequential(ImageSequential):
         self.clear_state()
         outputs = []
         named_modules = list(self.get_forward_sequence(params))
-        self.return_label = len(self.get_mix_augmentation_indices(iter(named_modules))) > 0
+        self.return_label = label is not None or len(self.get_mix_augmentation_indices(iter(named_modules))) > 0
 
         for input, dcate in zip(args, data_keys):
             # use the parameter if the first round has been finished.
