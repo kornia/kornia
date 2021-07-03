@@ -52,6 +52,46 @@ class SequentialBase(nn.Sequential):
                 if return_transform is not None:
                     mod.return_transform = return_transform
 
+    def get_submodule(self, target: str) -> nn.Module:
+        """Get submodule.
+
+        This code is taken from torch 1.9.0 since it is not introduced
+        back to torch 1.7.1. We included this for maintaining more
+        backward torch versions.
+
+        Args:
+            target: The fully-qualified string name of the submodule
+                to look for. (See above example for how to specify a
+                fully-qualified string.)
+
+        Returns:
+            torch.nn.Module: The submodule referenced by ``target``
+
+        Raises:
+            AttributeError: If the target string references an invalid
+                path or resolves to something that is not an
+                ``nn.Module``
+        """
+        if target == "":
+            return self
+
+        atoms: List[str] = target.split(".")
+        mod: torch.nn.Module = self
+
+        for item in atoms:
+
+            if not hasattr(mod, item):
+                raise AttributeError(mod._get_name() + " has no "
+                                     "attribute `" + item + "`")
+
+            mod = getattr(mod, item)
+
+            if not isinstance(mod, torch.nn.Module):
+                raise AttributeError("`" + item + "` is not "
+                                     "an nn.Module")
+
+        return mod
+
     @property
     def same_on_batch(self) -> Optional[bool]:
         return self._same_on_batch
