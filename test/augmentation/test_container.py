@@ -110,11 +110,12 @@ class TestVideoSequential:
         reproducibility_test(input, aug_list)
 
     @pytest.mark.parametrize(
-        'augmentations', [
+        'augmentations',
+        [
             [K.RandomAffine(360, p=1.0)],
             [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0)],
             [K.RandomAffine(360, p=0.0), K.ImageSequential(K.RandomAffine(360, p=0.0))],
-        ]
+        ],
     )
     @pytest.mark.parametrize('data_format', ["BCTHW", "BTCHW"])
     def test_against_sequential(self, augmentations, data_format, device, dtype):
@@ -224,7 +225,7 @@ class TestAugmentationSequential:
         out = aug(inp)
         if aug.return_label:
             out, label = out
-        if return_transform and isinstance(out, (tuple, list,)):
+        if return_transform and isinstance(out, (tuple, list)):
             out = out[0]
         assert out.shape == inp.shape
         reproducibility_test(inp, aug)
@@ -243,10 +244,10 @@ class TestAugmentationSequential:
             K.RandomAffine(360, p=1.0),
             data_keys=["input", "mask", "bbox", "keypoints"],
             random_apply=random_apply,
-            return_transform=return_transform
+            return_transform=return_transform,
         )
         out = aug(inp, mask, bbox, keypoints)
-        if return_transform and isinstance(out, (tuple, list,)):
+        if return_transform and isinstance(out, (tuple, list)):
             assert out[0][0].shape == inp.shape
         else:
             assert out[0].shape == inp.shape

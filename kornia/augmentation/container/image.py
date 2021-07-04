@@ -212,15 +212,14 @@ class ImageSequential(SequentialBase):
     ) -> Union[TensorWithTransformMat, Tuple[TensorWithTransformMat, torch.Tensor]]:
         self.clear_state()
         if params is None:
-            if isinstance(input, (tuple, list,)):
+            if isinstance(input, (tuple, list)):
                 params = self.forward_parameters(input[0].shape)
             else:
                 params = self.forward_parameters(input.shape)
         self.return_label = label is not None or self.contains_label_operations(params)
         for param in params:
             module = self.get_submodule(param.name)
-            input, label = self.apply_to_input(  # type: ignore
-                input, label, module, param=param)
+            input, label = self.apply_to_input(input, label, module, param=param)  # type: ignore
             if isinstance(module, (_AugmentationBase, MixAugmentationBase, SequentialBase)):
                 param = ParamItem(param.name, module._params)
             else:

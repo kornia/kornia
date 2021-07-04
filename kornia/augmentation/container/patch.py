@@ -1,16 +1,16 @@
 from itertools import cycle, islice
-from kornia.augmentation.container.base import SequentialBase
 from typing import Iterator, List, NamedTuple, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 
 from kornia.augmentation.base import (
+    _AugmentationBase,
     IntensityAugmentationBase2D,
     MixAugmentationBase,
     TensorWithTransformMat,
-    _AugmentationBase
 )
+from kornia.augmentation.container.base import SequentialBase
 from kornia.contrib.extract_patches import extract_tensor_patches
 
 from .image import ImageSequential, ParamItem
@@ -232,19 +232,16 @@ class PatchSequential(ImageSequential):
     def forward_parameters(self, batch_shape: torch.Size) -> List[PatchParamItem]:  # type: ignore
         out_param: List[PatchParamItem] = []
         if not self.patchwise_apply:
-            params = self.generate_parameters(
-                torch.Size([1, batch_shape[0] * batch_shape[1], *batch_shape[2:]]))
+            params = self.generate_parameters(torch.Size([1, batch_shape[0] * batch_shape[1], *batch_shape[2:]]))
             indices = torch.arange(0, batch_shape[0] * batch_shape[1])
             [out_param.append(PatchParamItem(indices.tolist(), p)) for p, _ in params]  # type: ignore
             # "append" of "list" does not return a value
         elif not self.same_on_batch:
-            params = self.generate_parameters(
-                torch.Size([batch_shape[0] * batch_shape[1], 1, *batch_shape[2:]]))
+            params = self.generate_parameters(torch.Size([batch_shape[0] * batch_shape[1], 1, *batch_shape[2:]]))
             [out_param.append(PatchParamItem([i], p)) for p, i in params]  # type: ignore
             # "append" of "list" does not return a value
         else:
-            params = self.generate_parameters(
-                torch.Size([batch_shape[1], batch_shape[0], *batch_shape[2:]]))
+            params = self.generate_parameters(torch.Size([batch_shape[1], batch_shape[0], *batch_shape[2:]]))
             indices = torch.arange(0, batch_shape[0] * batch_shape[1], step=batch_shape[1])
             [out_param.append(PatchParamItem((indices + i).tolist(), p)) for p, i in params]  # type: ignore
             # "append" of "list" does not return a value
@@ -328,8 +325,12 @@ class PatchSequential(ImageSequential):
         if label is not None and out_label is not None:
             if len(out_label.shape) == 1:
                 # Wierd the mypy error though it is as same as in the next block
-                _label = torch.ones(  # type: ignore
-                    in_shape[0] * in_shape[1], device=out_label.device, out_label=label.dtype) * -1
+                _label = (
+                    torch.ones(  # type: ignore
+                        in_shape[0] * in_shape[1], device=out_label.device, out_label=label.dtype
+                    )
+                    * -1
+                )
                 _label = label
             else:
                 _label = (

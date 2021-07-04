@@ -1,4 +1,3 @@
-from kornia.augmentation.container.base import SequentialBase
 from typing import cast, List, Optional, Tuple, Union
 
 import torch
@@ -6,6 +5,7 @@ import torch.nn as nn
 
 import kornia
 from kornia.augmentation.base import _AugmentationBase, MixAugmentationBase, TensorWithTransformMat
+from kornia.augmentation.container.base import SequentialBase
 
 from .image import ImageSequential, ParamItem
 
@@ -164,7 +164,7 @@ class VideoSequential(ImageSequential):
                 if self.same_on_frame:
                     raise ValueError("Sequential is currently unsupported for ``same_on_frame``.")
                 param = ParamItem(name, seq_param)
-            elif isinstance(module, (_AugmentationBase, MixAugmentationBase,)):
+            elif isinstance(module, (_AugmentationBase, MixAugmentationBase)):
                 mod_param = module.forward_parameters(batch_shape)
                 if self.same_on_frame:
                     for k, v in mod_param.items():

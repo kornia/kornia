@@ -1,4 +1,3 @@
-from kornia.augmentation.container.base import SequentialBase
 import warnings
 from itertools import zip_longest
 from typing import cast, Dict, List, Optional, Tuple, Union
@@ -12,6 +11,7 @@ from kornia.augmentation.base import (
     IntensityAugmentationBase2D,
     TensorWithTransformMat,
 )
+from kornia.augmentation.container.base import SequentialBase
 from kornia.constants import DataKey
 from kornia.geometry.bbox import transform_bbox
 from kornia.geometry.linalg import transform_points
@@ -184,23 +184,18 @@ class AugmentationSequential(ImageSequential):
             return self.apply_to_keypoints(input, module, param), None
         raise NotImplementedError(f"input type of {dcate} is not implemented.")
 
-    def inverse_input(
-        self, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None
-    ) -> torch.Tensor:
+    def inverse_input(self, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None) -> torch.Tensor:
         if isinstance(module, GeometricAugmentationBase2D):
             input = module.inverse(input, None if param is None else cast(Dict, param.data))
         return input
 
     def inverse_bbox(
-        self,
-        input: torch.Tensor,
-        module: nn.Module,
-        param: Optional[ParamItem] = None,
-        mode: str = "xyxy",
+        self, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None, mode: str = "xyxy"
     ) -> torch.Tensor:
         if isinstance(module, GeometricAugmentationBase2D):
             transform = module.compute_inverse_transformation(
-                module.get_transformation_matrix(input, None if param is None else cast(Dict, param.data)))
+                module.get_transformation_matrix(input, None if param is None else cast(Dict, param.data))
+            )
             input = transform_bbox(torch.as_tensor(transform, device=input.device, dtype=input.dtype), input, mode)
         return input
 
@@ -209,7 +204,8 @@ class AugmentationSequential(ImageSequential):
     ) -> torch.Tensor:
         if isinstance(module, GeometricAugmentationBase2D):
             transform = module.compute_inverse_transformation(
-                module.get_transformation_matrix(input, None if param is None else cast(Dict, param.data)))
+                module.get_transformation_matrix(input, None if param is None else cast(Dict, param.data))
+            )
             input = transform_points(torch.as_tensor(transform, device=input.device, dtype=input.dtype), input)
         return input
 
@@ -277,7 +273,7 @@ class AugmentationSequential(ImageSequential):
                     raise NotImplementedError(f"data_key {dcate} is not implemented for {module}.")
             outputs.append(input)
 
-        if len(outputs) == 1 and isinstance(outputs, (tuple, list,)):
+        if len(outputs) == 1 and isinstance(outputs, (tuple, list)):
             return outputs[0]
 
         return outputs
@@ -290,9 +286,9 @@ class AugmentationSequential(ImageSequential):
         List[TensorWithTransformMat],
         Tuple[List[TensorWithTransformMat], Optional[torch.Tensor]],
     ]:
-        if len(output) == 1 and isinstance(output, (tuple, list,)) and self.return_label:
+        if len(output) == 1 and isinstance(output, (tuple, list)) and self.return_label:
             return output[0], label
-        if len(output) == 1 and isinstance(output, (tuple, list,)):
+        if len(output) == 1 and isinstance(output, (tuple, list)):
             return output[0]
         if self.return_label:
             return output, label
@@ -323,7 +319,7 @@ class AugmentationSequential(ImageSequential):
         if params is None:
             if DataKey.INPUT in data_keys:
                 _input = args[data_keys.index(DataKey.INPUT)]
-                if isinstance(_input, (tuple, list,)):
+                if isinstance(_input, (tuple, list)):
                     params = self.forward_parameters(_input[0].shape)
                 else:
                     params = self.forward_parameters(_input.shape)
