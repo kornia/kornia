@@ -4,7 +4,6 @@ from itertools import zip_longest
 from typing import cast, Dict, List, Optional, Tuple, Union
 
 import torch
-from torch.autograd.grad_mode import F
 import torch.nn as nn
 
 from kornia.augmentation.base import (
@@ -164,8 +163,7 @@ class AugmentationSequential(ImageSequential):
         dcate: Union[str, int, DataKey] = DataKey.INPUT,
     ) -> Tuple[TensorWithTransformMat, Optional[torch.Tensor]]:
         if module is None:
-            # TODO (jian): double check why typing is crashing
-            module = self.get_submodule(param.name)  # type: ignore
+            module = self.get_submodule(param.name)
         if DataKey.get(dcate) in [DataKey.INPUT]:
             return self.apply_to_input(input, label, module=module, param=param)
         if DataKey.get(dcate) in [DataKey.MASK]:
@@ -294,7 +292,7 @@ class AugmentationSequential(ImageSequential):
     ]:
         if len(output) == 1 and isinstance(output, (tuple, list,)) and self.return_label:
             return output[0], label
-        if len(output) == 1 and isinstance(output, (tuple, list,)) :
+        if len(output) == 1 and isinstance(output, (tuple, list,)):
             return output[0]
         if self.return_label:
             return output, label
