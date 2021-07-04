@@ -80,7 +80,7 @@ class TestVideoSequential:
             [K.RandomAffine(360, p=1.0), kornia.color.BgrToRgb()],
             [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.0), K.RandomAffine(360, p=0.0)],
             [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.0)],
-            [K.RandomAffine(360, p=0.0), K.ImageSequential(K.RandomAffine(360, p=0.0))],
+            [K.RandomAffine(360, p=0.0)],
             [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0), K.RandomMixUp(p=1.0)],
         ],
     )
@@ -110,7 +110,11 @@ class TestVideoSequential:
         reproducibility_test(input, aug_list)
 
     @pytest.mark.parametrize(
-        'augmentations', [[K.RandomAffine(360, p=1.0)], [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0)]]
+        'augmentations', [
+            [K.RandomAffine(360, p=1.0)],
+            [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0)],
+            [K.RandomAffine(360, p=0.0), K.ImageSequential(K.RandomAffine(360, p=0.0))],
+        ]
     )
     @pytest.mark.parametrize('data_format', ["BCTHW", "BTCHW"])
     def test_against_sequential(self, augmentations, data_format, device, dtype):
