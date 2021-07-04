@@ -1,4 +1,5 @@
 from itertools import zip_longest
+from sys import modules
 from typing import Iterator, List, Optional, Tuple, Union
 
 import torch
@@ -156,25 +157,6 @@ class ImageSequential(SequentialBase):
 
         return self.get_children_by_params(params)
 
-    def _apply_operation(
-        self, input: TensorWithTransformMat, label: Optional[torch.Tensor], module: nn.Module, param: ParamItem
-    ) -> Tuple[TensorWithTransformMat, Optional[torch.Tensor], ParamItem]:
-        if isinstance(module, (MixAugmentationBase,)):
-            input, label = module(input, label, params=param.data)
-            out_param = ParamItem(param.name, module._params)
-        elif isinstance(module, (_AugmentationBase, ImageSequential)):
-            input = module(input, params=param.data)
-            out_param = ParamItem(param.name, module._params)
-        else:
-            assert param.data is None, f"Non-augmentaion operation {param.name} require empty parameters. Got {param}."
-            # In case of return_transform = True
-            if isinstance(input, (tuple, list)):
-                input = (module(input[0]), input[1])
-            else:
-                input = module(input)
-            out_param = ParamItem(param.name, None)
-        return input, label, out_param
-
     def apply_to_input(
         self,
         input: TensorWithTransformMat,
@@ -184,11 +166,37 @@ class ImageSequential(SequentialBase):
     ) -> Tuple[TensorWithTransformMat, Optional[torch.Tensor]]:
         if module is None:
             module = self.get_submodule(param.name)
-
-        input, label, out_param = self._apply_operation(input, label, module, param)
-        self._params.append(out_param)
-
+        if isinstance(module, (MixAugmentationBase,)):
+            input, label = module(input, label, params=param.data)
+        elif isinstance(module, (_AugmentationBase, ImageSequential)):
+            input = module(input, params=param.data)
+        else:
+            assert param.data is None, f"Non-augmentaion operation {param.name} require empty parameters. Got {param}."
+            # In case of return_transform = True
+            if isinstance(input, (tuple, list)):
+                input = (module(input[0]), input[1])
+            else:
+                input = module(input)
         return input, label
+
+    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
+        named_modules = self.get_forward_sequence()
+
+        params = []
+        for name, module in named_modules:
+            if isinstance(module, (_AugmentationBase, MixAugmentationBase)):
+                mod_param = module.forward_parameters(batch_shape)
+                param = ParamItem(name, mod_param)
+            else:
+                param = ParamItem(name, None)
+            params.append(param)
+        return params
+
+    def contains_label_operations(self, params: List[ParamItem]) -> bool:
+        for param in params:
+            if param.name.startswith("RandomMixUp") or param.name.startswith("RandomCutMix"):
+                return True
+        return False
 
     def __packup_output__(
         self, output: TensorWithTransformMat, label: Optional[torch.Tensor] = None
@@ -205,10 +213,19 @@ class ImageSequential(SequentialBase):
         params: Optional[List[ParamItem]] = None,
     ) -> Union[TensorWithTransformMat, Tuple[TensorWithTransformMat, torch.Tensor]]:
         self.clear_state()
-        named_modules = list(self.get_forward_sequence(params))
         if params is None:
-            params = list(self.get_params_by_module(iter(named_modules)))
-        self.return_label = label is not None or len(self.get_mix_augmentation_indices(iter(named_modules))) > 0
-        for (_, module), param in zip_longest(named_modules, params):
-            input, label = self.apply_to_input(input, label, module=module, param=param)
+            if isinstance(input, (tuple, list,)):
+                params = self.forward_parameters(input[0].shape)
+            else:
+                params = self.forward_parameters(input.shape)
+        self.return_label = label is not None or self.contains_label_operations(params)
+        for param in params:
+            module = self.get_submodule(param.name)
+            input, label = self.apply_to_input(  # type: ignore
+                input, label, module, param=param)
+            if isinstance(module, (_AugmentationBase, MixAugmentationBase, SequentialBase)):
+                param = ParamItem(param.name, module._params)
+            else:
+                param = ParamItem(param.name, None)
+            self.update_params(param)
         return self.__packup_output__(input, label)

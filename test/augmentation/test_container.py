@@ -257,15 +257,11 @@ class TestAugmentationSequential:
         assert aug(inp, data_keys=['input'])[0].shape == inp.shape
         aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0, return_transform=False))
         assert aug(inp, data_keys=['input']).shape == inp.shape
-        assert aug(mask, data_keys=['mask']).shape == mask.shape
+        assert aug(mask, data_keys=['mask'], params=aug._params).shape == mask.shape
 
-        aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0, return_transform=True))
         assert aug.inverse(inp, data_keys=['input']).shape == inp.shape
-        aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0, return_transform=True))
         assert aug.inverse(bbox, data_keys=['bbox']).shape == bbox.shape
-        aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0, return_transform=True))
         assert aug.inverse(keypoints, data_keys=['keypoints']).shape == keypoints.shape
-        aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0, return_transform=True))
         assert aug.inverse(mask, data_keys=['mask']).shape == mask.shape
 
     @pytest.mark.parametrize('random_apply', [2, (1, 1), (2,), 10, True, False])
@@ -310,12 +306,8 @@ class TestAugmentationSequential:
             data_keys=["input", "mask", "bbox", "keypoints"],
             random_apply=random_apply,
         )
-
-        out_inv = aug.inverse(inp, mask, bbox, keypoints)
-        assert out_inv[0].shape == inp.shape
-        assert out_inv[1].shape == mask.shape
-        assert out_inv[2].shape == bbox.shape
-        assert out_inv[3].shape == keypoints.shape
+        with pytest.raises(Exception):  # No parameters avaliable for inversing.
+            aug.inverse(inp, mask, bbox, keypoints)
 
         out = aug(inp, mask, bbox, keypoints)
         assert out[0][0].shape == inp.shape

@@ -1,4 +1,5 @@
 from itertools import zip_longest
+from kornia.augmentation.container.base import SequentialBase
 from typing import cast, List, Optional, Tuple, Union
 
 import torch
@@ -94,8 +95,7 @@ class VideoSequential(ImageSequential):
         elif self.data_format == "BTCHW":
             self._temporal_channel = 1
 
-    def __infer_channel_exclusive_batch_shape__(self, input: torch.Tensor, chennel_index: int) -> torch.Size:
-        batch_shape: torch.Size = input.shape
+    def __infer_channel_exclusive_batch_shape__(self, batch_shape: torch.Size, chennel_index: int) -> torch.Size:
         # Fix mypy complains: error: Incompatible return value type (got "Tuple[int, ...]", expected "Size")
         return cast(torch.Size, batch_shape[:chennel_index] + batch_shape[chennel_index + 1 :])
 
@@ -148,29 +148,24 @@ class VideoSequential(ImageSequential):
             label = label.view(input.size(0), frame_num, -1)
         return input, label
 
-    def forward(  # type: ignore
-        self, input: torch.Tensor, label: Optional[torch.Tensor] = None, params: Optional[List[ParamItem]] = None
-    ) -> Union[TensorWithTransformMat, Tuple[TensorWithTransformMat, torch.Tensor]]:
-        """Define the video computation performed."""
-        assert len(input.shape) == 5, f"Input must be a 5-dim tensor. Got {input.shape}."
-        self.clear_state()
-
-        named_modules = list(self.get_forward_sequence(params))
-        if params is None:
-            params = list(self.get_params_by_module(iter(named_modules)))
-        self.return_label = label is not None or len(self.get_mix_augmentation_indices(iter(named_modules))) > 0
-
-        # Size of T
-        frame_num = input.size(self._temporal_channel)
+    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
+        frame_num = batch_shape[self._temporal_channel]
+        named_modules = self.get_forward_sequence()
         # Got param generation shape to (B, C, H, W). Ignoring T.
-        batch_shape = self.__infer_channel_exclusive_batch_shape__(input, self._temporal_channel)
-        input, label = self._input_shape_convert_in(input, label, frame_num)
+        batch_shape = self.__infer_channel_exclusive_batch_shape__(batch_shape, self._temporal_channel)
+
         if not self.same_on_frame:
             # Overwrite param generation shape to (B * T, C, H, W).
-            batch_shape = input.shape
+            batch_shape = torch.Size([batch_shape[0] * frame_num, *batch_shape[1:]])
 
-        for (name, module), param in zip_longest(named_modules, params):
-            if param.data is None and isinstance(module, (_AugmentationBase, MixAugmentationBase)):
+        params = []
+        for name, module in named_modules:
+            if isinstance(module, (SequentialBase,)):
+                seq_param = module.forward_parameters(batch_shape)
+                if self.same_on_frame:
+                    raise ValueError("Sequential is currently unsupported for ``same_on_frame``.")
+                param = ParamItem(name, seq_param)
+            elif isinstance(module, (_AugmentationBase, MixAugmentationBase,)):
                 mod_param = module.forward_parameters(batch_shape)
                 if self.same_on_frame:
                     for k, v in mod_param.items():
@@ -178,12 +173,34 @@ class VideoSequential(ImageSequential):
                         if not (k == "order" and isinstance(module, kornia.augmentation.ColorJitter)):
                             mod_param.update({k: self.__repeat_param_across_channels__(v, frame_num)})
                 param = ParamItem(name, mod_param)
+            else:
+                param = ParamItem(name, None)
+            params.append(param)
+        return params
 
-            input, label = self.apply_to_input(input, label, module, param=param)  # type: ignore
+    def forward(  # type: ignore
+        self, input: torch.Tensor, label: Optional[torch.Tensor] = None, params: Optional[List[ParamItem]] = None
+    ) -> Union[TensorWithTransformMat, Tuple[TensorWithTransformMat, torch.Tensor]]:
+        """Define the video computation performed."""
+        assert len(input.shape) == 5, f"Input must be a 5-dim tensor. Got {input.shape}."
 
-        if isinstance(input, (tuple, list)):
-            input[0], label = self._input_shape_convert_back(input[0], label, frame_num)
+        if params is None:
+            params = self.forward_parameters(input.shape)
+
+        # Size of T
+        frame_num = input.size(self._temporal_channel)
+        input, label = self._input_shape_convert_in(input, label, frame_num)
+
+        out = super().forward(input, label, params)  # type: ignore
+        if self.return_label:
+            output, label = cast(Tuple[TensorWithTransformMat, torch.Tensor], out)
         else:
-            input, label = self._input_shape_convert_back(input, label, frame_num)
+            output = cast(TensorWithTransformMat, out)
 
-        return self.__packup_output__(input, label)
+        if isinstance(output, (tuple, list)):
+            _out, label = self._input_shape_convert_back(output[0], label, frame_num)
+            output = (_out, output[1])
+        else:
+            output, label = self._input_shape_convert_back(output, label, frame_num)
+
+        return self.__packup_output__(output, label)

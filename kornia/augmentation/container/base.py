@@ -44,7 +44,7 @@ class SequentialBase(nn.Sequential):
         self._same_on_batch = same_on_batch
         self._return_transform = return_transform
         self._keepdim = keepdim
-        self._params: List[Any] = []
+        self._params: Optional[List[Any]] = None
         self.update_attribute(same_on_batch, return_transform, keepdim)
 
     def update_attribute(
@@ -130,7 +130,13 @@ class SequentialBase(nn.Sequential):
         self.update_attribute(keepdim=keepdim)
 
     def clear_state(self) -> None:
-        self._params = []
+        self._params = None
+
+    def update_params(self, param: Any) -> None:
+        if self._params is None:
+            self._params = [param]
+        else:
+            self._params.append(param)
 
     # TODO: Implement this for all submodules.
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
@@ -150,3 +156,6 @@ class SequentialBase(nn.Sequential):
         # This will not take module._params
         for name, _ in named_modules:
             yield ParamItem(name, None)
+
+    def contains_label_operations(self, params: List) -> bool:
+        raise NotImplementedError
