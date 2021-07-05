@@ -166,7 +166,13 @@ class ImageSequential(SequentialBase):
             module = self.get_submodule(param.name)
         if isinstance(module, (MixAugmentationBase,)):
             input, label = module(input, label, params=param.data)
-        elif isinstance(module, (_AugmentationBase, ImageSequential)):
+        elif isinstance(module, (ImageSequential,)):
+            out = module(input, label, params=param.data)
+            if module.return_label:
+                input, label = out
+            else:
+                input = out
+        elif isinstance(module, (_AugmentationBase,)):
             input = module(input, params=param.data)
         else:
             assert param.data is None, f"Non-augmentaion operation {param.name} require empty parameters. Got {param}."
@@ -212,10 +218,12 @@ class ImageSequential(SequentialBase):
     ) -> Union[TensorWithTransformMat, Tuple[TensorWithTransformMat, torch.Tensor]]:
         self.clear_state()
         if params is None:
-            if isinstance(input, (tuple, list)):
-                params = self.forward_parameters(input[0].shape)
+            if isinstance(input, (tuple, list,)):
+                inp = input[0]
             else:
-                params = self.forward_parameters(input.shape)
+                inp = input
+            _, out_shape = self.autofill_dim(inp, dim_range=(2, 4))
+            params = self.forward_parameters(out_shape)
         self.return_label = label is not None or self.contains_label_operations(params)
         for param in params:
             module = self.get_submodule(param.name)

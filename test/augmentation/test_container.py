@@ -211,9 +211,14 @@ class TestAugmentationSequential:
             K.AugmentationSequential(augmentation_list, data_keys=data_keys)
 
     @pytest.mark.parametrize('return_transform', [True, False])
+    @pytest.mark.parametrize('same_on_batch', [True, False])
     @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
-    def test_mixup(self, return_transform, random_apply, device, dtype):
-        inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
+    @pytest.mark.parametrize('inp', [
+        torch.randn(1, 3, 1000, 500),
+        torch.randn(3, 1000, 500),
+    ])
+    def test_mixup(self, inp, return_transform, random_apply, same_on_batch, device, dtype):
+        inp = torch.as_tensor(inp, device=device, dtype=dtype)
         aug = K.AugmentationSequential(
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
             K.RandomAffine(360, p=1.0),
@@ -221,13 +226,14 @@ class TestAugmentationSequential:
             data_keys=["input"],
             random_apply=random_apply,
             return_transform=return_transform,
+            same_on_batch=same_on_batch
         )
         out = aug(inp)
         if aug.return_label:
             out, label = out
         if return_transform and isinstance(out, (tuple, list)):
             out = out[0]
-        assert out.shape == inp.shape
+        assert out.shape[-3:] == inp.shape[-3:]
         reproducibility_test(inp, aug)
 
     @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])

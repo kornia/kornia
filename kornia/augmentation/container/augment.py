@@ -319,10 +319,13 @@ class AugmentationSequential(ImageSequential):
         if params is None:
             if DataKey.INPUT in data_keys:
                 _input = args[data_keys.index(DataKey.INPUT)]
-                if isinstance(_input, (tuple, list)):
-                    params = self.forward_parameters(_input[0].shape)
+                if isinstance(_input, (tuple, list,)):
+                    inp = _input[0]
                 else:
-                    params = self.forward_parameters(_input.shape)
+                    inp = _input
+                _, out_shape = self.autofill_dim(inp, dim_range=(2, 4))
+                if params is None:
+                    params = self.forward_parameters(out_shape)
             else:
                 raise ValueError("`params` must be provided whilst INPUT is not in data_keys.")
 
