@@ -5,7 +5,13 @@ from typing import cast, Dict, List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
-from kornia.augmentation.base import _AugmentationBase, GeometricAugmentationBase2D, IntensityAugmentationBase2D
+from kornia.augmentation.base import (
+    _AugmentationBase,
+    GeometricAugmentationBase2D,
+    IntensityAugmentationBase2D,
+    TensorWithTransformMat,
+)
+from kornia.augmentation.container.base import SequentialBase
 from kornia.constants import DataKey
 from kornia.geometry.bbox import transform_bbox
 from kornia.geometry.linalg import transform_points
@@ -42,8 +48,9 @@ class AugmentationSequential(ImageSequential):
             If True, the whole list of args will be processed as a sequence in a random order.
             If False, the whole list of args will be processed as a sequence in original order.
 
-    Return:
-        the tensor (, and the transformation matrix) has been sequentially modified by the args.
+    Note:
+        Mix augmentations (e.g. RandomMixUp, RandomCutMix) can only be working with "input" data key.
+        It is not clear how to deal with the conversions of masks, bounding boxes and keypoints.
 
     Examples:
         >>> import kornia
@@ -149,65 +156,56 @@ class AugmentationSequential(ImageSequential):
 
     def apply_by_key(
         self,
-        input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
-        module_name: str,
-        module: Optional[nn.Module] = None,
-        param: Optional[ParamItem] = None,
+        input: TensorWithTransformMat,
+        label: Optional[torch.Tensor],
+        module: Optional[nn.Module],
+        param: ParamItem,
         dcate: Union[str, int, DataKey] = DataKey.INPUT,
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-        if param is not None:
-            assert module_name == param.name
+    ) -> Tuple[TensorWithTransformMat, Optional[torch.Tensor]]:
         if module is None:
-            # TODO (jian): double check why typing is crashing
-            module = self.get_submodule(module_name)  # type: ignore
+            module = self.get_submodule(param.name)
         if DataKey.get(dcate) in [DataKey.INPUT]:
-            return self.apply_to_input(input, module_name, module, param)
+            return self.apply_to_input(input, label, module=module, param=param)
         if DataKey.get(dcate) in [DataKey.MASK]:
             if isinstance(input, (tuple,)):
-                return (self.apply_to_mask(input[0], module, param), *input[1:])
-            return self.apply_to_mask(input, module, param)
+                return (self.apply_to_mask(input[0], module, param), *input[1:]), None
+            return self.apply_to_mask(input, module, param), None
         if DataKey.get(dcate) in [DataKey.BBOX, DataKey.BBOX_XYXY]:
             if isinstance(input, (tuple,)):
-                return (self.apply_to_bbox(input[0], module, param, mode='xyxy'), *input[1:])
-            return self.apply_to_bbox(input, module, param, mode='xyxy')
+                return (self.apply_to_bbox(input[0], module, param, mode='xyxy'), *input[1:]), None
+            return self.apply_to_bbox(input, module, param, mode='xyxy'), None
         if DataKey.get(dcate) in [DataKey.BBOX_XYHW]:
             if isinstance(input, (tuple,)):
-                return (self.apply_to_bbox(input[0], module, param, mode='xyhw'), *input[1:])
-            return self.apply_to_bbox(input, module, param, mode='xyhw')
+                return (self.apply_to_bbox(input[0], module, param, mode='xyhw'), *input[1:]), None
+            return self.apply_to_bbox(input, module, param, mode='xyhw'), None
         if DataKey.get(dcate) in [DataKey.KEYPOINTS]:
             if isinstance(input, (tuple,)):
-                return (self.apply_to_keypoints(input[0], module, param), *input[1:])
-            return self.apply_to_keypoints(input, module, param)
+                return (self.apply_to_keypoints(input[0], module, param), *input[1:]), None
+            return self.apply_to_keypoints(input, module, param), None
         raise NotImplementedError(f"input type of {dcate} is not implemented.")
 
-    def inverse_input(
-        self, input: torch.Tensor, module: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None
-    ) -> torch.Tensor:
-        if isinstance(module, GeometricAugmentationBase2D) and param is None:
-            input = module.inverse(input)
-        elif isinstance(module, GeometricAugmentationBase2D) and param is not None:
-            input = module.inverse(input, param)
-        else:
-            pass  # No need to update anything
+    def inverse_input(self, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None) -> torch.Tensor:
+        if isinstance(module, GeometricAugmentationBase2D):
+            input = module.inverse(input, None if param is None else cast(Dict, param.data))
         return input
 
     def inverse_bbox(
-        self,
-        input: torch.Tensor,
-        module: nn.Module,
-        param: Optional[Dict[str, torch.Tensor]] = None,
-        mode: str = "xyxy",
+        self, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None, mode: str = "xyxy"
     ) -> torch.Tensor:
         if isinstance(module, GeometricAugmentationBase2D):
-            transform = module.compute_inverse_transformation(module.get_transformation_matrix(input, param))
+            transform = module.compute_inverse_transformation(
+                module.get_transformation_matrix(input, None if param is None else cast(Dict, param.data))
+            )
             input = transform_bbox(torch.as_tensor(transform, device=input.device, dtype=input.dtype), input, mode)
         return input
 
     def inverse_keypoints(
-        self, input: torch.Tensor, module: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None
+        self, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None
     ) -> torch.Tensor:
         if isinstance(module, GeometricAugmentationBase2D):
-            transform = module.compute_inverse_transformation(module.get_transformation_matrix(input, param))
+            transform = module.compute_inverse_transformation(
+                module.get_transformation_matrix(input, None if param is None else cast(Dict, param.data))
+            )
             input = transform_points(torch.as_tensor(transform, device=input.device, dtype=input.dtype), input)
         return input
 
@@ -215,7 +213,7 @@ class AugmentationSequential(ImageSequential):
         self,
         input: torch.Tensor,
         module: nn.Module,
-        param: Optional[Dict[str, torch.Tensor]] = None,
+        param: Optional[ParamItem] = None,
         dcate: Union[str, int, DataKey] = DataKey.INPUT,
     ) -> torch.Tensor:
         if DataKey.get(dcate) in [DataKey.INPUT, DataKey.MASK]:
@@ -244,10 +242,14 @@ class AugmentationSequential(ImageSequential):
         assert len(args) == len(data_keys), (
             "The number of inputs must align with the number of data_keys, " f"Got {len(args)} and {len(data_keys)}."
         )
-        if params is None and self._params is None:
-            raise ValueError("No parameters avaliable for inversing.")
-        else:
-            params = self._params
+        if params is None:
+            if self._params is None:
+                raise ValueError(
+                    "No parameters avaliable for inversing, please run a forward pass first "
+                    "or passing valid params into this function."
+                )
+            else:
+                params = self._params
 
         outputs = []
         for input, dcate in zip(args, data_keys):
@@ -255,9 +257,6 @@ class AugmentationSequential(ImageSequential):
                 input, _ = input  # ignore the transformation matrix whilst inverse
             for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
                 if isinstance(module, _AugmentationBase):
-                    # Check if a param recorded
-                    param = self._params[name] if name in self._params else None
-                    # Check if a param provided. If provided, it will overwrite the recorded ones.
                     param = params[name] if name in params else param
                 else:
                     param = None
@@ -268,50 +267,94 @@ class AugmentationSequential(ImageSequential):
                     pass  # Do nothing
                 elif isinstance(module, PatchSequential) and module.is_intensity_only() and dcate in DataKey:
                     pass  # Do nothing
+                elif isinstance(module, (SequentialBase,)):
+                    raise ValueError("Sequential is currently unsupported.")
                 else:
                     raise NotImplementedError(f"data_key {dcate} is not implemented for {module}.")
             outputs.append(input)
 
-        if len(outputs) == 1:
+        if len(outputs) == 1 and isinstance(outputs, (tuple, list)):
             return outputs[0]
 
         return outputs
 
+    def __packup_output__(  # type: ignore
+        self, output: List[TensorWithTransformMat], label: Optional[torch.Tensor] = None
+    ) -> Union[
+        TensorWithTransformMat,
+        Tuple[TensorWithTransformMat, Optional[torch.Tensor]],
+        List[TensorWithTransformMat],
+        Tuple[List[TensorWithTransformMat], Optional[torch.Tensor]],
+    ]:
+        if len(output) == 1 and isinstance(output, (tuple, list)) and self.return_label:
+            return output[0], label
+        if len(output) == 1 and isinstance(output, (tuple, list)):
+            return output[0]
+        if self.return_label:
+            return output, label
+        return output
+
     def forward(  # type: ignore
         self,
-        *args: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
+        *args: TensorWithTransformMat,
+        label: Optional[torch.Tensor] = None,
         params: Optional[List[ParamItem]] = None,
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
     ) -> Union[
-        torch.Tensor, Tuple[torch.Tensor, torch.Tensor], List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]
+        TensorWithTransformMat,
+        Tuple[TensorWithTransformMat, Optional[torch.Tensor]],
+        List[TensorWithTransformMat],
+        Tuple[List[TensorWithTransformMat], Optional[torch.Tensor]],
     ]:
         """Compute multiple tensors simultaneously according to ``self.data_keys``."""
         if data_keys is None:
             data_keys = cast(List[Union[str, int, DataKey]], self.data_keys)
+        else:
+            data_keys = [DataKey.get(inp) for inp in data_keys]
 
         assert len(args) == len(
             data_keys
         ), f"The number of inputs must align with the number of data_keys. Got {len(args)} and {len(data_keys)}."
 
-        outputs = []
-        self._params = []
-        named_modules = list(self.get_forward_sequence(params))
-        for input, dcate in zip(args, data_keys):
-            # use the parameter if the first round has been finished.
-            params = self._params if params is None or len(params) == 0 else params
-            for param, (name, module) in zip_longest(params, named_modules):
+        if params is None:
+            if DataKey.INPUT in data_keys:
+                _input = args[data_keys.index(DataKey.INPUT)]
+                if isinstance(_input, (tuple, list)):
+                    params = self.forward_parameters(_input[0].shape)
+                else:
+                    params = self.forward_parameters(_input.shape)
+            else:
+                raise ValueError("`params` must be provided whilst INPUT is not in data_keys.")
+
+        outputs: List[TensorWithTransformMat] = [None] * len(data_keys)  # type: ignore
+        if DataKey.INPUT in data_keys:
+            idx = data_keys.index(DataKey.INPUT)
+            out = super().forward(args[idx], label, params=params)
+            if self.return_label:
+                input, label = cast(Tuple[TensorWithTransformMat, torch.Tensor], out)
+            else:
+                input = cast(TensorWithTransformMat, out)
+            outputs[idx] = input
+
+        self.return_label = label is not None or self.contains_label_operations(params)
+
+        for idx, (input, dcate, out) in enumerate(zip(args, data_keys, outputs)):
+            if out is not None:
+                continue
+            for param in params:
+                module = self.get_submodule(param.name)
                 if dcate == DataKey.INPUT:
-                    input = self.apply_to_input(input, name, module, param)
+                    input, label = self.apply_to_input(input, label, module=module, param=param)
                 elif isinstance(module, GeometricAugmentationBase2D) and dcate in DataKey:
-                    input = self.apply_by_key(input, name, module, param, dcate)
+                    input, label = self.apply_by_key(input, label, module, param, dcate)
                 elif isinstance(module, IntensityAugmentationBase2D) and dcate in DataKey:
                     pass  # Do nothing
                 elif isinstance(module, PatchSequential) and module.is_intensity_only() and dcate in DataKey:
                     pass  # Do nothing
+                elif isinstance(module, (SequentialBase,)):
+                    raise ValueError("Sequential is currently unsupported.")
                 else:
                     raise NotImplementedError(f"data_key {dcate} is not implemented for {module}.")
-            outputs.append(input)
-        if len(outputs) == 1:
-            return outputs[0]
+            outputs[idx] = input
 
-        return outputs
+        return self.__packup_output__(outputs, label)

@@ -3,6 +3,7 @@ import torch
 
 import kornia
 import kornia.augmentation as K
+from kornia.augmentation.base import MixAugmentationBase
 from kornia.constants import BorderType
 from kornia.geometry.bbox import bbox_to_mask
 from kornia.testing import assert_close
@@ -80,6 +81,7 @@ class TestVideoSequential:
             [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.0), K.RandomAffine(360, p=0.0)],
             [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.0)],
             [K.RandomAffine(360, p=0.0)],
+            [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0), K.RandomMixUp(p=1.0)],
         ],
     )
     @pytest.mark.parametrize('data_format', ["BCTHW", "BTCHW"])
@@ -92,19 +94,28 @@ class TestVideoSequential:
         if data_format == 'BCTHW':
             input = torch.randn(2, 3, 1, 5, 6, device=device, dtype=dtype).repeat(1, 1, 4, 1, 1)
             output = aug_list(input)
+            if aug_list.return_label:
+                output, label = output
             assert (output[:, :, 0] == output[:, :, 1]).all()
             assert (output[:, :, 1] == output[:, :, 2]).all()
             assert (output[:, :, 2] == output[:, :, 3]).all()
         if data_format == 'BTCHW':
             input = torch.randn(2, 1, 3, 5, 6, device=device, dtype=dtype).repeat(1, 4, 1, 1, 1)
             output = aug_list(input)
+            if aug_list.return_label:
+                output, label = output
             assert (output[:, 0] == output[:, 1]).all()
             assert (output[:, 1] == output[:, 2]).all()
             assert (output[:, 2] == output[:, 3]).all()
         reproducibility_test(input, aug_list)
 
     @pytest.mark.parametrize(
-        'augmentations', [[K.RandomAffine(360, p=1.0)], [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0)]]
+        'augmentations',
+        [
+            [K.RandomAffine(360, p=1.0)],
+            [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0)],
+            [K.RandomAffine(360, p=0.0), K.ImageSequential(K.RandomAffine(360, p=0.0))],
+        ],
     )
     @pytest.mark.parametrize('data_format', ["BCTHW", "BTCHW"])
     def test_against_sequential(self, augmentations, data_format, device, dtype):
@@ -142,16 +153,30 @@ class TestSequential:
     @pytest.mark.parametrize('same_on_batch', [True, False, None])
     @pytest.mark.parametrize("return_transform", [True, False, None])
     @pytest.mark.parametrize("keepdim", [True, False, None])
-    @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
+    @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 20, True, False])
     def test_construction(self, same_on_batch, return_transform, keepdim, random_apply):
-        K.ImageSequential(
+        aug = K.ImageSequential(
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
             K.RandomAffine(360, p=1.0),
+            K.RandomMixUp(p=1.0),
             same_on_batch=same_on_batch,
             return_transform=return_transform,
             keepdim=keepdim,
             random_apply=random_apply,
         )
+        c = 0
+        for a in aug.get_forward_sequence():
+            if isinstance(a, (MixAugmentationBase,)):
+                c += 1
+        assert c < 2
+        aug.same_on_batch = True
+        aug.return_transform = True
+        aug.keepdim = True
+        for m in aug.children():
+            assert m.same_on_batch is True, m.same_on_batch
+            if not isinstance(m, (MixAugmentationBase,)):
+                assert m.return_transform is True, m.return_transform
+            assert m.keepdim is True, m.keepdim
 
     @pytest.mark.parametrize("return_transform", [True, False, None])
     @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
@@ -162,10 +187,13 @@ class TestSequential:
             kornia.filters.MedianBlur((3, 3)),
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0, return_transform=True),
             K.RandomAffine(360, p=1.0),
+            K.RandomMixUp(p=1.0),
             return_transform=return_transform,
             random_apply=random_apply,
         )
         out = aug(inp)
+        if aug.return_label:
+            out, label = out
         if isinstance(out, (tuple,)):
             assert out[0].shape == inp.shape
         else:
@@ -182,8 +210,29 @@ class TestAugmentationSequential:
         with pytest.raises(Exception):  # AssertError and NotImplementedError
             K.AugmentationSequential(augmentation_list, data_keys=data_keys)
 
+    @pytest.mark.parametrize('return_transform', [True, False])
     @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
-    def test_forward_and_inverse(self, random_apply, device, dtype):
+    def test_mixup(self, return_transform, random_apply, device, dtype):
+        inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(
+            K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+            K.RandomAffine(360, p=1.0),
+            K.RandomMixUp(p=1.0),
+            data_keys=["input"],
+            random_apply=random_apply,
+            return_transform=return_transform,
+        )
+        out = aug(inp)
+        if aug.return_label:
+            out, label = out
+        if return_transform and isinstance(out, (tuple, list)):
+            out = out[0]
+        assert out.shape == inp.shape
+        reproducibility_test(inp, aug)
+
+    @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
+    @pytest.mark.parametrize('return_transform', [True, False])
+    def test_forward_and_inverse(self, random_apply, return_transform, device, dtype):
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
         bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
         keypoints = torch.tensor([[[465, 115], [545, 116]]], device=device, dtype=dtype)
@@ -195,9 +244,13 @@ class TestAugmentationSequential:
             K.RandomAffine(360, p=1.0),
             data_keys=["input", "mask", "bbox", "keypoints"],
             random_apply=random_apply,
+            return_transform=return_transform,
         )
         out = aug(inp, mask, bbox, keypoints)
-        assert out[0].shape == inp.shape
+        if return_transform and isinstance(out, (tuple, list)):
+            assert out[0][0].shape == inp.shape
+        else:
+            assert out[0].shape == inp.shape
         assert out[1].shape == mask.shape
         assert out[2].shape == bbox.shape
         assert out[3].shape == keypoints.shape
@@ -226,15 +279,11 @@ class TestAugmentationSequential:
         assert aug(inp, data_keys=['input'])[0].shape == inp.shape
         aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0, return_transform=False))
         assert aug(inp, data_keys=['input']).shape == inp.shape
-        assert aug(mask, data_keys=['mask']).shape == mask.shape
+        assert aug(mask, data_keys=['mask'], params=aug._params).shape == mask.shape
 
-        aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0, return_transform=True))
         assert aug.inverse(inp, data_keys=['input']).shape == inp.shape
-        aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0, return_transform=True))
         assert aug.inverse(bbox, data_keys=['bbox']).shape == bbox.shape
-        aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0, return_transform=True))
         assert aug.inverse(keypoints, data_keys=['keypoints']).shape == keypoints.shape
-        aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0, return_transform=True))
         assert aug.inverse(mask, data_keys=['mask']).shape == mask.shape
 
     @pytest.mark.parametrize('random_apply', [2, (1, 1), (2,), 10, True, False])
@@ -279,12 +328,8 @@ class TestAugmentationSequential:
             data_keys=["input", "mask", "bbox", "keypoints"],
             random_apply=random_apply,
         )
-
-        out_inv = aug.inverse(inp, mask, bbox, keypoints)
-        assert out_inv[0].shape == inp.shape
-        assert out_inv[1].shape == mask.shape
-        assert out_inv[2].shape == bbox.shape
-        assert out_inv[3].shape == keypoints.shape
+        with pytest.raises(Exception):  # No parameters avaliable for inversing.
+            aug.inverse(inp, mask, bbox, keypoints)
 
         out = aug(inp, mask, bbox, keypoints)
         assert out[0][0].shape == inp.shape
@@ -340,20 +385,17 @@ class TestPatchSequential:
     @pytest.mark.parametrize('keepdim', [True, False, None])
     @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
     def test_forward(self, shape, padding, patchwise_apply, same_on_batch, keepdim, random_apply, device, dtype):
+        torch.manual_seed(11)
         try:  # skip wrong param settings.
             seq = K.PatchSequential(
-                K.ImageSequential(
-                    K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
-                    K.RandomPerspective(0.2, p=0.5),
-                    K.RandomSolarize(0.1, 0.1, p=0.5),
-                ),
+                kornia.color.RgbToBgr(),
                 K.ColorJitter(0.1, 0.1, 0.1, 0.1),
                 K.ImageSequential(
                     K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
                     K.RandomPerspective(0.2, p=0.5),
                     K.RandomSolarize(0.1, 0.1, p=0.5),
                 ),
-                K.ColorJitter(0.1, 0.1, 0.1, 0.1),
+                K.RandomMixUp(p=1.0),
                 grid_size=(2, 2),
                 padding=padding,
                 patchwise_apply=patchwise_apply,
@@ -365,13 +407,10 @@ class TestPatchSequential:
             return
 
         input = torch.randn(*shape, device=device, dtype=dtype)
-        trans = torch.randn(shape[0], 3, 3, device=device, dtype=dtype)
         out = seq(input)
+        if seq.return_label:
+            out, label = out
         assert out.shape[-3:] == input.shape[-3:]
-
-        out = seq((input, trans))
-        assert out[0].shape[-3:] == input.shape[-3:]
-        assert out[1].shape == trans.shape
 
         reproducibility_test(input, seq)
 

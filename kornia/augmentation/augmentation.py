@@ -4,7 +4,7 @@ from typing import cast, Dict, List, Optional, Tuple, Union
 import torch
 from torch.nn.functional import pad
 
-from kornia.augmentation.base import GeometricAugmentationBase2D, IntensityAugmentationBase2D
+from kornia.augmentation.base import GeometricAugmentationBase2D, IntensityAugmentationBase2D, TensorWithTransformMat
 from kornia.color import rgb_to_grayscale
 from kornia.constants import BorderType, pi, Resample, SamplePadding
 from kornia.enhance import (
@@ -1118,7 +1118,7 @@ class RandomCrop(GeometricAugmentationBase2D):
 
     def inverse(
         self,
-        input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
+        input: TensorWithTransformMat,
         params: Optional[Dict[str, torch.Tensor]] = None,
         size: Optional[Tuple[int, int]] = None,
         **kwargs,
@@ -1135,10 +1135,10 @@ class RandomCrop(GeometricAugmentationBase2D):
 
     def forward(
         self,
-        input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
+        input: TensorWithTransformMat,
         params: Optional[Dict[str, torch.Tensor]] = None,
         return_transform: Optional[bool] = None,
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    ) -> TensorWithTransformMat:
         if isinstance(input, (tuple, list)):
             input_temp = _transform_input(input[0])
             input_pad = self.compute_padding(input[0].shape)
@@ -1868,11 +1868,28 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
 
 
 class GaussianBlur(RandomGaussianBlur):
-    warnings.warn(
-        "GaussianBlur is no longer maintained and will be removed from the future versions. "
-        "Please use RandomGaussianBlur instead.",
-        category=DeprecationWarning,
-    )
+    def __init__(
+        self,
+        kernel_size: Tuple[int, int],
+        sigma: Tuple[float, float],
+        border_type: str = 'reflect',
+        return_transform: bool = False,
+        same_on_batch: bool = False,
+        p: float = 0.5,
+    ) -> None:
+        super(GaussianBlur, self).__init__(
+            kernel_size=kernel_size,
+            sigma=sigma,
+            border_type=border_type,
+            return_transform=return_transform,
+            same_on_batch=same_on_batch,
+            p=p,
+        )
+        warnings.warn(
+            "GaussianBlur is no longer maintained and will be removed from the future versions. "
+            "Please use RandomGaussianBlur instead.",
+            category=DeprecationWarning,
+        )
 
 
 class RandomInvert(IntensityAugmentationBase2D):
@@ -1902,7 +1919,7 @@ class RandomInvert(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        max_val: torch.Tensor = torch.tensor(1.0),
+        max_val: Union[float, torch.Tensor] = torch.tensor(1.0),
         return_transform: bool = False,
         same_on_batch: bool = False,
         p: float = 0.5,
@@ -1910,6 +1927,7 @@ class RandomInvert(IntensityAugmentationBase2D):
         super(RandomInvert, self).__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0
         )
+        self.max_val = max_val
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
@@ -1917,7 +1935,7 @@ class RandomInvert(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        return invert(input)
+        return invert(input, torch.as_tensor(self.max_val, device=input.device, dtype=input.dtype))
 
 
 class RandomChannelShuffle(IntensityAugmentationBase2D):
