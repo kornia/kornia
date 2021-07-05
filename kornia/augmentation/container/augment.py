@@ -319,7 +319,7 @@ class AugmentationSequential(ImageSequential):
         if params is None:
             if DataKey.INPUT in data_keys:
                 _input = args[data_keys.index(DataKey.INPUT)]
-                if isinstance(_input, (tuple, list,)):
+                if isinstance(_input, (tuple, list)):
                     inp = _input[0]
                 else:
                     inp = _input

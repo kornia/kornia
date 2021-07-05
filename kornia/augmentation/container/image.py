@@ -218,7 +218,7 @@ class ImageSequential(SequentialBase):
     ) -> Union[TensorWithTransformMat, Tuple[TensorWithTransformMat, torch.Tensor]]:
         self.clear_state()
         if params is None:
-            if isinstance(input, (tuple, list,)):
+            if isinstance(input, (tuple, list)):
                 inp = input[0]
             else:
                 inp = input

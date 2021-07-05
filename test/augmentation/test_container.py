@@ -213,10 +213,7 @@ class TestAugmentationSequential:
     @pytest.mark.parametrize('return_transform', [True, False])
     @pytest.mark.parametrize('same_on_batch', [True, False])
     @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
-    @pytest.mark.parametrize('inp', [
-        torch.randn(1, 3, 1000, 500),
-        torch.randn(3, 1000, 500),
-    ])
+    @pytest.mark.parametrize('inp', [torch.randn(1, 3, 1000, 500), torch.randn(3, 1000, 500)])
     def test_mixup(self, inp, return_transform, random_apply, same_on_batch, device, dtype):
         inp = torch.as_tensor(inp, device=device, dtype=dtype)
         aug = K.AugmentationSequential(
@@ -226,7 +223,7 @@ class TestAugmentationSequential:
             data_keys=["input"],
             random_apply=random_apply,
             return_transform=return_transform,
-            same_on_batch=same_on_batch
+            same_on_batch=same_on_batch,
         )
         out = aug(inp)
         if aug.return_label:

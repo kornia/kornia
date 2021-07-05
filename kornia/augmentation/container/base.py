@@ -160,9 +160,7 @@ class SequentialBase(nn.Sequential):
     def contains_label_operations(self, params: List) -> bool:
         raise NotImplementedError
 
-    def autofill_dim(
-        self, input: torch.Tensor, dim_range: Tuple[int, int] = (2, 4)
-    ) -> Tuple[torch.Size, torch.Size]:
+    def autofill_dim(self, input: torch.Tensor, dim_range: Tuple[int, int] = (2, 4)) -> Tuple[torch.Size, torch.Size]:
         """Fill tensor dim to the upper bound of dim_range.
 
         If input tensor dim is smaller than the lower bound of dim_range, an error will be thrown out.
