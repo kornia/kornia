@@ -9,3 +9,4 @@ pydocstyle
 pre-commit>=2.0
 yapf
 isort
+numpy
