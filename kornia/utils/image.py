@@ -1,12 +1,11 @@
 from functools import wraps
 
-import numpy as np
 import torch
 import torch.nn as nn
 
 
-def image_to_tensor(image: np.ndarray, keepdim: bool = True) -> torch.Tensor:
-    """Converts a numpy image to a PyTorch 4d tensor image.
+def image_to_tensor(image: "np.ndarray", keepdim: bool = True) -> torch.Tensor:
+    """Convert a numpy image to a PyTorch 4d tensor image.
 
     Args:
         image (numpy.ndarray): image of the form :math:`(H, W, C)`, :math:`(H, W)` or
@@ -18,9 +17,6 @@ def image_to_tensor(image: np.ndarray, keepdim: bool = True) -> torch.Tensor:
         torch.Tensor: tensor of the form :math:`(B, C, H, W)` if keepdim is ``False``,
             :math:`(C, H, W)` otherwise.
     """
-    if not isinstance(image, (np.ndarray,)):
-        raise TypeError("Input type must be a numpy.ndarray. Got {}".format(type(image)))
-
     if len(image.shape) > 4 or len(image.shape) < 2:
         raise ValueError("Input size must be a two, three or four dimensional array")
 
@@ -44,7 +40,7 @@ def image_to_tensor(image: np.ndarray, keepdim: bool = True) -> torch.Tensor:
 
 
 def _to_bchw(tensor: torch.Tensor) -> torch.Tensor:
-    """Converts a PyTorch tensor image to BCHW format.
+    """Convert a PyTorch tensor image to BCHW format.
 
     Args:
         tensor (torch.Tensor): image of the form :math:`(H, W)`, :math:`(C, H, W)`, :math:`(H, W, C)` or
@@ -69,7 +65,7 @@ def _to_bchw(tensor: torch.Tensor) -> torch.Tensor:
 
 
 def _to_bcdhw(tensor: torch.Tensor) -> torch.Tensor:
-    """Converts a PyTorch tensor image to BCDHW format.
+    """Convert a PyTorch tensor image to BCDHW format.
 
     Args:
         tensor (torch.Tensor): image of the form :math:`(D, H, W)`, :math:`(C, D, H, W)`, :math:`(D, H, W, C)` or
@@ -93,7 +89,7 @@ def _to_bcdhw(tensor: torch.Tensor) -> torch.Tensor:
     return tensor
 
 
-def tensor_to_image(tensor: torch.Tensor) -> np.ndarray:
+def tensor_to_image(tensor: torch.Tensor) -> "np.ndarray":
     """Converts a PyTorch tensor image to a numpy image.
 
     In case the tensor is in the GPU, it will be copied back to CPU.
@@ -113,7 +109,7 @@ def tensor_to_image(tensor: torch.Tensor) -> np.ndarray:
         raise ValueError("Input size must be a two, three or four dimensional tensor")
 
     input_shape = tensor.shape
-    image: np.ndarray = tensor.cpu().detach().numpy()
+    image: "np.ndarray" = tensor.cpu().detach().numpy()
 
     if len(input_shape) == 2:
         # (H, W) -> (H, W)
@@ -150,7 +146,7 @@ class ImageToTensor(nn.Module):
         super().__init__()
         self.keepdim = keepdim
 
-    def forward(self, x: np.ndarray) -> torch.Tensor:
+    def forward(self, x: "np.ndarray") -> torch.Tensor:
         return image_to_tensor(x, keepdim=self.keepdim)
 
 
