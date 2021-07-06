@@ -23,9 +23,7 @@ class TestNormalize:
 
         # expected output
         expected = torch.tensor([0.25], device=device, dtype=dtype).repeat(1, 2, 2).view_as(data)
-
-        f = kornia.enhance.Normalize(mean, std)
-        assert_close(f(data), expected)
+        assert_close(kornia.enhance.normalize(data, mean, std), expected)
 
     def test_broadcast_normalize(self, device, dtype):
 
@@ -38,9 +36,7 @@ class TestNormalize:
 
         # expected output
         expected = torch.ones_like(data) + 1
-
-        f = kornia.enhance.Normalize(mean, std)
-        assert_close(f(data), expected)
+        assert_close(kornia.enhance.normalize(data, mean, std), expected)
 
     def test_float_input(self, device, dtype):
 
@@ -52,9 +48,7 @@ class TestNormalize:
 
         # expected output
         expected = torch.ones_like(data) + 1
-
-        f = kornia.enhance.Normalize(mean, std)
-        assert_close(f(data), expected)
+        assert_close(kornia.enhance.normalize(data, mean, std), expected)
 
     def test_batch_normalize(self, device, dtype):
 
@@ -67,9 +61,7 @@ class TestNormalize:
 
         # expected output
         expected = torch.tensor([1.25, 1, 0.5], device=device, dtype=dtype).repeat(2, 1, 1).view_as(data)
-
-        f = kornia.enhance.Normalize(mean, std)
-        assert_close(f(data), expected)
+        assert_close(kornia.enhance.normalize(data, mean, std), expected)
 
     @pytest.mark.skip(reason="union type not supported")
     def test_jit(self, device, dtype):
@@ -80,7 +72,6 @@ class TestNormalize:
 
         op = kornia.enhance.normalize
         op_script = torch.jit.script(op)
-
         assert_close(op(*inputs), op_script(*inputs))
 
     def test_gradcheck(self, device, dtype):
@@ -93,7 +84,7 @@ class TestNormalize:
         mean = utils.tensor_to_gradcheck_var(mean)  # to var
         std = utils.tensor_to_gradcheck_var(std)  # to var
 
-        assert gradcheck(kornia.enhance.Normalize(mean, std), (data,), raise_exception=True)
+        assert gradcheck(kornia.enhance.normalize, (data, mean, std), raise_exception=True)
 
     def test_single_value(self, device, dtype):
         # prepare input data
@@ -104,7 +95,7 @@ class TestNormalize:
         # expected output
         expected = (data - mean) / std
 
-        assert_close(kornia.normalize(data, mean, std), expected)
+        assert_close(kornia.enhance.normalize(data, mean, std), expected)
 
     def test_module(self, device, dtype):
         data = torch.ones(2, 3, 1, 1, device=device, dtype=dtype)
@@ -114,29 +105,24 @@ class TestNormalize:
 
         op = kornia.enhance.normalize
         op_module = kornia.enhance.Normalize(mean, std)
-
         assert_close(op(*inputs), op_module(data))
 
-    @staticmethod
     @pytest.mark.parametrize(
         "mean, std", [((1.0, 1.0, 1.0), (0.5, 0.5, 0.5)), (1.0, 0.5), (torch.tensor([1.0]), torch.tensor([0.5]))]
     )
-    def test_random_normalize_different_parameter_types(mean, std):
-        f = kornia.enhance.Normalize(mean=mean, std=std)
-        data = torch.ones(2, 3, 256, 313)
+    def test_random_normalize_different_parameter_types(self, mean, std):
+        data = torch.ones(2, 3, 5, 4)
         if isinstance(mean, float):
             expected = (data - torch.tensor(mean)) / torch.tensor(std)
         else:
             expected = (data - torch.tensor(mean[0])) / torch.tensor(std[0])
-        assert_close(f(data), expected)
+        assert_close(kornia.enhance.normalize(data, mean, std), expected)
 
-    @staticmethod
     @pytest.mark.parametrize("mean, std", [((1.0, 1.0, 1.0, 1.0), (0.5, 0.5, 0.5, 0.5)), ((1.0, 1.0), (0.5, 0.5))])
-    def test_random_normalize_invalid_parameter_shape(mean, std):
-        f = kornia.enhance.Normalize(mean=mean, std=std)
+    def test_random_normalize_invalid_parameter_shape(self, mean, std):
         inputs = torch.arange(0.0, 16.0, step=1).reshape(1, 4, 4).unsqueeze(0)
         with pytest.raises(ValueError):
-            f(inputs)
+            kornia.enhance.normalize(inputs, mean, std)
 
 
 class TestDenormalize:

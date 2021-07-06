@@ -97,11 +97,19 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
         >>> out.shape
         torch.Size([1, 4, 3, 3])
     """
-    shape = data.shape
+    if not isinstance(mean, torch.Tensor):
+        mean = torch.tensor(mean)
+    mean = mean.to(data)
+
+    if not isinstance(std, torch.Tensor):
+        std = torch.tensor(std)
+    std = std.to(data)
+
     if len(mean.shape) == 0 or mean.shape[0] == 1:
-        mean = mean.expand(shape[1])
+        mean = mean.expand(data.shape[1])
+
     if len(std.shape) == 0 or std.shape[0] == 1:
-        std = std.expand(shape[1])
+        std = std.expand(data.shape[1])
 
     # Allow broadcast on channel dimension
     if mean.shape and mean.shape[0] != 1:
@@ -113,17 +121,12 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
         if std.shape[0] != data.shape[1] and std.shape[:2] != data.shape[:2]:
             raise ValueError(f"std length and number of channels do not match. Got {std.shape} and {data.shape}.")
 
-    mean = torch.as_tensor(mean, device=data.device, dtype=data.dtype)
-    std = torch.as_tensor(std, device=data.device, dtype=data.dtype)
+    mean = mean.unsqueeze(-1)
+    std = std.unsqueeze(-1)
 
-    if mean.shape:
-        mean = mean[..., :, None]
-    if std.shape:
-        std = std[..., :, None]
+    out: torch.Tensor = (data.view(data.shape[0], data.shape[1], -1) - mean) / std
 
-    out: torch.Tensor = (data.view(shape[0], shape[1], -1) - mean) / std
-
-    return out.view(shape)
+    return out.view_as(data)
 
 
 class Denormalize(nn.Module):
