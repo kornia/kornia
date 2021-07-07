@@ -152,8 +152,8 @@ def warp_affine(
         :func:`get_shear_matrix2d`, :func:`get_affine_matrix2d`, :func:`invert_affine_transform`.
 
     .. note::
-       See a working example `here <https://kornia.readthedocs.io/en/latest/
-       tutorials/rotate_affine.html>`__.
+       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
+       rotate_affine.html>`__.
 
     Example:
        >>> img = torch.rand(1, 4, 5, 6)

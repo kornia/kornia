@@ -53,8 +53,8 @@ class UnsharpMask(nn.Module):
         - Output: :math:`(B, C, H, W)`
 
     .. note::
-       See a working example `here <https://kornia.readthedocs.io/en/latest/
-       tutorials/unsharp_mask.html>`__.
+       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
+       unsharp_mask.html>`__.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)

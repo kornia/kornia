@@ -26,8 +26,8 @@ def median_blur(input: torch.Tensor, kernel_size: Tuple[int, int]) -> torch.Tens
         the blurred input tensor with shape :math:`(B,C,H,W)`.
 
     .. note::
-       See a working example `here <https://kornia.readthedocs.io/en/latest/
-       tutorials/filtering_operators.html>`__.
+       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
+       filtering_operators.html>`__.
 
     Example:
         >>> input = torch.rand(2, 4, 5, 7)
