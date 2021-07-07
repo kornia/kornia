@@ -173,7 +173,7 @@ def perform_keep_shape_image(f: Callable) -> Callable:
             raise ValueError("Invalid input tensor, it is empty.")
 
         input_shape = input.shape
-        input = _to_bchw(input)
+        input = _to_bchw(input)  # view input as (B, C, H, W)
         output: torch.Tensor = f(input, *args, **kwargs)
         if len(input_shape) == 3:
             output = output[0]
@@ -205,7 +205,7 @@ def perform_keep_shape_video(f: Callable) -> Callable:
             raise ValueError("Invalid input tensor, it is empty.")
 
         input_shape = input.shape
-        input = _to_bcdhw(input)
+        input = _to_bcdhw(input)  # view input as (B, C, D, H, W)
         output: torch.Tensor = f(input, *args, **kwargs)
         if len(input_shape) == 4:
             output = output[0]
