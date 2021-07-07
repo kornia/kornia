@@ -1,7 +1,11 @@
 from functools import wraps
+from typing import TYPE_CHECKING
 
 import torch
 import torch.nn as nn
+
+if TYPE_CHECKING:
+    import numpy as np
 
 
 def image_to_tensor(image: "np.ndarray", keepdim: bool = True) -> torch.Tensor:
