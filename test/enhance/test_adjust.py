@@ -396,7 +396,7 @@ class TestAdjustBrightness:
     @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 3, 3), (4, 3, 3, 1, 1)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.rand(shape, device=device, dtype=dtype)
-        out = kornia.enhance.adjust_brightness(img, 1.)
+        out = kornia.enhance.adjust_brightness(img, 1.0)
         assert out.shape == shape
 
     def test_factor_zero(self, device, dtype):
@@ -495,7 +495,6 @@ class TestAdjustBrightness:
 
 
 class TestEqualize:
-
     @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 4, 4), (3, 2, 3, 3, 4, 4)])
     def test_shape_equalize(self, shape, device, dtype):
         inputs = torch.ones(*shape, device=device, dtype=dtype)
@@ -702,18 +701,8 @@ class TestSharpness(BaseTester):
         img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         assert isinstance(TestSharpness.f(img, 0.8), torch.Tensor)
 
-    @pytest.mark.parametrize(
-        "shape",
-        [
-            (1, 1, 4, 5),
-            (2, 3, 4, 5),
-            (2, 5, 4, 5),
-            (4, 5),
-            (5, 4, 5),
-            (2, 3, 2, 3, 4, 5)
-        ]
-    )
-    @pytest.mark.parametrize("factor", [.7, .8])
+    @pytest.mark.parametrize("shape", [(1, 1, 4, 5), (2, 3, 4, 5), (2, 5, 4, 5), (4, 5), (5, 4, 5), (2, 3, 2, 3, 4, 5)])
+    @pytest.mark.parametrize("factor", [0.7, 0.8])
     def test_cardinality(self, shape, factor, device, dtype):
         inputs = torch.ones(*shape, device=device, dtype=dtype)
         assert TestSharpness.f(inputs, factor).shape == torch.Size(shape)
