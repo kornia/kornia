@@ -52,7 +52,7 @@ def adjust_saturation_raw(input: torch.Tensor, saturation_factor: Union[float, t
     # if (saturation_factor < 0).any():
     #     raise ValueError(f"Saturation factor must be non-negative. Got {saturation_factor}")
 
-    for _ in input.shape[-3:]:
+    for _ in range(len(input.shape) - len(saturation_factor.shape)):
         saturation_factor = torch.unsqueeze(saturation_factor, dim=-1)
 
     # unpack the hsv values
@@ -130,7 +130,7 @@ def adjust_hue_raw(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) 
     # if ((hue_factor < -pi) | (hue_factor > pi)).any():
     #     raise ValueError(f"Hue-factor must be in the range [-PI, PI]. Got {hue_factor}")
 
-    for _ in input.shape[-3:]:
+    for _ in range(len(input.shape) - len(hue_factor.shape)):
         hue_factor = torch.unsqueeze(hue_factor, dim=-1)
 
     # unpack the hsv values

@@ -901,7 +901,7 @@ class TestPosterize(BaseTester):
     def test_exception(self, device, dtype):
         img = torch.ones(2, 3, 4, 5, device=device, dtype=dtype)
 
-        with pytest.raises(AttributeError):
+        with pytest.raises(TypeError):
             assert TestPosterize.f([1.0], 0.0)
 
         with pytest.raises(TypeError):
