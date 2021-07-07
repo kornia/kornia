@@ -82,6 +82,10 @@ def adjust_saturation(input: torch.Tensor, saturation_factor: Union[float, torch
     Return:
         Adjusted image in the shape of :math:`(*, 3, H, W)`.
 
+    .. note::
+       See a working example `here <https://kornia.readthedocs.io/en/latest/
+       tutorials/image_enhancement.html>`__.
+
     Example:
         >>> x = torch.ones(1, 3, 3, 3)
         >>> adjust_saturation(x, 2.).shape
@@ -159,6 +163,10 @@ def adjust_hue(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) -> t
     Return:
         Adjusted image in the shape of :math:`(*, 3, H, W)`.
 
+    .. note::
+       See a working example `here <https://kornia.readthedocs.io/en/latest/
+       tutorials/image_enhancement.html>`__.
+
     Example:
         >>> x = torch.ones(1, 3, 2, 2)
         >>> adjust_hue(x, 3.141516).shape
@@ -200,6 +208,10 @@ def adjust_gamma(
 
     Return:
         Adjusted image in the shape of :math:`(*, N)`.
+
+    .. note::
+       See a working example `here <https://kornia.readthedocs.io/en/latest/
+       tutorials/image_enhancement.html>`__.
 
     Example:
         >>> x = torch.ones(1, 1, 2, 2)
@@ -269,6 +281,10 @@ def adjust_contrast(input: torch.Tensor, contrast_factor: Union[float, torch.Ten
     Return:
         Adjusted image in the shape of :math:`(*, N)`.
 
+    .. note::
+       See a working example `here <https://kornia.readthedocs.io/en/latest/
+       tutorials/image_enhancement.html>`__.
+
     Example:
         >>> x = torch.ones(1, 1, 2, 2)
         >>> adjust_contrast(x, 0.5)
@@ -323,6 +339,10 @@ def adjust_brightness(input: torch.Tensor, brightness_factor: Union[float, torch
 
     Return:
         Adjusted image in the shape of :math:`(*, N)`.
+
+    .. note::
+       See a working example `here <https://kornia.readthedocs.io/en/latest/
+       tutorials/image_enhancement.html>`__.
 
     Example:
         >>> x = torch.ones(1, 1, 2, 2)

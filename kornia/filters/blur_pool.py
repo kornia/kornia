@@ -131,8 +131,12 @@ def blur_pool2d(input: torch.Tensor, kernel_size: int, stride: int = 2):
     Returns:
         the transformed tensor.
 
-    Note:
+    .. note::
         This function is tested against https://github.com/adobe/antialiased-cnns.
+
+    .. note::
+       See a working example `here <https://kornia.readthedocs.io/en/latest/
+       tutorials/filtering_operators.html>`__.
 
     Examples:
         >>> input = torch.eye(5)[None, None]
@@ -162,6 +166,10 @@ def max_blur_pool2d(
 
     Note:
         This function is tested against https://github.com/adobe/antialiased-cnns.
+
+    .. note::
+       See a working example `here <https://kornia.readthedocs.io/en/latest/
+       tutorials/filtering_operators.html>`__.
 
     Examples:
         >>> input = torch.eye(5)[None, None]

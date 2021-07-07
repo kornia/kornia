@@ -22,6 +22,10 @@ def rgb_to_grayscale(
     Returns:
         grayscale version of the image with shape :math:`(*,1,H,W)`.
 
+    .. note::
+       See a working example `here <https://kornia.readthedocs.io/en/latest/
+       color_conversions.html>`__.
+
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> gray = rgb_to_grayscale(input) # 2x1x4x5

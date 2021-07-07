@@ -35,6 +35,10 @@ def box_blur(
     Returns:
         the blurred tensor with shape :math:`(B,C,H,W)`.
 
+    .. note::
+       See a working example `here <https://kornia.readthedocs.io/en/latest/
+       tutorials/filtering_operators.html>`__.
+
     Example:
         >>> input = torch.rand(2, 4, 5, 7)
         >>> output = box_blur(input, (3, 3))  # 2x4x5x7

@@ -250,6 +250,10 @@ def rotate(
     Returns:
         The rotated tensor with shape as input.
 
+    .. note::
+       See a working example `here <https://kornia.readthedocs.io/en/latest/
+       tutorials/rotate_affine.html>`__.
+
     Example:
         >>> img = torch.rand(1, 3, 4, 4)
         >>> angle = torch.tensor([90.])

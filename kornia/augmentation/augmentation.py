@@ -68,10 +68,8 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
 
-    Note:
-        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
-        applied transformation will be merged int to the input transformation tensor and returned.
+    .. note::
+        This function internally uses :func:`kornia.geometry.transform.hflip`.
 
     Examples:
         >>> input = torch.tensor([[[[0., 0., 0.],
@@ -123,10 +121,8 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
 
-    Note:
-        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
-        applied transformation will be merged int to the input transformation tensor and returned.
+    .. note::
+        This function internally uses :func:`kornia.geometry.transform.vflip`.
 
     Examples:
         >>> input = torch.tensor([[[[0., 0., 0.],
@@ -182,10 +178,10 @@ class ColorJitter(IntensityAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
 
-    Note:
-        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
-        applied transformation will be merged int to the input transformation tensor and returned.
+    .. note::
+        This function internally uses :func:`kornia.enhance.adjust_brightness`,
+        :func:`kornia.enhance.adjust_contrast`. :func:`kornia.enhance.adjust_saturation`,
+        :func:`kornia.enhance.adjust_hue`.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -280,10 +276,8 @@ class RandomGrayscale(IntensityAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
 
-    Note:
-        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
-        applied transformation will be merged int to the input transformation tensor and returned.
+    .. note::
+        This function internally uses :func:`kornia.color.rgb_to_grayscale`.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -432,10 +426,8 @@ class RandomPerspective(GeometricAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
 
-    Note:
-        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
-        applied transformation will be merged int to the input transformation tensor and returned.
+    .. note::
+        This function internally uses :func:`kornia.geometry.transform.warp_pespective`.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -543,10 +535,8 @@ class RandomAffine(GeometricAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
 
-    Note:
-        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
-        applied transformation will be merged int to the input transformation tensor and returned.
+    .. note::
+        This function internally uses :func:`kornia.geometry.transform.warp_affine`.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -726,10 +716,8 @@ class CenterCrop(GeometricAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, out_h, out_w)`
 
-    Note:
-        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
-        applied transformation will be merged int to the input transformation tensor and returned.
+    .. note::
+        This function internally uses :func:`kornia.geometry.transform.crop_by_boxes`.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -855,10 +843,8 @@ class RandomRotation(GeometricAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
 
-    Note:
-        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
-        applied transformation will be merged int to the input transformation tensor and returned.
+    .. note::
+        This function internally uses :func:`kornia.geometry.transform.affine`.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -1338,6 +1324,9 @@ class Normalize(IntensityAugmentationBase2D):
     Return:
         Normalised tensor with same size as input :math:`(*, C, H, W)`.
 
+    .. note::
+        This function internally uses :func:`kornia.enhance.normalize`.
+
     Examples:
 
         >>> norm = Normalize(mean=torch.zeros(4), std=torch.ones(4))
@@ -1395,6 +1384,9 @@ class Denormalize(IntensityAugmentationBase2D):
 
     Return:
         Denormalised tensor with same size as input :math:`(*, C, H, W)`.
+
+    .. note::
+        This function internally uses :func:`kornia.enhance.denormalize`.
 
     Examples:
 
@@ -1461,6 +1453,9 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         applied transformation will be merged int to the input transformation tensor and returned.
 
         Please set ``resample`` to ``'bilinear'`` if more meaningful gradients wanted.
+
+    .. note::
+        This function internally uses :func:`kornia.filters.motion_blur`.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -1558,10 +1553,8 @@ class RandomSolarize(IntensityAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
 
-    Note:
-        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
-        applied transformation will be merged int to the input transformation tensor and returned.
+    .. note::
+        This function internally uses :func:`kornia.enhance.solarize`.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -1636,10 +1629,8 @@ class RandomPosterize(IntensityAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
 
-    Note:
-        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
-        applied transformation will be merged int to the input transformation tensor and returned.
+    .. note::
+        This function internally uses :func:`kornia.enhance.posterize`.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -1704,10 +1695,8 @@ class RandomSharpness(IntensityAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
 
-    Note:
-        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
-        applied transformation will be merged int to the input transformation tensor and returned.
+    .. note::
+        This function internally uses :func:`kornia.enhance.sharpness`.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -1773,10 +1762,8 @@ class RandomEqualize(IntensityAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
 
-    Note:
-        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
-        applied transformation will be merged int to the input transformation tensor and returned.
+    .. note::
+        This function internally uses :func:`kornia.enhance.equalize`.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -1825,10 +1812,8 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
 
-    Note:
-        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
-        applied transformation will be merged int to the input transformation tensor and returned.
+    .. note::
+        This function internally uses :func:`kornia.filters.gaussian_blur2d`.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -1904,6 +1889,9 @@ class RandomInvert(IntensityAugmentationBase2D):
             input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
+
+    .. note::
+        This function internally uses :func:`kornia.enhance.invert`.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -2130,6 +2118,9 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
 
+    .. note::
+        This function internally uses :func:`kornia.geometry.transform.elastic_transform2d`.
+
     Examples:
         >>> img = torch.ones(1, 1, 2, 2)
         >>> out = RandomElasticTransform()(img)
@@ -2189,14 +2180,14 @@ class RandomThinPlateSpline(GeometricAugmentationBase2D):
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
 
+    .. note::
+        This function internally uses :func:`kornia.geometry.transform.warp_image_tps`.
+
     Examples:
         >>> img = torch.ones(1, 1, 2, 2)
         >>> out = RandomThinPlateSpline()(img)
         >>> out.shape
         torch.Size([1, 1, 2, 2])
-
-    .. note::
-        This function internally uses :func:`warp_image_tps` to perform the warping.
     """
 
     def __init__(
@@ -2245,6 +2236,9 @@ class RandomBoxBlur(GeometricAugmentationBase2D):
             input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch.
         p: probability of applying the transformation.
+
+    .. note::
+        This function internally uses :func:`kornia.filters.box_blur`.
 
     Examples:
         >>> img = torch.ones(1, 1, 24, 24)

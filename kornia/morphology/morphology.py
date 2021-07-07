@@ -37,6 +37,10 @@ def dilation(
     Returns:
         Dilated image with shape :math:`(B, C, H, W)`.
 
+    .. note::
+       See a working example `here <https://kornia.readthedocs.io/en/latest/
+       tutorials/morphology_101.html>`__.
+
     Example:
         >>> tensor = torch.rand(1, 3, 5, 5)
         >>> kernel = torch.ones(3, 3)
@@ -114,6 +118,10 @@ def erosion(
 
     Returns:
         Eroded image with shape :math:`(B, C, H, W)`.
+
+    .. note::
+       See a working example `here <https://kornia.readthedocs.io/en/latest/
+       tutorials/morphology_101.html>`__.
 
     Example:
         >>> tensor = torch.rand(1, 3, 5, 5)
@@ -193,6 +201,10 @@ def opening(
     Returns:
        torch.Tensor: Opened image with shape :math:`(B, C, H, W)`.
 
+    .. note::
+       See a working example `here <https://kornia.readthedocs.io/en/latest/
+       tutorials/morphology_101.html>`__.
+
     Example:
         >>> tensor = torch.rand(1, 3, 5, 5)
         >>> kernel = torch.ones(3, 3)
@@ -262,6 +274,10 @@ def closing(
 
     Returns:
        Closed image with shape :math:`(B, C, H, W)`.
+
+    .. note::
+       See a working example `here <https://kornia.readthedocs.io/en/latest/
+       tutorials/morphology_101.html>`__.
 
     Example:
         >>> tensor = torch.rand(1, 3, 5, 5)
@@ -335,6 +351,10 @@ def gradient(
     Returns:
        Gradient image with shape :math:`(B, C, H, W)`.
 
+    .. note::
+       See a working example `here <https://kornia.readthedocs.io/en/latest/
+       tutorials/morphology_101.html>`__.
+
     Example:
         >>> tensor = torch.rand(1, 3, 5, 5)
         >>> kernel = torch.ones(3, 3)
@@ -395,6 +415,10 @@ def top_hat(
 
     Returns:
        Top hat transformated image with shape :math:`(B, C, H, W)`.
+
+    .. note::
+       See a working example `here <https://kornia.readthedocs.io/en/latest/
+       tutorials/morphology_101.html>`__.
 
     Example:
         >>> tensor = torch.rand(1, 3, 5, 5)
@@ -460,6 +484,10 @@ def bottom_hat(
 
     Returns:
        Top hat transformated image with shape :math:`(B, C, H, W)`.
+
+    .. note::
+       See a working example `here <https://kornia.readthedocs.io/en/latest/
+       tutorials/morphology_101.html>`__.
 
     Example:
         >>> tensor = torch.rand(1, 3, 5, 5)

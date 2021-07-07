@@ -147,20 +147,20 @@ def warp_affine(
     Returns:
         the warped tensor with shape :math:`(B, C, H, W)`.
 
-    Example:
-       >>> img = torch.rand(1, 4, 5, 6)
-       >>> A = torch.eye(2, 3)[None]
-       >>> out = warp_affine(img, A, (4, 2), align_corners=True)
-       >>> print(out.shape)
-       torch.Size([1, 4, 4, 2])
-
     .. note::
         This function is often used in conjuntion with :func:`get_rotation_matrix2d`,
         :func:`get_shear_matrix2d`, :func:`get_affine_matrix2d`, :func:`invert_affine_transform`.
 
     .. note::
        See a working example `here <https://kornia.readthedocs.io/en/latest/
-       tutorials/warp_affine.html>`__.
+       tutorials/rotate_affine.html>`__.
+
+    Example:
+       >>> img = torch.rand(1, 4, 5, 6)
+       >>> A = torch.eye(2, 3)[None]
+       >>> out = warp_affine(img, A, (4, 2), align_corners=True)
+       >>> print(out.shape)
+       torch.Size([1, 4, 4, 2])
     """
     if not isinstance(src, torch.Tensor):
         raise TypeError("Input src type is not a torch.Tensor. Got {}".format(type(src)))
@@ -478,7 +478,7 @@ def remap(
                   [0., 0.]]]])
 
     .. note::
-        This function is often used in conjuntion with :func:`create_meshgrid`.
+        This function is often used in conjuntion with :func:`kornia.utils.create_meshgrid`.
     """
     if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input tensor type is not a torch.Tensor. Got {}".format(type(tensor)))

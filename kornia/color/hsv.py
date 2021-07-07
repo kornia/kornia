@@ -19,6 +19,10 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
         HSV version of the image with shape of :math:`(*, 3, H, W)`.
         The H channel values are in the range 0..2pi. S and V are in the range 0..1.
 
+    .. note::
+       See a working example `here <https://kornia.readthedocs.io/en/latest/
+       tutorials/color_conversions.html>`__.
+
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = rgb_to_hsv(input)  # 2x3x4x5
