@@ -1,6 +1,6 @@
 from functools import wraps
 from typing import TYPE_CHECKING
-
+from typing import Callable
 import torch
 import torch.nn as nn
 
@@ -157,11 +157,15 @@ class ImageToTensor(nn.Module):
         return image_to_tensor(x, keepdim=self.keepdim)
 
 
-def perform_keep_shape_image(f):
-    """TODO: where can we put this?"""
+def perform_keep_shape_image(f: Callable) -> Callable:
+    """
+    A decorator that enable `f` to be applied to an image of arbitrary leading dimensions `(*, C, H, W)`.
+    It works by first viewing the image as `(B, C, H, W)`, applying the function and re-viewing the
+    image as original shape.
+    """
 
     @wraps(f)
-    def _wrapper(input, *args, **kwargs):
+    def _wrapper(input: torch.Tensor, *args, **kwargs):
         if not isinstance(input, torch.Tensor):
             raise TypeError(f"Input input type is not a torch.Tensor. Got {type(input)}")
 
@@ -169,8 +173,8 @@ def perform_keep_shape_image(f):
             raise ValueError("Invalid input tensor, it is empty.")
 
         input_shape = input.shape
-        input = _to_bchw(input)
-        output = f(input, *args, **kwargs)
+        input: torch.Tensor = _to_bchw(input)
+        output: torch.Tensor = f(input, *args, **kwargs)
         if len(input_shape) == 3:
             output = output[0]
 
@@ -185,9 +189,15 @@ def perform_keep_shape_image(f):
     return _wrapper
 
 
-def perform_keep_shape_video(f):
+def perform_keep_shape_video(f: Callable) -> Callable:
+    """
+    A decorator that enable `f` to be applied to an image of arbitrary leading dimensions `(*, C, D, H, W)`.
+    It works by first viewing the image as `(B, C, D, H, W)`, applying the function and re-viewing the
+    image as original shape.
+    """
+
     @wraps(f)
-    def _wrapper(input, *args, **kwargs):
+    def _wrapper(input: torch.Tensor, *args, **kwargs):
         if not isinstance(input, torch.Tensor):
             raise TypeError(f"Input input type is not a torch.Tensor. Got {type(input)}")
 
@@ -195,8 +205,8 @@ def perform_keep_shape_video(f):
             raise ValueError("Invalid input tensor, it is empty.")
 
         input_shape = input.shape
-        input = _to_bcdhw(input)
-        output = f(input, *args, **kwargs)
+        input: torch.Tensor = _to_bcdhw(input)
+        output: torch.Tensor = f(input, *args, **kwargs)
         if len(input_shape) == 4:
             output = output[0]
 
