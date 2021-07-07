@@ -83,8 +83,8 @@ def adjust_saturation(input: torch.Tensor, saturation_factor: Union[float, torch
         Adjusted image in the shape of :math:`(*, 3, H, W)`.
 
     .. note::
-       See a working example `here <https://kornia.readthedocs.io/en/latest/
-       tutorials/image_enhancement.html>`__.
+       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
+       image_enhancement.html>`__.
 
     Example:
         >>> x = torch.ones(1, 3, 3, 3)
@@ -164,8 +164,8 @@ def adjust_hue(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) -> t
         Adjusted image in the shape of :math:`(*, 3, H, W)`.
 
     .. note::
-       See a working example `here <https://kornia.readthedocs.io/en/latest/
-       tutorials/image_enhancement.html>`__.
+       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
+       image_enhancement.html>`__.
 
     Example:
         >>> x = torch.ones(1, 3, 2, 2)
@@ -210,8 +210,8 @@ def adjust_gamma(
         Adjusted image in the shape of :math:`(*, N)`.
 
     .. note::
-       See a working example `here <https://kornia.readthedocs.io/en/latest/
-       tutorials/image_enhancement.html>`__.
+       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
+       image_enhancement.html>`__.
 
     Example:
         >>> x = torch.ones(1, 1, 2, 2)
@@ -282,8 +282,8 @@ def adjust_contrast(input: torch.Tensor, contrast_factor: Union[float, torch.Ten
         Adjusted image in the shape of :math:`(*, N)`.
 
     .. note::
-       See a working example `here <https://kornia.readthedocs.io/en/latest/
-       tutorials/image_enhancement.html>`__.
+       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
+       image_enhancement.html>`__.
 
     Example:
         >>> x = torch.ones(1, 1, 2, 2)
@@ -341,8 +341,8 @@ def adjust_brightness(input: torch.Tensor, brightness_factor: Union[float, torch
         Adjusted image in the shape of :math:`(*, N)`.
 
     .. note::
-       See a working example `here <https://kornia.readthedocs.io/en/latest/
-       tutorials/image_enhancement.html>`__.
+       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
+       image_enhancement.html>`__.
 
     Example:
         >>> x = torch.ones(1, 1, 2, 2)
