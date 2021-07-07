@@ -737,7 +737,7 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
     https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L352
 
     Args:
-        input: image tensor with shapes like :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)` to equalize.
+        input: image tensor with shape :math:`(*, C, D, H, W)` to equalize.
 
     Returns:
         Equalized volume with shape :math:`(B, C, D, H, W)`.

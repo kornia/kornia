@@ -54,6 +54,12 @@ class TestInvert:
 
 
 class TestAdjustSaturation:
+    @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 3, 3), (4, 3, 3, 1, 1)])
+    def test_cardinality(self, device, dtype, shape):
+        img = torch.rand(shape, device=device, dtype=dtype)
+        out = kornia.enhance.adjust_saturation(img, 1.0)
+        assert out.shape == shape
+
     def test_saturation_one(self, device, dtype):
         data = torch.tensor(
             [[[0.5, 0.5], [0.5, 0.5]], [[0.5, 0.5], [0.5, 0.5]], [[0.25, 0.25], [0.25, 0.25]]],
@@ -88,6 +94,12 @@ class TestAdjustSaturation:
 
 
 class TestAdjustHue:
+    @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 3, 3), (4, 3, 3, 1, 1)])
+    def test_cardinality(self, device, dtype, shape):
+        img = torch.rand(shape, device=device, dtype=dtype)
+        out = kornia.enhance.adjust_hue(img, 3.141516)
+        assert out.shape == shape
+
     def test_hue_one(self, device, dtype):
         data = torch.tensor(
             [[[0.5, 0.5], [0.5, 0.5]], [[0.5, 0.5], [0.5, 0.5]], [[0.25, 0.25], [0.25, 0.25]]],
@@ -138,6 +150,12 @@ class TestAdjustHue:
 
 
 class TestAdjustGamma:
+    @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 3, 3), (4, 3, 3, 1, 1)])
+    def test_cardinality(self, device, dtype, shape):
+        img = torch.rand(shape, device=device, dtype=dtype)
+        out = kornia.enhance.adjust_gamma(img, 1.0)
+        assert out.shape == shape
+
     def test_gamma_zero(self, device, dtype):
         data = torch.tensor(
             [[[1.0, 1.0], [1.0, 1.0]], [[0.5, 0.5], [0.5, 0.5]], [[0.25, 0.25], [0.25, 0.25]]],
@@ -225,6 +243,12 @@ class TestAdjustGamma:
 
 
 class TestAdjustContrast:
+    @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 3, 3), (4, 3, 3, 1, 1)])
+    def test_cardinality(self, device, dtype, shape):
+        img = torch.rand(shape, device=device, dtype=dtype)
+        out = kornia.enhance.adjust_contrast(img, 0.5)
+        assert out.shape == shape
+
     def test_factor_zero(self, device, dtype):
         # prepare input data
         data = torch.tensor(
@@ -369,6 +393,12 @@ class TestAdjustContrast:
 
 
 class TestAdjustBrightness:
+    @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 3, 3), (4, 3, 3, 1, 1)])
+    def test_cardinality(self, device, dtype, shape):
+        img = torch.rand(shape, device=device, dtype=dtype)
+        out = kornia.enhance.adjust_brightness(img, 1.)
+        assert out.shape == shape
+
     def test_factor_zero(self, device, dtype):
         # prepare input data
         data = torch.tensor(
@@ -465,13 +495,13 @@ class TestAdjustBrightness:
 
 
 class TestEqualize:
-    def test_shape_equalize(self, device, dtype):
-        channels, height, width = 3, 4, 5
 
-        inputs = torch.ones(channels, height, width, device=device, dtype=dtype)
+    @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 4, 4), (3, 2, 3, 3, 4, 4)])
+    def test_shape_equalize(self, shape, device, dtype):
+        inputs = torch.ones(*shape, device=device, dtype=dtype)
         f = kornia.enhance.equalize
 
-        assert f(inputs).shape == torch.Size([channels, height, width])
+        assert f(inputs).shape == torch.Size(shape)
 
     def test_shape_equalize_batch(self, device, dtype):
         bs, channels, height, width = 2, 3, 4, 5
@@ -586,13 +616,12 @@ class TestEqualize:
 
 
 class TestEqualize3D:
-    def test_shape_equalize3d(self, device, dtype):
-        channels, depth, height, width = 3, 6, 10, 10
-
-        inputs3d = torch.ones(channels, depth, height, width, device=device, dtype=dtype)
+    @pytest.mark.parametrize("shape", [(3, 6, 10, 10), (2, 3, 6, 10, 10), (3, 2, 3, 6, 10, 10)])
+    def test_shape_equalize3d(self, shape, device, dtype):
+        inputs3d = torch.ones(*shape, device=device, dtype=dtype)
         f = kornia.enhance.equalize3d
 
-        assert f(inputs3d).shape == torch.Size([channels, depth, height, width])
+        assert f(inputs3d).shape == torch.Size(shape)
 
     def test_shape_equalize3d_batch(self, device, dtype):
         bs, channels, depth, height, width = 2, 3, 6, 10, 10
@@ -666,7 +695,6 @@ class TestEqualize3D:
 
 
 class TestSharpness(BaseTester):
-
     f = kornia.enhance.sharpness
 
     def test_smoke(self, device, dtype):
@@ -675,20 +703,20 @@ class TestSharpness(BaseTester):
         assert isinstance(TestSharpness.f(img, 0.8), torch.Tensor)
 
     @pytest.mark.parametrize(
-        "batch_size, height, width, factor",
+        "shape",
         [
-            (1, 4, 5, 0.0),
-            (1, 4, 5, 0.8),
-            (2, 4, 5, 0.8),
-            (1, 4, 5, torch.tensor(0.8)),
-            (2, 4, 5, torch.tensor(0.8)),
-            (2, 4, 5, torch.tensor([0.8, 0.7])),
-        ],
+            (1, 1, 4, 5),
+            (2, 3, 4, 5),
+            (2, 5, 4, 5),
+            (4, 5),
+            (5, 4, 5),
+            (2, 3, 2, 3, 4, 5)
+        ]
     )
-    @pytest.mark.parametrize("channels", [1, 3, 5])
-    def test_cardinality(self, batch_size, channels, height, width, factor, device, dtype):
-        inputs = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
-        assert TestSharpness.f(inputs, factor).shape == torch.Size([batch_size, channels, height, width])
+    @pytest.mark.parametrize("factor", [.7, .8])
+    def test_cardinality(self, shape, factor, device, dtype):
+        inputs = torch.ones(*shape, device=device, dtype=dtype)
+        assert TestSharpness.f(inputs, factor).shape == torch.Size(shape)
 
     def test_exception(self, device, dtype):
         img = torch.ones(2, 3, 4, 5, device=device, dtype=dtype)
@@ -780,7 +808,6 @@ class TestSharpness(BaseTester):
 
 @pytest.mark.skipif(kornia.xla_is_available(), reason="issues with xla device")
 class TestSolarize(BaseTester):
-
     f = kornia.enhance.solarize
 
     def test_smoke(self, device, dtype):
@@ -789,21 +816,19 @@ class TestSolarize(BaseTester):
         assert isinstance(TestSolarize.f(img, 0.8), torch.Tensor)
 
     @pytest.mark.parametrize(
-        "batch_size, height, width, thresholds, additions",
+        "shape, thresholds, additions",
         [
-            (1, 4, 5, 0.8, None),
-            (1, 4, 5, 0.8, 0.4),
-            (2, 4, 5, 0.8, None),
-            (1, 4, 5, torch.tensor(0.8), None),
-            (2, 4, 5, torch.tensor(0.8), None),
-            (2, 4, 5, torch.tensor([0.8, 0.7]), None),
-            (2, 4, 5, torch.tensor([0.8, 0.7]), torch.tensor([0.0, 0.4])),
+            ((1, 1, 4, 5), 0.8, 0.4),
+            ((4, 5), 0.8, 0.4),
+            ((2, 4, 5), 0.8, None),
+            ((2, 3, 2, 3, 4, 5), torch.tensor(0.8), None),
+            ((2, 5, 4, 5), torch.tensor([0.8, 0.7]), None),
+            ((2, 3, 4, 5), torch.tensor([0.8, 0.7]), torch.tensor([0.0, 0.4])),
         ],
     )
-    @pytest.mark.parametrize("channels", [1, 3, 5])
-    def test_cardinality(self, batch_size, channels, height, width, thresholds, additions, device, dtype):
-        inputs = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
-        assert TestSolarize.f(inputs, thresholds, additions).shape == torch.Size([batch_size, channels, height, width])
+    def test_cardinality(self, shape, thresholds, additions, device, dtype):
+        inputs = torch.ones(*shape, device=device, dtype=dtype)
+        assert TestSolarize.f(inputs, thresholds, additions).shape == torch.Size(shape)
 
     # TODO(jian): add better assertions
     def test_exception(self, device, dtype):
@@ -872,7 +897,6 @@ class TestSolarize(BaseTester):
 
 
 class TestPosterize(BaseTester):
-
     f = kornia.enhance.posterize
 
     def test_smoke(self, device, dtype):
@@ -881,21 +905,20 @@ class TestPosterize(BaseTester):
         assert isinstance(TestPosterize.f(img, 8), torch.Tensor)
 
     @pytest.mark.parametrize(
-        "batch_size, height, width, bits",
+        "shape, bits",
         [
-            (1, 4, 5, 8),
-            (2, 4, 5, 1),
-            (2, 4, 5, 0),
-            (1, 4, 5, torch.tensor(8)),
-            (2, 4, 5, torch.tensor(8)),
-            (2, 4, 5, torch.tensor([0, 8])),
-            (3, 4, 5, torch.tensor([0, 1, 8])),
+            ((1, 4, 5), 8),
+            ((2, 3, 4, 5), 1),
+            ((2, 3, 4, 5, 4, 5), 0),
+            ((1, 4, 5), torch.tensor(8)),
+            ((3, 4, 5), torch.tensor(8)),
+            ((2, 5, 4, 5), torch.tensor([0, 8])),
+            ((3, 3, 4, 5), torch.tensor([0, 1, 8])),
         ],
     )
-    @pytest.mark.parametrize("channels", [1, 3, 5])
-    def test_cardinality(self, batch_size, channels, height, width, bits, device, dtype):
-        inputs = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
-        assert TestPosterize.f(inputs, bits).shape == torch.Size([batch_size, channels, height, width])
+    def test_cardinality(self, shape, bits, device, dtype):
+        inputs = torch.ones(*shape, device=device, dtype=dtype)
+        assert TestPosterize.f(inputs, bits).shape == torch.Size(shape)
 
     # TODO(jian): add better assertions
     def test_exception(self, device, dtype):
