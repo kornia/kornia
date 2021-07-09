@@ -4,7 +4,13 @@ import torch
 import torch.nn as nn
 
 
-def rgb_to_hls(image: torch.Tensor) -> torch.Tensor:
+# tricks to speed up a little bit the conversions by presetting some small tensors
+# (in the functions they are moved to the device)
+_HLS2RGB: torch.Tensor = torch.tensor([[[0.]], [[8.]], [[4.]]])  # 3x1x1
+_RGB2HSL_IDX: torch.Tensor = torch.tensor([[[0.]], [[1.]], [[2.]]])  # 3x1x1
+
+
+def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     r"""Convert a RGB image to HLS.
 
     .. image:: _static/img/rgb_to_hls.png
@@ -13,6 +19,7 @@ def rgb_to_hls(image: torch.Tensor) -> torch.Tensor:
 
     Args:
         image: RGB image to be converted to HLS with shape :math:`(*, 3, H, W)`.
+        eps: epsilon value to avoid div by zero.
 
     Returns:
         HLS version of the image with shape :math:`(*, 3, H, W)`.
@@ -26,40 +33,42 @@ def rgb_to_hls(image: torch.Tensor) -> torch.Tensor:
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}".format(image.shape))
+    global _RGB2HSL_IDX
+    _RGB2HSL_IDX = _RGB2HSL_IDX.to(image)
 
-    r: torch.Tensor = image[..., 0, :, :]
-    g: torch.Tensor = image[..., 1, :, :]
-    b: torch.Tensor = image[..., 2, :, :]
-
-    maxc: torch.Tensor = image.max(-3)[0]
+    maxc: torch.Tensor
+    imax: torch.Tensor
+    maxc, imax = image.max(-3)
     minc: torch.Tensor = image.min(-3)[0]
 
-    imax: torch.Tensor = image.max(-3)[1]
+    # define the resulting image to avoid the torch.stack([h, l, s])
+    image_hls: torch.Tensor = torch.empty_like(image)
+    h: torch.Tensor = torch.select(image_hls, -3, 0)
+    l: torch.Tensor = torch.select(image_hls, -3, 1)
+    s: torch.Tensor = torch.select(image_hls, -3, 2)
+    torch.add(maxc, minc, out=l)  # l = max + min
+    torch.sub(maxc, minc, out=s)  # s = max - min
 
-    l: torch.Tensor = (maxc + minc) / 2  # luminance
+    # precompute image / (max - min)
+    im: torch.Tensor = image / (s + eps).unsqueeze(-3)
 
-    deltac: torch.Tensor = maxc - minc
+    # epsilon cannot be inside the torch.where to avoid precision issues
+    s /= torch.where(l < 1., l, 2.0 - l) + eps  # saturation
+    l /= 2  # luminance
 
-    s: torch.Tensor = torch.where(
-        l < 0.5, deltac / (maxc + minc), deltac / (torch.tensor(2.0) - (maxc + minc))
-    )  # saturation
-
-    hi: torch.Tensor = torch.zeros_like(deltac)
-
-    hi[imax == 0] = (((g - b) / deltac) % 6)[imax == 0]
-    hi[imax == 1] = (((b - r) / deltac) + 2)[imax == 1]
-    hi[imax == 2] = (((r - g) / deltac) + 4)[imax == 2]
-
-    h: torch.Tensor = 2.0 * math.pi * (60.0 * hi) / 360.0  # hue [0, 2*pi]
-
-    image_hls: torch.Tensor = torch.stack([h, l, s], dim=-3)
-
-    # JIT indexing is not supported before 1.6.0 https://github.com/pytorch/pytorch/issues/38962
-    # image_hls[torch.isnan(image_hls)] = 0.
-    image_hls = torch.where(
-        torch.isnan(image_hls), torch.tensor(0.0, device=image_hls.device, dtype=image_hls.dtype), image_hls
-    )
-
+    # note that r,g and b were previously div by (max - min)
+    r: torch.Tensor = torch.select(im, -3, 0)
+    g: torch.Tensor = torch.select(im, -3, 1)
+    b: torch.Tensor = torch.select(im, -3, 2)
+    # h[imax == 0] = (((g - b) / (max - min)) % 6)[imax == 0]
+    # h[imax == 1] = (((b - r) / (max - min)) + 2)[imax == 1]
+    # h[imax == 2] = (((r - g) / (max - min)) + 4)[imax == 2]
+    cond: torch.Tensor = imax.unsqueeze(-3) == _RGB2HSL_IDX
+    torch.mul((g - b) % 6, torch.select(cond, -3, 0), out=h)
+    h += torch.add(b - r, 2) * torch.select(cond, -3, 1)
+    h += torch.add(r - g, 4) * torch.select(cond, -3, 2)
+    # h = 2.0 * math.pi * (60.0 * h) / 360.0
+    h *= (math.pi / 3.0)  # hue [0, 2*pi]
     return image_hls
 
 
@@ -84,30 +93,24 @@ def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}".format(image.shape))
 
-    h: torch.Tensor = image[..., 0, :, :] * 360 / (2 * math.pi)
-    l: torch.Tensor = image[..., 1, :, :]
-    s: torch.Tensor = image[..., 2, :, :]
+    global _HLS2RGB
+    _HLS2RGB = _HLS2RGB.to(image)
 
-    kr = (0 + h / 30) % 12
-    kg = (8 + h / 30) % 12
-    kb = (4 + h / 30) % 12
-    a = s * torch.min(l, torch.tensor(1.0) - l)
+    im: torch.Tensor = image.unsqueeze(-4)
+    h: torch.Tensor = torch.select(im, -3, 0)
+    l: torch.Tensor = torch.select(im, -3, 1)
+    s: torch.Tensor = torch.select(im, -3, 2)
+    h = h * (6 / math.pi)  # h * 360 / (2 * math.pi) / 30
+    a = s * torch.min(l, 1.0 - l)
 
-    ones_k = torch.ones_like(kr)
+    # kr = (0 + h) % 12
+    # kg = (8 + h) % 12
+    # kb = (4 + h) % 12
+    k: torch.Tensor = (h + _HLS2RGB) % 12
 
-    fr: torch.Tensor = l - a * torch.max(
-        torch.min(torch.min(kr - torch.tensor(3.0), torch.tensor(9.0) - kr), ones_k), -1 * ones_k
-    )
-    fg: torch.Tensor = l - a * torch.max(
-        torch.min(torch.min(kg - torch.tensor(3.0), torch.tensor(9.0) - kg), ones_k), -1 * ones_k
-    )
-    fb: torch.Tensor = l - a * torch.max(
-        torch.min(torch.min(kb - torch.tensor(3.0), torch.tensor(9.0) - kb), ones_k), -1 * ones_k
-    )
-
-    out: torch.Tensor = torch.stack([fr, fg, fb], dim=-3)
-
-    return out
+    # l - a * max(min(min(k - 3.0, 9.0 - k), 1), -1)
+    mink = torch.min(k - 3.0, 9.0 - k)
+    return torch.addcmul(l, a, mink.clamp_(min=-1.0, max=1.0), value=-1)
 
 
 class RgbToHls(nn.Module):
