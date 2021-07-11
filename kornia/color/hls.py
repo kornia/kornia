@@ -34,8 +34,8 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
         # weird way to use globals compiling with JIT even in the code not used by JIT...
         # __setattr__ can be removed if pytorch version is > 1.6.0 and then use:
         # rgb_to_hls.RGB2HSL_IDX = hls_to_rgb.RGB2HSL_IDX.to(image.device)
-        rgb_to_hls.__setattr__('RGB2HSL_IDX', rgb_to_hls.RGB2HSL_IDX.to(image))
-        _RGB2HSL_IDX = rgb_to_hls.RGB2HSL_IDX
+        rgb_to_hls.__setattr__('RGB2HSL_IDX', rgb_to_hls.RGB2HSL_IDX.to(image))  # type: ignore
+        _RGB2HSL_IDX: torch.Tensor = rgb_to_hls.RGB2HSL_IDX  # type: ignore
     else:
         _RGB2HSL_IDX = torch.tensor([[[0.0]], [[1.0]], [[2.0]]], device=image.device, dtype=image.dtype)  # 3x1x1
 
@@ -120,8 +120,8 @@ def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
         # weird way to use globals compiling with JIT even in the code not used by JIT...
         # __setattr__ can be removed if pytorch version is > 1.6.0 and then use:
         # hls_to_rgb.HLS2RGB = hls_to_rgb.HLS2RGB.to(image.device)
-        hls_to_rgb.__setattr__('HLS2RGB', hls_to_rgb.HLS2RGB.to(image))
-        _HLS2RGB = hls_to_rgb.HLS2RGB
+        hls_to_rgb.__setattr__('HLS2RGB', hls_to_rgb.HLS2RGB.to(image))  # type: ignore
+        _HLS2RGB: torch.Tensor = hls_to_rgb.HLS2RGB  # type: ignore
     else:
         _HLS2RGB = torch.tensor([[[0.0]], [[8.0]], [[4.0]]], device=image.device, dtype=image.dtype)  # 3x1x1
 
