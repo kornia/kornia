@@ -30,23 +30,28 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
 
     if not torch.jit.is_scripting():
         # weird way to use globals with JIT...
-        rgb_to_hls.RGB2HSL_IDX = rgb_to_hls.RGB2HSL_IDX.to(image.device)  # type: ignore
+        rgb_to_hls.RGB2HSL_IDX = rgb_to_hls.RGB2HSL_IDX.to(image)  # type: ignore
         _RGB2HSL_IDX = rgb_to_hls.RGB2HSL_IDX  # type: ignore
     else:
-        _RGB2HSL_IDX = torch.tensor([[[0.0]], [[1.0]], [[2.0]]], device=image.device)  # 3x1x1
+        _RGB2HSL_IDX = torch.tensor([[[0.0]], [[1.0]], [[2.0]]], device=image.device, dtype=image.dtype)  # 3x1x1
 
     # maxc: torch.Tensor  # not supported by JIT
     # imax: torch.Tensor  # not supported by JIT
     maxc, imax = image.max(-3)
     minc: torch.Tensor = image.min(-3)[0]
 
+    h: torch.Tensor
+    l: torch.Tensor
+    s: torch.Tensor
+    image_hls: torch.Tensor
+
     if image.requires_grad:
-        l: torch.Tensor = maxc + minc
-        s: torch.Tensor = maxc - minc
+        l = maxc + minc
+        s = maxc - minc
         # weird behaviour with undefined vars in JIT...
         # scripting requires image_hls be defined even if it is not used :S
-        h: torch.Tensor = l  # assign to any tensor...
-        image_hls: torch.Tensor = l  # assign to any tensor...
+        h = l  # assign to any tensor...
+        image_hls = l  # assign to any tensor...
     else:
         # define the resulting image to avoid the torch.stack([h, l, s])
         # NOTE: stack() increases in a 10% the cost in colab
@@ -83,8 +88,8 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
 
     if image.requires_grad:
         return torch.stack([h, l, s], dim=-3)
-    else:
-        return image_hls
+
+    return image_hls
 
 
 def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
@@ -110,10 +115,10 @@ def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     if not torch.jit.is_scripting():
         # weird way to use globals with JIT...
-        hls_to_rgb.HLS2RGB = hls_to_rgb.HLS2RGB.to(image.device)  # type: ignore
+        hls_to_rgb.HLS2RGB = hls_to_rgb.HLS2RGB.to(device)  # type: ignore
         _HLS2RGB = hls_to_rgb.HLS2RGB  # type: ignore
     else:
-        _HLS2RGB = torch.tensor([[[0.0]], [[8.0]], [[4.0]]], device=image.device)  # 3x1x1
+        _HLS2RGB = torch.tensor([[[0.0]], [[8.0]], [[4.0]]], device=image.device, dtype=image.dtype)  # 3x1x1
 
     im: torch.Tensor = image.unsqueeze(-4)
     h: torch.Tensor = torch.select(im, -3, 0)
