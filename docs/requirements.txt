@@ -8,5 +8,6 @@ sphinx>=4.0
 sphinx_rtd_theme>0.5
 sphinxcontrib-bibtex
 sphinx-autodoc-typehints>=1.0
+sphinx-copybutton>=0.3
 sphinx-autodoc-defaultargs
 PyYAML>=5.1,<=5.4.1

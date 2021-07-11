@@ -164,7 +164,7 @@ def max_blur_pool2d(
         max_pool_size: the kernel size for max pooling.
         ceil_mode: should be true to match output size of conv2d with same kernel size.
 
-    Note:
+    .. note::
         This function is tested against https://github.com/adobe/antialiased-cnns.
 
     .. note::
