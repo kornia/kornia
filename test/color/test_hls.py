@@ -103,8 +103,12 @@ class TestRgbToHls(BaseTester):
             ],
             dim=1,
         )
-
         assert_close(kornia.color.rgb_to_hls(data), expected)
+
+    def test_nan_random_extreme_values(self, device, dtype):
+        # generate extreme colors randomly
+        ext_rand_slice = (torch.rand((1, 3, 32, 32), dtype=dtype, device=device) >= 0.5).float()
+        assert not kornia.color.rgb_to_hls(ext_rand_slice).isnan().any()
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
