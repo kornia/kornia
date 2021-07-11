@@ -11,6 +11,8 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
 
     The image data is assumed to be in the range of (0, 1).
 
+    NOTE: this method cannot be compiled with JIT in pytohrch < 1.7.0
+
     Args:
         image: RGB image to be converted to HLS with shape :math:`(*, 3, H, W)`.
         eps: epsilon value to avoid div by zero.
@@ -23,15 +25,17 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
         >>> output = rgb_to_hls(input)  # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(image)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}".format(image.shape))
+        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
     if not torch.jit.is_scripting():
-        # weird way to use globals with JIT...
-        rgb_to_hls.RGB2HSL_IDX = rgb_to_hls.RGB2HSL_IDX.to(image)  # type: ignore
-        _RGB2HSL_IDX = rgb_to_hls.RGB2HSL_IDX  # type: ignore
+        # weird way to use globals compiling with JIT even in the code not used by JIT...
+        # __setattr__ can be removed if pytorch version is > 1.6.0 and then use:
+        # rgb_to_hls.RGB2HSL_IDX = hls_to_rgb.RGB2HSL_IDX.to(image.device)
+        rgb_to_hls.__setattr__('RGB2HSL_IDX', rgb_to_hls.RGB2HSL_IDX.to(image))
+        _RGB2HSL_IDX = rgb_to_hls.RGB2HSL_IDX
     else:
         _RGB2HSL_IDX = torch.tensor([[[0.0]], [[1.0]], [[2.0]]], device=image.device, dtype=image.dtype)  # 3x1x1
 
@@ -40,11 +44,10 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     maxc, imax = image.max(-3)
     minc: torch.Tensor = image.min(-3)[0]
 
-    h: torch.Tensor
-    l: torch.Tensor
-    s: torch.Tensor
-    image_hls: torch.Tensor
-
+    # h: torch.Tensor  # not supported by JIT
+    # l: torch.Tensor  # not supported by JIT
+    # s: torch.Tensor  # not supported by JIT
+    # image_hls: torch.Tensor  # not supported by JIT
     if image.requires_grad:
         l = maxc + minc
         s = maxc - minc
@@ -54,6 +57,7 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
         image_hls = l  # assign to any tensor...
     else:
         # define the resulting image to avoid the torch.stack([h, l, s])
+        # so, h, l and s require inplace operations
         # NOTE: stack() increases in a 10% the cost in colab
         image_hls = torch.empty_like(image)
         h = torch.select(image_hls, -3, 0)
@@ -88,7 +92,6 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
 
     if image.requires_grad:
         return torch.stack([h, l, s], dim=-3)
-
     return image_hls
 
 
@@ -108,15 +111,17 @@ def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
         >>> output = hls_to_rgb(input)  # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(image)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}".format(image.shape))
+        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
     if not torch.jit.is_scripting():
-        # weird way to use globals with JIT...
-        hls_to_rgb.HLS2RGB = hls_to_rgb.HLS2RGB.to(device)  # type: ignore
-        _HLS2RGB = hls_to_rgb.HLS2RGB  # type: ignore
+        # weird way to use globals compiling with JIT even in the code not used by JIT...
+        # __setattr__ can be removed if pytorch version is > 1.6.0 and then use:
+        # hls_to_rgb.HLS2RGB = hls_to_rgb.HLS2RGB.to(image.device)
+        hls_to_rgb.__setattr__('HLS2RGB', hls_to_rgb.HLS2RGB.to(image))
+        _HLS2RGB = hls_to_rgb.HLS2RGB
     else:
         _HLS2RGB = torch.tensor([[[0.0]], [[8.0]], [[4.0]]], device=image.device, dtype=image.dtype)  # 3x1x1
 
@@ -139,8 +144,8 @@ def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
 # tricks to speed up a little bit the conversions by presetting small tensors
 # (in the functions they are moved to the proper device)
-hls_to_rgb.HLS2RGB = torch.tensor([[[0.0]], [[8.0]], [[4.0]]])  # type:ignore  # 3x1x1
-rgb_to_hls.RGB2HSL_IDX = torch.tensor([[[0.0]], [[1.0]], [[2.0]]])  # type: ignore # 3x1x1
+hls_to_rgb.__setattr__('HLS2RGB', torch.tensor([[[0.0]], [[8.0]], [[4.0]]]))  # 3x1x1
+rgb_to_hls.__setattr__('RGB2HSL_IDX', torch.tensor([[[0.0]], [[1.0]], [[2.0]]]))  # 3x1x1
 
 
 class RgbToHls(nn.Module):
