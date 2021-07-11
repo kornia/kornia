@@ -40,13 +40,22 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     maxc, imax = image.max(-3)
     minc: torch.Tensor = image.min(-3)[0]
 
-    # define the resulting image to avoid the torch.stack([h, l, s])
-    image_hls: torch.Tensor = torch.empty_like(image)
-    h: torch.Tensor = torch.select(image_hls, -3, 0)
-    l: torch.Tensor = torch.select(image_hls, -3, 1)
-    s: torch.Tensor = torch.select(image_hls, -3, 2)
-    torch.add(maxc, minc, out=l)  # l = max + min
-    torch.sub(maxc, minc, out=s)  # s = max - min
+    if image.requires_grad:
+        l: torch.Tensor = maxc + minc
+        s: torch.Tensor = maxc - minc
+        # weird behaviour with undefined vars in JIT...
+        # scripting requires image_hls be defined even if it is not used :S
+        h: torch.Tensor = l  # assign to any tensor...
+        image_hls: torch.Tensor = l  # assign to any tensor...
+    else:
+        # define the resulting image to avoid the torch.stack([h, l, s])
+        # NOTE: stack() increases in a 10% the cost in colab
+        image_hls = torch.empty_like(image)
+        h = torch.select(image_hls, -3, 0)
+        l = torch.select(image_hls, -3, 1)
+        s = torch.select(image_hls, -3, 2)
+        torch.add(maxc, minc, out=l)  # l = max + min
+        torch.sub(maxc, minc, out=s)  # s = max - min
 
     # precompute image / (max - min)
     im: torch.Tensor = image / (s + eps).unsqueeze(-3)
@@ -63,12 +72,19 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     # h[imax == 1] = (((b - r) / (max - min)) + 2)[imax == 1]
     # h[imax == 2] = (((r - g) / (max - min)) + 4)[imax == 2]
     cond: torch.Tensor = imax.unsqueeze(-3) == _RGB2HSL_IDX
-    torch.mul((g - b) % 6, torch.select(cond, -3, 0), out=h)
+    if image.requires_grad:
+        h = torch.mul((g - b) % 6, torch.select(cond, -3, 0))
+    else:
+        torch.mul((g - b).remainder(6), torch.select(cond, -3, 0), out=h)
     h += torch.add(b - r, 2) * torch.select(cond, -3, 1)
     h += torch.add(r - g, 4) * torch.select(cond, -3, 2)
     # h = 2.0 * math.pi * (60.0 * h) / 360.0
     h *= (math.pi / 3.0)  # hue [0, 2*pi]
-    return image_hls
+
+    if image.requires_grad:
+        return torch.stack([h, l, s], dim=-3)
+    else:
+        return image_hls
 
 
 def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
