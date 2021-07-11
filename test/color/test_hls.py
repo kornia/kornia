@@ -94,6 +94,15 @@ class TestRgbToHls(BaseTester):
         assert_close(kornia.color.rgb_to_hls(data), expected)
 
     def test_nan_rgb_to_hls(self, device, dtype):
+        if device != torch.device('cpu') and version.parse(torch.__version__) < version.parse('1.7.0'):
+            warnings.warn(
+                "This test is not compatible with pytorch < 1.7.0. This message will be removed as soon as we do not "
+                "support pytorch 1.6.0. `torch.max()` have a problem in pytorch < 1.7.0 then we cannot get the correct "
+                "result. https://github.com/pytorch/pytorch/issues/41781",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            return
         data = torch.ones(2, 3, 5, 5, device=device, dtype=dtype)
 
         # OpenCV
