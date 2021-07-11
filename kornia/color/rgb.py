@@ -15,6 +15,10 @@ def rgb_to_bgr(image: torch.Tensor) -> torch.Tensor:
     Returns:
         BGR version of the image with shape of shape :math:`(*,3,H,W)`.
 
+    .. note::
+       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
+       hello_world_tutorial.html>`__.
+
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = rgb_to_bgr(input) # 2x3x4x5
@@ -36,6 +40,10 @@ def bgr_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     Returns:
         RGB version of the image with shape of shape :math:`(*,3,H,W)`.
+
+    .. note::
+       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
+       color_conversions.html>`__.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)

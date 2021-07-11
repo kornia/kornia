@@ -30,7 +30,7 @@ class ImageSequential(SequentialBase):
             If True, the whole list of args will be processed as a sequence in a random order.
             If False, the whole list of args will be processed as a sequence in original order.
 
-    Note:
+    .. note::
         Transformation matrix returned only considers the transformation applied in ``kornia.augmentation`` module.
         Those transformations in ``kornia.geometry`` will not be taken into account.
 

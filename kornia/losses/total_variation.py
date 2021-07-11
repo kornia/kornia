@@ -15,6 +15,10 @@ def total_variation(img: torch.Tensor) -> torch.Tensor:
         >>> total_variation(torch.ones(3, 4, 4))
         tensor(0.)
 
+    .. note::
+       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
+       total_variation_denoising.html>`__.
+
     Reference:
         [1] https://en.wikipedia.org/wiki/Total_variation
     """

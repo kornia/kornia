@@ -48,9 +48,13 @@ class AugmentationSequential(ImageSequential):
             If True, the whole list of args will be processed as a sequence in a random order.
             If False, the whole list of args will be processed as a sequence in original order.
 
-    Note:
+    .. note::
         Mix augmentations (e.g. RandomMixUp, RandomCutMix) can only be working with "input" data key.
         It is not clear how to deal with the conversions of masks, bounding boxes and keypoints.
+
+    .. note::
+        See a working example `here <https://kornia-tutorials.readthedocs.io/en/
+        latest/data_augmentation_sequential.html>`__.
 
     Examples:
         >>> import kornia

@@ -26,6 +26,10 @@ def laplacian(
     Return:
         the blurred image with shape :math:`(B, C, H, W)`.
 
+    .. note::
+       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
+       filtering_edges.html>`__.
+
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
         >>> output = laplacian(input, 3)

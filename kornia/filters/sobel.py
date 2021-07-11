@@ -20,6 +20,10 @@ def spatial_gradient(input: torch.Tensor, mode: str = 'sobel', order: int = 1, n
     Return:
         the derivatives of the input feature map. with shape :math:`(B, C, 2, H, W)`.
 
+    .. note::
+       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
+       filtering_edges.html>`__.
+
     Examples:
         >>> input = torch.rand(1, 3, 4, 4)
         >>> output = spatial_gradient(input)  # 1x3x2x4x4
@@ -117,6 +121,10 @@ def sobel(input: torch.Tensor, normalized: bool = True, eps: float = 1e-6) -> to
 
     Return:
         the sobel edge gradient magnitudes map with shape :math:`(B,C,H,W)`.
+
+    .. note::
+       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
+       filtering_edges.html>`__.
 
     Example:
         >>> input = torch.rand(1, 3, 4, 4)
