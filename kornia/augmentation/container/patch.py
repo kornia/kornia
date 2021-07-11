@@ -24,12 +24,15 @@ class PatchParamItem(NamedTuple):
 
 
 class PatchSequential(ImageSequential):
-    r"""Container for performing patch-level image processing.
+    r"""Container for performing patch-level image data augmentation.
 
     .. image:: https://kornia-tutorials.readthedocs.io/en/latest/_images/data_patch_sequential_5_1.png
 
     PatchSequential breaks input images into patches by a given grid size, which will be resembled back
-    afterwards. Different image processing and augmentation methods will be performed on each patch region.
+    afterwards.
+
+    Different image processing and augmentation methods will be performed on each patch region as
+    in :cite:`lin2021patch`.
 
     Args:
         *args: a list of processing modules.
@@ -42,7 +45,7 @@ class PatchSequential(ImageSequential):
             to the batch form (False). If None, it will not overwrite the function-wise settings.
         patchwise_apply: apply image processing args will be applied patch-wisely.
             if ``True``, the number of args must be equal to grid number.
-            if ``False``, the image processing args will be applied as a sequence to all patches. Default: False.
+            if ``False``, the image processing args will be applied as a sequence to all patches.
         random_apply: randomly select a sublist (order agnostic) of args to
             apply transformation.
             If ``int`` (batchwise mode only), a fixed number of transformations will be selected.
@@ -53,9 +56,13 @@ class PatchSequential(ImageSequential):
             If ``False`` and ``patchwise_apply``, the whole list of args will be processed in original order
             location-wisely.
 
-    Note:
+    .. note::
         Transformation matrix returned only considers the transformation applied in ``kornia.augmentation`` module.
         Those transformations in ``kornia.geometry`` will not be taken into account.
+
+    .. note::
+        See a working example `here <https://kornia-tutorials.readthedocs.io/en/
+        latest/data_patch_sequential.html>`__.
 
     Examples:
         >>> import kornia.augmentation as K
