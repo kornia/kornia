@@ -33,7 +33,7 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
         rgb_to_hls.RGB2HSL_IDX = rgb_to_hls.RGB2HSL_IDX.to(image.device)  # type: ignore
         _RGB2HSL_IDX = rgb_to_hls.RGB2HSL_IDX  # type: ignore
     else:
-        _RGB2HSL_IDX = torch.tensor([[[0.]], [[1.]], [[2.]]], device=image.device)  # 3x1x1
+        _RGB2HSL_IDX = torch.tensor([[[0.0]], [[1.0]], [[2.0]]], device=image.device)  # 3x1x1
 
     # maxc: torch.Tensor  # not supported by JIT
     # imax: torch.Tensor  # not supported by JIT
@@ -61,7 +61,7 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     im: torch.Tensor = image / (s + eps).unsqueeze(-3)
 
     # epsilon cannot be inside the torch.where to avoid precision issues
-    s /= torch.where(l < 1., l, 2.0 - l) + eps  # saturation
+    s /= torch.where(l < 1.0, l, 2.0 - l) + eps  # saturation
     l /= 2  # luminance
 
     # note that r,g and b were previously div by (max - min)
@@ -79,7 +79,7 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     h += torch.add(b - r, 2) * torch.select(cond, -3, 1)
     h += torch.add(r - g, 4) * torch.select(cond, -3, 2)
     # h = 2.0 * math.pi * (60.0 * h) / 360.0
-    h *= (math.pi / 3.0)  # hue [0, 2*pi]
+    h *= math.pi / 3.0  # hue [0, 2*pi]
 
     if image.requires_grad:
         return torch.stack([h, l, s], dim=-3)
@@ -113,7 +113,7 @@ def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
         hls_to_rgb.HLS2RGB = hls_to_rgb.HLS2RGB.to(image.device)  # type: ignore
         _HLS2RGB = hls_to_rgb.HLS2RGB  # type: ignore
     else:
-        _HLS2RGB = torch.tensor([[[0.]], [[8.]], [[4.]]], device=image.device)  # 3x1x1
+        _HLS2RGB = torch.tensor([[[0.0]], [[8.0]], [[4.0]]], device=image.device)  # 3x1x1
 
     im: torch.Tensor = image.unsqueeze(-4)
     h: torch.Tensor = torch.select(im, -3, 0)
@@ -134,8 +134,8 @@ def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
 # tricks to speed up a little bit the conversions by presetting small tensors
 # (in the functions they are moved to the proper device)
-hls_to_rgb.HLS2RGB = torch.tensor([[[0.]], [[8.]], [[4.]]])  # type:ignore  # 3x1x1
-rgb_to_hls.RGB2HSL_IDX = torch.tensor([[[0.]], [[1.]], [[2.]]])  # type: ignore # 3x1x1
+hls_to_rgb.HLS2RGB = torch.tensor([[[0.0]], [[8.0]], [[4.0]]])  # type:ignore  # 3x1x1
+rgb_to_hls.RGB2HSL_IDX = torch.tensor([[[0.0]], [[1.0]], [[2.0]]])  # type: ignore # 3x1x1
 
 
 class RgbToHls(nn.Module):
