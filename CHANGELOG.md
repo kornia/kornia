@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.6] - 2021-07-12
+
+### Added
+- Added mix augmentations in containers ([#1139](https://github.com/kornia/kornia/pull/1139))
+
+### Fixed
+- Fixed non-4-dim input error for sequential ([#1146](https://github.com/kornia/kornia/pull/1146))
+
+### Changed
+- Moving bbox-related functionality to bbox module ([#1103](https://github.com/kornia/kornia/pull/1103))
+- Optimized version of hls_to_rgb and rgb_to_hls ([#1154](https://github.com/kornia/kornia/pull/1154))
+
+### Removed
+- Remove numpy dependency ([#1136](https://github.com/kornia/kornia/pull/1136))
+
+
 ## [0.5.5] - 2021-06-26
 
 ### Added
