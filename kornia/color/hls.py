@@ -4,12 +4,6 @@ import torch
 import torch.nn as nn
 
 
-# tricks to speed up a little bit the conversions by presetting some small tensors
-# (in the functions they are moved to the device)
-_HLS2RGB: torch.Tensor = torch.tensor([[[0.]], [[8.]], [[4.]]])  # 3x1x1
-_RGB2HSL_IDX: torch.Tensor = torch.tensor([[[0.]], [[1.]], [[2.]]])  # 3x1x1
-
-
 def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     r"""Convert a RGB image to HLS.
 
@@ -33,11 +27,16 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}".format(image.shape))
-    global _RGB2HSL_IDX
-    _RGB2HSL_IDX = _RGB2HSL_IDX.to(image)
 
-    maxc: torch.Tensor
-    imax: torch.Tensor
+    if not torch.jit.is_scripting():
+        # weird way to use globals with JIT...
+        rgb_to_hls.RGB2HSL_IDX = rgb_to_hls.RGB2HSL_IDX.to(image.device)  # type: ignore
+        _RGB2HSL_IDX = rgb_to_hls.RGB2HSL_IDX  # type: ignore
+    else:
+        _RGB2HSL_IDX = torch.tensor([[[0.]], [[1.]], [[2.]]], device=image.device)  # 3x1x1
+
+    # maxc: torch.Tensor  # not supported by JIT
+    # imax: torch.Tensor  # not supported by JIT
     maxc, imax = image.max(-3)
     minc: torch.Tensor = image.min(-3)[0]
 
@@ -93,8 +92,12 @@ def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}".format(image.shape))
 
-    global _HLS2RGB
-    _HLS2RGB = _HLS2RGB.to(image)
+    if not torch.jit.is_scripting():
+        # weird way to use globals with JIT...
+        hls_to_rgb.HLS2RGB = hls_to_rgb.HLS2RGB.to(image.device)  # type: ignore
+        _HLS2RGB = hls_to_rgb.HLS2RGB  # type: ignore
+    else:
+        _HLS2RGB = torch.tensor([[[0.]], [[8.]], [[4.]]], device=image.device)  # 3x1x1
 
     im: torch.Tensor = image.unsqueeze(-4)
     h: torch.Tensor = torch.select(im, -3, 0)
@@ -111,6 +114,12 @@ def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
     # l - a * max(min(min(k - 3.0, 9.0 - k), 1), -1)
     mink = torch.min(k - 3.0, 9.0 - k)
     return torch.addcmul(l, a, mink.clamp_(min=-1.0, max=1.0), value=-1)
+
+
+# tricks to speed up a little bit the conversions by presetting small tensors
+# (in the functions they are moved to the proper device)
+hls_to_rgb.HLS2RGB = torch.tensor([[[0.]], [[8.]], [[4.]]])  # type:ignore  # 3x1x1
+rgb_to_hls.RGB2HSL_IDX = torch.tensor([[[0.]], [[1.]], [[2.]]])  # type: ignore # 3x1x1
 
 
 class RgbToHls(nn.Module):
