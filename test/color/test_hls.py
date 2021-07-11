@@ -1,5 +1,4 @@
 import math
-from packaging import version
 import warnings
 
 import pytest
@@ -8,6 +7,7 @@ from torch.autograd import gradcheck
 
 import kornia
 from kornia.testing import assert_close, BaseTester
+from packaging import version
 
 
 class TestRgbToHls(BaseTester):
