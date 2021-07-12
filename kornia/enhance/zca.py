@@ -37,6 +37,9 @@ class ZCAWhitening(nn.Module):
         - x: :math:`(D_0,...,D_{\text{dim}},...,D_N)` is a batch of N-D tensors.
         - x_whiten: :math:`(D_0,...,D_{\text{dim}},...,D_N)` same shape as input.
 
+    .. note::
+       See a working example `here <https://colab.sandbox.google.com/github/kornia/tutorials/
+       blob/master/source/zca_whitening.ipynb>`__.
 
     Examples:
         >>> x = torch.tensor([[0,1],[1,0],[-1,0],[0,-1]], dtype = torch.float32)
@@ -178,6 +181,10 @@ def zca_mean(
         A tuple containing the ZCA matrix and the mean vector. If return_inverse is set to True,
         then it returns the inverse ZCA matrix, otherwise it returns None.
 
+    .. note::
+       See a working example `here <https://colab.sandbox.google.com/github/kornia/tutorials/
+       blob/master/source/zca_whitening.ipynb>`__.
+
     Examples:
         >>> x = torch.tensor([[0,1],[1,0],[-1,0],[0,-1]], dtype = torch.float32)
         >>> transform_matrix, mean_vector,_ = zca_mean(x) # Returns transformation matrix and data mean
@@ -263,6 +270,10 @@ def zca_whiten(inp: torch.Tensor, dim: int = 0, unbiased: bool = True, eps: floa
 
     Returns:
         Whiten Input data.
+
+    .. note::
+       See a working example `here <https://colab.sandbox.google.com/github/kornia/tutorials/
+       blob/master/source/zca_whitening.ipynb>`__.
 
     Examples:
         >>> x = torch.tensor([[0,1],[1,0],[-1,0]], dtype = torch.float32)
