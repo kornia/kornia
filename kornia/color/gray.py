@@ -6,9 +6,7 @@ import torch.nn as nn
 from kornia.color.rgb import bgr_to_rgb
 
 
-def grayscale_to_rgb(
-    image: torch.Tensor,
-) -> torch.Tensor:
+def grayscale_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Convert a grayscale image to RGB version of image.
 
     .. image:: _static/img/grayscale_to_rgb.png
@@ -25,11 +23,9 @@ def grayscale_to_rgb(
         >>> gray = grayscale_to_rgb(input) # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. "
-                        f"Got {type(image)}")
+        raise TypeError(f"Input type is not a torch.Tensor. " f"Got {type(image)}")
     if image.dim() < 3 or image.size(-3) != 1:
-        raise ValueError(f"Input size must have a shape of (*, 1, H, W). "
-                         f"Got {image.shape}.")
+        raise ValueError(f"Input size must have a shape of (*, 1, H, W). " f"Got {image.shape}.")
     rgb: torch.Tensor = torch.cat([image, image, image], dim=-3)
     image_is_float: bool = torch.is_floating_point(image)
     if not image_is_float:

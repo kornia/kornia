@@ -1,6 +1,4 @@
-from .gray import (bgr_to_grayscale, BgrToGrayscale,
-                   rgb_to_grayscale, RgbToGrayscale,
-                   grayscale_to_rgb, GrayscaleToRgb)
+from .gray import bgr_to_grayscale, BgrToGrayscale, grayscale_to_rgb, GrayscaleToRgb, rgb_to_grayscale, RgbToGrayscale
 from .hls import hls_to_rgb, HlsToRgb, rgb_to_hls, RgbToHls
 from .hsv import hsv_to_rgb, HsvToRgb, rgb_to_hsv, RgbToHsv
 from .lab import lab_to_rgb, LabToRgb, rgb_to_lab, RgbToLab
