@@ -36,6 +36,7 @@ def grayscale_to_rgb(
         warnings.warn("Input image is not of float dtype. Got {}".format(image.dtype))
     return rgb
 
+
 def rgb_to_grayscale(
     image: torch.Tensor, rgb_weights: torch.Tensor = torch.tensor([0.299, 0.587, 0.114])
 ) -> torch.Tensor:

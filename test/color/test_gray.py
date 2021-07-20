@@ -34,7 +34,6 @@ class TestGrayscaleToRgb(BaseTester):
             img = torch.ones(1, 3, 1, 1, device=device, dtype=dtype)
             assert kornia.color.grayscale_to_rgb(img)
 
-
     def test_opencv(self, device, dtype):
         data = torch.tensor(
             [
@@ -103,6 +102,7 @@ class TestGrayscaleToRgb(BaseTester):
         gray_ops = kornia.color.GrayscaleToRgb().to(device, dtype)
         gray_fcn = kornia.color.grayscale_to_rgb
         assert_close(gray_ops(img), gray_fcn(img))
+
 
 class TestRgbToGrayscale(BaseTester):
     def test_smoke(self, device, dtype):
