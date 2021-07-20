@@ -21,7 +21,7 @@ def grayscale_to_rgb(
         RGB version of the image with shape :math:`(*,3,H,W)`.
 
     Example:
-        >>> input = tocrh.randn(2, 1, 4, 5)
+        >>> input = torch.randn(2, 1, 4, 5)
         >>> gray = grayscale_to_rgb(input) # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
