@@ -128,6 +128,7 @@ def main():
 
     mod = importlib.import_module("kornia.color")
     color_transforms_list: dict = {
+        "grayscale_to_rgb": ((), 1),
         "rgb_to_bgr": ((), 1),
         "rgb_to_grayscale": ((), 1),
         "rgb_to_hsv": ((), 1),
@@ -144,7 +145,10 @@ def main():
     for fn_name, (args, num_samples) in color_transforms_list.items():
         # import function and apply
         fn = getattr(mod, fn_name)
-        out = fn(img2, *args)
+        if fn_name == "grayscale_to_rgb":
+            out = fn(K.rgb_to_grayscale(img2), *args)
+        else:
+            out = fn(img2, *args)
         # perform normalization to visualize
         if fn_name == "rgb_to_lab":
             out = out[:, :1] / 100.0
