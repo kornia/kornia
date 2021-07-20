@@ -4,6 +4,7 @@ import kornia as K
 
 # expose functions to torch.jit
 # TODO: find an automatic way to do this
+grayscale_to_rgb = torch.jit.script(K.color.grayscale_to_rgb)
 rgb_to_grayscale = torch.jit.script(K.color.rgb_to_grayscale)
 bgr_to_grayscale = torch.jit.script(K.color.bgr_to_grayscale)
 

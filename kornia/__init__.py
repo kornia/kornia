@@ -12,6 +12,7 @@ except ImportError:
 
 from kornia import augmentation, color, contrib, enhance, feature, filters, geometry, jit, losses, morphology, utils
 from kornia.color import (
+    grayscale_to_rgb,
     bgr_to_grayscale,
     bgr_to_rgb,
     bgr_to_rgba,
