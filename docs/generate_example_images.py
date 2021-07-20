@@ -160,7 +160,10 @@ def main():
         if out.shape[1] != 3:
             out = out.repeat(1, 3, 1, 1)
         # save the output image
-        out = torch.cat([img2[0], *[out[i] for i in range(out.size(0))]], dim=-1)
+        if fn_name == "grayscale_to_rgb":
+            out = torch.cat([K.rgb_to_grayscale(img2[0]).repeat(3, 1, 1), *[out[i] for i in range(out.size(0))]], dim=-1)
+        else:
+            out = torch.cat([img2[0], *[out[i] for i in range(out.size(0))]], dim=-1)
         out_np = K.utils.tensor_to_image((out * 255.0).byte())
         cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
