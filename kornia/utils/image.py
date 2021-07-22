@@ -1,6 +1,6 @@
 from functools import wraps
-from typing import TYPE_CHECKING
-from typing import Callable
+from typing import Callable, TYPE_CHECKING
+
 import torch
 import torch.nn as nn
 
