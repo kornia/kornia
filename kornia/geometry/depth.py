@@ -38,13 +38,13 @@ def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_poin
     if not isinstance(depth, torch.Tensor):
         raise TypeError(f"Input depht type is not a torch.Tensor. Got {type(depth)}.")
 
-    if not len(depth.shape) == 4 and depth.shape[-3] == 1:
+    if not (len(depth.shape) == 4 and depth.shape[-3] == 1):
         raise ValueError(f"Input depth musth have a shape (B, 1, H, W). Got: {depth.shape}")
 
     if not isinstance(camera_matrix, torch.Tensor):
         raise TypeError(f"Input camera_matrix type is not a torch.Tensor. " f"Got {type(camera_matrix)}.")
 
-    if not len(camera_matrix.shape) == 3 and camera_matrix.shape[-2:] == (3, 3):
+    if not (len(camera_matrix.shape) == 3 and camera_matrix.shape[-2:] == (3, 3)):
         raise ValueError(f"Input camera_matrix must have a shape (B, 3, 3). " f"Got: {camera_matrix.shape}.")
 
     # create base coordinates grid
@@ -83,13 +83,13 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
     if not isinstance(depth, torch.Tensor):
         raise TypeError(f"Input depht type is not a torch.Tensor. Got {type(depth)}.")
 
-    if not len(depth.shape) == 4 and depth.shape[-3] == 1:
+    if not (len(depth.shape) == 4 and depth.shape[-3] == 1):
         raise ValueError(f"Input depth musth have a shape (B, 1, H, W). Got: {depth.shape}")
 
     if not isinstance(camera_matrix, torch.Tensor):
         raise TypeError(f"Input camera_matrix type is not a torch.Tensor. " f"Got {type(camera_matrix)}.")
 
-    if not len(camera_matrix.shape) == 3 and camera_matrix.shape[-2:] == (3, 3):
+    if not (len(camera_matrix.shape) == 3 and camera_matrix.shape[-2:] == (3, 3)):
         raise ValueError(f"Input camera_matrix must have a shape (B, 3, 3). " f"Got: {camera_matrix.shape}.")
 
     # compute the 3d points from depth
@@ -137,19 +137,19 @@ def warp_frame_depth(
     if not isinstance(depth_dst, torch.Tensor):
         raise TypeError(f"Input depht_dst type is not a torch.Tensor. Got {type(depth_dst)}.")
 
-    if not len(depth_dst.shape) == 4 and depth_dst.shape[-3] == 1:
+    if not (len(depth_dst.shape) == 4 and depth_dst.shape[-3] == 1):
         raise ValueError(f"Input depth_dst musth have a shape (B, 1, H, W). Got: {depth_dst.shape}")
 
     if not isinstance(src_trans_dst, torch.Tensor):
         raise TypeError(f"Input src_trans_dst type is not a torch.Tensor. " f"Got {type(src_trans_dst)}.")
 
-    if not len(src_trans_dst.shape) == 3 and src_trans_dst.shape[-2:] == (3, 3):
-        raise ValueError(f"Input src_trans_dst must have a shape (B, 3, 3). " f"Got: {src_trans_dst.shape}.")
+    if not (len(src_trans_dst.shape) == 3 and src_trans_dst.shape[-2:] == (4, 4)):
+        raise ValueError(f"Input src_trans_dst must have a shape (B, 4, 4). " f"Got: {src_trans_dst.shape}.")
 
     if not isinstance(camera_matrix, torch.Tensor):
         raise TypeError(f"Input camera_matrix type is not a torch.Tensor. " f"Got {type(camera_matrix)}.")
 
-    if not len(camera_matrix.shape) == 3 and camera_matrix.shape[-2:] == (3, 3):
+    if not (len(camera_matrix.shape) == 3 and camera_matrix.shape[-2:] == (3, 3)):
         raise ValueError(f"Input camera_matrix must have a shape (B, 3, 3). " f"Got: {camera_matrix.shape}.")
     # unproject source points to camera frame
     points_3d_dst: torch.Tensor = depth_to_3d(depth_dst, camera_matrix, normalize_points)  # Bx3xHxW
@@ -245,6 +245,9 @@ class DepthWarper(nn.Module):
         return self
 
     def _compute_projection(self, x, y, invd):
+        if self._dst_proj_src is None or self._pinhole_src is None:
+            raise ValueError("Please, call compute_projection_matrix.")
+
         point = torch.tensor(
             [[[x], [y], [1.0], [invd]]], device=self._dst_proj_src.device, dtype=self._dst_proj_src.dtype
         )
