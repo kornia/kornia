@@ -15,6 +15,7 @@ from kornia.color import (
     bgr_to_grayscale,
     bgr_to_rgb,
     bgr_to_rgba,
+    grayscale_to_rgb,
     hls_to_rgb,
     hsv_to_rgb,
     lab_to_rgb,

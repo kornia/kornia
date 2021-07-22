@@ -6,6 +6,33 @@ import torch.nn as nn
 from kornia.color.rgb import bgr_to_rgb
 
 
+def grayscale_to_rgb(image: torch.Tensor) -> torch.Tensor:
+    r"""Convert a grayscale image to RGB version of image.
+
+    .. image:: _static/img/grayscale_to_rgb.png
+
+    The image data is assumed to be in the range of (0, 1).
+
+    Args:
+        image: grayscale image to be converted to RGB with shape :math:`(*,1,H,W)`.
+    Returns:
+        RGB version of the image with shape :math:`(*,3,H,W)`.
+
+    Example:
+        >>> input = torch.randn(2, 1, 4, 5)
+        >>> gray = grayscale_to_rgb(input) # 2x3x4x5
+    """
+    if not isinstance(image, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. " f"Got {type(image)}")
+    if image.dim() < 3 or image.size(-3) != 1:
+        raise ValueError(f"Input size must have a shape of (*, 1, H, W). " f"Got {image.shape}.")
+    rgb: torch.Tensor = torch.cat([image, image, image], dim=-3)
+    image_is_float: bool = torch.is_floating_point(image)
+    if not image_is_float:
+        warnings.warn("Input image is not of float dtype. Got {}".format(image.dtype))
+    return rgb
+
+
 def rgb_to_grayscale(
     image: torch.Tensor, rgb_weights: torch.Tensor = torch.tensor([0.299, 0.587, 0.114])
 ) -> torch.Tensor:
@@ -81,6 +108,31 @@ def bgr_to_grayscale(image: torch.Tensor) -> torch.Tensor:
     image_rgb = bgr_to_rgb(image)
     gray: torch.Tensor = rgb_to_grayscale(image_rgb)
     return gray
+
+
+class GrayscaleToRgb(nn.Module):
+    r"""Module to convert a grayscale image to RGB version of image.
+
+    The image data is assumed to be in the range of (0, 1).
+
+    Shape:
+        - image: :math:`(*, 1, H, W)`
+        - output: :math:`(*, 3, H, W)`
+
+    reference:
+        https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
+
+    Example:
+        >>> input = torch.rand(2, 1, 4, 5)
+        >>> rgb = GrayscaleToRgb()
+        >>> output = rgb(input)  # 2x3x4x5
+    """
+
+    def __init__(self) -> None:
+        super(GrayscaleToRgb, self).__init__()
+
+    def forward(self, image: torch.Tensor) -> torch.Tensor:  # type: ignore
+        return grayscale_to_rgb(image)
 
 
 class RgbToGrayscale(nn.Module):
