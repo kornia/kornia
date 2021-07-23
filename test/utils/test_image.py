@@ -36,6 +36,24 @@ def test_tensor_to_image(device, input_shape, expected):
 @pytest.mark.parametrize(
     "input_shape, expected",
     [
+        ((4, 4), (4, 4)),
+        ((1, 4, 4), (4, 4)),
+        ((1, 1, 4, 4), (1, 4, 4)),
+        ((3, 4, 4), (4, 4, 3)),
+        ((2, 3, 4, 4), (2, 4, 4, 3)),
+        ((1, 3, 4, 4), (1, 4, 4, 3)),
+    ],
+)
+def test_tensor_to_image_keepdim(device, input_shape, expected):
+    tensor = torch.ones(input_shape).to(device)
+    image = kornia.utils.tensor_to_image(tensor, keepdim=True)
+    assert image.shape == expected
+    assert isinstance(image, np.ndarray)
+
+
+@pytest.mark.parametrize(
+    "input_shape, expected",
+    [
         ((4, 4), (1, 1, 4, 4)),
         ((1, 4, 4), (1, 4, 1, 4)),
         ((2, 3, 4), (1, 4, 2, 3)),
