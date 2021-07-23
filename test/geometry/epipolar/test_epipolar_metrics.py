@@ -3,6 +3,7 @@ from torch.autograd import gradcheck
 
 import kornia.geometry.epipolar as epi
 import kornia.testing as utils
+from kornia.testing import assert_close
 
 
 class TestSymmetricalEpipolarDistance:
@@ -27,6 +28,13 @@ class TestSymmetricalEpipolarDistance:
         Fm = utils.create_random_fundamental_matrix(batch_size).type_as(points2)
         assert gradcheck(epi.symmetrical_epipolar_distance, (points1, points2, Fm), raise_exception=True)
 
+    def test_shift(self, device, dtype):
+        pts1 = torch.zeros(3, 2, device=device, dtype=dtype)[None]
+        pts2 = torch.tensor([[2, 0.], [2, 1], [2, 2.]], device=device, dtype=dtype)[None]
+        Fm = torch.tensor([[0., 0., 0.], [0., 0., -1.], [0., 1., 0.]], dtype=dtype, device=device)[None]
+        expected = torch.tensor([0., 2.0, 8.0], device=device, dtype=dtype)[None]
+        assert_close(epi.symmetrical_epipolar_distance(pts1, pts2, Fm), expected, atol=1e-4, rtol=1e-4)
+
 
 class TestSampsonEpipolarDistance:
     def test_smoke(self, device, dtype):
@@ -41,6 +49,13 @@ class TestSampsonEpipolarDistance:
         pts2 = torch.rand(batch_size, 4, 3, device=device, dtype=dtype)
         Fm = utils.create_random_fundamental_matrix(1).type_as(pts1)
         assert epi.sampson_epipolar_distance(pts1, pts2, Fm).shape == (5, 4)
+
+    def test_shift(self, device, dtype):
+        pts1 = torch.zeros(3, 2, device=device, dtype=dtype)[None]
+        pts2 = torch.tensor([[2, 0.], [2, 1], [2, 2.]], device=device, dtype=dtype)[None]
+        Fm = torch.tensor([[0., 0., 0.], [0., 0., -1.], [0., 1., 0.]], dtype=dtype, device=device)[None]
+        expected = torch.tensor([0., 0.5, 2.0], device=device, dtype=dtype)[None]
+        assert_close(epi.sampson_epipolar_distance(pts1, pts2, Fm), expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         # generate input data
