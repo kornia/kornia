@@ -30,9 +30,9 @@ class TestSymmetricalEpipolarDistance:
 
     def test_shift(self, device, dtype):
         pts1 = torch.zeros(3, 2, device=device, dtype=dtype)[None]
-        pts2 = torch.tensor([[2, 0.], [2, 1], [2, 2.]], device=device, dtype=dtype)[None]
-        Fm = torch.tensor([[0., 0., 0.], [0., 0., -1.], [0., 1., 0.]], dtype=dtype, device=device)[None]
-        expected = torch.tensor([0., 2.0, 8.0], device=device, dtype=dtype)[None]
+        pts2 = torch.tensor([[2, 0.0], [2, 1], [2, 2.0]], device=device, dtype=dtype)[None]
+        Fm = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]], dtype=dtype, device=device)[None]
+        expected = torch.tensor([0.0, 2.0, 8.0], device=device, dtype=dtype)[None]
         assert_close(epi.symmetrical_epipolar_distance(pts1, pts2, Fm), expected, atol=1e-4, rtol=1e-4)
 
 
@@ -52,9 +52,9 @@ class TestSampsonEpipolarDistance:
 
     def test_shift(self, device, dtype):
         pts1 = torch.zeros(3, 2, device=device, dtype=dtype)[None]
-        pts2 = torch.tensor([[2, 0.], [2, 1], [2, 2.]], device=device, dtype=dtype)[None]
-        Fm = torch.tensor([[0., 0., 0.], [0., 0., -1.], [0., 1., 0.]], dtype=dtype, device=device)[None]
-        expected = torch.tensor([0., 0.5, 2.0], device=device, dtype=dtype)[None]
+        pts2 = torch.tensor([[2, 0.0], [2, 1], [2, 2.0]], device=device, dtype=dtype)[None]
+        Fm = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]], dtype=dtype, device=device)[None]
+        expected = torch.tensor([0.0, 0.5, 2.0], device=device, dtype=dtype)[None]
         assert_close(epi.sampson_epipolar_distance(pts1, pts2, Fm), expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
