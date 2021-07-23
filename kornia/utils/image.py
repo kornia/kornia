@@ -93,7 +93,7 @@ def _to_bcdhw(tensor: torch.Tensor) -> torch.Tensor:
     return tensor
 
 
-def tensor_to_image(tensor: torch.Tensor) -> "np.ndarray":
+def tensor_to_image(tensor: torch.Tensor, keepdim: bool = False) -> "np.ndarray":
     """Converts a PyTorch tensor image to a numpy image.
 
     In case the tensor is in the GPU, it will be copied back to CPU.
@@ -101,13 +101,16 @@ def tensor_to_image(tensor: torch.Tensor) -> "np.ndarray":
     Args:
         tensor: image of the form :math:`(H, W)`, :math:`(C, H, W)` or
             :math:`(B, C, H, W)`.
+        keepdim: If ``False`` squeeze the input image to match the shape
+            :math:`(H, W, C)`.
+
 
     Returns:
         image of the form :math:`(H, W)`, :math:`(H, W, C)` or :math:`(B, H, W, C)`.
 
     """
     if not isinstance(tensor, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(tensor)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
 
     if len(tensor.shape) > 4 or len(tensor.shape) < 2:
         raise ValueError("Input size must be a two, three or four dimensional tensor")
@@ -128,12 +131,12 @@ def tensor_to_image(tensor: torch.Tensor) -> "np.ndarray":
     elif len(input_shape) == 4:
         # (B, C, H, W) -> (B, H, W, C)
         image = image.transpose(0, 2, 3, 1)
-        if input_shape[0] == 1:
+        if input_shape[0] == 1 and not keepdim:
             image = image.squeeze(0)
         if input_shape[1] == 1:
             image = image.squeeze(-1)
     else:
-        raise ValueError("Cannot process tensor with shape {}".format(input_shape))
+        raise ValueError(f"Cannot process tensor with shape {input_shape}")
 
     return image
 
