@@ -102,7 +102,7 @@ def tensor_to_image(tensor: torch.Tensor, keepdim: bool = False) -> "np.ndarray"
         tensor: image of the form :math:`(H, W)`, :math:`(C, H, W)` or
             :math:`(B, C, H, W)`.
         keepdim: If ``False`` squeeze the input image to match the shape
-            :math:`(H, W, C)`.
+            :math:`(H, W, C)` or :math:`(H, W)`.
 
 
     Returns:
