@@ -15,9 +15,9 @@ def add_weighted(src1: torch.Tensor, alpha: float, src2: torch.Tensor, beta: flo
         out = src1 * alpha + src2 * beta + gamma
 
     Args:
-        src1: Tensor of shape :math:`(B, C, H, W)`.
+        src1: Tensor of shape :math:`(*, H, W)`.
         alpha: weight of the src1 elements.
-        src2: Tensor of same size and channel number as src1 :math:`(B, C, H, W)`.
+        src2: Tensor of same size and channel number as src1 :math:`(*, H, W)`.
         beta: weight of the src2 elements.
         gamma: scalar added to each sum.
 
