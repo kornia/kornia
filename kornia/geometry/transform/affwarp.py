@@ -7,7 +7,7 @@ import kornia
 from kornia.geometry.transform.imgwarp import get_affine_matrix2d, get_rotation_matrix2d, warp_affine
 from kornia.geometry.transform.projwarp import get_projective_transform, warp_affine3d
 from kornia.utils import _extract_device_dtype
-from kornia.utils.image import perform_keep_shape
+from kornia.utils.image import perform_keep_shape_image
 
 __all__ = [
     "affine",
@@ -522,7 +522,7 @@ def _side_to_image_size(side_size: int, aspect_ratio: float, side: str = "short"
     return int(side_size / aspect_ratio), side_size
 
 
-@perform_keep_shape
+@perform_keep_shape_image
 def resize(
     input: torch.Tensor,
     size: Union[int, Tuple[int, int]],

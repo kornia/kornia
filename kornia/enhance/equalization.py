@@ -8,7 +8,7 @@ import torch.nn.functional as F
 
 from kornia.enhance.histogram import histogram
 from kornia.utils.helpers import _torch_histc_cast
-from kornia.utils.image import _to_bchw
+from kornia.utils.image import perform_keep_shape_image
 
 __all__ = ["equalize_clahe"]
 
@@ -31,7 +31,7 @@ def _compute_tiles(
         tensor with the padded batch of 2D imageswith shape (B, C, H', W').
 
     """
-    batch: torch.Tensor = _to_bchw(imgs)  # B x C x H x W
+    batch: torch.Tensor = imgs  # B x C x H x W
 
     # compute stride and kernel size
     h, w = batch.shape[-2:]
@@ -46,6 +46,9 @@ def _compute_tiles(
     pad_vert = kernel_vert * grid_size[0] - h
     pad_horz = kernel_horz * grid_size[1] - w
     # add the padding in the last coluns and rows
+    if pad_vert > batch.shape[-2] or pad_horz > batch.shape[-1]:
+        raise ValueError('Cannot compute tiles on the image according to the given grid size')
+
     if pad_vert > 0 or pad_horz > 0:
         batch = F.pad(batch, [0, pad_horz, 0, pad_vert], mode='reflect')  # B x C x H' x W'
 
@@ -282,6 +285,7 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
     return tiles_equalized.div(255.0)
 
 
+@perform_keep_shape_image
 def equalize_clahe(input: torch.Tensor, clip_limit: float = 40.0, grid_size: Tuple[int, int] = (8, 8)) -> torch.Tensor:
     r"""Apply clahe equalization on the input tensor.
 
@@ -290,8 +294,7 @@ def equalize_clahe(input: torch.Tensor, clip_limit: float = 40.0, grid_size: Tup
     NOTE: Lut computation uses the same approach as in OpenCV, in next versions this can change.
 
     Args:
-        input: images tensor to equalize with values in the range [0, 1] and shapes like
-          :math:`(C, H, W)` or :math:`(B, C, H, W)`.
+        input: images tensor to equalize with values in the range [0, 1] and shape :math:`(*, C, H, W)`.
         clip_limit: threshold value for contrast limiting. If 0 clipping is disabled.
         grid_size: number of tiles to be cropped in each direction (GH, GW).
 
@@ -310,14 +313,6 @@ def equalize_clahe(input: torch.Tensor, clip_limit: float = 40.0, grid_size: Tup
         torch.Size([2, 3, 10, 20])
 
     """
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Input input type is not a torch.Tensor. Got {type(input)}")
-
-    if input.dim() not in [3, 4]:
-        raise ValueError(f"Invalid input shape, we expect CxHxW or BxCxHxW. Got: {input.shape}")
-
-    if input.numel() == 0:
-        raise ValueError("Invalid input tensor, it is empty.")
 
     if not isinstance(clip_limit, float):
         raise TypeError(f"Input clip_limit type is not float. Got {type(clip_limit)}")
@@ -334,7 +329,7 @@ def equalize_clahe(input: torch.Tensor, clip_limit: float = 40.0, grid_size: Tup
     if grid_size[0] <= 0 or grid_size[1] <= 0:
         raise ValueError("Input grid_size elements must be positive. Got {grid_size}")
 
-    imgs: torch.Tensor = _to_bchw(input)  # B x C x H x W
+    imgs: torch.Tensor = input  # B x C x H x W
 
     # hist_tiles: torch.Tensor  # B x GH x GW x C x TH x TW  # not supported by JIT
     # img_padded: torch.Tensor  # B x C x H' x W'  # not supported by JIT
