@@ -245,17 +245,11 @@ class TestAugmentationSequential:
         )
 
         aug_ver = K.AugmentationSequential(
-            K.RandomVerticalFlip(p=1.0),
-            data_keys=["input", "bbox"],
-            return_transform=False,
-            same_on_batch=False
+            K.RandomVerticalFlip(p=1.0), data_keys=["input", "bbox"], return_transform=False, same_on_batch=False
         )
 
         aug_hor = K.AugmentationSequential(
-            K.RandomHorizontalFlip(p=1.0),
-            data_keys=["input", "bbox"],
-            return_transform=False,
-            same_on_batch=False
+            K.RandomHorizontalFlip(p=1.0), data_keys=["input", "bbox"], return_transform=False, same_on_batch=False
         )
 
         out_ver = aug_ver(inp, bbox)
