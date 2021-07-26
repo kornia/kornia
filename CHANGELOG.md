@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [0.5.7] - 2021-07-27
+
+### Added
+- Grayscale to RGB image conversion. ([#1162](https://github.com/kornia/kornia/pull/1162))
+- Add keepdim param to tensor_to_image function.  ([#1168](https://github.com/kornia/kornia/pull/1168))
+
+### Fixed
+- Fix checks on wrong tensor shape condition in depth.py ([#1164](https://github.com/kornia/kornia/pull/1164))
+
+
 ## [0.5.6] - 2021-07-12
 
 ### Added
