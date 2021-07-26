@@ -1,5 +1,6 @@
 import torch
 from torch.autograd import gradcheck
+import pytest
 
 import kornia
 import kornia.testing as utils  # test utils
@@ -9,21 +10,25 @@ from kornia.testing import assert_close
 class TestImageHist2d:
     fcn = kornia.enhance.image_hist2d
 
+    @pytest.mark.parametrize("device", [("cuda"), ("cpu")])
     def test_shape(self, device, dtype):
         input = torch.ones(32, 32, device=device, dtype=dtype)
         hist, pdf = TestImageHist2d.fcn(input, 0.0, 1.0, 256)
         assert hist.shape == (1, 1, 256) and pdf.shape == (1, 1, 256)
 
+    @pytest.mark.parametrize("device", [("cuda"), ("cpu")])
     def test_shape_channels(self, device, dtype):
         input = torch.ones(3, 32, 32, device=device, dtype=dtype)
         hist, pdf = TestImageHist2d.fcn(input, 0.0, 1.0, 256)
         assert hist.shape == (1, 3, 256) and pdf.shape == (1, 3, 256)
 
+    @pytest.mark.parametrize("device", [("cuda"), ("cpu")])
     def test_shape_batch(self, device, dtype):
         input = torch.ones(8, 3, 32, 32, device=device, dtype=dtype)
         hist, pdf = TestImageHist2d.fcn(input, 0.0, 1.0, 256)
         assert hist.shape == (8, 3, 256) and pdf.shape == (8, 3, 256)
 
+    @pytest.mark.parametrize("device", [("cuda"), ("cpu")])
     def test_gradcheck(self, device, dtype):
         input = torch.ones(32, 32, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input) # to var
@@ -33,6 +38,7 @@ class TestImageHist2d:
                          (input, 0.0, 255.0, 256, -1., centers),
                          raise_exception=True)
 
+    @pytest.mark.parametrize("device", [("cuda"), ("cpu")])
     def test_jit(self, device, dtype):
         input = torch.linspace(0, 255, 10, device=device, dtype=dtype)
         input_x, input_y = torch.meshgrid(input, input)
@@ -43,6 +49,7 @@ class TestImageHist2d:
 
         assert_close(op(*inputs), op_script(*inputs))
 
+    @pytest.mark.parametrize("device", [("cuda"), ("cpu")])
     def test_uniform_hist(self, device, dtype):
         input = torch.linspace(0, 255, 10, device=device, dtype=dtype)
         input_x, input_y = torch.meshgrid(input, input)
@@ -50,6 +57,7 @@ class TestImageHist2d:
         ans = 10 * torch.ones_like(hist)
         assert_close(ans, hist)
 
+    @pytest.mark.parametrize("device", [("cuda"), ("cpu")])
     def test_uniform_dist(self, device, dtype):
         input = torch.linspace(0, 255, 10, device=device, dtype=dtype)
         input_x, input_y = torch.meshgrid(input, input)
