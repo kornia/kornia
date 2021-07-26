@@ -18,36 +18,32 @@ class TestImageHist2d:
         assert hist.shape == (1, 1, 256) and pdf.shape == (1, 1, 256)
 
     @pytest.mark.parametrize("device", [("cuda"), ("cpu")])
-    @pytest.mark.parametrize("kernel", ["triangular", "gaussian",
-                                        "uniform", "epanechnikov"])
+    @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_shape_channels(self, device, dtype, kernel):
         input = torch.ones(3, 32, 32, device=device, dtype=dtype)
         hist, pdf = TestImageHist2d.fcn(input, 0.0, 1.0, 256, kernel=kernel)
         assert hist.shape == (1, 3, 256) and pdf.shape == (1, 3, 256)
 
     @pytest.mark.parametrize("device", [("cuda"), ("cpu")])
-    @pytest.mark.parametrize("kernel", ["triangular", "gaussian",
-                                        "uniform", "epanechnikov"])
+    @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_shape_batch(self, device, dtype, kernel):
         input = torch.ones(8, 3, 32, 32, device=device, dtype=dtype)
         hist, pdf = TestImageHist2d.fcn(input, 0.0, 1.0, 256, kernel=kernel)
         assert hist.shape == (8, 3, 256) and pdf.shape == (8, 3, 256)
 
     @pytest.mark.parametrize("device", [("cuda"), ("cpu")])
-    @pytest.mark.parametrize("kernel", ["triangular", "gaussian",
-                                        "uniform", "epanechnikov"])
+    @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_gradcheck(self, device, dtype, kernel):
         input = torch.ones(32, 32, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)  # to var
         centers = torch.linspace(0, 255, 8, device=device, dtype=dtype)
         centers = utils.tensor_to_gradcheck_var(centers)
-        assert gradcheck(TestImageHist2d.fcn,
-                         (input, 0.0, 255.0, 256, -1.0, centers, True, kernel),
-                         raise_exception=True)
+        assert gradcheck(
+            TestImageHist2d.fcn, (input, 0.0, 255.0, 256, -1.0, centers, True, kernel), raise_exception=True
+        )
 
     @pytest.mark.parametrize("device", [("cuda"), ("cpu")])
-    @pytest.mark.parametrize("kernel", ["triangular", "gaussian",
-                                        "uniform", "epanechnikov"])
+    @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_jit(self, device, dtype, kernel):
         input = torch.linspace(0, 255, 10, device=device, dtype=dtype)
         input_x, input_y = torch.meshgrid(input, input)
@@ -59,34 +55,30 @@ class TestImageHist2d:
         assert_close(op(*inputs), op_script(*inputs))
 
     @pytest.mark.parametrize("device", [("cuda"), ("cpu")])
-    @pytest.mark.parametrize("kernel", ["triangular", "gaussian",
-                                        "uniform", "epanechnikov"])
+    @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_uniform_hist(self, device, dtype, kernel):
         input = torch.linspace(0, 255, 10, device=device, dtype=dtype)
         input_x, input_y = torch.meshgrid(input, input)
         if kernel == "gaussian":
             bandwidth = 2 * 0.4 ** 2
         else:
-            bandwidth = -1.
-        hist, pdf = TestImageHist2d.fcn(input_x, 0.0, 255.0, 10,
-                                        bandwidth=bandwidth, centers=input,
-                                        kernel=kernel)
+            bandwidth = -1.0
+        hist, pdf = TestImageHist2d.fcn(input_x, 0.0, 255.0, 10, bandwidth=bandwidth, centers=input, kernel=kernel)
         ans = 10 * torch.ones_like(hist)
         assert_close(ans, hist)
 
     @pytest.mark.parametrize("device", [("cuda"), ("cpu")])
-    @pytest.mark.parametrize("kernel", ["triangular", "gaussian",
-                                        "uniform", "epanechnikov"])
+    @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_uniform_dist(self, device, dtype, kernel):
         input = torch.linspace(0, 255, 10, device=device, dtype=dtype)
         input_x, input_y = torch.meshgrid(input, input)
         if kernel == "gaussian":
             bandwidth = 2 * 0.4 ** 2
         else:
-            bandwidth = -1.
-        hist, pdf = TestImageHist2d.fcn(input_x, 0.0, 255.0, 10,
-                                        bandwidth=bandwidth, centers=input,
-                                        kernel=kernel, return_pdf=True)
+            bandwidth = -1.0
+        hist, pdf = TestImageHist2d.fcn(
+            input_x, 0.0, 255.0, 10, bandwidth=bandwidth, centers=input, kernel=kernel, return_pdf=True
+        )
         ans = 0.1 * torch.ones_like(hist)
         assert_close(ans, pdf)
 
