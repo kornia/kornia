@@ -6,9 +6,6 @@ from kornia import enhance
 from kornia.testing import assert_close, BaseTester, tensor_to_gradcheck_var
 
 
-class TestImage2dEqualization(BaseTester):
-
-
 class TestEqualization(BaseTester):
     def test_smoke(self, device, dtype):
         C, H, W = 1, 10, 20
