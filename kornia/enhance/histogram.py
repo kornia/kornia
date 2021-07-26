@@ -1,6 +1,7 @@
 from typing import Tuple
 
 import torch
+import math
 
 __all__ = ["histogram", "histogram2d"]
 
@@ -154,7 +155,8 @@ def histogram2d(
 
 def image_hist2d(image: torch.Tensor, min: float = 0., max: float = 255.,
                  n_bins: int = 256, bandwidth: float = -1.,
-                 centers: torch.Tensor = torch.tensor([]), return_pdf: bool = False):
+                 centers: torch.Tensor = torch.tensor([]), return_pdf: bool = False,
+                 kernel: str = "triangular"):
     """Function that estimates the histogram of the input image(s).
 
     The calculation uses triangular kernel density estimation.
@@ -174,6 +176,8 @@ def image_hist2d(image: torch.Tensor, min: float = 0., max: float = 255.,
         equal width bins of [min, max] range.
         return_pdf: If True, also return probability densities for
         each bin.
+        kernel: kernel to perform kernel density estimation
+        (`triangular`, `gaussian`, `uniform`, `epanechnikov`).
 
     Returns:
         Computed histogram of shape :math:`(bins)`, :math:`(C, bins)`,
@@ -207,6 +211,9 @@ def image_hist2d(image: torch.Tensor, min: float = 0., max: float = 255.,
     if not isinstance(return_pdf, bool):
         raise TypeError(f"Return_pdf type is not a bool. Got {type(return_pdf)}.")
 
+    if not isinstance(kernel, str):
+        raise TypeError(f"Kernel type is not a str. Got {type(kernel)}.")
+
     device = image.device
 
     if image.dim() == 4:
@@ -218,8 +225,8 @@ def image_hist2d(image: torch.Tensor, min: float = 0., max: float = 255.,
         height, width = image.size()
         batch_size, n_channels = 1, 1
     else:
-        raise ValueError(f"Input values must be a of the shape BxCxHxW, "
-                         f"CxHxW or HxW. Got {image.shape}.")
+        raise ValueError(f"Input values must be a tensor of the shape "
+                         f"BxCxHxW, CxHxW or HxW. Got {image.shape}.")
 
     if bandwidth == -1.:
         bandwidth = (max - min) / n_bins
@@ -227,8 +234,23 @@ def image_hist2d(image: torch.Tensor, min: float = 0., max: float = 255.,
         centers = min + bandwidth * (torch.arange(n_bins, device=device).float() + 0.5)
     centers = centers.reshape(-1, 1, 1, 1, 1)
     u = abs(image.unsqueeze(0) - centers) / bandwidth
-    mask = (u <= 1).float()
-    hist = torch.sum(((1 - u) * mask), dim=(-2, -1)).permute(1, 2, 0)
+    if kernel == "triangular":
+        mask = (u <= 1).float()
+        kernel_values = (1 - u) * mask
+    elif kernel == "gaussian":
+        kernel_values = torch.exp(-0.5 * u ** 2) / math.sqrt(2 * math.pi)
+    elif kernel == "uniform":
+        mask = (u <= 1).float()
+        kernel_values = torch.ones_like(u, dtype=u.dtype,
+                                         device=u.device) * 0.5 * mask
+    elif kernel == "epanechnikov":
+        mask = (u <= 1).float()
+        kernel_values = 0.75 * (1 - u ** 2) * mask
+    else:
+        raise ValueError(f"Kernel must be 'triangular', 'gaussian', "
+                         f"'uniform' or 'epanechnikov'. Got {kernel}.")
+
+    hist = torch.sum(kernel_values, dim=(-2, -1)).permute(1, 2, 0)
     if return_pdf:
         normalization = torch.sum(hist, dim=-1).unsqueeze(0) + 1e-10
         pdf = hist / normalization
