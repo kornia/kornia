@@ -3,7 +3,7 @@ from typing import Tuple
 
 import torch
 
-__all__ = ["histogram", "histogram2d"]
+__all__ = ["histogram", "histogram2d", "image_hist2d"]
 
 
 def marginal_pdf(
@@ -242,13 +242,13 @@ def image_hist2d(
         mask = (u <= 1).float()
         kernel_values = (1 - u) * mask
     elif kernel == "gaussian":
-        kernel_values = torch.exp(-0.5 * u ** 2) / math.sqrt(2 * math.pi)
+        kernel_values = torch.exp(-0.5 * u ** 2)
     elif kernel == "uniform":
         mask = (u <= 1).float()
-        kernel_values = torch.ones_like(u, dtype=u.dtype, device=u.device) * 0.5 * mask
+        kernel_values = torch.ones_like(u, dtype=u.dtype, device=u.device) * mask
     elif kernel == "epanechnikov":
         mask = (u <= 1).float()
-        kernel_values = 0.75 * (1 - u ** 2) * mask
+        kernel_values = (1 - u ** 2) * mask
     else:
         raise ValueError(f"Kernel must be 'triangular', 'gaussian', " f"'uniform' or 'epanechnikov'. Got {kernel}.")
 
