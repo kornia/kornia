@@ -74,11 +74,11 @@ class RandomHorizontalFlip3D(AugmentationBase3D):
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
 
-    def generate_parameters(self, batch_shape: torch.Size):
-        return dict(batch_shape=batch_shape)
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        return dict(batch_shape=torch.as_tensor(batch_shape))
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        w: int = params['batch_shape'][-1]
+        w: int = cast(int, params['batch_shape'][-1])
         flip_mat: torch.Tensor = torch.tensor(
             [[-1, 0, 0, w - 1], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], device=input.device, dtype=input.dtype
         )
@@ -147,11 +147,11 @@ class RandomVerticalFlip3D(AugmentationBase3D):
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
 
-    def generate_parameters(self, batch_shape: torch.Size):
-        return dict(batch_shape=batch_shape)
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        return dict(batch_shape=torch.as_tensor(batch_shape))
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        h: int = params['batch_shape'][-2]
+        h: int = cast(int, params['batch_shape'][-2])
         flip_mat: torch.Tensor = torch.tensor(
             [[1, 0, 0, 0], [0, -1, 0, h - 1], [0, 0, 1, 0], [0, 0, 0, 1]], device=input.device, dtype=input.dtype
         )

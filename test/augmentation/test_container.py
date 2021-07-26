@@ -233,6 +233,37 @@ class TestAugmentationSequential:
         assert out.shape[-3:] == inp.shape[-3:]
         reproducibility_test(inp, aug)
 
+    def test_random_flips(self, device, dtype):
+        inp = torch.randn(1, 3, 510, 1020, device=device, dtype=dtype)
+        bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
+
+        expected_bbox_vertical_flip = torch.tensor(
+            [[[355, 499], [660, 499], [660, 259], [355, 259]]], device=device, dtype=dtype
+        )
+        expected_bbox_horizontal_flip = torch.tensor(
+            [[[664, 10], [359, 10], [359, 250], [664, 250]]], device=device, dtype=dtype
+        )
+
+        aug_ver = K.AugmentationSequential(
+            K.RandomVerticalFlip(p=1.0),
+            data_keys=["input", "bbox"],
+            return_transform=False,
+            same_on_batch=False
+        )
+
+        aug_hor = K.AugmentationSequential(
+            K.RandomHorizontalFlip(p=1.0),
+            data_keys=["input", "bbox"],
+            return_transform=False,
+            same_on_batch=False
+        )
+
+        out_ver = aug_ver(inp, bbox)
+        out_hor = aug_hor(inp, bbox)
+
+        assert_close(out_ver[1], expected_bbox_vertical_flip)
+        assert_close(out_hor[1], expected_bbox_horizontal_flip)
+
     @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
     @pytest.mark.parametrize('return_transform', [True, False])
     def test_forward_and_inverse(self, random_apply, return_transform, device, dtype):
