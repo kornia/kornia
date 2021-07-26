@@ -1,6 +1,6 @@
+import pytest
 import torch
 from torch.autograd import gradcheck
-import pytest
 
 import kornia
 import kornia.testing as utils  # test utils
@@ -31,12 +31,10 @@ class TestImageHist2d:
     @pytest.mark.parametrize("device", [("cuda"), ("cpu")])
     def test_gradcheck(self, device, dtype):
         input = torch.ones(32, 32, device=device, dtype=dtype)
-        input = utils.tensor_to_gradcheck_var(input) # to var
+        input = utils.tensor_to_gradcheck_var(input)  # to var
         centers = torch.linspace(0, 255, 8, device=device, dtype=dtype)
         centers = utils.tensor_to_gradcheck_var(centers)
-        assert gradcheck(TestImageHist2d.fcn,
-                         (input, 0.0, 255.0, 256, -1., centers),
-                         raise_exception=True)
+        assert gradcheck(TestImageHist2d.fcn, (input, 0.0, 255.0, 256, -1.0, centers), raise_exception=True)
 
     @pytest.mark.parametrize("device", [("cuda"), ("cpu")])
     def test_jit(self, device, dtype):
@@ -61,8 +59,7 @@ class TestImageHist2d:
     def test_uniform_dist(self, device, dtype):
         input = torch.linspace(0, 255, 10, device=device, dtype=dtype)
         input_x, input_y = torch.meshgrid(input, input)
-        hist, pdf = TestImageHist2d.fcn(input_x, 0.0, 255.0, 10,
-                                        centers=input, return_pdf=True)
+        hist, pdf = TestImageHist2d.fcn(input_x, 0.0, 255.0, 10, centers=input, return_pdf=True)
         ans = 0.1 * torch.ones_like(hist)
         assert_close(ans, pdf)
 
@@ -167,6 +164,3 @@ class TestHistogram:
         pdf = TestHistogram.fcn(input1, input2, bandwidth)
         ans = 0.1 * torch.ones(1, 10, device=device, dtype=dtype)
         assert_close(ans, pdf)
-
-
-
