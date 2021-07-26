@@ -11,8 +11,7 @@ class TestImageHist2d:
     fcn = kornia.enhance.image_hist2d
 
     @pytest.mark.parametrize("device", ["cuda", "cpu"])
-    @pytest.mark.parametrize("kernel", ["triangular", "gaussian",
-                                        "uniform", "epanechnikov"])
+    @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_shape(self, device, dtype, kernel):
         input = torch.ones(32, 32, device=device, dtype=dtype)
         hist, pdf = TestImageHist2d.fcn(input, 0.0, 1.0, 256, kernel=kernel)
