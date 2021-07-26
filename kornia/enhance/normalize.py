@@ -69,7 +69,7 @@ class Normalize(nn.Module):
 
 
 def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torch.Tensor:
-    r"""Normalize a tensor image with mean and standard deviation.
+    r"""Normalize an image/video tensor with mean and standard deviation.
 
     .. math::
         \text{input[channel] = (input[channel] - mean[channel]) / std[channel]}
@@ -77,12 +77,12 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 
     Args:
-        data: Image tensor of size :math:`(*, C, ...)`.
+        data: Image tensor of size :math:`(B, C, *)`.
         mean: Mean for each channel.
         std: Standard deviations for each channel.
 
     Return:
-        Normalised tensor with same size as input :math:`(*, C, ...)`.
+        Normalised tensor with same size as input :math:`(B, C, *)`.
 
     Examples:
         >>> x = torch.rand(1, 4, 3, 3)
@@ -172,7 +172,7 @@ class Denormalize(nn.Module):
 
 
 def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]) -> torch.Tensor:
-    r"""Denormalize a tensor image with mean and standard deviation.
+    r"""Denormalize an image/video tensor with mean and standard deviation.
 
     .. math::
         \text{input[channel] = (input[channel] * std[channel]) + mean[channel]}
@@ -180,12 +180,12 @@ def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 
     Args:
-        input: Image tensor of size :math:`(*, C, ...)`.
+        input: Image tensor of size :math:`(B, C, *)`.
         mean: Mean for each channel.
         std: Standard deviations for each channel.
 
     Return:
-        Denormalised tensor with same size as input :math:`(*, C, ...)`.
+        Denormalised tensor with same size as input :math:`(B, C, *)`.
 
     Examples:
         >>> x = torch.rand(1, 4, 3, 3)
@@ -241,7 +241,7 @@ def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union
 
 
 def normalize_min_max(x: torch.Tensor, min_val: float = 0.0, max_val: float = 1.0, eps: float = 1e-6) -> torch.Tensor:
-    r"""Normalise an image tensor by MinMax and re-scales the value between a range.
+    r"""Normalise an image/video tensor by MinMax and re-scales the value between a range.
 
     The data is normalised using the following formulation:
 
@@ -251,13 +251,13 @@ def normalize_min_max(x: torch.Tensor, min_val: float = 0.0, max_val: float = 1.
     where :math:`a` is :math:`\text{min_val}` and :math:`b` is :math:`\text{max_val}`.
 
     Args:
-        x: The image tensor to be normalised with shape :math:`(B, C, ...)`.
+        x: The image tensor to be normalised with shape :math:`(B, C, *)`.
         min_val: The minimum value for the new range.
         max_val: The maximum value for the new range.
         eps: Float number to avoid zero division.
 
     Returns:
-        The normalised image tensor with same shape as input :math:`(B, C, ...)`.
+        The normalised image tensor with same shape as input :math:`(B, C, *)`.
 
     Example:
         >>> x = torch.rand(1, 5, 3, 3)
