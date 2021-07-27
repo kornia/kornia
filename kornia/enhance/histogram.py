@@ -168,7 +168,7 @@ def image_hist2d(
     The calculation uses triangular kernel density estimation.
 
     Args:
-        x: Input tensor to compute the histogram with shape
+        image: Input tensor to compute the histogram with shape
         :math:`(H, W)`, :math:`(C, H, W)` or :math:`(B, C, H, W)`.
         min: Lower end of the interval (inclusive).
         max: Upper end of the interval (inclusive). Ignored when
