@@ -339,8 +339,8 @@ class PatchSequential(ImageSequential):
             if len(out_label.shape) == 1:
                 # Wierd the mypy error though it is as same as in the next block
                 _label = (
-                    torch.ones(  # type: ignore
-                        in_shape[0] * in_shape[1], device=out_label.device, out_label=label.dtype
+                    torch.ones(
+                        in_shape[0] * in_shape[1], device=out_label.device, dtype=out_label.dtype
                     )
                     * -1
                 )
@@ -350,7 +350,7 @@ class PatchSequential(ImageSequential):
                     torch.ones(in_shape[0], *out_label.shape[1:], device=out_label.device, dtype=out_label.dtype) * -1
                 )
                 _label[:, 0] = label
-            label[params.indices] = out_label
+            _label[params.indices] = out_label
         elif label is None and out_label is not None:
             if len(out_label.shape) == 1:
                 _label = torch.ones(in_shape[0] * in_shape[1], device=out_label.device, dtype=out_label.dtype) * -1
@@ -360,7 +360,7 @@ class PatchSequential(ImageSequential):
                 )
             _label[params.indices] = out_label
 
-        return input, label, PatchParamItem(params.indices, param=out_param)
+        return input, _label, PatchParamItem(params.indices, param=out_param)
 
     def forward_by_params(
         self, input: torch.Tensor, label: Optional[torch.Tensor], params: List[PatchParamItem]
@@ -368,9 +368,6 @@ class PatchSequential(ImageSequential):
         _input: TensorWithTransformMat
         in_shape = input.shape
         _input = input.reshape(-1, *in_shape[-3:])
-
-        if label is not None:
-            label = torch.cat([label] * in_shape[1], dim=0)
 
         self.clear_state()
         for patch_param in params:
