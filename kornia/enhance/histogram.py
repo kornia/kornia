@@ -216,7 +216,6 @@ def image_hist2d(
     if not isinstance(return_pdf, bool):
         raise TypeError(f"Return_pdf type is not a bool. Got {type(return_pdf)}.")
 
-
     device = image.device
 
     if image.dim() == 4:
