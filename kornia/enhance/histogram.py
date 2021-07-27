@@ -163,7 +163,7 @@ def image_hist2d(
     return_pdf: bool = False,
     kernel: str = "triangular",
 ):
-    """Function that estimates the histogram of the input image(s).
+    """Estimate the histogram of the input image(s).
 
     The calculation uses triangular kernel density estimation.
 
