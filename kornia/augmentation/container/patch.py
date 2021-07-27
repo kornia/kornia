@@ -369,6 +369,9 @@ class PatchSequential(ImageSequential):
         in_shape = input.shape
         _input = input.reshape(-1, *in_shape[-3:])
 
+        if label is not None:
+            label = torch.cat([label] * in_shape[1], dim=0)
+
         self.clear_state()
         for patch_param in params:
             _input, label, out_param = self.apply_by_param(_input, label, params=patch_param)
@@ -390,10 +393,7 @@ class PatchSequential(ImageSequential):
 
         pad = self.compute_padding(input, self.padding)
         input = self.extract_patches(input, self.grid_size, pad)
-        if label is not None:
-            assert label.dim() == 1
-            # repeat label as the same number as input patches.
-            label = torch.stack([label] * self.grid_size[0] * self.grid_size[1]).reshape(-1)
+
         if params is None:
             params = self.forward_parameters(input.shape)
 
