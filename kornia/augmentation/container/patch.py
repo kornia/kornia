@@ -338,12 +338,7 @@ class PatchSequential(ImageSequential):
         if label is not None and out_label is not None:
             if len(out_label.shape) == 1:
                 # Wierd the mypy error though it is as same as in the next block
-                _label = (
-                    torch.ones(
-                        in_shape[0] * in_shape[1], device=out_label.device, dtype=out_label.dtype
-                    )
-                    * -1
-                )
+                _label = torch.ones(in_shape[0] * in_shape[1], device=out_label.device, dtype=out_label.dtype) * -1
                 _label = label
             else:
                 _label = (
