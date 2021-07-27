@@ -216,8 +216,6 @@ def image_hist2d(
     if not isinstance(return_pdf, bool):
         raise TypeError(f"Return_pdf type is not a bool. Got {type(return_pdf)}.")
 
-    if not isinstance(kernel, str):
-        raise TypeError(f"Kernel type is not a str. Got {type(kernel)}.")
 
     device = image.device
 
