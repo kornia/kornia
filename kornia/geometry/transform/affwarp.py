@@ -585,7 +585,15 @@ def resize(
         # Now kernel size. Good results are for 3 sigma, but that is kind of slow. Pillow uses 1 sigma
         # https://github.com/python-pillow/Pillow/blob/master/src/libImaging/Resample.c#L206
         # But they do it in the 2 passes, which gives better results. Let's try 2 sigmas for now
-        ks = int(2.0 * 2 * sigmas[0] + 1), int(2.0 * 2 * sigmas[1] + 1)
+        ks = int(2.0 * 2 * sigmas[0]), int(2.0 * 2 * sigmas[1])
+
+        # Make sure it is odd
+        if (ks[0] % 2) == 0:
+            ks = ks[0] + 1, ks[1]
+
+        if (ks[1] % 2) == 0:
+            ks = ks[0], ks[1] + 1
+
         input = kornia.filters.gaussian_blur2d(input, ks, sigmas)
 
     output = torch.nn.functional.interpolate(input, size=size, mode=interpolation, align_corners=align_corners)
