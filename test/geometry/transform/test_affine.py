@@ -73,6 +73,10 @@ class TestResize:
         out = kornia.resize(inp, (5, 3), antialias=True)
         assert out.shape == (1, 3, 5, 3)
 
+        inp = torch.rand(1, 1, 20, 10, device=device, dtype=dtype)
+        out = kornia.resize(inp, (15, 8), antialias=True)
+        assert out.shape == (1, 1, 15, 8)
+
         # 2D
         inp = torch.rand(10, 8, device=device, dtype=dtype)
         out = kornia.resize(inp, (5, 3), antialias=True)
