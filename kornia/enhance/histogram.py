@@ -251,7 +251,7 @@ def image_hist2d(
 
     hist = torch.sum(kernel_values, dim=(-2, -1)).permute(1, 2, 0)
     if return_pdf:
-        normalization = torch.sum(hist, dim=-1).unsqueeze(0) + 1e-10
+        normalization = torch.sum(hist, dim=-1).unsqueeze(0) + eps
         pdf = hist / normalization
         return hist, pdf
     return hist, torch.zeros_like(hist, dtype=hist.dtype, device=device)
