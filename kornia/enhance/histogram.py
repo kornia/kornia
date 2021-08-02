@@ -172,7 +172,7 @@ def image_hist2d(
           :math:`(H, W)`, :math:`(C, H, W)` or :math:`(B, C, H, W)`.
         min: Lower end of the interval (inclusive).
         max: Upper end of the interval (inclusive). Ignored when
-        :attr:`centers` is specified.
+          :attr:`centers` is specified.
         n_bins: The number of histogram bins. Ignored when
         :attr:`centers` is specified.
         bandwidth: Smoothing factor. If not specified or equal to -1,
