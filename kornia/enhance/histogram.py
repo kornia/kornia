@@ -184,7 +184,7 @@ def image_histogram2d(
         return_pdf: If True, also return probability densities for
           each bin.
         kernel: kernel to perform kernel density estimation
-        (`triangular`, `gaussian`, `uniform`, `epanechnikov`).
+          ``(`triangular`, `gaussian`, `uniform`, `epanechnikov`)``.
 
     Returns:
         Computed histogram of shape :math:`(bins)`, :math:`(C, bins)`,
