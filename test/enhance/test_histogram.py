@@ -56,7 +56,7 @@ class TestImageHistogram2d:
         if kernel == "gaussian":
             bandwidth = 2 * 0.4 ** 2
         else:
-            bandwidth = -1.0
+            bandwidth = None
         hist, pdf = TestImageHistogram2d.fcn(input_x, 0.0, 255.0, 10, bandwidth=bandwidth, centers=input, kernel=kernel)
         ans = 10 * torch.ones_like(hist)
         assert_close(ans, hist)
@@ -68,7 +68,7 @@ class TestImageHistogram2d:
         if kernel == "gaussian":
             bandwidth = 2 * 0.4 ** 2
         else:
-            bandwidth = -1.0
+            bandwidth = None
         hist, pdf = TestImageHistogram2d.fcn(
             input_x, 0.0, 255.0, 10, bandwidth=bandwidth, centers=input, kernel=kernel, return_pdf=True
         )
