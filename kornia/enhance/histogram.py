@@ -199,7 +199,7 @@ def image_histogram2d(
     if centers is not None and not isinstance(centers, torch.Tensor):
         raise TypeError(f"Bins' centers type is not a torch.Tensor. Got {type(centers)}.")
 
-    if len(centers.shape) > 0 and centers.dim() != 1:
+    if centers is not None and len(centers.shape) > 0 and centers.dim() != 1:
         raise ValueError(f"Bins' centers must be a torch.Tensor of the shape (n_bins,). Got {centers.shape}.")
 
     if not isinstance(min, float):
