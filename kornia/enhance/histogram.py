@@ -237,7 +237,7 @@ def image_histogram2d(
     centers = centers.reshape(-1, 1, 1, 1, 1)
     u = torch.abs(image.unsqueeze(0) - centers) / bandwidth
     if kernel == "triangular":
-        mask = (u <= 1).float()
+        mask = (u <= 1).to(u.dtype)
         kernel_values = (1 - u) * mask
     elif kernel == "gaussian":
         kernel_values = torch.exp(-0.5 * u ** 2)
