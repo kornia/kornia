@@ -159,10 +159,10 @@ def image_histogram2d(
     max: float = 255.0,
     n_bins: int = 256,
     bandwidth: float = -1.0,
-    centers: torch.Tensor = torch.tensor([]),
+    centers: Optional[torch.Tensor] = None,
     return_pdf: bool = False,
     kernel: str = "triangular",
-    eps: float = 1e-10
+    eps: float = 1e-10,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Estimate the histogram of the input image(s).
 
@@ -177,21 +177,21 @@ def image_histogram2d(
         n_bins: The number of histogram bins. Ignored when
           :attr:`centers` is specified.
         bandwidth: Smoothing factor. If not specified or equal to -1,
-        bandwidth = (max - min) / n_bins.
+          :math:`(bandwidth = (max - min) / n_bins)`.
         centers: Centers of the bins with shape :math:`(n_bins,)`.
-        If not specified or empty, it is calculated as centers of
-        equal width bins of [min, max] range.
+          If not specified or empty, it is calculated as centers of
+          equal width bins of [min, max] range.
         return_pdf: If True, also return probability densities for
-        each bin.
+          each bin.
         kernel: kernel to perform kernel density estimation
-        (`triangular`, `gaussian`, `uniform`, `epanechnikov`).
+          ``(`triangular`, `gaussian`, `uniform`, `epanechnikov`)``.
 
     Returns:
         Computed histogram of shape :math:`(bins)`, :math:`(C, bins)`,
-        :math:`(B, C, bins)`.
+          :math:`(B, C, bins)`.
         Computed probability densities of shape :math:`(bins)`, :math:`(C, bins)`,
-        :math:`(B, C, bins)`, if return_pdf is ``True``. Tensor of zeros with shape
-        of the histogram otherwise.
+          :math:`(B, C, bins)`, if return_pdf is ``True``. Tensor of zeros with shape
+          of the histogram otherwise.
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input image type is not a torch.Tensor. Got {type(image)}.")
@@ -199,7 +199,7 @@ def image_histogram2d(
     if centers is not None and not isinstance(centers, torch.Tensor):
         raise TypeError(f"Bins' centers type is not a torch.Tensor. Got {type(centers)}.")
 
-    if centers.numel() > 0 and centers.dim() != 1:
+    if len(centers.shape) > 0 and centers.dim() != 1:
         raise ValueError(f"Bins' centers must be a torch.Tensor of the shape (n_bins,). Got {centers.shape}.")
 
     if not isinstance(min, float):
@@ -233,20 +233,16 @@ def image_histogram2d(
     if bandwidth == -1.0:
         bandwidth = (max - min) / n_bins
     if centers.numel() == 0:
-        centers = min + bandwidth * (torch.arange(n_bins, device=device).float() + 0.5)
+        centers = min + bandwidth * (torch.arange(n_bins, device=image.device, dtype=image.dtype).float() + 0.5)
     centers = centers.reshape(-1, 1, 1, 1, 1)
-    # u is a an argument of kernel in
-    # Parzen window estimation (or kernel density estimation).
-    # To get probability of x given data {x_i},
-    # compute mean of kernel values at points (x - x_i) / bandwidth.
-    u = abs(image.unsqueeze(0) - centers) / bandwidth
+    u = torch.abs(image.unsqueeze(0) - centers) / bandwidth
     if kernel == "triangular":
-        mask = (u <= 1).float()
+        mask = (u <= 1).to(u.dtype)
         kernel_values = (1 - u) * mask
     elif kernel == "gaussian":
         kernel_values = torch.exp(-0.5 * u ** 2)
     elif kernel == "uniform":
-        mask = (u <= 1).float()
+        mask = (u <= 1).to(u.dtype)
         kernel_values = torch.ones_like(u, dtype=u.dtype, device=u.device) * mask
     elif kernel == "epanechnikov":
         mask = (u <= 1).to(u.dtype)
