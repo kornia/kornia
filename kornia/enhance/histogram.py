@@ -191,7 +191,7 @@ def image_histogram2d(
           :math:`(B, C, bins)`.
         Computed probability densities of shape :math:`(bins)`, :math:`(C, bins)`,
           :math:`(B, C, bins)`, if return_pdf is ``True``. Tensor of zeros with shape
-        of the histogram otherwise.
+          of the histogram otherwise.
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input image type is not a torch.Tensor. Got {type(image)}.")
