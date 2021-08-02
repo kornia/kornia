@@ -3,7 +3,7 @@ from typing import Tuple
 
 import torch
 
-__all__ = ["histogram", "histogram2d", "image_hist2d"]
+__all__ = ["histogram", "histogram2d", "image_histogram2d"]
 
 
 def marginal_pdf(
