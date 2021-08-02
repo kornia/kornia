@@ -169,7 +169,7 @@ def image_hist2d(
 
     Args:
         image: Input tensor to compute the histogram with shape
-        :math:`(H, W)`, :math:`(C, H, W)` or :math:`(B, C, H, W)`.
+          :math:`(H, W)`, :math:`(C, H, W)` or :math:`(B, C, H, W)`.
         min: Lower end of the interval (inclusive).
         max: Upper end of the interval (inclusive). Ignored when
         :attr:`centers` is specified.
