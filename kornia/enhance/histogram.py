@@ -188,7 +188,7 @@ def image_histogram2d(
 
     Returns:
         Computed histogram of shape :math:`(bins)`, :math:`(C, bins)`,
-        :math:`(B, C, bins)`.
+          :math:`(B, C, bins)`.
         Computed probability densities of shape :math:`(bins)`, :math:`(C, bins)`,
         :math:`(B, C, bins)`, if return_pdf is ``True``. Tensor of zeros with shape
         of the histogram otherwise.
