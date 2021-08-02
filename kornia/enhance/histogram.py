@@ -254,5 +254,16 @@ def image_histogram2d(
     if return_pdf:
         normalization = torch.sum(hist, dim=-1).unsqueeze(0) + eps
         pdf = hist / normalization
+        if image.dim() == 2:
+            hist = hist.squeeze()
+            pdf = pdf.squeeze()
+        elif image.dim() == 3:
+            hist = hist.squeeze(0)
+            pdf = pdf.squeeze(0)
         return hist, pdf
+
+    if image.dim() == 2:
+        hist = hist.squeeze()
+    elif image.dim() == 3:
+        hist = hist.squeeze(0)
     return hist, torch.zeros_like(hist, dtype=hist.dtype, device=device)
