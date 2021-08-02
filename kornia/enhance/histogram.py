@@ -159,7 +159,7 @@ def image_histogram2d(
     max: float = 255.0,
     n_bins: int = 256,
     bandwidth: float = -1.0,
-    centers: torch.Tensor = torch.tensor([]),
+    centers: Optional[torch.Tensor] = None,
     return_pdf: bool = False,
     kernel: str = "triangular",
     eps: float = 1e-10,
