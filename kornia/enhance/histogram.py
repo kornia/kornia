@@ -162,7 +162,7 @@ def image_hist2d(
     centers: torch.Tensor = torch.tensor([]),
     return_pdf: bool = False,
     kernel: str = "triangular",
-):
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """Estimate the histogram of the input image(s).
 
     The calculation uses triangular kernel density estimation.
