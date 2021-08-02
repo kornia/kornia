@@ -1,5 +1,5 @@
 import math
-from typing import Tuple
+from typing import Tuple, Optional
 
 import torch
 
@@ -158,7 +158,7 @@ def image_histogram2d(
     min: float = 0.0,
     max: float = 255.0,
     n_bins: int = 256,
-    bandwidth: float = -1.0,
+    bandwidth: Optional[float] = None,
     centers: Optional[torch.Tensor] = None,
     return_pdf: bool = False,
     kernel: str = "triangular",
@@ -193,7 +193,7 @@ def image_histogram2d(
           :math:`(B, C, bins)`, if return_pdf is ``True``. Tensor of zeros with shape
           of the histogram otherwise.
     """
-    if not isinstance(image, torch.Tensor):
+    if image is not None and not isinstance(image, torch.Tensor):
         raise TypeError(f"Input image type is not a torch.Tensor. Got {type(image)}.")
 
     if centers is not None and not isinstance(centers, torch.Tensor):
@@ -211,7 +211,7 @@ def image_histogram2d(
     if not isinstance(n_bins, int):
         raise TypeError(f"Type of number of bins is not an int. Got {type(n_bins)}.")
 
-    if bandwidth != -1 and not isinstance(bandwidth, float):
+    if bandwidth is not None and not isinstance(bandwidth, float):
         raise TypeError(f"Bandwidth type is not a float. Got {type(bandwidth)}.")
 
     if not isinstance(return_pdf, bool):
@@ -230,9 +230,9 @@ def image_histogram2d(
     else:
         raise ValueError(f"Input values must be a tensor of the shape " f"BxCxHxW, CxHxW or HxW. Got {image.shape}.")
 
-    if bandwidth == -1.0:
+    if bandwidth is None:
         bandwidth = (max - min) / n_bins
-    if centers.numel() == 0:
+    if centers is None:
         centers = min + bandwidth * (torch.arange(n_bins, device=image.device, dtype=image.dtype).float() + 0.5)
     centers = centers.reshape(-1, 1, 1, 1, 1)
     u = torch.abs(image.unsqueeze(0) - centers) / bandwidth
