@@ -244,7 +244,7 @@ def image_hist2d(
         mask = (u <= 1).float()
         kernel_values = torch.ones_like(u, dtype=u.dtype, device=u.device) * mask
     elif kernel == "epanechnikov":
-        mask = (u <= 1).float()
+        mask = (u <= 1).to(u.dtype)
         kernel_values = (1 - u ** 2) * mask
     else:
         raise ValueError(f"Kernel must be 'triangular', 'gaussian', " f"'uniform' or 'epanechnikov'. Got {kernel}.")
