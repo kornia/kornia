@@ -180,7 +180,7 @@ def image_histogram2d(
           :math:`(bandwidth = (max - min) / n_bins)`.
         centers: Centers of the bins with shape :math:`(n_bins,)`.
           If not specified or empty, it is calculated as centers of
-        equal width bins of [min, max] range.
+          equal width bins of [min, max] range.
         return_pdf: If True, also return probability densities for
         each bin.
         kernel: kernel to perform kernel density estimation
