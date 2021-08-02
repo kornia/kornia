@@ -31,7 +31,7 @@ def connected_components(input: torch.Tensor, num_iterations: int = 100) -> torc
         raise ValueError(f"Input image shape must be Bx1xHxW. Got: {input.shape}")
 
     # precomput a mask with the valid values
-    mask = (input == 1)
+    mask = input == 1
 
     # allocate the output tensors for labels
     B, _, H, W = input.shape

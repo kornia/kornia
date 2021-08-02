@@ -17,7 +17,7 @@ class TestConnectedComponents:
         img = torch.rand(1, 1, 3, 4, device=device, dtype=dtype)
 
         with pytest.raises(TypeError):
-            assert kornia.contrib.connected_components(img, 1.)
+            assert kornia.contrib.connected_components(img, 1.0)
 
         with pytest.raises(TypeError):
             assert kornia.contrib.connected_components(img, 0)
@@ -31,23 +31,39 @@ class TestConnectedComponents:
             assert kornia.contrib.connected_components(img, 2)
 
     def test_value(self, device, dtype):
-        img = torch.tensor([[[
-            [0., 0., 0., 0., 0., 0.],
-            [0., 1., 1., 0., 0., 1.],
-            [0., 1., 1., 0., 0., 0.],
-            [0., 0., 0., 0., 0., 0.],
-            [0., 0., 0., 1., 1., 0.],
-            [0., 0., 0., 1., 1., 0.]
-        ]]], device=device, dtype=dtype)
+        img = torch.tensor(
+            [
+                [
+                    [
+                        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 1.0, 1.0, 0.0, 0.0, 1.0],
+                        [0.0, 1.0, 1.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 1.0, 1.0, 0.0],
+                        [0.0, 0.0, 0.0, 1.0, 1.0, 0.0],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
-        expected = torch.tensor([[[
-            [0., 0., 0., 0., 0., 0.],
-            [0., 14., 14., 0., 0., 11.],
-            [0., 14., 14., 0., 0., 0.],
-            [0., 0., 0., 0., 0., 0.],
-            [0., 0., 0., 34., 34., 0.],
-            [0., 0., 0., 34., 34., 0.]
-        ]]], device=device, dtype=dtype)
+        expected = torch.tensor(
+            [
+                [
+                    [
+                        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 14.0, 14.0, 0.0, 0.0, 11.0],
+                        [0.0, 14.0, 14.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 34.0, 34.0, 0.0],
+                        [0.0, 0.0, 0.0, 34.0, 34.0, 0.0],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
         out = kornia.contrib.connected_components(img, num_iterations=10)
         assert_close(out, expected)
