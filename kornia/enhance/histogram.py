@@ -242,7 +242,7 @@ def image_histogram2d(
     elif kernel == "gaussian":
         kernel_values = torch.exp(-0.5 * u ** 2)
     elif kernel == "uniform":
-        mask = (u <= 1).float()
+        mask = (u <= 1).to(u.dtype)
         kernel_values = torch.ones_like(u, dtype=u.dtype, device=u.device) * mask
     elif kernel == "epanechnikov":
         mask = (u <= 1).to(u.dtype)
