@@ -16,7 +16,6 @@ class TestImageHist2d:
         hist, pdf = TestImageHist2d.fcn(input, 0.0, 1.0, 256, kernel=kernel)
         assert hist.shape == (1, 1, 256) and pdf.shape == (1, 1, 256)
 
-    @pytest.mark.parametrize("device", [("cuda"), ("cpu")])
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_shape_channels(self, device, dtype, kernel):
         input = torch.ones(3, 32, 32, device=device, dtype=dtype)
