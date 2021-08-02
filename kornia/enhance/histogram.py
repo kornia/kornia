@@ -179,7 +179,7 @@ def image_histogram2d(
         bandwidth: Smoothing factor. If not specified or equal to -1,
           :math:`(bandwidth = (max - min) / n_bins)`.
         centers: Centers of the bins with shape :math:`(n_bins,)`.
-        If not specified or empty, it is calculated as centers of
+          If not specified or empty, it is calculated as centers of
         equal width bins of [min, max] range.
         return_pdf: If True, also return probability densities for
         each bin.
