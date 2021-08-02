@@ -182,7 +182,7 @@ def image_histogram2d(
           If not specified or empty, it is calculated as centers of
           equal width bins of [min, max] range.
         return_pdf: If True, also return probability densities for
-        each bin.
+          each bin.
         kernel: kernel to perform kernel density estimation
         (`triangular`, `gaussian`, `uniform`, `epanechnikov`).
 
