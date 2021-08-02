@@ -162,7 +162,7 @@ def image_histogram2d(
     centers: torch.Tensor = torch.tensor([]),
     return_pdf: bool = False,
     kernel: str = "triangular",
-    eps: float = 1e-10
+    eps: float = 1e-10,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Estimate the histogram of the input image(s).
 
