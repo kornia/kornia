@@ -233,7 +233,7 @@ def image_histogram2d(
     if bandwidth == -1.0:
         bandwidth = (max - min) / n_bins
     if centers.numel() == 0:
-        centers = min + bandwidth * (torch.arange(n_bins, device=device).float() + 0.5)
+        centers = min + bandwidth * (torch.arange(n_bins, device=image.device, dtype=image.dtype).float() + 0.5)
     centers = centers.reshape(-1, 1, 1, 1, 1)
     u = abs(image.unsqueeze(0) - centers) / bandwidth
     if kernel == "triangular":
