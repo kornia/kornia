@@ -5,7 +5,7 @@ opencv-python
 matplotlib
 # sphinx
 sphinx>=4.0
-sphinx_rtd_theme>0.5
+https://github.com/kornia/sphinx_rtd_theme/archive/0.5.2-analytics.zip
 sphinxcontrib-bibtex
 sphinx-autodoc-typehints>=1.0
 sphinx-copybutton>=0.3
