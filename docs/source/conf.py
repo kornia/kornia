@@ -54,8 +54,8 @@ docstring_default_arg_substitution = 'Default: '
 bibtex_bibfiles = ['references.bib']
 napoleon_use_ivar = True
 
-googleanalytics_id = 'G-3LJY4GJLPR'
-googleanalytics_enabled = True
+analytics_id = 'G-3LJY4GJLPR'
+analytics_enabled = True
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
