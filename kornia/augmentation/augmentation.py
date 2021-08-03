@@ -2212,8 +2212,8 @@ class RandomThinPlateSpline(GeometricAugmentationBase2D):
 
     def generate_parameters(self, shape: torch.Size) -> Dict[str, torch.Tensor]:
         B, _, H, W = shape
-        src = torch.tensor([[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, -1.0], [0.0, 0.0]]]).repeat(B, 1, 1)  # Bx5x2
-        dst = src + self.dist.rsample((B, 5, 2))
+        src = torch.tensor([[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]]).repeat(B, 1, 1)  # Bx5x2
+        dst = src + self.dist.rsample(src.shape)
         return dict(src=src, dst=dst)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
@@ -2224,6 +2224,7 @@ class RandomThinPlateSpline(GeometricAugmentationBase2D):
     ) -> torch.Tensor:
         src = params['src'].to(input)
         dst = params['dst'].to(input)
+        # NOTE: warp_image_tps need to use inverse parameters
         kernel, affine = get_tps_transform(dst, src)
         return warp_image_tps(input, src, kernel, affine, self.align_corners)
 
