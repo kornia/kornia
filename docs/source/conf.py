@@ -54,9 +54,6 @@ docstring_default_arg_substitution = 'Default: '
 bibtex_bibfiles = ['references.bib']
 napoleon_use_ivar = True
 
-analytics_id = 'G-3LJY4GJLPR'
-analytics_enabled = True
-
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
 
@@ -123,7 +120,12 @@ html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 # further.  For a list of options available for each theme, see the
 # documentation.
 #
-html_theme_options = {'collapse_navigation': False, 'display_version': True, 'logo_only': True}
+html_theme_options = {
+    'analytics_id': 'G-3LJY4GJLPR',
+    'collapse_navigation': False,
+    'display_version': True,
+    'logo_only': True
+}
 
 html_logo = '_static/img/kornia_logo.svg'
 html_favicon = '_static/img/kornia_logo_mini.png'
