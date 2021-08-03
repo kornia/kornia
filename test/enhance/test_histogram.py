@@ -42,7 +42,7 @@ class TestImageHistogram2d:
     def test_jit(self, device, dtype, kernel):
         input = torch.linspace(0, 255, 10, device=device, dtype=dtype)
         input_x, input_y = torch.meshgrid(input, input)
-        inputs = (input_x, 0.0, 255.0, 10, None, None, True, kernel)
+        inputs = (input_x, 0.0, 255.0, 10, None, None, False, kernel)
 
         op = TestImageHistogram2d.fcn
         op_script = torch.jit.script(op)
