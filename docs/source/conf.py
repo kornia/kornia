@@ -54,8 +54,7 @@ docstring_default_arg_substitution = 'Default: '
 bibtex_bibfiles = ['references.bib']
 napoleon_use_ivar = True
 
-# TODO: review this number
-googleanalytics_id = 'UA-90545585-1'
+googleanalytics_id = 'G-3LJY4GJLPR'
 googleanalytics_enabled = True
 
 # Add any paths that contain templates here, relative to this directory.
