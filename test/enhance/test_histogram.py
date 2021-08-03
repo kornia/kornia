@@ -35,14 +35,14 @@ class TestImageHistogram2d:
         centers = torch.linspace(0, 255, 8, device=device, dtype=dtype)
         centers = utils.tensor_to_gradcheck_var(centers)
         assert gradcheck(
-            TestImageHistogram2d.fcn, (input, 0.0, 255.0, 256, -1.0, centers, True, kernel), raise_exception=True
+            TestImageHistogram2d.fcn, (input, 0.0, 255.0, 256, None, centers, True, kernel), raise_exception=True
         )
 
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_jit(self, device, dtype, kernel):
         input = torch.linspace(0, 255, 10, device=device, dtype=dtype)
         input_x, input_y = torch.meshgrid(input, input)
-        inputs = (input_x, 0.0, 255.0, 10, -1.0, torch.tensor([]), True, kernel)
+        inputs = (input_x, 0.0, 255.0, 10, None, None, True, kernel)
 
         op = TestImageHistogram2d.fcn
         op_script = torch.jit.script(op)
