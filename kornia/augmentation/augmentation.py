@@ -2160,9 +2160,9 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
     def generate_parameters(self, shape: torch.Size) -> Dict[str, torch.Tensor]:
         B, _, H, W = shape
         if self.same_on_batch:
-            noise = torch.rand(1, 2, H, W).repeat(B, 1, 1, 1)
+            noise = torch.rand(1, 2, H, W, device=self.device, dtype=self.dtype).repeat(B, 1, 1, 1)
         else:
-            noise = torch.rand(B, 2, H, W)
+            noise = torch.rand(B, 2, H, W, device=self.device, dtype=self.dtype)
         return dict(noise=noise * 2 - 1)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
