@@ -2763,6 +2763,12 @@ class TestRandomElasticTransform:
         aug = RandomElasticTransform(p=1.0)
         assert img.shape == aug(img).shape
 
+    def test_same_on_batch(self, device, dtype):
+        f = RandomElasticTransform(p=1.0, same_on_batch=True)
+        input = torch.eye(3, device=device, dtype=dtype).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 1, 1, 1)
+        res = f(input)
+        assert (res[0] == res[1]).all()
+
 
 class TestRandomThinPlateSpline:
     def test_smoke(self, device, dtype):
