@@ -124,7 +124,7 @@ html_theme_options = {
     'analytics_id': 'G-3LJY4GJLPR',
     'collapse_navigation': False,
     'display_version': True,
-    'logo_only': True
+    'logo_only': True,
 }
 
 html_logo = '_static/img/kornia_logo.svg'
