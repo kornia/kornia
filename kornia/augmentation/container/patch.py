@@ -338,19 +338,14 @@ class PatchSequential(ImageSequential):
         if label is not None and out_label is not None:
             if len(out_label.shape) == 1:
                 # Wierd the mypy error though it is as same as in the next block
-                _label = (
-                    torch.ones(  # type: ignore
-                        in_shape[0] * in_shape[1], device=out_label.device, out_label=label.dtype
-                    )
-                    * -1
-                )
+                _label = torch.ones(in_shape[0] * in_shape[1], device=out_label.device, dtype=out_label.dtype) * -1
                 _label = label
             else:
                 _label = (
                     torch.ones(in_shape[0], *out_label.shape[1:], device=out_label.device, dtype=out_label.dtype) * -1
                 )
                 _label[:, 0] = label
-            label[params.indices] = out_label
+            _label[params.indices] = out_label
         elif label is None and out_label is not None:
             if len(out_label.shape) == 1:
                 _label = torch.ones(in_shape[0] * in_shape[1], device=out_label.device, dtype=out_label.dtype) * -1
@@ -360,7 +355,7 @@ class PatchSequential(ImageSequential):
                 )
             _label[params.indices] = out_label
 
-        return input, label, PatchParamItem(params.indices, param=out_param)
+        return input, _label, PatchParamItem(params.indices, param=out_param)
 
     def forward_by_params(
         self, input: torch.Tensor, label: Optional[torch.Tensor], params: List[PatchParamItem]
@@ -393,10 +388,7 @@ class PatchSequential(ImageSequential):
 
         pad = self.compute_padding(input, self.padding)
         input = self.extract_patches(input, self.grid_size, pad)
-        if label is not None:
-            assert label.dim() == 1
-            # repeat label as the same number as input patches.
-            label = torch.stack([label] * self.grid_size[0] * self.grid_size[1]).reshape(-1)
+
         if params is None:
             params = self.forward_parameters(input.shape)
 
