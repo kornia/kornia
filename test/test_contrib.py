@@ -5,6 +5,90 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.testing import assert_close
+from packaging import version
+
+
+class TestConnectedComponents:
+    def test_smoke(self, device, dtype):
+        img = torch.rand(1, 1, 3, 4, device=device, dtype=dtype)
+        out = kornia.contrib.connected_components(img, num_iterations=10)
+        assert out.shape == (1, 1, 3, 4)
+
+    def test_exception(self, device, dtype):
+        img = torch.rand(1, 1, 3, 4, device=device, dtype=dtype)
+
+        with pytest.raises(TypeError):
+            assert kornia.contrib.connected_components(img, 1.0)
+
+        with pytest.raises(TypeError):
+            assert kornia.contrib.connected_components(img, 0)
+
+        with pytest.raises(ValueError):
+            img = torch.rand(1, 3, 4, device=device, dtype=dtype)
+            assert kornia.contrib.connected_components(img, 1)
+
+        with pytest.raises(ValueError):
+            img = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
+            assert kornia.contrib.connected_components(img, 2)
+
+    def test_value(self, device, dtype):
+        img = torch.tensor(
+            [
+                [
+                    [
+                        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 1.0, 1.0, 0.0, 0.0, 1.0],
+                        [0.0, 1.0, 1.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 1.0, 1.0, 0.0],
+                        [0.0, 0.0, 0.0, 1.0, 1.0, 0.0],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        expected = torch.tensor(
+            [
+                [
+                    [
+                        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 14.0, 14.0, 0.0, 0.0, 11.0],
+                        [0.0, 14.0, 14.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 34.0, 34.0, 0.0],
+                        [0.0, 0.0, 0.0, 34.0, 34.0, 0.0],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        out = kornia.contrib.connected_components(img, num_iterations=10)
+        assert_close(out, expected)
+
+    @pytest.mark.parametrize("shape", [(1, 1, 2, 3), (2, 1, 4, 7)])
+    def test_cardinality(self, device, dtype, shape):
+        img = torch.rand(shape, device=device, dtype=dtype)
+        out = kornia.contrib.connected_components(img, num_iterations=10)
+        assert out.shape == shape
+
+    @pytest.mark.skipif(
+        version.parse(torch.__version__) < version.parse("1.9"), reason="Tuple cannot be used with PyTorch < v1.9"
+    )
+    def test_gradcheck(self, device, dtype):
+        B, C, H, W = 2, 1, 4, 4
+        img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
+        assert gradcheck(kornia.contrib.connected_components, (img,), raise_exception=True)
+
+    def test_jit(self, device, dtype):
+        B, C, H, W = 2, 1, 4, 4
+        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        op = kornia.contrib.connected_components
+        op_jit = torch.jit.script(op)
+        assert_close(op(img), op_jit(img))
 
 
 class TestMaxBlurPool2d:
