@@ -69,10 +69,10 @@ class AugmentationSequential(ImageSequential):
         >>> aug_list = AugmentationSequential(
         ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
-        ... data_keys=["input", "mask", "bbox", "keypoints"],
-        ... return_transform=False,
-        ... same_on_batch=False,
-        ... random_apply=10,
+        ...     data_keys=["input", "mask", "bbox", "keypoints"],
+        ...     return_transform=False,
+        ...     same_on_batch=False,
+        ...     random_apply=10,
         ... )
         >>> out = aug_list(input, input, bbox, points)
         >>> [o.shape for o in out]

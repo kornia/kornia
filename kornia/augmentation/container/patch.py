@@ -80,10 +80,10 @@ class PatchSequential(ImageSequential):
         ...         K.RandomSolarize(0.1, 0.1, p=0.5),
         ...     ),
         ...     K.RandomSolarize(0.1, 0.1, p=0.1),
-        ... grid_size=(2,2),
-        ... patchwise_apply=True,
-        ... same_on_batch=True,
-        ... random_apply=False,
+        ...     grid_size=(2,2),
+        ...     patchwise_apply=True,
+        ...     same_on_batch=True,
+        ...     random_apply=False,
         ... )
         >>> out = seq(input)
         >>> out.shape
