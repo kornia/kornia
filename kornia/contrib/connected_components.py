@@ -4,6 +4,8 @@ import torch.nn.functional as F
 
 def connected_components(input: torch.Tensor, num_iterations: int = 100) -> torch.Tensor:
     r"""Computes the Connected-component labelling (CCL) algorithm.
+    
+    .. image:: https://github.com/kornia/data/raw/main/cells_segmented.png
 
     The implementation is an adaptation of the following repository:
 
@@ -20,6 +22,9 @@ def connected_components(input: torch.Tensor, num_iterations: int = 100) -> torc
     Example:
         >>> img = torch.rand(2, 1, 4, 5)
         >>> img_labels = connected_components(img, num_iterations=100)
+
+    .. note:
+        This is an experimental API subject to changes and optimization improvements.
     """
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input input type is not a torch.Tensor. Got: {type(input)}")
