@@ -18,7 +18,7 @@ from setuptools import find_packages, setup
 
 # NOTE(maintainers): modify this variable each time you do a release
 
-version = '0.5.7'  # this a tag for the current development version
+version = '0.5.8'  # this a tag for the current development version
 
 
 # NOTE(maintainers): update this dictionary each time you do a release
@@ -27,6 +27,7 @@ version = '0.5.7'  # this a tag for the current development version
 # Once a pytorch version (in the future) breaks a kornia version, we could just
 # add a maximal version.
 kornia_pt_dependencies = {
+    '0.5.8': '>=1.6.0',
     '0.5.7': '>=1.6.0',
     '0.5.6': '>=1.6.0',
     '0.5.5': '>=1.6.0',
