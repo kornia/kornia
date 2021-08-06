@@ -5,6 +5,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.testing import assert_close
+from packaging import version
 
 
 class TestConnectedComponents:
@@ -74,6 +75,9 @@ class TestConnectedComponents:
         out = kornia.contrib.connected_components(img, num_iterations=10)
         assert out.shape == shape
 
+    @pytest.mark.skipif(
+        version.parse(torch.__version__) < version.parse("1.9"), reason="Tuple cannot be used with PyTorch < v1.9"
+    )
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 1, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
