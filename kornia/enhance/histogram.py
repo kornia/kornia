@@ -1,8 +1,9 @@
-from typing import Tuple
+import math
+from typing import Optional, Tuple
 
 import torch
 
-__all__ = ["histogram", "histogram2d"]
+__all__ = ["histogram", "histogram2d", "image_histogram2d"]
 
 
 def marginal_pdf(
@@ -49,7 +50,7 @@ def marginal_pdf(
     normalization = torch.sum(pdf, dim=1).unsqueeze(1) + epsilon
     pdf = pdf / normalization
 
-    return (pdf, kernel_values)
+    return pdf, kernel_values
 
 
 def joint_pdf(kernel_values1: torch.Tensor, kernel_values2: torch.Tensor, epsilon: float = 1e-10) -> torch.Tensor:
@@ -150,3 +151,119 @@ def histogram2d(
     pdf = joint_pdf(kernel_values1, kernel_values2)
 
     return pdf
+
+
+def image_histogram2d(
+    image: torch.Tensor,
+    min: float = 0.0,
+    max: float = 255.0,
+    n_bins: int = 256,
+    bandwidth: Optional[float] = None,
+    centers: Optional[torch.Tensor] = None,
+    return_pdf: bool = False,
+    kernel: str = "triangular",
+    eps: float = 1e-10,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Estimate the histogram of the input image(s).
+
+    The calculation uses triangular kernel density estimation.
+
+    Args:
+        image: Input tensor to compute the histogram with shape
+          :math:`(H, W)`, :math:`(C, H, W)` or :math:`(B, C, H, W)`.
+        min: Lower end of the interval (inclusive).
+        max: Upper end of the interval (inclusive). Ignored when
+          :attr:`centers` is specified.
+        n_bins: The number of histogram bins. Ignored when
+          :attr:`centers` is specified.
+        bandwidth: Smoothing factor. If not specified or equal to -1,
+          :math:`(bandwidth = (max - min) / n_bins)`.
+        centers: Centers of the bins with shape :math:`(n_bins,)`.
+          If not specified or empty, it is calculated as centers of
+          equal width bins of [min, max] range.
+        return_pdf: If True, also return probability densities for
+          each bin.
+        kernel: kernel to perform kernel density estimation
+          ``(`triangular`, `gaussian`, `uniform`, `epanechnikov`)``.
+
+    Returns:
+        Computed histogram of shape :math:`(bins)`, :math:`(C, bins)`,
+          :math:`(B, C, bins)`.
+        Computed probability densities of shape :math:`(bins)`, :math:`(C, bins)`,
+          :math:`(B, C, bins)`, if return_pdf is ``True``. Tensor of zeros with shape
+          of the histogram otherwise.
+    """
+    if image is not None and not isinstance(image, torch.Tensor):
+        raise TypeError(f"Input image type is not a torch.Tensor. Got {type(image)}.")
+
+    if centers is not None and not isinstance(centers, torch.Tensor):
+        raise TypeError(f"Bins' centers type is not a torch.Tensor. Got {type(centers)}.")
+
+    if centers is not None and len(centers.shape) > 0 and centers.dim() != 1:
+        raise ValueError(f"Bins' centers must be a torch.Tensor of the shape (n_bins,). Got {centers.shape}.")
+
+    if not isinstance(min, float):
+        raise TypeError(f'Type of lower end of the range is not a float. Got {type(min)}.')
+
+    if not isinstance(max, float):
+        raise TypeError(f"Type of upper end of the range is not a float. Got {type(min)}.")
+
+    if not isinstance(n_bins, int):
+        raise TypeError(f"Type of number of bins is not an int. Got {type(n_bins)}.")
+
+    if bandwidth is not None and not isinstance(bandwidth, float):
+        raise TypeError(f"Bandwidth type is not a float. Got {type(bandwidth)}.")
+
+    if not isinstance(return_pdf, bool):
+        raise TypeError(f"Return_pdf type is not a bool. Got {type(return_pdf)}.")
+
+    device = image.device
+
+    if image.dim() == 4:
+        batch_size, n_channels, height, width = image.size()
+    elif image.dim() == 3:
+        batch_size = 1
+        n_channels, height, width = image.size()
+    elif image.dim() == 2:
+        height, width = image.size()
+        batch_size, n_channels = 1, 1
+    else:
+        raise ValueError(f"Input values must be a tensor of the shape " f"BxCxHxW, CxHxW or HxW. Got {image.shape}.")
+
+    if bandwidth is None:
+        bandwidth = (max - min) / n_bins
+    if centers is None:
+        centers = min + bandwidth * (torch.arange(n_bins, device=image.device, dtype=image.dtype).float() + 0.5)
+    centers = centers.reshape(-1, 1, 1, 1, 1)
+    u = torch.abs(image.unsqueeze(0) - centers) / bandwidth
+    if kernel == "triangular":
+        mask = (u <= 1).to(u.dtype)
+        kernel_values = (1 - u) * mask
+    elif kernel == "gaussian":
+        kernel_values = torch.exp(-0.5 * u ** 2)
+    elif kernel == "uniform":
+        mask = (u <= 1).to(u.dtype)
+        kernel_values = torch.ones_like(u, dtype=u.dtype, device=u.device) * mask
+    elif kernel == "epanechnikov":
+        mask = (u <= 1).to(u.dtype)
+        kernel_values = (1 - u ** 2) * mask
+    else:
+        raise ValueError(f"Kernel must be 'triangular', 'gaussian', " f"'uniform' or 'epanechnikov'. Got {kernel}.")
+
+    hist = torch.sum(kernel_values, dim=(-2, -1)).permute(1, 2, 0)
+    if return_pdf:
+        normalization = torch.sum(hist, dim=-1).unsqueeze(0) + eps
+        pdf = hist / normalization
+        if image.dim() == 2:
+            hist = hist.squeeze()
+            pdf = pdf.squeeze()
+        elif image.dim() == 3:
+            hist = hist.squeeze(0)
+            pdf = pdf.squeeze(0)
+        return hist, pdf
+
+    if image.dim() == 2:
+        hist = hist.squeeze()
+    elif image.dim() == 3:
+        hist = hist.squeeze(0)
+    return hist, torch.zeros_like(hist, dtype=hist.dtype, device=device)
