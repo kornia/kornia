@@ -1,3 +1,4 @@
+from packaging import version
 import pytest
 import torch
 from torch.autograd import gradcheck
@@ -37,7 +38,8 @@ class TestImageHistogram2d:
         assert gradcheck(
             TestImageHistogram2d.fcn, (input, 0.0, 255.0, 256, None, centers, True, kernel), raise_exception=True
         )
-
+    @pytest.mark.skipif(version.parse(torch.__version__) < version.parse("1.9"),
+                                    reason="Tuple cannot be jitted with PyTorch < v1.9")
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_jit(self, device, dtype, kernel):
         input = torch.linspace(0, 255, 10, device=device, dtype=dtype)
