@@ -5,6 +5,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.5.8] - 2021-08-06
+
+### Added
+- Add the connected components labeling algorithm ([#1184](https://github.com/kornia/kornia/pull/1184))
+
+### Fixed
+- Partial fix for horizontal and vertical flips ([#1166](https://github.com/kornia/kornia/pull/1166))
+- Fix even kernel and add test ([#1183](https://github.com/kornia/kornia/pull/1183))
+- Fix wrong source points for RandomThinPlateSpline ([#1187](https://github.com/kornia/kornia/pull/1187))
+- Fix RandomElasticTransform ignores same_on_batch ([#1189](https://github.com/kornia/kornia/pull/1189))
+- Fixed bugs in patchsequential. Remove fill_diagonal operation for better ONNX support ([#1178](https://github.com/kornia/kornia/pull/1178))
+
+### Changed
+- Differentiable image histogram using kernel density estimation ([#1172](https://github.com/kornia/kornia/pull/1172))
+
+
 ## [0.5.7] - 2021-07-27
 
 ### Added
