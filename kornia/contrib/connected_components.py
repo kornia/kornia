@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 def connected_components(input: torch.Tensor, num_iterations: int = 100) -> torch.Tensor:
     r"""Computes the Connected-component labelling (CCL) algorithm.
-    
+
     .. image:: https://github.com/kornia/data/raw/main/cells_segmented.png
 
     The implementation is an adaptation of the following repository:
