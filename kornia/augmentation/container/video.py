@@ -44,9 +44,9 @@ class VideoSequential(ImageSequential):
         ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...     kornia.color.BgrToRgb(),
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
-        ... random_apply=10,
-        ... data_format="BCTHW",
-        ... same_on_frame=True)
+        ...     random_apply=10,
+        ...     data_format="BCTHW",
+        ...     same_on_frame=True)
         >>> output = aug_list(input)
         >>> (output[0, :, 0] == output[0, :, 1]).all()
         tensor(True)

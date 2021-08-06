@@ -45,9 +45,9 @@ class ImageSequential(SequentialBase):
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
         ...     kornia.enhance.Invert(),
         ...     kornia.augmentation.RandomMixUp(p=1.0),
-        ... return_transform=True,
-        ... same_on_batch=True,
-        ... random_apply=10,
+        ...     return_transform=True,
+        ...     same_on_batch=True,
+        ...     random_apply=10,
         ... )
         >>> out, lab = aug_list(input, label=label)
         >>> lab
