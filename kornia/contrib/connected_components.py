@@ -23,7 +23,7 @@ def connected_components(input: torch.Tensor, num_iterations: int = 100) -> torc
         >>> img = torch.rand(2, 1, 4, 5)
         >>> img_labels = connected_components(img, num_iterations=100)
 
-    .. note:
+    .. note::
         This is an experimental API subject to changes and optimization improvements.
     """
     if not isinstance(input, torch.Tensor):
