@@ -1,7 +1,10 @@
 import torch
 import torch.nn.functional as F
 
+from kornia.utils.image import perform_keep_shape_image
 
+
+@perform_keep_shape_image
 def connected_components(input: torch.Tensor, num_iterations: int = 100) -> torch.Tensor:
     r"""Computes the Connected-component labelling (CCL) algorithm.
 
@@ -32,7 +35,7 @@ def connected_components(input: torch.Tensor, num_iterations: int = 100) -> torc
     if not isinstance(num_iterations, int) or num_iterations < 1:
         raise TypeError("Input num_iterations must be a postive integer.")
 
-    if len(input.shape) != 4 or input.shape[-3] != 1:
+    if len(input.shape) < 3 or input.shape[-3] != 1:
         raise ValueError(f"Input image shape must be Bx1xHxW. Got: {input.shape}")
 
     # precomput a mask with the valid values
@@ -40,7 +43,7 @@ def connected_components(input: torch.Tensor, num_iterations: int = 100) -> torc
 
     # allocate the output tensors for labels
     B, _, H, W = input.shape
-    out = torch.arange(B * W * H, device=input.device, dtype=input.dtype).reshape((B, 1, H, W))
+    out = torch.arange(B * W * H, device=input.device, dtype=input.dtype).view((B, 1, H, W))
     out[~mask] = 0
 
     for _ in range(num_iterations):

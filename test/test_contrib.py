@@ -14,6 +14,14 @@ class TestConnectedComponents:
         out = kornia.contrib.connected_components(img, num_iterations=10)
         assert out.shape == (1, 1, 3, 4)
 
+    @pytest.mark.parametrize("shape", [
+        (3, 4), (1, 3, 4), (2, 1, 3, 4)
+    ])
+    def test_cardinality(self, device, dtype, shape):
+        img = torch.rand(shape, device=device, dtype=dtype)
+        out = kornia.contrib.connected_components(img, num_iterations=10)
+        assert out.shape == shape
+
     def test_exception(self, device, dtype):
         img = torch.rand(1, 1, 3, 4, device=device, dtype=dtype)
 
@@ -22,10 +30,6 @@ class TestConnectedComponents:
 
         with pytest.raises(TypeError):
             assert kornia.contrib.connected_components(img, 0)
-
-        with pytest.raises(ValueError):
-            img = torch.rand(1, 3, 4, device=device, dtype=dtype)
-            assert kornia.contrib.connected_components(img, 1)
 
         with pytest.raises(ValueError):
             img = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
