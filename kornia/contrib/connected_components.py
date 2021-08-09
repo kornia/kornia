@@ -18,7 +18,7 @@ def connected_components(input: torch.Tensor, num_iterations: int = 100) -> torc
         This is an experimental API subject to changes and optimization improvements.
 
     Args:
-        input: the binarized input image with shape :math:`(B, 1, H, W)`.
+        input: the binarized input image with shape :math:`(*, 1, H, W)`.
           The image must be in floating point with range [0, 1].
         num_iterations: the number of iterations to make the algorith to converge.
 
@@ -36,7 +36,7 @@ def connected_components(input: torch.Tensor, num_iterations: int = 100) -> torc
         raise TypeError("Input num_iterations must be a postive integer.")
 
     if len(input.shape) < 3 or input.shape[-3] != 1:
-        raise ValueError(f"Input image shape must be Bx1xHxW. Got: {input.shape}")
+        raise ValueError(f"Input image shape must be (*,1,H,W). Got: {input.shape}")
 
     # precomput a mask with the valid values
     mask = input == 1
