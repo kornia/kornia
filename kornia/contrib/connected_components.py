@@ -14,6 +14,10 @@ def connected_components(input: torch.Tensor, num_iterations: int = 100) -> torc
     .. note::
         This is an experimental API subject to changes and optimization improvements.
 
+    .. note::
+       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
+       connected_components.html>`__.
+
     Args:
         input: the binarized input image with shape :math:`(B, 1, H, W)`.
           The image must be in floating point with range [0, 1].
