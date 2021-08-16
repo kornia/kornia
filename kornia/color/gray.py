@@ -128,9 +128,6 @@ class GrayscaleToRgb(nn.Module):
         >>> output = rgb(input)  # 2x3x4x5
     """
 
-    def __init__(self) -> None:
-        super(GrayscaleToRgb, self).__init__()
-
     def forward(self, image: torch.Tensor) -> torch.Tensor:  # type: ignore
         return grayscale_to_rgb(image)
 
