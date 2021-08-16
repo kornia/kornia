@@ -172,6 +172,5 @@ def _tuple_range_reader(
                 f"Degrees must be a {list(target_shape)} tensor for the degree range for independent operation."
                 f"Got {input_range}"
             )
-            input_range_tmp = input_range
 
     return input_range_tmp
