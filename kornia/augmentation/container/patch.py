@@ -155,12 +155,11 @@ class PatchSequential(ImageSequential):
         if padding == "valid":
             ph, pw = input.size(-2) // grid_size[0], input.size(-1) // grid_size[1]
             return (-pw // 2, pw // 2 - pw, -ph // 2, ph // 2 - ph)
-        elif padding == 'same':
+        if padding == 'same':
             ph = input.size(-2) - input.size(-2) // grid_size[0] * grid_size[0]
             pw = input.size(-1) - input.size(-1) // grid_size[1] * grid_size[1]
             return (pw // 2, pw - pw // 2, ph // 2, ph - ph // 2)
-        else:
-            raise NotImplementedError(f"Expect `padding` as either 'valid' or 'same'. Got {padding}.")
+        raise NotImplementedError(f"Expect `padding` as either 'valid' or 'same'. Got {padding}.")
 
     def extract_patches(
         self,
