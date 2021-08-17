@@ -67,9 +67,7 @@ def get_motion_kernel2d(
     if direction.dim() != 1:
         raise AssertionError(f"direction must be a 1-dim tensor. Got {direction}.")
 
-    if direction.size(0) != angle.size(
-        0
-    ):
+    if direction.size(0) != angle.size(0):
         raise AssertionError(f"direction and angle must have the same length. Got {direction} and {angle}.")
 
     kernel_tuple: Tuple[int, int] = (kernel_size, kernel_size)
@@ -172,9 +170,7 @@ def get_motion_kernel3d(
     if direction.dim() != 1:
         raise AssertionError(f"direction must be a 1-dim tensor. Got {direction}.")
 
-    if direction.size(0) != angle.size(
-        0
-    ):
+    if direction.size(0) != angle.size(0):
         raise AssertionError(f"direction and angle must have the same length. Got {direction} and {angle}.")
 
     kernel_tuple: Tuple[int, int, int] = (kernel_size, kernel_size, kernel_size)

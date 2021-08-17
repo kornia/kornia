@@ -236,7 +236,8 @@ def crop_by_boxes(
     bbox: Tuple[torch.Tensor, torch.Tensor] = _infer_bbox_shape(dst_box)
     if not ((bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all()):
         raise AssertionError(
-            f"Cropping height, width and depth must be exact same in a batch. " f"Got height {bbox[0]} and width {bbox[1]}."
+            f"Cropping height, width and depth must be exact same in a batch. "
+            f"Got height {bbox[0]} and width {bbox[1]}."
         )
 
     h_out: int = int(bbox[0][0].item())

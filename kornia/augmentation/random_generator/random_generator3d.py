@@ -206,15 +206,11 @@ def random_motion_blur_generator3d(
     _device, _dtype = _extract_device_dtype([angle, direction])
     _joint_range_check(direction, 'direction', (-1, 1))
     if isinstance(kernel_size, int):
-        if not (
-            kernel_size >= 3 and kernel_size % 2 == 1
-        ):
+        if not (kernel_size >= 3 and kernel_size % 2 == 1):
             raise AssertionError(f"`kernel_size` must be odd and greater than 3. Got {kernel_size}.")
         ksize_factor = torch.tensor([kernel_size] * batch_size, device=device, dtype=dtype).int()
     elif isinstance(kernel_size, tuple):
-        if not (
-            len(kernel_size) == 2 and kernel_size[0] >= 3 and kernel_size[0] <= kernel_size[1]
-        ):
+        if not (len(kernel_size) == 2 and kernel_size[0] >= 3 and kernel_size[0] <= kernel_size[1]):
             raise AssertionError(f"`kernel_size` must be greater than 3. Got range {kernel_size}.")
         # kernel_size is fixed across the batch
         ksize_factor = (
@@ -273,9 +269,7 @@ def center_crop_generator3d(
         type(depth) is int and depth > 0 and type(height) is int and height > 0 and type(width) is int and width > 0
     ):
         raise AssertionError(f"'depth', 'height' and 'width' must be integers. Got {depth}, {height}, {width}.")
-    if not (
-        depth >= size[0] and height >= size[1] and width >= size[2]
-    ):
+    if not (depth >= size[0] and height >= size[1] and width >= size[2]):
         raise AssertionError(f"Crop size must be smaller than input size. Got ({depth}, {height}, {width}) and {size}.")
 
     if batch_size == 0:
@@ -495,9 +489,7 @@ def random_perspective_generator3d(
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
     """
-    if not (
-        distortion_scale.dim() == 0 and 0 <= distortion_scale <= 1
-    ):
+    if not (distortion_scale.dim() == 0 and 0 <= distortion_scale <= 1):
         raise AssertionError(f"'distortion_scale' must be a scalar within [0, 1]. Got {distortion_scale}")
     _device, _dtype = _extract_device_dtype([distortion_scale])
     distortion_scale = distortion_scale.to(device=device, dtype=dtype)
