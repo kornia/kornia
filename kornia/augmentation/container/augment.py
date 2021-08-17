@@ -252,8 +252,7 @@ class AugmentationSequential(ImageSequential):
                     "No parameters avaliable for inversing, please run a forward pass first "
                     "or passing valid params into this function."
                 )
-            else:
-                params = self._params
+            params = self._params
 
         outputs = []
         for input, dcate in zip(args, data_keys):
