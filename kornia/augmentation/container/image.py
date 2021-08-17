@@ -97,14 +97,16 @@ class ImageSequential(SequentialBase):
             random_apply = (random_apply[0], max_length + 1)
         else:
             raise ValueError(f"Non-readable random_apply. Got {random_apply}.")
-        if random_apply is not False:
-            if not (
-                isinstance(random_apply, (tuple,))
-                and len(random_apply) == 2
-                and isinstance(random_apply[0], (int,))
-                and isinstance(random_apply[0], (int,))
-            ):
-                raise AssertionError(f"Expect a tuple of (int, int). Got {random_apply}.")
+        if (
+            random_apply is not False
+            and not (
+            isinstance(random_apply, (tuple,))
+            and len(random_apply) == 2
+            and isinstance(random_apply[0], (int,))
+            and isinstance(random_apply[0], (int,))
+        )
+        ):
+            raise AssertionError(f"Expect a tuple of (int, int). Got {random_apply}.")
         return random_apply
 
     def get_random_forward_sequence(self, with_mix: bool = True) -> Tuple[Iterator[Tuple[str, nn.Module]], bool]:
