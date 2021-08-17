@@ -136,12 +136,14 @@ def random_perspective_generator(
         The generated random numbers are not reproducible across different devices and dtypes.
     """
     _common_param_check(batch_size, same_on_batch)
-    assert (
+    if not (
         distortion_scale.dim() == 0 and 0 <= distortion_scale <= 1
-    ), f"'distortion_scale' must be a scalar within [0, 1]. Got {distortion_scale}."
-    assert (
+    ):
+        raise AssertionError(f"'distortion_scale' must be a scalar within [0, 1]. Got {distortion_scale}.")
+    if not (
         type(height) is int and height > 0 and type(width) is int and width > 0
-    ), f"'height' and 'width' must be integers. Got {height}, {width}."
+    ):
+        raise AssertionError(f"'height' and 'width' must be integers. Got {height}, {width}.")
 
     start_points: torch.Tensor = torch.tensor(
         [[[0.0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]]],
@@ -217,9 +219,10 @@ def random_affine_generator(
     """
     _common_param_check(batch_size, same_on_batch)
     _joint_range_check(degrees, "degrees")
-    assert (
+    if not (
         isinstance(width, (int,)) and isinstance(height, (int,)) and width > 0 and height > 0
-    ), f"`width` and `height` must be positive integers. Got {width}, {height}."
+    ):
+        raise AssertionError(f"`width` and `height` must be positive integers. Got {width}, {height}.")
 
     _device, _dtype = _extract_device_dtype([degrees, translate, scale, shear])
     degrees = degrees.to(device=device, dtype=dtype)
@@ -229,9 +232,10 @@ def random_affine_generator(
     # compute tensor ranges
     if scale is not None:
         scale = scale.to(device=device, dtype=dtype)
-        assert len(scale.shape) == 1 and (
+        if not (len(scale.shape) == 1 and (
             len(scale) == 2 or len(scale) == 4
-        ), f"`scale` shall have 2 or 4 elements. Got {scale}."
+        )):
+            raise AssertionError(f"`scale` shall have 2 or 4 elements. Got {scale}.")
         _joint_range_check(cast(torch.Tensor, scale[:2]), "scale")
         _scale = _adapted_uniform((batch_size,), scale[0], scale[1], same_on_batch).unsqueeze(1).repeat(1, 2)
         if len(scale) == 4:
@@ -243,9 +247,10 @@ def random_affine_generator(
 
     if translate is not None:
         translate = translate.to(device=device, dtype=dtype)
-        assert (
+        if not (
             0.0 <= translate[0] <= 1.0 and 0.0 <= translate[1] <= 1.0 and translate.shape == torch.Size([2])
-        ), f"Expect translate contains two elements and ranges are in [0, 1]. Got {translate}."
+        ):
+            raise AssertionError(f"Expect translate contains two elements and ranges are in [0, 1]. Got {translate}.")
         max_dx: torch.Tensor = translate[0] * width
         max_dy: torch.Tensor = translate[1] * height
         translations = torch.stack(
@@ -384,13 +389,15 @@ def random_crop_generator(
         size = torch.tensor(size, device=_device, dtype=_dtype).repeat(batch_size, 1)
     else:
         size = size.to(device=_device, dtype=_dtype)
-    assert size.shape == torch.Size([batch_size, 2]), (
-        "If `size` is a tensor, it must be shaped as (B, 2). "
-        f"Got {size.shape} while expecting {torch.Size([batch_size, 2])}."
-    )
-    assert (
+    if size.shape != torch.Size([batch_size, 2]):
+        raise AssertionError(
+            "If `size` is a tensor, it must be shaped as (B, 2). "
+            f"Got {size.shape} while expecting {torch.Size([batch_size, 2])}."
+        )
+    if not (
         input_size[0] > 0 and input_size[1] > 0 and (size > 0).all()
-    ), f"Got non-positive input size or size. {input_size}, {size}."
+    ):
+        raise AssertionError(f"Got non-positive input size or size. {input_size}, {size}.")
     size = size.floor()
 
     x_diff = input_size[1] - size[:, 1] + 1
@@ -428,13 +435,14 @@ def random_crop_generator(
             size[:, 0],
         )
     else:
-        assert (
+        if not (
             len(resize_to) == 2
             and isinstance(resize_to[0], (int,))
             and isinstance(resize_to[1], (int,))
             and resize_to[0] > 0
             and resize_to[1] > 0
-        ), f"`resize_to` must be a tuple of 2 positive integers. Got {resize_to}."
+        ):
+            raise AssertionError(f"`resize_to` must be a tuple of 2 positive integers. Got {resize_to}.")
         crop_dst = torch.tensor(
             [[[0, 0], [resize_to[1] - 1, 0], [resize_to[1] - 1, resize_to[0] - 1], [0, resize_to[0] - 1]]],
             device=_device,
@@ -483,9 +491,10 @@ def random_crop_size_generator(
     _common_param_check(batch_size, same_on_batch)
     _joint_range_check(scale, "scale")
     _joint_range_check(ratio, "ratio")
-    assert (
+    if not (
         len(size) == 2 and type(size[0]) is int and size[1] > 0 and type(size[1]) is int and size[1] > 0
-    ), f"'height' and 'width' must be integers. Got {size}."
+    ):
+        raise AssertionError(f"'height' and 'width' must be integers. Got {size}.")
 
     _device, _dtype = _extract_device_dtype([scale, ratio])
 
@@ -568,12 +577,14 @@ def random_rectangles_params_generator(
     """
     _common_param_check(batch_size, same_on_batch)
     _device, _dtype = _extract_device_dtype([ratio, scale])
-    assert (
+    if not (
         type(height) is int and height > 0 and type(width) is int and width > 0
-    ), f"'height' and 'width' must be integers. Got {height}, {width}."
-    assert (
+    ):
+        raise AssertionError(f"'height' and 'width' must be integers. Got {height}, {width}.")
+    if not (
         isinstance(value, (int, float)) and value >= 0 and value <= 1
-    ), f"'value' must be a number between 0 - 1. Got {value}."
+    ):
+        raise AssertionError(f"'value' must be a number between 0 - 1. Got {value}.")
     _joint_range_check(scale, 'scale', bounds=(0, float('inf')))
     _joint_range_check(ratio, 'ratio', bounds=(0, float('inf')))
 
@@ -685,12 +696,14 @@ def center_crop_generator(
     _common_param_check(batch_size)
     if not isinstance(size, (tuple, list)) and len(size) == 2:
         raise ValueError("Input size must be a tuple/list of length 2. Got {}".format(size))
-    assert (
+    if not (
         type(height) is int and height > 0 and type(width) is int and width > 0
-    ), f"'height' and 'width' must be integers. Got {height}, {width}."
-    assert (
+    ):
+        raise AssertionError(f"'height' and 'width' must be integers. Got {height}, {width}.")
+    if not (
         height >= size[0] and width >= size[1]
-    ), f"Crop size must be smaller than input size. Got ({height}, {width}) and {size}."
+    ):
+        raise AssertionError(f"Crop size must be smaller than input size. Got ({height}, {width}) and {size}.")
 
     # unpack input sizes
     dst_h, dst_w = size
@@ -764,13 +777,15 @@ def random_motion_blur_generator(
     _device, _dtype = _extract_device_dtype([angle, direction])
 
     if isinstance(kernel_size, int):
-        assert (
+        if not (
             kernel_size >= 3 and kernel_size % 2 == 1
-        ), f"`kernel_size` must be odd and greater than 3. Got {kernel_size}."
+        ):
+            raise AssertionError(f"`kernel_size` must be odd and greater than 3. Got {kernel_size}.")
         ksize_factor = torch.tensor([kernel_size] * batch_size, device=device, dtype=dtype)
     elif isinstance(kernel_size, tuple):
         # kernel_size is fixed across the batch
-        assert len(kernel_size) == 2, f"`kernel_size` must be (2,) if it is a tuple. Got {kernel_size}."
+        if len(kernel_size) != 2:
+            raise AssertionError(f"`kernel_size` must be (2,) if it is a tuple. Got {kernel_size}.")
         ksize_factor = (
             _adapted_uniform((batch_size,), kernel_size[0] // 2, kernel_size[1] // 2, same_on_batch=True).int() * 2 + 1
         )
@@ -1045,10 +1060,12 @@ def random_cutmix_generator(
     _device, _dtype = _extract_device_dtype([beta, cut_size])
     beta = torch.as_tensor(1.0 if beta is None else beta, device=device, dtype=dtype)
     cut_size = torch.as_tensor([0.0, 1.0] if cut_size is None else cut_size, device=device, dtype=dtype)
-    assert num_mix >= 1 and isinstance(num_mix, (int,)), f"`num_mix` must be an integer greater than 1. Got {num_mix}."
-    assert (
+    if not (num_mix >= 1 and isinstance(num_mix, (int,))):
+        raise AssertionError(f"`num_mix` must be an integer greater than 1. Got {num_mix}.")
+    if not (
         type(height) is int and height > 0 and type(width) is int and width > 0
-    ), f"'height' and 'width' must be integers. Got {height}, {width}."
+    ):
+        raise AssertionError(f"'height' and 'width' must be integers. Got {height}, {width}.")
     _joint_range_check(cut_size, 'cut_size', bounds=(0, 1))
     _common_param_check(batch_size, same_on_batch)
 

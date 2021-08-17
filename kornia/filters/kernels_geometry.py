@@ -55,7 +55,8 @@ def get_motion_kernel2d(
     angle = cast(torch.Tensor, angle)
     if angle.dim() == 0:
         angle = angle.unsqueeze(0)
-    assert angle.dim() == 1, f"angle must be a 1-dim tensor. Got {angle}."
+    if angle.dim() != 1:
+        raise AssertionError(f"angle must be a 1-dim tensor. Got {angle}.")
 
     if not isinstance(direction, torch.Tensor):
         direction = torch.tensor([direction], device=device, dtype=dtype)
@@ -63,11 +64,13 @@ def get_motion_kernel2d(
     direction = cast(torch.Tensor, direction)
     if direction.dim() == 0:
         direction = direction.unsqueeze(0)
-    assert direction.dim() == 1, f"direction must be a 1-dim tensor. Got {direction}."
+    if direction.dim() != 1:
+        raise AssertionError(f"direction must be a 1-dim tensor. Got {direction}.")
 
-    assert direction.size(0) == angle.size(
+    if direction.size(0) != angle.size(
         0
-    ), f"direction and angle must have the same length. Got {direction} and {angle}."
+    ):
+        raise AssertionError(f"direction and angle must have the same length. Got {direction} and {angle}.")
 
     kernel_tuple: Tuple[int, int] = (kernel_size, kernel_size)
     # direction from [-1, 1] to [0, 1] range
@@ -82,7 +85,8 @@ def get_motion_kernel2d(
     # kernel[:, kernel_size // 2, :] = direction[:, None].repeat(1, kernel_size) + m * torch.arange(0, kernel_size)
     k = torch.stack([(direction + ((1 - 2 * direction) / (kernel_size - 1)) * i) for i in range(kernel_size)], dim=-1)
     kernel = torch.nn.functional.pad(k[:, None], [0, 0, kernel_size // 2, kernel_size // 2, 0, 0])
-    assert kernel.shape == torch.Size([direction.size(0), *kernel_tuple])
+    if kernel.shape != torch.Size([direction.size(0), *kernel_tuple]):
+        raise AssertionError
     kernel = kernel.unsqueeze(1)
     # rotate (counterclockwise) kernel by given angle
     kernel = rotate(kernel, angle, mode=mode, align_corners=True)
@@ -156,7 +160,8 @@ def get_motion_kernel3d(
     angle = cast(torch.Tensor, angle)
     if angle.dim() == 1:
         angle = angle.unsqueeze(0)
-    assert len(angle.shape) == 2 and angle.size(1) == 3, f"angle must be (B, 3). Got {angle}."
+    if not (len(angle.shape) == 2 and angle.size(1) == 3):
+        raise AssertionError(f"angle must be (B, 3). Got {angle}.")
 
     if not isinstance(direction, torch.Tensor):
         direction = torch.tensor([direction], device=device, dtype=dtype)
@@ -164,11 +169,13 @@ def get_motion_kernel3d(
     direction = cast(torch.Tensor, direction)
     if direction.dim() == 0:
         direction = direction.unsqueeze(0)
-    assert direction.dim() == 1, f"direction must be a 1-dim tensor. Got {direction}."
+    if direction.dim() != 1:
+        raise AssertionError(f"direction must be a 1-dim tensor. Got {direction}.")
 
-    assert direction.size(0) == angle.size(
+    if direction.size(0) != angle.size(
         0
-    ), f"direction and angle must have the same length. Got {direction} and {angle}."
+    ):
+        raise AssertionError(f"direction and angle must have the same length. Got {direction} and {angle}.")
 
     kernel_tuple: Tuple[int, int, int] = (kernel_size, kernel_size, kernel_size)
     # direction from [-1, 1] to [0, 1] range
@@ -182,7 +189,8 @@ def get_motion_kernel3d(
     kernel = torch.nn.functional.pad(
         k[:, None, None], [0, 0, kernel_size // 2, kernel_size // 2, kernel_size // 2, kernel_size // 2, 0, 0]
     )
-    assert kernel.shape == torch.Size([direction.size(0), *kernel_tuple])
+    if kernel.shape != torch.Size([direction.size(0), *kernel_tuple]):
+        raise AssertionError
     kernel = kernel.unsqueeze(1)
     # rotate (counterclockwise) kernel by given angle
     kernel = rotate3d(kernel, angle[:, 0], angle[:, 1], angle[:, 2], mode=mode, align_corners=True)

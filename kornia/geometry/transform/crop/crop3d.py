@@ -89,7 +89,8 @@ def crop_and_resize3d(
         raise TypeError("Input boxes type is not a torch.Tensor. Got {}".format(type(boxes)))
     if not isinstance(size, (tuple, list)) and len(size) != 3:
         raise ValueError("Input size must be a tuple/list of length 3. Got {}".format(size))
-    assert len(tensor.shape) == 5, f"Only tensor with shape (B, C, D, H, W) supported. Got {tensor.shape}."
+    if len(tensor.shape) != 5:
+        raise AssertionError(f"Only tensor with shape (B, C, D, H, W) supported. Got {tensor.shape}.")
     # unpack input data
     dst_d, dst_h, dst_w = size[0], size[1], size[2]
 
@@ -168,7 +169,8 @@ def center_crop3d(
     if not isinstance(tensor, (torch.Tensor)):
         raise TypeError("Input tensor type is not a torch.Tensor. Got {}".format(type(tensor)))
 
-    assert len(tensor.shape) == 5, f"Only tensor with shape (B, C, D, H, W) supported. Got {tensor.shape}."
+    if len(tensor.shape) != 5:
+        raise AssertionError(f"Only tensor with shape (B, C, D, H, W) supported. Got {tensor.shape}.")
 
     if not isinstance(size, (tuple, list)) and len(size) == 3:
         raise ValueError("Input size must be a tuple/list of length 3. Got {}".format(size))
@@ -312,7 +314,8 @@ def crop_by_boxes3d(
     _validate_bbox3d(src_box)
     _validate_bbox3d(dst_box)
 
-    assert len(tensor.shape) == 5, f"Only tensor with shape (B, C, D, H, W) supported. Got {tensor.shape}."
+    if len(tensor.shape) != 5:
+        raise AssertionError(f"Only tensor with shape (B, C, D, H, W) supported. Got {tensor.shape}.")
 
     # compute transformation between points and warp
     # Note: Tensor.dtype must be float. "solve_cpu" not implemented for 'Long'
@@ -321,10 +324,11 @@ def crop_by_boxes3d(
     dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1).type_as(tensor)
 
     bbox = _infer_bbox_shape3d(dst_box)
-    assert (bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all() and (bbox[2] == bbox[2][0]).all(), (
-        "Cropping height, width and depth must be exact same in a batch."
-        f"Got height {bbox[0]}, width {bbox[1]} and depth {bbox[2]}."
-    )
+    if not ((bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all() and (bbox[2] == bbox[2][0]).all()):
+        raise AssertionError(
+            "Cropping height, width and depth must be exact same in a batch."
+            f"Got height {bbox[0]}, width {bbox[1]} and depth {bbox[2]}."
+        )
 
     patches: torch.Tensor = crop_by_transform_mat3d(
         tensor,
