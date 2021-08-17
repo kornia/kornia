@@ -117,7 +117,7 @@ class ImageSequential(SequentialBase):
             multinomial_weights,
             num_samples,
             # enable replacement if non-mix augmentation is less than required
-            replacement=num_samples > multinomial_weights.sum(),
+            replacement=num_samples > multinomial_weights.sum().item(),
         )
 
         mix_added = False
