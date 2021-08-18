@@ -10,7 +10,8 @@ import kornia as dgm
 
 def load_depth(file_name):
     """Loads the depth using the syntel SDK and converts to torch.Tensor"""
-    assert os.path.isfile(file_name), "Invalid file {}".format(file_name)
+    if not os.path.isfile(file_name):
+        raise AssertionError("Invalid file {}".format(file_name))
     import sintel_io
 
     depth = sintel_io.depth_read(file_name)
@@ -19,7 +20,8 @@ def load_depth(file_name):
 
 def load_camera_data(file_name):
     """Loads the camera data using the syntel SDK and converts to torch.Tensor."""
-    assert os.path.isfile(file_name), "Invalid file {}".format(file_name)
+    if not os.path.isfile(file_name):
+        raise AssertionError("Invalid file {}".format(file_name))
     import sintel_io
 
     intrinsic, extrinsic = sintel_io.cam_read(file_name)
@@ -28,7 +30,8 @@ def load_camera_data(file_name):
 
 def load_image(file_name):
     """Loads the image with OpenCV and converts to torch.Tensor"""
-    assert os.path.isfile(file_name), "Invalid file {}".format(file_name)
+    if not os.path.isfile(file_name):
+        raise AssertionError("Invalid file {}".format(file_name))
 
     # load image with OpenCV
     img = cv2.imread(file_name, cv2.IMREAD_COLOR)

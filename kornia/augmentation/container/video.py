@@ -87,7 +87,8 @@ class VideoSequential(ImageSequential):
         )
         self.same_on_frame = same_on_frame
         self.data_format = data_format.upper()
-        assert self.data_format in ["BCTHW", "BTCHW"], f"Only `BCTHW` and `BTCHW` are supported. Got `{data_format}`."
+        if self.data_format not in ["BCTHW", "BTCHW"]:
+            raise AssertionError(f"Only `BCTHW` and `BTCHW` are supported. Got `{data_format}`.")
         self._temporal_channel: int
         if self.data_format == "BCTHW":
             self._temporal_channel = 2
@@ -181,7 +182,8 @@ class VideoSequential(ImageSequential):
         self, input: torch.Tensor, label: Optional[torch.Tensor] = None, params: Optional[List[ParamItem]] = None
     ) -> Union[TensorWithTransformMat, Tuple[TensorWithTransformMat, torch.Tensor]]:
         """Define the video computation performed."""
-        assert len(input.shape) == 5, f"Input must be a 5-dim tensor. Got {input.shape}."
+        if len(input.shape) != 5:
+            raise AssertionError(f"Input must be a 5-dim tensor. Got {input.shape}.")
 
         if params is None:
             params = self.forward_parameters(input.shape)

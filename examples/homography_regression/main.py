@@ -13,13 +13,15 @@ import kornia as dgm
 
 def load_homography(file_name):
     """Loads an homography from text file."""
-    assert os.path.isfile(file_name), "Invalid file {}".format(file_name)
+    if not os.path.isfile(file_name):
+        raise AssertionError("Invalid file {}".format(file_name))
     return torch.from_numpy(np.loadtxt(file_name)).float()
 
 
 def load_image(file_name):
     """Loads the image with OpenCV and converts to torch.Tensor"""
-    assert os.path.isfile(file_name), "Invalid file {}".format(file_name)
+    if not os.path.isfile(file_name):
+        raise AssertionError("Invalid file {}".format(file_name))
 
     # load image with OpenCV
     img = cv2.imread(file_name, cv2.IMREAD_COLOR)

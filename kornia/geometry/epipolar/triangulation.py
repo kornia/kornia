@@ -30,13 +30,20 @@ def triangulate_points(
         The reconstructed 3d points in the world frame with shape :math:`(*, N, 3)`.
 
     """
-    assert len(P1.shape) >= 2 and P1.shape[-2:] == (3, 4), P1.shape
-    assert len(P2.shape) >= 2 and P2.shape[-2:] == (3, 4), P2.shape
-    assert len(P1.shape[:-2]) == len(P2.shape[:-2]), (P1.shape, P2.shape)
-    assert len(points1.shape) >= 2 and points1.shape[-1] == 2, points1.shape
-    assert len(points2.shape) >= 2 and points2.shape[-1] == 2, points2.shape
-    assert len(points1.shape[:-2]) == len(points2.shape[:-2]), (points1.shape, points2.shape)
-    assert len(P1.shape[:-2]) == len(points1.shape[:-2]), (P1.shape, points1.shape)
+    if not (len(P1.shape) >= 2 and P1.shape[-2:] == (3, 4)):
+        raise AssertionError(P1.shape)
+    if not (len(P2.shape) >= 2 and P2.shape[-2:] == (3, 4)):
+        raise AssertionError(P2.shape)
+    if len(P1.shape[:-2]) != len(P2.shape[:-2]):
+        raise AssertionError(P1.shape, P2.shape)
+    if not (len(points1.shape) >= 2 and points1.shape[-1] == 2):
+        raise AssertionError(points1.shape)
+    if not (len(points2.shape) >= 2 and points2.shape[-1] == 2):
+        raise AssertionError(points2.shape)
+    if len(points1.shape[:-2]) != len(points2.shape[:-2]):
+        raise AssertionError(points1.shape, points2.shape)
+    if len(P1.shape[:-2]) != len(points1.shape[:-2]):
+        raise AssertionError(P1.shape, points1.shape)
 
     # allocate and construct the equations matrix with shape (*, 4, 4)
     points_shape = max(points1.shape, points2.shape)  # this allows broadcasting

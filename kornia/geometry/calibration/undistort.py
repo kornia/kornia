@@ -12,8 +12,10 @@ def inverseTiltProjection(taux: torch.Tensor, tauy: torch.Tensor) -> torch.Tenso
     Returns:
         torch.Tensor: Inverse tilt projection matrix with shape :math:`(*, 3, 3)`.
     """
-    assert taux.dim() == tauy.dim()
-    assert taux.numel() == tauy.numel()
+    if taux.dim() != tauy.dim():
+        raise AssertionError
+    if taux.numel() != tauy.numel():
+        raise AssertionError
 
     ndim = taux.dim()
     taux = taux.reshape(-1)
@@ -60,9 +62,12 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) 
     Returns:
         Undistorted 2D points with shape :math:`(*, N, 2)`.
     """
-    assert points.dim() >= 2 and points.shape[-1] == 2
-    assert K.shape[-2:] == (3, 3)
-    assert dist.shape[-1] in [4, 5, 8, 12, 14]
+    if not (points.dim() >= 2 and points.shape[-1] == 2):
+        raise AssertionError
+    if K.shape[-2:] != (3, 3):
+        raise AssertionError
+    if dist.shape[-1] not in [4, 5, 8, 12, 14]:
+        raise AssertionError
 
     if dist.shape[-1] < 14:
         dist = torch.nn.functional.pad(dist, [0, 14 - dist.shape[-1]])

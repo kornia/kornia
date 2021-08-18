@@ -97,13 +97,13 @@ class ImageSequential(SequentialBase):
             random_apply = (random_apply[0], max_length + 1)
         else:
             raise ValueError(f"Non-readable random_apply. Got {random_apply}.")
-        if random_apply is not False:
-            assert (
-                isinstance(random_apply, (tuple,))
-                and len(random_apply) == 2
-                and isinstance(random_apply[0], (int,))
-                and isinstance(random_apply[0], (int,))
-            ), f"Expect a tuple of (int, int). Got {random_apply}."
+        if random_apply is not False and not (
+            isinstance(random_apply, (tuple,))
+            and len(random_apply) == 2
+            and isinstance(random_apply[0], (int,))
+            and isinstance(random_apply[0], (int,))
+        ):
+            raise AssertionError(f"Expect a tuple of (int, int). Got {random_apply}.")
         return random_apply
 
     def get_random_forward_sequence(self, with_mix: bool = True) -> Tuple[Iterator[Tuple[str, nn.Module]], bool]:
@@ -175,7 +175,8 @@ class ImageSequential(SequentialBase):
         elif isinstance(module, (_AugmentationBase,)):
             input = module(input, params=param.data)
         else:
-            assert param.data is None, f"Non-augmentaion operation {param.name} require empty parameters. Got {param}."
+            if param.data is not None:
+                raise AssertionError(f"Non-augmentaion operation {param.name} require empty parameters. Got {param}.")
             # In case of return_transform = True
             if isinstance(input, (tuple, list)):
                 input = (module(input[0]), input[1])
