@@ -592,10 +592,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
     if not isinstance(factor, torch.Tensor):
         factor = torch.tensor(factor, device=input.device, dtype=input.dtype)
 
-    if (
-        len(factor.size()) != 0
-        and factor.shape != torch.Size([input.size(0)])
-    ):
+    if len(factor.size()) != 0 and factor.shape != torch.Size([input.size(0)]):
         raise AssertionError(
             "Input batch size shall match with factor size if factor is not a 0-dim tensor. "
             f"Got {input.size(0)} and {factor.shape}"
@@ -640,10 +637,7 @@ def _blend_one(input1: torch.Tensor, input2: torch.Tensor, factor: torch.Tensor)
     if not isinstance(input2, torch.Tensor):
         raise AssertionError(f"`input1` must be a tensor. Got {input2}.")
 
-    if (
-        isinstance(factor, torch.Tensor)
-        and len(factor.size()) != 0
-    ):
+    if isinstance(factor, torch.Tensor) and len(factor.size()) != 0:
         raise AssertionError(f"Factor shall be a float or single element tensor. Got {factor}.")
     if factor == 0.0:
         return input1

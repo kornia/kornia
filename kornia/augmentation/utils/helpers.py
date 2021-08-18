@@ -152,10 +152,7 @@ def _transform_output_shape(
         trans_matrix = None
 
     if trans_matrix is not None:
-        if (
-            len(out_tensor.shape) > len(shape)
-            and trans_matrix.shape[0] != 1
-        ):
+        if len(out_tensor.shape) > len(shape) and trans_matrix.shape[0] != 1:
             raise AssertionError(
                 f'Dimension 0 of transformation matrix is ' f'expected to be 1, got {trans_matrix.shape[0]}'
             )
