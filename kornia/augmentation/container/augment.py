@@ -101,9 +101,8 @@ class AugmentationSequential(ImageSequential):
 
         self.data_keys = [DataKey.get(inp) for inp in data_keys]
 
-        assert all(
-            in_type in DataKey for in_type in self.data_keys
-        ), f"`data_keys` must be in {DataKey}. Got {data_keys}."
+        if not all(in_type in DataKey for in_type in self.data_keys):
+            raise AssertionError(f"`data_keys` must be in {DataKey}. Got {data_keys}.")
 
         if self.data_keys[0] != DataKey.INPUT:
             raise NotImplementedError(f"The first input must be {DataKey.INPUT}.")
@@ -243,9 +242,11 @@ class AugmentationSequential(ImageSequential):
         """
         if data_keys is None:
             data_keys = cast(List[Union[str, int, DataKey]], self.data_keys)
-        assert len(args) == len(data_keys), (
-            "The number of inputs must align with the number of data_keys, " f"Got {len(args)} and {len(data_keys)}."
-        )
+        if len(args) != len(data_keys):
+            raise AssertionError(
+                "The number of inputs must align with the number of data_keys, "
+                f"Got {len(args)} and {len(data_keys)}."
+            )
         if params is None:
             if self._params is None:
                 raise ValueError(
@@ -315,9 +316,10 @@ class AugmentationSequential(ImageSequential):
         else:
             data_keys = [DataKey.get(inp) for inp in data_keys]
 
-        assert len(args) == len(
-            data_keys
-        ), f"The number of inputs must align with the number of data_keys. Got {len(args)} and {len(data_keys)}."
+        if len(args) != len(data_keys):
+            raise AssertionError(
+                f"The number of inputs must align with the number of data_keys. Got {len(args)} and {len(data_keys)}."
+            )
 
         if params is None:
             if DataKey.INPUT in data_keys:
