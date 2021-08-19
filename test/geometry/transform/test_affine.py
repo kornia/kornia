@@ -617,7 +617,7 @@ class TestAffine2d:
         shear = torch.rand(1, 2, device=device, dtype=dtype)
         input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
 
-        transform = kornia.Affine(shear=shear, device=device, dtype=dtype)
+        transform = kornia.Affine(shear=shear).to(device, dtype)
         actual = transform(input)
         expected = kornia.shear(input, shear)
         assert_close(actual, expected, atol=1e-4, rtol=1e-4)
