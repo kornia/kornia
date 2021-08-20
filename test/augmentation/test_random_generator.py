@@ -554,7 +554,7 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
                 size=size,
                 scale=scale.to(device=device, dtype=dtype),
                 ratio=ratio.to(device=device, dtype=dtype),
-                same_on_batch=same_on_batch,
+                same_on_batch=same_on_batch,  # noqa: F821 raises NameError
             )
 
     def test_random_gen(self, device, dtype):
@@ -653,7 +653,7 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
                 scale=scale.to(device=device, dtype=dtype),
                 ratio=ratio.to(device=device, dtype=dtype),
                 value=value,
-                same_on_batch=same_on_batch,
+                same_on_batch=same_on_batch,  # noqa: F821 raises NameError
             )
 
     def test_random_gen(self, device, dtype):
@@ -854,7 +854,7 @@ class TestRandomSolarizeGen(RandomGeneratorBaseTests):
     def test_invalid_param_combinations(self, thresholds, additions, device, dtype):
         with pytest.raises(Exception):
             random_solarize_generator(
-                batch_size=batch_size,
+                batch_size=batch_size,  # noqa: F821 raises NameError
                 thresholds=thresholds.to(device=device, dtype=dtype),
                 additions=additions.to(device=device, dtype=dtype),
             )
@@ -916,7 +916,7 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
         with pytest.raises(Exception):
             random_posterize_generator(
                 batch_size=batch_size, bits=bits.to(device=device, dtype=dtype), same_on_batch=same_on_batch
-            )
+            )  # noqa: F821 raises NameError
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(9)
@@ -953,7 +953,7 @@ class TestRandomSharpnessGen(RandomGeneratorBaseTests):
         with pytest.raises(Exception):
             random_sharpness_generator(
                 batch_size=batch_size, sharpness=sharpness.to(device=device, dtype=dtype), same_on_batch=same_on_batch
-            )
+            )  # noqa: F821 raises NameError
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
