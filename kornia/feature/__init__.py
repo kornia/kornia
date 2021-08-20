@@ -15,8 +15,8 @@ non_maxima_suppression2d = nms2d
 non_maxima_suppression3d = nms3d
 
 from .affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
-from .hardnet import HardNet, HardNet8
 from .defmo import DeFMO
+from .hardnet import HardNet, HardNet8
 from .laf import (
     denormalize_laf,
     ellipse_to_laf,
