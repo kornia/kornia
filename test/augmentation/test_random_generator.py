@@ -914,8 +914,10 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
     @pytest.mark.parametrize('bits', [(torch.tensor([-1, 1])), (torch.tensor([0, 9])), (torch.tensor([3])), ([0, 8])])
     def test_invalid_param_combinations(self, bits, device, dtype):
         with pytest.raises(Exception):
-            random_posterize_generator(  # noqa: F821 raises NameError
-                batch_size=batch_size, bits=bits.to(device=device, dtype=dtype), same_on_batch=same_on_batch
+            random_posterize_generator(
+                batch_size=batch_size,  # noqa: F821 raises NameError
+                bits=bits.to(device=device, dtype=dtype),
+                same_on_batch=same_on_batch  # noqa: F821 raises NameError
             )
 
     def test_random_gen(self, device, dtype):
@@ -951,8 +953,10 @@ class TestRandomSharpnessGen(RandomGeneratorBaseTests):
     @pytest.mark.parametrize('sharpness', [(torch.tensor([-1, 5])), (torch.tensor([3])), ([0, 1.0])])
     def test_invalid_param_combinations(self, sharpness, device, dtype):
         with pytest.raises(Exception):
-            random_sharpness_generator(  # noqa: F821 raises NameError
-                batch_size=batch_size, sharpness=sharpness.to(device=device, dtype=dtype), same_on_batch=same_on_batch
+            random_sharpness_generator(
+                batch_size=batch_size,  # noqa: F821 raises NameError
+                sharpness=sharpness.to(device=device, dtype=dtype),
+                same_on_batch=same_on_batch  # noqa: F821 raises NameError
             )
 
     def test_random_gen(self, device, dtype):
