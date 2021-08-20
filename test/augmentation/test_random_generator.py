@@ -917,7 +917,7 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
             random_posterize_generator(
                 batch_size=batch_size,  # noqa: F821 raises NameError
                 bits=bits.to(device=device, dtype=dtype),
-                same_on_batch=same_on_batch  # noqa: F821 raises NameError
+                same_on_batch=same_on_batch,  # noqa: F821 raises NameError
             )
 
     def test_random_gen(self, device, dtype):
@@ -956,7 +956,7 @@ class TestRandomSharpnessGen(RandomGeneratorBaseTests):
             random_sharpness_generator(
                 batch_size=batch_size,  # noqa: F821 raises NameError
                 sharpness=sharpness.to(device=device, dtype=dtype),
-                same_on_batch=same_on_batch  # noqa: F821 raises NameError
+                same_on_batch=same_on_batch,  # noqa: F821 raises NameError
             )
 
     def test_random_gen(self, device, dtype):
