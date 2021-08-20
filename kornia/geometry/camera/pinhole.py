@@ -1,7 +1,6 @@
 from typing import Iterable, Optional
 
 import torch
-
 from torchgeometry.core import rtvec_to_pose
 
 from kornia.geometry.linalg import inverse_transformation, transform_points
