@@ -251,9 +251,9 @@ class RenderingDeFMO(nn.Module):
             latenti = torch.cat((t_tensor, latent), 1)
             result = self.net(latenti)
             renders.append(result)
-        renders = torch.stack(renders, 1).contiguous()
-        renders[:, :, :4] = torch.sigmoid(renders[:, :, :4])
-        return renders
+        renders_stacked = torch.stack(renders, 1).contiguous()
+        renders_stacked[:, :, :4] = torch.sigmoid(renders_stacked[:, :, :4])
+        return renders_stacked
 
 
 class DeFMO(nn.Module):
