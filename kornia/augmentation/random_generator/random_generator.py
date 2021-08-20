@@ -693,8 +693,8 @@ def center_crop_generator(
     src_h_half = src_h / 2
     src_w_half = src_w / 2
 
-    start_x = src_w_half - dst_w_half
-    start_y = src_h_half - dst_h_half
+    start_x = int(src_w_half - dst_w_half)
+    start_y = int(src_h_half - dst_h_half)
 
     end_x = start_x + dst_w - 1
     end_y = start_y + dst_h - 1
