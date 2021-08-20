@@ -9,7 +9,7 @@ from kornia.testing import assert_close
 
 class TestDeFMO:
     def test_shape(self, device, dtype):
-        inp = torch.ones(1, 6, 240, 320, device=device)
+        inp = torch.ones(1, 6, 240, 320, device=device, dtype=dtype)
         defmo = DeFMO().to(device)
         defmo.eval()  # batchnorm with size 1 is not allowed in train mode
         out = defmo(inp)
