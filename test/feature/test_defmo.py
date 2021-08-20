@@ -8,7 +8,6 @@ from kornia.testing import assert_close
 
 
 class TestDeFMO:
-    
     @staticmethod
     def test_shape(self, device, dtype):
         inp = torch.ones(1, 6, 240, 320, device=device, dtype=dtype)
@@ -16,7 +15,7 @@ class TestDeFMO:
         defmo.eval()  # batchnorm with size 1 is not allowed in train mode
         out = defmo(inp)
         assert out.shape == (1, 24, 4, 240, 320)
-    
+
     @staticmethod
     def test_shape_batch(self, device):
         inp = torch.ones(16, 6, 240, 320, device=device)
@@ -31,7 +30,7 @@ class TestDeFMO:
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
         defmo = DeFMO().to(patches.device, patches.dtype)
         assert gradcheck(defmo, (patches,), eps=1e-4, atol=1e-4, raise_exception=True)
-    
+
     @staticmethod
     @pytest.mark.jit
     def test_jit(self, device, dtype):
