@@ -211,8 +211,8 @@ class EncoderDeFMO(nn.Module):
         modelc1[0] = nn.Conv2d(6, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
         self.net = nn.Sequential(modelc1, modelc2)
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        return self.net(input)
+    def forward(self, input_data: torch.Tensor) -> torch.Tensor:
+        return self.net(input_data)
 
 
 class RenderingDeFMO(nn.Module):
@@ -294,7 +294,7 @@ class DeFMO(nn.Module):
             )
             self.rendering.load_state_dict(pretrained_dict_ren, strict=True)
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        latent = self.encoder(input)
+    def forward(self, input_data: torch.Tensor) -> torch.Tensor:
+        latent = self.encoder(input_data)
         x_out = self.rendering(latent)
         return x_out
