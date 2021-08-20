@@ -53,7 +53,7 @@ def load_data(root_path, sequence_name, frame_id):
     # load camera data and create pinhole
     height, width = image.shape[-2:]
     intrinsics, extrinsics = load_camera_data(camera_file)
-    camera = create_pinhole(intrinsics, extrinsics, height, width)
+    camera = dgm.utils.create_pinhole(intrinsics, extrinsics, height, width)
     return image, depth, camera
 
 
