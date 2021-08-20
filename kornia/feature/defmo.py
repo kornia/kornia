@@ -8,7 +8,8 @@ urls["defmo_encoder"] = "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_
 urls["defmo_rendering"] = "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/rendering_best.pt"
 
 
-# conv1x1, conv3x3, Bottleneck, ResNet taken from https://github.com/pytorch/vision/blob/master/torchvision/models/resnet.py
+# conv1x1, conv3x3, Bottleneck, ResNet are taken from:
+# https://github.com/pytorch/vision/blob/master/torchvision/models/resnet.py
 
 
 def conv1x1(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv2d:
