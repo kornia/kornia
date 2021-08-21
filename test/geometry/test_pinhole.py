@@ -1,13 +1,12 @@
-import torch
 import pytest
-import kornia
-
+import torch
 from torch.autograd import gradcheck
+
+import kornia
 from kornia.testing import assert_close, tensor_to_gradcheck_var
 
 
 class TestCam2Pixel:
-
     def _create_intrinsics(self, batch_size, fx, fy, cx, cy, device, dtype):
         temp = torch.eye(4, device=device, dtype=dtype)
         temp[0, 0], temp[0, 2] = fx, cx
@@ -35,10 +34,7 @@ class TestCam2Pixel:
         seed = 77
         low, high = -500, 500
 
-        intrinsics = self._create_intrinsics(
-            batch_size, fx, fy, cx, cy,
-            device=device, dtype=dtype
-        )
+        intrinsics = self._create_intrinsics(batch_size, fx, fy, cx, cy, device=device, dtype=dtype)
 
         # Setting the projection matrix to the intrinsic matrix for
         # simplicity (i.e. assuming that the RT matrix is an identity matrix)
@@ -47,11 +43,7 @@ class TestCam2Pixel:
         torch.manual_seed(seed)
         cam_coords_src = self._get_samples((batch_size, H, W, 3), low, high, device, dtype)
 
-        pixel_coords_dst = kornia.cam2pixel(
-            cam_coords_src=cam_coords_src,
-            dst_proj_src=proj_mat,
-            eps=eps
-        )
+        pixel_coords_dst = kornia.cam2pixel(cam_coords_src=cam_coords_src, dst_proj_src=proj_mat, eps=eps)
         assert pixel_coords_dst.shape == (batch_size, H, W, 2)
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
@@ -63,14 +55,8 @@ class TestCam2Pixel:
         seed = 77
         low, high = -500, 500
 
-        intrinsics = self._create_intrinsics(
-            batch_size, fx, fy, cx, cy,
-            device=device, dtype=dtype
-        )
-        intrinsics_inv = self._create_intrinsics_inv(
-            batch_size, fx, fy, cx, cy,
-            device=device, dtype=dtype
-        )
+        intrinsics = self._create_intrinsics(batch_size, fx, fy, cx, cy, device=device, dtype=dtype)
+        intrinsics_inv = self._create_intrinsics_inv(batch_size, fx, fy, cx, cy, device=device, dtype=dtype)
 
         # Setting the projection matrix to the intrinsic matrix for
         # simplicity (i.e. assuming that the RT matrix is an identity matrix)
@@ -79,19 +65,14 @@ class TestCam2Pixel:
         torch.manual_seed(seed)
         cam_coords_input = self._get_samples((batch_size, H, W, 3), low, high, device, dtype)
 
-        pixel_coords_output = kornia.cam2pixel(
-            cam_coords_src=cam_coords_input,
-            dst_proj_src=proj_mat,
-            eps=eps,
-        )
+        pixel_coords_output = kornia.cam2pixel(cam_coords_src=cam_coords_input, dst_proj_src=proj_mat, eps=eps)
 
         last_ch = torch.ones((batch_size, H, W, 1), device=device, dtype=dtype)
         pixel_coords_concat = torch.cat([pixel_coords_output, last_ch], axis=-1)
 
         depth = cam_coords_input[..., 2:3].permute(0, 3, 1, 2).contiguous()
         cam_coords_output = kornia.pixel2cam(
-            depth=depth, intrinsics_inv=intrinsics_inv,
-            pixel_coords=pixel_coords_concat,
+            depth=depth, intrinsics_inv=intrinsics_inv, pixel_coords=pixel_coords_concat
         )
 
         assert_close(cam_coords_output, cam_coords_input, atol=1e-4, rtol=1e-4)
@@ -111,10 +92,7 @@ class TestCam2Pixel:
             atol, rtol = 1e-4, 1e-2
 
         # If contiguous() is not called, gradcheck fails
-        intrinsics = self._create_intrinsics(
-            batch_size, fx, fy, cx, cy,
-            device=device, dtype=dtype
-        ).contiguous()
+        intrinsics = self._create_intrinsics(batch_size, fx, fy, cx, cy, device=device, dtype=dtype).contiguous()
 
         # Setting the projection matrix to the intrinsic matrix for
         # simplicity (i.e. assuming that the RT matrix is an identity matrix)
@@ -127,14 +105,11 @@ class TestCam2Pixel:
         proj_mat = tensor_to_gradcheck_var(proj_mat)
 
         assert gradcheck(
-            kornia.geometry.cam2pixel,
-            (cam_coords_src, proj_mat, eps), raise_exception=True,
-            atol=atol, rtol=rtol,
+            kornia.geometry.cam2pixel, (cam_coords_src, proj_mat, eps), raise_exception=True, atol=atol, rtol=rtol
         )
 
 
 class TestPixel2Cam:
-
     def _create_intrinsics(self, batch_size, fx, fy, cx, cy, device, dtype):
         temp = torch.eye(4, device=device, dtype=dtype)
         temp[0, 0], temp[0, 2] = fx, cx
@@ -169,15 +144,9 @@ class TestPixel2Cam:
         last_ch = torch.ones((batch_size, H, W, 1), device=device, dtype=dtype)
         pixel_coords_input = torch.cat([pixel_coords, last_ch], axis=-1)
 
-        intrinsics_inv = self._create_intrinsics_inv(
-            batch_size, fx, fy, cx, cy,
-            device=device, dtype=dtype
-        )
+        intrinsics_inv = self._create_intrinsics_inv(batch_size, fx, fy, cx, cy, device=device, dtype=dtype)
 
-        output = kornia.pixel2cam(
-            depth=depth, intrinsics_inv=intrinsics_inv,
-            pixel_coords=pixel_coords_input,
-        )
+        output = kornia.pixel2cam(depth=depth, intrinsics_inv=intrinsics_inv, pixel_coords=pixel_coords_input)
 
         assert output.shape == (batch_size, H, W, 3)
 
@@ -198,28 +167,15 @@ class TestPixel2Cam:
         last_ch = torch.ones((batch_size, H, W, 1), device=device, dtype=dtype)
         pixel_coords_input = torch.cat([pixel_coords, last_ch], axis=-1)
 
-        intrinsics = self._create_intrinsics(
-            batch_size, fx, fy, cx, cy,
-            device=device, dtype=dtype
-        )
-        intrinsics_inv = self._create_intrinsics_inv(
-            batch_size, fx, fy, cx, cy,
-            device=device, dtype=dtype
-        )
+        intrinsics = self._create_intrinsics(batch_size, fx, fy, cx, cy, device=device, dtype=dtype)
+        intrinsics_inv = self._create_intrinsics_inv(batch_size, fx, fy, cx, cy, device=device, dtype=dtype)
 
-        cam_coords = kornia.pixel2cam(
-            depth=depth, intrinsics_inv=intrinsics_inv,
-            pixel_coords=pixel_coords_input,
-        )
+        cam_coords = kornia.pixel2cam(depth=depth, intrinsics_inv=intrinsics_inv, pixel_coords=pixel_coords_input)
 
         # Setting the projection matrix to the intrinsic matrix for
         # simplicity (i.e. assuming that the RT matrix is an identity matrix)
         proj_mat = intrinsics
-        pixel_coords_output = kornia.cam2pixel(
-            cam_coords_src=cam_coords,
-            dst_proj_src=proj_mat,
-            eps=eps
-        )
+        pixel_coords_output = kornia.cam2pixel(cam_coords_src=cam_coords, dst_proj_src=proj_mat, eps=eps)
         pixel_coords_concat = torch.cat([pixel_coords_output, last_ch], axis=-1)
 
         assert_close(pixel_coords_concat, pixel_coords_input, atol=1e-4, rtol=1e-4)
@@ -242,18 +198,14 @@ class TestPixel2Cam:
 
         # If contiguous() is not called, gradcheck fails
         intrinsics_inv = self._create_intrinsics_inv(
-            batch_size, fx, fy, cx, cy,
-            device=device, dtype=dtype
+            batch_size, fx, fy, cx, cy, device=device, dtype=dtype
         ).contiguous()
 
         depth = tensor_to_gradcheck_var(depth)
         intrinsics_inv = tensor_to_gradcheck_var(intrinsics_inv)
         pixel_coords_input = tensor_to_gradcheck_var(pixel_coords_input)
 
-        assert gradcheck(
-            kornia.geometry.pixel2cam,
-            (depth, intrinsics_inv, pixel_coords_input), raise_exception=True
-        )
+        assert gradcheck(kornia.geometry.pixel2cam, (depth, intrinsics_inv, pixel_coords_input), raise_exception=True)
 
 
 class TestPinholeCamera:
