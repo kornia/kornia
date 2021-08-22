@@ -39,7 +39,7 @@ class TFeat(nn.Module):
     """
 
     def __init__(self, pretrained: bool = False) -> None:
-        super(TFeat, self).__init__()
+        super().__init__()
         self.features = nn.Sequential(
             nn.InstanceNorm2d(1, affine=False),
             nn.Conv2d(1, 32, kernel_size=7),

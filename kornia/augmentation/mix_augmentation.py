@@ -85,7 +85,7 @@ class RandomMixUp(MixAugmentationBase):
         p: float = 1.0,
         keepdim: bool = False,
     ) -> None:
-        super(RandomMixUp, self).__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self.lambda_val = lambda_val
 
     def __repr__(self) -> str:
@@ -212,7 +212,7 @@ class RandomCutMix(MixAugmentationBase):
         p: float = 1.0,
         keepdim: bool = False,
     ) -> None:
-        super(RandomCutMix, self).__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self.height = height
         self.width = width
         self.num_mix = num_mix

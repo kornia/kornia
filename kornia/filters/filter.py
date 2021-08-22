@@ -70,19 +70,19 @@ def filter2d(
                   [0., 0., 0., 0., 0.]]]])
     """
     if not isinstance(input, torch.Tensor):
-        raise TypeError("Input border_type is not torch.Tensor. Got {}".format(type(input)))
+        raise TypeError(f"Input border_type is not torch.Tensor. Got {type(input)}")
 
     if not isinstance(kernel, torch.Tensor):
-        raise TypeError("Input border_type is not torch.Tensor. Got {}".format(type(kernel)))
+        raise TypeError(f"Input border_type is not torch.Tensor. Got {type(kernel)}")
 
     if not isinstance(border_type, str):
-        raise TypeError("Input border_type is not string. Got {}".format(type(kernel)))
+        raise TypeError(f"Input border_type is not string. Got {type(kernel)}")
 
     if not len(input.shape) == 4:
-        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}".format(input.shape))
+        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
 
     if not len(kernel.shape) == 3 and kernel.shape[0] != 1:
-        raise ValueError("Invalid kernel shape, we expect 1xHxW. Got: {}".format(kernel.shape))
+        raise ValueError(f"Invalid kernel shape, we expect 1xHxW. Got: {kernel.shape}")
 
     # prepare kernel
     b, c, h, w = input.shape
@@ -171,19 +171,19 @@ def filter3d(
                    [0., 0., 0., 0., 0.]]]]])
     """
     if not isinstance(input, torch.Tensor):
-        raise TypeError("Input border_type is not torch.Tensor. Got {}".format(type(input)))
+        raise TypeError(f"Input border_type is not torch.Tensor. Got {type(input)}")
 
     if not isinstance(kernel, torch.Tensor):
-        raise TypeError("Input border_type is not torch.Tensor. Got {}".format(type(kernel)))
+        raise TypeError(f"Input border_type is not torch.Tensor. Got {type(kernel)}")
 
     if not isinstance(border_type, str):
-        raise TypeError("Input border_type is not string. Got {}".format(type(kernel)))
+        raise TypeError(f"Input border_type is not string. Got {type(kernel)}")
 
     if not len(input.shape) == 5:
-        raise ValueError("Invalid input shape, we expect BxCxDxHxW. Got: {}".format(input.shape))
+        raise ValueError(f"Invalid input shape, we expect BxCxDxHxW. Got: {input.shape}")
 
     if not len(kernel.shape) == 4 and kernel.shape[0] != 1:
-        raise ValueError("Invalid kernel shape, we expect 1xDxHxW. Got: {}".format(kernel.shape))
+        raise ValueError(f"Invalid kernel shape, we expect 1xDxHxW. Got: {kernel.shape}")
 
     # prepare kernel
     b, c, d, h, w = input.shape

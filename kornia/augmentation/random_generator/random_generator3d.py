@@ -264,7 +264,7 @@ def center_crop_generator3d(
         No random number will be generated.
     """
     if not isinstance(size, (tuple, list)) and len(size) == 3:
-        raise ValueError("Input size must be a tuple/list of length 3. Got {}".format(size))
+        raise ValueError(f"Input size must be a tuple/list of length 3. Got {size}")
     if not (
         type(depth) is int and depth > 0 and type(height) is int and height > 0 and type(width) is int and width > 0
     ):
@@ -390,9 +390,7 @@ def random_crop_generator3d(
     z_diff = input_size[0] - size[:, 0] + 1
 
     if (x_diff < 0).any() or (y_diff < 0).any() or (z_diff < 0).any():
-        raise ValueError(
-            "input_size %s cannot be smaller than crop size %s in any dimension." % (str(input_size), str(size))
-        )
+        raise ValueError(f"input_size {str(input_size)} cannot be smaller than crop size {str(size)} in any dimension.")
 
     if batch_size == 0:
         return dict(

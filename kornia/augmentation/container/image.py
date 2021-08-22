@@ -70,9 +70,7 @@ class ImageSequential(SequentialBase):
         keepdim: Optional[bool] = None,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
     ) -> None:
-        super(ImageSequential, self).__init__(
-            *args, same_on_batch=same_on_batch, return_transform=return_transform, keepdim=keepdim
-        )
+        super().__init__(*args, same_on_batch=same_on_batch, return_transform=return_transform, keepdim=keepdim)
 
         self.random_apply: Union[Tuple[int, int], bool] = self._read_random_apply(random_apply, len(args))
         self.return_label: Optional[bool] = None

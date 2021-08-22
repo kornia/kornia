@@ -88,7 +88,7 @@ class BoxBlur(nn.Module):
     """
 
     def __init__(self, kernel_size: Tuple[int, int], border_type: str = 'reflect', normalized: bool = True) -> None:
-        super(BoxBlur, self).__init__()
+        super().__init__()
         self.kernel_size: Tuple[int, int] = kernel_size
         self.border_type: str = border_type
         self.normalized: bool = normalized

@@ -100,7 +100,7 @@ class SIFTDescriptor(nn.Module):
         rootsift: bool = True,
         clipval: float = 0.2,
     ) -> None:
-        super(SIFTDescriptor, self).__init__()
+        super().__init__()
         self.eps = 1e-10
         self.num_ang_bins = num_ang_bins
         self.num_spatial_bins = num_spatial_bins
@@ -134,9 +134,9 @@ class SIFTDescriptor(nn.Module):
 
     def forward(self, input):
         if not isinstance(input, torch.Tensor):
-            raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
+            raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
         if not len(input.shape) == 4:
-            raise ValueError("Invalid input shape, we expect Bx1xHxW. Got: {}".format(input.shape))
+            raise ValueError(f"Invalid input shape, we expect Bx1xHxW. Got: {input.shape}")
         B, CH, W, H = input.size()
         if (W != self.patch_size) or (H != self.patch_size) or (CH != 1):
             raise TypeError(

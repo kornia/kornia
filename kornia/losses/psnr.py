@@ -105,7 +105,7 @@ class PSNRLoss(nn.Module):
     """
 
     def __init__(self, max_val: float) -> None:
-        super(PSNRLoss, self).__init__()
+        super().__init__()
         self.max_val: float = max_val
 
     def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:

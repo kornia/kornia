@@ -7,7 +7,7 @@ import torch
 def normalize_kernel2d(input: torch.Tensor) -> torch.Tensor:
     r"""Normalizes both derivative and smoothing kernel."""
     if len(input.size()) < 2:
-        raise TypeError("input should be at least 2D tensor. Got {}".format(input.size()))
+        raise TypeError(f"input should be at least 2D tensor. Got {input.size()}")
     norm: torch.Tensor = input.abs().sum(dim=-1).sum(dim=-1)
     return input / (norm.unsqueeze(-1).unsqueeze(-1))
 
@@ -19,7 +19,7 @@ def gaussian(window_size: int, sigma: float) -> torch.Tensor:
     x = torch.arange(window_size, device=device, dtype=dtype) - window_size // 2
     if window_size % 2 == 0:
         x = x + 0.5
-    gauss = torch.exp((-x.pow(2.0) / (2 * sigma ** 2)))
+    gauss = torch.exp(-x.pow(2.0) / (2 * sigma ** 2))
     return gauss / gauss.sum()
 
 
@@ -450,9 +450,9 @@ def get_gaussian_kernel2d(
                 [0.0370, 0.0720, 0.0899, 0.0720, 0.0370]])
     """
     if not isinstance(kernel_size, tuple) or len(kernel_size) != 2:
-        raise TypeError("kernel_size must be a tuple of length two. Got {}".format(kernel_size))
+        raise TypeError(f"kernel_size must be a tuple of length two. Got {kernel_size}")
     if not isinstance(sigma, tuple) or len(sigma) != 2:
-        raise TypeError("sigma must be a tuple of length two. Got {}".format(sigma))
+        raise TypeError(f"sigma must be a tuple of length two. Got {sigma}")
     ksize_x, ksize_y = kernel_size
     sigma_x, sigma_y = sigma
     kernel_x: torch.Tensor = get_gaussian_kernel1d(ksize_x, sigma_x, force_even)
@@ -481,7 +481,7 @@ def get_laplacian_kernel1d(kernel_size: int) -> torch.Tensor:
 
     """
     if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or kernel_size <= 0:
-        raise TypeError("ksize must be an odd positive integer. Got {}".format(kernel_size))
+        raise TypeError(f"ksize must be an odd positive integer. Got {kernel_size}")
     window_1d: torch.Tensor = laplacian_1d(kernel_size)
     return window_1d
 
@@ -511,7 +511,7 @@ def get_laplacian_kernel2d(kernel_size: int) -> torch.Tensor:
                 [  1.,   1.,   1.,   1.,   1.]])
     """
     if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or kernel_size <= 0:
-        raise TypeError("ksize must be an odd positive integer. Got {}".format(kernel_size))
+        raise TypeError(f"ksize must be an odd positive integer. Got {kernel_size}")
 
     kernel = torch.ones((kernel_size, kernel_size))
     mid = kernel_size // 2

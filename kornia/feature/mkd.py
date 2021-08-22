@@ -73,9 +73,9 @@ class MKDGradients(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if not isinstance(x, torch.Tensor):
-            raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(x)))
+            raise TypeError(f"Input type is not a torch.Tensor. Got {type(x)}")
         if not len(x.shape) == 4:
-            raise ValueError("Invalid input shape, we expect Bx1xHxW. Got: {}".format(x.shape))
+            raise ValueError(f"Invalid input shape, we expect Bx1xHxW. Got: {x.shape}")
         # Modify 'diff' gradient. Before we had lambda function, but it is not jittable
         grads_xy = -self.grad(x)
         gx = grads_xy[:, :, 0, :, :]
@@ -136,10 +136,10 @@ class VonMisesKernel(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if not isinstance(x, torch.Tensor):
-            raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(x)))
+            raise TypeError(f"Input type is not a torch.Tensor. Got {type(x)}")
 
         if not len(x.shape) == 4 or x.shape[1] != 1:
-            raise ValueError("Invalid input shape, we expect Bx1xHxW. Got: {}".format(x.shape))
+            raise ValueError(f"Invalid input shape, we expect Bx1xHxW. Got: {x.shape}")
 
         # TODO: unify the two lines below when pytorch 1.6 support is dropped
         emb0: torch.Tensor = torch.jit.annotate(torch.Tensor, self.emb0)
@@ -212,9 +212,9 @@ class EmbedGradients(nn.Module):
 
     def forward(self, grads: torch.Tensor) -> torch.Tensor:
         if not isinstance(grads, torch.Tensor):
-            raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(grads)))
+            raise TypeError(f"Input type is not a torch.Tensor. Got {type(grads)}")
         if not len(grads.shape) == 4:
-            raise ValueError("Invalid input shape, we expect Bx2xHxW. Got: {}".format(grads.shape))
+            raise ValueError(f"Invalid input shape, we expect Bx2xHxW. Got: {grads.shape}")
         mags = grads[:, :1, :, :]
         oris = grads[:, 1:, :, :]
         if self.relative:
@@ -348,9 +348,9 @@ class ExplicitSpacialEncoding(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if not isinstance(x, torch.Tensor):
-            raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(x)))
+            raise TypeError(f"Input type is not a torch.Tensor. Got {type(x)}")
         if not ((len(x.shape) == 4) | (x.shape[1] == self.in_dims)):
-            raise ValueError("Invalid input shape, we expect Bx{}xHxW. Got: {}".format(self.in_dims, x.shape))
+            raise ValueError(f"Invalid input shape, we expect Bx{self.in_dims}xHxW. Got: {x.shape}")
         idx1 = torch.jit.annotate(torch.Tensor, self.idx1)
         emb1 = torch.index_select(x, 1, idx1)
         output = emb1 * self.emb2
@@ -485,9 +485,9 @@ class Whitening(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if not isinstance(x, torch.Tensor):
-            raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(x)))
+            raise TypeError(f"Input type is not a torch.Tensor. Got {type(x)}")
         if not len(x.shape) == 2:
-            raise ValueError("Invalid input shape, we expect NxD. Got: {}".format(x.shape))
+            raise ValueError(f"Invalid input shape, we expect NxD. Got: {x.shape}")
         x = x - self.mean  # Center the data.
         x = x @ self.evecs  # Apply rotation and/or scaling.
         x = torch.sign(x) * torch.pow(torch.abs(x), self.pval)  # Powerlaw.
@@ -590,9 +590,9 @@ class MKDDescriptor(nn.Module):
 
     def forward(self, patches: torch.Tensor) -> torch.Tensor:
         if not isinstance(patches, torch.Tensor):
-            raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(patches)))
+            raise TypeError(f"Input type is not a torch.Tensor. Got {type(patches)}")
         if not len(patches.shape) == 4:
-            raise ValueError("Invalid input shape, we expect Bx1xHxW. Got: {}".format(patches.shape))
+            raise ValueError(f"Invalid input shape, we expect Bx1xHxW. Got: {patches.shape}")
         # Extract gradients.
         g = self.smoothing(patches)
         g = self.gradients(g)

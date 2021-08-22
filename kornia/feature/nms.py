@@ -27,7 +27,7 @@ class NonMaximaSuppression2d(nn.Module):
     r"""Applies non maxima suppression to filter."""
 
     def __init__(self, kernel_size: Tuple[int, int]):
-        super(NonMaximaSuppression2d, self).__init__()
+        super().__init__()
         self.kernel_size: Tuple[int, int] = kernel_size
         self.padding: Tuple[int, int, int, int] = self._compute_zero_padding2d(kernel_size)
         self.kernel = _get_nms_kernel2d(*kernel_size)
@@ -70,7 +70,7 @@ class NonMaximaSuppression3d(nn.Module):
     r"""Applies non maxima suppression to filter."""
 
     def __init__(self, kernel_size: Tuple[int, int, int]):
-        super(NonMaximaSuppression3d, self).__init__()
+        super().__init__()
         self.kernel_size: Tuple[int, int, int] = kernel_size
         self.padding: Tuple[int, int, int, int, int, int] = self._compute_zero_padding3d(kernel_size)
         self.kernel = _get_nms_kernel3d(*kernel_size)

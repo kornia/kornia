@@ -38,7 +38,7 @@ def image_to_tensor(image: "np.ndarray", keepdim: bool = True) -> torch.Tensor:
         tensor = tensor.permute(0, 3, 1, 2)
         keepdim = True  # no need to unsqueeze
     else:
-        raise ValueError("Cannot process image with shape {}".format(input_shape))
+        raise ValueError(f"Cannot process image with shape {input_shape}")
 
     return tensor.unsqueeze(0) if not keepdim else tensor
 

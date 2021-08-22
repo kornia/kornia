@@ -64,16 +64,16 @@ def harris_response(
     """
     # TODO: Recompute doctest
     if not isinstance(input, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if not len(input.shape) == 4:
-        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}".format(input.shape))
+        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
 
     if sigmas is not None:
         if not isinstance(sigmas, torch.Tensor):
-            raise TypeError("sigmas type is not a torch.Tensor. Got {}".format(type(sigmas)))
+            raise TypeError(f"sigmas type is not a torch.Tensor. Got {type(sigmas)}")
         if (not len(sigmas.shape) == 1) or (sigmas.size(0) != input.size(0)):
-            raise ValueError("Invalid sigmas shape, we expect B == input.size(0). Got: {}".format(sigmas.shape))
+            raise ValueError(f"Invalid sigmas shape, we expect B == input.size(0). Got: {sigmas.shape}")
 
     gradients: torch.Tensor = spatial_gradient(input, grads_mode)
     dx: torch.Tensor = gradients[:, :, 0]
@@ -148,10 +148,10 @@ def gftt_response(
     """
     # TODO: Recompute doctest
     if not isinstance(input, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if not len(input.shape) == 4:
-        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}".format(input.shape))
+        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
 
     gradients: torch.Tensor = spatial_gradient(input, grads_mode)
     dx: torch.Tensor = gradients[:, :, 0]
@@ -230,17 +230,17 @@ def hessian_response(
     """
     # TODO: Recompute doctest
     if not isinstance(input, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if not len(input.shape) == 4:
-        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}".format(input.shape))
+        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
 
     if sigmas is not None:
         if not isinstance(sigmas, torch.Tensor):
-            raise TypeError("sigmas type is not a torch.Tensor. Got {}".format(type(sigmas)))
+            raise TypeError(f"sigmas type is not a torch.Tensor. Got {type(sigmas)}")
 
         if (not len(sigmas.shape) == 1) or (sigmas.size(0) != input.size(0)):
-            raise ValueError("Invalid sigmas shape, we expect B == input.size(0). Got: {}".format(sigmas.shape))
+            raise ValueError(f"Invalid sigmas shape, we expect B == input.size(0). Got: {sigmas.shape}")
 
     gradients: torch.Tensor = spatial_gradient(input, grads_mode, 2)
     dxx: torch.Tensor = gradients[:, :, 0]
@@ -266,10 +266,10 @@ def dog_response(input: torch.Tensor) -> torch.Tensor:
 
     """
     if not isinstance(input, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if not len(input.shape) == 5:
-        raise ValueError("Invalid input shape, we expect BxCxDxHxW. Got: {}".format(input.shape))
+        raise ValueError(f"Invalid input shape, we expect BxCxDxHxW. Got: {input.shape}")
 
     return input[:, :, 1:] - input[:, :, :-1]
 
@@ -281,7 +281,7 @@ class BlobDoG(nn.Module):
     """
 
     def __init__(self) -> None:
-        super(BlobDoG, self).__init__()
+        super().__init__()
         return
 
     def __repr__(self) -> str:
@@ -298,7 +298,7 @@ class CornerHarris(nn.Module):
     """
 
     def __init__(self, k: Union[float, torch.Tensor], grads_mode='sobel') -> None:
-        super(CornerHarris, self).__init__()
+        super().__init__()
         if type(k) is float:
             self.register_buffer('k', torch.tensor(k))
         else:
@@ -320,7 +320,7 @@ class CornerGFTT(nn.Module):
     """
 
     def __init__(self, grads_mode='sobel') -> None:
-        super(CornerGFTT, self).__init__()
+        super().__init__()
         self.grads_mode: str = grads_mode
         return
 
@@ -338,7 +338,7 @@ class BlobHessian(nn.Module):
     """
 
     def __init__(self, grads_mode='sobel') -> None:
-        super(BlobHessian, self).__init__()
+        super().__init__()
         self.grads_mode: str = grads_mode
         return
 

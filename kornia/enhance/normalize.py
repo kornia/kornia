@@ -43,7 +43,7 @@ class Normalize(nn.Module):
         mean: Union[torch.Tensor, Tuple[float], List[float], float],
         std: Union[torch.Tensor, Tuple[float], List[float], float],
     ) -> None:
-        super(Normalize, self).__init__()
+        super().__init__()
 
         if isinstance(mean, float):
             mean = torch.tensor([mean])
@@ -64,7 +64,7 @@ class Normalize(nn.Module):
         return normalize(input, self.mean, self.std)
 
     def __repr__(self):
-        repr = "(mean={0}, std={1})".format(self.mean, self.std)
+        repr = f"(mean={self.mean}, std={self.std})"
         return self.__class__.__name__ + repr
 
 
@@ -158,7 +158,7 @@ class Denormalize(nn.Module):
 
     def __init__(self, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]) -> None:
 
-        super(Denormalize, self).__init__()
+        super().__init__()
 
         self.mean = mean
         self.std = std
@@ -167,7 +167,7 @@ class Denormalize(nn.Module):
         return denormalize(input, self.mean, self.std)
 
     def __repr__(self):
-        repr = "(mean={0}, std={1})".format(self.mean, self.std)
+        repr = f"(mean={self.mean}, std={self.std})"
         return self.__class__.__name__ + repr
 
 
@@ -209,13 +209,13 @@ def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union
         std = torch.tensor([std] * shape[1], device=data.device, dtype=data.dtype)
 
     if not isinstance(data, torch.Tensor):
-        raise TypeError("data should be a tensor. Got {}".format(type(data)))
+        raise TypeError(f"data should be a tensor. Got {type(data)}")
 
     if not isinstance(mean, torch.Tensor):
-        raise TypeError("mean should be a tensor or a float. Got {}".format(type(mean)))
+        raise TypeError(f"mean should be a tensor or a float. Got {type(mean)}")
 
     if not isinstance(std, torch.Tensor):
-        raise TypeError("std should be a tensor or float. Got {}".format(type(std)))
+        raise TypeError(f"std should be a tensor or float. Got {type(std)}")
 
     # Allow broadcast on channel dimension
     if mean.shape and mean.shape[0] != 1:

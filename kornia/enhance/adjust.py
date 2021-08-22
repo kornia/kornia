@@ -820,7 +820,7 @@ class AdjustSaturation(nn.Module):
     """
 
     def __init__(self, saturation_factor: Union[float, torch.Tensor]) -> None:
-        super(AdjustSaturation, self).__init__()
+        super().__init__()
         self.saturation_factor: Union[float, torch.Tensor] = saturation_factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
@@ -864,7 +864,7 @@ class AdjustHue(nn.Module):
     """
 
     def __init__(self, hue_factor: Union[float, torch.Tensor]) -> None:
-        super(AdjustHue, self).__init__()
+        super().__init__()
         self.hue_factor: Union[float, torch.Tensor] = hue_factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
@@ -901,7 +901,7 @@ class AdjustGamma(nn.Module):
     """
 
     def __init__(self, gamma: Union[float, torch.Tensor], gain: Union[float, torch.Tensor] = 1.0) -> None:
-        super(AdjustGamma, self).__init__()
+        super().__init__()
         self.gamma: Union[float, torch.Tensor] = gamma
         self.gain: Union[float, torch.Tensor] = gain
 
@@ -939,7 +939,7 @@ class AdjustContrast(nn.Module):
     """
 
     def __init__(self, contrast_factor: Union[float, torch.Tensor]) -> None:
-        super(AdjustContrast, self).__init__()
+        super().__init__()
         self.contrast_factor: Union[float, torch.Tensor] = contrast_factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
@@ -975,7 +975,7 @@ class AdjustBrightness(nn.Module):
     """
 
     def __init__(self, brightness_factor: Union[float, torch.Tensor]) -> None:
-        super(AdjustBrightness, self).__init__()
+        super().__init__()
         self.brightness_factor: Union[float, torch.Tensor] = brightness_factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
@@ -1005,7 +1005,7 @@ class Invert(nn.Module):
     """
 
     def __init__(self, max_val: torch.Tensor = torch.tensor(1.0)) -> None:
-        super(Invert, self).__init__()
+        super().__init__()
         if not isinstance(max_val, nn.Parameter):
             self.register_buffer("max_val", max_val)
         else:

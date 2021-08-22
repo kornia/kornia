@@ -94,7 +94,7 @@ class HomographyWarper(HMW.HomographyWarper):
         normalized_coordinates: bool = True,
         align_corners: bool = False,
     ) -> None:
-        super(HomographyWarper, self).__init__(height, width, mode, padding_mode, normalized_coordinates, align_corners)
+        super().__init__(height, width, mode, padding_mode, normalized_coordinates, align_corners)
         warnings.warn(
             "`HomographyWarper` is deprecated and will be removed > 0.6.0. "
             "Please use `kornia.geometry.transform.HomographyWarper instead.`",

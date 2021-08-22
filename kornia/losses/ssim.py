@@ -40,22 +40,22 @@ def ssim(
         >>> ssim_map = ssim(input1, input2, 5)  # 1x4x5x5
     """
     if not isinstance(img1, torch.Tensor):
-        raise TypeError("Input img1 type is not a torch.Tensor. Got {}".format(type(img1)))
+        raise TypeError(f"Input img1 type is not a torch.Tensor. Got {type(img1)}")
 
     if not isinstance(img2, torch.Tensor):
-        raise TypeError("Input img2 type is not a torch.Tensor. Got {}".format(type(img2)))
+        raise TypeError(f"Input img2 type is not a torch.Tensor. Got {type(img2)}")
 
     if not isinstance(max_val, float):
         raise TypeError(f"Input max_val type is not a float. Got {type(max_val)}")
 
     if not len(img1.shape) == 4:
-        raise ValueError("Invalid img1 shape, we expect BxCxHxW. Got: {}".format(img1.shape))
+        raise ValueError(f"Invalid img1 shape, we expect BxCxHxW. Got: {img1.shape}")
 
     if not len(img2.shape) == 4:
-        raise ValueError("Invalid img2 shape, we expect BxCxHxW. Got: {}".format(img2.shape))
+        raise ValueError(f"Invalid img2 shape, we expect BxCxHxW. Got: {img2.shape}")
 
     if not img1.shape == img2.shape:
-        raise ValueError("img1 and img2 shapes must be the same. Got: {} and {}".format(img1.shape, img2.shape))
+        raise ValueError(f"img1 and img2 shapes must be the same. Got: {img1.shape} and {img2.shape}")
 
     # prepare kernel
     kernel: torch.Tensor = get_gaussian_kernel2d((window_size, window_size), (1.5, 1.5)).unsqueeze(0)
@@ -172,7 +172,7 @@ class SSIM(nn.Module):
     """
 
     def __init__(self, window_size: int, max_val: float = 1.0, eps: float = 1e-12) -> None:
-        super(SSIM, self).__init__()
+        super().__init__()
         self.window_size: int = window_size
         self.max_val: float = max_val
         self.eps = eps
@@ -212,7 +212,7 @@ class SSIMLoss(nn.Module):
     """
 
     def __init__(self, window_size: int, max_val: float = 1.0, eps: float = 1e-12, reduction: str = 'mean') -> None:
-        super(SSIMLoss, self).__init__()
+        super().__init__()
         self.window_size: int = window_size
         self.max_val: float = max_val
         self.eps: float = eps

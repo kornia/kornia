@@ -35,7 +35,7 @@ class HardNet(nn.Module):
     """
 
     def __init__(self, pretrained: bool = False) -> None:
-        super(HardNet, self).__init__()
+        super().__init__()
         self.features = nn.Sequential(
             nn.Conv2d(1, 32, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(32, affine=False),
@@ -106,7 +106,7 @@ class HardNet8(nn.Module):
     """
 
     def __init__(self, pretrained: bool = False):
-        super(HardNet8, self).__init__()
+        super().__init__()
         self.features = nn.Sequential(
             nn.Conv2d(1, 32, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(32, affine=False),

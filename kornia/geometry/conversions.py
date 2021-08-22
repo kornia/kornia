@@ -52,7 +52,7 @@ def rad2deg(tensor: torch.Tensor) -> torch.Tensor:
         >>> output = rad2deg(input)
     """
     if not isinstance(tensor, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(tensor)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
 
     return 180.0 * tensor / pi.to(tensor.device).type(tensor.dtype)
 
@@ -71,7 +71,7 @@ def deg2rad(tensor: torch.Tensor) -> torch.Tensor:
         >>> output = deg2rad(input)
     """
     if not isinstance(tensor, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(tensor)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
 
     return tensor * pi.to(tensor.device).type(tensor.dtype) / 180.0
 
@@ -92,7 +92,7 @@ def pol2cart(rho: torch.Tensor, phi: torch.Tensor) -> Tuple[torch.Tensor, torch.
         >>> x, y = pol2cart(rho, phi)
     """
     if not (isinstance(rho, torch.Tensor) & isinstance(phi, torch.Tensor)):
-        raise TypeError("Input type is not a torch.Tensor. Got {}, {}".format(type(rho), type(phi)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(rho)}, {type(phi)}")
 
     x = rho * torch.cos(phi)
     y = rho * torch.sin(phi)
@@ -116,7 +116,7 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> Tuple[tor
         >>> rho, phi = cart2pol(x, y)
     """
     if not (isinstance(x, torch.Tensor) & isinstance(y, torch.Tensor)):
-        raise TypeError("Input type is not a torch.Tensor. Got {}, {}".format(type(x), type(y)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(x)}, {type(y)}")
 
     rho = torch.sqrt(x ** 2 + y ** 2 + eps)
     phi = torch.atan2(y, x)
@@ -138,10 +138,10 @@ def convert_points_from_homogeneous(points: torch.Tensor, eps: float = 1e-8) -> 
         >>> output = convert_points_from_homogeneous(input)  # BxNx2
     """
     if not isinstance(points, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(points)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(points)}")
 
     if len(points.shape) < 2:
-        raise ValueError("Input must be at least a 2D tensor. Got {}".format(points.shape))
+        raise ValueError(f"Input must be at least a 2D tensor. Got {points.shape}")
 
     # we check for points at max_val
     z_vec: torch.Tensor = points[..., -1:]
@@ -169,9 +169,9 @@ def convert_points_to_homogeneous(points: torch.Tensor) -> torch.Tensor:
         >>> output = convert_points_to_homogeneous(input)  # BxNx4
     """
     if not isinstance(points, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(points)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(points)}")
     if len(points.shape) < 2:
-        raise ValueError("Input must be at least a 2D tensor. Got {}".format(points.shape))
+        raise ValueError(f"Input must be at least a 2D tensor. Got {points.shape}")
 
     return torch.nn.functional.pad(points, [0, 1], "constant", 1.0)
 
@@ -196,9 +196,9 @@ def convert_affinematrix_to_homography(A: torch.Tensor) -> torch.Tensor:
         >>> output = convert_affinematrix_to_homography(input)  # Bx3x3
     """
     if not isinstance(A, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(A)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(A)}")
     if not (len(A.shape) == 3 and A.shape[-2:] == (2, 3)):
-        raise ValueError("Input matrix must be a Bx2x3 tensor. Got {}".format(A.shape))
+        raise ValueError(f"Input matrix must be a Bx2x3 tensor. Got {A.shape}")
     return _convert_affinematrix_to_homography_impl(A)
 
 
@@ -216,9 +216,9 @@ def convert_affinematrix_to_homography3d(A: torch.Tensor) -> torch.Tensor:
         >>> output = convert_affinematrix_to_homography3d(input)  # Bx4x4
     """
     if not isinstance(A, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(A)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(A)}")
     if not (len(A.shape) == 3 and A.shape[-2:] == (3, 4)):
-        raise ValueError("Input matrix must be a Bx3x4 tensor. Got {}".format(A.shape))
+        raise ValueError(f"Input matrix must be a Bx3x4 tensor. Got {A.shape}")
     return _convert_affinematrix_to_homography_impl(A)
 
 
@@ -240,10 +240,10 @@ def angle_axis_to_rotation_matrix(angle_axis: torch.Tensor) -> torch.Tensor:
         >>> output = angle_axis_to_rotation_matrix(input)  # Nx3x3
     """
     if not isinstance(angle_axis, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(angle_axis)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(angle_axis)}")
 
     if not angle_axis.shape[-1] == 3:
-        raise ValueError("Input size must be a (*, 3) tensor. Got {}".format(angle_axis.shape))
+        raise ValueError(f"Input size must be a (*, 3) tensor. Got {angle_axis.shape}")
 
     def _compute_rotation_matrix(angle_axis, theta2, eps=1e-6):
         # We want to be careful to only evaluate the square root if the
@@ -445,10 +445,10 @@ def normalize_quaternion(quaternion: torch.Tensor, eps: float = 1.0e-12) -> torc
         tensor([0.7071, 0.0000, 0.7071, 0.0000])
     """
     if not isinstance(quaternion, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(quaternion)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(quaternion)}")
 
     if not quaternion.shape[-1] == 4:
-        raise ValueError("Input must be a tensor of shape (*, 4). Got {}".format(quaternion.shape))
+        raise ValueError(f"Input must be a tensor of shape (*, 4). Got {quaternion.shape}")
     return F.normalize(quaternion, p=2.0, dim=-1, eps=eps)
 
 

@@ -52,7 +52,7 @@ class TestIntegrationSoftArgmax2d:
             sample = self.generate_sample(target).to(device)
             pred = soft_argmax2d(temperature * x)
             loss = criterion(pred, sample)
-            logger.debug("Loss: {0:.3f} Pred: {1}".format(loss.item(), pred))
+            logger.debug(f"Loss: {loss.item():.3f} Pred: {pred}")
 
             optimizer.zero_grad()
             loss.backward()
