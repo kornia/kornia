@@ -1,7 +1,6 @@
 from typing import Iterable, Optional
 
 import torch
-from torchgeometry.core import rtvec_to_pose
 
 from kornia.geometry.linalg import inverse_transformation, transform_points
 
@@ -501,7 +500,8 @@ def get_optical_pose_base(pinholes: torch.Tensor) -> torch.Tensor:
     if not (len(pinholes.shape) == 2 and pinholes.shape[1] == 12):
         raise AssertionError(pinholes.shape)
     optical_pose_parent = pinholes[..., 6:]
-    return rtvec_to_pose(optical_pose_parent)  # type: ignore
+    # TODO: where is rtvec_to_pose?
+    return rtvec_to_pose(optical_pose_parent)  # type: ignore noqa: F821
 
 
 def homography_i_H_ref(pinhole_i: torch.Tensor, pinhole_ref: torch.Tensor) -> torch.Tensor:
