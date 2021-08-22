@@ -54,9 +54,7 @@ def inverse_depth_smoothness_loss(idepth: torch.Tensor, image: torch.Tensor) -> 
         raise ValueError(f"idepth and image shapes must be the same. Got: {idepth.shape} and {image.shape}")
 
     if not idepth.device == image.device:
-        raise ValueError(
-            f"idepth and image must be in the same device. Got: {idepth.device} and {image.device}"
-        )
+        raise ValueError(f"idepth and image must be in the same device. Got: {idepth.device} and {image.device}")
 
     if not idepth.dtype == image.dtype:
         raise ValueError(f"idepth and image must be in the same dtype. Got: {idepth.dtype} and {image.dtype}")

@@ -246,9 +246,7 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
         raise ValueError(f"Inputs must have the same shape. Got {dst.shape}")
 
     if not (src.shape[0] == dst.shape[0]):
-        raise ValueError(
-            f"Inputs must have same batch size dimension. Expect {src.shape} but got {dst.shape}"
-        )
+        raise ValueError(f"Inputs must have same batch size dimension. Expect {src.shape} but got {dst.shape}")
 
     if not (src.device == dst.device and src.dtype == dst.dtype):
         raise AssertionError(

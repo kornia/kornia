@@ -237,9 +237,7 @@ class LAFOrienter(nn.Module):
         if len(img.shape) != 4:
             raise ValueError(img_message)
         if laf.size(0) != img.size(0):
-            raise ValueError(
-                f"Batch size of laf and img should be the same. Got {img.size(0)}, {laf.size(0)}"
-            )
+            raise ValueError(f"Batch size of laf and img should be the same. Got {img.size(0)}, {laf.size(0)}")
         B, N = laf.shape[:2]
         patches: torch.Tensor = extract_patches_from_pyramid(img, laf, self.patch_size).view(
             -1, 1, self.patch_size, self.patch_size

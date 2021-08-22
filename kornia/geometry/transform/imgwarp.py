@@ -249,9 +249,7 @@ def get_perspective_transform(src, dst):
         raise ValueError(f"Inputs must have the same shape. Got {dst.shape}")
 
     if not (src.shape[0] == dst.shape[0]):
-        raise ValueError(
-            f"Inputs must have same batch size dimension. Expect {src.shape} but got {dst.shape}"
-        )
+        raise ValueError(f"Inputs must have same batch size dimension. Expect {src.shape} but got {dst.shape}")
 
     # we build matrix A by using only 4 point correspondence. The linear
     # system is solved with the least square method, so here

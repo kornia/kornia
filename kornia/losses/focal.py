@@ -56,9 +56,7 @@ def focal_loss(
         raise ValueError(f"Invalid input shape, we expect BxCx*. Got: {input.shape}")
 
     if input.size(0) != target.size(0):
-        raise ValueError(
-            f'Expected input batch_size ({input.size(0)}) to match target batch_size ({target.size(0)}).'
-        )
+        raise ValueError(f'Expected input batch_size ({input.size(0)}) to match target batch_size ({target.size(0)}).')
 
     n = input.size(0)
     out_size = (n,) + input.size()[2:]
@@ -66,9 +64,7 @@ def focal_loss(
         raise ValueError(f'Expected target size {out_size}, got {target.size()}')
 
     if not input.device == target.device:
-        raise ValueError(
-            f"input and target must be in the same device. Got: {input.device} and {target.device}"
-        )
+        raise ValueError(f"input and target must be in the same device. Got: {input.device} and {target.device}")
 
     # compute softmax over the classes axis
     input_soft: torch.Tensor = F.softmax(input, dim=1) + eps
@@ -189,9 +185,7 @@ def binary_focal_loss_with_logits(
         raise ValueError(f"Invalid input shape, we expect BxCx*. Got: {input.shape}")
 
     if input.size(0) != target.size(0):
-        raise ValueError(
-            f'Expected input batch_size ({input.size(0)}) to match target batch_size ({target.size(0)}).'
-        )
+        raise ValueError(f'Expected input batch_size ({input.size(0)}) to match target batch_size ({target.size(0)}).')
 
     probs = torch.sigmoid(input)
     target = target.unsqueeze(dim=1)

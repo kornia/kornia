@@ -366,9 +366,7 @@ def normalize_homography(
     check_is_tensor(dst_pix_trans_src_pix)
 
     if not (len(dst_pix_trans_src_pix.shape) == 3 or dst_pix_trans_src_pix.shape[-2:] == (3, 3)):
-        raise ValueError(
-            f"Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {dst_pix_trans_src_pix.shape}"
-        )
+        raise ValueError(f"Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {dst_pix_trans_src_pix.shape}")
 
     # source and destination sizes
     src_h, src_w = dsize_src
@@ -402,9 +400,7 @@ def denormalize_homography(
     check_is_tensor(dst_pix_trans_src_pix)
 
     if not (len(dst_pix_trans_src_pix.shape) == 3 or dst_pix_trans_src_pix.shape[-2:] == (3, 3)):
-        raise ValueError(
-            f"Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {dst_pix_trans_src_pix.shape}"
-        )
+        raise ValueError(f"Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {dst_pix_trans_src_pix.shape}")
 
     # source and destination sizes
     src_h, src_w = dsize_src
@@ -440,9 +436,7 @@ def normalize_homography3d(
     check_is_tensor(dst_pix_trans_src_pix)
 
     if not (len(dst_pix_trans_src_pix.shape) == 3 or dst_pix_trans_src_pix.shape[-2:] == (4, 4)):
-        raise ValueError(
-            f"Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {dst_pix_trans_src_pix.shape}"
-        )
+        raise ValueError(f"Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {dst_pix_trans_src_pix.shape}")
 
     # source and destination sizes
     src_d, src_h, src_w = dsize_src

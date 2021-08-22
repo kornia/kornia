@@ -65,14 +65,10 @@ def canny(
         )
 
     if low_threshold < 0 and low_threshold > 1:
-        raise ValueError(
-            f"Invalid input threshold. low_threshold should be in range (0,1). Got: {low_threshold}"
-        )
+        raise ValueError(f"Invalid input threshold. low_threshold should be in range (0,1). Got: {low_threshold}")
 
     if high_threshold < 0 and high_threshold > 1:
-        raise ValueError(
-            f"Invalid input threshold. high_threshold should be in range (0,1). Got: {high_threshold}"
-        )
+        raise ValueError(f"Invalid input threshold. high_threshold should be in range (0,1). Got: {high_threshold}")
 
     device: torch.device = input.device
     dtype: torch.dtype = input.dtype
@@ -202,14 +198,10 @@ class Canny(nn.Module):
             )
 
         if low_threshold < 0 or low_threshold > 1:
-            raise ValueError(
-                f"Invalid input threshold. low_threshold should be in range (0,1). Got: {low_threshold}"
-            )
+            raise ValueError(f"Invalid input threshold. low_threshold should be in range (0,1). Got: {low_threshold}")
 
         if high_threshold < 0 or high_threshold > 1:
-            raise ValueError(
-                f"Invalid input threshold. high_threshold should be in range (0,1). Got: {high_threshold}"
-            )
+            raise ValueError(f"Invalid input threshold. high_threshold should be in range (0,1). Got: {high_threshold}")
 
         # Gaussian blur parameters
         self.kernel_size = kernel_size

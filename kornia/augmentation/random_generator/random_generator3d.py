@@ -390,9 +390,7 @@ def random_crop_generator3d(
     z_diff = input_size[0] - size[:, 0] + 1
 
     if (x_diff < 0).any() or (y_diff < 0).any() or (z_diff < 0).any():
-        raise ValueError(
-            f"input_size {str(input_size)} cannot be smaller than crop size {str(size)} in any dimension."
-        )
+        raise ValueError(f"input_size {str(input_size)} cannot be smaller than crop size {str(size)} in any dimension.")
 
     if batch_size == 0:
         return dict(
