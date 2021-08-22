@@ -561,10 +561,10 @@ def pixel2cam(depth: torch.Tensor, intrinsics_inv: torch.Tensor, pixel_coords: t
     Args:
         depth: the source depth maps. Shape must be Bx1xHxW.
         intrinsics_inv: the inverse intrinsics camera matrix. Shape must be Bx4x4.
-        pixel_coords: the grid with the homogeneous camera coordinates. Shape must be BxHxWx3.
+        pixel_coords: the grid with (u, v, 1) pixel coordinates. Shape must be BxHxWx3.
 
     Returns:
-        tensor of (u, v, 1) cam coordinates with shape BxHxWx3.
+        tensor of shape BxHxWx3 with (x, y, z) cam coordinates.
     """
     if not len(depth.shape) == 4 and depth.shape[1] == 1:
         raise ValueError("Input depth has to be in the shape of " "Bx1xHxW. Got {}".format(depth.shape))
@@ -580,16 +580,17 @@ def pixel2cam(depth: torch.Tensor, intrinsics_inv: torch.Tensor, pixel_coords: t
 # https://github.com/ClementPinard/SfmLearner-Pytorch/blob/master/inverse_warp.py#L43
 
 
-def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
+def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     r"""Transform coordinates in the camera frame to the pixel frame.
 
     Args:
-        cam_coords: pixel coordinates defined in the first camera coordinates system. Shape must be BxHxWx3.
+        cam_coords: (x, y, z) coordinates defined in the first camera coordinates system. Shape must be BxHxWx3.
         dst_proj_src: the projection matrix between the
           reference and the non reference camera frame. Shape must be Bx4x4.
+        eps: small value to avoid division by zero error.
 
     Returns:
-        tensor of [-1, 1] coordinates of shape BxHxWx2.
+        tensor of shape BxHxWx2 with (u, v) pixel coordinates.
     """
     if not len(cam_coords_src.shape) == 4 and cam_coords_src.shape[3] == 3:
         raise ValueError(
@@ -610,7 +611,7 @@ def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: flo
 
     # stack and return the coordinates, that's the actual flow
     pixel_coords_dst: torch.Tensor = torch.stack([u_coord, v_coord], dim=-1)
-    return pixel_coords_dst  # (B*N)xHxWx2
+    return pixel_coords_dst  # BxHxWx2
 
 
 # layer api
