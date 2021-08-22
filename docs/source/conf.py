@@ -68,8 +68,8 @@ master_doc = 'index'
 
 # General information about the project.
 project = 'Kornia'
-author = '%s developers' % project
-copyright = '2019, %s' % author
+author = f'{project} developers'
+copyright = f'2019, {author}'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
