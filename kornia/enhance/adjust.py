@@ -402,7 +402,7 @@ def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5)
 
     if isinstance(thresholds, torch.Tensor) and len(thresholds.shape) != 0:
         if not (input.size(0) == len(thresholds) and len(thresholds.shape) == 1):
-            raise AssertionError(f"threshholds must be a 1-d vector of shape ({input.size(0)},). Got {thresholds}")
+            raise AssertionError(f"thresholds must be a 1-d vector of shape ({input.size(0)},). Got {thresholds}")
         # TODO: I am not happy about this line, but no easy to do batch-wise operation
         thresholds = thresholds.to(input.device).to(input.dtype)
         thresholds = torch.stack([x.expand(*input.shape[-3:]) for x in thresholds])

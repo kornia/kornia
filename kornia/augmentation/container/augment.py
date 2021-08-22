@@ -250,7 +250,7 @@ class AugmentationSequential(ImageSequential):
         if params is None:
             if self._params is None:
                 raise ValueError(
-                    "No parameters avaliable for inversing, please run a forward pass first "
+                    "No parameters available for inversing, please run a forward pass first "
                     "or passing valid params into this function."
                 )
             params = self._params

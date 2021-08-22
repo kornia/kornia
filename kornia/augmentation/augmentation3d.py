@@ -30,7 +30,7 @@ class RandomHorizontalFlip3D(AugmentationBase3D):
         p: probability of the image being flipped.
         return_transform: if ``True`` return the matrix describing the transformation applied to each
           input tensor. If ``False`` and the input is a tuple the applied transformation
-          wont be concatenated.
+          won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
@@ -101,7 +101,7 @@ class RandomVerticalFlip3D(AugmentationBase3D):
         p: probability of the image being flipped.
         return_transform: if ``True`` return the matrix describing the transformation applied to each
           input tensor. If ``False`` and the input is a tuple the applied transformation
-          wont be concatenated.
+          won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
@@ -172,7 +172,7 @@ class RandomDepthicalFlip3D(AugmentationBase3D):
         p: probability of the image being flipped.
         return_transform: if ``True`` return the matrix describing the transformation applied to each
           input tensor. If ``False`` and the input is a tuple the applied transformation
-          wont be concatenated.
+          won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
@@ -438,7 +438,7 @@ class RandomRotation3D(AugmentationBase3D):
             Set to 0 to deactivate rotations.
         resample:
         return_transform: if ``True`` return the matrix describing the transformation applied to each
-          input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+          input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -660,7 +660,7 @@ class CenterCrop3D(AugmentationBase3D):
             If Tuple[int, int, int], out_d = size[0], out_h = size[1], out_w = size[2].
         resample:
         return_transform: if ``True`` return the matrix describing the transformation applied to each
-          input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+          input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         align_corners: interpolation flag.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
           to the batch form (False).
@@ -766,7 +766,7 @@ class RandomCrop3D(AugmentationBase3D):
         padding_mode: Type of padding. Should be: constant, edge, reflect or symmetric. Default is constant.
         resample:
         return_transform: if ``True`` return the matrix describing the transformation applied to each
-          input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated
+          input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -1016,7 +1016,7 @@ class RandomEqualize3D(AugmentationBase3D):
     Args:
         p: probability of the image being equalized.
         return_transform: if ``True`` return the matrix describing the transformation applied to each
-          input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+          input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch): apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
           to the batch form (False).

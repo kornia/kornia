@@ -14,7 +14,7 @@ class TestBbox2D:
         # Sample two points of the rectangle
         points = torch.rand(1, 4, device=device, dtype=dtype)
 
-        # Fill acording missing points
+        # Fill according missing points
         bbox = torch.zeros(1, 4, 2, device=device, dtype=dtype)
         bbox[0, 0] = points[0][:2]
         bbox[0, 1, 0] = points[0][2]
@@ -179,7 +179,7 @@ class TestBbox3D:
         # Sample two points of the 3d rect
         points = torch.rand(1, 6, device=device, dtype=dtype)
 
-        # Fill acording missing points
+        # Fill according missing points
         bbox = torch.zeros(1, 8, 3, device=device, dtype=dtype)
         bbox[0, 0] = points[0][:3]
         bbox[0, 1, 0] = points[0][3]

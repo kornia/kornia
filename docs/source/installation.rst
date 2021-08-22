@@ -25,7 +25,7 @@ To install *Kornia*, you can do it in two different ways: using the provided `Py
 
     pip install git+https://github.com/kornia/kornia
 
-Once you succeded installing *Kornia* check you can import:
+Once you succeeded installing *Kornia* check you can import:
 
 .. code:: bash
 

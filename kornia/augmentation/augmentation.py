@@ -59,7 +59,7 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
         p: probability of the image being flipped.
         return_transform: if ``True`` return the matrix describing the transformation applied to each
                           input tensor. If ``False`` and the input is a tuple the applied transformation
-                          wont be concatenated.
+                          won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
@@ -115,7 +115,7 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
         p: probability of the image being flipped.
         return_transform: if ``True`` return the matrix describing the transformation applied to each
                           input tensor. If ``False`` and the input is a tuple the applied transformation
-                          wont be concatenated.
+                          won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False).
@@ -175,7 +175,7 @@ class ColorJitter(IntensityAugmentationBase2D):
         hue: The hue factor to apply.
         return_transform: if ``True`` return the matrix describing the transformation applied to each
                           input tensor. If ``False`` and the input is a tuple the applied transformation
-                          wont be concatenated.
+                          won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
@@ -271,7 +271,7 @@ class RandomGrayscale(IntensityAugmentationBase2D):
         p: probability of the image to be transformed to grayscale.
         return_transform: if ``True`` return the matrix describing the transformation applied to each
                           input tensor. If ``False`` and the input is a tuple the applied transformation
-                          wont be concatenated.
+                          won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False).
@@ -518,8 +518,8 @@ class RandomAffine(GeometricAugmentationBase2D):
             If (a, b, c, d), the scale is randomly sampled from the range a <= scale_x <= b, c <= scale_y <= d.
             Will keep original scale by default.
         shear: Range of degrees to select from.
-            If float, a shear parallel to the x axis in the range (-shear, +shear) will be apllied.
-            If (a, b), a shear parallel to the x axis in the range (-shear, +shear) will be apllied.
+            If float, a shear parallel to the x axis in the range (-shear, +shear) will be applied.
+            If (a, b), a shear parallel to the x axis in the range (-shear, +shear) will be applied.
             If (a, b, c, d), then x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3])
             will be applied. Will not apply shear by default.
         resample: resample mode from "nearest" (0) or "bilinear" (1).
@@ -827,7 +827,7 @@ class RandomRotation(GeometricAugmentationBase2D):
         resample: Default: the interpolation mode.
         return_transform: if ``True`` return the matrix describing the transformation applied to each
                           input tensor. If ``False`` and the input is a tuple the applied transformation
-                          wont be concatenated.
+                          won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -936,7 +936,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         resample: the interpolation mode.
         return_transform: if ``True`` return the matrix describing the transformation applied to each
                           input tensor. If ``False`` and the input is a tuple the applied transformation
-                          wont be concatenated.
+                          won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -1158,7 +1158,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         resample: the interpolation mode.
         return_transform: if ``True`` return the matrix describing the transformation applied to each
                           input tensor. If ``False`` and the input is a tuple the applied transformation
-                          wont be concatenated.
+                          won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -1536,7 +1536,7 @@ class RandomSolarize(IntensityAugmentationBase2D):
             If tuple (x, y), addition will be generated from (x, y).
         same_on_batch: apply the same transformation across the batch.
         return_transform: if ``True`` return the matrix describing the transformation applied to each
-            input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+            input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 
@@ -1612,7 +1612,7 @@ class RandomPosterize(IntensityAugmentationBase2D):
             If tuple (x, y), bits will be generated from (x, y).
         same_on_batch: apply the same transformation across the batch.
         return_transform: if ``True`` return the matrix describing the transformation applied to each
-            input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+            input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 
@@ -1676,7 +1676,7 @@ class RandomSharpness(IntensityAugmentationBase2D):
         sharpness: factor of sharpness strength. Must be above 0.
         same_on_batch: apply the same transformation across the batch.
         return_transform: if ``True`` return the matrix describing the transformation applied to each
-            input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+            input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 
@@ -1741,7 +1741,7 @@ class RandomEqualize(IntensityAugmentationBase2D):
         same_on_batch: apply the same transformation across the batch.
         return_transform: if ``True`` return the matrix describing the transformation applied to each
                           input tensor. If ``False`` and the input is a tuple the applied transformation
-                          wont be concatenated.
+                          won't be concatenated.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 
@@ -1789,7 +1789,7 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``constant``, ``reflect``, ``replicate`` or ``circular``.
         return_transform: if ``True`` return the matrix describing the transformation applied to each
-            input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+            input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
 
@@ -1869,7 +1869,7 @@ class RandomInvert(IntensityAugmentationBase2D):
         max_val: The expected maximum value in the input tensor. The shape has to
           according to the input tensor shape, or at least has to work with broadcasting.
         return_transform: if ``True`` return the matrix describing the transformation applied to each
-            input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+            input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
 
@@ -1914,7 +1914,7 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
 
     Args:
         return_transform: if ``True`` return the matrix describing the transformation applied to each
-            input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+            input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
 
@@ -1958,7 +1958,7 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
         mean: The mean of the gaussian distribution.
         std: The standard deviation of the gaussian distribution.
         return_transform: if ``True`` return the matrix describing the transformation applied to each
-            input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+            input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
 
@@ -2005,7 +2005,7 @@ class RandomFisheye(GeometricAugmentationBase2D):
         center_y: Ranges to sample respect to y-coordinate center with shape (2,).
         gamma: Ranges to sample for the gamma values respect to optical center with shape (2,).
         return_transform: if ``True`` return the matrix describing the transformation applied to each
-            input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+            input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
 
@@ -2083,13 +2083,13 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
     Args:
         kernel_size: the size of the Gaussian kernel.
         sigma: The standard deviation of the Gaussian in the y and x directions,
-          respecitvely. Larger sigma results in smaller pixel displacements.
+          respectively. Larger sigma results in smaller pixel displacements.
         alpha: The scaling factor that controls the intensity of the deformation
           in the y and x directions, respectively.
         align_corners: Interpolation flag used by `grid_sample`.
         mode: Interpolation mode used by `grid_sample`. Either 'bilinear' or 'nearest'.
         return_transform: if ``True`` return the matrix describing the transformation applied to each
-            input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+            input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
 
@@ -2149,11 +2149,11 @@ class RandomThinPlateSpline(GeometricAugmentationBase2D):
     .. image:: _static/img/RandomThinPlateSpline.png
 
     Args:
-        scale: the scale factor to apply to the destionation points.
+        scale: the scale factor to apply to the destination points.
         align_corners: Interpolation flag used by ``grid_sample``.
         mode: Interpolation mode used by `grid_sample`. Either 'bilinear' or 'nearest'.
         return_transform: if ``True`` return the matrix describing the transformation applied to each
-            input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+            input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
 
@@ -2209,7 +2209,7 @@ class RandomBoxBlur(GeometricAugmentationBase2D):
           The expected modes are: ``constant``, ``reflect``, ``replicate`` or ``circular``.
         normalized: if True, L1 norm of the kernel is set to 1.
         return_transform: if ``True`` return the matrix describing the transformation applied to each
-            input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+            input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch (bool): apply the same transformation across the batch.
         p: probability of applying the transformation.
 

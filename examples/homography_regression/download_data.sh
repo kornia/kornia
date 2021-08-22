@@ -8,4 +8,4 @@ wget http://www.robots.ox.ac.uk/~vgg/research/affine/det_eval_files/img1.ppm -P 
 wget http://www.robots.ox.ac.uk/~vgg/research/affine/det_eval_files/img2.ppm -P $DATA_DIR
 wget http://www.robots.ox.ac.uk/~vgg/research/affine/det_eval_files/H1to2p -P $DATA_DIR
 
-echo "## Succeded to download files to $DATA_DIR"
+echo "## Succeeded to download files to $DATA_DIR"

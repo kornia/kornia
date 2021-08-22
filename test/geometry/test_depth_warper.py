@@ -41,7 +41,7 @@ class TestDepthWarper:
         warper.compute_projection_matrix(pinhole_src)
         assert warper._dst_proj_src is not None
 
-        # retreive computed projection matrix and compare to expected
+        # retrieve computed projection matrix and compare to expected
         dst_proj_src = warper._dst_proj_src
         dst_proj_src_expected = torch.eye(4, device=device, dtype=dtype)[None].repeat(batch_size, 1, 1)  # Bx4x4
         dst_proj_src_expected[..., 0, -2] += pinhole_src.cx

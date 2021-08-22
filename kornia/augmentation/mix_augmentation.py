@@ -14,7 +14,7 @@ class RandomMixUp(MixAugmentationBase):
 
     .. image:: _static/img/RandomMixUp.png
 
-    Implemention for `mixup: BEYOND EMPIRICAL RISK MINIMIZATION` :cite:`zhang2018mixup`.
+    Implementation for `mixup: BEYOND EMPIRICAL RISK MINIMIZATION` :cite:`zhang2018mixup`.
 
     The function returns (inputs, labels), in which the inputs is the tensor that contains the mixup images
     while the labels is a :math:`(B, 3)` tensor that contains (label_batch, label_permuted_batch, lambda) for
@@ -127,7 +127,7 @@ class RandomCutMix(MixAugmentationBase):
 
     .. image:: _static/img/RandomCutMix.png
 
-    Implemention for `CutMix: Regularization Strategy to Train Strong Classifiers with
+    Implementation for `CutMix: Regularization Strategy to Train Strong Classifiers with
     Localizable Features` :cite:`yun2019cutmix`.
 
     The function returns (inputs, labels), in which the inputs is the tensor that contains the mixup images

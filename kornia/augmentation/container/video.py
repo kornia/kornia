@@ -101,7 +101,7 @@ class VideoSequential(ImageSequential):
         """Repeat parameters across channels.
 
         The input is shaped as (B, ...), while to output (B * same_on_frame, ...), which
-        to guarentee that the same transformation would happen for each frame.
+        to guarantee that the same transformation would happen for each frame.
 
         (B1, B2, ..., Bn) => (B1, ... B1, B2, ..., B2, ..., Bn, ..., Bn)
                               | ch_size | | ch_size |  ..., | ch_size |

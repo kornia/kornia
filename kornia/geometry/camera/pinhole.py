@@ -92,7 +92,7 @@ class PinholeCamera:
 
     @property
     def fx(self) -> torch.Tensor:
-        r"""Returns the focal lenght in the x-direction.
+        r"""Returns the focal length in the x-direction.
 
         Returns:
             tensor of shape :math:`(B)`.
@@ -317,7 +317,7 @@ class PinholeCamerasList(PinholeCamera):
         size and :math:`N` is the numbers of cameras (in this case two).
 
     Args:
-        pinholes_list: a python tuple or list containg a set of `PinholeCamera` instances.
+        pinholes_list: a python tuple or list containing a set of `PinholeCamera` instances.
     """
 
     def __init__(self, pinholes_list: Iterable[PinholeCamera]) -> None:

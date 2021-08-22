@@ -11,7 +11,7 @@ from setuptools import find_packages, setup
 
 ################
 # The variables below define the current version under
-# development and the current pytorch supported verions.
+# development and the current pytorch supported versions.
 # WARNING: Becareful and do not touch those variables,
 # unless you are a maintainer. Otherwise, could brake
 # the package backward compatibility.
@@ -46,7 +46,7 @@ kornia_pt_dependencies = {
 }
 
 
-# version can be overiden eg with KORNIA_BUILD_VERSION so we map each possible kornia version to the dictionary keys
+# version can be overridden eg with KORNIA_BUILD_VERSION so we map each possible kornia version to the dictionary keys
 def dep_version(version):
     compatible_versions = [v for v in kornia_pt_dependencies if v >= version]
     compatible_versions += [sorted(kornia_pt_dependencies)[-1]]

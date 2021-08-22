@@ -57,7 +57,7 @@ class CommonTests(BaseTester):
 
     @pytest.fixture(scope="class")
     def param_set(self, request):
-        raise NotImplementedError("param_set must be overriden in subclasses")
+        raise NotImplementedError("param_set must be overridden in subclasses")
 
     ############################################################################################################
     # Test cases

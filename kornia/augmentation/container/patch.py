@@ -36,9 +36,9 @@ class PatchSequential(ImageSequential):
 
     Args:
         *args: a list of processing modules.
-        grid_size: controls the grid board seperation.
+        grid_size: controls the grid board separation.
         padding: same or valid padding. If same padding, it will pad to include all pixels if the input
-            tensor cannot be divisible by grid_size. If valid padding, the redundent border will be removed.
+            tensor cannot be divisible by grid_size. If valid padding, the redundant border will be removed.
         same_on_batch: apply the same transformation across the batch.
             If None, it will not overwrite the function-wise settings.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -254,7 +254,7 @@ class PatchSequential(ImageSequential):
         return out_param
 
     def generate_parameters(self, batch_shape: torch.Size) -> Iterator[Tuple[ParamItem, int]]:
-        """Get mulitple forward sequence but maximumly one mix augmentation in between.
+        """Get multiple forward sequence but maximumly one mix augmentation in between.
 
         Args:
             batch_shape: 5-dim shape arranged as :math:``(N, B, C, H, W)``, in which N represents
@@ -336,7 +336,7 @@ class PatchSequential(ImageSequential):
         _label = None
         if label is not None and out_label is not None:
             if len(out_label.shape) == 1:
-                # Wierd the mypy error though it is as same as in the next block
+                # Weird the mypy error though it is as same as in the next block
                 _label = torch.ones(in_shape[0] * in_shape[1], device=out_label.device, dtype=out_label.dtype) * -1
                 _label = label
             else:

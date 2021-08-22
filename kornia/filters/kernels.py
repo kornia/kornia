@@ -392,7 +392,7 @@ def get_gaussian_discrete_kernel1d(kernel_size: int, sigma: float, force_even: b
 
 
 def get_gaussian_erf_kernel1d(kernel_size: int, sigma: float, force_even: bool = False) -> torch.Tensor:
-    r"""Function that returns Gaussian filter coefficients by interpolating the error fucntion,
+    r"""Function that returns Gaussian filter coefficients by interpolating the error function,
     adapted from:
     https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
 

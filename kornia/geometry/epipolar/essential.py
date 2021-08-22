@@ -113,7 +113,7 @@ def motion_from_essential(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tens
     r"""Get Motion (R's and t's ) from Essential matrix.
 
     Computes and return four possible poses exist for the decomposition of the Essential
-    matrix. The posible solutions are :math:`[R1,t], [R1,−t], [R2,t], [R2,−t]`.
+    matrix. The possible solutions are :math:`[R1,t], [R1,−t], [R2,t], [R2,−t]`.
 
     Args:
         E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
@@ -228,7 +228,7 @@ def motion_from_essential_choose_solution(
     d1 = projection.depth(R1, t1, X)
     d2 = projection.depth(R2, t2, X)
 
-    # verify the point values that have a postive depth value
+    # verify the point values that have a positive depth value
     depth_mask = (d1 > 0.0) & (d2 > 0.0)
     if mask is not None:
         depth_mask &= mask.unsqueeze(1)

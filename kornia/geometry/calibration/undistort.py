@@ -116,7 +116,7 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) 
         x = (x0 - deltaX) * inv_rad_poly
         y = (y0 - deltaY) * inv_rad_poly
 
-    # Covert points from normalized camera coordinates to pixel coordinates
+    # Convert points from normalized camera coordinates to pixel coordinates
     x = fx * x + cx
     y = fy * y + cy
 
