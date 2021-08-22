@@ -42,7 +42,7 @@ class BlurPool2D(nn.Module):
     """
 
     def __init__(self, kernel_size: int, stride: int = 2):
-        super(BlurPool2D, self).__init__()
+        super().__init__()
         self.kernel_size = kernel_size
         self.stride = stride
         self.register_buffer('kernel', get_pascal_kernel_2d(kernel_size, norm=True))
@@ -88,7 +88,7 @@ class MaxBlurPool2D(nn.Module):
     """
 
     def __init__(self, kernel_size: int, stride: int = 2, max_pool_size: int = 2, ceil_mode: bool = False):
-        super(MaxBlurPool2D, self).__init__()
+        super().__init__()
         self.kernel_size = kernel_size
         self.stride = stride
         self.max_pool_size = max_pool_size

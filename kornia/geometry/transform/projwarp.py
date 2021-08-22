@@ -234,20 +234,20 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
         This function is often used in conjuntion with :func:`warp_perspective3d`.
     """
     if not isinstance(src, (torch.Tensor)):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(src)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(src)}")
 
     if not isinstance(dst, (torch.Tensor)):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(dst)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(dst)}")
 
     if not src.shape[-2:] == (8, 3):
-        raise ValueError("Inputs must be a Bx8x3 tensor. Got {}".format(src.shape))
+        raise ValueError(f"Inputs must be a Bx8x3 tensor. Got {src.shape}")
 
     if not src.shape == dst.shape:
-        raise ValueError("Inputs must have the same shape. Got {}".format(dst.shape))
+        raise ValueError(f"Inputs must have the same shape. Got {dst.shape}")
 
     if not (src.shape[0] == dst.shape[0]):
         raise ValueError(
-            "Inputs must have same batch size dimension. Expect {} but got {}".format(src.shape, dst.shape)
+            f"Inputs must have same batch size dimension. Expect {src.shape} but got {dst.shape}"
         )
 
     if not (src.device == dst.device and src.dtype == dst.dtype):
@@ -417,10 +417,10 @@ def warp_perspective3d(
     check_is_tensor(M)
 
     if not len(src.shape) == 5:
-        raise ValueError("Input src must be a BxCxDxHxW tensor. Got {}".format(src.shape))
+        raise ValueError(f"Input src must be a BxCxDxHxW tensor. Got {src.shape}")
 
     if not (len(M.shape) == 3 or M.shape[-2:] == (4, 4)):
-        raise ValueError("Input M must be a Bx4x4 tensor. Got {}".format(M.shape))
+        raise ValueError(f"Input M must be a Bx4x4 tensor. Got {M.shape}")
 
     # launches the warper
     d, h, w = src.shape[-3:]

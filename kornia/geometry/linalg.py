@@ -42,10 +42,10 @@ def compose_transformations(trans_01: torch.Tensor, trans_12: torch.Tensor) -> t
 
     """
     if not torch.is_tensor(trans_01):
-        raise TypeError("Input trans_01 type is not a torch.Tensor. Got {}".format(type(trans_01)))
+        raise TypeError(f"Input trans_01 type is not a torch.Tensor. Got {type(trans_01)}")
 
     if not torch.is_tensor(trans_12):
-        raise TypeError("Input trans_12 type is not a torch.Tensor. Got {}".format(type(trans_12)))
+        raise TypeError(f"Input trans_12 type is not a torch.Tensor. Got {type(trans_12)}")
 
     if not trans_01.dim() in (2, 3) and trans_01.shape[-2:] == (4, 4):
         raise ValueError("Input trans_01 must be a of the shape Nx4x4 or 4x4." " Got {}".format(trans_01.shape))
@@ -54,7 +54,7 @@ def compose_transformations(trans_01: torch.Tensor, trans_12: torch.Tensor) -> t
         raise ValueError("Input trans_12 must be a of the shape Nx4x4 or 4x4." " Got {}".format(trans_12.shape))
 
     if not trans_01.dim() == trans_12.dim():
-        raise ValueError("Input number of dims must match. Got {} and {}".format(trans_01.dim(), trans_12.dim()))
+        raise ValueError(f"Input number of dims must match. Got {trans_01.dim()} and {trans_12.dim()}")
 
     # unpack input data
     rmat_01: torch.Tensor = trans_01[..., :3, :3]  # Nx3x3
@@ -96,9 +96,9 @@ def inverse_transformation(trans_12):
         >>> trans_21 = inverse_transformation(trans_12)  # Nx4x4
     """
     if not torch.is_tensor(trans_12):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(trans_12)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(trans_12)}")
     if not trans_12.dim() in (2, 3) and trans_12.shape[-2:] == (4, 4):
-        raise ValueError("Input size must be a Nx4x4 or 4x4. Got {}".format(trans_12.shape))
+        raise ValueError(f"Input size must be a Nx4x4 or 4x4. Got {trans_12.shape}")
     # unpack input tensor
     rmat_12: torch.Tensor = trans_12[..., :3, 0:3]  # Nx3x3
     tvec_12: torch.Tensor = trans_12[..., :3, 3:4]  # Nx3x1
@@ -140,15 +140,15 @@ def relative_transformation(trans_01: torch.Tensor, trans_02: torch.Tensor) -> t
         >>> trans_12 = relative_transformation(trans_01, trans_02)  # 4x4
     """
     if not torch.is_tensor(trans_01):
-        raise TypeError("Input trans_01 type is not a torch.Tensor. Got {}".format(type(trans_01)))
+        raise TypeError(f"Input trans_01 type is not a torch.Tensor. Got {type(trans_01)}")
     if not torch.is_tensor(trans_02):
-        raise TypeError("Input trans_02 type is not a torch.Tensor. Got {}".format(type(trans_02)))
+        raise TypeError(f"Input trans_02 type is not a torch.Tensor. Got {type(trans_02)}")
     if not trans_01.dim() in (2, 3) and trans_01.shape[-2:] == (4, 4):
         raise ValueError("Input must be a of the shape Nx4x4 or 4x4." " Got {}".format(trans_01.shape))
     if not trans_02.dim() in (2, 3) and trans_02.shape[-2:] == (4, 4):
         raise ValueError("Input must be a of the shape Nx4x4 or 4x4." " Got {}".format(trans_02.shape))
     if not trans_01.dim() == trans_02.dim():
-        raise ValueError("Input number of dims must match. Got {} and {}".format(trans_01.dim(), trans_02.dim()))
+        raise ValueError(f"Input number of dims must match. Got {trans_01.dim()} and {trans_02.dim()}")
     trans_10: torch.Tensor = inverse_transformation(trans_01)
     trans_12: torch.Tensor = compose_transformations(trans_10, trans_02)
     return trans_12

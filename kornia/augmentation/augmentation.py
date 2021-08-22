@@ -218,7 +218,7 @@ class ColorJitter(IntensityAugmentationBase2D):
         p: float = 1.0,
         keepdim: bool = False,
     ) -> None:
-        super(ColorJitter, self).__init__(
+        super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim
         )
         self._device, self._dtype = _extract_device_dtype([brightness, contrast, hue, saturation])
@@ -306,7 +306,7 @@ class RandomGrayscale(IntensityAugmentationBase2D):
     def __init__(
         self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.1, keepdim: bool = False
     ) -> None:
-        super(RandomGrayscale, self).__init__(
+        super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim
         )
 
@@ -372,7 +372,7 @@ class RandomErasing(IntensityAugmentationBase2D):
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
-        super(RandomErasing, self).__init__(
+        super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim
         )
         self._device, self._dtype = _extract_device_dtype([scale, ratio])
@@ -462,7 +462,7 @@ class RandomPerspective(GeometricAugmentationBase2D):
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
-        super(RandomPerspective, self).__init__(
+        super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim
         )
         self._device, self._dtype = _extract_device_dtype([distortion_scale])
@@ -579,7 +579,7 @@ class RandomAffine(GeometricAugmentationBase2D):
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
-        super(RandomAffine, self).__init__(
+        super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim
         )
         self._device, self._dtype = _extract_device_dtype([degrees, translate, scale, shear])
@@ -757,7 +757,7 @@ class CenterCrop(GeometricAugmentationBase2D):
     ) -> None:
         # same_on_batch is always True for CenterCrop
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
-        super(CenterCrop, self).__init__(
+        super().__init__(
             p=1.0, return_transform=return_transform, same_on_batch=True, p_batch=p, keepdim=keepdim
         )
         if isinstance(size, tuple):
@@ -886,7 +886,7 @@ class RandomRotation(GeometricAugmentationBase2D):
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
-        super(RandomRotation, self).__init__(
+        super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim
         )
         self._device, self._dtype = _extract_device_dtype([degrees])
@@ -999,7 +999,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         cropping_mode: str = 'slice',
     ) -> None:
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
-        super(RandomCrop, self).__init__(
+        super().__init__(
             p=1.0, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim
         )
         self.size = size
@@ -1222,7 +1222,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         cropping_mode: str = 'slice',
     ) -> None:
         # Since PyTorch does not support ragged tensor. So cropping function happens all the time.
-        super(RandomResizedCrop, self).__init__(
+        super().__init__(
             p=1.0, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim
         )
         self._device, self._dtype = _extract_device_dtype([scale, ratio])
@@ -1351,7 +1351,7 @@ class Normalize(IntensityAugmentationBase2D):
         p: float = 1.0,
         keepdim: bool = False,
     ) -> None:
-        super(Normalize, self).__init__(p=p, return_transform=return_transform, same_on_batch=True, keepdim=keepdim)
+        super().__init__(p=p, return_transform=return_transform, same_on_batch=True, keepdim=keepdim)
         if isinstance(mean, float):
             mean = torch.tensor([mean])
 
@@ -1412,7 +1412,7 @@ class Denormalize(IntensityAugmentationBase2D):
         p: float = 1.0,
         keepdim: bool = False,
     ) -> None:
-        super(Denormalize, self).__init__(p=p, return_transform=return_transform, same_on_batch=True, keepdim=keepdim)
+        super().__init__(p=p, return_transform=return_transform, same_on_batch=True, keepdim=keepdim)
         self.mean = mean
         self.std = std
 
@@ -1488,7 +1488,7 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
-        super(RandomMotionBlur, self).__init__(
+        super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim
         )
         self.kernel_size: Union[int, Tuple[int, int]] = kernel_size
@@ -1584,7 +1584,7 @@ class RandomSolarize(IntensityAugmentationBase2D):
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
-        super(RandomSolarize, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
+        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
         self._device, self._dtype = _extract_device_dtype([thresholds, additions])
         self.thresholds = thresholds
         self.additions = additions
@@ -1659,7 +1659,7 @@ class RandomPosterize(IntensityAugmentationBase2D):
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
-        super(RandomPosterize, self).__init__(
+        super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim
         )
         self._device, self._dtype = _extract_device_dtype([bits])
@@ -1725,7 +1725,7 @@ class RandomSharpness(IntensityAugmentationBase2D):
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
-        super(RandomSharpness, self).__init__(
+        super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim
         )
         self._device, self._dtype = _extract_device_dtype([sharpness])
@@ -1787,7 +1787,7 @@ class RandomEqualize(IntensityAugmentationBase2D):
     def __init__(
         self, same_on_batch: bool = False, return_transform: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
-        super(RandomEqualize, self).__init__(
+        super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim
         )
 
@@ -1843,7 +1843,7 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 0.5,
     ) -> None:
-        super(RandomGaussianBlur, self).__init__(
+        super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0
         )
         self.kernel_size = kernel_size
@@ -1869,7 +1869,7 @@ class GaussianBlur(RandomGaussianBlur):
         same_on_batch: bool = False,
         p: float = 0.5,
     ) -> None:
-        super(GaussianBlur, self).__init__(
+        super().__init__(
             kernel_size=kernel_size,
             sigma=sigma,
             border_type=border_type,
@@ -1919,7 +1919,7 @@ class RandomInvert(IntensityAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 0.5,
     ) -> None:
-        super(RandomInvert, self).__init__(
+        super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0
         )
         self.max_val = max_val
@@ -1956,7 +1956,7 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
     """
 
     def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5) -> None:
-        super(RandomChannelShuffle, self).__init__(
+        super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0
         )
 
@@ -2006,7 +2006,7 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 0.5,
     ) -> None:
-        super(RandomGaussianNoise, self).__init__(
+        super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0
         )
         self.mean = mean
@@ -2058,7 +2058,7 @@ class RandomFisheye(GeometricAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 0.5,
     ) -> None:
-        super(RandomFisheye, self).__init__(
+        super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0
         )
         self.center_x = self._check_tensor(center_x)
@@ -2146,7 +2146,7 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 0.5,
     ) -> None:
-        super(RandomElasticTransform, self).__init__(
+        super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0
         )
         self.kernel_size = kernel_size
@@ -2209,7 +2209,7 @@ class RandomThinPlateSpline(GeometricAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 0.5,
     ) -> None:
-        super(RandomThinPlateSpline, self).__init__(
+        super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0
         )
         self.align_corners = align_corners
@@ -2268,7 +2268,7 @@ class RandomBoxBlur(GeometricAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 0.5,
     ) -> None:
-        super(RandomBoxBlur, self).__init__(
+        super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0
         )
         self.kernel_size = kernel_size

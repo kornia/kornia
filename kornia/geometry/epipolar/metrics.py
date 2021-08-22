@@ -25,10 +25,10 @@ def sampson_epipolar_distance(
 
     """
     if not isinstance(Fm, torch.Tensor):
-        raise TypeError("Fm type is not a torch.Tensor. Got {}".format(type(Fm)))
+        raise TypeError(f"Fm type is not a torch.Tensor. Got {type(Fm)}")
 
     if (len(Fm.shape) != 3) or not Fm.shape[-2:] == (3, 3):
-        raise ValueError("Fm must be a (*, 3, 3) tensor. Got {}".format(Fm.shape))
+        raise ValueError(f"Fm must be a (*, 3, 3) tensor. Got {Fm.shape}")
 
     if pts1.size(-1) == 2:
         pts1 = kornia.convert_points_to_homogeneous(pts1)
@@ -77,10 +77,10 @@ def symmetrical_epipolar_distance(
 
     """
     if not isinstance(Fm, torch.Tensor):
-        raise TypeError("Fm type is not a torch.Tensor. Got {}".format(type(Fm)))
+        raise TypeError(f"Fm type is not a torch.Tensor. Got {type(Fm)}")
 
     if (len(Fm.shape) != 3) or not Fm.shape[-2:] == (3, 3):
-        raise ValueError("Fm must be a (*, 3, 3) tensor. Got {}".format(Fm.shape))
+        raise ValueError(f"Fm must be a (*, 3, 3) tensor. Got {Fm.shape}")
 
     if pts1.size(-1) == 2:
         pts1 = kornia.convert_points_to_homogeneous(pts1)

@@ -119,7 +119,7 @@ class PatchSequential(ImageSequential):
             raise ValueError(f"Only boolean value allowed when `patchwise_apply` is set to True. Got {random_apply}.")
         else:
             _random_apply = random_apply
-        super(PatchSequential, self).__init__(
+        super().__init__(
             *args, same_on_batch=same_on_batch, return_transform=False, keepdim=keepdim, random_apply=_random_apply
         )
         assert padding in ["same", "valid"], f"`padding` must be either `same` or `valid`. Got {padding}."

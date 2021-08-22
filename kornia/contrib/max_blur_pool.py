@@ -12,7 +12,7 @@ class MaxBlurPool2d(MaxBlurPool2D):
     __doc__ = MaxBlurPool2D.__doc__
 
     def __init__(self, kernel_size: int, ceil_mode: bool = False) -> None:
-        super(MaxBlurPool2d, self).__init__(kernel_size, stride=2, max_pool_size=2, ceil_mode=ceil_mode)
+        super().__init__(kernel_size, stride=2, max_pool_size=2, ceil_mode=ceil_mode)
         warnings.warn(
             "`MaxBlurPool2d` is deprecated and will be removed after > 0.6. "
             "Please use `kornia.filters.MaxBlurPool2D instead.`",

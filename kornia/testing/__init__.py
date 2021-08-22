@@ -50,7 +50,7 @@ def compute_patch_error(x, y, h, w):
 def check_is_tensor(obj):
     """Checks whether the supplied object is a tensor."""
     if not isinstance(obj, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(obj)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(obj)}")
 
 
 def create_rectified_fundamental_matrix(batch_size):

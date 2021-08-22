@@ -11,7 +11,7 @@ import kornia as dgm
 def load_depth(file_name):
     """Loads the depth using the syntel SDK and converts to torch.Tensor"""
     if not os.path.isfile(file_name):
-        raise AssertionError("Invalid file {}".format(file_name))
+        raise AssertionError(f"Invalid file {file_name}")
     import sintel_io
 
     depth = sintel_io.depth_read(file_name)
@@ -21,7 +21,7 @@ def load_depth(file_name):
 def load_camera_data(file_name):
     """Loads the camera data using the syntel SDK and converts to torch.Tensor."""
     if not os.path.isfile(file_name):
-        raise AssertionError("Invalid file {}".format(file_name))
+        raise AssertionError(f"Invalid file {file_name}")
     import sintel_io
 
     intrinsic, extrinsic = sintel_io.cam_read(file_name)
@@ -31,7 +31,7 @@ def load_camera_data(file_name):
 def load_image(file_name):
     """Loads the image with OpenCV and converts to torch.Tensor"""
     if not os.path.isfile(file_name):
-        raise AssertionError("Invalid file {}".format(file_name))
+        raise AssertionError(f"Invalid file {file_name}")
 
     # load image with OpenCV
     img = cv2.imread(file_name, cv2.IMREAD_COLOR)
@@ -100,7 +100,7 @@ def DepthWarperApp():
     img_vis_warped_masked = mask * (0.5 * img_i_to_ref + img_ref)
 
     # save warped image to disk
-    file_name = os.path.join(args.output_dir, 'warped_{0}_to_{1}.png'.format(args.frame_i_id, args.frame_ref_id))
+    file_name = os.path.join(args.output_dir, f'warped_{args.frame_i_id}_to_{args.frame_ref_id}.png')
     cv2.imwrite(file_name, dgm.utils.tensor_to_image(255.0 * img_vis_warped))
     cv2.imwrite(file_name + 'mask.png', dgm.utils.tensor_to_image(255.0 * mask))
     cv2.imwrite(file_name + 'warpedmask.png', dgm.utils.tensor_to_image(255.0 * img_vis_warped_masked))

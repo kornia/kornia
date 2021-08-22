@@ -14,9 +14,9 @@ def raise_error_if_laf_is_not_valid(laf: torch.Tensor) -> None:
     Args:
         laf: [BxNx2x3] shape.
     """
-    laf_message: str = "Invalid laf shape, we expect BxNx2x3. Got: {}".format(laf.shape)
+    laf_message: str = f"Invalid laf shape, we expect BxNx2x3. Got: {laf.shape}"
     if not isinstance(laf, torch.Tensor):
-        raise TypeError("Laf type is not a torch.Tensor. Got {}".format(type(laf)))
+        raise TypeError(f"Laf type is not a torch.Tensor. Got {type(laf)}")
     if len(laf.shape) != 4:
         raise ValueError(laf_message)
     if laf.size(2) != 2 or laf.size(3) != 3:
@@ -129,7 +129,7 @@ def laf_from_center_scale_ori(xy: torch.Tensor, scale: torch.Tensor, ori: torch.
     names = ['xy', 'scale', 'ori']
     for var_name, var, req_shape in zip(names, [xy, scale, ori], [("B", "N", 2), ("B", "N", 1, 1), ("B", "N", 1)]):
         if not isinstance(var, torch.Tensor):
-            raise TypeError("{} type is not a torch.Tensor. Got {}".format(var_name, type(var)))
+            raise TypeError(f"{var_name} type is not a torch.Tensor. Got {type(var)}")
         if len(var.shape) != len(req_shape):  # type: ignore  # because it does not like len(tensor.shape)
             raise TypeError("{} shape should be must be [{}]. " "Got {}".format(var_name, str(req_shape), var.size()))
         for i, dim in enumerate(req_shape):  # type: ignore # because it wants typing for dim

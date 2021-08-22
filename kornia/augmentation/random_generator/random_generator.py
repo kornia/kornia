@@ -677,7 +677,7 @@ def center_crop_generator(
     """
     _common_param_check(batch_size)
     if not isinstance(size, (tuple, list)) and len(size) == 2:
-        raise ValueError("Input size must be a tuple/list of length 2. Got {}".format(size))
+        raise ValueError(f"Input size must be a tuple/list of length 2. Got {size}")
     if not (type(height) is int and height > 0 and type(width) is int and width > 0):
         raise AssertionError(f"'height' and 'width' must be integers. Got {height}, {width}.")
     if not (height >= size[0] and width >= size[1]):

@@ -51,7 +51,7 @@ class PyrDown(nn.Module):
     """
 
     def __init__(self, border_type: str = 'reflect', align_corners: bool = False) -> None:
-        super(PyrDown, self).__init__()
+        super().__init__()
         self.border_type: str = border_type
         self.align_corners: bool = align_corners
 
@@ -81,7 +81,7 @@ class PyrUp(nn.Module):
     """
 
     def __init__(self, border_type: str = 'reflect', align_corners: bool = False):
-        super(PyrUp, self).__init__()
+        super().__init__()
         self.border_type: str = border_type
         self.align_corners: bool = align_corners
 
@@ -117,7 +117,7 @@ class ScalePyramid(nn.Module):
     """
 
     def __init__(self, n_levels: int = 3, init_sigma: float = 1.6, min_size: int = 15, double_image: bool = False):
-        super(ScalePyramid, self).__init__()
+        super().__init__()
         # 3 extra levels are needed for DoG nms.
         self.n_levels = n_levels
         self.extra_levels: int = 3

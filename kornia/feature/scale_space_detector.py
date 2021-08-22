@@ -86,7 +86,7 @@ class ScaleSpaceDetector(nn.Module):
         minima_are_also_good: bool = False,
         scale_space_response=False,
     ):
-        super(ScaleSpaceDetector, self).__init__()
+        super().__init__()
         self.mr_size = mr_size
         self.num_features = num_features
         self.scale_pyr = scale_pyr_module

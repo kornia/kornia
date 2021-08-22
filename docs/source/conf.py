@@ -67,9 +67,9 @@ source_suffix = ['.rst', '.ipynb']
 master_doc = 'index'
 
 # General information about the project.
-project = u'Kornia'
-author = u'%s developers' % project
-copyright = u'2019, %s' % author
+project = 'Kornia'
+author = '%s developers' % project
+copyright = '2019, %s' % author
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -165,14 +165,14 @@ latex_elements = {
 # Grouping the document tree into LaTeX files. List of tuples
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
-latex_documents = [(master_doc, 'kornia.tex', u'Kornia', 'manual')]
+latex_documents = [(master_doc, 'kornia.tex', 'Kornia', 'manual')]
 
 
 # -- Options for manual page output ---------------------------------------
 
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
-man_pages = [(master_doc, 'Kornia', u'Kornia Documentation', [author], 1)]
+man_pages = [(master_doc, 'Kornia', 'Kornia Documentation', [author], 1)]
 
 
 # -- Options for Texinfo output -------------------------------------------

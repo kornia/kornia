@@ -50,17 +50,17 @@ def tversky_loss(
         >>> output.backward()
     """
     if not isinstance(input, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if not len(input.shape) == 4:
-        raise ValueError("Invalid input shape, we expect BxNxHxW. Got: {}".format(input.shape))
+        raise ValueError(f"Invalid input shape, we expect BxNxHxW. Got: {input.shape}")
 
     if not input.shape[-2:] == target.shape[-2:]:
-        raise ValueError("input and target shapes must be the same. Got: {} and {}".format(input.shape, input.shape))
+        raise ValueError(f"input and target shapes must be the same. Got: {input.shape} and {input.shape}")
 
     if not input.device == target.device:
         raise ValueError(
-            "input and target must be in the same device. Got: {} and {}".format(input.device, target.device)
+            f"input and target must be in the same device. Got: {input.device} and {target.device}"
         )
 
     # compute softmax over the classes axis
@@ -123,7 +123,7 @@ class TverskyLoss(nn.Module):
     """
 
     def __init__(self, alpha: float, beta: float, eps: float = 1e-8) -> None:
-        super(TverskyLoss, self).__init__()
+        super().__init__()
         self.alpha: float = alpha
         self.beta: float = beta
         self.eps: float = eps

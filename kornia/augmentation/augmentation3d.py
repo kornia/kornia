@@ -67,7 +67,7 @@ class RandomHorizontalFlip3D(AugmentationBase3D):
     def __init__(
         self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
-        super(RandomHorizontalFlip3D, self).__init__(
+        super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim
         )
 
@@ -140,7 +140,7 @@ class RandomVerticalFlip3D(AugmentationBase3D):
     def __init__(
         self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
-        super(RandomVerticalFlip3D, self).__init__(
+        super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim
         )
 
@@ -214,7 +214,7 @@ class RandomDepthicalFlip3D(AugmentationBase3D):
     def __init__(
         self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
-        super(RandomDepthicalFlip3D, self).__init__(
+        super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim
         )
 
@@ -339,7 +339,7 @@ class RandomAffine3D(AugmentationBase3D):
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
-        super(RandomAffine3D, self).__init__(
+        super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim
         )
         self._device, self._dtype = _extract_device_dtype([degrees, shears, translate, scale])
@@ -497,7 +497,7 @@ class RandomRotation3D(AugmentationBase3D):
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
-        super(RandomRotation3D, self).__init__(
+        super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim
         )
         self._device, self._dtype = _extract_device_dtype([degrees])
@@ -616,7 +616,7 @@ class RandomMotionBlur3D(AugmentationBase3D):
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
-        super(RandomMotionBlur3D, self).__init__(
+        super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
         )
         self._device, self._dtype = _extract_device_dtype([angle, direction])
@@ -717,7 +717,7 @@ class CenterCrop3D(AugmentationBase3D):
     ) -> None:
         # same_on_batch is always True for CenterCrop
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
-        super(CenterCrop3D, self).__init__(
+        super().__init__(
             p=1.0, return_transform=return_transform, same_on_batch=True, p_batch=p, keepdim=keepdim
         )
         if isinstance(size, tuple):
@@ -820,7 +820,7 @@ class RandomCrop3D(AugmentationBase3D):
         keepdim: bool = False,
     ) -> None:
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
-        super(RandomCrop3D, self).__init__(
+        super().__init__(
             p=1.0, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim
         )
         self.size = size
@@ -977,7 +977,7 @@ class RandomPerspective3D(AugmentationBase3D):
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
-        super(RandomPerspective3D, self).__init__(
+        super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim
         )
         self._device, self._dtype = _extract_device_dtype([distortion_scale])
@@ -1065,7 +1065,7 @@ class RandomEqualize3D(AugmentationBase3D):
     def __init__(
         self, p: float = 0.5, return_transform: bool = False, same_on_batch: bool = False, keepdim: bool = False
     ) -> None:
-        super(RandomEqualize3D, self).__init__(
+        super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim
         )
 

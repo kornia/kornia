@@ -36,10 +36,10 @@ def median_blur(input: torch.Tensor, kernel_size: Tuple[int, int]) -> torch.Tens
         torch.Size([2, 4, 5, 7])
     """
     if not isinstance(input, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if not len(input.shape) == 4:
-        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}".format(input.shape))
+        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
 
     padding: Tuple[int, int] = _compute_zero_padding(kernel_size)
 
@@ -79,7 +79,7 @@ class MedianBlur(nn.Module):
     """
 
     def __init__(self, kernel_size: Tuple[int, int]) -> None:
-        super(MedianBlur, self).__init__()
+        super().__init__()
         self.kernel_size: Tuple[int, int] = kernel_size
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:

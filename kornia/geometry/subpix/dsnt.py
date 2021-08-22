@@ -15,7 +15,7 @@ from kornia.utils.grid import create_meshgrid
 def _validate_batched_image_tensor_input(tensor):
     check_is_tensor(tensor)
     if not len(tensor.shape) == 4:
-        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}".format(tensor.shape))
+        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {tensor.shape}")
 
 
 def spatial_softmax2d(input: torch.Tensor, temperature: torch.Tensor = torch.tensor(1.0)) -> torch.Tensor:

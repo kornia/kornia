@@ -66,13 +66,13 @@ def crop_and_resize(
                   [10., 11.]]]])
     """
     if not isinstance(tensor, torch.Tensor):
-        raise TypeError("Input tensor type is not a torch.Tensor. Got {}".format(type(tensor)))
+        raise TypeError(f"Input tensor type is not a torch.Tensor. Got {type(tensor)}")
 
     if not isinstance(boxes, torch.Tensor):
-        raise TypeError("Input boxes type is not a torch.Tensor. Got {}".format(type(boxes)))
+        raise TypeError(f"Input boxes type is not a torch.Tensor. Got {type(boxes)}")
 
     if not isinstance(size, (tuple, list)) and len(size) == 2:
-        raise ValueError("Input size must be a tuple/list of length 2. Got {}".format(size))
+        raise ValueError(f"Input size must be a tuple/list of length 2. Got {size}")
 
     if len(tensor.shape) != 4:
         raise AssertionError(f"Only tensor with shape (B, C, H, W) supported. Got {tensor.shape}.")
@@ -127,10 +127,10 @@ def center_crop(
                   [ 9., 10., 11., 12.]]]])
     """
     if not isinstance(tensor, torch.Tensor):
-        raise TypeError("Input tensor type is not a torch.Tensor. Got {}".format(type(tensor)))
+        raise TypeError(f"Input tensor type is not a torch.Tensor. Got {type(tensor)}")
 
     if not isinstance(size, (tuple, list)) and len(size) == 2:
-        raise ValueError("Input size must be a tuple/list of length 2. Got {}".format(size))
+        raise ValueError(f"Input size must be a tuple/list of length 2. Got {size}")
 
     if len(tensor.shape) != 4:
         raise AssertionError(f"Only tensor with shape (B, C, H, W) supported. Got {tensor.shape}.")

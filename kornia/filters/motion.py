@@ -34,7 +34,7 @@ class MotionBlur(nn.Module):
     """
 
     def __init__(self, kernel_size: int, angle: float, direction: float, border_type: str = 'constant') -> None:
-        super(MotionBlur, self).__init__()
+        super().__init__()
         self.kernel_size = kernel_size
         self.angle: float = angle
         self.direction: float = direction
@@ -83,7 +83,7 @@ class MotionBlur3D(nn.Module):
         direction: float,
         border_type: str = 'constant',
     ) -> None:
-        super(MotionBlur3D, self).__init__()
+        super().__init__()
         self.kernel_size = kernel_size
         self.angle: Tuple[float, float, float]
         if isinstance(angle, float):

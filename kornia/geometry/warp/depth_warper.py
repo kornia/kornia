@@ -21,7 +21,7 @@ class DepthWarper(_DepthWarper):
         padding_mode: str = 'zeros',
         align_corners: bool = True,
     ):
-        super(DepthWarper, self).__init__(
+        super().__init__(
             pinhole_dst=pinhole_dst,
             height=height,
             width=width,

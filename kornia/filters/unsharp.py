@@ -65,7 +65,7 @@ class UnsharpMask(nn.Module):
     """
 
     def __init__(self, kernel_size: Tuple[int, int], sigma: Tuple[float, float], border_type: str = 'reflect') -> None:
-        super(UnsharpMask, self).__init__()
+        super().__init__()
         self.kernel_size: Tuple[int, int] = kernel_size
         self.sigma: Tuple[float, float] = sigma
         self.border_type = border_type

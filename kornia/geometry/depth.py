@@ -197,7 +197,7 @@ class DepthWarper(nn.Module):
         padding_mode: str = 'zeros',
         align_corners: bool = True,
     ):
-        super(DepthWarper, self).__init__()
+        super().__init__()
         # constructor members
         self.width: int = width
         self.height: int = height

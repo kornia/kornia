@@ -28,7 +28,7 @@ class SOSNet(nn.Module):
     """
 
     def __init__(self, pretrained: bool = False) -> None:
-        super(SOSNet, self).__init__()
+        super().__init__()
 
         self.layers = nn.Sequential(
             nn.InstanceNorm2d(1, affine=False),

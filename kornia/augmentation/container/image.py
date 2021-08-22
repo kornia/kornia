@@ -70,7 +70,7 @@ class ImageSequential(SequentialBase):
         keepdim: Optional[bool] = None,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
     ) -> None:
-        super(ImageSequential, self).__init__(
+        super().__init__(
             *args, same_on_batch=same_on_batch, return_transform=return_transform, keepdim=keepdim
         )
 

@@ -39,27 +39,27 @@ def inverse_depth_smoothness_loss(idepth: torch.Tensor, image: torch.Tensor) -> 
         >>> loss = inverse_depth_smoothness_loss(idepth, image)
     """
     if not isinstance(idepth, torch.Tensor):
-        raise TypeError("Input idepth type is not a torch.Tensor. Got {}".format(type(idepth)))
+        raise TypeError(f"Input idepth type is not a torch.Tensor. Got {type(idepth)}")
 
     if not isinstance(image, torch.Tensor):
-        raise TypeError("Input image type is not a torch.Tensor. Got {}".format(type(image)))
+        raise TypeError(f"Input image type is not a torch.Tensor. Got {type(image)}")
 
     if not len(idepth.shape) == 4:
-        raise ValueError("Invalid idepth shape, we expect BxCxHxW. Got: {}".format(idepth.shape))
+        raise ValueError(f"Invalid idepth shape, we expect BxCxHxW. Got: {idepth.shape}")
 
     if not len(image.shape) == 4:
-        raise ValueError("Invalid image shape, we expect BxCxHxW. Got: {}".format(image.shape))
+        raise ValueError(f"Invalid image shape, we expect BxCxHxW. Got: {image.shape}")
 
     if not idepth.shape[-2:] == image.shape[-2:]:
-        raise ValueError("idepth and image shapes must be the same. Got: {} and {}".format(idepth.shape, image.shape))
+        raise ValueError(f"idepth and image shapes must be the same. Got: {idepth.shape} and {image.shape}")
 
     if not idepth.device == image.device:
         raise ValueError(
-            "idepth and image must be in the same device. Got: {} and {}".format(idepth.device, image.device)
+            f"idepth and image must be in the same device. Got: {idepth.device} and {image.device}"
         )
 
     if not idepth.dtype == image.dtype:
-        raise ValueError("idepth and image must be in the same dtype. Got: {} and {}".format(idepth.dtype, image.dtype))
+        raise ValueError(f"idepth and image must be in the same dtype. Got: {idepth.dtype} and {image.dtype}")
 
     # compute the gradients
     idepth_dx: torch.Tensor = _gradient_x(idepth)

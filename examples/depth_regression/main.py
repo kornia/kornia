@@ -31,7 +31,7 @@ def load_data(root_path, sequence_name, frame_id):
 def load_depth(file_name):
     """Loads the depth using the sintel SDK and converts to torch.Tensor"""
     if not os.path.isfile(file_name):
-        raise AssertionError("Invalid file {}".format(file_name))
+        raise AssertionError(f"Invalid file {file_name}")
     import sintel_io
 
     depth = sintel_io.depth_read(file_name)
@@ -41,7 +41,7 @@ def load_depth(file_name):
 def load_camera_data(file_name):
     """Loads the camera data using the sintel SDK and converts to torch.Tensor."""
     if not os.path.isfile(file_name):
-        raise AssertionError("Invalid file {}".format(file_name))
+        raise AssertionError(f"Invalid file {file_name}")
     import sintel_io
 
     intrinsic, extrinsic = sintel_io.cam_read(file_name)
@@ -51,7 +51,7 @@ def load_camera_data(file_name):
 def load_image(file_name):
     """Loads the image with OpenCV and converts to torch.Tensor"""
     if not os.path.isfile(file_name):
-        raise AssertionError("Invalid file {}".format(file_name))
+        raise AssertionError(f"Invalid file {file_name}")
 
     # load image with OpenCV
     img = cv2.imread(file_name, cv2.IMREAD_COLOR)
@@ -73,7 +73,7 @@ def clip_and_convert_tensor(tensor):
 
 class InvDepth(nn.Module):
     def __init__(self, height, width, min_depth=0.50, max_depth=25.0):
-        super(InvDepth, self).__init__()
+        super().__init__()
         self._min_range = 1.0 / max_depth
         self._max_range = 1.0 / min_depth
 
@@ -166,7 +166,7 @@ def DepthRegressionApp():
         optimizer.step()
 
         if iter_idx % args.log_interval == 0 or iter_idx == args.num_iterations - 1:
-            print('Train iteration: {}/{}\tLoss: {:.6}'.format(iter_idx, args.num_iterations, loss.item()))
+            print(f'Train iteration: {iter_idx}/{args.num_iterations}\tLoss: {loss.item():.6}')
 
             if iter_idx % args.log_interval_vis == 0:
                 # merge warped and target image for  visualization
@@ -183,7 +183,7 @@ def DepthRegressionApp():
 
                 # save warped image and depth to disk
                 def file_name(x):
-                    return os.path.join(args.output_dir, "{0}_{1}.png".format(x, iter_idx))
+                    return os.path.join(args.output_dir, f"{x}_{iter_idx}.png")
 
                 cv2.imwrite(file_name("warped"), img_i_to_ref_vis)
                 cv2.imwrite(file_name("warped_both"), img_both_vis)

@@ -17,10 +17,10 @@ def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch
         tensor of (u, v) cam coordinates with shape :math:`(*, 2)`.
     """
     if not isinstance(point_3d, torch.Tensor):
-        raise TypeError("Input point_3d type is not a torch.Tensor. Got {}".format(type(point_3d)))
+        raise TypeError(f"Input point_3d type is not a torch.Tensor. Got {type(point_3d)}")
 
     if not isinstance(camera_matrix, torch.Tensor):
-        raise TypeError("Input camera_matrix type is not a torch.Tensor. Got {}".format(type(camera_matrix)))
+        raise TypeError(f"Input camera_matrix type is not a torch.Tensor. Got {type(camera_matrix)}")
 
     if not (point_3d.device == camera_matrix.device):
         raise ValueError("Input tensors must be all in the same device.")
@@ -75,13 +75,13 @@ def unproject_points(
         tensor of (x, y, z) world coordinates with shape :math:`(*, 3)`.
     """
     if not isinstance(point_2d, torch.Tensor):
-        raise TypeError("Input point_2d type is not a torch.Tensor. Got {}".format(type(point_2d)))
+        raise TypeError(f"Input point_2d type is not a torch.Tensor. Got {type(point_2d)}")
 
     if not isinstance(depth, torch.Tensor):
-        raise TypeError("Input depth type is not a torch.Tensor. Got {}".format(type(depth)))
+        raise TypeError(f"Input depth type is not a torch.Tensor. Got {type(depth)}")
 
     if not isinstance(camera_matrix, torch.Tensor):
-        raise TypeError("Input camera_matrix type is not a torch.Tensor. Got {}".format(type(camera_matrix)))
+        raise TypeError(f"Input camera_matrix type is not a torch.Tensor. Got {type(camera_matrix)}")
 
     if not (point_2d.device == depth.device == camera_matrix.device):
         raise ValueError("Input tensors must be all in the same device.")
