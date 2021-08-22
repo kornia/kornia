@@ -1,13 +1,12 @@
 # test
-autopep8
-isort
-numpy
-pre-commit>=2.0
-pydocstyle
 pytest==6.2.4
-pytest-cov==2.12.0
 pytest-flake8==1.0.7
+pytest-cov==2.12.0
 pytest-mypy==0.8.1
 pytest-xdist==2.2.1
-torchgeometry
+autopep8
+pydocstyle
+pre-commit>=2.0
 yapf
+isort
+numpy
