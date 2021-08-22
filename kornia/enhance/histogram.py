@@ -26,13 +26,13 @@ def marginal_pdf(
     """
 
     if not isinstance(values, torch.Tensor):
-        raise TypeError("Input values type is not a torch.Tensor. Got {}".format(type(values)))
+        raise TypeError(f"Input values type is not a torch.Tensor. Got {type(values)}")
 
     if not isinstance(bins, torch.Tensor):
-        raise TypeError("Input bins type is not a torch.Tensor. Got {}".format(type(bins)))
+        raise TypeError(f"Input bins type is not a torch.Tensor. Got {type(bins)}")
 
     if not isinstance(sigma, torch.Tensor):
-        raise TypeError("Input sigma type is not a torch.Tensor. Got {}".format(type(sigma)))
+        raise TypeError(f"Input sigma type is not a torch.Tensor. Got {type(sigma)}")
 
     if not values.dim() == 3:
         raise ValueError("Input values must be a of the shape BxNx1." " Got {}".format(values.shape))
@@ -68,10 +68,10 @@ def joint_pdf(kernel_values1: torch.Tensor, kernel_values2: torch.Tensor, epsilo
     """
 
     if not isinstance(kernel_values1, torch.Tensor):
-        raise TypeError("Input kernel_values1 type is not a torch.Tensor. Got {}".format(type(kernel_values1)))
+        raise TypeError(f"Input kernel_values1 type is not a torch.Tensor. Got {type(kernel_values1)}")
 
     if not isinstance(kernel_values2, torch.Tensor):
-        raise TypeError("Input kernel_values2 type is not a torch.Tensor. Got {}".format(type(kernel_values2)))
+        raise TypeError(f"Input kernel_values2 type is not a torch.Tensor. Got {type(kernel_values2)}")
 
     if not kernel_values1.dim() == 3:
         raise ValueError("Input kernel_values1 must be a of the shape BxN." " Got {}".format(kernel_values1.shape))

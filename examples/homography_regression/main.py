@@ -14,14 +14,14 @@ import kornia as dgm
 def load_homography(file_name):
     """Loads an homography from text file."""
     if not os.path.isfile(file_name):
-        raise AssertionError("Invalid file {}".format(file_name))
+        raise AssertionError(f"Invalid file {file_name}")
     return torch.from_numpy(np.loadtxt(file_name)).float()
 
 
 def load_image(file_name):
     """Loads the image with OpenCV and converts to torch.Tensor"""
     if not os.path.isfile(file_name):
-        raise AssertionError("Invalid file {}".format(file_name))
+        raise AssertionError(f"Invalid file {file_name}")
 
     # load image with OpenCV
     img = cv2.imread(file_name, cv2.IMREAD_COLOR)
@@ -35,7 +35,7 @@ def load_image(file_name):
 
 class MyHomography(nn.Module):
     def __init__(self):
-        super(MyHomography, self).__init__()
+        super().__init__()
         self.homo = nn.Parameter(torch.Tensor(3, 3))
 
         self.reset_parameters()
@@ -119,7 +119,7 @@ def HomographyRegressionApp():
         optimizer.step()
 
         if iter_idx % args.log_interval == 0:
-            print('Train iteration: {}/{}\tLoss: {:.6}'.format(iter_idx, args.num_iterations, loss.item()))
+            print(f'Train iteration: {iter_idx}/{args.num_iterations}\tLoss: {loss.item():.6}')
             print(dst_homo_src.homo)
 
         def draw_rectangle(image, dst_homo_src):
@@ -156,7 +156,7 @@ def HomographyRegressionApp():
             img_vis_np = dgm.utils.tensor_to_image(img_vis)
             image_draw = draw_rectangle(img_vis_np, dst_homo_src())
             # save warped image to disk
-            file_name = os.path.join(args.output_dir, 'warped_{}.png'.format(iter_idx))
+            file_name = os.path.join(args.output_dir, f'warped_{iter_idx}.png')
             cv2.imwrite(file_name, image_draw)
 
 

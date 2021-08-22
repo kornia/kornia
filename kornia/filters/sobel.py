@@ -31,10 +31,10 @@ def spatial_gradient(input: torch.Tensor, mode: str = 'sobel', order: int = 1, n
         torch.Size([1, 3, 2, 4, 4])
     """
     if not isinstance(input, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if not len(input.shape) == 4:
-        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}".format(input.shape))
+        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
     # allocate kernel
     kernel: torch.Tensor = get_spatial_gradient_kernel2d(mode, order)
     if normalized:
@@ -79,10 +79,10 @@ def spatial_gradient3d(input: torch.Tensor, mode: str = 'diff', order: int = 1) 
         torch.Size([1, 4, 3, 2, 4, 4])
     """
     if not isinstance(input, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if not len(input.shape) == 5:
-        raise ValueError("Invalid input shape, we expect BxCxDxHxW. Got: {}".format(input.shape))
+        raise ValueError(f"Invalid input shape, we expect BxCxDxHxW. Got: {input.shape}")
     # allocate kernel
     kernel: torch.Tensor = get_spatial_gradient_kernel3d(mode, order)
 
@@ -133,10 +133,10 @@ def sobel(input: torch.Tensor, normalized: bool = True, eps: float = 1e-6) -> to
         torch.Size([1, 3, 4, 4])
     """
     if not isinstance(input, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if not len(input.shape) == 4:
-        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}".format(input.shape))
+        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
 
     # comput the x/y gradients
     edges: torch.Tensor = spatial_gradient(input, normalized=normalized)
@@ -173,7 +173,7 @@ class SpatialGradient(nn.Module):
     """
 
     def __init__(self, mode: str = 'sobel', order: int = 1, normalized: bool = True) -> None:
-        super(SpatialGradient, self).__init__()
+        super().__init__()
         self.normalized: bool = normalized
         self.order: int = order
         self.mode: str = mode
@@ -211,7 +211,7 @@ class SpatialGradient3d(nn.Module):
     """
 
     def __init__(self, mode: str = 'diff', order: int = 1) -> None:
-        super(SpatialGradient3d, self).__init__()
+        super().__init__()
         self.order: int = order
         self.mode: str = mode
         self.kernel = get_spatial_gradient_kernel3d(mode, order)
@@ -244,7 +244,7 @@ class Sobel(nn.Module):
     """
 
     def __init__(self, normalized: bool = True, eps: float = 1e-6) -> None:
-        super(Sobel, self).__init__()
+        super().__init__()
         self.normalized: bool = normalized
         self.eps: float = eps
 

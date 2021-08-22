@@ -45,7 +45,7 @@ class PatchDominantGradientOrientation(nn.Module):
     """
 
     def __init__(self, patch_size: int = 32, num_angular_bins: int = 36, eps: float = 1e-8):
-        super(PatchDominantGradientOrientation, self).__init__()
+        super().__init__()
         self.patch_size = patch_size
         self.num_ang_bins = num_angular_bins
         self.gradient = SpatialGradient('sobel', 1)
@@ -76,9 +76,9 @@ class PatchDominantGradientOrientation(nn.Module):
         Returns:
             torch.Tensor: angle shape [B]"""
         if not isinstance(patch, torch.Tensor):
-            raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(patch)))
+            raise TypeError(f"Input type is not a torch.Tensor. Got {type(patch)}")
         if not len(patch.shape) == 4:
-            raise ValueError("Invalid input shape, we expect Bx1xHxW. Got: {}".format(patch.shape))
+            raise ValueError(f"Invalid input shape, we expect Bx1xHxW. Got: {patch.shape}")
         B, CH, W, H = patch.size()
         if (W != self.patch_size) or (H != self.patch_size) or (CH != 1):
             raise TypeError(
@@ -140,7 +140,7 @@ class OriNet(nn.Module):
     """
 
     def __init__(self, pretrained: bool = False, eps: float = 1e-8):
-        super(OriNet, self).__init__()
+        super().__init__()
         self.features = nn.Sequential(
             nn.Conv2d(1, 16, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(16, affine=False),
@@ -206,7 +206,7 @@ class LAFOrienter(nn.Module):
     """  # noqa pylint: disable
 
     def __init__(self, patch_size: int = 32, num_angular_bins: int = 36, angle_detector: Optional[nn.Module] = None):
-        super(LAFOrienter, self).__init__()
+        super().__init__()
         self.patch_size = patch_size
         self.num_ang_bins = num_angular_bins
         self.angle_detector: nn.Module
@@ -231,15 +231,13 @@ class LAFOrienter(nn.Module):
             laf_out, shape [BxNx2x3]
         """
         raise_error_if_laf_is_not_valid(laf)
-        img_message: str = "Invalid img shape, we expect BxCxHxW. Got: {}".format(img.shape)
+        img_message: str = f"Invalid img shape, we expect BxCxHxW. Got: {img.shape}"
         if not isinstance(img, torch.Tensor):
-            raise TypeError("img type is not a torch.Tensor. Got {}".format(type(img)))
+            raise TypeError(f"img type is not a torch.Tensor. Got {type(img)}")
         if len(img.shape) != 4:
             raise ValueError(img_message)
         if laf.size(0) != img.size(0):
-            raise ValueError(
-                "Batch size of laf and img should be the same. Got {}, {}".format(img.size(0), laf.size(0))
-            )
+            raise ValueError(f"Batch size of laf and img should be the same. Got {img.size(0)}, {laf.size(0)}")
         B, N = laf.shape[:2]
         patches: torch.Tensor = extract_patches_from_pyramid(img, laf, self.patch_size).view(
             -1, 1, self.patch_size, self.patch_size

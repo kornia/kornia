@@ -28,10 +28,10 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
         >>> output = rgb_to_hsv(input)  # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(image)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}".format(image.shape))
+        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
     # The first or last occurance is not guarenteed before 1.6.0
     # https://github.com/pytorch/pytorch/issues/20414
@@ -82,10 +82,10 @@ def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
         >>> output = hsv_to_rgb(input)  # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(image)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}".format(image.shape))
+        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
     h: torch.Tensor = image[..., 0, :, :] / (2 * math.pi)
     s: torch.Tensor = image[..., 1, :, :]
@@ -128,7 +128,7 @@ class RgbToHsv(nn.Module):
     """
 
     def __init__(self, eps: float = 1e-6) -> None:
-        super(RgbToHsv, self).__init__()
+        super().__init__()
         self.eps = eps
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:

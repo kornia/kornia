@@ -38,7 +38,7 @@ class _BasicAugmentationBase(nn.Module):
     def __init__(
         self, p: float = 0.5, p_batch: float = 1.0, same_on_batch: bool = False, keepdim: bool = False
     ) -> None:
-        super(_BasicAugmentationBase, self).__init__()
+        super().__init__()
         self.p = p
         self.p_batch = p_batch
         self.same_on_batch = same_on_batch
@@ -157,7 +157,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         p_batch: float = 1.0,
         keepdim: bool = False,
     ) -> None:
-        super(_AugmentationBase, self).__init__(p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=keepdim)
         self.p = p
         self.p_batch = p_batch
         self.return_transform = return_transform
@@ -459,7 +459,7 @@ class MixAugmentationBase(_BasicAugmentationBase):
     """
 
     def __init__(self, p: float, p_batch: float, same_on_batch: bool = False, keepdim: bool = False) -> None:
-        super(MixAugmentationBase, self).__init__(p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=keepdim)
 
     def __check_batching__(self, input: TensorWithTransformMat):
         if isinstance(input, tuple):

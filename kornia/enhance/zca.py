@@ -72,7 +72,7 @@ class ZCAWhitening(nn.Module):
         compute_inv: bool = False,
     ) -> None:
 
-        super(ZCAWhitening, self).__init__()
+        super().__init__()
 
         self.dim = dim
         self.eps = eps
@@ -195,7 +195,7 @@ def zca_mean(
     """
 
     if not isinstance(inp, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(inp)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(inp)}")
 
     if not isinstance(eps, float):
         raise TypeError(f"eps type is not a float. Got{type(eps)}")
@@ -204,10 +204,10 @@ def zca_mean(
         raise TypeError(f"unbiased type is not bool. Got{type(unbiased)}")
 
     if not isinstance(dim, int):
-        raise TypeError("Argument 'dim' must be of type int. Got {}".format(type(dim)))
+        raise TypeError(f"Argument 'dim' must be of type int. Got {type(dim)}")
 
     if not isinstance(return_inverse, bool):
-        raise TypeError("Argument return_inverse must be of type bool {}".format(type(return_inverse)))
+        raise TypeError(f"Argument return_inverse must be of type bool {type(return_inverse)}")
 
     inp_size = inp.size()
 
@@ -284,7 +284,7 @@ def zca_whiten(inp: torch.Tensor, dim: int = 0, unbiased: bool = True, eps: floa
     """
 
     if not isinstance(inp, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(inp)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(inp)}")
 
     if not isinstance(eps, float):
         raise TypeError(f"eps type is not a float. Got{type(eps)}")
@@ -293,7 +293,7 @@ def zca_whiten(inp: torch.Tensor, dim: int = 0, unbiased: bool = True, eps: floa
         raise TypeError(f"unbiased type is not bool. Got{type(unbiased)}")
 
     if not isinstance(dim, int):
-        raise TypeError("Argument 'dim' must be of type int. Got {}".format(type(dim)))
+        raise TypeError(f"Argument 'dim' must be of type int. Got {type(dim)}")
 
     transform, mean, _ = zca_mean(inp, dim, unbiased, eps, False)
 

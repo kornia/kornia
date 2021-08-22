@@ -55,7 +55,7 @@ def _get_center_kernel2d(h: int, w: int, device: torch.device = torch.device('cp
     else:
         w_i1 = (w // 2) - 1
         w_i2 = (w // 2) + 1
-    center_kernel[(0, 1), (0, 1), h_i1:h_i2, w_i1:w_i2] = 1.0 / float(((h_i2 - h_i1) * (w_i2 - w_i1)))
+    center_kernel[(0, 1), (0, 1), h_i1:h_i2, w_i1:w_i2] = 1.0 / float((h_i2 - h_i1) * (w_i2 - w_i1))
     return center_kernel
 
 
@@ -136,7 +136,7 @@ class ConvSoftArgmax2d(nn.Module):
         eps: float = 1e-8,
         output_value: bool = False,
     ) -> None:
-        super(ConvSoftArgmax2d, self).__init__()
+        super().__init__()
         self.kernel_size = kernel_size
         self.stride = stride
         self.padding = padding
@@ -202,7 +202,7 @@ class ConvSoftArgmax3d(nn.Module):
         output_value: bool = True,
         strict_maxima_bonus: float = 0.0,
     ) -> None:
-        super(ConvSoftArgmax3d, self).__init__()
+        super().__init__()
         self.kernel_size = kernel_size
         self.stride = stride
         self.padding = padding
@@ -308,13 +308,13 @@ def conv_soft_argmax2d(
         >>> nms_coords, nms_val = conv_soft_argmax2d(input, (3,3), (2,2), (1,1), output_value=True)
     """
     if not torch.is_tensor(input):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if not len(input.shape) == 4:
-        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}".format(input.shape))
+        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
 
     if temperature <= 0:
-        raise ValueError("Temperature should be positive float or tensor. Got: {}".format(temperature))
+        raise ValueError(f"Temperature should be positive float or tensor. Got: {temperature}")
 
     b, c, h, w = input.shape
     kx, ky = kernel_size
@@ -428,13 +428,13 @@ def conv_soft_argmax3d(
         >>> nms_coords, nms_val = conv_soft_argmax3d(input, (3, 3, 3), (1, 2, 2), (0, 1, 1))
     """
     if not torch.is_tensor(input):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if not len(input.shape) == 5:
-        raise ValueError("Invalid input shape, we expect BxCxDxHxW. Got: {}".format(input.shape))
+        raise ValueError(f"Invalid input shape, we expect BxCxDxHxW. Got: {input.shape}")
 
     if temperature <= 0:
-        raise ValueError("Temperature should be positive float or tensor. Got: {}".format(temperature))
+        raise ValueError(f"Temperature should be positive float or tensor. Got: {temperature}")
 
     b, c, d, h, w = input.shape
     kx, ky, kz = kernel_size
@@ -539,7 +539,7 @@ class SpatialSoftArgmax2d(nn.Module):
     def __init__(
         self, temperature: torch.Tensor = torch.tensor(1.0), normalized_coordinates: bool = True, eps: float = 1e-8
     ) -> None:
-        super(SpatialSoftArgmax2d, self).__init__()
+        super().__init__()
         self.temperature: torch.Tensor = temperature
         self.normalized_coordinates: bool = normalized_coordinates
         self.eps: float = eps
@@ -596,10 +596,10 @@ def conv_quad_interp3d(
         >>> nms_coords, nms_val = conv_quad_interp3d(input, 1.0)
     """
     if not torch.is_tensor(input):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if not len(input.shape) == 5:
-        raise ValueError("Invalid input shape, we expect BxCxDxHxW. Got: {}".format(input.shape))
+        raise ValueError(f"Invalid input shape, we expect BxCxDxHxW. Got: {input.shape}")
 
     B, CH, D, H, W = input.shape
     dev: torch.device = input.device
@@ -652,7 +652,7 @@ class ConvQuadInterp3d(nn.Module):
     """
 
     def __init__(self, strict_maxima_bonus: float = 10.0, eps: float = 1e-7) -> None:
-        super(ConvQuadInterp3d, self).__init__()
+        super().__init__()
         self.strict_maxima_bonus = strict_maxima_bonus
         self.eps = eps
         return

@@ -224,7 +224,7 @@ class TestMotionFromEssential:
         Rs, ts = epi.motion_from_essential(E_mat)
 
         rot_error = (Rs - R).abs().sum((-2, -1))
-        vec_error = (ts - t).abs().sum((-1))
+        vec_error = (ts - t).abs().sum(-1)
 
         rtol: float = 1e-4
         assert (rot_error < rtol).any() & (vec_error < rtol).any()

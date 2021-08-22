@@ -70,7 +70,7 @@ class Laplacian(nn.Module):
     """
 
     def __init__(self, kernel_size: int, border_type: str = 'reflect', normalized: bool = True) -> None:
-        super(Laplacian, self).__init__()
+        super().__init__()
         self.kernel_size: int = kernel_size
         self.border_type: str = border_type
         self.normalized: bool = normalized

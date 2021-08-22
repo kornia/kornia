@@ -33,19 +33,19 @@ def add_weighted(src1: torch.Tensor, alpha: float, src2: torch.Tensor, beta: flo
 
     """
     if not isinstance(src1, torch.Tensor):
-        raise TypeError("src1 should be a tensor. Got {}".format(type(src1)))
+        raise TypeError(f"src1 should be a tensor. Got {type(src1)}")
 
     if not isinstance(src2, torch.Tensor):
-        raise TypeError("src2 should be a tensor. Got {}".format(type(src2)))
+        raise TypeError(f"src2 should be a tensor. Got {type(src2)}")
 
     if not isinstance(alpha, float):
-        raise TypeError("alpha should be a float. Got {}".format(type(alpha)))
+        raise TypeError(f"alpha should be a float. Got {type(alpha)}")
 
     if not isinstance(beta, float):
-        raise TypeError("beta should be a float. Got {}".format(type(beta)))
+        raise TypeError(f"beta should be a float. Got {type(beta)}")
 
     if not isinstance(gamma, float):
-        raise TypeError("gamma should be a float. Got {}".format(type(gamma)))
+        raise TypeError(f"gamma should be a float. Got {type(gamma)}")
 
     return src1 * alpha + src2 * beta + gamma
 
@@ -78,7 +78,7 @@ class AddWeighted(nn.Module):
     """
 
     def __init__(self, alpha: float, beta: float, gamma: float) -> None:
-        super(AddWeighted, self).__init__()
+        super().__init__()
         self.alpha = alpha
         self.beta = beta
         self.gamma = gamma

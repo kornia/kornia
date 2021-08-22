@@ -82,9 +82,7 @@ class VideoSequential(ImageSequential):
         same_on_frame: bool = True,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
     ) -> None:
-        super(VideoSequential, self).__init__(
-            *args, same_on_batch=None, return_transform=None, keepdim=None, random_apply=random_apply
-        )
+        super().__init__(*args, same_on_batch=None, return_transform=None, keepdim=None, random_apply=random_apply)
         self.same_on_frame = same_on_frame
         self.data_format = data_format.upper()
         if self.data_format not in ["BCTHW", "BTCHW"]:

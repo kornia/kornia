@@ -71,29 +71,29 @@ elif os.getenv('KORNIA_RELEASE'):
     pass
 elif sha != 'Unknown':
     version += '+' + sha[:7]
-print("Building wheel {}-{}".format(package_name, version))
+print(f"Building wheel {package_name}-{version}")
 
 
 def write_version_file():
     version_path = os.path.join(cwd, 'kornia', 'version.py')
     with open(version_path, 'w') as f:
-        f.write("__version__ = '{}'\n".format(version))
-        f.write("git_version = {}\n".format(repr(sha)))
+        f.write(f"__version__ = '{version}'\n")
+        f.write(f"git_version = {repr(sha)}\n")
 
 
 def read(*names, **kwargs):
-    with io.open(os.path.join(os.path.dirname(__file__), *names), encoding=kwargs.get("encoding", "utf8")) as fp:
+    with open(os.path.join(os.path.dirname(__file__), *names), encoding=kwargs.get("encoding", "utf8")) as fp:
         return fp.read()
 
 
 # open readme file and set long description
-with open("README.md", "r", encoding="utf-8") as fh:
+with open("README.md", encoding="utf-8") as fh:
     long_description = fh.read()
 
 
 class clean(distutils.command.clean.clean):
     def run(self):
-        with open('.gitignore', 'r') as f:
+        with open('.gitignore') as f:
             ignores = f.read()
             for wildcard in filter(None, ignores.split('\n')):
                 for filename in glob.glob(wildcard):
