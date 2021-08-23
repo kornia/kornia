@@ -28,6 +28,7 @@ Equalization
 
 .. autofunction:: histogram
 .. autofunction:: histogram2d
+.. autofunction:: image_histogram2d
 
 Normalizations
 --------------
