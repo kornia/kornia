@@ -499,8 +499,8 @@ def random_crop_size_generator(
     # Element-wise w, h condition
     cond = ((0 < w) * (w < size[0]) * (0 < h) * (h < size[1])).int()
 
-    # torch.argmax is not reproducible accross devices: https://github.com/pytorch/pytorch/issues/17738
-    # Here, we will select the first occurance of the duplicated elements.
+    # torch.argmax is not reproducible across devices: https://github.com/pytorch/pytorch/issues/17738
+    # Here, we will select the first occurrence of the duplicated elements.
     cond_bool, argmax_dim1 = ((cond.cumsum(1) == 1) & cond.bool()).max(1)
     h_out = w[torch.arange(0, batch_size, device=device, dtype=torch.long), argmax_dim1]
     w_out = h[torch.arange(0, batch_size, device=device, dtype=torch.long), argmax_dim1]

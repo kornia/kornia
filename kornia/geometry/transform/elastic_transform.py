@@ -29,7 +29,7 @@ def elastic_transform2d(
           it is expected to be in x-y.
         kernel_size: the size of the Gaussian kernel.
         sigma: The standard deviation of the Gaussian in the y and x directions,
-          respecitvely. Larger sigma results in smaller pixel displacements.
+          respectively. Larger sigma results in smaller pixel displacements.
         alpha : The scaling factor that controls the intensity of the deformation
           in the y and x directions, respectively.
         align_corners: Interpolation flag used by ```grid_sample```.

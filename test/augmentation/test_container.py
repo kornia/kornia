@@ -356,7 +356,7 @@ class TestAugmentationSequential:
             data_keys=["input", "mask", "bbox", "keypoints"],
             random_apply=random_apply,
         )
-        with pytest.raises(Exception):  # No parameters avaliable for inversing.
+        with pytest.raises(Exception):  # No parameters available for inversing.
             aug.inverse(inp, mask, bbox, keypoints)
 
         out = aug(inp, mask, bbox, keypoints)

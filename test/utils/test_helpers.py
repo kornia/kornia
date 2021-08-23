@@ -38,7 +38,7 @@ from kornia.utils.helpers import _torch_histc_cast, _torch_inverse_cast, _torch_
     ],
 )
 def test_extract_device_dtype(tensor_list, out_device, out_dtype, will_throw_error):
-    # Add GPU tests when GPU testing avaliable
+    # Add GPU tests when GPU testing available
     if torch.cuda.is_available():
         import warnings
 

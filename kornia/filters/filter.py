@@ -15,7 +15,7 @@ def _compute_padding(kernel_size: List[int]) -> List[int]:
         raise AssertionError(kernel_size)
     computed = [k // 2 for k in kernel_size]
 
-    # for even kernels we need to do asymetric padding :(
+    # for even kernels we need to do asymmetric padding :(
 
     out_padding = 2 * len(kernel_size) * [0]
 

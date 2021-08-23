@@ -46,7 +46,7 @@ def warp_affine3d(
         torch.Tensor: the warped 3d tensor with shape :math:`(B, C, D, H, W)`.
 
     .. note::
-        This function is often used in conjuntion with :func:`get_perspective_transform3d`.
+        This function is often used in conjunction with :func:`get_perspective_transform3d`.
     """
     if len(src.shape) != 5:
         raise AssertionError(src.shape)
@@ -129,7 +129,7 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
         the projection matrix of 3D rotation with shape :math:`(B, 3, 4)`.
 
     .. note::
-        This function is often used in conjuntion with :func:`warp_affine3d`.
+        This function is often used in conjunction with :func:`warp_affine3d`.
     """
     if not (len(center.shape) == 2 and center.shape[-1] == 3):
         raise AssertionError(center.shape)
@@ -154,7 +154,7 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
     to_origin_mat = from_origin_mat.clone()
     to_origin_mat = _torch_inverse_cast(from_origin_mat)
 
-    # append tranlation with zeros
+    # append translation with zeros
     proj_mat = projection_from_Rt(rmat, torch.zeros_like(center)[..., None])  # Bx3x4
 
     # chain 4x4 transforms
@@ -231,7 +231,7 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
         the perspective transformation with shape :math:`(B, 4, 4)`.
 
     .. note::
-        This function is often used in conjuntion with :func:`warp_perspective3d`.
+        This function is often used in conjunction with :func:`warp_perspective3d`.
     """
     if not isinstance(src, (torch.Tensor)):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(src)}")
@@ -409,7 +409,7 @@ def warp_perspective3d(
         the warped input image :math:`(B, C, D, H, W)`.
 
     .. note::
-        This function is often used in conjuntion with :func:`get_perspective_transform3d`.
+        This function is often used in conjunction with :func:`get_perspective_transform3d`.
     """
     check_is_tensor(src)
     check_is_tensor(M)
@@ -434,7 +434,7 @@ def transform_warp_impl3d(
     padding_mode: str,
     align_corners: bool,
 ) -> torch.Tensor:
-    """Compute the transform in normalized cooridnates and perform the warping."""
+    """Compute the transform in normalized coordinates and perform the warping."""
     dst_norm_trans_src_norm: torch.Tensor = normalize_homography3d(dst_pix_trans_src_pix, dsize_src, dsize_dst)
 
     src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)

@@ -88,7 +88,7 @@ def _compute_interpolation_tiles(padded_imgs: torch.Tensor, tile_size: Tuple[int
     if padded_imgs.shape[-1] % tile_size[1] != 0:
         raise AssertionError("Images are not correctly padded.")
 
-    # tiles to be interpolated are built by dividing in 4 each alrady existing
+    # tiles to be interpolated are built by dividing in 4 each already existing
     interp_kernel_vert: int = tile_size[0] // 2
     interp_kernel_horz: int = tile_size[1] // 2
 
@@ -184,7 +184,7 @@ def _map_luts(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
     # th, tw -> /2 the sizes of the tiles used to compute the histograms
     num_imgs, gh, gw, c, th, tw = interp_tiles.shape
 
-    # precompute idxs for non corner regions (doing it in cpu seems sligthly faster)
+    # precompute idxs for non corner regions (doing it in cpu seems slightly faster)
     j_idxs = torch.empty(0, 4, dtype=torch.long)
     if gh > 2:
         j_floor = torch.arange(1, gh - 1).view(gh - 2, 1) // 2
@@ -269,7 +269,7 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
     )
     iw = iw.unfold(0, th, th).unfold(1, tw, tw)  # 1 x 2 x TH x TW
 
-    # compute row and column interpolation weigths
+    # compute row and column interpolation weights
     tiw = iw.expand((gw - 2) // 2, 2, th, tw).reshape(gw - 2, 1, th, tw).unsqueeze(0)  # 1 x GW-2 x 1 x TH x TW
     tih = ih.repeat((gh - 2) // 2, 1, 1, 1).unsqueeze(1)  # GH-2 x 1 x 1 x TH x TW
 

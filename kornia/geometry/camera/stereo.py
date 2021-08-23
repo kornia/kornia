@@ -21,7 +21,7 @@ class StereoException(Exception):
             "https://kornia.readthedocs.io/en/latest/geometry.camera.stereo.html for further information and examples."
         )
         final_msg = msg + doc_help
-        # type ignore becauce of mypy error:
+        # type ignore because of mypy error:
         # Too many arguments for "__init__" of "BaseException"
         super().__init__(final_msg, *args, **kwargs)  # type: ignore
 
@@ -260,7 +260,7 @@ def _check_Q_matrix(Q_matrix: torch.Tensor):
         raise StereoException(f"Expected 'Q_matrix' to be an instance of torch.Tensor but got {type(Q_matrix)}.")
 
     if not len(Q_matrix.shape) == 3:
-        raise StereoException(f"Expected 'Q_matrix' to have 3 dimenstions." f"Got {Q_matrix.shape}")
+        raise StereoException(f"Expected 'Q_matrix' to have 3 dimensions." f"Got {Q_matrix.shape}")
 
     if not Q_matrix.shape[1:] == (4, 4):
         raise StereoException(

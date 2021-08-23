@@ -33,7 +33,7 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    # The first or last occurance is not guarenteed before 1.6.0
+    # The first or last occurrence is not guaranteed before 1.6.0
     # https://github.com/pytorch/pytorch/issues/20414
     maxc, _ = image.max(-3)
     maxc_mask = image == maxc.unsqueeze(-3)

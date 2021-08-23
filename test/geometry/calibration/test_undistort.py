@@ -47,7 +47,7 @@ class TestUndistortion:
 
         dist = torch.tensor([-0.1007, 0.2650, -0.0018, 0.0007, -0.2597], device=device, dtype=dtype)
 
-        # Expected ouput generated with OpenCV:
+        # Expected output generated with OpenCV:
         # import cv2
         # ptsu_expected = cv2.undistortPoints(pts.numpy().reshape(-1,1,2), K.numpy(),
         #                               dist1.numpy(), None, None, K.numpy()).reshape(-1,2)
@@ -90,7 +90,7 @@ class TestUndistortion:
             dtype=dtype,
         )
 
-        # Expected ouput generated with OpenCV:
+        # Expected output generated with OpenCV:
         # import cv2
         # ptsu_expected = cv2.undistortPoints(pts.numpy().reshape(-1,1,2), K.numpy(),
         #                               dist2.numpy(), None, None, K.numpy()).reshape(-1,2)
@@ -167,7 +167,7 @@ class TestUndistortion:
             dtype=dtype,
         )
 
-        # Expected ouput generated with OpenCV:
+        # Expected output generated with OpenCV:
         # import cv2
         # ptsu_expected1 = cv2.undistortPoints(pts[0].numpy().reshape(-1,1,2), K[0].numpy(),
         #                               dist[0].numpy(), None, None, K[0].numpy()).reshape(-1,2)

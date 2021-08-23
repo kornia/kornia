@@ -12,7 +12,7 @@ def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:
     The center of projection will be based in the input image size.
 
     Args:
-        focal: the focal length for tha camera matrix.
+        focal: the focal length for the camera matrix.
         input: image tensor that will determine the batch size and image height
           and width. It is assumed to be a tensor in the shape of :math:`(B, C, H, W)`.
 
