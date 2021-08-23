@@ -56,7 +56,7 @@ class TestBbox2D:
         h, w = infer_bbox_shape(boxes)
         assert h.ndim == 1 and w.ndim == 1
         assert len(h) == 2 and len(w) == 2
-        assert (h == torch.as_tensor([1, 2])).all() and (w == torch.as_tensor([2, 3])).all()
+        assert (h == torch.as_tensor([1.0, 2.0])).all() and (w == torch.as_tensor([2.0, 3.0])).all()
 
     def test_bounding_boxes_dim_inferring_batch(self, device, dtype):
         box1 = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
@@ -131,9 +131,7 @@ class TestBbox2D:
         assert gradcheck(kornia_bbox_to_bbox, (boxes2,), raise_exception=True)
         assert gradcheck(bbox_to_kornia_bbox, (boxes_xyxy,), raise_exception=True)
 
-    @pytest.mark.parametrize(
-        'op', [validate_bbox, infer_bbox_shape, bbox_to_mask, bbox_to_kornia_bbox, kornia_bbox_to_bbox]
-    )
+    @pytest.mark.parametrize('op', [validate_bbox, infer_bbox_shape, kornia_bbox_to_bbox])
     def test_jit(self, op: Callable, device, dtype):
         # Define script
         op_script = torch.jit.script(op)
@@ -142,6 +140,19 @@ class TestBbox2D:
         # Run
         expected = op(boxes)
         actual = op_script(boxes)
+        # Compare
+        assert_allclose(actual, expected)
+
+    def test_jit_bbox_to_mask(self, device, dtype):
+        # Define script
+        op = bbox_to_mask
+        op_script = torch.jit.script(op)
+        # Define input
+        boxes = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
+        height, width = 5, 10
+        # Run
+        expected = op(boxes, height, width)
+        actual = op_script(boxes, height, width)
         # Compare
         assert_allclose(actual, expected)
 
@@ -175,7 +186,6 @@ class TestTransformBoxes2D:
         assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
 
     def test_transform_multiple_boxes(self, device, dtype):
-
         boxes = torch.tensor(
             [
                 [139.2640, 103.0150, 397.3120, 410.5225],

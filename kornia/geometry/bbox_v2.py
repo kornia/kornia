@@ -15,31 +15,63 @@ def _check_bbox3d_dimensions(boxes: torch.Tensor):
         raise ValueError(f"3D bbox shape must be (N, 8, 3) or (B, N, 8, 3). Got {boxes.shape}.")
 
 
+def _boxes_to_polygons(xmin: torch.Tensor, ymin: torch.Tensor, width: torch.Tensor, height: torch.Tensor):
+    if not xmin.ndim == ymin.ndim == width.ndim == height.ndim == 2:
+        raise ValueError("We expect to create a batch of boxes in vertices format (B, N, 4, 2)")
+
+    # Create (B,N,4,2) with all points in top left position of the bounding box
+    polygons = torch.zeros((xmin.shape[0], xmin.shape[1], 4, 2), device=xmin.device, dtype=xmin.dtype)
+    polygons[..., 0] = xmin.unsqueeze(-1)
+    polygons[..., 1] = ymin.unsqueeze(-1)
+    # Shift top-right, bottom-right, bottom-left points to the right coordinates
+    polygons[..., 1, 0] += width  # Top right
+    polygons[..., 2, 0] += width  # Bottom right
+    polygons[..., 2, 1] += height  # Bottom right
+    polygons[..., 3, 1] += height  # Bottom left
+    return polygons
+
+
+def _boxes3d_to_polygons3d(
+    xmin: torch.Tensor,
+    ymin: torch.Tensor,
+    zmin: torch.Tensor,
+    width: torch.Tensor,
+    height: torch.Tensor,
+    depth: torch.Tensor,
+):
+    if not xmin.ndim == ymin.ndim == zmin.ndim == width.ndim == height.ndim == depth.ndim == 2:
+        raise ValueError("We expect to create a batch of 3D boxes in vertices format (B, N, 8, 3)")
+
+    # Front
+    # Create (B,N,4,3) with all points in front top left position of the bounding box
+    front_vertices = torch.zeros((xmin.shape[0], xmin.shape[1], 4, 3), device=xmin.device, dtype=xmin.dtype)
+    front_vertices[..., 0] = xmin.unsqueeze(-1)
+    front_vertices[..., 1] = ymin.unsqueeze(-1)
+    front_vertices[..., 2] = zmin.unsqueeze(-1)
+    # Shift front-top-right, front-bottom-right, front-bottom-left points to the right coordinates
+    front_vertices[..., 1, 0] += width  # Top right
+    front_vertices[..., 2, 0] += width  # Bottom right
+    front_vertices[..., 2, 1] += height  # Bottom right
+    front_vertices[..., 3, 1] += height  # Bottom left
+
+    # Back
+    back_vertices = front_vertices.clone()
+    back_vertices[..., 2] += depth.unsqueeze(-1)
+
+    polygons3d = torch.cat([front_vertices, back_vertices], dim=-1)
+    return polygons3d
+
+
 @torch.jit.ignore
 def validate_bbox(boxes: torch.Tensor) -> bool:
-    """Validate if a 2D bounding box usable or not. This function checks if the boxes are rectangular or not.
+    """Validate if a 2D bounding box usable or not by kornia.
 
     Args:
-        boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
-            of Nx4x2 or BxNx4x2, where each box is defined in the following ``clockwise`` order: top-left, top-right,
-            bottom-right, ottom-left. The coordinates must be in the x, y order. The height and width of a box with
-            corners (x1, y1) and (x2, y2) is computed as ``width = x2 - x1`` and ``height = y2 - y1``.
+        boxes: boxes in Kornia format.
     """
     _check_bbox_dimensions(boxes)
     if not boxes.is_floating_point():
         raise ValueError(f"Coordinates must be in floating point. Got {boxes.dtype}")
-
-    if not torch.allclose((boxes[..., 1, 0] - boxes[..., 0, 0]), (boxes[..., 2, 0] - boxes[..., 3, 0])):
-        raise ValueError(
-            "Boxes must have be rectangular, while get widths %s and %s"
-            % (str(boxes[..., 1, 0] - boxes[..., 0, 0]), str(boxes[..., 2, 0] - boxes[..., 3, 0]))
-        )
-
-    if not torch.allclose((boxes[..., 2, 1] - boxes[..., 0, 1]), (boxes[..., 3, 1] - boxes[..., 1, 1])):
-        raise ValueError(
-            "Boxes must have be rectangular, while get heights %s and %s"
-            % (str(boxes[..., 2, 1] - boxes[..., 0, 1]), str(boxes[..., 3, 1] - boxes[..., 1, 1]))
-        )
 
     return True
 
@@ -60,22 +92,6 @@ def validate_bbox3d(boxes: torch.Tensor) -> bool:
     if not boxes.is_floating_point():
         raise ValueError(f"Coordinates must be in floating point. Got {boxes.dtype}")
 
-    left = boxes[..., [1, 2, 5, 6], 0]
-    right = boxes[..., [0, 3, 4, 7], 0]
-    widths = left - right
-    if not torch.allclose(widths.permute(1, 0), widths[:, 0]):
-        raise ValueError(f"Boxes must have be cube, while get different widths {widths}.")
-
-    bottom = boxes[..., [2, 3, 6, 7], 1]
-    upper = boxes[..., [0, 1, 4, 5], 1]
-    heights = bottom - upper
-    if not torch.allclose(heights.permute(1, 0), heights[:, 0]):
-        raise ValueError(f"Boxes must have be cube, while get different heights {heights}.")
-
-    depths = boxes[..., 4:, 2] - boxes[..., :4, 2]
-    if not torch.allclose(depths.permute(1, 0), depths[:, 0]):
-        ValueError(f"Boxes must have be cube, while get different depths {depths}.")
-
     return True
 
 
@@ -83,10 +99,7 @@ def infer_bbox_shape(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Auto-infer the output sizes for the given 2D bounding boxes.
 
     Args:
-        boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
-            of Nx4x2 or BxNx4x2, where each box is defined in the following ``clockwise`` order: top-left, top-right,
-            bottom-right, bottom-left. The coordinates must be in the x, y order. The height and width of a box with
-            corners (x1, y1) and (x2, y2) is computed as ``width = x2 - x1`` and ``height = y2 - y1``.
+        boxes: boxes in Kornia format.
 
     Returns:
         - Bounding box heights, shape of :math:`(N,)` or :math:`(B,N)`.
@@ -108,9 +121,9 @@ def infer_bbox_shape(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         (tensor([[1., 1.]]), tensor([[1., 2.]]))
     """
     _check_bbox_dimensions(boxes)
-    width: torch.Tensor = boxes[..., 1, 0] - boxes[..., 0, 0]
-    height: torch.Tensor = boxes[..., 2, 1] - boxes[..., 0, 1]
-    return height, width
+    boxes_xywh = kornia_bbox_to_bbox(boxes, mode='xywh')
+    widths, heights = boxes_xywh[..., 2], boxes_xywh[..., 3]
+    return heights, widths
 
 
 def infer_bbox3d_shape(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -150,29 +163,18 @@ def infer_bbox3d_shape(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor,
         (tensor([30, 60]), tensor([20, 50]), tensor([10, 40]))
     """
     _check_bbox3d_dimensions(boxes)
-
-    left = boxes[..., [1, 2, 5, 6], 0]
-    right = boxes[..., [0, 3, 4, 7], 0]
-    widths = left - right
-
-    bottom = boxes[..., [2, 3, 6, 7], 1]
-    upper = boxes[..., [0, 1, 4, 5], 1]
-    heights = bottom - upper
-
-    depths = boxes[..., 4:, 2] - boxes[..., :4, 2]
-    return depths[..., 0], heights[..., 0], widths[..., 0]
+    boxes_xyzwhd = kornia_bbox3d_to_bbox3d(boxes, mode='xyzwhd')
+    widths, heights, depths = boxes_xyzwhd[..., 3], boxes_xyzwhd[..., 4], boxes_xyzwhd[..., 5]
+    return depths, heights, widths
 
 
-def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
-    """Convert 2D bounding boxes to masks. Covered area is 1. and the remaining is 0.
+def bbox_to_mask(boxes: torch.Tensor, height: int, width: int) -> torch.Tensor:
+    """Convert 2D bounding boxes to masks. Covered area is 1 and the remaining is 0.
 
     Args:
-        boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
-            of Nx4x2 or BxNx4x2, where each box is defined in the following ``clockwise`` order: top-left, top-right,
-            bottom-right and bottom-left. The coordinates must be in the x, y order. The height and width of a box with
-            corners (x1, y1) and (x2, y2) is computed as ``width = x2 - x1`` and ``height = y2 - y1``.
-        width: width of the masked image/images.
+        boxes: boxes in Kornia format.
         height: height of the masked image/images.
+        width: width of the masked image/images.
 
     Returns:
         the output mask tensor, shape of :math:`(N, width, height)` or :math:`(B,N, width, height)` and dtype of boxes.
@@ -195,7 +197,10 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
                  [0., 0., 0., 0., 0.]]])
     """
     _check_bbox_dimensions(boxes)
-    mask = torch.zeros((*boxes.shape[:-2], height, width), dtype=boxes.dtype, device=boxes.device)
+    batched = boxes.ndim == 4
+    boxes = boxes if batched else boxes.unsqueeze(0)
+
+    mask = torch.zeros((boxes.shape[0], boxes.shape[1], height, width), dtype=boxes.dtype, device=boxes.device)
 
     # Boxes coordinates can be outside the image size after transforms. Clamp values to the image size
     clamped_boxes = boxes.detach().clone()
@@ -205,14 +210,15 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
     boxes_xyxy = kornia_bbox_to_bbox(boxes, mode='xyxy')
     # Reshape mask to (BxN, H, W) and boxes to (BxN, 4) to iterate over all of them.
     # Cast boxes coordinates to be integer to use them as indexes. Use round to handle decimal values.
-    for mask_channel, box_xyxy in zip(mask.view(-1, *mask.shape[-2:]), boxes_xyxy.view(-1, 4).round().int()):
+    for mask_channel, box_xyxy in zip(mask.view(-1, height, width), boxes_xyxy.view(-1, 4).round().int()):
         # Mask channel dimensions: (height, width)
         mask_channel[box_xyxy[1] : box_xyxy[3], box_xyxy[0] : box_xyxy[2]] = 1
 
+    mask = mask if batched else mask.squeeze(0)
     return mask
 
 
-def bbox3d_to_mask3d(boxes: torch.Tensor, depth: int, width: int, height: int) -> torch.Tensor:
+def bbox3d_to_mask3d(boxes: torch.Tensor, depth: int, height: int, width: int) -> torch.Tensor:
     """Convert 3D bounding boxes to masks. Covered area is 1. and the remaining is 0.
 
     Args:
@@ -222,9 +228,9 @@ def bbox3d_to_mask3d(boxes: torch.Tensor, depth: int, width: int, height: int) -
             back-bottom-left. The coordinates must be in the x, y, z order. The height, width and depth of a 3D box with
             corners (x1, y1, z1) and (x2, y2, z2) is computed as ``width = x2 - x1``, ``height = y2 - y1`` and
             ``depth = z2 - z1``.
-        width: width of the masked image/images.
-        height: height of the masked image/images.
         depth: depth of the masked image/images.
+        height: height of the masked image/images.
+        width: width of the masked image/images.
 
     Returns:
         the output mask tensor, shape of :math:`(N, depth, width, height)` or :math:`(B,N, depth, width, height)` and
@@ -267,8 +273,10 @@ def bbox3d_to_mask3d(boxes: torch.Tensor, depth: int, width: int, height: int) -
                  [0., 0., 0., 0., 0.]]])
     """
     _check_bbox3d_dimensions(boxes)
+    batched = boxes.ndim == 4
+    boxes = boxes if batched else boxes.unsqueeze(0)
 
-    mask = torch.zeros((*boxes.shape[:-3], depth, height, width), dtype=boxes.dtype, device=boxes.device)
+    mask = torch.zeros((boxes.shape[0], boxes.shape[1], depth, height, width), dtype=boxes.dtype, device=boxes.device)
 
     # Boxes coordinates can be outside the image size after transforms. Clamp values to the image size
     clamped_boxes = boxes.detach().clone()
@@ -279,20 +287,16 @@ def bbox3d_to_mask3d(boxes: torch.Tensor, depth: int, width: int, height: int) -
     boxes_xyzxyz = kornia_bbox3d_to_bbox3d(boxes, mode='xyzxyz')
     # Reshape mask to (BxN, D, H, W) and boxes to (BxN, 6) to iterate over all of them.
     # Cast boxes coordinates to be integer to use them as indexes. Use round to handle decimal values.
-    for mask_channel, box_xyzxyz in zip(mask.view(-1, *mask.shape[-3:]), boxes_xyzxyz.view(-1, 6).round().int()):
+    for mask_channel, box_xyzxyz in zip(mask.view(-1, depth, height, width), boxes_xyzxyz.view(-1, 6).round().int()):
         # Mask channel dimensions: (depth, height, width)
         mask_channel[box_xyzxyz[2] : box_xyzxyz[5], box_xyzxyz[1] : box_xyzxyz[4], box_xyzxyz[0] : box_xyzxyz[3]] = 1
 
+    mask = mask if batched else mask.squeeze(0)
     return mask
 
 
 def bbox_to_kornia_bbox(boxes: torch.Tensor, mode: str = "xyxy") -> torch.Tensor:
     r"""Convert 2D bounding boxes to kornia format according to the format in which the boxes are provided.
-
-    Kornia bounding boxes format is defined as a a floating data type tensor of shape Nx4x2 or BxNx4x2, where each box
-    is defined in the following ``clockwise`` order: top-left, top-right, bottom-right, bottom-left. The coordinates
-    must be in the x, y order. The height and width of a box with corners (x1, y1) and (x2, y2) is computed as
-    ``width = x2 - x1`` and ``height = y2 - y1``.
 
     Args:
         boxes: boxes to be transformed, shape of :math:`(N,4)` or :math:`(B,N,4)`.
@@ -324,6 +328,8 @@ def bbox_to_kornia_bbox(boxes: torch.Tensor, mode: str = "xyxy") -> torch.Tensor
     if not (2 <= boxes.ndim <= 3 and boxes.shape[-1] == 4):
         raise ValueError(f"BBox shape must be (N, 4) or (B, N, 4). Got {boxes.shape}.")
 
+    batched = boxes.ndim == 3
+    boxes = boxes if batched else boxes.unsqueeze(0)
     boxes = boxes if boxes.is_floating_point() else boxes.float()
 
     xmin, ymin = boxes[..., 0], boxes[..., 1]
@@ -338,27 +344,13 @@ def bbox_to_kornia_bbox(boxes: torch.Tensor, mode: str = "xyxy") -> torch.Tensor
         height -= 1
         width -= 1
 
-    # Create (B,N,4,2) or (N,4,2) with all points in top left position of the bounding box
-    kornia_boxes = torch.zeros((*boxes.shape[:-1], 4, 2), device=boxes.device, dtype=boxes.dtype)
-    kornia_boxes[..., 0] = xmin.unsqueeze(-1)
-    kornia_boxes[..., 1] = ymin.unsqueeze(-1)
-    # Shift top-right, bottom-right, bottom-left points to the right coordinates
-    kornia_boxes[..., 1, 0] += width  # Top right
-    kornia_boxes[..., 2, 0] += width  # Bottom right
-    kornia_boxes[..., 2, 1] += height  # Bottom right
-    kornia_boxes[..., 3, 1] += height  # Bottom left
-
-    return kornia_boxes
+    quadrilaterals = _boxes_to_polygons(xmin, ymin, width, height)
+    quadrilaterals = quadrilaterals if batched else quadrilaterals.squeeze(0)
+    return quadrilaterals
 
 
 def bbox3d_to_kornia_bbox3d(boxes: torch.Tensor, mode: str = "xyzxyz") -> torch.Tensor:
-    r"""Convert 3D bounding boxes to kornia format according to the format in which the boxes are provided.
-
-    Kornia 3D bounding boxes format is defined as a floating data type tensor of shape Nx8x3 or BxNx8x3, where each 3D
-    box is defined in the following ``clockwise`` order: front-top-left, front-top-right, ront-bottom-right,
-    front-bottom-left, ack-top-left, back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in
-    the x, y, z order. The height, width and depth of a 3D box with corners (x1, y1, z1) and (x2, y2, z2) is computed as
-    ``width = x2 - x1``, ``height = y2 - y1`` and ``depth = z2 - z1``.
+    r"""Convert 3D bounding boxes to kornia format according to the format in which the boxes are provided..
 
     Args:
         boxes: 3D boxes to be transformed, shape of :math:`(N,6)` or :math:`(B,N,6)`.
@@ -399,6 +391,8 @@ def bbox3d_to_kornia_bbox3d(boxes: torch.Tensor, mode: str = "xyzxyz") -> torch.
     if not (2 <= boxes.ndim <= 3 and boxes.shape[-1] == 6):
         raise ValueError(f"BBox shape must be (N, 6) or (B, N, 6). Got {boxes.shape}.")
 
+    batched = boxes.ndim == 3
+    boxes = boxes if batched else boxes.unsqueeze(0)
     boxes = boxes if boxes.is_floating_point() else boxes.float()
 
     xmin, ymin, zmin = boxes[..., 0], boxes[..., 1], boxes[..., 2]
@@ -416,44 +410,30 @@ def bbox3d_to_kornia_bbox3d(boxes: torch.Tensor, mode: str = "xyzxyz") -> torch.
         width -= 1
         depth -= 1
 
-    # Front
-    # Create (B,N,4,3) or (N,4,3) with all points in top left position of the bounding box
-    kornia_front_boxes = torch.zeros((*boxes.shape[:-1], 4, 3), device=boxes.device, dtype=boxes.dtype)
-    kornia_front_boxes[..., 0] = xmin.unsqueeze(-1)
-    kornia_front_boxes[..., 1] = ymin.unsqueeze(-1)
-    kornia_front_boxes[..., 2] = zmin.unsqueeze(-1)
-    # Shift front-top-right, front-bottom-right, front-bottom-left points to the right coordinates
-    kornia_front_boxes[..., 1, 0] += width  # Top right
-    kornia_front_boxes[..., 2, 0] += width  # Bottom right
-    kornia_front_boxes[..., 2, 1] += height  # Bottom right
-    kornia_front_boxes[..., 3, 1] += height  # Bottom left
-
-    # Back
-    kornia_back_boxes = kornia_front_boxes.clone()
-    kornia_back_boxes[..., 2] += depth.unsqueeze(-1)
-
-    return torch.cat([kornia_front_boxes, kornia_back_boxes], dim=-1)
+    hexahedrons = _boxes3d_to_polygons3d(xmin, ymin, zmin, width, height, depth)
+    hexahedrons = hexahedrons if batched else hexahedrons.squeeze(0)
+    return hexahedrons
 
 
 def kornia_bbox_to_bbox(kornia_boxes: torch.Tensor, mode: str = "xyxy") -> torch.Tensor:
     r"""Convert 2D bounding boxes in kornia format to the format specified by ``mode``.
 
-    Kornia bounding boxes format is defined as a a floating data type tensor of shape Nx4x2 or BxNx4x2, where each box
-    is defined in the following ``clockwise`` order: top-left, top-right, bottom-right, bottom-left. The coordinates
-    must be in the x, y order. The height and width of a box with corners (x1, y1) and (x2, y2) is computed as
-    ``width = x2 - x1`` and ``height = y2 - y1``.
-
     Args:
         kornia_boxes: boxes to be transformed, shape of :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
-        mode: The format in which the boxes are provided.
-            - 'xyxy': boxes are assumed to be in the format ``xmin, ymin, xmax, ymax`` where ``width = xmax - xmin`` and
+        mode: the ouput box format. It could be:
+            - 'xyxy': boxes are defined as ``xmin, ymin, xmax, ymax`` where ``width = xmax - xmin`` and
                 ``height = ymax - ymin``.
             - 'xyxy_plus_1': like 'xyxy' where ``width = xmax - xmin + 1`` and  ``height = ymax - ymin + 1``.
-            - 'xywh': boxes are assumed to be in the format ``xmin, ymin, width, height`` where ``width = xmax - xmin``
+            - 'xywh': boxes are defined as ``xmin, ymin, width, height`` where ``width = xmax - xmin``
                 and ``height = ymax - ymin``.
             - 'xywh_plus_1': like 'xywh' where ``width = xmax - xmin + 1`` and  ``height = ymax - ymin + 1``.
+            - 'vertices': boxes are defined by their vertices points in the following ``clockwise`` order: ``top-left,
+                top-right, bottom-right, bottom-left``. Vertices coordinates are in (x,y) order. Finally, box width and
+                height are defined as ``width = xmax - xmin`` and ``height = ymax - ymin``.
+            - 'vertices_plus_1': like 'vertices' where ``width = xmax - xmin + 1`` and  ``height = ymax - ymin + 1``.
     Returns:
-        Bounding boxes tensor the ``mode`` format, shape of :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
+        Bounding boxes tensor the ``mode`` format. The shape is :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)` in 'vertices'
+        or 'vertices_plus_1' mode and :math:`(N, 4)` or :math:`(B, N, 4)` in all other cases.
 
     Examples:
         >>> boxes_xyxy = torch.as_tensor([[0, 3, 1, 4], [5, 1, 8, 4]])
@@ -461,14 +441,18 @@ def kornia_bbox_to_bbox(kornia_boxes: torch.Tensor, mode: str = "xyxy") -> torch
         >>> assert (kornia_bbox_to_bbox(kornia_bbox, mode='xyxy') == boxes_xyxy).all()
     """
     _check_bbox_dimensions(kornia_boxes)
+    batched = kornia_boxes.ndim == 4
+    # Create (B,N,4,2) or (N,4,2) with all points in top left position of the bounding box
+    kornia_boxes = kornia_boxes if batched else kornia_boxes.unsqueeze(0)
 
-    boxes = torch.stack([kornia_boxes.min(dim=-2).values, kornia_boxes.max(dim=-2).values], dim=1).view(
-        *kornia_boxes.shape[:-2], 4
+    # Create boxes in xyxy format.
+    boxes = torch.stack([kornia_boxes.min(dim=-2).values, kornia_boxes.max(dim=-2).values], dim=-2).view(
+        kornia_boxes.shape[0], kornia_boxes.shape[1], 4
     )
 
     if mode in ("xyxy", "xyxy_plus_1"):
         pass
-    elif mode in ("xywh", "xywh_plus_1"):
+    elif mode in ("xywh", "xywh_plus_1", "vertices", "vertices_plus_1"):
         height, width = boxes[..., 3] - boxes[..., 1], boxes[..., 2] - boxes[..., 0]
         boxes[..., 2] = width
         boxes[..., 3] = height
@@ -479,17 +463,15 @@ def kornia_bbox_to_bbox(kornia_boxes: torch.Tensor, mode: str = "xyxy") -> torch
         offset = torch.as_tensor([0, 0, 1, 1], device=boxes.device, dtype=boxes.dtype)
         boxes = boxes + offset
 
+    if 'vertices' in mode:
+        boxes = _boxes_to_polygons(boxes[..., 0], boxes[..., 1], boxes[..., 2], boxes[..., 3])
+
+    boxes = boxes if batched else boxes.squeeze(0)
     return boxes
 
 
 def kornia_bbox3d_to_bbox3d(kornia_boxes: torch.Tensor, mode: str = "xyzxyz") -> torch.Tensor:
     r"""Convert 3D bounding boxes in kornia format according to the format specified by ``mode``.
-
-    Kornia 3D bounding boxes format is defined as a floating data type tensor of shape Nx8x3 or BxNx8x3, where each 3D
-    box is defined in the following ``clockwise`` order: front-top-left, front-top-right, ront-bottom-right,
-    front-bottom-left, ack-top-left, back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in
-    the x, y, z order. The height, width and depth of a 3D box with corners (x1, y1, z1) and (x2, y2, z2) is computed as
-    ``width = x2 - x1``, ``height = y2 - y1`` and ``depth = z2 - z1``.
 
     Args:
         kornia_boxes: 3D boxes to be transformed, shape of :math:`(N, 8, 3)` or :math:`(B, N, 8, 3)`.
@@ -502,9 +484,15 @@ def kornia_bbox3d_to_bbox3d(kornia_boxes: torch.Tensor, mode: str = "xyzxyz") ->
                 ``width = xmax - xmin``, ``height = ymax - ymin`` and ``depth = zmax - zmin``.
             - 'xyzwhd_plus_1': like 'xyzwhd' where ``width = xmax - xmin + 1``, ``height = ymax - ymin + 1`` and
                 ``depth = zmax - zmin + 1``.
+            - 'vertices': boxes are defined by their vertices points in the following ``clockwise`` order:
+                ``front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left, back-top-right,
+                back-bottom-right,  back-bottom-left.``. Vertices coordinates are in (x,y, z) order. Finally, box width,
+                height and depth are defined as ``width = xmax - xmin``, ``height = ymax - ymin`` and
+                ``depth = zmax - zmin``.
+            - 'vertices_plus_1': like 'vertices' where ``width = xmax - xmin + 1`` and  ``height = ymax - ymin + 1``.
     Returns:
-        3D bounding boxes tensor the ``mode`` format, shape of :math:`(N, 6)` or :math:`(B, N, 6)`.
-
+        3D bounding boxes tensor the ``mode`` format. The shape is :math:`(N, 8, 3)` or :math:`(B, N, 8, 3)` in
+        'vertices' or 'vertices_plus_1' mode and :math:`(N, 6)` or :math:`(B, N, 6)` in all other cases.
 
     Examples:
         >>> boxes_xyzxyz = torch.as_tensor([[0, 3, 6, 1, 4, 8], [5, 1, 3, 8, 4, 9]])
@@ -512,13 +500,17 @@ def kornia_bbox3d_to_bbox3d(kornia_boxes: torch.Tensor, mode: str = "xyzxyz") ->
         >>> assert (kornia_bbox3d_to_bbox3d(kornia_bbox, mode='xyzxyz') == boxes_xyzxyz).all()
     """
     _check_bbox3d_dimensions(kornia_boxes)
-    boxes = torch.stack([kornia_boxes.min(dim=-2).values, kornia_boxes.max(dim=-2).values], dim=1).view(
-        *kornia_boxes.shape[:-2], 6
+    batched = kornia_boxes.ndim == 4
+    kornia_boxes = kornia_boxes if batched else kornia_boxes.unsqueeze(0)
+
+    # Create boxes in xyzxyz format.
+    boxes = torch.stack([kornia_boxes.min(dim=-2).values, kornia_boxes.max(dim=-2).values], dim=-2).view(
+        kornia_boxes.shape[0], kornia_boxes.shape[1], 6
     )
 
     if mode in ("xyzxyz", "xyzxyz_plus_1"):
         pass
-    elif mode in ("xyzwhd", "xyzwhd_plus_1"):
+    elif mode in ("xyzwhd", "xyzwhd_plus_1", "vertices", "vertices_plus_1"):
         width = boxes[..., 3] - boxes[..., 0]
         height = boxes[..., 4] - boxes[..., 1]
         depth = boxes[..., 5] - boxes[..., 2]
@@ -532,12 +524,19 @@ def kornia_bbox3d_to_bbox3d(kornia_boxes: torch.Tensor, mode: str = "xyzxyz") ->
         offset = torch.as_tensor([0, 0, 0, 1, 1, 1], device=boxes.device, dtype=boxes.dtype)
         boxes = boxes + offset
 
+    if 'vertices' in mode:
+        xmin, ymin, zmin = boxes[..., 0], boxes[..., 1], boxes[..., 2]
+        width, height, depth = boxes[..., 3], boxes[..., 4], boxes[..., 5]
+
+        boxes = _boxes3d_to_polygons3d(xmin, ymin, zmin, width, height, depth)
+
+    boxes = boxes if batched else boxes.squeeze(0)
     return boxes
 
 
 def _transform_bbox(boxes: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
-    """Transforms 3D and 2D in kornia format by applying the transformation matrix M. Boxes and the transformation matrix
-    could be batched or not.
+    """Transforms 3D and 2D in kornia format by applying the transformation matrix M. Boxes and the transformation
+    matrix could be batched or not.
 
     Args:
         boxes: 2D or 3D boxes in kornia format.
@@ -563,10 +562,7 @@ def _transform_bbox(boxes: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
 
 
 def transform_bbox(boxes: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
-    r"""Function that applies a transformation matrix to boxes or a batch of boxes in kornia format. That it's, a
-    floating data type tensor of shape Nx4x2 or BxNx4x2, where each box is defined in the following ``clockwise`` order:
-    top-left, top-right, bottom-right and bottom-left. The coordinates must be in the x, y order. The height and width
-    of a box with corners (x1, y1) and (x2, y2) is computed as ``width = x2 - x1`` and ``height = y2 - y1``.
+    r"""Function that applies a transformation matrix to boxes or a batch of boxes in kornia format.
 
     Args:
         boxes: The boxes to be transformed. It must be a tensor of shape :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
@@ -582,12 +578,7 @@ def transform_bbox(boxes: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
 
 
 def transform_bbox3d(boxes: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
-    r"""Function that applies a transformation matrix to 3D boxes or a batch of 3D boxes in kornia format. That it's, a
-    floating data type tensor of shape Nx8x3 or BxNx8x3, where each box is defined in the following ``clockwise`` order:
-    front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left, back-top-right,
-    back-bottom-right,back-bottom-left. The coordinates must be in the x, y, z order. The height, width and depth of a
-    3D box with corners (x1, y1, z1) and (x2, y2, z2) is computed as ``width = x2 - x1``, ``height = y2 - y1`` and
-    ``depth = z2 - z1``.
+    r"""Function that applies a transformation matrix to 3D boxes or a batch of 3D boxes in kornia format.
 
     Args:
         boxes: The 3D boxes to be transformed. It must be a tensor of shape :math:`(N, 8, 3)` or :math:`(B, N, 8, 3)`.
