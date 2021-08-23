@@ -31,7 +31,7 @@ class TestDeFMO:
     @pytest.mark.jit
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 6, 240, 320
-        patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
-        model = DeFMO().to(patches.device, patches.dtype).eval()
-        model_jit = torch.jit.script(DeFMO().to(patches.device, patches.dtype).eval())
+        patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        model = DeFMO(True).to(patches.device, patches.dtype).eval()
+        model_jit = torch.jit.script(DeFMO(True).to(patches.device, patches.dtype).eval())
         assert_close(model(patches), model_jit(patches))
