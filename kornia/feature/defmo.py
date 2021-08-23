@@ -273,9 +273,9 @@ class DeFMO(nn.Module):
         - Output: (B, S, 4, H, W)
 
     Examples:
-        >>> input = torch.rand(16, 6, 240, 320)
-        >>> defmo = DeFMO()
-        >>> tsr_nobgr = defmo(input) # 16x24x4x240x320
+        >>> input = torch.rand(2, 6, 240, 320)
+        >>> defmo = kornia.feature.DeFMO()
+        >>> tsr_nobgr = defmo(input) # 2x24x4x240x320
     """
 
     def __init__(self, pretrained: bool = False) -> None:
