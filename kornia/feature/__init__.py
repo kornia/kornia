@@ -1,4 +1,5 @@
 from .nms import nms2d, nms3d, NonMaximaSuppression2d, NonMaximaSuppression3d
+from .loftrs import LoFTR
 from .responses import (
     BlobDoG,
     BlobHessian,
@@ -92,4 +93,5 @@ __all__ = [
     "match_mnn",
     "match_snn",
     "match_smnn",
+    "LoFTR",
 ]
