@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 #from einops.einops import rearrange, repeat
 
 
@@ -38,18 +39,18 @@ class FinePreprocess(nn.Module):
 
         # 1. unfold(crop) all local windows
         feat_f0_unfold = F.unfold(feat_f0, kernel_size=(W, W), stride=stride, padding=W//2)
-        
+
         # feat_f0_unfold = rearrange(feat_f0_unfold, 'n (c ww) l -> n l ww c', ww=W**2)
         n0, cww0, l0 = feat_f0_unfold.shape
         c0 = cww0 // (W * W)
         feat_f0_unfold = feat_f0_unfold.reshape(n0, c0, -1, l0).permute(0, 3, 2, 1)
-        
+
         feat_f1_unfold = F.unfold(feat_f1, kernel_size=(W, W), stride=stride, padding=W//2)
         # feat_f1_unfold = rearrange(feat_f1_unfold, 'n (c ww) l -> n l ww c', ww=W**2)
         n1, cww1, l1 = feat_f1_unfold.shape
         c1 = cww1 // (W * W)
         feat_f1_unfold = feat_f1_unfold.reshape(n1, c1, -1, l1).permute(0, 3, 2, 1)
-        
+
 
         # 2. select only the predicted matches
         feat_f0_unfold = feat_f0_unfold[data['b_ids'], data['i_ids']]  # [n, ww, cf]

@@ -1,14 +1,17 @@
+from typing import Dict, Optional
+
 import torch
 import torch.nn as nn
-#from einops.einops import rearrange
-
-from typing import Optional, Dict
 
 from .backbone import build_backbone
-from .utils.position_encoding import PositionEncodingSine
-from .loftr_module import LocalFeatureTransformer, FinePreprocess
+from .loftr_module import FinePreprocess, LocalFeatureTransformer
 from .utils.coarse_matching import CoarseMatching
 from .utils.fine_matching import FineMatching
+from .utils.position_encoding import PositionEncodingSine
+
+#from einops.einops import rearrange
+
+
 
 urls: Dict[str, str] = {}
 urls["outdoor"] = "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_outdoor.ckpt"
@@ -64,16 +67,16 @@ class LoFTR(nn.Module):
         self.fine_preprocess = FinePreprocess(config)
         self.loftr_fine = LocalFeatureTransformer(config["fine"])
         self.fine_matching = FineMatching()
-        
+
         if pretrained is not None:
             if pretrained not in urls.keys():
                 raise ValueError(f"pretrained should be None or one of {urls.keys()}")
             pretrained_dict = torch.hub.load_state_dict_from_url(
                  urls[pretrained], map_location=lambda storage, loc: storage)
             self.load_state_dict(pretrained_dict['state_dict'])
-    
+
     def forward(self, data):
-        """ 
+        """
         Update:
             data (dict): {
                 'image0': (torch.Tensor): (N, 1, H, W)
@@ -101,17 +104,17 @@ class LoFTR(nn.Module):
 
         # 2. coarse-level loftr module
         # add featmap with positional encoding, then flatten it to sequence [N, HW, C]
-        
+
         # feat_c0 = rearrange(self.pos_encoding(feat_c0), 'n c h w -> n (h w) c')
         # feat_c1 = rearrange(self.pos_encoding(feat_c1), 'n c h w -> n (h w) c')
         feat_c0 = self.pos_encoding(feat_c0).permute(0, 2, 3, 1)
         n, h, w, c = feat_c0.shape
         feat_c0 = feat_c0.reshape(n, -1, c)
-        
+
         feat_c1 = self.pos_encoding(feat_c1).permute(0, 2, 3, 1)
         n1, h1, w1, c1 = feat_c1.shape
         feat_c1 = feat_c1.reshape(n1, -1, c1)
-        
+
         mask_c0 = mask_c1 = None  # mask is useful in training
         if 'mask0' in data:
             mask_c0, mask_c1 = data['mask0'].flatten(-2), data['mask1'].flatten(-2)

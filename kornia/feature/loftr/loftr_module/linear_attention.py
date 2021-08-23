@@ -4,7 +4,7 @@ Modified from: https://github.com/idiap/fast-transformers/blob/master/fast_trans
 """
 
 import torch
-from torch.nn import Module, Dropout
+from torch.nn import Dropout, Module
 
 
 def elu_feature_map(x):

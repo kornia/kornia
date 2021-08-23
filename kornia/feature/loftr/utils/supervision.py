@@ -1,6 +1,7 @@
+from math import log
+
 import torch
 
-from math import log
 from kornia.utils import create_meshgrid
 
 from .geometry import warp_kpts
@@ -31,7 +32,7 @@ def spvs_coarse(data, config):
             'spv_w_pt0_i': [N, hw0, 2], in original image resolution
             'spv_pt1_i': [N, hw1, 2], in original image resolution
         }
-        
+
     NOTE:
         - for scannet dataset, there're 3 kinds of resolution {i, c, f}
         - for megadepth dataset, there're 4 kinds of resolution {i, i_resize, c, f}

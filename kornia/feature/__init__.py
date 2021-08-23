@@ -1,5 +1,5 @@
-from .nms import nms2d, nms3d, NonMaximaSuppression2d, NonMaximaSuppression3d
 from .loftrs import LoFTR
+from .nms import nms2d, nms3d, NonMaximaSuppression2d, NonMaximaSuppression3d
 from .responses import (
     BlobDoG,
     BlobHessian,

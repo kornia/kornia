@@ -1,4 +1,5 @@
 import math
+
 import torch
 import torch.nn as nn
 
@@ -52,7 +53,7 @@ class FineMatching(nn.Module):
         # compute std over <x, y>
         var = torch.sum(grid_normalized**2 * heatmap.view(-1, WW, 1), dim=1) - coords_normalized**2  # [M, 2]
         std = torch.sum(torch.sqrt(torch.clamp(var, min=1e-10)), -1)  # [M]  clamp needed for numerical stability
-        
+
         # for fine-level supervision
         data.update({'expec_f': torch.cat([coords_normalized, std.unsqueeze(1)], -1)})
 

@@ -44,7 +44,7 @@ def mask_border_with_padding(m, bd, v, p_m0, p_m1):
 
 def compute_max_candidates(p_m0, p_m1):
     """Compute the max candidates of all pairs within a batch
-    
+
     Args:
         p_m0, p_m1 (torch.Tensor): padded masks
     """
@@ -173,8 +173,8 @@ class CoarseMatching(nn.Module):
         # 1. confidence thresholding
         mask = conf_matrix > self.thr
         N = conf_matrix.shape[0]
-        mask = mask.reshape(N, 
-                     axes_lengths['h0c'], axes_lengths['w0c'], 
+        mask = mask.reshape(N,
+                     axes_lengths['h0c'], axes_lengths['w0c'],
                      axes_lengths['h1c'], axes_lengths['w1c'])
         #mask = rearrange(mask, 'b (h0c w0c) (h1c w1c) -> b h0c w0c h1c w1c',
         #                 **axes_lengths)
@@ -183,8 +183,8 @@ class CoarseMatching(nn.Module):
         else:
             mask_border_with_padding(mask, self.border_rm, False,
                                      data['mask0'], data['mask1'])
-        mask = mask.reshape(N, 
-                     axes_lengths['h0c'] * axes_lengths['w0c'], 
+        mask = mask.reshape(N,
+                     axes_lengths['h0c'] * axes_lengths['w0c'],
                      axes_lengths['h1c'] * axes_lengths['w1c'])
         #rearrange(mask, 'b h0c w0c h1c w1c -> b (h0c w0c) (h1c w1c)',
         #                 **axes_lengths)
