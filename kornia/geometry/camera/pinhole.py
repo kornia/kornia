@@ -501,7 +501,12 @@ def get_optical_pose_base(pinholes: torch.Tensor) -> torch.Tensor:
         raise AssertionError(pinholes.shape)
     optical_pose_parent = pinholes[..., 6:]
     # TODO: where is rtvec_to_pose?
-    return rtvec_to_pose(optical_pose_parent)  # noqa: F821 type: ignore
+    raise NotImplementedError
+    # TODO: We have rtvec_to_pose in torchgeometry
+    # https://github.com/whh14/torchgeometry/blob/master/torchgeometry/conversions.py#L240
+    # But it relies on angle_axis_to_rotation_matrix
+    # And since then, it was changed from returning Nx4x4 matrix to Nx3x3
+    # return rtvec_to_pose(optical_pose_parent)  # noqa: F821 type: ignore
 
 
 def homography_i_H_ref(pinhole_i: torch.Tensor, pinhole_ref: torch.Tensor) -> torch.Tensor:
