@@ -51,6 +51,7 @@ from kornia.enhance import (
     zca_whiten,
 )
 from kornia.feature import gftt_response, harris_response, hessian_response, MKDDescriptor, nms2d, SIFTDescriptor
+from kornia.feature import DeFMO
 from kornia.filters import (
     box_blur,
     canny,
