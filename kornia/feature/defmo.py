@@ -243,7 +243,7 @@ class RenderingDeFMO(nn.Module):
         renders = []
         for ki in range(times.shape[1]):
             t_tensor = (
-                times[range(times.shape[0]), ki]
+                times[[x for x in range(times.shape[0])], ki]
                 .unsqueeze(-1)
                 .unsqueeze(-1)
                 .unsqueeze(-1)
