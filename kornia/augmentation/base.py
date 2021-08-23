@@ -143,7 +143,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
           probabilities batch-wise.
         return_transform: if ``True`` return the matrix describing the geometric transformation applied to each
-          input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+          input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
@@ -258,7 +258,7 @@ class AugmentationBase2D(_AugmentationBase):
         p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
           probabilities batch-wise.
         return_transform: if ``True`` return the matrix describing the geometric transformation applied to each
-          input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+          input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it to the batch
           form ``False``.
@@ -302,7 +302,7 @@ class IntensityAugmentationBase2D(AugmentationBase2D):
         p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
           probabilities batch-wise.
         return_transform: if ``True`` return the matrix describing the geometric transformation applied to each
-          input tensor. If ``False`` and the input is a tuple the applied transformation  wont be concatenated.
+          input tensor. If ``False`` and the input is a tuple the applied transformation  won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
@@ -324,7 +324,7 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
         p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
           probabilities batch-wise.
         return_transform: if ``True`` return the matrix describing the geometric transformation applied to each
-          input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+          input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
@@ -380,7 +380,7 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
         if params is None:
             params = self._params
         if size is None and "input_size" in params:
-            # Majorly for copping functions
+            # Majorly for cropping functions
             size = params['input_size'].unique(dim=0).squeeze().numpy().tolist()
             size = (size[0], size[1])
         if 'batch_prob' not in params:
@@ -413,7 +413,7 @@ class AugmentationBase3D(_AugmentationBase):
         p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
           probabilities batch-wise.
         return_transform: if ``True`` return the matrix describing the geometric transformation applied to each
-          input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+          input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
     """
 

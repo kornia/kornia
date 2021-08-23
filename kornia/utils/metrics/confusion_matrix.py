@@ -20,7 +20,7 @@ def confusion_matrix(
           values between 0 and K-1, where targets are assumed to be provided as
           one-hot vectors.
         num_classes: total possible number of classes in target.
-        normalized: wether to return the confusion matrix normalized.
+        normalized: whether to return the confusion matrix normalized.
 
     Returns:
         a tensor containing the confusion matrix with shape

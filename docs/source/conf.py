@@ -48,7 +48,7 @@ extensions = [
     'sphinxcontrib.bibtex',
 ]
 
-# subsitutes the default values
+# substitutes the default values
 docstring_default_arg_substitution = 'Default: '
 
 bibtex_bibfiles = ['references.bib']

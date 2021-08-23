@@ -25,10 +25,10 @@ def compose_transformations(trans_01: torch.Tensor, trans_12: torch.Tensor) -> t
         \mathbf{0} & 1\end{bmatrix}
 
     Args:
-        trans_01: tensor with the homogenous transformation from
+        trans_01: tensor with the homogeneous transformation from
           a reference frame 1 respect to a frame 0. The tensor has must have a
           shape of :math:`(B, 4, 4)` or :math:`(4, 4)`.
-        trans_12: tensor with the homogenous transformation from
+        trans_12: tensor with the homogeneous transformation from
           a reference frame 2 respect to a frame 1. The tensor has must have a
           shape of :math:`(B, 4, 4)` or :math:`(4, 4)`.
 
@@ -116,7 +116,7 @@ def inverse_transformation(trans_12):
 
 
 def relative_transformation(trans_01: torch.Tensor, trans_02: torch.Tensor) -> torch.Tensor:
-    r"""Function that computes the relative homogenous transformation from a
+    r"""Function that computes the relative homogeneous transformation from a
     reference transformation :math:`T_1^{0} = \begin{bmatrix} R_1 & t_1 \\
     \mathbf{0} & 1 \end{bmatrix}` to destination :math:`T_2^{0} =
     \begin{bmatrix} R_2 & t_2 \\ \mathbf{0} & 1 \end{bmatrix}`.

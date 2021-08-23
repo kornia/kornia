@@ -71,7 +71,7 @@ def warp_perspective(
        torch.Size([1, 4, 4, 2])
 
     .. note::
-        This function is often used in conjuntion with :func:`get_perspective_transform`.
+        This function is often used in conjunction with :func:`get_perspective_transform`.
 
     .. note::
         See a working example `here <https://kornia-tutorials.readthedocs.io/en/
@@ -148,7 +148,7 @@ def warp_affine(
         the warped tensor with shape :math:`(B, C, H, W)`.
 
     .. note::
-        This function is often used in conjuntion with :func:`get_rotation_matrix2d`,
+        This function is often used in conjunction with :func:`get_rotation_matrix2d`,
         :func:`get_shear_matrix2d`, :func:`get_affine_matrix2d`, :func:`invert_affine_transform`.
 
     .. note::
@@ -234,7 +234,7 @@ def get_perspective_transform(src, dst):
         the perspective transformation with shape :math:`(B, 3, 3)`.
 
     .. note::
-        This function is often used in conjuntion with :func:`warp_perspective`.
+        This function is often used in conjunction with :func:`warp_perspective`.
     """
     if not isinstance(src, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(src)}")
@@ -368,7 +368,7 @@ def get_rotation_matrix2d(center: torch.Tensor, angle: torch.Tensor, scale: torc
                  [-0.7071,  0.7071,  0.0000]]])
 
     .. note::
-        This function is often used in conjuntion with :func:`warp_affine`.
+        This function is often used in conjunction with :func:`warp_affine`.
     """
     if not isinstance(center, torch.Tensor):
         raise TypeError(f"Input center type is not a torch.Tensor. Got {type(center)}")
@@ -474,7 +474,7 @@ def remap(
                   [0., 0.]]]])
 
     .. note::
-        This function is often used in conjuntion with :func:`kornia.utils.create_meshgrid`.
+        This function is often used in conjunction with :func:`kornia.utils.create_meshgrid`.
     """
     if not isinstance(tensor, torch.Tensor):
         raise TypeError(f"Input tensor type is not a torch.Tensor. Got {type(tensor)}")
@@ -529,7 +529,7 @@ def invert_affine_transform(matrix: torch.Tensor) -> torch.Tensor:
         the reverse affine transform with shape :math:`(B, 2, 3)`.
 
     .. note::
-        This function is often used in conjuntion with :func:`warp_affine`.
+        This function is often used in conjunction with :func:`warp_affine`.
     """
     if not isinstance(matrix, torch.Tensor):
         raise TypeError(f"Input matrix type is not a torch.Tensor. Got {type(matrix)}")
@@ -565,7 +565,7 @@ def get_affine_matrix2d(
         the affine transformation matrix :math:`(B, 3, 3)`.
 
     .. note::
-        This function is often used in conjuntion with :func:`warp_affine`, :func:`warp_perspective`.
+        This function is often used in conjunction with :func:`warp_affine`, :func:`warp_perspective`.
     """
     transform: torch.Tensor = get_rotation_matrix2d(center, -angle, scale)
     transform[..., 2] += translations  # tx/ty
@@ -611,7 +611,7 @@ def get_shear_matrix2d(center: torch.Tensor, sx: Optional[torch.Tensor] = None, 
                  [  0.0000,   0.0000,   1.0000]]])
 
     .. note::
-        This function is often used in conjuntion with :func:`warp_affine`, :func:`warp_perspective`.
+        This function is often used in conjunction with :func:`warp_affine`, :func:`warp_perspective`.
     """
     sx = torch.tensor([0.0]).repeat(center.size(0)) if sx is None else sx
     sy = torch.tensor([0.0]).repeat(center.size(0)) if sy is None else sy
@@ -670,7 +670,7 @@ def get_affine_matrix3d(
         the 3d affine transformation matrix :math:`(B, 3, 3)`.
 
     .. note::
-        This function is often used in conjuntion with :func:`warp_perspective`.
+        This function is often used in conjunction with :func:`warp_perspective`.
     """
     transform: torch.Tensor = get_projective_transform(center, -angles, scale)
     transform[..., 3] += translations  # tx/ty/tz
@@ -738,7 +738,7 @@ def get_shear_matrix3d(
                  [  0.0000,   0.0000,   0.0000,   1.0000]]])
 
     .. note::
-        This function is often used in conjuntion with :func:`warp_perspective3d`.
+        This function is often used in conjunction with :func:`warp_perspective3d`.
     """
     sxy = torch.tensor([0.0]).repeat(center.size(0)) if sxy is None else sxy
     sxz = torch.tensor([0.0]).repeat(center.size(0)) if sxz is None else sxz

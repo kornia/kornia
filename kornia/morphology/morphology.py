@@ -389,7 +389,7 @@ def top_hat(
     border_value: float = 0.0,
     max_val: float = 1e4,
 ) -> torch.Tensor:
-    r"""Returns the top hat tranformation of an image.
+    r"""Returns the top hat transformation of an image.
 
     .. image:: _static/img/top_hat.png
 
@@ -414,7 +414,7 @@ def top_hat(
         max_val: The value of the infinite elements in the kernel.
 
     Returns:
-       Top hat transformated image with shape :math:`(B, C, H, W)`.
+       Top hat transformed image with shape :math:`(B, C, H, W)`.
 
     .. note::
        See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
@@ -458,7 +458,7 @@ def bottom_hat(
     border_value: float = 0.0,
     max_val: float = 1e4,
 ) -> torch.Tensor:
-    r"""Returns the bottom hat tranformation of an image.
+    r"""Returns the bottom hat transformation of an image.
 
     .. image:: _static/img/bottom_hat.png
 
@@ -483,7 +483,7 @@ def bottom_hat(
         max_val: The value of the infinite elements in the kernel.
 
     Returns:
-       Top hat transformated image with shape :math:`(B, C, H, W)`.
+       Top hat transformed image with shape :math:`(B, C, H, W)`.
 
     .. note::
        See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/

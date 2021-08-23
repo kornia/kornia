@@ -9,7 +9,7 @@ from kornia.geometry import angle_to_rotation_matrix
 
 
 def raise_error_if_laf_is_not_valid(laf: torch.Tensor) -> None:
-    """Auxilary function, which verifies that input.
+    """Auxiliary function, which verifies that input.
 
     Args:
         laf: [BxNx2x3] shape.
@@ -194,7 +194,7 @@ def make_upright(laf: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
     raise_error_if_laf_is_not_valid(laf)
     det = get_laf_scale(laf)
     scale = det
-    # The function is equivalent to doing 2x2 SVD and reseting rotation
+    # The function is equivalent to doing 2x2 SVD and resetting rotation
     # matrix to an identity: U, S, V = svd(LAF); LAF_upright = U * S.
     b2a2 = torch.sqrt(laf[..., 0:1, 1:2] ** 2 + laf[..., 0:1, 0:1] ** 2) + eps
     laf1_ell = torch.cat([(b2a2 / det).contiguous(), torch.zeros_like(det)], dim=3)

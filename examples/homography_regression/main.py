@@ -136,7 +136,7 @@ def HomographyRegressionApp():
             def convert_coordinates_to_pixel(coordinates, factor):
                 return factor * (coordinates + 1.0)
 
-            # compute convertion factor
+            # compute conversion factor
             x_factor = compute_factor(width - 1)
             y_factor = compute_factor(height - 1)
             pts_dst = pts_dst.cpu().squeeze().detach().numpy()

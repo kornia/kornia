@@ -154,7 +154,7 @@ def warp_frame_depth(
     # unproject source points to camera frame
     points_3d_dst: torch.Tensor = depth_to_3d(depth_dst, camera_matrix, normalize_points)  # Bx3xHxW
 
-    # transform points from source to destionation
+    # transform points from source to destination
     points_3d_dst = points_3d_dst.permute(0, 2, 3, 1)  # BxHxWx3
 
     # apply transformation to the 3d points
@@ -332,7 +332,7 @@ class DepthWarper(nn.Module):
             >>> # create the depth warper, compute the projection matrix
             >>> warper = DepthWarper(pinhole_dst, 32, 32)
             >>> _ = warper.compute_projection_matrix(pinhole_src)
-            >>> # warp the destionation frame to reference by depth
+            >>> # warp the destination frame to reference by depth
             >>> depth_src = torch.ones(1, 1, 32, 32)  # Nx1xHxW
             >>> image_dst = torch.rand(1, 3, 32, 32)  # NxCxHxW
             >>> image_src = warper(depth_src, image_dst)  # NxCxHxW
@@ -366,7 +366,7 @@ def depth_warp(
         ... torch.tensor([32]), torch.tensor([32]))
         >>> pinhole_src = PinholeCamera(torch.randn(1, 4, 4), torch.randn(1, 4, 4),
         ... torch.tensor([32]), torch.tensor([32]))
-        >>> # warp the destionation frame to reference by depth
+        >>> # warp the destination frame to reference by depth
         >>> depth_src = torch.ones(1, 1, 32, 32)  # Nx1xHxW
         >>> image_dst = torch.rand(1, 3, 32, 32)  # NxCxHxW
         >>> image_src = depth_warp(pinhole_dst, pinhole_src, depth_src, image_dst, 32, 32)  # NxCxHxW
