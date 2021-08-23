@@ -2,6 +2,7 @@
 #
 import distutils.command.clean
 import glob
+import io
 import os
 import shutil
 import subprocess

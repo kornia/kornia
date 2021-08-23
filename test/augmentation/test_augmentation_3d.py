@@ -8,6 +8,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.augmentation import (
+    RandomCrop,
     RandomCrop3D,
     RandomDepthicalFlip3D,
     RandomEqualize3D,

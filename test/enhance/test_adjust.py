@@ -782,6 +782,7 @@ class TestSharpness(BaseTester):
     @pytest.mark.jit
     def test_jit(self, device, dtype):
         op = torch.jit.script(kornia.enhance.adjust.sharpness)
+        op_script = torch.jit.script(op)
         inputs = torch.rand(2, 1, 3, 3).to(device=device, dtype=dtype)
         expected = op(input, 0.8)
         actual = op_script(input, 0.8)
@@ -871,6 +872,7 @@ class TestSolarize(BaseTester):
     @pytest.mark.jit
     def test_jit(self, device, dtype):
         op = torch.jit.script(kornia.enhance.adjust.solarize)
+        op_script = torch.jit.script(op)
         inputs = torch.rand(2, 1, 3, 3).to(device=device, dtype=dtype)
         expected = op(input, 0.8)
         actual = op_script(input, 0.8)
@@ -951,6 +953,7 @@ class TestPosterize(BaseTester):
     @pytest.mark.jit
     def test_jit(self, device, dtype):
         op = torch.jit.script(kornia.enhance.adjust.posterize)
+        op_script = torch.jit.script(op)
         inputs = torch.rand(2, 1, 3, 3).to(device=device, dtype=dtype)
         expected = op(input, 8)
         actual = op_script(input, 8)
