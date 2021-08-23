@@ -1,3 +1,5 @@
+from typing import Dict
+
 import pytest
 import test_common as utils
 import torch
