@@ -19,19 +19,21 @@ class TestDeFMO:
         inp = torch.ones(2, 6, 128, 160, device=device, dtype=dtype)
         defmo = DeFMO().to(device, dtype)
         out = defmo(inp)
-        assert out.shape == (2, 24, 4, 128, 160)
+        with torch.no_grad():
+            assert out.shape == (2, 24, 4, 128, 160)
 
     @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device, dtype):
-        patches = torch.rand(2, 6, 128, 160, device=device, dtype=dtype)
+        patches = torch.rand(2, 6, 128, 128, device=device, dtype=dtype)
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
         defmo = DeFMO().to(patches.device, patches.dtype)
         assert gradcheck(defmo, (patches,), eps=1e-4, atol=1e-4, raise_exception=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
-        B, C, H, W = 2, 6, 128, 160
+        B, C, H, W = 1, 6, 128, 160
         patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
         model = DeFMO(True).to(patches.device, patches.dtype).eval()
         model_jit = torch.jit.script(DeFMO(True).to(patches.device, patches.dtype).eval())
-        assert_close(model(patches), model_jit(patches))
+        with torch.no_grad():
+            assert_close(model(patches), model_jit(patches))
