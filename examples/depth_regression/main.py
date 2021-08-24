@@ -183,7 +183,7 @@ def DepthRegressionApp():
 
                 # save warped image and depth to disk
                 def file_name(x):
-                    return os.path.join(args.output_dir, "{0}_{1}.png".format(x, iter_idx))
+                    return os.path.join(args.output_dir, f"{x}_{iter_idx}.png")
 
                 cv2.imwrite(file_name("warped"), img_i_to_ref_vis)
                 cv2.imwrite(file_name("warped_both"), img_both_vis)
