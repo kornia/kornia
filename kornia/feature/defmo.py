@@ -51,7 +51,7 @@ class Bottleneck(nn.Module):
         dilation: int = 1,
         norm_layer: Optional[Callable[..., nn.Module]] = None,
     ) -> None:
-        super(Bottleneck, self).__init__()
+        super().__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         width = int(planes * (base_width / 64.0)) * groups
@@ -101,7 +101,7 @@ class ResNet(nn.Module):
         replace_stride_with_dilation: Optional[List[bool]] = None,
         norm_layer: Optional[Callable[..., nn.Module]] = None,
     ) -> None:
-        super(ResNet, self).__init__()
+        super().__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         self._norm_layer = norm_layer
@@ -204,7 +204,7 @@ class ResNet(nn.Module):
 
 class EncoderDeFMO(nn.Module):
     def __init__(self):
-        super(EncoderDeFMO, self).__init__()
+        super().__init__()
         model = ResNet(Bottleneck, [3, 4, 6, 3])  # ResNet50
         modelc1 = nn.Sequential(*list(model.children())[:3])
         modelc2 = nn.Sequential(*list(model.children())[4:8])
@@ -217,7 +217,7 @@ class EncoderDeFMO(nn.Module):
 
 class RenderingDeFMO(nn.Module):
     def __init__(self):
-        super(RenderingDeFMO, self).__init__()
+        super().__init__()
         self.tsr_steps: int = 24
         model = nn.Sequential(
             nn.Conv2d(2049, 1024, kernel_size=3, stride=1, padding=1, bias=False),
@@ -280,7 +280,7 @@ class DeFMO(nn.Module):
     """
 
     def __init__(self, pretrained: bool = False) -> None:
-        super(DeFMO, self).__init__()
+        super().__init__()
         self.encoder = EncoderDeFMO()
         self.rendering = RenderingDeFMO()
 
