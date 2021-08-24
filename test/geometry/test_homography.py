@@ -5,8 +5,71 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia
+import kornia.testing as utils
+
 from kornia.geometry.homography import find_homography_dlt, find_homography_dlt_iterated
+from kornia.geometry.homography import oneway_transfer_error, symmetric_transfer_error
 from kornia.testing import assert_close
+
+
+class TestOneWayError:
+    def test_smoke(self, device, dtype):
+        pts1 = torch.rand(1, 6, 2, device=device, dtype=dtype)
+        pts2 = torch.rand(1, 6, 2, device=device, dtype=dtype)
+        H = utils.create_random_homography(1, 3).type_as(pts1).to(device)
+        assert oneway_transfer_error(pts1, pts2, H).shape == (1, 6)
+
+    def test_batch(self, device, dtype):
+        batch_size = 5
+        pts1 = torch.rand(batch_size, 3, 2, device=device, dtype=dtype)
+        pts2 = torch.rand(batch_size, 3, 2, device=device, dtype=dtype)
+        H = utils.create_random_homography(1, 3).type_as(pts1).to(device)
+        assert oneway_transfer_error(pts1, pts2, H).shape == (batch_size, 3)
+
+    def test_gradcheck(self, device):
+        # generate input data
+        batch_size, num_points, num_dims = 2, 3, 2
+        points1 = torch.rand(batch_size, num_points, num_dims, device=device, dtype=torch.float64, requires_grad=True)
+        points2 = torch.rand(batch_size, num_points, num_dims, device=device, dtype=torch.float64)
+        H = utils.create_random_homography(batch_size, 3).type_as(points1).to(device)
+        assert gradcheck(oneway_transfer_error, (points1, points2, H), raise_exception=True)
+
+    def test_shift(self, device, dtype):
+        pts1 = torch.zeros(3, 2, device=device, dtype=dtype)[None]
+        pts2 = torch.tensor([[1.0, 0.0], [2.0, 0.0], [2.0, 2.0]], device=device, dtype=dtype)[None]
+        H = torch.tensor([[1.0, 0.0, 1.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], dtype=dtype, device=device)[None]
+        expected = torch.tensor([0.0, 1.0, 5.0], device=device, dtype=dtype)[None]
+        assert_close(oneway_transfer_error(pts1, pts2, H), expected, atol=1e-4, rtol=1e-4)
+
+
+class TestSymmetricTransferError:
+    def test_smoke(self, device, dtype):
+        pts1 = torch.rand(1, 6, 2, device=device, dtype=dtype)
+        pts2 = torch.rand(1, 6, 2, device=device, dtype=dtype)
+        H = utils.create_random_homography(1, 3).type_as(pts1).to(device)
+        assert symmetric_transfer_error(pts1, pts2, H).shape == (1, 6)
+
+    def test_batch(self, device, dtype):
+        batch_size = 5
+        pts1 = torch.rand(batch_size, 3, 2, device=device, dtype=dtype)
+        pts2 = torch.rand(batch_size, 3, 2, device=device, dtype=dtype)
+        H = utils.create_random_homography(1, 3).type_as(pts1).to(device)
+        assert symmetric_transfer_error(pts1, pts2, H).shape == (batch_size, 3)
+
+    def test_gradcheck(self, device):
+        # generate input data
+        batch_size, num_points, num_dims = 2, 3, 2
+        points1 = torch.rand(batch_size, num_points, num_dims, device=device, dtype=torch.float64, requires_grad=True)
+        points2 = torch.rand(batch_size, num_points, num_dims, device=device, dtype=torch.float64)
+        H = utils.create_random_homography(batch_size, 3).type_as(points1).to(device)
+        assert gradcheck(symmetric_transfer_error, (points1, points2, H), raise_exception=True)
+
+    def test_shift(self, device, dtype):
+        pts1 = torch.zeros(3, 2, device=device, dtype=dtype)[None]
+        pts2 = torch.tensor([[1.0, 0.0], [2.0, 0.0], [2.0, 2.0]], device=device, dtype=dtype)[None]
+        H = torch.tensor([[1.0, 0.0, 1.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], dtype=dtype, device=device)[None]
+        expected = torch.tensor([0.0, 2.0, 10.0], device=device, dtype=dtype)[None]
+        assert_close(symmetric_transfer_error(pts1, pts2, H), expected, atol=1e-4, rtol=1e-4)
 
 
 class TestFindHomographyDLT:
@@ -186,7 +249,7 @@ class TestFindHomographyDLTIter:
         # generate input data
         points_src = torch.rand(batch_size, 10, 2, device=device, dtype=dtype)
         H = kornia.eye_like(3, points_src)
-        H = H * 0.3 * torch.rand_like(H)
+        H = H * (1 + torch.rand_like(H))
         H = H / H[:, 2:3, 2:3]
 
         points_src = 100.0 * torch.rand(batch_size, 20, 2, device=device, dtype=dtype)
