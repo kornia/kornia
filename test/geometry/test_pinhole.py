@@ -88,7 +88,7 @@ class TestCam2Pixel:
         atol, rtol = 1e-5, 1e-3
 
         # Different tolerances for the below case.
-        if (device.type == "cuda") and ((dtype == "float64") or (dtype == torch.float64)):
+        if (device.type == "cuda") and (dtype == torch.float64):
             atol, rtol = 1e-4, 1e-2
 
         # If contiguous() is not called, gradcheck fails
