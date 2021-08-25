@@ -14,7 +14,7 @@ def gaussFilter(size, sigma):
             out[i,j] = gfunc(i-size[0]//2,j-size[1]//2, sigma )
     return out/np.sum(out)
 
-def bfunc(i,j,fw,fh,image,sigma1, sigma2, bilateralWFilter):
+def bfunc(i,j,fw,fh,image,sigma1, bilateralWFilter):
     imgwork = image[i - fh//2:i+1 + fh//2, j - fw//2:j+1 + fw//2, :]
 
     bilateralIFilter = ((imgwork - image[i, j,:])**2 )/(2*(sigma1**2))
