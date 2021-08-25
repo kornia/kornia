@@ -272,11 +272,11 @@ class AugmentationBase2D(_AugmentationBase):
                     raise AssertionError('Input tensor is in batch mode ' 'but transformation matrix is not')
                 if mat.shape[0] != inp.shape[0]:
                     raise AssertionError(
-                        f'In batch dimension, input has {inp.shape[0]}' f'but transformation matrix has {mat.shape[0]}'
+                        f"In batch dimension, input has {inp.shape[0]} but transformation matrix has {mat.shape[0]}"
                     )
             elif len(inp.shape) in (2, 3):
                 if len(mat.shape) != 2:
-                    raise AssertionError('Input tensor is in non-batch mode ' 'but transformation matrix is not')
+                    raise AssertionError("Input tensor is in non-batch mode but transformation matrix is not")
             else:
                 raise ValueError(f'Unrecognized output shape. Expected 2, 3, or 4, got {len(inp.shape)}')
 
@@ -425,11 +425,11 @@ class AugmentationBase3D(_AugmentationBase):
                     raise AssertionError('Input tensor is in batch mode ' 'but transformation matrix is not')
                 if mat.shape[0] != inp.shape[0]:
                     raise AssertionError(
-                        f'In batch dimension, input has {inp.shape[0]}' f'but transformation matrix has {mat.shape[0]}'
+                        f"In batch dimension, input has {inp.shape[0]} but transformation matrix has {mat.shape[0]}"
                     )
             elif len(inp.shape) in (3, 4):
                 if len(mat.shape) != 2:
-                    raise AssertionError('Input tensor is in non-batch mode ' 'but transformation matrix is not')
+                    raise AssertionError("Input tensor is in non-batch mode but transformation matrix is not")
             else:
                 raise ValueError(f'Unrecognized output shape. Expected 3, 4 or 5, got {len(inp.shape)}')
 
@@ -469,11 +469,11 @@ class MixAugmentationBase(_BasicAugmentationBase):
                     raise AssertionError('Input tensor is in batch mode ' 'but transformation matrix is not')
                 if mat.shape[0] != inp.shape[0]:
                     raise AssertionError(
-                        f'In batch dimension, input has {inp.shape[0]}' f'but transformation matrix has {mat.shape[0]}'
+                        f"In batch dimension, input has {inp.shape[0]} but transformation matrix has {mat.shape[0]}"
                     )
             elif len(inp.shape) in (2, 3):
                 if len(mat.shape) != 2:
-                    raise AssertionError('Input tensor is in non-batch mode ' 'but transformation matrix is not')
+                    raise AssertionError("Input tensor is in non-batch mode but transformation matrix is not")
             else:
                 raise ValueError(f'Unrecognized output shape. Expected 2, 3, or 4, got {len(inp.shape)}')
 
