@@ -274,7 +274,7 @@ class AugmentationBase2D(_AugmentationBase):
                     raise AssertionError(
                         f'In batch dimension, input has {inp.shape[0]}' f'but transformation matrix has {mat.shape[0]}'
                     )
-            elif len(inp.shape) == 3 or len(inp.shape) == 2:
+            elif len(inp.shape) in (2, 3):
                 if len(mat.shape) != 2:
                     raise AssertionError('Input tensor is in non-batch mode ' 'but transformation matrix is not')
             else:
@@ -427,7 +427,7 @@ class AugmentationBase3D(_AugmentationBase):
                     raise AssertionError(
                         f'In batch dimension, input has {inp.shape[0]}' f'but transformation matrix has {mat.shape[0]}'
                     )
-            elif len(inp.shape) == 3 or len(inp.shape) == 4:
+            elif len(inp.shape) in (3, 4):
                 if len(mat.shape) != 2:
                     raise AssertionError('Input tensor is in non-batch mode ' 'but transformation matrix is not')
             else:
@@ -471,7 +471,7 @@ class MixAugmentationBase(_BasicAugmentationBase):
                     raise AssertionError(
                         f'In batch dimension, input has {inp.shape[0]}' f'but transformation matrix has {mat.shape[0]}'
                     )
-            elif len(inp.shape) == 3 or len(inp.shape) == 2:
+            elif len(inp.shape) in (2, 3):
                 if len(mat.shape) != 2:
                     raise AssertionError('Input tensor is in non-batch mode ' 'but transformation matrix is not')
             else:
