@@ -51,3 +51,8 @@ repos:
     rev: 1.7.0
     hooks:
       - id: bandit
+        args:
+          - --recursive
+          - --skip
+          - "B101,B110,B311,B404,B602,B603,B607"
+          - .
