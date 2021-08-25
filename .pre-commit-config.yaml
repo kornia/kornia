@@ -46,3 +46,8 @@ repos:
     hooks:
       - id: pyupgrade
         args: [--py36-plus]
+
+-   repo: https://github.com/PyCQA/bandit
+    rev: '1.7.0'
+    hooks:
+    - id: bandit
