@@ -1,5 +1,7 @@
-import numpy as np
 import math
+
+import numpy as np
+
 
 # gaussian filter
 def gfunc(x,y,sigma):
@@ -14,9 +16,9 @@ def gaussFilter(size, sigma):
 
 def bfunc(i,j,fw,fh,image,sigma1, sigma2, bilateralWFilter):
     imgwork = image[i - fh//2:i+1 + fh//2, j - fw//2:j+1 + fw//2, :]
-    
+
     bilateralIFilter = ((imgwork - image[i, j,:])**2 )/(2*(sigma1**2))
-    
+
     bilateralFilter = np.exp(-1*bilateralIFilter)*bilateralWFilter
     bilateralFilter = bilateralFilter/np.sum(bilateralFilter,axis=(0,1))
     return np.sum(np.multiply(imgwork, bilateralFilter),axis=(0,1))
@@ -34,7 +36,7 @@ def bilateral_blur(image,  kernel_size, sigma):
         for i in range(size[0]-2*fh +1):
             for j in range(size[1]-2*fw +1):
                 out[i,j,:] = bfunc(i+fw-1, j+fh-1, fw, fh, image, sigma1, sigma2, bilateralWFilter)
-        
+
         if id == 1:
             return np.resize(out, (out.shape[0], out.shape[1])).astype(np.uint8)
         else:
@@ -59,6 +61,4 @@ class BilateralFilter():
     def forward(self, image):
         "input image must be in numpy array"
         return bilateral_blur(image, self.kernel_size, self.sigma)
-  
-
 
