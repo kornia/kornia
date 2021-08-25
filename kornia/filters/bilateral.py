@@ -61,4 +61,3 @@ class BilateralFilter():
     def forward(self, image):
         "input image must be in numpy array"
         return bilateral_blur(image, self.kernel_size, self.sigma)
-
