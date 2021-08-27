@@ -5,6 +5,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.5.9] - 2021-08-27
+
+### Added
+- Added Basic pool request for DeFMO. ([#1135](https://github.com/kornia/kornia/pull/1135))
+- Added homography error metrics, and improved find_homography_iter ([#1222](https://github.com/kornia/kornia/pull/1222))
+
+### Fixed
+- Fixed wrong param name ([#1197](https://github.com/kornia/kornia/pull/1197))
+- Fixed NotImplementedError for the rtvec ([#1215)](https://github.com/kornia/kornia/pull/1215))
+
+### Changed
+- Ensure CenterCrop indices are integers ([#1208](https://github.com/kornia/kornia/pull/1208))
+- Added tests, fixed docstrings and made some other changes ([#1211](https://github.com/kornia/kornia/pull/1211))
+- Upgrade to modern Python syntax ([#1213](https://github.com/kornia/kornia/pull/1213))
+- Code health improvements [#1199, #1200, #1198, #1202, #1203, #1205, #1208, #1210, #1214, #1220]
+- Enable pyupgrade as pre-commit ([#1221](https://github.com/kornia/kornia/pull/1221))
+- Add bandit tool in the pre-commit ([#1228](https://github.com/kornia/kornia/pull/1228))
+
+
 ## [0.5.8] - 2021-08-06
 
 ### Added
