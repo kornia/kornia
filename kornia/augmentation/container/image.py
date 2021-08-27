@@ -3,15 +3,24 @@ from typing import Iterator, List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
-from kornia.augmentation.base import _AugmentationBase, MixAugmentationBase, TensorWithTransformMat
+from kornia.augmentation.base import (
+    _AugmentationBase,
+    MixAugmentationBase,
+    IntensityAugmentationBase2D,
+    TensorWithTransformMat
+)
 
 from .base import ParamItem, SequentialBase
+from .utils import InputApplyInverse
+# try:
+# except ImportError:
+#     import sys
+#     InputApplyInverse = sys.modules[__package__ + '.utils.InputApplyInverse']
 
 __all__ = ["ImageSequential"]
 
 
-# TODO: Add forward_parameters for ImageSequential
-class ImageSequential(SequentialBase):
+class ImageSequential(SequentialBase, InputApplyInverse):
     r"""Sequential for creating kornia image processing pipeline.
 
     Args:
@@ -162,25 +171,10 @@ class ImageSequential(SequentialBase):
     ) -> Tuple[TensorWithTransformMat, Optional[torch.Tensor]]:
         if module is None:
             module = self.get_submodule(param.name)
-        if isinstance(module, (MixAugmentationBase,)):
-            input, label = module(input, label, params=param.data)
-        elif isinstance(module, (ImageSequential,)):
-            out = module(input, label, params=param.data)
-            if module.return_label:
-                input, label = out
-            else:
-                input = out
-        elif isinstance(module, (_AugmentationBase,)):
-            input = module(input, params=param.data)
+        if isinstance(module, (ImageSequential,)):
+            return module(input, label, params=param.data)
         else:
-            if param.data is not None:
-                raise AssertionError(f"Non-augmentaion operation {param.name} require empty parameters. Got {param}.")
-            # In case of return_transform = True
-            if isinstance(input, (tuple, list)):
-                input = (module(input[0]), input[1])
-            else:
-                input = module(input)
-        return input, label
+            return super().apply_to_input(input, label, module, param)
 
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
         named_modules = self.get_forward_sequence()
@@ -188,6 +182,9 @@ class ImageSequential(SequentialBase):
         params = []
         for name, module in named_modules:
             if isinstance(module, (_AugmentationBase, MixAugmentationBase)):
+                mod_param = module.forward_parameters(batch_shape)
+                param = ParamItem(name, mod_param)
+            elif isinstance(module, ImageSequential):
                 mod_param = module.forward_parameters(batch_shape)
                 param = ParamItem(name, mod_param)
             else:
@@ -208,6 +205,23 @@ class ImageSequential(SequentialBase):
             return output, label  # type: ignore
             # Implicitly indicating the label cannot be optional since there is a mix aug
         return output
+
+    def get_transformation_matrix(
+        self, input: torch.Tensor, params: Optional[List[ParamItem]] = None,
+    ) -> torch.Tensor:
+        raise NotImplementedError
+
+    def is_intensity_only(self) -> bool:
+        """Check if all transformations are intensity-based.
+
+        Note: patch processing would break the continuity of labels (e.g. bbounding boxes, masks).
+        """
+        for arg in self.children():
+            if isinstance(arg, (ImageSequential,)):
+                return arg.is_intensity_only()
+            elif not isinstance(arg, IntensityAugmentationBase2D):
+                return False
+        return True
 
     def forward(  # type: ignore
         self,

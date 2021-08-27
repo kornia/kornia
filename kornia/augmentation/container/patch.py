@@ -6,7 +6,6 @@ import torch.nn as nn
 
 from kornia.augmentation.base import (
     _AugmentationBase,
-    IntensityAugmentationBase2D,
     MixAugmentationBase,
     TensorWithTransformMat,
 )
@@ -126,20 +125,6 @@ class PatchSequential(ImageSequential):
         self.grid_size = grid_size
         self.padding = padding
         self.patchwise_apply = patchwise_apply
-
-    def is_intensity_only(self) -> bool:
-        """Check if all transformations are intensity-based.
-
-        Note: patch processing would break the continuity of labels (e.g. bbounding boxes, masks).
-        """
-        for arg in self.children():
-            if isinstance(arg, (ImageSequential,)):
-                for _arg in arg.children():
-                    if not isinstance(_arg, IntensityAugmentationBase2D):
-                        return False
-            elif not isinstance(_arg, IntensityAugmentationBase2D):
-                return False
-        return True
 
     def contains_label_operations(self, params: List[PatchParamItem]) -> bool:  # type: ignore
         for param in params:
