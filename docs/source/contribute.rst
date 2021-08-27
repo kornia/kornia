@@ -26,6 +26,6 @@ Everyone is welcomed to get involved with the project. There are different ways 
 
 4. Donate resources to the project. Reach us !
 
-For more information about our development process, see our `Developers corner <https://github.com/arraiyopensource/kornia/blob/master/CONTRIBUTING.rst#developing-kornia>`_.
+For more information about our development process, see our `Developers corner <https://github.com/kornia/kornia/blob/master/CONTRIBUTING.rst#developing-kornia>`_.
 
 **Happy coding !**
