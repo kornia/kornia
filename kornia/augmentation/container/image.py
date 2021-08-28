@@ -6,9 +6,9 @@ import torch.nn as nn
 import kornia
 from kornia.augmentation.base import (
     _AugmentationBase,
-    MixAugmentationBase,
     IntensityAugmentationBase2D,
-    TensorWithTransformMat
+    MixAugmentationBase,
+    TensorWithTransformMat,
 )
 
 from .base import ParamItem, SequentialBase

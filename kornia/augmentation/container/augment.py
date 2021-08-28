@@ -12,10 +12,10 @@ from kornia.augmentation.base import (
 )
 from kornia.constants import DataKey
 
-from .utils import ApplyInverse
 from .base import SequentialBase
 from .image import ImageSequential, ParamItem
 from .patch import PatchSequential
+from .utils import ApplyInverse
 from .video import VideoSequential
 
 __all__ = ["AugmentationSequential"]

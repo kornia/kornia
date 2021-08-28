@@ -1,16 +1,15 @@
-from typing import Callable, List, cast, Dict, Optional, Tuple, Union, Iterator
+from typing import Callable, cast, Dict, Iterator, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 
+import kornia  # lazy loading for circular dependencies
 from kornia.augmentation.base import (
     _AugmentationBase,
     GeometricAugmentationBase2D,
+    MixAugmentationBase,
     TensorWithTransformMat,
 )
-
-import kornia  # lazy loading for circular dependencies
-from kornia.augmentation.base import _AugmentationBase, MixAugmentationBase
 from kornia.constants import DataKey
 from kornia.geometry.bbox import transform_bbox
 from kornia.geometry.linalg import transform_points

@@ -4,11 +4,7 @@ from typing import Iterator, List, NamedTuple, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
-from kornia.augmentation.base import (
-    _AugmentationBase,
-    MixAugmentationBase,
-    TensorWithTransformMat,
-)
+from kornia.augmentation.base import _AugmentationBase, MixAugmentationBase, TensorWithTransformMat
 from kornia.augmentation.container.base import SequentialBase
 from kornia.contrib.extract_patches import extract_tensor_patches
 
