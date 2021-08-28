@@ -9,16 +9,18 @@ from kornia.augmentation.base import (
     TensorWithTransformMat,
 )
 
+import kornia  # lazy loading for circular dependencies
 from kornia.augmentation.base import _AugmentationBase, MixAugmentationBase
 from kornia.constants import DataKey
 from kornia.geometry.bbox import transform_bbox
 from kornia.geometry.linalg import transform_points
-import kornia.augmentation.container as CTN  # lazy loading for circular dependencies
 
 from .base import ParamItem
 
 
-def get_geometric_only_param(module: "CTN.ImageSequential", param: List[ParamItem]) -> List[ParamItem]:
+def get_geometric_only_param(
+    module: "kornia.augmentation.container.ImageSequential", param: List[ParamItem]
+) -> List[ParamItem]:
     named_modules = module.get_forward_sequence(param)
 
     res = []
@@ -28,7 +30,7 @@ def get_geometric_only_param(module: "CTN.ImageSequential", param: List[ParamIte
     return res
 
 
-def make_input_only_sequential(module: "CTN.ImageSequential") -> Callable:
+def make_input_only_sequential(module: "kornia.augmentation.container.ImageSequential") -> Callable:
     """Disable all other additional inputs (e.g. ) for ImageSequential."""
     def f(*args, **kwargs):
         if_return_trans = module.return_transform
@@ -68,7 +70,7 @@ class InputApplyInverse:
     def inverse_input(self, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None) -> torch.Tensor:
         if isinstance(module, GeometricAugmentationBase2D):
             input = module.inverse(input, None if param is None else cast(Dict, param.data))
-        elif isinstance(module, CTN.ImageSequential) and not module.is_intensity_only():
+        elif isinstance(module, kornia.augmentation.container.ImageSequential) and not module.is_intensity_only():
             raise NotImplementedError
         return input
 
@@ -85,7 +87,7 @@ class MaskApplyInverse:
             input = module(input, return_transform=False)
         elif isinstance(module, GeometricAugmentationBase2D) and _param is not None:
             input = module(input, _param, return_transform=False)
-        elif isinstance(module, CTN.ImageSequential) and not module.is_intensity_only():
+        elif isinstance(module, kornia.augmentation.container.ImageSequential) and not module.is_intensity_only():
             geo_param = get_geometric_only_param(module, _param)
             input = make_input_only_sequential(module)(input, None, geo_param)
         else:
@@ -95,7 +97,7 @@ class MaskApplyInverse:
     def inverse_mask(self, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None) -> torch.Tensor:
         if isinstance(module, GeometricAugmentationBase2D):
             input = module.inverse(input, None if param is None else cast(Dict, param.data))
-        elif isinstance(module, CTN.ImageSequential) and not module.is_intensity_only():
+        elif isinstance(module, kornia.augmentation.container.ImageSequential) and not module.is_intensity_only():
             raise NotImplementedError
         return input
 
@@ -114,7 +116,7 @@ class BBoxApplyInverse:
             raise ValueError(f"Transformation matrix for {module} has not been computed.")
         if (
             isinstance(module, GeometricAugmentationBase2D) or
-            (isinstance(module, CTN.ImageSequential) and not module.is_intensity_only())
+            (isinstance(module, kornia.augmentation.container.ImageSequential) and not module.is_intensity_only())
         ):
             input = transform_bbox(module.get_transformation_matrix(input, _param), input, mode)
         else:
@@ -129,7 +131,7 @@ class BBoxApplyInverse:
                 module.get_transformation_matrix(input, None if param is None else cast(Dict, param.data))
             )
             input = transform_bbox(torch.as_tensor(transform, device=input.device, dtype=input.dtype), input, mode)
-        elif isinstance(module, CTN.ImageSequential) and not module.is_intensity_only():
+        elif isinstance(module, kornia.augmentation.container.ImageSequential) and not module.is_intensity_only():
             raise NotImplementedError
         return input
 
@@ -148,7 +150,7 @@ class KeypointsApplyInverse:
             raise ValueError(f"Transformation matrix for {module} has not been computed.")
         if (
             isinstance(module, GeometricAugmentationBase2D) or
-            (isinstance(module, CTN.ImageSequential) and not module.is_intensity_only())
+            (isinstance(module, kornia.augmentation.container.ImageSequential) and not module.is_intensity_only())
         ):
             input = transform_points(module.get_transformation_matrix(input, _param), input)
         else:
@@ -163,7 +165,7 @@ class KeypointsApplyInverse:
                 module.get_transformation_matrix(input, None if param is None else cast(Dict, param.data))
             )
             input = transform_points(torch.as_tensor(transform, device=input.device, dtype=input.dtype), input)
-        elif isinstance(module, CTN.ImageSequential) and not module.is_intensity_only():
+        elif isinstance(module, kornia.augmentation.container.ImageSequential) and not module.is_intensity_only():
             raise NotImplementedError
         return input
 
