@@ -5,6 +5,7 @@ pytest-cov==2.12.0
 pytest-mypy==0.8.1
 pytest-xdist==2.2.1
 autopep8
+flake8-bugbear
 pydocstyle
 pre-commit>=2.0
 yapf
