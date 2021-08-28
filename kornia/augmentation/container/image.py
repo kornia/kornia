@@ -224,15 +224,24 @@ class ImageSequential(SequentialBase, InputApplyInverse):
                 res_mat = mat @ res_mat
         return res_mat
 
-    def is_intensity_only(self) -> bool:
+    def is_intensity_only(self, strict: bool = True) -> bool:
         """Check if all transformations are intensity-based.
+
+        Args:
+            strict: if strict is False, it will allow non-augmentation nn.Modules to be passed.
+                e.g. `kornia.enhance.AdjustBrightness` will be recognized as non-intensity module
+                if strict is set to True.
 
         Note: patch processing would break the continuity of labels (e.g. bbounding boxes, masks).
         """
         for arg in self.children():
-            if isinstance(arg, (ImageSequential,)) and not arg.is_intensity_only():
+            if isinstance(arg, (ImageSequential,)) and not arg.is_intensity_only(strict):
                 return False
-            elif not isinstance(arg, IntensityAugmentationBase2D):
+            elif isinstance(arg, (ImageSequential,)):
+                pass
+            elif isinstance(arg, IntensityAugmentationBase2D):
+                pass
+            elif strict:
                 return False
         return True
 
