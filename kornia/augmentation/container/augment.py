@@ -79,6 +79,28 @@ class AugmentationSequential(ImageSequential, ApplyInverse):
         >>> out_inv = aug_list.inverse(*out)
         >>> [o.shape for o in out_inv]
         [torch.Size([2, 3, 5, 6]), torch.Size([2, 3, 5, 6]), torch.Size([2, 4, 2]), torch.Size([2, 1, 2])]
+
+    Examples:
+        This example demonstrated the integration of VideoSequential and AugmentationSequential.
+        >>> import kornia
+        >>> input = torch.randn(2, 3, 5, 6)[None]
+        >>> bbox = torch.tensor([[
+        ...     [1., 1.],
+        ...     [2., 1.],
+        ...     [2., 2.],
+        ...     [1., 2.],
+        ... ]]).expand(2, -1, -1)[None]
+        >>> points = torch.tensor([[[1., 1.]]]).expand(2, -1, -1)[None]
+        >>> aug_list = AugmentationSequential(
+        ...     VideoSequential(
+        ...         kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...         kornia.augmentation.RandomAffine(360, p=1.0),
+        ...     ),
+        ...     data_keys=["input", "mask", "bbox", "keypoints"]
+        ... )
+        >>> out = aug_list(input, input, bbox, points)
+        >>> [o.shape for o in out]
+        [torch.Size([1, 2, 3, 5, 6]), torch.Size([1, 2, 3, 5, 6]), torch.Size([1, 2, 4, 2]), torch.Size([1, 2, 1, 2])]
     """
 
     def __init__(
@@ -215,10 +237,7 @@ class AugmentationSequential(ImageSequential, ApplyInverse):
                     _, out_shape = self.autofill_dim(inp, dim_range=(3, 5))
                 else:
                     _, out_shape = self.autofill_dim(inp, dim_range=(2, 4))
-                if params is None and not self.contains_video_sequential:
-                    params = self.forward_parameters(out_shape)
-                elif params is None and self.contains_video_sequential:
-                    raise NotImplementedError
+                params = self.forward_parameters(out_shape)
             else:
                 raise ValueError("`params` must be provided whilst INPUT is not in data_keys.")
 
@@ -241,7 +260,17 @@ class AugmentationSequential(ImageSequential, ApplyInverse):
                 module = self.get_submodule(param.name)
                 if dcate == DataKey.INPUT:
                     input, label = self.apply_to_input(input, label, module=module, param=param)
-                elif isinstance(module, (GeometricAugmentationBase2D, ImageSequential, VideoSequential)) and dcate in DataKey:
+                elif isinstance(module, VideoSequential) and not module.is_intensity_only() and dcate in DataKey:
+                    if dcate == DataKey.MASK:
+                        input, label = self.apply_by_key(input, label, module, param, dcate)
+                    else:
+                        # preprocess the input
+                        frame_num = input.size(module._temporal_channel)
+                        input, _ = module._input_shape_convert_in(input, None, frame_num)
+                        input, label = self.apply_by_key(input, label, module, param, dcate)
+                        # postprocess the input
+                        input, _ = module._input_shape_convert_back(input, None, frame_num)
+                elif isinstance(module, (GeometricAugmentationBase2D, ImageSequential,)) and dcate in DataKey:
                     input, label = self.apply_by_key(input, label, module, param, dcate)
                 elif isinstance(module, IntensityAugmentationBase2D) and dcate in DataKey:
                     pass  # Do nothing

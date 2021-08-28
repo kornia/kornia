@@ -3,6 +3,7 @@ from typing import Iterator, List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
+import kornia
 from kornia.augmentation.base import (
     _AugmentationBase,
     MixAugmentationBase,
@@ -12,10 +13,6 @@ from kornia.augmentation.base import (
 
 from .base import ParamItem, SequentialBase
 from .utils import InputApplyInverse
-# try:
-# except ImportError:
-#     import sys
-#     InputApplyInverse = sys.modules[__package__ + '.utils.InputApplyInverse']
 
 __all__ = ["ImageSequential"]
 
@@ -172,7 +169,11 @@ class ImageSequential(SequentialBase, InputApplyInverse):
         if module is None:
             module = self.get_submodule(param.name)
         if isinstance(module, (ImageSequential,)):
-            return module(input, label, params=param.data)
+            if_return = module.return_label
+            module.return_label = True
+            out = module(input, label, params=param.data)
+            module.return_label = if_return
+            return out
         else:
             return super().apply_to_input(input, label, module, param)
 
@@ -209,7 +210,19 @@ class ImageSequential(SequentialBase, InputApplyInverse):
     def get_transformation_matrix(
         self, input: torch.Tensor, params: Optional[List[ParamItem]] = None,
     ) -> torch.Tensor:
-        raise NotImplementedError
+        if params is None:
+            raise NotImplementedError("requires params to be provided.")
+        named_modules = self.get_forward_sequence(params)
+
+        res_mat = kornia.eye_like(3, input)
+        for (_, module), param in zip(named_modules, params):
+            if isinstance(module, (_AugmentationBase, MixAugmentationBase)):
+                mat = module.compute_transformation(input, param.data)
+                res_mat = mat @ res_mat
+            elif isinstance(module, (ImageSequential,)):
+                mat = module.get_transformation_matrix(input, param.data)
+                res_mat = mat @ res_mat
+        return res_mat
 
     def is_intensity_only(self) -> bool:
         """Check if all transformations are intensity-based.
@@ -217,8 +230,8 @@ class ImageSequential(SequentialBase, InputApplyInverse):
         Note: patch processing would break the continuity of labels (e.g. bbounding boxes, masks).
         """
         for arg in self.children():
-            if isinstance(arg, (ImageSequential,)):
-                return arg.is_intensity_only()
+            if isinstance(arg, (ImageSequential,)) and not arg.is_intensity_only():
+                return False
             elif not isinstance(arg, IntensityAugmentationBase2D):
                 return False
         return True
@@ -237,7 +250,8 @@ class ImageSequential(SequentialBase, InputApplyInverse):
                 inp = input
             _, out_shape = self.autofill_dim(inp, dim_range=(2, 4))
             params = self.forward_parameters(out_shape)
-        self.return_label = label is not None or self.contains_label_operations(params)
+        if self.return_label is None:
+            self.return_label = label is not None or self.contains_label_operations(params)
         for param in params:
             module = self.get_submodule(param.name)
             input, label = self.apply_to_input(input, label, module, param=param)  # type: ignore
