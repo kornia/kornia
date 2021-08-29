@@ -3,6 +3,7 @@ from itertools import zip_longest
 from typing import cast, List, Optional, Tuple, Union
 
 import torch
+import torch.nn as nn
 
 from kornia.augmentation.base import (
     _AugmentationBase,
@@ -135,6 +136,18 @@ class AugmentationSequential(ImageSequential, ApplyInverse):
             if isinstance(arg, VideoSequential):
                 self.contains_video_sequential = True
 
+    def apply_by_key(
+        self,
+        input: TensorWithTransformMat,
+        label: Optional[torch.Tensor],
+        module: Optional[nn.Module],
+        param: ParamItem,
+        dcate: Union[str, int, DataKey] = DataKey.INPUT,
+    ) -> Tuple[TensorWithTransformMat, Optional[torch.Tensor]]:
+        if module is None:
+            module = self.get_submodule(param.name)
+        return super().apply_by_key(input, label, module, param, dcate)
+
     def inverse(
         self,
         *args: torch.Tensor,
@@ -166,16 +179,25 @@ class AugmentationSequential(ImageSequential, ApplyInverse):
             if dcate == DataKey.INPUT and isinstance(input, (tuple, list)):
                 input, _ = input  # ignore the transformation matrix whilst inverse
             for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
-                if isinstance(module, _AugmentationBase):
+                if isinstance(module, (_AugmentationBase, ImageSequential)):
                     param = params[name] if name in params else param
                 else:
                     param = None
-                if isinstance(module, (GeometricAugmentationBase2D, ImageSequential, VideoSequential)) and dcate in DataKey:
+                if isinstance(module, IntensityAugmentationBase2D) and dcate in DataKey:
+                    pass  # Do nothing
+                elif isinstance(module, ImageSequential) and module.is_intensity_only() and dcate in DataKey:
+                    pass  # Do nothing
+                elif isinstance(module, VideoSequential) and dcate in DataKey:
+                    # preprocess the input
+                    frame_num = input.size(module._temporal_channel)
+                    input, _ = module._input_shape_convert_in(input, None, frame_num)
                     input = self.inverse_by_key(input, module, param, dcate)
-                elif isinstance(module, IntensityAugmentationBase2D) and dcate in DataKey:
-                    pass  # Do nothing
-                elif isinstance(module, PatchSequential) and module.is_intensity_only() and dcate in DataKey:
-                    pass  # Do nothing
+                    # postprocess the input
+                    input, _ = module._input_shape_convert_back(input, None, frame_num)
+                elif isinstance(module, PatchSequential):
+                    raise NotImplementedError(f"Geometric involved PatchSequential is not supported.")
+                elif isinstance(module, (GeometricAugmentationBase2D, ImageSequential)) and dcate in DataKey:
+                    input = self.inverse_by_key(input, module, param, dcate)
                 elif isinstance(module, (SequentialBase,)):
                     raise ValueError(f"Unsupported Sequential {module}.")
                 else:
@@ -260,22 +282,21 @@ class AugmentationSequential(ImageSequential, ApplyInverse):
                 module = self.get_submodule(param.name)
                 if dcate == DataKey.INPUT:
                     input, label = self.apply_to_input(input, label, module=module, param=param)
-                elif isinstance(module, VideoSequential) and not module.is_intensity_only() and dcate in DataKey:
-                    if dcate == DataKey.MASK:
-                        input, label = self.apply_by_key(input, label, module, param, dcate)
-                    else:
-                        # preprocess the input
-                        frame_num = input.size(module._temporal_channel)
-                        input, _ = module._input_shape_convert_in(input, None, frame_num)
-                        input, label = self.apply_by_key(input, label, module, param, dcate)
-                        # postprocess the input
-                        input, _ = module._input_shape_convert_back(input, None, frame_num)
-                elif isinstance(module, (GeometricAugmentationBase2D, ImageSequential,)) and dcate in DataKey:
-                    input, label = self.apply_by_key(input, label, module, param, dcate)
                 elif isinstance(module, IntensityAugmentationBase2D) and dcate in DataKey:
                     pass  # Do nothing
-                elif isinstance(module, PatchSequential) and module.is_intensity_only() and dcate in DataKey:
+                elif isinstance(module, ImageSequential) and module.is_intensity_only() and dcate in DataKey:
                     pass  # Do nothing
+                elif isinstance(module, VideoSequential) and dcate in DataKey:
+                    # preprocess the input
+                    frame_num = input.size(module._temporal_channel)
+                    input, _ = module._input_shape_convert_in(input, None, frame_num)
+                    input, label = self.apply_by_key(input, label, module, param, dcate)
+                    # postprocess the input
+                    input, _ = module._input_shape_convert_back(input, None, frame_num)
+                elif isinstance(module, PatchSequential):
+                    raise NotImplementedError(f"Geometric involved PatchSequential is not supported.")
+                elif isinstance(module, (GeometricAugmentationBase2D, ImageSequential,)) and dcate in DataKey:
+                    input, label = self.apply_by_key(input, label, module, param, dcate)
                 elif isinstance(module, (SequentialBase,)):
                     raise ValueError(f"Unsupported Sequential {module}.")
                 else:

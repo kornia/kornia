@@ -17,7 +17,7 @@ from .utils import InputApplyInverse
 __all__ = ["ImageSequential"]
 
 
-class ImageSequential(SequentialBase, InputApplyInverse):
+class ImageSequential(SequentialBase):
     r"""Sequential for creating kornia image processing pipeline.
 
     Args:
@@ -175,12 +175,13 @@ class ImageSequential(SequentialBase, InputApplyInverse):
             module.return_label = if_return
             return out
         else:
-            return super().apply_to_input(input, label, module, param)
+            return InputApplyInverse.apply(input, label, module, param)
 
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
         named_modules = self.get_forward_sequence()
 
         params = []
+        mod_param: Union[dict, list]
         for name, module in named_modules:
             if isinstance(module, (_AugmentationBase, MixAugmentationBase)):
                 mod_param = module.forward_parameters(batch_shape)
@@ -217,10 +218,10 @@ class ImageSequential(SequentialBase, InputApplyInverse):
         res_mat = kornia.eye_like(3, input)
         for (_, module), param in zip(named_modules, params):
             if isinstance(module, (_AugmentationBase, MixAugmentationBase)):
-                mat = module.compute_transformation(input, param.data)
+                mat = module.compute_transformation(input, param.data)  # type: ignore
                 res_mat = mat @ res_mat
             elif isinstance(module, (ImageSequential,)):
-                mat = module.get_transformation_matrix(input, param.data)
+                mat = module.get_transformation_matrix(input, param.data)  # type: ignore
                 res_mat = mat @ res_mat
         return res_mat
 
