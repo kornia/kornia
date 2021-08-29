@@ -1,3 +1,7 @@
+.highlight {
+    position: relative;
+}
+
 .copybtn {
     position: absolute;
     top: 0;
