@@ -2,6 +2,8 @@ from typing import Any, List, Optional, Tuple
 
 import torch
 
+from kornia.utils._compat import solve
+
 
 def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.device, torch.dtype]:
     """Check if all the input are in the same device (only if when they are torch.Tensor).
@@ -84,6 +86,7 @@ def _torch_svd_cast(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, to
     return (out1.to(input.dtype), out2.to(input.dtype), out3.to(input.dtype))
 
 
+# TODO: return only `torch.Tensor` and review all the calls to adjust
 def _torch_solve_cast(input: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """Helper function to make torch.solve work with other than fp32/64.
 
@@ -97,6 +100,6 @@ def _torch_solve_cast(input: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tenso
     if dtype not in (torch.float32, torch.float64):
         dtype = torch.float32
 
-    out1, out2 = torch.solve(input.to(dtype), A.to(dtype))
+    out = solve(A.to(dtype), input.to(dtype))
 
-    return (out1.to(input.dtype), out2.to(input.dtype))
+    return (out.to(input.dtype), out)
