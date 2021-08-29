@@ -58,7 +58,7 @@ def _boxes3d_to_polygons3d(
     back_vertices = front_vertices.clone()
     back_vertices[..., 2] += depth.unsqueeze(-1)
 
-    polygons3d = torch.cat([front_vertices, back_vertices], dim=-1)
+    polygons3d = torch.cat([front_vertices, back_vertices], dim=-2)
     return polygons3d
 
 
@@ -401,7 +401,7 @@ def bbox3d_to_kornia_bbox3d(boxes: torch.Tensor, mode: str = "xyzxyz") -> torch.
         height = boxes[..., 4] - boxes[..., 1]
         depth = boxes[..., 5] - boxes[..., 2]
     elif mode in ("xyzwhd", "xyzwhd_plus_1"):
-        depth, height, width = boxes[4], boxes[..., 3], boxes[5]
+        depth, height, width = boxes[..., 4], boxes[..., 3], boxes[..., 5]
     else:
         raise ValueError(f"Unknown mode {mode}")
 
