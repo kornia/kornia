@@ -6,7 +6,6 @@ import torch.nn as nn
 from kornia.utils import create_meshgrid
 from kornia.utils.helpers import _torch_solve_cast
 
-
 __all__ = ["get_tps_transform", "warp_points_tps", "warp_image_tps"]
 
 # utilities for computing thin plate spline transforms
