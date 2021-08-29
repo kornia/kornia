@@ -2,7 +2,7 @@ import torch
 
 from packaging import version
 
-if version.parse(torch.__version__) > version.parse("1.7"):
+if version.parse(torch.__version__) > version.parse("1.7.1"):
     from torch.linalg import solve
 else:
     from torch import solve as _solve
