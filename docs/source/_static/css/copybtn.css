@@ -1,0 +1,9 @@
+.copybtn {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 40px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border: 0;
+    border-radius: 0 0 0 10px;
+}
