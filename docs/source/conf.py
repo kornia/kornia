@@ -137,7 +137,8 @@ html_static_path = ['_static']
 html_extra_path = ['_extra']
 
 # html_style_path = 'css/pytorch_theme.css'
-html_context = {'css_files': ['https://fonts.googleapis.com/css?family=Lato', '_static/css/pytorch_theme.css']}
+html_context = {'css_files': [
+    'https://fonts.googleapis.com/css?family=Lato', '_static/css/pytorch_theme.css', '_static/css/copybtn.css']}
 
 # -- Options for HTMLHelp output ------------------------------------------
 
