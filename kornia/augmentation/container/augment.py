@@ -187,13 +187,6 @@ class AugmentationSequential(ImageSequential, ApplyInverse):
                     pass  # Do nothing
                 elif isinstance(module, ImageSequential) and module.is_intensity_only() and dcate in DataKey:
                     pass  # Do nothing
-                elif isinstance(module, VideoSequential) and dcate in DataKey:
-                    # preprocess the input
-                    frame_num = input.size(module._temporal_channel)
-                    input, _ = module._input_shape_convert_in(input, None, frame_num)
-                    input = self.inverse_by_key(input, module, param, dcate)
-                    # postprocess the input
-                    input, _ = module._input_shape_convert_back(input, None, frame_num)
                 elif isinstance(module, PatchSequential):
                     raise NotImplementedError(f"Geometric involved PatchSequential is not supported.")
                 elif isinstance(module, (GeometricAugmentationBase2D, ImageSequential)) and dcate in DataKey:
@@ -286,13 +279,11 @@ class AugmentationSequential(ImageSequential, ApplyInverse):
                     pass  # Do nothing
                 elif isinstance(module, ImageSequential) and module.is_intensity_only() and dcate in DataKey:
                     pass  # Do nothing
-                elif isinstance(module, VideoSequential) and dcate in DataKey:
-                    # preprocess the input
-                    frame_num = input.size(module._temporal_channel)
-                    input, _ = module._input_shape_convert_in(input, None, frame_num)
+                elif isinstance(module, VideoSequential) and dcate not in [DataKey.INPUT, DataKey.MASK]:
+                    batch_size = input.size(0)
+                    input = input.view(-1, *input.shape[2:])
                     input, label = self.apply_by_key(input, label, module, param, dcate)
-                    # postprocess the input
-                    input, _ = module._input_shape_convert_back(input, None, frame_num)
+                    input = input.view(batch_size, -1, *input.shape[1:])
                 elif isinstance(module, PatchSequential):
                     raise NotImplementedError(f"Geometric involved PatchSequential is not supported.")
                 elif isinstance(module, (GeometricAugmentationBase2D, ImageSequential,)) and dcate in DataKey:

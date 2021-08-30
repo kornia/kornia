@@ -357,6 +357,16 @@ class PatchSequential(ImageSequential):
             _input = _input.reshape(in_shape)
         return _input, label
 
+    def inverse(
+        self,
+        input: torch.Tensor,
+        params: List[ParamItem],
+    ) -> torch.Tensor:
+        if self.is_intensity_only():
+            return input
+
+        raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
+
     def forward(  # type: ignore
         self, input: torch.Tensor, label: Optional[torch.Tensor] = None, params: Optional[List[PatchParamItem]] = None
     ) -> Union[TensorWithTransformMat, Tuple[TensorWithTransformMat, torch.Tensor]]:

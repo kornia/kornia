@@ -1,4 +1,5 @@
 from typing import Iterator, List, Optional, Tuple, Union
+from itertools import zip_longest
 
 import torch
 import torch.nn as nn
@@ -7,6 +8,7 @@ import kornia
 from kornia.augmentation.base import (
     _AugmentationBase,
     IntensityAugmentationBase2D,
+    GeometricAugmentationBase2D,
     MixAugmentationBase,
     TensorWithTransformMat,
 )
@@ -80,6 +82,7 @@ class ImageSequential(SequentialBase):
 
         self.random_apply: Union[Tuple[int, int], bool] = self._read_random_apply(random_apply, len(args))
         self.return_label: Optional[bool] = None
+        self.apply_inverse_func = InputApplyInverse
 
     def _read_random_apply(
         self, random_apply: Union[int, bool, Tuple[int, int]], max_length: int
@@ -168,14 +171,7 @@ class ImageSequential(SequentialBase):
     ) -> Tuple[TensorWithTransformMat, Optional[torch.Tensor]]:
         if module is None:
             module = self.get_submodule(param.name)
-        if isinstance(module, (ImageSequential,)):
-            if_return = module.return_label
-            module.return_label = True
-            out = module(input, label, params=param.data)
-            module.return_label = if_return
-            return out
-        else:
-            return InputApplyInverse.apply(input, label, module, param)
+        return self.apply_inverse_func.apply_trans(input, label, module, param)
 
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
         named_modules = self.get_forward_sequence()
@@ -245,6 +241,30 @@ class ImageSequential(SequentialBase):
             elif strict:
                 return False
         return True
+
+    def inverse(
+        self,
+        input: torch.Tensor,
+        params: List[ParamItem],
+    ) -> torch.Tensor:
+        for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
+            if isinstance(module, (_AugmentationBase, ImageSequential)):
+                param = params[name] if name in params else param
+            else:
+                param = None
+
+            if isinstance(module, IntensityAugmentationBase2D):
+                pass  # Do nothing
+            elif isinstance(module, ImageSequential) and module.is_intensity_only():
+                pass  # Do nothing
+            elif type(module) == ImageSequential:
+                input = module.inverse(input, param)
+            elif isinstance(module, (GeometricAugmentationBase2D,)):
+                input = self.apply_inverse_func.inverse(input, module, param)
+            else:
+                raise NotImplementedError(f"`inverse` is not implemented for {module}.")
+
+        return input
 
     def forward(  # type: ignore
         self,

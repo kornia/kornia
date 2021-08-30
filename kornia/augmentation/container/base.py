@@ -63,6 +63,8 @@ class SequentialBase(nn.Sequential):
             if isinstance(mod, _AugmentationBase):
                 if return_transform is not None:
                     mod.return_transform = return_transform
+            if isinstance(mod, SequentialBase):
+                mod.update_attribute(same_on_batch, return_transform, keepdim)
 
     def get_submodule(self, target: str) -> nn.Module:
         """Get submodule.

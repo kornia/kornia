@@ -1,3 +1,4 @@
+from kornia.augmentation.container.utils import InputApplyInverse, MaskApplyInverse
 from typing import cast, List, Optional, Tuple, Union
 
 import torch
@@ -176,6 +177,22 @@ class VideoSequential(ImageSequential):
             params.append(param)
         return params
 
+    def inverse(self, input: torch.Tensor, params: List[ParamItem]) -> torch.Tensor:
+        if self.apply_inverse_func == InputApplyInverse or self.apply_inverse_func == MaskApplyInverse:
+            frame_num = input.size(self._temporal_channel)
+            input, _ = self._input_shape_convert_in(input, None, frame_num)
+        else:
+            batch_size = input.size(0)
+            input = input.view(-1, *input.shape[2:])
+
+        input = super().inverse(input, params)
+        if self.apply_inverse_func == InputApplyInverse or self.apply_inverse_func == MaskApplyInverse:
+            input, _ = self._input_shape_convert_back(input, None, frame_num)
+        else:
+            input = input.view(batch_size, -1, *input.shape[1:])
+
+        return input
+
     def forward(  # type: ignore
         self, input: torch.Tensor, label: Optional[torch.Tensor] = None, params: Optional[List[ParamItem]] = None
     ) -> Union[TensorWithTransformMat, Tuple[TensorWithTransformMat, torch.Tensor]]:
@@ -187,8 +204,13 @@ class VideoSequential(ImageSequential):
             params = self.forward_parameters(input.shape)
 
         # Size of T
-        frame_num = input.size(self._temporal_channel)
-        input, label = self._input_shape_convert_in(input, label, frame_num)
+        if self.apply_inverse_func == InputApplyInverse or self.apply_inverse_func == MaskApplyInverse:
+            frame_num = input.size(self._temporal_channel)
+            input, label = self._input_shape_convert_in(input, label, frame_num)
+        else:
+            assert label is None
+            batch_size = input.size(0)
+            input = input.view(-1, *input.shape[2:])
 
         out = super().forward(input, label, params)  # type: ignore
         if self.return_label:
@@ -197,9 +219,18 @@ class VideoSequential(ImageSequential):
             output = cast(TensorWithTransformMat, out)
 
         if isinstance(output, (tuple, list)):
-            _out, label = self._input_shape_convert_back(output[0], label, frame_num)
-            output = (_out, output[1])
+            if self.apply_inverse_func == InputApplyInverse or self.apply_inverse_func == MaskApplyInverse:
+                _out, label = self._input_shape_convert_back(output[0], label, frame_num)
+                output = (_out, output[1])
+            else:
+                assert label is None
+                output = output[0].view(batch_size, -1, *output[0].shape[1:])
         else:
-            output, label = self._input_shape_convert_back(output, label, frame_num)
+            if self.apply_inverse_func == InputApplyInverse or self.apply_inverse_func == MaskApplyInverse:
+                output, label = self._input_shape_convert_back(output, label, frame_num)
+            else:
+                assert label is None
+                output = output.view(batch_size, -1, *output.shape[1:])
+
 
         return self.__packup_output__(output, label)

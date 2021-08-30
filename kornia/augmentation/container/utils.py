@@ -1,5 +1,4 @@
-from typing import Any, Callable, cast, Dict, Iterator, List, Optional, Tuple, Union
-import warnings
+from typing import Callable, cast, Dict, List, Optional, Tuple, Union
 from functools import partial
 
 import torch
@@ -35,7 +34,7 @@ def _get_geometric_only_param(
 class InputApplyInverse:
 
     @classmethod
-    def apply(
+    def apply_trans(
         cls,
         input: TensorWithTransformMat,
         label: Optional[torch.Tensor],
@@ -46,6 +45,14 @@ class InputApplyInverse:
             input, label = module(input, label, params=param.data)
         elif isinstance(module, (_AugmentationBase,)):
             input = module(input, params=param.data)
+        elif isinstance(module, kornia.augmentation.container.ImageSequential):
+            temp = module.apply_inverse_func
+            temp2 = module.return_label
+            module.apply_inverse_func = InputApplyInverse
+            module.return_label = True
+            input, label = module(input, label, param.data)
+            module.apply_inverse_func = temp
+            module.return_label = temp2
         else:
             if param.data is not None:
                 raise AssertionError(f"Non-augmentaion operation {param.name} require empty parameters. Got {param}.")
@@ -60,8 +67,11 @@ class InputApplyInverse:
     def inverse(cls, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None) -> torch.Tensor:
         if isinstance(module, GeometricAugmentationBase2D):
             input = module.inverse(input, None if param is None else cast(Dict, param.data))
-        elif isinstance(module, kornia.augmentation.container.ImageSequential) and not module.is_intensity_only():
-            raise NotImplementedError
+        elif isinstance(module, kornia.augmentation.container.ImageSequential):
+            temp = module.apply_inverse_func
+            module.apply_inverse_func = InputApplyInverse
+            input = module.inverse(input, param.data)
+            module.apply_inverse_func = temp
         return input
 
 
@@ -82,7 +92,9 @@ class MaskApplyInverse:
         return f
 
     @classmethod
-    def apply(cls, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None) -> torch.Tensor:
+    def apply_trans(
+        cls, input: torch.Tensor, label: Optional[torch.Tensor], module: nn.Module, param: Optional[ParamItem] = None
+    ) -> torch.Tensor:
         if param is not None:
             _param = param.data
         else:
@@ -93,18 +105,26 @@ class MaskApplyInverse:
             input = module(input, _param, return_transform=False)
         elif isinstance(module, kornia.augmentation.container.ImageSequential) and not module.is_intensity_only():
             _param = cast(List[ParamItem], _param)
+            temp = module.apply_inverse_func
+            module.apply_inverse_func = MaskApplyInverse
             geo_param = _get_geometric_only_param(module, _param)
             input = cls.make_input_only_sequential(module)(input, None, geo_param)
+            module.apply_inverse_func = temp
         else:
             pass  # No need to update anything
-        return input
+        return input, label
 
     @classmethod
-    def inverse(cls, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None) -> torch.Tensor:
+    def inverse(
+        cls, input: torch.Tensor, label: Optional[torch.Tensor], module: nn.Module, param: Optional[ParamItem] = None
+    ) -> torch.Tensor:
         if isinstance(module, GeometricAugmentationBase2D):
             input = module.inverse(input, None if param is None else cast(Dict, param.data))
-        elif isinstance(module, kornia.augmentation.container.ImageSequential) and not module.is_intensity_only():
-            raise NotImplementedError
+        elif isinstance(module, kornia.augmentation.container.ImageSequential):
+            temp = module.apply_inverse_func
+            module.apply_inverse_func = MaskApplyInverse
+            input = module.inverse(input, param.data)
+            module.apply_inverse_func = temp
         return input
 
 
@@ -113,8 +133,8 @@ class ApplyInverseInterface:
     apply_func: Callable
 
     @classmethod
-    def apply(
-        cls, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None
+    def apply_trans(
+        cls, input: torch.Tensor, label: Optional[torch.Tensor], module: nn.Module, param: Optional[ParamItem] = None
     ) -> torch.Tensor:
 
         mat = cls._get_transformation(input, module, param)
@@ -122,11 +142,11 @@ class ApplyInverseInterface:
         if mat is not None:
             input = cls.apply_func(mat, input)
 
-        return input
+        return input, label
 
     @classmethod
     def inverse(
-        cls, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None
+        cls, input: torch.Tensor, label: Optional[torch.Tensor], module: nn.Module, param: Optional[ParamItem] = None
     ) -> torch.Tensor:
         mat = cls._get_transformation(input, module, param)
 
@@ -200,12 +220,11 @@ class ApplyInverse:
         dcate: Union[str, int, DataKey] = DataKey.INPUT,
     ) -> Tuple[TensorWithTransformMat, Optional[torch.Tensor]]:
         func = self._get_func_by_key(dcate)
-        if DataKey.get(dcate) in [DataKey.INPUT]:
-            return func.apply(input, label, module=module, param=param)
+        # if DataKey.get(dcate) in [DataKey.INPUT]:
 
         if isinstance(input, (tuple,)):
-            return (func.apply(input[0], module, param), *input[1:]), None
-        return func.apply(input, module, param), None
+            return (func.apply_trans(input[0], label, module, param), *input[1:])
+        return func.apply_trans(input, label, module=module, param=param)
 
     def inverse_by_key(
         self,
