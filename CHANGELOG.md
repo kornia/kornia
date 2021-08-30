@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Fixed wrong param name ([#1197](https://github.com/kornia/kornia/pull/1197))
 - Fixed NotImplementedError for the rtvec ([#1215)](https://github.com/kornia/kornia/pull/1215))
-- Fixes warnings and add compatibility stub in torch solve ([#1235](https://github.com/kornia/kornia/pull/1235)) 
+- Fixes warnings and add compatibility stub in torch solve ([#1235](https://github.com/kornia/kornia/pull/1235))
 
 ### Changed
 - Ensure CenterCrop indices are integers ([#1208](https://github.com/kornia/kornia/pull/1208))
