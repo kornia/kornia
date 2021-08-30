@@ -175,8 +175,13 @@ class AugmentationSequential(ImageSequential):
                     pass  # Do nothing
                 elif isinstance(module, ImageSequential) and module.is_intensity_only() and dcate in DataKey:
                     pass  # Do nothing
+                elif isinstance(module, VideoSequential) and dcate not in [DataKey.INPUT, DataKey.MASK]:
+                    batch_size = input.size(0)
+                    input = input.view(-1, *input.shape[2:])
+                    input = ApplyInverse.inverse_by_key(input, module, param, dcate)
+                    input = input.view(batch_size, -1, *input.shape[1:])
                 elif isinstance(module, PatchSequential):
-                    raise NotImplementedError(f"Geometric involved PatchSequential is not supported.")
+                    raise NotImplementedError("Geometric involved PatchSequential is not supported.")
                 elif isinstance(module, (GeometricAugmentationBase2D, ImageSequential)) and dcate in DataKey:
                     input = ApplyInverse.inverse_by_key(input, module, param, dcate)
                 elif isinstance(module, (SequentialBase,)):
@@ -273,7 +278,7 @@ class AugmentationSequential(ImageSequential):
                     input, label = ApplyInverse.apply_by_key(input, label, module, param, dcate)
                     input = input.view(batch_size, -1, *input.shape[1:])
                 elif isinstance(module, PatchSequential):
-                    raise NotImplementedError(f"Geometric involved PatchSequential is not supported.")
+                    raise NotImplementedError("Geometric involved PatchSequential is not supported.")
                 elif isinstance(module, (GeometricAugmentationBase2D, ImageSequential,)) and dcate in DataKey:
                     input, label = ApplyInverse.apply_by_key(input, label, module, param, dcate)
                 elif isinstance(module, (SequentialBase,)):

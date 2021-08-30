@@ -357,7 +357,7 @@ class PatchSequential(ImageSequential):
             _input = _input.reshape(in_shape)
         return _input, label
 
-    def inverse(
+    def inverse(  # type: ignore
         self,
         input: torch.Tensor,
         params: List[ParamItem],

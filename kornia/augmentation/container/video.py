@@ -177,7 +177,7 @@ class VideoSequential(ImageSequential):
             params.append(param)
         return params
 
-    def inverse(self, input: torch.Tensor, params: List[ParamItem]) -> torch.Tensor:
+    def inverse(self, input: torch.Tensor, params: Optional[List[ParamItem]] = None) -> torch.Tensor:
         if self.apply_inverse_func == InputApplyInverse or self.apply_inverse_func == MaskApplyInverse:
             frame_num = input.size(self._temporal_channel)
             input, _ = self._input_shape_convert_in(input, None, frame_num)
@@ -231,6 +231,5 @@ class VideoSequential(ImageSequential):
             else:
                 assert label is None
                 output = output.view(batch_size, -1, *output.shape[1:])
-
 
         return self.__packup_output__(output, label)
