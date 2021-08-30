@@ -1,4 +1,3 @@
-from kornia.augmentation.container.utils import InputApplyInverse, MaskApplyInverse
 from typing import cast, List, Optional, Tuple, Union
 
 import torch
@@ -7,6 +6,7 @@ import torch.nn as nn
 import kornia
 from kornia.augmentation.base import _AugmentationBase, MixAugmentationBase, TensorWithTransformMat
 from kornia.augmentation.container.base import SequentialBase
+from kornia.augmentation.container.utils import InputApplyInverse, MaskApplyInverse
 
 from .image import ImageSequential, ParamItem
 

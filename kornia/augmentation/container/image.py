@@ -1,5 +1,5 @@
-from typing import Any, Iterator, List, Optional, Tuple, Union
 from itertools import zip_longest
+from typing import Any, Iterator, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -7,8 +7,8 @@ import torch.nn as nn
 import kornia
 from kornia.augmentation.base import (
     _AugmentationBase,
-    IntensityAugmentationBase2D,
     GeometricAugmentationBase2D,
+    IntensityAugmentationBase2D,
     MixAugmentationBase,
     TensorWithTransformMat,
 )

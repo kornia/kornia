@@ -1,6 +1,6 @@
-from typing import Callable, cast, Dict, List, Optional, Tuple, Union
 from abc import ABCMeta, abstractmethod
 from functools import partial
+from typing import Callable, cast, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
