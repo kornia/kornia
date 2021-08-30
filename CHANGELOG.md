@@ -5,7 +5,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [0.5.9] - 2021-08-27
+## [0.5.9] - 2021-08-30
 
 ### Added
 - Added Basic pool request for DeFMO. ([#1135](https://github.com/kornia/kornia/pull/1135))
@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Fixed wrong param name ([#1197](https://github.com/kornia/kornia/pull/1197))
 - Fixed NotImplementedError for the rtvec ([#1215)](https://github.com/kornia/kornia/pull/1215))
+- Fixes warnings and add compatibility stub in torch solve ([#1235](https://github.com/kornia/kornia/pull/1235)) 
 
 ### Changed
 - Ensure CenterCrop indices are integers ([#1208](https://github.com/kornia/kornia/pull/1208))
