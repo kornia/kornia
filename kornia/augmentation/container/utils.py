@@ -1,4 +1,5 @@
 from typing import Callable, cast, Dict, List, Optional, Tuple, Union
+from abc import ABCMeta, abstractmethod
 from functools import partial
 
 import torch
@@ -31,10 +32,34 @@ def _get_geometric_only_param(
     return res
 
 
+class ApplyInverseInterface(metaclass=ABCMeta):
+
+    @classmethod
+    @abstractmethod
+    def apply_trans(
+        cls,
+        input: torch.Tensor,
+        label: Optional[torch.Tensor],
+        module: nn.Module,
+        param: ParamItem,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        pass
+
+    @classmethod
+    @abstractmethod
+    def inverse(
+        cls,
+        input: torch.Tensor,
+        module: nn.Module,
+        param: Optional[ParamItem] = None
+    ) -> torch.Tensor:
+        pass
+
+
 class InputApplyInverse:
 
     @classmethod
-    def apply_trans(
+    def apply_trans(  # type: ignore
         cls,
         input: TensorWithTransformMat,
         label: Optional[torch.Tensor],
@@ -70,7 +95,7 @@ class InputApplyInverse:
         elif isinstance(module, kornia.augmentation.container.ImageSequential):
             temp = module.apply_inverse_func
             module.apply_inverse_func = InputApplyInverse
-            input = module.inverse(input, param.data)
+            input = module.inverse(input, None if param is None else cast(List, param.data))
             module.apply_inverse_func = temp
         return input
 
@@ -94,7 +119,7 @@ class MaskApplyInverse:
     @classmethod
     def apply_trans(
         cls, input: torch.Tensor, label: Optional[torch.Tensor], module: nn.Module, param: Optional[ParamItem] = None
-    ) -> torch.Tensor:
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         if param is not None:
             _param = param.data
         else:
@@ -116,26 +141,26 @@ class MaskApplyInverse:
 
     @classmethod
     def inverse(
-        cls, input: torch.Tensor, label: Optional[torch.Tensor], module: nn.Module, param: Optional[ParamItem] = None
+        cls, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None
     ) -> torch.Tensor:
         if isinstance(module, GeometricAugmentationBase2D):
             input = module.inverse(input, None if param is None else cast(Dict, param.data))
         elif isinstance(module, kornia.augmentation.container.ImageSequential):
             temp = module.apply_inverse_func
             module.apply_inverse_func = MaskApplyInverse
-            input = module.inverse(input, param.data)
+            input = module.inverse(input, None if param is None else cast(List, param.data))
             module.apply_inverse_func = temp
         return input
 
 
-class ApplyInverseInterface:
+class ApplyInverseImpl(ApplyInverseInterface):
 
     apply_func: Callable
 
     @classmethod
     def apply_trans(
-        cls, input: torch.Tensor, label: Optional[torch.Tensor], module: nn.Module, param: Optional[ParamItem] = None
-    ) -> torch.Tensor:
+        cls, input: torch.Tensor, label: Optional[torch.Tensor], module: nn.Module, param: ParamItem
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
 
         mat = cls._get_transformation(input, module, param)
 
@@ -146,7 +171,7 @@ class ApplyInverseInterface:
 
     @classmethod
     def inverse(
-        cls, input: torch.Tensor, label: Optional[torch.Tensor], module: nn.Module, param: Optional[ParamItem] = None
+        cls, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None
     ) -> torch.Tensor:
         mat = cls._get_transformation(input, module, param)
 
@@ -181,24 +206,25 @@ class ApplyInverseInterface:
         return _torch_inverse_cast(transform)
 
 
-class BBoxXYXYApplyInverse(ApplyInverseInterface):
+class BBoxXYXYApplyInverse(ApplyInverseImpl):
 
     apply_func = partial(transform_bbox, mode="xyxy")
 
 
-class BBoxXYWHApplyInverse(ApplyInverseInterface):
+class BBoxXYWHApplyInverse(ApplyInverseImpl):
 
     apply_func = partial(transform_bbox, mode="xywh")
 
 
-class KeypointsApplyInverse(ApplyInverseInterface):
+class KeypointsApplyInverse(ApplyInverseImpl):
 
     apply_func = transform_points
 
 
 class ApplyInverse:
 
-    def _get_func_by_key(self, dcate: Union[str, int, DataKey]):
+    @classmethod
+    def _get_func_by_key(cls, dcate: Union[str, int, DataKey]):
         if DataKey.get(dcate) in [DataKey.INPUT]:
             return InputApplyInverse
         if DataKey.get(dcate) in [DataKey.MASK]:
@@ -211,27 +237,28 @@ class ApplyInverse:
             return KeypointsApplyInverse
         raise NotImplementedError(f"input type of {dcate} is not implemented.")
 
+    @classmethod
     def apply_by_key(
-        self,
+        cls,
         input: TensorWithTransformMat,
         label: Optional[torch.Tensor],
         module: nn.Module,
         param: ParamItem,
         dcate: Union[str, int, DataKey] = DataKey.INPUT,
     ) -> Tuple[TensorWithTransformMat, Optional[torch.Tensor]]:
-        func = self._get_func_by_key(dcate)
-        # if DataKey.get(dcate) in [DataKey.INPUT]:
+        func = cls._get_func_by_key(dcate)
 
         if isinstance(input, (tuple,)):
             return (func.apply_trans(input[0], label, module, param), *input[1:])
         return func.apply_trans(input, label, module=module, param=param)
 
+    @classmethod
     def inverse_by_key(
-        self,
+        cls,
         input: torch.Tensor,
         module: nn.Module,
         param: Optional[ParamItem] = None,
         dcate: Union[str, int, DataKey] = DataKey.INPUT,
     ) -> torch.Tensor:
-        func = self._get_func_by_key(dcate)
+        func = cls._get_func_by_key(dcate)
         return func.inverse(input, module, param)

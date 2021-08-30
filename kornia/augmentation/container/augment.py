@@ -22,7 +22,7 @@ from .video import VideoSequential
 __all__ = ["AugmentationSequential"]
 
 
-class AugmentationSequential(ImageSequential, ApplyInverse):
+class AugmentationSequential(ImageSequential):
     r"""AugmentationSequential for handling multiple input types like inputs, masks, keypoints at once.
 
     .. image:: https://kornia-tutorials.readthedocs.io/en/latest/_images/data_augmentation_sequential_5_1.png
@@ -136,19 +136,7 @@ class AugmentationSequential(ImageSequential, ApplyInverse):
             if isinstance(arg, VideoSequential):
                 self.contains_video_sequential = True
 
-    def apply_by_key(
-        self,
-        input: TensorWithTransformMat,
-        label: Optional[torch.Tensor],
-        module: Optional[nn.Module],
-        param: ParamItem,
-        dcate: Union[str, int, DataKey] = DataKey.INPUT,
-    ) -> Tuple[TensorWithTransformMat, Optional[torch.Tensor]]:
-        if module is None:
-            module = self.get_submodule(param.name)
-        return super().apply_by_key(input, label, module, param, dcate)
-
-    def inverse(
+    def inverse(  # type: ignore
         self,
         *args: torch.Tensor,
         params: Optional[List[ParamItem]] = None,
@@ -190,7 +178,7 @@ class AugmentationSequential(ImageSequential, ApplyInverse):
                 elif isinstance(module, PatchSequential):
                     raise NotImplementedError(f"Geometric involved PatchSequential is not supported.")
                 elif isinstance(module, (GeometricAugmentationBase2D, ImageSequential)) and dcate in DataKey:
-                    input = self.inverse_by_key(input, module, param, dcate)
+                    input = ApplyInverse.inverse_by_key(input, module, param, dcate)
                 elif isinstance(module, (SequentialBase,)):
                     raise ValueError(f"Unsupported Sequential {module}.")
                 else:
@@ -282,12 +270,12 @@ class AugmentationSequential(ImageSequential, ApplyInverse):
                 elif isinstance(module, VideoSequential) and dcate not in [DataKey.INPUT, DataKey.MASK]:
                     batch_size = input.size(0)
                     input = input.view(-1, *input.shape[2:])
-                    input, label = self.apply_by_key(input, label, module, param, dcate)
+                    input, label = ApplyInverse.apply_by_key(input, label, module, param, dcate)
                     input = input.view(batch_size, -1, *input.shape[1:])
                 elif isinstance(module, PatchSequential):
                     raise NotImplementedError(f"Geometric involved PatchSequential is not supported.")
                 elif isinstance(module, (GeometricAugmentationBase2D, ImageSequential,)) and dcate in DataKey:
-                    input, label = self.apply_by_key(input, label, module, param, dcate)
+                    input, label = ApplyInverse.apply_by_key(input, label, module, param, dcate)
                 elif isinstance(module, (SequentialBase,)):
                     raise ValueError(f"Unsupported Sequential {module}.")
                 else:

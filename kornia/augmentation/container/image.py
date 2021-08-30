@@ -1,4 +1,4 @@
-from typing import Iterator, List, Optional, Tuple, Union
+from typing import Any, Iterator, List, Optional, Tuple, Union
 from itertools import zip_longest
 
 import torch
@@ -82,7 +82,7 @@ class ImageSequential(SequentialBase):
 
         self.random_apply: Union[Tuple[int, int], bool] = self._read_random_apply(random_apply, len(args))
         self.return_label: Optional[bool] = None
-        self.apply_inverse_func = InputApplyInverse
+        self.apply_inverse_func: Any = InputApplyInverse
 
     def _read_random_apply(
         self, random_apply: Union[int, bool, Tuple[int, int]], max_length: int
@@ -245,8 +245,16 @@ class ImageSequential(SequentialBase):
     def inverse(
         self,
         input: torch.Tensor,
-        params: List[ParamItem],
+        params: Optional[List[ParamItem]] = None,
     ) -> torch.Tensor:
+        if params is None:
+            if self._params is None:
+                raise ValueError(
+                    "No parameters available for inversing, please run a forward pass first "
+                    "or passing valid params into this function."
+                )
+            params = self._params
+
         for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             if isinstance(module, (_AugmentationBase, ImageSequential)):
                 param = params[name] if name in params else param
