@@ -5,6 +5,7 @@ import torch
 
 # TODO: implement width of the line
 
+
 def draw_rectangle(
     image: torch.Tensor,
     rectangle: torch.Tensor,
