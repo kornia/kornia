@@ -2,13 +2,14 @@ from typing import Optional
 
 import torch
 
+# TODO: implement width of the line
+
 
 def draw_rectangle(
     image: torch.Tensor,
     rectangle: torch.Tensor,
     color: Optional[torch.Tensor] = None,
     fill: Optional[bool] = None,
-    width: int = 1,
 ) -> torch.Tensor:
     r"""Draws N rectangles on a batch of image tensors.
 
@@ -20,7 +21,7 @@ def draw_rectangle(
         color: a size 1, size 3, BxNx1, or BxNx3 tensor.
             If C is 3, and color is 1 channel it will be broadcasted.
         fill: is a flag used to fill the boxes with color if True.
-        width: The line width (Not implemented yet).
+
     Returns:
         This operation modifies image inplace but also returns the drawn tensor for
         convenience with same shape the of the input BxCxHxW.
