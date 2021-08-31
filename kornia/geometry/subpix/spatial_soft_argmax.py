@@ -503,7 +503,6 @@ def spatial_soft_argmax2d(
     input: torch.Tensor,
     temperature: torch.Tensor = torch.tensor(1.0),
     normalized_coordinates: bool = True,
-    eps: float = 1e-8,
 ) -> torch.Tensor:
     r"""Function that computes the Spatial Soft-Argmax 2D of a given input heatmap.
 
@@ -512,7 +511,6 @@ def spatial_soft_argmax2d(
         temperature: factor to apply to input.
         normalized_coordinates: whether to return the coordinates normalized in the range of :math:`[-1, 1]`.
             Otherwise, it will return the coordinates in the range of the input shape.
-        eps: small value to avoid zero division.
 
     Returns:
         the index of the maximum 2d coordinates of the give map :math:`(B, N, 2)`.
@@ -538,12 +536,11 @@ class SpatialSoftArgmax2d(nn.Module):
     """
 
     def __init__(
-        self, temperature: torch.Tensor = torch.tensor(1.0), normalized_coordinates: bool = True, eps: float = 1e-8
+        self, temperature: torch.Tensor = torch.tensor(1.0), normalized_coordinates: bool = True
     ) -> None:
         super().__init__()
         self.temperature: torch.Tensor = temperature
         self.normalized_coordinates: bool = normalized_coordinates
-        self.eps: float = eps
 
     def __repr__(self) -> str:
         return (
@@ -553,14 +550,11 @@ class SpatialSoftArgmax2d(nn.Module):
             + ', '
             + 'normalized_coordinates='
             + str(self.normalized_coordinates)
-            + ', '
-            + 'eps='
-            + str(self.eps)
             + ')'
         )
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return spatial_soft_argmax2d(input, self.temperature, self.normalized_coordinates, self.eps)
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        return spatial_soft_argmax2d(input, self.temperature, self.normalized_coordinates)
 
 
 def conv_quad_interp3d(

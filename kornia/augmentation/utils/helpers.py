@@ -226,7 +226,6 @@ def _adapted_uniform(
     low: Union[float, int, torch.Tensor],
     high: Union[float, int, torch.Tensor],
     same_on_batch: bool = False,
-    epsilon: float = 1e-6,
 ) -> torch.Tensor:
     r"""The uniform sampling function that accepts 'same_on_batch'.
 

@@ -95,8 +95,7 @@ class LAFAffineShapeEstimator(nn.Module):
     def __init__(self, patch_size: int = 32, affine_shape_detector: Optional[nn.Module] = None) -> None:
         super().__init__()
         self.patch_size = patch_size
-        self.affine_shape_detector = PatchAffineShapeEstimator(self.patch_size)
-        return
+        self.affine_shape_detector = affine_shape_detector or PatchAffineShapeEstimator(self.patch_size)
 
     def __repr__(self):
         return (
