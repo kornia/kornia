@@ -2,7 +2,6 @@ from typing import Optional
 
 import torch
 
-
 # TODO: implement width of the line
 
 
