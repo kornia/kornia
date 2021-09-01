@@ -37,7 +37,7 @@ def eye_like(n: int, input: torch.Tensor) -> torch.Tensor:
           The expected shape is :math:`(B, *)`.
 
     Returns:
-       The identity matrix with same size as input :math:`(*, N, N)`.
+       The identity matrix with same size as input :math:`(B, N, N)`.
 
     """
     if n <= 0:
@@ -58,7 +58,7 @@ def vec_like(n, tensor):
           The expected shape is :math:`(B, *)`.
 
     Returns:
-        The vector with same size as input :math:`(*, N, 1)`.
+        The vector with same size as input :math:`(B, N, 1)`.
 
     """
     if n <= 0:
