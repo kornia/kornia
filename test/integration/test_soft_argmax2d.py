@@ -21,6 +21,7 @@ class TestIntegrationSoftArgmax2d:
 
     def generate_sample(self, base_target, std_val=1.0):
         """Generates a random sample around the given point.
+
         The standard deviation is in pixel.
         """
         noise = std_val * torch.rand_like(base_target)
