@@ -90,7 +90,7 @@ class LAFAffineShapeEstimator(nn.Module):
     Args:
         patch_size: the input image patch size.
         affine_shape_detector: Patch affine shape estimator, :class:`~kornia.feature.PatchAffineShapeEstimator`.
-    """  # noqa pylint: disable
+    """  # pylint: disable
 
     def __init__(self, patch_size: int = 32, affine_shape_detector: Optional[nn.Module] = None) -> None:
         super().__init__()
