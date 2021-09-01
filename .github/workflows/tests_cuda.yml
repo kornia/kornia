@@ -21,8 +21,8 @@ jobs:
     - name: Install dependencies
       shell: bash -l {0}
       run: |
-        # conda install -c anaconda git
-        git --version
+        # NOTE: pytorch image does not include git
+        conda install -c anaconda git
         pip install -r requirements-dev.txt
         python setup.py install
     - name: Run Tests
