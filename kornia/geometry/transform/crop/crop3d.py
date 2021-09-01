@@ -309,7 +309,6 @@ def crop_by_boxes3d(
                   [[37., 38., 39.],
                    [41., 42., 43.],
                    [45., 46., 47.]]]]])
-
     """
     _validate_bbox3d(src_box)
     _validate_bbox3d(dst_box)
@@ -377,6 +376,7 @@ def crop_by_transform_mat3d(
 @torch.jit.ignore
 def validate_bboxes3d(boxes: torch.Tensor) -> bool:
     """Validate if a 3D bounding box usable or not.
+
     This function checks if the boxes are cube or not.
     Args:
         boxes (torch.Tensor): a tensor containing the coordinates of the bounding boxes to be extracted.

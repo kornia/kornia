@@ -1,4 +1,4 @@
-"""Module containing numerical functionalities for SfM"""
+"""Module containing numerical functionalities for SfM."""
 
 import torch
 

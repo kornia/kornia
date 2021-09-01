@@ -19,7 +19,7 @@ def load_homography(file_name):
 
 
 def load_image(file_name):
-    """Loads the image with OpenCV and converts to torch.Tensor"""
+    """Load the image with OpenCV and converts to torch.Tensor."""
     if not os.path.isfile(file_name):
         raise AssertionError(f"Invalid file {file_name}")
 

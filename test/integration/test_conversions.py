@@ -9,7 +9,7 @@ from kornia.testing import assert_close
 
 @pytest.fixture
 def atol(device, dtype):
-    """Lower tolerance for cuda-float16 only"""
+    """Lower tolerance for cuda-float16 only."""
     if 'cuda' in device.type and dtype == torch.float16:
         return 1.0e-3
     return 1.0e-4
@@ -17,7 +17,7 @@ def atol(device, dtype):
 
 @pytest.fixture
 def rtol(device, dtype):
-    """Lower tolerance for cuda-float16 only"""
+    """Lower tolerance for cuda-float16 only."""
     if 'cuda' in device.type and dtype == torch.float16:
         return 1.0e-3
     return 1.0e-4
@@ -280,15 +280,13 @@ class TestAngleOfRotations:
 
     @staticmethod
     def matrix_angle_abs(mx: torch.Tensor):
-        """Unsigned rotation matrix angle"""
+        """Unsigned rotation matrix angle."""
         trace = torch.diagonal(mx[..., :3, :3], dim1=-1, dim2=-2).sum(-1, keepdim=True)
         return torch.acos((trace - 1.0) / 2.0)
 
     @staticmethod
     def axis_and_angle_to_rotation_matrix(axis_name: str, angle: torch.Tensor, device, dtype):
-        """
-        See also: https://en.wikipedia.org/wiki/Rotation_matrix#Basic_rotations
-        """
+        """See also: https://en.wikipedia.org/wiki/Rotation_matrix#Basic_rotations."""
         axis_name = axis_name.lower()
         assert axis_name in ('x', 'y', 'z')
         sn = torch.sin(angle)
