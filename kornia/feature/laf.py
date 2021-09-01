@@ -522,8 +522,8 @@ def laf_is_inside_image(laf: torch.Tensor, images: torch.Tensor, border: int = 0
 
 
 def laf_to_three_points(laf: torch.Tensor):
-    """Convert local affine frame(LAF) to alternative representation: coordinates of LAF center, LAF-x unit
-    vector, LAF-y unit vector.
+    """Convert local affine frame(LAF) to alternative representation: coordinates of LAF center, LAF-x unit vector,
+    LAF-y unit vector.
 
     Args:
         laf:  :math:`(B, N, 2, 3)`.

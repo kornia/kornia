@@ -258,8 +258,8 @@ class DepthWarper(nn.Module):
         return torch.cat([x, y], 1)
 
     def compute_subpixel_step(self) -> torch.Tensor:
-        """Compute the required inverse depth step to achieve sub pixel accurate sampling of the depth cost
-        volume, per camera.
+        """Compute the required inverse depth step to achieve sub pixel accurate sampling of the depth cost volume,
+        per camera.
 
         Szeliski, Richard, and Daniel Scharstein. "Symmetric sub-pixel stereo matching." European Conference on Computer
         Vision. Springer Berlin Heidelberg, 2002.
