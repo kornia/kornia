@@ -21,7 +21,7 @@ jobs:
     - name: Install dependencies
       shell: bash -l {0}
       run: |
-        # conda install -c anaconda git 
+        # conda install -c anaconda git
         git --version
         pip install -r requirements-dev.txt
         python setup.py install
