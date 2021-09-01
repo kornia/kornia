@@ -170,9 +170,10 @@ def depth(R: torch.Tensor, t: torch.Tensor, X: torch.Tensor) -> torch.Tensor:
 
 
 def _nullspace(A):
-    '''Compute the null space of A.
+    """Compute the null space of A.
+
     Return the smallest singular value and the corresponding vector.
-    '''
+    """
     u, s, vh = torch.svd(A)
     return s[..., -1], vh[..., -1]
 

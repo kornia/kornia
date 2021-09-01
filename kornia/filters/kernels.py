@@ -147,12 +147,12 @@ def get_binary_kernel2d(window_size: Tuple[int, int]) -> torch.Tensor:
 
 
 def get_sobel_kernel_3x3() -> torch.Tensor:
-    """Utility function that returns a sobel kernel of 3x3"""
+    """Utility function that returns a sobel kernel of 3x3."""
     return torch.tensor([[-1.0, 0.0, 1.0], [-2.0, 0.0, 2.0], [-1.0, 0.0, 1.0]])
 
 
 def get_sobel_kernel_5x5_2nd_order() -> torch.Tensor:
-    """Utility function that returns a 2nd order sobel kernel of 5x5"""
+    """Utility function that returns a 2nd order sobel kernel of 5x5."""
     return torch.tensor(
         [
             [-1.0, 0.0, 2.0, 0.0, -1.0],
@@ -165,7 +165,7 @@ def get_sobel_kernel_5x5_2nd_order() -> torch.Tensor:
 
 
 def _get_sobel_kernel_5x5_2nd_order_xy() -> torch.Tensor:
-    """Utility function that returns a 2nd order sobel kernel of 5x5"""
+    """Utility function that returns a 2nd order sobel kernel of 5x5."""
     return torch.tensor(
         [
             [-1.0, -2.0, 0.0, 2.0, 1.0],
@@ -178,12 +178,12 @@ def _get_sobel_kernel_5x5_2nd_order_xy() -> torch.Tensor:
 
 
 def get_diff_kernel_3x3() -> torch.Tensor:
-    """Utility function that returns a first order derivative kernel of 3x3"""
+    """Utility function that returns a first order derivative kernel of 3x3."""
     return torch.tensor([[-0.0, 0.0, 0.0], [-1.0, 0.0, 1.0], [-0.0, 0.0, 0.0]])
 
 
 def get_diff_kernel3d(device=torch.device('cpu'), dtype=torch.float) -> torch.Tensor:
-    """Utility function that returns a first order derivative kernel of 3x3x3"""
+    """Utility function that returns a first order derivative kernel of 3x3x3."""
     kernel: torch.Tensor = torch.tensor(
         [
             [
@@ -209,7 +209,7 @@ def get_diff_kernel3d(device=torch.device('cpu'), dtype=torch.float) -> torch.Te
 
 
 def get_diff_kernel3d_2nd_order(device=torch.device('cpu'), dtype=torch.float) -> torch.Tensor:
-    """Utility function that returns a first order derivative kernel of 3x3x3"""
+    """Utility function that returns a first order derivative kernel of 3x3x3."""
     kernel: torch.Tensor = torch.tensor(
         [
             [
@@ -595,7 +595,7 @@ def get_pascal_kernel_1d(kernel_size: int, norm: bool = False) -> torch.Tensor:
 
 
 def get_canny_nms_kernel(device=torch.device('cpu'), dtype=torch.float) -> torch.Tensor:
-    """Utility function that returns 3x3 kernels for the Canny Non-maximal suppression"""
+    """Utility function that returns 3x3 kernels for the Canny Non-maximal suppression."""
     kernel: torch.Tensor = torch.tensor(
         [
             [[0.0, 0.0, 0.0], [0.0, 1.0, -1.0], [0.0, 0.0, 0.0]],
@@ -614,7 +614,7 @@ def get_canny_nms_kernel(device=torch.device('cpu'), dtype=torch.float) -> torch
 
 
 def get_hysteresis_kernel(device=torch.device('cpu'), dtype=torch.float) -> torch.Tensor:
-    """Utility function that returns the 3x3 kernels for the Canny hysteresis"""
+    """Utility function that returns the 3x3 kernels for the Canny hysteresis."""
     kernel: torch.Tensor = torch.tensor(
         [
             [[0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 0.0, 0.0]],

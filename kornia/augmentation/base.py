@@ -57,8 +57,7 @@ class _BasicAugmentationBase(nn.Module):
         return input
 
     def __check_batching__(self, input: TensorWithTransformMat):
-        """Check if a transformation matrix is returned,
-        it has to be in the same batching mode as output."""
+        """Check if a transformation matrix is returned, it has to be in the same batching mode as output."""
         raise NotImplementedError
 
     def transform_tensor(self, input: torch.Tensor) -> torch.Tensor:

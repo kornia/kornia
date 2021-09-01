@@ -111,7 +111,6 @@ def tensor_to_image(tensor: torch.Tensor, keepdim: bool = False) -> "np.ndarray"
 
     Returns:
         image of the form :math:`(H, W)`, :math:`(H, W, C)` or :math:`(B, H, W, C)`.
-
     """
     if not isinstance(tensor, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
@@ -161,10 +160,10 @@ class ImageToTensor(nn.Module):
 
 
 def perform_keep_shape_image(f: Callable) -> Callable:
-    """
-    A decorator that enable `f` to be applied to an image of arbitrary leading dimensions `(*, C, H, W)`.
-    It works by first viewing the image as `(B, C, H, W)`, applying the function and re-viewing the
-    image as original shape.
+    """A decorator that enable `f` to be applied to an image of arbitrary leading dimensions `(*, C, H, W)`.
+
+    It works by first viewing the image as `(B, C, H, W)`, applying the function and re-viewing the image as original
+    shape.
     """
 
     @wraps(f)
@@ -193,10 +192,10 @@ def perform_keep_shape_image(f: Callable) -> Callable:
 
 
 def perform_keep_shape_video(f: Callable) -> Callable:
-    """
-    A decorator that enable `f` to be applied to an image of arbitrary leading dimensions `(*, C, D, H, W)`.
-    It works by first viewing the image as `(B, C, D, H, W)`, applying the function and re-viewing the
-    image as original shape.
+    """A decorator that enable `f` to be applied to an image of arbitrary leading dimensions `(*, C, D, H, W)`.
+
+    It works by first viewing the image as `(B, C, D, H, W)`, applying the function and re-viewing the image as original
+    shape.
     """
 
     @wraps(f)

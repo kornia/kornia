@@ -104,7 +104,6 @@ def set_laf_orientation(LAF: torch.Tensor, angles_degrees: torch.Tensor) -> torc
     Shape:
         - Input: :math: `(B, N, 2, 3)`, `(B, N, 1)`
         - Output: :math: `(B, N, 2, 3)`
-
     """
     raise_error_if_laf_is_not_valid(LAF)
     B, N = LAF.shape[:2]
@@ -396,7 +395,6 @@ def generate_patch_grid_from_normalized_LAF(img: torch.Tensor, LAF: torch.Tensor
 
     Returns:
         grid
-
     """
     raise_error_if_laf_is_not_valid(LAF)
     B, N, _, _ = LAF.size()
@@ -524,8 +522,8 @@ def laf_is_inside_image(laf: torch.Tensor, images: torch.Tensor, border: int = 0
 
 
 def laf_to_three_points(laf: torch.Tensor):
-    """Converts local affine frame(LAF) to alternative representation: coordinates of
-    LAF center, LAF-x unit vector, LAF-y unit vector.
+    """Converts local affine frame(LAF) to alternative representation: coordinates of LAF center, LAF-x unit
+    vector, LAF-y unit vector.
 
     Args:
         laf:  :math:`(B, N, 2, 3)`.
