@@ -20,19 +20,19 @@ def xla_is_available() -> bool:
 
 # TODO: Isn't this function duplicated with eye_like?
 def create_eye_batch(batch_size, eye_size, device=None, dtype=None):
-    """Creates a batch of identity matrices of shape Bx3x3."""
+    """Create a batch of identity matrices of shape Bx3x3."""
     return torch.eye(eye_size, device=device, dtype=dtype).view(1, eye_size, eye_size).expand(batch_size, -1, -1)
 
 
 def create_random_homography(batch_size, eye_size, std_val=1e-3):
-    """Creates a batch of random homographies of shape Bx3x3."""
+    """Create a batch of random homographies of shape Bx3x3."""
     std = torch.FloatTensor(batch_size, eye_size, eye_size)
     eye = create_eye_batch(batch_size, eye_size)
     return eye + std.uniform_(-std_val, std_val)
 
 
 def tensor_to_gradcheck_var(tensor, dtype=torch.float64, requires_grad=True):
-    """Converts the input tensor to a valid variable to check the gradient.
+    """Convert the input tensor to a valid variable to check the gradient.
 
     `gradcheck` needs 64-bit floating point and requires gradient.
     """
@@ -53,14 +53,14 @@ def check_is_tensor(obj):
 
 
 def create_rectified_fundamental_matrix(batch_size):
-    """Creates a batch of rectified fundamental matrices of shape Bx3x3."""
+    """Create a batch of rectified fundamental matrices of shape Bx3x3."""
     F_rect = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]]).view(1, 3, 3)
     F_repeat = F_rect.repeat(batch_size, 1, 1)
     return F_repeat
 
 
 def create_random_fundamental_matrix(batch_size, std_val=1e-3):
-    """Creates a batch of random fundamental matrices of shape Bx3x3."""
+    """Create a batch of random fundamental matrices of shape Bx3x3."""
     F_rect = create_rectified_fundamental_matrix(batch_size)
     H_left = create_random_homography(batch_size, 3, std_val)
     H_right = create_random_homography(batch_size, 3, std_val)
@@ -94,7 +94,7 @@ class BaseTester(ABC):
 
 
 def cartesian_product_of_parameters(**possible_parameters):
-    """Creates cartesian product of given parameters."""
+    """Create cartesian product of given parameters."""
     parameter_names = possible_parameters.keys()
     possible_values = [possible_parameters[parameter_name] for parameter_name in parameter_names]
 

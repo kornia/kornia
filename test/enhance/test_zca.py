@@ -72,7 +72,7 @@ class TestZCA:
         assert_close(data, data_hat, rtol=tol_val, atol=tol_val)
 
     def test_grad_zca_individual_transforms(self, device, dtype):
-        """Checks if the gradients of the transforms are correct w.r.t to the input data."""
+        """Check if the gradients of the transforms are correct w.r.t to the input data."""
 
         data = torch.tensor([[2, 0], [0, 1], [-2, 0], [0, -1]], device=device, dtype=dtype)
 

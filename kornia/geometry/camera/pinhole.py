@@ -487,7 +487,7 @@ def scale_pinhole(pinholes: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
 
 
 def get_optical_pose_base(pinholes: torch.Tensor) -> torch.Tensor:
-    """Get extrinsic transformation matrices for pinholes.
+    """Compute extrinsic transformation matrices for pinholes.
 
     Args:
         pinholes: tensor of form [fx fy cx cy h w rx ry rz tx ty tz]
