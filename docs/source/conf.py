@@ -80,7 +80,7 @@ version = ''
 
 if 'READTHEDOCS' not in os.environ:
     # if developing locally, use pyro.__version__ as version
-    from kornia import __version__  # E402
+    from kornia import __version__  # noqa: E402
 
     version = __version__
 
