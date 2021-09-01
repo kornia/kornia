@@ -3,7 +3,7 @@ from typing import Optional
 import torch
 
 # Inspired by:
-# https://github.com/pytorch/tnt/blob/master/torchnet/meter/confusionmeter.py#L68-L73  # noqa
+# https://github.com/pytorch/tnt/blob/master/torchnet/meter/confusionmeter.py#L68-L73
 
 
 def confusion_matrix(

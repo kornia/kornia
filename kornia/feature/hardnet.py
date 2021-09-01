@@ -9,7 +9,7 @@ urls["hardnet++"] = "https://github.com/DagnyT/hardnet/raw/master/pretrained/pre
 urls[
     "liberty_aug"
 ] = "https://github.com/DagnyT/hardnet/raw/master/pretrained/train_liberty_with_aug/checkpoint_liberty_with_aug.pth"  # noqa pylint: disable
-urls["hardnet8v2"] = "http://cmp.felk.cvut.cz/~mishkdmy/hardnet8v2.pt"  # noqa pylint: disable
+urls["hardnet8v2"] = "http://cmp.felk.cvut.cz/~mishkdmy/hardnet8v2.pt"  # pylint: disable
 
 
 class HardNet(nn.Module):

@@ -626,10 +626,10 @@ def get_shear_matrix2d(center: torch.Tensor, sx: Optional[torch.Tensor] = None, 
         [
             ones,
             -sx_tan,
-            sx_tan * y,  # type: ignore   # noqa: E241
+            sx_tan * y,  # type: ignore
             -sy_tan,
             ones + sx_tan * sy_tan,
-            sy_tan * (sx_tan * y + x),  # noqa: E241
+            sy_tan * (sx_tan * y + x),
         ],
         dim=-1,
     ).view(-1, 2, 3)
