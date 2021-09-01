@@ -571,12 +571,12 @@ class TestRandomHorizontalFlipAlternative(CommonTests):
             [[[[0.3, 0.2, 0.1], [0.6, 0.5, 0.4], [0.9, 0.8, 0.7]]]], device=self.device, dtype=self.dtype
         ).repeat(
             (2, 1, 1, 1)
-        )  # noqa: E501
+        )
         expected_transformation = torch.tensor(
             [[[-1.0, 0.0, 2.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=self.device, dtype=self.dtype
         ).repeat(
             (2, 1, 1)
-        )  # noqa: E501
+        )
         parameters = {}
         self._test_random_p_1_return_transform_implementation(
             input_tensor=input_tensor,
@@ -644,12 +644,12 @@ class TestRandomVerticalFlipAlternative(CommonTests):
             [[[[0.7, 0.8, 0.9], [0.4, 0.5, 0.6], [0.1, 0.2, 0.3]]]], device=self.device, dtype=self.dtype
         ).repeat(
             (2, 1, 1, 1)
-        )  # noqa: E501
+        )
         expected_transformation = torch.tensor(
             [[[1.0, 0.0, 0.0], [0.0, -1.0, 2.0], [0.0, 0.0, 1.0]]], device=self.device, dtype=self.dtype
         ).repeat(
             (2, 1, 1)
-        )  # noqa: E501
+        )
         parameters = {}
         self._test_random_p_1_return_transform_implementation(
             input_tensor=input_tensor,

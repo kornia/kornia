@@ -203,7 +203,7 @@ class LAFOrienter(nn.Module):
         num_angular_bins:
         angle_detector: Patch orientation estimator, e.g. :class:`~kornia.feature.PatchDominantGradientOrientation`
           or OriNet.
-    """  # noqa pylint: disable
+    """  # pylint: disable
 
     def __init__(self, patch_size: int = 32, num_angular_bins: int = 36, angle_detector: Optional[nn.Module] = None):
         super().__init__()
