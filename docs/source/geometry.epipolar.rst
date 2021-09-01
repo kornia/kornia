@@ -3,7 +3,7 @@ kornia.geometry.epipolar
 
 .. currentmodule:: kornia.geometry.epipolar
 
-Module to with useful functionalities for epipolar geometry used by Structure from Motion
+Module with useful functionalities for epipolar geometry used by Structure from Motion
 
 .. image:: data/epipolar_geometry.svg.png
 

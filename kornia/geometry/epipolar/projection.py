@@ -181,13 +181,13 @@ def projections_from_fundamental(F_mat: torch.Tensor) -> torch.Tensor:
     r"""Get the projection matrices from the Fundamental Matrix.
 
     Args:
-       F_mat: the fundamental matrix with the shape :math:`(*, 3, 3)`.
+       F_mat: the fundamental matrix with the shape :math:`(B, 3, 3)`.
 
     Returns:
-        The projection matrices with shape :math:`(*, 4, 4, 2)`.
+        The projection matrices with shape :math:`(B, 3, 4, 2)`.
 
     """
-    if len(F_mat.shape) < 2:
+    if len(F_mat.shape) != 3:
         raise AssertionError(F_mat.shape)
     if F_mat.shape[-2:] != (3, 3):
         raise AssertionError(F_mat.shape)
