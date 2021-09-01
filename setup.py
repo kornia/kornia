@@ -65,7 +65,7 @@ cwd = os.path.dirname(os.path.abspath(__file__))
 
 try:
     sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=cwd).decode('ascii').strip()
-except Exception:
+except subprocess.CalledProcessError:
     pass
 
 if os.getenv('KORNIA_BUILD_VERSION'):

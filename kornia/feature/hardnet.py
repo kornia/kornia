@@ -148,10 +148,8 @@ class HardNet8(nn.Module):
     def weights_init(m):
         if isinstance(m, nn.Conv2d):
             nn.init.orthogonal_(m.weight.data, gain=0.6)
-            try:
+            if m.bias is not None:
                 nn.init.constant_(m.bias.data, 0.01)
-            except:
-                pass
 
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-7) -> torch.Tensor:
