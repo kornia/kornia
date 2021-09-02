@@ -19,10 +19,7 @@ repos:
     rev: 21.8b0
     hooks:
       - id: black
-        args:
-          - --diff
-          - --config
-          - "./pyproject.toml"
+        args: [--diff]
 
   - repo: https://github.com/codespell-project/codespell
     rev: v2.1.0
@@ -55,12 +52,12 @@ repos:
     hooks:
       - id: bandit
         args:
-          - --ini
-          - "./pyproject/toml"
-        #  - --recursive
-        #  - --skip
-        #  - "B311,B404,B602,B603,B607"
-        #  - .
+          - --recursive
+          - --skip
+          - "B311,B404,B602,B603,B607"
+          - .
+          - --exclude
+          - test
 
   - repo: https://github.com/myint/docformatter
     rev: v1.4
