@@ -109,11 +109,12 @@ class PatchSequential(ImageSequential):
             # will only apply [1, 4] augmentations per patch
             _random_apply = (1, 4)
         elif patchwise_apply and random_apply is False:
-            assert len(args) == grid_size[0] * grid_size[1], (
-                "The number of processing modules must be equal with grid size."
-                f"Got {len(args)} and {grid_size[0] * grid_size[1]}. "
-                "Please set random_apply = True or patchwise_apply = False."
-            )
+            if len(args) != grid_size[0] * grid_size[1]:
+                raise ValueError(
+                    "The number of processing modules must be equal with grid size."
+                    f"Got {len(args)} and {grid_size[0] * grid_size[1]}. "
+                    "Please set random_apply = True or patchwise_apply = False."
+                )
             _random_apply = random_apply
         elif patchwise_apply and isinstance(random_apply, (int, tuple)):
             raise ValueError(f"Only boolean value allowed when `patchwise_apply` is set to True. Got {random_apply}.")
@@ -122,7 +123,8 @@ class PatchSequential(ImageSequential):
         super().__init__(
             *args, same_on_batch=same_on_batch, return_transform=False, keepdim=keepdim, random_apply=_random_apply
         )
-        assert padding in ["same", "valid"], f"`padding` must be either `same` or `valid`. Got {padding}."
+        if padding not in ["same", "valid"]:
+            raise ValueError(f"`padding` must be either `same` or `valid`. Got {padding}.")
         self.grid_size = grid_size
         self.padding = padding
         self.patchwise_apply = patchwise_apply
