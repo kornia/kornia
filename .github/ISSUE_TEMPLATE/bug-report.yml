@@ -72,25 +72,3 @@ body:
     attributes:
       label: Additional context
       description: Add any other context about the problem here.
-
-## Environment
-
-Please copy and paste the output from our
-[environment collection script](https://raw.githubusercontent.com/pytorch/pytorch/master/torch/utils/collect_env.py)
-(or fill out the checklist below manually).
-
-You can get the script and run it with:
-
-
- - PyTorch Version (e.g., 1.0):
- - OS (e.g., Linux):
- - How you installed PyTorch (`conda`, `pip`, source):
- - Build command you used (if compiling from source):
- - Python version:
- - CUDA/cuDNN version:
- - GPU models and configuration:
- - Any other relevant information:
-
-## Additional context
-
-<!-- Add any other context about the problem here. -->
