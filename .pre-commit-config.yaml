@@ -51,11 +51,11 @@ repos:
     rev: 1.7.0
     hooks:
       - id: bandit
+        language_version: python3
+        exclude: ^test/
         args:
-          - --recursive
-          - --skip
-          - "B101,B311,B404,B602,B603,B607"
-          - .
+          - -s
+          - "B311,B404,B602,B603,B607"
 
   - repo: https://github.com/myint/docformatter
     rev: v1.4
