@@ -283,6 +283,6 @@ class TestCanny:
         op = kornia.filters.canny
         op_module = kornia.filters.Canny()
         expected_magnitude, expected_edges = op(img)
-        actual_magnitude, actual_edges = op(img)
+        actual_magnitude, actual_edges = op_module(img)
         assert_close(actual_magnitude, expected_magnitude)
         assert_close(actual_edges, expected_edges)

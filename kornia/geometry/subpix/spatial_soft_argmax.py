@@ -597,7 +597,6 @@ def conv_quad_interp3d(
         raise ValueError(f"Invalid input shape, we expect BxCxDxHxW. Got: {input.shape}")
 
     B, CH, D, H, W = input.shape
-    dev: torch.device = input.device
     grid_global: torch.Tensor = create_meshgrid3d(D, H, W, False, device=input.device).permute(0, 4, 1, 2, 3)
     grid_global = grid_global.to(input.dtype)
 

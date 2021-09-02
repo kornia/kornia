@@ -279,9 +279,9 @@ class TestPerspectiveTransform3D:
     def test_get_perspective_transform3d(self, batch_size, device, dtype):
         # generate input data
         d_max, h_max, w_max = 16, 64, 32  # height, width
-        d = torch.ceil(d_max * torch.rand(batch_size, device=device, dtype=dtype))
-        h = torch.ceil(h_max * torch.rand(batch_size, device=device, dtype=dtype))
-        w = torch.ceil(w_max * torch.rand(batch_size, device=device, dtype=dtype))
+        # d = torch.ceil(d_max * torch.rand(batch_size, device=device, dtype=dtype))
+        # h = torch.ceil(h_max * torch.rand(batch_size, device=device, dtype=dtype))
+        # w = torch.ceil(w_max * torch.rand(batch_size, device=device, dtype=dtype))
 
         norm = torch.rand(batch_size, 8, 3, device=device, dtype=dtype)
         points_src = torch.rand_like(norm, device=device, dtype=dtype)

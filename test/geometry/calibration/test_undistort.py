@@ -31,7 +31,7 @@ class TestUndistortion:
         distCoeff = torch.rand(B, Ndist, device=device, dtype=dtype)
 
         pointsu = undistort_points(points, K, distCoeff)
-        assert points.shape == (B, N, 2)
+        assert pointsu.shape == (B, N, 2)
 
     def test_opencv_five_coeff(self, device, dtype):
         # Test using 5 distortion coefficients

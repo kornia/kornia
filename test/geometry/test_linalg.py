@@ -370,7 +370,7 @@ class TestTransformLAFs:
 
     def test_gradcheck(self, device, dtype):
         # generate input data
-        batch_size, num_points, num_dims = 2, 3, 2
+        batch_size, num_points = 2, 3
         eye_size = 3
         points_src = torch.rand(batch_size, num_points, 2, 3, device=device, dtype=dtype)
         dst_homo_src = utils.create_random_homography(batch_size, eye_size).to(device=device, dtype=dtype)

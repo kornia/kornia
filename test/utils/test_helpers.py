@@ -100,7 +100,7 @@ class TestSolveCast:
         A = torch.randn(2, 3, 1, 4, 4, device=device, dtype=dtype)
         B = torch.randn(2, 3, 1, 4, 6, device=device, dtype=dtype)
 
-        X, LU = _torch_solve_cast(B, A)
+        X, _ = _torch_solve_cast(B, A)
         error = torch.dist(B, A.matmul(X))
 
         tol_val: float = 1e-1 if dtype == torch.float16 else 1e-4

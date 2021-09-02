@@ -42,7 +42,6 @@ class TestMotionBlur:
         angle = 200.0
         direction = 0.3
         actual = kornia.filters.motion_blur(inp, kernel_size, angle, direction)
-        expected = actual
         assert_close(actual, actual)
 
     def test_gradcheck(self, device, dtype):

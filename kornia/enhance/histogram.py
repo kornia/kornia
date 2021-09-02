@@ -143,8 +143,8 @@ def histogram2d(
         torch.Size([2, 128, 128])
     """
 
-    pdf1, kernel_values1 = marginal_pdf(x1.unsqueeze(2), bins, bandwidth, epsilon)
-    pdf2, kernel_values2 = marginal_pdf(x2.unsqueeze(2), bins, bandwidth, epsilon)
+    _, kernel_values1 = marginal_pdf(x1.unsqueeze(2), bins, bandwidth, epsilon)
+    _, kernel_values2 = marginal_pdf(x2.unsqueeze(2), bins, bandwidth, epsilon)
 
     pdf = joint_pdf(kernel_values1, kernel_values2)
 
@@ -218,7 +218,7 @@ def image_histogram2d(
     device = image.device
 
     if image.dim() == 4:
-        batch_size, n_channels, height, width = image.size()
+        _, n_channels, _, _ = image.size()
     elif image.dim() == 3:
         batch_size = 1
         n_channels, height, width = image.size()

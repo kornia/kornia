@@ -49,7 +49,6 @@ class TestMedianBlur:
 
         kernel_size = (3, 3)
         actual = kornia.filters.median_blur(inp, kernel_size)
-        expected = actual
         assert_close(actual, actual)
 
     @pytest.mark.xfail(reason="this tests is a bit unstable")

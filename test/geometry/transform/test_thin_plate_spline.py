@@ -36,7 +36,7 @@ class TestTransformParameters:
             batch_size, 1, 1
         )
         dst = src.clone() * 2.0
-        kernel, affine = kornia.get_tps_transform(src, dst)
+        kernel, _ = kornia.get_tps_transform(src, dst)
         assert_close(kernel, torch.zeros_like(kernel), atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize('batch_size', [1, 3])

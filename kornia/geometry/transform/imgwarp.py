@@ -100,7 +100,7 @@ def warp_perspective(
         # set default value for align corners
         align_corners = True
 
-    B, C, H, W = src.size()
+    B, _, H, W = src.size()
     h_out, w_out = dsize
 
     # we normalize the 3x3 transformation matrix and convert to 3x4
@@ -278,7 +278,7 @@ def get_perspective_transform(src, dst):
     )
 
     # solve the system Ax = b
-    X, LU = _torch_solve_cast(b, A)
+    X, _ = _torch_solve_cast(b, A)
 
     # create variable to return
     batch_size = src.shape[0]
@@ -779,7 +779,6 @@ def get_shear_matrix3d(
 
 
 def _compute_shear_matrix_3d(sxy_tan, sxz_tan, syx_tan, syz_tan, szx_tan, szy_tan):
-    zeros = torch.zeros_like(sxy_tan)  # type: ignore
     ones = torch.ones_like(sxy_tan)  # type: ignore
 
     m00, m10, m20 = ones, sxy_tan, sxz_tan

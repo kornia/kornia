@@ -42,7 +42,8 @@ class TestRandomMixUp:
             [torch.ones(1, 3, 4, device=device, dtype=dtype), torch.zeros(1, 3, 4, device=device, dtype=dtype)]
         )
         label = torch.tensor([1, 0], device=device)
-        lam = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
+        # TODO(jian): where is it used ?
+        # lam = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
 
         expected = input.clone()
 
@@ -111,7 +112,8 @@ class TestRandomCutMix:
             [torch.ones(1, 3, 4, device=device, dtype=dtype), torch.zeros(1, 3, 4, device=device, dtype=dtype)]
         )
         label = torch.tensor([1, 0], device=device)
-        lam = torch.tensor([0.1320, 0.3074], device=device, dtype=dtype)
+        # TODO(jian): where is it used ?
+        # lam = torch.tensor([0.1320, 0.3074], device=device, dtype=dtype)
 
         expected = torch.tensor(
             [
@@ -215,7 +217,8 @@ class TestRandomCutMix:
             [torch.ones(1, 3, 4, device=device, dtype=dtype), torch.zeros(1, 3, 4, device=device, dtype=dtype)]
         )
         label = torch.tensor([1, 0], device=device)
-        lam = torch.tensor([0.0885, 0.0885], device=device, dtype=dtype)
+        # TODO(jian): where is it used ?
+        # lam = torch.tensor([0.0885, 0.0885], device=device, dtype=dtype)
 
         expected = torch.tensor(
             [

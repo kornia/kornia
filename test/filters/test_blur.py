@@ -121,7 +121,6 @@ class TestBoxBlur:
 
         kernel_size = (3, 3)
         actual = kornia.filters.box_blur(inp, kernel_size)
-        expected = actual
         assert_close(actual, actual)
 
     def test_gradcheck(self, device, dtype):

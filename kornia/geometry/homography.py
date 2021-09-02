@@ -137,7 +137,7 @@ def find_homography_dlt(
         A = A.transpose(-2, -1) @ w_diag @ A
 
     try:
-        U, S, V = torch.svd(A)
+        _, _, V = torch.svd(A)
     except:
         warnings.warn('SVD did not converge', RuntimeWarning)
         return torch.empty((points1_norm.size(0), 3, 3), device=device, dtype=dtype)
@@ -169,7 +169,7 @@ def find_homography_dlt_iterated(
     '''Function, which finds homography via iteratively-reweighted
     least squares ToDo: add citation'''
     H: torch.Tensor = find_homography_dlt(points1, points2, weights)
-    for i in range(n_iter - 1):
+    for _ in range(n_iter - 1):
         errors: torch.Tensor = symmetric_transfer_error(points1, points2, H, False)
         weights_new: torch.Tensor = torch.exp(-errors / (2.0 * (soft_inl_th ** 2)))
         H = find_homography_dlt(points1, points2, weights_new)

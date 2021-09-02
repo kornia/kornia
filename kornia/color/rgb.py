@@ -156,7 +156,7 @@ def rgba_to_rgb(image: torch.Tensor) -> torch.Tensor:
     g_new: torch.Tensor = a_one * g + a * g
     b_new: torch.Tensor = a_one * b + a * b
 
-    return torch.cat([r, g, b], dim=-3)
+    return torch.cat([r_new, g_new, b_new], dim=-3)
 
 
 def rgba_to_bgr(image: torch.Tensor) -> torch.Tensor:

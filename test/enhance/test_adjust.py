@@ -781,19 +781,21 @@ class TestSharpness(BaseTester):
     @pytest.mark.skip(reason="union type input")
     @pytest.mark.jit
     def test_jit(self, device, dtype):
-        op = torch.jit.script(kornia.enhance.adjust.sharpness)
-        op_script = torch.jit.script(op)
-        inputs = torch.rand(2, 1, 3, 3).to(device=device, dtype=dtype)
-        expected = op(input, 0.8)
-        actual = op_script(input, 0.8)
+        op = TestSharpness.f
+        op_script = torch.jit.script(TestSharpness.f)
+        img = torch.rand(2, 1, 3, 3).to(device=device, dtype=dtype)
+        expected = op(img, 0.8)
+        actual = op_script(img, 0.8)
         assert_close(actual, expected)
 
+    # TODO: update with module when exists
     @pytest.mark.skip(reason="Not having it yet.")
     @pytest.mark.nn
     def test_module(self, device, dtype):
         img = torch.ones(2, 3, 4, 4, device=device, dtype=dtype)
-        # gray_ops = kornia.enhance.sharpness().to(device, dtype)
-        # assert_close(gray_ops(img), f(img))
+        ops = TestSharpness.f
+        mod = TestSharpness.f
+        assert_close(ops(img), mod(img))
 
 
 @pytest.mark.skipif(kornia.xla_is_available(), reason="issues with xla device")
@@ -871,20 +873,21 @@ class TestSolarize(BaseTester):
     @pytest.mark.skip(reason="union type input")
     @pytest.mark.jit
     def test_jit(self, device, dtype):
-        op = torch.jit.script(kornia.enhance.adjust.solarize)
+        op = TestSolarize.f
         op_script = torch.jit.script(op)
-        inputs = torch.rand(2, 1, 3, 3).to(device=device, dtype=dtype)
-        expected = op(input, 0.8)
-        actual = op_script(input, 0.8)
+        img = torch.rand(2, 1, 3, 3).to(device=device, dtype=dtype)
+        expected = op(img, 0.8)
+        actual = op_script(img, 0.8)
         assert_close(actual, expected)
 
-    # TODO: implement me
+    # TODO: update with module when exists
     @pytest.mark.skip(reason="Not having it yet.")
     @pytest.mark.nn
     def test_module(self, device, dtype):
         img = torch.ones(2, 3, 4, 4, device=device, dtype=dtype)
-        # gray_ops = kornia.enhance.sharpness().to(device, dtype)
-        # assert_close(gray_ops(img), f(img))
+        ops = TestSolarize.f
+        mod = TestSolarize.f
+        assert_close(ops(img), mod(img))
 
 
 class TestPosterize(BaseTester):
@@ -952,17 +955,18 @@ class TestPosterize(BaseTester):
     @pytest.mark.skip(reason="union type input")
     @pytest.mark.jit
     def test_jit(self, device, dtype):
-        op = torch.jit.script(kornia.enhance.adjust.posterize)
+        op = TestPosterize.f
         op_script = torch.jit.script(op)
-        inputs = torch.rand(2, 1, 3, 3).to(device=device, dtype=dtype)
-        expected = op(input, 8)
-        actual = op_script(input, 8)
+        img = torch.rand(2, 1, 3, 3).to(device=device, dtype=dtype)
+        expected = op(img, 8)
+        actual = op_script(img, 8)
         assert_close(actual, expected)
 
-    # TODO: implement me
+    # TODO: update with module when exists
     @pytest.mark.skip(reason="Not having it yet.")
     @pytest.mark.nn
     def test_module(self, device, dtype):
         img = torch.ones(2, 3, 4, 4, device=device, dtype=dtype)
-        # gray_ops = kornia.enhance.sharpness().to(device, dtype)
-        # assert_close(gray_ops(img), f(img))
+        ops = TestPosterize.f
+        mod = TestPosterize.f
+        assert_close(ops(img), mod(img))

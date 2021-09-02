@@ -602,7 +602,6 @@ def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: flo
         )
     if not len(dst_proj_src.shape) == 3 and dst_proj_src.shape[-2:] == (4, 4):
         raise ValueError("Input dst_proj_src has to be in the shape of " "Bx4x4. Got {}".format(dst_proj_src.shape))
-    b, h, w, _ = cam_coords_src.shape
     # apply projection matrix to points
     point_coords: torch.Tensor = transform_points(dst_proj_src[:, None], cam_coords_src)
     x_coord: torch.Tensor = point_coords[..., 0]

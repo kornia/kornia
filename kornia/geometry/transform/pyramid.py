@@ -184,7 +184,7 @@ class ScalePyramid(nn.Module):
         return cur_level, cur_sigma, pixel_distance
 
     def forward(self, x: torch.Tensor) -> Tuple[List, List, List]:  # type: ignore
-        bs, ch, h, w = x.size()
+        bs, ch, _, _ = x.size()
         cur_level, cur_sigma, pixel_distance = self.get_first_level(x)
 
         sigmas = [cur_sigma * torch.ones(bs, self.n_levels + self.extra_levels).to(x.device).to(x.dtype)]
@@ -250,10 +250,11 @@ def pyrdown(input: torch.Tensor, border_type: str = 'reflect', align_corners: bo
     if not len(input.shape) == 4:
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
     kernel: torch.Tensor = _get_pyramid_gaussian_kernel()
-    b, c, height, width = input.shape
+    _, _, height, width = input.shape
     # blur image
     x_blur: torch.Tensor = filter2d(input, kernel, border_type)
 
+    # TODO: use kornia.geometry.resize/rescale
     # downsample.
     out: torch.Tensor = F.interpolate(
         x_blur, size=(height // 2, width // 2), mode='bilinear', align_corners=align_corners
@@ -287,7 +288,8 @@ def pyrup(input: torch.Tensor, border_type: str = 'reflect', align_corners: bool
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
     kernel: torch.Tensor = _get_pyramid_gaussian_kernel()
     # upsample tensor
-    b, c, height, width = input.shape
+    _, _, height, width = input.shape
+    # TODO: use kornia.geometry.resize/rescale
     x_up: torch.Tensor = F.interpolate(
         input, size=(height * 2, width * 2), mode='bilinear', align_corners=align_corners
     )
