@@ -123,7 +123,7 @@ class PatchSequential(ImageSequential):
         super().__init__(
             *args, same_on_batch=same_on_batch, return_transform=False, keepdim=keepdim, random_apply=_random_apply
         )
-        if padding not in ["same", "valid"]:
+        if padding not in ("same", "valid"):
             raise ValueError(f"`padding` must be either `same` or `valid`. Got {padding}.")
         self.grid_size = grid_size
         self.padding = padding
