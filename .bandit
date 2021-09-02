@@ -1,2 +1,0 @@
-assert_used:
-  skips: ['*_test.py', 'test_*.py']

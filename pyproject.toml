@@ -2,3 +2,10 @@
 line-length = 120
 skip-string-normalization = true
 skip-magic-trailing-comma = true
+
+
+[bandit]
+recursive = true
+skip = B311,B404,B602,B603,B607
+targets = .
+exclude = test
