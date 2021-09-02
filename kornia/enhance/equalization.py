@@ -182,7 +182,7 @@ def _map_luts(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
 
     # gh, gw -> 2x the number of tiles used to compute the histograms
     # th, tw -> /2 the sizes of the tiles used to compute the histograms
-    num_imgs, gh, gw, c, _, tw = interp_tiles.shape
+    num_imgs, gh, gw, c, _, _ = interp_tiles.shape
 
     # precompute idxs for non corner regions (doing it in cpu seems slightly faster)
     j_idxs = torch.empty(0, 4, dtype=torch.long)

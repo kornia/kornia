@@ -129,7 +129,7 @@ class ScaleSpaceDetector(nn.Module):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         dev: torch.device = img.device
         dtype: torch.dtype = img.dtype
-        sp, sigmas, pix_dists = self.scale_pyr(img)
+        sp, sigmas, _ = self.scale_pyr(img)
         all_responses = []
         all_lafs = []
         for oct_idx, octave in enumerate(sp):

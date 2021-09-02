@@ -215,19 +215,6 @@ def image_histogram2d(
     if not isinstance(return_pdf, bool):
         raise TypeError(f"Return_pdf type is not a bool. Got {type(return_pdf)}.")
 
-    device = image.device
-
-    if image.dim() == 4:
-        _, n_channels, _, _ = image.size()
-    elif image.dim() == 3:
-        batch_size = 1
-        n_channels, height, width = image.size()
-    elif image.dim() == 2:
-        height, width = image.size()
-        batch_size, n_channels = 1, 1
-    else:
-        raise ValueError(f"Input values must be a tensor of the shape " f"BxCxHxW, CxHxW or HxW. Got {image.shape}.")
-
     if bandwidth is None:
         bandwidth = (max - min) / n_bins
     if centers is None:
@@ -264,4 +251,4 @@ def image_histogram2d(
         hist = hist.squeeze()
     elif image.dim() == 3:
         hist = hist.squeeze(0)
-    return hist, torch.zeros_like(hist, dtype=hist.dtype, device=device)
+    return hist, torch.zeros_like(hist, dtype=hist.dtype, device=image.device)

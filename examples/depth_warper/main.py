@@ -70,9 +70,6 @@ def DepthWarperApp():
     parser.add_argument('--seed', type=int, default=666, metavar='S', help='random seed (default: 666)')
     args = parser.parse_args()
 
-    # define the device to use for inference
-    use_cuda = args.cuda and torch.cuda.is_available()
-
     torch.manual_seed(args.seed)
 
     # configure syntel SDK path

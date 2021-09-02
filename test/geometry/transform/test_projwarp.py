@@ -278,7 +278,7 @@ class TestPerspectiveTransform3D:
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_get_perspective_transform3d(self, batch_size, device, dtype):
         # generate input data
-        d_max, h_max, w_max = 16, 64, 32  # height, width
+        # d_max, h_max, w_max = 16, 64, 32  # height, width
         # d = torch.ceil(d_max * torch.rand(batch_size, device=device, dtype=dtype))
         # h = torch.ceil(h_max * torch.rand(batch_size, device=device, dtype=dtype))
         # w = torch.ceil(w_max * torch.rand(batch_size, device=device, dtype=dtype))
