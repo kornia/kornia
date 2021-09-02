@@ -39,9 +39,8 @@ def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.devic
 def _torch_inverse_cast(input: torch.Tensor) -> torch.Tensor:
     """Helper function to make torch.inverse work with other than fp32/64.
 
-    The function torch.inverse is only implemented for fp32/64 which makes
-    impossible to be used by fp16 or others. What this function does, is cast
-    input data type to fp32, apply torch.inverse, and cast back to the input dtype.
+    The function torch.inverse is only implemented for fp32/64 which makes impossible to be used by fp16 or others. What
+    this function does, is cast input data type to fp32, apply torch.inverse, and cast back to the input dtype.
     """
     if not isinstance(input, torch.Tensor):
         raise AssertionError(f"Input must be torch.Tensor. Got: {type(input)}.")
@@ -54,9 +53,8 @@ def _torch_inverse_cast(input: torch.Tensor) -> torch.Tensor:
 def _torch_histc_cast(input: torch.Tensor, bins: int, min: int, max: int) -> torch.Tensor:
     """Helper function to make torch.histc work with other than fp32/64.
 
-    The function torch.histc is only implemented for fp32/64 which makes
-    impossible to be used by fp16 or others. What this function does, is cast
-    input data type to fp32, apply torch.inverse, and cast back to the input dtype.
+    The function torch.histc is only implemented for fp32/64 which makes impossible to be used by fp16 or others. What
+    this function does, is cast input data type to fp32, apply torch.inverse, and cast back to the input dtype.
     """
     if not isinstance(input, torch.Tensor):
         raise AssertionError(f"Input must be torch.Tensor. Got: {type(input)}.")
@@ -90,9 +88,8 @@ def _torch_svd_cast(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, to
 def _torch_solve_cast(input: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """Helper function to make torch.solve work with other than fp32/64.
 
-    The function torch.solve is only implemented for fp32/64 which makes
-    impossible to be used by fp16 or others. What this function does, is cast
-    input data type to fp32, apply torch.svd, and cast back to the input dtype.
+    The function torch.solve is only implemented for fp32/64 which makes impossible to be used by fp16 or others. What
+    this function does, is cast input data type to fp32, apply torch.svd, and cast back to the input dtype.
     """
     if not isinstance(input, torch.Tensor):
         raise AssertionError(f"Input must be torch.Tensor. Got: {type(input)}.")

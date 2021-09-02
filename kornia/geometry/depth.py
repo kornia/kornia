@@ -258,11 +258,10 @@ class DepthWarper(nn.Module):
         return torch.cat([x, y], 1)
 
     def compute_subpixel_step(self) -> torch.Tensor:
-        """This computes the required inverse depth step to achieve sub pixel
-        accurate sampling of the depth cost volume, per camera.
+        """Compute the required inverse depth step to achieve sub pixel accurate sampling of the depth cost volume,
+        per camera.
 
-        Szeliski, Richard, and Daniel Scharstein.
-        "Symmetric sub-pixel stereo matching." European Conference on Computer
+        Szeliski, Richard, and Daniel Scharstein. "Symmetric sub-pixel stereo matching." European Conference on Computer
         Vision. Springer Berlin Heidelberg, 2002.
         """
         delta_d = 0.01
@@ -274,12 +273,11 @@ class DepthWarper(nn.Module):
         return torch.min(0.5 / dxdd)
 
     def warp_grid(self, depth_src: torch.Tensor) -> torch.Tensor:
-        """Computes a grid for warping a given the depth from the reference pinhole camera.
+        """Compute a grid for warping a given the depth from the reference pinhole camera.
 
-        The function `compute_projection_matrix` has to be called beforehand in
-        order to have precomputed the relative projection matrices encoding the
-        relative pose and the intrinsics between the reference and a non
-        reference camera.
+        The function `compute_projection_matrix` has to be called beforehand in order to have precomputed the relative
+        projection matrices encoding the relative pose and the intrinsics between the reference and a non reference
+        camera.
         """
         # TODO: add type and value checkings
         if self._dst_proj_src is None or self._pinhole_src is None:

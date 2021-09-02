@@ -237,8 +237,8 @@ class AugmentationSequential(ImageSequential):
     ) -> Union[torch.Tensor, List[torch.Tensor]]:
         """Reverse the transformation applied.
 
-        Number of input tensors must align with the number of``data_keys``. If ``data_keys``
-        is not set, use ``self.data_keys`` by default.
+        Number of input tensors must align with the number of``data_keys``. If ``data_keys`` is not set, use
+        ``self.data_keys`` by default.
         """
         if data_keys is None:
             data_keys = cast(List[Union[str, int, DataKey]], self.data_keys)

@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 
 def _get_nms_kernel2d(kx: int, ky: int) -> torch.Tensor:
-    """Utility function, which returns neigh2channels conv kernel"""
+    """Utility function, which returns neigh2channels conv kernel."""
     numel: int = ky * kx
     center: int = numel // 2
     weight = torch.eye(numel)
@@ -15,7 +15,7 @@ def _get_nms_kernel2d(kx: int, ky: int) -> torch.Tensor:
 
 
 def _get_nms_kernel3d(kd: int, ky: int, kx: int) -> torch.Tensor:
-    """Utility function, which returns neigh2channels conv kernel"""
+    """Utility function, which returns neigh2channels conv kernel."""
     numel: int = kd * ky * kx
     center: int = numel // 2
     weight = torch.eye(numel)

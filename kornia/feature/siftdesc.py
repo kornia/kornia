@@ -19,7 +19,7 @@ def get_sift_pooling_kernel(ksize: int = 25) -> torch.Tensor:
         the pooling kernel with shape :math:`(ksize, ksize)`.
     """
     ks_2: float = float(ksize) / 2.0
-    xc2: torch.Tensor = ks_2 - (torch.arange(ksize).float() + 0.5 - ks_2).abs()  # type: ignore # noqa
+    xc2: torch.Tensor = ks_2 - (torch.arange(ksize).float() + 0.5 - ks_2).abs()  # type: ignore
     kernel: torch.Tensor = torch.ger(xc2, xc2) / (ks_2 ** 2)
     return kernel
 
@@ -123,7 +123,7 @@ class SIFTDescriptor(nn.Module):
             padding=(self.pad, self.pad),
             bias=False,
         )
-        self.pk.weight.data.copy_(nw.reshape(1, 1, nw.size(0), nw.size(1)))  # type: ignore  # noqa
+        self.pk.weight.data.copy_(nw.reshape(1, 1, nw.size(0), nw.size(1)))  # type: ignore
         return
 
     def get_pooling_kernel(self) -> torch.Tensor:
@@ -164,7 +164,7 @@ class SIFTDescriptor(nn.Module):
 
         ang_bins = []
         for i in range(0, self.num_ang_bins):
-            out = self.pk((bo0_big == i).to(input.dtype) * wo0_big + (bo1_big == i).to(input.dtype) * wo1_big)  # noqa
+            out = self.pk((bo0_big == i).to(input.dtype) * wo0_big + (bo1_big == i).to(input.dtype) * wo1_big)
             ang_bins.append(out)
         ang_bins = torch.cat(ang_bins, dim=1)
         ang_bins = ang_bins.view(B, -1)

@@ -284,6 +284,7 @@ def crop_by_transform_mat(
 @torch.jit.ignore
 def validate_bboxes(boxes: torch.Tensor) -> bool:
     """Validate if a 2D bounding box usable or not.
+
     This function checks if the boxes are rectangular or not.
     Args:
         boxes (torch.Tensor): a tensor containing the coordinates of the
@@ -291,7 +292,6 @@ def validate_bboxes(boxes: torch.Tensor) -> bool:
           of Bx4x2, where each box is defined in the following (clockwise)
           order: top-left, top-right, bottom-right, bottom-left. The
           coordinates must be in the x, y order.
-
     """
     warnings.warn(
         "`kornia.geometry.transforms.crop.crop2d.validate_bboxes` is deprecated and will be removed > 0.6.0. "

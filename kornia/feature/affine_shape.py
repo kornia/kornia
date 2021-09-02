@@ -90,7 +90,7 @@ class LAFAffineShapeEstimator(nn.Module):
     Args:
         patch_size: the input image patch size.
         affine_shape_detector: Patch affine shape estimator, :class:`~kornia.feature.PatchAffineShapeEstimator`.
-    """  # noqa pylint: disable
+    """  # pylint: disable
 
     def __init__(self, patch_size: int = 32, affine_shape_detector: Optional[nn.Module] = None) -> None:
         super().__init__()
@@ -186,7 +186,7 @@ class LAFAffNetShapeEstimator(nn.Module):
 
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
-        "Utility function that normalizes the input by batch." ""
+        """Utility function that normalizes the input by batch."""
         sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
         # WARNING: we need to .detach() input, otherwise the gradients produced by
         # the patches extractor with F.grid_sample are very noisy, making the detector

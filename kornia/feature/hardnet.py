@@ -9,7 +9,7 @@ urls["hardnet++"] = "https://github.com/DagnyT/hardnet/raw/master/pretrained/pre
 urls[
     "liberty_aug"
 ] = "https://github.com/DagnyT/hardnet/raw/master/pretrained/train_liberty_with_aug/checkpoint_liberty_with_aug.pth"  # noqa pylint: disable
-urls["hardnet8v2"] = "http://cmp.felk.cvut.cz/~mishkdmy/hardnet8v2.pt"  # noqa pylint: disable
+urls["hardnet8v2"] = "http://cmp.felk.cvut.cz/~mishkdmy/hardnet8v2.pt"  # pylint: disable
 
 
 class HardNet(nn.Module):
@@ -69,7 +69,7 @@ class HardNet(nn.Module):
 
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
-        "Utility function that normalizes the input by batch." ""
+        """Utility function that normalizes the input by batch."""
         sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
         # WARNING: we need to .detach() input, otherwise the gradients produced by
         # the patches extractor with F.grid_sample are very noisy, making the detector
@@ -148,14 +148,12 @@ class HardNet8(nn.Module):
     def weights_init(m):
         if isinstance(m, nn.Conv2d):
             nn.init.orthogonal_(m.weight.data, gain=0.6)
-            try:
+            if m.bias is not None:
                 nn.init.constant_(m.bias.data, 0.01)
-            except:
-                pass
 
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-7) -> torch.Tensor:
-        "Utility function that normalizes the input by batch." ""
+        """Utility function that normalizes the input by batch."""
         sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
         # WARNING: we need to .detach() input, otherwise the gradients produced by
         # the patches extractor with F.grid_sample are very noisy, making the detector
