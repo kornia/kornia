@@ -25,7 +25,7 @@ def _get_geometric_only_param(
 ) -> List[ParamItem]:
     named_modules = module.get_forward_sequence(param)
 
-    res = []
+    res: List[ParamItem] = []
     for (_, mod), p in zip(named_modules, param):
         if isinstance(mod, (GeometricAugmentationBase2D,)):
             res.append(p)
@@ -162,7 +162,7 @@ class ApplyInverseImpl(ApplyInverseInterface):
         cls, input: torch.Tensor, label: Optional[torch.Tensor], module: nn.Module, param: ParamItem
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
 
-        mat = cls._get_transformation(input, module, param)
+        mat: Optional[torch.Tensor] = cls._get_transformation(input, module, param)
 
         if mat is not None:
             input = cls.apply_func(mat, input)
@@ -173,10 +173,10 @@ class ApplyInverseImpl(ApplyInverseInterface):
     def inverse(
         cls, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None
     ) -> torch.Tensor:
-        mat = cls._get_transformation(input, module, param)
+        mat: Optional[torch.Tensor] = cls._get_transformation(input, module, param)
 
         if mat is not None:
-            transform = cls._get_inverse_transformation(mat)
+            transform: torch.Tensor = cls._get_inverse_transformation(mat)
             input = cls.apply_func(torch.as_tensor(transform, device=input.device, dtype=input.dtype), input)
         return input
 
@@ -225,7 +225,7 @@ class ApplyInverse:
 
     @classmethod
     def _get_func_by_key(cls, dcate: Union[str, int, DataKey]):
-        if DataKey.get(dcate) in [DataKey.INPUT]:
+        if DataKey.get(dcate) == DataKey.INPUT:
             return InputApplyInverse
         if DataKey.get(dcate) in [DataKey.MASK]:
             return MaskApplyInverse
@@ -246,7 +246,7 @@ class ApplyInverse:
         param: ParamItem,
         dcate: Union[str, int, DataKey] = DataKey.INPUT,
     ) -> Tuple[TensorWithTransformMat, Optional[torch.Tensor]]:
-        func = cls._get_func_by_key(dcate)
+        func: Callable = cls._get_func_by_key(dcate)
 
         if isinstance(input, (tuple,)):
             return (func.apply_trans(input[0], label, module, param), *input[1:])
@@ -260,5 +260,5 @@ class ApplyInverse:
         param: Optional[ParamItem] = None,
         dcate: Union[str, int, DataKey] = DataKey.INPUT,
     ) -> torch.Tensor:
-        func = cls._get_func_by_key(dcate)
+        func: Callable = cls._get_func_by_key(dcate)
         return func.inverse(input, module, param)
