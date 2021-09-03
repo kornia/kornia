@@ -134,7 +134,7 @@ def DepthRegressionApp():
 
     # load the data
     root_dir = os.path.join(root_path, 'training')
-    img_ref, depth_ref, cam_ref = load_data(root_dir, args.sequence_name, args.frame_ref_id)
+    img_ref, _, cam_ref = load_data(root_dir, args.sequence_name, args.frame_ref_id)
     img_i, _, cam_i = load_data(root_dir, args.sequence_name, args.frame_i_id)
 
     # instantiate the depth warper from `kornia`
