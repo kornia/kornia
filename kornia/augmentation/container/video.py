@@ -180,8 +180,8 @@ class VideoSequential(ImageSequential):
     def inverse(self, input: torch.Tensor, params: Optional[List[ParamItem]] = None) -> torch.Tensor:
         """Inverse transformation.
 
-        Used to inverse a tensor according to the performed transformation by a forward pass,
-        or with respect to provided parameters.
+        Used to inverse a tensor according to the performed transformation by a forward pass, or with respect to
+        provided parameters.
         """
         if self.apply_inverse_func == InputApplyInverse or self.apply_inverse_func == MaskApplyInverse:
             frame_num: int = input.size(self._temporal_channel)

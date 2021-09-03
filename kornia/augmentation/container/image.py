@@ -14,7 +14,7 @@ from kornia.augmentation.base import (
 )
 
 from .base import ParamItem, SequentialBase
-from .utils import InputApplyInverse, ApplyInverseInterface
+from .utils import ApplyInverseInterface, InputApplyInverse
 
 __all__ = ["ImageSequential"]
 
@@ -263,8 +263,8 @@ class ImageSequential(SequentialBase):
     ) -> torch.Tensor:
         """Inverse transformation.
 
-        Used to inverse a tensor according to the performed transformation by a forward pass,
-        or with respect to provided parameters.
+        Used to inverse a tensor according to the performed transformation by a forward pass, or with respect to
+        provided parameters.
         """
         if params is None:
             if self._params is None:
