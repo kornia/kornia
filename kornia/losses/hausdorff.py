@@ -15,7 +15,7 @@ class HausdorffERLoss(nn.Module):
     """
 
     def __init__(self, alpha: float = 2.0, erosions: int = 10) -> None:
-        super(HausdorffERLoss, self).__init__()
+        super().__init__()
         self.alpha = alpha
         self.erosions = erosions
         self.prepare_kernels()
