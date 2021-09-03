@@ -375,7 +375,7 @@ def normalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
         - Output:  :math:`(B, N, 2, 3)`
     """
     raise_error_if_laf_is_not_valid(LAF)
-    n, _, h, w = images.size()
+    _, _, h, w = images.size()
     wf: float = float(w)
     hf: float = float(h)
     min_size = min(hf, wf)
@@ -398,7 +398,7 @@ def generate_patch_grid_from_normalized_LAF(img: torch.Tensor, LAF: torch.Tensor
     """
     raise_error_if_laf_is_not_valid(LAF)
     B, N, _, _ = LAF.size()
-    num, ch, h, w = img.size()
+    _, ch, h, w = img.size()
 
     # norm, then renorm is needed for allowing detection on one resolution
     # and extraction at arbitrary other
@@ -512,7 +512,7 @@ def laf_is_inside_image(laf: torch.Tensor, images: torch.Tensor, border: int = 0
         mask with shape :math:`(B, N)`.
     """
     raise_error_if_laf_is_not_valid(laf)
-    n, _, h, w = images.size()
+    _, _, h, w = images.size()
     pts: torch.Tensor = laf_to_boundary_points(laf, 12)
     good_lafs_mask: torch.Tensor = (
         (pts[..., 0] >= border) * (pts[..., 0] <= w - border) * (pts[..., 1] >= border) * (pts[..., 1] <= h - border)

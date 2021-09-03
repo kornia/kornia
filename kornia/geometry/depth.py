@@ -287,7 +287,7 @@ class DepthWarper(nn.Module):
             raise ValueError("Input depth_src has to be in the shape of " "Bx1xHxW. Got {}".format(depth_src.shape))
 
         # unpack depth attributes
-        batch_size, _, height, width = depth_src.shape
+        batch_size, _, _, _ = depth_src.shape
         device: torch.device = depth_src.device
         dtype: torch.dtype = depth_src.dtype
 
