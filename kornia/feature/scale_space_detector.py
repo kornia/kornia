@@ -29,7 +29,6 @@ def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor, num_le
 
     # Reshape for grid shape
     B, N, _ = max_coords.shape
-    L: int = sigmas.size(1)
     scale_coords = max_coords[:, :, 0].contiguous().view(-1, 1, 1, 1)
     # Replace the scale_x_y
     out = torch.cat(
@@ -130,12 +129,11 @@ class ScaleSpaceDetector(nn.Module):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         dev: torch.device = img.device
         dtype: torch.dtype = img.dtype
-        sp, sigmas, pix_dists = self.scale_pyr(img)
+        sp, sigmas, _ = self.scale_pyr(img)
         all_responses = []
         all_lafs = []
         for oct_idx, octave in enumerate(sp):
             sigmas_oct = sigmas[oct_idx]
-            pix_dists_oct = pix_dists[oct_idx]
 
             B, CH, L, H, W = octave.size()
             # Run response function

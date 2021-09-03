@@ -163,8 +163,6 @@ class TestAugmentationBase2D:
         augmentation = AugmentationBase2D(return_transform=True, p=1.0)
 
         with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform, patch.object(
-            augmentation, "generate_parameters", autospec=True
-        ) as generate_parameters, patch.object(
             augmentation, "compute_transformation", autospec=True
         ) as compute_transformation:
 

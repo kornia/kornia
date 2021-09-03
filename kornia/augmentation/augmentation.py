@@ -2047,7 +2047,6 @@ class RandomFisheye(GeometricAugmentationBase2D):
         return data
 
     def generate_parameters(self, shape: torch.Size) -> Dict[str, torch.Tensor]:
-        B, _, _, _ = shape  # batch_size
         center_x = self.dist(self.center_x[:1], self.center_x[1:]).rsample(shape[:1])
         center_y = self.dist(self.center_y[:1], self.center_y[1:]).rsample(shape[:1])
         gamma = self.dist(self.gamma[:1], self.gamma[1:]).rsample(shape[:1])
@@ -2180,7 +2179,7 @@ class RandomThinPlateSpline(GeometricAugmentationBase2D):
         self.dist = torch.distributions.Uniform(-scale, scale)
 
     def generate_parameters(self, shape: torch.Size) -> Dict[str, torch.Tensor]:
-        B, _, H, W = shape
+        B, _, _, _ = shape
         src = torch.tensor([[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]]).repeat(B, 1, 1)  # Bx5x2
         dst = src + self.dist.rsample(src.shape)
         return dict(src=src, dst=dst)

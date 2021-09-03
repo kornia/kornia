@@ -48,7 +48,7 @@ class TestIntegrationSoftArgmax2d:
         # NOTE: check where this comes from
         temperature = (self.height * self.width) ** (0.5)
 
-        for iter_id in range(self.num_iterations):
+        for _ in range(self.num_iterations):
             x = params
             sample = self.generate_sample(target).to(device)
             pred = soft_argmax2d(temperature * x)

@@ -87,7 +87,7 @@ def elastic_transform2d(
     disp = torch.cat([disp_x, disp_y], dim=1).permute(0, 2, 3, 1)
 
     # Warp image based on displacement matrix
-    b, c, h, w = image.shape
+    _, _, h, w = image.shape
     grid = kornia.utils.create_meshgrid(h, w, device=image.device).to(image.dtype)
     warped = F.grid_sample(image, (grid + disp).clamp(-1, 1), align_corners=align_corners, mode=mode)
 

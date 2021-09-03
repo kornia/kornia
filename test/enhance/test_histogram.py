@@ -45,7 +45,7 @@ class TestImageHistogram2d:
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_jit(self, device, dtype, kernel):
         input = torch.linspace(0, 255, 10, device=device, dtype=dtype)
-        input_x, input_y = torch.meshgrid(input, input)
+        input_x, _ = torch.meshgrid(input, input)
         inputs = (input_x, 0.0, 255.0, 10, None, None, False, kernel)
 
         op = TestImageHistogram2d.fcn
@@ -56,19 +56,19 @@ class TestImageHistogram2d:
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_uniform_hist(self, device, dtype, kernel):
         input = torch.linspace(0, 255, 10, device=device, dtype=dtype)
-        input_x, input_y = torch.meshgrid(input, input)
+        input_x, _ = torch.meshgrid(input, input)
         if kernel == "gaussian":
             bandwidth = 2 * 0.4 ** 2
         else:
             bandwidth = None
-        hist, pdf = TestImageHistogram2d.fcn(input_x, 0.0, 255.0, 10, bandwidth=bandwidth, centers=input, kernel=kernel)
+        hist, _ = TestImageHistogram2d.fcn(input_x, 0.0, 255.0, 10, bandwidth=bandwidth, centers=input, kernel=kernel)
         ans = 10 * torch.ones_like(hist)
         assert_close(ans, hist)
 
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_uniform_dist(self, device, dtype, kernel):
         input = torch.linspace(0, 255, 10, device=device, dtype=dtype)
-        input_x, input_y = torch.meshgrid(input, input)
+        input_x, _ = torch.meshgrid(input, input)
         if kernel == "gaussian":
             bandwidth = 2 * 0.4 ** 2
         else:

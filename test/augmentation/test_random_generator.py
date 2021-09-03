@@ -468,7 +468,6 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
-        degrees = torch.tensor([10, 20], device=device, dtype=dtype)
         res = random_crop_generator(
             batch_size=2,
             input_size=(100, 100),
@@ -494,7 +493,6 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
 
     def test_same_on_batch(self, device, dtype):
         torch.manual_seed(42)
-        degrees = torch.tensor([10, 20], device=device, dtype=dtype)
         res = random_crop_generator(
             batch_size=2,
             input_size=(100, 100),
@@ -589,7 +587,6 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
 
     def test_same_on_batch(self, device, dtype):
         torch.manual_seed(42)
-        degrees = torch.tensor([10, 20])
         res = random_crop_size_generator(
             batch_size=8,
             size=(100, 100),

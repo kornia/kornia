@@ -294,7 +294,7 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
     )
 
     # solve the system Ax = b
-    X, LU = _torch_solve_cast(b, A)
+    X, _ = _torch_solve_cast(b, A)
 
     # create variable to return
     batch_size = src.shape[0]

@@ -10,7 +10,7 @@ __all__ = ["depth_warp", "DepthWarper"]
 
 
 class DepthWarper(_DepthWarper):
-    __doc__ = _DepthWarper.__doc__
+    __doc__ = _DepthWarper.__doc__  # skipcq: PYL-W0612
 
     def __init__(
         self,

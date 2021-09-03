@@ -25,7 +25,7 @@ def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:
     if focal <= 0:
         raise AssertionError(focal)
 
-    B, _, H, W = input.shape
+    _, _, H, W = input.shape
 
     intrinsics = numeric.eye_like(3, input)
     intrinsics[..., 0, 0] *= focal
@@ -174,7 +174,7 @@ def _nullspace(A):
 
     Return the smallest singular value and the corresponding vector.
     """
-    u, s, vh = torch.svd(A)
+    _, s, vh = torch.svd(A)
     return s[..., -1], vh[..., -1]
 
 

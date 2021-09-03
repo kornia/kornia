@@ -343,7 +343,7 @@ def denormalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
         - Output:  :math:`(B, N, 2, 3)`
     """
     raise_error_if_laf_is_not_valid(LAF)
-    n, ch, h, w = images.size()
+    _, _, h, w = images.size()
     wf = float(w)
     hf = float(h)
     min_size = min(hf, wf)
@@ -375,7 +375,7 @@ def normalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
         - Output:  :math:`(B, N, 2, 3)`
     """
     raise_error_if_laf_is_not_valid(LAF)
-    n, ch, h, w = images.size()
+    n, _, h, w = images.size()
     wf: float = float(w)
     hf: float = float(h)
     min_size = min(hf, wf)
@@ -431,7 +431,7 @@ def extract_patches_simple(
         nlaf: torch.Tensor = normalize_laf(laf, img)
     else:
         nlaf = laf
-    num, ch, h, w = img.size()
+    _, ch, h, w = img.size()
     B, N, _, _ = laf.size()
     out = []
     # for loop temporarily, to be refactored
@@ -470,7 +470,7 @@ def extract_patches_from_pyramid(
     else:
         nlaf = laf
     B, N, _, _ = laf.size()
-    num, ch, h, w = img.size()
+    _, ch, h, w = img.size()
     scale = 2.0 * get_laf_scale(denormalize_laf(nlaf, img)) / float(PS)
     half: float = 0.5
     pyr_idx = (scale.log2() + half).relu().long()
@@ -478,7 +478,7 @@ def extract_patches_from_pyramid(
     cur_pyr_level = 0
     out = torch.zeros(B, N, ch, PS, PS).to(nlaf.dtype).to(nlaf.device)
     while min(cur_img.size(2), cur_img.size(3)) >= PS:
-        num, ch, h, w = cur_img.size()
+        _, ch, h, w = cur_img.size()
         # for loop temporarily, to be refactored
         for i in range(B):
             scale_mask = (pyr_idx[i] == cur_pyr_level).squeeze()
@@ -512,7 +512,7 @@ def laf_is_inside_image(laf: torch.Tensor, images: torch.Tensor, border: int = 0
         mask with shape :math:`(B, N)`.
     """
     raise_error_if_laf_is_not_valid(laf)
-    n, ch, h, w = images.size()
+    n, _, h, w = images.size()
     pts: torch.Tensor = laf_to_boundary_points(laf, 12)
     good_lafs_mask: torch.Tensor = (
         (pts[..., 0] >= border) * (pts[..., 0] <= w - border) * (pts[..., 1] >= border) * (pts[..., 1] <= h - border)

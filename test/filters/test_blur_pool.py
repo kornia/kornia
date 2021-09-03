@@ -26,7 +26,6 @@ class TestMaxBlurPool:
 
         kernel_size = 3
         actual = kornia.filters.max_blur_pool2d(inp, kernel_size)
-        expected = actual
         assert_close(actual, actual)
 
     def test_gradcheck(self, device, dtype):
@@ -77,7 +76,6 @@ class TestBlurPool:
 
         kernel_size = 3
         actual = kornia.filters.blur_pool2d(inp, kernel_size)
-        expected = actual
         assert_close(actual, actual)
 
     def test_gradcheck(self, device, dtype):

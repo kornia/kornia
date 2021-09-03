@@ -176,7 +176,6 @@ class TestFilter2D:
         kernel = torch.ones(1, 2, 2, device=device, dtype=dtype)
 
         actual = kornia.filter2d(inp, kernel)
-        expected = actual
         assert_close(actual, actual)
 
     def test_gradcheck(self, device):

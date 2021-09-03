@@ -48,7 +48,7 @@ def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_poin
         raise ValueError(f"Input camera_matrix must have a shape (B, 3, 3). " f"Got: {camera_matrix.shape}.")
 
     # create base coordinates grid
-    batch_size, _, height, width = depth.shape
+    _, _, height, width = depth.shape
     points_2d: torch.Tensor = create_meshgrid(height, width, normalized_coordinates=False)  # 1xHxWx2
     points_2d = points_2d.to(depth.device).to(depth.dtype)
 

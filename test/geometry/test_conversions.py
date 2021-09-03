@@ -971,7 +971,6 @@ def test_deg2rad(batch_shape, device, dtype, atol, rtol):
 
     assert_close(x_deg, x_rad_to_deg, atol=atol, rtol=rtol)
 
-    eps = torch.finfo(dtype).eps
     assert gradcheck(kornia.deg2rad, (tensor_to_gradcheck_var(x_deg),), raise_exception=True)
 
 
