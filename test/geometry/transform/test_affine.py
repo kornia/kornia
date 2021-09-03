@@ -682,7 +682,7 @@ class TestAffine2d:
 
         from torch import Tensor as T
 
-        batch_size, ch, height, width = 1, 1, 96, 96
+        batch_size, _, height, width = 1, 1, 96, 96
         angle, translations = 6.971339922894188, (0.0, -4.0)
         scale, shear = [0.7785685905190581, 0.7785685905190581], [11.8235607082617, 7.06797949691645]
         matrix_expected = T([[1.27536969, 4.26828945e-01, -3.2876e01], [2.18297196e-03, 1.29424165e00, -1.1717e01]])

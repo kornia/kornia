@@ -22,7 +22,6 @@ class TestColorJitterBackward:
     @pytest.mark.parametrize("return_transform", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_param(self, brightness, contrast, saturation, hue, return_transform, same_on_batch, device, dtype):
-        count = 0
 
         _brightness = (
             brightness

@@ -39,8 +39,8 @@ class TestVideoSequential:
     def test_exception(self, shape, data_format, device, dtype):
         aug_list = K.VideoSequential(K.ColorJitter(0.1, 0.1, 0.1, 0.1), data_format=data_format, same_on_frame=True)
         with pytest.raises(AssertionError):
-            input = torch.randn(*shape, device=device, dtype=dtype)
-            output = aug_list(input)
+            img = torch.randn(*shape, device=device, dtype=dtype)
+            aug_list(img)
 
     @pytest.mark.parametrize(
         'augmentation',
@@ -193,7 +193,7 @@ class TestSequential:
         )
         out = aug(inp)
         if aug.return_label:
-            out, label = out
+            out, _ = out
         if isinstance(out, (tuple,)):
             assert out[0].shape == inp.shape
         else:
@@ -227,7 +227,7 @@ class TestAugmentationSequential:
         )
         out = aug(inp)
         if aug.return_label:
-            out, label = out
+            out, _ = out
         if return_transform and isinstance(out, (tuple, list)):
             out = out[0]
         assert out.shape[-3:] == inp.shape[-3:]
@@ -437,7 +437,7 @@ class TestPatchSequential:
         input = torch.randn(*shape, device=device, dtype=dtype)
         out = seq(input)
         if seq.return_label:
-            out, label = out
+            out, _ = out
         assert out.shape[-3:] == input.shape[-3:]
 
         reproducibility_test(input, seq)

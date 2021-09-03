@@ -315,7 +315,7 @@ class TestMotionFromEssentialChooseSolution:
         R, t = epi.relative_camera_motion(scene['R1'], scene['t1'], scene['R2'], scene['t2'])
         t = torch.nn.functional.normalize(t, dim=1)
 
-        R_hat, t_hat, X_hat = epi.motion_from_essential_choose_solution(
+        R_hat, t_hat, _ = epi.motion_from_essential_choose_solution(
             E_mat, scene['K1'], scene['K2'], scene['x1'], scene['x2']
         )
 

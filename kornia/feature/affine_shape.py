@@ -48,7 +48,7 @@ class PatchAffineShapeEstimator(nn.Module):
             raise TypeError(f"Input type is not a torch.Tensor. Got {type(patch)}")
         if not len(patch.shape) == 4:
             raise ValueError(f"Invalid input shape, we expect Bx1xHxW. Got: {patch.shape}")
-        B, CH, W, H = patch.size()
+        _, CH, W, H = patch.size()
         if (W != self.patch_size) or (H != self.patch_size) or (CH != 1):
             raise TypeError(
                 "input shape should be must be [Bx1x{}x{}]. "

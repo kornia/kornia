@@ -368,7 +368,6 @@ def linear_transform(
     new_order: List[int] = perm.tolist()
     inv_order: List[int] = perm_inv.tolist()
 
-    N = inp_size[dim]
     feature_sizes = torch.tensor(inp_size[0:dim] + inp_size[dim + 1 : :])
     num_features: int = int(torch.prod(feature_sizes).item())
 

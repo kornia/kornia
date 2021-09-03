@@ -83,7 +83,6 @@ def HomographyRegressionApp():
     # load the data
     img_src, _ = load_image(os.path.join(args.input_dir, 'img1.ppm'))
     img_dst, _ = load_image(os.path.join(args.input_dir, 'img2.ppm'))
-    dst_homo_src_gt = load_homography(os.path.join(args.input_dir, 'H1to2p'))
 
     # instantiate the homography warper from `kornia`
     height, width = img_src.shape[-2:]

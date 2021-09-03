@@ -216,14 +216,12 @@ class CommonTests(BaseTester):
 
     def _test_random_p_0_implementation(self, params):
         augmentation = self._create_augmentation_from_params(**params, p=0.0, return_transform=False)
-        expected_output_shape = torch.Size((2, 3, 4, 5))
         test_input = torch.rand((2, 3, 4, 5), device=self.device, dtype=self.dtype)
         output = augmentation(test_input)
         assert (output == test_input).all()
 
     def _test_random_p_0_return_transform_implementation(self, params):
         augmentation = self._create_augmentation_from_params(**params, p=0.0, return_transform=True)
-        expected_output_shape = torch.Size((2, 3, 4, 5))
         expected_transformation_shape = torch.Size((2, 3, 3))
         test_input = torch.rand((2, 3, 4, 5), device=self.device, dtype=self.dtype)
         output, transformation = augmentation(test_input)

@@ -37,7 +37,7 @@ class TestWarping:
         learning_rate = self.lr
         optimizer = optim.Adam(dst_homo_src.parameters(), lr=learning_rate)
 
-        for iter_idx in range(self.num_iterations):
+        for _ in range(self.num_iterations):
             # warp the reference image to the destiny with current homography
             img_src_to_dst = warper(img_src_t, dst_homo_src())
 

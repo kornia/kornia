@@ -70,10 +70,6 @@ def DepthWarperApp():
     parser.add_argument('--seed', type=int, default=666, metavar='S', help='random seed (default: 666)')
     args = parser.parse_args()
 
-    # define the device to use for inference
-    use_cuda = args.cuda and torch.cuda.is_available()
-    device = torch.device('cuda' if use_cuda else 'cpu')
-
     torch.manual_seed(args.seed)
 
     # configure syntel SDK path
@@ -83,7 +79,7 @@ def DepthWarperApp():
     # load the data
     root_dir = os.path.join(root_path, 'training')
     img_ref, depth_ref, cam_ref = load_data(root_dir, args.sequence_name, args.frame_ref_id)
-    img_i, depth_i, cam_i = load_data(root_dir, args.sequence_name, args.frame_i_id)
+    img_i, _, cam_i = load_data(root_dir, args.sequence_name, args.frame_i_id)
 
     # instantiate the homography warper from `kornia`
     warper = dgm.DepthWarper(cam_i)

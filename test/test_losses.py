@@ -277,7 +277,7 @@ class TestDepthSmoothnessLoss:
         depth = torch.rand(data_shape, device=device, dtype=dtype)
 
         criterion = kornia.losses.InverseDepthSmoothnessLoss()
-        loss = criterion(depth, image)
+        assert criterion(depth, image) is not None
 
     def test_jit(self, device, dtype):
         image = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
@@ -562,13 +562,13 @@ class TestTotalVariation:
     # Expect ValueError to be raised when tensors of ndim != 3 or 4 are passed
     @pytest.mark.parametrize('input', [torch.rand(2, 3, 4, 5, 3), torch.rand(3, 1)])
     def test_tv_on_invalid_dims(self, device, dtype, input):
-        with pytest.raises(ValueError) as ex_info:
+        with pytest.raises(ValueError):
             kornia.losses.total_variation(input.to(device, dtype))
 
     # Expect TypeError to be raised when non-torch tensors are passed
     @pytest.mark.parametrize('input', [1, [1, 2]])
     def test_tv_on_invalid_types(self, device, dtype, input):
-        with pytest.raises(TypeError) as ex_info:
+        with pytest.raises(TypeError):
             kornia.losses.total_variation(input)
 
     def test_jit(self, device, dtype):
@@ -607,14 +607,14 @@ class TestPSNRLoss:
         # Expecting an exception
         # since we pass integers instead of torch tensors
         criterion = kornia.losses.PSNRLoss(1.0).to(device, dtype)
-        with pytest.raises(Exception) as e:
+        with pytest.raises(Exception):
             criterion(1, 2)
 
     def test_shape(self, device, dtype):
         # Expecting an exception
         # since we pass tensors of different shapes
         criterion = kornia.losses.PSNRLoss(1.0).to(device, dtype)
-        with pytest.raises(Exception) as e:
+        with pytest.raises(Exception):
             criterion(torch.rand(2, 3, 3, 2), torch.rand(2, 3, 3))
 
     def test_metric(self, device, dtype):
