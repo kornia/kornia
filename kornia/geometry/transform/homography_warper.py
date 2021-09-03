@@ -3,14 +3,18 @@ from typing import Optional, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.optim as optim
 
 from kornia.geometry.linalg import transform_points
+from kornia.geometry.transform.pyramid import build_pyramid
 from kornia.testing import check_is_tensor
 from kornia.utils import create_meshgrid, create_meshgrid3d
 from kornia.utils.helpers import _torch_inverse_cast
 
 __all__ = [
     "HomographyWarper",
+    "ImageRegistrator",
+    "Homography",
     "homography_warp",
     "homography_warp3d",
     "warp_grid",
@@ -164,6 +168,104 @@ def homography_warp3d(
     return F.grid_sample(patch_src, warped_grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
 
 
+class Homography(nn.Module):
+    def __init__(self):
+        '''Module to be used together with ImageRegistrator module
+        for the optimization-based image registration'''
+        super(Homography, self).__init__()
+        self.model = nn.Parameter(torch.Tensor(3, 3))
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        torch.nn.init.eye_(self.model)
+
+    def forward(self):
+        return torch.unsqueeze(self.model, dim=0)  # 1x3x3
+    
+    def get_inverse_model(self):
+        return torch.unsqueeze(torch.inverse(self.model), dim=0)
+
+
+class ImageRegistrator(nn.Module):
+    ''''Module, which performs optimization-based image registration,
+        similar to https://github.com/kornia/kornia-examples/blob/master/homography.ipynb'''
+    def __init__(self,
+                 model_type: str = 'H',
+                 optimizer: torch.optim.Optimizer = optim.Adam,
+                 loss_fn = F.l1_loss,
+                 pyr_levels = 5, 
+                 lr: float = 1e-3,
+                 n_iter: int = 100):
+        super(ImageRegistrator, self).__init__()
+        self.model_type = model_type
+        if model_type == "H":
+            self.warper = HomographyWarper
+            self.model = Homography()
+        else:
+            raise ValueError(f"{model_type} is not supported. Try 'H'")
+        self.pyr_levels = pyr_levels
+        self.optimizer = optimizer
+        self.lr = lr
+        self.loss_fn = loss_fn
+        self.n_iter = n_iter
+
+    def get_single_level_loss(self,
+                              img_src: torch.Tensor,
+                              img_dst: torch.Tensor,
+                              transform_model: torch.nn.Module) -> torch.Tensor:
+        # ToDo: Make possible registration of images of different shape
+        assert len(img_src.shape) == len(img_dst.shape), (img_src.shape, img_dst.shape)
+        _height, _width = img_src.shape[-2:]
+        warper = self.warper(_height, _width)
+        img_src_to_dst = warper(img_src, transform_model)
+        # compute and mask loss
+        loss = self.loss_fn(img_src_to_dst, img_dst, reduction='none') # 1x3xHxW
+        ones = warper(torch.ones_like(img_src), transform_model)
+        loss = loss.masked_select((ones > 0.9)).mean()
+        return loss
+    
+    def reset_model(self):
+        self.model.reset_parameters()
+        
+    def register(self,
+                 src_img: torch.Tensor,
+                 dst_img: torch.Tensor,
+                 verbose: bool = False,
+                 device=torch.device('cpu')) -> torch.Tensor:
+        # compute the gaussian pyramids
+        self.to(device)
+        self.reset_model()
+        # ToDo: better parameter passing to optimizer
+        opt = self.optimizer(self.model.parameters(), lr=self.lr)
+        img_src_pyr = build_pyramid(src_img.to(device), self.pyr_levels)
+        img_dst_pyr = build_pyramid(dst_img.to(device), self.pyr_levels)
+        assert len(img_dst_pyr) == len(img_src_pyr)
+        for img_src_level, img_dst_level  in zip(img_src_pyr, img_dst_pyr):
+            for i in range(self.n_iter):
+                # compute gradient and update optimizer parameters
+                opt.zero_grad()
+                loss = self.get_single_level_loss(img_src_level,
+                                                  img_dst_level,
+                                                  self.model())
+                loss.backward()
+                if verbose and (i % 10  == 0):
+                    print (f"Loss = {loss.item():.4f}, iter={i}")
+                opt.step()
+        return self.model
+    
+    def warp_src_into_dst(self, src_img, dst_img):
+        _height, _width = src_img.shape[-2:]
+        warper = self.warper(_height, _width)
+        img_src_to_dst = warper(src_img, self.model())
+        return img_src_to_dst
+    
+    def warp_dst_inro_src(self, src_img, dst_img):
+        _height, _width = dst_img.shape[-2:]
+        warper = self.warper(_height, _width)
+        img_dst_to_src = warper(dst_img, self.model.get_inverse_model())
+        return img_dst_to_src
+        
+            
 # layer api
 class HomographyWarper(nn.Module):
     r"""Warp tensors by homographies.
