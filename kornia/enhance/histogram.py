@@ -251,4 +251,4 @@ def image_histogram2d(
         hist = hist.squeeze()
     elif image.dim() == 3:
         hist = hist.squeeze(0)
-    return hist, torch.zeros_like(hist, dtype=hist.dtype, device=image.device)
+    return hist, torch.zeros_like(hist, dtype=hist.dtype, device=hist.device)
