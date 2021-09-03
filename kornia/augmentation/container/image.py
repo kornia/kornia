@@ -176,7 +176,7 @@ class ImageSequential(SequentialBase):
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
         named_modules = self.get_forward_sequence()
 
-        params = []
+        params: List[ParamItem]= []
         mod_param: Union[dict, list]
         for name, module in named_modules:
             if isinstance(module, (_AugmentationBase, MixAugmentationBase)):
@@ -211,7 +211,7 @@ class ImageSequential(SequentialBase):
             raise NotImplementedError("requires params to be provided.")
         named_modules = self.get_forward_sequence(params)
 
-        res_mat = kornia.eye_like(3, input)
+        res_mat: torch.Tensor = kornia.eye_like(3, input)
         for (_, module), param in zip(named_modules, params):
             if isinstance(module, (_AugmentationBase, MixAugmentationBase)):
                 mat = module.compute_transformation(input, param.data)  # type: ignore

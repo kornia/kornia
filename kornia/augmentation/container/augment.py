@@ -82,7 +82,7 @@ class AugmentationSequential(ImageSequential):
         [torch.Size([2, 3, 5, 6]), torch.Size([2, 3, 5, 6]), torch.Size([2, 4, 2]), torch.Size([2, 1, 2])]
 
     Examples:
-        This example demonstrated the integration of VideoSequential and AugmentationSequential.
+        This example demonstrates the integration of VideoSequential and AugmentationSequential.
         >>> import kornia
         >>> input = torch.randn(2, 3, 5, 6)[None]
         >>> bbox = torch.tensor([[
@@ -129,7 +129,7 @@ class AugmentationSequential(ImageSequential):
         if self.data_keys[0] != DataKey.INPUT:
             raise NotImplementedError(f"The first input must be {DataKey.INPUT}.")
 
-        self.contains_video_sequential = False
+        self.contains_video_sequential: bool = False
         for arg in args:
             if isinstance(arg, PatchSequential) and not arg.is_intensity_only():
                 warnings.warn("Geometric transformation detected in PatchSeqeuntial, which would break bbox, mask.")
@@ -176,7 +176,7 @@ class AugmentationSequential(ImageSequential):
                 elif isinstance(module, ImageSequential) and module.is_intensity_only() and dcate in DataKey:
                     pass  # Do nothing
                 elif isinstance(module, VideoSequential) and dcate not in [DataKey.INPUT, DataKey.MASK]:
-                    batch_size = input.size(0)
+                    batch_size: int = input.size(0)
                     input = input.view(-1, *input.shape[2:])
                     input = ApplyInverse.inverse_by_key(input, module, param, dcate)
                     input = input.view(batch_size, -1, *input.shape[1:])
@@ -273,7 +273,7 @@ class AugmentationSequential(ImageSequential):
                 elif isinstance(module, ImageSequential) and module.is_intensity_only() and dcate in DataKey:
                     pass  # Do nothing
                 elif isinstance(module, VideoSequential) and dcate not in [DataKey.INPUT, DataKey.MASK]:
-                    batch_size = input.size(0)
+                    batch_size: int = input.size(0)
                     input = input.view(-1, *input.shape[2:])
                     input, label = ApplyInverse.apply_by_key(input, label, module, param, dcate)
                     input = input.view(batch_size, -1, *input.shape[1:])
