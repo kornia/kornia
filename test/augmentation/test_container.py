@@ -95,7 +95,7 @@ class TestVideoSequential:
             input = torch.randn(2, 3, 1, 5, 6, device=device, dtype=dtype).repeat(1, 1, 4, 1, 1)
             output = aug_list(input)
             if aug_list.return_label:
-                output, label = output
+                output, _ = output
             assert (output[:, :, 0] == output[:, :, 1]).all()
             assert (output[:, :, 1] == output[:, :, 2]).all()
             assert (output[:, :, 2] == output[:, :, 3]).all()
@@ -103,7 +103,7 @@ class TestVideoSequential:
             input = torch.randn(2, 1, 3, 5, 6, device=device, dtype=dtype).repeat(1, 4, 1, 1, 1)
             output = aug_list(input)
             if aug_list.return_label:
-                output, label = output
+                output, _ = output
             assert (output[:, 0] == output[:, 1]).all()
             assert (output[:, 1] == output[:, 2]).all()
             assert (output[:, 2] == output[:, 3]).all()

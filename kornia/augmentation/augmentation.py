@@ -2059,7 +2059,7 @@ class RandomFisheye(GeometricAugmentationBase2D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         # create the initial sampling fields
-        B, C, H, W = input.shape
+        B, _, H, W = input.shape
         grid = create_meshgrid(H, W, normalized_coordinates=True)
         field_x = grid[..., 0].to(input)  # 1xHxW
         field_y = grid[..., 1].to(input)  # 1xHxW
