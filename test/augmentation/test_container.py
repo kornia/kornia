@@ -150,6 +150,11 @@ class TestVideoSequential:
 
 
 class TestSequential:
+    def test_exception(self, device, dtype):
+        inp = torch.randn(1, 3, 30, 30, device=device, dtype=dtype)
+        with pytest.raises(Exception):  # AssertError and NotImplementedError
+            K.ImageSequential(K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0)).inverse(inp)
+
     @pytest.mark.parametrize('same_on_batch', [True, False, None])
     @pytest.mark.parametrize("return_transform", [True, False, None])
     @pytest.mark.parametrize("keepdim", [True, False, None])
@@ -186,6 +191,12 @@ class TestSequential:
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
             kornia.filters.MedianBlur((3, 3)),
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0, return_transform=True),
+            K.ImageSequential(
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0)
+            ),
+            K.ImageSequential(
+                K.RandomAffine(360, p=1.0)
+            ),
             K.RandomAffine(360, p=1.0),
             K.RandomMixUp(p=1.0),
             return_transform=return_transform,
@@ -198,6 +209,7 @@ class TestSequential:
             assert out[0].shape == inp.shape
         else:
             assert out.shape == inp.shape
+        aug.inverse(inp)
         reproducibility_test(inp, aug)
 
 

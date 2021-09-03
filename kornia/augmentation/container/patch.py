@@ -362,6 +362,11 @@ class PatchSequential(ImageSequential):
         input: torch.Tensor,
         params: List[ParamItem],
     ) -> torch.Tensor:
+        """Inverse transformation.
+
+        Used to inverse a tensor according to the performed transformation by a forward pass,
+        or with respect to provided parameters.
+        """
         if self.is_intensity_only():
             return input
 
