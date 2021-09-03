@@ -232,6 +232,11 @@ class ImageRegistrator(nn.Module):
                  dst_img: torch.Tensor,
                  verbose: bool = False,
                  device=torch.device('cpu')) -> torch.Tensor:
+        '''Example:
+        >>>> registrator = ImageRegistration('H', lr=1e-3, n_iter=50, pyr_levels=5, 
+                               loss_fn = F.l1_loss)
+        >>>> homo = registrator.register(img_src, img_dst, True)
+        '''
         # compute the gaussian pyramids
         self.to(device)
         self.reset_model()
