@@ -170,9 +170,9 @@ def homography_warp3d(
 
 class Homography(nn.Module):
     def __init__(self):
-        '''Module to be used together with ImageRegistrator module
-        for the optimization-based image registration'''
-        super(Homography, self).__init__()
+        """Module to be used together with ImageRegistrator module for the optimization-based image
+        registration."""
+        super().__init__()
         self.model = nn.Parameter(torch.Tensor(3, 3))
         self.reset_parameters()
 
@@ -181,22 +181,22 @@ class Homography(nn.Module):
 
     def forward(self):
         return torch.unsqueeze(self.model, dim=0)  # 1x3x3
-    
+
     def get_inverse_model(self):
         return torch.unsqueeze(torch.inverse(self.model), dim=0)
 
 
 class ImageRegistrator(nn.Module):
-    ''''Module, which performs optimization-based image registration,
-        similar to https://github.com/kornia/kornia-examples/blob/master/homography.ipynb'''
+    """'Module, which performs optimization-based image registration, similar to https://github.com/kornia/kornia-
+    examples/blob/master/homography.ipynb."""
     def __init__(self,
                  model_type: str = 'H',
                  optimizer: torch.optim.Optimizer = optim.Adam,
                  loss_fn = F.l1_loss,
-                 pyr_levels = 5, 
+                 pyr_levels = 5,
                  lr: float = 1e-3,
                  n_iter: int = 100):
-        super(ImageRegistrator, self).__init__()
+        super().__init__()
         self.model_type = model_type
         if model_type == "H":
             self.warper = HomographyWarper
@@ -221,19 +221,19 @@ class ImageRegistrator(nn.Module):
         # compute and mask loss
         loss = self.loss_fn(img_src_to_dst, img_dst, reduction='none') # 1x3xHxW
         ones = warper(torch.ones_like(img_src), transform_model)
-        loss = loss.masked_select((ones > 0.9)).mean()
+        loss = loss.masked_select(ones > 0.9).mean()
         return loss
-    
+
     def reset_model(self):
         self.model.reset_parameters()
-        
+
     def register(self,
                  src_img: torch.Tensor,
                  dst_img: torch.Tensor,
                  verbose: bool = False,
                  device=torch.device('cpu')) -> torch.Tensor:
         '''Example:
-        >>>> registrator = ImageRegistration('H', lr=1e-3, n_iter=50, pyr_levels=5, 
+        >>>> registrator = ImageRegistration('H', lr=1e-3, n_iter=50, pyr_levels=5,
                                loss_fn = F.l1_loss)
         >>>> homo = registrator.register(img_src, img_dst, True)
         '''
@@ -257,20 +257,20 @@ class ImageRegistrator(nn.Module):
                     print (f"Loss = {loss.item():.4f}, iter={i}")
                 opt.step()
         return self.model
-    
+
     def warp_src_into_dst(self, src_img, dst_img):
         _height, _width = src_img.shape[-2:]
         warper = self.warper(_height, _width)
         img_src_to_dst = warper(src_img, self.model())
         return img_src_to_dst
-    
+
     def warp_dst_inro_src(self, src_img, dst_img):
         _height, _width = dst_img.shape[-2:]
         warper = self.warper(_height, _width)
         img_dst_to_src = warper(dst_img, self.model.get_inverse_model())
         return img_dst_to_src
-        
-            
+
+
 # layer api
 class HomographyWarper(nn.Module):
     r"""Warp tensors by homographies.
