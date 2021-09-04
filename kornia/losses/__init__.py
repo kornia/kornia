@@ -6,3 +6,4 @@ from .psnr import psnr, psnr_loss, PSNRLoss
 from .ssim import SSIM, ssim, ssim_loss, SSIMLoss
 from .total_variation import total_variation, TotalVariation
 from .tversky import tversky_loss, TverskyLoss
+from .hausdorff import HausdorffERLoss, HausdorffERLoss3D
