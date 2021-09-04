@@ -284,8 +284,8 @@ class ImageSequential(SequentialBase):
                 pass  # Do nothing
             elif isinstance(module, ImageSequential) and module.is_intensity_only():
                 pass  # Do nothing
-            elif type(module) == ImageSequential:
-                input = module.inverse(input, param)
+            elif isinstance(module, ImageSequential):
+                input = module.inverse(input, param.data)
             elif isinstance(module, (GeometricAugmentationBase2D,)):
                 input = self.apply_inverse_func.inverse(input, module, param)
             else:
