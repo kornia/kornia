@@ -186,6 +186,30 @@ class Homography(nn.Module):
         return torch.unsqueeze(torch.inverse(self.model), dim=0)
 
 
+class Similarity(nn.Module):
+    def __init__(self):
+        """Module to be used together with ImageRegistrator module for the optimization-based image
+        registration."""
+        super().__init__()
+        self.rot = nn.Parameter(torch.Tensor(1))
+        self.shift = nn.Parameter(torch.Tensor(1,2,1))
+        self.scale = nn.Parameter(torch.Tensor(1))
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        torch.nn.init.zeros_(self.rot)
+        torch.nn.init.zeros_(self.shift)
+        torch.nn.init.ones_(self.scale)
+
+    def forward(self):
+        rot = self.scale * K.geometry.angle_to_rotation_matrix(self.rot)
+        out = K.convert_affinematrix_to_homography(torch.cat([rot, self.shift], dim=2))
+        return out 
+
+    def get_inverse_model(self):
+        return torch.inverse(self.forward())
+
+
 class ImageRegistrator(nn.Module):
     """'Module, which performs optimization-based image registration, similar to https://github.com/kornia/kornia-
     examples/blob/master/homography.ipynb."""
@@ -242,8 +266,8 @@ class ImageRegistrator(nn.Module):
         self.reset_model()
         # ToDo: better parameter passing to optimizer
         opt = self.optimizer(self.model.parameters(), lr=self.lr)
-        img_src_pyr = build_pyramid(src_img.to(device), self.pyr_levels)
-        img_dst_pyr = build_pyramid(dst_img.to(device), self.pyr_levels)
+        img_src_pyr = build_pyramid(src_img.to(device), self.pyr_levels)[::-1]
+        img_dst_pyr = build_pyramid(dst_img.to(device), self.pyr_levels)[::-1]
         assert len(img_dst_pyr) == len(img_src_pyr)
         for img_src_level, img_dst_level  in zip(img_src_pyr, img_dst_pyr):
             for i in range(self.n_iter):
