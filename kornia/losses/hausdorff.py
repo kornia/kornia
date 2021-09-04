@@ -89,7 +89,7 @@ class HausdorffERLoss(_HausdorffERLossBase):
     Args:
         alpha: controls the erosion rate in each iteration. Default: 2.0.
         erosions: the number of iterations of erosion. Default: 10.
-    
+
     Examples:
         >>> hdloss = HausdorffERLoss()
         >>> input = torch.randn(5, 3, 20, 20)
