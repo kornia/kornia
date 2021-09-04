@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections import OrderedDict
 from typing import Any, Dict, Iterator, List, NamedTuple, Optional, Tuple, Union
 
@@ -13,7 +11,7 @@ __all__ = ["SequentialBase", "ParamItem"]
 
 class ParamItem(NamedTuple):
     name: str
-    data: dict | list | None
+    data: Optional[Union[dict, list]]
 
 
 class SequentialBase(nn.Sequential):
@@ -32,9 +30,9 @@ class SequentialBase(nn.Sequential):
     def __init__(
         self,
         *args: nn.Module,
-        same_on_batch: bool | None = None,
-        return_transform: bool | None = None,
-        keepdim: bool | None = None,
+        same_on_batch: Optional[bool] = None,
+        return_transform: Optional[bool] = None,
+        keepdim: Optional[bool] = None,
     ) -> None:
         # To name the modules properly
         _args = OrderedDict()
@@ -46,14 +44,14 @@ class SequentialBase(nn.Sequential):
         self._same_on_batch = same_on_batch
         self._return_transform = return_transform
         self._keepdim = keepdim
-        self._params: list[ParamItem] | None = None
+        self._params: Optional[List[ParamItem]] = None
         self.update_attribute(same_on_batch, return_transform, keepdim)
 
     def update_attribute(
         self,
-        same_on_batch: bool | None = None,
-        return_transform: bool | None = None,
-        keepdim: bool | None = None,
+        same_on_batch: Optional[bool] = None,
+        return_transform: Optional[bool] = None,
+        keepdim: Optional[bool] = None,
     ) -> None:
         for mod in self.children():
             # MixAugmentation does not have return transform
@@ -91,7 +89,7 @@ class SequentialBase(nn.Sequential):
         if target == "":
             return self
 
-        atoms: list[str] = target.split(".")
+        atoms: List[str] = target.split(".")
         mod: torch.nn.Module = self
 
         for item in atoms:
@@ -107,29 +105,29 @@ class SequentialBase(nn.Sequential):
         return mod
 
     @property
-    def same_on_batch(self) -> bool | None:
+    def same_on_batch(self) -> Optional[bool]:
         return self._same_on_batch
 
     @same_on_batch.setter
-    def same_on_batch(self, same_on_batch: bool | None) -> None:
+    def same_on_batch(self, same_on_batch: Optional[bool]) -> None:
         self._same_on_batch = same_on_batch
         self.update_attribute(same_on_batch=same_on_batch)
 
     @property
-    def return_transform(self) -> bool | None:
+    def return_transform(self) -> Optional[bool]:
         return self._return_transform
 
     @return_transform.setter
-    def return_transform(self, return_transform: bool | None) -> None:
+    def return_transform(self, return_transform: Optional[bool]) -> None:
         self._return_transform = return_transform
         self.update_attribute(return_transform=return_transform)
 
     @property
-    def keepdim(self) -> bool | None:
+    def keepdim(self) -> Optional[bool]:
         return self._keepdim
 
     @keepdim.setter
-    def keepdim(self, keepdim: bool | None) -> None:
+    def keepdim(self, keepdim: Optional[bool]) -> None:
         self._keepdim = keepdim
         self.update_attribute(keepdim=keepdim)
 
@@ -143,29 +141,29 @@ class SequentialBase(nn.Sequential):
             self._params.append(param)
 
     # TODO: Implement this for all submodules.
-    def forward_parameters(self, batch_shape: torch.Size) -> list[ParamItem]:
+    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
         raise NotImplementedError
 
-    def get_children_by_indices(self, indices: torch.Tensor) -> Iterator[tuple[str, nn.Module]]:
+    def get_children_by_indices(self, indices: torch.Tensor) -> Iterator[Tuple[str, nn.Module]]:
         modules = list(self.named_children())
         for idx in indices:
             yield modules[idx]
 
-    def get_children_by_params(self, params: list[ParamItem]) -> Iterator[tuple[str, nn.Module]]:
+    def get_children_by_params(self, params: List[ParamItem]) -> Iterator[Tuple[str, nn.Module]]:
         modules = list(self.named_children())
         # TODO: Wrong params passed here when nested ImageSequential
         for param in params:
             yield modules[list(dict(self.named_children()).keys()).index(param.name)]
 
-    def get_params_by_module(self, named_modules: Iterator[tuple[str, nn.Module]]) -> Iterator[ParamItem]:
+    def get_params_by_module(self, named_modules: Iterator[Tuple[str, nn.Module]]) -> Iterator[ParamItem]:
         # This will not take module._params
         for name, _ in named_modules:
             yield ParamItem(name, None)
 
-    def contains_label_operations(self, params: list) -> bool:
+    def contains_label_operations(self, params: List) -> bool:
         raise NotImplementedError
 
-    def autofill_dim(self, input: torch.Tensor, dim_range: tuple[int, int] = (2, 4)) -> tuple[torch.Size, torch.Size]:
+    def autofill_dim(self, input: torch.Tensor, dim_range: Tuple[int, int] = (2, 4)) -> Tuple[torch.Size, torch.Size]:
         """Fill tensor dim to the upper bound of dim_range.
 
         If input tensor dim is smaller than the lower bound of dim_range, an error will be thrown out.
