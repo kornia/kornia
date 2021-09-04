@@ -204,7 +204,7 @@ class Similarity(nn.Module):
     def forward(self):
         rot = self.scale * K.geometry.angle_to_rotation_matrix(self.rot)
         out = K.convert_affinematrix_to_homography(torch.cat([rot, self.shift], dim=2))
-        return out 
+        return out
 
     def get_inverse_model(self):
         return torch.inverse(self.forward())
