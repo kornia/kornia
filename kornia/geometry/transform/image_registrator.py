@@ -219,11 +219,8 @@ class ImageRegistrator(nn.Module):
             >>> from kornia.geometry import ImageRegistrator
             >>> img_src = torch.rand(1, 1, 32, 32)
             >>> img_dst = torch.rand(1, 1, 32, 32)
-            >>> registrator = ImageRegistrator('homography', lr=1e-3,
-                                               num_iterations=50,
-                                               pyramid_levels=5,
-                                               loss_fn = F.l1_loss)
-            >>> homo = registrator.register(img_src, img_dst, True)"""
+            >>> registrator = ImageRegistrator('similarity')
+            >>> homo = registrator.register(img_src, img_dst)"""
         self.reset_model()
         # ToDo: better parameter passing to optimizer
         opt = self.optimizer(self.model.parameters(), lr=self.lr)
