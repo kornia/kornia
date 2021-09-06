@@ -1,16 +1,15 @@
-from typing import Optional, Tuple, Union, Type
+from typing import Optional, Tuple, Type, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-from kornia.testing import check_is_tensor
 from kornia.geometry.conversions import convert_affinematrix_to_homography
-from kornia.geometry.transform.pyramid import build_pyramid
-from kornia.geometry.transform.imgwarp import angle_to_rotation_matrix
 from kornia.geometry.transform.homography_warper import HomographyWarper
-
+from kornia.geometry.transform.imgwarp import angle_to_rotation_matrix
+from kornia.geometry.transform.pyramid import build_pyramid
+from kornia.testing import check_is_tensor
 
 __all__ = [
     "ImageRegistrator",
@@ -31,7 +30,7 @@ class Homography(nn.Module):
         return f'{self.__class__.__name__}({self.model})'
 
     def reset_model(self):
-        '''Initializes the model with identity transform'''
+        """Initializes the model with identity transform."""
         torch.nn.init.eye_(self.model)
 
     def forward(self) -> torch.Tensor:
@@ -60,8 +59,8 @@ class Similarity(nn.Module):
                  rotation: bool = True,
                  scale: bool = True,
                  shift: bool = True):
-        """Similarity geometric model to be used together with
-        ImageRegistrator module for the optimization-based image registration.
+        """Similarity geometric model to be used together with ImageRegistrator module for the optimization-based
+        image registration.
 
         Args:
             rotation (bool): if True, the rotation is optimizable, else constant zero
@@ -88,7 +87,7 @@ class Similarity(nn.Module):
                \n shift={self.shift}, \n scale={self.scale})'
 
     def reset_model(self):
-        '''Initializes the model with identity transform'''
+        """Initializes the model with identity transform."""
         torch.nn.init.zeros_(self.rot)
         torch.nn.init.zeros_(self.shift)
         torch.nn.init.ones_(self.scale)
@@ -182,7 +181,7 @@ class ImageRegistrator(nn.Module):
                               img_src: torch.Tensor,
                               img_dst: torch.Tensor,
                               transform_model: torch.nn.Module) -> torch.Tensor:
-        '''Warps img_src into img_dst with transform_model and returns loss'''
+        """Warps img_src into img_dst with transform_model and returns loss."""
         # ToDo: Make possible registration of images of different shape
         assert len(img_src.shape) == len(img_dst.shape), (img_src.shape, img_dst.shape)
         _height, _width = img_src.shape[-2:]
@@ -195,7 +194,7 @@ class ImageRegistrator(nn.Module):
         return loss
 
     def reset_model(self):
-        '''Calls model reset function'''
+        """Calls model reset function."""
         self.model.reset_model()
 
     def register(self,
