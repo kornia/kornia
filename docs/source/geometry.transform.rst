@@ -74,3 +74,7 @@ Module
 .. autoclass:: Resize
 .. autoclass:: Rescale
 .. autoclass:: Affine
+.. autoclass:: HomographyWarper
+.. autoclass:: Homography
+.. autoclass:: Similarity
+.. autoclass:: ImageRegistrator
