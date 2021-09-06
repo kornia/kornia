@@ -80,7 +80,8 @@ class TestImageRegistrator:
         image_registrator = ImageRegistrator('Similarity',
                                              num_iterations=500,
                                              lr=3e-4,
-                                             pyramid_levels=2).to(device)
+                                             pyramid_levels=2).to(device=device,
+                                                                  dtype=dtype)
         model = image_registrator.register(img_src, img_dst)
         print(model)
         assert_close(model(), homography, atol=1e-3, rtol=1e-3)
