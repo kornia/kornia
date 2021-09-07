@@ -10,27 +10,27 @@ from kornia.testing import assert_close
 
 class TestSimilarity:
     def test_smoke(self, device, dtype):
-        expected = torch.eye(3)[None]
+        expected = torch.eye(3, device=device)[None]
         for r, sc, sh in zip([True, False], [True, False], [True, False]):
             sim = kornia.geometry.transform.Similarity(r, sc, sh)
             assert_close(sim(), expected, atol=1e-4, rtol=1e-4)
 
     def test_smoke_inverse(self, device, dtype):
-        expected = torch.eye(3)[None]
+        expected = torch.eye(3, device=device)[None]
         for r, sc, sh in zip([True, False], [True, False], [True, False]):
             s = kornia.geometry.transform.Similarity(r, sc, sh)
             assert_close(s.forward_inverse(), expected, atol=1e-4, rtol=1e-4)
 
     def test_scale(self, device, dtype):
         sc = 0.5
-        sim = kornia.geometry.transform.Similarity(True, True, True)
+        sim = kornia.geometry.transform.Similarity(True, True, True).to(device)
         sim.scale.data *= sc
         expected = torch.tensor([[0.5, 0, 0.],
                                 [0, 0.5, 0],
-                                [0, 0, 1]])[None]
+                                [0, 0, 1]], device=device)[None]
         inv_expected = torch.tensor([[2.0, 0, 0.],
                                     [0, 2.0, 0],
-                                    [0, 0, 1]])[None]
+                                    [0, 0, 1]], device=device)[None]
         assert_close(sim.forward_inverse(), inv_expected, atol=1e-4, rtol=1e-4)
         assert_close(sim(), expected, atol=1e-4, rtol=1e-4)
 
@@ -42,12 +42,12 @@ class TestSimilarity:
 
 class TestHomography:
     def test_smoke(self, device, dtype):
-        expected = torch.eye(3)[None]
+        expected = torch.eye(3, device=device)[None]
         h = kornia.geometry.transform.Homography().to(device)
         assert_close(h(), expected, atol=1e-4, rtol=1e-4)
 
     def test_smoke_inverse(self, device, dtype):
-        expected = torch.eye(3)[None]
+        expected = torch.eye(3, device=device)[None]
         h = kornia.geometry.transform.Homography().to(device)
         assert_close(h.forward_inverse(), expected, atol=1e-4, rtol=1e-4)
 
