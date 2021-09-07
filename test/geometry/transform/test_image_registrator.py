@@ -12,7 +12,7 @@ class TestSimilarity:
     def test_smoke(self):
         expected = torch.eye(3)[None]
         for r, sc, sh in zip([True, False], [True, False], [True, False]):
-            s = kornia.geometry.transform.Similarity(r, sc, sh)
+            sim = kornia.geometry.transform.Similarity(r, sc, sh)
             assert_close(s(), expected, atol=1e-4, rtol=1e-4)
 
     def test_smoke_inverse(self):

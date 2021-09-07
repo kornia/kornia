@@ -14,11 +14,12 @@ from kornia.testing import check_is_tensor
 __all__ = [
     "ImageRegistrator",
     "Homography",
-    "Similarity"]
+    "Similarity"
+    ]
 
 
 class Homography(nn.Module):
-    def __init__(self):
+    def __init__(self) -> None:
         r"""Homography geometric model to be used together with ImageRegistrator
         module for the optimization-based image
         registration."""
@@ -63,13 +64,13 @@ class Similarity(nn.Module):
         image registration.
 
         Args:
-            rotation (bool): if True, the rotation is optimizable, else constant zero
-            scale (bool): if True, the scale is optimizable, else constant zero
-            shift (bool): if True, the shift is optimizable, else constant one
+            rotation: if True, the rotation is optimizable, else constant zero.
+            scale: if True, the scale is optimizable, else constant zero.
+            shift: if True, the shift is optimizable, else constant one.
         """
         super().__init__()
         if rotation:
-            self.rot = nn.Parameter(torch.Tensor(1))
+            self.rot = nn.Parameter(torch.tensor(1))
         else:
             self.register_buffer('rot', torch.zeros(1))
         if shift:
@@ -122,13 +123,13 @@ class ImageRegistrator(nn.Module):
 
     Args:
         model_type: Geometrical model for registration. Can be string or Module.
-        optimizer: optimizer class used for the optimization
-        loss_fn: torch loss function,
-        pyramid_levels (int): number of scale pyramid levels,
-        lr(float): learning rate for optimization,
-        num_iterations(int): maximum number of iterations,
-        tolerance(float): stop optimizing if loss difference is less. default 1e-4,
-        warper: if model_type is not string, one needs to provide warper object"""
+        optimizer: optimizer class used for the optimization.
+        loss_fn: torch loss function.
+        pyramid_levels: number of scale pyramid levels.
+        lr: learning rate for optimization.
+        num_iterations: maximum number of iterations.
+        tolerance: stop optimizing if loss difference is less. default 1e-4.
+        warper: if model_type is not string, one needs to provide warper object."""
     known_models = ['homography',
                     'similarity',
                     'translation',
@@ -143,7 +144,7 @@ class ImageRegistrator(nn.Module):
                  lr: float = 1e-3,
                  num_iterations: int = 100,
                  tolerance: float = 1e-4,
-                 warper=None):
+                 warper=None) -> None:
         super().__init__()
         # We provide pre-defined combinations or allow user to supply model
         # together with warper
@@ -193,7 +194,7 @@ class ImageRegistrator(nn.Module):
         loss = loss.masked_select(ones > 0.9).mean()
         return loss
 
-    def reset_model(self):
+    def reset_model(self) -> None:
         """Calls model reset function."""
         self.model.reset_model()
 
@@ -205,9 +206,9 @@ class ImageRegistrator(nn.Module):
         The shape of the tensors is not checked, because it may depend on the model, e.g. volume registration
 
         Args:
-            src_img: Input image tensor
-            dst_img: Input image tensor
-            verbose: bool: if True, outputs loss every 10 iterations.
+            src_img: Input image tensor.
+            dst_img: Input image tensor.
+            verbose: if True, outputs loss every 10 iterations.
 
         Returns:
             the transformation between two images.
