@@ -5,6 +5,13 @@ kornia.geometry.transform
 
 The functions in this section perform various geometrical transformations of 2D images.
 
+
+Image registration
+--------------
+
+.. automodule:: kornia.geometry.transform.image_registrator
+    :members:
+
 Warp operators
 --------------
 

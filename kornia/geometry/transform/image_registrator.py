@@ -15,16 +15,16 @@ __all__ = [
     "ImageRegistrator",
     "Homography",
     "Similarity"
-    ]
+]
 
 
 class Homography(nn.Module):
+    r"""Homography geometric model to be used together with ImageRegistrator
+    module for the optimization-based image
+    registration."""
     def __init__(self) -> None:
-        r"""Homography geometric model to be used together with ImageRegistrator
-        module for the optimization-based image
-        registration."""
         super().__init__()
-        self.model = nn.Parameter(torch.Tensor(3, 3))
+        self.model = nn.Parameter(torch.eye(3))
         self.reset_model()
 
     def __repr__(self) -> str:
@@ -37,48 +37,42 @@ class Homography(nn.Module):
     def forward(self) -> torch.Tensor:
         r"""Single-batch homography".
 
-        Return:
-            Homography.
-
-        Shape:
-            - Output: :math:`(1, 3, 3)`"""
+        Returns:
+            Homography with shape :math:`(1, 3, 3)`"""
         return torch.unsqueeze(self.model / self.model[2, 2], dim=0)  # 1x3x3
 
     def forward_inverse(self) -> torch.Tensor:
         r"""Interted Single-batch homography".
 
-        Return:
-            Homography.
-
-        Shape:
-            - Output: :math:`(1, 3, 3)`"""
+        Returns:
+            Homography with shape :math:`(1, 3, 3)`"""
         return torch.unsqueeze(torch.inverse(self.model), dim=0)
 
 
 class Similarity(nn.Module):
+    """Similarity geometric model to be used together with ImageRegistrator module for the optimization-based
+    image registration.
+
+    Args:
+        rotation: if True, the rotation is optimizable, else constant zero.
+        scale: if True, the scale is optimizable, else constant zero.
+        shift: if True, the shift is optimizable, else constant one.
+    """
     def __init__(self,
                  rotation: bool = True,
                  scale: bool = True,
-                 shift: bool = True):
-        """Similarity geometric model to be used together with ImageRegistrator module for the optimization-based
-        image registration.
-
-        Args:
-            rotation: if True, the rotation is optimizable, else constant zero.
-            scale: if True, the scale is optimizable, else constant zero.
-            shift: if True, the shift is optimizable, else constant one.
-        """
+                 shift: bool = True) -> None:
         super().__init__()
         if rotation:
-            self.rot = nn.Parameter(torch.tensor(1))
+            self.rot = nn.Parameter(torch.zeros(1))
         else:
             self.register_buffer('rot', torch.zeros(1))
         if shift:
-            self.shift = nn.Parameter(torch.Tensor(1, 2, 1))
+            self.shift = nn.Parameter(torch.zeros(1, 2, 1))
         else:
             self.register_buffer('shift', torch.zeros(1, 2, 1))
         if scale:
-            self.scale = nn.Parameter(torch.Tensor(1))
+            self.scale = nn.Parameter(torch.ones(1))
         else:
             self.register_buffer('scale', torch.ones(1))
         self.reset_model()
@@ -96,11 +90,8 @@ class Similarity(nn.Module):
     def forward(self) -> torch.Tensor:
         r"""Single-batch similarity transform".
 
-        Return:
-            Similarity.
-
-        Shape:
-            - Output: :math:`(1, 3, 3)`"""
+        Returns:
+            Similarity with shape :math:`(1, 3, 3)`"""
         rot = self.scale * angle_to_rotation_matrix(self.rot)
         out = convert_affinematrix_to_homography(torch.cat([rot, self.shift],
                                                            dim=2))
@@ -109,17 +100,13 @@ class Similarity(nn.Module):
     def forward_inverse(self) -> torch.Tensor:
         r"""Single-batch inverse similarity transform".
 
-        Return:
-            Similarity.
-
-        Shape:
-            - Output: :math:`(1, 3, 3)`"""
+        Returns:
+            Similarity with shape :math:`(1, 3, 3)`"""
         return torch.inverse(self.forward())
 
 
 class ImageRegistrator(nn.Module):
-    r"""Module, which performs optimization-based image registration,
-    similar to https://github.com/kornia/kornia-examples/blob/master/homography.ipynb
+    r"""Module, which performs optimization-based image registration
 
     Args:
         model_type: Geometrical model for registration. Can be string or Module.
@@ -184,7 +171,9 @@ class ImageRegistrator(nn.Module):
                               transform_model: torch.nn.Module) -> torch.Tensor:
         """Warps img_src into img_dst with transform_model and returns loss."""
         # ToDo: Make possible registration of images of different shape
-        assert len(img_src.shape) == len(img_dst.shape), (img_src.shape, img_dst.shape)
+        if img_src.shape != img_dst.shape:
+            raise ValueError(f"Cannot register images of different shapes\
+                              {img_src.shape} {img_dst.shape:} ")
         _height, _width = img_src.shape[-2:]
         warper = self.warper(_height, _width)
         img_src_to_dst = warper(img_src, transform_model)
@@ -201,7 +190,7 @@ class ImageRegistrator(nn.Module):
     def register(self,
                  src_img: torch.Tensor,
                  dst_img: torch.Tensor,
-                 verbose: bool = False) -> torch.Tensor:
+                 verbose: bool = False, log_images_every: Optional[int] = None) -> torch.Tensor:
         r"""Estimates the tranformation' which warps src_img into dst_img by gradient descent.
         The shape of the tensors is not checked, because it may depend on the model, e.g. volume registration
 
@@ -209,12 +198,11 @@ class ImageRegistrator(nn.Module):
             src_img: Input image tensor.
             dst_img: Input image tensor.
             verbose: if True, outputs loss every 10 iterations.
+            log_images_every: if not None, outputs
 
         Returns:
-            the transformation between two images.
-
-        Shape:
-            Output: depends on the model
+            the transformation between two images, shape depends on the model,
+        typically [1x3x3] tensor for string model_types
 
         Example:
             >>> from kornia.geometry import ImageRegistrator
@@ -231,7 +219,8 @@ class ImageRegistrator(nn.Module):
         img_src_pyr = build_pyramid(src_img, self.pyramid_levels)[::-1]
         img_dst_pyr = build_pyramid(dst_img, self.pyramid_levels)[::-1]
         prev_loss = 1e10
-        assert len(img_dst_pyr) == len(img_src_pyr)
+        if len(img_dst_pyr) != len(img_src_pyr):
+            raise ValueError("Cannot register images of different sizes")
         for img_src_level, img_dst_level in zip(img_src_pyr, img_dst_pyr):
             for i in range(self.num_iterations):
                 # compute gradient and update optimizer parameters
