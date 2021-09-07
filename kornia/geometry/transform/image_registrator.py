@@ -170,13 +170,13 @@ class ImageRegistrator(nn.Module):
     def get_single_level_loss(self,
                               img_src: torch.Tensor,
                               img_dst: torch.Tensor,
-                              transform_model: torch.nn.Module) -> torch.Tensor:
+                              transform_model: torch.Tensor) -> torch.Tensor:
         """Warps img_src into img_dst with transform_model and returns loss."""
         # ToDo: Make possible registration of images of different shape
         if img_src.shape != img_dst.shape:
             raise ValueError(f"Cannot register images of different shapes\
                               {img_src.shape} {img_dst.shape:} ")
-        _height, _width = img_src.shape[-2:]
+        _height, _width = img_dst.shape[-2:]
         warper = self.warper(_height, _width)
         img_src_to_dst = warper(img_src, transform_model)
         # compute and mask loss
@@ -194,7 +194,7 @@ class ImageRegistrator(nn.Module):
                  dst_img: torch.Tensor,
                  verbose: bool = False,
                  output_intermediate_models: bool = False) -> \
-            Union[torch.Tensor, Tuple[List[torch.Tensor], torch.Tensor]]:
+            Union[torch.Tensor, Tuple[torch.Tensor, List[torch.Tensor]]]:
         r"""Estimates the tranformation' which warps src_img into dst_img by gradient descent.
         The shape of the tensors is not checked, because it may depend on the model, e.g. volume registration
 
@@ -233,6 +233,9 @@ class ImageRegistrator(nn.Module):
                 loss = self.get_single_level_loss(img_src_level,
                                                   img_dst_level,
                                                   self.model())
+                loss += self.get_single_level_loss(img_dst_level,
+                                                   img_src_level,
+                                                   self.model.forward_inverse())
                 current_loss = loss.item()
                 if abs(current_loss - prev_loss) < self.tolerance:
                     break
