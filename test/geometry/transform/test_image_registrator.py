@@ -77,10 +77,13 @@ class TestImageRegistrator:
                                                   homography,
                                                   (height, width),
                                                   align_corners=False)
-        image_registrator = ImageRegistrator('Similarity',
-                                             num_iterations=500,
-                                             lr=3e-4,
-                                             pyramid_levels=2).to(device=device)
-        model = image_registrator.register(img_src, img_dst)
-        print(model)
-        assert_close(model(), homography, atol=1e-3, rtol=1e-3)
+        IR = ImageRegistrator('Similarity',
+                              num_iterations=500,
+                              lr=3e-4,
+                              pyramid_levels=2).to(device=device)
+        model = IR.register(img_src, img_dst)
+        assert_close(model, homography, atol=1e-3, rtol=1e-3)
+        model, intermediate = IR.register(img_src,
+                                          img_dst,
+                                          output_intermediate_models=True)
+        assert len(intermediate) == 2

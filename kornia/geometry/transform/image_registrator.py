@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Type, Union
+from typing import Optional, Tuple, Type, Union, List
 
 import torch
 import torch.nn as nn
@@ -22,6 +22,7 @@ class Homography(nn.Module):
     r"""Homography geometric model to be used together with ImageRegistrator
     module for the optimization-based image
     registration."""
+
     def __init__(self) -> None:
         super().__init__()
         self.model = nn.Parameter(torch.eye(3))
@@ -58,6 +59,7 @@ class Similarity(nn.Module):
         scale: if True, the scale is optimizable, else constant zero.
         shift: if True, the shift is optimizable, else constant one.
     """
+
     def __init__(self,
                  rotation: bool = True,
                  scale: bool = True,
@@ -135,7 +137,7 @@ class ImageRegistrator(nn.Module):
         super().__init__()
         # We provide pre-defined combinations or allow user to supply model
         # together with warper
-        if type(model_type) is not str:
+        if not isinstance(model_type, str):
             if warper is None:
                 raise ValueError("You must supply warper together with custom model")
             self.warper = warper
@@ -190,7 +192,9 @@ class ImageRegistrator(nn.Module):
     def register(self,
                  src_img: torch.Tensor,
                  dst_img: torch.Tensor,
-                 verbose: bool = False, log_images_every: Optional[int] = None) -> torch.Tensor:
+                 verbose: bool = False,
+                 output_intermediate_models: bool = False) -> \
+            Union[torch.Tensor, Tuple[List[torch.Tensor], torch.Tensor]]:
         r"""Estimates the tranformation' which warps src_img into dst_img by gradient descent.
         The shape of the tensors is not checked, because it may depend on the model, e.g. volume registration
 
@@ -198,7 +202,7 @@ class ImageRegistrator(nn.Module):
             src_img: Input image tensor.
             dst_img: Input image tensor.
             verbose: if True, outputs loss every 10 iterations.
-            log_images_every: if not None, outputs
+            output_intermediate_models: if True with intermediate models
 
         Returns:
             the transformation between two images, shape depends on the model,
@@ -219,6 +223,7 @@ class ImageRegistrator(nn.Module):
         img_src_pyr = build_pyramid(src_img, self.pyramid_levels)[::-1]
         img_dst_pyr = build_pyramid(dst_img, self.pyramid_levels)[::-1]
         prev_loss = 1e10
+        aux_models = []
         if len(img_dst_pyr) != len(img_src_pyr):
             raise ValueError("Cannot register images of different sizes")
         for img_src_level, img_dst_level in zip(img_src_pyr, img_dst_pyr):
@@ -236,7 +241,11 @@ class ImageRegistrator(nn.Module):
                 if verbose and (i % 10 == 0):
                     print(f"Loss = {current_loss:.4f}, iter={i}")
                 opt.step()
-        return self.model
+            if output_intermediate_models:
+                aux_models.append(self.model().clone().detach())
+        if output_intermediate_models:
+            return self.model(), aux_models
+        return self.model()
 
     def warp_src_into_dst(self, src_img: torch.Tensor) -> torch.Tensor:
         r'''Warps src_img with estimated model'''
