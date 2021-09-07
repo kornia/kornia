@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Type, Union, List
+from typing import List, Optional, Tuple, Type, Union
 
 import torch
 import torch.nn as nn
@@ -51,8 +51,8 @@ class Homography(nn.Module):
 
 
 class Similarity(nn.Module):
-    """Similarity geometric model to be used together with ImageRegistrator module for the optimization-based
-    image registration.
+    """Similarity geometric model to be used together with ImageRegistrator module for the optimization-based image
+    registration.
 
     Args:
         rotation: if True, the rotation is optimizable, else constant zero.
