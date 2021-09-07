@@ -1,5 +1,5 @@
 # test
-pytest==6.2.4
+pytest==6.2.5
 pytest-flake8==1.0.7
 pytest-cov==2.12.0
 pytest-mypy==0.8.1
