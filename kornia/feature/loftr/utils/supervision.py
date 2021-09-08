@@ -11,7 +11,7 @@ from .geometry import warp_kpts
 
 @torch.no_grad()
 def mask_pts_at_padded_regions(grid_pt, mask):
-    """For megadepth dataset, zero-padding exists in images"""
+    """For megadepth dataset, zero-padding exists in images."""
     n, h, w  = mask.shape
     mask = mask.reshape(n, h * w).unsqueeze(-1).repeat(1, 1, 2)
     # from einops import repeat

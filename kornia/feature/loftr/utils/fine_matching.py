@@ -8,7 +8,7 @@ from kornia.utils.grid import create_meshgrid
 
 
 class FineMatching(nn.Module):
-    """FineMatching with s2d paradigm"""
+    """FineMatching with s2d paradigm."""
 
     def __init__(self):
         super().__init__()

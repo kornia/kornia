@@ -11,7 +11,7 @@ class LoFTREncoderLayer(nn.Module):
                  d_model,
                  nhead,
                  attention='linear'):
-        super(LoFTREncoderLayer, self).__init__()
+        super().__init__()
 
         self.dim = d_model // nhead
         self.nhead = nhead
@@ -64,7 +64,7 @@ class LocalFeatureTransformer(nn.Module):
     """A Local Feature Transformer (LoFTR) module."""
 
     def __init__(self, config):
-        super(LocalFeatureTransformer, self).__init__()
+        super().__init__()
 
         self.config = config
         self.d_model = config['d_model']

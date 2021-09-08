@@ -43,7 +43,7 @@ def mask_border_with_padding(m, bd, v, p_m0, p_m1):
 
 
 def compute_max_candidates(p_m0, p_m1):
-    """Compute the max candidates of all pairs within a batch
+    """Compute the max candidates of all pairs within a batch.
 
     Args:
         p_m0, p_m1 (torch.Tensor): padded masks

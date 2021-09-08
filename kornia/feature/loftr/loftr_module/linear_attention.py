@@ -1,7 +1,6 @@
-"""
-Linear Transformer proposed in "Transformers are RNNs: Fast Autoregressive Transformers with Linear Attention"
-Modified from: https://github.com/idiap/fast-transformers/blob/master/fast_transformers/attention/linear_attention.py
-"""
+"""Linear Transformer proposed in "Transformers are RNNs: Fast Autoregressive Transformers with Linear Attention"
+Modified from: https://github.com/idiap/fast-
+transformers/blob/master/fast_transformers/attention/linear_attention.py."""
 
 import torch
 from torch.nn import Dropout, Module
@@ -54,7 +53,8 @@ class FullAttention(Module):
         self.dropout = Dropout(attention_dropout)
 
     def forward(self, queries, keys, values, q_mask=None, kv_mask=None):
-        """ Multi-head scaled dot-product attention, a.k.a full attention.
+        """Multi-head scaled dot-product attention, a.k.a full attention.
+
         Args:
             queries: [N, L, H, D]
             keys: [N, S, H, D]

@@ -3,12 +3,12 @@ import torch.nn.functional as F
 
 
 def conv1x1(in_planes, out_planes, stride=1):
-    """1x1 convolution without padding"""
+    """1x1 convolution without padding."""
     return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, padding=0, bias=False)
 
 
 def conv3x3(in_planes, out_planes, stride=1):
-    """3x3 convolution with padding"""
+    """3x3 convolution with padding."""
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride, padding=1, bias=False)
 
 
@@ -41,8 +41,8 @@ class BasicBlock(nn.Module):
 
 
 class ResNetFPN_8_2(nn.Module):
-    """
-    ResNet+FPN, output resolution are 1/8 and 1/2.
+    """ResNet+FPN, output resolution are 1/8 and 1/2.
+
     Each block has 2 layers.
     """
 
@@ -119,8 +119,8 @@ class ResNetFPN_8_2(nn.Module):
 
 
 class ResNetFPN_16_4(nn.Module):
-    """
-    ResNet+FPN, output resolution are 1/16 and 1/4.
+    """ResNet+FPN, output resolution are 1/16 and 1/4.
+
     Each block has 2 layers.
     """
 
