@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Type, Union
+from typing import Callable, List, Optional, Tuple, Type, Union
 
 import torch
 import torch.nn as nn
@@ -39,14 +39,16 @@ class Homography(nn.Module):
         r"""Single-batch homography".
 
         Returns:
-            Homography with shape :math:`(1, 3, 3)`"""
+            Homography matrix with shape :math:`(1, 3, 3)`.
+        """
         return torch.unsqueeze(self.model / self.model[2, 2], dim=0)  # 1x3x3
 
     def forward_inverse(self) -> torch.Tensor:
         r"""Interted Single-batch homography".
 
         Returns:
-            Homography with shape :math:`(1, 3, 3)`"""
+            Homography martix with shape :math:`(1, 3, 3)`.
+        """
         return torch.unsqueeze(torch.inverse(self.model), dim=0)
 
 
@@ -83,7 +85,7 @@ class Similarity(nn.Module):
         return f'{self.__class__.__name__}(angle = {self.rot},\
                \n shift={self.shift}, \n scale={self.scale})'
 
-    def reset_model(self):
+    def reset_model(self) -> None:
         """Initializes the model with identity transform."""
         torch.nn.init.zeros_(self.rot)
         torch.nn.init.zeros_(self.shift)
@@ -108,7 +110,7 @@ class Similarity(nn.Module):
 
 
 class ImageRegistrator(nn.Module):
-    r"""Module, which performs optimization-based image registration
+    r"""Module, which performs optimization-based image registration.
 
     Args:
         model_type: Geometrical model for registration. Can be string or Module.
@@ -118,17 +120,26 @@ class ImageRegistrator(nn.Module):
         lr: learning rate for optimization.
         num_iterations: maximum number of iterations.
         tolerance: stop optimizing if loss difference is less. default 1e-4.
-        warper: if model_type is not string, one needs to provide warper object."""
+        warper: if model_type is not string, one needs to provide warper object.
+
+    Example:
+        >>> from kornia.geometry import ImageRegistrator
+        >>> img_src = torch.rand(1, 1, 32, 32)
+        >>> img_dst = torch.rand(1, 1, 32, 32)
+        >>> registrator = ImageRegistrator('similarity')
+        >>> homo = registrator.register(img_src, img_dst)
+    """
     known_models = ['homography',
                     'similarity',
                     'translation',
                     'scale',
                     'rotation']
 
+    # TODO: resolve better type, potentially using factory.
     def __init__(self,
                  model_type='homography',
                  optimizer=optim.Adam,
-                 loss_fn=F.l1_loss,
+                 loss_fn: Callable = F.l1_loss,
                  pyramid_levels: int = 5,
                  lr: float = 1e-3,
                  num_iterations: int = 100,
@@ -206,17 +217,12 @@ class ImageRegistrator(nn.Module):
 
         Returns:
             the transformation between two images, shape depends on the model,
-        typically [1x3x3] tensor for string model_types
+            typically [1x3x3] tensor for string model_types.
 
-        Example:
-            >>> from kornia.geometry import ImageRegistrator
-            >>> img_src = torch.rand(1, 1, 32, 32)
-            >>> img_dst = torch.rand(1, 1, 32, 32)
-            >>> registrator = ImageRegistrator('similarity')
-            >>> homo = registrator.register(img_src, img_dst)"""
+        """
         self.reset_model()
         # ToDo: better parameter passing to optimizer
-        opt = self.optimizer(self.model.parameters(), lr=self.lr)
+        opt: optim.Optimizer = self.optimizer(self.model.parameters(), lr=self.lr)
 
         # compute the gaussian pyramids
         # [::-1] because we have to register from coarse to fine
@@ -251,14 +257,14 @@ class ImageRegistrator(nn.Module):
         return self.model()
 
     def warp_src_into_dst(self, src_img: torch.Tensor) -> torch.Tensor:
-        r'''Warps src_img with estimated model'''
+        r"""Warps src_img with estimated model."""
         _height, _width = src_img.shape[-2:]
         warper = self.warper(_height, _width)
         img_src_to_dst = warper(src_img, self.model())
         return img_src_to_dst
 
     def warp_dst_inro_src(self, dst_img: torch.Tensor) -> torch.Tensor:
-        r'''Warps src_img with inverted estimated model'''
+        r"""Warps src_img with inverted estimated model."""
         _height, _width = dst_img.shape[-2:]
         warper = self.warper(_height, _width)
         img_dst_to_src = warper(dst_img, self.model.forward_inverse())
