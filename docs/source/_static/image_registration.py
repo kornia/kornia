@@ -1,15 +1,17 @@
-import matplotlib.pyplot as plt
-import kornia as K
-import kornia.geometry as KG
 import cv2
 import imageio
+import matplotlib.pyplot as plt
+
+import kornia as K
+import kornia.geometry as KG
+
+
 def load_timg(file_name):
-    """Loads the image with OpenCV and converts to torch.Tensor                                      
-    """
-    assert os.path.isfile(file_name), "Invalid file {}".format(file_name)
-    # load image with OpenCV                                                                         
+    """Loads the image with OpenCV and converts to torch.Tensor."""
+    assert os.path.isfile(file_name), f"Invalid file {file_name}"
+    # load image with OpenCV
     img = cv2.imread(file_name, cv2.IMREAD_COLOR)
-    # convert image to torch tensor                                                                  
+    # convert image to torch tensor
     tensor = K.image_to_tensor(img, None).float() / 255.
     return K.color.bgr_to_rgb(tensor)
 
