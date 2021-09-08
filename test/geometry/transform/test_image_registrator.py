@@ -12,13 +12,13 @@ class TestSimilarity:
     def test_smoke(self, device, dtype):
         expected = torch.eye(3, device=device)[None]
         for r, sc, sh in zip([True, False], [True, False], [True, False]):
-            sim = kornia.geometry.transform.Similarity(r, sc, sh)
+            sim = kornia.geometry.transform.Similarity(r, sc, sh).to(device)
             assert_close(sim(), expected, atol=1e-4, rtol=1e-4)
 
     def test_smoke_inverse(self, device, dtype):
         expected = torch.eye(3, device=device)[None]
         for r, sc, sh in zip([True, False], [True, False], [True, False]):
-            s = kornia.geometry.transform.Similarity(r, sc, sh)
+            s = kornia.geometry.transform.Similarity(r, sc, sh).to(device)
             assert_close(s.forward_inverse(), expected, atol=1e-4, rtol=1e-4)
 
     def test_scale(self, device, dtype):
@@ -36,7 +36,7 @@ class TestSimilarity:
 
     def test_repr(self, device, dtype):
         for r, sc, sh in zip([True, False], [True, False], [True, False]):
-            s = kornia.geometry.transform.Similarity(r, sc, sh)
+            s = kornia.geometry.transform.Similarity(r, sc, sh).to(device)
             print(s)
 
 
@@ -63,7 +63,7 @@ class TestImageRegistrator:
                            'translation',
                            'scale',
                            'rotation']:
-            ir = kornia.geometry.transform.ImageRegistrator(model_type)
+            ir = kornia.geometry.transform.ImageRegistrator(model_type).to(device)
             print(ir)
 
     def test_registration(self, device):
