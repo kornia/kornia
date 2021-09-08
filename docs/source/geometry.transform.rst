@@ -5,6 +5,7 @@ kornia.geometry.transform
 
 The functions in this section perform various geometrical transformations of 2D images.
 
+
 Warp operators
 --------------
 
@@ -74,3 +75,15 @@ Module
 .. autoclass:: Resize
 .. autoclass:: Rescale
 .. autoclass:: Affine
+.. autoclass:: HomographyWarper
+
+
+Image registration
+------------------
+
+.. image:: _static/img/registration.gif
+  :width: 400
+  :alt: Image registration with ImageRegistrator module
+
+.. automodule:: kornia.geometry.transform.image_registrator
+    :members:
