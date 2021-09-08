@@ -5,7 +5,7 @@ Kornia Documentation
 
 .. toctree::
    :maxdepth: 2
-   :caption: Get Started
+   :caption: GET STARTED
 
    introduction
    installation
@@ -13,7 +13,13 @@ Kornia Documentation
 
 .. toctree::
    :maxdepth: 2
-   :caption: Package Reference
+   :caption: KORNIA UNIVERSE
+
+   tasks
+
+.. toctree::
+   :maxdepth: 2
+   :caption: API REFERENCE
 
    augmentation
    color
@@ -28,7 +34,7 @@ Kornia Documentation
 
 .. toctree::
    :maxdepth: 2
-   :caption: Community
+   :caption: COMMUNITY
 
    contribute
    faqs
