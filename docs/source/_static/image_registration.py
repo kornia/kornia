@@ -1,7 +1,9 @@
+import os
 import cv2
 import imageio
 import matplotlib.pyplot as plt
 
+import torch
 import kornia as K
 import kornia.geometry as KG
 
@@ -17,19 +19,19 @@ def load_timg(file_name):
 
 registrator = KG.ImageRegistrator('similarity')
 
-img1 = K.resize(load_timg('/Users/oldufo/datasets/stewart/MR-CT/CT.png'), (400,600))
-img2 = K.resize(load_timg('/Users/oldufo/datasets/stewart/MR-CT/MR.png'), (400,600))
+img1 = K.resize(load_timg('/Users/oldufo/datasets/stewart/MR-CT/CT.png'), (400, 600))
+img2 = K.resize(load_timg('/Users/oldufo/datasets/stewart/MR-CT/MR.png'), (400, 600))
 model, interm = registrator.register(img1, img2, output_intermediate_models=True)
 
 video_writer = imageio.get_writer('medical_registration.gif', fps=2)
 
 timg_dst_first = img1.clone()
-timg_dst_first[0,0,:,:] = img2[0,0,:,:]
-video_writer.append_data((K.tensor_to_image(timg_dst_first)*255.).astype(np.uint8))
+timg_dst_first[0, 0, :, :] = img2[0, 0, :, :]
+video_writer.append_data(K.tensor_to_image((timg_dst_first * 255.).byte()))
 
 with torch.no_grad():
     for m in interm:
         timg_dst = KG.homography_warp(img1, m, img2.shape[-2:])
-        timg_dst[0,0,:,:] = img2[0,0,:,:]
-        video_writer.append_data((K.tensor_to_image(timg_dst)*255.).astype(np.uint8))
+        timg_dst[0, 0, :, :] = img2[0, 0, :,:]
+        video_writer.append_data(K.tensor_to_image((timg_dst_first * 255.).byte()))
 video_writer.close()
