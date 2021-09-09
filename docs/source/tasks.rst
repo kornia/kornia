@@ -13,7 +13,7 @@ Image registration is the process of transforming different sets of data into on
 
 Learn more @ PWC : `https://paperswithcode.com/task/image-registration <https://paperswithcode.com/task/image-registration>`_
 
-..  youtube:: I-g3EhBIsDs
+..  youtube:: Re1q6vRfZac
 
 We provide the :py:class:`~kornia.geometry.transform.image_registrator.ImageRegistrator` API from which you can leverage to align automatically two images by a process of direct optimisation using the PyTorch Autograd differentiability.
 
