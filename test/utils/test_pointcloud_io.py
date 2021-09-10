@@ -23,6 +23,7 @@ class TestSaveLoadPointCloud:
         if os.path.exists(filename):
             os.remove(filename)
 
+    @staticmethod
     def test_inf_coordinates_save_pointcloud(self):
         # create the tensor to save
         height, width = 10, 8
