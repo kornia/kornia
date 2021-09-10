@@ -57,13 +57,13 @@ class LoFTR(nn.Module):
     If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
 
     Args:
-        config: Dict with initiliazation paramers. Do not pass it, unless you know what you are doint`.
+        config: Dict with initiliazation parameters. Do not pass it, unless you know what you are doing`.
         pretrained: Download and set pretrained weights to the model. Options: 'outdoor', 'indoor'.
                     'outdoor' is trained on the MegaDepth dataset and 'indoor'
                     on the ScanNet.
 
     Returns:
-        Dictionary with image correspondences and confidence scores
+        Dictionary with image correspondences and confidence scores.
 
 
     Example:
@@ -100,14 +100,14 @@ class LoFTR(nn.Module):
     def forward(self, data: Dict) -> Dict:
         """
         Args:
-            data (dict): {
+            data: {
                 'image0': (torch.Tensor): (N, 1, H1, W1)
                 'image1': (torch.Tensor): (N, 1, H2, W2)
                 'mask0'(optional) : (torch.Tensor): (N, H1, W1) '0' indicates a padded position
                 'mask1'(optional) : (torch.Tensor): (N, H2, W2)
             }
         Returns:
-            out (dict): {
+            out: {
                     "keypoints0": (torch.Tensor): (NC, 2) matching keypoints from image0
                     "keypoints1":  (torch.Tensor): (NC, 2) matching keypoints from image1
                     "confidence": (torch.Tensor): (NC) - confidence score [0, 1]
@@ -161,10 +161,10 @@ class LoFTR(nn.Module):
         # 5. match fine-level
         self.fine_matching(feat_f0_unfold, feat_f1_unfold, data)
 
-        rename_keys = {"mkpts0_f": 'keypoints0',
-                       "mkpts1_f": 'keypoints1',
-                       "mconf": 'confidence',
-                       "b_ids": 'batch_indexes'}
+        rename_keys: Dict[str, str] = {"mkpts0_f": 'keypoints0',
+                                       "mkpts1_f": 'keypoints1',
+                                       "mconf": 'confidence',
+                                       "b_ids": 'batch_indexes'}
         out = {}
         for k, v in rename_keys.items():
             out[v] = data[k]

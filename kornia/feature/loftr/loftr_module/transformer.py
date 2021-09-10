@@ -39,7 +39,7 @@ class LoFTREncoderLayer(nn.Module):
                 x: torch.Tensor,
                 source: torch.Tensor,
                 x_mask: Optional[torch.Tensor] = None,
-                source_mask: Optional[torch.Tensor] = None):
+                source_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Args:
             x (torch.Tensor): [N, L, C]

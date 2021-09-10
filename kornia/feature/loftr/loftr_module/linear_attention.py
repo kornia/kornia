@@ -23,7 +23,7 @@ class LinearAttention(Module):
                 keys: torch.Tensor,
                 values: torch.Tensor,
                 q_mask: Optional[torch.Tensor] = None,
-                kv_mask: Optional[torch.Tensor] = None):
+                kv_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         """ Multi-Head linear attention proposed in "Transformers are RNNs"
         Args:
             queries: [N, L, H, D]
