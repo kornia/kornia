@@ -13,11 +13,14 @@ class _HausdorffERLossBase(nn.Module):
         blob/master/hausdorff_loss.py>`__.
 
     Args:
-        alpha: controls the erosion rate in each iteration. Default: 2.0.
-        k: the number of iterations of erosion. Default: 10.
+        alpha: controls the erosion rate in each iteration.
+        k: the number of iterations of erosion.
         reduction: Specifies the reduction to apply to the output: 'none' | 'mean' | 'sum'.
             'none': no reduction will be applied, 'mean': the weighted mean of the output is taken,
-            'sum': the output will be summed. Default: 'mean'.
+            'sum': the output will be summed.
+
+    Returns:
+        Estimated Hausdorff Loss.
     """
 
     conv: Callable
@@ -40,7 +43,7 @@ class _HausdorffERLossBase(nn.Module):
         bound = (pred - target) ** 2
 
         kernel = torch.as_tensor(self.kernel, device=pred.device, dtype=pred.dtype)
-        eroted = torch.zeros_like(bound, device=pred.device, dtype=pred.dtype)
+        eroded = torch.zeros_like(bound, device=pred.device, dtype=pred.dtype)
         mask = torch.ones_like(bound, device=pred.device, dtype=torch.bool)
 
         # Same padding, assuming kernel is odd and square (cube) shaped.
@@ -67,10 +70,10 @@ class _HausdorffERLossBase(nn.Module):
                 erosion = torch.where(mask * _to_norm, _erosion_to_fill, erosion)
 
             # save erosion and add to loss
-            eroted = eroted + erosion * (k + 1) ** self.alpha
+            eroded = eroded + erosion * (k + 1) ** self.alpha
             bound = erosion
 
-        return eroted
+        return eroded
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """Compute Hausdorff loss.
@@ -79,12 +82,18 @@ class _HausdorffERLossBase(nn.Module):
             pred: predicted tensor with a shape of :math:`(B, C, H, W)` or :math:`(B, C, D, H, W)`.
                 Each channel is as binary as: 1 -> fg, 0 -> bg.
             target: target tensor with a shape of :math:`(B, 1, H, W)` or :math:`(B, C, D, H, W)`.
+
+        Returns:
+            Estimated Hausdorff Loss.
         """
-        assert pred.shape[2:] == target.shape[2:] and pred.size(0) == target.size(0) and target.size(1) == 1, (
-            "Prediction and target need to be of same size, and target should not be one-hot."
-            f"Got {pred.shape} and {target.shape}."
-        )
-        assert pred.size(1) >= target.max()
+        if pred.shape[2:] == target.shape[2:] and pred.size(0) == target.size(0) and target.size(1) == 1:
+            raise ValueError(
+                "Prediction and target need to be of same size, and target should not be one-hot."
+                f"Got {pred.shape} and {target.shape}."
+            )
+        if pred.size(1) >= target.max():
+            raise ValueError("Invalid target value.")
+
         out = torch.stack([
             self.perform_erosion(pred[:, i:i + 1], torch.where(target == i, 1, 0))
             for i in range(pred.size(1))
@@ -108,11 +117,11 @@ class HausdorffERLoss(_HausdorffERLossBase):
         blob/master/hausdorff_loss.py>`__.
 
     Args:
-        alpha: controls the erosion rate in each iteration. Default: 2.0.
-        k: the number of iterations of erosion. Default: 10.
+        alpha: controls the erosion rate in each iteration.
+        k: the number of iterations of erosion.
         reduction: Specifies the reduction to apply to the output: 'none' | 'mean' | 'sum'.
             'none': no reduction will be applied, 'mean': the weighted mean of the output is taken,
-            'sum': the output will be summed. Default: 'mean'.
+            'sum': the output will be summed.
 
     Examples:
         >>> hdloss = HausdorffERLoss()
@@ -137,12 +146,17 @@ class HausdorffERLoss(_HausdorffERLossBase):
             pred: predicted tensor with a shape of :math:`(B, C, H, W)`.
                 Each channel is as binary as: 1 -> fg, 0 -> bg.
             target: target tensor with a shape of :math:`(B, 1, H, W)`.
+
+        Returns:
+            Estimated Hausdorff Loss.
         """
-        assert pred.dim() == 4, f"Only 2D images supported. Got {pred.dim()}."
-        assert target.max() < pred.size(1) and target.min() >= 0 and target.dtype == torch.long, (
-            f"Expect long type target value in range (0, {pred.size(1)})."
-            f"({target.min()}, {target.max()})"
-        )
+        if pred.dim() == 4:
+            raise ValueError(f"Only 2D images supported. Got {pred.dim()}.")
+        if target.max() < pred.size(1) and target.min() >= 0 and target.dtype == torch.long:
+            raise ValueError(
+                f"Expect long type target value in range (0, {pred.size(1)})."
+                f"({target.min()}, {target.max()})"
+            )
         return super().forward(pred, target)
 
 
@@ -155,16 +169,16 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
         blob/master/hausdorff_loss.py>`__.
 
     Args:
-        alpha: controls the erosion rate in each iteration. Default: 2.0.
-        k: the number of iterations of erosion. Default: 10.
+        alpha: controls the erosion rate in each iteration.
+        k: the number of iterations of erosion.
         reduction: Specifies the reduction to apply to the output: 'none' | 'mean' | 'sum'.
             'none': no reduction will be applied, 'mean': the weighted mean of the output is taken,
-            'sum': the output will be summed. Default: 'mean'.
+            'sum': the output will be summed.
 
     Examples:
         >>> hdloss = HausdorffERLoss3D()
         >>> input = torch.randn(5, 3, 20, 20, 20)
-        >>> target = torch.randn(5, 1, 20, 20, 20).long() * 3
+        >>> target = torch.randn(5, 1, 20, 20, 20).long() * 2
         >>> res = hdloss(input, target)
     """
 
@@ -188,6 +202,10 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
             pred: predicted tensor with a shape of :math:`(B, C, D, H, W)`.
                 Each channel is as binary as: 1 -> fg, 0 -> bg.
             target: target tensor with a shape of :math:`(B, 1, D, H, W)`.
+
+        Returns:
+            Estimated Hausdorff Loss.
         """
-        assert pred.dim() == 5, f"Only 3D images supported. Got {pred.dim()}."
+        if pred.dim() == 5:
+            raise ValueError(f"Only 3D images supported. Got {pred.dim()}.")
         return super().forward(pred, target)

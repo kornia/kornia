@@ -10,11 +10,12 @@ import kornia
 import kornia.testing as utils
 from kornia.testing import assert_close
 
-torch.autograd.set_detect_anomaly(True)
-
 
 class HausdorffERLossNumpy(nn.Module):
-    """Binary Hausdorff loss based on morphological erosion"""
+    """Binary Hausdorff loss based on morphological erosion.
+    
+    Taken from https://github.com/PatRyg99/HausdorffLoss/blob/master/hausdorff_loss.py
+    """
 
     def __init__(self, alpha=2.0, erosions=10, **kwargs):
         super(HausdorffERLossNumpy, self).__init__()
