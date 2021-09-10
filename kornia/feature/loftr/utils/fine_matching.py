@@ -32,7 +32,8 @@ class FineMatching(nn.Module):
 
         # corner case: if no coarse matches found
         if M == 0:
-            assert not self.training, "M is always >0, when training, see coarse_matching.py"
+            if self.training:
+                raise ValueError("M >0, when training, see coarse_matching.py")
             # logger.warning('No matches found in coarse-level.')
             data.update({
                 'expec_f': torch.empty(0, 3, device=feat_f0.device),

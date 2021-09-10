@@ -217,7 +217,9 @@ class CoarseMatching(nn.Module):
             num_matches_train = num_candidates_max * self.train_coarse_percent
             num_matches_train = int(num_matches_train)
             num_matches_pred = len(b_ids)
-            assert self.train_pad_num_gt_min < num_matches_train, "min-num-gt-pad should be less than num-train-matches"
+            if self.train_pad_num_gt_min < num_matches_train:
+                msg = "min-num-gt-pad should be less than num-train-matches"
+                raise ValueError(msg)
 
             # pred_indices is to select from prediction
             if num_matches_pred <= num_matches_train - self.train_pad_num_gt_min:
