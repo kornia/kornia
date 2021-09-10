@@ -327,9 +327,11 @@ def rotation_matrix_to_angle_axis(rotation_matrix: torch.Tensor, eps: float = 1e
     axis[:, 1] = rotation_matrix[:, 0, 2] - rotation_matrix[:, 2, 0]
     axis[:, 2] = rotation_matrix[:, 1, 0] - rotation_matrix[:, 0, 1]
 
+    # Add epsilon for numerical stability
     r = torch.norm(axis, dim=1).unsqueeze(1) + eps
     t = rotation_matrix[:, 0, 0] + rotation_matrix[:, 1, 1] + rotation_matrix[:, 2, 2]
     t = t.unsqueeze(1)
+    # use atan2 instead of torch.acos((t - 1)/2) for numerical stability
     theta = torch.atan2(r, t - 1)
     axis = axis / r
     angle_axis = theta * axis
