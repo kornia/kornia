@@ -295,6 +295,7 @@ class DeFMO(nn.Module):
                 urls['defmo_rendering'], map_location=lambda storage, loc: storage
             )
             self.rendering.load_state_dict(pretrained_dict_ren, strict=True)
+        self.eval()
 
     def forward(self, input_data: torch.Tensor) -> torch.Tensor:
         latent = self.encoder(input_data)
