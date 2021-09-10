@@ -13,12 +13,12 @@ Learn more @ PWC : `https://paperswithcode.com/task/image-registration <https://
 Kornia Augmentations
 --------------------
 
-Kornia leverages differentiable and GPU image data augmentation through the module `kornia.augmentation <https://kornia.readthedocs.io/en/latest/augmentation.html>`_ 
+Kornia leverages differentiable and GPU image data augmentation through the module `kornia.augmentation <https://kornia.readthedocs.io/en/latest/augmentation.html>`_
 by implementating the functionality to be easily used with `torch.nn.Sequential <https://pytorch.org/docs/stable/generated/torch.nn.Sequential.html?highlight=sequential#torch.nn.Sequential>`_
-and other advanced containers such as 
+and other advanced containers such as
 :py:class:`~kornia.augmentation.container.AugmentationSequential`,
 :py:class:`~kornia.augmentation.container.ImageSequential`,
-:py:class:`~kornia.augmentation.container.PatchSequential` and 
+:py:class:`~kornia.augmentation.container.PatchSequential` and
 :py:class:`~kornia.augmentation.container.VideoSequential`.
 
 Our augmentations package is highly inspired by Torchvision-like augmentation APIs while may not reproduce Torchvision,

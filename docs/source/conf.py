@@ -110,7 +110,7 @@ html_theme_options = {
     "sidebar_hide_name": True,
     "navigation_with_keys": True,
     "announcement": """
-        <a style=\"text-decoration: none; color: white;\" 
+        <a style=\"text-decoration: none; color: white;\"
            href=\"https://github.com/kornia/kornia\">
            <img src=\"_static/img/GitHub-Mark-Light-32px.png\" width=20 height=20/>
            Click here to give a Star to Kornia on GitHub
