@@ -299,7 +299,7 @@ def angle_axis_to_rotation_matrix(angle_axis: torch.Tensor) -> torch.Tensor:
     return rotation_matrix  # Nx3x3
 
 
-def rotation_matrix_to_angle_axis(rotation_matrix: torch.Tensor) -> torch.Tensor:
+def rotation_matrix_to_angle_axis(rotation_matrix: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     r"""Convert 3x3 rotation matrix to Rodrigues vector.
 
     Args:
@@ -321,8 +321,19 @@ def rotation_matrix_to_angle_axis(rotation_matrix: torch.Tensor) -> torch.Tensor
 
     if not rotation_matrix.shape[-2:] == (3, 3):
         raise ValueError(f"Input size must be a (*, 3, 3) tensor. Got {rotation_matrix.shape}")
-    quaternion: torch.Tensor = rotation_matrix_to_quaternion(rotation_matrix, order=QuaternionCoeffOrder.WXYZ)
-    return quaternion_to_angle_axis(quaternion, order=QuaternionCoeffOrder.WXYZ)
+
+    axis = torch.zeros((rotation_matrix.shape[0], 3), device=rotation_matrix.device)
+    axis[:, 0] = rotation_matrix[:, 2, 1] - rotation_matrix[:, 1, 2]
+    axis[:, 1] = rotation_matrix[:, 0, 2] - rotation_matrix[:, 2, 0]
+    axis[:, 2] = rotation_matrix[:, 1, 0] - rotation_matrix[:, 0, 1]
+
+    r = torch.norm(axis, dim=1).unsqueeze(1) + eps
+    t = rotation_matrix[:, 0, 0] + rotation_matrix[:, 1, 1] + rotation_matrix[:, 2, 2]
+    t = t.unsqueeze(1)
+    theta = torch.atan2(r, t - 1)
+    axis = axis / r
+    angle_axis = theta * axis
+    return angle_axis
 
 
 def rotation_matrix_to_quaternion(
