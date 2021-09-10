@@ -2,8 +2,6 @@ import importlib.util
 import os
 import sys
 
-import sphinx_rtd_theme
-
 # readthedocs generated the whole documentation in an isolated environment
 # by cloning the git repo. Thus, any on-the-fly operation will not effect
 # on the resulting documentation. We therefore need to import and run the
@@ -36,8 +34,6 @@ extensions = [
     'sphinx.ext.autosummary',
     'sphinx.ext.doctest',
     'sphinx.ext.intersphinx',
-    # 'sphinx.ext.todo',
-    # 'sphinx.ext.coverage',
     'sphinx.ext.mathjax',
     'sphinx.ext.napoleon',
     'sphinx_autodoc_typehints',
@@ -101,47 +97,36 @@ language = None
 exclude_patterns = ['_build', '.ipynb_checkpoints']
 
 # The name of the Pygments (syntax highlighting) style to use.
-pygments_style = 'sphinx'
+pygments_style = 'friendly'
+pygments_dark_style = "monokai"
 
-# If true, `todo` and `todoList` produce output, else they produce nothing.
-todo_include_todos = True
-
-# do not prepend module name to functions
-add_module_names = False
-
-# -- Options for HTML output ----------------------------------------------
-
-# The theme to use for HTML and HTML Help pages.  See the documentation for
-# a list of builtin themes.
-#
-html_theme = 'sphinx_rtd_theme'
-html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
+html_theme = 'furo'
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
 #
 html_theme_options = {
-    'analytics_id': 'G-3LJY4GJLPR',
-    'collapse_navigation': False,
-    'display_version': True,
-    'logo_only': True,
+    "sidebar_hide_name": True,
+    "navigation_with_keys": True,
+    "announcement": """
+        <a style=\"text-decoration: none; color: white;\"
+           href=\"https://github.com/kornia/kornia\">
+           <img src=\"_static/img/GitHub-Mark-Light-32px.png\" width=20 height=20/>
+           Click here to give a Star to Kornia on GitHub
+        </a>
+    """,
 }
 
-html_logo = '_static/img/kornia_logo.svg'
-html_favicon = '_static/img/kornia_logo_mini.png'
+# html_logo = '_static/img/kornia_logo.svg'
+html_logo = '_static/img/kornia_logo_only.png'
+html_favicon = '_static/img/kornia_logo_favicon.png'
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
 html_extra_path = ['_extra']
-
-# html_style_path = 'css/pytorch_theme.css'
-html_context = {'css_files': [
-    'https://fonts.googleapis.com/css?family=Lato', '_static/css/pytorch_theme.css', '_static/css/copybtn.css']}
-
-# -- Options for HTMLHelp output ------------------------------------------
 
 # Output file base name for HTML help builder.
 htmlhelp_basename = 'Kornia'

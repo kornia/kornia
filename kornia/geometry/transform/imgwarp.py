@@ -41,7 +41,7 @@ def warp_perspective(
 ) -> torch.Tensor:
     r"""Applies a perspective transformation to an image.
 
-    .. image:: https://kornia-tutorials.readthedocs.io/en/latest/_images/warp_perspective_10_2.png
+    .. image:: https://kornia-tutorials.readthedocs.io/en/latest/_images/warp_perspective_10_1.png
 
     The function warp_perspective transforms the source image using
     the specified matrix:

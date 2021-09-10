@@ -1,25 +1,58 @@
-:github_url: https://github.com/kornia/kornia
+Kornia
+======
 
-Kornia Documentation
-====================
+State-of-the-art and curated Computer Vision algorithms for AI.
+
+Kornia AI is on the mission is to leverage and democratize the next generation of Computer Vision tools and Deep Learning libraries
+within the context of an Open Source community.
+
+.. image:: https://github.com/kornia/data/raw/main/kornia_pytorch_banner.png
+   :align: center
+
+Kornia is powerful and easy to use:
+
+.. code:: python
+
+   >>> import kornia.geometry as K
+   >>> registrator = K.ImageRegistrator('similarity')
+   >>> model = registrator(img1, img2)
+
+
+Join the community
+------------------
+
+- Join our social network communities with 1.8k+ members:
+   - `Twitter <https://twitter.com/kornia_foss>`_: we share the recent research and news for out mainstream community.
+   - `Slack <https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-CnydWe5fmvkcktIeRFGCEQ>`_: come to us and chat with our engineers and mentors to get support and resolve your questions.
+   - `LibreCV <https://librecv.org>`_: its our Open Source and Machine Learning community forum. Come and have fun !
+- Subscribe to our `YouTube channel <https://www.youtube.com/channel/UCI1SE1Ij2Fast5BSKxoa7Ag>`_ to get the latest video demos.
+
+----
 
 .. toctree::
-   :maxdepth: 2
    :caption: GET STARTED
+   :hidden:
 
-   introduction
-   installation
+   get-started/introduction
+   get-started/highlights
+   get-started/installation
+   get-started/about
    Tutorials <https://kornia-tutorials.readthedocs.io/en/latest/>
 
 .. toctree::
-   :maxdepth: 2
-   :caption: KORNIA UNIVERSE
+   :caption: KORNIA APPLICATIONS
+   :hidden:
 
-   tasks
+   applications/intro
+   applications/image_registration
+   applications/image_augmentations
+   applications/image_matching
+   applications/video_deblur
 
 .. toctree::
-   :maxdepth: 2
    :caption: API REFERENCE
+   :maxdepth: 2
+   :hidden:
 
    augmentation
    color
@@ -33,21 +66,22 @@ Kornia Documentation
    utils
 
 .. toctree::
-   :maxdepth: 2
+   :caption: SUPPORT
+   :hidden:
+
+   Issue tracker <https://github.com/kornia/kornia/issues>
+   Slack community <https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-CnydWe5fmvkcktIeRFGCEQ>
+   LibreCV community <https://librecv.org>
+   Twitter @kornia_foss <https://twitter.com/kornia_foss>
+   Kornia Youtube <https://www.youtube.com/channel/UCI1SE1Ij2Fast5BSKxoa7Ag>
+   Kornia LinkedIn <https://www.linkedin.com/company/kornia/>
+   Kornia AI <https://kornia.org>
+
+.. toctree::
    :caption: COMMUNITY
+   :hidden:
 
-   contribute
-   faqs
-   governance
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
-
-References
-==========
-
-.. bibliography::
+   community/contribute
+   community/faqs
+   community/governance
+   community/bibliography
