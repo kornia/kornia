@@ -14,7 +14,7 @@ Kornia Augmentations
 --------------------
 
 Kornia leverages differentiable and GPU image data augmentation through the module `kornia.augmentation <https://kornia.readthedocs.io/en/latest/augmentation.html>`_
-by implementating the functionality to be easily used with `torch.nn.Sequential <https://pytorch.org/docs/stable/generated/torch.nn.Sequential.html?highlight=sequential#torch.nn.Sequential>`_
+by implementing the functionality to be easily used with `torch.nn.Sequential <https://pytorch.org/docs/stable/generated/torch.nn.Sequential.html?highlight=sequential#torch.nn.Sequential>`_
 and other advanced containers such as
 :py:class:`~kornia.augmentation.container.AugmentationSequential`,
 :py:class:`~kornia.augmentation.container.ImageSequential`,

@@ -22,7 +22,7 @@ Join the community
 ------------------
 
 - Join our social network communities with 1.8k+ members:
-   - `Twitter <https://twitter.com/kornia_foss>`_: we share the recent resarch and news for out mainstream community.
+   - `Twitter <https://twitter.com/kornia_foss>`_: we share the recent research and news for out mainstream community.
    - `Slack <https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-CnydWe5fmvkcktIeRFGCEQ>`_: come to us and chat with our engineers and mentors to get support and resolve your questions.
    - `LibreCV <https://librecv.org>`_: its our Open Source and Machine Learning community forum. Come and have fun !
 - Subscribe to our `YouTube channel <https://www.youtube.com/channel/UCI1SE1Ij2Fast5BSKxoa7Ag>`_ to get the latest video demos.
