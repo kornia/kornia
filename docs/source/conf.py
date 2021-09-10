@@ -107,19 +107,21 @@ html_theme = 'furo'
 # documentation.
 #
 html_theme_options = {
+    'light_logo': 'img/kornia_logo_only.png',
+    'dark_logo': 'img/kornia_logo_only.png',
     "sidebar_hide_name": True,
     "navigation_with_keys": True,
     "announcement": """
         <a style=\"text-decoration: none; color: white;\"
            href=\"https://github.com/kornia/kornia\">
-           <img src=\"_static/img/GitHub-Mark-Light-32px.png\" width=20 height=20/>
+           <img src=\"/en/latest/_static/img/GitHub-Mark-Light-32px.png\" width=20 height=20/>
            Click here to give a Star to Kornia on GitHub
         </a>
     """,
 }
 
 # html_logo = '_static/img/kornia_logo.svg'
-html_logo = '_static/img/kornia_logo_only.png'
+# html_logo = '_static/img/kornia_logo_only.png'
 html_favicon = '_static/img/kornia_logo_favicon.png'
 
 # Add any paths that contain custom static files (such as style sheets) here,
