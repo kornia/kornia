@@ -1,10 +1,9 @@
+import numpy as np
 import pytest
 import torch
 import torch.nn as nn
-from torch.autograd import gradcheck
-
-import numpy as np
 from scipy.ndimage import convolve
+from torch.autograd import gradcheck
 
 import kornia
 import kornia.testing as utils
@@ -13,12 +12,12 @@ from kornia.testing import assert_close
 
 class HausdorffERLossNumpy(nn.Module):
     """Binary Hausdorff loss based on morphological erosion.
-    
+
     Taken from https://github.com/PatRyg99/HausdorffLoss/blob/master/hausdorff_loss.py
     """
 
     def __init__(self, alpha=2.0, erosions=10, **kwargs):
-        super(HausdorffERLossNumpy, self).__init__()
+        super().__init__()
         self.alpha = alpha
         self.erosions = erosions
         self.prepare_kernels()
