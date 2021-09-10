@@ -319,21 +319,21 @@ def rotation_matrix_to_angle_axis(rotation_matrix: torch.Tensor, eps: float = 1e
     if not isinstance(rotation_matrix, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(rotation_matrix)}")
 
-    if not rotation_matrix.shape[-2:] == (3, 3):
+    if not len(rotation_matrix.shape) == 3 or not rotation_matrix.shape[-2:] == (3, 3):
         raise ValueError(f"Input size must be a (*, 3, 3) tensor. Got {rotation_matrix.shape}")
 
-    axis = torch.zeros((rotation_matrix.shape[0], 3), device=rotation_matrix.device)
+    axis = torch.empty((rotation_matrix.shape[0], 3), device=rotation_matrix.device, dtype=rotation_matrix.dtype)
     axis[:, 0] = rotation_matrix[:, 2, 1] - rotation_matrix[:, 1, 2]
     axis[:, 1] = rotation_matrix[:, 0, 2] - rotation_matrix[:, 2, 0]
     axis[:, 2] = rotation_matrix[:, 1, 0] - rotation_matrix[:, 0, 1]
 
-    # add epsilon for numerical stability
-    r = torch.norm(axis, dim=1).unsqueeze(1) + eps
+    r = torch.norm(axis, dim=1).unsqueeze(1)
     t = rotation_matrix[:, 0, 0] + rotation_matrix[:, 1, 1] + rotation_matrix[:, 2, 2]
     t = t.unsqueeze(1)
     # use atan2 instead of torch.acos((t - 1)/2) for numerical stability
     theta = torch.atan2(r, t - 1)
-    axis = axis / r
+    # add epsilon for numerical stability
+    axis = axis / (r + eps)
     angle_axis = theta * axis
     return angle_axis
 
