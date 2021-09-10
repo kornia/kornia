@@ -24,7 +24,7 @@ class TestSaveLoadPointCloud:
             os.remove(filename)
 
     @staticmethod
-    def test_inf_coordinates_save_pointcloud(self):
+    def test_inf_coordinates_save_pointcloud():
         # create the tensor to save
         height, width = 10, 8
         xyz_save = torch.rand(height, width, 3)
