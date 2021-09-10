@@ -55,6 +55,7 @@ class TFeat(nn.Module):
                 urls['liberty'], map_location=lambda storage, loc: storage
             )
             self.load_state_dict(pretrained_dict, strict=True)
+        self.eval()
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         x = self.features(input)
