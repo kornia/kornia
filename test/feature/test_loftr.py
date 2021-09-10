@@ -10,10 +10,12 @@ from kornia.testing import assert_close
 
 class TestLoFTR:
     def test_pretrained_outdoor_smoke(self, device):
-        loftr = LoFTR('outdoor').to(device)
+        if device == torch.device('cpu'):
+            loftr = LoFTR('outdoor').to(device)
 
     def test_pretrained_indoor_smoke(self, device):
-        loftr = LoFTR('indoor').to(device)
+        if device == torch.device('cpu'):
+            loftr = LoFTR('indoor').to(device)
 
     @pytest.mark.skip("Takes too long time (but works)")
     def test_gradcheck(self, device):
