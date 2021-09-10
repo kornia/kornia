@@ -320,7 +320,7 @@ def rotation_matrix_to_angle_axis(rotation_matrix: torch.Tensor, eps: float = 1e
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(rotation_matrix)}")
 
     if not len(rotation_matrix.shape) == 3 or not rotation_matrix.shape[-2:] == (3, 3):
-        raise ValueError(f"Input size must be a (*, 3, 3) tensor. Got {rotation_matrix.shape}")
+        raise ValueError(f"Input size must be a (N, 3, 3) tensor. Got {rotation_matrix.shape}")
 
     axis = torch.empty((rotation_matrix.shape[0], 3), device=rotation_matrix.device, dtype=rotation_matrix.dtype)
     axis[:, 0] = rotation_matrix[:, 2, 1] - rotation_matrix[:, 1, 2]
