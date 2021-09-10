@@ -1,13 +1,5 @@
-Supported Applications
-======================
-
-Kornia provides from bottom to top granularity in order to implement Computer Vision related applications.
-
-In this section, we showcase our high-level API in terms of abstraction for common Computer Vision algorithms
-that can be used across different domains such as Robotics, Industrial applications or for the AR/VR industry.
-
 Image Registration
-------------------
+==================
 
 Image registration is the process of transforming different sets of data into one coordinate system. Data may be multiple photographs, data from different sensors, times, depths, or viewpoints. It is used in computer vision, medical imaging, and compiling and analyzing images and data from satellites. Registration is necessary in order to be able to compare or integrate the data obtained from these different measurements.
 
@@ -27,16 +19,6 @@ We provide the :py:class:`~kornia.geometry.transform.image_registrator.ImageRegi
 
 Then, if you want to perform a more sophisticated process:
 
-.. literalinclude:: _static/image_registration.py
+.. literalinclude:: ../_static/image_registration.py
 
 To reproduce the same results as in the showed video you can go through or full tutorial using Colab found `here <https://kornia-tutorials.readthedocs.io/en/latest/image_registration.html>`_ .
-
-Video Deblurring
-----------------
-
-**COMING SOON**
-
-Image Matching
---------------
-
-**COMING SOON**
