@@ -14,18 +14,24 @@ class _HausdorffERLossBase(nn.Module):
 
     Args:
         alpha: controls the erosion rate in each iteration. Default: 2.0.
-        erosions: the number of iterations of erosion. Default: 10.
+        k: the number of iterations of erosion. Default: 10.
+        reduction: Specifies the reduction to apply to the output: 'none' | 'mean' | 'sum'.
+            'none': no reduction will be applied, 'mean': the weighted mean of the output is taken,
+            'sum': the output will be summed. Default: 'mean'.
     """
-    conv: Callable
-    avg_pool: Callable
 
-    def __init__(self, alpha: float = 2.0, erosions: int = 10) -> None:
+    conv: Callable
+    max_pool: Callable
+
+    def __init__(self, alpha: float = 2.0, k: int = 10, reduction: str = 'mean') -> None:
         super().__init__()
         self.alpha = alpha
-        self.erosions = erosions
+        self.k = k
+        self.reduction = reduction
         self.register_buffer("kernel", self.get_kernel())
 
     def get_kernel(self) -> torch.Tensor:
+        """Get kernel for image morphology convolution."""
         raise NotImplementedError
 
     def perform_erosion(
@@ -34,11 +40,13 @@ class _HausdorffERLossBase(nn.Module):
         bound = (pred - target) ** 2
 
         kernel = torch.as_tensor(self.kernel, device=pred.device, dtype=pred.dtype)
-        eroted = torch.zeros_like(bound)
+        eroted = torch.zeros_like(bound, device=pred.device, dtype=pred.dtype)
+        mask = torch.ones_like(bound, device=pred.device, dtype=torch.bool)
 
-        for k in range(self.erosions):
-            # Same padding, assuming kernel is odd and square (cube) shaped.
-            padding = (kernel.size(-1) - 1) // 2
+        # Same padding, assuming kernel is odd and square (cube) shaped.
+        # NOTE: int() has to be added for enabling JIT.
+        padding = int((kernel.size(-1) - 1) // 2)
+        for k in range(self.k):
             # compute convolution with kernel
             dilation = self.conv(bound, weight=kernel, padding=padding, groups=1)
             # apply soft thresholding at 0.5 and normalize
@@ -46,12 +54,17 @@ class _HausdorffERLossBase(nn.Module):
             erosion[erosion < 0] = 0
 
             # image-wise differences for 2D images
-            erosion_max = self.avg_pool(erosion)
-            erosion_min = - self.avg_pool(- erosion)
+            erosion_max = self.max_pool(erosion)
+            erosion_min = - self.max_pool(- erosion)
             # No normalization needed if `max - min = 0`
-            to_norm = (erosion_max.squeeze() - erosion_min.squeeze()) != 0
-            erosion[to_norm] = (erosion[to_norm] - erosion_min[to_norm]) / (
-                erosion_max[to_norm] - erosion_min[to_norm])
+            _to_norm = (erosion_max - erosion_min) != 0
+            to_norm = _to_norm.squeeze()
+            if to_norm.any():
+                # NOTE: avoid in-place ops like below, which will not pass gradcheck:
+                #       erosion[to_norm] = (erosion[to_norm] - erosion_min[to_norm]) / (
+                #           erosion_max[to_norm] - erosion_min[to_norm])
+                _erosion_to_fill = (erosion - erosion_min) / (erosion_max - erosion_min)
+                erosion = torch.where(mask * _to_norm, _erosion_to_fill, erosion)
 
             # save erosion and add to loss
             eroted = eroted + erosion * (k + 1) ** self.alpha
@@ -71,11 +84,19 @@ class _HausdorffERLossBase(nn.Module):
             "Prediction and target need to be of same size, and target should not be one-hot."
             f"Got {pred.shape} and {target.shape}."
         )
-        assert pred.size(1) <= target.max()
-        return torch.stack([
-            self.perform_erosion(pred[:, i:i + 1], torch.where(target == i, 1, 0)).mean()
+        assert pred.size(1) >= target.max()
+        out = torch.stack([
+            self.perform_erosion(pred[:, i:i + 1], torch.where(target == i, 1, 0))
             for i in range(pred.size(1))
-        ]).mean()
+        ])
+        if self.reduction == 'mean':
+            return out.mean()
+        elif self.reduction == 'sum':
+            return out.sum()
+        elif self.reduction == 'none':
+            return out
+        else:
+            raise NotImplementedError(f"reduction `{self.reduction}` has not been implemented yet.")
 
 
 class HausdorffERLoss(_HausdorffERLossBase):
@@ -88,18 +109,23 @@ class HausdorffERLoss(_HausdorffERLossBase):
 
     Args:
         alpha: controls the erosion rate in each iteration. Default: 2.0.
-        erosions: the number of iterations of erosion. Default: 10.
+        k: the number of iterations of erosion. Default: 10.
+        reduction: Specifies the reduction to apply to the output: 'none' | 'mean' | 'sum'.
+            'none': no reduction will be applied, 'mean': the weighted mean of the output is taken,
+            'sum': the output will be summed. Default: 'mean'.
 
     Examples:
         >>> hdloss = HausdorffERLoss()
         >>> input = torch.randn(5, 3, 20, 20)
-        >>> target = torch.randn(5, 1, 20, 20).long() * 3
+        >>> target = torch.randn(5, 1, 20, 20).long() * 2
         >>> res = hdloss(input, target)
     """
-    conv = torch.conv2d
-    avg_pool = nn.AdaptiveAvgPool2d(1)
 
-    def get_kernel(self) -> None:
+    conv = torch.conv2d
+    max_pool = nn.AdaptiveMaxPool2d(1)
+
+    def get_kernel(self) -> torch.Tensor:
+        """Get kernel for image morphology convolution."""
         cross = torch.tensor([[[0, 1, 0], [1, 1, 1], [0, 1, 0]]])
         kernel = cross * 0.2
         return kernel[None]
@@ -113,6 +139,10 @@ class HausdorffERLoss(_HausdorffERLossBase):
             target: target tensor with a shape of :math:`(B, 1, H, W)`.
         """
         assert pred.dim() == 4, f"Only 2D images supported. Got {pred.dim()}."
+        assert target.max() < pred.size(1) and target.min() >= 0 and target.dtype == torch.long, (
+            f"Expect long type target value in range (0, {pred.size(1)})."
+            f"({target.min()}, {target.max()})"
+        )
         return super().forward(pred, target)
 
 
@@ -126,7 +156,10 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
 
     Args:
         alpha: controls the erosion rate in each iteration. Default: 2.0.
-        erosions: the number of iterations of erosion. Default: 10.
+        k: the number of iterations of erosion. Default: 10.
+        reduction: Specifies the reduction to apply to the output: 'none' | 'mean' | 'sum'.
+            'none': no reduction will be applied, 'mean': the weighted mean of the output is taken,
+            'sum': the output will be summed. Default: 'mean'.
 
     Examples:
         >>> hdloss = HausdorffERLoss3D()
@@ -136,12 +169,15 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
     """
 
     conv = torch.conv3d
-    avg_pool = nn.AdaptiveAvgPool3d(1)
+    max_pool = nn.AdaptiveMaxPool3d(1)
 
-    def get_kernel(self) -> None:
-        # Kernel from cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3))
+    def get_kernel(self) -> torch.Tensor:
+        """Get kernel for image morphology convolution."""
         cross = torch.tensor([[[0, 1, 0], [1, 1, 1], [0, 1, 0]]])
         bound = torch.tensor([[[0, 0, 0], [0, 1, 0], [0, 0, 0]]])
+        # NOTE: The original repo claimed it shaped as (3, 1, 3, 3)
+        #    which Jian suspect it is wrongly implemented.
+        # https://github.com/PatRyg99/HausdorffLoss/blob/9f580acd421af648e74b45d46555ccb7a876c27c/hausdorff_loss.py#L94
         kernel = torch.stack([bound, cross, bound], dim=1) * (1 / 7)
         return kernel[None]
 
