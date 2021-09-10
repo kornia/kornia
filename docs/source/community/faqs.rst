@@ -3,16 +3,6 @@ Frequently Asked Questions
 
 This document contains frequently asked questions.
 
-How to Install
---------------
-
-See `Installation <https://kornia.readthedocs.io/en/latest/installation.html/>`_
-
-How to Contribute
------------------
-
-See `How to Contribute <https://kornia.readthedocs.io/en/latest/contribute.html/>`_
-
 Kornia relation to Pytorch Geometry/Geometric
 ---------------------------------------------
 
