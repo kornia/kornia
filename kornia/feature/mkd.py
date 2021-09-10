@@ -587,6 +587,7 @@ class MKDDescriptor(nn.Module):
                 whitening, whitening_model, in_dims=self.odims, output_dims=self.output_dims
             )
             self.odims = self.output_dims
+        self.eval()
 
     def forward(self, patches: torch.Tensor) -> torch.Tensor:
         if not isinstance(patches, torch.Tensor):

@@ -66,6 +66,7 @@ class HardNet(nn.Module):
                 urls['liberty_aug'], map_location=lambda storage, loc: storage
             )
             self.load_state_dict(pretrained_dict['state_dict'], strict=True)
+        self.eval()
 
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
@@ -143,6 +144,7 @@ class HardNet8(nn.Module):
                 urls['hardnet8v2'], map_location=lambda storage, loc: storage
             )
             self.load_state_dict(pretrained_dict, strict=True)
+        self.eval()
 
     @staticmethod
     def weights_init(m):
