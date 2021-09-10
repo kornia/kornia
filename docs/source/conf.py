@@ -118,7 +118,7 @@ html_theme_options = {
     """,
 }
 
-#html_logo = '_static/img/kornia_logo.svg'
+# html_logo = '_static/img/kornia_logo.svg'
 html_logo = '_static/img/kornia_logo_only.png'
 html_favicon = '_static/img/kornia_logo_favicon.png'
 
