@@ -2,9 +2,10 @@
 Modified from: https://github.com/idiap/fast-
 transformers/blob/master/fast_transformers/attention/linear_attention.py."""
 
+from typing import Optional
+
 import torch
 from torch.nn import Dropout, Module
-from typing import Optional
 
 
 def elu_feature_map(x):

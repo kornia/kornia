@@ -4,8 +4,8 @@ from torch.autograd import gradcheck
 
 import kornia.testing as utils  # test utils
 from kornia.feature import LoFTR
-from kornia.testing import assert_close
 from kornia.geometry import resize
+from kornia.testing import assert_close
 
 
 class TestLoFTR:
