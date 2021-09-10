@@ -39,8 +39,8 @@ def warp_kpts(kpts0, depth0, depth1, T_0to1, K0, K1):
 
     # Covisible Check
     h, w = depth1.shape[1:3]
-    covisible_mask = (w_kpts0[:, :, 0] > 0) * (w_kpts0[:, :, 0] < w-1) * \
-        (w_kpts0[:, :, 1] > 0) * (w_kpts0[:, :, 1] < h-1)
+    covisible_mask = (w_kpts0[:, :, 0] > 0) * (w_kpts0[:, :, 0] < w - 1) * \
+        (w_kpts0[:, :, 1] > 0) * (w_kpts0[:, :, 1] < h - 1)
     w_kpts0_long = w_kpts0.long()
     w_kpts0_long[~covisible_mask, :] = 0
 

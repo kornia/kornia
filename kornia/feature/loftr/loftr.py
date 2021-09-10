@@ -17,37 +17,37 @@ urls["indoor"] = "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_indoor.ckpt"
 # Some do not change there anything, unless you want to retrain it.
 
 default_cfg = {'backbone_type': 'ResNetFPN',
- 'resolution': (8, 2),
- 'fine_window_size': 5,
- 'fine_concat_coarse_feat': True,
- 'resnetfpn': {'initial_dim': 128, 'block_dims': [128, 196, 256]},
- 'coarse': {'d_model': 256,
-  'd_ffn': 256,
-  'nhead': 8,
-  'layer_names': ['self',
-   'cross',
-   'self',
-   'cross',
-   'self',
-   'cross',
-   'self',
-   'cross'],
-  'attention': 'linear',
-  'temp_bug_fix': False},
- 'match_coarse': {'thr': 0.2,
-  'border_rm': 2,
-  'match_type': 'dual_softmax',
-  'dsmax_temperature': 0.1,
-  'skh_iters': 3,
-  'skh_init_bin_score': 1.0,
-  'skh_prefilter': True,
-  'train_coarse_percent': 0.4,
-  'train_pad_num_gt_min': 200},
- 'fine': {'d_model': 128,
-  'd_ffn': 128,
-  'nhead': 8,
-  'layer_names': ['self', 'cross'],
-  'attention': 'linear'}}
+               'resolution': (8, 2),
+               'fine_window_size': 5,
+               'fine_concat_coarse_feat': True,
+               'resnetfpn': {'initial_dim': 128, 'block_dims': [128, 196, 256]},
+               'coarse': {'d_model': 256,
+                          'd_ffn': 256,
+                          'nhead': 8,
+                          'layer_names': ['self',
+                                          'cross',
+                                          'self',
+                                          'cross',
+                                          'self',
+                                          'cross',
+                                          'self',
+                                          'cross'],
+                          'attention': 'linear',
+                          'temp_bug_fix': False},
+               'match_coarse': {'thr': 0.2,
+                                'border_rm': 2,
+                                'match_type': 'dual_softmax',
+                                'dsmax_temperature': 0.1,
+                                'skh_iters': 3,
+                                'skh_init_bin_score': 1.0,
+                                'skh_prefilter': True,
+                                'train_coarse_percent': 0.4,
+                                'train_pad_num_gt_min': 200},
+               'fine': {'d_model': 128,
+                        'd_ffn': 128,
+                        'nhead': 8,
+                        'layer_names': ['self', 'cross'],
+                        'attention': 'linear'}}
 
 
 class LoFTR(nn.Module):
@@ -67,11 +67,13 @@ class LoFTR(nn.Module):
 
 
     Example:
-        >>> input = {"image0": torch.rand(1, 1, 640, 480),\
-                     "image1": torch.rand(1, 1, 640, 480)}
+        >>> img1 = torch.rand(1, 1, 320, 200)
+        >>> img2 = torch.rand(1, 1, 128, 128)
+        >>> input = {"image0": img1, "image1": img2}
         >>> loftr = LoFTR('outdoor')
         >>> out = loftr(input)
     """
+
     def __init__(self, pretrained: Optional[str] = 'outdoor', config: Dict = default_cfg):
         super().__init__()
         # Misc
@@ -91,7 +93,7 @@ class LoFTR(nn.Module):
             if pretrained not in urls.keys():
                 raise ValueError(f"pretrained should be None or one of {urls.keys()}")
             pretrained_dict = torch.hub.load_state_dict_from_url(
-                 urls[pretrained], map_location=lambda storage, loc: storage)
+                urls[pretrained], map_location=lambda storage, loc: storage)
             self.load_state_dict(pretrained_dict['state_dict'])
         self.eval()
 
@@ -164,9 +166,8 @@ class LoFTR(nn.Module):
                        "mconf": 'confidence',
                        "b_ids": 'batch_indexes'}
         out = {}
-        for k,v  in rename_keys.items():
-            out[v] = data[k]    
-        #out  = dict((rename_keys[d], data[d]) for d in ["mkpts0_f", "mkpts1_f", "mconf", "b_ids"])
+        for k, v in rename_keys.items():
+            out[v] = data[k]
         return out
 
     def load_state_dict(self, state_dict, *args, **kwargs):

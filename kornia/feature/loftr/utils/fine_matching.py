@@ -32,7 +32,7 @@ class FineMatching(nn.Module):
 
         # corner case: if no coarse matches found
         if M == 0:
-            assert self.training == False, "M is always >0, when training, see coarse_matching.py"
+            assert not self.training, "M is always >0, when training, see coarse_matching.py"
             # logger.warning('No matches found in coarse-level.')
             data.update({
                 'expec_f': torch.empty(0, 3, device=feat_f0.device),
@@ -41,7 +41,7 @@ class FineMatching(nn.Module):
             })
             return
 
-        feat_f0_picked = feat_f0_picked = feat_f0[:, WW//2, :]
+        feat_f0_picked = feat_f0_picked = feat_f0[:, WW // 2, :]
         sim_matrix = torch.einsum('mc,mrc->mr', feat_f0_picked, feat_f1)
         softmax_temp = 1. / C**.5
         heatmap = torch.softmax(softmax_temp * sim_matrix, dim=1).view(-1, W, W)

@@ -27,9 +27,9 @@ class LoFTREncoderLayer(nn.Module):
 
         # feed-forward network
         self.mlp = nn.Sequential(
-            nn.Linear(d_model*2, d_model*2, bias=False),
+            nn.Linear(d_model * 2, d_model * 2, bias=False),
             nn.ReLU(True),
-            nn.Linear(d_model*2, d_model, bias=False),
+            nn.Linear(d_model * 2, d_model, bias=False),
         )
 
         # norm and dropout
@@ -56,7 +56,7 @@ class LoFTREncoderLayer(nn.Module):
         key = self.k_proj(key).view(bs, -1, self.nhead, self.dim)  # [N, S, (H, D)]
         value = self.v_proj(value).view(bs, -1, self.nhead, self.dim)
         message = self.attention(query, key, value, q_mask=x_mask, kv_mask=source_mask)  # [N, L, (H, D)]
-        message = self.merge(message.view(bs, -1, self.nhead*self.dim))  # [N, L, C]
+        message = self.merge(message.view(bs, -1, self.nhead * self.dim))  # [N, L, C]
         message = self.norm1(message)
 
         # feed-forward network

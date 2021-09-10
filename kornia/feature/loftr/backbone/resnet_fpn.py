@@ -37,7 +37,7 @@ class BasicBlock(nn.Module):
         if self.downsample is not None:
             x = self.downsample(x)
 
-        return self.relu(x+y)
+        return self.relu(x + y)
 
 
 class ResNetFPN_8_2(nn.Module):
@@ -109,11 +109,11 @@ class ResNetFPN_8_2(nn.Module):
 
         x2_out = self.layer2_outconv(x2)
         x3_out_2x = F.interpolate(x3_out, size=(x2_out.shape[2:]), mode='bilinear', align_corners=True)
-        x2_out = self.layer2_outconv2(x2_out+x3_out_2x)
+        x2_out = self.layer2_outconv2(x2_out + x3_out_2x)
 
         x1_out = self.layer1_outconv(x1)
         x2_out_2x = F.interpolate(x2_out, size=(x1_out.shape[2:]), mode='bilinear', align_corners=True)
-        x1_out = self.layer1_outconv2(x1_out+x2_out_2x)
+        x1_out = self.layer1_outconv2(x1_out + x2_out_2x)
 
         return [x3_out, x1_out]
 
@@ -190,10 +190,10 @@ class ResNetFPN_16_4(nn.Module):
 
         x4_out_2x = F.interpolate(x4_out, scale_factor=2., mode='bilinear', align_corners=True)
         x3_out = self.layer3_outconv(x3)
-        x3_out = self.layer3_outconv2(x3_out+x4_out_2x)
+        x3_out = self.layer3_outconv2(x3_out + x4_out_2x)
 
         x3_out_2x = F.interpolate(x3_out, scale_factor=2., mode='bilinear', align_corners=True)
         x2_out = self.layer2_outconv(x2)
-        x2_out = self.layer2_outconv2(x2_out+x3_out_2x)
+        x2_out = self.layer2_outconv2(x2_out + x3_out_2x)
 
         return [x4_out, x2_out]

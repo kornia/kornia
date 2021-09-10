@@ -22,9 +22,11 @@ class TestLoFTR:
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
         patches05 = utils.tensor_to_gradcheck_var(patches05)  # to var
         loftr = LoFTR().to(patches.device, patches.dtype)
-        proxy_out = lambda x, y: loftr.forward({"image0": x, "image1": y})["keypoints0"]
-        assert gradcheck(proxy_out, (patches, patches05), eps=1e-4, atol=1e-4, raise_exception=True)
 
+        def proxy_forward(x, y):
+            return loftr.forward({"image0": x, "image1": y})["keypoints0"]
+
+        assert gradcheck(proxy_forward, (patches, patches05), eps=1e-4, atol=1e-4, raise_exception=True)
 
     @pytest.mark.skip("does not like transformer.py:L99, zip iteration")
     @pytest.mark.jit

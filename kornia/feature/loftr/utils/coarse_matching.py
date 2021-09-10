@@ -4,6 +4,7 @@ import torch.nn.functional as F
 
 INF = 1e9
 
+
 def mask_border(m, b: int, v):
     """ Mask borders with value
     Args:
@@ -174,9 +175,9 @@ class CoarseMatching(nn.Module):
         mask = conf_matrix > self.thr
         N = conf_matrix.shape[0]
         mask = mask.reshape(N,
-                     axes_lengths['h0c'], axes_lengths['w0c'],
-                     axes_lengths['h1c'], axes_lengths['w1c'])
-        #mask = rearrange(mask, 'b (h0c w0c) (h1c w1c) -> b h0c w0c h1c w1c',
+                            axes_lengths['h0c'], axes_lengths['w0c'],
+                            axes_lengths['h1c'], axes_lengths['w1c'])
+        # mask = rearrange(mask, 'b (h0c w0c) (h1c w1c) -> b h0c w0c h1c w1c',
         #                 **axes_lengths)
         if 'mask0' not in data:
             mask_border(mask, self.border_rm, False)
@@ -184,9 +185,9 @@ class CoarseMatching(nn.Module):
             mask_border_with_padding(mask, self.border_rm, False,
                                      data['mask0'], data['mask1'])
         mask = mask.reshape(N,
-                     axes_lengths['h0c'] * axes_lengths['w0c'],
-                     axes_lengths['h1c'] * axes_lengths['w1c'])
-        #rearrange(mask, 'b h0c w0c h1c w1c -> b (h0c w0c) (h1c w1c)',
+                            axes_lengths['h0c'] * axes_lengths['w0c'],
+                            axes_lengths['h1c'] * axes_lengths['w1c'])
+        # rearrange(mask, 'b h0c w0c h1c w1c -> b (h0c w0c) (h1c w1c)',
         #                 **axes_lengths)
 
         # 2. mutual nearest
@@ -213,8 +214,8 @@ class CoarseMatching(nn.Module):
             else:
                 num_candidates_max = compute_max_candidates(
                     data['mask0'], data['mask1'])
-            num_matches_train = int(num_candidates_max *
-                                    self.train_coarse_percent)
+            num_matches_train = num_candidates_max * self.train_coarse_percent
+            num_matches_train = int(num_matches_train)
             num_matches_pred = len(b_ids)
             assert self.train_pad_num_gt_min < num_matches_train, "min-num-gt-pad should be less than num-train-matches"
 
@@ -229,10 +230,10 @@ class CoarseMatching(nn.Module):
 
             # gt_pad_indices is to select from gt padding. e.g. max(3787-4800, 200)
             gt_pad_indices = torch.randint(
-                    len(data['spv_b_ids']),
-                    (max(num_matches_train - num_matches_pred,
-                        self.train_pad_num_gt_min), ),
-                    device=_device)
+                len(data['spv_b_ids']),
+                (max(num_matches_train - num_matches_pred,
+                     self.train_pad_num_gt_min), ),
+                device=_device)
             mconf_gt = torch.zeros(len(data['spv_b_ids']), device=_device)  # set conf of gt paddings to all zero
 
             b_ids, i_ids, j_ids, mconf = map(

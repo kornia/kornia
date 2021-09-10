@@ -6,13 +6,13 @@ from kornia.utils import create_meshgrid
 
 from .geometry import warp_kpts
 
-##############  ↓  Coarse-Level supervision  ↓  ##############
+#  Coarse-Level supervision
 
 
 @torch.no_grad()
 def mask_pts_at_padded_regions(grid_pt, mask):
     """For megadepth dataset, zero-padding exists in images."""
-    n, h, w  = mask.shape
+    n, h, w = mask.shape
     mask = mask.reshape(n, h * w).unsqueeze(-1).repeat(1, 1, 2)
     # from einops import repeat
     # mask = repeat(mask, 'n h w -> n (h w) c', c=2)
@@ -48,9 +48,9 @@ def spvs_coarse(data, config):
 
     # 2. warp grids
     # create kpts in meshgrid and resize them to image resolution
-    grid_pt0_c = create_meshgrid(h0, w0, False, device).reshape(1, h0*w0, 2).repeat(N, 1, 1)    # [N, hw, 2]
+    grid_pt0_c = create_meshgrid(h0, w0, False, device).reshape(1, h0 * w0, 2).repeat(N, 1, 1)    # [N, hw, 2]
     grid_pt0_i = scale0 * grid_pt0_c
-    grid_pt1_c = create_meshgrid(h1, w1, False, device).reshape(1, h1*w1, 2).repeat(N, 1, 1)
+    grid_pt1_c = create_meshgrid(h1, w1, False, device).reshape(1, h1 * w1, 2).repeat(N, 1, 1)
     grid_pt1_i = scale1 * grid_pt1_c
 
     # mask padded region to (0, 0), so no need to manually mask conf_matrix_gt
@@ -79,11 +79,11 @@ def spvs_coarse(data, config):
     nearest_index0[out_bound_mask(w_pt1_c_round, w0, h0)] = 0
 
     loop_back = torch.stack([nearest_index0[_b][_i] for _b, _i in enumerate(nearest_index1)], dim=0)
-    correct_0to1 = loop_back == torch.arange(h0*w0, device=device)[None].repeat(N, 1)
+    correct_0to1 = loop_back == torch.arange(h0 * w0, device=device)[None].repeat(N, 1)
     correct_0to1[:, 0] = False  # ignore the top-left corner
 
     # 4. construct a gt conf_matrix
-    conf_matrix_gt = torch.zeros(N, h0*w0, h1*w1, device=device)
+    conf_matrix_gt = torch.zeros(N, h0 * w0, h1 * w1, device=device)
     b_ids, i_ids = torch.where(correct_0to1 != 0)
     j_ids = nearest_index1[b_ids, i_ids]
 
@@ -119,7 +119,7 @@ def compute_supervision_coarse(data, config):
         raise ValueError(f'Unknown data source: {data_source}')
 
 
-##############  ↓  Fine-Level supervision  ↓  ##############
+#  Fine-Level supervision
 
 @torch.no_grad()
 def spvs_fine(data, config):
