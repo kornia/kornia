@@ -107,12 +107,12 @@ class ResNetFPN_8_2(nn.Module):
         # FPN
         x3_out = self.layer3_outconv(x3)
 
-        x3_out_2x = F.interpolate(x3_out, scale_factor=2., mode='bilinear', align_corners=True)
         x2_out = self.layer2_outconv(x2)
+        x3_out_2x = F.interpolate(x3_out, size=(x2_out.shape[2:]), mode='bilinear', align_corners=True)
         x2_out = self.layer2_outconv2(x2_out+x3_out_2x)
 
-        x2_out_2x = F.interpolate(x2_out, scale_factor=2., mode='bilinear', align_corners=True)
         x1_out = self.layer1_outconv(x1)
+        x2_out_2x = F.interpolate(x2_out, size=(x1_out.shape[2:]), mode='bilinear', align_corners=True)
         x1_out = self.layer1_outconv2(x1_out+x2_out_2x)
 
         return [x3_out, x1_out]

@@ -9,13 +9,12 @@ from .utils.coarse_matching import CoarseMatching
 from .utils.fine_matching import FineMatching
 from .utils.position_encoding import PositionEncodingSine
 
-#from einops.einops import rearrange
-
-
-
 urls: Dict[str, str] = {}
 urls["outdoor"] = "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_outdoor.ckpt"
 urls["indoor"] = "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_indoor.ckpt"
+
+# Comments: the config below is the one corresponding to the pretrained models
+# Some do not change there anything, unless you want to retrain it.
 
 default_cfg = {'backbone_type': 'ResNetFPN',
  'resolution': (8, 2),
@@ -52,11 +51,31 @@ default_cfg = {'backbone_type': 'ResNetFPN',
 
 
 class LoFTR(nn.Module):
-    def __init__(self, config=default_cfg, pretrained: Optional[str] = None):
+    r"""Module, which finds correspondences between two images.
+    This is based on the original code from paper "LoFTR: Detector-Free Local
+    Feature Matching with Transformers". See :cite:`LoFTR2021` for more details.
+    If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
+
+    Args:
+        config: Dict with initiliazation paramers. Do not pass it, unless you know what you are doint`.
+        pretrained: Download and set pretrained weights to the model. Options: 'outdoor', 'indoor'.
+                    'outdoor' is trained on the MegaDepth dataset and 'indoor'
+                    on the ScanNet.
+
+    Returns:
+        Dictionary with image correspondences and confidence scores
+
+
+    Example:
+        >>> input = {"image0": torch.rand(1, 1, 640, 480),\
+                     "image1": torch.rand(1, 1, 640, 480)}
+        >>> loftr = LoFTR('outdoor')
+        >>> out = loftr(input)
+    """
+    def __init__(self, pretrained: Optional[str] = 'outdoor', config: Dict = default_cfg):
         super().__init__()
         # Misc
         self.config = config
-
         # Modules
         self.backbone = build_backbone(config)
         self.pos_encoding = PositionEncodingSine(
@@ -67,24 +86,33 @@ class LoFTR(nn.Module):
         self.fine_preprocess = FinePreprocess(config)
         self.loftr_fine = LocalFeatureTransformer(config["fine"])
         self.fine_matching = FineMatching()
-
+        self.pretrained = pretrained
         if pretrained is not None:
             if pretrained not in urls.keys():
                 raise ValueError(f"pretrained should be None or one of {urls.keys()}")
             pretrained_dict = torch.hub.load_state_dict_from_url(
                  urls[pretrained], map_location=lambda storage, loc: storage)
             self.load_state_dict(pretrained_dict['state_dict'])
+        self.eval()
 
-    def forward(self, data):
+    def forward(self, data: Dict) -> Dict:
         """
-        Update:
+        Args:
             data (dict): {
-                'image0': (torch.Tensor): (N, 1, H, W)
-                'image1': (torch.Tensor): (N, 1, H, W)
-                'mask0'(optional) : (torch.Tensor): (N, H, W) '0' indicates a padded position
-                'mask1'(optional) : (torch.Tensor): (N, H, W)
+                'image0': (torch.Tensor): (N, 1, H1, W1)
+                'image1': (torch.Tensor): (N, 1, H2, W2)
+                'mask0'(optional) : (torch.Tensor): (N, H1, W1) '0' indicates a padded position
+                'mask1'(optional) : (torch.Tensor): (N, H2, W2)
+            }
+        Returns:
+            out (dict): {
+                    "keypoints0": (torch.Tensor): (NC, 2) matching keypoints from image0
+                    "keypoints1":  (torch.Tensor): (NC, 2) matching keypoints from image1
+                    "confidence": (torch.Tensor): (NC) - confidence score [0, 1]
+                    "batch_indexes": (torch.Tensor): (NC) - batch indexes for the keypoints
             }
         """
+
         # 1. Local Feature CNN
         data.update({
             'bs': data['image0'].size(0),
@@ -130,6 +158,16 @@ class LoFTR(nn.Module):
 
         # 5. match fine-level
         self.fine_matching(feat_f0_unfold, feat_f1_unfold, data)
+
+        rename_keys = {"mkpts0_f": 'keypoints0',
+                       "mkpts1_f": 'keypoints1',
+                       "mconf": 'confidence',
+                       "b_ids": 'batch_indexes'}
+        out = {}
+        for k,v  in rename_keys.items():
+            out[v] = data[k]    
+        #out  = dict((rename_keys[d], data[d]) for d in ["mkpts0_f", "mkpts1_f", "mconf", "b_ids"])
+        return out
 
     def load_state_dict(self, state_dict, *args, **kwargs):
         for k in list(state_dict.keys()):

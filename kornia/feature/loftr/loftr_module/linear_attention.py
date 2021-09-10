@@ -4,6 +4,7 @@ transformers/blob/master/fast_transformers/attention/linear_attention.py."""
 
 import torch
 from torch.nn import Dropout, Module
+from typing import Optional
 
 
 def elu_feature_map(x):
@@ -16,7 +17,12 @@ class LinearAttention(Module):
         self.feature_map = elu_feature_map
         self.eps = eps
 
-    def forward(self, queries, keys, values, q_mask=None, kv_mask=None):
+    def forward(self,
+                queries: torch.Tensor,
+                keys: torch.Tensor,
+                values: torch.Tensor,
+                q_mask: Optional[torch.Tensor] = None,
+                kv_mask: Optional[torch.Tensor] = None):
         """ Multi-Head linear attention proposed in "Transformers are RNNs"
         Args:
             queries: [N, L, H, D]

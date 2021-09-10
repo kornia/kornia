@@ -3,6 +3,8 @@ import copy
 import torch
 import torch.nn as nn
 
+from typing import Optional
+
 from .linear_attention import FullAttention, LinearAttention
 
 
@@ -34,7 +36,11 @@ class LoFTREncoderLayer(nn.Module):
         self.norm1 = nn.LayerNorm(d_model)
         self.norm2 = nn.LayerNorm(d_model)
 
-    def forward(self, x, source, x_mask=None, source_mask=None):
+    def forward(self,
+                x: torch.Tensor,
+                source: torch.Tensor,
+                x_mask: Optional[torch.Tensor] = None,
+                source_mask: Optional[torch.Tensor] = None):
         """
         Args:
             x (torch.Tensor): [N, L, C]
