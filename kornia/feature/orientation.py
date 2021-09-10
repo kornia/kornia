@@ -172,6 +172,7 @@ class OriNet(nn.Module):
                 urls['orinet'], map_location=lambda storage, loc: storage
             )
             self.load_state_dict(pretrained_dict['state_dict'], strict=False)
+        self.eval()
 
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
