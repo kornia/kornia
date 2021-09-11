@@ -6,7 +6,7 @@ function addGithubButton() {
         <div class="github-repo">
             <a
                 class="github-button"
-                href="https://github.com/frgfm/holocron" data-size="large" data-show-count="true" aria-label="Star frgfm/holocron on GitHub">
+                href="https://github.com/kornia/kornia" data-size="large" data-show-count="true" aria-label="Star kornia/kornia on GitHub">
                 Star
             </a>
         </div>
