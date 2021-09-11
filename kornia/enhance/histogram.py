@@ -9,8 +9,8 @@ __all__ = ["histogram", "histogram2d", "image_histogram2d"]
 def marginal_pdf(
     values: torch.Tensor, bins: torch.Tensor, sigma: torch.Tensor, epsilon: float = 1e-10
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Calculate the marginal probability distribution function of the input tensor based on the
-    number of histogram bins.
+    """Calculate the marginal probability distribution function of the input tensor based on the number of
+    histogram bins.
 
     Args:
         values: shape [BxNx1].
@@ -53,8 +53,8 @@ def marginal_pdf(
 
 
 def joint_pdf(kernel_values1: torch.Tensor, kernel_values2: torch.Tensor, epsilon: float = 1e-10) -> torch.Tensor:
-    """Calculate the joint probability distribution function of the input tensors based on the
-    number of histogram bins.
+    """Calculate the joint probability distribution function of the input tensors based on the number of histogram
+    bins.
 
     Args:
         kernel_values1: shape [BxNxNUM_BINS].
