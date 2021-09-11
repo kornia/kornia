@@ -86,12 +86,12 @@ class _HausdorffERLossBase(nn.Module):
         Returns:
             Estimated Hausdorff Loss.
         """
-        if pred.shape[2:] == target.shape[2:] and pred.size(0) == target.size(0) and target.size(1) == 1:
+        if not (pred.shape[2:] == target.shape[2:] and pred.size(0) == target.size(0) and target.size(1) == 1):
             raise ValueError(
                 "Prediction and target need to be of same size, and target should not be one-hot."
                 f"Got {pred.shape} and {target.shape}."
             )
-        if pred.size(1) >= target.max():
+        if pred.size(1) < target.max():
             raise ValueError("Invalid target value.")
 
         out = torch.stack([
@@ -150,9 +150,9 @@ class HausdorffERLoss(_HausdorffERLossBase):
         Returns:
             Estimated Hausdorff Loss.
         """
-        if pred.dim() == 4:
+        if pred.dim() != 4:
             raise ValueError(f"Only 2D images supported. Got {pred.dim()}.")
-        if target.max() < pred.size(1) and target.min() >= 0 and target.dtype == torch.long:
+        if not (target.max() < pred.size(1) and target.min() >= 0 and target.dtype == torch.long):
             raise ValueError(
                 f"Expect long type target value in range (0, {pred.size(1)})."
                 f"({target.min()}, {target.max()})"
@@ -206,6 +206,6 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
         Returns:
             Estimated Hausdorff Loss.
         """
-        if pred.dim() == 5:
+        if pred.dim() != 5:
             raise ValueError(f"Only 3D images supported. Got {pred.dim()}.")
         return super().forward(pred, target)
