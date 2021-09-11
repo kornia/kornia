@@ -3,10 +3,10 @@ Image Matching
 
 Image matching is a process of finding pixel and region correspondences between two images of the same scene.
 Such correspondences are useful for 3D reconstruction of the scene and relative camera pose estimation.
-It is also known as "Wide baseline stereo" and you can read more about it at `Wide Baseline Stereo Blog <https://ducha-aiki.github.io/wide-baseline-stereo-blog/2021/01/09/wxbs-in-simple-terms.html>`
+It is also known as "Wide baseline stereo" and you can read more about it at `Wide Baseline Stereo Blog <https://ducha-aiki.github.io/wide-baseline-stereo-blog/2021/01/09/wxbs-in-simple-terms.html>`_
 
-We provide many modules and functions for the image matching: from building blocks like `local feature detectors <https://kornia.readthedocs.io/en/latest/feature.html#detectors>`, `descriptors <https://kornia.readthedocs.io/en/latest/feature.html#descriptors>`,
-`descriptor matching <https://kornia.readthedocs.io/en/latest/feature.html#matching>`, `geometric model estimation <https://kornia.readthedocs.io/en/latest/geometry.epipolar.html#fundamental>`
+We provide many modules and functions for the image matching: from building blocks like `local feature detectors <https://kornia.readthedocs.io/en/latest/feature.html#detectors>`_, `descriptors <https://kornia.readthedocs.io/en/latest/feature.html#descriptors>`_,
+`descriptor matching <https://kornia.readthedocs.io/en/latest/feature.html#matching>`_, `geometric model estimation <https://kornia.readthedocs.io/en/latest/geometry.epipolar.html#fundamental>`_
 
 However we recommend to start with high-level API, such as :py:class:`~kornia.feature.LoFTR` you can use to find correspondence between two images.
 
