@@ -95,7 +95,7 @@ class HausdorffERLossNumpy(nn.Module):
         else:
             eroted = torch.from_numpy(
                 self.perform_erosion(pred.cpu().numpy(), target.cpu().numpy(), debug)
-            ).float()
+            ).to(dtype=pred.dtype, device=pred.device)
 
             loss = eroted.mean()
 
