@@ -114,15 +114,15 @@ html_theme_options = {
     "announcement": """
         <a style=\"text-decoration: none; color: white;\"
            href=\"https://github.com/kornia/kornia\">
-           <img src=\"/en/latest/_static/img/GitHub-Mark-Light-32px.png\" width=20 height=20/>
-           Click here to give a Star to Kornia on GitHub
+           <img src=\"_static/img/GitHub-Mark-Light-32px.png\" width=20 height=20/>
+           Click here to Star Kornia on GitHub
         </a>
     """,
 }
 
 # html_logo = '_static/img/kornia_logo.svg'
 # html_logo = '_static/img/kornia_logo_only.png'
-html_favicon = '_static/img/kornia_logo_favicon.png'
+html_favicon = 'img/kornia_logo_favicon.png'
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
