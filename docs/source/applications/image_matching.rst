@@ -19,5 +19,5 @@ However we recommend to start with high-level API, such as :py:class:`~kornia.fe
     correspondences_dict = matcher(input)
 
 
-.. image:: https://raw.githubusercontent.com/kornia/data/main/matching/matching_loftr.jpg 
+.. image:: https://raw.githubusercontent.com/kornia/data/main/matching/matching_loftr.jpg
 You also can go through or full tutorial using Colab found `here <https://kornia-tutorials.readthedocs.io/en/latest/image_matching.html>`_ .
