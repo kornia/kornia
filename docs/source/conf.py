@@ -106,11 +106,15 @@ html_theme = 'furo'
 # further.  For a list of options available for each theme, see the
 # documentation.
 #
+# TODO(jian): make to work with https://docs.kornia.org
+html_baseurl = 'https://kornia.readthedocs.io'
+
 html_theme_options = {
     'light_logo': 'img/kornia_logo_only.png',
     'dark_logo': 'img/kornia_logo_only.png',
     "sidebar_hide_name": True,
     "navigation_with_keys": True,
+    'display_version': False,
     "announcement": """
         <a style=\"text-decoration: none; color: white;\"
            href=\"https://github.com/kornia/kornia\">
@@ -122,7 +126,7 @@ html_theme_options = {
 
 # html_logo = '_static/img/kornia_logo.svg'
 # html_logo = '_static/img/kornia_logo_only.png'
-html_favicon = 'img/kornia_logo_favicon.png'
+html_favicon = '_static/img/kornia_logo_favicon.png'
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
@@ -132,6 +136,8 @@ html_extra_path = ['_extra']
 
 # Output file base name for HTML help builder.
 htmlhelp_basename = 'Kornia'
+html_css_files = ['css/main.css']
+html_js_files = ['js/custom.js']
 
 
 # -- Options for LaTeX output ---------------------------------------------

@@ -1,0 +1,8 @@
+.sidebar-logo {
+    max-width: 50%;
+}
+
+/* TODO: make sure it works for all the browsers */
+body{
+    font-family: 'Montserrat', sans-serif;
+}
