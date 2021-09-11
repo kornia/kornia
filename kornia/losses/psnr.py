@@ -4,7 +4,7 @@ from torch.nn.functional import mse_loss as mse
 
 
 def psnr(input: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Tensor:
-    r"""Creates a function that calculates the PSNR between 2 images.
+    r"""Create a function that calculates the PSNR between 2 images.
 
     PSNR is Peek Signal to Noise Ratio, which is similar to mean squared error.
     Given an m x n image, the PSNR is:
@@ -79,7 +79,7 @@ def psnr_loss(input: torch.Tensor, target: torch.Tensor, max_val: float) -> torc
 
 
 class PSNRLoss(nn.Module):
-    r"""Creates a criterion that calculates the PSNR loss.
+    r"""Create a criterion that calculates the PSNR loss.
 
     The loss is computed as follows:
 

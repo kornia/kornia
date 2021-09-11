@@ -10,7 +10,7 @@ from kornia.filters.kernels import get_gaussian_kernel2d
 def gaussian_blur2d(
     input: torch.Tensor, kernel_size: Tuple[int, int], sigma: Tuple[float, float], border_type: str = 'reflect'
 ) -> torch.Tensor:
-    r"""Creates an operator that blurs a tensor using a Gaussian filter.
+    r"""Create an operator that blurs a tensor using a Gaussian filter.
 
     .. image:: _static/img/gaussian_blur2d.png
 
@@ -44,7 +44,7 @@ def gaussian_blur2d(
 
 
 class GaussianBlur2d(nn.Module):
-    r"""Creates an operator that blurs a tensor using a Gaussian filter.
+    r"""Create an operator that blurs a tensor using a Gaussian filter.
 
     The operator smooths the given tensor with a gaussian kernel by convolving
     it to each channel. It supports batched operation.

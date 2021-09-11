@@ -23,7 +23,7 @@ urls: Dict[str, str] = {
 
 
 def get_grid_dict(patch_size: int = 32) -> Dict[str, torch.Tensor]:
-    r"""Gets cartesian and polar parametrizations of grid."""
+    r"""Get cartesian and polar parametrizations of grid."""
     kgrid = create_meshgrid(height=patch_size, width=patch_size, normalized_coordinates=True)
     x = kgrid[0, :, :, 0]
     y = kgrid[0, :, :, 1]
@@ -33,7 +33,7 @@ def get_grid_dict(patch_size: int = 32) -> Dict[str, torch.Tensor]:
 
 
 def get_kron_order(d1: int, d2: int) -> torch.Tensor:
-    r"""Gets order for doing kronecker product."""
+    r"""Get order for doing kronecker product."""
     kron_order = torch.zeros([d1 * d2, 2], dtype=torch.int64)
     for i in range(d1):
         for j in range(d2):

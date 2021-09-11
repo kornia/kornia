@@ -10,7 +10,7 @@ def create_meshgrid(
     device: Optional[torch.device] = torch.device('cpu'),
     dtype: torch.dtype = torch.float32,
 ) -> torch.Tensor:
-    """Generates a coordinate grid for an image.
+    """Generate a coordinate grid for an image.
 
     When the flag ``normalized_coordinates`` is set to True, the grid is
     normalized to be in the range :math:`[-1,1]` to be consistent with the pytorch
@@ -69,7 +69,7 @@ def create_meshgrid3d(
     device: Optional[torch.device] = torch.device('cpu'),
     dtype: torch.dtype = torch.float32,
 ) -> torch.Tensor:
-    """Generates a coordinate grid for an image.
+    """Generate a coordinate grid for an image.
 
     When the flag ``normalized_coordinates`` is set to True, the grid is
     normalized to be in the range :math:`[-1,1]` to be consistent with the pytorch

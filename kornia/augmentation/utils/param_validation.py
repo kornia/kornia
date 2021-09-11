@@ -48,7 +48,7 @@ def _range_bound(
 
 
 def _joint_range_check(ranged_factor: torch.Tensor, name: str, bounds: Optional[Tuple[float, float]] = None) -> None:
-    """check if bounds[0] <= ranged_factor[0] <= ranged_factor[1] <= bounds[1]"""
+    """Check if bounds[0] <= ranged_factor[0] <= ranged_factor[1] <= bounds[1]"""
     if bounds is None:
         bounds = (float('-inf'), float('inf'))
     if ranged_factor.dim() == 1 and len(ranged_factor) == 2:
@@ -70,7 +70,7 @@ def _singular_range_check(
     skip_none: bool = False,
     mode: str = '2d',
 ) -> None:
-    """check if bounds[0] <= ranged_factor[0] <= bounds[1] and bounds[0] <= ranged_factor[1] <= bounds[1]"""
+    """Check if bounds[0] <= ranged_factor[0] <= bounds[1] and bounds[0] <= ranged_factor[1] <= bounds[1]"""
     if mode == '2d':
         dim_size = 2
     elif mode == '3d':

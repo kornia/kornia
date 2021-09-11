@@ -13,7 +13,7 @@ def dilation(
     border_value: float = 0.0,
     max_val: float = 1e4,
 ) -> torch.Tensor:
-    r"""Returns the dilated image applying the same kernel in each channel.
+    r"""Return the dilated image applying the same kernel in each channel.
 
     .. image:: _static/img/dilation.png
 
@@ -95,7 +95,7 @@ def erosion(
     border_value: float = 0.0,
     max_val: float = 1e4,
 ) -> torch.Tensor:
-    r"""Returns the eroded image applying the same kernel in each channel.
+    r"""Return the eroded image applying the same kernel in each channel.
 
     .. image:: _static/img/erosion.png
 
@@ -177,7 +177,7 @@ def opening(
     border_value: float = 0.0,
     max_val: float = 1e4,
 ) -> torch.Tensor:
-    r"""Returns the opened image, (that means, dilation after an erosion) applying the same kernel in each channel.
+    r"""Return the opened image, (that means, dilation after an erosion) applying the same kernel in each channel.
 
     .. image:: _static/img/opening.png
 
@@ -251,7 +251,7 @@ def closing(
     border_value: float = 0.0,
     max_val: float = 1e4,
 ) -> torch.Tensor:
-    r"""Returns the closed image, (that means, erosion after a dilation) applying the same kernel in each channel.
+    r"""Return the closed image, (that means, erosion after a dilation) applying the same kernel in each channel.
 
     .. image:: _static/img/closing.png
 
@@ -326,7 +326,7 @@ def gradient(
     border_value: float = 0.0,
     max_val: float = 1e4,
 ) -> torch.Tensor:
-    r"""Returns the morphological gradient of an image.
+    r"""Return the morphological gradient of an image.
 
     .. image:: _static/img/gradient.png
 
@@ -389,7 +389,7 @@ def top_hat(
     border_value: float = 0.0,
     max_val: float = 1e4,
 ) -> torch.Tensor:
-    r"""Returns the top hat transformation of an image.
+    r"""Return the top hat transformation of an image.
 
     .. image:: _static/img/top_hat.png
 
@@ -458,7 +458,7 @@ def bottom_hat(
     border_value: float = 0.0,
     max_val: float = 1e4,
 ) -> torch.Tensor:
-    r"""Returns the bottom hat transformation of an image.
+    r"""Return the bottom hat transformation of an image.
 
     .. image:: _static/img/bottom_hat.png
 

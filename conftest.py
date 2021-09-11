@@ -26,7 +26,7 @@ def get_test_devices() -> Dict[str, torch.device]:
 
 
 def get_test_dtypes() -> Dict[str, torch.dtype]:
-    """Creates a dictionary with the dtypes the source code.
+    """Create a dictionary with the dtypes the source code.
 
     Return:
         dict(str, torch.dtype): list with dtype names.

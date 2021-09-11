@@ -21,7 +21,7 @@ def canny(
     hysteresis: bool = True,
     eps: float = 1e-6,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    r"""Finds edges of the input image and filters them using the Canny algorithm.
+    r"""Find edges of the input image and filters them using the Canny algorithm.
 
     .. image:: _static/img/canny.png
 

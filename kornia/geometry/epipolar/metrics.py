@@ -8,7 +8,7 @@ import kornia
 def sampson_epipolar_distance(
     pts1: torch.Tensor, pts2: torch.Tensor, Fm: torch.Tensor, squared: bool = True, eps: float = 1e-8
 ) -> torch.Tensor:
-    r"""Returns Sampson distance for correspondences given the fundamental matrix.
+    r"""Return Sampson distance for correspondences given the fundamental matrix.
 
     Args:
         pts1: correspondences from the left images with shape
@@ -60,7 +60,7 @@ def sampson_epipolar_distance(
 def symmetrical_epipolar_distance(
     pts1: torch.Tensor, pts2: torch.Tensor, Fm: torch.Tensor, squared: bool = True, eps: float = 1e-8
 ) -> torch.Tensor:
-    r"""Returns symmetrical epipolar distance for correspondences given the fundamental matrix.
+    r"""Return symmetrical epipolar distance for correspondences given the fundamental matrix.
 
     Args:
        pts1: correspondences from the left images with shape

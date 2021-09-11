@@ -5,7 +5,7 @@ from kornia.geometry.conversions import convert_points_from_homogeneous, convert
 
 
 def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch.Tensor:
-    r"""Projects a 3d point onto the 2d camera plane.
+    r"""Project a 3d point onto the 2d camera plane.
 
     Args:
         point3d: tensor containing the 3d points to be projected
@@ -56,7 +56,7 @@ def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch
 def unproject_points(
     point_2d: torch.Tensor, depth: torch.Tensor, camera_matrix: torch.Tensor, normalize: bool = False
 ) -> torch.Tensor:
-    r"""Unprojects a 2d point in 3d.
+    r"""Unproject a 2d point in 3d.
 
     Transform coordinates in the pixel frame to the camera frame.
 

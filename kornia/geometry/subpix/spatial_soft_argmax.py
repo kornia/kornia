@@ -268,7 +268,7 @@ def conv_soft_argmax2d(
     eps: float = 1e-8,
     output_value: bool = False,
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-    r"""Computes the convolutional spatial Soft-Argmax 2D over the windows of a given heatmap.
+    r"""Compute the convolutional spatial Soft-Argmax 2D over the windows of a given heatmap.
 
     .. math::
         ij(X) = \frac{\sum{(i,j)} * exp(x / T)  \in X} {\sum{exp(x / T)  \in X}}
@@ -382,7 +382,7 @@ def conv_soft_argmax3d(
     output_value: bool = True,
     strict_maxima_bonus: float = 0.0,
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-    r"""Computes the convolutional spatial Soft-Argmax 3D over the windows of a given heatmap.
+    r"""Compute the convolutional spatial Soft-Argmax 3D over the windows of a given heatmap.
 
     .. math::
              ijk(X) = \frac{\sum{(i,j,k)} * exp(x / T)  \in X} {\sum{exp(x / T)  \in X}}
@@ -504,7 +504,7 @@ def spatial_soft_argmax2d(
     temperature: torch.Tensor = torch.tensor(1.0),
     normalized_coordinates: bool = True,
 ) -> torch.Tensor:
-    r"""Function that computes the Spatial Soft-Argmax 2D of a given input heatmap.
+    r"""Compute the Spatial Soft-Argmax 2D of a given input heatmap.
 
     Args:
         input: the given heatmap with shape :math:`(B, N, H, W)`.
@@ -530,7 +530,7 @@ def spatial_soft_argmax2d(
 
 
 class SpatialSoftArgmax2d(nn.Module):
-    r"""Module that computes the Spatial Soft-Argmax 2D of a given heatmap.
+    r"""Compute the Spatial Soft-Argmax 2D of a given heatmap.
 
     See :func:`~kornia.geometry.subpix.spatial_soft_argmax2d` for details.
     """
@@ -560,7 +560,7 @@ class SpatialSoftArgmax2d(nn.Module):
 def conv_quad_interp3d(
     input: torch.Tensor, strict_maxima_bonus: float = 10.0, eps: float = 1e-7
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    r"""Function that computes the single iteration of quadratic interpolation of the extremum (max or min).
+    r"""Compute the single iteration of quadratic interpolation of the extremum (max or min).
 
     Args:
         input: the given heatmap with shape :math:`(N, C, D_{in}, H_{in}, W_{in})`.
@@ -640,7 +640,7 @@ def conv_quad_interp3d(
 
 
 class ConvQuadInterp3d(nn.Module):
-    r"""Module that calculates soft argmax 3d per window
+    r"""Calculate soft argmax 3d per window
 
     See :func:`~kornia.geometry.subpix.conv_quad_interp3d` for details.
     """
