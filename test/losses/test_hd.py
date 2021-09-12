@@ -114,7 +114,13 @@ class HausdorffERLossNumpy(nn.Module):
             pred.dim() == target.dim() and target.size(1) == 1
         ), "Prediction and target need to be of same dimension"
         return torch.stack([
-            self.forward_one(pred[:, i:i + 1], torch.where(target == i, 1, 0)) for i in range(pred.size(1))]).mean()
+            self.forward_one(
+                pred[:, i:i + 1],
+                torch.where(
+                    target == i,
+                    torch.tensor(1, device=target.device, dtype=target.dtype),
+                    torch.tensor(0, device=target.device, dtype=target.dtype))
+            ) for i in range(pred.size(1))]).mean()
 
 
 class TestHausdorffLoss:

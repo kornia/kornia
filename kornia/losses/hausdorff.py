@@ -91,11 +91,18 @@ class _HausdorffERLossBase(nn.Module):
                 "Prediction and target need to be of same size, and target should not be one-hot."
                 f"Got {pred.shape} and {target.shape}."
             )
-        if pred.size(1) < target.max():
+        if pred.size(1) < target.max().item():
             raise ValueError("Invalid target value.")
 
         out = torch.stack([
-            self.perform_erosion(pred[:, i:i + 1], torch.where(target == i, 1, 0))
+            self.perform_erosion(
+                pred[:, i:i + 1],
+                torch.where(
+                    target == i,
+                    torch.tensor(1, device=target.device, dtype=target.dtype),
+                    torch.tensor(0, device=target.device, dtype=target.dtype)
+                )
+            )
             for i in range(pred.size(1))
         ])
         if self.reduction == 'mean':
