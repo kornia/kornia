@@ -133,7 +133,7 @@ class HausdorffERLoss(_HausdorffERLossBase):
     Examples:
         >>> hdloss = HausdorffERLoss()
         >>> input = torch.randn(5, 3, 20, 20)
-        >>> target = torch.randn(5, 1, 20, 20).long() * 2
+        >>> target = (torch.rand(5, 1, 20, 20) * 2).long()
         >>> res = hdloss(input, target)
     """
 
@@ -185,7 +185,7 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
     Examples:
         >>> hdloss = HausdorffERLoss3D()
         >>> input = torch.randn(5, 3, 20, 20, 20)
-        >>> target = torch.randn(5, 1, 20, 20, 20).long() * 2
+        >>> target = (torch.rand(5, 1, 20, 20, 20) * 2).long()
         >>> res = hdloss(input, target)
     """
 
