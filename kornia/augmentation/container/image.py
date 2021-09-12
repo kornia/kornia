@@ -253,6 +253,8 @@ class ImageSequential(SequentialBase):
             elif isinstance(arg, IntensityAugmentationBase2D):
                 pass
             elif strict:
+                # disallow non-registered ops if in strict mode
+                # TODO: add an ops register module
                 return False
         return True
 

@@ -53,7 +53,7 @@ class ApplyInverseInterface(metaclass=ABCMeta):
                 to apply transformations.
             param: the corresponding parameters to the module.
         """
-        pass
+        raise NotImplementedError
 
     @classmethod
     @abstractmethod
@@ -71,10 +71,11 @@ class ApplyInverseInterface(metaclass=ABCMeta):
                 to apply transformations.
             param: the corresponding parameters to the module.
         """
-        pass
+        raise NotImplementedError
 
 
 class ApplyInverseImpl(ApplyInverseInterface):
+    """Standard matrix apply and inverse methods."""
 
     apply_func: Callable
 
