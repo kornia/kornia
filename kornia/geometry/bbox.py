@@ -440,9 +440,8 @@ def transform_bbox(trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = "xy
             ``xmin, ymin, width, height``
     Returns:
         The set of transformed points in the specified mode
-
-
     """
+
     if not isinstance(mode, str):
         raise TypeError(f"Mode must be a string. Got {type(mode)}")
 

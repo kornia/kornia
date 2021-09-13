@@ -91,34 +91,6 @@ class TestConnectedComponents:
         assert_close(op(img), op_jit(img))
 
 
-class TestMaxBlurPool2d:
-    def test_shape(self, device):
-        input = torch.rand(1, 2, 4, 6).to(device)
-        pool = kornia.contrib.MaxBlurPool2d(kernel_size=3)
-        assert pool(input).shape == (1, 2, 2, 3)
-
-    def test_shape_batch(self, device):
-        input = torch.rand(3, 2, 6, 10).to(device)
-        pool = kornia.contrib.MaxBlurPool2d(kernel_size=5)
-        assert pool(input).shape == (3, 2, 3, 5)
-
-    def test_gradcheck(self, device):
-        input = torch.rand(2, 3, 4, 4).to(device)
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.contrib.max_blur_pool2d, (input, 3), raise_exception=True)
-
-    @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self, device):
-        @torch.jit.script
-        def op_script(input: torch.Tensor, kernel_size: int) -> torch.Tensor:
-            return kornia.contrib.max_blur_pool2d(input, kernel_size)
-
-        img = torch.rand(2, 3, 4, 5).to(device)
-        actual = op_script(img, kernel_size=3)
-        expected = kornia.contrib.max_blur_pool2d(img, kernel_size=3)
-        assert_close(actual, expected)
-
-
 class TestExtractTensorPatches:
     def test_smoke(self, device):
         input = torch.arange(16.0).view(1, 1, 4, 4).to(device)
