@@ -9,10 +9,12 @@ from kornia.testing import assert_close
 
 
 class TestLoFTR:
+    @pytest.mark.skipif(torch.__version__.startswith('1.6'), reason='1.6.0 not supporting the pretrained weights as they are packed.')
     def test_pretrained_outdoor_smoke(self, device):
         if device == torch.device('cpu'):
             loftr = LoFTR('outdoor').to(device)
 
+    @pytest.mark.skipif(torch.__version__.startswith('1.6'), reason='1.6.0 not supporting the pretrained weights as they are packed.')
     def test_pretrained_indoor_smoke(self, device):
         if device == torch.device('cpu'):
             loftr = LoFTR('indoor').to(device)
