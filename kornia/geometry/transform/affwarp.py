@@ -32,7 +32,7 @@ __all__ = [
 
 
 def _compute_tensor_center(tensor: torch.Tensor) -> torch.Tensor:
-    """Computes the center of tensor plane for (H, W), (C, H, W) and (B, C, H, W)."""
+    """Compute the center of tensor plane for (H, W), (C, H, W) and (B, C, H, W)."""
     if not 2 <= len(tensor.shape) <= 4:
         raise AssertionError(f"Must be a 3D tensor as HW, CHW and BCHW. Got {tensor.shape}.")
     height, width = tensor.shape[-2:]
@@ -43,7 +43,7 @@ def _compute_tensor_center(tensor: torch.Tensor) -> torch.Tensor:
 
 
 def _compute_tensor_center3d(tensor: torch.Tensor) -> torch.Tensor:
-    """Computes the center of tensor plane for (D, H, W), (C, D, H, W) and (B, C, D, H, W)."""
+    """Compute the center of tensor plane for (D, H, W), (C, D, H, W) and (B, C, D, H, W)."""
     if not 3 <= len(tensor.shape) <= 5:
         raise AssertionError(f"Must be a 3D tensor as DHW, CDHW and BCDHW. Got {tensor.shape}.")
     depth, height, width = tensor.shape[-3:]
@@ -55,7 +55,7 @@ def _compute_tensor_center3d(tensor: torch.Tensor) -> torch.Tensor:
 
 
 def _compute_rotation_matrix(angle: torch.Tensor, center: torch.Tensor) -> torch.Tensor:
-    """Computes a pure affine rotation matrix."""
+    """Compute a pure affine rotation matrix."""
     scale: torch.Tensor = torch.ones_like(center)
     matrix: torch.Tensor = get_rotation_matrix2d(center, angle, scale)
     return matrix
@@ -64,7 +64,7 @@ def _compute_rotation_matrix(angle: torch.Tensor, center: torch.Tensor) -> torch
 def _compute_rotation_matrix3d(
     yaw: torch.Tensor, pitch: torch.Tensor, roll: torch.Tensor, center: torch.Tensor
 ) -> torch.Tensor:
-    """Computes a pure affine rotation matrix."""
+    """Compute a pure affine rotation matrix."""
     if len(yaw.shape) == len(pitch.shape) == len(roll.shape) == 0:
         yaw = yaw.unsqueeze(dim=0)
         pitch = pitch.unsqueeze(dim=0)
@@ -85,7 +85,7 @@ def _compute_rotation_matrix3d(
 
 
 def _compute_translation_matrix(translation: torch.Tensor) -> torch.Tensor:
-    """Computes affine matrix for translation."""
+    """Compute affine matrix for translation."""
     matrix: torch.Tensor = torch.eye(3, device=translation.device, dtype=translation.dtype)
     matrix = matrix.repeat(translation.shape[0], 1, 1)
 
@@ -96,14 +96,14 @@ def _compute_translation_matrix(translation: torch.Tensor) -> torch.Tensor:
 
 
 def _compute_scaling_matrix(scale: torch.Tensor, center: torch.Tensor) -> torch.Tensor:
-    """Computes affine matrix for scaling."""
+    """Compute affine matrix for scaling."""
     angle: torch.Tensor = torch.zeros(scale.shape[:1], device=scale.device, dtype=scale.dtype)
     matrix: torch.Tensor = get_rotation_matrix2d(center, angle, scale)
     return matrix
 
 
 def _compute_shear_matrix(shear: torch.Tensor) -> torch.Tensor:
-    """Computes affine matrix for shearing."""
+    """Compute affine matrix for shearing."""
     matrix: torch.Tensor = torch.eye(3, device=shear.device, dtype=shear.dtype)
     matrix = matrix.repeat(shear.shape[0], 1, 1)
 

@@ -49,7 +49,7 @@ def normalize_points(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Ten
 
 
 def normalize_transformation(M: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
-    r"""Normalizes a given transformation matrix.
+    r"""Normalize a given transformation matrix.
 
     The function trakes the transformation matrix and normalize so that the value in
     the last row and column is one.
@@ -69,7 +69,7 @@ def normalize_transformation(M: torch.Tensor, eps: float = 1e-8) -> torch.Tensor
 
 
 def find_fundamental(points1: torch.Tensor, points2: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
-    r"""Computes the fundamental matrix using the DLT formulation.
+    r"""Compute the fundamental matrix using the DLT formulation.
 
     The linear system is solved by using the Weighted Least Squares Solution for the 8 Points algorithm.
 
@@ -120,7 +120,7 @@ def find_fundamental(points1: torch.Tensor, points2: torch.Tensor, weights: torc
 
 
 def compute_correspond_epilines(points: torch.Tensor, F_mat: torch.Tensor) -> torch.Tensor:
-    r"""Computes the corresponding epipolar line for a given set of points.
+    r"""Compute the corresponding epipolar line for a given set of points.
 
     Args:
         points: tensor containing the set of points to project in the shape of :math:`(B, N, 2)`.

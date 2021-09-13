@@ -427,7 +427,7 @@ def rotation_matrix_to_quaternion(
 
 
 def normalize_quaternion(quaternion: torch.Tensor, eps: float = 1.0e-12) -> torch.Tensor:
-    r"""Normalizes a quaternion.
+    r"""Normalize a quaternion.
 
     The quaternion should be in (x, y, z, w) format.
 
@@ -460,7 +460,7 @@ def normalize_quaternion(quaternion: torch.Tensor, eps: float = 1.0e-12) -> torc
 def quaternion_to_rotation_matrix(
     quaternion: torch.Tensor, order: QuaternionCoeffOrder = QuaternionCoeffOrder.XYZW
 ) -> torch.Tensor:
-    r"""Converts a quaternion to a rotation matrix.
+    r"""Convert a quaternion to a rotation matrix.
 
     The quaternion should be in (x, y, z, w) or (w, x, y, z) format.
 
@@ -618,7 +618,7 @@ def quaternion_to_angle_axis(
 def quaternion_log_to_exp(
     quaternion: torch.Tensor, eps: float = 1.0e-8, order: QuaternionCoeffOrder = QuaternionCoeffOrder.XYZW
 ) -> torch.Tensor:
-    r"""Applies exponential map to log quaternion.
+    r"""Apply exponential map to log quaternion.
 
     The quaternion should be in (x, y, z, w) or (w, x, y, z) format.
 
@@ -673,7 +673,7 @@ def quaternion_log_to_exp(
 def quaternion_exp_to_log(
     quaternion: torch.Tensor, eps: float = 1.0e-8, order: QuaternionCoeffOrder = QuaternionCoeffOrder.XYZW
 ) -> torch.Tensor:
-    r"""Applies the log map to a quaternion.
+    r"""Apply the log map to a quaternion.
 
     The quaternion should be in (x, y, z, w) format.
 

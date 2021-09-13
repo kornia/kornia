@@ -30,7 +30,7 @@ def _reduce_loss(losses: torch.Tensor, reduction: str) -> torch.Tensor:
 
 
 def js_div_loss_2d(input: torch.Tensor, target: torch.Tensor, reduction: str = 'mean'):
-    r"""Calculates the Jensen-Shannon divergence loss between heatmaps.
+    r"""Calculate the Jensen-Shannon divergence loss between heatmaps.
 
     Args:
         input: the input tensor with shape :math:`(B, N, H, W)`.
@@ -51,7 +51,7 @@ def js_div_loss_2d(input: torch.Tensor, target: torch.Tensor, reduction: str = '
 
 
 def kl_div_loss_2d(input: torch.Tensor, target: torch.Tensor, reduction: str = 'mean'):
-    r"""Calculates the Kullback-Leibler divergence loss between heatmaps.
+    r"""Calculate the Kullback-Leibler divergence loss between heatmaps.
 
     Args:
         input: the input tensor with shape :math:`(B, N, H, W)`.

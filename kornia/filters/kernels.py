@@ -5,7 +5,7 @@ import torch
 
 
 def normalize_kernel2d(input: torch.Tensor) -> torch.Tensor:
-    r"""Normalizes both derivative and smoothing kernel."""
+    r"""Normalize both derivative and smoothing kernel."""
     if len(input.size()) < 2:
         raise TypeError(f"input should be at least 2D tensor. Got {input.size()}")
     norm: torch.Tensor = input.abs().sum(dim=-1).sum(dim=-1)
@@ -136,7 +136,7 @@ def get_box_kernel2d(kernel_size: Tuple[int, int]) -> torch.Tensor:
 
 
 def get_binary_kernel2d(window_size: Tuple[int, int]) -> torch.Tensor:
-    r"""Creates a binary kernel to extract the patches. If the window size
+    r"""Create a binary kernel to extract the patches. If the window size
     is HxW will create a (H*W)xHxW kernel.
     """
     window_range: int = window_size[0] * window_size[1]

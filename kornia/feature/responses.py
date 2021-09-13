@@ -12,7 +12,7 @@ def harris_response(
     grads_mode: str = 'sobel',
     sigmas: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    r"""Computes the Harris cornerness function.
+    r"""Compute the Harris cornerness function.
 
     Function does not do any normalization or nms. The response map is computed according the following formulation:
 
@@ -100,7 +100,7 @@ def harris_response(
 def gftt_response(
     input: torch.Tensor, grads_mode: str = 'sobel', sigmas: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
-    r"""Computes the Shi-Tomasi cornerness function.
+    r"""Compute the Shi-Tomasi cornerness function.
 
     Function does not do any normalization or nms. The response map is computed according the following formulation:
 
@@ -178,7 +178,7 @@ def gftt_response(
 def hessian_response(
     input: torch.Tensor, grads_mode: str = 'sobel', sigmas: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
-    r"""Computes the absolute of determinant of the Hessian matrix.
+    r"""Compute the absolute of determinant of the Hessian matrix.
 
     Function does not do any normalization or nms. The response map is computed according the following formulation:
 
@@ -256,7 +256,7 @@ def hessian_response(
 
 
 def dog_response(input: torch.Tensor) -> torch.Tensor:
-    r"""Computes the Difference-of-Gaussian response.
+    r"""Compute the Difference-of-Gaussian response.
 
     Args:
         input: a given the gaussian 5d tensor :math:`(B, C, D, H, W)`.

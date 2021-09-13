@@ -137,7 +137,7 @@ def ssim_loss(
 
 
 class SSIM(nn.Module):
-    r"""Creates a module that computes the Structural Similarity (SSIM) index between two images.
+    r"""Create a module that computes the Structural Similarity (SSIM) index between two images.
 
     Measures the (SSIM) index between each element in the input `x` and target `y`.
 
@@ -182,7 +182,7 @@ class SSIM(nn.Module):
 
 
 class SSIMLoss(nn.Module):
-    r"""Creates a criterion that computes a loss based on the SSIM measurement.
+    r"""Create a criterion that computes a loss based on the SSIM measurement.
 
     The loss, or the Structural dissimilarity (DSSIM) is described as:
 

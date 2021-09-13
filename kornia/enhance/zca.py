@@ -9,7 +9,7 @@ __all__ = ["zca_mean", "zca_whiten", "linear_transform", "ZCAWhitening"]
 
 
 class ZCAWhitening(nn.Module):
-    r"""Computes the ZCA whitening matrix transform and the mean vector and applies the transform to the data.
+    r"""Compute the ZCA whitening matrix transform and the mean vector and applies the transform to the data.
 
     The data tensor is flattened, and the mean :math:`\mathbf{\mu}`
     and covariance matrix :math:`\mathbf{\Sigma}` are computed from
@@ -83,7 +83,7 @@ class ZCAWhitening(nn.Module):
         self.fitted = False
 
     def fit(self, x: torch.Tensor):
-        r"""Fits ZCA whitening matrices to the data.
+        r"""Fit ZCA whitening matrices to the data.
 
         Args:
 
@@ -112,7 +112,7 @@ class ZCAWhitening(nn.Module):
         return self
 
     def forward(self, x: torch.Tensor, include_fit: bool = False) -> torch.Tensor:
-        r"""Applies the whitening transform to the data.
+        r"""Apply the whitening transform to the data.
 
         Args:
             x: Input data.
@@ -134,7 +134,7 @@ class ZCAWhitening(nn.Module):
         return x_whiten
 
     def inverse_transform(self, x: torch.Tensor) -> torch.Tensor:
-        r"""Applies the inverse transform to the whitened data.
+        r"""Apply the inverse transform to the whitened data.
 
         Args:
             x: Whitened data.
@@ -159,7 +159,7 @@ class ZCAWhitening(nn.Module):
 def zca_mean(
     inp: torch.Tensor, dim: int = 0, unbiased: bool = True, eps: float = 1e-6, return_inverse: bool = False
 ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
-    r"""Computes the ZCA whitening matrix and mean vector.
+    r"""Compute the ZCA whitening matrix and mean vector.
 
     The output can be used with :py:meth:`~kornia.color.linear_transform`.
     See :class:`~kornia.color.ZCAWhitening` for details.
@@ -258,7 +258,7 @@ def zca_mean(
 
 
 def zca_whiten(inp: torch.Tensor, dim: int = 0, unbiased: bool = True, eps: float = 1e-6) -> torch.Tensor:
-    r"""Applies ZCA whitening transform.
+    r"""Apply ZCA whitening transform.
 
     See :class:`~kornia.color.ZCAWhitening` for details.
 

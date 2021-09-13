@@ -10,7 +10,7 @@ from kornia.geometry.conversions import pi
 
 
 def get_sift_pooling_kernel(ksize: int = 25) -> torch.Tensor:
-    r"""Returns a weighted pooling kernel for SIFT descriptor.
+    r"""Return a weighted pooling kernel for SIFT descriptor.
 
     Args:
         ksize: kernel_size.
@@ -25,7 +25,7 @@ def get_sift_pooling_kernel(ksize: int = 25) -> torch.Tensor:
 
 
 def get_sift_bin_ksize_stride_pad(patch_size: int, num_spatial_bins: int) -> Tuple:
-    r"""Returns a tuple with SIFT parameters.
+    r"""Return a tuple with SIFT parameters.
 
     Args:
         patch_size: the given patch size.
@@ -184,7 +184,7 @@ def sift_describe(
     rootsift: bool = True,
     clipval: float = 0.2,
 ) -> torch.Tensor:
-    r"""Computes the sift descriptor.
+    r"""Compute the sift descriptor.
 
     See :class:`~kornia.feature.SIFTDescriptor` for details.
     """

@@ -733,7 +733,7 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
 
 @perform_keep_shape_video
 def equalize3d(input: torch.Tensor) -> torch.Tensor:
-    r"""Equalizes the values for a 3D volumetric tensor.
+    r"""Equalize the values for a 3D volumetric tensor.
 
     Implements Equalize function for a sequence of images using PyTorch ops based on uint8 format:
     https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L352
@@ -755,7 +755,7 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
 
 
 def invert(input: torch.Tensor, max_val: torch.Tensor = torch.tensor(1.0)) -> torch.Tensor:
-    r"""Inverts the values of an input tensor by its maximum value.
+    r"""Invert the values of an input tensor by its maximum value.
 
     .. image:: _static/img/invert.png
 
@@ -983,7 +983,7 @@ class AdjustBrightness(nn.Module):
 
 
 class Invert(nn.Module):
-    r"""Inverts the values of an input tensor by its maximum value.
+    r"""Invert the values of an input tensor by its maximum value.
 
     Args:
         input: The input tensor to invert with an arbitatry shape.

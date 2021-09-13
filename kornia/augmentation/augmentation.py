@@ -45,7 +45,7 @@ from .utils import _range_bound, _transform_input
 
 
 class RandomHorizontalFlip(GeometricAugmentationBase2D):
-    r"""Applies a random horizontal flip to a tensor image or a batch of tensor images with a given probability.
+    r"""Apply a random horizontal flip to a tensor image or a batch of tensor images with a given probability.
 
     .. image:: _static/img/RandomHorizontalFlip.png
 
@@ -107,7 +107,7 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
 
 
 class RandomVerticalFlip(GeometricAugmentationBase2D):
-    r"""Applies a random vertical flip to a tensor image or a batch of tensor images with a given probability.
+    r"""Apply a random vertical flip to a tensor image or a batch of tensor images with a given probability.
 
     .. image:: _static/img/RandomVerticalFlip.png
 
@@ -163,7 +163,7 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
 
 
 class ColorJitter(IntensityAugmentationBase2D):
-    r"""Applies a random transformation to the brightness, contrast, saturation and hue of a tensor image.
+    r"""Apply a random transformation to the brightness, contrast, saturation and hue of a tensor image.
 
     .. image:: _static/img/ColorJitter.png
 
@@ -263,7 +263,7 @@ class ColorJitter(IntensityAugmentationBase2D):
 
 
 class RandomGrayscale(IntensityAugmentationBase2D):
-    r"""Applies random transformation to Grayscale according to a probability p value.
+    r"""Apply random transformation to Grayscale according to a probability p value.
 
     .. image:: _static/img/RandomGrayscale.png
 
@@ -319,7 +319,7 @@ class RandomGrayscale(IntensityAugmentationBase2D):
 
 
 class RandomErasing(IntensityAugmentationBase2D):
-    r"""Erases a random rectangle of a tensor image according to a probability p value.
+    r"""Erase a random rectangle of a tensor image according to a probability p value.
 
     .. image:: _static/img/RandomErasing.png
 
@@ -407,7 +407,7 @@ class RandomErasing(IntensityAugmentationBase2D):
 
 
 class RandomPerspective(GeometricAugmentationBase2D):
-    r"""Applies a random perspective transformation to an image tensor with a given probability.
+    r"""Apply a random perspective transformation to an image tensor with a given probability.
 
     .. image:: _static/img/RandomPerspective.png
 
@@ -498,7 +498,7 @@ class RandomPerspective(GeometricAugmentationBase2D):
 
 
 class RandomAffine(GeometricAugmentationBase2D):
-    r"""Applies a random 2D affine transformation to a tensor image.
+    r"""Apply a random 2D affine transformation to a tensor image.
 
     .. image:: _static/img/RandomAffine.png
 
@@ -688,7 +688,7 @@ class RandomAffine(GeometricAugmentationBase2D):
 
 
 class CenterCrop(GeometricAugmentationBase2D):
-    r"""Crops a given image tensor at the center.
+    r"""Crop a given image tensor at the center.
 
     .. image:: _static/img/CenterCrop.png
 
@@ -816,7 +816,7 @@ class CenterCrop(GeometricAugmentationBase2D):
 
 
 class RandomRotation(GeometricAugmentationBase2D):
-    r"""Applies a random rotation to a tensor image or a batch of tensor images given an amount of degrees.
+    r"""Apply a random rotation to a tensor image or a batch of tensor images given an amount of degrees.
 
     .. image:: _static/img/RandomRotation.png
 
@@ -913,7 +913,7 @@ class RandomRotation(GeometricAugmentationBase2D):
 
 
 class RandomCrop(GeometricAugmentationBase2D):
-    r"""Crops random patches of a tensor image on a given size.
+    r"""Crop random patches of a tensor image on a given size.
 
     .. image:: _static/img/RandomCrop.png
 
@@ -1146,7 +1146,7 @@ class RandomCrop(GeometricAugmentationBase2D):
 
 
 class RandomResizedCrop(GeometricAugmentationBase2D):
-    r"""Crops random patches in an image tensor and resizes to a given size.
+    r"""Crop random patches in an image tensor and resizes to a given size.
 
     .. image:: _static/img/RandomResizedCrop.png
 
@@ -1908,7 +1908,7 @@ class RandomInvert(IntensityAugmentationBase2D):
 
 
 class RandomChannelShuffle(IntensityAugmentationBase2D):
-    r"""Shuffles the channels of a batch of multi-dimensional images.
+    r"""Shuffle the channels of a batch of multi-dimensional images.
 
     .. image:: _static/img/RandomChannelShuffle.png
 
@@ -2198,7 +2198,7 @@ class RandomThinPlateSpline(GeometricAugmentationBase2D):
 
 
 class RandomBoxBlur(GeometricAugmentationBase2D):
-    """Adds random blur with a box filter to an image tensor.
+    """Add random blur with a box filter to an image tensor.
 
     .. image:: _static/img/RandomBoxBlur.png
 
