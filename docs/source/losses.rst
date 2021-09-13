@@ -39,3 +39,5 @@ Module
 .. autoclass:: TotalVariation
 .. autoclass:: PSNRLoss
 .. autoclass:: BinaryFocalLossWithLogits
+.. autoclass:: HausdorffERLoss
+.. autoclass:: HausdorffERLoss3D
