@@ -176,9 +176,15 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
     check_is_tensor(trans_01)
     check_is_tensor(points_1)
     if not trans_01.shape[0] == points_1.shape[0] and trans_01.shape[0] != 1:
-        raise ValueError("Input batch size must be the same for both tensors or 1")
+        raise ValueError(
+            "Input batch size must be the same for both tensors or 1."
+            f"Got {trans_01.shape} and {points_1.shape}"
+        )
     if not trans_01.shape[-1] == (points_1.shape[-1] + 1):
-        raise ValueError("Last input dimensions must differ by one unit")
+        raise ValueError(
+            "Last input dimensions must differ by one unit"
+            f"Got{trans_01} and {points_1}"
+        )
 
     # We reshape to BxNxD in case we get more dimensions, e.g., MxBxNxD
     shape_inp = list(points_1.shape)
