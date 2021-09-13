@@ -6,7 +6,7 @@ from kornia.filters.kernels import get_spatial_gradient_kernel2d, get_spatial_gr
 
 
 def spatial_gradient(input: torch.Tensor, mode: str = 'sobel', order: int = 1, normalized: bool = True) -> torch.Tensor:
-    r"""Computes the first order image derivative in both x and y using a Sobel
+    r"""Compute the first order image derivative in both x and y using a Sobel
     operator.
 
     .. image:: _static/img/spatial_gradient.png
@@ -57,7 +57,7 @@ def spatial_gradient(input: torch.Tensor, mode: str = 'sobel', order: int = 1, n
 
 
 def spatial_gradient3d(input: torch.Tensor, mode: str = 'diff', order: int = 1) -> torch.Tensor:
-    r"""Computes the first and second order volume derivative in x, y and d using a diff
+    r"""Compute the first and second order volume derivative in x, y and d using a diff
     operator.
 
     Args:
@@ -110,7 +110,7 @@ def spatial_gradient3d(input: torch.Tensor, mode: str = 'diff', order: int = 1) 
 
 
 def sobel(input: torch.Tensor, normalized: bool = True, eps: float = 1e-6) -> torch.Tensor:
-    r"""Computes the Sobel operator and returns the magnitude per channel.
+    r"""Compute the Sobel operator and returns the magnitude per channel.
 
     .. image:: _static/img/sobel.png
 
@@ -152,7 +152,7 @@ def sobel(input: torch.Tensor, normalized: bool = True, eps: float = 1e-6) -> to
 
 
 class SpatialGradient(nn.Module):
-    r"""Computes the first order image derivative in both x and y using a Sobel
+    r"""Compute the first order image derivative in both x and y using a Sobel
     operator.
 
     Args:
@@ -189,7 +189,7 @@ class SpatialGradient(nn.Module):
 
 
 class SpatialGradient3d(nn.Module):
-    r"""Computes the first and second order volume derivative in x, y and d using a diff
+    r"""Compute the first and second order volume derivative in x, y and d using a diff
     operator.
 
     Args:
@@ -225,7 +225,7 @@ class SpatialGradient3d(nn.Module):
 
 
 class Sobel(nn.Module):
-    r"""Computes the Sobel operator and returns the magnitude per channel.
+    r"""Compute the Sobel operator and returns the magnitude per channel.
 
     Args:
         normalized: if True, L1 norm of the kernel is set to 1.

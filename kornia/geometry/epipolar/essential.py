@@ -251,7 +251,7 @@ def motion_from_essential_choose_solution(
 def relative_camera_motion(
     R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: torch.Tensor
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    r"""Computes the relative camera motion between two cameras.
+    r"""Compute the relative camera motion between two cameras.
 
     Given the motion parameters of two cameras, computes the motion parameters of the second
     one assuming the first one to be at the origin. If :math:`T1` and :math:`T2` are the camera motions,

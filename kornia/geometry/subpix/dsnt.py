@@ -19,7 +19,7 @@ def _validate_batched_image_tensor_input(tensor):
 
 
 def spatial_softmax2d(input: torch.Tensor, temperature: torch.Tensor = torch.tensor(1.0)) -> torch.Tensor:
-    r"""Applies the Softmax function over features in each image channel.
+    r"""Apply the Softmax function over features in each image channel.
 
     Note that this function behaves differently to :py:class:`torch.nn.Softmax2d`, which
     instead applies Softmax over features at each spatial location.
@@ -53,7 +53,7 @@ def spatial_softmax2d(input: torch.Tensor, temperature: torch.Tensor = torch.ten
 
 
 def spatial_expectation2d(input: torch.Tensor, normalized_coordinates: bool = True) -> torch.Tensor:
-    r"""Computes the expectation of coordinate values using spatial probabilities.
+    r"""Compute the expectation of coordinate values using spatial probabilities.
 
     The input heatmap is assumed to represent a valid spatial probability distribution,
     which can be achieved using :func:`~kornia.geometry.subpixel.spatial_softmax2d`.
@@ -103,7 +103,7 @@ def _safe_zero_division(numerator: torch.Tensor, denominator: torch.Tensor, eps:
 def render_gaussian2d(
     mean: torch.Tensor, std: torch.Tensor, size: Tuple[int, int], normalized_coordinates: bool = True
 ):
-    r"""Renders the PDF of a 2D Gaussian distribution.
+    r"""Render the PDF of a 2D Gaussian distribution.
 
     Args:
         mean: the mean location of the Gaussian to render, :math:`(\mu_x, \mu_y)`. Shape: :math:`(*, 2)`.

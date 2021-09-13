@@ -9,7 +9,7 @@ from kornia.filters import gaussian_blur2d
 def unsharp_mask(
     input: torch.Tensor, kernel_size: Tuple[int, int], sigma: Tuple[float, float], border_type: str = 'reflect'
 ) -> torch.Tensor:
-    r"""Creates an operator that blurs a tensor using the existing Gaussian filter available with the Kornia library.
+    r"""Create an operator that blurs a tensor using the existing Gaussian filter available with the Kornia library.
 
     .. image:: _static/img/unsharp_mask.png
 
@@ -36,7 +36,7 @@ def unsharp_mask(
 
 
 class UnsharpMask(nn.Module):
-    r"""Creates an operator that sharpens image using the existing Gaussian filter available with the Kornia library..
+    r"""Create an operator that sharpens image using the existing Gaussian filter available with the Kornia library..
 
     Args:
         kernel_size: the size of the kernel.

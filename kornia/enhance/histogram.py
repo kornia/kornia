@@ -9,8 +9,8 @@ __all__ = ["histogram", "histogram2d", "image_histogram2d"]
 def marginal_pdf(
     values: torch.Tensor, bins: torch.Tensor, sigma: torch.Tensor, epsilon: float = 1e-10
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Function that calculates the marginal probability distribution function of the input tensor based on the
-    number of histogram bins.
+    """Calculate the marginal probability distribution function of the input tensor based on the number of
+    histogram bins.
 
     Args:
         values: shape [BxNx1].
@@ -53,8 +53,8 @@ def marginal_pdf(
 
 
 def joint_pdf(kernel_values1: torch.Tensor, kernel_values2: torch.Tensor, epsilon: float = 1e-10) -> torch.Tensor:
-    """Function that calculates the joint probability distribution function of the input tensors based on the
-    number of histogram bins.
+    """Calculate the joint probability distribution function of the input tensors based on the number of histogram
+    bins.
 
     Args:
         kernel_values1: shape [BxNxNUM_BINS].
@@ -91,7 +91,7 @@ def joint_pdf(kernel_values1: torch.Tensor, kernel_values2: torch.Tensor, epsilo
 
 
 def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsilon: float = 1e-10) -> torch.Tensor:
-    """Function that estimates the histogram of the input tensor.
+    """Estimate the histogram of the input tensor.
 
     The calculation uses kernel density estimation which requires a bandwidth (smoothing) parameter.
 
@@ -120,7 +120,7 @@ def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsi
 def histogram2d(
     x1: torch.Tensor, x2: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsilon: float = 1e-10
 ) -> torch.Tensor:
-    """Function that estimates the 2d histogram of the input tensor.
+    """Estimate the 2d histogram of the input tensor.
 
     The calculation uses kernel density estimation which requires a bandwidth (smoothing) parameter.
 

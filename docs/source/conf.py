@@ -115,6 +115,7 @@ html_theme_options = {
     'dark_logo': 'img/kornia_logo_only_dark.svg',
     "sidebar_hide_name": True,
     "navigation_with_keys": True,
+    'display_version': False,
     "announcement": """
         <a style=\"text-decoration: none; color: white;\"
            href=\"https://github.com/kornia/kornia\">

@@ -39,7 +39,7 @@ def warp_perspective(
     padding_mode: str = 'zeros',
     align_corners: Optional[bool] = None,
 ) -> torch.Tensor:
-    r"""Applies a perspective transformation to an image.
+    r"""Apply a perspective transformation to an image.
 
     .. image:: https://kornia-tutorials.readthedocs.io/en/latest/_images/warp_perspective_10_1.png
 
@@ -125,7 +125,7 @@ def warp_affine(
     padding_mode: str = 'zeros',
     align_corners: Optional[bool] = None,
 ) -> torch.Tensor:
-    r"""Applies an affine transformation to a tensor.
+    r"""Apply an affine transformation to a tensor.
 
     .. image:: _static/img/warp_affine.png
 
@@ -200,7 +200,7 @@ def warp_affine(
 
 
 def get_perspective_transform(src, dst):
-    r"""Calculates a perspective transform from four pairs of the corresponding
+    r"""Calculate a perspective transform from four pairs of the corresponding
     points.
 
     The function calculates the matrix of a perspective transform so that:
@@ -328,7 +328,7 @@ def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
 
 
 def get_rotation_matrix2d(center: torch.Tensor, angle: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
-    r"""Calculates an affine matrix of 2D rotation.
+    r"""Calculate an affine matrix of 2D rotation.
 
     The function calculates the following matrix:
 
@@ -437,7 +437,7 @@ def remap(
     align_corners: Optional[bool] = None,
     normalized_coordinates: bool = False,
 ) -> torch.Tensor:
-    r"""Applies a generic geometrical transformation to a tensor.
+    r"""Apply a generic geometrical transformation to a tensor.
 
     .. image:: _static/img/remap.png
 
@@ -508,7 +508,7 @@ def remap(
 
 
 def invert_affine_transform(matrix: torch.Tensor) -> torch.Tensor:
-    r"""Inverts an affine transformation.
+    r"""Invert an affine transformation.
 
     The function computes an inverse affine transformation represented by
     2×3 matrix:
@@ -551,7 +551,7 @@ def get_affine_matrix2d(
     sx: Optional[torch.Tensor] = None,
     sy: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    r"""Composes affine matrix from the components.
+    r"""Compose affine matrix from the components.
 
     Args:
         translations: tensor containing the translation vector with shape :math:`(B, 2)`.
@@ -581,7 +581,7 @@ def get_affine_matrix2d(
 
 
 def get_shear_matrix2d(center: torch.Tensor, sx: Optional[torch.Tensor] = None, sy: Optional[torch.Tensor] = None):
-    r"""Composes shear matrix Bx4x4 from the components.
+    r"""Compose shear matrix Bx4x4 from the components.
 
     Note: Ordered shearing, shear x-axis then y-axis.
 
@@ -650,7 +650,7 @@ def get_affine_matrix3d(
     szx: Optional[torch.Tensor] = None,
     szy: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    r"""Composes 3d affine matrix from the components.
+    r"""Compose 3d affine matrix from the components.
 
     Args:
         translations: tensor containing the translation vector (dx,dy,dz) with shape :math:`(B, 3)`.
@@ -693,7 +693,7 @@ def get_shear_matrix3d(
     szx: Optional[torch.Tensor] = None,
     szy: Optional[torch.Tensor] = None,
 ):
-    r"""Composes shear matrix Bx4x4 from the components.
+    r"""Compose shear matrix Bx4x4 from the components.
     Note: Ordered shearing, shear x-axis then y-axis then z-axis.
 
     .. math::

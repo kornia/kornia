@@ -6,7 +6,7 @@ import torch
 
 
 def cross_product_matrix(x: torch.Tensor) -> torch.Tensor:
-    r"""Returns the cross_product_matrix symmetric matrix of a vector.
+    r"""Return the cross_product_matrix symmetric matrix of a vector.
 
     Args:
         x: The input vector to construct the matrix in the shape :math:`(B, 3)`.
@@ -29,7 +29,7 @@ def cross_product_matrix(x: torch.Tensor) -> torch.Tensor:
 
 
 def eye_like(n: int, input: torch.Tensor) -> torch.Tensor:
-    r"""Returns a 2-D tensor with ones on the diagonal and zeros elsewhere with same size as the input.
+    r"""Return a 2-D tensor with ones on the diagonal and zeros elsewhere with same size as the input.
 
     Args:
         n: the number of rows :math:`(N)`.
@@ -50,7 +50,7 @@ def eye_like(n: int, input: torch.Tensor) -> torch.Tensor:
 
 
 def vec_like(n, tensor):
-    r"""Returns a 2-D tensor with a vector containing zeros with same size as the input.
+    r"""Return a 2-D tensor with a vector containing zeros with same size as the input.
 
     Args:
         n: the number of rows :math:`(N)`.

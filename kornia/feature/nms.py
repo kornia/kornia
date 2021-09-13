@@ -24,7 +24,7 @@ def _get_nms_kernel3d(kd: int, ky: int, kx: int) -> torch.Tensor:
 
 
 class NonMaximaSuppression2d(nn.Module):
-    r"""Applies non maxima suppression to filter."""
+    r"""Apply non maxima suppression to filter."""
 
     def __init__(self, kernel_size: Tuple[int, int]):
         super().__init__()
@@ -67,7 +67,7 @@ class NonMaximaSuppression2d(nn.Module):
 
 
 class NonMaximaSuppression3d(nn.Module):
-    r"""Applies non maxima suppression to filter."""
+    r"""Apply non maxima suppression to filter."""
 
     def __init__(self, kernel_size: Tuple[int, int, int]):
         super().__init__()
@@ -113,7 +113,7 @@ class NonMaximaSuppression3d(nn.Module):
 
 
 def nms2d(input: torch.Tensor, kernel_size: Tuple[int, int], mask_only: bool = False) -> torch.Tensor:
-    r"""Applies non maxima suppression to filter.
+    r"""Apply non maxima suppression to filter.
 
     See :class:`~kornia.feature.NonMaximaSuppression2d` for details.
     """
@@ -121,7 +121,7 @@ def nms2d(input: torch.Tensor, kernel_size: Tuple[int, int], mask_only: bool = F
 
 
 def nms3d(input: torch.Tensor, kernel_size: Tuple[int, int, int], mask_only: bool = False) -> torch.Tensor:
-    r"""Applies non maxima suppression to filter.
+    r"""Apply non maxima suppression to filter.
 
     See :class:`~kornia.feature.NonMaximaSuppression3d` for details.
     """

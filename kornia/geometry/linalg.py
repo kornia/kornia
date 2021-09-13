@@ -18,7 +18,7 @@ __all__ = [
 
 
 def compose_transformations(trans_01: torch.Tensor, trans_12: torch.Tensor) -> torch.Tensor:
-    r"""Functions that composes two homogeneous transformations.
+    r"""Function that composes two homogeneous transformations.
 
     .. math::
         T_0^{2} = \begin{bmatrix} R_0^1 R_1^{2} & R_0^{1} t_1^{2} + t_0^{1} \\
@@ -176,9 +176,15 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
     check_is_tensor(trans_01)
     check_is_tensor(points_1)
     if not trans_01.shape[0] == points_1.shape[0] and trans_01.shape[0] != 1:
-        raise ValueError("Input batch size must be the same for both tensors or 1")
+        raise ValueError(
+            "Input batch size must be the same for both tensors or 1."
+            f"Got {trans_01.shape} and {points_1.shape}"
+        )
     if not trans_01.shape[-1] == (points_1.shape[-1] + 1):
-        raise ValueError("Last input dimensions must differ by one unit")
+        raise ValueError(
+            "Last input dimensions must differ by one unit"
+            f"Got{trans_01} and {points_1}"
+        )
 
     # We reshape to BxNxD in case we get more dimensions, e.g., MxBxNxD
     shape_inp = list(points_1.shape)
@@ -299,7 +305,7 @@ def perspective_transform_lafs(trans_01: torch.Tensor, lafs_1: torch.Tensor) -> 
 
 # NOTE: is it needed ?
 '''class TransformPoints(nn.Module):
-    r"""Creates an object to transform a set of points.
+    r"""Create an object to transform a set of points.
 
     Args:
         dst_pose_src (torhc.Tensor): tensor for transformations of
@@ -328,7 +334,7 @@ def perspective_transform_lafs(trans_01: torch.Tensor, lafs_1: torch.Tensor) -> 
 
 
 class InversePose(nn.Module):
-    r"""Creates a transformation that inverts a 4x4 pose.
+    r"""Create a transformation that inverts a 4x4 pose.
 
     Args:
         points (Tensor): tensor with poses.

@@ -8,7 +8,7 @@ from kornia.testing import assert_close
 
 
 def identity_matrix(batch_size, device, dtype):
-    r"""Creates a batched homogeneous identity matrix"""
+    r"""Create a batched homogeneous identity matrix"""
     return torch.eye(4, device=device, dtype=dtype).repeat(batch_size, 1, 1)  # Nx4x4
 
 

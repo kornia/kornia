@@ -27,7 +27,7 @@ def warp_affine3d(
     padding_mode: str = 'zeros',
     align_corners: Optional[bool] = None,
 ) -> torch.Tensor:
-    r"""Applies a projective transformation a to 3d tensor.
+    r"""Apply a projective transformation a to 3d tensor.
 
     .. warning::
         This API signature it is experimental and might suffer some changes in the future.
@@ -111,7 +111,7 @@ def projection_from_Rt(rmat: torch.Tensor, tvec: torch.Tensor) -> torch.Tensor:
 
 
 def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales: torch.Tensor) -> torch.Tensor:
-    r"""Calculates the projection matrix for a 3D rotation.
+    r"""Calculate the projection matrix for a 3D rotation.
 
     .. warning::
         This API signature it is experimental and might suffer some changes in the future.
@@ -384,7 +384,7 @@ def warp_perspective3d(
     border_mode: str = 'zeros',
     align_corners: bool = False,
 ) -> torch.Tensor:
-    r"""Applies a perspective transformation to an image.
+    r"""Apply a perspective transformation to an image.
 
     The function warp_perspective transforms the source image using
     the specified matrix:

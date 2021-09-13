@@ -12,7 +12,7 @@ import kornia as dgm
 
 
 def load_homography(file_name):
-    """Loads an homography from text file."""
+    """Load a homography from text file."""
     if not os.path.isfile(file_name):
         raise AssertionError(f"Invalid file {file_name}")
     return torch.from_numpy(np.loadtxt(file_name)).float()
