@@ -43,14 +43,14 @@ Best Practices 1: Image Augmentation
 
 Kornia augmentations provides simple on-device augmentation framework with the support of various syntax sugars
 (e.g. return transformation matrix, inverse geometric transform). Therefore, we provide advanced augmentation
-container to ease the pain of building augmenation pipelines. This API would also provide predefined routines
+container :py:class:`kornia.augmentation.ImageSequential` to ease the pain of building augmenation pipelines. This API would also provide predefined routines
 for automating the processing of masks, bounding boxes, and keypoints.
 
 .. code-block:: python
 
    import kornia.augmentation as K
 
-   aug_list = K.AugmentationSequential(
+   aug = K.AugmentationSequential(
       K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
       K.RandomAffine(360, [0.1, 0.1], [0.7, 1.2], [30., 50.], p=1.0),
       K.RandomPerspective(0.5, p=1.0),
@@ -59,9 +59,9 @@ for automating the processing of masks, bounding boxes, and keypoints.
       same_on_batch=False,
    )
    # forward the operation
-   out_tensors = aug_list(img_tensor, bbox, keypoints, mask)
+   out_tensors = aug(img_tensor, bbox, keypoints, mask)
    # Inverse the operation
-   out_tensor_inv = aug_list.inverse(*out_tensor)
+   out_tensor_inv = aug.inverse(*out_tensor)
 
 .. image:: https://discuss.pytorch.org/uploads/default/optimized/3X/2/4/24bb0f4520f547d3a321440293c1d44921ecadf8_2_690x119.jpeg
 
@@ -73,8 +73,8 @@ Best Practices 2: Video Augmentation
 
 Video data is a special case of 3D volumetric data that contains both spatial and temporal information, which can be referred as 2.5D than 3D.
 In most applications, augmenting video data requires a static temporal dimension to have the same augmentations are performed for each frame.
-Thus, `VideoSequential` can be used to do such trick as same as `nn.Sequential`.
-Currently, `VideoSequential` supports data format like :math:`(B, C, T, H, W)` and :math:`(B, T, C, H, W)`.
+Thus, :py:class:`kornia.augmentation.VideoSequential` can be used to do such trick as same as `nn.Sequential`.
+Currently, :py:class:`kornia.augmentation.VideoSequential` supports data format like :math:`(B, C, T, H, W)` and :math:`(B, T, C, H, W)`.
 
 .. code-block:: python
 
