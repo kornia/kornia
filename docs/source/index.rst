@@ -50,6 +50,15 @@ Join the community
    applications/video_deblur
 
 .. toctree::
+   :caption: KORNIA MODELS
+   :hidden:
+
+   models/loftr
+   models/defmo
+   models/hardnet
+   models/affnet
+
+.. toctree::
    :caption: API REFERENCE
    :maxdepth: 2
    :hidden:

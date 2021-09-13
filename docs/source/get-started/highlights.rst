@@ -1,6 +1,9 @@
 Highlighted Features
 ====================
 
+.. image:: https://github.com/kornia/data/raw/main/kornia_paper_mosaic.png
+   :align: center
+
 At a granular level, Kornia is a library that consists of the following components:
 
 +-----------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------+

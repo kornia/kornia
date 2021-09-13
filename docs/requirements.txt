@@ -13,3 +13,4 @@ sphinx-copybutton>=0.3
 sphinx-autodoc-defaultargs
 PyYAML>=5.1,<=5.4.1
 furo
+sphinx-design
