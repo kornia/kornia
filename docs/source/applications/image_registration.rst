@@ -3,7 +3,7 @@ Image Registration
 
 Image registration is the process of transforming different sets of data into one coordinate system. Data may be multiple photographs, data from different sensors, times, depths, or viewpoints. It is used in computer vision, medical imaging, and compiling and analyzing images and data from satellites. Registration is necessary in order to be able to compare or integrate the data obtained from these different measurements.
 
-Learn more @ PWC : `https://paperswithcode.com/task/image-registration <https://paperswithcode.com/task/image-registration>`_
+Learn more: `https://paperswithcode.com/task/image-registration <https://paperswithcode.com/task/image-registration>`_
 
 ..  youtube:: Re1q6vRfZac
 

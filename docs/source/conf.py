@@ -43,6 +43,7 @@ extensions = [
     'sphinx.ext.githubpages',
     'sphinxcontrib.bibtex',
     'sphinxcontrib.youtube',
+    'sphinx_design',
 ]
 
 # substitutes the default values
@@ -110,16 +111,15 @@ html_theme = 'furo'
 html_baseurl = 'https://kornia.readthedocs.io'
 
 html_theme_options = {
-    'light_logo': 'img/kornia_logo_only.png',
-    'dark_logo': 'img/kornia_logo_only.png',
+    'light_logo': 'img/kornia_logo_only_light.svg',
+    'dark_logo': 'img/kornia_logo_only_dark.svg',
     "sidebar_hide_name": True,
     "navigation_with_keys": True,
-    'display_version': False,
     "announcement": """
         <a style=\"text-decoration: none; color: white;\"
            href=\"https://github.com/kornia/kornia\">
-           <img src=\"_static/img/GitHub-Mark-Light-32px.png\" width=20 height=20/>
-           Click here to Star Kornia on GitHub
+           <img src=\"https://github.com/kornia/data/raw/main/GitHub-Mark-Light-32px.png\" width=20 height=20/>
+           Star Kornia on GitHub
         </a>
     """,
 }

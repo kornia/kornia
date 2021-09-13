@@ -17,8 +17,8 @@ and low level image processing such as filtering and edge detection that operate
 Why Kornia ?
 ------------
 
-With *Kornia* we fill the gap within the PyTorch ecosystem introducing a computer vision library that implements
-standard vision algorithms taking advantage of the different properties that modern frameworks for AI:
+With *Kornia* we fill the gap between classical and deep computer vision that implements
+standard and advanced vision algorithms for AI:
 
 1. **Computer Vision:** Kornia fills the gap between Classical and Deep computer Vision.
 2. **Differentiable:** We leverage the Computer Vision 2.0 paradigm.
