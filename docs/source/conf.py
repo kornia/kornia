@@ -118,8 +118,8 @@ html_theme_options = {
     "announcement": """
         <a style=\"text-decoration: none; color: white;\"
            href=\"https://github.com/kornia/kornia\">
-           <img src=\"_static/img/GitHub-Mark-Light-32px.png\" width=20 height=20/>
-           Click here to Star Kornia on GitHub
+           <img src=\"https://github.com/kornia/data/raw/main/GitHub-Mark-Light-32px.png\" width=20 height=20/>
+           Star Kornia on GitHub
         </a>
     """,
 }
