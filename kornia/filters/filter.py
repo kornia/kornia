@@ -8,7 +8,7 @@ from kornia.filters.kernels import normalize_kernel2d
 
 
 def _compute_padding(kernel_size: List[int]) -> List[int]:
-    """Computes padding tuple."""
+    """Compute padding tuple."""
     # 4 or 6 ints:  (padding_left, padding_right,padding_top,padding_bottom)
     # https://pytorch.org/docs/stable/nn.html#torch.nn.functional.pad
     if len(kernel_size) < 2:

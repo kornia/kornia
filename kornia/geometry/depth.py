@@ -172,7 +172,7 @@ def warp_frame_depth(
 
 
 class DepthWarper(nn.Module):
-    r"""Warps a patch by depth.
+    r"""Warp a patch by depth.
 
     .. math::
         P_{src}^{\{dst\}} = K_{dst} * T_{src}^{\{dst\}}
@@ -219,7 +219,7 @@ class DepthWarper(nn.Module):
         return convert_points_to_homogeneous(grid)  # append ones to last dim
 
     def compute_projection_matrix(self, pinhole_src: PinholeCamera) -> 'DepthWarper':
-        r"""Computes the projection matrix from the source to destination frame."""
+        r"""Compute the projection matrix from the source to destination frame."""
         if not isinstance(self._pinhole_dst, PinholeCamera):
             raise TypeError(
                 "Member self._pinhole_dst expected to be of class "
@@ -309,7 +309,7 @@ class DepthWarper(nn.Module):
         return pixel_coords_src_norm
 
     def forward(self, depth_src: torch.Tensor, patch_dst: torch.Tensor) -> torch.Tensor:
-        """Warps a tensor from destination frame to reference given the depth in the reference frame.
+        """Warp a tensor from destination frame to reference given the depth in the reference frame.
 
         Args:
             depth_src: the depth in the reference frame. The tensor must have a shape :math:`(B, 1, H, W)`.

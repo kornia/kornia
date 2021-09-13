@@ -109,7 +109,7 @@ class StereoCamera:
 
     @property
     def batch_size(self) -> int:
-        r"""Returns the batch size of the storage.
+        r"""Return the batch size of the storage.
 
         Returns:
            scalar with the batch size
@@ -118,7 +118,7 @@ class StereoCamera:
 
     @property
     def fx(self) -> torch.Tensor:
-        r"""Returns the focal length in the x-direction.
+        r"""Return the focal length in the x-direction.
 
         Note that the focal lengths of the rectified left and right
         camera are assumed to be equal.
@@ -142,7 +142,7 @@ class StereoCamera:
 
     @property
     def cx_left(self) -> torch.Tensor:
-        r"""Returns the x-coordinate of the principal point for the left camera.
+        r"""Return the x-coordinate of the principal point for the left camera.
 
         Returns:
             tensor of shape :math:`(B)`
@@ -151,7 +151,7 @@ class StereoCamera:
 
     @property
     def cx_right(self) -> torch.Tensor:
-        r"""Returns the x-coordinate of the principal point for the right camera.
+        r"""Return the x-coordinate of the principal point for the right camera.
 
         Returns:
             tensor of shape :math:`(B)`
@@ -160,7 +160,7 @@ class StereoCamera:
 
     @property
     def cy(self) -> torch.Tensor:
-        r"""Returns the y-coordinate of the principal point.
+        r"""Return the y-coordinate of the principal point.
 
         Note that the y-coordinate of the principal points
         is assumed to be equal for the left and right camera.

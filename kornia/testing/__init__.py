@@ -47,7 +47,7 @@ def compute_patch_error(x, y, h, w):
 
 
 def check_is_tensor(obj):
-    """Checks whether the supplied object is a tensor."""
+    """Check whether the supplied object is a tensor."""
     if not isinstance(obj, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(obj)}")
 

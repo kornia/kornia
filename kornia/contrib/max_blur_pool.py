@@ -22,7 +22,7 @@ class MaxBlurPool2d(MaxBlurPool2D):
 
 
 def max_blur_pool2d(input: torch.Tensor, kernel_size: int, ceil_mode: bool = False) -> torch.Tensor:
-    r"""Creates a module that computes pools and blurs and downsample a given feature map.
+    r"""Create a module that computes pools and blurs and downsample a given feature map.
 
     See :class:`~kornia.contrib.MaxBlurPool2d` for details.
     """

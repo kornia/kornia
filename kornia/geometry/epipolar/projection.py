@@ -7,7 +7,7 @@ from kornia.geometry.epipolar import numeric
 
 
 def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:
-    r"""Returns a 3x3 instrinsics matrix, with same size as the input.
+    r"""Return a 3x3 instrinsics matrix, with same size as the input.
 
     The center of projection will be based in the input image size.
 
@@ -36,7 +36,7 @@ def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:
 
 
 def random_intrinsics(low: Union[float, torch.Tensor], high: Union[float, torch.Tensor]) -> torch.Tensor:
-    r"""Generates a random camera matrix based on a given uniform distribution.
+    r"""Generate a random camera matrix based on a given uniform distribution.
 
     Args:
         low: lower range (inclusive).
@@ -109,7 +109,7 @@ def projection_from_KRt(K: torch.Tensor, R: torch.Tensor, t: torch.Tensor) -> to
 
 
 def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    r"""This function decomposes the Projection matrix into Camera-Matrix, Rotation Matrix and Translation vector.
+    r"""Decompose the Projection matrix into Camera-Matrix, Rotation Matrix and Translation vector.
 
     Args:
         P: the projection matrix with shape :math:`(B, 3, 4)`.
@@ -148,7 +148,7 @@ def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tenso
 
 
 def depth(R: torch.Tensor, t: torch.Tensor, X: torch.Tensor) -> torch.Tensor:
-    r"""Returns the depth of a point transformed by a rigid transform.
+    r"""Return the depth of a point transformed by a rigid transform.
 
     Args:
        R: The rotation matrix with shape :math:`(*, 3, 3)`.
