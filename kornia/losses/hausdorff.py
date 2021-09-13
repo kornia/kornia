@@ -116,12 +116,26 @@ class _HausdorffERLossBase(nn.Module):
 
 
 class HausdorffERLoss(_HausdorffERLossBase):
-    """Binary Hausdorff loss based on morphological erosion.
+    r"""Binary Hausdorff loss based on morphological erosion.
 
-    This is an Hausdorff Distance (HD) Loss that based on morphological erosion,which provided
+    Hausdorff Distance loss measures the maximum distance of a predicted segmentation boundary to
+    the nearest ground-truth edge pixel. For two segmentation point sets X and Y ,
+    the one-sided HD from X to Y is defined as:
+
+    .. math::
+
+        hd(X,Y) = \max_{x \in X} \min_{y \in Y}||x - y||_2
+
+    Furthermore, the bidirectional HD is:
+
+    .. math::
+
+        HD(X,Y) = max(hd(X, Y), hd(Y, X))
+
+    This is an Hausdorff Distance (HD) Loss that based on morphological erosion, which provided
     a differentiable approximation of Hausdorff distance as stated in :cite:`karimi2019reducing`.
     The code is refactored on top of `here <https://github.com/PatRyg99/HausdorffLoss/
-        blob/master/hausdorff_loss.py>`__.
+    blob/master/hausdorff_loss.py>`__.
 
     Args:
         alpha: controls the erosion rate in each iteration.
@@ -168,12 +182,26 @@ class HausdorffERLoss(_HausdorffERLossBase):
 
 
 class HausdorffERLoss3D(_HausdorffERLossBase):
-    """Binary 3D Hausdorff loss based on morphological erosion.
+    r"""Binary 3D Hausdorff loss based on morphological erosion.
 
-    This is a 3D Hausdorff Distance (HD) Loss that based on morphological erosion,which provided
+    Hausdorff Distance loss measures the maximum distance of a predicted segmentation boundary to
+    the nearest ground-truth edge pixel. For two segmentation point sets X and Y ,
+    the one-sided HD from X to Y is defined as:
+
+    .. math::
+
+        hd(X,Y) = \max_{x \in X} \min_{y \in Y}||x - y||_2
+
+    Furthermore, the bidirectional HD is:
+
+    .. math::
+
+        HD(X,Y) = max(hd(X, Y), hd(Y, X))
+
+    This is a 3D Hausdorff Distance (HD) Loss that based on morphological erosion, which provided
     a differentiable approximation of Hausdorff distance as stated in :cite:`karimi2019reducing`.
     The code is refactored on top of `here <https://github.com/PatRyg99/HausdorffLoss/
-        blob/master/hausdorff_loss.py>`__.
+    blob/master/hausdorff_loss.py>`__.
 
     Args:
         alpha: controls the erosion rate in each iteration.
