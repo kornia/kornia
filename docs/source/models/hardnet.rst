@@ -17,7 +17,7 @@ Hardnet
     **Licence:** MIT
 
     +++
-    **Authors:**  Anastasiya Mishchuk, Dmytro Mishkin, Filip Radenovic, Jiri Matas 
+    **Authors:**  Anastasiya Mishchuk, Dmytro Mishkin, Filip Radenovic, Jiri Matas
 
 .. image:: https://raw.githubusercontent.com/DagnyT/hardnet/master/img/hardnet_hpatches.png
    :align: center

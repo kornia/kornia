@@ -9,7 +9,7 @@ that can be used across different domains such as Robotics, Industrial applicati
 .. tip::
 
    Expect to see in the future a selection of the top performing algorithms in the following sub-areas:
-   
+
    - Super Resolution
    - Deep Edge detection
    - Stereo and Optical flow and camera calibration
@@ -21,4 +21,3 @@ that can be used across different domains such as Robotics, Industrial applicati
 .. admonition:: We are looking for contributors !!
 
    If you have any suggestion, proposal or just want to give us a hand - join our `Slack <https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-CnydWe5fmvkcktIeRFGCEQ>`_
-
