@@ -74,7 +74,9 @@ class LoFTR(nn.Module):
         >>> out = loftr(input)
     """
 
-    def __init__(self, pretrained: Optional[str] = 'outdoor', config: Dict = default_cfg):
+    def __init__(self, pretrained: Optional[str] = 'outdoor', config: Dict = None):
+        if config is None:
+            config = default_cfg
         super().__init__()
         # Misc
         self.config = config
