@@ -1,5 +1,5 @@
 from collections import OrderedDict
-from typing import Any, Iterator, List, NamedTuple, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, List, NamedTuple, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -44,7 +44,7 @@ class SequentialBase(nn.Sequential):
         self._same_on_batch = same_on_batch
         self._return_transform = return_transform
         self._keepdim = keepdim
-        self._params: Optional[List[Any]] = None
+        self._params: Optional[List[ParamItem]] = None
         self.update_attribute(same_on_batch, return_transform, keepdim)
 
     def update_attribute(
@@ -63,6 +63,8 @@ class SequentialBase(nn.Sequential):
             if isinstance(mod, _AugmentationBase):
                 if return_transform is not None:
                     mod.return_transform = return_transform
+            if isinstance(mod, SequentialBase):
+                mod.update_attribute(same_on_batch, return_transform, keepdim)
 
     def get_submodule(self, target: str) -> nn.Module:
         """Get submodule.
@@ -149,6 +151,7 @@ class SequentialBase(nn.Sequential):
 
     def get_children_by_params(self, params: List[ParamItem]) -> Iterator[Tuple[str, nn.Module]]:
         modules = list(self.named_children())
+        # TODO: Wrong params passed here when nested ImageSequential
         for param in params:
             yield modules[list(dict(self.named_children()).keys()).index(param.name)]
 
