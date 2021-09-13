@@ -22,7 +22,7 @@ transforms, camera, conversions, linalg and depth. We next describe each of them
   transform points between frames and for homogeneous transformations, manipulation such as composition,
   inverse and to compute relative poses.
 - depth: A set of layers to manipulate depth maps such as how to compute 3D point clouds given depth maps and
-  calibrated cameras; compute surface normals per pixel and warp tensor frames given calibrated cameras setup. 
+  calibrated cameras; compute surface normals per pixel and warp tensor frames given calibrated cameras setup.
 
 
 :Resources:

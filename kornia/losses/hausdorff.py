@@ -116,7 +116,7 @@ class _HausdorffERLossBase(nn.Module):
 
 
 class HausdorffERLoss(_HausdorffERLossBase):
-    """Binary Hausdorff loss based on morphological erosion.
+    r"""Binary Hausdorff loss based on morphological erosion.
 
     Hausdorff Distance loss measures the maximum distance of a predicted segmentation boundary to
     the nearest ground-truth edge pixel. For two segmentation point sets X and Y ,
@@ -182,7 +182,7 @@ class HausdorffERLoss(_HausdorffERLossBase):
 
 
 class HausdorffERLoss3D(_HausdorffERLossBase):
-    """Binary 3D Hausdorff loss based on morphological erosion.
+    r"""Binary 3D Hausdorff loss based on morphological erosion.
 
     Hausdorff Distance loss measures the maximum distance of a predicted segmentation boundary to
     the nearest ground-truth edge pixel. For two segmentation point sets X and Y ,

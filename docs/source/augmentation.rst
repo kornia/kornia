@@ -11,7 +11,7 @@ which allows the user to retrieve the applied transformation orchained transform
 call e.g. the generated random rotation matrix which can be used later to undo theimage transformation
 itself, or to be applied to additional metadata such as the label images for semantic segmentation,
 in bounding boxes or landmark keypoints for object detection tasks. It gives the user the flexibility to
-perform complex data augmentations pipelines. 
+perform complex data augmentations pipelines.
 
 
 .. currentmodule:: kornia.augmentation
