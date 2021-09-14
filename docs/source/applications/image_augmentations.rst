@@ -21,11 +21,11 @@ and other advanced containers such as
 :py:class:`~kornia.augmentation.container.PatchSequential` and
 :py:class:`~kornia.augmentation.container.VideoSequential`.
 
-Our augmentations package is highly inspired by Torchvision-like augmentation APIs while may not reproduce Torchvision,
-because Kornia is a library aligns to OpenCV functionalities, not PIL. Besides, pure floating computation is used in Kornia
-which guarantees a better precision without any float -> uint8 conversions.
+Our augmentations package is highly inspired by torchvision augmentation APIs while our intenttion is not to replace it.
+Kornia is a library that aligns beter to OpenCV functionalities enforcing floating operators to guarantees a better precision
+without any float -> uint8 conversions plus on device acceleration.
 
-For detailed comparison, please checkout the `Colab: Kornia Playground <https://colab.research.google.com/drive/1T20UNAG4SdlE2n2wstuhiewve5Q81VpS#revisionId=0B4unZG1uMc-WR3NVeTBDcmRwN0NxcGNNVlUwUldPMVprb1dJPQ>`_.
+However, we provide the following guide to migrate kornia <-> torchvision. Please, checkout the `Colab: Kornia Playground <https://colab.research.google.com/drive/1T20UNAG4SdlE2n2wstuhiewve5Q81VpS#revisionId=0B4unZG1uMc-WR3NVeTBDcmRwN0NxcGNNVlUwUldPMVprb1dJPQ>`_.
 
 .. code-block:: python
 
@@ -43,7 +43,7 @@ Best Practices 1: Image Augmentation
 
 Kornia augmentations provides simple on-device augmentation framework with the support of various syntax sugars
 (e.g. return transformation matrix, inverse geometric transform). Therefore, we provide advanced augmentation
-container :py:class:`kornia.augmentation.ImageSequential` to ease the pain of building augmenation pipelines. This API would also provide predefined routines
+container :py:class:`~kornia.augmentation.AugmentationSequential` to ease the pain of building augmenation pipelines. This API would also provide predefined routines
 for automating the processing of masks, bounding boxes, and keypoints.
 
 .. code-block:: python
@@ -73,8 +73,8 @@ Best Practices 2: Video Augmentation
 
 Video data is a special case of 3D volumetric data that contains both spatial and temporal information, which can be referred as 2.5D than 3D.
 In most applications, augmenting video data requires a static temporal dimension to have the same augmentations are performed for each frame.
-Thus, :py:class:`kornia.augmentation.VideoSequential` can be used to do such trick as same as `nn.Sequential`.
-Currently, :py:class:`kornia.augmentation.VideoSequential` supports data format like :math:`(B, C, T, H, W)` and :math:`(B, T, C, H, W)`.
+Thus, :py:class:`~kornia.augmentation.VideoSequential` can be used to do such trick as same as `nn.Sequential`.
+Currently, :py:class:`~kornia.augmentation.VideoSequential` supports data format like :math:`(B, C, T, H, W)` and :math:`(B, T, C, H, W)`.
 
 .. code-block:: python
 
