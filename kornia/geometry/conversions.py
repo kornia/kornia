@@ -226,7 +226,7 @@ def angle_axis_to_rotation_matrix(angle_axis: torch.Tensor) -> torch.Tensor:
     r"""Convert 3d vector of axis-angle rotation to 3x3 rotation matrix.
 
     Args:
-        angle_axis: tensor of 3d vector of axis-angle rotations.
+        angle_axis: tensor of 3d vector of axis-angle rotations in radians.
 
     Returns:
         tensor of 3x3 rotation matrices.
@@ -300,7 +300,7 @@ def angle_axis_to_rotation_matrix(angle_axis: torch.Tensor) -> torch.Tensor:
 
 
 def rotation_matrix_to_angle_axis(rotation_matrix: torch.Tensor) -> torch.Tensor:
-    r"""Convert 3x3 rotation matrix to Rodrigues vector.
+    r"""Convert 3x3 rotation matrix to Rodrigues vector in radians.
 
     Args:
         rotation_matrix: rotation matrix.
@@ -543,7 +543,7 @@ def quaternion_to_rotation_matrix(
 def quaternion_to_angle_axis(
     quaternion: torch.Tensor, order: QuaternionCoeffOrder = QuaternionCoeffOrder.XYZW
 ) -> torch.Tensor:
-    """Convert quaternion vector to angle axis of rotation.
+    """Convert quaternion vector to angle axis of rotation in radians.
 
     The quaternion should be in (x, y, z, w) or (w, x, y, z) format.
 
@@ -745,7 +745,7 @@ def angle_axis_to_quaternion(
     Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
 
     Args:
-        angle_axis: tensor with angle axis.
+        angle_axis: tensor with angle axis in radians.
         order: quaternion coefficient order. Note: 'xyzw' will be deprecated in favor of 'wxyz'.
 
     Return:
