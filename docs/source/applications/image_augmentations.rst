@@ -21,8 +21,8 @@ and other advanced containers such as
 :py:class:`~kornia.augmentation.container.PatchSequential` and
 :py:class:`~kornia.augmentation.container.VideoSequential`.
 
-Our augmentations package is highly inspired by torchvision augmentation APIs while our intenttion is not to replace it.
-Kornia is a library that aligns beter to OpenCV functionalities enforcing floating operators to guarantees a better precision
+Our augmentations package is highly inspired by torchvision augmentation APIs while our intention is to not replace it.
+Kornia is a library that aligns better to OpenCV functionalities enforcing floating operators to guarantees a better precision
 without any float -> uint8 conversions plus on device acceleration.
 
 However, we provide the following guide to migrate kornia <-> torchvision. Please, checkout the `Colab: Kornia Playground <https://colab.research.google.com/drive/1T20UNAG4SdlE2n2wstuhiewve5Q81VpS#revisionId=0B4unZG1uMc-WR3NVeTBDcmRwN0NxcGNNVlUwUldPMVprb1dJPQ>`_.
