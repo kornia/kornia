@@ -1,7 +1,10 @@
+import math
+
 import torch
 import torch.nn as nn
+
 import kornia
-import math
+
 
 def gauss(x, sigma): #Function for Gaussian
   return (1.0 / (2 * math.pi * (sigma ** 2))) * math.exp(- (x ** 2) / (2 * sigma ** 2))
@@ -22,9 +25,9 @@ def calc(i,j, d, sigs, arr): #Defining boundaries
         ytr=len(arr[0])-1
     extract=arr[xtl:xbl+1, ytl: ytr+1] #get the window enclosed by boundary
 
-    hold=torch.empty(xbl+1-xtl, ytr+1-ytl) #Initialize a window with the same size as extract 
+    hold=torch.empty(xbl+1-xtl, ytr+1-ytl) #Initialize a window with the same size as extract
 
-    hold.fill_(val) #Fill the window with same value as the pixel ubnder consideration 
+    hold.fill_(val) #Fill the window with same value as the pixel ubnder consideration
 
     hold=torch.subtract(extract, hold)
     hold.apply_(lambda x: gauss(x, sigs))
@@ -39,8 +42,8 @@ def bilateral(
         kernel_size: int,
         sigma: int) -> torch.Tensor:
 
-    arr=input[0][0] # The required part from the converted tensor 
-    store=torch.zeros(arr.size()[0], arr.size()[1]) #An empty tensor to store the results 
+    arr=input[0][0] # The required part from the converted tensor
+    store=torch.zeros(arr.size()[0], arr.size()[1]) #An empty tensor to store the results
     for i in range(0, len(arr)):
         for j in range(0, len(arr[i])):
             store[i][j]=calc(i,j,kernel_size,sigma,arr)
@@ -48,12 +51,10 @@ def bilateral(
 class Bilateralfilter(nn.module):
     def __init__(self, kernel_size: int,
                  sigma: int) -> None:
-        super(Bilateralfilter, self).__init__()
+        super().__init__()
         self.kernel_size: int = kernel_size
         self.sigma: int = sigma
         self.border_type = border_type
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        return bilateral(input, self.kernel_size, self.sigma)    
-
-
+        return bilateral(input, self.kernel_size, self.sigma)
