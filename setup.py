@@ -112,7 +112,10 @@ class clean(distutils.command.clean.clean):
     subprocess.call(['rm -rf dist/ build/ kornia.egg*'], shell=True)
 
 
-requirements = ['torch' + kornia_pt_dependencies[dep_version(version)]]
+requirements = [
+    'torch' + kornia_pt_dependencies[dep_version(version)],
+    'packaging'  # REMOVE once we deprecate pytorch > 1.7.1
+]
 
 
 if __name__ == '__main__':
