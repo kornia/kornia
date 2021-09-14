@@ -116,13 +116,6 @@ html_theme_options = {
     "sidebar_hide_name": True,
     "navigation_with_keys": True,
     'display_version': False,
-    "announcement": """
-        <a style=\"text-decoration: none; color: white;\"
-           href=\"https://github.com/kornia/kornia\">
-           <img src=\"https://github.com/kornia/data/raw/main/GitHub-Mark-Light-32px.png\" width=20 height=20/>
-           Star Kornia on GitHub
-        </a>
-    """,
 }
 
 # html_logo = '_static/img/kornia_logo.svg'

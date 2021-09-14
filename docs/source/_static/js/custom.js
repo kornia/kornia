@@ -11,7 +11,7 @@ function addGithubButton() {
             </a>
         </div>
     `;
-    document.querySelector(".wy-side-nav-search .icon-home").insertAdjacentHTML('afterend', div);
+    document.querySelector(".sidebar-brand").insertAdjacentHTML('afterend', div);
 }
 
 /*!
