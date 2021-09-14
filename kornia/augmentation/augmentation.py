@@ -2287,9 +2287,8 @@ class PadTo(GeometricAugmentationBase2D):
         pad_value: Union[int, float] = 0,
         return_transform: bool = False,
         same_on_batch: bool = False,
-        p: float = 1.0,  # TODO(jian): not sure about this one here
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0)
+        super().__init__(p=1., return_transform=return_transform, same_on_batch=True, p_batch=1.)
         self.size = size
         self.pad_mode = pad_mode
         self.pad_value = pad_value
