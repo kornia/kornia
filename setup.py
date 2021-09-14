@@ -114,7 +114,7 @@ class clean(distutils.command.clean.clean):
 
 requirements = [
     'torch' + kornia_pt_dependencies[dep_version(version)],
-    'packaging'  # REMOVE once we deprecate pytorch > 1.7.1
+    'packaging'  # REMOVE once we deprecate pytorch > 1.7.1. See: issue #1264
 ]
 
 
