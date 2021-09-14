@@ -3,7 +3,7 @@ Kornia
 
 State-of-the-art and curated Computer Vision algorithms for AI.
 
-Kornia AI is on the mission is to leverage and democratize the next generation of Computer Vision tools and Deep Learning libraries
+Kornia AI is on the mission to leverage and democratize the next generation of Computer Vision tools and Deep Learning libraries
 within the context of an Open Source community.
 
 .. image:: https://github.com/kornia/data/raw/main/kornia_pytorch_banner.png
