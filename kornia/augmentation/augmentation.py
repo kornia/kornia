@@ -2243,3 +2243,70 @@ class RandomBoxBlur(GeometricAugmentationBase2D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         return box_blur(input, self.kernel_size, self.border_type, self.normalized)
+
+
+class PadTo(GeometricAugmentationBase2D):
+    r"""Pad the given sample to a specific size.
+
+    Args:
+        size: a tuple of ints in the format (height, width) that give the spatial
+            dimensions to pad inputs to.
+        pad_mode: the type of padding to perform on the image (valid values
+            are those accepted by torch.nn.functional.pad)
+        pad_value: fill value for 'constant' padding applied to the image
+        p: probability of the image being flipped.
+        return_transform: if ``True`` return the matrix describing the transformation applied to each
+                          input tensor. If ``False`` and the input is a tuple the applied transformation
+                          won't be concatenated.
+        same_on_batch: apply the same transformation across the batch.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+                 to the batch form (False).
+
+    Shape:
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Output: :math:`(B, C, H, W)`
+
+    .. note::
+        This function internally uses :func:`torch.nn.functional.pad`.
+
+    Examples:
+        >>> img = torch.tensor([[[[0., 0., 0.],
+        ...                       [0., 0., 0.],
+        ...                       [0., 0., 0.]]]])
+        >>> pad = PadTo((4, 5), pad_value=1.)
+        >>> pad(img)
+        tensor([[[[0., 0., 0., 1., 1.],
+                  [0., 0., 0., 1., 1.],
+                  [0., 0., 0., 1., 1.],
+                  [1., 1., 1., 1., 1.]]]])
+    """
+    def __init__(
+        self,
+        size: Tuple[int, int],
+        pad_mode: str = "constant",
+        pad_value: Union[int, float] = 0,
+        return_transform: bool = False,
+        same_on_batch: bool = False,
+        p: float = 1.0,  # TODO(jian): not sure about this one here
+    ) -> None:
+        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0)
+        self.size = size
+        self.pad_mode = pad_mode
+        self.pad_value = pad_value
+
+    def __repr__(self) -> str:
+        return self.__class__.__name__ + f"({super().__repr__()})"
+
+    # TODO(jian): make somehhow that if it's not declared, returns the identity
+    # TODO: compute the proper the proper transformation
+    def compute_transformation(self, image: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return self.identity_matrix(image)
+
+    def apply_transform(
+        self, image: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        _, _, height, width = image.shape
+        height_pad: int = self.size[0] - height
+        width_pad: int = self.size[1] - width
+        return torch.nn.functional.pad(
+            image, (0, width_pad, 0, height_pad), mode=self.pad_mode, value=self.pad_value)

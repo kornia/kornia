@@ -12,6 +12,7 @@ from kornia.augmentation import (
     ColorJitter,
     Denormalize,
     Normalize,
+    PadTo,
     RandomBoxBlur,
     RandomChannelShuffle,
     RandomCrop,
@@ -2780,3 +2781,10 @@ class TestRandomBoxBlur:
         img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
         aug = RandomBoxBlur(p=1.0)
         assert img.shape == aug(img).shape
+
+
+class TestPadTo:
+    def test_smoke(self, device, dtype):
+        img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
+        aug = PadTo(size=(4, 5))
+        assert aug(img).shape == (1, 1, 4, 5)
