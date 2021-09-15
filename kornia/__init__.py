@@ -37,7 +37,7 @@ from kornia.color import (
     yuv_to_rgb,
 )
 from kornia.constants import *
-from kornia.contrib import extract_tensor_patches, max_blur_pool2d
+from kornia.contrib import extract_tensor_patches
 from kornia.enhance import (
     adjust_brightness,
     adjust_contrast,
