@@ -10,166 +10,166 @@ from kornia.testing import assert_close
 class TestResize:
     def test_smoke(self, device, dtype):
         inp = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
-        out = kornia.resize(inp, (3, 4))
+        out = kornia.resize(inp, (3, 4), align_corners=False)
         assert_close(inp, out, atol=1e-4, rtol=1e-4)
 
         # 2D
         inp = torch.rand(3, 4, device=device, dtype=dtype)
-        out = kornia.resize(inp, (3, 4))
+        out = kornia.resize(inp, (3, 4), align_corners=False)
         assert_close(inp, out, atol=1e-4, rtol=1e-4)
 
         # 3D
         inp = torch.rand(3, 3, 4, device=device, dtype=dtype)
-        out = kornia.resize(inp, (3, 4))
+        out = kornia.resize(inp, (3, 4), align_corners=False)
         assert_close(inp, out, atol=1e-4, rtol=1e-4)
 
         # arbitrary dim
         inp = torch.rand(1, 2, 3, 2, 1, 3, 3, 4, device=device, dtype=dtype)
-        out = kornia.resize(inp, (3, 4))
+        out = kornia.resize(inp, (3, 4), align_corners=False)
         assert_close(inp, out, atol=1e-4, rtol=1e-4)
 
     def test_upsize(self, device, dtype):
         inp = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
-        out = kornia.resize(inp, (6, 8))
+        out = kornia.resize(inp, (6, 8), align_corners=False)
         assert out.shape == (1, 3, 6, 8)
 
         # 2D
         inp = torch.rand(3, 4, device=device, dtype=dtype)
-        out = kornia.resize(inp, (6, 8))
+        out = kornia.resize(inp, (6, 8), align_corners=False)
         assert out.shape == (6, 8)
 
         # 3D
         inp = torch.rand(3, 3, 4, device=device, dtype=dtype)
-        out = kornia.resize(inp, (6, 8))
+        out = kornia.resize(inp, (6, 8), align_corners=False)
         assert out.shape == (3, 6, 8)
 
         # arbitrary dim
         inp = torch.rand(1, 2, 3, 2, 1, 3, 3, 4, device=device, dtype=dtype)
-        out = kornia.resize(inp, (6, 8))
+        out = kornia.resize(inp, (6, 8), align_corners=False)
         assert out.shape == (1, 2, 3, 2, 1, 3, 6, 8)
 
     def test_downsize(self, device, dtype):
         inp = torch.rand(1, 3, 5, 2, device=device, dtype=dtype)
-        out = kornia.resize(inp, (3, 1))
+        out = kornia.resize(inp, (3, 1), align_corners=False)
         assert out.shape == (1, 3, 3, 1)
 
         # 2D
         inp = torch.rand(5, 2, device=device, dtype=dtype)
-        out = kornia.resize(inp, (3, 1))
+        out = kornia.resize(inp, (3, 1), align_corners=False)
         assert out.shape == (3, 1)
 
         # 3D
         inp = torch.rand(3, 5, 2, device=device, dtype=dtype)
-        out = kornia.resize(inp, (3, 1))
+        out = kornia.resize(inp, (3, 1), align_corners=False)
         assert out.shape == (3, 3, 1)
 
         # arbitrary dim
         inp = torch.rand(1, 2, 3, 2, 1, 3, 5, 2, device=device, dtype=dtype)
-        out = kornia.resize(inp, (3, 1))
+        out = kornia.resize(inp, (3, 1), align_corners=False)
         assert out.shape == (1, 2, 3, 2, 1, 3, 3, 1)
 
     def test_downsizeAA(self, device, dtype):
         inp = torch.rand(1, 3, 10, 8, device=device, dtype=dtype)
-        out = kornia.resize(inp, (5, 3), antialias=True)
+        out = kornia.resize(inp, (5, 3), align_corners=False, antialias=True)
         assert out.shape == (1, 3, 5, 3)
 
         inp = torch.rand(1, 1, 20, 10, device=device, dtype=dtype)
-        out = kornia.resize(inp, (15, 8), antialias=True)
+        out = kornia.resize(inp, (15, 8), align_corners=False, antialias=True)
         assert out.shape == (1, 1, 15, 8)
 
         # 2D
         inp = torch.rand(10, 8, device=device, dtype=dtype)
-        out = kornia.resize(inp, (5, 3), antialias=True)
+        out = kornia.resize(inp, (5, 3), align_corners=False, antialias=True)
         assert out.shape == (5, 3)
 
         # 3D
         inp = torch.rand(3, 10, 8, device=device, dtype=dtype)
-        out = kornia.resize(inp, (5, 3), antialias=True)
+        out = kornia.resize(inp, (5, 3), align_corners=False, antialias=True)
         assert out.shape == (3, 5, 3)
 
         # arbitrary dim
         inp = torch.rand(1, 2, 3, 2, 1, 3, 10, 8, device=device, dtype=dtype)
-        out = kornia.resize(inp, (5, 3), antialias=True)
+        out = kornia.resize(inp, (5, 3), align_corners=False, antialias=True)
         assert out.shape == (1, 2, 3, 2, 1, 3, 5, 3)
 
     def test_one_param(self, device, dtype):
         inp = torch.rand(1, 3, 5, 2, device=device, dtype=dtype)
-        out = kornia.resize(inp, 10)
+        out = kornia.resize(inp, 10, align_corners=False)
         assert out.shape == (1, 3, 25, 10)
 
         # 2D
         inp = torch.rand(5, 2, device=device, dtype=dtype)
-        out = kornia.resize(inp, 10)
+        out = kornia.resize(inp, 10, align_corners=False)
         assert out.shape == (25, 10)
 
         # 3D
         inp = torch.rand(3, 5, 2, device=device, dtype=dtype)
-        out = kornia.resize(inp, 10)
+        out = kornia.resize(inp, 10, align_corners=False)
         assert out.shape == (3, 25, 10)
 
         # arbitrary dim
         inp = torch.rand(1, 2, 3, 2, 1, 3, 5, 2, device=device, dtype=dtype)
-        out = kornia.resize(inp, 10)
+        out = kornia.resize(inp, 10, align_corners=False)
         assert out.shape == (1, 2, 3, 2, 1, 3, 25, 10)
 
     def test_one_param_long(self, device, dtype):
         inp = torch.rand(1, 3, 5, 2, device=device, dtype=dtype)
-        out = kornia.resize(inp, 10, side="long")
+        out = kornia.resize(inp, 10, align_corners=False, side="long")
         assert out.shape == (1, 3, 10, 4)
 
         # 2D
         inp = torch.rand(5, 2, device=device, dtype=dtype)
-        out = kornia.resize(inp, 10, side="long")
+        out = kornia.resize(inp, 10, align_corners=False, side="long")
         assert out.shape == (10, 4)
 
         # 3D
         inp = torch.rand(3, 5, 2, device=device, dtype=dtype)
-        out = kornia.resize(inp, 10, side="long")
+        out = kornia.resize(inp, 10, align_corners=False, side="long")
         assert out.shape == (3, 10, 4)
 
         # arbitrary dim
         inp = torch.rand(1, 2, 3, 2, 1, 3, 5, 2, device=device, dtype=dtype)
-        out = kornia.resize(inp, 10, side="long")
+        out = kornia.resize(inp, 10, align_corners=False, side="long")
         assert out.shape == (1, 2, 3, 2, 1, 3, 10, 4)
 
     def test_one_param_vert(self, device, dtype):
         inp = torch.rand(1, 3, 5, 2, device=device, dtype=dtype)
-        out = kornia.resize(inp, 10, side="vert")
+        out = kornia.resize(inp, 10, align_corners=False, side="vert")
         assert out.shape == (1, 3, 10, 4)
 
         # 2D
         inp = torch.rand(5, 2, device=device, dtype=dtype)
-        out = kornia.resize(inp, 10, side="vert")
+        out = kornia.resize(inp, 10, align_corners=False, side="vert")
         assert out.shape == (10, 4)
 
         # 3D
         inp = torch.rand(3, 5, 2, device=device, dtype=dtype)
-        out = kornia.resize(inp, 10, side="vert")
+        out = kornia.resize(inp, 10, align_corners=False, side="vert")
         assert out.shape == (3, 10, 4)
 
         # arbitrary dim
         inp = torch.rand(1, 2, 3, 2, 1, 3, 5, 2, device=device, dtype=dtype)
-        out = kornia.resize(inp, 10, side="vert")
+        out = kornia.resize(inp, 10, align_corners=False, side="vert")
         assert out.shape == (1, 2, 3, 2, 1, 3, 10, 4)
 
     def test_one_param_horz(self, device, dtype):
         inp = torch.rand(1, 3, 2, 5, device=device, dtype=dtype)
-        out = kornia.resize(inp, 10, side="horz")
+        out = kornia.resize(inp, 10, align_corners=False, side="horz")
         assert out.shape == (1, 3, 4, 10)
 
         # 2D
         inp = torch.rand(1, 3, 2, 5, device=device, dtype=dtype)
-        out = kornia.resize(inp, 10, side="horz")
+        out = kornia.resize(inp, 10, align_corners=False, side="horz")
         assert out.shape == (1, 3, 4, 10)
 
         # 3D
         inp = torch.rand(1, 3, 2, 5, device=device, dtype=dtype)
-        out = kornia.resize(inp, 10, side="horz")
+        out = kornia.resize(inp, 10, align_corners=False, side="horz")
         assert out.shape == (1, 3, 4, 10)
 
         # arbitrary dim
         inp = torch.rand(1, 3, 2, 5, device=device, dtype=dtype)
-        out = kornia.resize(inp, 10, side="horz")
+        out = kornia.resize(inp, 10, align_corners=False, side="horz")
         assert out.shape == (1, 3, 4, 10)
 
     def test_gradcheck(self, device, dtype):
@@ -177,30 +177,30 @@ class TestResize:
         new_size = 4
         input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.Resize(new_size), (input,), raise_exception=True)
+        assert gradcheck(kornia.Resize(new_size, align_corners=False), (input,), raise_exception=True)
 
 
 class TestRescale:
     def test_smoke(self, device, dtype):
         input = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
-        output = kornia.rescale(input, (1.0, 1.0))
+        output = kornia.rescale(input, (1.0, 1.0), align_corners=False)
         assert_close(input, output, atol=1e-4, rtol=1e-4)
 
     def test_upsize(self, device, dtype):
         input = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
-        output = kornia.rescale(input, (3.0, 2.0))
+        output = kornia.rescale(input, (3.0, 2.0), align_corners=False)
         assert output.shape == (1, 3, 9, 8)
 
     def test_downsize(self, device, dtype):
         input = torch.rand(1, 3, 9, 8, device=device, dtype=dtype)
-        output = kornia.rescale(input, (1.0 / 3.0, 1.0 / 2.0))
+        output = kornia.rescale(input, (1.0 / 3.0, 1.0 / 2.0), align_corners=False)
         assert output.shape == (1, 3, 3, 4)
 
     def test_downscale_values(self, device, dtype):
         inp_x = torch.arange(20, device=device, dtype=dtype) / 20.0
         inp = inp_x[None].T @ inp_x[None]
         inp = inp[None, None]
-        out = kornia.rescale(inp, (0.25, 0.25), antialias=False)
+        out = kornia.rescale(inp, (0.25, 0.25), antialias=False, align_corners=False)
         expected = torch.tensor(
             [
                 [
@@ -222,7 +222,7 @@ class TestRescale:
         inp_x = torch.arange(20, device=device, dtype=dtype) / 20.0
         inp = inp_x[None].T @ inp_x[None]
         inp = inp[None, None]
-        out = kornia.rescale(inp, (0.25, 0.25), antialias=True)
+        out = kornia.rescale(inp, (0.25, 0.25), antialias=True, align_corners=False)
         expected = torch.tensor(
             [
                 [
@@ -242,13 +242,13 @@ class TestRescale:
 
     def test_one_param(self, device, dtype):
         input = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
-        output = kornia.rescale(input, 2.0)
+        output = kornia.rescale(input, 2.0, align_corners=False)
         assert output.shape == (1, 3, 6, 8)
 
     def test_gradcheck(self, device, dtype):
         input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)
-        assert gradcheck(kornia.Rescale(2.0), (input,), raise_exception=True)
+        assert gradcheck(kornia.Rescale(2.0, align_corners=False), (input,), raise_exception=True)
 
 
 class TestRotate:
@@ -474,7 +474,7 @@ class TestShear:
 
         # prepare transformation
         shear = torch.tensor([[0.5, 0.0]], device=device, dtype=dtype)
-        transform = kornia.Shear(shear)
+        transform = kornia.Shear(shear, align_corners=False)
         assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
     def test_shear_y(self, device, dtype):
@@ -492,7 +492,7 @@ class TestShear:
 
         # prepare transformation
         shear = torch.tensor([[0.0, 0.5]], device=device, dtype=dtype)
-        transform = kornia.Shear(shear)
+        transform = kornia.Shear(shear, align_corners=False)
         assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
     def test_shear_batch2(self, device, dtype):
@@ -514,7 +514,7 @@ class TestShear:
 
         # prepare transformation
         shear = torch.tensor([[0.5, 0.0], [0.0, 0.5]], device=device, dtype=dtype)
-        transform = kornia.Shear(shear)
+        transform = kornia.Shear(shear, align_corners=False)
         assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
     def test_shear_batch2_broadcast(self, device, dtype):
@@ -533,7 +533,7 @@ class TestShear:
 
         # prepare transformation
         shear = torch.tensor([[0.5, 0.0]], device=device, dtype=dtype)
-        transform = kornia.Shear(shear)
+        transform = kornia.Shear(shear, align_corners=False)
         assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
@@ -552,7 +552,7 @@ class TestShear:
         shear = torch.tensor([[0.5, 0.0]], device=device, dtype=dtype)
         batch_size, channels, height, width = 2, 3, 64, 64
         img = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
-        trans = kornia.Shear(shear)
+        trans = kornia.Shear(shear, align_corners=False)
         trans_traced = torch.jit.trace(kornia.Shear(shear), img)
         assert_close(trans(img), trans_traced(img), atol=1e-4, rtol=1e-4)
 

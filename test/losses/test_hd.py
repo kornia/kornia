@@ -32,7 +32,7 @@ class HausdorffERLossNumpy(nn.Module):
 
     @torch.no_grad()
     def perform_erosion(
-        self, pred: np.ndarray, target: np.ndarray, debug
+        self, pred: np.ndarray, target: np.ndarray
     ) -> np.ndarray:
         bound = (pred - target) ** 2
 
@@ -44,12 +44,8 @@ class HausdorffERLossNumpy(nn.Module):
             raise ValueError(f"Dimension {bound.ndim} is nor supported.")
 
         eroted = np.zeros_like(bound)
-        erosions = []
 
         for batch in range(len(bound)):
-
-            # debug
-            erosions.append(np.copy(bound[batch][0]))
 
             for k in range(self.erosions):
 
@@ -66,17 +62,11 @@ class HausdorffERLossNumpy(nn.Module):
                 # save erosion and add to loss
                 bound[batch] = erosion
                 eroted[batch] += erosion * (k + 1) ** self.alpha
-                if debug:
-                    erosions.append(np.copy(erosion[0]))
 
-        # image visualization in debug mode
-        if debug:
-            return eroted, erosions
-        else:
-            return eroted
+        return eroted
 
     def forward_one(
-        self, pred: torch.Tensor, target: torch.Tensor, debug=False
+        self, pred: torch.Tensor, target: torch.Tensor
     ) -> torch.Tensor:
         """
         Uses one binary channel: 1 - fg, 0 - bg
@@ -86,23 +76,16 @@ class HausdorffERLossNumpy(nn.Module):
         assert pred.size(1) == target.size(1) == 1
         # pred = torch.sigmoid(pred)
 
-        if debug:
-            eroted, erosions = self.perform_erosion(
-                pred.cpu().numpy(), target.cpu().numpy(), debug
-            )
-            return eroted.mean(), erosions
+        eroted = torch.from_numpy(
+            self.perform_erosion(pred.cpu().numpy(), target.cpu().numpy())
+        ).to(dtype=pred.dtype, device=pred.device)
 
-        else:
-            eroted = torch.from_numpy(
-                self.perform_erosion(pred.cpu().numpy(), target.cpu().numpy(), debug)
-            ).to(dtype=pred.dtype, device=pred.device)
+        loss = eroted.mean()
 
-            loss = eroted.mean()
-
-            return loss
+        return loss
 
     def forward(
-        self, pred: torch.Tensor, target: torch.Tensor, debug=False
+        self, pred: torch.Tensor, target: torch.Tensor
     ) -> torch.Tensor:
         """
         Uses one binary channel: 1 - fg, 0 - bg
