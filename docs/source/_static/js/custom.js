@@ -1,4 +1,5 @@
 // Based on https://github.com/huggingface/transformers/blob/master/docs/source/_static/js/custom.js
+// TODO (Jian): probably update this by the latest https://buttons.github.io/, which added dark and light mode to align furo theme.
 
 
 function addGithubButton() {
