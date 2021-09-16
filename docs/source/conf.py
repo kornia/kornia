@@ -110,6 +110,9 @@ html_theme = 'furo'
 # TODO(jian): make to work with https://docs.kornia.org
 html_baseurl = 'https://kornia.readthedocs.io'
 
+# Changing sidebar title to Kornia
+html_title = "Kornia"
+
 html_theme_options = {
     'light_logo': 'img/kornia_logo_only_light.svg',
     'dark_logo': 'img/kornia_logo_only_dark.svg',

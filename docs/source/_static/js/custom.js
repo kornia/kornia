@@ -4,11 +4,11 @@
 
 function addGithubButton() {
     const div = `
-        <div class="github-repo">
+        <div class="github-repo" style="margin: auto">
             <a
                 class="github-button"
                 href="https://github.com/kornia/kornia" data-size="large" data-show-count="true" aria-label="Star kornia/kornia on GitHub">
-                Star
+                Star Kornia
             </a>
         </div>
     `;
