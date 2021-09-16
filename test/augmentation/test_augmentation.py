@@ -2787,4 +2787,6 @@ class TestPadTo:
     def test_smoke(self, device, dtype):
         img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
         aug = PadTo(size=(4, 5))
-        assert aug(img).shape == (1, 1, 4, 5)
+        out = aug(img)
+        assert out.shape == (1, 1, 4, 5)
+        assert (aug.inverse(out) == img).all()
