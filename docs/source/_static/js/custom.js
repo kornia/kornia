@@ -8,7 +8,7 @@ function addGithubButton() {
             <a
                 class="github-button"
                 href="https://github.com/kornia/kornia" data-size="large" data-show-count="true" aria-label="Star kornia/kornia on GitHub">
-                Star Kornia
+                Star
             </a>
         </div>
     `;
