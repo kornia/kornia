@@ -2357,7 +2357,7 @@ class PadTo(GeometricAugmentationBase2D):
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
-    
+
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         input_size = torch.tensor(batch_shape[-2:], dtype=torch.long).expand(batch_shape[0], -1)
         return dict(input_size=input_size)
