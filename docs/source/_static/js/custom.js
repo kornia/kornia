@@ -1,9 +1,10 @@
 // Based on https://github.com/huggingface/transformers/blob/master/docs/source/_static/js/custom.js
+// TODO (Jian): probably update this by the latest https://buttons.github.io/, which added dark and light mode to align furo theme.
 
 
 function addGithubButton() {
     const div = `
-        <div class="github-repo">
+        <div class="github-repo" style="margin: auto">
             <a
                 class="github-button"
                 href="https://github.com/kornia/kornia" data-size="large" data-show-count="true" aria-label="Star kornia/kornia on GitHub">
@@ -11,7 +12,7 @@ function addGithubButton() {
             </a>
         </div>
     `;
-    document.querySelector(".wy-side-nav-search .icon-home").insertAdjacentHTML('afterend', div);
+    document.querySelector(".sidebar-brand").insertAdjacentHTML('afterend', div);
 }
 
 /*!
