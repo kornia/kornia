@@ -82,7 +82,7 @@ Join the community
    Slack community <https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-CnydWe5fmvkcktIeRFGCEQ>
    LibreCV community <https://librecv.org>
    Twitter @kornia_foss <https://twitter.com/kornia_foss>
-   QQ Group「679683070」 <https://jq.qq.com/?_wv=1027&k=y8iqu7Do>
+   community/chinese
    Kornia Youtube <https://www.youtube.com/channel/UCI1SE1Ij2Fast5BSKxoa7Ag>
    Kornia LinkedIn <https://www.linkedin.com/company/kornia/>
    Kornia AI <https://kornia.org>
