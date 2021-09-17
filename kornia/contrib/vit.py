@@ -8,7 +8,6 @@ Added some tricks from https://github.com/rwightman/pytorch-image-models/blob/ma
 import torch
 from torch import nn
 
-
 __all__ = [
     "VisionTransformer"
 ]
@@ -18,7 +17,7 @@ class ResidualAdd(nn.Module):
     def __init__(self, fn) -> None:
         super().__init__()
         self.fn = fn
-        
+
     def forward(self, x, **kwargs) -> None:
         res = x
         x = self.fn(x, **kwargs)
@@ -55,7 +54,7 @@ class MultiHeadAttention(nn.Module):
         self.att_drop = nn.Dropout(att_drop)
         self.projection = nn.Linear(emb_size, emb_size)
         self.projection_drop = nn.Dropout(proj_drop)  # added timm trick
-        
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, N, C = x.shape
         # split keys, queries and values in num_heads
@@ -104,10 +103,10 @@ class TransformerEncoder(nn.Module):
                  dropout_attn: float = 0.,
                  ) -> None:
         super().__init__()
-        self.blocks = nn.Sequential(*[
+        self.blocks = nn.Sequential(*(
             TransformerEncoderBlock(embed_dim, num_heads, dropout_rate, dropout_attn)
             for _ in range(depth)
-        ])
+        ))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         self.results = []
@@ -117,7 +116,7 @@ class TransformerEncoder(nn.Module):
             out = m(out)
             self.results.append(out)
         return out
-          
+
 
 
 class PatchEmbedding(nn.Module):
@@ -133,7 +132,7 @@ class PatchEmbedding(nn.Module):
         )
         self.cls_token = nn.Parameter(torch.randn(1, 1, out_channels))
         self.positions = nn.Parameter(torch.randn((img_size // patch_size) **2 + 1, out_channels))
-                
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.projection(x)
         B, N, _, _ = x.shape
@@ -155,7 +154,7 @@ class VisionTransformer(nn.Module):
 
     .. warning::
         This is an experimental API subject to changes in favor of flexibility.
-    
+
     Args:
         image_size: the size of the input image.
         patch_size: the size of the patch to compute the embedding.
@@ -165,14 +164,14 @@ class VisionTransformer(nn.Module):
         num_heads: the number of attention heads.
         dropout_rate: dropout rate.
         dropout_attn: attention dropout rate.
-    
+
     Example:
         >>> img = torch.rand(1, 3, 224, 224)
         >>> vit = VisionTransformer(image_size=224, patch_size=16)
         >>> vit(img).shape
         torch.Size([1, 197, 768])
     """
-    def __init__(self,     
+    def __init__(self,
                 image_size: int = 224,
                 patch_size: int = 16,
                 in_channels: int = 3,
@@ -191,7 +190,7 @@ class VisionTransformer(nn.Module):
         self.patch_embedding = PatchEmbedding(in_channels, embed_dim, patch_size, image_size)
         self.encoder = TransformerEncoder(
             embed_dim, depth, num_heads, dropout_rate, dropout_attn)
-    
+
     @property
     def encoder_results(self):
         return self.encoder.results
