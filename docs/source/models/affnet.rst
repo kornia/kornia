@@ -1,5 +1,5 @@
-Affnet
-......
+Affnet (detection)
+..................
 
 .. card::
     :link: https://paperswithcode.com/paper/repeatability-is-not-enough-learning-affine
