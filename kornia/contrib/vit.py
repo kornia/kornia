@@ -5,6 +5,8 @@ Paper: https://paperswithcode.com/paper/an-image-is-worth-16x16-words-transforme
 Based on: https://towardsdatascience.com/implementing-visualttransformer-in-pytorch-184f9f16f632
 Added some tricks from https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py
 """
+from typing import List
+
 import torch
 from torch import nn
 
@@ -30,8 +32,7 @@ class FeedForward(nn.Sequential):
                  in_features: int,
                  hidden_features: int,
                  out_features: int,
-                 dropout_rate: float = 0.
-            ) -> None:
+                 dropout_rate: float = 0.) -> None:
         super().__init__(
             nn.Linear(in_features, hidden_features),
             nn.GELU(),
@@ -79,8 +80,7 @@ class TransformerEncoderBlock(nn.Sequential):
                  embed_dim: int,
                  num_heads: int,
                  dropout_rate: float,
-                 dropout_attn: float,
-                ) -> None:
+                 dropout_attn: float) -> None:
         super().__init__(
             ResidualAdd(nn.Sequential(
                 nn.LayerNorm(embed_dim),
@@ -91,37 +91,38 @@ class TransformerEncoderBlock(nn.Sequential):
                 nn.LayerNorm(embed_dim),
                 FeedForward(embed_dim, embed_dim, embed_dim, dropout_rate=dropout_rate),
                 nn.Dropout(dropout_rate)
-            )
-        ))
+            )))
+
 
 class TransformerEncoder(nn.Module):
-    def __init__(self,
-                 embed_dim: int = 768,
-                 depth: int = 12,
-                 num_heads: int = 12,
-                 dropout_rate: float = 0.,
-                 dropout_attn: float = 0.,
-                 ) -> None:
+    def __init__(
+        self,
+        embed_dim: int = 768,
+        depth: int = 12,
+        num_heads: int = 12,
+        dropout_rate: float = 0.,
+        dropout_attn: float = 0.,
+    ) -> None:
         super().__init__()
         self.blocks = nn.Sequential(*(
             TransformerEncoderBlock(embed_dim, num_heads, dropout_rate, dropout_attn)
             for _ in range(depth)
         ))
+        self.results: List[torch.Tensor] = []
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        self.results = []
         out = x
-
         for m in self.blocks.children():
             out = m(out)
             self.results.append(out)
         return out
 
 
-
 class PatchEmbedding(nn.Module):
     """Compute the 2d image patch embedding ready to pass to transformer encoder."""
-    def __init__(self, in_channels: int = 3, out_channels: int = 768, patch_size: int = 16, img_size: int = 224) -> None:
+    def __init__(
+        self, in_channels: int = 3, out_channels: int = 768, patch_size: int = 16, img_size: int = 224
+    ) -> None:
         self.patch_size = patch_size
         self.out_channels = out_channels
         super().__init__()
@@ -131,7 +132,7 @@ class PatchEmbedding(nn.Module):
             # TODO: check whether we need normalization before
         )
         self.cls_token = nn.Parameter(torch.randn(1, 1, out_channels))
-        self.positions = nn.Parameter(torch.randn((img_size // patch_size) **2 + 1, out_channels))
+        self.positions = nn.Parameter(torch.randn((img_size // patch_size) ** 2 + 1, out_channels))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.projection(x)
@@ -171,16 +172,17 @@ class VisionTransformer(nn.Module):
         >>> vit(img).shape
         torch.Size([1, 197, 768])
     """
-    def __init__(self,
-                image_size: int = 224,
-                patch_size: int = 16,
-                in_channels: int = 3,
-                embed_dim: int = 768,
-                depth: int = 12,
-                num_heads: int = 12,
-                dropout_rate: float = 0.,
-                dropout_attn: float = 0.,
-        ) -> None:
+    def __init__(
+        self,
+        image_size: int = 224,
+        patch_size: int = 16,
+        in_channels: int = 3,
+        embed_dim: int = 768,
+        depth: int = 12,
+        num_heads: int = 12,
+        dropout_rate: float = 0.,
+        dropout_attn: float = 0.
+    ) -> None:
         super().__init__()
         self.image_size = image_size
         self.patch_size = patch_size
@@ -196,7 +198,15 @@ class VisionTransformer(nn.Module):
         return self.encoder.results
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        assert len(x.shape) == 4, x.shape
+        if not isinstance(x, torch.Tensor):
+            raise TypeError(f"Input x type is not a torch.Tensor. Got: {type(x)}")
+
+        if self.image_size not in (*x.shape[-2:],) and x.shape[-3] != self.in_channels:
+            raise ValueError(
+                f"Input image shape must be Bx{self.in_channels}x{self.image_size}x{self.image_size}. "
+                f"Got: {x.shape}"
+            )
+
         out = self.patch_embedding(x)
         out = self.encoder(out)
         return out
