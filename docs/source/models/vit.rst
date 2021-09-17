@@ -26,7 +26,7 @@ Vision Transformer (ViT)
 Kornia-ViT
 ----------
 
-We provide the operator :py:class:`~kornia.contrib.VisionTransformer` that is ment to be used across tasks.
+We provide the operator :py:class:`~kornia.contrib.VisionTransformer` that is meant to be used across tasks.
 One can use the *ViT* in Kornia as follows:
 
 .. code:: python
@@ -35,8 +35,8 @@ One can use the *ViT* in Kornia as follows:
     vit = VisionTransformer(image_size=224, patch_size=16)
     out = vit(img)
 
-The `kornia-vit` does not include any classification head.
-For this reason, we provide a :py:class:`~kornia.contrib.ImageClassificationHead` which can be easily combined
+``kornia-vit`` does not include any classification head.
+For this reason, we provide an :py:class:`~kornia.contrib.ImageClassificationHead` which can be easily combined
 with a `nn.Sequential` in order to easily build a custom image classification pipeline.
 
 .. code:: python
