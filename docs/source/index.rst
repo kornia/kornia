@@ -53,6 +53,7 @@ Join the community
    :caption: KORNIA MODELS
    :hidden:
 
+   models/vit
    models/loftr
    models/defmo
    models/hardnet

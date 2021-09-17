@@ -8,6 +8,34 @@ from kornia.testing import assert_close
 from packaging import version
 
 
+class TestVisionTransformer:
+    # TODO: other dimension size doesn't work at all
+    @pytest.mark.parametrize("B, D, image_size", [(1, 768, 224), (2, 768, 32)])
+    def test_smoke(self, device, dtype, B, D, image_size):
+        patch_size = 16
+        T = image_size**2 // patch_size**2 + 1  # tokens size
+
+        img = torch.rand(B, 3, image_size, image_size, device=device, dtype=dtype)
+        vit = kornia.contrib.VisionTransformer(image_size=image_size, num_heads=8, embed_dim=D)
+
+        out = vit(img)
+        assert isinstance(out, torch.Tensor) and out.shape == (B, T, D)
+
+        feats = vit.encoder_results
+        assert isinstance(feats, list) and len(feats) == 12
+        for f in feats:
+            assert f.shape == (B, T, D)
+
+
+class TestImageClassificationHead:
+    @pytest.mark.parametrize("B, D, N", [(1, 8, 10), (2, 2, 5)])
+    def test_smoke(self, device, dtype, B, D, N):
+        feat = torch.rand(B, D, D, device=device, dtype=dtype)
+        head = kornia.contrib.ImageClassificationHead(embed_size=D, num_classes=N)
+        logits = head(feat)
+        assert logits.shape == (B, N)
+
+
 class TestConnectedComponents:
     def test_smoke(self, device, dtype):
         img = torch.rand(1, 1, 3, 4, device=device, dtype=dtype)
