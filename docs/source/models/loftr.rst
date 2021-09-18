@@ -1,5 +1,5 @@
-LoFTR
-.....
+LoFTR (matching)
+................
 
 .. card::
     :link: https://paperswithcode.com/paper/loftr-detector-free-local-feature-matching

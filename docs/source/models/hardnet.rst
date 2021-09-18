@@ -1,5 +1,5 @@
-Hardnet
-.......
+Hardnet (descriptor)
+....................
 
 .. card::
     :link: https://paperswithcode.com/paper/working-hard-to-know-your-neighbors-margins

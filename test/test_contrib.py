@@ -8,6 +8,45 @@ from kornia.testing import assert_close
 from packaging import version
 
 
+class TestVisionTransformer:
+    @pytest.mark.parametrize("B", [1, 2])
+    @pytest.mark.parametrize("H", [1, 3, 8])
+    @pytest.mark.parametrize("D", [128, 768])
+    @pytest.mark.parametrize("image_size", [32, 224])
+    def test_smoke(self, device, dtype, B, H, D, image_size):
+        patch_size = 16
+        T = image_size**2 // patch_size**2 + 1  # tokens size
+
+        img = torch.rand(B, 3, image_size, image_size, device=device, dtype=dtype)
+        vit = kornia.contrib.VisionTransformer(
+            image_size=image_size, num_heads=H, embed_dim=D).to(device, dtype)
+
+        out = vit(img)
+        assert isinstance(out, torch.Tensor) and out.shape == (B, T, D)
+
+        feats = vit.encoder_results
+        assert isinstance(feats, list) and len(feats) == 12
+        for f in feats:
+            assert f.shape == (B, T, D)
+
+    def test_backbone(self, device, dtype):
+        def backbone_mock(x):
+            return torch.ones(1, 128, 14, 14, device=device, dtype=dtype)
+        img = torch.rand(1, 3, 32, 32, device=device, dtype=dtype)
+        vit = kornia.contrib.VisionTransformer(backbone=backbone_mock).to(device, dtype)
+        out = vit(img)
+        assert out.shape == (1, 197, 128)
+
+
+class TestClassificationHead:
+    @pytest.mark.parametrize("B, D, N", [(1, 8, 10), (2, 2, 5)])
+    def test_smoke(self, device, dtype, B, D, N):
+        feat = torch.rand(B, D, D, device=device, dtype=dtype)
+        head = kornia.contrib.ClassificationHead(embed_size=D, num_classes=N).to(device, dtype)
+        logits = head(feat)
+        assert logits.shape == (B, N)
+
+
 class TestConnectedComponents:
     def test_smoke(self, device, dtype):
         img = torch.rand(1, 1, 3, 4, device=device, dtype=dtype)
