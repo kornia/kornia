@@ -181,6 +181,7 @@ class VisionTransformer(nn.Module):
         num_heads: the number of attention heads.
         dropout_rate: dropout rate.
         dropout_attn: attention dropout rate.
+        backbone: an nn.Module to compute the image patches embeddings.
 
     Example:
         >>> img = torch.rand(1, 3, 224, 224)
