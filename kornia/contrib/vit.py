@@ -5,7 +5,7 @@ Paper: https://paperswithcode.com/paper/an-image-is-worth-16x16-words-transforme
 Based on: https://towardsdatascience.com/implementing-visualttransformer-in-pytorch-184f9f16f632
 Added some tricks from https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py
 """
-from typing import List
+from typing import List, Optional, Tuple
 
 import torch
 from torch import nn
@@ -59,6 +59,8 @@ class MultiHeadAttention(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, N, C = x.shape
         # split keys, queries and values in num_heads
+        # NOTE: the line below differs from timm
+        # timm: qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         qkv = self.qkv(x).reshape(B, N, 3, -1, C).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]
 
@@ -121,21 +123,35 @@ class TransformerEncoder(nn.Module):
 class PatchEmbedding(nn.Module):
     """Compute the 2d image patch embedding ready to pass to transformer encoder."""
     def __init__(
-        self, in_channels: int = 3, out_channels: int = 768, patch_size: int = 16, img_size: int = 224
+        self,
+        in_channels: int = 3,
+        out_channels: int = 768,
+        patch_size: int = 16,
+        image_size: int = 224,
+        backbone: Optional[nn.Module] = None,
     ) -> None:
-        self.patch_size = patch_size
-        self.out_channels = out_channels
         super().__init__()
-        self.projection = nn.Sequential(
-            # using a conv layer instead of a linear one -> performance gains
-            nn.Conv2d(in_channels, out_channels, kernel_size=patch_size, stride=patch_size),
-            # TODO: check whether we need normalization before
-        )
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.patch_size = patch_size
+
+        # logic needed in case a backbone is passed
+        self.backbone = backbone or nn.Conv2d(in_channels, out_channels, kernel_size=patch_size, stride=patch_size)
+        if backbone is not None:
+            out_channels, feat_size = self._compute_feats_dims((in_channels, image_size, image_size))
+            self.out_channels = out_channels
+        else:
+            feat_size = (image_size // patch_size) ** 2
+
         self.cls_token = nn.Parameter(torch.randn(1, 1, out_channels))
-        self.positions = nn.Parameter(torch.randn((img_size // patch_size) ** 2 + 1, out_channels))
+        self.positions = nn.Parameter(torch.randn(feat_size + 1, out_channels))
+
+    def _compute_feats_dims(self, image_size: Tuple[int, int]) -> Tuple[int]:
+        out = self.backbone(torch.zeros(1, *image_size)).detach()
+        return out.shape[-3], out.shape[-2] * out.shape[-1]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.projection(x)
+        x = self.backbone(x)
         B, N, _, _ = x.shape
         x = x.view(B, N, -1).permute(0, 2, 1)  # BxNxE
         cls_tokens = self.cls_token.repeat(B, 1, 1)  # Bx1xE
@@ -181,7 +197,8 @@ class VisionTransformer(nn.Module):
         depth: int = 12,
         num_heads: int = 12,
         dropout_rate: float = 0.,
-        dropout_attn: float = 0.
+        dropout_attn: float = 0.,
+        backbone: Optional[nn.Module] = None,
     ) -> None:
         super().__init__()
         self.image_size = image_size
@@ -189,10 +206,10 @@ class VisionTransformer(nn.Module):
         self.in_channels = in_channels
         self.embed_size = embed_dim
 
-        self.patch_embedding = PatchEmbedding(in_channels, embed_dim, patch_size, image_size)
+        self.patch_embedding = PatchEmbedding(in_channels, embed_dim, patch_size, image_size, backbone)
         self.encoder = TransformerEncoder(
-            embed_dim, depth, num_heads, dropout_rate, dropout_attn)
-
+            self.patch_embedding.out_channels, depth, num_heads, dropout_rate, dropout_attn)
+    
     @property
     def encoder_results(self):
         return self.encoder.results
