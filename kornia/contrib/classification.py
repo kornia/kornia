@@ -1,10 +1,10 @@
-"""Module containing utilities for image classification."""
+"""Module containing utilities for classification."""
 import torch
 from torch import nn
 
 
-class ImageClassificationHead(nn.Module):
-    """Module to be used as an image classification head.
+class ClassificationHead(nn.Module):
+    """Module to be used as a classification head.
 
     Args:
         embed_size: the logits tensor coming from the networks.
@@ -12,7 +12,7 @@ class ImageClassificationHead(nn.Module):
 
     Example:
         >>> feat = torch.rand(1, 256, 256)
-        >>> head = ImageClassificationHead(256, 10)
+        >>> head = ClassificationHead(256, 10)
         >>> head(feat).shape
         torch.Size([1, 10])
     """

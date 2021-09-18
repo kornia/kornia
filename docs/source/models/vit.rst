@@ -36,7 +36,7 @@ One can use the *ViT* in Kornia as follows:
     out = vit(img)
 
 ``kornia-vit`` does not include any classification head.
-For this reason, we provide an :py:class:`~kornia.contrib.ImageClassificationHead` which can be easily combined
+For this reason, we provide an :py:class:`~kornia.contrib.ClassificationHead` which can be easily combined
 with a `nn.Sequential` in order to easily build a custom image classification pipeline.
 
 .. code:: python
@@ -46,7 +46,7 @@ with a `nn.Sequential` in order to easily build a custom image classification pi
 
     classifier = nn.Sequential(
         K.VisionTransformer(image_size=224, patch_size=16),
-        K.ImageClassficationHead(num_classes=1000)
+        K.ClassficationHead(num_classes=1000)
     )
 
     img = torch.rand(1, 3, 224, 224)

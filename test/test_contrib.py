@@ -27,11 +27,11 @@ class TestVisionTransformer:
             assert f.shape == (B, T, D)
 
 
-class TestImageClassificationHead:
+class TestClassificationHead:
     @pytest.mark.parametrize("B, D, N", [(1, 8, 10), (2, 2, 5)])
     def test_smoke(self, device, dtype, B, D, N):
         feat = torch.rand(B, D, D, device=device, dtype=dtype)
-        head = kornia.contrib.ImageClassificationHead(embed_size=D, num_classes=N)
+        head = kornia.contrib.ClassificationHead(embed_size=D, num_classes=N)
         logits = head(feat)
         assert logits.shape == (B, N)
 
