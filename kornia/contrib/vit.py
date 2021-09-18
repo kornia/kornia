@@ -209,7 +209,7 @@ class VisionTransformer(nn.Module):
         self.patch_embedding = PatchEmbedding(in_channels, embed_dim, patch_size, image_size, backbone)
         self.encoder = TransformerEncoder(
             self.patch_embedding.out_channels, depth, num_heads, dropout_rate, dropout_attn)
-    
+
     @property
     def encoder_results(self):
         return self.encoder.results
