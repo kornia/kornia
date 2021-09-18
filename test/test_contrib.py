@@ -29,12 +29,12 @@ class TestVisionTransformer:
             assert f.shape == (B, T, D)
 
     def test_backbone(self, device, dtype):
-        backbone_mock = lambda x: torch.ones(1, 128, 14, 14, device=device, dtype=dtype)
+        def backbone_mock(x):
+            return torch.ones(1, 128, 14, 14, device=device, dtype=dtype)
         img = torch.rand(1, 3, 32, 32, device=device, dtype=dtype)
         vit = kornia.contrib.VisionTransformer(backbone=backbone_mock)
         out = vit(img)
         assert out.shape == (1, 197, 128)
-
 
 
 class TestClassificationHead:
