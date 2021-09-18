@@ -9,14 +9,16 @@ from packaging import version
 
 
 class TestVisionTransformer:
-    # TODO: other dimension size doesn't work at all
-    @pytest.mark.parametrize("B, D, image_size", [(1, 768, 224), (2, 768, 32)])
-    def test_smoke(self, device, dtype, B, D, image_size):
+    @pytest.mark.parametrize("B", [1, 2])
+    @pytest.mark.parametrize("H", [1, 3, 8])
+    @pytest.mark.parametrize("D", [128, 768])
+    @pytest.mark.parametrize("image_size", [32, 224])
+    def test_smoke(self, device, dtype, B, H, D, image_size):
         patch_size = 16
         T = image_size**2 // patch_size**2 + 1  # tokens size
 
         img = torch.rand(B, 3, image_size, image_size, device=device, dtype=dtype)
-        vit = kornia.contrib.VisionTransformer(image_size=image_size, num_heads=8, embed_dim=D)
+        vit = kornia.contrib.VisionTransformer(image_size=image_size, num_heads=H, embed_dim=D)
 
         out = vit(img)
         assert isinstance(out, torch.Tensor) and out.shape == (B, T, D)
