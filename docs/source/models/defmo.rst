@@ -1,5 +1,5 @@
-DeFMO
-.....
+DeFMO (video)
+.............
 
 .. card::
     :link: https://paperswithcode.com/paper/defmo-deblurring-and-shape-recovery-of-fast
