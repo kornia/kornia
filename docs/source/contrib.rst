@@ -10,7 +10,7 @@ Image Classification
 --------------------
 
 .. autoclass:: VisionTransformer
-.. autoclass:: ImageClassificationHead
+.. autoclass:: ClassificationHead
 
 Module
 ------
