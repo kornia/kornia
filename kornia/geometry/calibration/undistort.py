@@ -1,47 +1,7 @@
+from numpy import imag
 import torch
-
-
-# Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/distortion_model.hpp#L75
-def inverseTiltProjection(taux: torch.Tensor, tauy: torch.Tensor) -> torch.Tensor:
-    r"""Estimate the inverse of the tilt projection matrix
-
-    Args:
-        taux (torch.Tensor): Rotation angle in radians around the :math:`x`-axis with shape :math:`(*, 1)`.
-        tauy (torch.Tensor): Rotation angle in radians around the :math:`y`-axis with shape :math:`(*, 1)`.
-
-    Returns:
-        torch.Tensor: Inverse tilt projection matrix with shape :math:`(*, 3, 3)`.
-    """
-    if taux.dim() != tauy.dim():
-        raise AssertionError
-    if taux.numel() != tauy.numel():
-        raise AssertionError
-
-    ndim = taux.dim()
-    taux = taux.reshape(-1)
-    tauy = tauy.reshape(-1)
-
-    cTx = torch.cos(taux)
-    sTx = torch.sin(taux)
-    cTy = torch.cos(tauy)
-    sTy = torch.sin(tauy)
-    zero = torch.zeros_like(cTx)
-    one = torch.ones_like(cTx)
-
-    Rx = torch.stack([one, zero, zero, zero, cTx, sTx, zero, -sTx, cTx], -1).reshape(-1, 3, 3)
-    Ry = torch.stack([cTy, zero, -sTy, zero, one, zero, sTy, zero, cTy], -1).reshape(-1, 3, 3)
-
-    R = Ry @ Rx
-    invR22 = 1 / R[..., 2, 2]
-    invPz = torch.stack(
-        [invR22, zero, R[..., 0, 2] * invR22, zero, invR22, R[..., 1, 2] * invR22, zero, zero, one], -1
-    ).reshape(-1, 3, 3)
-
-    invTilt = R.transpose(-1, -2) @ invPz
-    if ndim == 0:
-        invTilt = torch.squeeze(invTilt)
-
-    return invTilt
+from kornia.geometry.calibration.distort import tiltProjection, distort_points
+from kornia.geometry.transform.imgwarp import remap
 
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/undistort.dispatch.cpp#L384
@@ -49,8 +9,7 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) 
     r"""Compensate for lens distortion a set of 2D image points.
 
     Radial :math:`(k_1, k_2, k_3, k_4, k_4, k_6)`,
-    tangential :math:`(p_1, p_2)`, thin prism :math:`(s_1, s_2, s_3, s_4)`, and tilt :math:`(\tau_x, \tau_y)`
-    distortion models are considered in this function.
+    tangential :math:`(p_1, p_2)`, thin prism :math:`(s_1, s_2, s_3, s_4)`, and tilt :math:`(\tau_x, \tau_y)` distortion models are considered in this function.
 
     Args:
         points: Input image points with shape :math:`(*, N, 2)`.
@@ -62,12 +21,9 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) 
     Returns:
         Undistorted 2D points with shape :math:`(*, N, 2)`.
     """
-    if not (points.dim() >= 2 and points.shape[-1] == 2):
-        raise AssertionError
-    if K.shape[-2:] != (3, 3):
-        raise AssertionError
-    if dist.shape[-1] not in [4, 5, 8, 12, 14]:
-        raise AssertionError
+    assert points.dim() >= 2 and points.shape[-1] == 2
+    assert K.shape[-2:] == (3, 3)
+    assert dist.shape[-1] in [4, 5, 8, 12, 14]
 
     if dist.shape[-1] < 14:
         dist = torch.nn.functional.pad(dist, [0, 14 - dist.shape[-1]])
@@ -83,12 +39,10 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) 
 
     # Compensate for tilt distortion
     if torch.any(dist[..., 12] != 0) or torch.any(dist[..., 13] != 0):
-        invTilt = inverseTiltProjection(dist[..., 12], dist[..., 13])
+        invTilt = tiltProjection(dist[..., 12], dist[..., 13], True)
 
         # Transposed untilt points (instead of [x,y,1]^T, we obtain [x,y,1])
-        pointsUntilt = torch.stack([x, y, torch.ones(x.shape, device=x.device, dtype=x.dtype)], -1) @ invTilt.transpose(
-            -2, -1
-        )
+        pointsUntilt = torch.stack([x, y, torch.ones(x.shape, device=x.device, dtype=x.dtype)], -1) @ invTilt.transpose(-2, -1)
         x = pointsUntilt[..., 0] / pointsUntilt[..., 2]
         y = pointsUntilt[..., 1] / pointsUntilt[..., 2]
 
