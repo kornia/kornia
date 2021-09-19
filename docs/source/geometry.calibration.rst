@@ -14,8 +14,8 @@ The pinhole model is an ideal projection model that not considers lens distortio
 \bar{v}\\
 1
 \end{bmatrix} = \mathbf{K}^{-1} \begin{bmatrix}
-u \\ 
-v \\ 
+u \\
+v \\
 1
 \end{bmatrix} \enspace,
 \end{align}
@@ -38,11 +38,11 @@ The normalized distorted point :math:`(\bar{u}_d, \bar{v}_d)` is given by
 \bar{u}_d\\
 \bar{v}_d
 \end{bmatrix} = \dfrac{1+k_1r^2+k_2r^4+k_3r^6}{1+k_4r^2+k_5r^4+k_6r^6} \begin{bmatrix}
-\bar{u}\\ 
+\bar{u}\\
 \bar{v}
 \end{bmatrix} +
 \begin{bmatrix}
-2p_1\bar{u}\bar{v} + p_2(r^2 + 2\bar{u}^2) + s_1r^2 + s_2r^4\\ 
+2p_1\bar{u}\bar{v} + p_2(r^2 + 2\bar{u}^2) + s_1r^2 + s_2r^4\\
 2p_2\bar{u}\bar{v} + p_1(r^2 + 2\bar{v}^2) + s_3r^2 + s_4r^4
 \end{bmatrix} \enspace,
 \end{align}
@@ -62,8 +62,8 @@ where :math:`r = \bar{u}^2 + \bar{v}^2`. With this model we consider radial :mat
 0 & 0 & 1
 \end{bmatrix}
 \mathbf{R}(\tau_x, \tau_y) \begin{bmatrix}
-\bar{u}_d \\ 
-\bar{v}_d \\ 
+\bar{u}_d \\
+\bar{v}_d \\
 1
 \end{bmatrix} \enspace,
 \end{align}
@@ -73,12 +73,12 @@ where :math:`\mathbf{R}(\tau_x, \tau_y)` is a 3D rotation matrix defined by an :
 
 :math:`
 \begin{align}
-\mathbf{R}(\tau_x, \tau_y) = 
+\mathbf{R}(\tau_x, \tau_y) =
 \begin{bmatrix}
 \cos \tau_y & 0 & -\sin \tau_y \\
 0 & 1 & 0 \\
 \sin \tau_y & 0 & \cos \tau_y
-\end{bmatrix} 
+\end{bmatrix}
 \begin{bmatrix}
 1 & 0 & 0 \\
 0 & \cos \tau_x & \sin \tau_x \\
@@ -98,7 +98,7 @@ v_d\\
 1
 \end{bmatrix} = \mathbf{K} \begin{bmatrix}
 \bar{u}'_d\\
-\bar{v}'_d\\ 
+\bar{v}'_d\\
 1
 \end{bmatrix} \enspace,
 \end{align}
