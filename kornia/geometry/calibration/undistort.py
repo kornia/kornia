@@ -75,3 +75,44 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) 
     y = fy * y + cy
 
     return torch.stack([x, y], -1)
+
+
+# Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/undistort.dispatch.cpp#L287
+def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) -> torch.Tensor:
+    r"""Compensate an image for lens distortion.
+
+    Radial :math:`(k_1, k_2, k_3, k_4, k_4, k_6)`,
+    tangential :math:`(p_1, p_2)`, thin prism :math:`(s_1, s_2, s_3, s_4)`, and tilt :math:`(\tau_x, \tau_y)` distortion models are considered in this function.
+
+    Args:
+        image: Input image with shape :math:`(*, C, H, W)`.
+        K: Intrinsic camera matrix with shape :math:`(*, 3, 3)`.
+        dist: Distortion coefficients
+            :math:`(k_1,k_2,p_1,p_2[,k_3[,k_4,k_5,k_6[,s_1,s_2,s_3,s_4[,\tau_x,\tau_y]]]])`. This is
+            a vector with 4, 5, 8, 12 or 14 elements with shape :math:`(*, n)`
+
+    Returns:
+        Undistorted image with shape :math:`(*, C, H, W)`.
+    """
+    assert image.dim() >= 2
+    assert K.shape[-2:] == (3, 3)
+    assert dist.shape[-1] in [4, 5, 8, 12, 14]
+
+    B, _, rows, cols = image.shape
+    if image.dtype != torch.float:
+        image = image.float()
+
+    # Create point coordinates for each pixel of the image
+    x, y = torch.meshgrid(torch.arange(cols), torch.arange(rows))
+    pts: torch.Tensor = torch.cat([x.T.float().reshape(-1,1), y.T.reshape(-1,1)], 1) # (rows*cols)x2
+
+    # Distort points and define maps
+    ptsd: torch.Tensor = distort_points(pts, K, dist) # Bx(rows*cols)x2
+    mapx: torch.Tensor = ptsd[..., 0].reshape(B, rows, cols) # B x rows x cols, float
+    mapy: torch.Tensor = ptsd[..., 1].reshape(B, rows, cols) # B x rows x cols, float
+
+    # Remap image to undistort
+    out = remap(image, mapx, mapy, align_corners=True)
+    out = torch.round(torch.clamp(out, 0, 255)).to(torch.uint8)
+
+    return out
