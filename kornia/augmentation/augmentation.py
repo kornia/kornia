@@ -2374,7 +2374,7 @@ class PadTo(GeometricAugmentationBase2D):
         height_pad: int = self.size[0] - height
         width_pad: int = self.size[1] - width
         return torch.nn.functional.pad(
-            input, (0, width_pad, 0, height_pad), mode=self.pad_mode, value=self.pad_value)
+            input, [0, width_pad, 0, height_pad], mode=self.pad_mode, value=self.pad_value)
 
     def inverse_transform(
         self,
