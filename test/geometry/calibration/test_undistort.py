@@ -2,11 +2,11 @@ import pytest
 import torch
 from torch.autograd import gradcheck
 
-from kornia.geometry.calibration.undistort import undistort_points
+from kornia.geometry.calibration.undistort import undistort_points, undistort_image
 from kornia.testing import assert_close
 
 
-class TestUndistortion:
+class TestUndistortPoints:
     def test_smoke(self, device, dtype):
         points = torch.rand(1, 2, device=device, dtype=dtype)
         K = torch.rand(3, 3, device=device, dtype=dtype)
@@ -191,3 +191,20 @@ class TestUndistortion:
         distCoeff = torch.rand(1, 4, device=device, dtype=torch.float64)
 
         assert gradcheck(undistort_points, (points, K, distCoeff), raise_exception=True)
+
+
+class TestUndistortImage:
+    def test_shape(self, device, dtype):
+        im = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
+        K = torch.rand(3, 3, device=device, dtype=dtype)
+        distCoeff = torch.rand(4, device=device, dtype=dtype)
+
+        imu = undistort_image(im, K, distCoeff)
+        assert imu.shape == (1, 3, 5, 5)
+
+    def test_gradcheck(self, device, dtype):
+        im = torch.rand(1, 1, 15, 15, device=device, dtype=dtype, requires_grad=True)
+        K = torch.rand(3, 3, device=device, dtype=dtype)
+        distCoeff = torch.rand(4, device=device, dtype=dtype)
+
+        assert gradcheck(undistort_image, (im, K, distCoeff), raise_exception=True)
