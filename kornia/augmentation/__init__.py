@@ -3,6 +3,7 @@ from .augmentation import (
     ColorJitter,
     Denormalize,
     Normalize,
+    PadTo,
     RandomAffine,
     RandomBoxBlur,
     RandomChannelShuffle,
