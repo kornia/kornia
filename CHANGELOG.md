@@ -12,12 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add LoFTR inference ([#1218](https://github.com/kornia/kornia/pull/1218))
 - Added differentiable Hausdorff Distance (HD) loss ([#1254](https://github.com/kornia/kornia/pull/1254))
 - Add PadTo to kornia.augmentation ([#1286](https://github.com/kornia/kornia/pull/1286))
-  
+
 ### Changed
 - Return all learned modules by default in eval() mode ([#1266](https://github.com/kornia/kornia/pull/1266))
 - Enable ImageSequential and VideoSequential to AugmentationSequential (#1231)
 - Specify that angles are in radians ([#1287](https://github.com/kornia/kornia/pull/1287))
-- Removed deprecated codes for v6.0 ([#1281](https://github.com/kornia/kornia/pull/1281)) 
+- Removed deprecated codes for v6.0 ([#1281](https://github.com/kornia/kornia/pull/1281))
 
 ### Fixed
 - Fix save_pointcloud_ply fn counting point with inf coordinates ([#1263](https://github.com/kornia/kornia/pull/1263))
