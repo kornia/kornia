@@ -54,9 +54,11 @@ class TestImageHistogram2d:
         assert_close(op(*inputs), op_script(*inputs))
 
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
-    def test_uniform_hist(self, device, dtype, kernel):
+    @pytest.mark.parametrize("size", [(1, 1), (3, 1, 1), (8, 3, 1, 1)])
+    def test_uniform_hist(self, device, dtype, kernel, size):
         input = torch.linspace(0, 255, 10, device=device, dtype=dtype)
         input_x, _ = torch.meshgrid(input, input)
+        input_x = input_x.repeat(*size)
         if kernel == "gaussian":
             bandwidth = 2 * 0.4 ** 2
         else:
@@ -66,9 +68,11 @@ class TestImageHistogram2d:
         assert_close(ans, hist)
 
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
-    def test_uniform_dist(self, device, dtype, kernel):
+    @pytest.mark.parametrize("size", [(1, 1), (3, 1, 1), (8, 3, 1, 1)])
+    def test_uniform_dist(self, device, dtype, kernel, size):
         input = torch.linspace(0, 255, 10, device=device, dtype=dtype)
         input_x, _ = torch.meshgrid(input, input)
+        input_x = input_x.repeat(*size)
         if kernel == "gaussian":
             bandwidth = 2 * 0.4 ** 2
         else:
