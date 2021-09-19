@@ -113,6 +113,7 @@ class TransformerEncoder(nn.Module):
         self.results: List[torch.Tensor] = []
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        self.results = []
         out = x
         for m in self.blocks.children():
             out = m(out)
@@ -146,7 +147,7 @@ class PatchEmbedding(nn.Module):
         self.cls_token = nn.Parameter(torch.randn(1, 1, out_channels))
         self.positions = nn.Parameter(torch.randn(feat_size + 1, out_channels))
 
-    def _compute_feats_dims(self, image_size: Tuple[int, int]) -> Tuple[int]:
+    def _compute_feats_dims(self, image_size: Tuple[int, int, int]) -> Tuple[int, int]:
         out = self.backbone(torch.zeros(1, *image_size)).detach()
         return out.shape[-3], out.shape[-2] * out.shape[-1]
 
