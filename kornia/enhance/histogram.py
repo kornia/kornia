@@ -237,7 +237,7 @@ def image_histogram2d(
 
     hist = torch.sum(kernel_values, dim=(-2, -1)).permute(1, 2, 0)
     if return_pdf:
-        normalization = torch.sum(hist, dim=-1).unsqueeze(0) + eps
+        normalization = torch.sum(hist, dim=-1, keepdim=True) + eps
         pdf = hist / normalization
         if image.dim() == 2:
             hist = hist.squeeze()
