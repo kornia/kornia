@@ -46,12 +46,33 @@ with a `nn.Sequential` in order to easily build a custom image classification pi
 
     classifier = nn.Sequential(
         K.VisionTransformer(image_size=224, patch_size=16),
-        K.ClassficationHead(num_classes=1000)
+        K.ClassificationHead(num_classes=1000)
     )
 
     img = torch.rand(1, 3, 224, 224)
     out = classifier(img)     # BxN
     scores = out.argmax(-1)   # B
 
+In addition to create simple image classification, our API is flexible enough to design your pipelines e.g
+to solve problems for multi-task, object detection, segmentation, etc. We show an example of a multi-task 
+class with two different classification heads:
+
+.. code:: python
+
+    class MultiTaskTransfornmer(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.transformer = K.VisionTransformer(
+                image_size=224, patch_size=16)
+            self.head1 = K.ClassficationHead(num_classes=10)
+            self.head2 = K.ClassficationHead(num_classes=50)
+        
+        def forward(self, x: torch.Tensor):
+            out = self.transformer(x)
+            return {
+                "head1": self.head1(out),
+                "head2": self.head2(out),
+            }
+
 .. tip::
-    More examples and trained models soon !!
+    More heads, examples and a training API soon !!

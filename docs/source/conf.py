@@ -122,7 +122,7 @@ html_theme_options = {
         "color-sidebar-background": "#3980F5",
         "color-sidebar-background-border": "#3980F5",
         "color-sidebar-caption-text": "white",
-        "color-sidebar-link-text--top-level": "#cccccc",
+        "color-sidebar-link-text--top-level": "#122A4F",
         "sidebar-caption-font-size": "normal",
     },
     "dark_css_variables": {
