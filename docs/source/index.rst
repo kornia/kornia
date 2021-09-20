@@ -1,15 +1,11 @@
-Kornia
-======
+
+.. image:: https://github.com/kornia/data/raw/main/kornia_banner_pixie.png
+   :align: center
 
 State-of-the-art and curated Computer Vision algorithms for AI.
 
 Kornia AI is on the mission to leverage and democratize the next generation of Computer Vision tools and Deep Learning libraries
 within the context of an Open Source community.
-
-.. image:: https://github.com/kornia/data/raw/main/kornia_pytorch_banner.png
-   :align: center
-
-Kornia is powerful and easy to use:
 
 .. code:: python
 
@@ -17,6 +13,17 @@ Kornia is powerful and easy to use:
    >>> registrator = K.ImageRegistrator('similarity')
    >>> model = registrator(img1, img2)
 
+Ready to use with state-of-the art Deep Learning models:
+
+.. code:: python
+
+   >>> import kornia.contrib as K
+   >>> classifier = nn.Sequential(
+   ...   K.VisionTransformer(image_size=224, patch_size=16),
+   ...   K.ClassficationHead(num_classes=1000),
+   ... )
+   >>> logits = classifier(img)    # BxN
+   >>> scores = logits.argmax(-1)  # B
 
 Join the community
 ------------------
