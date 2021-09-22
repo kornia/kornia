@@ -1,11 +1,10 @@
 import pytest
-
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset
 
-from kornia.contrib import VisionTransformer, ClassificationHead
-from kornia.x import ImageClassifierTrainer, Configuration
+from kornia.contrib import ClassificationHead, VisionTransformer
+from kornia.x import Configuration, ImageClassifierTrainer
 
 
 class DummyDataset(Dataset):

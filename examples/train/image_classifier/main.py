@@ -1,15 +1,13 @@
 import hydra
-from hydra.core.config_store import ConfigStore
-from hydra.utils import to_absolute_path
-
 import torch
 import torch.nn as nn
 import torchvision
 import torchvision.transforms as T
+from hydra.core.config_store import ConfigStore
+from hydra.utils import to_absolute_path
 
 import kornia as K
 from kornia.x import Configuration, EarlyStopping, ImageClassifierTrainer, ModelCheckpoint
-
 
 cs = ConfigStore.instance()
 # Registering the Config class with the name 'config'.
