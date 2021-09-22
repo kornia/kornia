@@ -11,3 +11,5 @@ yapf
 isort
 numpy
 scipy
+# x
+accelerate==0.4.0

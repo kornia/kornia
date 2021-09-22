@@ -72,6 +72,7 @@ At a granular level, Kornia is a library that consists of the following componen
 
   ```bash
   pip install kornia
+  pip install kornia[x]  # to get the training API !
   ```
 
 <details>

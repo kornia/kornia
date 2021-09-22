@@ -118,6 +118,10 @@ requirements = [
     'packaging'  # REMOVE once we deprecate pytorch > 1.7.1. See: issue #1264
 ]
 
+requirements_extras = {
+    "x": ["accelerate==0.4.0"],
+}
+
 
 if __name__ == '__main__':
     write_version_file()
@@ -139,7 +143,8 @@ if __name__ == '__main__':
         packages=find_packages(exclude=('docs', 'test', 'examples')),
         package_data={"kornia": ["py.typed"]},
         zip_safe=True,
-        install_requires=requirements,
+        install_require=requirements,
+        extras_require=requirements_extras,
         keywords=['computer vision', 'deep learning', 'pytorch'],
         project_urls={
             "Bug Tracker": "https://github.com/kornia/kornia/issues",
