@@ -45,6 +45,7 @@ Join the community
    get-started/installation
    get-started/about
    Tutorials <https://kornia-tutorials.readthedocs.io/en/latest/>
+   get-started/training
 
 .. toctree::
    :caption: KORNIA APPLICATIONS
@@ -81,6 +82,7 @@ Join the community
    losses
    morphology
    utils
+   x
 
 .. toctree::
    :caption: SUPPORT
