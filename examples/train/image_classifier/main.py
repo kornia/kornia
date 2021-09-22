@@ -69,7 +69,7 @@ def my_app(config: Configuration) -> None:
         model, train_dataloader, valid_daloader, criterion, optimizer, scheduler, config,
         callbacks={
             "augmentations": augmentations,
-            "checkpoint": model_checkpoint, # "terminate": early_stop,
+            "checkpoint": model_checkpoint,  # "terminate": early_stop,
         }
     )
     trainer.fit()
