@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 # but it is optional for grousnd base user of kornia.
 try:
     from accelerate import Accelerator
-except:
+except ImportError:
     Accelerator = None
 
 from .metrics import accuracy, AverageMeter
