@@ -12,7 +12,7 @@ try:
 except ImportError:
     Accelerator = None
 
-from .metrics import accuracy, AverageMeter
+from .metrics import AverageMeter
 from .utils import Configuration, TrainerState
 
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
@@ -114,8 +114,8 @@ class Trainer:
 
             if sample_id % 50 == 0:
                 self._logger.info(
-                    f"Train: {epoch}/{self.num_epochs}  "
-                    f"Sample: {sample_id}/{len(self.train_dataloader)} "
+                    f"Train: {epoch + 1}/{self.num_epochs}  "
+                    f"Sample: {sample_id + 1}/{len(self.train_dataloader)} "
                     f"Loss: {losses.val:.3f} {losses.avg:.3f}"
                 )
 

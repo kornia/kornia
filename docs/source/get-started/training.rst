@@ -205,6 +205,23 @@ as follows passing as ``callbacks`` the classes :py:class:`~kornia.x.ModelCheckp
 	trainer = K.train.ImageClassifierTrainer(...,
 	  callbacks={"checkpoint", model_checkpoint, "terminate": early_stop})
 
+Hyperparameter sweeps
+---------------------
+
+One can use `hydra <https://hydra.cc>`_ to implement an easy search strategy for your hyper-parameters and use as follows:
+
+.. note::
+
+  Checkout the toy example in `examples <https://github.com/kornia/kornia/tree/master/examples>`_
+
+.. code:: python
+
+  python ./train/image_classifier/main.py num_epochs=50 batch_size=32
+
+.. code:: python
+
+  python ./train/image_classifier/main.py --multirun lr=1e-3,1e-4
+
 Distributed Training
 --------------------
 
@@ -224,25 +241,25 @@ The below recipes are taken from the `accelerate` library in `here <https://gith
 
     .. code:: bash
 
-      python ./trainer_classification.py [args]
+      python ./train/image_classifier/main.py
 
   * from any server by passing `cpu=True` to the `Accelerator`.
 
     .. code:: bash
 
-      python ./cv_example.py --data_dir path_to_data --cpu
+      python ./train/image_classifier/main.py --data_path path_to_data --cpu
 
   * from any server with Accelerate launcher
 
     .. code:: bash
 
-      accelerate launch --cpu ./trainer_classification.py --data_dir path_to_data
+      accelerate launch --cpu ./train/image_classifier/main.py --data_path path_to_data
 
 - single GPU:
 
   .. code:: bash
 
-    python ./trainer_classification.py  # from a server with a GPU
+    python ./train/image_classifier/main.py  # from a server with a GPU
 
 - with fp16 (mixed-precision)
 
@@ -250,13 +267,13 @@ The below recipes are taken from the `accelerate` library in `here <https://gith
 
     .. code:: bash
 
-      python ./trainer_classification.py --data_dir path_to_data --fp16
+      python ./train/image_classifier/main.py --data_path path_to_data --fp16
 
   * from any server with Accelerate launcher
 
     .. code:: bash
 
-      accelerate launch --fp16 ./trainer_classification.py --data_dir path_to_data
+      accelerate launch --fp16 ./train/image_classifier/main.py --data_path path_to_data
 
 - multi GPUs (using PyTorch distributed mode)
 
@@ -265,13 +282,13 @@ The below recipes are taken from the `accelerate` library in `here <https://gith
     .. code:: bash
 
       accelerate config  # This will create a config file on your server
-      accelerate launch ./trainer_classification.py --data_dir path_to_data  # This will run the script on your server
+      accelerate launch ./train/image_classifier/main.py --data_path path_to_data  # This will run the script on your server
 
   * With traditional PyTorch launcher
 
     .. code:: bash
 
-      python -m torch.distributed.launch --nproc_per_node 2 --use_env ./trainer_classification.py --data_dir path_to_data
+      python -m torch.distributed.launch --nproc_per_node 2 --use_env ./train/image_classifier/main.py --data_path path_to_data
 
 - multi GPUs, multi node (several machines, using PyTorch distributed mode)
 
@@ -280,7 +297,7 @@ The below recipes are taken from the `accelerate` library in `here <https://gith
     .. code:: bash
 
       accelerate config  # This will create a config file on each server
-      accelerate launch ./trainer_classification.py --data_dir path_to_data  # This will run the script on each server
+      accelerate launch ./train/image_classifier/main.py --data_path path_to_data  # This will run the script on each server
 
   * With PyTorch launcher only
 
@@ -290,13 +307,13 @@ The below recipes are taken from the `accelerate` library in `here <https://gith
         --use_env \
         --node_rank 0 \
         --master_addr master_node_ip_address \
-        ./trainer_classification.py --data_dir path_to_data  # On the first server
+        ./train/image_classifier/main.py --data_path path_to_data  # On the first server
 
       python -m torch.distributed.launch --nproc_per_node 2 \
         --use_env \
         --node_rank 1 \
         --master_addr master_node_ip_address \
-        ./trainer_classification.py --data_dir path_to_data  # On the second server
+        ./train/image_classifier/main.py --data_path path_to_data  # On the second server
 
 - (multi) TPUs
 
@@ -305,7 +322,7 @@ The below recipes are taken from the `accelerate` library in `here <https://gith
     .. code:: bash
 
       accelerate config  # This will create a config file on your TPU server
-      accelerate launch ./trainer_classification.py --data_dir path_to_data  # This will run the script on each server
+      accelerate launch ./train/image_classifier/main.py --data_path path_to_data  # This will run the script on each server
 
   * In PyTorch:
     Add an `xmp.spawn` line in your script as you usually do.
