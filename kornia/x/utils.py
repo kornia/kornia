@@ -1,6 +1,7 @@
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from dataclasses import dataclass, field
+
 import yaml  # type: ignore
 
 
