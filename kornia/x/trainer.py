@@ -103,9 +103,9 @@ class Trainer:
 
             # perform the preprocess and augmentations in batch
             img = self.preprocess(source)
-            tmp = self.augmentations(img)
+            img = self.augmentations(img)
             # make the actual inference
-            output = self.model(tmp)
+            output = self.model(img)
             loss = self.criterion(output, target)
             self.backward(loss)
             self.optimizer.step()

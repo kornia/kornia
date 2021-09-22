@@ -14,7 +14,7 @@ config.data_path = Path(__file__).absolute().parent
 config.batch_size = 64
 config.num_epochs = 250
 config.lr = 1e-3
-config.save_path = "./output"
+config.output_path = "./output"
 
 # create the model
 model = nn.Sequential(
