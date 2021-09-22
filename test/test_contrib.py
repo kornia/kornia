@@ -132,12 +132,12 @@ class TestConnectedComponents:
 
 class TestExtractTensorPatches:
     def test_smoke(self, device):
-        input = torch.arange(16.0).view(1, 1, 4, 4).to(device)
+        input = torch.arange(16.0, device=device).view(1, 1, 4, 4)
         m = kornia.contrib.ExtractTensorPatches(3)
         assert m(input).shape == (1, 4, 1, 3, 3)
 
     def test_b1_ch1_h4w4_ws3(self, device):
-        input = torch.arange(16.0).view(1, 1, 4, 4).to(device)
+        input = torch.arange(16.0, device=device).view(1, 1, 4, 4)
         m = kornia.contrib.ExtractTensorPatches(3)
         patches = m(input)
         assert patches.shape == (1, 4, 1, 3, 3)
@@ -147,7 +147,7 @@ class TestExtractTensorPatches:
         assert_close(input[0, :, 1:, 1:], patches[0, 3])
 
     def test_b1_ch2_h4w4_ws3(self, device):
-        input = torch.arange(16.0).view(1, 1, 4, 4).to(device)
+        input = torch.arange(16.0, device=device).view(1, 1, 4, 4)
         input = input.expand(-1, 2, -1, -1)  # copy all channels
         m = kornia.contrib.ExtractTensorPatches(3)
         patches = m(input)
@@ -158,7 +158,7 @@ class TestExtractTensorPatches:
         assert_close(input[0, :, 1:, 1:], patches[0, 3])
 
     def test_b1_ch1_h4w4_ws2(self, device):
-        input = torch.arange(16.0).view(1, 1, 4, 4).to(device)
+        input = torch.arange(16.0, device=device).view(1, 1, 4, 4)
         m = kornia.contrib.ExtractTensorPatches(2)
         patches = m(input)
         assert patches.shape == (1, 9, 1, 2, 2)
@@ -168,7 +168,7 @@ class TestExtractTensorPatches:
         assert_close(input[0, :, 2:4, 1:3], patches[0, 7])
 
     def test_b1_ch1_h4w4_ws2_stride2(self, device):
-        input = torch.arange(16.0).view(1, 1, 4, 4).to(device)
+        input = torch.arange(16.0, device=device).view(1, 1, 4, 4)
         m = kornia.contrib.ExtractTensorPatches(2, stride=2)
         patches = m(input)
         assert patches.shape == (1, 4, 1, 2, 2)
@@ -178,7 +178,7 @@ class TestExtractTensorPatches:
         assert_close(input[0, :, 2:4, 2:4], patches[0, 3])
 
     def test_b1_ch1_h4w4_ws2_stride21(self, device):
-        input = torch.arange(16.0).view(1, 1, 4, 4).to(device)
+        input = torch.arange(16.0, device=device).view(1, 1, 4, 4)
         m = kornia.contrib.ExtractTensorPatches(2, stride=(2, 1))
         patches = m(input)
         assert patches.shape == (1, 6, 1, 2, 2)
@@ -246,3 +246,30 @@ class TestExtractTensorPatches:
         input = torch.rand(2, 3, 4, 4).to(device)
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(kornia.contrib.extract_tensor_patches, (input, 3), raise_exception=True)
+
+
+class TestCombineTensorPatches:
+    def test_smoke(self, device):
+        # input = torch.arange(16.0, device=device).view(1, 1, 4, 4)
+        m = kornia.contrib.CombineTensorPatches((2, 2))
+        patches = kornia.contrib.extract_tensor_patches(
+            torch.arange(16, device=device).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2))
+        assert m(patches).shape == (1, 1, 4, 4)
+
+    def test_error(self, device):
+        patches = kornia.contrib.extract_tensor_patches(
+            torch.arange(16, device=device).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2), padding=1)
+        with pytest.raises(NotImplementedError):
+            kornia.contrib.combine_tensor_patches(patches, window_size=(2, 2), stride=(3, 2))
+
+    def test_padding1(self, device):
+        patches = kornia.contrib.extract_tensor_patches(
+            torch.arange(16, device=device).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2), padding=1)
+        m = kornia.contrib.CombineTensorPatches((2, 2), unpadding=1)
+        assert m(patches).shape == (1, 1, 4, 4)
+
+    def test_gradcheck(self, device):
+        patches = kornia.contrib.extract_tensor_patches(
+            torch.arange(16., device=device).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2))
+        input = utils.tensor_to_gradcheck_var(patches)  # to var
+        assert gradcheck(kornia.contrib.combine_tensor_patches, (input, (2, 2), (2, 2)), raise_exception=True)
