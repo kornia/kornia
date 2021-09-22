@@ -125,14 +125,14 @@ You can easily customize by creating your own class, or even through ``callbacks
         # measure accuracy and record loss
         acc1, acc5 = accuracy(out.detach(), target, topk=(1, 5))
 
-	# create the trainer and pass the evaluate method as follows
-	trainer = K.train.Trainer(..., callbacks={"evaluate", my_evaluate})
+    # create the trainer and pass the evaluate method as follows
+    trainer = K.train.Trainer(..., callbacks={"evaluate", my_evaluate})
 
 **Still not convinced ?**
 
 	You can even override the whole :py:class:`~kornia.x.ImageClassifierTrainer.fit()`
 	method and implement your custom for loops and the trainer will setup for you using the Accelerator all
-	the data to the device and the rest of the story it is just PyTorch :)
+	the data to the device and the rest of the story is just PyTorch :)
 
 .. code:: python
 
@@ -150,14 +150,14 @@ You can easily customize by creating your own class, or even through ``callbacks
 
           stats = self.evaluate()  # do whatever you want with validation
 
-	# create the trainer and pass the evaluate method as follows
-	trainer = K.train.Trainer(..., callbacks={"fit", my_fit})
+    # create the trainer and pass the evaluate method as follows
+    trainer = K.train.Trainer(..., callbacks={"fit", my_fit})
 
 
 Preprocess and augmentations
 ----------------------------
 
-Taking a pre-trained model from an external source and assume that by fine-tuning with your
+Taking a pre-trained model from an external source and assume that fine-tuning with your
 data by just changing few things in your model is usually a bad assumption in practice.
 
 Fine-tuning a model need a lot tricks which usually means designing a good augmentation
@@ -198,9 +198,7 @@ as follows passing as ``callbacks`` the classes :py:class:`~kornia.x.ModelCheckp
 	  filepath="./outputs", monitor="top5",
 	)
 
-	early_stop = EarlyStopping(
-	  monitor="top5", filepath="early_stop_model.pt"
-	)
+	early_stop = EarlyStopping(monitor="top5")
 
 	trainer = K.train.ImageClassifierTrainer(...,
 	  callbacks={"checkpoint", model_checkpoint, "terminate": early_stop})
@@ -208,11 +206,11 @@ as follows passing as ``callbacks`` the classes :py:class:`~kornia.x.ModelCheckp
 Hyperparameter sweeps
 ---------------------
 
-One can use `hydra <https://hydra.cc>`_ to implement an easy search strategy for your hyper-parameters and use as follows:
+Use `hydra <https://hydra.cc>`_ to implement an easy search strategy for your hyper-parameters as follows:
 
 .. note::
 
-  Checkout the toy example in `examples <https://github.com/kornia/kornia/tree/master/examples>`_
+  Checkout the toy example in `here <https://github.com/kornia/kornia/tree/master/examples/train/image_classifier>`_
 
 .. code:: python
 
