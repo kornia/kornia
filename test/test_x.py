@@ -1,11 +1,12 @@
 from dataclasses import dataclass
+
 import pytest
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset
 
 from kornia.contrib import ClassificationHead, VisionTransformer
-from kornia.x import Configuration, ImageClassifierTrainer, ModelCheckpoint, EarlyStopping
+from kornia.x import Configuration, EarlyStopping, ImageClassifierTrainer, ModelCheckpoint
 from kornia.x.metrics import AverageMeter
 from kornia.x.utils import TrainerState
 
