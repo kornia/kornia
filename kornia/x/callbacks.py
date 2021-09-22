@@ -31,11 +31,10 @@ class EarlyStopping:
             callbacks={"terminate", early_stop}
         )
     """
-    def __init__(self, monitor: str, min_delta: float = 0., patience: int = 8, filepath: str = "checkpoint.pt") -> None:
+    def __init__(self, monitor: str, min_delta: float = 0., patience: int = 8) -> None:
         self.monitor = monitor
         self.min_delta = min_delta
         self.patience = patience
-        self.filepath = filepath
 
         self.counter: int = 0
         self.best_score: Optional[float] = None
@@ -44,6 +43,7 @@ class EarlyStopping:
     def __call__(self, model: nn.Module, epoch: int, valid_metric) -> TrainerState:
         score: float = -valid_metric[self.monitor].avg
 
+        # TODO: rethink about this logic - doesn't seem to do the job.
         if self.best_score is None:
             self.best_score = score
         elif score < self.best_score + self.min_delta:
@@ -55,8 +55,9 @@ class EarlyStopping:
             self.counter = 0
 
         if self.early_stop:
+            # TODO: figure out later how and where to save
             # store old metric and save new model
-            torch.save(model, self.filepath)
+            # torch.save(model, self.filepath)
             print(f"[INFO] Early-Stopping the training process. Epoch: {epoch}.")
             return TrainerState.TERMINATE
 
@@ -99,3 +100,4 @@ class ModelCheckpoint:
             # store old metric and save new model
             filename = Path(self.filepath) / f"model_{epoch}.pt"
             torch.save(model, filename)
+        ...

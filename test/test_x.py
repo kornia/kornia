@@ -1,10 +1,13 @@
+from dataclasses import dataclass
 import pytest
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset
 
 from kornia.contrib import ClassificationHead, VisionTransformer
-from kornia.x import Configuration, ImageClassifierTrainer
+from kornia.x import Configuration, ImageClassifierTrainer, ModelCheckpoint, EarlyStopping
+from kornia.x.metrics import AverageMeter
+from kornia.x.utils import TrainerState
 
 
 class DummyDataset(Dataset):
@@ -28,24 +31,78 @@ def dataset():
     return DummyDataset()
 
 
-def test_image_classifier(model, dataset):
+@pytest.fixture
+def dataloader(dataset):
+    return torch.utils.data.DataLoader(dataset, batch_size=1)
 
+
+@pytest.fixture
+def criterion():
+    return nn.CrossEntropyLoss()
+
+
+@pytest.fixture
+def optimizer(model):
+    return torch.optim.AdamW(model.parameters())
+
+
+@pytest.fixture
+def scheduler(optimizer, dataloader):
+    return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, len(dataloader))
+
+
+@pytest.fixture
+def configuration():
     config = Configuration()
     config.num_epochs = 1
+    return config
 
-    # create the dataloaders
-    train_dataloader = torch.utils.data.DataLoader(dataset, batch_size=1)
-    valid_dataloader = torch.utils.data.DataLoader(dataset, batch_size=1)
 
-    # create the loss function
-    criterion = nn.CrossEntropyLoss()
+class TestImageClassifierTrainer:
+    def test_fit(self, model, dataloader, criterion, optimizer, scheduler, configuration):
+        trainer = ImageClassifierTrainer(
+            model, dataloader, dataloader, criterion, optimizer, scheduler, configuration,
+        )
+        trainer.fit()
 
-    # instantiate the optimizer and scheduler
-    optimizer = torch.optim.AdamW(model.parameters())
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, config.num_epochs * len(train_dataloader))
+    def test_exception(self, model, dataloader, criterion, optimizer, scheduler, configuration):
+        with pytest.raises(ValueError):
+            ImageClassifierTrainer(
+                model, dataloader, dataloader, criterion, optimizer, scheduler, configuration,
+                callbacks={'frodo': None},
+            )
 
-    trainer = ImageClassifierTrainer(
-        model, train_dataloader, valid_dataloader, criterion, optimizer, scheduler, config,
-    )
-    trainer.fit()
+
+def test_callback_modelcheckpoint(tmp_path, model):
+    cb = ModelCheckpoint(tmp_path, 'test_monitor')
+    assert cb is not None
+
+    metric = {'test_monitor': AverageMeter()}
+    metric['test_monitor'].avg = 1.
+
+    cb(model, epoch=0, valid_metric=metric)
+    assert cb.best_metric == 1.0
+    assert (tmp_path / "model_0.pt").is_file()
+
+
+def test_callback_earlystopping(model):
+    cb = EarlyStopping('test_monitor', patience=2)
+    assert cb is not None
+    assert cb.counter == 0
+
+    metric = {'test_monitor': AverageMeter()}
+    metric['test_monitor'].avg = 1
+
+    state = cb(model, epoch=0, valid_metric=metric)
+    assert state == TrainerState.TRAINING
+    assert cb.best_score == -1
+    assert cb.counter == 0
+
+    metric['test_monitor'].avg = 2
+    state = cb(model, epoch=0, valid_metric=metric)
+    assert state == TrainerState.TRAINING
+    assert cb.best_score == -1
+    assert cb.counter == 1
+
+    state = cb(model, epoch=0, valid_metric=metric)
+    assert state == TrainerState.TERMINATE

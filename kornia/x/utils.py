@@ -19,6 +19,7 @@ class Configuration:
     lr: float = field(default=1e-3, metadata={"help": "The learning rate to be used for the optimize."})
     output_path: str = field(default="./output", metadata={"help": "The output data directory."})
 
+    # TODO: possibly remove because hydra already do this
     def __init__(self, **entries):
         for k, v in entries.items():
             self.__dict__[k] = Configuration(**v) if isinstance(v, dict) else v

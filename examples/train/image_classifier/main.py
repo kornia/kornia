@@ -61,9 +61,7 @@ def my_app(config: Configuration) -> None:
         filepath="./outputs", monitor="top5",
     )
 
-    early_stop = EarlyStopping(
-        monitor="top5", filepath="early_stop_model.pt"
-    )
+    early_stop = EarlyStopping(monitor="top5")
 
     trainer = ImageClassifierTrainer(
         model, train_dataloader, valid_daloader, criterion, optimizer, scheduler, config,
