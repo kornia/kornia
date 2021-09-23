@@ -43,3 +43,31 @@ class ImageClassifierTrainer(Trainer):
                 )
 
         return stats
+
+
+class SemanticSegmentationTrainer(Trainer):
+    def fit_epoch(self, epoch: int) -> None:
+        # train loop
+        self.model.train()
+        losses = AverageMeter()
+        for sample_id, sample in enumerate(self.train_dataloader):
+            source, target = sample  # this might change with new pytorch dataset structure
+            self.optimizer.zero_grad()
+
+            # perform the preprocess and augmentations in batch
+            img = self.preprocess(source)
+            img, target = self.augmentations(img, target)
+            # make the actual inference
+            output = self.model(img)
+            loss = self.criterion(output, target.long())
+            self.backward(loss)
+            self.optimizer.step()
+
+            losses.update(loss.item(), img.shape[0])
+
+            if sample_id % 50 == 0:
+                self._logger.info(
+                    f"Train: {epoch + 1}/{self.num_epochs}  "
+                    f"Sample: {sample_id + 1}/{len(self.train_dataloader)} "
+                    f"Loss: {losses.val:.3f} {losses.avg:.3f}"
+                )
