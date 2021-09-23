@@ -16,7 +16,7 @@ jobs:
     - name: Install dependencies
       run: |
         pip install torch --find-links https://download.pytorch.org/whl/cpu/torch_stable.html
-        pip install -e .[dev]
+        pip install --user -e .[dev]
 
     - name: Run linter
       run: make lint
@@ -28,7 +28,7 @@ jobs:
     - name: Install dependencies
       run: |
         pip install torch --find-links https://download.pytorch.org/whl/cpu/torch_stable.html
-        pip install -e .[dev]
+        pip install --user -e .[dev]
 
     - name: Run mypy
       run: make mypy
@@ -40,7 +40,7 @@ jobs:
     - name: Install dependencies
       run: |
         pip install torch --find-links https://download.pytorch.org/whl/cpu/torch_stable.html
-        pip install -e .[dev]
+        pip install --user -e .[dev]
 
     - name: Run doctest
       run: make doctest
