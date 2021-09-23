@@ -13,17 +13,10 @@ jobs:
     runs-on: [ubuntu-latest]
     steps:
     - uses: actions/checkout@v2
-    - name: Cache pip
-      uses: actions/cache@v2
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('requirements-dev.txt') }}
-        restore-keys: ${{ runner.os }}-pip-
     - name: Install dependencies
       run: |
         pip install torch --find-links https://download.pytorch.org/whl/cpu/torch_stable.html
-        pip install -r requirements-dev.txt
-        python setup.py develop --user
+        pip install -e .[dev]
 
     - name: Run linter
       run: make lint
@@ -32,17 +25,10 @@ jobs:
     runs-on: [ubuntu-latest]
     steps:
     - uses: actions/checkout@v2
-    - name: Cache pip
-      uses: actions/cache@v2
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('requirements-dev.txt') }}
-        restore-keys: ${{ runner.os }}-pip-
     - name: Install dependencies
       run: |
         pip install torch --find-links https://download.pytorch.org/whl/cpu/torch_stable.html
-        pip install -r requirements-dev.txt
-        python setup.py develop --user
+        pip install -e .[dev]
 
     - name: Run mypy
       run: make mypy
@@ -51,17 +37,10 @@ jobs:
     runs-on: [ubuntu-latest]
     steps:
     - uses: actions/checkout@v2
-    - name: Cache pip
-      uses: actions/cache@v2
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('requirements-dev.txt') }}
-        restore-keys: ${{ runner.os }}-pip-
     - name: Install dependencies
       run: |
         pip install torch --find-links https://download.pytorch.org/whl/cpu/torch_stable.html
-        pip install -r requirements-dev.txt
-        python setup.py develop --user
+        pip install -e .[dev]
 
     - name: Run doctest
       run: make doctest
