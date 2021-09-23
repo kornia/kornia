@@ -109,6 +109,9 @@ Run our Jupyter notebooks [tutorials](https://kornia-tutorials.readthedocs.io/en
   </a>
 </div>
 
+:triangular_flag_on_post: **Updates**
+- :white_check_mark: Integrated to [Huggingface Spaces](https://huggingface.co/spaces) with [Gradio](https://github.com/gradio-app/gradio). See [Gradio Web Demo](https://huggingface.co/spaces/akhaliq/Kornia-LoFTR).
+
 ## Cite
 
 If you are using kornia in your research-related documents, it is recommended that you cite the paper. See more in [CITATION](https://github.com/kornia/kornia/blob/master/CITATION.md).
