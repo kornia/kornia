@@ -155,8 +155,8 @@ def binary_focal_loss_with_logits(
        - :math:`p_t` is the model's estimated probability for each class.
 
     Args:
-        input: input data tensor with shape :math:`(N, 1, *)`.
-        target: the target tensor with shape :math:`(N, 1, *)`.
+        input: input data tensor of arbitrary shape.
+        target: the target tensor with shape matching input.
         alpha: Weighting factor for the rare class :math:`\alpha \in [0, 1]`.
         gamma: Focusing parameter :math:`\gamma >= 0`.
         reduction: Specifies the reduction to apply to the
@@ -170,9 +170,8 @@ def binary_focal_loss_with_logits(
         the computed loss.
 
     Examples:
-        >>> num_classes = 1
         >>> kwargs = {"alpha": 0.25, "gamma": 2.0, "reduction": 'mean'}
-        >>> logits = torch.tensor([[[[6.325]]],[[[5.26]]],[[[87.49]]]])
+        >>> logits = torch.tensor([[[6.325]],[[5.26]],[[87.49]]])
         >>> labels = torch.tensor([[[1.]],[[1.]],[[0.]]])
         >>> binary_focal_loss_with_logits(logits, labels, **kwargs)
         tensor(4.6052)
@@ -188,12 +187,9 @@ def binary_focal_loss_with_logits(
         raise ValueError(f'Expected input batch_size ({input.size(0)}) to match target batch_size ({target.size(0)}).')
 
     probs = torch.sigmoid(input)
-    target = target.unsqueeze(dim=1)
     loss_tmp = -alpha * torch.pow((1.0 - probs + eps), gamma) * target * torch.log(probs + eps) - (
         1 - alpha
     ) * torch.pow(probs + eps, gamma) * (1.0 - target) * torch.log(1.0 - probs + eps)
-
-    loss_tmp = loss_tmp.squeeze(dim=1)
 
     if reduction == 'none':
         loss = loss_tmp
