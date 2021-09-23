@@ -11,8 +11,7 @@ from kornia.testing import assert_close
 
 class TestBinaryFocalLossWithLogits:
     def test_smoke_none(self, device, dtype):
-        num_classes = 1
-        logits = torch.rand(2, num_classes, 3, 2, dtype=dtype, device=device)
+        logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
         assert kornia.losses.binary_focal_loss_with_logits(
@@ -20,8 +19,7 @@ class TestBinaryFocalLossWithLogits:
         ).shape == (2, 3, 2)
 
     def test_smoke_sum(self, device, dtype):
-        num_classes = 1
-        logits = torch.rand(2, num_classes, 3, 2, dtype=dtype, device=device)
+        logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
         assert (
@@ -30,8 +28,7 @@ class TestBinaryFocalLossWithLogits:
         )
 
     def test_smoke_mean(self, device, dtype):
-        num_classes = 1
-        logits = torch.rand(2, num_classes, 3, 2, dtype=dtype, device=device)
+        logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
         assert (
@@ -40,8 +37,7 @@ class TestBinaryFocalLossWithLogits:
         )
 
     def test_smoke_mean_flat(self, device, dtype):
-        num_classes = 1
-        logits = torch.rand(2, num_classes, 3, 2, dtype=dtype, device=device)
+        logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
         assert (
@@ -50,8 +46,7 @@ class TestBinaryFocalLossWithLogits:
         )
 
     def test_jit(self, device, dtype):
-        num_classes = 1
-        logits = torch.rand(2, num_classes, 3, 2, dtype=dtype, device=device)
+        logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
         op = kornia.losses.binary_focal_loss_with_logits
@@ -61,10 +56,9 @@ class TestBinaryFocalLossWithLogits:
         assert_close(actual, expected)
 
     def test_gradcheck(self, device):
-        num_classes = 1
         alpha, gamma = 0.5, 2.0  # for focal loss with logits
-        logits = torch.rand(2, num_classes, 3, 2).to(device)
-        labels = torch.rand(2, 1, 3, 2) * num_classes
+        logits = torch.rand(2, 3, 2).to(device)
+        labels = torch.rand(2, 1, 3, 2)
         labels = labels.to(device).long()
 
         logits = utils.tensor_to_gradcheck_var(logits)  # to var
@@ -73,8 +67,7 @@ class TestBinaryFocalLossWithLogits:
         )
 
     def test_same_output(self, device, dtype):
-        num_classes = 1
-        logits = torch.rand(2, num_classes, 3, 2, dtype=dtype, device=device)
+        logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
         kwargs = {"alpha": 0.25, "gamma": 2.0, "reduction": 'mean'}
