@@ -249,27 +249,30 @@ class TestExtractTensorPatches:
 
 
 class TestCombineTensorPatches:
-    def test_smoke(self, device):
-        # input = torch.arange(16.0, device=device).view(1, 1, 4, 4)
+    def test_smoke(self, device, dtype):
+        input = torch.arange(16, device=device, dtype=dtype).view(1, 1, 4, 4)
         m = kornia.contrib.CombineTensorPatches((2, 2))
         patches = kornia.contrib.extract_tensor_patches(
-            torch.arange(16, device=device).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2))
+            input, window_size=(2, 2), stride=(2, 2))
         assert m(patches).shape == (1, 1, 4, 4)
+        assert (input == m(patches)).all()
 
-    def test_error(self, device):
+    def test_error(self, device, dtype):
         patches = kornia.contrib.extract_tensor_patches(
-            torch.arange(16, device=device).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2), padding=1)
+            torch.arange(16, device=device, dtype=dtype).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2), padding=1)
         with pytest.raises(NotImplementedError):
             kornia.contrib.combine_tensor_patches(patches, window_size=(2, 2), stride=(3, 2))
 
-    def test_padding1(self, device):
+    def test_padding1(self, device, dtype):
+        input = torch.arange(16, device=device, dtype=dtype).view(1, 1, 4, 4)
         patches = kornia.contrib.extract_tensor_patches(
-            torch.arange(16, device=device).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2), padding=1)
+            input, window_size=(2, 2), stride=(2, 2), padding=1)
         m = kornia.contrib.CombineTensorPatches((2, 2), unpadding=1)
         assert m(patches).shape == (1, 1, 4, 4)
+        assert (input == m(patches)).all()
 
-    def test_gradcheck(self, device):
+    def test_gradcheck(self, device, dtype):
         patches = kornia.contrib.extract_tensor_patches(
-            torch.arange(16., device=device).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2))
+            torch.arange(16., device=device, dtype=dtype).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2))
         input = utils.tensor_to_gradcheck_var(patches)  # to var
         assert gradcheck(kornia.contrib.combine_tensor_patches, (input, (2, 2), (2, 2)), raise_exception=True)
