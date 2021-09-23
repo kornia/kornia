@@ -1,4 +1,3 @@
-# test
 pytest==6.2.5
 pytest-flake8==1.0.7
 pytest-cov==2.12.1
@@ -11,5 +10,3 @@ yapf
 isort
 numpy
 scipy
-# x
-accelerate==0.4.0
