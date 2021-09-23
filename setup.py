@@ -118,9 +118,17 @@ requirements = [
     'packaging'  # REMOVE once we deprecate pytorch > 1.7.1. See: issue #1264
 ]
 
+
+def load_requirements(filename: str):
+    with open(filename) as f:
+        return [x.strip() for x in f.readlines()]
+
+
 requirements_extras = {
-    "x": ["accelerate==0.4.0"],
+    "x": load_requirements("requirements/x.txt"),
+    "dev": load_requirements("requirements/dev.txt"),
 }
+requirements_extras["all"] = requirements_extras["x"] + requirements_extras["dev"]
 
 
 if __name__ == '__main__':
