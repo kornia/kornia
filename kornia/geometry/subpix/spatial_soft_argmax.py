@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 import kornia
-from kornia.geometry import normalize_pixel_coordinates, normalize_pixel_coordinates3d
+from kornia.geometry.conversions import normalize_pixel_coordinates, normalize_pixel_coordinates3d
 from kornia.geometry.subpix import dsnt
 from kornia.utils import create_meshgrid, create_meshgrid3d
 from kornia.utils.helpers import _torch_solve_cast
