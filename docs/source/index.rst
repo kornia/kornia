@@ -46,6 +46,7 @@ Join the community
    get-started/about
    Tutorials <https://kornia-tutorials.readthedocs.io/en/latest/>
    get-started/training
+   OpenCV AI Kit <https://docs.luxonis.com/en/latest/pages/tutorials/creating-custom-nn-models/#kornia>
 
 .. toctree::
    :caption: KORNIA APPLICATIONS
