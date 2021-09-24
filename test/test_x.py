@@ -1,5 +1,3 @@
-from dataclasses import dataclass
-
 import pytest
 import torch
 import torch.nn as nn
