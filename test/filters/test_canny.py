@@ -8,14 +8,15 @@ from kornia.testing import assert_close
 
 
 class TestCanny:
-    def test_shape(self, device, dtype):
-        inp = torch.zeros(1, 3, 4, 4, device=device, dtype=dtype)
-
+    @pytest.mark.parametrize(
+        'shape', ((2, 3, 4, 8), (2, 1, 4, 8), (3, 4, 8), (1, 4, 8), (2, 4, 3, 4, 8), (2, 4, 1, 4, 8))
+    )
+    def test_shape(self, shape, device, dtype):
+        inp = torch.zeros(*shape, device=device, dtype=dtype)
         canny = kornia.filters.Canny()
         magnitude, edges = canny(inp)
-
-        assert magnitude.shape == (1, 1, 4, 4)
-        assert edges.shape == (1, 1, 4, 4)
+        assert magnitude.shape == shape[:-3] + (1,) + shape[-2:]
+        assert edges.shape == shape[:-3] + (1,) + shape[-2:]
 
     def test_shape_batch(self, device, dtype):
         batch_size = 2

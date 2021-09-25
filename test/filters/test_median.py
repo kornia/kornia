@@ -8,13 +8,10 @@ from kornia.testing import assert_close
 
 
 class TestMedianBlur:
-    def test_shape(self, device, dtype):
-        inp = torch.zeros(1, 3, 4, 4, device=device, dtype=dtype)
-        assert kornia.filters.median_blur(inp, (3, 3)).shape == (1, 3, 4, 4)
-
-    def test_shape_batch(self, device, dtype):
-        inp = torch.zeros(2, 6, 4, 4, device=device, dtype=dtype)
-        assert kornia.filters.median_blur(inp, (3, 3)).shape == (2, 6, 4, 4)
+    @pytest.mark.parametrize('shape', ((2, 4, 4, 8), (4, 4, 8), (2, 1, 4, 4, 8)))
+    def test_shape(self, shape, device, dtype):
+        inp = torch.zeros(*shape, device=device, dtype=dtype)
+        assert kornia.filters.median_blur(inp, (3, 3)).shape == shape
 
     def test_kernel_3x3(self, device, dtype):
         inp = torch.tensor(
@@ -58,6 +55,7 @@ class TestMedianBlur:
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.filters.median_blur, (img, (5, 3)), raise_exception=True)
 
+    @pytest.mark.skip(reason="jit not supported for args and kwargs")
     def test_jit(self, device, dtype):
         kernel_size = (3, 5)
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)

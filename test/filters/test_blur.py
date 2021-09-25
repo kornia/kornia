@@ -1,3 +1,4 @@
+import pytest
 import torch
 from torch.autograd import gradcheck
 
@@ -7,10 +8,13 @@ from kornia.testing import assert_close
 
 
 class TestBoxBlur:
-    def test_shape(self, device, dtype):
-        inp = torch.zeros(1, 3, 4, 4, device=device, dtype=dtype)
+    @pytest.mark.parametrize(
+        'shape', ((1, 3, 4, 4), (3, 4, 4), (2, 1, 3, 4, 4))
+    )
+    def test_shape(self, shape, device, dtype):
+        inp = torch.zeros(*shape, device=device, dtype=dtype)
         blur = kornia.filters.BoxBlur((3, 3))
-        assert blur(inp).shape == (1, 3, 4, 4)
+        assert blur(inp).shape == shape
 
     def test_shape_batch(self, device, dtype):
         inp = torch.zeros(2, 6, 4, 4, device=device, dtype=dtype)
@@ -129,6 +133,7 @@ class TestBoxBlur:
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.filters.box_blur, (img, (3, 3)), raise_exception=True)
 
+    @pytest.mark.skip(reason="jit not supported for args and kwargs")
     def test_jit(self, device, dtype):
         op = kornia.filters.box_blur
         op_script = torch.jit.script(op)

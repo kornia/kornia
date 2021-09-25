@@ -187,6 +187,7 @@ class TestFilter2D:
         kernel = utils.tensor_to_gradcheck_var(kernel)  # to var
         assert gradcheck(kornia.filter2d, (input, kernel), raise_exception=True)
 
+    @pytest.mark.skip(reason="jit not supported for args and kwargs")
     def test_jit(self, device, dtype):
         op = kornia.filter2d
         op_script = torch.jit.script(op)
@@ -512,6 +513,7 @@ class TestFilter3D:
         kernel = utils.tensor_to_gradcheck_var(kernel)  # to var
         assert gradcheck(kornia.filter3d, (input, kernel), raise_exception=True)
 
+    @pytest.mark.skip(reason="jit not supported for args and kwargs")
     def test_jit(self, device, dtype):
         op = kornia.filter3d
         op_script = torch.jit.script(op)
