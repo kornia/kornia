@@ -9,7 +9,7 @@ supported deep learning algorithms within the library.
     .. image:: https://github.com/kornia/data/raw/main/pixie_alchemist.png
        :width: 100%
        :align: center
-       
+
   A seemingly magical process of transformation, creation, or combination of data to usable deep learning models.
 
 
