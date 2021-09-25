@@ -78,6 +78,7 @@ class TestElasticTransform:
         noise = torch.rand(1, 2, 3, 3, device=device, dtype=torch.float64, requires_grad=not requires_grad)
         assert gradcheck(elastic_transform2d, (image, noise), raise_exception=True)
 
+    @pytest.mark.skip(reason="jit not supported for args and kwargs")
     def test_jit(self, device, dtype):
         image = torch.rand(1, 4, 5, 5, device=device, dtype=dtype)
         noise = torch.rand(1, 2, 5, 5, device=device, dtype=dtype)

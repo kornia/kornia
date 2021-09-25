@@ -438,7 +438,7 @@ class TestSimpleKD:
 
         assert gradcheck(skd_describe, (patches, ps), raise_exception=True, nondet_tol=1e-4)
 
-    @pytest.mark.jit
+    @pytest.mark.skip(reason="jit not supported for args and kwargs")
     def test_jit(self, device, dtype):
         batch_size, channels, ps = 1, 1, 19
         patches = torch.rand(batch_size, channels, ps, ps).to(device)

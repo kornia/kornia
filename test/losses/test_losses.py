@@ -333,6 +333,7 @@ class TestSSIMLoss:
         tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
         assert_close(loss.item(), 0.0, rtol=tol_val, atol=tol_val)
 
+    @pytest.mark.skip(reason="jit not supported for args and kwargs")
     def test_jit(self, device, dtype):
         img1 = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         img2 = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)

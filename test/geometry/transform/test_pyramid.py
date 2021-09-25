@@ -23,6 +23,7 @@ class TestPyrUp:
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.geometry.pyrup, (img,), raise_exception=True)
 
+    @pytest.mark.skip(reason="jit not supported for args and kwargs")
     def test_jit(self, device, dtype):
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
         op = kornia.geometry.pyrup
@@ -53,6 +54,7 @@ class TestPyrDown:
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.geometry.pyrdown, (img,), raise_exception=True)
 
+    @pytest.mark.skip(reason="jit not supported for args and kwargs")
     def test_jit(self, device, dtype):
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
         op = kornia.geometry.pyrdown
