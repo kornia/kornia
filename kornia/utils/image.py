@@ -1,5 +1,5 @@
 from functools import wraps
-from typing import Callable, TYPE_CHECKING
+from typing import Callable, TYPE_CHECKING, Union, Tuple
 
 import torch
 import torch.nn as nn
@@ -159,6 +159,19 @@ class ImageToTensor(nn.Module):
         return image_to_tensor(x, keepdim=self.keepdim)
 
 
+def _reshape_image_tensor(input, input_shape):
+    if len(input_shape) == 3:
+        input = input[0]
+
+    if len(input_shape) == 2:
+        input = input[0, 0]
+
+    if len(input_shape) > 4:
+        input = input.view(*(input_shape[:-3] + input.shape[-3:]))
+
+    return input
+
+
 def perform_keep_shape_image(f: Callable) -> Callable:
     """A decorator that enable `f` to be applied to an image of arbitrary leading dimensions `(*, C, H, W)`.
 
@@ -176,19 +189,30 @@ def perform_keep_shape_image(f: Callable) -> Callable:
 
         input_shape = input.shape
         input = _to_bchw(input)  # view input as (B, C, H, W)
-        output: torch.Tensor = f(input, *args, **kwargs)
-        if len(input_shape) == 3:
-            output = output[0]
-
-        if len(input_shape) == 2:
-            output = output[0, 0]
-
-        if len(input_shape) > 4:
-            output = output.view(*(input_shape[:-3] + output.shape[-3:]))
+        output: Union[torch.Tensor, Tuple] = f(input, *args, **kwargs)
+        if torch.is_tensor(output):
+            output = _reshape_image_tensor(output, input_shape)
+        elif isinstance(output, tuple):
+            output = tuple(_reshape_image_tensor(out, input_shape) for out in output)
+        else:
+            raise NotImplementedError
 
         return output
 
     return _wrapper
+
+
+def _reshape_video_tensor(input, input_shape):
+    if len(input_shape) == 4:
+        input = input[0]
+
+    if len(input_shape) == 3:
+        input = input[0, 0]
+
+    if len(input_shape) > 5:
+        input = input.view(*(input_shape[:-4] + input.shape[-4:]))
+
+    return input
 
 
 def perform_keep_shape_video(f: Callable) -> Callable:
@@ -208,15 +232,13 @@ def perform_keep_shape_video(f: Callable) -> Callable:
 
         input_shape = input.shape
         input = _to_bcdhw(input)  # view input as (B, C, D, H, W)
-        output: torch.Tensor = f(input, *args, **kwargs)
-        if len(input_shape) == 4:
-            output = output[0]
-
-        if len(input_shape) == 3:
-            output = output[0, 0]
-
-        if len(input_shape) > 5:
-            output = output.view(*(input_shape[:-4] + output.shape[-4:]))
+        output: Union[torch.Tensor, Tuple] = f(input, *args, **kwargs)
+        if torch.is_tensor(output):
+            output = _reshape_video_tensor(output, input_shape)
+        elif isinstance(output, tuple):
+            output = tuple(_reshape_video_tensor(out, input_shape) for out in output)
+        else:
+            raise NotImplementedError
 
         return output
 
