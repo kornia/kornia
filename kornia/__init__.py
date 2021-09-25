@@ -68,6 +68,7 @@ from kornia.filters import (
     get_motion_kernel3d,
     laplacian,
     median_blur,
+    motion_blur,
     motion_blur3d,
     sobel,
     spatial_gradient,
