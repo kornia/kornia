@@ -4,6 +4,15 @@ Training API (experimental)
 Kornia provides a Training API with the specific purpose to train and fine-tune the
 supported deep learning algorithms within the library.
 
+.. sidebar:: **Deep Alchemy**
+
+    .. image:: https://github.com/kornia/data/raw/main/pixie_alchemist.png
+       :width: 100%
+       :align: center
+
+  A seemingly magical process of transformation, creation, or combination of data to usable deep learning models.
+
+
 .. important::
 	In order to use our Training API you must: ``pip install kornia[x]``
 
@@ -210,7 +219,7 @@ Use `hydra <https://hydra.cc>`_ to implement an easy search strategy for your hy
 
 .. note::
 
-  Checkout the toy example in `here <https://github.com/kornia/kornia/tree/master/examples/train/image_classifier>`_
+  Checkout the toy example in `here <https://github.com/kornia/kornia/tree/master/examples/train/image_classifier>`__
 
 .. code:: python
 
@@ -231,7 +240,7 @@ decouple the process of running your training scripts in a distributed environme
 	We haven't tested yet all the possibilities for distributed training.
 	Expect some adventures or `join us <https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-CnydWe5fmvkcktIeRFGCEQ>`_ and help to iterate :)
 
-The below recipes are taken from the `accelerate` library in `here <https://github.com/huggingface/accelerate/tree/main/examples#simple-vision-example>`_:
+The below recipes are taken from the `accelerate` library in `here <https://github.com/huggingface/accelerate/tree/main/examples#simple-vision-example>`__:
 
 - single CPU:
 

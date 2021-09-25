@@ -15,9 +15,6 @@ except ImportError:
 from .metrics import AverageMeter
 from .utils import Configuration, TrainerState
 
-logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
-
-
 callbacks_whitelist = [
     "preprocess", "augmentations", "evaluate", "fit", "checkpoint", "terminate"
 ]
