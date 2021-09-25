@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from kornia.filters.kernels import get_binary_kernel2d
+from kornia.utils.image import perform_keep_shape_image
 
 
 def _compute_zero_padding(kernel_size: Tuple[int, int]) -> Tuple[int, int]:
@@ -13,17 +14,18 @@ def _compute_zero_padding(kernel_size: Tuple[int, int]) -> Tuple[int, int]:
     return computed[0], computed[1]
 
 
+@perform_keep_shape_image
 def median_blur(input: torch.Tensor, kernel_size: Tuple[int, int]) -> torch.Tensor:
     r"""Blur an image using the median filter.
 
     .. image:: _static/img/median_blur.png
 
     Args:
-        input: the input image with shape :math:`(B,C,H,W)`.
+        input: the input image with shape :math:`(*,C,H,W)`.
         kernel_size: the blurring kernel size.
 
     Returns:
-        the blurred input tensor with shape :math:`(B,C,H,W)`.
+        the blurred input tensor with shape :math:`(*,C,H,W)`.
 
     .. note::
        See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/

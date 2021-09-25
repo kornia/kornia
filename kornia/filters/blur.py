@@ -26,14 +26,14 @@ def box_blur(
         \end{bmatrix}
 
     Args:
-        image: the image to blur with shape :math:`(B,C,H,W)`.
+        image: the image to blur with shape :math:`(*,H,W)`.
         kernel_size: the blurring kernel size.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
         normalized: if True, L1 norm of the kernel is set to 1.
 
     Returns:
-        the blurred tensor with shape :math:`(B,C,H,W)`.
+        the blurred tensor with shape :math:`(*,H,W)`.
 
     .. note::
        See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/

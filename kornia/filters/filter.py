@@ -5,6 +5,7 @@ import torch.nn.functional as F
 
 from kornia.filters.__tmp__ import _deprecation_wrapper
 from kornia.filters.kernels import normalize_kernel2d
+from kornia.utils.image import perform_keep_shape_image, perform_keep_shape_video
 
 
 def _compute_padding(kernel_size: List[int]) -> List[int]:
@@ -30,6 +31,7 @@ def _compute_padding(kernel_size: List[int]) -> List[int]:
     return out_padding
 
 
+@perform_keep_shape_image
 def filter2d(
     input: torch.Tensor, kernel: torch.Tensor, border_type: str = 'reflect', normalized: bool = False
 ) -> torch.Tensor:
@@ -42,7 +44,7 @@ def filter2d(
 
     Args:
         input: the input tensor with shape of
-          :math:`(B, C, H, W)`.
+          :math:`(*, C, H, W)`.
         kernel: the kernel to be convolved with the input
           tensor. The kernel shape must be :math:`(1, kH, kW)` or :math:`(B, kH, kW)`.
         border_type: the padding mode to be applied before convolving.
@@ -52,7 +54,7 @@ def filter2d(
 
     Return:
         torch.Tensor: the convolved tensor of same size and numbers of channels
-        as the input with shape :math:`(B, C, H, W)`.
+        as the input with shape :math:`(*, C, H, W)`.
 
     Example:
         >>> input = torch.tensor([[[
@@ -108,6 +110,7 @@ def filter2d(
     return output.view(b, c, h, w)
 
 
+@perform_keep_shape_video
 def filter3d(
     input: torch.Tensor, kernel: torch.Tensor, border_type: str = 'replicate', normalized: bool = False
 ) -> torch.Tensor:
@@ -120,7 +123,7 @@ def filter3d(
 
     Args:
         input: the input tensor with shape of
-          :math:`(B, C, D, H, W)`.
+          :math:`(*, C, D, H, W)`.
         kernel: the kernel to be convolved with the input
           tensor. The kernel shape must be :math:`(1, kD, kH, kW)`  or :math:`(B, kD, kH, kW)`.
         border_type: the padding mode to be applied before convolving.
@@ -130,7 +133,7 @@ def filter3d(
 
     Return:
         the convolved tensor of same size and numbers of channels
-        as the input with shape :math:`(B, C, D, H, W)`.
+        as the input with shape :math:`(*, C, D, H, W)`.
 
     Example:
         >>> input = torch.tensor([[[

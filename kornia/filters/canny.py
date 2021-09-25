@@ -10,8 +10,10 @@ from kornia.filters.sobel import spatial_gradient
 from kornia.geometry.conversions import rad2deg
 
 from .kernels import get_canny_nms_kernel, get_hysteresis_kernel
+from kornia.utils.image import perform_keep_shape_image
 
 
+@perform_keep_shape_image
 def canny(
     input: torch.Tensor,
     low_threshold: float = 0.1,
@@ -26,7 +28,7 @@ def canny(
     .. image:: _static/img/canny.png
 
     Args:
-        input: input image tensor with shape :math:`(B,C,H,W)`.
+        input: input image tensor with shape :math:`(*,H,W)`.
         low_threshold: lower threshold for the hysteresis procedure.
         high_threshold: upper threshold for the hysteresis procedure.
         kernel_size: the size of the kernel for the gaussian blur.
@@ -36,8 +38,8 @@ def canny(
         eps: regularization number to avoid NaN during backprop.
 
     Returns:
-        - the canny edge magnitudes map, shape of :math:`(B,1,H,W)`.
-        - the canny edge detection filtered by thresholds and hysteresis, shape of :math:`(B,1,H,W)`.
+        - the canny edge magnitudes map, shape of :math:`(*,1,H,W)`.
+        - the canny edge detection filtered by thresholds and hysteresis, shape of :math:`(*,1,H,W)`.
 
     .. note::
        See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/

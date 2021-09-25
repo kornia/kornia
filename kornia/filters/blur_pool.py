@@ -6,6 +6,7 @@ import torch.nn.functional as F
 
 from .kernels import get_pascal_kernel_2d
 from .median import _compute_zero_padding  # TODO: Move to proper place
+from kornia.utils.image import perform_keep_shape_image
 
 __all__ = ["BlurPool2D", "MaxBlurPool2D", "blur_pool2d", "max_blur_pool2d"]
 
@@ -50,7 +51,7 @@ class BlurPool2D(nn.Module):
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         # To align the logic with the whole lib
         kernel = torch.as_tensor(self.kernel, device=input.device, dtype=input.dtype)
-        return _blur_pool_by_kernel2d(input, kernel.repeat((input.size(1), 1, 1, 1)), self.stride)
+        return _blur_pool_by_kernel2d(input, kernel.repeat((input.size(-3), 1, 1, 1)), self.stride)
 
 
 class MaxBlurPool2D(nn.Module):
@@ -99,7 +100,7 @@ class MaxBlurPool2D(nn.Module):
         # To align the logic with the whole lib
         kernel = torch.as_tensor(self.kernel, device=input.device, dtype=input.dtype)
         return _max_blur_pool_by_kernel2d(
-            input, kernel.repeat((input.size(1), 1, 1, 1)), self.stride, self.max_pool_size, self.ceil_mode
+            input, kernel.repeat((input.size(-3), 1, 1, 1)), self.stride, self.max_pool_size, self.ceil_mode
         )
 
 
@@ -113,12 +114,13 @@ def blur_pool2d(input: torch.Tensor, kernel_size: int, stride: int = 2):
     See :cite:`zhang2019shiftinvar` for more details.
 
     Args:
-        kernel_size: the kernel size for max pooling..
-        ceil_mode: should be true to match output size of conv2d with same kernel size.
+        input: tensor image of shape :math:`(*, H, W)`.
+        kernel_size: the kernel size for max pooling.
+        stride: decimation size of input.
 
     Shape:
-        - Input: :math:`(B, C, H, W)`
-        - Output: :math:`(N, C, H_{out}, W_{out})`, where
+        - Input: :math:`(*, H, W)`
+        - Output: :math:`(*, H_{out}, W_{out})`, where
 
           .. math::
               H_{out} = \left\lfloor\frac{H_{in}  + 2 \times \text{kernel\_size//2}[0] -
@@ -159,6 +161,7 @@ def max_blur_pool2d(
     See :class:`~kornia.filters.MaxBlurPool2D` for details.
 
     Args:
+        input: tensor image of shape :math:`(*, H, W)`.
         kernel_size: the kernel size for max pooling.
         stride: stride for pooling.
         max_pool_size: the kernel size for max pooling.
@@ -177,12 +180,11 @@ def max_blur_pool2d(
         tensor([[[[0.5625, 0.3125],
                   [0.3125, 0.8750]]]])
     """
-    if not len(input.shape) == 4:
-        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
     kernel = get_pascal_kernel_2d(kernel_size, norm=True).repeat((input.size(1), 1, 1, 1)).to(input)
     return _max_blur_pool_by_kernel2d(input, kernel, stride, max_pool_size, ceil_mode)
 
 
+@perform_keep_shape_image
 def _blur_pool_by_kernel2d(input: torch.Tensor, kernel: torch.Tensor, stride: int):
     """Compute blur_pool by a given :math:`CxC_{out}xNxN` kernel."""
     if not (len(kernel.shape) == 4 and kernel.size(-1) == kernel.size(-2)):
@@ -191,6 +193,7 @@ def _blur_pool_by_kernel2d(input: torch.Tensor, kernel: torch.Tensor, stride: in
     return F.conv2d(input, kernel, padding=padding, stride=stride, groups=input.size(1))
 
 
+@perform_keep_shape_image
 def _max_blur_pool_by_kernel2d(
     input: torch.Tensor, kernel: torch.Tensor, stride: int, max_pool_size: int, ceil_mode: bool
 ):
