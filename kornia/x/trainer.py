@@ -16,7 +16,7 @@ from .metrics import AverageMeter
 from .utils import Configuration, TrainerState
 
 callbacks_whitelist = [
-    "preprocess", "augmentations", "postprocess", "evaluate", "fit", "checkpoint", "terminate"
+    "preprocess", "augmentations", "evaluate", "fit", "checkpoint", "on_epoch_end", "on_before_model"
 ]
 
 
@@ -100,7 +100,7 @@ class Trainer:
             # perform the preprocess and augmentations in batch
             sample = self.preprocess(sample)
             sample = self.augmentations(sample)
-            sample = self.postprocess(sample)
+            sample = self.on_before_model(sample)
             # make the actual inference
             output = self.model(sample["input"])
             loss = self.criterion(output, sample["target"])
@@ -130,7 +130,7 @@ class Trainer:
 
             self.checkpoint(self.model, epoch, valid_stats)
 
-            state = self.terminate(self.model, epoch, valid_stats)
+            state = self.on_epoch_end(self.model, epoch, valid_stats)
             if state == TrainerState.TERMINATE:
                 break
 
@@ -148,11 +148,11 @@ class Trainer:
     def augmentations(self, x: dict) -> dict:
         return x
 
-    def postprocess(self, x: dict) -> dict:
+    def on_before_model(self, x: dict) -> dict:
         return x
 
     def checkpoint(self, *args, **kwargs):
         ...
 
-    def terminate(self, *args, **kwargs):
+    def on_epoch_end(self, *args, **kwargs):
         ...

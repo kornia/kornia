@@ -1,7 +1,7 @@
-Image Classifier Example
-========================
+Semantic Segmentation Example
+=============================
 
-This is a toy example implementing an image classification application.
+This is a toy example implementing a semantic segmentation application.
 
 1. Install dependencies
 

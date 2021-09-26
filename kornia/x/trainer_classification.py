@@ -56,7 +56,7 @@ class SemanticSegmentationTrainer(Trainer):
             sample = {"input": sample[0], "target": sample[1]}  # new dataset api will come like this
             # perform the preprocess and augmentations in batch
             sample = self.preprocess(sample)
-            sample = self.postprocess(sample)
+            sample = self.on_before_model(sample)
             # Forward
             out = self.model(sample["input"])
             # Loss computation

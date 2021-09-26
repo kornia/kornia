@@ -5,6 +5,7 @@ import torchvision
 import torchvision.transforms as T
 from hydra.core.config_store import ConfigStore
 from hydra.utils import to_absolute_path
+from torchvision.transforms import transforms
 
 import kornia as K
 from kornia import augmentation
@@ -18,21 +19,25 @@ cs.store(name="config", node=Configuration)
 @hydra.main(config_path=".", config_name="config.yaml")
 def my_app(config: Configuration) -> None:
 
-    # create the model
-    model = nn.Sequential(
-        torchvision.models.segmentation.fcn_resnet50(pretrained=False),
-        Lambda(lambda x: x['out']),
-    )
+    class Transform(nn.Module):
+        def __init__(self, image_size):
+            super().__init__()
+            self.resize = K.geometry.Resize(image_size, interpolation='nearest')
 
-    def tf(x, y) -> dict:
-        return T.ToTensor()(x), torch.from_numpy(y)
+        @torch.no_grad()
+        def forward(self, x, y):
+            x, y = T.ToTensor()(x), torch.from_numpy(y)
+            return self.resize(x), self.resize(y)
+
+    # make image size homogeneous
+    transform = Transform(tuple(config.image_size))
 
     # create the dataset
     train_dataset = torchvision.datasets.SBDataset(
-        root=to_absolute_path(config.data_path), image_set='train', download=False, transforms=tf)
+        root=to_absolute_path(config.data_path), image_set='train', download=False, transforms=transform)
 
     valid_dataset = torchvision.datasets.SBDataset(
-        root=to_absolute_path(config.data_path), image_set='val', download=False, transforms=tf)
+        root=to_absolute_path(config.data_path), image_set='val', download=False, transforms=transform)
 
     # create the dataloaders
     train_dataloader = torch.utils.data.DataLoader(
@@ -43,6 +48,12 @@ def my_app(config: Configuration) -> None:
 
     # create the loss function
     criterion = nn.CrossEntropyLoss()
+
+    # create the model
+    model = nn.Sequential(
+        torchvision.models.segmentation.fcn_resnet50(pretrained=False),
+        Lambda(lambda x: x['out']),
+    )
 
     # instantiate the optimizer and scheduler
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.lr)
@@ -58,14 +69,14 @@ def my_app(config: Configuration) -> None:
     )
 
     def preprocess(sample: dict) -> dict:
-        target = sample["target"].argmax(1).unsqueeze(0).float()
+        target = sample["target"].argmax(1).unsqueeze(1).float()
         return {"input": sample["input"], "target": target}
 
     def augmentations(sample: dict) -> dict:
         x, y = _augmentations(sample["input"], sample["target"])
         return {"input": x, "target": y}
 
-    def postprocess(sample: dict) -> dict:
+    def on_before_model(sample: dict) -> dict:
         target = sample["target"].squeeze(1).long()
         return {"input": sample["input"], "target": target}
 
@@ -78,7 +89,7 @@ def my_app(config: Configuration) -> None:
         callbacks={
             "preprocess": preprocess,
             "augmentations": augmentations,
-            "postprocess": postprocess,
+            "on_before_model": on_before_model,
             "checkpoint": model_checkpoint,
         }
     )
