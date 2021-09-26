@@ -67,7 +67,7 @@ source $conda_bin_dir/activate $dev_env_dir/envs/venv
 conda install pytorch=$pytorch_version torchvision $cuda_toolkit $pytorch_mode -c $pytorch_channel
 
 # install testing dependencies
-pip install -r requirements-dev.txt
+pip install -r requirements/dev.txt
 
 # install documentation dependencies
 pip install -r docs/requirements.txt
