@@ -1,4 +1,4 @@
-from kornia.contrib.classification import ClassificationHead, SegmentationHead
+from kornia.contrib.classification import ClassificationHead
 from kornia.contrib.connected_components import connected_components
 from kornia.contrib.extract_patches import (
     combine_tensor_patches,

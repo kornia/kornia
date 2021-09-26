@@ -41,9 +41,9 @@ class Lambda(nn.Module):
         fcn: a pointer to any function.
 
     Example:
-    >>> fcn = Lambda(lambda x: K.geometry.resize(x, (32, 16)))
-    >>> fcn(torch.rand(1, 3, 64, 32)).shape
-    torch.Size([1, 3, 32, 16])
+        >>> fcn = Lambda(lambda x: K.geometry.resize(x, (32, 16)))
+        >>> fcn(torch.rand(1, 4, 64, 32)).shape
+        torch.Size([1, 4, 32, 16])
     """
     def __init__(self, fcn):
         super().__init__()
