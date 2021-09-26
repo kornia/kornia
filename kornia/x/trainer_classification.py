@@ -1,4 +1,5 @@
 import torch
+import kornia as K
 
 from .metrics import accuracy, AverageMeter
 from .trainer import Trainer
@@ -19,20 +20,20 @@ class ImageClassifierTrainer(Trainer):
         self.model.eval()
         stats = {'losses': AverageMeter(), 'top1': AverageMeter(), 'top5': AverageMeter()}
         for sample_id, sample in enumerate(self.valid_dataloader):
-            source, target = sample  # this might change with new pytorch ataset structure
-
+            sample = {"input": sample[0], "target": sample[1]}  # new dataset api will come like this
             # perform the preprocess and augmentations in batch
-            img = self.preprocess(source)
+            sample = self.preprocess(sample)
             # Forward
-            out = self.model(img)
+            out = self.model(sample["input"])
             # Loss computation
-            val_loss = self.criterion(out, target)
+            val_loss = self.criterion(out, sample["target"])
 
             # measure accuracy and record loss
-            acc1, acc5 = accuracy(out.detach(), target, topk=(1, 5))
-            stats['losses'].update(val_loss.item(), img.shape[0])
-            stats['top1'].update(acc1.item(), img.shape[0])
-            stats['top5'].update(acc5.item(), img.shape[0])
+            acc1, acc5 = accuracy(out.detach(), sample["target"], topk=(1, 5))
+            batch_size: int = sample["input"].shape[0]
+            stats['losses'].update(val_loss.item(), batch_size)
+            stats['top1'].update(acc1.item(), batch_size)
+            stats['top5'].update(acc5.item(), batch_size)
 
             if sample_id % 10 == 0:
                 self._logger.info(
@@ -46,28 +47,31 @@ class ImageClassifierTrainer(Trainer):
 
 
 class SemanticSegmentationTrainer(Trainer):
-    def fit_epoch(self, epoch: int) -> None:
-        # train loop
-        self.model.train()
-        losses = AverageMeter()
-        for sample_id, sample in enumerate(self.train_dataloader):
-            source, target = sample  # this might change with new pytorch dataset structure
-            self.optimizer.zero_grad()
-
+    @torch.no_grad()
+    def evaluate(self) -> dict:
+        self.model.eval()
+        stats = {'losses': AverageMeter(), 'iou': AverageMeter()}
+        for sample_id, sample in enumerate(self.valid_dataloader):
+            sample = {"input": sample[0], "target": sample[1]}  # new dataset api will come like this
             # perform the preprocess and augmentations in batch
-            img = self.preprocess(source)
-            img, target = self.augmentations(img, target)
-            # make the actual inference
-            output = self.model(img)
-            loss = self.criterion(output, target.long())
-            self.backward(loss)
-            self.optimizer.step()
+            sample = self.preprocess(sample)
+            sample = self.postprocess(sample)
+            # Forward
+            out = self.model(sample["input"])
+            # Loss computation
+            val_loss = self.criterion(out, sample["target"])
 
-            losses.update(loss.item(), img.shape[0])
+            # measure accuracy and record loss
+            iou = K.utils.mean_iou(out.argmax(1), sample["target"], out.shape[1]).mean()
+            batch_size: int = sample["input"].shape[0]
+            stats['losses'].update(val_loss.item(), batch_size)
+            stats['iou'].update(iou, batch_size)
 
-            if sample_id % 50 == 0:
+            if sample_id % 10 == 0:
                 self._logger.info(
-                    f"Train: {epoch + 1}/{self.num_epochs}  "
-                    f"Sample: {sample_id + 1}/{len(self.train_dataloader)} "
-                    f"Loss: {losses.val:.3f} {losses.avg:.3f}"
+                    f"Test: {sample_id}/{len(self.valid_dataloader)} "
+                    f"Loss: {stats['losses'].val:.2f} {stats['losses'].avg:.2f} "
+                    f"IoU: {stats['iou'].val:.2f} {stats['iou'].val:.2f} "
                 )
+
+        return stats

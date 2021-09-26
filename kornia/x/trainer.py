@@ -16,7 +16,7 @@ from .metrics import AverageMeter
 from .utils import Configuration, TrainerState
 
 callbacks_whitelist = [
-    "preprocess", "augmentations", "evaluate", "fit", "checkpoint", "terminate"
+    "preprocess", "augmentations", "postprocess", "evaluate", "fit", "checkpoint", "terminate"
 ]
 
 
@@ -95,19 +95,19 @@ class Trainer:
         self.model.train()
         losses = AverageMeter()
         for sample_id, sample in enumerate(self.train_dataloader):
-            source, target = sample  # this might change with new pytorch dataset structure
+            sample = {"input": sample[0], "target": sample[1]}  # new dataset api will come like this
             self.optimizer.zero_grad()
-
             # perform the preprocess and augmentations in batch
-            img = self.preprocess(source)
-            img = self.augmentations(img)
+            sample = self.preprocess(sample)
+            sample = self.augmentations(sample)
+            sample = self.postprocess(sample)
             # make the actual inference
-            output = self.model(img)
-            loss = self.criterion(output, target)
+            output = self.model(sample["input"])
+            loss = self.criterion(output, sample["target"])
             self.backward(loss)
             self.optimizer.step()
 
-            losses.update(loss.item(), img.shape[0])
+            losses.update(loss.item(), sample["target"].shape[0])
 
             if sample_id % 50 == 0:
                 self._logger.info(
@@ -142,10 +142,13 @@ class Trainer:
     def evaluate(self):
         ...
 
-    def preprocess(self, x):
+    def preprocess(self, x: dict) -> dict:
         return x
 
-    def augmentations(self, x):
+    def augmentations(self, x: dict) -> dict:
+        return x
+
+    def postprocess(self, x: dict) -> dict:
         return x
 
     def checkpoint(self, *args, **kwargs):

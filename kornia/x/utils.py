@@ -1,9 +1,9 @@
 # TODO: remove the type: ignore in below after deprecating python 3.6
 from dataclasses import dataclass, field  # type: ignore
 from enum import Enum
-from pathlib import Path
-
 import yaml  # type: ignore
+
+import torch.nn as nn
 
 
 class TrainerState(Enum):
@@ -31,3 +31,12 @@ class Configuration:
         with open(config_file) as f:
             data = yaml.safe_load(f)
         return cls(**data)
+
+
+class Lambda(nn.Module):
+    def __init__(self, fcn):
+        super().__init__()
+        self.fcn = fcn
+
+    def forward(self, x):
+        return self.fcn(x)

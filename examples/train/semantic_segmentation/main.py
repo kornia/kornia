@@ -1,3 +1,4 @@
+from kornia import augmentation
 import hydra
 import torch
 import torch.nn as nn
@@ -7,7 +8,9 @@ from hydra.core.config_store import ConfigStore
 from hydra.utils import to_absolute_path
 
 import kornia as K
-from kornia.x import Configuration, EarlyStopping, SemanticSegmentationTrainer, ModelCheckpoint
+from kornia.x import (
+    Configuration, SemanticSegmentationTrainer, ModelCheckpoint, Lambda
+)
 
 cs = ConfigStore.instance()
 # Registering the Config class with the name 'config'.
@@ -19,12 +22,12 @@ def my_app(config: Configuration) -> None:
 
     # create the model
     model = nn.Sequential(
-        K.contrib.VisionTransformer(image_size=224, patch_size=16),
-        #K.contrib.ClassificationHead(embed_size=128, num_classes=10),
+        torchvision.models.segmentation.fcn_resnet50(pretrained=False),
+        Lambda(lambda x: x['out']),
     )
 
-    def tf(x, y):
-        return T.ToTensor()(x)[..., :224, :224], torch.from_numpy(y).float()[..., :224, :224]
+    def tf(x, y) -> dict:
+        return T.ToTensor()(x), torch.from_numpy(y)
 
     # create the dataset
     train_dataset = torchvision.datasets.SBDataset(
@@ -49,24 +52,36 @@ def my_app(config: Configuration) -> None:
         optimizer, config.num_epochs * len(train_dataloader))
 
     # define some augmentations
-    augmentations = K.augmentation.AugmentationSequential(
+    _augmentations = K.augmentation.AugmentationSequential(
         K.augmentation.RandomHorizontalFlip(p=0.75),
         K.augmentation.RandomVerticalFlip(p=0.75),
-        # K.augmentation.RandomAffine(degrees=10.),
+        K.augmentation.RandomAffine(degrees=10.),
         data_keys=['input', 'mask']
     )
 
-    model_checkpoint = ModelCheckpoint(
-        filepath="./outputs", monitor="top5",
-    )
+    def preprocess(sample: dict) -> dict:
+        target = sample["target"].argmax(1).unsqueeze(0).float()
+        return {"input": sample["input"], "target": target}
 
-    early_stop = EarlyStopping(monitor="top5")
+    def augmentations(sample: dict) -> dict:
+        x, y = _augmentations(sample["input"], sample["target"])
+        return {"input": x, "target": y}
+
+    def postprocess(sample: dict) -> dict:
+        target = sample["target"].squeeze(1).long()
+        return {"input": sample["input"], "target": target}
+
+    model_checkpoint = ModelCheckpoint(
+        filepath="./outputs", monitor="iou",
+    )
 
     trainer = SemanticSegmentationTrainer(
         model, train_dataloader, valid_daloader, criterion, optimizer, scheduler, config,
         callbacks={
+            "preprocess": preprocess,
             "augmentations": augmentations,
-            "checkpoint": model_checkpoint,  # "terminate": early_stop,
+            "postprocess": postprocess,
+            "checkpoint": model_checkpoint,
         }
     )
     trainer.fit()

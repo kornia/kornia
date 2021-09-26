@@ -7,7 +7,7 @@ from hydra.core.config_store import ConfigStore
 from hydra.utils import to_absolute_path
 
 import kornia as K
-from kornia.x import Configuration, EarlyStopping, ImageClassifierTrainer, ModelCheckpoint
+from kornia.x import Configuration, ImageClassifierTrainer, ModelCheckpoint
 
 cs = ConfigStore.instance()
 # Registering the Config class with the name 'config'.
@@ -46,7 +46,7 @@ def my_app(config: Configuration) -> None:
         optimizer, config.num_epochs * len(train_dataloader))
 
     # define some augmentations
-    augmentations = nn.Sequential(
+    _augmentations = nn.Sequential(
         K.augmentation.RandomHorizontalFlip(p=0.75),
         K.augmentation.RandomVerticalFlip(p=0.75),
         K.augmentation.RandomAffine(degrees=10.),
@@ -57,17 +57,18 @@ def my_app(config: Configuration) -> None:
         ),
     )
 
+    def augmentations(sample: dict) -> dict:
+        out = _augmentations(sample["input"])
+        return {"input": out, "target": sample["target"]}
+
     model_checkpoint = ModelCheckpoint(
         filepath="./outputs", monitor="top5",
     )
 
-    early_stop = EarlyStopping(monitor="top5")
-
     trainer = ImageClassifierTrainer(
         model, train_dataloader, valid_daloader, criterion, optimizer, scheduler, config,
         callbacks={
-            "augmentations": augmentations,
-            "checkpoint": model_checkpoint,  # "terminate": early_stop,
+            "augmentations": augmentations, "checkpoint": model_checkpoint,
         }
     )
     trainer.fit()
