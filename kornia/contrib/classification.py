@@ -30,6 +30,7 @@ class ClassificationHead(nn.Module):
 
 def _expand(tensor, length: int):
     return tensor.unsqueeze(1).repeat(1, int(length), 1, 1, 1).flatten(0, 1)
+<<<<<<< HEAD
 
 
 class SegmentationHead(nn.Module):
@@ -101,3 +102,5 @@ class SegmentationHead(nn.Module):
 
         x = self.out_lay(x)
         return x
+=======
+>>>>>>> remove segmentation head

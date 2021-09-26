@@ -22,19 +22,29 @@ class Configuration:
     image_size: tuple = field(default=(224, 224), metadata={"help": "The input image size."})
 
     # TODO: possibly remove because hydra already do this
-    def __init__(self, **entries):
-        for k, v in entries.items():
-            self.__dict__[k] = Configuration(**v) if isinstance(v, dict) else v
+    # def __init__(self, **entries):
+    #     for k, v in entries.items():
+    #         self.__dict__[k] = Configuration(**v) if isinstance(v, dict) else v
 
-    @classmethod
-    def from_yaml(cls, config_file: str):
-        """Create an instance of the configuration from a yaml file."""
-        with open(config_file) as f:
-            data = yaml.safe_load(f)
-        return cls(**data)
+    # @classmethod
+    # def from_yaml(cls, config_file: str):
+    #     """Create an instance of the configuration from a yaml file."""
+    #     with open(config_file) as f:
+    #         data = yaml.safe_load(f)
+    #     return cls(**data)
 
 
 class Lambda(nn.Module):
+    """Module to create a lambda function as nn.Module.
+
+    Args:
+        fcn: a pointer to any function.
+
+    Example:
+    >>> fcn = Lambda(lambda x: K.geometry.resize(x, (32, 16)))
+    >>> fcn(torch.rand(1, 3, 64, 32)).shape
+    torch.Size([1, 3, 32, 16])
+    """
     def __init__(self, fcn):
         super().__init__()
         self.fcn = fcn
