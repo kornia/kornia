@@ -1,4 +1,3 @@
-from kornia import augmentation
 import hydra
 import torch
 import torch.nn as nn
@@ -8,9 +7,8 @@ from hydra.core.config_store import ConfigStore
 from hydra.utils import to_absolute_path
 
 import kornia as K
-from kornia.x import (
-    Configuration, SemanticSegmentationTrainer, ModelCheckpoint, Lambda
-)
+from kornia import augmentation
+from kornia.x import Configuration, Lambda, ModelCheckpoint, SemanticSegmentationTrainer
 
 cs = ConfigStore.instance()
 # Registering the Config class with the name 'config'.

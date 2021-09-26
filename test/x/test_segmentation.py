@@ -3,8 +3,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset
 
-from kornia.x import SemanticSegmentationTrainer
-from kornia.x import Configuration
+from kornia.x import Configuration, SemanticSegmentationTrainer
 
 
 class DummyDatasetSegmentation(Dataset):

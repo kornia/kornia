@@ -1,9 +1,9 @@
 # TODO: remove the type: ignore in below after deprecating python 3.6
 from dataclasses import dataclass, field  # type: ignore
 from enum import Enum
-import yaml  # type: ignore
 
 import torch.nn as nn
+import yaml  # type: ignore
 
 
 class TrainerState(Enum):

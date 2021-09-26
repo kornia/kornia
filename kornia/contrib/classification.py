@@ -33,8 +33,8 @@ def _expand(tensor, length: int):
 
 
 class SegmentationHead(nn.Module):
-    """
-    Simple convolutional head, using group norm.
+    """Simple convolutional head, using group norm.
+
     Upsampling is done using a FPN approach
     """
 
