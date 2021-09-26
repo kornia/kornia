@@ -1,5 +1,5 @@
 import warnings
-from typing import cast, Dict, Optional, Tuple, Union
+from typing import Any, Callable, cast, Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -538,3 +538,44 @@ class MixAugmentationBase(_BasicAugmentationBase):
         if in_trans is not None:
             return (output, in_trans), lab
         return output, lab
+
+
+class LambdaAugmentation(nn.Module):
+    """
+    """
+    def __init__(
+        self,
+        input_fn: nn.Module,
+        mask_fn: Optional[Callable] = None,
+        bbox_fn: Optional[Callable] = None,
+        keypoints_fn: Optional[Callable] = None,
+        input_inverse_fn: Optional[Callable] = None,
+        mask_inverse_fn: Optional[Callable] = None,
+        bbox_inverse_fn: Optional[Callable] = None,
+        keypoints_inverse_fn: Optional[Callable] = None
+    ) -> None:
+        super().__init__()
+        self.f = nn.ModuleDict({
+            "input": input_fn,
+            "mask": mask_fn,
+            "bbox": bbox_fn,
+            "keypoints": keypoints_fn,
+            "input_inverse": input_inverse_fn,
+            "mask_inverse": mask_inverse_fn,
+            "bbox_inverse": bbox_inverse_fn,
+            "keypoints_inverse": keypoints_inverse_fn,
+        })
+
+    def __unpack_input__(  # type: ignore
+        self, input: TensorWithTransformMat
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        if isinstance(input, tuple):
+            in_tensor = input[0]
+            in_transformation = input[1]
+            return in_tensor, in_transformation
+        in_tensor = input
+        return in_tensor, None
+
+    def forward(self, input: TensorWithTransformMat) -> TensorWithTransformMat:
+        in_tensor, in_trans = self.__unpack_input__(input)
+        raise NotImplementedError
