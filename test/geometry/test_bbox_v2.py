@@ -37,7 +37,7 @@ class TestBoxes2D:
         batched_bbox = torch.stack([_create_tensor_box(), _create_tensor_box()])
         assert Boxes(batched_bbox)
 
-    def test_boxes_shape(self, device, dtype):
+    def test_get_boxes_shape(self, device, dtype):
         box = Boxes(torch.tensor([[[1.0, 1.0], [3.0, 2.0], [1.0, 2.0], [3.0, 1.0]]], device=device, dtype=dtype))
         t_boxes = torch.tensor(
             [[[1.0, 1.0], [3.0, 1.0], [1.0, 2.0], [3.0, 2.0]], [[5.0, 4.0], [2.0, 2.0], [5.0, 2.0], [2.0, 4.0]]],
@@ -48,11 +48,11 @@ class TestBoxes2D:
         boxes_batch = Boxes(t_boxes[None])  # (1, 2, 4, 2)
 
         # Single box
-        h, w = box.boxes_shape()
+        h, w = box.get_boxes_shape()
         assert (h.item(), w.item()) == (1, 2)
 
         # Boxes
-        h, w = boxes.boxes_shape()
+        h, w = boxes.get_boxes_shape()
         assert h.ndim == 1 and w.ndim == 1
         assert len(h) == 2 and len(w) == 2
         assert (h == torch.as_tensor([1.0, 2.0], device=device)).all() and (
@@ -60,19 +60,19 @@ class TestBoxes2D:
         ).all()
 
         # Box batch
-        h, w = boxes_batch.boxes_shape()
+        h, w = boxes_batch.get_boxes_shape()
         assert h.ndim == 2 and w.ndim == 2
         assert h.shape == (1, 2) and w.shape == (1, 2)
         assert (h == torch.as_tensor([[1.0, 2.0]], device=device)).all() and (
             w == torch.as_tensor([[2.0, 3.0]], device=device)
         ).all()
 
-    def test_boxes_shape_batch(self, device, dtype):
+    def test_get_boxes_shape_batch(self, device, dtype):
         t_box1 = torch.tensor([[[1.0, 1.0], [3.0, 2.0], [3.0, 1.0], [1.0, 2.0]]], device=device, dtype=dtype)
         t_box2 = torch.tensor([[[5.0, 2.0], [2.0, 2.0], [5.0, 4.0], [2.0, 4.0]]], device=device, dtype=dtype)
         batched_boxes = Boxes(torch.stack([t_box1, t_box2]))
 
-        h, w = batched_boxes.boxes_shape()
+        h, w = batched_boxes.get_boxes_shape()
         assert h.ndim == 2 and w.ndim == 2
         assert h.shape == (2, 1) and w.shape == (2, 1)
         assert (h == torch.as_tensor([[1], [2]], device=device)).all() and (
@@ -203,6 +203,18 @@ class TestBoxes2D:
         assert batched_masks.shape == expected_batched_masks.shape
         assert_allclose(batched_masks, expected_batched_masks)
 
+    def test_to(self, device, dtype):
+        if device == torch.device('cpu'):
+            pass
+
+        boxes = Boxes.from_tensor(torch.as_tensor([[1, 2, 3, 4]], device='cpu', dtype=torch.float32))
+        assert boxes.to(device=device)._boxes.device == device
+        assert boxes.to(dtype=dtype)._boxes.dtype == dtype
+
+        boxes_moved = boxes.to(device, dtype)
+        assert boxes_moved is boxes  # to is an inplace op.
+        assert boxes_moved._boxes.device == device, boxes_moved._boxes.dtype == dtype
+
     def test_gradcheck(self, device, dtype):
         def apply_boxes_method(tensor: torch.Tensor, method: str, **kwargs):
             boxes = Boxes(tensor)
@@ -225,7 +237,7 @@ class TestBoxes2D:
         assert gradcheck(
             partial(apply_boxes_method, method='to_tensor', mode='vertices_plus_1'), (t_boxes4,), raise_exception=True
         )
-        assert gradcheck(partial(apply_boxes_method, method='boxes_shape'), (t_boxes1,), raise_exception=True)
+        assert gradcheck(partial(apply_boxes_method, method='get_boxes_shape'), (t_boxes1,), raise_exception=True)
         assert gradcheck(lambda x: Boxes.from_tensor(x)._boxes, (t_boxes_xyxy,), raise_exception=True)
         assert gradcheck(
             lambda x: Boxes.from_tensor(x, mode='xywh_plus_1')._boxes, (t_boxes_xyxy1,), raise_exception=True
@@ -245,6 +257,23 @@ class TestTransformBoxes2D:
 
         transformed_boxes = boxes.transform_boxes(trans_mat)
         assert_allclose(transformed_boxes._boxes, expected_boxes._boxes, atol=1e-4, rtol=1e-4)
+        # inplace check
+        assert transformed_boxes is not boxes
+
+    def test_transform_boxes_(self, device, dtype):
+        # Define boxes in XYXY format for simplicity.
+        boxes_xyxy = torch.tensor([[139.2640, 103.0150, 397.3120, 410.5225]], device=device, dtype=dtype)
+        expected_boxes_xyxy = torch.tensor([[372.7360, 103.0150, 114.6880, 410.5225]], device=device, dtype=dtype)
+
+        boxes = Boxes.from_tensor(boxes_xyxy)
+        expected_boxes = Boxes.from_tensor(expected_boxes_xyxy)
+
+        trans_mat = torch.tensor([[[-1.0, 0.0, 512.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+
+        transformed_boxes = boxes.transform_boxes_(trans_mat)
+        assert_allclose(transformed_boxes._boxes, expected_boxes._boxes, atol=1e-4, rtol=1e-4)
+        # inplace check
+        assert transformed_boxes is boxes
 
     def test_transform_multiple_boxes(self, device, dtype):
         # Define boxes in XYXY format for simplicity.
@@ -363,7 +392,7 @@ class TestBbox3D:
         batched_bbox = torch.stack([_create_tensor_box(), _create_tensor_box()])
         assert Boxes3D(batched_bbox)
 
-    def test_boxes_shape(self, device, dtype):
+    def test_get_boxes_shape(self, device, dtype):
         box = Boxes3D(
             torch.tensor(
                 [[[0, 1, 2], [0, 1, 32], [10, 21, 2], [0, 21, 2], [10, 1, 32], [10, 21, 32], [10, 1, 2], [0, 21, 32]]],
@@ -383,11 +412,11 @@ class TestBbox3D:
         boxes_batch = Boxes3D(t_boxes[None])  # (1, 2, 8, 3)
 
         # Single box
-        d, h, w = box.boxes_shape()
+        d, h, w = box.get_boxes_shape()
         assert (d.item(), h.item(), w.item()) == (30.0, 20.0, 10.0)
 
         # Boxes
-        d, h, w = boxes.boxes_shape()
+        d, h, w = boxes.get_boxes_shape()
         assert h.ndim == 1 and w.ndim == 1
         assert len(d) == 2 and len(h) == 2 and len(w) == 2
         assert (
@@ -397,7 +426,7 @@ class TestBbox3D:
         )
 
         # Box batch
-        d, h, w = boxes_batch.boxes_shape()
+        d, h, w = boxes_batch.get_boxes_shape()
         assert h.ndim == 2 and w.ndim == 2
         assert h.shape == (1, 2) and w.shape == (1, 2)
         assert (
@@ -609,6 +638,18 @@ class TestBbox3D:
         assert batched_masks.shape == expected_batched_masks.shape
         assert_allclose(batched_masks, expected_batched_masks)
 
+    def test_to(self, device, dtype):
+        if device == torch.device('cpu'):
+            pass
+
+        boxes = Boxes3D.from_tensor(torch.as_tensor([[1, 2, 3, 4, 5, 6]], device='cpu', dtype=torch.float32))
+        assert boxes.to(device=device)._boxes.device == device
+        assert boxes.to(dtype=dtype)._boxes.dtype == dtype
+
+        boxes_moved = boxes.to(device, dtype)
+        assert boxes_moved is boxes  # to is an inplace op.
+        assert boxes_moved._boxes.device == device, boxes_moved._boxes.dtype == dtype
+
     def test_gradcheck(self, device, dtype):
         def apply_boxes_method(tensor: torch.Tensor, method: str, **kwargs):
             boxes = Boxes3D(tensor)
@@ -631,7 +672,7 @@ class TestBbox3D:
         assert gradcheck(partial(apply_boxes_method, method='to_tensor'), (t_boxes2,), raise_exception=True)
         assert gradcheck(partial(apply_boxes_method, method='to_tensor'), (t_boxes3,), raise_exception=True)
         assert gradcheck(partial(apply_boxes_method, method='to_tensor'), (t_boxes4,), raise_exception=True)
-        assert gradcheck(partial(apply_boxes_method, method='boxes_shape'), (t_boxes1,), raise_exception=True)
+        assert gradcheck(partial(apply_boxes_method, method='get_boxes_shape'), (t_boxes1,), raise_exception=True)
         assert gradcheck(lambda x: Boxes3D.from_tensor(x)._boxes, (t_boxes_xyzxyz,), raise_exception=True)
         assert gradcheck(
             lambda x: Boxes3D.from_tensor(x, mode='xyzwhd_plus_1')._boxes, (t_boxes_xyzxyz1,), raise_exception=True
@@ -659,6 +700,31 @@ class TestTransformBoxes3D:
 
         transformed_boxes = boxes.transform_boxes(trans_mat)
         assert_allclose(transformed_boxes._boxes, expected_boxes._boxes, atol=1e-4, rtol=1e-4)
+        # inplace check
+        assert transformed_boxes is not boxes
+
+    def test_transform_boxes_(self, device, dtype):
+        # Define boxes in XYZXYZ format for simplicity.
+        boxes_xyzxyz = torch.tensor(
+            [[139.2640, 103.0150, 283.162, 397.3120, 410.5225, 453.185]], device=device, dtype=dtype
+        )
+        expected_boxes_xyzxyz = torch.tensor(
+            [[372.7360, 103.0150, 567.324, 114.6880, 410.5225, 907.37]], device=device, dtype=dtype
+        )
+
+        boxes = Boxes3D.from_tensor(boxes_xyzxyz)
+        expected_boxes = Boxes3D.from_tensor(expected_boxes_xyzxyz)
+
+        trans_mat = torch.tensor(
+            [[[-1.0, 0.0, 0.0, 512.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 2.0, 1.0], [0.0, 0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=dtype,
+        )
+
+        transformed_boxes = boxes.transform_boxes_(trans_mat)
+        assert_allclose(transformed_boxes._boxes, expected_boxes._boxes, atol=1e-4, rtol=1e-4)
+        # inplace check
+        assert transformed_boxes is boxes
 
     def test_transform_multiple_boxes(self, device, dtype):
         # Define boxes in XYZXYZ format for simplicity.

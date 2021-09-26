@@ -1,8 +1,12 @@
-from typing import Tuple
+from typing import Optional, Tuple
 
 import torch
 
 import kornia
+
+
+def _is_floating_point_dtype(dtype: torch.dtype):
+    return dtype in (torch.float16, torch.float32, torch.float64, torch.bfloat16, torch.half)
 
 
 def _transform_boxes(boxes: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
@@ -89,7 +93,7 @@ class Boxes:
             else:
                 quadrilaterals = quadrilaterals.float()
 
-        if quadrilaterals.numel() == 0:
+        if len(quadrilaterals.shape) == 0:
             # Use reshape, so we don't end up creating a new tensor that does not depend on
             # the inputs (and consequently confuses jit)
             quadrilaterals = quadrilaterals.reshape((-1, 4))
@@ -99,7 +103,7 @@ class Boxes:
 
         self._boxes = quadrilaterals
 
-    def boxes_shape(self) -> Tuple[torch.Tensor, torch.Tensor]:
+    def get_boxes_shape(self) -> Tuple[torch.Tensor, torch.Tensor]:
         r"""Compute bounding boxes heights and widths.
 
         Returns:
@@ -119,7 +123,7 @@ class Boxes:
             ...     [1., 2.],
             ... ]]])  # 1x2x4x2
             >>> boxes = Boxes.from_tensor(boxes_xyxy)
-            >>> boxes.boxes_shape()
+            >>> boxes.get_boxes_shape()
             (tensor([[1., 1.]]), tensor([[1., 2.]]))
         """
         boxes_xywh = self.to_tensor(mode='xywh')
@@ -173,7 +177,7 @@ class Boxes:
         quadrilaterals = quadrilaterals if batched else quadrilaterals.squeeze(0)
         # Due to some torch.jit.script bug (at least <= 1.9), you need to pass all arguments to __init__ when
         # constructing the class from inside of a method.
-        return Boxes(quadrilaterals, False)
+        return cls(quadrilaterals, False)
 
     def to_tensor(self, mode: str = "xyxy") -> torch.Tensor:
         r"""Convert 2D bounding boxes in kornia format to the format specified by ``mode``.
@@ -278,11 +282,12 @@ class Boxes:
 
         return mask
 
-    def transform_boxes(self, M: torch.Tensor) -> "Boxes":
+    def transform_boxes(self, M: torch.Tensor, inplace: bool = False) -> "Boxes":
         r"""Function that applies a transformation matrix to the boxes.
 
         Args:
             M: The transformation matrix to be applied, shape of :math:`(3, 3)` or :math:`(B, 3, 3)`.
+            inplace: do transform in-place and return self.
         Returns:
             The transformed boxes.
         """
@@ -291,7 +296,16 @@ class Boxes:
 
         # Due to some torch.jit.script bug (at least <= 1.9), you need to pass all arguments to __init__ when
         # constructing the class from inside of a method.
-        return Boxes(_transform_boxes(self._boxes, M), False)
+        transformed_boxes = _transform_boxes(self._boxes, M)
+        if inplace:
+            self._boxes = transformed_boxes
+            return self
+        else:
+            return Boxes(transformed_boxes, False)
+
+    def transform_boxes_(self, M: torch.Tensor) -> "Boxes":
+        """Inplace version of `Boxes.transform_boxes`"""
+        return self.transform_boxes(M, inplace=True)
 
     @property
     def _is_batch(self) -> bool:
@@ -305,17 +319,25 @@ class Boxes:
     def dtype(self) -> torch.dtype:
         return self._boxes.dtype
 
+    def to(self, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> "Boxes":
+        """Like `torch.nn.Module.to()` method."""
+        # In torchscript, dtype is a int and not a class. https://github.com/pytorch/pytorch/issues/51941
+        if dtype is not None and not _is_floating_point_dtype(dtype):
+            raise ValueError("Boxes must be in floating point")
+        self._boxes = self._boxes.to(device=device, dtype=dtype)
+        return self
+
 
 @torch.jit.script
 class Boxes3D:
     def __init__(self, hexahedrons: torch.Tensor, raise_if_not_floating_point: bool = True):
         if not hexahedrons.is_floating_point():
             if raise_if_not_floating_point:
-                raise ValueError(f"Coordinates must be in floating point. Got {hexahedrons.dtype}")
+                raise ValueError(f"Coordinates must be in floating point. Got {hexahedrons.dtype}.")
             else:
                 hexahedrons = hexahedrons.float()
 
-        if hexahedrons.numel() == 0:
+        if len(hexahedrons.shape) == 0:
             # Use reshape, so we don't end up creating a new tensor that does not depend on
             # the inputs (and consequently confuses jit)
             hexahedrons = hexahedrons.reshape((-1, 6))
@@ -325,7 +347,7 @@ class Boxes3D:
 
         self._boxes = hexahedrons
 
-    def boxes_shape(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def get_boxes_shape(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         r"""Auto-infer the output sizes for the given 3D boxes.
 
         Returns:
@@ -351,7 +373,7 @@ class Boxes3D:
             ...         [43, 54, 65],
             ...         [ 3, 54, 65]]]) # 2x8x3
             >>> boxes3d = Boxes3D.from_tensor(boxes_xyzxyz)
-            >>> boxes3d.boxes_shape()
+            >>> boxes3d.get_boxes_shape()
             (tensor([30, 60]), tensor([20, 50]), tensor([10, 40]))
         """
         boxes_xyzwhd = self.to_tensor(mode='xyzwhd')
@@ -409,7 +431,7 @@ class Boxes3D:
         hexahedrons = hexahedrons if batched else hexahedrons.squeeze(0)
         # Due to some torch.jit.script bug (at least <= 1.9), you need to pass all arguments to __init__ when
         # constructing the class from inside of a method.
-        return Boxes3D(hexahedrons, raise_if_not_floating_point=False)
+        return cls(hexahedrons, raise_if_not_floating_point=False)
 
     def to_tensor(self, mode: str = "xyzxyz") -> torch.Tensor:
         r"""Convert 3D bounding boxes in kornia format according to the format specified by ``mode``.
@@ -556,12 +578,13 @@ class Boxes3D:
 
         return mask
 
-    def transform_boxes(self, M: torch.Tensor) -> "Boxes3D":
+    def transform_boxes(self, M: torch.Tensor, inplace: bool = False) -> "Boxes3D":
         r"""Function that applies a transformation matrix to 3D boxes or a batch of 3D boxes in kornia format.
 
         Args:
             boxes: 3D boxes in kornia format..
             M: The transformation matrix to be applied, shape of :math:`(4, 4)` or :math:`(B, 4, 4)`.
+            inplace: do transform in-place and return self.
         Returns:
             A tensor of shape :math:`(N, 8, 3)` or :math:`(B, N, 8, 3)` with the transformed 3D boxes in kornia format.
         """
@@ -570,7 +593,16 @@ class Boxes3D:
 
         # Due to some torch.jit.script bug (at least <= 1.9), you need to pass all arguments to __init__ when
         # constructing the class from inside of a method.
-        return Boxes3D(_transform_boxes(self._boxes, M), False)
+        transformed_boxes = _transform_boxes(self._boxes, M)
+        if inplace:
+            self._boxes = transformed_boxes
+            return self
+        else:
+            return Boxes3D(transformed_boxes, False)
+
+    def transform_boxes_(self, M: torch.Tensor) -> "Boxes3D":
+        """Inplace version of `Boxes3D.transform_boxes`"""
+        return self.transform_boxes(M, inplace=True)
 
     @property
     def _is_batch(self) -> bool:
@@ -583,3 +615,11 @@ class Boxes3D:
     @property
     def dtype(self) -> torch.dtype:
         return self._boxes.dtype
+
+    def to(self, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> "Boxes3D":
+        """Like `torch.nn.Module.to()` method."""
+        # In torchscript, dtype is a int and not a class. https://github.com/pytorch/pytorch/issues/51941
+        if dtype is not None and not _is_floating_point_dtype(dtype):
+            raise ValueError("Boxes must be in floating point")
+        self._boxes = self._boxes.to(device=device, dtype=dtype)
+        return self
