@@ -109,7 +109,7 @@ At this point you might think - *Is this API generic enough ?*
 The :py:class:`~kornia.x.Trainer` internals are clearly defined such in a way so that e.g you can
 subclass and just override the :py:meth:`~kornia.x.Trainer.evaluate` method and adjust
 according to your needs. We provide predefined classes for generic problems such as
-:py:class:`~kornia.x.ImageClassifierTrainer`.
+:py:class:`~kornia.x.ImageClassifierTrainer`, :py:class:`~kornia.x.SemanticSegmentationTrainer`.
 
 .. note::
 	More trainers will come as soon as we include more models.
@@ -161,6 +161,10 @@ You can easily customize by creating your own class, or even through ``callbacks
 
     # create the trainer and pass the evaluate method as follows
     trainer = K.train.Trainer(..., callbacks={"fit", my_fit})
+
+.. note::
+  The following hooks are available to override: ``preprocess``, ``augmentations``, ``evaluate``, ``fit``, 
+  ``checkpoint``, ``on_epoch_end``, ``on_before_model``
 
 
 Preprocess and augmentations

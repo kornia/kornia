@@ -14,7 +14,7 @@ class ImageClassifierTrainer(Trainer):
 
     .. seealso::
         Learn how to use this class in the following
-        `example <https://github.com/kornia/kornia/master/examples/train/train_classifier.py>`_.
+        `example <https://github.com/kornia/kornia/blob/master/examples/train/image_classifier/>`__.
     """
     @torch.no_grad()
     def evaluate(self) -> dict:
@@ -48,6 +48,15 @@ class ImageClassifierTrainer(Trainer):
 
 
 class SemanticSegmentationTrainer(Trainer):
+    """Module to be used for Semantic segmentation purposes.
+
+    The module subclasses :py:class:`~kornia.x.Trainer` and overrides the
+    :py:meth:`~kornia.x.Trainer.evaluate` function implementing IoU :py:meth:`~kornia.utils.mean_iou`.
+
+    .. seealso::
+        Learn how to use this class in the following
+        `example <https://github.com/kornia/kornia/blob/master/examples/train/semantic_segmentation/>`__.
+    """
     @torch.no_grad()
     def evaluate(self) -> dict:
         self.model.eval()

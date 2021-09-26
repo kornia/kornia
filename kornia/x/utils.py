@@ -3,7 +3,7 @@ from dataclasses import dataclass, field  # type: ignore
 from enum import Enum
 
 import torch.nn as nn
-import yaml  # type: ignore
+# import yaml  # type: ignore
 
 
 class TrainerState(Enum):
@@ -41,6 +41,8 @@ class Lambda(nn.Module):
         fcn: a pointer to any function.
 
     Example:
+        >>> import torch
+        >>> import kornia as K
         >>> fcn = Lambda(lambda x: K.geometry.resize(x, (32, 16)))
         >>> fcn(torch.rand(1, 4, 64, 32)).shape
         torch.Size([1, 4, 32, 16])

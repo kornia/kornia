@@ -5,10 +5,8 @@ import torchvision
 import torchvision.transforms as T
 from hydra.core.config_store import ConfigStore
 from hydra.utils import to_absolute_path
-from torchvision.transforms import transforms
 
 import kornia as K
-from kornia import augmentation
 from kornia.x import Configuration, Lambda, ModelCheckpoint, SemanticSegmentationTrainer
 
 cs = ConfigStore.instance()
