@@ -1,6 +1,6 @@
 import torch
 
-from kornia.metrics import accuracy, AverageMeter
+from kornia.metrics import accuracy, mean_iou, AverageMeter
 
 from .trainer import Trainer
 
@@ -72,7 +72,7 @@ class SemanticSegmentationTrainer(Trainer):
             val_loss = self.criterion(out, sample["target"])
 
             # measure accuracy and record loss
-            iou = K.utils.mean_iou(out.argmax(1), sample["target"], out.shape[1]).mean()
+            iou = mean_iou(out.argmax(1), sample["target"], out.shape[1]).mean()
             batch_size: int = sample["input"].shape[0]
             stats['losses'].update(val_loss.item(), batch_size)
             stats['iou'].update(iou, batch_size)

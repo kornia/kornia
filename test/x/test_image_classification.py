@@ -5,10 +5,7 @@ from torch.utils.data import Dataset
 
 from kornia.contrib import ClassificationHead, VisionTransformer
 
-from kornia.metrics import AverageMeter
-from kornia.x import Configuration, EarlyStopping, ImageClassifierTrainer, ModelCheckpoint
-from kornia.x.utils import TrainerState
-
+from kornia.x import Configuration, ImageClassifierTrainer
 
 
 class DummyDatasetClassification(Dataset):
