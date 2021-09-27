@@ -1,8 +1,7 @@
 import torch
 
-import kornia as K
+from kornia.metrics import accuracy, AverageMeter
 
-from .metrics import accuracy, AverageMeter
 from .trainer import Trainer
 
 
