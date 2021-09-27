@@ -12,6 +12,7 @@ Domain trainers
 ---------------
 
 .. autoclass:: ImageClassifierTrainer
+.. autoclass:: SemanticSegmentationTrainer
 
 
 Callbacks
