@@ -1,4 +1,5 @@
 import hydra
+from matplotlib.pyplot import figure
 import torch
 import torch.nn as nn
 import torchvision
@@ -66,17 +67,31 @@ def my_app(config: Configuration) -> None:
         data_keys=['input', 'mask']
     )
 
-    def preprocess(sample: dict) -> dict:
+    def preprocess(self, sample: dict) -> dict:
         target = sample["target"].argmax(1).unsqueeze(1).float()
         return {"input": sample["input"], "target": target}
 
-    def augmentations(sample: dict) -> dict:
+    def augmentations(self, sample: dict) -> dict:
         x, y = _augmentations(sample["input"], sample["target"])
+        # NOTE: use matplotlib to visualise before/after samples
         return {"input": x, "target": y}
 
-    def on_before_model(sample: dict) -> dict:
+    def on_before_model(self, sample: dict) -> dict:
         target = sample["target"].squeeze(1).long()
         return {"input": sample["input"], "target": target}
+
+    '''def on_after_model(self, output: torch.Tensor, sample: dict):
+        import matplotlib.pyplot as plt
+        # image
+        plt.figure()
+        plt.imshow(K.utils.tensor_to_image(torchvision.utils.make_grid(sample["input"].cpu())))
+        # labels
+        plt.figure()
+        plt.imshow(K.utils.tensor_to_image(torchvision.utils.make_grid(sample["target"].unsqueeze(1).cpu())))
+        # labels predicted
+        plt.figure()
+        plt.imshow(K.utils.tensor_to_image(torchvision.utils.make_grid(output.argmax(1).unsqueeze(1).cpu())))
+        plt.show()'''
 
     model_checkpoint = ModelCheckpoint(
         filepath="./outputs", monitor="iou",
@@ -88,7 +103,8 @@ def my_app(config: Configuration) -> None:
             "preprocess": preprocess,
             "augmentations": augmentations,
             "on_before_model": on_before_model,
-            "checkpoint": model_checkpoint,
+            # "on_after_model": on_after_model,
+            "on_checkpoint": model_checkpoint,
         }
     )
     trainer.fit()

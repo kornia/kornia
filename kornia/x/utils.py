@@ -8,8 +8,10 @@ import torch.nn as nn
 
 
 class TrainerState(Enum):
-    TRAINING = 0
-    TERMINATE = 1
+    STARTING = 0
+    TRAINING = 1
+    VALIDATE = 2
+    TERMINATE = 3
 
 
 # NOTE: this class needs to be redefined according to the needed parameters.

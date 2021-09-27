@@ -57,7 +57,7 @@ def my_app(config: Configuration) -> None:
         ),
     )
 
-    def augmentations(sample: dict) -> dict:
+    def augmentations(self, sample: dict) -> dict:
         out = _augmentations(sample["input"])
         return {"input": out, "target": sample["target"]}
 
@@ -68,7 +68,7 @@ def my_app(config: Configuration) -> None:
     trainer = ImageClassifierTrainer(
         model, train_dataloader, valid_daloader, criterion, optimizer, scheduler, config,
         callbacks={
-            "augmentations": augmentations, "checkpoint": model_checkpoint,
+            "augmentations": augmentations, "on_checkpoint": model_checkpoint,
         }
     )
     trainer.fit()

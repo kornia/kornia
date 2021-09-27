@@ -68,6 +68,7 @@ class SemanticSegmentationTrainer(Trainer):
             sample = self.on_before_model(sample)
             # Forward
             out = self.model(sample["input"])
+            self.on_after_model(out, sample)
             # Loss computation
             val_loss = self.criterion(out, sample["target"])
 

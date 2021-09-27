@@ -16,7 +16,18 @@ from .metrics import AverageMeter
 from .utils import Configuration, TrainerState
 
 callbacks_whitelist = [
-    "preprocess", "augmentations", "evaluate", "fit", "checkpoint", "on_epoch_end", "on_before_model"
+    # high level functions
+    "preprocess",
+    "augmentations",
+    "evaluate",
+    "fit",
+    "fit_epoch",
+    # events (by calling order)
+    "on_epoch_start",
+    "on_before_model",
+    "on_after_model",
+    "on_checkpoint",
+    "on_epoch_end",
 ]
 
 
@@ -76,10 +87,12 @@ class Trainer:
         for fn_name, fn in callbacks.items():
             if fn_name not in callbacks_whitelist:
                 raise ValueError(f"Not supported: {fn_name}.")
-            setattr(self, fn_name, fn)
+            setattr(Trainer, fn_name, fn)
 
         # hyper-params
         self.num_epochs = config.num_epochs
+
+        self.state = TrainerState.STARTING
 
         self._logger = logging.getLogger('train')
 
@@ -103,6 +116,7 @@ class Trainer:
             sample = self.on_before_model(sample)
             # make the actual inference
             output = self.model(sample["input"])
+            self.on_after_model(output, sample)  # for debugging purposes
             loss = self.criterion(output, sample["target"])
             self.backward(loss)
             self.optimizer.step()
@@ -122,16 +136,18 @@ class Trainer:
         for epoch in range(self.num_epochs):
             # call internally the training loop
             # NOTE: override to customize your evaluation routine
+            self.state = TrainerState.TRAINING
             self.fit_epoch(epoch)
 
             # call internally the evaluation loop
             # NOTE: override to customize your evaluation routine
+            self.state = TrainerState.VALIDATE
             valid_stats = self.evaluate()
 
-            self.checkpoint(self.model, epoch, valid_stats)
+            self.on_checkpoint(self.model, epoch, valid_stats)
 
-            state = self.on_epoch_end(self.model, epoch, valid_stats)
-            if state == TrainerState.TERMINATE:
+            self.on_epoch_end()
+            if self.state == TrainerState.TERMINATE:
                 break
 
             # END OF THE EPOCH
@@ -139,7 +155,12 @@ class Trainer:
 
         ...
 
+    # events stubs
+
     def evaluate(self):
+        ...
+
+    def on_epoch_start(self, *args, **kwargs):
         ...
 
     def preprocess(self, x: dict) -> dict:
@@ -151,7 +172,10 @@ class Trainer:
     def on_before_model(self, x: dict) -> dict:
         return x
 
-    def checkpoint(self, *args, **kwargs):
+    def on_after_model(self, output: torch.Tensor, sample: dict):
+        ...
+
+    def on_checkpoint(self, *args, **kwargs):
         ...
 
     def on_epoch_end(self, *args, **kwargs):
