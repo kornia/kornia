@@ -2,11 +2,11 @@ import hydra
 import torch
 import torch.nn as nn
 import torchvision
-import torchvision.transforms as T
 from hydra.core.config_store import ConfigStore
 from hydra.utils import to_absolute_path
 from matplotlib.pyplot import figure
 
+import numpy as np
 import kornia as K
 from kornia.x import Configuration, Lambda, ModelCheckpoint, SemanticSegmentationTrainer
 
@@ -25,7 +25,8 @@ def my_app(config: Configuration) -> None:
 
         @torch.no_grad()
         def forward(self, x, y):
-            x, y = T.ToTensor()(x), torch.from_numpy(y)
+            x = K.utils.image_to_tensor(np.array(x))
+            x, y = x.float() / 255., torch.from_numpy(y)
             return self.resize(x), self.resize(y)
 
     # make image size homogeneous
