@@ -4,8 +4,8 @@ import torch.nn as nn
 from torch.utils.data import Dataset
 
 from kornia.contrib import ClassificationHead, VisionTransformer
-from kornia.x import Configuration, EarlyStopping, ImageClassifierTrainer, ModelCheckpoint
 from kornia.metrics import AverageMeter
+from kornia.x import Configuration, EarlyStopping, ImageClassifierTrainer, ModelCheckpoint
 from kornia.x.utils import TrainerState
 
 

@@ -11,7 +11,19 @@ except ImportError:
     pass
 
 from kornia import (
-    augmentation, color, contrib, enhance, feature, filters, geometry, jit, losses, metrics, morphology, utils, x
+    augmentation,
+    color,
+    contrib,
+    enhance,
+    feature,
+    filters,
+    geometry,
+    jit,
+    losses,
+    metrics,
+    morphology,
+    utils,
+    x,
 )
 from kornia.color import (
     bgr_to_grayscale,

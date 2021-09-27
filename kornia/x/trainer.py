@@ -13,6 +13,7 @@ except ImportError:
     Accelerator = None
 
 from kornia.metrics import AverageMeter
+
 from .utils import Configuration, TrainerState
 
 callbacks_whitelist = [
