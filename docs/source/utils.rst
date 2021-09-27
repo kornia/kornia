@@ -22,14 +22,8 @@ Pointcloud
 .. autofunction:: save_pointcloud_ply
 .. autofunction:: load_pointcloud_ply
 
-Metrics
--------
-
-.. autofunction:: confusion_matrix
-.. autofunction:: mean_iou
-.. autofunction:: one_hot
-
 Memory
 -------
 
+.. autofunction:: one_hot
 .. autofunction:: batched_forward

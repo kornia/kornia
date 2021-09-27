@@ -81,6 +81,7 @@ Join the community
    filters
    geometry
    losses
+   metrics
    morphology
    utils
    x
