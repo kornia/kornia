@@ -1,6 +1,6 @@
 import torch
 
-from kornia.metrics import accuracy, mean_iou, AverageMeter
+from kornia.metrics import accuracy, AverageMeter, mean_iou
 
 from .trainer import Trainer
 
