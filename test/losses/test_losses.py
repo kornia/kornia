@@ -610,12 +610,6 @@ class TestPSNRLoss:
         with pytest.raises(Exception):
             criterion(torch.rand(2, 3, 3, 2), torch.rand(2, 3, 3))
 
-    def test_metric(self, device, dtype):
-        input = torch.ones(1, device=device, dtype=dtype)
-        expected = torch.tensor(20.0, device=device, dtype=dtype)
-        actual = kornia.losses.psnr(input, 1.2 * input, 2.0)
-        assert_close(actual, expected)
-
     def test_loss(self, device, dtype):
         input = torch.ones(1, device=device, dtype=dtype)
         expected = torch.tensor(-20.0, device=device, dtype=dtype)

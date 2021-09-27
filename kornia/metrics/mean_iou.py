@@ -1,8 +1,6 @@
-from typing import Optional
-
 import torch
 
-from kornia.utils.metrics.confusion_matrix import confusion_matrix
+from .confusion_matrix import confusion_matrix
 
 
 def mean_iou(input: torch.Tensor, target: torch.Tensor, num_classes: int, eps: float = 1e-6) -> torch.Tensor:
