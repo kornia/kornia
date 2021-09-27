@@ -107,7 +107,7 @@ class clean(distutils.command.clean.clean):
                         shutil.rmtree(filename, ignore_errors=True)
 
         # It's an old-style class in Python 2.7...
-        distutils.command.clean.clean.run(self)
+        super().run()
 
     # remove compiled and temporary files
     subprocess.call(['rm -rf dist/ build/ kornia.egg*'], shell=True)
