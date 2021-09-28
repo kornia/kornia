@@ -53,9 +53,11 @@ Join the community
    :hidden:
 
    applications/intro
-   applications/image_registration
    applications/image_augmentations
+   applications/image_classification
    applications/image_matching
+   applications/image_registration
+   applications/semantic_segmentation
    applications/video_deblur
 
 .. toctree::

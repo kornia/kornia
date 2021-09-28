@@ -1,3 +1,5 @@
+.. _training_api:
+
 Training API (experimental)
 ===========================
 
@@ -107,7 +109,7 @@ At this point you might think - *Is this API generic enough ?*
 	Of course not ! What is next ? Let's have fun and **customize**.
 
 The :py:class:`~kornia.x.Trainer` internals are clearly defined such in a way so that e.g you can
-subclass and just override the :py:meth:`~kornia.x.Trainer.evaluate` method and adjust
+subclass and just override the :py:func:`~kornia.x.Trainer.evaluate` method and adjust
 according to your needs. We provide predefined classes for generic problems such as
 :py:class:`~kornia.x.ImageClassifierTrainer`, :py:class:`~kornia.x.SemanticSegmentationTrainer`.
 
@@ -139,7 +141,7 @@ You can easily customize by creating your own class, or even through ``callbacks
 
 **Still not convinced ?**
 
-	You can even override the whole :py:class:`~kornia.x.ImageClassifierTrainer.fit()`
+	You can even override the whole :py:func:`~kornia.x.ImageClassifierTrainer.fit()`
 	method and implement your custom for loops and the trainer will setup for you using the Accelerator all
 	the data to the device and the rest of the story is just PyTorch :)
 
@@ -164,7 +166,7 @@ You can easily customize by creating your own class, or even through ``callbacks
 
 .. note::
   The following hooks are available to override: ``preprocess``, ``augmentations``, ``evaluate``, ``fit``,
-  ``checkpoint``, ``on_epoch_end``, ``on_before_model``
+  ``on_checkpoint``, ``on_epoch_end``, ``on_before_model``
 
 
 Preprocess and augmentations
@@ -214,7 +216,7 @@ as follows passing as ``callbacks`` the classes :py:class:`~kornia.x.ModelCheckp
 	early_stop = EarlyStopping(monitor="top5")
 
 	trainer = K.train.ImageClassifierTrainer(...,
-	  callbacks={"checkpoint", model_checkpoint, "terminate": early_stop})
+	  callbacks={"on_checkpoint", model_checkpoint, "on_epoch_end": early_stop})
 
 Hyperparameter sweeps
 ---------------------
