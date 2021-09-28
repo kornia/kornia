@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 
-def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
+def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-10) -> torch.Tensor:
     r"""Convert an image from RGB to HSV.
 
     .. image:: _static/img/rgb_to_hsv.png
@@ -28,6 +28,25 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
         >>> output = rgb_to_hsv(input)  # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
+
+    if len(image.shape) < 3 or image.shape[-3] != 3:
+        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
+
+    image = image * 255.  # hack because we assume [0/1] input
+    r, g, b = image[..., 0, :, :], image[..., 1, :, :], image[..., 2, :, :]
+    max_rgb, argmax_rgb = image.max(-3)
+    min_rgb, argmin_rgb = image.min(-3)
+    max_min = max_rgb - min_rgb + eps
+    h1 = 60.0 * (g - r) / max_min + 60.0
+    h2 = 60.0 * (b - g) / max_min + 180.0
+    h3 = 60.0 * (r - b) / max_min + 300.0
+    h = torch.stack((h2, h3, h1), dim=-3).gather(dim=-3, index=argmin_rgb.unsqueeze(-3)).squeeze(-3)
+    h = h * (2. * math.pi / 360)  # hack because we return 0/2pi output
+    s = max_min / (max_rgb + eps)
+    v = max_rgb / 255  # hack because we return 0/1
+    return torch.stack((h, s, v), dim=-3)
+    '''if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
@@ -63,7 +82,7 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
 
     h = 2 * math.pi * h
 
-    return torch.stack([h, s, v], dim=-3)
+    return torch.stack([h, s, v], dim=-3)'''
 
 
 def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
@@ -93,7 +112,7 @@ def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     hi: torch.Tensor = torch.floor(h * 6) % 6
     f: torch.Tensor = ((h * 6) % 6) - hi
-    one: torch.Tensor = torch.tensor(1.0).to(image.device)
+    one: torch.Tensor = torch.tensor(1.0, device=image.device, dtype=image.dtype)
     p: torch.Tensor = v * (one - s)
     q: torch.Tensor = v * (one - f * s)
     t: torch.Tensor = v * (one - (one - f) * s)
