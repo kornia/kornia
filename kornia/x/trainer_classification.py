@@ -9,7 +9,8 @@ class ImageClassifierTrainer(Trainer):
     """Module to be used for Image Classification purposes.
 
     The module subclasses :py:class:`~kornia.x.Trainer` and overrides the
-    :py:meth:`~kornia.x.Trainer.evaluate` function implementing a standard accuracy topk@[1, 5].
+    :py:func:`~kornia.x.Trainer.evaluate` function implementing a standard
+    :py:func:`~kornia.metrics.accuracy` topk@[1, 5].
 
     .. seealso::
         Learn how to use this class in the following
@@ -50,7 +51,7 @@ class SemanticSegmentationTrainer(Trainer):
     """Module to be used for Semantic segmentation purposes.
 
     The module subclasses :py:class:`~kornia.x.Trainer` and overrides the
-    :py:meth:`~kornia.x.Trainer.evaluate` function implementing IoU :py:meth:`~kornia.utils.mean_iou`.
+    :py:func:`~kornia.x.Trainer.evaluate` function implementing IoU :py:func:`~kornia.metrics.mean_iou`.
 
     .. seealso::
         Learn how to use this class in the following
