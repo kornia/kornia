@@ -128,7 +128,7 @@ def main():
 
     mod = importlib.import_module("kornia.color")
     color_transforms_list: dict = {
-        "grayscale_to_rgb": ((), 1),
+        "grayscale_to_rgb": ((), 3),
         "rgb_to_bgr": ((), 1),
         "rgb_to_grayscale": ((), 1),
         "rgb_to_hsv": ((), 1),
