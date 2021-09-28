@@ -98,13 +98,11 @@ class TestRgbToHsv(BaseTester):
         expected = torch.zeros_like(data)  # 3x5x5
         assert_close(kornia.color.rgb_to_hsv(data), expected)
 
-    @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_hsv, (img,), raise_exception=True)
 
-    @pytest.mark.jit
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -112,13 +110,24 @@ class TestRgbToHsv(BaseTester):
         op_jit = torch.jit.script(op)
         assert_close(op(img), op_jit(img))
 
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.RgbToHsv().to(device, dtype)
         fcn = kornia.color.rgb_to_hsv
         assert_close(ops(img), fcn(img))
+
+    def test_onnx(self, device, dtype):
+        B, C, H, W = 1, 3, 4, 4
+        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        torch.onnx.export(
+            kornia.color.RgbToHsv(),
+            (img),  # Dummy input for shape
+            "model.onnx",
+            opset_version=12,
+            do_constant_folding=True,
+            verbose=True,
+        )
 
 
 class TestHsvToRgb(BaseTester):
