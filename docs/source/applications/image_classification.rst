@@ -7,7 +7,7 @@ Image Classification
 
 Image Classification is a fundamental task that attempts to comprehend an entire image as a whole.
 The goal is to classify the image by assigning it to a specific label. Typically, Image Classification refers to images
-in which only one object appears and is analyzed. In contrast, object detection involves both classification and 
+in which only one object appears and is analyzed. In contrast, object detection involves both classification and
 localization tasks, and is used to analyze more realistic cases in which multiple objects may exist in an image.
 
 Learn more: `https://paperswithcode.com/task/image-classification <https://paperswithcode.com/task/image-classification>`_
