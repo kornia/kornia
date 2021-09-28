@@ -1,5 +1,7 @@
+.. _kornia_vit:
+
 Vision Transformer (ViT)
-.........................
+........................
 
 .. card::
     :link: https://paperswithcode.com/paper/an-image-is-worth-16x16-words-transformers-1
@@ -34,6 +36,9 @@ One can use the *ViT* in Kornia as follows:
     img = torch.rand(1, 3, 224, 224)
     vit = VisionTransformer(image_size=224, patch_size=16)
     out = vit(img)
+
+Usage
+~~~~~
 
 ``kornia-vit`` does not include any classification head.
 For this reason, we provide an :py:class:`~kornia.contrib.ClassificationHead` which can be easily combined

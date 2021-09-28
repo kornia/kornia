@@ -122,14 +122,15 @@ html_theme_options = {
         "color-sidebar-background": "#3980F5",
         "color-sidebar-background-border": "#3980F5",
         "color-sidebar-caption-text": "white",
-        "color-sidebar-link-text--top-level": "#122A4F",
+        "color-sidebar-link-text--top-level": "white",
         "sidebar-caption-font-size": "normal",
+        "color-sidebar-item-background--hover": " #5dade2",
     },
     "dark_css_variables": {
         "color-sidebar-background": "#1a1c1e",
         "color-sidebar-background-border": "#1a1c1e",
-        "color-sidebar-caption-text": "#81868d",
-        "color-sidebar-link-text--top-level": "#3980F5",
+        "color-sidebar-caption-text": "white",
+        "color-sidebar-link-text--top-level": "white",
     },
 
     # "announcement": """
