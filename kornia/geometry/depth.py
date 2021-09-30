@@ -23,17 +23,19 @@ def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_poin
     """Compute a 3d point per pixel given its depth value and the camera intrinsics.
 
     Args:
-        depth: image tensor containing a depth value per pixel.
-        camera_matrix: tensor containing the camera intrinsics.
+        depth: image tensor containing a depth value per pixel with shape :math:`(B, 1, H, W)`.
+        camera_matrix: tensor containing the camera intrinsics with shape :math:`(B, 3, 3)`.
         normalize_points: whether to normalise the pointcloud. This must be set to `True` when the depth is
           represented as the Euclidean ray length from the camera position.
 
-    Shape:
-        - Input: :math:`(B, 1, H, W)` and :math:`(B, 3, 3)`
-        - Output: :math:`(B, 3, H, W)`
-
     Return:
-        tensor with a 3d point per pixel of the same resolution as the input.
+        tensor with a 3d point per pixel of the same resolution as the input :math:`(B, 3, H, W)`.
+
+    Example:
+        >>> depth = torch.rand(1, 1, 4, 4)
+        >>> K = torch.eye(3)[None]
+        >>> depth_to_3d(depth, K).shape
+        torch.Size([1, 3, 4, 4])
     """
     if not isinstance(depth, torch.Tensor):
         raise TypeError(f"Input depht type is not a torch.Tensor. Got {type(depth)}.")
@@ -68,17 +70,19 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
     """Compute the normal surface per pixel.
 
     Args:
-        depth: image tensor containing a depth value per pixel.
-        camera_matrix: tensor containing the camera intrinsics.
+        depth: image tensor containing a depth value per pixel with shape :math:`(B, 1, H, W)`.
+        camera_matrix: tensor containing the camera intrinsics with shape :math:`(B, 3, 3)`.
         normalize_points: whether to normalise the pointcloud. This must be set to `True` when the depth is
         represented as the Euclidean ray length from the camera position.
 
-    Shape:
-        - Input: :math:`(B, 1, H, W)` and :math:`(B, 3, 3)`
-        - Output: :math:`(B, 3, H, W)`
-
     Return:
-        tensor with a normal surface vector per pixel of the same resolution as the input.
+        tensor with a normal surface vector per pixel of the same resolution as the input :math:`(B, 3, H, W)`.
+
+    Example:
+        >>> depth = torch.rand(1, 1, 4, 4)
+        >>> K = torch.eye(3)[None]
+        >>> depth_to_normals(depth, K).shape
+        torch.Size([1, 3, 4, 4])
     """
     if not isinstance(depth, torch.Tensor):
         raise TypeError(f"Input depht type is not a torch.Tensor. Got {type(depth)}.")

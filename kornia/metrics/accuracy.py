@@ -10,6 +10,12 @@ def accuracy(input: torch.Tensor, target: torch.Tensor, topk=(1,)) -> List[torch
         input: the input tensor with the logits to evaluate.
         target: the tensor containing the ground truth.
         topk: the expected topk ranking.
+
+    Example:
+        >>> logits = torch.tensor([[0, 1, 0]])
+        >>> target = torch.tensor([[1]])
+        >>> accuracy(logits, target)
+        [tensor(100.)]
     """
     maxk = min(max(topk), input.size()[1])
     batch_size = target.size(0)

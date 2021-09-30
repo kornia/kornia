@@ -25,6 +25,14 @@ def confusion_matrix(
     Returns:
         a tensor containing the confusion matrix with shape
         :math:`(B, K, K)` where K is the number of classes.
+
+    Example:
+        >>> logits = torch.tensor([[0, 1, 0]])
+        >>> target = torch.tensor([[0, 1, 0]])
+        >>> confusion_matrix(logits, target, num_classes=3)
+        tensor([[[2., 0., 0.],
+                 [0., 1., 0.],
+                 [0., 0., 0.]]])
     """
     if not torch.is_tensor(input) and input.dtype is not torch.int64:
         raise TypeError("Input input type is not a torch.Tensor with " "torch.int64 dtype. Got {}".format(type(input)))
