@@ -5,6 +5,7 @@ import pytest
 import torch
 
 import kornia
+import numpy
 
 
 def get_test_devices() -> Dict[str, torch.device]:
@@ -85,3 +86,9 @@ def pytest_generate_tests(metafunc):
 def pytest_addoption(parser):
     parser.addoption('--device', action="store", default="cpu")
     parser.addoption('--dtype', action="store", default="float32")
+
+
+@pytest.fixture(autouse=True)
+def add_np(doctest_namespace):
+    doctest_namespace["np"] = numpy
+    doctest_namespace["torch"] = torch

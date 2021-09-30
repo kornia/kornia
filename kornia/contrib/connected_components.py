@@ -11,7 +11,7 @@ def connected_components(input: torch.Tensor, num_iterations: int = 100) -> torc
 
     https://gist.github.com/efirdc/5d8bd66859e574c683a504a4690ae8bc
 
-    .. note::
+    .. warning::
         This is an experimental API subject to changes and optimization improvements.
 
     .. note::

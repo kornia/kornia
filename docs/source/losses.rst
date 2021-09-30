@@ -25,6 +25,12 @@ Distributions
 .. autofunction:: js_div_loss_2d
 .. autofunction:: kl_div_loss_2d
 
+Morphology
+----------
+
+.. autoclass:: HausdorffERLoss
+.. autoclass:: HausdorffERLoss3D
+
 Module
 ------
 
@@ -36,5 +42,3 @@ Module
 .. autoclass:: TotalVariation
 .. autoclass:: PSNRLoss
 .. autoclass:: BinaryFocalLossWithLogits
-.. autoclass:: HausdorffERLoss
-.. autoclass:: HausdorffERLoss3D
