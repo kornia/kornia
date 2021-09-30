@@ -143,17 +143,16 @@ def combine_tensor_patches(
     stride: Tuple[int, int] = (4, 4),
     unpadding: Optional[Tuple[int, int, int, int]] = None,
 ) -> torch.Tensor:
-    """Restore input from patches.
+    r"""Restore input from patches.
 
     Args:
-        patches: patched tensor.
+        patches: patched tensor with shape :math:`(B, N, C, H_{out}, W_{out})`.
         window_size: the size of the sliding window and the output patch size.
         stride: stride of the sliding window.
         unpadding: remove the padding added to both side of the input.
 
-    Shape:
-        - Input: :math:`(B, N, C, H_{out}, W_{out})`
-        - Output: :math:`(B, C, H, W)`
+    Return:
+        The combined patches in an image tensor with shape :math:`(B, C, H, W)`.
 
     Example:
         >>> out = extract_tensor_patches(torch.arange(16).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2))
@@ -202,9 +201,30 @@ def extract_tensor_patches(
     r"""Function that extract patches from tensors and stack them.
 
     See :class:`~kornia.contrib.ExtractTensorPatches` for details.
+
+    Args:
+        input: tensor image where to extract the patches with shape :math:`(B, C, H, W)`.
+        window_size: the size of the sliding window and the output patch size.
+        stride: stride of the sliding window.
+        padding: Zero-padding added to both side of the input.
+
+    Returns:
+        the tensor with the extracted patches with shape :math:`(B, N, C, H_{out}, W_{out})`.
+
+    Examples:
+        >>> input = torch.arange(9.).view(1, 1, 3, 3)
+        >>> patches = extract_tensor_patches(input, (2, 3))
+        >>> input
+        tensor([[[[0., 1., 2.],
+                  [3., 4., 5.],
+                  [6., 7., 8.]]]])
+        >>> patches[:, -1]
+        tensor([[[[3., 4., 5.],
+                  [6., 7., 8.]]]])
     """
     if not torch.is_tensor(input):
         raise TypeError(f"Input input type is not a torch.Tensor. Got {type(input)}")
+
     if not len(input.shape) == 4:
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
 

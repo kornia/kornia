@@ -20,6 +20,19 @@ def image_to_tensor(image: "np.ndarray", keepdim: bool = True) -> torch.Tensor:
     Returns:
         tensor of the form :math:`(B, C, H, W)` if keepdim is ``False``,
             :math:`(C, H, W)` otherwise.
+
+    Example:
+        >>> img = np.ones((3, 3))
+        >>> image_to_tensor(img).shape
+        torch.Size([1, 3, 3])
+
+        >>> img = np.ones((4, 4, 1))
+        >>> image_to_tensor(img).shape
+        torch.Size([1, 4, 4])
+
+        >>> img = np.ones((4, 4, 3))
+        >>> image_to_tensor(img, keepdim=False).shape
+        torch.Size([1, 3, 4, 4])
     """
     if len(image.shape) > 4 or len(image.shape) < 2:
         raise ValueError("Input size must be a two, three or four dimensional array")
@@ -108,9 +121,17 @@ def tensor_to_image(tensor: torch.Tensor, keepdim: bool = False) -> "np.ndarray"
         keepdim: If ``False`` squeeze the input image to match the shape
             :math:`(H, W, C)` or :math:`(H, W)`.
 
-
     Returns:
         image of the form :math:`(H, W)`, :math:`(H, W, C)` or :math:`(B, H, W, C)`.
+
+    Example:
+        >>> img = torch.ones(1, 3, 3)
+        >>> tensor_to_image(img).shape
+        (3, 3)
+
+        >>> img = torch.ones(3, 4, 4)
+        >>> tensor_to_image(img).shape
+        (4, 4, 3)
     """
     if not isinstance(tensor, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
