@@ -14,7 +14,7 @@ except ImportError:
 
 from kornia.metrics import AverageMeter
 
-from .utils import Configuration, TrainerState, StatsTracker
+from .utils import Configuration, StatsTracker, TrainerState
 
 callbacks_whitelist = [
     # high level functions
@@ -195,8 +195,7 @@ class Trainer:
         return x
 
     def compute_metrics(self, *args: torch.Tensor) -> Dict[str, float]:
-        """Compute metrics during the evaluation.
-        """
+        """Compute metrics during the evaluation."""
         return {}
 
     def compute_loss(self, *args: torch.Tensor) -> torch.Tensor:

@@ -1,4 +1,4 @@
-from typing import Dict, Callable, Optional
+from typing import Callable, Dict, Optional
 
 import torch
 import torch.nn as nn
