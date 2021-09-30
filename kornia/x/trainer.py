@@ -14,7 +14,7 @@ except ImportError:
 
 from kornia.metrics import AverageMeter
 
-from .utils import Configuration, TrainerState
+from .utils import Configuration, TrainerState, StatsTracker
 
 callbacks_whitelist = [
     # high level functions
@@ -118,7 +118,7 @@ class Trainer:
             # make the actual inference
             output = self.model(sample["input"])
             self.on_after_model(output, sample)  # for debugging purposes
-            loss = self.criterion(output, sample["target"])
+            loss = self.compute_loss(output, sample["target"])
             self.backward(loss)
             self.optimizer.step()
 
@@ -158,8 +158,32 @@ class Trainer:
 
     # events stubs
 
-    def evaluate(self):
-        ...
+    @torch.no_grad()
+    def evaluate(self) -> dict:
+        self.model.eval()
+        stats = StatsTracker()
+        for sample_id, sample in enumerate(self.valid_dataloader):
+            sample = {"input": sample[0], "target": sample[1]}  # new dataset api will come like this
+            # perform the preprocess and augmentations in batch
+            sample = self.preprocess(sample)
+            sample = self.on_before_model(sample)
+            # Forward
+            out = self.model(sample["input"])
+            self.on_after_model(out, sample)
+            # Loss computation
+            val_loss = self.criterion(out, sample["target"])
+
+            # measure accuracy and record loss
+            batch_size: int = sample["input"].shape[0]
+            stats.update('losses', val_loss.item(), batch_size)
+            stats.update_from_dict(self.compute_metrics(out, sample['target']), batch_size)
+
+            if sample_id % 10 == 0:
+                self._logger.info(
+                    f"Test: {sample_id}/{len(self.valid_dataloader)} {stats}"
+                )
+
+        return stats.as_dict()
 
     def on_epoch_start(self, *args, **kwargs):
         ...
@@ -169,6 +193,14 @@ class Trainer:
 
     def augmentations(self, x: dict) -> dict:
         return x
+
+    def compute_metrics(self, *args: torch.Tensor) -> Dict[str, float]:
+        """Compute metrics during the evaluation.
+        """
+        return {}
+
+    def compute_loss(self, *args: torch.Tensor) -> torch.Tensor:
+        return self.criterion(*args)
 
     def on_before_model(self, x: dict) -> dict:
         return x
