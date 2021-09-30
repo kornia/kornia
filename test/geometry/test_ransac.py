@@ -6,11 +6,8 @@ from torch.autograd import gradcheck
 
 import kornia
 import kornia.testing as utils
-from kornia.geometry import (
-    RANSAC,
-)
+from kornia.geometry import RANSAC
 from kornia.testing import assert_close
-
 
 
 class TestRANSACHomography:

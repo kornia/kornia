@@ -1,16 +1,18 @@
-"""Module containing RANSAC modules"""
-from typing import Union
+"""Module containing RANSAC modules."""
 import math
+from typing import Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from kornia.geometry import (
+    find_fundamental,
+    find_homography_dlt,
+    find_homography_dlt_iterated,
+    symmetrical_epipolar_distance,
+)
 from kornia.geometry.homography import symmetric_transfer_error
-from kornia.geometry import symmetrical_epipolar_distance
-from kornia.geometry import (find_fundamental,
-                             find_homography_dlt,
-                             find_homography_dlt_iterated)
 
 __all__ = ["RANSAC"]
 
@@ -50,8 +52,11 @@ class RANSAC(nn.Module):
     def sample(self, sample_size: int,
                pop_size: int,
                batch_size: int, device=torch.device('cpu')) -> torch.Tensor:
-        '''Minimal sampler, but unlike traditional RANSAC we sample in batches
-         to get benefit of the parallel processing, esp. on GPU'''
+        """Minimal sampler, but unlike traditional RANSAC we sample in batches to get benefit of the parallel
+        processing, esp.
+
+        on GPU
+        """
         out: torch.Tensor = torch.empty(batch_size, sample_size)
         # for loop, until https://github.com/pytorch/pytorch/issues/42502 accepted
         for i in range(batch_size):
@@ -60,8 +65,8 @@ class RANSAC(nn.Module):
 
     @staticmethod
     def max_samples_by_conf(n_inl:int, num_tc:int, sample_size:int, conf: float):
-        '''Formula to update max_iter in order to stop iterations earlier
-        https://en.wikipedia.org/wiki/Random_sample_consensus'''
+        """Formula to update max_iter in order to stop iterations earlier
+        https://en.wikipedia.org/wiki/Random_sample_consensus."""
         if n_inl  == num_tc:
             return 1
         return math.log(1.- conf) / math.log(1. - math.pow(n_inl/num_tc, sample_size))
@@ -94,7 +99,7 @@ class RANSAC(nn.Module):
         return model_best, inliers_best, best_model_score
 
     def remove_bad_samples(self, kp1, kp2):
-        ''''''
+        """"""
         # ToDo: add (model-specific) verification of the samples,
         # E.g. contraints on not to be a degenerate sample
         return kp1, kp2
