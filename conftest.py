@@ -1,11 +1,11 @@
 from itertools import product
 from typing import Dict
 
+import numpy
 import pytest
 import torch
 
 import kornia
-import numpy
 
 
 def get_test_devices() -> Dict[str, torch.device]:
