@@ -123,7 +123,7 @@ class RANSAC(nn.Module):
     def remove_bad_samples(self, kp1: torch.Tensor, kp2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """"""
         # ToDo: add (model-specific) verification of the samples,
-        # E.g. contraints on not to be a degenerate sample
+        # E.g. constraints on not to be a degenerate sample
         return kp1, kp2
 
     def remove_bad_models(self, models: torch.Tensor) -> torch.Tensor:
