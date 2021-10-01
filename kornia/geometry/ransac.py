@@ -76,10 +76,8 @@ class RANSAC(nn.Module):
 
         on GPU
         """
-        out: torch.Tensor = torch.empty(batch_size, sample_size, device=device, dtype=torch.int32)
-        # for loop, until https://github.com/pytorch/pytorch/issues/42502 accepted
-        for i in range(batch_size):
-            out[i] = torch.randperm(pop_size, dtype=torch.int32, device=device)[:sample_size]
+        rand = torch.rand(batch_size, pop_size, device=device)
+        _, out = rand.topk(k=sample_size, dim=1)
         return out
 
     @staticmethod
@@ -186,7 +184,7 @@ class RANSAC(nn.Module):
         inliers_best_total: torch.Tensor = torch.zeros(num_tc, 1, device=kp1.device, dtype=torch.bool)
         for i in range(self.max_iter):
             # Sample minimal samples in batch to estimate models
-            idxs = self.sample(self.minimal_sample_size, num_tc, self.batch_size, kp1.device).long()
+            idxs = self.sample(self.minimal_sample_size, num_tc, self.batch_size, kp1.device)
             kp1_sampled = kp1[idxs]
             kp2_sampled = kp2[idxs]
 
