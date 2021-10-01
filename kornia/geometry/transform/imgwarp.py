@@ -383,6 +383,9 @@ def get_rotation_matrix2d(center: torch.Tensor, angle: torch.Tensor, scale: torc
     shift_m = eye_like(3, center)
     shift_m[:, :2, 2] = center
 
+    shift_m_inv = eye_like(3, center)
+    shift_m_inv[:, :2, 2] = -center
+
     scale_m = eye_like(3, center)
     scale_m[:, 0, 0] *= scale[:, 0]
     scale_m[:, 1, 1] *= scale[:, 1]
@@ -390,7 +393,7 @@ def get_rotation_matrix2d(center: torch.Tensor, angle: torch.Tensor, scale: torc
     rotat_m = eye_like(3, center)
     rotat_m[:, :2, :2] = angle_to_rotation_matrix(angle)
 
-    affine_m = shift_m @ rotat_m @ scale_m @ shift_m.inverse()
+    affine_m = shift_m @ rotat_m @ scale_m @ shift_m_inv
     return affine_m[:, :2, :]  # Bx2x3
 
 
