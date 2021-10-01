@@ -41,6 +41,19 @@ class TestRANSACHomography:
             rtol=1e-3,
             atol=1e-3)
 
+    @pytest.mark.jit
+    @pytest.mark.skip(reason="find_homography_dlt is using try/except block")
+    def test_jit(self, device, dtype):
+        points1 = torch.rand(4, 2, device=device, dtype=dtype)
+        points2 = torch.rand(4, 2, device=device, dtype=dtype)
+        model = RANSAC('homography').to(device=device, dtype=dtype)
+        model_jit = torch.jit.script(RANSAC('homography').to(device=device,
+                                                             dtype=dtype))
+        assert_close(model(points1, points2)[0],
+                     model_jit(points1, points2)[0],
+                     rtol=1e-4,
+                     atol=1e-4)
+
 
 class TestRANSACFundamental:
     def test_smoke(self, device, dtype):
@@ -106,3 +119,24 @@ class TestRANSACFundamental:
                         inl_th=1.0).to(device=device, dtype=dtype)
         F_mat, inliers = ransac(points1[0], points2[0])
         assert_close(F_mat, Fm_expected[0], rtol=1e-3, atol=1e-3)
+
+    @pytest.mark.jit
+    def test_jit(self, device, dtype):
+        points1 = torch.rand(8, 2, device=device, dtype=dtype)
+        points2 = torch.rand(8, 2, device=device, dtype=dtype)
+        model = RANSAC('fundamental').to(device=device, dtype=dtype)
+        model_jit = torch.jit.script(RANSAC('fundamental').to(device=device,
+                                                              dtype=dtype))
+        assert_close(model(points1, points2)[0],
+                     model_jit(points1, points2)[0],
+                     rtol=1e-3,
+                     atol=1e-3)
+
+    @pytest.mark.skip(reason="RANSAC is random algorithm, so Jacobian is not defined")
+    def test_gradcheck(self, device):
+        points1 = torch.rand(8, 2, device=device, dtype=torch.float64, requires_grad=True)
+        points2 = torch.rand(8, 2, device=device, dtype=torch.float64)
+        model = RANSAC('fundamental').to(device=device, dtype=torch.float64)
+        def gradfun(p1, p2):
+            return model(p1, p2)[0]
+        assert gradcheck(gradfun, (points1, points2), raise_exception=True)

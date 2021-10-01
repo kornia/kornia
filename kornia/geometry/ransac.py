@@ -66,9 +66,11 @@ class RANSAC(nn.Module):
             raise NotImplementedError(f"{model_type} is unknown. Try one of {self.supported_models}")
         return
 
-    def sample(self, sample_size: int,
+    def sample(self,
+               sample_size: int,
                pop_size: int,
-               batch_size: int, device=torch.device('cpu')) -> torch.Tensor:
+               batch_size: int,
+               device: torch.device = torch.device('cpu')) -> torch.Tensor:
         """Minimal sampler, but unlike traditional RANSAC we sample in batches to get benefit of the parallel
         processing, esp.
 
@@ -85,7 +87,7 @@ class RANSAC(nn.Module):
         """Formula to update max_iter in order to stop iterations earlier
         https://en.wikipedia.org/wiki/Random_sample_consensus."""
         if n_inl == num_tc:
-            return 1
+            return 1.0
         return math.log(1.0 - conf) / math.log(1. - math.pow(n_inl / num_tc, sample_size))
 
     def estimate_model_from_minsample(self,
@@ -131,7 +133,7 @@ class RANSAC(nn.Module):
         # For now it is simple and hardcoded
         main_diagonal = torch.diagonal(models,
                                        dim1=1,
-                                       dim2=2, device=self.device)
+                                       dim2=2)
         mask = main_diagonal.abs().min(dim=1)[0] > 1e-6
         return models[mask]
 
@@ -184,7 +186,7 @@ class RANSAC(nn.Module):
         inliers_best_total: torch.Tensor = torch.zeros(num_tc, 1, device=kp1.device, dtype=torch.bool)
         for i in range(self.max_iter):
             # Sample minimal samples in batch to estimate models
-            idxs = self.sample(self.minimal_sample_size, num_tc, self.batch_size).long()
+            idxs = self.sample(self.minimal_sample_size, num_tc, self.batch_size, kp1.device).long()
             kp1_sampled = kp1[idxs]
             kp2_sampled = kp2[idxs]
 
