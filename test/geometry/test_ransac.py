@@ -137,6 +137,7 @@ class TestRANSACFundamental:
         points1 = torch.rand(8, 2, device=device, dtype=torch.float64, requires_grad=True)
         points2 = torch.rand(8, 2, device=device, dtype=torch.float64)
         model = RANSAC('fundamental').to(device=device, dtype=torch.float64)
+
         def gradfun(p1, p2):
             return model(p1, p2)[0]
         assert gradcheck(gradfun, (points1, points2), raise_exception=True)
