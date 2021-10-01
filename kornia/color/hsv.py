@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 
-def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-10) -> torch.Tensor:
+def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     r"""Convert an image from RGB to HSV.
 
     .. image:: _static/img/rgb_to_hsv.png
@@ -33,56 +33,27 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-10) -> torch.Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    image = image * 255.  # hack because we assume [0/1] input
-    r, g, b = image[..., 0, :, :], image[..., 1, :, :], image[..., 2, :, :]
     max_rgb, argmax_rgb = image.max(-3)
     min_rgb, argmin_rgb = image.min(-3)
-    max_min = max_rgb - min_rgb + eps
-    h1 = 60.0 * (g - r) / max_min + 60.0
-    h2 = 60.0 * (b - g) / max_min + 180.0
-    h3 = 60.0 * (r - b) / max_min + 300.0
-    h = torch.stack((h2, h3, h1), dim=-3).gather(dim=-3, index=argmin_rgb.unsqueeze(-3)).squeeze(-3)
-    h = h * (2. * math.pi / 360)  # hack because we return 0/2pi output
-    s = max_min / (max_rgb + eps)
-    v = max_rgb / 255  # hack because we return 0/1
-    return torch.stack((h, s, v), dim=-3)
-    '''if not isinstance(image, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
+    deltac = max_rgb - min_rgb
 
-    if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
+    v = max_rgb
+    s = deltac / (max_rgb + eps)
 
-    # The first or last occurrence is not guaranteed before 1.6.0
-    # https://github.com/pytorch/pytorch/issues/20414
-    maxc, _ = image.max(-3)
-    maxc_mask = image == maxc.unsqueeze(-3)
-    _, max_indices = ((maxc_mask.cumsum(-3) == 1) & maxc_mask).max(-3)
-    minc: torch.Tensor = image.min(-3)[0]
+    deltac = torch.where(deltac == 0, torch.ones_like(deltac), deltac)
+    rc, gc, bc = torch.unbind((max_rgb.unsqueeze(-3) - image), dim=-3)
 
-    v: torch.Tensor = maxc  # brightness
+    h1 = (bc - gc)
+    h2 = (rc - bc) + 2.0 * deltac
+    h3 = (gc - rc) + 4.0 * deltac
 
-    deltac: torch.Tensor = maxc - minc
-    s: torch.Tensor = deltac / (v + eps)
-
-    # avoid division by zero
-    deltac = torch.where(deltac == 0, torch.ones_like(deltac, device=deltac.device, dtype=deltac.dtype), deltac)
-
-    maxc_tmp = maxc.unsqueeze(-3) - image
-    rc: torch.Tensor = maxc_tmp[..., 0, :, :]
-    gc: torch.Tensor = maxc_tmp[..., 1, :, :]
-    bc: torch.Tensor = maxc_tmp[..., 2, :, :]
-
-    h = torch.stack([bc - gc, 2.0 * deltac + rc - bc, 4.0 * deltac + gc - rc], dim=-3)
-
-    h = torch.gather(h, dim=-3, index=max_indices[..., None, :, :])
-    h = h.squeeze(-3)
-    h = h / deltac
-
+    h = torch.stack((h1, h2, h3), dim=-3) / deltac.unsqueeze(-3)
+    h = torch.gather(h, dim=-3, index=argmax_rgb.unsqueeze(-3)).squeeze(-3)
+    # TODO: ``%`` operand should behave same as ``torch.fmod`` but in practice its not
     h = (h / 6.0) % 1.0
+    h = 2. * math.pi * h  # we return 0/2pi output
 
-    h = 2 * math.pi * h
-
-    return torch.stack([h, s, v], dim=-3)'''
+    return torch.stack((h, s, v), dim=-3)
 
 
 def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
