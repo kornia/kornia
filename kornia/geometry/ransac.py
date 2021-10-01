@@ -1,9 +1,6 @@
-
 """Module containing RANSAC modules."""
-from typing import Union, Tuple, Optional
-
 import math
-from typing import Union
+from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -21,8 +18,7 @@ __all__ = ["RANSAC"]
 
 
 class RANSAC(nn.Module):
-    '''Module for robust geometry estimation with RANSAC.
-    https://en.wikipedia.org/wiki/Random_sample_consensus
+    """Module for robust geometry estimation with RANSAC. https://en.wikipedia.org/wiki/Random_sample_consensus.
 
     Args:
         model_type (str): type of model to estimate, e.g. "homography".
@@ -35,7 +31,7 @@ class RANSAC(nn.Module):
     Returns:
         - estimated model, shape of :math:`(1, 3, 3)`.
         - the inlier/outlier mask, shape of :math:`(1, N), where N is number of input correspondences`.
-    '''
+    """
     supported_models = ['homography', 'fundamental']
 
     def __init__(self,
@@ -84,8 +80,8 @@ class RANSAC(nn.Module):
 
     @staticmethod
     def max_samples_by_conf(n_inl: int, num_tc: int, sample_size: int, conf: float):
-        '''Formula to update max_iter in order to stop iterations earlier
-        https://en.wikipedia.org/wiki/Random_sample_consensus'''
+        """Formula to update max_iter in order to stop iterations earlier
+        https://en.wikipedia.org/wiki/Random_sample_consensus."""
         if n_inl == num_tc:
             return 1
         return math.log(1.0 - conf) / math.log(1. - math.pow(n_inl / num_tc, sample_size))
