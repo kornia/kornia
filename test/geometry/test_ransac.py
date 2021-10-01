@@ -21,7 +21,7 @@ class TestRANSACHomography:
     def test_dirty_points(self, device, dtype):
         # generate input data
 
-        H = torch.eye(3)
+        H = torch.eye(3, dtype=dtype, device=device)
         H = H * (1 + 0.1 * torch.rand_like(H))
         H = H / H[2:3, 2:3]
 
@@ -45,7 +45,7 @@ class TestRANSACFundamental:
     def test_smoke(self, device, dtype):
         points1 = torch.rand(8, 2, device=device, dtype=dtype)
         points2 = torch.rand(8, 2, device=device, dtype=dtype)
-        ransac = RANSAC('fundamental')
+        ransac = RANSAC('fundamental').to(device=device, dtype=dtype)
         Fm, inliers = ransac(points1, points2)
         assert Fm.shape == (3, 3)
 
