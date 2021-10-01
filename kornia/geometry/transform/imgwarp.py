@@ -10,6 +10,7 @@ from kornia.geometry.conversions import (
     deg2rad,
     normalize_pixel_coordinates,
 )
+from kornia.geometry.conversions import convert_affinematrix_to_homography as a2h
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform.homography_warper import normalize_homography
 from kornia.geometry.transform.projwarp import get_projective_transform
@@ -381,29 +382,22 @@ def get_rotation_matrix2d(center: torch.Tensor, angle: torch.Tensor, scale: torc
         )
 
     # convert angle and apply scale
-    rotation_matrix: torch.Tensor = angle_to_rotation_matrix(angle)
-    scaling_matrix: torch.Tensor = torch.eye(2, device=rotation_matrix.device, dtype=rotation_matrix.dtype).repeat(
+    shift_matrix = torch.eye(2, device=center.device, dtype=center.dtype).repeat(
+        center.size(0), 1, 1
+    )
+    zeros = torch.zeros_like(center.unsqueeze(-1))
+    shift_matrix = torch.cat([shift_matrix, center.unsqueeze(-1)], dim=2)
+    shift_matrix_homo = a2h(shift_matrix)
+    rotation_matrix: torch.Tensor = torch.cat([angle_to_rotation_matrix(angle), zeros], dim=2)
+    scaling_matrix: torch.Tensor = torch.eye(3,
+                                             device=rotation_matrix.device,
+                                             dtype=rotation_matrix.dtype).repeat(
         rotation_matrix.size(0), 1, 1
     )
 
-    scaling_matrix = scaling_matrix * scale.unsqueeze(dim=2).repeat(1, 1, 2)
-    scaled_rotation: torch.Tensor = rotation_matrix @ scaling_matrix
-    alpha: torch.Tensor = scaled_rotation[:, 0, 0]
-    beta: torch.Tensor = scaled_rotation[:, 0, 1]
-
-    # unpack the center to x, y coordinates
-    x: torch.Tensor = center[..., 0]
-    y: torch.Tensor = center[..., 1]
-
-    # create output tensor
-    batch_size: int = center.shape[0]
-    one = torch.tensor(1.0, device=center.device, dtype=center.dtype)
-    M: torch.Tensor = torch.zeros(batch_size, 2, 3, device=center.device, dtype=center.dtype)
-
-    M[..., 0:2, 0:2] = scaled_rotation
-    M[..., 0, 2] = (one - alpha) * x - beta * y
-    M[..., 1, 2] = beta * x + (one - alpha) * y
-    return M
+    scaling_matrix[:, :2, :2] = scaling_matrix[:, :2, :2].clone() * scale.unsqueeze(dim=2).repeat(1, 1, 2)
+    out_matrix = shift_matrix_homo @ a2h(rotation_matrix) @ scaling_matrix @ shift_matrix_homo.inverse()
+    return out_matrix[:, :2]
 
 
 def remap(
