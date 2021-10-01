@@ -1,10 +1,10 @@
-from packaging import version
 import math
 
 import torch
 import torch.nn as nn
 
 from kornia.utils._compat import torch_version
+from packaging import version
 
 
 def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
