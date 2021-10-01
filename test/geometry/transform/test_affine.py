@@ -698,3 +698,23 @@ class TestAffine2d:
         )
         matrix_kornia = matrix_kornia.inverse()[0, :2].detach().cpu()
         assert_close(matrix_kornia, matrix_expected, atol=1e-4, rtol=1e-4)
+
+
+class TestGetAffineMatrix:
+    def test_smoke(self, device, dtype):
+        H, W = 5, 5
+        translation = torch.tensor([[0., 0.]], device=device, dtype=dtype)
+        # NOTE: ideally the center should be [W * 0.5, H * 0.5]
+        center = torch.tensor([[W // 2, H // 2]], device=device, dtype=dtype)
+        zoom1 = torch.ones([1, 1], device=device, dtype=dtype) * 0.5
+        zoom2 = torch.ones([1, 1], device=device, dtype=dtype) * 1.0
+        zoom = torch.cat([zoom1, zoom2], -1)
+        angle = torch.zeros([1], device=device, dtype=dtype)
+        affine_mat = kornia.geometry.get_affine_matrix2d(translation, center, zoom, angle)
+
+        img = torch.ones(1, 1, H, W, device=device, dtype=dtype)
+        expected = torch.zeros_like(img)
+        expected[..., 1:4] = 1.
+
+        out = kornia.geometry.warp_affine(img, affine_mat[:, :2], (H, W))
+        assert_close(out, expected)

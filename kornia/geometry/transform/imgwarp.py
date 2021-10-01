@@ -1,17 +1,17 @@
-import warnings
 from typing import Optional, Tuple
 
 import torch
 import torch.nn.functional as F
 
 from kornia.geometry.conversions import convert_affinematrix_to_homography
-from kornia.geometry.conversions import convert_affinematrix_to_homography as a2h
 from kornia.geometry.conversions import convert_affinematrix_to_homography3d, deg2rad, normalize_pixel_coordinates
+from kornia.geometry.epipolar import eye_like
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform.homography_warper import normalize_homography
 from kornia.geometry.transform.projwarp import get_projective_transform
 from kornia.utils import create_meshgrid
 from kornia.utils.helpers import _torch_inverse_cast, _torch_solve_cast
+
 
 __all__ = [
     "warp_perspective",
@@ -377,23 +377,18 @@ def get_rotation_matrix2d(center: torch.Tensor, angle: torch.Tensor, scale: torc
             )
         )
 
-    # convert angle and apply scale
-    shift_matrix = torch.eye(2, device=center.device, dtype=center.dtype).repeat(
-        center.size(0), 1, 1
-    )
-    zeros = torch.zeros_like(center.unsqueeze(-1))
-    shift_matrix = torch.cat([shift_matrix, center.unsqueeze(-1)], dim=2)
-    shift_matrix_homo = a2h(shift_matrix)
-    rotation_matrix: torch.Tensor = torch.cat([angle_to_rotation_matrix(angle), zeros], dim=2)
-    scaling_matrix: torch.Tensor = torch.eye(3,
-                                             device=rotation_matrix.device,
-                                             dtype=rotation_matrix.dtype).repeat(
-        rotation_matrix.size(0), 1, 1
-    )
+    shift_m = eye_like(3, center)
+    shift_m[:, :2, 2] = center
 
-    scaling_matrix[:, :2, :2] = scaling_matrix[:, :2, :2].clone() * scale.unsqueeze(dim=2).repeat(1, 1, 2)
-    out_matrix = shift_matrix_homo @ a2h(rotation_matrix) @ scaling_matrix @ shift_matrix_homo.inverse()
-    return out_matrix[:, :2]
+    scale_m = eye_like(3, center)
+    scale_m[:, 0, 0] *= scale[:, 0]
+    scale_m[:, 1, 1] *= scale[:, 1]
+
+    rotat_m = eye_like(3, center)
+    rotat_m[:, :2, :2] = angle_to_rotation_matrix(angle)
+
+    affine_m = shift_m @ rotat_m @ scale_m @ shift_m.inverse()
+    return affine_m[:, :2, :]  # Bx2x3
 
 
 def remap(
