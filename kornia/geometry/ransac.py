@@ -18,18 +18,20 @@ __all__ = ["RANSAC"]
 
 
 class RANSAC(nn.Module):
-    """Module for robust geometry estimation with RANSAC. https://en.wikipedia.org/wiki/Random_sample_consensus.
+    """Module for robust geometry estimation with RANSAC.
+    
+    https://en.wikipedia.org/wiki/Random_sample_consensus
 
     Args:
-        model_type (str): type of model to estimate, e.g. "homography".
-        batch_size (int): number of generated samples at once .
-        max_iter (int): maximum batches to generate. Actual number of models to try is batch_size * max_iter.
-        inl_th (float): threshold for the correspondence to be an inlier
-        confidence (float): desired confidence of the result, used for the early stopping.
-        max_lo_iters (int): number of local optimization (polishing) iterations
+        model_type: type of model to estimate, e.g. "homography" or "fundamental".
+        batch_size: number of generated samples at once.
+        max_iterations: maximum batches to generate. Actual number of models to try is ``batch_size * max_iterations``.
+        inliers_threshold: threshold for the correspondence to be an inlier.
+        confidence: desired confidence of the result, used for the early stopping.
+        max_local_iterations: number of local optimization (polishing) iterations.
 
     Returns:
-        - estimated model, shape of :math:`(1, 3, 3)`.
+        - estimated model, shape of :math:`(3, 3)`.
         - the inlier/outlier mask, shape of :math:`(1, N), where N is number of input correspondences`.
     """
     supported_models = ['homography', 'fundamental']
@@ -72,14 +74,14 @@ class RANSAC(nn.Module):
 
         on GPU
         """
-        out: torch.Tensor = torch.empty(batch_size, sample_size)
+        out: torch.Tensor = torch.empty(batch_size, sample_size, device=device, dtype=torch.int32)
         # for loop, until https://github.com/pytorch/pytorch/issues/42502 accepted
         for i in range(batch_size):
             out[i] = torch.randperm(pop_size, dtype=torch.int32, device=device)[:sample_size]
         return out
 
     @staticmethod
-    def max_samples_by_conf(n_inl: int, num_tc: int, sample_size: int, conf: float):
+    def max_samples_by_conf(n_inl: int, num_tc: int, sample_size: int, conf: float) -> float:
         """Formula to update max_iter in order to stop iterations earlier
         https://en.wikipedia.org/wiki/Random_sample_consensus."""
         if n_inl == num_tc:
@@ -111,7 +113,7 @@ class RANSAC(nn.Module):
                                kp2.expand(batch_size, -1, 2),
                                models)
         inl = (errors <= inl_th)
-        models_score = inl.float().sum(dim=1)
+        models_score = inl.to(kp1).sum(dim=1)
         best_model_idx = models_score.argmax()
         best_model_score = models_score[best_model_idx].item()
         model_best = models[best_model_idx].clone()
@@ -129,7 +131,7 @@ class RANSAC(nn.Module):
         # For now it is simple and hardcoded
         main_diagonal = torch.diagonal(models,
                                        dim1=1,
-                                       dim2=2)
+                                       dim2=2, device=self.device)
         mask = main_diagonal.abs().min(dim=1)[0] > 1e-6
         return models[mask]
 
@@ -153,7 +155,7 @@ class RANSAC(nn.Module):
                 kp1: torch.Tensor,
                 kp2: torch.Tensor,
                 weights: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
-        '''
+        """Main forward method to execute the RANSAC algorithm.
             Args:
                 kp1 (torch.Tensor): source image keypoints :math:`(N, 2)`.
                 kp2 (torch.Tensor): distance image keypoints :math:`(N, 2)`.
@@ -161,7 +163,8 @@ class RANSAC(nn.Module):
 
             Returns:
                 - estimated model, shape of :math:`(1, 3, 3)`.
-                - the inlier/outlier mask, shape of :math:`(1, N), where N is number of input correspondences`.'''
+                - the inlier/outlier mask, shape of :math:`(1, N), where N is number of input correspondences`.
+            """
         if not isinstance(kp1, torch.Tensor):
             raise TypeError(f"Input kp1 is not torch.Tensor. Got {type(kp1)}")
         if not isinstance(kp2, torch.Tensor):
@@ -178,7 +181,7 @@ class RANSAC(nn.Module):
         best_score_total: float = 1.0
         num_tc: int = len(kp1)
         best_model_total = torch.zeros(3, 3, dtype=kp1.dtype, device=kp1.device)
-        inliers_best_total: torch.Tensor = torch.zeros(num_tc, 1, device=kp1.device).bool()
+        inliers_best_total: torch.Tensor = torch.zeros(num_tc, 1, device=kp1.device, dtype=torch.bool)
         for i in range(self.max_iter):
             # Sample minimal samples in batch to estimate models
             idxs = self.sample(self.minimal_sample_size, num_tc, self.batch_size).long()
