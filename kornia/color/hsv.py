@@ -1,7 +1,10 @@
+from packaging import version
 import math
 
 import torch
 import torch.nn as nn
+
+from kornia.utils._compat import torch_version
 
 
 def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
@@ -33,7 +36,16 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    max_rgb, argmax_rgb = image.max(-3)
+    # TODO: remove if/else statement once pytorch 1.6 is deprecated and keep first branch
+    if version.parse(torch_version()) > version.parse("1.6.0"):
+        max_rgb, argmax_rgb = image.max(-3)
+    else:
+        # The first or last occurrence is not guaranteed before 1.6.0
+        # https://github.com/pytorch/pytorch/issues/20414
+        max_rgb, _ = image.max(-3)
+        max_mask = image == max_rgb.unsqueeze(-3)
+        _, argmax_rgb = ((max_mask.cumsum(-3) == 1) & max_mask).max(-3)
+
     min_rgb, argmin_rgb = image.min(-3)
     deltac = max_rgb - min_rgb
 
@@ -49,7 +61,6 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
 
     h = torch.stack((h1, h2, h3), dim=-3) / deltac.unsqueeze(-3)
     h = torch.gather(h, dim=-3, index=argmax_rgb.unsqueeze(-3)).squeeze(-3)
-    # TODO: ``%`` operand should behave same as ``torch.fmod`` but in practice its not
     h = (h / 6.0) % 1.0
     h = 2. * math.pi * h  # we return 0/2pi output
 
