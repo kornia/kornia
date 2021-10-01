@@ -12,12 +12,11 @@ from kornia.geometry import (
 from kornia.testing import assert_close
 
 
-
 class TestRANSACHomography:
     def test_smoke(self, device, dtype):
         points1 = torch.rand(4, 2, device=device, dtype=dtype)
         points2 = torch.rand(4, 2, device=device, dtype=dtype)
-        ransac = RANSAC('homography')
+        ransac = RANSAC('homography').to(device=device, dtype=dtype)
         H, inliers = ransac(points1, points2)
         assert H.shape == (3, 3)
 
@@ -25,7 +24,7 @@ class TestRANSACHomography:
         # generate input data
 
         H = torch.eye(3)
-        H = H * (1 + torch.rand_like(H))
+        H = H * (1 + 0.1 * torch.rand_like(H))
         H = H / H[2:3, 2:3]
 
         points_src = 100.0 * torch.rand(1, 20, 2, device=device, dtype=dtype)
@@ -33,13 +32,16 @@ class TestRANSACHomography:
 
         # making last point an outlier
         points_dst[:, -1, :] += 100
-        ransac = RANSAC('homography', inl_th = 2.0)
+        ransac = RANSAC('homography', inl_th=2.0).to(device=device, dtype=dtype)
         # compute transform from source to target
         dst_homo_src, inliers = ransac(points_src[0], points_dst[0])
 
         assert_close(
-            kornia.transform_points(dst_homo_src[None], points_src[:, :-1]), points_dst[:, :-1], rtol=1e-3, atol=1e-3
-        )
+            kornia.transform_points(dst_homo_src[None], points_src[:, :-1]),
+            points_dst[:, :-1],
+            rtol=1e-3,
+            atol=1e-3)
+
 
 class TestRANSACFundamental:
     def test_smoke(self, device, dtype):
@@ -92,14 +94,16 @@ class TestRANSACFundamental:
         Fm_expected = torch.tensor(
             [
                 [
-                    [ 0.2019,  0.6860,  -0.6610],
-                    [ 0.5520,  0.8154, -0.8044],
-                    [-0.5002, -1.0254,  1. ]
+                    [0.2019, 0.6860, -0.6610],
+                    [0.5520, 0.8154, -0.8044],
+                    [-0.5002, -1.0254, 1.]
                 ]
             ],
             device=device,
             dtype=dtype,
         )
-        ransac = RANSAC('fundamental', max_iter=1, inl_th=1.0).double()
+        ransac = RANSAC('fundamental',
+                        max_iter=1,
+                        inl_th=1.0).to(device=device, dtype=dtype)
         F_mat, inliers = ransac(points1[0], points2[0])
         assert_close(F_mat, Fm_expected[0], rtol=1e-3, atol=1e-3)

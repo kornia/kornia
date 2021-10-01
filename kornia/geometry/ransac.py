@@ -1,5 +1,5 @@
 """Module containing RANSAC modules"""
-from typing import Union
+from typing import Union, Tuple, Optional
 import math
 
 import torch
@@ -16,35 +16,51 @@ __all__ = ["RANSAC"]
 
 
 class RANSAC(nn.Module):
+    '''Module for robust geometry estimation with RANSAC.
+    https://en.wikipedia.org/wiki/Random_sample_consensus
+
+    Args:
+        model_type (str): type of model to estimate, e.g. "homography".
+        batch_size (int): number of generated samples at once .
+        max_iter (int): maximum batches to generate. Actual number of models to try is batch_size * max_iter.
+        inl_th (float): threshold for the correspondence to be an inlier
+        confidence (float): desired confidence of the result, used for the early stopping.
+        max_lo_iters (int): number of local optimization (polishing) iterations
+
+    Returns:
+        - estimated model, shape of :math:`(1, 3, 3)`.
+        - the inlier/outlier mask, shape of :math:`(1, N), where N is number of input correspondences`.
+    '''
     supported_models = ['homography', 'fundamental']
+
     def __init__(self,
                  model_type: str = 'homography',
                  batch_size: int = 2048,
                  max_iter: int = 10,
                  inl_th: float = 2.0,
-                 confidence: float = 0.99):
+                 confidence: float = 0.99,
+                 max_lo_iters: int = 5):
         super().__init__()
-        if model_type not in self.supported_models:
-            raise NotImplementedError(f"{model_type} is unknown. Try one of {supported_models}")
         self.inl_th = inl_th
         self.max_iter = max_iter
         self.batch_size = batch_size
         self.model_type = model_type
         self.confidence = confidence
+        self.max_lo_iters = max_lo_iters
         if model_type == 'homography':
-            self.error_fn = symmetric_transfer_error
-            self.minimal_solver = find_homography_dlt
-            self.polisher_solver = find_homography_dlt_iterated
+            self.error_fn = symmetric_transfer_error  # type: ignore
+            self.minimal_solver = find_homography_dlt  # type: ignore
+            self.polisher_solver = find_homography_dlt_iterated  # type: ignore
             self.minimal_sample_size = 4
         elif model_type == 'fundamental':
-            self.error_fn = symmetrical_epipolar_distance
-            self.minimal_solver = find_fundamental
+            self.error_fn = symmetrical_epipolar_distance  # type: ignore
+            self.minimal_solver = find_fundamental  # type: ignore
             self.minimal_sample_size = 8
             # ToDo: implement 7pt solver instead of 8pt minimal_solver
             # https://github.com/opencv/opencv/blob/master/modules/calib3d/src/fundam.cpp#L498
-            self.polisher_solver = find_fundamental
+            self.polisher_solver = find_fundamental  # type: ignore
         else:
-            raise NotImplementedError(f"{model_type} is unknown. Try one of {supported_models}")
+            raise NotImplementedError(f"{model_type} is unknown. Try one of {self.supported_models}")
         return
 
     def sample(self, sample_size: int,
@@ -55,18 +71,20 @@ class RANSAC(nn.Module):
         out: torch.Tensor = torch.empty(batch_size, sample_size)
         # for loop, until https://github.com/pytorch/pytorch/issues/42502 accepted
         for i in range(batch_size):
-            out[i] = torch.randperm(pop_size,dtype=torch.int32, device=device)[:sample_size]
+            out[i] = torch.randperm(pop_size, dtype=torch.int32, device=device)[:sample_size]
         return out
 
     @staticmethod
-    def max_samples_by_conf(n_inl:int, num_tc:int, sample_size:int, conf: float):
+    def max_samples_by_conf(n_inl: int, num_tc: int, sample_size: int, conf: float):
         '''Formula to update max_iter in order to stop iterations earlier
         https://en.wikipedia.org/wiki/Random_sample_consensus'''
-        if n_inl  == num_tc:
+        if n_inl == num_tc:
             return 1
-        return math.log(1.- conf) / math.log(1. - math.pow(n_inl/num_tc, sample_size))
+        return math.log(1.0 - conf) / math.log(1. - math.pow(n_inl / num_tc, sample_size))
 
-    def estimate_model_from_minsample(self, kp1, kp2):
+    def estimate_model_from_minsample(self,
+                                      kp1: torch.Tensor,
+                                      kp2: torch.Tensor) -> torch.Tensor:
         batch_size, sample_size = kp1.shape[:2]
         H = self.minimal_solver(kp1,
                                 kp2,
@@ -76,7 +94,10 @@ class RANSAC(nn.Module):
                                            device=kp1.device))
         return H
 
-    def verify(self, kp1, kp2, models, inl_th):
+    def verify(self,
+               kp1: torch.Tensor,
+               kp2: torch.Tensor,
+               models: torch.Tensor, inl_th: float) -> Tuple[torch.Tensor, torch.Tensor, float]:
         if len(kp1.shape) == 2:
             kp1 = kp1[None]
         if len(kp2.shape) == 2:
@@ -88,18 +109,18 @@ class RANSAC(nn.Module):
         inl = (errors <= inl_th)
         models_score = inl.float().sum(dim=1)
         best_model_idx = models_score.argmax()
-        best_model_score = models_score[best_model_idx]
+        best_model_score = models_score[best_model_idx].item()
         model_best = models[best_model_idx].clone()
         inliers_best = inl[best_model_idx]
         return model_best, inliers_best, best_model_score
 
-    def remove_bad_samples(self, kp1, kp2):
+    def remove_bad_samples(self, kp1: torch.Tensor, kp2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         ''''''
         # ToDo: add (model-specific) verification of the samples,
         # E.g. contraints on not to be a degenerate sample
         return kp1, kp2
 
-    def remove_bad_models(self, models):
+    def remove_bad_models(self, models: torch.Tensor) -> torch.Tensor:
         # ToDo: add more and better degenerate model rejection
         # For now it is simple and hardcoded
         main_diagonal = torch.diagonal(models,
@@ -108,7 +129,10 @@ class RANSAC(nn.Module):
         mask = main_diagonal.abs().min(dim=1)[0] > 1e-6
         return models[mask]
 
-    def polish_model(self, kp1, kp2, inliers):
+    def polish_model(self,
+                     kp1: torch.Tensor,
+                     kp2: torch.Tensor,
+                     inliers: torch.Tensor) -> torch.Tensor:
         # ToDo: Replace this with MAGSAC++ polisher
         kp1_inl = kp1[inliers][None]
         kp2_inl = kp2[inliers][None]
@@ -120,14 +144,37 @@ class RANSAC(nn.Module):
                                                 dtype=kp1_inl.dtype,
                                                 device=kp1_inl.device))
         return model
-    def forward(self, kp1, kp2):
-        assert len(kp1.shape) == 2
-        assert len(kp2.shape) == 2
 
-        best_score_total = 1
-        num_tc = len(kp1)
-        best_model_total = None
-        inliers_best_total = torch.zeros(num_tc, 1, dtype=bool)
+    def forward(self,
+                kp1: torch.Tensor,
+                kp2: torch.Tensor,
+                weights: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+        '''
+            Args:
+                kp1 (torch.Tensor): source image keypoints :math:`(N, 2)`.
+                kp2 (torch.Tensor): distance image keypoints :math:`(N, 2)`.
+                weights (torch.Tensor): optional correspondences weights. Not used now
+
+            Returns:
+                - estimated model, shape of :math:`(1, 3, 3)`.
+                - the inlier/outlier mask, shape of :math:`(1, N), where N is number of input correspondences`.'''
+        if not isinstance(kp1, torch.Tensor):
+            raise TypeError(f"Input kp1 is not torch.Tensor. Got {type(kp1)}")
+        if not isinstance(kp2, torch.Tensor):
+            raise TypeError(f"Input kp2 is not torch.Tensor. Got {type(kp2)}")
+        if not len(kp1.shape) == 2:
+            raise ValueError(f"Invalid kp1 shape, we expect Nx2 Got: {kp1.shape}")
+        if not len(kp2.shape) == 2:
+            raise ValueError(f"Invalid kp2 shape, we expect Nx2 Got: {kp2.shape}")
+        if not (kp1.shape[0] == kp2.shape[0]) or (kp1.shape[0] < self.minimal_sample_size):
+            raise ValueError(f"kp1 and kp2 should be \
+                             equal shape at at least [{self.minimal_sample_size}, 2], \
+                             got {kp1.shape}, {kp2.shape}")
+
+        best_score_total: float = 1.0
+        num_tc: int = len(kp1)
+        best_model_total = torch.zeros(3, 3, dtype=kp1.dtype, device=kp1.device)
+        inliers_best_total: torch.Tensor = torch.zeros(num_tc, 1, device=kp1.device).bool()
         for i in range(self.max_iter):
             # Sample minimal samples in batch to estimate models
             idxs = self.sample(self.minimal_sample_size, num_tc, self.batch_size).long()
@@ -141,27 +188,33 @@ class RANSAC(nn.Module):
             if models is None:
                 continue
             # Score the models and select the best one
-            model_best, inliers_best, best_model_score = self.verify(kp1, kp2, models, self.inl_th)
+            model, inliers, model_score = self.verify(kp1, kp2, models, self.inl_th)
             # Store far-the-best model and (optionally) do a local optimization
-            if best_model_score > best_score_total:
-                best_model_total = model_best.clone()
-                inliers_best_total = inliers_best.clone()
-                best_score_total = best_model_score
+            if model_score > best_score_total:
                 # Local optimization
-                model_lo = self.polish_model(kp1, kp2, inliers_best)
-                _, inliers_lo, score_lo = self.verify(kp1, kp2, model_lo, self.inl_th)
-                # print (f"Orig score = {best_model_score}, LO score = {score_lo} TC={num_tc}")
-                if score_lo > best_score_total:
-                    best_model_total = model_lo.clone()[0]
-                    inliers_best_total = inliers_lo.clone()
-                    best_score_total = score_lo
-                new_max_iter = int(self.max_samples_by_conf(best_score_total,
+                for lo_step in range(self.max_lo_iters):
+                    model_lo = self.polish_model(kp1, kp2, inliers)
+                    _, inliers_lo, score_lo = self.verify(kp1, kp2, model_lo, self.inl_th)
+                    # print (f"Orig score = {best_model_score}, LO score = {score_lo} TC={num_tc}")
+                    if score_lo > model_score:
+                        model = model_lo.clone()[0]
+                        inliers = inliers_lo.clone()
+                        model_score = score_lo
+                    else:
+                        break
+                # Now storing the best model
+                best_model_total = model.clone()
+                inliers_best_total = inliers.clone()
+                best_score_total = model_score
+
+                # Should we already stop?
+                new_max_iter = int(self.max_samples_by_conf(int(best_score_total),
                                                             num_tc,
                                                             self.minimal_sample_size,
                                                             self.confidence))
                 # print (f"New max_iter = {new_max_iter}")
                 # Stop estimation, if the model is very good
-                if (i+1) * self.batch_size >= new_max_iter:
+                if (i + 1) * self.batch_size >= new_max_iter:
                     break
         # local optimization with all inliers for better precision
         return best_model_total, inliers_best_total
