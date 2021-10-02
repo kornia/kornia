@@ -92,9 +92,7 @@ class TestRgbToHsv(BaseTester):
         assert_close(kornia.color.rgb_to_hsv(data), expected)
 
     def test_nan_rgb_to_hsv(self, device, dtype):
-        data = torch.zeros(1, 5, 5, device=device, dtype=dtype)  # 3x5x5
-        data = data.repeat(3, 1, 1)  # 2x3x5x5
-
+        data = torch.zeros(3, 5, 5, device=device, dtype=dtype)  # 3x5x5
         expected = torch.zeros_like(data)  # 3x5x5
         assert_close(kornia.color.rgb_to_hsv(data), expected)
 
