@@ -24,7 +24,7 @@ def rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
         image: RGB Image to be converted to Lab with shape :math:`(*, 3, H, W)`.
 
     Returns:
-        Lab version of the image with shape :math:`(*, 3, H, W)`.
+        Lab version of the image with shape :math:`(*, 3, H, W)`. The L channel values are in the range 0..100. a and b are in the range -127..127.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
