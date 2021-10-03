@@ -94,9 +94,13 @@ class ApplyInverseImpl(ApplyInverseInterface):
         """
 
         mat: Optional[torch.Tensor] = cls._get_transformation(input, module, param)
+        to_apply = None
+        if isinstance(module, _AugmentationBase):
+            to_apply = param.data['batch_prob']  # type: ignore
 
-        if mat is not None:
-            input = cls.apply_func(mat, input)
+        # If any inputs need to be transformed.
+        if mat is not None and to_apply is not None and to_apply.sum() != 0:
+            input[to_apply] = cls.apply_func(mat, input[to_apply])
 
         return input, label
 

@@ -228,7 +228,9 @@ class ImageSequential(SequentialBase):
         res_mat: torch.Tensor = kornia.eye_like(3, input)
         for (_, module), param in zip(named_modules, params):
             if isinstance(module, (_AugmentationBase, MixAugmentationBase)):
-                mat = module.compute_transformation(input, param.data)  # type: ignore
+                mat: torch.Tensor = kornia.eye_like(3, input)
+                to_apply = param.data['batch_prob']  # type: ignore
+                mat[to_apply] = module.compute_transformation(input[to_apply], param.data)  # type: ignore
                 res_mat = mat @ res_mat
             elif isinstance(module, (ImageSequential,)):
                 mat = module.get_transformation_matrix(input, param.data)  # type: ignore

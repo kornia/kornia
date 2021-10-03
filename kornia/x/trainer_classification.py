@@ -75,11 +75,17 @@ class ObjectDetectionTrainer(Trainer):
         # TODO: auto-detect if the model is from TorchVision
         self.loss_computed_by_model = loss_computed_by_model
 
+    def on_model(self, model, sample: dict):
+        if self.loss_computed_by_model:
+            return model(sample["input"], sample["target"])
+        return model(sample["input"])
+
     def compute_loss(self, *args: torch.Tensor) -> torch.Tensor:
         if self.loss_computed_by_model:
-            return args[0]
+            return torch.stack(list(args[0].values())).sum()
         return self.criterion(*args)
 
     def compute_metrics(self, *args: torch.Tensor) -> Dict[str, float]:
-        # TODO
+        if self.loss_computed_by_model:
+            assert False, args[1]
         raise NotImplementedError

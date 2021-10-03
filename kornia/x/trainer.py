@@ -79,7 +79,7 @@ class Trainer:
         self.model = self.accelerator.prepare(model)
         self.train_dataloader = self.accelerator.prepare(train_dataloader)
         self.valid_dataloader = self.accelerator.prepare(valid_dataloader)
-        self.criterion = criterion.to(self.device)
+        self.criterion = None if criterion is None else criterion.to(self.device)
         self.optimizer = self.accelerator.prepare(optimizer)
         self.scheduler = scheduler
         self.config = config
@@ -116,13 +116,13 @@ class Trainer:
             sample = self.augmentations(sample)
             sample = self.on_before_model(sample)
             # make the actual inference
-            output = self.model(sample["input"])
+            output = self.on_model(self.model, sample)
             self.on_after_model(output, sample)  # for debugging purposes
             loss = self.compute_loss(output, sample["target"])
             self.backward(loss)
             self.optimizer.step()
 
-            losses.update(loss.item(), sample["target"].shape[0])
+            losses.update(loss.item(), len(sample["input"]))
 
             if sample_id % 50 == 0:
                 self._logger.info(
@@ -168,14 +168,15 @@ class Trainer:
             sample = self.preprocess(sample)
             sample = self.on_before_model(sample)
             # Forward
-            out = self.model(sample["input"])
+            out = self.on_model(self.model, sample)
             self.on_after_model(out, sample)
-            # Loss computation
-            val_loss = self.criterion(out, sample["target"])
 
+            batch_size: int = len(sample["input"])
             # measure accuracy and record loss
-            batch_size: int = sample["input"].shape[0]
-            stats.update('losses', val_loss.item(), batch_size)
+            # Loss computation
+            if self.criterion is not None:
+                val_loss = self.criterion(out, sample["target"])
+                stats.update('losses', val_loss.item(), batch_size)
             stats.update_from_dict(self.compute_metrics(out, sample['target']), batch_size)
 
             if sample_id % 10 == 0:
@@ -203,6 +204,9 @@ class Trainer:
 
     def on_before_model(self, x: dict) -> dict:
         return x
+
+    def on_model(self, model, sample: dict):
+        return model(sample["input"])
 
     def on_after_model(self, output: torch.Tensor, sample: dict):
         ...
