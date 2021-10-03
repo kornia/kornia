@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from kornia.metrics import accuracy, mean_iou, mean_average_precision
+from kornia.metrics import accuracy, mean_average_precision, mean_iou
 
 from .trainer import Trainer
 from .utils import Configuration

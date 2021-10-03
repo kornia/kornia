@@ -1,15 +1,15 @@
 import hydra
-from numpy.lib.arraysetops import isin
 import torch
 import torch.nn as nn
 import torchvision
 import torchvision.transforms as T
 from hydra.core.config_store import ConfigStore
 from hydra.utils import to_absolute_path
+from numpy.lib.arraysetops import isin
 
+import kornia
 import kornia as K
 from kornia import augmentation
-import kornia
 from kornia.x import Configuration, ModelCheckpoint, ObjectDetectionTrainer
 
 cs = ConfigStore.instance()
@@ -24,7 +24,7 @@ def my_app(config: Configuration) -> None:
     model = torchvision.models.detection.retinanet_resnet50_fpn(pretrained=True)
 
     def collate_fn(data):
-        return list([d[0] for d in data]), list([d[1] for d in data])
+        return list(d[0] for d in data), list(d[1] for d in data)
 
     # create the dataset
     train_dataset = torchvision.datasets.WIDERFace(
