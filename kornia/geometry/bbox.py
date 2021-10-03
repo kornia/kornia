@@ -456,13 +456,16 @@ def transform_bbox(trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = "xy
     transformed_boxes: torch.Tensor = kornia.transform_points(trans_mat, boxes.view(boxes.shape[0], -1, 2))
     transformed_boxes = transformed_boxes.view_as(boxes)
 
+    restored_boxes = transformed_boxes.clone()
+    # In case the boxes are flipped, we ensure it is ordered like left-top -> right-bot points
+    restored_boxes[..., 0] = torch.min(transformed_boxes[..., [0, 2]], dim=-1)[0]
+    restored_boxes[..., 1] = torch.min(transformed_boxes[..., [1, 3]], dim=-1)[0]
+    restored_boxes[..., 2] = torch.max(transformed_boxes[..., [0, 2]], dim=-1)[0]
+    restored_boxes[..., 3] = torch.max(transformed_boxes[..., [1, 3]], dim=-1)[0]
+    transformed_boxes = restored_boxes
+
     if mode == 'xywh':
-        restored_boxes = transformed_boxes.clone()
-        # In case the boxes are flipped.
-        restored_boxes[..., 0] = torch.min(transformed_boxes[..., [0, 2]], dim=-1)[0]
-        restored_boxes[..., 1] = torch.min(transformed_boxes[..., [1, 3]], dim=-1)[0]
-        restored_boxes[..., 2] = (transformed_boxes[..., 2] - transformed_boxes[..., 0]).abs()
-        restored_boxes[..., 3] = (transformed_boxes[..., 3] - transformed_boxes[..., 1]).abs()
-        transformed_boxes = restored_boxes
+        transformed_boxes[..., 2] = transformed_boxes[..., 2] - transformed_boxes[..., 0]
+        transformed_boxes[..., 3] = transformed_boxes[..., 3] - transformed_boxes[..., 1]
 
     return transformed_boxes

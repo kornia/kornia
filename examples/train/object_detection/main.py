@@ -1,15 +1,11 @@
 import hydra
 import torch
-import torch.nn as nn
 import torchvision
 import torchvision.transforms as T
 from hydra.core.config_store import ConfigStore
 from hydra.utils import to_absolute_path
-from numpy.lib.arraysetops import isin
 
-import kornia
 import kornia as K
-from kornia import augmentation
 from kornia.x import Configuration, ModelCheckpoint, ObjectDetectionTrainer
 
 cs = ConfigStore.instance()
@@ -58,9 +54,14 @@ def my_app(config: Configuration) -> None:
         data_keys=['input', 'bbox_xyxy']
     )
 
+    def bbox_xywh_to_xyxy(boxes: torch.Tensor):
+        boxes[..., 2] = boxes[..., 0] + boxes[..., 2]  # x + w
+        boxes[..., 3] = boxes[..., 1] + boxes[..., 3]  # y + h
+        return boxes
+
     def preprocess(self, x: dict) -> dict:
         x['target'] = {
-            "boxes": [a['bbox'].float() for a in x['target']],
+            "boxes": [bbox_xywh_to_xyxy(a['bbox'].float()) for a in x['target']],
             # labels are set to 1 for all faces
             "labels": [torch.tensor([1] * len(a['bbox'])) for a in x['target']],
         }
@@ -75,16 +76,10 @@ def my_app(config: Configuration) -> None:
             ys2.append(lab)
         return {"input": xs, "target": {"boxes": ys, "labels": ys2}}
 
-    def bbox_xywh_to_xyxy(boxes: torch.Tensor):
-        boxes[..., 2] = boxes[..., 0] + boxes[..., 2]  # x + w
-        boxes[..., 3] = boxes[..., 1] + boxes[..., 3]  # y + h
-        return boxes
-
     def on_before_model(self, sample: dict) -> dict:
         return {"input": sample["input"], "target": [
             {
-                "boxes": bbox_xywh_to_xyxy(v),
-                "labels": l
+                "boxes": v, "labels": l
             } for v, l in zip(sample["target"]["boxes"], sample["target"]["labels"])
         ]}
 
@@ -103,7 +98,7 @@ def my_app(config: Configuration) -> None:
             "on_checkpoint": model_checkpoint,
         }
     )
-    # trainer.fit()
+    trainer.fit()
     trainer.evaluate()
 
 if __name__ == "__main__":

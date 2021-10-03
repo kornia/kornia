@@ -25,6 +25,12 @@ def mean_average_precision(
 
     Returns:
         mean average precision (mAP), list of average precisions for each class.
+
+    Examples:
+        >>> boxes, labels, scores = torch.tensor([[100, 50, 150, 100.]]), torch.tensor([1]), torch.tensor([.7])
+        >>> gt_boxes, gt_labels = torch.tensor([[100, 50, 150, 100.]]), torch.tensor([1])
+        >>> mean_average_precision([boxes], [labels], [scores], [gt_boxes], [gt_labels], 2)
+        (tensor(1.), {1: 1.0})
     """
     # these are all lists of tensors of the same length, i.e. number of images
     assert len(pred_boxes) == len(pred_labels) == len(pred_scores) == len(gt_boxes) == len(gt_labels)
@@ -55,8 +61,8 @@ def mean_average_precision(
     average_precisions = torch.zeros((n_classes - 1), dtype=torch.float)  # (n_classes - 1)
     for c in range(1, n_classes):
         # Extract only objects with this class
-        gt_class_images = _gt_images[gt_labels == c]  # (n_class_objects)
-        gt_class_boxes = _gt_boxes[gt_labels == c]  # (n_class_objects, 4)
+        gt_class_images = _gt_images[_gt_labels == c]  # (n_class_objects)
+        gt_class_boxes = _gt_boxes[_gt_labels == c]  # (n_class_objects, 4)
 
         # Keep track of which true objects with this class have already been 'detected'
         # (n_class_objects)
@@ -64,9 +70,9 @@ def mean_average_precision(
             (gt_class_images.size(0)), dtype=torch.uint8, device=gt_class_images.device)
 
         # Extract only detections with this class
-        pred_class_images = _pred_images[pred_labels == c]  # (n_class_detections)
-        pred_class_boxes = _pred_boxes[pred_labels == c]  # (n_class_detections, 4)
-        pred_class_scores = _pred_scores[pred_labels == c]  # (n_class_detections)
+        pred_class_images = _pred_images[_pred_labels == c]  # (n_class_detections)
+        pred_class_boxes = _pred_boxes[_pred_labels == c]  # (n_class_detections, 4)
+        pred_class_scores = _pred_scores[_pred_labels == c]  # (n_class_detections)
         n_class_detections = pred_class_boxes.size(0)
         if n_class_detections == 0:
             continue
@@ -138,6 +144,6 @@ def mean_average_precision(
     mean_average_precision = average_precisions.mean()
 
     # Keep class-wise average precisions in a dictionary
-    average_precision_dict = {c: v for c, v in enumerate(average_precisions.tolist())}
+    average_precision_dict = {c + 1: v for c, v in enumerate(average_precisions.tolist())}
 
     return mean_average_precision, average_precision_dict
