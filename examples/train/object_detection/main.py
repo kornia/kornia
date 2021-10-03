@@ -21,7 +21,7 @@ cs.store(name="config", node=Configuration)
 def my_app(config: Configuration) -> None:
 
     # create the model
-    model = torchvision.models.detection.retinanet_resnet50_fpn(num_classes=1)
+    model = torchvision.models.detection.retinanet_resnet50_fpn(pretrained=True)
 
     def collate_fn(data):
         return list([d[0] for d in data]), list([d[1] for d in data])
@@ -61,7 +61,8 @@ def my_app(config: Configuration) -> None:
     def preprocess(self, x: dict) -> dict:
         x['target'] = {
             "boxes": [a['bbox'].float() for a in x['target']],
-            "labels": [torch.tensor([0] * len(a['bbox'])) for a in x['target']],  # labels are 0 since they are all faces
+            # labels are set to 1 for all faces
+            "labels": [torch.tensor([1] * len(a['bbox'])) for a in x['target']],
         }
         return x
 
@@ -93,6 +94,7 @@ def my_app(config: Configuration) -> None:
 
     trainer = ObjectDetectionTrainer(
         model, train_dataloader, valid_daloader, criterion, optimizer, scheduler, config,
+        num_classes=81,
         loss_computed_by_model=True,
         callbacks={
             "preprocess": preprocess,

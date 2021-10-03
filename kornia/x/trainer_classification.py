@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from kornia.metrics import accuracy, mean_iou
+from kornia.metrics import accuracy, mean_iou, mean_average_precision
 
 from .trainer import Trainer
 from .utils import Configuration
@@ -66,17 +66,19 @@ class ObjectDetectionTrainer(Trainer):
         optimizer: torch.optim.Optimizer,
         scheduler: torch.optim.lr_scheduler.CosineAnnealingLR,
         config: Configuration,
+        num_classes: int,
         callbacks: Dict[str, Callable] = {},
-        loss_computed_by_model: Optional[bool] = None
+        loss_computed_by_model: Optional[bool] = None,
     ) -> None:
         super().__init__(
             model, train_dataloader, valid_dataloader, criterion, optimizer, scheduler, config, callbacks
         )
         # TODO: auto-detect if the model is from TorchVision
         self.loss_computed_by_model = loss_computed_by_model
+        self.num_classes = num_classes
 
-    def on_model(self, model, sample: dict):
-        if self.loss_computed_by_model:
+    def on_model(self, model: nn.Module, sample: dict):
+        if self.loss_computed_by_model and model.training:
             return model(sample["input"], sample["target"])
         return model(sample["input"])
 
@@ -86,6 +88,13 @@ class ObjectDetectionTrainer(Trainer):
         return self.criterion(*args)
 
     def compute_metrics(self, *args: torch.Tensor) -> Dict[str, float]:
-        if self.loss_computed_by_model:
-            assert False, args[1]
-        raise NotImplementedError
+        mAP, _ = mean_average_precision(
+            [a['boxes'] for a in args[0]],
+            [a['labels'] for a in args[0]],
+            [a['scores'] for a in args[0]],
+            [a['boxes'] for a in args[1]],
+            [a['labels'] for a in args[1]],
+            n_classes=self.num_classes,
+            threshold=0.000001
+        )
+        return {'mAP': mAP.item()}
