@@ -1,2 +1,2 @@
-accelerate==0.5.0
+accelerate==0.5.1
 dataclasses
