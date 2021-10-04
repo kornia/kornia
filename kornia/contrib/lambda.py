@@ -8,7 +8,7 @@ class Lambda(nn.Module):
     """Applies user-defined lambda as a transform.
 
     Args:
-        func: Callable function
+        func: Callable function.
 
     Returns:
         A torch.Tensor which is the output of the user-defined lambda
