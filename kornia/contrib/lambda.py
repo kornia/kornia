@@ -1,24 +1,23 @@
 from typing import Callable
+
 import torch
 import torch.nn as nn
 
 
-
 class Lambda(nn.Module):
-    '''
-    Applies user-defined lambda as a transform.
+    """Applies user-defined lambda as a transform.
 
     Args:
         func: Callable function
 
     Returns:
         A torch.Tensor which is the output of the user-defined lambda
-    '''
+    """
 
     def __init__(self, func: Callable) -> None:
         super().__init__()
         if not callable(func):
-            raise TypeError("Argument lambd should be callable, got {}".format(repr(type(func).__name__)))
+            raise TypeError(f"Argument lambd should be callable, got {repr(type(func).__name__)}")
 
         self.func = func
 
