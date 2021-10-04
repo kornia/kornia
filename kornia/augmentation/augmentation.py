@@ -2,9 +2,15 @@ import warnings
 from typing import cast, Dict, List, Optional, Tuple, Union
 
 import torch
+from torch._C import Size
 from torch.nn.functional import pad
 
-from kornia.augmentation.base import GeometricAugmentationBase2D, IntensityAugmentationBase2D, TensorWithTransformMat
+from kornia.augmentation.base import (
+    GeometricAugmentationBase2D,
+    IntensityAugmentationBase2D,
+    LambdaAugmentation,
+    TensorWithTransformMat
+)
 from kornia.color import rgb_to_grayscale
 from kornia.constants import BorderType, pi, Resample, SamplePadding
 from kornia.enhance import (
@@ -1849,6 +1855,8 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
             input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+            to the batch form (False).
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -1877,8 +1885,10 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         return_transform: bool = False,
         same_on_batch: bool = False,
         p: float = 0.5,
+        keepdim: bool = False
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0)
+        super().__init__(
+            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self.kernel_size = kernel_size
         self.sigma = sigma
         self.border_type: BorderType = BorderType.get(border_type)
@@ -1890,31 +1900,6 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         return gaussian_blur2d(input, self.kernel_size, self.sigma, self.border_type.name.lower())
-
-
-class GaussianBlur(RandomGaussianBlur):
-    def __init__(
-        self,
-        kernel_size: Tuple[int, int],
-        sigma: Tuple[float, float],
-        border_type: str = 'reflect',
-        return_transform: bool = False,
-        same_on_batch: bool = False,
-        p: float = 0.5,
-    ) -> None:
-        super().__init__(
-            kernel_size=kernel_size,
-            sigma=sigma,
-            border_type=border_type,
-            return_transform=return_transform,
-            same_on_batch=same_on_batch,
-            p=p,
-        )
-        warnings.warn(
-            "GaussianBlur is no longer maintained and will be removed from the future versions. "
-            "Please use RandomGaussianBlur instead.",
-            category=DeprecationWarning,
-        )
 
 
 class RandomInvert(IntensityAugmentationBase2D):
@@ -1929,6 +1914,8 @@ class RandomInvert(IntensityAugmentationBase2D):
             input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+            to the batch form (False).
 
     .. note::
         This function internally uses :func:`kornia.enhance.invert`.
@@ -1951,8 +1938,10 @@ class RandomInvert(IntensityAugmentationBase2D):
         return_transform: bool = False,
         same_on_batch: bool = False,
         p: float = 0.5,
+        keepdim: bool = False
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0)
+        super().__init__(
+            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self.max_val = max_val
 
     def __repr__(self) -> str:
@@ -1974,6 +1963,8 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
             input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+            to the batch form (False).
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -1986,8 +1977,11 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
                   [2., 3.]]]])
     """
 
-    def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0)
+    def __init__(
+        self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False
+    ) -> None:
+        super().__init__(
+            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
@@ -2018,6 +2012,8 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
             input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+            to the batch form (False).
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -2034,8 +2030,10 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
         return_transform: bool = False,
         same_on_batch: bool = False,
         p: float = 0.5,
+        keepdim: bool = False
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0)
+        super().__init__(
+            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self.mean = mean
         self.std = std
 
@@ -2065,6 +2063,8 @@ class RandomFisheye(GeometricAugmentationBase2D):
             input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+            to the batch form (False).
 
     Examples:
         >>> img = torch.ones(1, 1, 2, 2)
@@ -2084,8 +2084,10 @@ class RandomFisheye(GeometricAugmentationBase2D):
         return_transform: bool = False,
         same_on_batch: bool = False,
         p: float = 0.5,
+        keepdim: bool = False
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0)
+        super().__init__(
+            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self.center_x = self._check_tensor(center_x)
         self.center_y = self._check_tensor(center_y)
         self.gamma = self._check_tensor(gamma)
@@ -2149,6 +2151,8 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
             input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+            to the batch form (False).
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.elastic_transform2d`.
@@ -2170,8 +2174,10 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
         return_transform: bool = False,
         same_on_batch: bool = False,
         p: float = 0.5,
+        keepdim: bool = False
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0)
+        super().__init__(
+            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self.kernel_size = kernel_size
         self.sigma = sigma
         self.alpha = alpha
@@ -2214,6 +2220,8 @@ class RandomThinPlateSpline(GeometricAugmentationBase2D):
             input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+            to the batch form (False).
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.warp_image_tps`.
@@ -2232,8 +2240,10 @@ class RandomThinPlateSpline(GeometricAugmentationBase2D):
         return_transform: bool = False,
         same_on_batch: bool = False,
         p: float = 0.5,
+        keepdim: bool = False
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0)
+        super().__init__(
+            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self.align_corners = align_corners
         self.dist = torch.distributions.Uniform(-scale, scale)
 
@@ -2271,6 +2281,8 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
             input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch (bool): apply the same transformation across the batch.
         p: probability of applying the transformation.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+            to the batch form (False).
 
     .. note::
         This function internally uses :func:`kornia.filters.box_blur`.
@@ -2290,8 +2302,10 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
         return_transform: bool = False,
         same_on_batch: bool = False,
         p: float = 0.5,
+        keepdim: bool = False
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0)
+        super().__init__(
+            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self.kernel_size = kernel_size
         self.border_type = border_type
         self.normalized = normalized
@@ -2305,7 +2319,7 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
         return box_blur(input, self.kernel_size, self.border_type, self.normalized)
 
 
-class PadTo(GeometricAugmentationBase2D):
+class PadTo(LambdaAugmentation):
     r"""Pad the given sample to a specific size.
 
     Args:
@@ -2350,40 +2364,43 @@ class PadTo(GeometricAugmentationBase2D):
         size: Tuple[int, int],
         pad_mode: str = "constant",
         pad_value: Union[int, float] = 0,
-        return_transform: bool = False,
+        keepdim: bool = False,
     ) -> None:
-        super().__init__(p=1., return_transform=return_transform, same_on_batch=True, p_batch=1.)
         self.size = size
         self.pad_mode = pad_mode
         self.pad_value = pad_value
-
-    def __repr__(self) -> str:
-        return self.__class__.__name__ + f"({super().__repr__()})"
-
+        super().__init__(
+            input_fn=self.pad_input,
+            input_inverse_fn=self.unpad_input,
+            mask_fn=self.pad_input,
+            mask_inverse_fn=self.unpad_input,
+            bbox_fn=self.pad_points,
+            bbox_inverse_fn=self.unpad_points,
+            keypoints_fn=self.pad_points,
+            keypoints_inverse_fn=self.unpad_points,
+            keepdim=keepdim,
+        )
+    
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         input_size = torch.tensor(batch_shape[-2:], dtype=torch.long).expand(batch_shape[0], -1)
         return dict(input_size=input_size)
 
-    # TODO: It is incorrect to return identity
-    # TODO: Having a resampled version with ``warp_affine``
-    def compute_transformation(self, image: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return self.identity_matrix(image)
-
-    def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+    def pad_input(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
         _, _, height, width = input.shape
         height_pad: int = self.size[0] - height
         width_pad: int = self.size[1] - width
         return torch.nn.functional.pad(
             input, [0, width_pad, 0, height_pad], mode=self.pad_mode, value=self.pad_value)
 
-    def inverse_transform(
-        self,
-        input: torch.Tensor,
-        transform: Optional[torch.Tensor] = None,
-        size: Optional[Tuple[int, int]] = None,
-        **kwargs
-    ) -> torch.Tensor:
-        size = cast(Tuple[int, int], size)
+    def unpad_input(self, input: torch.Tensor, input_size: torch.Tensor, **kwargs) -> torch.Tensor:
+        size = input_size.unique(dim=0).squeeze().numpy().tolist()
+        size = (size[0], size[1])
         return input[..., :size[0], :size[1]]
+
+    def pad_points(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
+        # No need to update since it pads right-bottom side
+        return input
+
+    def unpad_points(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
+        # No need to update since it pads right-bottom side
+        return input

@@ -9,6 +9,7 @@ from kornia.augmentation.base import (
     _AugmentationBase,
     GeometricAugmentationBase2D,
     IntensityAugmentationBase2D,
+    LambdaAugmentation,
     TensorWithTransformMat,
 )
 from kornia.constants import DataKey
@@ -184,6 +185,8 @@ class AugmentationSequential(ImageSequential):
                     raise NotImplementedError("Geometric involved PatchSequential is not supported.")
                 elif isinstance(module, (GeometricAugmentationBase2D, ImageSequential)) and dcate in DataKey:
                     input = ApplyInverse.inverse_by_key(input, module, param, dcate)
+                elif isinstance(module, (LambdaAugmentation,)) and dcate in DataKey:
+                    input = module.inverse_by_key(input, param, dcate)
                 elif isinstance(module, (SequentialBase,)):
                     raise ValueError(f"Unsupported Sequential {module}.")
                 else:
@@ -281,6 +284,8 @@ class AugmentationSequential(ImageSequential):
                     raise NotImplementedError("Geometric involved PatchSequential is not supported.")
                 elif isinstance(module, (GeometricAugmentationBase2D, ImageSequential,)) and dcate in DataKey:
                     input, label = ApplyInverse.apply_by_key(input, label, module, param, dcate)
+                elif isinstance(module, (LambdaAugmentation,)) and dcate in DataKey:
+                    input = module.forward_by_key(input, param, dcate)
                 elif isinstance(module, (SequentialBase,)):
                     raise ValueError(f"Unsupported Sequential {module}.")
                 else:

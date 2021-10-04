@@ -7,6 +7,7 @@ from torch.distributions import Bernoulli
 
 import kornia
 from kornia.utils.helpers import _torch_inverse_cast
+from kornia.constants import DataKey
 
 from .utils import (
     _adapted_sampling,
@@ -540,31 +541,59 @@ class MixAugmentationBase(_BasicAugmentationBase):
         return output, lab
 
 
-class LambdaAugmentation(nn.Module):
-    """
+class LambdaAugmentation(_BasicAugmentationBase):
+    """Lambda augmentation for wrapping static image operations.
+
+    Args:
+        input_fn: arbitary transformation function for an image tensor,
+            with a shape of :math:`(B, C, H, W)`.
+        mask_fn: arbitary transformation function for a mask tensor,
+            with a shape of :math:`(B, C, H, W)`.
+        bbox_fn: arbitary transformation function for a bounding box tensor,
+            with a shape of :math:`(B, N, 4, 2)`.
+        keypoints_fn: arbitary transformation function for a keypoint tensor,
+            with a shape of :math:`(B, N, 2)`.
+        input_inverse_fn: arbitary inverse transformation function for an image tensor,
+            with a shape of :math:`(B, C, H, W)`.
+        mask_inverse_fn: arbitary inverse transformation function for a mask tensor,
+            with a shape of :math:`(B, C, H, W)`.
+        bbox_inverse_fn: arbitary inverse transformation function for a bounding box tensor,
+            with a shape of :math:`(B, N, 4, 2)`.
+        keypoints_inverse_fn: arbitary inverse transformation function for a keypoint tensor,
+            with a shape of :math:`(B, N, 2)`.
+        keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
+          to the batch form ``False``.
     """
     def __init__(
         self,
-        input_fn: nn.Module,
+        input_fn: Optional[Callable] = None,
         mask_fn: Optional[Callable] = None,
         bbox_fn: Optional[Callable] = None,
         keypoints_fn: Optional[Callable] = None,
         input_inverse_fn: Optional[Callable] = None,
         mask_inverse_fn: Optional[Callable] = None,
         bbox_inverse_fn: Optional[Callable] = None,
-        keypoints_inverse_fn: Optional[Callable] = None
+        keypoints_inverse_fn: Optional[Callable] = None,
+        keepdim: bool = False,
     ) -> None:
-        super().__init__()
-        self.f = nn.ModuleDict({
-            "input": input_fn,
-            "mask": mask_fn,
-            "bbox": bbox_fn,
-            "keypoints": keypoints_fn,
-            "input_inverse": input_inverse_fn,
-            "mask_inverse": mask_inverse_fn,
-            "bbox_inverse": bbox_inverse_fn,
-            "keypoints_inverse": keypoints_inverse_fn,
-        })
+        super().__init__(p=1., p_batch=1.0, same_on_batch=True, keepdim=keepdim)
+        self.input_fn = input_fn
+        self.mask_fn = mask_fn
+        self.bbox_fn = bbox_fn
+        self.keypoints_fn = keypoints_fn
+        self.input_inverse_fn = input_inverse_fn
+        self.mask_inverse_fn = mask_inverse_fn
+        self.bbox_inverse_fn = bbox_inverse_fn
+        self.keypoints_inverse_fn = keypoints_inverse_fn
+
+    def __repr__(self) -> str:
+        return self.__class__.__name__ + f"({super().__repr__()})"
+
+    def __check_batching__(self, input: TensorWithTransformMat):
+        pass
+
+    def transform_tensor(self, input: torch.Tensor) -> torch.Tensor:
+        return input
 
     def __unpack_input__(  # type: ignore
         self, input: TensorWithTransformMat
@@ -576,6 +605,149 @@ class LambdaAugmentation(nn.Module):
         in_tensor = input
         return in_tensor, None
 
-    def forward(self, input: TensorWithTransformMat) -> TensorWithTransformMat:
-        in_tensor, in_trans = self.__unpack_input__(input)
+    def forward_input(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
+        if self.input_fn is not None:
+            return self.input_fn(input, **kwargs)
         raise NotImplementedError
+
+    def inverse_input(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
+        if self.input_inverse_fn is not None:
+            return self.input_inverse_fn(input, **kwargs)
+        raise NotImplementedError
+
+    def forward_mask(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
+        if self.mask_fn is not None:
+            return self.mask_fn(input, **kwargs)
+        raise NotImplementedError
+
+    def inverse_mask(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
+        if self.mask_inverse_fn is not None:
+            return self.mask_inverse_fn(input, **kwargs)
+        raise NotImplementedError
+
+    def forward_bbox(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
+        if self.bbox_fn is not None:
+            return self.bbox_fn(input, **kwargs)
+        raise NotImplementedError
+
+    def inverse_bbox(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
+        if self.bbox_inverse_fn is not None:
+            return self.bbox_inverse_fn(input, **kwargs)
+        raise NotImplementedError
+
+    def forward_keypoints(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
+        if self.keypoints_fn is not None:
+            return self.keypoints_fn(input, **kwargs)
+        raise NotImplementedError
+
+    def inverse_keypoints(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
+        if self.keypoints_inverse_fn is not None:
+            return self.keypoints_inverse_fn(input, **kwargs)
+        raise NotImplementedError
+
+    def apply_by_key(
+        self,
+        input: torch.Tensor,
+        params: Optional[Dict[str, torch.Tensor]],
+        data_key: Union[str, int, DataKey],
+    ) -> torch.Tensor:
+        if params is None:
+            params = {}
+        if DataKey.get(data_key) == DataKey.INPUT:
+            return cast(torch.Tensor, self.forward(input, params))
+        if DataKey.get(data_key) == DataKey.MASK:
+            return self.forward_mask(input, **params)
+        if DataKey.get(data_key) == DataKey.BBOX:
+            return self.forward_bbox(input, **params)
+        if DataKey.get(data_key) == DataKey.BBOX_XYHW:
+            from_shape = input.shape
+            input = input.view(-1, input.size(-1))
+            boxes = kornia.geometry.bbox_generator(input[..., 0], input[..., 1], input[..., 2], input[..., 3])
+            boxes = self.forward_bbox(boxes, **params)
+            x, y = boxes[:, 0, 0], boxes[:, 0, 1]
+            w = boxes[:, 1, 0] - boxes[:, 0, 0] + 1
+            h = boxes[:, 2, 1] - boxes[:, 0, 1] + 1
+            boxes = torch.stack([x, y, w, h]).view(from_shape)
+            return boxes
+        if DataKey.get(data_key) == DataKey.BBOX_XYXY:
+            from_shape = input.shape
+            input = input.view(-1, input.size(-1))
+            boxes = kornia.geometry.bbox_generator(
+                input[..., 0], input[..., 1], input[..., 2] - input[..., 0], input[..., 3] - input[..., 1])
+            boxes = self.forward_bbox(boxes, **params)
+            x, y = boxes[:, 0, 0], boxes[:, 0, 1]
+            x2 = boxes[:, 1, 0] + 1
+            y2 = boxes[:, 2, 1] + 1
+            boxes = torch.stack([x, y, x2, y2]).view(from_shape)
+            return boxes
+        if DataKey.get(data_key) == DataKey.KEYPOINTS:
+            return self.forward_keypoints(input, **params)
+        raise NotImplementedError
+
+    def inverse_by_key(
+        self,
+        input: torch.Tensor,
+        params: Optional[Dict[str, torch.Tensor]],
+        data_key: Union[str, int, DataKey],
+    ) -> torch.Tensor:
+        if params is None:
+            params = {}
+        if DataKey.get(data_key) == DataKey.INPUT:
+            return self.inverse(input, params)
+        if DataKey.get(data_key) == DataKey.MASK:
+            return self.inverse_mask(input, **params)
+        if DataKey.get(data_key) == DataKey.BBOX:
+            return self.inverse_bbox(input, **params)
+        if DataKey.get(data_key) == DataKey.BBOX_XYHW:
+            from_shape = input.shape
+            input = input.view(-1, input.size(-1))
+            boxes = kornia.geometry.bbox_generator(input[..., 0], input[..., 1], input[..., 2], input[..., 3])
+            boxes = self.inverse_bbox(boxes, **params)
+            x, y = boxes[:, 0, 0], boxes[:, 0, 1]
+            w = boxes[:, 1, 0] - boxes[:, 0, 0] + 1
+            h = boxes[:, 2, 1] - boxes[:, 0, 1] + 1
+            boxes = torch.stack([x, y, w, h]).view(from_shape)
+            return boxes
+        if DataKey.get(data_key) == DataKey.BBOX_XYXY:
+            from_shape = input.shape
+            input = input.view(-1, input.size(-1))
+            boxes = kornia.geometry.bbox_generator(
+                input[..., 0], input[..., 1], input[..., 2] - input[..., 0], input[..., 3] - input[..., 1])
+            boxes = self.inverse_bbox(boxes, **params)
+            x, y = boxes[:, 0, 0], boxes[:, 0, 1]
+            x2 = boxes[:, 1, 0] + 1
+            y2 = boxes[:, 2, 1] + 1
+            boxes = torch.stack([x, y, x2, y2]).view(from_shape)
+            return boxes
+        if DataKey.get(data_key) == DataKey.KEYPOINTS:
+            return self.inverse_keypoints(input, **params)
+        raise NotImplementedError
+
+    def inverse(self, input: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None) -> torch.Tensor:
+        if params is None:
+            params = self._params
+        return self.inverse_input(input, **params)
+
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return self.forward_input(input, **params)
+
+    def forward(  # type: ignore
+        self,
+        input: TensorWithTransformMat,
+        params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
+    ) -> TensorWithTransformMat:
+        in_tensor, in_transform = self.__unpack_input__(input)
+        self.__check_batching__(input)
+        ori_shape = in_tensor.shape
+        in_tensor = self.transform_tensor(in_tensor)
+        batch_shape = in_tensor.shape
+
+        if params is None:
+            params = self.forward_parameters(batch_shape)
+
+        self._params = params
+        output = self.apply_func(in_tensor, self._params)
+        output = _transform_output_shape(output, ori_shape) if self.keepdim else output
+        if in_transform is None:
+            return output
+        return cast(torch.Tensor, output), in_transform
