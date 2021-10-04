@@ -9,7 +9,7 @@ from kornia.augmentation.base import (
     GeometricAugmentationBase2D,
     IntensityAugmentationBase2D,
     LambdaAugmentation,
-    TensorWithTransformMat
+    TensorWithTransformMat,
 )
 from kornia.color import rgb_to_grayscale
 from kornia.constants import BorderType, pi, Resample, SamplePadding
@@ -2380,7 +2380,7 @@ class PadTo(LambdaAugmentation):
             keypoints_inverse_fn=self.unpad_points,
             keepdim=keepdim,
         )
-    
+
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         input_size = torch.tensor(batch_shape[-2:], dtype=torch.long).expand(batch_shape[0], -1)
         return dict(input_size=input_size)
