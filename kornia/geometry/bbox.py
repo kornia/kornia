@@ -147,20 +147,16 @@ def infer_bbox_shape3d(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor,
 
 def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
     """Convert 2D bounding boxes to masks. Covered area is 1. and the remaining is 0.
-
     Args:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
             of Bx4x2, where each box is defined in the following ``clockwise`` order: top-left, top-right, bottom-right
             and bottom-left. The coordinates must be in the x, y order.
         width: width of the masked image.
         height: height of the masked image.
-
     Returns:
         the output mask tensor.
-
     Note:
         It is currently non-differentiable.
-
     Examples:
         >>> boxes = torch.tensor([[
         ...        [1., 1.],
@@ -177,22 +173,14 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
     """
     validate_bbox(boxes)
     # zero padding the surroudings
-    mask = torch.zeros((len(boxes), height + 2, width + 2))
+    mask = torch.zeros((len(boxes), height + 2, width + 2), dtype=torch.float, device=boxes.device)
     # push all points one pixel off
     # in order to zero-out the fully filled rows or columns
-    boxes += 1
-
-    mask_out = []
-    # TODO: Looking for a vectorized way
-    for m, box in zip(mask, boxes):
-        m = m.index_fill(1, torch.arange(box[0, 0].item(), box[1, 0].item() + 1, dtype=torch.long), torch.tensor(1))
-        m = m.index_fill(0, torch.arange(box[1, 1].item(), box[2, 1].item() + 1, dtype=torch.long), torch.tensor(1))
-        m = m.unsqueeze(dim=0)
-        m_out = (m == 1).all(dim=1) * (m == 1).all(dim=2).T
-        m_out = m_out[1:-1, 1:-1]
-        mask_out.append(m_out)
-
-    return torch.stack(mask_out, dim=0).float()
+    box_i = (boxes + 1).long()
+    # set all pixels within box to 1
+    mask[:, box_i[:, 0, 1]:box_i[:, 2, 1] + 1, 
+            box_i[:, 0, 0]:box_i[:, 1, 0] + 1] = 1.0  
+    return mask[:, 1:-1, 1:-1]
 
 
 def bbox_to_mask3d(boxes: torch.Tensor, size: Tuple[int, int, int]) -> torch.Tensor:
