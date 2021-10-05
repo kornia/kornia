@@ -177,22 +177,14 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
     """
     validate_bbox(boxes)
     # zero padding the surroudings
-    mask = torch.zeros((len(boxes), height + 2, width + 2))
+    mask = torch.zeros((len(boxes), height + 2, width + 2), dtype=torch.float, device=boxes.device)
     # push all points one pixel off
     # in order to zero-out the fully filled rows or columns
-    boxes += 1
-
-    mask_out = []
-    # TODO: Looking for a vectorized way
-    for m, box in zip(mask, boxes):
-        m = m.index_fill(1, torch.arange(box[0, 0].item(), box[1, 0].item() + 1, dtype=torch.long), torch.tensor(1))
-        m = m.index_fill(0, torch.arange(box[1, 1].item(), box[2, 1].item() + 1, dtype=torch.long), torch.tensor(1))
-        m = m.unsqueeze(dim=0)
-        m_out = (m == 1).all(dim=1) * (m == 1).all(dim=2).T
-        m_out = m_out[1:-1, 1:-1]
-        mask_out.append(m_out)
-
-    return torch.stack(mask_out, dim=0).float()
+    box_i = (boxes + 1).long()
+    # set all pixels within box to 1
+    for msk, bx in zip(mask, box_i):
+        msk[bx[0, 1]:bx[2, 1] + 1, bx[0, 0]:bx[1, 0] + 1] = 1.0  
+    return mask[:, 1:-1, 1:-1]
 
 
 def bbox_to_mask3d(boxes: torch.Tensor, size: Tuple[int, int, int]) -> torch.Tensor:
