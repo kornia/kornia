@@ -85,7 +85,7 @@ class TestSolvePnpDlt:
             self._get_test_data(num_points, device, dtype)
         batch_size = world_points.shape[0]
 
-        pred_world_to_cam = kornia.solve_pnp_dlt(world_points, img_points, intrinsics)
+        pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics)
         assert pred_world_to_cam.shape == (batch_size, 3, 4)
 
     @pytest.mark.parametrize("num_points", (6, 20, 200))
@@ -99,7 +99,7 @@ class TestSolvePnpDlt:
         intrinsics = tensor_to_gradcheck_var(intrinsics)
 
         assert gradcheck(
-            kornia.solve_pnp_dlt, (world_points, img_points, intrinsics),
+            kornia.geometry.solve_pnp_dlt, (world_points, img_points, intrinsics),
             raise_exception=True, atol=1e-3
         )
 
@@ -109,7 +109,7 @@ class TestSolvePnpDlt:
         intrinsics, gt_world_to_cam, world_points, img_points = \
             self._get_test_data(num_points, device, dtype)
 
-        pred_world_to_cam = kornia.solve_pnp_dlt(world_points, img_points, intrinsics)
+        pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics)
         assert_close(pred_world_to_cam, gt_world_to_cam, atol=1e-3, rtol=1e-3)
 
     @pytest.mark.parametrize("num_points", (6, 20, 200))
@@ -118,7 +118,7 @@ class TestSolvePnpDlt:
         intrinsics, _, world_points, img_points = \
             self._get_test_data(num_points, device, dtype)
 
-        pred_world_to_cam = kornia.solve_pnp_dlt(world_points, img_points, intrinsics)
+        pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics)
 
         pred_world_to_cam_4x4 = kornia.eye_like(4, pred_world_to_cam)
         pred_world_to_cam_4x4[:, :3, :] = pred_world_to_cam
