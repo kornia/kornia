@@ -1,4 +1,3 @@
-import warnings
 from typing import cast, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -2370,18 +2369,19 @@ class PadTo(LambdaAugmentation):
         self.pad_mode = pad_mode
         self.pad_value = pad_value
         super().__init__(
-            input_fn=self.pad_input,
-            input_inverse_fn=self.unpad_input,
-            mask_fn=self.pad_input,
-            mask_inverse_fn=self.unpad_input,
-            bbox_fn=self.pad_points,
-            bbox_inverse_fn=self.unpad_points,
-            keypoints_fn=self.pad_points,
-            keypoints_inverse_fn=self.unpad_points,
+            input=self.pad_input,
+            input_inverse=self.unpad_input,
+            mask=self.pad_input,
+            mask_inverse=self.unpad_input,
+            bbox=self.pad_points,
+            bbox_inverse=self.unpad_points,
+            keypoints=self.pad_points,
+            keypoints_inverse=self.unpad_points,
+            param_generator=self.pad_param_gen,
             keepdim=keepdim,
         )
 
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+    def pad_param_gen(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         input_size = torch.tensor(batch_shape[-2:], dtype=torch.long).expand(batch_shape[0], -1)
         return dict(input_size=input_size)
 
@@ -2392,15 +2392,17 @@ class PadTo(LambdaAugmentation):
         return torch.nn.functional.pad(
             input, [0, width_pad, 0, height_pad], mode=self.pad_mode, value=self.pad_value)
 
-    def unpad_input(self, input: torch.Tensor, input_size: torch.Tensor, **kwargs) -> torch.Tensor:
+    def unpad_input(self, input: torch.Tensor, input_size: torch.Tensor) -> torch.Tensor:
         size = input_size.unique(dim=0).squeeze().numpy().tolist()
         size = (size[0], size[1])
         return input[..., :size[0], :size[1]]
 
     def pad_points(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
+        # pad the coordinates for bounding boxes and keypoints.
         # No need to update since it pads right-bottom side
         return input
 
     def unpad_points(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
+        # pad the coordinates for bounding boxes and keypoints.
         # No need to update since it pads right-bottom side
         return input

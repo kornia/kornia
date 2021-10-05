@@ -542,49 +542,56 @@ class MixAugmentationBase(_BasicAugmentationBase):
 
 
 class LambdaAugmentation(_BasicAugmentationBase):
-    """Lambda augmentation for wrapping static image operations.
+    """Lambda augmentation for wrapping general image operations.
+
+    This function supports chaining general image operations in an ``AugmentationSequential`` container.
 
     Args:
-        input_fn: arbitary transformation function for an image tensor,
+        input: arbitary transformation function for an image tensor,
             with a shape of :math:`(B, C, H, W)`.
-        mask_fn: arbitary transformation function for a mask tensor,
+        mask: arbitary transformation function for a mask tensor,
             with a shape of :math:`(B, C, H, W)`.
-        bbox_fn: arbitary transformation function for a bounding box tensor,
+        bbox: arbitary transformation function for a bounding box tensor,
             with a shape of :math:`(B, N, 4, 2)`.
-        keypoints_fn: arbitary transformation function for a keypoint tensor,
+        keypoints: arbitary transformation function for a keypoint tensor,
             with a shape of :math:`(B, N, 2)`.
-        input_inverse_fn: arbitary inverse transformation function for an image tensor,
+        input_inverse: arbitary inverse transformation function for an image tensor,
             with a shape of :math:`(B, C, H, W)`.
-        mask_inverse_fn: arbitary inverse transformation function for a mask tensor,
+        mask_inverse: arbitary inverse transformation function for a mask tensor,
             with a shape of :math:`(B, C, H, W)`.
-        bbox_inverse_fn: arbitary inverse transformation function for a bounding box tensor,
+        bbox_inverse: arbitary inverse transformation function for a bounding box tensor,
             with a shape of :math:`(B, N, 4, 2)`.
-        keypoints_inverse_fn: arbitary inverse transformation function for a keypoint tensor,
+        keypoints_inverse: arbitary inverse transformation function for a keypoint tensor,
             with a shape of :math:`(B, N, 2)`.
+        param_generator: generate sharable parameter across functions. It should accept an
+            input shape tensor, and returns a dict of parameters. If not given, no shared parameters
+            will be generated.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
     """
     def __init__(
         self,
-        input_fn: Optional[Callable] = None,
-        mask_fn: Optional[Callable] = None,
-        bbox_fn: Optional[Callable] = None,
-        keypoints_fn: Optional[Callable] = None,
-        input_inverse_fn: Optional[Callable] = None,
-        mask_inverse_fn: Optional[Callable] = None,
-        bbox_inverse_fn: Optional[Callable] = None,
-        keypoints_inverse_fn: Optional[Callable] = None,
+        input: Optional[Callable] = None,
+        mask: Optional[Callable] = None,
+        bbox: Optional[Callable] = None,
+        keypoints: Optional[Callable] = None,
+        input_inverse: Optional[Callable] = None,
+        mask_inverse: Optional[Callable] = None,
+        bbox_inverse: Optional[Callable] = None,
+        keypoints_inverse: Optional[Callable] = None,
+        param_generator: Optional[Callable] = None,
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=1., p_batch=1.0, same_on_batch=True, keepdim=keepdim)
-        self.input_fn = input_fn
-        self.mask_fn = mask_fn
-        self.bbox_fn = bbox_fn
-        self.keypoints_fn = keypoints_fn
-        self.input_inverse_fn = input_inverse_fn
-        self.mask_inverse_fn = mask_inverse_fn
-        self.bbox_inverse_fn = bbox_inverse_fn
-        self.keypoints_inverse_fn = keypoints_inverse_fn
+        self.input = input
+        self.mask = mask
+        self.bbox = bbox
+        self.keypoints = keypoints
+        self.input_inverse = input_inverse
+        self.mask_inverse = mask_inverse
+        self.bbox_inverse = bbox_inverse
+        self.keypoints_inverse = keypoints_inverse
+        self.param_generator = param_generator
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
@@ -593,7 +600,7 @@ class LambdaAugmentation(_BasicAugmentationBase):
         pass
 
     def transform_tensor(self, input: torch.Tensor) -> torch.Tensor:
-        return input
+        return _transform_input(input)
 
     def __unpack_input__(  # type: ignore
         self, input: TensorWithTransformMat
@@ -605,47 +612,52 @@ class LambdaAugmentation(_BasicAugmentationBase):
         in_tensor = input
         return in_tensor, None
 
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        if self.param_generator is not None:
+            return self.param_generator(batch_shape)
+        return super().generate_parameters(batch_shape)
+
     def forward_input(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
-        if self.input_fn is not None:
-            return self.input_fn(input, **kwargs)
+        if self.input is not None:
+            return self.input(input, **kwargs)
         raise NotImplementedError
 
     def inverse_input(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
-        if self.input_inverse_fn is not None:
-            return self.input_inverse_fn(input, **kwargs)
+        if self.input_inverse is not None:
+            return self.input_inverse(input, **kwargs)
         raise NotImplementedError
 
     def forward_mask(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
-        if self.mask_fn is not None:
-            return self.mask_fn(input, **kwargs)
+        if self.mask is not None:
+            return self.mask(input, **kwargs)
         raise NotImplementedError
 
     def inverse_mask(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
-        if self.mask_inverse_fn is not None:
-            return self.mask_inverse_fn(input, **kwargs)
+        if self.mask_inverse is not None:
+            return self.mask_inverse(input, **kwargs)
         raise NotImplementedError
 
     def forward_bbox(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
-        if self.bbox_fn is not None:
-            return self.bbox_fn(input, **kwargs)
+        if self.bbox is not None:
+            return self.bbox(input, **kwargs)
         raise NotImplementedError
 
     def inverse_bbox(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
-        if self.bbox_inverse_fn is not None:
-            return self.bbox_inverse_fn(input, **kwargs)
+        if self.bbox_inverse is not None:
+            return self.bbox_inverse(input, **kwargs)
         raise NotImplementedError
 
     def forward_keypoints(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
-        if self.keypoints_fn is not None:
-            return self.keypoints_fn(input, **kwargs)
+        if self.keypoints is not None:
+            return self.keypoints(input, **kwargs)
         raise NotImplementedError
 
     def inverse_keypoints(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
-        if self.keypoints_inverse_fn is not None:
-            return self.keypoints_inverse_fn(input, **kwargs)
+        if self.keypoints_inverse is not None:
+            return self.keypoints_inverse(input, **kwargs)
         raise NotImplementedError
 
-    def apply_by_key(
+    def forward_by_key(
         self,
         input: torch.Tensor,
         params: Optional[Dict[str, torch.Tensor]],
@@ -660,6 +672,7 @@ class LambdaAugmentation(_BasicAugmentationBase):
         if DataKey.get(data_key) == DataKey.BBOX:
             return self.forward_bbox(input, **params)
         if DataKey.get(data_key) == DataKey.BBOX_XYHW:
+            # Convert to polygon format then convert back
             from_shape = input.shape
             input = input.view(-1, input.size(-1))
             boxes = kornia.geometry.bbox_generator(input[..., 0], input[..., 1], input[..., 2], input[..., 3])
@@ -670,6 +683,7 @@ class LambdaAugmentation(_BasicAugmentationBase):
             boxes = torch.stack([x, y, w, h]).view(from_shape)
             return boxes
         if DataKey.get(data_key) == DataKey.BBOX_XYXY:
+            # Convert to polygon format then convert back
             from_shape = input.shape
             input = input.view(-1, input.size(-1))
             boxes = kornia.geometry.bbox_generator(
@@ -699,6 +713,8 @@ class LambdaAugmentation(_BasicAugmentationBase):
         if DataKey.get(data_key) == DataKey.BBOX:
             return self.inverse_bbox(input, **params)
         if DataKey.get(data_key) == DataKey.BBOX_XYHW:
+            # Convert to polygon format then convert back
+            # TODO: wrapped it in kornia.bbox
             from_shape = input.shape
             input = input.view(-1, input.size(-1))
             boxes = kornia.geometry.bbox_generator(input[..., 0], input[..., 1], input[..., 2], input[..., 3])
@@ -709,6 +725,7 @@ class LambdaAugmentation(_BasicAugmentationBase):
             boxes = torch.stack([x, y, w, h]).view(from_shape)
             return boxes
         if DataKey.get(data_key) == DataKey.BBOX_XYXY:
+            # Convert to polygon format then convert back
             from_shape = input.shape
             input = input.view(-1, input.size(-1))
             boxes = kornia.geometry.bbox_generator(
