@@ -17,10 +17,11 @@ Ready to use with state-of-the art Deep Learning models:
 
 .. code:: python
 
+   >>> import torch.nn as nn
    >>> import kornia.contrib as K
    >>> classifier = nn.Sequential(
    ...   K.VisionTransformer(image_size=224, patch_size=16),
-   ...   K.ClassficationHead(num_classes=1000),
+   ...   K.ClassificationHead(num_classes=1000),
    ... )
    >>> logits = classifier(img)    # BxN
    >>> scores = logits.argmax(-1)  # B
