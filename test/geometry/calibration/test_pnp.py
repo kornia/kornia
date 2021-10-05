@@ -1,8 +1,8 @@
 import pytest
-import kornia
 import torch
-
 from torch.autograd import gradcheck
+
+import kornia
 from kornia.testing import assert_close, tensor_to_gradcheck_var
 
 
@@ -43,7 +43,10 @@ class TestSolvePnpDlt:
         return world_to_cam_4x4
 
     def _get_test_data(self, num_points, device, dtype):
-        """Creates some test data. Batch size is fixed to 2 for all tests."""
+        """Creates some test data.
+
+        Batch size is fixed to 2 for all tests.
+        """
         batch_size = 2
         torch.manual_seed(84)
         arr_1 = self._create_world_to_cam(device, dtype)
