@@ -65,7 +65,6 @@ class RANSAC(nn.Module):
         else:
             raise NotImplementedError(f"{model_type} is unknown. Try one of {self.supported_models}")
 
-
     def sample(self,
                sample_size: int,
                pop_size: int,
