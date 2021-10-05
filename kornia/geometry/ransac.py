@@ -64,7 +64,7 @@ class RANSAC(nn.Module):
             self.polisher_solver = find_fundamental  # type: ignore
         else:
             raise NotImplementedError(f"{model_type} is unknown. Try one of {self.supported_models}")
-        return
+
 
     def sample(self,
                sample_size: int,
