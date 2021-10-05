@@ -285,7 +285,7 @@ class AugmentationSequential(ImageSequential):
                 elif isinstance(module, (GeometricAugmentationBase2D, ImageSequential,)) and dcate in DataKey:
                     input, label = ApplyInverse.apply_by_key(input, label, module, param, dcate)
                 elif isinstance(module, (LambdaAugmentation,)) and dcate in DataKey:
-                    input = module.forward_by_key(input, param, dcate)
+                    input = module.forward_by_key(input, param.data, dcate)
                 elif isinstance(module, (SequentialBase,)):
                     raise ValueError(f"Unsupported Sequential {module}.")
                 else:

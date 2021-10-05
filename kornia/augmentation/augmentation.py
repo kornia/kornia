@@ -1,7 +1,6 @@
 from typing import cast, Dict, List, Optional, Tuple, Union
 
 import torch
-from torch._C import Size
 from torch.nn.functional import pad
 
 from kornia.augmentation.base import (
@@ -2358,6 +2357,7 @@ class PadTo(LambdaAugmentation):
                   [0., 0., 0.],
                   [0., 0., 0.]]]])
     """
+
     def __init__(
         self,
         size: Tuple[int, int],
