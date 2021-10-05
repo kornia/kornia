@@ -178,8 +178,8 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
     # in order to zero-out the fully filled rows or columns
     box_i = (boxes + 1).long()
     # set all pixels within box to 1
-    mask[:, box_i[:, 0, 1]:box_i[:, 2, 1] + 1, 
-            box_i[:, 0, 0]:box_i[:, 1, 0] + 1] = 1.0  
+    mask[:, box_i[:, 0, 1]:box_i[:, 2, 1] + 1,
+            box_i[:, 0, 0]:box_i[:, 1, 0] + 1] = 1.0
     return mask[:, 1:-1, 1:-1]
 
 
