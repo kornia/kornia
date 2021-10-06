@@ -283,6 +283,9 @@ class TestLambdaModule:
     def add_2_layer(self, tensor):
         return tensor + 2
 
+    def add_x_mul_y(self, tensor, x, y=2):
+        return torch.mul(tensor + x , y)
+
     def test_smoke(self, device, dtype):
         B, C, H, W = 1, 3, 4, 5
         input = torch.rand(B, C, H, W, device=device, dtype=dtype)
@@ -291,8 +294,19 @@ class TestLambdaModule:
             raise TypeError(f"Argument lambd should be callable, got {repr(type(func).__name__)}")
         assert isinstance(kornia.contrib.Lambda(func)(input), torch.Tensor)
 
-    def test_lambda(self, device, dtype):
-        B, C, H, W = 1, 3, 4, 5
+    @pytest.mark.parametrize("x", [3, 2])
+    # @pytest.mark.parametrize("y", [1, 5])
+    def test_lambda_with_arguments(self, x, y, device, dtype):
+        B, C, H, W = 2, 3, 5, 7
+        input = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        func = self.add_x_mul_y
+        lambda_module = kornia.contrib.Lambda(func)
+        out = lambda_module(input, x)
+        assert isinstance(out, torch.Tensor)
+
+    @pytest.mark.parametrize("shape", [(1, 3, 2, 3), (2, 3, 5, 7)])
+    def test_lambda(self, shape, device, dtype):
+        B, C, H, W = shape
         input = torch.rand(B, C, H, W, device=device, dtype=dtype)
         func = kornia.bgr_to_grayscale
         lambda_module = kornia.contrib.Lambda(func)
