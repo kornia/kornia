@@ -25,23 +25,6 @@ class TestSolvePnpDlt:
 
         return img_points
 
-    def _create_world_to_cam(self, device, dtype):
-        """Creates a ground truth world to cam matrix that can be used for the test data."""
-        tau = 2 * 3.141592653589793
-        angle_axis = self._get_samples(
-            shape=(1, 3), low=-tau, high=tau, dtype=dtype, device=device,
-        )
-        translation = self._get_samples(
-            shape=(3,), low=-100, high=100, dtype=dtype, device=device,
-        )
-
-        rotation = kornia.geometry.angle_axis_to_rotation_matrix(angle_axis)
-        world_to_cam_4x4 = torch.eye(4, dtype=dtype, device=device)
-        world_to_cam_4x4[:3, :3] = rotation
-        world_to_cam_4x4[:3, 3] = translation
-
-        return world_to_cam_4x4
-
     def _get_test_data(self, num_points, device, dtype):
         """Creates some test data.
 
@@ -49,9 +32,32 @@ class TestSolvePnpDlt:
         """
         batch_size = 2
         torch.manual_seed(84)
-        arr_1 = self._create_world_to_cam(device, dtype)
-        arr_2 = self._create_world_to_cam(device, dtype)
-        world_to_cam_mats = torch.stack([arr_1, arr_2], axis=0)
+
+        rotation_1 = torch.tensor([
+            [0.7489, 0.4790, 0.4579],
+            [-0.6622, 0.5674, 0.4895],
+            [-0.0253, -0.6698, 0.7421],
+        ], device=device, dtype=dtype)
+
+        rotation_2 = torch.tensor([
+            [0.9754, 0.0469, 0.2155],
+            [0.0074, 0.9695, -0.2448],
+            [-0.2204, 0.2404, 0.9453],
+        ], device=device, dtype=dtype)
+
+        translation_1 = self._get_samples(
+            shape=(3,), low=-100, high=100, dtype=dtype, device=device,
+        )
+        translation_2 = self._get_samples(
+            shape=(3,), low=-100, high=100, dtype=dtype, device=device,
+        )
+
+        temp = torch.eye(4, dtype=dtype, device=device)
+        world_to_cam_mats = temp.unsqueeze(0).repeat(batch_size, 1, 1)
+        world_to_cam_mats[0, :3, :3] = rotation_1
+        world_to_cam_mats[0, :3, 3] = translation_1
+        world_to_cam_mats[1, :3, :3] = rotation_2
+        world_to_cam_mats[1, :3, 3] = translation_2
 
         intrinsic_1 = torch.tensor([
             [500.0, 0.0, 250.0],
@@ -88,7 +94,7 @@ class TestSolvePnpDlt:
         pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics)
         assert pred_world_to_cam.shape == (batch_size, 3, 4)
 
-    @pytest.mark.parametrize("num_points", (6, 20, 200))
+    @pytest.mark.parametrize("num_points", (6, 20, 50))
     def test_gradcheck(self, num_points, device, dtype):
 
         intrinsics, _, world_points, img_points = \

@@ -2,6 +2,7 @@ import torch
 
 import kornia
 from kornia.geometry.conversions import convert_points_to_homogeneous
+from kornia.geometry.linalg import transform_points
 
 
 def solve_pnp_dlt(
@@ -17,22 +18,22 @@ def solve_pnp_dlt(
     intrinsic matrices, this function tries to estimate a batch of
     world to camera transformation matrices.
 
-    This implementation needs atleast 6 points (i.e. :math:`N \geq 6`) to
+    This implementation needs at least 6 points (i.e. :math:`N \geq 6`) to
     provide solutions. This function cannot be used if all the 3D world
     points (of any element of the batch) lie on a line or if all the
     3D world points (of any element of the batch) lie on a plane.
 
     Args:
-        world_points        :   A tensor with shape :math:`(B, N, 3)` representing
-                                the points in the world space.
-        img_points          :   A tensor with shape :math:`(B, N, 2)` representing
-                                the points in the image space.
-        intrinsics          :   A tensor with shape :math:`(B, 3, 3)` representing
-                                the intrinsic matrices.
+        world_points : A tensor with shape :math:`(B, N, 3)` representing
+          the points in the world space.
+        img_points : A tensor with shape :math:`(B, N, 2)` representing
+          the points in the image space.
+        intrinsics : A tensor with shape :math:`(B, 3, 3)` representing
+          the intrinsic matrices.
 
     Returns:
         A tensor with shape :math:`(B, 3, 4)` representing the estimated world to
-        camera transformation matrices.
+        camera transformation matrices (also known as the extrinsic matrices).
     """
     # This function was implemented based on ideas inspired from multiple references.
     # ============
@@ -78,7 +79,7 @@ def solve_pnp_dlt(
 
     if world_points.shape[1] < 6:
         raise AssertionError(
-            f"Atleast 6 points are required to use this function. "
+            f"At least 6 points are required to use this function. "
             f"Got {world_points.shape[1]} points."
         )
 
@@ -99,7 +100,7 @@ def solve_pnp_dlt(
     world_points_h = convert_points_to_homogeneous(world_points)
 
     # Getting normalized image points.
-    norm_points = kornia.geometry.transform_points(intrinsics_inv, img_points)
+    norm_points = transform_points(intrinsics_inv, img_points)
 
     # Setting up the system (the matrix A in Ax=0)
     system = torch.zeros((B, 2 * N, 12), dtype=world_points.dtype, device=world_points.device)
@@ -125,15 +126,18 @@ def solve_pnp_dlt(
     # the all the rotation matrices are non negative (since determinant
     # of a rotation matrix should be 1).
     det = torch.det(pred_world_to_cam[:, :3, :3])
-    sign_fix = torch.where(det < 0, -1, 1)
+    ones = torch.ones_like(det)
+    sign_fix = torch.where(det < 0, ones * -1, ones)
     pred_world_to_cam = pred_world_to_cam * sign_fix[:, None, None]
 
     # Then, we make sure that norm of the 0th columns of the rotation
     # matrices are 1. Do note that the norm of any column of a rotation
     # matrix should be 1. Here we use the 0th column to calculate norm_col.
     # We then multiply pred_world_to_cam with mul_factor.
-    norm_col = torch.sqrt(torch.sum(pred_world_to_cam[:, :3, 0] ** 2, axis=1))
+    norm_col = torch.sqrt(torch.sum(input=pred_world_to_cam[:, :3, 0] ** 2, dim=1))
     mul_factor = (1 / norm_col)[:, None, None]
     pred_world_to_cam = pred_world_to_cam * mul_factor
+
+    # TODO: Implement algorithm to refine pred_world_to_cam
 
     return pred_world_to_cam
