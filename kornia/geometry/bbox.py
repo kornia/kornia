@@ -183,7 +183,7 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
     box_i = (boxes + 1).long()
     # set all pixels within box to 1
     for msk, bx in zip(mask, box_i):
-        msk[bx[0, 1]:bx[2, 1] + 1, bx[0, 0]:bx[1, 0] + 1] = 1.0  
+        msk[bx[0, 1]:bx[2, 1] + 1, bx[0, 0]:bx[1, 0] + 1] = 1.0
     return mask[:, 1:-1, 1:-1]
 
 
