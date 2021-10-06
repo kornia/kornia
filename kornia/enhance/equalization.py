@@ -149,9 +149,10 @@ def _compute_luts(
         max_val: float = max(clip * pixels // num_bins, 1)
         histos.clamp_(max=max_val)
         clipped: torch.Tensor = pixels - histos.sum(1)
-        redist: torch.Tensor = clipped // num_bins
+        remainder: torch.Tensor = torch.remainder(clipped, num_bins)
+        redist: torch.Tensor = (clipped - remainder) / num_bins
         histos += redist[None].transpose(0, 1)
-        residual: torch.Tensor = clipped - redist * num_bins
+        residual: torch.Tensor = remainder
         # trick to avoid using a loop to assign the residual
         v_range: torch.Tensor = torch.arange(num_bins, device=histos.device)
         mat_range: torch.Tensor = v_range.repeat(histos.shape[0], 1)
@@ -299,7 +300,10 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
 
 
 @perform_keep_shape_image
-def equalize_clahe(input: torch.Tensor, clip_limit: float = 40.0, grid_size: Tuple[int, int] = (8, 8)) -> torch.Tensor:
+def equalize_clahe(input: torch.Tensor,
+                   clip_limit: float = 40.0,
+                   grid_size: Tuple[int, int] = (8, 8),
+                   slow_and_differentiable: bool = False) -> torch.Tensor:
     r"""Apply clahe equalization on the input tensor.
 
     .. image:: _static/img/equalize_clahe.png
@@ -310,6 +314,7 @@ def equalize_clahe(input: torch.Tensor, clip_limit: float = 40.0, grid_size: Tup
         input: images tensor to equalize with values in the range [0, 1] and shape :math:`(*, C, H, W)`.
         clip_limit: threshold value for contrast limiting. If 0 clipping is disabled.
         grid_size: number of tiles to be cropped in each direction (GH, GW).
+        slow_and_differentiable: flag to select implementation
 
     Returns:
         Equalized image or images with shape as the input.
@@ -350,7 +355,7 @@ def equalize_clahe(input: torch.Tensor, clip_limit: float = 40.0, grid_size: Tup
     hist_tiles, img_padded = _compute_tiles(imgs, grid_size, True)
     tile_size: Tuple[int, int] = (hist_tiles.shape[-2], hist_tiles.shape[-1])
     interp_tiles: torch.Tensor = _compute_interpolation_tiles(img_padded, tile_size)  # B x 2GH x 2GW x C x TH/2 x TW/2
-    luts: torch.Tensor = _compute_luts(hist_tiles, clip=clip_limit)  # B x GH x GW x C x B
+    luts: torch.Tensor = _compute_luts(hist_tiles, clip=clip_limit, diff=slow_and_differentiable)  # B x GH x GW x C x B
     equalized_tiles: torch.Tensor = _compute_equalized_tiles(interp_tiles, luts)  # B x 2GH x 2GW x C x TH/2 x TW/2
 
     # reconstruct the images form the tiles
