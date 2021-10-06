@@ -160,7 +160,9 @@ def _compute_luts(
 
     lut_scale: float = (num_bins - 1) / pixels
     luts: torch.Tensor = torch.cumsum(histos, 1) * lut_scale
-    luts = luts.clamp(0, num_bins - 1).floor()  # to get the same values as converting to int maintaining the type
+    luts = luts.clamp(0, num_bins - 1)
+    if not diff:
+        luts = luts.floor()  # to get the same values as converting to int maintaining the type
     luts = luts.view((b, gh, gw, c, num_bins))
     return luts
 
