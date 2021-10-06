@@ -69,8 +69,8 @@ class with two different classification heads:
             super().__init__()
             self.transformer = K.VisionTransformer(
                 image_size=224, patch_size=16)
-            self.head1 = K.ClassficationHead(num_classes=10)
-            self.head2 = K.ClassficationHead(num_classes=50)
+            self.head1 = K.ClassificationHead(num_classes=10)
+            self.head2 = K.ClassificationHead(num_classes=50)
 
         def forward(self, x: torch.Tensor):
             out = self.transformer(x)
