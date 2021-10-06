@@ -294,9 +294,8 @@ class TestLambdaModule:
             raise TypeError(f"Argument lambd should be callable, got {repr(type(func).__name__)}")
         assert isinstance(kornia.contrib.Lambda(func)(input), torch.Tensor)
 
-    @pytest.mark.parametrize("x", [3, 2])
-    # @pytest.mark.parametrize("y", [1, 5])
-    def test_lambda_with_arguments(self, x, y, device, dtype):
+    @pytest.mark.parametrize("x", [3, 2, 5])
+    def test_lambda_with_arguments(self, x, device, dtype):
         B, C, H, W = 2, 3, 5, 7
         input = torch.rand(B, C, H, W, device=device, dtype=dtype)
         func = self.add_x_mul_y
