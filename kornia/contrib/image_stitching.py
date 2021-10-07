@@ -51,7 +51,7 @@ class ImageStitching(nn.Module):
            raise NotImplementedError(...)
         return homo
 
-    def compute_homography_from_results(self, **kwargs) -> torch.Tensor:
+    def estimate_transform(self, **kwargs) -> torch.Tensor:
         """Compute the corresponding homography."""
         homos = []
         kp1, kp2, idx = kwargs['keypoints0'], kwargs['keypoints1'], kwargs['batch_indexes']
