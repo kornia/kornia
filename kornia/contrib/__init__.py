@@ -19,5 +19,5 @@ __all__ = [
     "VisionTransformer",
     "ClassificationHead",
     "Lambda",
-    "ImageStitching",
+    "ImageStitcher",
 ]
