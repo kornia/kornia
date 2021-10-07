@@ -47,7 +47,9 @@ class ImageStitching(nn.Module):
         elif self.homography_method == "ransac":
             homo, _ = self.ransac(keypoints2, keypoints1)
             return homo[None]
-        raise NotImplementedError
+        else:
+           raise NotImplementedError(...)
+        return homo
 
     def compute_homography_from_results(self, **kwargs) -> torch.Tensor:
         """Compute the corresponding homography."""
