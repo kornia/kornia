@@ -3,15 +3,15 @@ import torch.nn as nn
 
 import kornia as K
 
-__all__ = ["ImageStitching"]
+__all__ = ["ImageStitcher"]
 
 
-class ImageStitching(nn.Module):
+class ImageStitcher(nn.Module):
     """Stitch two images with overlapping fields of view.
 
     Args:
         matcher: image feature matching module.
-        homography_method: method to compute homography, either "naive" or "ransac".
+        estimator: method to compute homography, either "vanilla" or "ransac".
             "ransac" is slower with a better accuracy.
         blending_method: method to blend two images together.
             Only "naive" is currently supported.
@@ -21,7 +21,7 @@ class ImageStitching(nn.Module):
 
     .. code-block:: python
 
-        IS = ImageStitching(KF.LoFTR(pretrained='outdoor'), homography_method='ransac').cuda()
+        IS = ImageStitcher(KF.LoFTR(pretrained='outdoor'), estimator='ransac').cuda()
         # Compute the stitched result with less GPU memory cost.
         with torch.inference_mode():
             out = IS(img_left, img_right)
@@ -32,31 +32,37 @@ class ImageStitching(nn.Module):
     def __init__(self, matcher: nn.Module, estimator: str = 'ransac', blending_method: str = "naive") -> None:
         super().__init__()
         self.matcher = matcher
-        self.homography_method = homography_method
+        self.estimator = estimator
         self.blending_method = blending_method
-        if homography_method == "ransac":
+        if estimator == "ransac":
             self.ransac = K.geometry.RANSAC('homography')
 
-    def _find_homography(self, keypoints1: torch.Tensor, keypoints2: torch.Tensor) -> torch.Tensor:
-        if self.homography_method == "naive":
+    def _estimate_homography(self, keypoints1: torch.Tensor, keypoints2: torch.Tensor) -> torch.Tensor:
+        """Estimate homography by the matched keypoints.
+
+        Args:
+            keypoints1: matched keypoint set from an image, shaped as :math:`(N, 2)`.
+            keypoints2: matched keypoint set from the other image, shaped as :math:`(N, 2)`.
+        """
+        if self.estimator == "vanilla":
             return K.find_homography_dlt_iterated(
                 keypoints2[None],
                 keypoints1[None],
                 torch.ones_like(keypoints1[None, :, 0])
             )
-        elif self.homography_method == "ransac":
+
+        if self.estimator == "ransac":
             homo, _ = self.ransac(keypoints2, keypoints1)
             return homo[None]
-        else:
-           raise NotImplementedError(...)
-        return homo
+
+        raise NotImplementedError
 
     def estimate_transform(self, **kwargs) -> torch.Tensor:
         """Compute the corresponding homography."""
         homos = []
         kp1, kp2, idx = kwargs['keypoints0'], kwargs['keypoints1'], kwargs['batch_indexes']
         for i in range(len(idx.unique())):
-            homos.append(self._find_homography(kp1[idx == i], kp2[idx == i]))
+            homos.append(self._estimate_homography(kp1[idx == i], kp2[idx == i]))
         return torch.cat(homos)
 
     def compute_mask(self, image_1: torch.Tensor, image_2: torch.Tensor) -> torch.Tensor:
@@ -82,10 +88,11 @@ class ImageStitching(nn.Module):
         raise NotImplementedError
 
     def forward(self, images_left: torch.Tensor, images_right: torch.Tensor) -> torch.Tensor:
+        # TODO: accept a list of images for composing paranoma
         input = self.preprocess(images_left, images_right)
         mask = self.compute_mask(images_left, images_right)
         correspondences = self.matcher(input)
-        homo = self.compute_homography_from_results(**correspondences)
+        homo = self.estimate_transform(**correspondences)
         src_img = K.geometry.warp_perspective(images_right, homo, (mask.shape[-2], mask.shape[-1]))
         dst_img = torch.cat([images_left, torch.zeros_like(images_right)], dim=-1)
         return self.blend_image(src_img, dst_img, mask)
