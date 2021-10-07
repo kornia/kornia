@@ -571,17 +571,6 @@ class LambdaAugmentation(_BasicAugmentationBase):
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
 
-    .. code-block:: python
-
-        # Despite of implementing a child class by inheriting this method.
-        # Another option is to use the provided `from_modules` class contructor
-        # to construct a simple augmentation from a pre-defined operation.
-
-        PatchExtractor = LambdaAugmentation.from_modules(
-            kornia.contrib.ExtractTensorPatches(),
-            inverse_module=kornia.contrib.CombineTensorPatches(),
-            for_data_keys=["input", "mask"],
-        )
     """
     def __init__(
         self,
@@ -621,18 +610,33 @@ class LambdaAugmentation(_BasicAugmentationBase):
         cls,
         forward_module: nn.Module,
         inverse_module: Optional[nn.Module] = None,
+        random_generator_module: Optional[nn.Module] = None,
         for_data_keys: List[Union[str, int, DataKey]] = [DataKey.INPUT],
         default_fn: str = "none"
     ) -> "LambdaAugmentation":
         """Construct a lambda augmentation from nn.Modules.
 
+        Despite of implementing a child class by inheriting this method, another option
+        is to use the provided `from_modules` class contructor to construct a simple
+        augmentation from a pre-defined operation.
+
         Args:
             forward_module: required. A module to apply the transformation.
             inverse_module: optional. A module to inverse the transformation.
+            random_generator_module: optional. A module to construct random parameters that
+                shared to all data keys.
             for_data_keys: determine which data keys will consume the forward and inverse module.
             default_fn: the expected default behaviour for not defined data keys, "none" | "return_identity".
                 If "none", a ``NotImplementedError`` will be raised.
                 If "return_identity", the exact input tensor will be returned.
+
+        .. code-block:: python
+
+            PatchExtractor = LambdaAugmentation.from_modules(
+                kornia.contrib.ExtractTensorPatches(),
+                inverse_module=kornia.contrib.CombineTensorPatches(),
+                for_data_keys=["input", "mask"],
+            )
         """
         for_data_keys = [DataKey.get(inp) for inp in for_data_keys]
         default_module: Optional[nn.Module] = None
@@ -652,7 +656,7 @@ class LambdaAugmentation(_BasicAugmentationBase):
             bbox_inverse=inverse_module if DataKey.BBOX in for_data_keys else default_module,
             keypoints=forward_module if DataKey.KEYPOINTS in for_data_keys else default_module,
             keypoints_inverse=inverse_module if DataKey.KEYPOINTS in for_data_keys else default_module,
-            param_generator=None,
+            param_generator=random_generator_module,
             keepdim=False,
         )
 
