@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-
+from typing import Tuple
 
 def rgb_to_yuv(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an RGB image to YUV.
@@ -38,7 +38,7 @@ def rgb_to_yuv(image: torch.Tensor) -> torch.Tensor:
     return out
 
 
-def rgb_to_yuv420(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+def rgb_to_yuv420(image: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Convert an RGB image to YUV 420 (subsampled).
 
     The image data is assumed to be in the range of (0, 1). Input need to be padded to be evenly divisible by 2
@@ -70,7 +70,7 @@ def rgb_to_yuv420(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     return (yuvchunks[0], torch.nn.functional.avg_pool2d(torch.cat(yuvchunks[1:3], dim=-3), (2, 2)))
 
 
-def rgb_to_yuv422(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+def rgb_to_yuv422(image: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Convert an RGB image to YUV 422 (subsampled).
 
     The image data is assumed to be in the range of (0, 1). Input need to be padded to be evenly divisible by 2
