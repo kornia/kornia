@@ -37,6 +37,7 @@ def rgb_to_yuv(image: torch.Tensor) -> torch.Tensor:
 
     return out
 
+
 def rgb_to_yuv420(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Convert an RGB image to YUV 420 (subsampled).
 
@@ -66,7 +67,8 @@ def rgb_to_yuv420(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     yuvimage = rgb_to_yuv(image)
     yuvchunks = torch.chunk(yuvimage, 3, dim=-3)
 
-    return (yuvchunks[0], torch.nn.functional.avg_pool2d(torch.cat(yuvchunks[1:3], dim=-3),(2,2)))
+    return (yuvchunks[0], torch.nn.functional.avg_pool2d(torch.cat(yuvchunks[1:3], dim=-3), (2, 2)))
+
 
 def rgb_to_yuv422(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Convert an RGB image to YUV 422 (subsampled).
@@ -99,7 +101,8 @@ def rgb_to_yuv422(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     # use chunk to handle 3 and 4 dimensions
     yuvchunks = torch.chunk(yuvimage, 3, dim=-3)
 
-    return (yuvchunks[0], torch.nn.functional.avg_pool2d(torch.cat(yuvchunks[1:3], dim=-3),(1,2)))
+    return (yuvchunks[0], torch.nn.functional.avg_pool2d(torch.cat(yuvchunks[1:3], dim=-3), (1, 2)))
+
 
 def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an YUV image to RGB.
@@ -133,6 +136,7 @@ def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     out: torch.Tensor = torch.stack([r, g, b], -3)
 
     return out
+
 
 def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     r"""Convert an YUV420 image to RGB.
@@ -169,14 +173,17 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     if len(imagey.shape) < 2 or imagey.shape[-2] % 2 == 1 or imagey.shape[-1] % 2 == 1:
         raise ValueError(f"Input H&W must be evenly disible by 2. Got {imagey.shape}")
 
-    if len(imageuv.shape) < 2 or len(imagey.shape) < 2 or imagey.shape[-2]/imageuv.shape[-2] != 2 or imagey.shape[-1]/imageuv.shape[-1] != 2:
-        raise ValueError(f"Input imageuv H&W must be half the size of the luma plane. Got {imagey.shape} and {imageuv.shape}")
+    if (len(imageuv.shape) < 2 or len(imagey.shape) < 2 or imagey.shape[-2] / imageuv.shape[-2] != 2
+            or imagey.shape[-1] / imageuv.shape[-1] != 2):
+        raise ValueError(f"Input imageuv H&W must be half the size of the luma plane. "
+                         f"Got {imagey.shape} and {imageuv.shape}")
 
     # first upsample
-    yuv444image = torch.cat([imagey, imageuv.repeat_interleave(2, dim=-1).repeat_interleave(2,dim=-2)], dim=-3)
+    yuv444image = torch.cat([imagey, imageuv.repeat_interleave(2, dim=-1).repeat_interleave(2, dim=-2)], dim=-3)
     # then convert the yuv444 tensor
 
     return yuv_to_rgb(yuv444image)
+
 
 def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     r"""Convert an YUV422 image to RGB.
@@ -212,8 +219,9 @@ def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     if len(imagey.shape) < 2 or imagey.shape[-2] % 2 == 1 or imagey.shape[-1] % 2 == 1:
         raise ValueError(f"Input H&W must be evenly disible by 2. Got {imagey.shape}")
 
-    if len(imageuv.shape) < 2 or len(imagey.shape) < 2 or imagey.shape[-1]/imageuv.shape[-1] != 2:
-        raise ValueError(f"Input imageuv W must be half the size of the luma plane. Got {imagey.shape} and {imageuv.shape}")
+    if len(imageuv.shape) < 2 or len(imagey.shape) < 2 or imagey.shape[-1] / imageuv.shape[-1] != 2:
+        raise ValueError(f"Input imageuv W must be half the size of the luma plane. "
+                         f"Got {imagey.shape} and {imageuv.shape}")
 
     # first upsample
     yuv444image = torch.cat([imagey, imageuv.repeat_interleave(2, dim=-1)], dim=-3)
@@ -245,6 +253,7 @@ class RgbToYuv(nn.Module):
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return rgb_to_yuv(input)
 
+
 class RgbToYuv420(nn.Module):
     r"""Convert an image from RGB to YUV420.
 
@@ -268,6 +277,7 @@ class RgbToYuv420(nn.Module):
 
     def forward(self, input: torch.Tensor) -> (torch.Tensor, torch.Tensor):
         return rgb_to_yuv420(input)
+
 
 class RgbToYuv422(nn.Module):
     r"""Convert an image from RGB to YUV422.
@@ -315,6 +325,7 @@ class YuvToRgb(nn.Module):
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return yuv_to_rgb(input)
 
+
 class Yuv420ToRgb(nn.Module):
     r"""Convert an image from YUV to RGB.
 
@@ -338,6 +349,7 @@ class Yuv420ToRgb(nn.Module):
 
     def forward(self, inputy: torch.Tensor, inputuv: torch.Tensor) -> torch.Tensor:
         return yuv420_to_rgb(inputy, inputuv)
+
 
 class Yuv422ToRgb(nn.Module):
     r"""Convert an image from YUV to RGB.

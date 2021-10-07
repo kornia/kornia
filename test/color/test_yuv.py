@@ -65,6 +65,7 @@ class TestRgbToYuv(BaseTester):
         fcn = kornia.color.rgb_to_yuv
         assert_close(ops(img), fcn(img))
 
+
 class TestRgbToYuv420(BaseTester):
     def test_smoke(self, device, dtype):
         C, H, W = 3, 4, 6
@@ -113,12 +114,12 @@ class TestRgbToYuv420(BaseTester):
     # This measures accuracy, given the impact of the subsampling we will avoid the issue by
     # repeating a 2x2 pattern for which mena will match what we get from upscaling again
     def test_forth_and_back(self, device, dtype):
-        data = torch.rand(3, 4, 5, device=device, dtype=dtype).repeat_interleave(2, dim=2).repeat_interleave(2,dim=1)
+        data = torch.rand(3, 4, 5, device=device, dtype=dtype).repeat_interleave(2, dim=2).repeat_interleave(2, dim=1)
 
         yuv = kornia.color.rgb_to_yuv420
         rgb = kornia.color.yuv420_to_rgb
-        (a,b) = yuv(data)
-        data_out = rgb(a,b)
+        (a, b) = yuv(data)
+        data_out = rgb(a, b)
         assert_close(data_out, data, rtol=1e-2, atol=1e-2)
 
     @pytest.mark.grad
@@ -144,6 +145,7 @@ class TestRgbToYuv420(BaseTester):
         fcn = kornia.color.rgb_to_yuv420
         assert_close(ops(img)[0], fcn(img)[0])
         assert_close(ops(img)[1], fcn(img)[1])
+
 
 class TestRgbToYuv422(BaseTester):
     def test_smoke(self, device, dtype):
@@ -187,12 +189,12 @@ class TestRgbToYuv422(BaseTester):
     # This measures accuracy, given the impact of the subsampling we will avoid the issue by
     # repeating a 2x2 pattern for which mena will match what we get from upscaling again
     def test_forth_and_back(self, device, dtype):
-        data = torch.rand(3, 4, 5, device=device, dtype=dtype).repeat_interleave(2, dim=2).repeat_interleave(2,dim=1)
+        data = torch.rand(3, 4, 5, device=device, dtype=dtype).repeat_interleave(2, dim=2).repeat_interleave(2, dim=1)
 
         yuv = kornia.color.rgb_to_yuv422
         rgb = kornia.color.yuv422_to_rgb
-        (a,b) = yuv(data)
-        data_out = rgb(a,b)
+        (a, b) = yuv(data)
+        data_out = rgb(a, b)
         assert_close(data_out, data, rtol=1e-2, atol=1e-2)
 
     @pytest.mark.grad
@@ -283,7 +285,7 @@ class TestYuv420ToRgb(BaseTester):
     def test_smoke(self, device, dtype):
         C, H, W = 3, 4, 6
         imgy = torch.rand(1, H, W, device=device, dtype=dtype)
-        imguv = torch.rand(2, int(H/2), int(W/2), device=device, dtype=dtype)
+        imguv = torch.rand(2, int(H / 2), int(W / 2), device=device, dtype=dtype)
         assert isinstance(kornia.color.yuv420_to_rgb(imgy, imguv), torch.Tensor)
 
     @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 2), (3, 2, 2)])
@@ -292,8 +294,8 @@ class TestYuv420ToRgb(BaseTester):
         shapey[-3] = 1
         shapeuv = list(shape)
         shapeuv[-3] = 2
-        shapeuv[-2] = int(shapeuv[-2]/2)
-        shapeuv[-1] = int(shapeuv[-1]/2)
+        shapeuv[-2] = int(shapeuv[-2] / 2)
+        shapeuv[-1] = int(shapeuv[-1] / 2)
 
         imgy = torch.ones(shapey, device=device, dtype=dtype)
         imguv = torch.ones(shapeuv, device=device, dtype=dtype)
@@ -301,7 +303,7 @@ class TestYuv420ToRgb(BaseTester):
 
     def test_exception(self, device, dtype):
         with pytest.raises(TypeError):
-            assert kornia.color.yuv420_to_rgb([0.0],[0.0])
+            assert kornia.color.yuv420_to_rgb([0.0], [0.0])
 
         with pytest.raises(ValueError):
             imguv = torch.ones(1, 1, device=device, dtype=dtype)
@@ -344,14 +346,14 @@ class TestYuv420ToRgb(BaseTester):
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         imgy = torch.rand(B, 1, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        imguv = torch.rand(B, 2, int(H/2), int(W/2), device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.color.yuv420_to_rgb, (imgy,imguv), raise_exception=True)
+        imguv = torch.rand(B, 2, int(H / 2), int(W / 2), device=device, dtype=torch.float64, requires_grad=True)
+        assert gradcheck(kornia.color.yuv420_to_rgb, (imgy, imguv), raise_exception=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         imgy = torch.ones(B, 1, H, W, device=device, dtype=dtype)
-        imguv = torch.ones(B, 2, int(H/2), int(W/2), device=device, dtype=dtype)
+        imguv = torch.ones(B, 2, int(H / 2), int(W / 2), device=device, dtype=dtype)
         op = kornia.color.yuv420_to_rgb
         op_jit = torch.jit.script(op)
         assert_close(op(imgy, imguv), op_jit(imgy, imguv))
@@ -360,16 +362,17 @@ class TestYuv420ToRgb(BaseTester):
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         imgy = torch.ones(B, 1, H, W, device=device, dtype=dtype)
-        imguv = torch.ones(B, 2, int(H/2), int(W/2), device=device, dtype=dtype)
+        imguv = torch.ones(B, 2, int(H / 2), int(W / 2), device=device, dtype=dtype)
         ops = kornia.color.Yuv420ToRgb().to(device, dtype)
         fcn = kornia.color.yuv420_to_rgb
         assert_close(ops(imgy, imguv), fcn(imgy, imguv))
+
 
 class TestYuv422ToRgb(BaseTester):
     def test_smoke(self, device, dtype):
         C, H, W = 3, 4, 6
         imgy = torch.rand(1, H, W, device=device, dtype=dtype)
-        imguv = torch.rand(2, H, int(W/2), device=device, dtype=dtype)
+        imguv = torch.rand(2, H, int(W / 2), device=device, dtype=dtype)
         assert isinstance(kornia.color.yuv422_to_rgb(imgy, imguv), torch.Tensor)
 
     @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 2), (3, 2, 2)])
@@ -378,7 +381,7 @@ class TestYuv422ToRgb(BaseTester):
         shapey[-3] = 1
         shapeuv = list(shape)
         shapeuv[-3] = 2
-        shapeuv[-1] = int(shapeuv[-1]/2)
+        shapeuv[-1] = int(shapeuv[-1] / 2)
 
         imgy = torch.ones(shapey, device=device, dtype=dtype)
         imguv = torch.ones(shapeuv, device=device, dtype=dtype)
@@ -386,7 +389,7 @@ class TestYuv422ToRgb(BaseTester):
 
     def test_exception(self, device, dtype):
         with pytest.raises(TypeError):
-            assert kornia.color.yuv422_to_rgb([0.0],[0.0])
+            assert kornia.color.yuv422_to_rgb([0.0], [0.0])
 
         with pytest.raises(ValueError):
             imguv = torch.ones(1, 1, device=device, dtype=dtype)
@@ -423,14 +426,14 @@ class TestYuv422ToRgb(BaseTester):
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         imgy = torch.rand(B, 1, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        imguv = torch.rand(B, 2, H, int(W/2), device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.color.yuv422_to_rgb, (imgy,imguv), raise_exception=True)
+        imguv = torch.rand(B, 2, H, int(W / 2), device=device, dtype=torch.float64, requires_grad=True)
+        assert gradcheck(kornia.color.yuv422_to_rgb, (imgy, imguv), raise_exception=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         imgy = torch.ones(B, 1, H, W, device=device, dtype=dtype)
-        imguv = torch.ones(B, 2, H, int(W/2), device=device, dtype=dtype)
+        imguv = torch.ones(B, 2, H, int(W / 2), device=device, dtype=dtype)
         op = kornia.color.yuv422_to_rgb
         op_jit = torch.jit.script(op)
         assert_close(op(imgy, imguv), op_jit(imgy, imguv))
@@ -439,7 +442,7 @@ class TestYuv422ToRgb(BaseTester):
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         imgy = torch.ones(B, 1, H, W, device=device, dtype=dtype)
-        imguv = torch.ones(B, 2, H, int(W/2), device=device, dtype=dtype)
+        imguv = torch.ones(B, 2, H, int(W / 2), device=device, dtype=dtype)
         ops = kornia.color.Yuv422ToRgb().to(device, dtype)
         fcn = kornia.color.yuv422_to_rgb
         assert_close(ops(imgy, imguv), fcn(imgy, imguv))
