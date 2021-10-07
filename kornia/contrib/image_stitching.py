@@ -84,6 +84,6 @@ class ImageStitching(nn.Module):
         mask = self.compute_mask(images_left, images_right)
         correspondences = self.matcher(input)
         homo = self.compute_homography_from_results(**correspondences)
-        src_img = K.warp_perspective(images_right, homo, (mask.shape[-2], mask.shape[-1]))
+        src_img = K.geometry.warp_perspective(images_right, homo, (mask.shape[-2], mask.shape[-1]))
         dst_img = torch.cat([images_left, torch.zeros_like(images_right)], dim=-1)
         return self.blend_image(src_img, dst_img, mask)
