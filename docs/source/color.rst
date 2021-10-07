@@ -130,6 +130,32 @@ YUV
 .. autoclass:: RgbToYuv
 .. autoclass:: YuvToRgb
 
+YUV420
+---
+
+.. tip::
+    Learn more: https://en.wikipedia.org/wiki/YUV
+    Learn more: https://en.wikipedia.org/wiki/Chroma_subsampling
+
+.. autofunction:: rgb_to_yuv420
+.. autofunction:: yuv420_to_rgb
+
+.. autoclass:: RgbToYuv420
+.. autoclass:: Yuv420ToRgb
+
+YUV422
+---
+
+.. tip::
+    Learn more: https://en.wikipedia.org/wiki/YUV
+    Learn more: https://en.wikipedia.org/wiki/Chroma_subsampling
+
+.. autofunction:: rgb_to_yuv422
+.. autofunction:: yuv422_to_rgb
+
+.. autoclass:: RgbToYuv422
+.. autoclass:: Yuv422ToRgb
+
 XYZ
 ---
 
