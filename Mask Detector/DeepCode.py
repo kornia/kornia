@@ -1,31 +1,25 @@
-
 #Data Preprocessing
 
-#--------------------- Importing the Libraries----------------------------- 
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.applications import MobileNetV2
-from tensorflow.keras.layers import AveragePooling2D
-from tensorflow.keras.layers import Dropout
-from tensorflow.keras.layers import Flatten
-from tensorflow.keras.layers import Dense
-from tensorflow.keras.layers import Input
-from tensorflow.keras.models import Model
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
-from tensorflow.keras.preprocessing.image import img_to_array
-from tensorflow.keras.preprocessing.image import load_img
-from tensorflow.keras.utils import to_categorical
-from sklearn.preprocessing import LabelBinarizer
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report
-from imutils import paths
+import os
+
 import matplotlib.pyplot as plt
 import numpy as np
-import os
+from imutils import paths
+from sklearn.metrics import classification_report
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelBinarizer
+from tensorflow.keras.applications import MobileNetV2
+from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
+from tensorflow.keras.layers import AveragePooling2D, Dense, Dropout, Flatten, Input
+from tensorflow.keras.models import Model
+from tensorflow.keras.optimizers import Adam
+#--------------------- Importing the Libraries-----------------------------
+from tensorflow.keras.preprocessing.image import ImageDataGenerator, img_to_array, load_img
+from tensorflow.keras.utils import to_categorical
 
 # Now we will create the directory in which our data is stored by the name Directory
 DIC = r"/content/drive/MyDrive/Mask_Detect/data"
-# Now we will create the categories as there are two categories 
+# Now we will create the categories as there are two categories
 # With Mask and the Without Mask
 CAT = ["with_mask","without_mask"]
 
@@ -38,12 +32,12 @@ labels = []
 # Then loop through all the path and join path and corresponding image.
 # Then we load the image of the particular path at size (224,224)
 for category in CAT:
-	path = os.path.join(DIC,category) # with_mask or without_mask will get join 
+	path = os.path.join(DIC,category) # with_mask or without_mask will get join
 	for img in os.listdir(path):
 		img_path = os.path.join(path,img) # each image in with_mas or without_mask will get join
 		image = load_img(img_path, target_size=(224,224))
 		image = img_to_array(image) #converts to array (As deeplearning only works with array)
-		image = preprocess_input(image) # If you use MobileNet you need to use this 
+		image = preprocess_input(image) # If you use MobileNet you need to use this
 		# Here we append
 		data.append(image)
 		labels.append(category)
@@ -77,7 +71,7 @@ batch = 32
 # Bottom Model are the bottom layes of MobileNetv2
 # Let's start the make of model now using Functional API
 
-bottomModel = MobileNetV2(weights="imagenet", include_top=False, input_tensor=Input(shape=(224,224,3))) 
+bottomModel = MobileNetV2(weights="imagenet", include_top=False, input_tensor=Input(shape=(224,224,3)))
 
 topModel = bottomModel.output
 topModel = AveragePooling2D(pool_size=(7,7))(topModel)
@@ -105,7 +99,7 @@ model.compile(loss='binary_crossentropy', optimizer=opt, metrics=['accuracy'])
 # train the head
 print("Training the Head...")
 
-history = model.fit(aug.flow(trainx, trainy, batch_size=batch), 
+history = model.fit(aug.flow(trainx, trainy, batch_size=batch),
 	steps_per_epoch=len(trainx)//batch,
     validation_data=(testx, testy),
     validation_steps=len(testx)//batch,

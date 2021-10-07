@@ -1,15 +1,17 @@
 # Here we will detect the mask with the video stream
-# Importing Pacakges 
+# Importing Pacakges
 
-from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
-from tensorflow.keras.preprocessing.image import img_to_array
-from tensorflow.keras.models import load_model
-from imutils.video import VideoStream
-import numpy as np
-import imutils
-import time
-import cv2
 import os
+import time
+
+import cv2
+import imutils
+import numpy as np
+from imutils.video import VideoStream
+from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
+from tensorflow.keras.models import load_model
+from tensorflow.keras.preprocessing.image import img_to_array
+
 
 def detect(frame, faceNet, maskNet):
 	#Grabbing thedimentions of frame and constucting a blob
@@ -38,7 +40,7 @@ def detect(frame, faceNet, maskNet):
 		if confidence > 0.5:
 			# Here we will compute the (x,y) co-ordinates
 			#Hence make the box around the face
-			box = detections[0, 0, i, 3:7] * np.array([w, h, w, h]) 
+			box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
 			(startx, starty, endx, endy) = box.astype('int')
 
 			# To make sure the bounding box or Object localization fall in dimension
@@ -110,16 +112,16 @@ while True:
 		color = (0,255,0) if label == "Mask" else (0,0,255)
 
 		# Include Probablity
-		label = "{}: {:.2f}%".format(label, max(mask, withoutMask)*100)
+		label = f"{label}: {max(mask, withoutMask)*100:.2f}%"
 
-		# Displaying 
+		# Displaying
 
 		cv2.putText(frame, label, (startx, starty-10),
 			 cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 2)
 		cv2.rectangle(frame, (startx, starty), (endx, endy), color, 2)
 
 	# Show the output
-	
+
 	cv2.imshow("Frame", frame)
 	key = cv2.waitKey(1) & 0xFF
 
@@ -131,6 +133,3 @@ while True:
 # Clean Up
 cv2.destroyAllWindows()
 vs.stop()
-
-
-
