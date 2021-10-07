@@ -196,16 +196,22 @@ def perform_keep_shape_image(f: Callable) -> Callable:
             raise ValueError("Invalid input tensor, it is empty.")
 
         input_shape = input.shape
-        input = _to_bchw(input)  # view input as (B, C, H, W)
-        output: torch.Tensor = f(input, *args, **kwargs)
-        if len(input_shape) == 3:
-            output = output[0]
+        batched_f = f
+        num_batch_dims = len(input_shape) - len(('b', 'c', 'h', 'w'))
+        if num_batch_dims <= 0:
+            input = _to_bchw(input)  # view input as (B, C, H, W)
+            output: torch.Tensor = f(input, *args, **kwargs)
+            if len(input_shape) == 3:
+                output = output[0]
 
-        if len(input_shape) == 2:
-            output = output[0, 0]
-
-        if len(input_shape) > 4:
-            output = output.view(*(input_shape[:-3] + output.shape[-3:]))
+            if len(input_shape) == 2:
+                output = output[0, 0]
+        else:
+            for i in range(num_batch_dims):
+                batched_f = torch.vmap(batched_f,
+                                       in_dims=(i,) + (None,) * len(args) + (None,) * len(kwargs),
+                                       out_dims=i)
+            output: torch.Tensor = batched_f(input, *args, **kwargs)
 
         return output
 
