@@ -1,5 +1,5 @@
 import warnings
-from typing import Any, Callable, cast, Dict, Optional, Tuple, Union
+from typing import Any, Callable, List, cast, Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -545,6 +545,8 @@ class LambdaAugmentation(_BasicAugmentationBase):
     """Lambda augmentation for wrapping general image operations.
 
     This function supports chaining general image operations in an ``AugmentationSequential`` container.
+    The ``LambdaAugmentation`` assumes no randomness happened across a batch of images (an LambdaAugmentation
+    will apply to all images in a batch).
 
     Args:
         input: arbitary transformation function for an image tensor,
@@ -568,6 +570,18 @@ class LambdaAugmentation(_BasicAugmentationBase):
             will be generated.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
+
+    .. code-block:: python
+
+        # Despite of implementing a child class by inheriting this method.
+        # Another option is to use the provided `from_modules` class contructor
+        # to construct a simple augmentation from a pre-defined operation.
+
+        PatchExtractor = LambdaAugmentation.from_modules(
+            kornia.contrib.ExtractTensorPatches(),
+            inverse_module=kornia.contrib.CombineTensorPatches(),
+            for_data_keys=["input", "mask"],
+        )
     """
     def __init__(
         self,
@@ -602,6 +616,46 @@ class LambdaAugmentation(_BasicAugmentationBase):
     def transform_tensor(self, input: torch.Tensor) -> torch.Tensor:
         return _transform_input(input)
 
+    @classmethod
+    def from_modules(
+        cls,
+        forward_module: nn.Module,
+        inverse_module: Optional[nn.Module] = None,
+        for_data_keys: List[Union[str, int, DataKey]] = [DataKey.INPUT],
+        default_fn: str = "none"
+    ) -> "LambdaAugmentation":
+        """Construct a lambda augmentation from nn.Modules.
+
+        Args:
+            forward_module: required. A module to apply the transformation.
+            inverse_module: optional. A module to inverse the transformation.
+            for_data_keys: determine which data keys will consume the forward and inverse module.
+            default_fn: the expected default behaviour for not defined data keys, "none" | "return_identity".
+                If "none", a ``NotImplementedError`` will be raised.
+                If "return_identity", the exact input tensor will be returned.
+        """
+        for_data_keys = [DataKey.get(inp) for inp in for_data_keys]
+        default_module: Optional[nn.Module] = None
+        if default_fn == "none":
+            default_module = None
+        elif default_fn == "return_identity":
+            default_module = nn.Identity()
+        else:
+            raise NotImplementedError
+
+        return cls(
+            input=forward_module if DataKey.INPUT in for_data_keys else default_module,
+            input_inverse=inverse_module if DataKey.INPUT in for_data_keys else default_module,
+            mask=forward_module if DataKey.MASK in for_data_keys else default_module,
+            mask_inverse=inverse_module if DataKey.MASK in for_data_keys else default_module,
+            bbox=forward_module if DataKey.BBOX in for_data_keys else default_module,
+            bbox_inverse=inverse_module if DataKey.BBOX in for_data_keys else default_module,
+            keypoints=forward_module if DataKey.KEYPOINTS in for_data_keys else default_module,
+            keypoints_inverse=inverse_module if DataKey.KEYPOINTS in for_data_keys else default_module,
+            param_generator=None,
+            keepdim=False,
+        )
+
     def __unpack_input__(  # type: ignore
         self, input: TensorWithTransformMat
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
@@ -613,46 +667,55 @@ class LambdaAugmentation(_BasicAugmentationBase):
         return in_tensor, None
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        """Generate shared parameters for applying the same transformation on different data format."""
         if self.param_generator is not None:
             return self.param_generator(batch_shape)
         return super().generate_parameters(batch_shape)
 
     def forward_input(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
+        """Apply the transformation on input shaped as :match:`(B, C, H, W)`."""
         if self.input is not None:
             return self.input(input, **kwargs)
         raise NotImplementedError
 
     def inverse_input(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
+        """Inverse the transformation on input shaped as :match:`(B, C, H, W)`."""
         if self.input_inverse is not None:
             return self.input_inverse(input, **kwargs)
         raise NotImplementedError
 
     def forward_mask(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
+        """Apply the transformation on mask shaped as :match:`(B, C, H, W)`."""
         if self.mask is not None:
             return self.mask(input, **kwargs)
         raise NotImplementedError
 
     def inverse_mask(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
+        """Inverse the transformation on mask shaped as :match:`(B, C, H, W)`."""
         if self.mask_inverse is not None:
             return self.mask_inverse(input, **kwargs)
         raise NotImplementedError
 
     def forward_bbox(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
+        """Apply the transformation on boxes shaped as :match:`(B, N, 4, 2)`."""
         if self.bbox is not None:
             return self.bbox(input, **kwargs)
         raise NotImplementedError
 
     def inverse_bbox(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
+        """Inverse the transformation on boxes shaped as :match:`(B, N, 4, 2)`."""
         if self.bbox_inverse is not None:
             return self.bbox_inverse(input, **kwargs)
         raise NotImplementedError
 
     def forward_keypoints(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
+        """Apply the transformation on keypoints shaped as :match:`(B, N, 2)`."""
         if self.keypoints is not None:
             return self.keypoints(input, **kwargs)
         raise NotImplementedError
 
     def inverse_keypoints(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
+        """Inverse the transformation on keypoints shaped as :match:`(B, N, 2)`."""
         if self.keypoints_inverse is not None:
             return self.keypoints_inverse(input, **kwargs)
         raise NotImplementedError
@@ -663,6 +726,7 @@ class LambdaAugmentation(_BasicAugmentationBase):
         params: Optional[Dict[str, torch.Tensor]],
         data_key: Union[str, int, DataKey],
     ) -> torch.Tensor:
+        """Apply a transformation given its data key."""
         if params is None:
             params = {}
         if DataKey.get(data_key) == DataKey.INPUT:
@@ -704,8 +768,9 @@ class LambdaAugmentation(_BasicAugmentationBase):
         params: Optional[Dict[str, torch.Tensor]],
         data_key: Union[str, int, DataKey],
     ) -> torch.Tensor:
+        """Inverse a transformation given its data key."""
         if params is None:
-            params = {}
+            params = self._params
         if DataKey.get(data_key) == DataKey.INPUT:
             return self.inverse(input, params)
         if DataKey.get(data_key) == DataKey.MASK:
@@ -761,6 +826,9 @@ class LambdaAugmentation(_BasicAugmentationBase):
 
         if params is None:
             params = self.forward_parameters(batch_shape)
+            # Remove ``batch_prob``
+            if "batch_prob" in params:
+                del params["batch_prob"]
 
         self._params = params
         output = self.apply_func(in_tensor, self._params)

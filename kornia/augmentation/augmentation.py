@@ -2369,10 +2369,10 @@ class PadTo(LambdaAugmentation):
         self.pad_mode = pad_mode
         self.pad_value = pad_value
         super().__init__(
-            input=self.pad_input,
-            input_inverse=self.unpad_input,
-            mask=self.pad_input,
-            mask_inverse=self.unpad_input,
+            input=self.pad_image,
+            input_inverse=self.unpad_image,
+            mask=self.pad_image,
+            mask_inverse=self.unpad_image,
             bbox=self.pad_points,
             bbox_inverse=self.unpad_points,
             keypoints=self.pad_points,
@@ -2382,18 +2382,22 @@ class PadTo(LambdaAugmentation):
         )
 
     def pad_param_gen(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        input_size = torch.tensor(batch_shape[-2:], dtype=torch.long).expand(batch_shape[0], -1)
-        return dict(input_size=input_size)
+        input_size = torch.tensor(batch_shape[-2:], dtype=torch.long)
+        return dict(
+            input_size=input_size,
+            pad_size=torch.tensor(self.size, dtype=torch.long)
+        )
 
-    def pad_input(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
+    def pad_image(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
         _, _, height, width = input.shape
-        height_pad: int = self.size[0] - height
-        width_pad: int = self.size[1] - width
+        size = kwargs['pad_size'].numpy().tolist()
+        height_pad: int = size[0] - height
+        width_pad: int = size[1] - width
         return torch.nn.functional.pad(
             input, [0, width_pad, 0, height_pad], mode=self.pad_mode, value=self.pad_value)
 
-    def unpad_input(self, input: torch.Tensor, input_size: torch.Tensor) -> torch.Tensor:
-        size = input_size.unique(dim=0).squeeze().numpy().tolist()
+    def unpad_image(self, input: torch.Tensor, **kwargs) -> torch.Tensor:
+        size = kwargs['input_size'].numpy().tolist()
         size = (size[0], size[1])
         return input[..., :size[0], :size[1]]
 
