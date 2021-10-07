@@ -277,7 +277,7 @@ class RgbToYuv420(nn.Module):
         [1] https://es.wikipedia.org/wiki/YUV#RGB_a_Y'UV
     """
 
-    def forward(self, input: torch.Tensor) -> (torch.Tensor, torch.Tensor):
+    def forward(self, input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         return rgb_to_yuv420(input)
 
 
@@ -302,7 +302,7 @@ class RgbToYuv422(nn.Module):
         [1] https://es.wikipedia.org/wiki/YUV#RGB_a_Y'UV
     """
 
-    def forward(self, input: torch.Tensor) -> (torch.Tensor, torch.Tensor):
+    def forward(self, input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         return rgb_to_yuv422(input)
 
 
