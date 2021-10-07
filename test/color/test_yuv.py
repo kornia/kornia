@@ -283,7 +283,7 @@ class TestYuvToRgb(BaseTester):
 
 class TestYuv420ToRgb(BaseTester):
     def test_smoke(self, device, dtype):
-        C, H, W = 3, 4, 6
+        H, W = 4, 6
         imgy = torch.rand(1, H, W, device=device, dtype=dtype)
         imguv = torch.rand(2, int(H / 2), int(W / 2), device=device, dtype=dtype)
         assert isinstance(kornia.color.yuv420_to_rgb(imgy, imguv), torch.Tensor)

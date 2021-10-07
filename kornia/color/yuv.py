@@ -269,16 +269,16 @@ class RgbToYuv420(nn.Module):
         - output: :math:`(*, 1, H, W)` and :math:`(*, 2, H/2, W/2)`
 
     Examples:
-        >>> input = torch.rand(2, 3, 4, 6)
+        >>> yuvinput = torch.rand(2, 3, 4, 6)
         >>> yuv = RgbToYuv420()
-        >>> output = yuv(input)  # # (2x1x4x6, 2x1x2x3)
+        >>> output = yuv(yuvinput)  # # (2x1x4x6, 2x1x2x3)
 
     Reference::
         [1] https://es.wikipedia.org/wiki/YUV#RGB_a_Y'UV
     """
 
-    def forward(self, input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        return rgb_to_yuv420(input)
+    def forward(self, yuvinput: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        return rgb_to_yuv420(yuvinput)
 
 
 class RgbToYuv422(nn.Module):
@@ -294,16 +294,16 @@ class RgbToYuv422(nn.Module):
         - output: :math:`(*, 1, H, W)` and :math:`(*, 2, H, W/2)`
 
     Examples:
-        >>> input = torch.rand(2, 3, 4, 6)
+        >>> yuvinput = torch.rand(2, 3, 4, 6)
         >>> yuv = RgbToYuv422()
-        >>> output = yuv(input)  # # (2x1x4x6, 2x2x4x3)
+        >>> output = yuv(yuvinput)  # # (2x1x4x6, 2x2x4x3)
 
     Reference::
         [1] https://es.wikipedia.org/wiki/YUV#RGB_a_Y'UV
     """
 
-    def forward(self, input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        return rgb_to_yuv422(input)
+    def forward(self, yuvinput: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        return rgb_to_yuv422(yuvinput)
 
 
 class YuvToRgb(nn.Module):
