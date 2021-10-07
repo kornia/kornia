@@ -11,14 +11,22 @@ class ImageStitching(nn.Module):
 
     Args:
         matcher: image feature matching module.
+        homography_method: method to compute homography, either "naive" or "ransac".
+            "ransac" is slower with a better accuracy.
         blending_method: method to blend two images together.
             Only "naive" is currently supported.
 
     Note:
         Current implementation requires strict image ordering from left to right.
 
-    Example:
-        >>> IS = ImageStitching(K.feature.LoFTR(pretrained='outdoor'))
+    .. code-block:: python
+
+        IS = ImageStitching(KF.LoFTR(pretrained='outdoor'), homography_method='ransac').cuda()
+        # Compute the stitched result with less GPU memory cost.
+        with torch.no_grad():
+            out = IS(img_left, img_right)
+        # Show the result
+        plt.imshow(K.tensor_to_image(out))
     """
 
     def __init__(self, matcher: nn.Module, homography_method: str = 'ransac', blending_method: str = "naive") -> None:
@@ -27,7 +35,7 @@ class ImageStitching(nn.Module):
         self.homography_method = homography_method
         self.blending_method = blending_method
         if homography_method == "ransac":
-            self.ransac = K.geometry.RANSAC('homography', inl_th=2.0, max_iter=5)
+            self.ransac = K.geometry.RANSAC('homography')
 
     def _find_homography(self, keypoints1: torch.Tensor, keypoints2: torch.Tensor) -> torch.Tensor:
         if self.homography_method == "naive":
