@@ -157,7 +157,7 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     Example:
         >>> inputy = torch.rand(2, 1, 4, 6)
         >>> inputuv = torch.rand(2, 2, 2, 3)
-        >>> output = yuv420_to_rgb(input)  # 2x3x4x6
+        >>> output = yuv420_to_rgb(inputy, inputuv)  # 2x3x4x6
     """
 
     if not isinstance(imagey, torch.Tensor):
@@ -203,7 +203,7 @@ def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     Example:
         >>> inputy = torch.rand(2, 1, 4, 6)
         >>> inputuv = torch.rand(2, 2, 2, 3)
-        >>> output = yuv420_to_rgb(input)  # 2x3x4x5
+        >>> output = yuv420_to_rgb(inputy, inputuv)  # 2x3x4x5
     """
 
     if not isinstance(imagey, torch.Tensor):
@@ -346,7 +346,7 @@ class Yuv420ToRgb(nn.Module):
         >>> inputy = torch.rand(2, 1, 4, 6)
         >>> inputuv = torch.rand(2, 2, 2, 3)
         >>> rgb = Yuv420ToRgb()
-        >>> output = rgb(input)  # 2x3x4x6
+        >>> output = rgb(inputy, inputuv)  # 2x3x4x6
     """
 
     def forward(self, inputy: torch.Tensor, inputuv: torch.Tensor) -> torch.Tensor:
@@ -370,8 +370,8 @@ class Yuv422ToRgb(nn.Module):
     Examples:
         >>> inputy = torch.rand(2, 1, 4, 6)
         >>> inputuv = torch.rand(2, 2, 4, 3)
-        >>> rgb = Yuv420ToRgb()
-        >>> output = rgb(input)  # 2x3x4x6
+        >>> rgb = Yuv422ToRgb()
+        >>> output = rgb(inputy, inputuv)  # 2x3x4x6
     """
 
     def forward(self, inputy: torch.Tensor, inputuv: torch.Tensor) -> torch.Tensor:
