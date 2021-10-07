@@ -23,7 +23,7 @@ class ImageStitching(nn.Module):
 
         IS = ImageStitching(KF.LoFTR(pretrained='outdoor'), homography_method='ransac').cuda()
         # Compute the stitched result with less GPU memory cost.
-        with torch.no_grad():
+        with torch.inference_mode():
             out = IS(img_left, img_right)
         # Show the result
         plt.imshow(K.tensor_to_image(out))
