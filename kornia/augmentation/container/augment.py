@@ -1,6 +1,6 @@
 import warnings
 from itertools import zip_longest
-from typing import cast, Dict, List, Optional, Tuple, Union
+from typing import cast, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -11,13 +11,13 @@ from kornia.augmentation.base import (
     IntensityAugmentationBase2D,
     TensorWithTransformMat,
 )
-from kornia.augmentation.container.base import SequentialBase
 from kornia.constants import DataKey
-from kornia.geometry.bbox import transform_bbox
-from kornia.geometry.linalg import transform_points
 
+from .base import SequentialBase
 from .image import ImageSequential, ParamItem
 from .patch import PatchSequential
+from .utils import ApplyInverse
+from .video import VideoSequential
 
 __all__ = ["AugmentationSequential"]
 
@@ -27,7 +27,7 @@ class AugmentationSequential(ImageSequential):
 
     .. image:: https://kornia-tutorials.readthedocs.io/en/latest/_images/data_augmentation_sequential_5_1.png
         :width: 49 %
-    .. image:: https://kornia-tutorials.readthedocs.io/en/latest/_images/data_augmentation_sequential_7_2.png
+    .. image:: https://kornia-tutorials.readthedocs.io/en/latest/_images/data_augmentation_sequential_7_0.png
         :width: 49 %
 
     Args:
@@ -80,6 +80,28 @@ class AugmentationSequential(ImageSequential):
         >>> out_inv = aug_list.inverse(*out)
         >>> [o.shape for o in out_inv]
         [torch.Size([2, 3, 5, 6]), torch.Size([2, 3, 5, 6]), torch.Size([2, 4, 2]), torch.Size([2, 1, 2])]
+
+    Examples:
+        This example demonstrates the integration of VideoSequential and AugmentationSequential.
+        >>> import kornia
+        >>> input = torch.randn(2, 3, 5, 6)[None]
+        >>> bbox = torch.tensor([[
+        ...     [1., 1.],
+        ...     [2., 1.],
+        ...     [2., 2.],
+        ...     [1., 2.],
+        ... ]]).expand(2, -1, -1)[None]
+        >>> points = torch.tensor([[[1., 1.]]]).expand(2, -1, -1)[None]
+        >>> aug_list = AugmentationSequential(
+        ...     VideoSequential(
+        ...         kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...         kornia.augmentation.RandomAffine(360, p=1.0),
+        ...     ),
+        ...     data_keys=["input", "mask", "bbox", "keypoints"]
+        ... )
+        >>> out = aug_list(input, input, bbox, points)
+        >>> [o.shape for o in out]
+        [torch.Size([1, 2, 3, 5, 6]), torch.Size([1, 2, 3, 5, 6]), torch.Size([1, 2, 4, 2]), torch.Size([1, 2, 1, 2])]
     """
 
     def __init__(
@@ -107,129 +129,14 @@ class AugmentationSequential(ImageSequential):
         if self.data_keys[0] != DataKey.INPUT:
             raise NotImplementedError(f"The first input must be {DataKey.INPUT}.")
 
+        self.contains_video_sequential: bool = False
         for arg in args:
             if isinstance(arg, PatchSequential) and not arg.is_intensity_only():
                 warnings.warn("Geometric transformation detected in PatchSeqeuntial, which would break bbox, mask.")
+            if isinstance(arg, VideoSequential):
+                self.contains_video_sequential = True
 
-    def apply_to_mask(self, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None) -> torch.Tensor:
-        if param is not None:
-            _param = cast(Dict[str, torch.Tensor], param.data)
-        else:
-            _param = None  # type: ignore
-
-        if isinstance(module, GeometricAugmentationBase2D) and _param is None:
-            input = module(input, return_transform=False)
-        elif isinstance(module, GeometricAugmentationBase2D) and _param is not None:
-            input = module(input, _param, return_transform=False)
-        else:
-            pass  # No need to update anything
-        return input
-
-    def apply_to_bbox(
-        self, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None, mode: str = "xyxy"
-    ) -> torch.Tensor:
-        if param is not None:
-            _param = cast(Dict[str, torch.Tensor], param.data)
-        else:
-            _param = None  # type: ignore
-
-        if isinstance(module, GeometricAugmentationBase2D) and _param is None:
-            raise ValueError(f"Transformation matrix for {module} has not been computed.")
-        if isinstance(module, GeometricAugmentationBase2D) and _param is not None:
-            input = transform_bbox(module.get_transformation_matrix(input, _param), input, mode)
-        else:
-            pass  # No need to update anything
-        return input
-
-    def apply_to_keypoints(
-        self, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None
-    ) -> torch.Tensor:
-        if param is not None:
-            _param = cast(Dict[str, torch.Tensor], param.data)
-        else:
-            _param = None  # type: ignore
-
-        if isinstance(module, GeometricAugmentationBase2D) and _param is None:
-            raise ValueError(f"Transformation matrix for {module} has not been computed.")
-        if isinstance(module, GeometricAugmentationBase2D) and _param is not None:
-            input = transform_points(module.get_transformation_matrix(input, _param), input)
-        else:
-            pass  # No need to update anything
-        return input
-
-    def apply_by_key(
-        self,
-        input: TensorWithTransformMat,
-        label: Optional[torch.Tensor],
-        module: Optional[nn.Module],
-        param: ParamItem,
-        dcate: Union[str, int, DataKey] = DataKey.INPUT,
-    ) -> Tuple[TensorWithTransformMat, Optional[torch.Tensor]]:
-        if module is None:
-            module = self.get_submodule(param.name)
-        if DataKey.get(dcate) in [DataKey.INPUT]:
-            return self.apply_to_input(input, label, module=module, param=param)
-        if DataKey.get(dcate) in [DataKey.MASK]:
-            if isinstance(input, (tuple,)):
-                return (self.apply_to_mask(input[0], module, param), *input[1:]), None
-            return self.apply_to_mask(input, module, param), None
-        if DataKey.get(dcate) in [DataKey.BBOX, DataKey.BBOX_XYXY]:
-            if isinstance(input, (tuple,)):
-                return (self.apply_to_bbox(input[0], module, param, mode='xyxy'), *input[1:]), None
-            return self.apply_to_bbox(input, module, param, mode='xyxy'), None
-        if DataKey.get(dcate) in [DataKey.BBOX_XYHW]:
-            if isinstance(input, (tuple,)):
-                return (self.apply_to_bbox(input[0], module, param, mode='xyhw'), *input[1:]), None
-            return self.apply_to_bbox(input, module, param, mode='xyhw'), None
-        if DataKey.get(dcate) in [DataKey.KEYPOINTS]:
-            if isinstance(input, (tuple,)):
-                return (self.apply_to_keypoints(input[0], module, param), *input[1:]), None
-            return self.apply_to_keypoints(input, module, param), None
-        raise NotImplementedError(f"input type of {dcate} is not implemented.")
-
-    def inverse_input(self, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None) -> torch.Tensor:
-        if isinstance(module, GeometricAugmentationBase2D):
-            input = module.inverse(input, None if param is None else cast(Dict, param.data))
-        return input
-
-    def inverse_bbox(
-        self, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None, mode: str = "xyxy"
-    ) -> torch.Tensor:
-        if isinstance(module, GeometricAugmentationBase2D):
-            transform = module.compute_inverse_transformation(
-                module.get_transformation_matrix(input, None if param is None else cast(Dict, param.data))
-            )
-            input = transform_bbox(torch.as_tensor(transform, device=input.device, dtype=input.dtype), input, mode)
-        return input
-
-    def inverse_keypoints(
-        self, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None
-    ) -> torch.Tensor:
-        if isinstance(module, GeometricAugmentationBase2D):
-            transform = module.compute_inverse_transformation(
-                module.get_transformation_matrix(input, None if param is None else cast(Dict, param.data))
-            )
-            input = transform_points(torch.as_tensor(transform, device=input.device, dtype=input.dtype), input)
-        return input
-
-    def inverse_by_key(
-        self,
-        input: torch.Tensor,
-        module: nn.Module,
-        param: Optional[ParamItem] = None,
-        dcate: Union[str, int, DataKey] = DataKey.INPUT,
-    ) -> torch.Tensor:
-        if DataKey.get(dcate) in [DataKey.INPUT, DataKey.MASK]:
-            return self.inverse_input(input, module, param)
-        if DataKey.get(dcate) in [DataKey.BBOX, DataKey.BBOX_XYXY]:
-            return self.inverse_bbox(input, module, param, mode='xyxy')
-        if DataKey.get(dcate) in [DataKey.BBOX_XYHW]:
-            return self.inverse_bbox(input, module, param, mode='xyhw')
-        if DataKey.get(dcate) in [DataKey.KEYPOINTS]:
-            return self.inverse_keypoints(input, module, param)
-        raise NotImplementedError(f"input type of {dcate} is not implemented.")
-
-    def inverse(
+    def inverse(  # type: ignore
         self,
         *args: torch.Tensor,
         params: Optional[List[ParamItem]] = None,
@@ -260,19 +167,25 @@ class AugmentationSequential(ImageSequential):
             if dcate == DataKey.INPUT and isinstance(input, (tuple, list)):
                 input, _ = input  # ignore the transformation matrix whilst inverse
             for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
-                if isinstance(module, _AugmentationBase):
+                if isinstance(module, (_AugmentationBase, ImageSequential)):
                     param = params[name] if name in params else param
                 else:
                     param = None
-                if isinstance(module, GeometricAugmentationBase2D) and dcate in DataKey:
-                    # Waiting for #1013 to specify the geometric and intensity augmentations.
-                    input = self.inverse_by_key(input, module, param, dcate)
-                elif isinstance(module, IntensityAugmentationBase2D) and dcate in DataKey:
+                if isinstance(module, IntensityAugmentationBase2D) and dcate in DataKey:
                     pass  # Do nothing
-                elif isinstance(module, PatchSequential) and module.is_intensity_only() and dcate in DataKey:
+                elif isinstance(module, ImageSequential) and module.is_intensity_only() and dcate in DataKey:
                     pass  # Do nothing
+                elif isinstance(module, VideoSequential) and dcate not in [DataKey.INPUT, DataKey.MASK]:
+                    batch_size: int = input.size(0)
+                    input = input.view(-1, *input.shape[2:])
+                    input = ApplyInverse.inverse_by_key(input, module, param, dcate)
+                    input = input.view(batch_size, -1, *input.shape[1:])
+                elif isinstance(module, PatchSequential):
+                    raise NotImplementedError("Geometric involved PatchSequential is not supported.")
+                elif isinstance(module, (GeometricAugmentationBase2D, ImageSequential)) and dcate in DataKey:
+                    input = ApplyInverse.inverse_by_key(input, module, param, dcate)
                 elif isinstance(module, (SequentialBase,)):
-                    raise ValueError("Sequential is currently unsupported.")
+                    raise ValueError(f"Unsupported Sequential {module}.")
                 else:
                     raise NotImplementedError(f"data_key {dcate} is not implemented for {module}.")
             outputs.append(input)
@@ -328,9 +241,11 @@ class AugmentationSequential(ImageSequential):
                     inp = _input[0]
                 else:
                     inp = _input
-                _, out_shape = self.autofill_dim(inp, dim_range=(2, 4))
-                if params is None:
-                    params = self.forward_parameters(out_shape)
+                if self.contains_video_sequential:
+                    _, out_shape = self.autofill_dim(inp, dim_range=(3, 5))
+                else:
+                    _, out_shape = self.autofill_dim(inp, dim_range=(2, 4))
+                params = self.forward_parameters(out_shape)
             else:
                 raise ValueError("`params` must be provided whilst INPUT is not in data_keys.")
 
@@ -353,14 +268,21 @@ class AugmentationSequential(ImageSequential):
                 module = self.get_submodule(param.name)
                 if dcate == DataKey.INPUT:
                     input, label = self.apply_to_input(input, label, module=module, param=param)
-                elif isinstance(module, GeometricAugmentationBase2D) and dcate in DataKey:
-                    input, label = self.apply_by_key(input, label, module, param, dcate)
                 elif isinstance(module, IntensityAugmentationBase2D) and dcate in DataKey:
                     pass  # Do nothing
-                elif isinstance(module, PatchSequential) and module.is_intensity_only() and dcate in DataKey:
+                elif isinstance(module, ImageSequential) and module.is_intensity_only() and dcate in DataKey:
                     pass  # Do nothing
+                elif isinstance(module, VideoSequential) and dcate not in [DataKey.INPUT, DataKey.MASK]:
+                    batch_size: int = input.size(0)
+                    input = input.view(-1, *input.shape[2:])
+                    input, label = ApplyInverse.apply_by_key(input, label, module, param, dcate)
+                    input = input.view(batch_size, -1, *input.shape[1:])
+                elif isinstance(module, PatchSequential):
+                    raise NotImplementedError("Geometric involved PatchSequential is not supported.")
+                elif isinstance(module, (GeometricAugmentationBase2D, ImageSequential,)) and dcate in DataKey:
+                    input, label = ApplyInverse.apply_by_key(input, label, module, param, dcate)
                 elif isinstance(module, (SequentialBase,)):
-                    raise ValueError("Sequential is currently unsupported.")
+                    raise ValueError(f"Unsupported Sequential {module}.")
                 else:
                     raise NotImplementedError(f"data_key {dcate} is not implemented for {module}.")
             outputs[idx] = input

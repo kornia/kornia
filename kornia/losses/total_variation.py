@@ -39,7 +39,7 @@ def total_variation(img: torch.Tensor) -> torch.Tensor:
 
 
 class TotalVariation(nn.Module):
-    r"""Computes the Total Variation according to [1].
+    r"""Compute the Total Variation according to [1].
 
     Shape:
         - Input: :math:`(N, C, H, W)` or :math:`(C, H, W)`.

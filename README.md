@@ -1,9 +1,7 @@
 <div align="center">
 <p align="center">
-  <img width="50%" src="https://github.com/kornia/kornia/blob/master/docs/source/_static/img/kornia_logo.png" />
+  <img width="75%" src="https://github.com/kornia/data/raw/main/kornia_banner_pixie.png" />
 </p>
-
-**The open-source and Computer Vision 2.0 library**
 
 ---
 
@@ -74,6 +72,7 @@ At a granular level, Kornia is a library that consists of the following componen
 
   ```bash
   pip install kornia
+  pip install kornia[x]  # to get the training API !
   ```
 
 <details>
@@ -109,6 +108,9 @@ Run our Jupyter notebooks [tutorials](https://kornia-tutorials.readthedocs.io/en
     <img src="https://raw.githubusercontent.com/kornia/data/main/hello_world_arturito.png" width="75%" height="75%">
   </a>
 </div>
+
+:triangular_flag_on_post: **Updates**
+- :white_check_mark: Integrated to [Huggingface Spaces](https://huggingface.co/spaces) with [Gradio](https://github.com/gradio-app/gradio). See [Gradio Web Demo](https://huggingface.co/spaces/akhaliq/Kornia-LoFTR).
 
 ## Cite
 

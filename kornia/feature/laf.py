@@ -25,7 +25,7 @@ def raise_error_if_laf_is_not_valid(laf: torch.Tensor) -> None:
 
 
 def get_laf_scale(LAF: torch.Tensor) -> torch.Tensor:
-    """Returns a scale of the LAFs.
+    """Return a scale of the LAFs.
 
     Args:
         LAF: tensor [BxNx2x3] or [BxNx2x2].
@@ -48,7 +48,7 @@ def get_laf_scale(LAF: torch.Tensor) -> torch.Tensor:
 
 
 def get_laf_center(LAF: torch.Tensor) -> torch.Tensor:
-    """Returns a center (keypoint) of the LAFs.
+    """Return a center (keypoint) of the LAFs.
 
     Args:
         LAF: tensor [BxNx2x3].
@@ -70,7 +70,7 @@ def get_laf_center(LAF: torch.Tensor) -> torch.Tensor:
 
 
 def get_laf_orientation(LAF: torch.Tensor) -> torch.Tensor:
-    """Returns orientation of the LAFs, in degrees.
+    """Return orientation of the LAFs, in degrees.
 
     Args:
         LAF: (torch.Tensor): tensor [BxNx2x3].
@@ -92,7 +92,7 @@ def get_laf_orientation(LAF: torch.Tensor) -> torch.Tensor:
 
 
 def set_laf_orientation(LAF: torch.Tensor, angles_degrees: torch.Tensor) -> torch.Tensor:
-    """Changes the orientation of the LAFs.
+    """Change the orientation of the LAFs.
 
     Args:
         LAF: tensor [BxNx2x3].
@@ -115,7 +115,7 @@ def set_laf_orientation(LAF: torch.Tensor, angles_degrees: torch.Tensor) -> torc
 
 
 def laf_from_center_scale_ori(xy: torch.Tensor, scale: torch.Tensor, ori: torch.Tensor) -> torch.Tensor:
-    """Returns orientation of the LAFs, in radians. Useful to create kornia LAFs from OpenCV keypoints.
+    """Return orientation of the LAFs, in radians. Useful to create kornia LAFs from OpenCV keypoints.
 
     Args:
         xy: tensor [BxNx2].
@@ -173,7 +173,7 @@ def scale_laf(laf: torch.Tensor, scale_coef: Union[float, torch.Tensor]) -> torc
 
 
 def make_upright(laf: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
-    """Rectifies the affine matrix, so that it becomes upright.
+    """Rectify the affine matrix, so that it becomes upright.
 
     Args:
         laf: tensor of LAFs.
@@ -209,7 +209,7 @@ def make_upright(laf: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
 
 
 def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
-    """Converts ellipse regions to LAF format.
+    """Convert ellipse regions to LAF format.
 
     Ellipse (a, b, c) and upright covariance matrix [a11 a12; 0 a22] are connected
     by inverse matrix square root: A = invsqrt([a b; b c]).
@@ -258,7 +258,7 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
 
 
 def laf_to_boundary_points(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
-    """Converts LAFs to boundary points of the regions + center.
+    """Convert LAFs to boundary points of the regions + center.
 
     Used for local features visualization, see visualize_laf function.
 
@@ -293,7 +293,7 @@ def laf_to_boundary_points(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
 
 
 def get_laf_pts_to_draw(LAF: torch.Tensor, img_idx: int = 0):
-    """Returns numpy array for drawing LAFs (local features).
+    """Return numpy array for drawing LAFs (local features).
 
     Args:
         LAF:
@@ -321,7 +321,7 @@ def get_laf_pts_to_draw(LAF: torch.Tensor, img_idx: int = 0):
 
 
 def denormalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
-    """De-normalizes LAFs from scale to image scale.
+    """De-normalize LAFs from scale to image scale.
 
         B,N,H,W = images.size()
         MIN_SIZE = min(H,W)
@@ -354,7 +354,7 @@ def denormalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
 
 
 def normalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
-    """Normalizes LAFs to [0,1] scale from pixel scale. See below:
+    """Normalize LAFs to [0,1] scale from pixel scale. See below:
         B,N,H,W = images.size()
         MIN_SIZE = min(H,W)
         [a11 a21 x]
@@ -499,7 +499,7 @@ def extract_patches_from_pyramid(
 
 
 def laf_is_inside_image(laf: torch.Tensor, images: torch.Tensor, border: int = 0) -> torch.Tensor:
-    """Checks if the LAF is touching or partly outside the image boundary.
+    """Check if the LAF is touching or partly outside the image boundary.
 
     Returns the mask of LAFs, which are fully inside the image, i.e. valid.
 
@@ -537,7 +537,7 @@ def laf_to_three_points(laf: torch.Tensor):
 
 
 def laf_from_three_points(threepts: torch.Tensor):
-    """Converts three points to local affine frame.
+    """Convert three points to local affine frame.
 
     Order is (0,0), (0, 1), (1, 0).
 

@@ -86,7 +86,7 @@ class Similarity(nn.Module):
                \n shift={self.shift}, \n scale={self.scale})'
 
     def reset_model(self) -> None:
-        """Initializes the model with identity transform."""
+        """Initialize the model with identity transform."""
         torch.nn.init.zeros_(self.rot)
         torch.nn.init.zeros_(self.shift)
         torch.nn.init.ones_(self.scale)
@@ -182,7 +182,7 @@ class ImageRegistrator(nn.Module):
                               img_src: torch.Tensor,
                               img_dst: torch.Tensor,
                               transform_model: torch.Tensor) -> torch.Tensor:
-        """Warps img_src into img_dst with transform_model and returns loss."""
+        """Warp img_src into img_dst with transform_model and returns loss."""
         # ToDo: Make possible registration of images of different shape
         if img_src.shape != img_dst.shape:
             raise ValueError(f"Cannot register images of different shapes\
@@ -206,7 +206,7 @@ class ImageRegistrator(nn.Module):
                  verbose: bool = False,
                  output_intermediate_models: bool = False) -> \
             Union[torch.Tensor, Tuple[torch.Tensor, List[torch.Tensor]]]:
-        r"""Estimates the tranformation' which warps src_img into dst_img by gradient descent.
+        r"""Estimate the tranformation' which warps src_img into dst_img by gradient descent.
         The shape of the tensors is not checked, because it may depend on the model, e.g. volume registration
 
         Args:
@@ -257,14 +257,14 @@ class ImageRegistrator(nn.Module):
         return self.model()
 
     def warp_src_into_dst(self, src_img: torch.Tensor) -> torch.Tensor:
-        r"""Warps src_img with estimated model."""
+        r"""Warp src_img with estimated model."""
         _height, _width = src_img.shape[-2:]
         warper = self.warper(_height, _width)
         img_src_to_dst = warper(src_img, self.model())
         return img_src_to_dst
 
     def warp_dst_inro_src(self, dst_img: torch.Tensor) -> torch.Tensor:
-        r"""Warps src_img with inverted estimated model."""
+        r"""Warp src_img with inverted estimated model."""
         _height, _width = dst_img.shape[-2:]
         warper = self.warper(_height, _width)
         img_dst_to_src = warper(dst_img, self.model.forward_inverse())

@@ -25,9 +25,9 @@ def warp_affine3d(
     dsize: Tuple[int, int, int],
     flags: str = 'bilinear',
     padding_mode: str = 'zeros',
-    align_corners: Optional[bool] = None,
+    align_corners: bool = True,
 ) -> torch.Tensor:
-    r"""Applies a projective transformation a to 3d tensor.
+    r"""Apply a projective transformation a to 3d tensor.
 
     .. warning::
         This API signature it is experimental and might suffer some changes in the future.
@@ -55,17 +55,6 @@ def warp_affine3d(
     if len(dsize) != 3:
         raise AssertionError(dsize)
     B, C, D, H, W = src.size()
-
-    # TODO: remove the statement below in kornia v0.6
-    if align_corners is None:
-        message: str = (
-            "The align_corners default value has been changed. By default now is set True "
-            "in order to match cv2.warpAffine. In case you want to keep your previous "
-            "behaviour set it to False. This warning will disappear in kornia > v0.6."
-        )
-        warnings.warn(message)
-        # set default value for align corners
-        align_corners = True
 
     size_src: Tuple[int, int, int] = (D, H, W)
     size_out: Tuple[int, int, int] = dsize
@@ -111,7 +100,7 @@ def projection_from_Rt(rmat: torch.Tensor, tvec: torch.Tensor) -> torch.Tensor:
 
 
 def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales: torch.Tensor) -> torch.Tensor:
-    r"""Calculates the projection matrix for a 3D rotation.
+    r"""Calculate the projection matrix for a 3D rotation.
 
     .. warning::
         This API signature it is experimental and might suffer some changes in the future.
@@ -384,7 +373,7 @@ def warp_perspective3d(
     border_mode: str = 'zeros',
     align_corners: bool = False,
 ) -> torch.Tensor:
-    r"""Applies a perspective transformation to an image.
+    r"""Apply a perspective transformation to an image.
 
     The function warp_perspective transforms the source image using
     the specified matrix:

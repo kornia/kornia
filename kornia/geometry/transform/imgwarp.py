@@ -1,4 +1,3 @@
-import warnings
 from typing import Optional, Tuple
 
 import torch
@@ -10,6 +9,7 @@ from kornia.geometry.conversions import (
     deg2rad,
     normalize_pixel_coordinates,
 )
+from kornia.geometry.epipolar import eye_like
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform.homography_warper import normalize_homography
 from kornia.geometry.transform.projwarp import get_projective_transform
@@ -37,11 +37,11 @@ def warp_perspective(
     dsize: Tuple[int, int],
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
-    align_corners: Optional[bool] = None,
+    align_corners: bool = True,
 ) -> torch.Tensor:
-    r"""Applies a perspective transformation to an image.
+    r"""Apply a perspective transformation to an image.
 
-    .. image:: https://kornia-tutorials.readthedocs.io/en/latest/_images/warp_perspective_10_2.png
+    .. image:: https://kornia-tutorials.readthedocs.io/en/latest/_images/warp_perspective_10_1.png
 
     The function warp_perspective transforms the source image using
     the specified matrix:
@@ -89,17 +89,6 @@ def warp_perspective(
     if not (len(M.shape) == 3 and M.shape[-2:] == (3, 3)):
         raise ValueError(f"Input M must be a Bx3x3 tensor. Got {M.shape}")
 
-    # TODO: remove the statement below in kornia v0.6
-    if align_corners is None:
-        message: str = (
-            "The align_corners default value has been changed. By default now is set True "
-            "in order to match cv2.warpPerspective. In case you want to keep your previous "
-            "behaviour set it to False. This warning will disappear in kornia > v0.6."
-        )
-        warnings.warn(message)
-        # set default value for align corners
-        align_corners = True
-
     B, _, H, W = src.size()
     h_out, w_out = dsize
 
@@ -123,9 +112,9 @@ def warp_affine(
     dsize: Tuple[int, int],
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
-    align_corners: Optional[bool] = None,
+    align_corners: bool = True,
 ) -> torch.Tensor:
-    r"""Applies an affine transformation to a tensor.
+    r"""Apply an affine transformation to a tensor.
 
     .. image:: _static/img/warp_affine.png
 
@@ -174,17 +163,6 @@ def warp_affine(
     if not (len(M.shape) == 3 or M.shape[-2:] == (2, 3)):
         raise ValueError(f"Input M must be a Bx2x3 tensor. Got {M.shape}")
 
-    # TODO: remove the statement below in kornia v0.6
-    if align_corners is None:
-        message: str = (
-            "The align_corners default value has been changed. By default now is set True "
-            "in order to match cv2.warpAffine. In case you want to keep your previous "
-            "behaviour set it to False. This warning will disappear in kornia > v0.6."
-        )
-        warnings.warn(message)
-        # set default value for align corners
-        align_corners = True
-
     B, C, H, W = src.size()
 
     # we generate a 3x3 transformation matrix from 2x3 affine
@@ -200,7 +178,7 @@ def warp_affine(
 
 
 def get_perspective_transform(src, dst):
-    r"""Calculates a perspective transform from four pairs of the corresponding
+    r"""Calculate a perspective transform from four pairs of the corresponding
     points.
 
     The function calculates the matrix of a perspective transform so that:
@@ -328,7 +306,7 @@ def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
 
 
 def get_rotation_matrix2d(center: torch.Tensor, angle: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
-    r"""Calculates an affine matrix of 2D rotation.
+    r"""Calculate an affine matrix of 2D rotation.
 
     The function calculates the following matrix:
 
@@ -402,30 +380,21 @@ def get_rotation_matrix2d(center: torch.Tensor, angle: torch.Tensor, scale: torc
             )
         )
 
-    # convert angle and apply scale
-    rotation_matrix: torch.Tensor = angle_to_rotation_matrix(angle)
-    scaling_matrix: torch.Tensor = torch.eye(2, device=rotation_matrix.device, dtype=rotation_matrix.dtype).repeat(
-        rotation_matrix.size(0), 1, 1
-    )
+    shift_m = eye_like(3, center)
+    shift_m[:, :2, 2] = center
 
-    scaling_matrix = scaling_matrix * scale.unsqueeze(dim=2).repeat(1, 1, 2)
-    scaled_rotation: torch.Tensor = rotation_matrix @ scaling_matrix
-    alpha: torch.Tensor = scaled_rotation[:, 0, 0]
-    beta: torch.Tensor = scaled_rotation[:, 0, 1]
+    shift_m_inv = eye_like(3, center)
+    shift_m_inv[:, :2, 2] = -center
 
-    # unpack the center to x, y coordinates
-    x: torch.Tensor = center[..., 0]
-    y: torch.Tensor = center[..., 1]
+    scale_m = eye_like(3, center)
+    scale_m[:, 0, 0] *= scale[:, 0]
+    scale_m[:, 1, 1] *= scale[:, 1]
 
-    # create output tensor
-    batch_size: int = center.shape[0]
-    one = torch.tensor(1.0, device=center.device, dtype=center.dtype)
-    M: torch.Tensor = torch.zeros(batch_size, 2, 3, device=center.device, dtype=center.dtype)
+    rotat_m = eye_like(3, center)
+    rotat_m[:, :2, :2] = angle_to_rotation_matrix(angle)
 
-    M[..., 0:2, 0:2] = scaled_rotation
-    M[..., 0, 2] = (one - alpha) * x - beta * y
-    M[..., 1, 2] = beta * x + (one - alpha) * y
-    return M
+    affine_m = shift_m @ rotat_m @ scale_m @ shift_m_inv
+    return affine_m[:, :2, :]  # Bx2x3
 
 
 def remap(
@@ -437,7 +406,7 @@ def remap(
     align_corners: Optional[bool] = None,
     normalized_coordinates: bool = False,
 ) -> torch.Tensor:
-    r"""Applies a generic geometrical transformation to a tensor.
+    r"""Apply a generic geometrical transformation to a tensor.
 
     .. image:: _static/img/remap.png
 
@@ -508,7 +477,7 @@ def remap(
 
 
 def invert_affine_transform(matrix: torch.Tensor) -> torch.Tensor:
-    r"""Inverts an affine transformation.
+    r"""Invert an affine transformation.
 
     The function computes an inverse affine transformation represented by
     2×3 matrix:
@@ -551,7 +520,7 @@ def get_affine_matrix2d(
     sx: Optional[torch.Tensor] = None,
     sy: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    r"""Composes affine matrix from the components.
+    r"""Compose affine matrix from the components.
 
     Args:
         translations: tensor containing the translation vector with shape :math:`(B, 2)`.
@@ -581,7 +550,7 @@ def get_affine_matrix2d(
 
 
 def get_shear_matrix2d(center: torch.Tensor, sx: Optional[torch.Tensor] = None, sy: Optional[torch.Tensor] = None):
-    r"""Composes shear matrix Bx4x4 from the components.
+    r"""Compose shear matrix Bx4x4 from the components.
 
     Note: Ordered shearing, shear x-axis then y-axis.
 
@@ -650,7 +619,7 @@ def get_affine_matrix3d(
     szx: Optional[torch.Tensor] = None,
     szy: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    r"""Composes 3d affine matrix from the components.
+    r"""Compose 3d affine matrix from the components.
 
     Args:
         translations: tensor containing the translation vector (dx,dy,dz) with shape :math:`(B, 3)`.
@@ -693,7 +662,7 @@ def get_shear_matrix3d(
     szx: Optional[torch.Tensor] = None,
     szy: Optional[torch.Tensor] = None,
 ):
-    r"""Composes shear matrix Bx4x4 from the components.
+    r"""Compose shear matrix Bx4x4 from the components.
     Note: Ordered shearing, shear x-axis then y-axis then z-axis.
 
     .. math::

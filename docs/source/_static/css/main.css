@@ -1,0 +1,13 @@
+.sidebar-logo {
+    max-width: 30%;
+}
+
+/* TODO: make sure it works for all the browsers */
+body{
+    font-family: 'Montserrat', sans-serif;
+}
+
+/* The section headers in the toc tree */
+.sidebar-scroll p.caption{
+    background-color: #4d59ff;
+}

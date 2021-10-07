@@ -3,10 +3,27 @@ kornia.contrib
 
 .. currentmodule:: kornia.contrib
 
-.. autofunction:: connected_components
-.. autofunction:: extract_tensor_patches
+Image Segmentation
+------------------
 
-Module
-------
+.. autofunction:: connected_components
+
+Image Patches
+-------------
+
+.. autofunction:: extract_tensor_patches
+.. autofunction:: combine_tensor_patches
 
 .. autoclass:: ExtractTensorPatches
+.. autoclass:: CombineTensorPatches
+
+Image Classification
+--------------------
+
+.. autoclass:: VisionTransformer
+.. autoclass:: ClassificationHead
+
+Lambda
+--------------------
+
+.. autoclass:: Lambda

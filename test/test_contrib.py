@@ -8,6 +8,45 @@ from kornia.testing import assert_close
 from packaging import version
 
 
+class TestVisionTransformer:
+    @pytest.mark.parametrize("B", [1, 2])
+    @pytest.mark.parametrize("H", [1, 3, 8])
+    @pytest.mark.parametrize("D", [128, 768])
+    @pytest.mark.parametrize("image_size", [32, 224])
+    def test_smoke(self, device, dtype, B, H, D, image_size):
+        patch_size = 16
+        T = image_size**2 // patch_size**2 + 1  # tokens size
+
+        img = torch.rand(B, 3, image_size, image_size, device=device, dtype=dtype)
+        vit = kornia.contrib.VisionTransformer(
+            image_size=image_size, num_heads=H, embed_dim=D).to(device, dtype)
+
+        out = vit(img)
+        assert isinstance(out, torch.Tensor) and out.shape == (B, T, D)
+
+        feats = vit.encoder_results
+        assert isinstance(feats, list) and len(feats) == 12
+        for f in feats:
+            assert f.shape == (B, T, D)
+
+    def test_backbone(self, device, dtype):
+        def backbone_mock(x):
+            return torch.ones(1, 128, 14, 14, device=device, dtype=dtype)
+        img = torch.rand(1, 3, 32, 32, device=device, dtype=dtype)
+        vit = kornia.contrib.VisionTransformer(backbone=backbone_mock).to(device, dtype)
+        out = vit(img)
+        assert out.shape == (1, 197, 128)
+
+
+class TestClassificationHead:
+    @pytest.mark.parametrize("B, D, N", [(1, 8, 10), (2, 2, 5)])
+    def test_smoke(self, device, dtype, B, D, N):
+        feat = torch.rand(B, D, D, device=device, dtype=dtype)
+        head = kornia.contrib.ClassificationHead(embed_size=D, num_classes=N).to(device, dtype)
+        logits = head(feat)
+        assert logits.shape == (B, N)
+
+
 class TestConnectedComponents:
     def test_smoke(self, device, dtype):
         img = torch.rand(1, 1, 3, 4, device=device, dtype=dtype)
@@ -91,42 +130,14 @@ class TestConnectedComponents:
         assert_close(op(img), op_jit(img))
 
 
-class TestMaxBlurPool2d:
-    def test_shape(self, device):
-        input = torch.rand(1, 2, 4, 6).to(device)
-        pool = kornia.contrib.MaxBlurPool2d(kernel_size=3)
-        assert pool(input).shape == (1, 2, 2, 3)
-
-    def test_shape_batch(self, device):
-        input = torch.rand(3, 2, 6, 10).to(device)
-        pool = kornia.contrib.MaxBlurPool2d(kernel_size=5)
-        assert pool(input).shape == (3, 2, 3, 5)
-
-    def test_gradcheck(self, device):
-        input = torch.rand(2, 3, 4, 4).to(device)
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.contrib.max_blur_pool2d, (input, 3), raise_exception=True)
-
-    @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self, device):
-        @torch.jit.script
-        def op_script(input: torch.Tensor, kernel_size: int) -> torch.Tensor:
-            return kornia.contrib.max_blur_pool2d(input, kernel_size)
-
-        img = torch.rand(2, 3, 4, 5).to(device)
-        actual = op_script(img, kernel_size=3)
-        expected = kornia.contrib.max_blur_pool2d(img, kernel_size=3)
-        assert_close(actual, expected)
-
-
 class TestExtractTensorPatches:
     def test_smoke(self, device):
-        input = torch.arange(16.0).view(1, 1, 4, 4).to(device)
+        input = torch.arange(16.0, device=device).view(1, 1, 4, 4)
         m = kornia.contrib.ExtractTensorPatches(3)
         assert m(input).shape == (1, 4, 1, 3, 3)
 
     def test_b1_ch1_h4w4_ws3(self, device):
-        input = torch.arange(16.0).view(1, 1, 4, 4).to(device)
+        input = torch.arange(16.0, device=device).view(1, 1, 4, 4)
         m = kornia.contrib.ExtractTensorPatches(3)
         patches = m(input)
         assert patches.shape == (1, 4, 1, 3, 3)
@@ -136,7 +147,7 @@ class TestExtractTensorPatches:
         assert_close(input[0, :, 1:, 1:], patches[0, 3])
 
     def test_b1_ch2_h4w4_ws3(self, device):
-        input = torch.arange(16.0).view(1, 1, 4, 4).to(device)
+        input = torch.arange(16.0, device=device).view(1, 1, 4, 4)
         input = input.expand(-1, 2, -1, -1)  # copy all channels
         m = kornia.contrib.ExtractTensorPatches(3)
         patches = m(input)
@@ -147,7 +158,7 @@ class TestExtractTensorPatches:
         assert_close(input[0, :, 1:, 1:], patches[0, 3])
 
     def test_b1_ch1_h4w4_ws2(self, device):
-        input = torch.arange(16.0).view(1, 1, 4, 4).to(device)
+        input = torch.arange(16.0, device=device).view(1, 1, 4, 4)
         m = kornia.contrib.ExtractTensorPatches(2)
         patches = m(input)
         assert patches.shape == (1, 9, 1, 2, 2)
@@ -157,7 +168,7 @@ class TestExtractTensorPatches:
         assert_close(input[0, :, 2:4, 1:3], patches[0, 7])
 
     def test_b1_ch1_h4w4_ws2_stride2(self, device):
-        input = torch.arange(16.0).view(1, 1, 4, 4).to(device)
+        input = torch.arange(16.0, device=device).view(1, 1, 4, 4)
         m = kornia.contrib.ExtractTensorPatches(2, stride=2)
         patches = m(input)
         assert patches.shape == (1, 4, 1, 2, 2)
@@ -167,7 +178,7 @@ class TestExtractTensorPatches:
         assert_close(input[0, :, 2:4, 2:4], patches[0, 3])
 
     def test_b1_ch1_h4w4_ws2_stride21(self, device):
-        input = torch.arange(16.0).view(1, 1, 4, 4).to(device)
+        input = torch.arange(16.0, device=device).view(1, 1, 4, 4)
         m = kornia.contrib.ExtractTensorPatches(2, stride=(2, 1))
         patches = m(input)
         assert patches.shape == (1, 6, 1, 2, 2)
@@ -235,3 +246,74 @@ class TestExtractTensorPatches:
         input = torch.rand(2, 3, 4, 4).to(device)
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(kornia.contrib.extract_tensor_patches, (input, 3), raise_exception=True)
+
+
+class TestCombineTensorPatches:
+    def test_smoke(self, device, dtype):
+        input = torch.arange(16, device=device, dtype=dtype).view(1, 1, 4, 4)
+        m = kornia.contrib.CombineTensorPatches((2, 2))
+        patches = kornia.contrib.extract_tensor_patches(
+            input, window_size=(2, 2), stride=(2, 2))
+        assert m(patches).shape == (1, 1, 4, 4)
+        assert (input == m(patches)).all()
+
+    def test_error(self, device, dtype):
+        patches = kornia.contrib.extract_tensor_patches(
+            torch.arange(16, device=device, dtype=dtype).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2), padding=1)
+        with pytest.raises(NotImplementedError):
+            kornia.contrib.combine_tensor_patches(patches, window_size=(2, 2), stride=(3, 2))
+
+    def test_padding1(self, device, dtype):
+        input = torch.arange(16, device=device, dtype=dtype).view(1, 1, 4, 4)
+        patches = kornia.contrib.extract_tensor_patches(
+            input, window_size=(2, 2), stride=(2, 2), padding=1)
+        m = kornia.contrib.CombineTensorPatches((2, 2), unpadding=1)
+        assert m(patches).shape == (1, 1, 4, 4)
+        assert (input == m(patches)).all()
+
+    def test_gradcheck(self, device, dtype):
+        patches = kornia.contrib.extract_tensor_patches(
+            torch.arange(16., device=device, dtype=dtype).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2))
+        input = utils.tensor_to_gradcheck_var(patches)  # to var
+        assert gradcheck(kornia.contrib.combine_tensor_patches, (input, (2, 2), (2, 2)), raise_exception=True)
+
+
+class TestLambdaModule:
+
+    def add_2_layer(self, tensor):
+        return tensor + 2
+
+    def add_x_mul_y(self, tensor, x, y=2):
+        return torch.mul(tensor + x , y)
+
+    def test_smoke(self, device, dtype):
+        B, C, H, W = 1, 3, 4, 5
+        input = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        func = self.add_2_layer
+        if not callable(func):
+            raise TypeError(f"Argument lambd should be callable, got {repr(type(func).__name__)}")
+        assert isinstance(kornia.contrib.Lambda(func)(input), torch.Tensor)
+
+    @pytest.mark.parametrize("x", [3, 2, 5])
+    def test_lambda_with_arguments(self, x, device, dtype):
+        B, C, H, W = 2, 3, 5, 7
+        input = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        func = self.add_x_mul_y
+        lambda_module = kornia.contrib.Lambda(func)
+        out = lambda_module(input, x)
+        assert isinstance(out, torch.Tensor)
+
+    @pytest.mark.parametrize("shape", [(1, 3, 2, 3), (2, 3, 5, 7)])
+    def test_lambda(self, shape, device, dtype):
+        B, C, H, W = shape
+        input = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        func = kornia.bgr_to_grayscale
+        lambda_module = kornia.contrib.Lambda(func)
+        out = lambda_module(input)
+        assert isinstance(out, torch.Tensor)
+
+    def test_grad(self, device, dtype):
+        B, C, H, W = 1, 3, 4, 5
+        input = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
+        func = kornia.bgr_to_grayscale
+        assert gradcheck(kornia.contrib.Lambda(func), (input,), raise_exception=True)
