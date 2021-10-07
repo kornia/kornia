@@ -29,7 +29,7 @@ class ImageStitching(nn.Module):
         plt.imshow(K.tensor_to_image(out))
     """
 
-    def __init__(self, matcher: nn.Module, homography_method: str = 'ransac', blending_method: str = "naive") -> None:
+    def __init__(self, matcher: nn.Module, estimator: str = 'ransac', blending_method: str = "naive") -> None:
         super().__init__()
         self.matcher = matcher
         self.homography_method = homography_method
