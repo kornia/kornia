@@ -570,7 +570,6 @@ class LambdaAugmentation(_BasicAugmentationBase):
             will be generated.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
-
     """
     def __init__(
         self,
