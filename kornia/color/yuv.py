@@ -1,6 +1,8 @@
+from typing import Tuple
+
 import torch
 import torch.nn as nn
-from typing import Tuple
+
 
 def rgb_to_yuv(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an RGB image to YUV.
