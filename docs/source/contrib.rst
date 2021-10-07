@@ -22,3 +22,8 @@ Image Classification
 
 .. autoclass:: VisionTransformer
 .. autoclass:: ClassificationHead
+
+Lambda
+--------------------
+
+.. autoclass:: Lambda
