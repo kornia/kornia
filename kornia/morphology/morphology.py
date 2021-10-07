@@ -18,6 +18,7 @@ def dilation(
     border_type: str = 'geodesic',
     border_value: float = 0.0,
     max_val: float = 1e4,
+    engine: str = 'unfold',
 ) -> torch.Tensor:
     r"""Returns the dilated image applying the same kernel in each channel.
 
@@ -39,6 +40,7 @@ def dilation(
             outside the image when applying the operation.
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
+        engine: convolution is faster and less memory hungry, and unfold is more stable numerically
 
     Returns:
         Dilated image with shape :math:`(B, C, H, W)`.
@@ -81,14 +83,20 @@ def dilation(
         neighborhood = structuring_element.clone()
         neighborhood[kernel == 0] = -max_val
 
-    B, C, H, W = tensor.size()
-    h_pad, w_pad = output.shape[-2:]
-    reshape_kernel = _neight2channels_like_kernel(kernel)
-    output, _ = F.conv2d(
-        output.view(B * C, 1, h_pad, w_pad), reshape_kernel, padding=0, bias=neighborhood.view(-1).flip(0)
-    ).max(dim=1)
-    output = output.view(B, C, H, W)
-
+    if engine == 'unfold':
+        output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
+        output, _ = torch.max(output + neighborhood.flip((0, 1)), 4)
+        output, _ = torch.max(output, 4)
+    elif engine == 'convolution':
+        B, C, H, W = tensor.size()
+        h_pad, w_pad = output.shape[-2:]
+        reshape_kernel = _neight2channels_like_kernel(kernel)
+        output, _ = F.conv2d(
+            output.view(B * C, 1, h_pad, w_pad), reshape_kernel, padding=0, bias=neighborhood.view(-1).flip(0)
+        ).max(dim=1)
+        output = output.view(B, C, H, W)
+    else:
+        raise NotImplementedError(f"engine {engine} is unknown, use 'convolution' or 'unfold'")
     return output.view_as(tensor)
 
 
@@ -100,6 +108,7 @@ def erosion(
     border_type: str = 'geodesic',
     border_value: float = 0.0,
     max_val: float = 1e4,
+    engine: str = 'unfold',
 ) -> torch.Tensor:
     r"""Returns the eroded image applying the same kernel in each channel.
 
@@ -121,6 +130,7 @@ def erosion(
             outside the image when applying the operation.
         border_value: Value to fill past edges of input if border_type is ``constant``.
         max_val: The value of the infinite elements in the kernel.
+        engine: ``convolution`` is faster and less memory hungry, and ``unfold`` is more stable numerically
 
     Returns:
         Eroded image with shape :math:`(B, C, H, W)`.
@@ -163,13 +173,22 @@ def erosion(
         neighborhood = structuring_element.clone()
         neighborhood[kernel == 0] = -max_val
 
-    B, C, H, W = tensor.size()
-    Hpad, Wpad = output.shape[-2:]
-    reshape_kernel = _neight2channels_like_kernel(kernel)
-    output, _ = F.conv2d(output.view(B * C, 1, Hpad, Wpad), reshape_kernel, padding=0, bias=-neighborhood.view(-1)).min(
-        dim=1
-    )
-    output = output.view(B, C, H, W)
+    if engine == 'unfold':
+        output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
+        output, _ = torch.min(output - neighborhood, 4)
+        output, _ = torch.min(output, 4)
+    elif engine == 'convolution':
+        B, C, H, W = tensor.size()
+        Hpad, Wpad = output.shape[-2:]
+        reshape_kernel = _neight2channels_like_kernel(kernel)
+        output, _ = F.conv2d(output.view(B * C, 1, Hpad, Wpad),
+                             reshape_kernel,
+                             padding=0,
+                             bias=-neighborhood.view(-1)).min(dim=1)
+        output = output.view(B, C, H, W)
+    else:
+        raise NotImplementedError(f"engine {engine} is unknown, use 'convolution' or 'unfold'")
+
     return output
 
 
@@ -181,6 +200,7 @@ def opening(
     border_type: str = 'geodesic',
     border_value: float = 0.0,
     max_val: float = 1e4,
+    engine: str = 'unfold',
 ) -> torch.Tensor:
     r"""Returns the opened image, (that means, dilation after an erosion) applying the same kernel in each channel.
 
@@ -202,6 +222,7 @@ def opening(
             outside the image when applying the operation.
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
+        engine: convolution is faster and less memory hungry, and unfold is more stable numerically
 
     Returns:
        torch.Tensor: Opened image with shape :math:`(B, C, H, W)`.
@@ -240,6 +261,7 @@ def opening(
         border_type=border_type,
         border_value=border_value,
         max_val=max_val,
+        engine=engine,
     )
 
 
@@ -251,6 +273,7 @@ def closing(
     border_type: str = 'geodesic',
     border_value: float = 0.0,
     max_val: float = 1e4,
+    engine: str = 'unfold',
 ) -> torch.Tensor:
     r"""Returns the closed image, (that means, erosion after a dilation) applying the same kernel in each channel.
 
@@ -272,6 +295,7 @@ def closing(
             outside the image when applying the operation.
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
+        engine: convolution is faster and less memory hungry, and unfold is more stable numerically
 
     Returns:
        Closed image with shape :math:`(B, C, H, W)`.
@@ -310,6 +334,7 @@ def closing(
         border_type=border_type,
         border_value=border_value,
         max_val=max_val,
+        engine=engine,
     )
 
 
@@ -322,6 +347,7 @@ def gradient(
     border_type: str = 'geodesic',
     border_value: float = 0.0,
     max_val: float = 1e4,
+    engine: str = 'unfold',
 ) -> torch.Tensor:
     r"""Returns the morphological gradient of an image.
 
@@ -344,6 +370,7 @@ def gradient(
             outside the image when applying the operation.
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
+        engine: convolution is faster and less memory hungry, and unfold is more stable numerically
 
     Returns:
        Gradient image with shape :math:`(B, C, H, W)`.
@@ -362,6 +389,7 @@ def gradient(
         border_type=border_type,
         border_value=border_value,
         max_val=max_val,
+        engine=engine,
     ) - erosion(
         tensor,
         kernel=kernel,
@@ -370,6 +398,7 @@ def gradient(
         border_type=border_type,
         border_value=border_value,
         max_val=max_val,
+        engine=engine,
     )
 
 
@@ -381,6 +410,7 @@ def top_hat(
     border_type: str = 'geodesic',
     border_value: float = 0.0,
     max_val: float = 1e4,
+    engine: str = 'unfold',
 ) -> torch.Tensor:
     r"""Returns the top hat tranformation of an image.
 
@@ -405,6 +435,7 @@ def top_hat(
             outside the image when applying the operation.
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
+        engine: convolution is faster and less memory hungry, and unfold is more stable numerically
 
     Returns:
        Top hat transformated image with shape :math:`(B, C, H, W)`.
@@ -435,6 +466,7 @@ def top_hat(
         border_type=border_type,
         border_value=border_value,
         max_val=max_val,
+        engine=engine,
     )
 
 
@@ -446,6 +478,7 @@ def bottom_hat(
     border_type: str = 'geodesic',
     border_value: float = 0.0,
     max_val: float = 1e4,
+    engine: str = 'unfold',
 ) -> torch.Tensor:
     r"""Returns the bottom hat tranformation of an image.
 
@@ -470,6 +503,7 @@ def bottom_hat(
             outside the image when applying the operation.
         border_value: Value to fill past edges of input if ``border_type`` is ``constant``.
         max_val: The value of the infinite elements in the kernel.
+        engine: convolution is faster and less memory hungry, and unfold is more stable numerically
 
     Returns:
        Top hat transformated image with shape :math:`(B, C, H, W)`.
@@ -501,6 +535,7 @@ def bottom_hat(
             border_type=border_type,
             border_value=border_value,
             max_val=max_val,
+            engine=engine,
         )
         - tensor
     )
