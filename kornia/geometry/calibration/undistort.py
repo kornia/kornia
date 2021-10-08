@@ -1,5 +1,6 @@
 from numpy import imag
 import torch
+import kornia
 from kornia.geometry.calibration.distort import tiltProjection, distort_points
 from kornia.geometry.transform.imgwarp import remap
 
@@ -103,8 +104,10 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
         image = image.float()
 
     # Create point coordinates for each pixel of the image
-    x, y = torch.meshgrid(torch.arange(cols), torch.arange(rows))
-    pts: torch.Tensor = torch.cat([x.T.float().reshape(-1,1), y.T.reshape(-1,1)], 1) # (rows*cols)x2
+    xy_grid: torch.Tensor = kornia.utils.create_meshgrid(rows, cols, False, image.device)
+    pts: torch.Tensor = torch.cat(
+        [xy_grid[..., 0].reshape(-1, 1), xy_grid[..., 1].reshape(-1, 1)], 1
+    ) # (rows*cols)x2
 
     # Distort points and define maps
     ptsd: torch.Tensor = distort_points(pts, K, dist) # Bx(rows*cols)x2
