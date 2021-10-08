@@ -20,6 +20,7 @@ def my_app(config: Configuration) -> None:
     model = torchvision.models.detection.retinanet_resnet50_fpn(pretrained=True)
 
     def collate_fn(data):
+        # To map from [{A, B}, ...] => [{A}, ...], [{B}, ...]
         return list(d[0] for d in data), list(d[1] for d in data)
 
     # create the dataset
@@ -50,7 +51,7 @@ def my_app(config: Configuration) -> None:
     _augmentations = K.augmentation.AugmentationSequential(
         K.augmentation.RandomHorizontalFlip(p=0.75),
         K.augmentation.RandomVerticalFlip(p=0.75),
-        K.augmentation.RandomAffine(degrees=0.),  # NOTE: XYXY bbox format cannot handle rotated boxes
+        K.augmentation.RandomAffine(degrees=0., translate=(0.1, 0.1), scale=(0.9, 1.1)),  # NOTE: XYXY bbox format cannot handle rotated boxes
         data_keys=['input', 'bbox_xyxy']
     )
 

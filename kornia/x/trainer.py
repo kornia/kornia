@@ -1,5 +1,5 @@
 import logging
-from typing import Callable, Dict
+from typing import Callable, Dict, Optional
 
 import torch
 import torch.nn as nn
@@ -63,7 +63,7 @@ class Trainer:
         model: nn.Module,
         train_dataloader: DataLoader,
         valid_dataloader: DataLoader,
-        criterion: nn.Module,
+        criterion: Optional[nn.Module],
         optimizer: torch.optim.Optimizer,
         scheduler: torch.optim.lr_scheduler.CosineAnnealingLR,
         config: Configuration,
@@ -175,7 +175,7 @@ class Trainer:
             # measure accuracy and record loss
             # Loss computation
             if self.criterion is not None:
-                val_loss = self.criterion(out, sample["target"])
+                val_loss = self.compute_loss(out, sample["target"])
                 stats.update('losses', val_loss.item(), batch_size)
             stats.update_from_dict(self.compute_metrics(out, sample['target']), batch_size)
 
@@ -200,6 +200,8 @@ class Trainer:
         return {}
 
     def compute_loss(self, *args: torch.Tensor) -> torch.Tensor:
+        if self.criterion is None:
+            raise RuntimeError("`criterion` should not be None.")
         return self.criterion(*args)
 
     def on_before_model(self, x: dict) -> dict:

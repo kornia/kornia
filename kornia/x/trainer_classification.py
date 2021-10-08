@@ -62,7 +62,7 @@ class ObjectDetectionTrainer(Trainer):
         model: nn.Module,
         train_dataloader: DataLoader,
         valid_dataloader: DataLoader,
-        criterion: nn.Module,
+        criterion: Optional[nn.Module],
         optimizer: torch.optim.Optimizer,
         scheduler: torch.optim.lr_scheduler.CosineAnnealingLR,
         config: Configuration,
@@ -85,6 +85,8 @@ class ObjectDetectionTrainer(Trainer):
     def compute_loss(self, *args: torch.Tensor) -> torch.Tensor:
         if self.loss_computed_by_model:
             return torch.stack(list(args[0].values())).sum()
+        if self.criterion is None:
+            raise RuntimeError("`criterion` should not be None if `loss_computed_by_model` is False.")
         return self.criterion(*args)
 
     def compute_metrics(self, *args: torch.Tensor) -> Dict[str, float]:

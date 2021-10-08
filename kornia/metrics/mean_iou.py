@@ -19,7 +19,7 @@ def mean_iou(input: torch.Tensor, target: torch.Tensor, num_classes: int, eps: f
         num_classes: total possible number of classes in target.
 
     Returns:
-        ta tensor representing the mean intersection-over union
+        a tensor representing the mean intersection-over union
         with shape :math:`(B, K)` where K is the number of classes.
     """
     if not torch.is_tensor(input) and input.dtype is not torch.int64:
@@ -66,8 +66,19 @@ def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor) -> torch.Tensor:
     Returns:
         a tensor in dimensions :math:`(B1, B2)`, representing the
         intersection of each of the boxes in set 1 with respect to each of the boxes in set 2.
+
+    Example:
+        >>> boxes_1 = torch.tensor([[40, 40, 60, 60], [30, 40, 50, 60]])
+        >>> boxes_2 = torch.tensor([[40, 50, 60, 70], [30, 40, 40, 50]])
+        >>> mean_iou_bbox(boxes_1, boxes_2)
+        tensor([[0.3333, 0.0000],
+                [0.1429, 0.2500]])
     """
     # TODO: support more box types. e.g. xywh,
+    assert ((boxes_1[:, 2] - boxes_1[:, 0]) > 0).all() or ((boxes_1[:, 3] - boxes_1[:, 1]) > 0).all(), \
+        "Boxes_1 does not follow (x1, y1, x2, y2) format."
+    assert ((boxes_2[:, 2] - boxes_2[:, 0]) > 0).all() or ((boxes_2[:, 3] - boxes_2[:, 1]) > 0).all(), \
+        "Boxes_2 does not follow (x1, y1, x2, y2) format."
     # find intersection
     lower_bounds = torch.max(boxes_1[:, :2].unsqueeze(1), boxes_2[:, :2].unsqueeze(0))  # (n1, n2, 2)
     upper_bounds = torch.min(boxes_1[:, 2:].unsqueeze(1), boxes_2[:, 2:].unsqueeze(0))  # (n1, n2, 2)
