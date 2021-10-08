@@ -112,8 +112,8 @@ class TestRgbToYuv420(BaseTester):
     #    pass
 
     # This measures accuracy, given the impact of the subsampling we will avoid the issue by
-    # repeating a 2x2 pattern for which mena will match what we get from upscaling again
-    def test_forth_and_back(self, device, dtype):
+    # repeating a 2x2 pattern for which mean will match what we get from upscaling again
+    def test_forth_and_back(self, device, dtype):  # skipcq: PYL-R0201
         data = torch.rand(3, 4, 5, device=device, dtype=dtype).repeat_interleave(2, dim=2).repeat_interleave(2, dim=1)
 
         yuv = kornia.color.rgb_to_yuv420
@@ -188,7 +188,7 @@ class TestRgbToYuv422(BaseTester):
 
     # This measures accuracy, given the impact of the subsampling we will avoid the issue by
     # repeating a 2x2 pattern for which mena will match what we get from upscaling again
-    def test_forth_and_back(self, device, dtype):
+    def test_forth_and_back(self, device, dtype):  # skipcq: PYL-R0201
         data = torch.rand(3, 4, 5, device=device, dtype=dtype).repeat_interleave(2, dim=2).repeat_interleave(2, dim=1)
 
         yuv = kornia.color.rgb_to_yuv422
@@ -250,7 +250,7 @@ class TestYuvToRgb(BaseTester):
     #    pass
 
     # TODO: improve accuracy
-    def test_forth_and_back(self, device, dtype):
+    def test_forth_and_back(self, device, dtype):  # skipcq: PYL-R0201
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
         rgb = kornia.color.yuv_to_rgb
         yuv = kornia.color.rgb_to_yuv
@@ -332,7 +332,7 @@ class TestYuv420ToRgb(BaseTester):
     #    pass
 
     # TODO: improve accuracy
-    def test_forth_and_back(self, device, dtype):
+    def test_forth_and_back(self, device, dtype):  # skipcq: PYL-R0201
         datay = torch.rand(1, 4, 6, device=device, dtype=dtype)
         datauv = torch.rand(2, 2, 3, device=device, dtype=dtype)
         rgb = kornia.color.yuv420_to_rgb
@@ -412,7 +412,7 @@ class TestYuv422ToRgb(BaseTester):
     #    pass
 
     # TODO: improve accuracy
-    def test_forth_and_back(self, device, dtype):
+    def test_forth_and_back(self, device, dtype):  # skipcq: PYL-R0201
         datay = torch.rand(1, 4, 6, device=device, dtype=dtype)
         datauv = torch.rand(2, 4, 3, device=device, dtype=dtype)
         rgb = kornia.color.yuv422_to_rgb

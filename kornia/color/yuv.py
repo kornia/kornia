@@ -277,7 +277,7 @@ class RgbToYuv420(nn.Module):
         [1] https://es.wikipedia.org/wiki/YUV#RGB_a_Y'UV
     """
 
-    def forward(self, yuvinput: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, yuvinput: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:  # skipcq: PYL-R0201
         return rgb_to_yuv420(yuvinput)
 
 
@@ -302,7 +302,7 @@ class RgbToYuv422(nn.Module):
         [1] https://es.wikipedia.org/wiki/YUV#RGB_a_Y'UV
     """
 
-    def forward(self, yuvinput: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, yuvinput: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:  # skipcq: PYL-R0201
         return rgb_to_yuv422(yuvinput)
 
 
@@ -349,7 +349,7 @@ class Yuv420ToRgb(nn.Module):
         >>> output = rgb(inputy, inputuv)  # 2x3x4x6
     """
 
-    def forward(self, inputy: torch.Tensor, inputuv: torch.Tensor) -> torch.Tensor:
+    def forward(self, inputy: torch.Tensor, inputuv: torch.Tensor) -> torch.Tensor:  # skipcq: PYL-R0201
         return yuv420_to_rgb(inputy, inputuv)
 
 
@@ -374,5 +374,5 @@ class Yuv422ToRgb(nn.Module):
         >>> output = rgb(inputy, inputuv)  # 2x3x4x6
     """
 
-    def forward(self, inputy: torch.Tensor, inputuv: torch.Tensor) -> torch.Tensor:
+    def forward(self, inputy: torch.Tensor, inputuv: torch.Tensor) -> torch.Tensor:  # skipcq: PYL-R0201
         return yuv422_to_rgb(inputy, inputuv)
