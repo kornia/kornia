@@ -1,7 +1,7 @@
 from numpy import imag
 import torch
 import kornia
-from kornia.geometry.calibration.distort import tiltProjection, distort_points
+from kornia.geometry.calibration.distort import tilt_projection, distort_points
 from kornia.geometry.transform.imgwarp import remap
 
 
@@ -40,7 +40,7 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) 
 
     # Compensate for tilt distortion
     if torch.any(dist[..., 12] != 0) or torch.any(dist[..., 13] != 0):
-        invTilt = tiltProjection(dist[..., 12], dist[..., 13], True)
+        invTilt = tilt_projection(dist[..., 12], dist[..., 13], True)
 
         # Transposed untilt points (instead of [x,y,1]^T, we obtain [x,y,1])
         pointsUntilt = torch.stack([x, y, torch.ones(x.shape, device=x.device, dtype=x.dtype)], -1) @ invTilt.transpose(-2, -1)

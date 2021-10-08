@@ -2,13 +2,13 @@ import torch
 
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/distortion_model.hpp#L75
-def tiltProjection(taux: torch.Tensor, tauy: torch.Tensor, inv: bool = False) -> torch.Tensor:
+def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool = False) -> torch.Tensor:
     r"""Estimate the tilt projection matrix or the inverse tilt projection matrix
 
     Args:
         taux (torch.Tensor): Rotation angle in radians around the :math:`x`-axis with shape :math:`(*, 1)`.
         tauy (torch.Tensor): Rotation angle in radians around the :math:`y`-axis with shape :math:`(*, 1)`.
-        inv (bool): False to obtain the the tilt projection matrix. False for the inverse matrix
+        return_inverse (bool): False to obtain the the tilt projection matrix. True for the inverse matrix
 
     Returns:
         torch.Tensor: Inverse tilt projection matrix with shape :math:`(*, 3, 3)`.
@@ -31,7 +31,7 @@ def tiltProjection(taux: torch.Tensor, tauy: torch.Tensor, inv: bool = False) ->
     Ry = torch.stack([cTy, zero, -sTy, zero, one, zero, sTy, zero, cTy], -1).reshape(-1, 3, 3)
     R = Ry @ Rx
 
-    if inv:
+    if return_inverse:
         invR22 = 1 / R[..., 2, 2]
         invPz = torch.stack(
             [invR22, zero, R[..., 0, 2] * invR22,
@@ -114,7 +114,7 @@ def distort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
 
     # Compensate for tilt distortion
     if torch.any(dist[..., 12] != 0) or torch.any(dist[..., 13] != 0):
-        tilt = tiltProjection(dist[..., 12], dist[..., 13])
+        tilt = tilt_projection(dist[..., 12], dist[..., 13])
 
         # Transposed untilt points (instead of [x,y,1]^T, we obtain [x,y,1])
         pointsUntilt = torch.stack([xd, yd, torch.ones(xd.shape, device=xd.device, dtype=xd.dtype)], -1) @ tilt.transpose(-2, -1)
