@@ -1,4 +1,3 @@
-from numpy import imag
 import torch
 import kornia
 from kornia.geometry.calibration.distort import tilt_projection, distort_points
@@ -17,15 +16,21 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) 
         K: Intrinsic camera matrix with shape :math:`(*, 3, 3)`.
         dist: Distortion coefficients
             :math:`(k_1,k_2,p_1,p_2[,k_3[,k_4,k_5,k_6[,s_1,s_2,s_3,s_4[,\tau_x,\tau_y]]]])`. This is
-            a vector with 4, 5, 8, 12 or 14 elements with shape :math:`(*, n)`
+            a vector with 4, 5, 8, 12 or 14 elements with shape :math:`(*, n)`.
 
     Returns:
         Undistorted 2D points with shape :math:`(*, N, 2)`.
     """
-    assert points.dim() >= 2 and points.shape[-1] == 2
-    assert K.shape[-2:] == (3, 3)
-    assert dist.shape[-1] in [4, 5, 8, 12, 14]
+    if points.dim() < 2 and points.shape[-1] != 2: 
+        raise ValueError(f'points shape is invalid. Got {points.shape}.')
 
+    if K.shape[-2:] != (3, 3):
+        raise ValueError(f'K matrix shape is invalid. Got {K.shape}.')
+
+    if dist.shape[-1] not in [4, 5, 8, 12, 14]:
+        raise ValueError(f'Invalid number of distortion coefficients. Got {dist.shape[-1]}')
+
+    # Adding zeros to obtain vector with 14 coeffs.
     if dist.shape[-1] < 14:
         dist = torch.nn.functional.pad(dist, [0, 14 - dist.shape[-1]])
 
@@ -40,12 +45,12 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) 
 
     # Compensate for tilt distortion
     if torch.any(dist[..., 12] != 0) or torch.any(dist[..., 13] != 0):
-        invTilt = tilt_projection(dist[..., 12], dist[..., 13], True)
+        inv_tilt = tilt_projection(dist[..., 12], dist[..., 13], True)
 
         # Transposed untilt points (instead of [x,y,1]^T, we obtain [x,y,1])
-        pointsUntilt = torch.stack([x, y, torch.ones(x.shape, device=x.device, dtype=x.dtype)], -1) @ invTilt.transpose(-2, -1)
-        x = pointsUntilt[..., 0] / pointsUntilt[..., 2]
-        y = pointsUntilt[..., 1] / pointsUntilt[..., 2]
+        points_untilt = torch.stack([x, y, torch.ones_like(x)], -1) @ inv_tilt.transpose(-2, -1)
+        x = points_untilt[..., 0] / points_untilt[..., 2]
+        y = points_untilt[..., 1] / points_untilt[..., 2]
 
     # Iteratively undistort points
     x0, y0 = x, y
@@ -90,15 +95,19 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
         K: Intrinsic camera matrix with shape :math:`(*, 3, 3)`.
         dist: Distortion coefficients
             :math:`(k_1,k_2,p_1,p_2[,k_3[,k_4,k_5,k_6[,s_1,s_2,s_3,s_4[,\tau_x,\tau_y]]]])`. This is
-            a vector with 4, 5, 8, 12 or 14 elements with shape :math:`(*, n)`
+            a vector with 4, 5, 8, 12 or 14 elements with shape :math:`(*, n)`.
 
     Returns:
         Undistorted image with shape :math:`(*, C, H, W)`.
     """
-    assert K.shape[-2:] == (3, 3)
-    assert dist.shape[-1] in [4, 5, 8, 12, 14]
     if len(image.shape) < 2:
         raise ValueError(f"Image shape is invalid. Got: {image.shape}.")
+
+    if K.shape[-2:] != (3, 3):
+        raise ValueError(f'K matrix shape is invalid. Got {K.shape}.')
+
+    if dist.shape[-1] not in [4, 5, 8, 12, 14]:
+        raise ValueError(f'Invalid number of distortion coefficients. Got {dist.shape[-1]}')
 
     B, _, rows, cols = image.shape
     if image.dtype != torch.float:

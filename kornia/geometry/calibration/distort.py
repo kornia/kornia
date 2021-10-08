@@ -6,17 +6,17 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
     r"""Estimate the tilt projection matrix or the inverse tilt projection matrix
 
     Args:
-        taux (torch.Tensor): Rotation angle in radians around the :math:`x`-axis with shape :math:`(*, 1)`.
-        tauy (torch.Tensor): Rotation angle in radians around the :math:`y`-axis with shape :math:`(*, 1)`.
-        return_inverse (bool): False to obtain the the tilt projection matrix. True for the inverse matrix
+        taux: Rotation angle in radians around the :math:`x`-axis with shape :math:`(*, 1)`.
+        tauy: Rotation angle in radians around the :math:`y`-axis with shape :math:`(*, 1)`.
+        return_inverse: False to obtain the the tilt projection matrix. True for the inverse matrix.
 
     Returns:
         torch.Tensor: Inverse tilt projection matrix with shape :math:`(*, 3, 3)`.
     """
-    assert taux.dim() == tauy.dim()
-    assert taux.numel() == tauy.numel()
+    if taux.shape != tauy.shape:
+        raise ValueError(f'Shape of taux {taux.shape} and tauy {tauy.shape} do not match.')
 
-    ndim = taux.dim()
+    ndim: int = taux.dim()
     taux = taux.reshape(-1)
     tauy = tauy.reshape(-1)
 
@@ -70,15 +70,21 @@ def distort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
         K: Intrinsic camera matrix with shape :math:`(*, 3, 3)`.
         dist: Distortion coefficients
             :math:`(k_1,k_2,p_1,p_2[,k_3[,k_4,k_5,k_6[,s_1,s_2,s_3,s_4[,\tau_x,\tau_y]]]])`. This is
-            a vector with 4, 5, 8, 12 or 14 elements with shape :math:`(*, n)`
+            a vector with 4, 5, 8, 12 or 14 elements with shape :math:`(*, n)`.
 
     Returns:
         Undistorted 2D points with shape :math:`(*, N, 2)`.
     """
-    assert points.dim() >= 2 and points.shape[-1] == 2
-    assert K.shape[-2:] == (3, 3)
-    assert dist.shape[-1] in [4, 5, 8, 12, 14]
+    if points.dim() < 2 and points.shape[-1] != 2: 
+        raise ValueError(f'points shape is invalid. Got {points.shape}.')
 
+    if K.shape[-2:] != (3, 3):
+        raise ValueError(f'K matrix shape is invalid. Got {K.shape}.')
+
+    if dist.shape[-1] not in [4, 5, 8, 12, 14]:
+        raise ValueError(f'Invalid number of distortion coefficients. Got {dist.shape[-1]}')
+
+    # Adding zeros to obtain vector with 14 coeffs.
     if dist.shape[-1] < 14:
         dist = torch.nn.functional.pad(dist, [0, 14 - dist.shape[-1]])
 
@@ -117,9 +123,9 @@ def distort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
         tilt = tilt_projection(dist[..., 12], dist[..., 13])
 
         # Transposed untilt points (instead of [x,y,1]^T, we obtain [x,y,1])
-        pointsUntilt = torch.stack([xd, yd, torch.ones(xd.shape, device=xd.device, dtype=xd.dtype)], -1) @ tilt.transpose(-2, -1)
-        xd = pointsUntilt[..., 0] / pointsUntilt[..., 2]
-        yd = pointsUntilt[..., 1] / pointsUntilt[..., 2]
+        points_untilt = torch.stack([xd, yd, torch.ones_like(xd)], -1) @ tilt.transpose(-2, -1)
+        xd = points_untilt[..., 0] / points_untilt[..., 2]
+        yd = points_untilt[..., 1] / points_untilt[..., 2]
 
     # Covert points from normalized camera coordinates to pixel coordinates
     x = fx * xd + cx
