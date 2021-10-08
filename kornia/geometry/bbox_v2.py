@@ -14,7 +14,7 @@ def _transform_boxes(boxes: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
     matrix could be batched or not.
 
     Args:
-        boxes: 2D or 3D hexahedron in kornia format.
+        boxes: 2D quadrilaterals or 3D hexahedrons in kornia format.
         M: the transformation matrix of shape :math:`(3, 3)` or :math:`(B, 3, 3)` for 2D and :math:`(4, 4)` or
             :math:`(B, 4, 4)` for 3D hexahedron.
     """
@@ -27,7 +27,7 @@ def _transform_boxes(boxes: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
 
     if points.shape[0] != M.shape[0]:
         raise ValueError(
-            f"Batch size mismatch. Got {points.shape[0]} for hexahedron, {M.shape[0]} for the transformation matrix."
+            f"Batch size mismatch. Got {points.shape[0]} for boxes and {M.shape[0]} for the transformation matrix."
         )
 
     transformed_boxes: torch.Tensor = kornia.transform_points(M, points)
@@ -39,7 +39,7 @@ def _boxes_to_polygons(
     xmin: torch.Tensor, ymin: torch.Tensor, width: torch.Tensor, height: torch.Tensor
 ) -> torch.Tensor:
     if not xmin.ndim == ymin.ndim == width.ndim == height.ndim == 2:
-        raise ValueError("We expect to create a batch of hexahedron in vertices format (B, N, 4, 2)")
+        raise ValueError("We expect to create a batch of 2D boxes (quadrilaterals) in vertices format (B, N, 4, 2)")
 
     # Create (B,N,4,2) with all points in top left position of the bounding box
     polygons = torch.zeros((xmin.shape[0], xmin.shape[1], 4, 2), device=xmin.device, dtype=xmin.dtype)
@@ -62,7 +62,7 @@ def _boxes3d_to_polygons3d(
     depth: torch.Tensor,
 ):
     if not xmin.ndim == ymin.ndim == zmin.ndim == width.ndim == height.ndim == depth.ndim == 2:
-        raise ValueError("We expect to create a batch of 3D hexahedrons in vertices format (B, N, 8, 3)")
+        raise ValueError("We expect to create a batch of 3D boxes (hexahedrons) in vertices format (B, N, 8, 3)")
 
     # Front
     # Create (B,N,4,3) with all points in front top left position of the bounding box
@@ -86,29 +86,42 @@ def _boxes3d_to_polygons3d(
 
 @torch.jit.script
 class Boxes:
-    def __init__(self, quadrilaterals: torch.Tensor, raise_if_not_floating_point: bool = True):
-        if not quadrilaterals.is_floating_point():
-            if raise_if_not_floating_point:
-                raise ValueError(f"Coordinates must be in floating point. Got {quadrilaterals.dtype}")
-            else:
-                quadrilaterals = quadrilaterals.float()
+    r"""2D boxes containing N or BxN boxes.
 
-        if len(quadrilaterals.shape) == 0:
+    Args:
+        boxes: 2D boxes, shape of :math:`(N,4,2)` or :math:`(B,N,4,2)`. See below for more details.
+        raise_if_not_floating_point: flag to control floating point casting behaviour when `boxes` is not a floating
+            point tensor. True to raise an error when `boxes` isn't a floating point tensor, False to cast to float.
+
+    **2D boxes format** is defined as a floating data type tensor of shape ``Nx4x2`` or ``BxNx4x2``
+    where each box is a `quadrilateral <https://en.wikipedia.org/wiki/Quadrilateral>`_ defined by it's 4 vertices
+    coordinates (A, B, C, D). Coordinates must be in ``x, y`` order. The height and width of a box is defined as
+    ``width = xmax - xmin`` and ``height = ymax - ymin``. Examples of
+    `quadrilaterals <https://en.wikipedia.org/wiki/Quadrilateral>`_ are rectangles, rhombus and trapezoids.
+    """
+    def __init__(self, boxes: torch.Tensor, raise_if_not_floating_point: bool = True):
+        if not boxes.is_floating_point():
+            if raise_if_not_floating_point:
+                raise ValueError(f"Coordinates must be in floating point. Got {boxes.dtype}")
+            else:
+                boxes = boxes.float()
+
+        if len(boxes.shape) == 0:
             # Use reshape, so we don't end up creating a new tensor that does not depend on
             # the inputs (and consequently confuses jit)
-            quadrilaterals = quadrilaterals.reshape((-1, 4))
+            quadrilaterals = boxes.reshape((-1, 4))
 
-        if not (3 <= quadrilaterals.ndim <= 4 and quadrilaterals.shape[-2:] == (4, 2)):
-            raise ValueError(f"Boxes shape must be (N, 4, 2) or (B, N, 4, 2). Got {quadrilaterals.shape}.")
+        if not (3 <= boxes.ndim <= 4 and boxes.shape[-2:] == (4, 2)):
+            raise ValueError(f"Boxes shape must be (N, 4, 2) or (B, N, 4, 2). Got {boxes.shape}.")
 
-        self._boxes = quadrilaterals
+        self._boxes = boxes
 
     def get_boxes_shape(self) -> Tuple[torch.Tensor, torch.Tensor]:
-        r"""Compute bounding boxes heights and widths.
+        r"""Compute boxes heights and widths.
 
         Returns:
-            - Bounding box heights, shape of :math:`(N,)` or :math:`(B,N)`.
-            - Boundingbox widths, shape of :math:`(N,)` or :math:`(B,N)`.
+            - Boxes heights, shape of :math:`(N,)` or :math:`(B,N)`.
+            - Boxes widths, shape of :math:`(N,)` or :math:`(B,N)`.
 
         Example:
             >>> boxes_xyxy = torch.tensor([[[
@@ -132,22 +145,23 @@ class Boxes:
 
     @classmethod
     def from_tensor(cls, boxes: torch.Tensor, mode: str = "xyxy") -> "Boxes":
-        r"""Convert 2D bounding boxes to kornia format according to the format in which the boxes are provided.
+        r"""Helper method to easily create :class:`Boxes` from boxes stored in another format.
 
         Args:
-            boxes: 2D boxes to be transformed, shape of :math:`(N,4)` or :math:`(B,N,4)`.
+            boxes: 2D boxes, shape of :math:`(N,4)` or :math:`(B,N,4)`.
             mode: The format in which the boxes are provided.
 
                 * 'xyxy': boxes are assumed to be in the format ``xmin, ymin, xmax, ymax`` where ``width = xmax - xmin``
                   and ``height = ymax - ymin``.
-                * 'xyxy_plus_1': like 'xyxy' where ``width = xmax - xmin + 1`` and  ``height = ymax - ymin + 1``.
+                * 'xyxy_plus_1': similar to 'xyxy' mode but where box width and length are defined as
+                  ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``.
                 * 'xywh': boxes are assumed to be in the format ``xmin, ymin, width, height`` where
                   ``width = xmax - xmin`` and ``height = ymax - ymin``.
-                * 'xywh_plus_1': like 'xywh' where ``width = xmax - xmin + 1`` and  ``height = ymax - ymin + 1``.
+                * 'xyxy_plus_1': similar to 'xywh' mode but where box width and length are defined as
+                  ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``.
 
         Returns:
-            2D Bounding boxes tensor in kornia format, shape of :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)` and dtype of
-            ``boxes`` if it's a floating point data type and ``float`` if not.
+            :class:`Boxes` class containing the original `boxes` in the format specified by ``mode``.
 
         Examples:
             >>> boxes_xyxy = torch.as_tensor([[0, 3, 1, 4], [5, 1, 8, 4]])
@@ -180,26 +194,31 @@ class Boxes:
         return cls(quadrilaterals, False)
 
     def to_tensor(self, mode: str = "xyxy") -> torch.Tensor:
-        r"""Convert 2D bounding boxes in kornia format to the format specified by ``mode``.
+        r"""Cast :class:`Boxes` to a tensor. ``mode`` controls which 2D boxes format should be use to represent boxes
+        in the tensor.
 
         Args:
-            kornia_boxes: boxes to be transformed, shape of :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
             mode: the output box format. It could be:
 
                 * 'xyxy': boxes are defined as ``xmin, ymin, xmax, ymax`` where ``width = xmax - xmin`` and
                   ``height = ymax - ymin``.
-                * 'xyxy_plus_1': like 'xyxy' where ``width = xmax - xmin + 1`` and  ``height = ymax - ymin + 1``.
+                * 'xyxy_plus_1': similar to 'xyxy' mode but where box width and length are defined as
+                  ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``.
                 * 'xywh': boxes are defined as ``xmin, ymin, width, height`` where ``width = xmax - xmin``
                   and ``height = ymax - ymin``.
-                * 'xywh_plus_1': like 'xywh' where ``width = xmax - xmin + 1`` and  ``height = ymax - ymin + 1``.
+                * 'xywh_plus_1': similar to 'xywh' mode but where box width and length are defined as
+                  ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``.
                 * 'vertices': boxes are defined by their vertices points in the following ``clockwise`` order:
                   *top-left, top-right, bottom-right, bottom-left*. Vertices coordinates are in (x,y) order. Finally,
                   box width and height are defined as ``width = xmax - xmin`` and ``height = ymax - ymin``.
-                * 'vertices_plus_1': like 'vertices' where ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``.
+                * 'vertices_plus_1': similar to 'vertices' mode but where box width and length are defined as
+                  ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. ymin + 1``.
 
         Returns:
-            Bounding boxes tensor the ``mode`` format. The shape is :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)` in
-            'vertices' or 'vertices_plus_1' mode and :math:`(N, 4)` or :math:`(B, N, 4)` in all other cases.
+            Boxes tensor in the ``mode`` format. The shape depends with the ``mode`` value:
+
+                * 'vertices' or 'verticies_plus_1': :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
+                * Any other value: :math:`(N, 4)` or :math:`(B, N, 4)`.
 
         Examples:
             >>> boxes_xyxy = torch.as_tensor([[0, 3, 1, 4], [5, 1, 8, 4]])
@@ -234,7 +253,7 @@ class Boxes:
         return boxes
 
     def to_mask(self, height: int, width: int) -> torch.Tensor:
-        """Convert 2D bounding boxes to masks. Covered area is 1 and the remaining is 0.
+        """Convert 2D boxes to masks. Covered area is 1 and the remaining is 0.
 
         Args:
             height: height of the masked image/images.
@@ -242,7 +261,7 @@ class Boxes:
 
         Returns:
             the output mask tensor, shape of :math:`(N, width, height)` or :math:`(B,N, width, height)` and dtype of
-            boxes.
+            :func:`Boxes.dtype` (it can be any floating point dtype).
 
         Note:
             It is currently non-differentiable.
@@ -254,7 +273,7 @@ class Boxes:
             ...        [4., 3.],
             ...        [1., 3.],
             ...   ]])  # 1x4x2
-            >>> boxes = Boxes.from_tensor(boxes)
+            >>> boxes = Boxes.from_tensor(boxes_xyxy)
             >>> boxes.to_mask(5, 5)
             tensor([[[0., 0., 0., 0., 0.],
                      [0., 1., 1., 1., 0.],
@@ -283,11 +302,12 @@ class Boxes:
         return mask
 
     def transform_boxes(self, M: torch.Tensor, inplace: bool = False) -> "Boxes":
-        r"""Function that applies a transformation matrix to the boxes.
+        r"""Apply a transformation matrix to the 2D boxes.
 
         Args:
             M: The transformation matrix to be applied, shape of :math:`(3, 3)` or :math:`(B, 3, 3)`.
             inplace: do transform in-place and return self.
+
         Returns:
             The transformed boxes.
         """
@@ -304,7 +324,7 @@ class Boxes:
             return Boxes(transformed_boxes, False)
 
     def transform_boxes_(self, M: torch.Tensor) -> "Boxes":
-        """Inplace version of `Boxes.transform_boxes`"""
+        """Inplace version of :func:`Boxes.transform_boxes`"""
         return self.transform_boxes(M, inplace=True)
 
     @property
@@ -313,14 +333,16 @@ class Boxes:
 
     @property
     def device(self) -> torch.device:
+        """Returns boxes device."""
         return self._boxes.device
 
     @property
     def dtype(self) -> torch.dtype:
+        """Returns boxes dtype."""
         return self._boxes.dtype
 
     def to(self, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> "Boxes":
-        """Like `torch.nn.Module.to()` method."""
+        """Like :func:`torch.nn.Module.to()` method."""
         # In torchscript, dtype is a int and not a class. https://github.com/pytorch/pytorch/issues/51941
         if dtype is not None and not _is_floating_point_dtype(dtype):
             raise ValueError("Boxes must be in floating point")
@@ -330,30 +352,43 @@ class Boxes:
 
 @torch.jit.script
 class Boxes3D:
-    def __init__(self, hexahedrons: torch.Tensor, raise_if_not_floating_point: bool = True):
-        if not hexahedrons.is_floating_point():
-            if raise_if_not_floating_point:
-                raise ValueError(f"Coordinates must be in floating point. Got {hexahedrons.dtype}.")
-            else:
-                hexahedrons = hexahedrons.float()
+    r"""3D boxes containing N or BxN boxes.
 
-        if len(hexahedrons.shape) == 0:
+    Args:
+        boxes: 3D boxes, shape of :math:`(N,8,3)` or :math:`(B,N,8,3)`. See below for more details.
+        raise_if_not_floating_point: flag to control floating point casting behaviour when `boxes` is not a floating
+            point tensor. True to raise an error when `boxes` isn't a floating point tensor, False to cast to float.
+
+    **3D boxes format** is defined as a floating data type tensor of shape ``Nx8x3`` or ``BxNx8x3`` where each box is
+    a `hexahedron <https://en.wikipedia.org/wiki/Hexahedron>`_ defined by it's 8 vertices coordinates. Coordinates must
+    be in ``x, y, z`` order. The height, width and depth of a box is defined as ``width = xmax - xmin``,
+    ``height = ymax - ymin`` and ``depth = zmax - zmin``. Examples of
+    `hexahedrons <https://en.wikipedia.org/wiki/Hexahedron>`_ are cubes and rhombohedrons.
+    """
+    def __init__(self, boxes: torch.Tensor, raise_if_not_floating_point: bool = True):
+        if not boxes.is_floating_point():
+            if raise_if_not_floating_point:
+                raise ValueError(f"Coordinates must be in floating point. Got {boxes.dtype}.")
+            else:
+                boxes = boxes.float()
+
+        if len(boxes.shape) == 0:
             # Use reshape, so we don't end up creating a new tensor that does not depend on
             # the inputs (and consequently confuses jit)
-            hexahedrons = hexahedrons.reshape((-1, 6))
+            boxes = boxes.reshape((-1, 6))
 
-        if not (3 <= hexahedrons.ndim <= 4 and hexahedrons.shape[-2:] == (8, 3)):
-            raise ValueError(f"3D bbox shape must be (N, 8, 3) or (B, N, 8, 3). Got {hexahedrons.shape}.")
+        if not (3 <= boxes.ndim <= 4 and boxes.shape[-2:] == (8, 3)):
+            raise ValueError(f"3D bbox shape must be (N, 8, 3) or (B, N, 8, 3). Got {boxes.shape}.")
 
-        self._boxes = hexahedrons
+        self._boxes = boxes
 
     def get_boxes_shape(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        r"""Auto-infer the output sizes for the given 3D boxes.
+        r"""Compute boxes heights and widths.
 
         Returns:
-            - Bounding box depths, shape of :math:`(N,)` or :math:`(B, N)`.
-            - Bounding box heights, shape of :math:`(N,)` or :math:`(B, N)`.
-            - Bounding box widths, shape of :math:`(N,)` or :math:`(B, N)`.
+            - Boxes depths, shape of :math:`(N,)` or :math:`(B,N)`.
+            - Boxes heights, shape of :math:`(N,)` or :math:`(B,N)`.
+            - Boxes widths, shape of :math:`(N,)` or :math:`(B,N)`.
 
         Example:
             >>> boxes_xyzxyz = torch.tensor([[[ 0,  1,  2],
@@ -382,23 +417,22 @@ class Boxes3D:
 
     @classmethod
     def from_tensor(cls, boxes: torch.Tensor, mode: str = "xyzxyz") -> "Boxes3D":
-        r"""Convert 3D bounding boxes to kornia format according to the format in which the boxes are provided.
+        r"""Helper method to easily create :class:`Boxes3D` from 3D boxes stored in another format.
 
         Args:
-            boxes: 3D boxes to be transformed, shape of :math:`(N,6)` or :math:`(B,N,6)`.
-            mode: The format in which the boxes are provided.
+            boxes: 3D boxes, shape of :math:`(N,6)` or :math:`(B,N,6)`.
+            mode: The format in which the 3D boxes are provided.
 
                 * 'xyzxyz': boxes are assumed to be in the format ``xmin, ymin, zmin, xmax, ymax, zmax`` where
                   ``width = xmax - xmin``, ``height = ymax - ymin`` and ``depth = zmax - zmin``.
-                * 'xyzxyz_plus_1': like 'xyzxyz' where ``width = xmax - xmin + 1``, ``height = ymax - ymin + 1`` and
-                  ``depth = zmax - zmin + 1``.
+                * 'xyzxyz_plus_1': similar to 'xyzxyz' mode but where box width, length and depth are defined as
+                  ``width = xmax - xmin + 1``, ``height = ymax - ymin + 1`` and ``depth = zmax - zmin + 1``.
                 * 'xyzwhd': boxes are assumed to be in the format ``xmin, ymin, zmin, width, height, depth`` where
                   ``width = xmax - xmin``, ``height = ymax - ymin`` and ``depth = zmax - zmin``.
-                * 'xyzwhd_plus_1': like 'xyzwhd' where ``width = xmax - xmin + 1``, ``height = ymax - ymin + 1`` and
-                  ``depth = zmax - zmin + 1``.
+                * 'xyzwhd_plus_1': similar to 'xyzwhd' mode but where box width, length and depth are defined as
+                   ``width = xmax - xmin + 1``, ``height = ymax - ymin + 1`` and ``depth = zmax - zmin + 1``.
         Returns:
-            3D bounding boxes tensor in kornia format, shape of :math:`(N, 8, 3)` or :math:`(B, N, 8, 3)` and dtype of
-            ``boxes`` if it's a floating point data type and ``float`` if not.
+            :class:`Boxes3D` class containing the original `boxes` in the format specified by ``mode``.
 
         Examples:
             >>> boxes_xyzxyz = torch.as_tensor([[0, 3, 6, 1, 4, 8], [5, 1, 3, 8, 4, 9]])
@@ -434,35 +468,39 @@ class Boxes3D:
         return cls(hexahedrons, raise_if_not_floating_point=False)
 
     def to_tensor(self, mode: str = "xyzxyz") -> torch.Tensor:
-        r"""Convert 3D bounding boxes in kornia format according to the format specified by ``mode``.
+        r"""Cast :class:`Boxes3D` to a tensor. ``mode`` controls which 3D boxes format should be use to represent boxes
+        in the tensor.
 
         Args:
-            kornia_boxes: 3D boxes to be transformed, shape of :math:`(N, 8, 3)` or :math:`(B, N, 8, 3)`.
             mode: The format in which the boxes are provided.
 
                 * 'xyzxyz': boxes are assumed to be in the format ``xmin, ymin, zmin, xmax, ymax, zmax`` where
                   ``width = xmax - xmin``, ``height = ymax - ymin`` and ``depth = zmax - zmin``.
-                * 'xyzxyz_plus_1': like 'xyzxyz' where ``width = xmax - xmin + 1``, ``height = ymax - ymin + 1`` and
-                  ``depth = zmax - zmin + 1``.
+                * 'xyzxyz_plus_1': similar to 'xyzxyz' mode but where box width, length and depth are defined as
+                   ``width = xmax - xmin + 1``, ``height = ymax - ymin + 1`` and ``depth = zmax - zmin + 1``.
                 * 'xyzwhd': boxes are assumed to be in the format ``xmin, ymin, zmin, width, height, depth`` where
                   ``width = xmax - xmin``, ``height = ymax - ymin`` and ``depth = zmax - zmin``.
-                * 'xyzwhd_plus_1': like 'xyzwhd' where ``width = xmax - xmin + 1``, ``height = ymax - ymin + 1`` and
-                  ``depth = zmax - zmin + 1``.
+                * 'xyzwhd_plus_1': similar to 'xyzwhd' mode but where box width, length and depth are defined as
+                   ``width = xmax - xmin + 1``, ``height = ymax - ymin + 1`` and ``depth = zmax - zmin + 1``.
                 * 'vertices': boxes are defined by their vertices points in the following ``clockwise`` order:
                   *front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
                   back-top-right, back-bottom-right,  back-bottom-left*. Vertices coordinates are in (x,y, z) order.
                   Finally, box width, height and depth are defined as ``width = xmax - xmin``, ``height = ymax - ymin``
                   and ``depth = zmax - zmin``.
-                * 'vertices_plus_1': like 'vertices' where ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``.
+                * 'vertices_plus_1': similar to 'vertices' mode but where box width, length and depth are defined as
+                  ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``.
 
         Returns:
-            3D bounding boxes tensor the ``mode`` format. The shape is :math:`(N, 8, 3)` or :math:`(B, N, 8, 3)` in
-            'vertices' or 'vertices_plus_1' mode and :math:`(N, 6)` or :math:`(B, N, 6)` in all other cases.
+            3D Boxes tensor in the ``mode`` format. The shape depends with the ``mode`` value:
+
+                * 'vertices' or 'verticies_plus_1': :math:`(N, 8, 3)` or :math:`(B, N, 8, 3)`.
+                * Any other value: :math:`(N, 6)` or :math:`(B, N, 6)`.
+
 
         Examples:
             >>> boxes_xyzxyz = torch.as_tensor([[0, 3, 6, 1, 4, 8], [5, 1, 3, 8, 4, 9]])
-            >>> kornia_bbox = bbox3d_to_kornia_bbox3d(boxes_xyzxyz, mode='xyzxyz')
-            >>> assert (kornia_bbox3d_to_bbox3d(kornia_bbox, mode='xyzxyz') == boxes_xyzxyz).all()
+            >>> boxes = Boxes3D.from_tensor(boxes_xyzxyz, mode='xyzxyz')
+            >>> assert (boxes.to_tensor(mode='xyzxyz') == boxes_xyzxyz).all()
         """
         batched_boxes = self._boxes if self._is_batch else self._boxes.unsqueeze(0)
 
@@ -498,7 +536,7 @@ class Boxes3D:
         return boxes
 
     def to_mask(self, depth: int, height: int, width: int) -> torch.Tensor:
-        """Convert 3D bounding boxes to masks. Covered area is 1. and the remaining is 0.
+        """Convert ·D boxes to masks. Covered area is 1 and the remaining is 0.
 
         Args:
             depth: depth of the masked image/images.
@@ -507,13 +545,13 @@ class Boxes3D:
 
         Returns:
             the output mask tensor, shape of :math:`(N, depth, width, height)` or :math:`(B,N, depth, width, height)`
-            and dtype of boxes.
+             and dtype of :func:`Boxes3D.dtype` (it can be any floating point dtype).
 
         Note:
             It is currently non-differentiable.
 
         Examples:
-            >>> boxes = torch.tensor([[
+            >>> boxes_xyzxyz = torch.tensor([[
             ...     [1., 1., 1.],
             ...     [3., 1., 1.],
             ...     [3., 3., 1.],
@@ -523,7 +561,8 @@ class Boxes3D:
             ...     [3., 3., 2.],
             ...     [1., 3., 2.],
             ... ]])  # 1x8x3
-            >>> bbox3d_to_mask3d(boxes, 4, 5, 5)
+            >>> boxes = Boxes3D.from_tensor(boxes_xyzxyz)
+            >>> boxes.to_mask(4, 5, 5)
             tensor([[[0., 0., 0., 0., 0.],
                      [0., 0., 0., 0., 0.],
                      [0., 0., 0., 0., 0.],
@@ -579,14 +618,14 @@ class Boxes3D:
         return mask
 
     def transform_boxes(self, M: torch.Tensor, inplace: bool = False) -> "Boxes3D":
-        r"""Function that applies a transformation matrix to 3D boxes or a batch of 3D boxes in kornia format.
+        r"""Apply a transformation matrix to the 3D boxes.
 
         Args:
-            boxes: 3D boxes in kornia format..
             M: The transformation matrix to be applied, shape of :math:`(4, 4)` or :math:`(B, 4, 4)`.
             inplace: do transform in-place and return self.
+
         Returns:
-            A tensor of shape :math:`(N, 8, 3)` or :math:`(B, N, 8, 3)` with the transformed 3D boxes in kornia format.
+            The transformed boxes.
         """
         if not 2 <= M.ndim <= 3 or M.shape[-2:] != (4, 4):
             raise ValueError(f"The transformation matrix shape must be (4, 4) or (B, 4, 4). Got {M.shape}.")
@@ -601,7 +640,7 @@ class Boxes3D:
             return Boxes3D(transformed_boxes, False)
 
     def transform_boxes_(self, M: torch.Tensor) -> "Boxes3D":
-        """Inplace version of `Boxes3D.transform_boxes`"""
+        """Inplace version of :func:`Boxes3D.transform_boxes`"""
         return self.transform_boxes(M, inplace=True)
 
     @property
@@ -610,14 +649,16 @@ class Boxes3D:
 
     @property
     def device(self) -> torch.device:
+        """Returns boxes device."""
         return self._boxes.device
 
     @property
     def dtype(self) -> torch.dtype:
+        """Returns boxes dtype."""
         return self._boxes.dtype
 
     def to(self, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> "Boxes3D":
-        """Like `torch.nn.Module.to()` method."""
+        """Like :func:`torch.nn.Module.to()` method."""
         # In torchscript, dtype is a int and not a class. https://github.com/pytorch/pytorch/issues/51941
         if dtype is not None and not _is_floating_point_dtype(dtype):
             raise ValueError("Boxes must be in floating point")

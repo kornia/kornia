@@ -7,6 +7,7 @@ kornia.geometry
    :maxdepth: 2
 
    geometry.bbox
+   geometry.bbox_v2
    geometry.calibration
    geometry.camera
    geometry.conversions

@@ -670,8 +670,12 @@ class TestBbox3D:
         t_boxes_xyzxyz1 = utils.tensor_to_gradcheck_var(t_boxes_xyzxyz.detach().clone())
 
         assert gradcheck(partial(apply_boxes_method, method='to_tensor'), (t_boxes2,), raise_exception=True)
-        assert gradcheck(partial(apply_boxes_method, method='to_tensor'), (t_boxes3,), raise_exception=True)
-        assert gradcheck(partial(apply_boxes_method, method='to_tensor'), (t_boxes4,), raise_exception=True)
+        assert gradcheck(
+            partial(apply_boxes_method, method='to_tensor', mode='xywh_plus_1'), (t_boxes3,), raise_exception=True
+        )
+        assert gradcheck(
+            partial(apply_boxes_method, method='to_tensor', mode='vertices_plus_1'), (t_boxes4,), raise_exception=True
+        )
         assert gradcheck(partial(apply_boxes_method, method='get_boxes_shape'), (t_boxes1,), raise_exception=True)
         assert gradcheck(lambda x: Boxes3D.from_tensor(x)._boxes, (t_boxes_xyzxyz,), raise_exception=True)
         assert gradcheck(
