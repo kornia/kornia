@@ -95,9 +95,10 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     Returns:
         Undistorted image with shape :math:`(*, C, H, W)`.
     """
-    assert image.dim() >= 2
     assert K.shape[-2:] == (3, 3)
     assert dist.shape[-1] in [4, 5, 8, 12, 14]
+    if len(image.shape) < 2:
+        raise ValueError(f"Image shape is invalid. Got: {image.shape}.")
 
     B, _, rows, cols = image.shape
     if image.dtype != torch.float:
