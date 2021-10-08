@@ -731,7 +731,10 @@ class LambdaAugmentation(_BasicAugmentationBase):
     ) -> torch.Tensor:
         """Apply a transformation given its data key."""
         if params is None:
-            params = {}
+            params = self.forward_parameters(input.shape)
+            # Remove ``batch_prob``
+            if "batch_prob" in params:
+                del params["batch_prob"]
         if DataKey.get(data_key) == DataKey.INPUT:
             return cast(torch.Tensor, self.forward(input, params))
         if DataKey.get(data_key) == DataKey.MASK:
