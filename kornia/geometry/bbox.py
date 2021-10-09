@@ -445,11 +445,15 @@ def transform_bbox(trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = "xy
         boxes[..., -2] = boxes[..., 0] + boxes[..., -2]  # x + w
         boxes[..., -1] = boxes[..., 1] + boxes[..., -1]  # y + h
 
-    transformed_boxes: torch.Tensor = kornia.transform_points(trans_mat, boxes.view(boxes.shape[0], -1, 2))
+    transformed_boxes: torch.Tensor = \
+        kornia.transform_points(trans_mat.view(-1, 3, 3), boxes.view(boxes.shape[0], -1, 2))
     transformed_boxes = transformed_boxes.view_as(boxes)
 
     if mode == 'xywh':
-        transformed_boxes[..., 2] = transformed_boxes[..., 2] - transformed_boxes[..., 0]
-        transformed_boxes[..., 3] = transformed_boxes[..., 3] - transformed_boxes[..., 1]
+        transformed_boxes[..., 2] = torch.abs(transformed_boxes[..., 2] - transformed_boxes[..., 0])
+        transformed_boxes[..., 3] = torch.abs(transformed_boxes[..., 3] - transformed_boxes[..., 1])
+
+    transformed_boxes[..., 0] = torch.min(transformed_boxes[..., 2], transformed_boxes[..., 0])
+    transformed_boxes[..., 1] = torch.min(transformed_boxes[..., 3], transformed_boxes[..., 1])
 
     return transformed_boxes
