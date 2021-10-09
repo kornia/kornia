@@ -6,8 +6,8 @@ from kornia.contrib.extract_patches import (
     extract_tensor_patches,
     ExtractTensorPatches,
 )
-from kornia.contrib.lambda_module import Lambda
 from kornia.contrib.image_stitching import ImageStitcher
+from kornia.contrib.lambda_module import Lambda
 from kornia.contrib.vit import VisionTransformer
 
 __all__ = [
