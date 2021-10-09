@@ -131,10 +131,12 @@ YUV
 .. autoclass:: YuvToRgb
 
 YUV420
----
+------
 
 .. tip::
     Learn more: https://en.wikipedia.org/wiki/YUV
+
+.. tip::
     Learn more: https://en.wikipedia.org/wiki/Chroma_subsampling
 
 .. autofunction:: rgb_to_yuv420
@@ -144,10 +146,12 @@ YUV420
 .. autoclass:: Yuv420ToRgb
 
 YUV422
----
+------
 
 .. tip::
     Learn more: https://en.wikipedia.org/wiki/YUV
+
+.. tip::
     Learn more: https://en.wikipedia.org/wiki/Chroma_subsampling
 
 .. autofunction:: rgb_to_yuv422
