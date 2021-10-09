@@ -52,14 +52,13 @@ def focal_loss(
         >>> output = focal_loss(input, target, alpha=0.5, gamma=2.0, reduction='mean')
         >>> output.backward()
     """
-    if eps is not None:
-        pass
-        #warnings.warn(
-        #    "`focal_loss` has been reworked for improved numerical stability "
-        #    "and the `eps` argument is no longer necessary",
-        #    DeprecationWarning,
-        #    stacklevel=2,
-        #)
+    if eps is not None and not torch.jit.is_scripting():
+        warnings.warn(
+            "`focal_loss` has been reworked for improved numerical stability "
+            "and the `eps` argument is no longer necessary",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
@@ -191,14 +190,13 @@ def binary_focal_loss_with_logits(
         tensor(4.6052)
     """
 
-    if eps is not None:
-        pass
-        #warnings.warn(
-        #    "`binary_focal_loss_with_logits` has been reworked for improved numerical stability "
-        #    "and the `eps` argument is no longer necessary",
-        #    DeprecationWarning,
-        #    stacklevel=2,
-        #)
+    if eps is not None and not torch.jit.is_scripting():
+        warnings.warn(
+            "`binary_focal_loss_with_logits` has been reworked for improved numerical stability "
+            "and the `eps` argument is no longer necessary",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
