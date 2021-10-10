@@ -1,6 +1,6 @@
 pytest==6.2.5
 pytest-flake8==1.0.7
-pytest-cov==2.12.1
+pytest-cov==3.0.0
 pytest-mypy==0.8.1
 pytest-xdist==2.4.0
 autopep8
