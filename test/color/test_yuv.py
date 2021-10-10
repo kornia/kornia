@@ -107,9 +107,62 @@ class TestRgbToYuv420(BaseTester):
             img = torch.ones(3, 1, 2, device=device, dtype=dtype)
             assert kornia.color.rgb_to_yuv420(img)
 
-    # TODO: investigate and implement me
-    # def test_unit(self, device, dtype):
-    #    pass
+    # Test max/min values. This is essentially testing the transform rather than the subsampling
+    # ref values manually checked vs rec 601
+    def test_unit_white(self, device, dtype):  # skipcq: PYL-R0201
+        rgb = torch.tensor([[[255, 255], [255, 255]], [[255, 255], [255, 255]], [[255, 255], [255, 255]]],
+                           device=device, dtype=torch.uint8).type(dtype) / 255.0
+        refy = torch.tensor([[[255, 255], [255, 255]]], device=device, dtype=torch.uint8)
+        refuv = torch.tensor([[[0]], [[0]]], device=device, dtype=torch.int8)
+
+        resy = (kornia.color.rgb_to_yuv420(rgb)[0] * 255.0).round().type(torch.uint8)
+        resuv = (kornia.color.rgb_to_yuv420(rgb)[1] * 255.0).round().clamp(-128, 127).type(torch.int8)
+        assert_close(refy, resy)
+        assert_close(refuv, resuv)
+
+    def test_unit_black(self, device, dtype):  # skipcq: PYL-R0201
+        rgb = torch.tensor([[[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]]],
+                           device=device, dtype=torch.uint8).type(dtype) / 255.0
+        refy = torch.tensor([[[0, 0], [0, 0]]], device=device, dtype=torch.uint8)
+        refuv = torch.tensor([[[0]], [[0]]], device=device, dtype=torch.int8)
+
+        resy = (kornia.color.rgb_to_yuv420(rgb)[0] * 255.0).round().type(torch.uint8)
+        resuv = (kornia.color.rgb_to_yuv420(rgb)[1] * 255.0).round().clamp(-128, 127).type(torch.int8)
+        assert_close(refy, resy)
+        assert_close(refuv, resuv)
+
+    def test_unit_gray(self, device, dtype):  # skipcq: PYL-R0201
+        rgb = torch.tensor([[[127, 127], [127, 127]], [[127, 127], [127, 127]], [[127, 127], [127, 127]]],
+                           device=device, dtype=torch.uint8).type(dtype) / 255.0
+        refy = torch.tensor([[[127, 127], [127, 127]]], device=device, dtype=torch.uint8)
+        refuv = torch.tensor([[[0]], [[0]]], device=device, dtype=torch.int8)
+
+        resy = (kornia.color.rgb_to_yuv420(rgb)[0] * 255.0).round().type(torch.uint8)
+        resuv = (kornia.color.rgb_to_yuv420(rgb)[1] * 255.0).round().clamp(-128, 127).type(torch.int8)
+        assert_close(refy, resy)
+        assert_close(refuv, resuv)
+
+    def test_unit_red(self, device, dtype):  # skipcq: PYL-R0201
+        rgb = torch.tensor([[[255, 255], [255, 255]], [[0, 0], [0, 0]], [[0, 0], [0, 0]]],
+                           device=device, dtype=torch.uint8).type(dtype) / 255.0
+        refy = torch.tensor([[[76, 76], [76, 76]]], device=device, dtype=torch.uint8)
+        refuv = torch.tensor([[[-37]], [[127]]], device=device, dtype=torch.int8)
+
+        resy = (kornia.color.rgb_to_yuv420(rgb)[0] * 255.0).round().type(torch.uint8)
+        resuv = (kornia.color.rgb_to_yuv420(rgb)[1] * 255.0).round().clamp(-128, 127).type(torch.int8)
+        assert_close(refy, resy)
+        assert_close(refuv, resuv)
+
+    def test_unit_blue(self, device, dtype):  # skipcq: PYL-R0201
+        rgb = torch.tensor([[[0, 0], [0, 0]], [[0, 0], [0, 0]], [[255, 255], [255, 255]]],
+                           device=device, dtype=torch.uint8).type(dtype) / 255.0
+        refy = torch.tensor([[[29, 29], [29, 29]]], device=device, dtype=torch.uint8)
+        refuv = torch.tensor([[[111]], [[-25]]], device=device, dtype=torch.int8)
+
+        resy = (kornia.color.rgb_to_yuv420(rgb)[0] * 255.0).type(torch.uint8)
+        resuv = (kornia.color.rgb_to_yuv420(rgb)[1] * 255.0).clamp(-128, 127).type(torch.int8)
+        assert_close(refy, resy)
+        assert_close(refuv, resuv)
 
     # This measures accuracy, given the impact of the subsampling we will avoid the issue by
     # repeating a 2x2 pattern for which mean will match what we get from upscaling again
@@ -181,10 +234,6 @@ class TestRgbToYuv422(BaseTester):
         with pytest.raises(ValueError):
             img = torch.ones(3, 2, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_yuv422(img)
-
-    # TODO: investigate and implement me
-    # def test_unit(self, device, dtype):
-    #    pass
 
     # This measures accuracy, given the impact of the subsampling we will avoid the issue by
     # repeating a 2x2 pattern for which mena will match what we get from upscaling again
@@ -327,9 +376,25 @@ class TestYuv420ToRgb(BaseTester):
             imguv = torch.ones(3, 0, 1, device=device, dtype=dtype)
             assert kornia.color.yuv420_to_rgb(imgy, imguv)
 
-    # TODO: investigate and implement me
-    # def test_unit(self, device, dtype):
-    #    pass
+    # Test max/min values. This is essentially testing the transform rather than the subsampling
+    # ref values manually checked vs rec 601
+    def test_unit_white(self, device, dtype):  # skipcq: PYL-R0201
+        refrgb = torch.tensor([[[255, 255], [255, 255]], [[255, 255], [255, 255]], [[255, 255], [255, 255]]],
+                              device=device, dtype=torch.uint8)
+        y = torch.tensor([[[255, 255], [255, 255]]], device=device, dtype=torch.uint8).type(dtype) / 255.0
+        uv = torch.tensor([[[0]], [[0]]], device=device, dtype=torch.int8).type(torch.float) / 255.0
+
+        resrgb = (kornia.color.yuv420_to_rgb(y, uv) * 255.0).round().type(torch.uint8)
+        assert_close(refrgb, resrgb)
+
+    def test_unit_red(self, device, dtype):  # skipcq: PYL-R0201
+        refrgb = torch.tensor([[[221, 221], [221, 221]], [[17, 17], [17, 17]], [[1, 1], [1, 1]]],
+                              device=device, dtype=torch.uint8)
+        y = torch.tensor([[[76, 76], [76, 76]]], device=device, dtype=torch.uint8).type(dtype) / 255.0
+        uv = torch.tensor([[[-37]], [[127]]], device=device, dtype=torch.int8).type(torch.float) / 255.0
+
+        resrgb = (kornia.color.yuv420_to_rgb(y, uv) * 255.0).round().type(torch.uint8)
+        assert_close(refrgb, resrgb)
 
     # TODO: improve accuracy
     def test_forth_and_back(self, device, dtype):  # skipcq: PYL-R0201
