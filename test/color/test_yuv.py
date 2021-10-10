@@ -109,7 +109,7 @@ class TestRgbToYuv420(BaseTester):
 
     # Test max/min values. This is essentially testing the transform rather than the subsampling
     # ref values manually checked vs rec 601
-    def test_unit(self, device, dtype):
+    def test_unit(self, device, dtype):  # skipcq: PYL-R0201
 
         # White
         rgb = torch.tensor([[[255, 255], [255, 255]], [[255, 255], [255, 255]], [[255, 255], [255, 255]]],
@@ -380,7 +380,7 @@ class TestYuv420ToRgb(BaseTester):
 
     # Test max/min values. This is essentially testing the transform rather than the subsampling
     # ref values manually checked vs rec 601
-    def test_unit(self, device, dtype):
+    def test_unit(self, device, dtype):  # skipcq: PYL-R0201
 
         # white
         refrgb = torch.tensor([[[255, 255], [255, 255]], [[255, 255], [255, 255]], [[255, 255], [255, 255]]],
