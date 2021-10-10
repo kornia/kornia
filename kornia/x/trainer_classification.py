@@ -1,12 +1,17 @@
-import torch
+from typing import Callable, Dict, Optional
 
-from kornia.metrics import accuracy, AverageMeter, mean_iou
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader
+
+from kornia.metrics import accuracy, mean_average_precision, mean_iou
 
 from .trainer import Trainer
+from .utils import Configuration
 
 
 class ImageClassifierTrainer(Trainer):
-    """Module to be used for Image Classification purposes.
+    """Module to be used for image classification purposes.
 
     The module subclasses :py:class:`~kornia.x.Trainer` and overrides the
     :py:func:`~kornia.x.Trainer.evaluate` function implementing a standard
@@ -16,39 +21,16 @@ class ImageClassifierTrainer(Trainer):
         Learn how to use this class in the following
         `example <https://github.com/kornia/kornia/blob/master/examples/train/image_classifier/>`__.
     """
-    @torch.no_grad()
-    def evaluate(self) -> dict:
-        self.model.eval()
-        stats = {'losses': AverageMeter(), 'top1': AverageMeter(), 'top5': AverageMeter()}
-        for sample_id, sample in enumerate(self.valid_dataloader):
-            sample = {"input": sample[0], "target": sample[1]}  # new dataset api will come like this
-            # perform the preprocess and augmentations in batch
-            sample = self.preprocess(sample)
-            # Forward
-            out = self.model(sample["input"])
-            # Loss computation
-            val_loss = self.criterion(out, sample["target"])
 
-            # measure accuracy and record loss
-            acc1, acc5 = accuracy(out.detach(), sample["target"], topk=(1, 5))
-            batch_size: int = sample["input"].shape[0]
-            stats['losses'].update(val_loss.item(), batch_size)
-            stats['top1'].update(acc1.item(), batch_size)
-            stats['top5'].update(acc5.item(), batch_size)
-
-            if sample_id % 10 == 0:
-                self._logger.info(
-                    f"Test: {sample_id}/{len(self.valid_dataloader)} "
-                    f"Loss: {stats['losses'].val:.2f} {stats['losses'].avg:.2f} "
-                    f"Acc@1: {stats['top1'].val:.2f} {stats['top1'].val:.2f} "
-                    f"Acc@5: {stats['top5'].val:.2f} {stats['top5'].val:.2f} "
-                )
-
-        return stats
+    def compute_metrics(self, *args: torch.Tensor) -> Dict[str, float]:
+        assert len(args) == 2
+        out, target = args
+        acc1, acc5 = accuracy(out, target, topk=(1, 5))
+        return dict(top1=acc1.item(), top5=acc5.item())
 
 
 class SemanticSegmentationTrainer(Trainer):
-    """Module to be used for Semantic segmentation purposes.
+    """Module to be used for semantic segmentation purposes.
 
     The module subclasses :py:class:`~kornia.x.Trainer` and overrides the
     :py:func:`~kornia.x.Trainer.evaluate` function implementing IoU :py:func:`~kornia.metrics.mean_iou`.
@@ -57,32 +39,64 @@ class SemanticSegmentationTrainer(Trainer):
         Learn how to use this class in the following
         `example <https://github.com/kornia/kornia/blob/master/examples/train/semantic_segmentation/>`__.
     """
-    @torch.no_grad()
-    def evaluate(self) -> dict:
-        self.model.eval()
-        stats = {'losses': AverageMeter(), 'iou': AverageMeter()}
-        for sample_id, sample in enumerate(self.valid_dataloader):
-            sample = {"input": sample[0], "target": sample[1]}  # new dataset api will come like this
-            # perform the preprocess and augmentations in batch
-            sample = self.preprocess(sample)
-            sample = self.on_before_model(sample)
-            # Forward
-            out = self.model(sample["input"])
-            self.on_after_model(out, sample)
-            # Loss computation
-            val_loss = self.criterion(out, sample["target"])
 
-            # measure accuracy and record loss
-            iou = mean_iou(out.argmax(1), sample["target"], out.shape[1]).mean()
-            batch_size: int = sample["input"].shape[0]
-            stats['losses'].update(val_loss.item(), batch_size)
-            stats['iou'].update(iou, batch_size)
+    def compute_metrics(self, *args: torch.Tensor) -> Dict[str, float]:
+        assert len(args) == 2
+        out, target = args
+        iou = mean_iou(out.argmax(1), target, out.shape[1]).mean()
+        return dict(iou=iou.item())
 
-            if sample_id % 10 == 0:
-                self._logger.info(
-                    f"Test: {sample_id}/{len(self.valid_dataloader)} "
-                    f"Loss: {stats['losses'].val:.2f} {stats['losses'].avg:.2f} "
-                    f"IoU: {stats['iou'].val:.2f} {stats['iou'].val:.2f} "
-                )
 
-        return stats
+class ObjectDetectionTrainer(Trainer):
+    """Module to be used for object detection purposes.
+
+    The module subclasses :py:class:`~kornia.x.Trainer` and overrides the
+    :py:func:`~kornia.x.Trainer.evaluate` function implementing IoU :py:func:`~kornia.metrics.mean_iou`.
+
+    .. seealso::
+        Learn how to use this class in the following
+        `example <https://github.com/kornia/kornia/blob/master/examples/train/object_detection/>`__.
+    """
+    def __init__(
+        self,
+        model: nn.Module,
+        train_dataloader: DataLoader,
+        valid_dataloader: DataLoader,
+        criterion: Optional[nn.Module],
+        optimizer: torch.optim.Optimizer,
+        scheduler: torch.optim.lr_scheduler.CosineAnnealingLR,
+        config: Configuration,
+        num_classes: int,
+        callbacks: Dict[str, Callable] = {},
+        loss_computed_by_model: Optional[bool] = None,
+    ) -> None:
+        super().__init__(
+            model, train_dataloader, valid_dataloader, criterion, optimizer, scheduler, config, callbacks
+        )
+        # TODO: auto-detect if the model is from TorchVision
+        self.loss_computed_by_model = loss_computed_by_model
+        self.num_classes = num_classes
+
+    def on_model(self, model: nn.Module, sample: dict):
+        if self.loss_computed_by_model and model.training:
+            return model(sample["input"], sample["target"])
+        return model(sample["input"])
+
+    def compute_loss(self, *args: torch.Tensor) -> torch.Tensor:
+        if self.loss_computed_by_model:
+            return torch.stack(list(args[0].values())).sum()
+        if self.criterion is None:
+            raise RuntimeError("`criterion` should not be None if `loss_computed_by_model` is False.")
+        return self.criterion(*args)
+
+    def compute_metrics(self, *args: torch.Tensor) -> Dict[str, float]:
+        mAP, _ = mean_average_precision(
+            [a['boxes'] for a in args[0]],
+            [a['labels'] for a in args[0]],
+            [a['scores'] for a in args[0]],
+            [a['boxes'] for a in args[1]],
+            [a['labels'] for a in args[1]],
+            n_classes=self.num_classes,
+            threshold=0.000001
+        )
+        return {'mAP': mAP.item()}
