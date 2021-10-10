@@ -9,7 +9,8 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) 
     r"""Compensate for lens distortion a set of 2D image points.
 
     Radial :math:`(k_1, k_2, k_3, k_4, k_4, k_6)`,
-    tangential :math:`(p_1, p_2)`, thin prism :math:`(s_1, s_2, s_3, s_4)`, and tilt :math:`(\tau_x, \tau_y)` distortion models are considered in this function.
+    tangential :math:`(p_1, p_2)`, thin prism :math:`(s_1, s_2, s_3, s_4)`, and tilt :math:`(\tau_x, \tau_y)`
+    distortion models are considered in this function.
 
     Args:
         points: Input image points with shape :math:`(*, N, 2)`.
@@ -20,7 +21,7 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) 
 
     Returns:
         Undistorted 2D points with shape :math:`(*, N, 2)`.
-    
+
     Example:
         >>> x = torch.rand(1, 4, 2)
         >>> K = torch.eye(3)[None]
@@ -31,7 +32,7 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) 
                  [ 0.7422, -0.7141],
                  [ 0.5008, -0.1313]]])
     """
-    if points.dim() < 2 and points.shape[-1] != 2: 
+    if points.dim() < 2 and points.shape[-1] != 2:
         raise ValueError(f'points shape is invalid. Got {points.shape}.')
 
     if K.shape[-2:] != (3, 3):
@@ -98,7 +99,8 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     r"""Compensate an image for lens distortion.
 
     Radial :math:`(k_1, k_2, k_3, k_4, k_4, k_6)`,
-    tangential :math:`(p_1, p_2)`, thin prism :math:`(s_1, s_2, s_3, s_4)`, and tilt :math:`(\tau_x, \tau_y)` distortion models are considered in this function.
+    tangential :math:`(p_1, p_2)`, thin prism :math:`(s_1, s_2, s_3, s_4)`, and tilt :math:`(\tau_x, \tau_y)`
+    distortion models are considered in this function.
 
     Args:
         image: Input image with shape :math:`(*, C, H, W)`.
@@ -127,12 +129,12 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     xy_grid: torch.Tensor = kornia.utils.create_meshgrid(rows, cols, False, image.device)
     pts: torch.Tensor = torch.cat(
         [xy_grid[..., 0].reshape(-1, 1), xy_grid[..., 1].reshape(-1, 1)], 1
-    ) # (rows*cols)x2
+    )  # (rows*cols)x2
 
     # Distort points and define maps
-    ptsd: torch.Tensor = distort_points(pts, K, dist) # Bx(rows*cols)x2
-    mapx: torch.Tensor = ptsd[..., 0].reshape(B, rows, cols) # B x rows x cols, float
-    mapy: torch.Tensor = ptsd[..., 1].reshape(B, rows, cols) # B x rows x cols, float
+    ptsd: torch.Tensor = distort_points(pts, K, dist)  # Bx(rows*cols)x2
+    mapx: torch.Tensor = ptsd[..., 0].reshape(B, rows, cols)  # B x rows x cols, float
+    mapy: torch.Tensor = ptsd[..., 1].reshape(B, rows, cols)  # B x rows x cols, float
 
     # Remap image to undistort
     out = remap(image, mapx, mapy, align_corners=True)

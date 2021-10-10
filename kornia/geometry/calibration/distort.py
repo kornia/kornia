@@ -34,9 +34,7 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
     if return_inverse:
         invR22 = 1 / R[..., 2, 2]
         invPz = torch.stack(
-            [invR22, zero, R[..., 0, 2] * invR22,
-            zero, invR22, R[..., 1, 2] * invR22,
-            zero, zero, one], -1
+            [invR22, zero, R[..., 0, 2] * invR22, zero, invR22, R[..., 1, 2] * invR22, zero, zero, one], -1
         ).reshape(-1, 3, 3)
 
         invTilt = R.transpose(-1, -2) @ invPz
@@ -47,9 +45,7 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
 
     else:
         Pz = torch.stack(
-            [R[..., 2, 2], zero, -R[..., 0, 2],
-            zero, R[..., 2, 2], -R[..., 1, 2],
-            zero, zero, one], -1
+            [R[..., 2, 2], zero, -R[..., 0, 2], zero, R[..., 2, 2], -R[..., 1, 2], zero, zero, one], -1
         ).reshape(-1, 3, 3)
 
         tilt = Pz @ R.transpose(-1, -2)
@@ -63,7 +59,8 @@ def distort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     r"""Distortion of a set of 2D points based on the lens distortion model.
 
     Radial :math:`(k_1, k_2, k_3, k_4, k_4, k_6)`,
-    tangential :math:`(p_1, p_2)`, thin prism :math:`(s_1, s_2, s_3, s_4)`, and tilt :math:`(\tau_x, \tau_y)` distortion models are considered in this function.
+    tangential :math:`(p_1, p_2)`, thin prism :math:`(s_1, s_2, s_3, s_4)`, and tilt :math:`(\tau_x, \tau_y)`
+    distortion models are considered in this function.
 
     Args:
         points: Input image points with shape :math:`(*, N, 2)`.
@@ -75,7 +72,7 @@ def distort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     Returns:
         Undistorted 2D points with shape :math:`(*, N, 2)`.
     """
-    if points.dim() < 2 and points.shape[-1] != 2: 
+    if points.dim() < 2 and points.shape[-1] != 2:
         raise ValueError(f'points shape is invalid. Got {points.shape}.')
 
     if K.shape[-2:] != (3, 3):
