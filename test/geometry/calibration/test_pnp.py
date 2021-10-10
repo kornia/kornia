@@ -82,7 +82,7 @@ class TestSolvePnpDlt:
 
         return intrinsics, world_to_cam_3x4, world_points, img_points
 
-    @pytest.mark.parametrize("num_points", (6, 20, 200))
+    @pytest.mark.parametrize("num_points", (6, 20, 1000))
     def test_smoke(self, num_points, device, dtype):
 
         intrinsics, _, world_points, img_points = \
@@ -92,7 +92,7 @@ class TestSolvePnpDlt:
         pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics)
         assert pred_world_to_cam.shape == (batch_size, 3, 4)
 
-    @pytest.mark.parametrize("num_points", (6, 20, 50))
+    @pytest.mark.parametrize("num_points", (6, 10, 20))
     def test_gradcheck(self, num_points, device, dtype):
 
         intrinsics, _, world_points, img_points = \
@@ -107,16 +107,16 @@ class TestSolvePnpDlt:
             raise_exception=True, atol=1e-3
         )
 
-    @pytest.mark.parametrize("num_points", (6, 20, 200))
+    @pytest.mark.parametrize("num_points", (6, 20, 1000))
     def test_pred_world_to_cam(self, num_points, device, dtype):
 
         intrinsics, gt_world_to_cam, world_points, img_points = \
             self._get_test_data(num_points, device, dtype)
 
         pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics)
-        assert_close(pred_world_to_cam, gt_world_to_cam, atol=1e-3, rtol=1e-3)
+        assert_close(pred_world_to_cam, gt_world_to_cam, atol=1e-4, rtol=1e-4)
 
-    @pytest.mark.parametrize("num_points", (6, 20, 200))
+    @pytest.mark.parametrize("num_points", (6, 20, 1000))
     def test_project(self, num_points, device, dtype):
 
         intrinsics, _, world_points, img_points = \
@@ -134,8 +134,8 @@ class TestSolvePnpDlt:
 
         # Different tolerances for dtype torch.float32
         if dtype == torch.float32:
-            atol, rtol = 1e-1, 1e-1
+            atol, rtol = 1e-5, 1e-2
         else:
-            atol, rtol = 1e-4, 1e-4
+            atol, rtol = 1e-5, 1e-4
 
         assert_close(pred_img_points, img_points, atol=atol, rtol=rtol)
