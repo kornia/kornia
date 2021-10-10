@@ -50,8 +50,8 @@ def rgb_to_yuv420(image: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         image: RGB Image to be converted to YUV with shape :math:`(*, 3, H, W)`.
 
     Returns:
-       Tensor containing the Y plane with shape :math:`(*, 1, H, W)
-       Tensor containing the UV planes with shape :math:`(*, 2, H/2, W/2)
+        A Tensor containing the Y plane with shape :math:`(*, 1, H, W)`
+        A Tensor containing the UV planes with shape :math:`(*, 2, H/2, W/2)`
 
     Example:
         >>> input = torch.rand(2, 3, 4, 6)
@@ -81,8 +81,8 @@ def rgb_to_yuv422(image: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         image: RGB Image to be converted to YUV with shape :math:`(*, 3, H, W)`.
 
     Returns:
-       Tensor containing the Y plane with shape :math:`(*, 1, H, W)
-       Tensor containing the UV planes with shape :math:`(*, 2, H, W/2)
+       A Tensor containing the Y plane with shape :math:`(*, 1, H, W)`
+       A Tensor containing the UV planes with shape :math:`(*, 2, H, W/2)`
 
     Example:
         >>> input = torch.rand(2, 3, 4, 6)
