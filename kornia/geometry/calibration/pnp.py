@@ -1,10 +1,10 @@
+from typing import Optional, Tuple
+
 import torch
 
 import kornia
 from kornia.geometry.conversions import convert_points_to_homogeneous
-from kornia.geometry.linalg import transform_points, compose_transformations
-
-from typing import Tuple, Optional
+from kornia.geometry.linalg import compose_transformations, transform_points
 
 
 def mean_isotropic_scale_normalize(
