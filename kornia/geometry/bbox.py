@@ -446,7 +446,7 @@ def transform_bbox(trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = "xy
         boxes[..., -1] = boxes[..., 1] + boxes[..., -1]  # y + h
 
     transformed_boxes: torch.Tensor = \
-        kornia.transform_points(trans_mat.view(-1, 3, 3), boxes.view(boxes.shape[0], -1, 2))
+        kornia.geometry.transform_points(trans_mat.view(-1, 3, 3), boxes.view(boxes.shape[0], -1, 2))
     transformed_boxes = transformed_boxes.view_as(boxes)
 
     if mode == 'xywh':
