@@ -456,7 +456,7 @@ def rotation_matrix_to_quaternion(
 def normalize_quaternion(quaternion: torch.Tensor, eps: float = 1.0e-12) -> torch.Tensor:
     r"""Normalize a quaternion.
 
-    The quaternion should be in (x, y, z, w) format.
+    The quaternion should be in (x, y, z, w) or (w, x, y, z) format.
 
     Args:
         quaternion: a tensor containing a quaternion to be normalized.
