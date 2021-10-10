@@ -41,7 +41,7 @@ def _boxes_to_polygons(
     if not xmin.ndim == ymin.ndim == width.ndim == height.ndim == 2:
         raise ValueError("We expect to create a batch of 2D boxes (quadrilaterals) in vertices format (B, N, 4, 2)")
 
-    # Create (B,N,4,2) with all points in top left position of the bounding box
+    # Create (B,N,4,2) with all points in top left position of boxes
     polygons = torch.zeros((xmin.shape[0], xmin.shape[1], 4, 2), device=xmin.device, dtype=xmin.dtype)
     polygons[..., 0] = xmin.unsqueeze(-1)
     polygons[..., 1] = ymin.unsqueeze(-1)
@@ -65,7 +65,7 @@ def _boxes3d_to_polygons3d(
         raise ValueError("We expect to create a batch of 3D boxes (hexahedrons) in vertices format (B, N, 8, 3)")
 
     # Front
-    # Create (B,N,4,3) with all points in front top left position of the bounding box
+    # Create (B,N,4,3) with all points in front top left position of boxes
     front_vertices = torch.zeros((xmin.shape[0], xmin.shape[1], 4, 3), device=xmin.device, dtype=xmin.dtype)
     front_vertices[..., 0] = xmin.unsqueeze(-1)
     front_vertices[..., 1] = ymin.unsqueeze(-1)
@@ -124,17 +124,7 @@ class Boxes:
             - Boxes widths, shape of :math:`(N,)` or :math:`(B,N)`.
 
         Example:
-            >>> boxes_xyxy = torch.tensor([[[
-            ...     [1., 1.],
-            ...     [2., 1.],
-            ...     [2., 2.],
-            ...     [1., 2.],
-            ... ], [
-            ...     [1., 1.],
-            ...     [3., 1.],
-            ...     [3., 2.],
-            ...     [1., 2.],
-            ... ]]])  # 1x2x4x2
+            >>> boxes_xyxy = torch.tensor([[[1,1,2,2],[1,1,3,2]]])
             >>> boxes = Boxes.from_tensor(boxes_xyxy)
             >>> boxes.get_boxes_shape()
             (tensor([[1., 1.]]), tensor([[1., 2.]]))
@@ -144,7 +134,7 @@ class Boxes:
         return heights, widths
 
     @classmethod
-    def from_tensor(cls, boxes: torch.Tensor, mode: str = "xyxy") -> "Boxes":
+    def from_tensor(cls, boxes: torch.Tensor, mode: str = "xyxy", validate_boxes: bool = True) -> "Boxes":
         r"""Helper method to easily create :class:`Boxes` from boxes stored in another format.
 
         Args:
@@ -153,19 +143,22 @@ class Boxes:
 
                 * 'xyxy': boxes are assumed to be in the format ``xmin, ymin, xmax, ymax`` where ``width = xmax - xmin``
                   and ``height = ymax - ymin``.
-                * 'xyxy_plus_1': similar to 'xyxy' mode but where box width and length are defined as
+                * 'xyxy_plus': similar to 'xyxy' mode but where box width and length are defined as
                   ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``.
                 * 'xywh': boxes are assumed to be in the format ``xmin, ymin, width, height`` where
                   ``width = xmax - xmin`` and ``height = ymax - ymin``.
-                * 'xyxy_plus_1': similar to 'xywh' mode but where box width and length are defined as
+                * 'xyxy_plus': similar to 'xywh' mode but where box width and length are defined as
                   ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``.
+
+            validate_boxes: check if boxes are valid rectangles or not. Valid rectangles are those with width
+                and height >= 1 (>= 2 when mode ends with '_plus' suffix).
 
         Returns:
             :class:`Boxes` class containing the original `boxes` in the format specified by ``mode``.
 
         Examples:
             >>> boxes_xyxy = torch.as_tensor([[0, 3, 1, 4], [5, 1, 8, 4]])
-            >>> Boxes.from_tensor(boxes_xyxy, mode='xyxy')
+            >>> boxes = Boxes.from_tensor(boxes_xyxy, mode='xyxy')
         """
         if not (2 <= boxes.ndim <= 3 and boxes.shape[-1] == 4):
             raise ValueError(f"Boxes shape must be (N, 4) or (B, N, 4). Got {boxes.shape}.")
@@ -176,16 +169,22 @@ class Boxes:
 
         xmin, ymin = boxes[..., 0], boxes[..., 1]
         mode = mode.lower()
-        if mode in ("xyxy", "xyxy_plus_1"):
+        if mode in ("xyxy", "xyxy_plus"):
             height, width = boxes[..., 3] - boxes[..., 1], boxes[..., 2] - boxes[..., 0]
-        elif mode in ("xywh", "xywh_plus_1"):
+        elif mode in ("xywh", "xywh_plus"):
             height, width = boxes[..., 3], boxes[..., 2]
         else:
             raise ValueError(f"Unknown mode {mode}")
 
-        if mode.endswith("plus_1"):
+        if mode.endswith("plus"):
             height = height - 1
             width = width - 1
+
+        if validate_boxes:
+            if (width <= 0).any():
+                raise ValueError("Some boxes have negative widths or 0.")
+            if (height <= 0).any():
+                raise ValueError("Some boxes have negative heights or 0.")
 
         quadrilaterals = _boxes_to_polygons(xmin, ymin, width, height)
         quadrilaterals = quadrilaterals if batched else quadrilaterals.squeeze(0)
@@ -202,22 +201,22 @@ class Boxes:
 
                 * 'xyxy': boxes are defined as ``xmin, ymin, xmax, ymax`` where ``width = xmax - xmin`` and
                   ``height = ymax - ymin``.
-                * 'xyxy_plus_1': similar to 'xyxy' mode but where box width and length are defined as
+                * 'xyxy_plus': similar to 'xyxy' mode but where box width and length are defined as
                   ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``.
                 * 'xywh': boxes are defined as ``xmin, ymin, width, height`` where ``width = xmax - xmin``
                   and ``height = ymax - ymin``.
-                * 'xywh_plus_1': similar to 'xywh' mode but where box width and length are defined as
+                * 'xywh_plus': similar to 'xywh' mode but where box width and length are defined as
                   ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``.
                 * 'vertices': boxes are defined by their vertices points in the following ``clockwise`` order:
                   *top-left, top-right, bottom-right, bottom-left*. Vertices coordinates are in (x,y) order. Finally,
                   box width and height are defined as ``width = xmax - xmin`` and ``height = ymax - ymin``.
-                * 'vertices_plus_1': similar to 'vertices' mode but where box width and length are defined as
+                * 'vertices_plus': similar to 'vertices' mode but where box width and length are defined as
                   ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. ymin + 1``.
 
         Returns:
             Boxes tensor in the ``mode`` format. The shape depends with the ``mode`` value:
 
-                * 'vertices' or 'verticies_plus_1': :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
+                * 'vertices' or 'verticies_plus': :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
                 * Any other value: :math:`(N, 4)` or :math:`(B, N, 4)`.
 
         Examples:
@@ -233,16 +232,16 @@ class Boxes:
         )
 
         mode = mode.lower()
-        if mode in ("xyxy", "xyxy_plus_1"):
+        if mode in ("xyxy", "xyxy_plus"):
             pass
-        elif mode in ("xywh", "xywh_plus_1", "vertices", "vertices_plus_1"):
+        elif mode in ("xywh", "xywh_plus", "vertices", "vertices_plus"):
             height, width = boxes[..., 3] - boxes[..., 1], boxes[..., 2] - boxes[..., 0]
             boxes[..., 2] = width
             boxes[..., 3] = height
         else:
             raise ValueError(f"Unknown mode {mode}")
 
-        if mode.endswith("plus_1"):
+        if mode.endswith("plus"):
             offset = torch.as_tensor([0, 0, 1, 1], device=boxes.device, dtype=boxes.dtype)
             boxes = boxes + offset
 
@@ -267,13 +266,12 @@ class Boxes:
             It is currently non-differentiable.
 
         Examples:
-            >>> boxes_xyxy = torch.tensor([[
+            >>> boxes = Boxes([[  # Equivalent to boxes = Boxes.from_tensor([[1,1,4,3]])
             ...        [1., 1.],
             ...        [4., 1.],
             ...        [4., 3.],
             ...        [1., 3.],
             ...   ]])  # 1x4x2
-            >>> boxes = Boxes.from_tensor(boxes_xyxy)
             >>> boxes.to_mask(5, 5)
             tensor([[[0., 0., 0., 0., 0.],
                      [0., 1., 1., 1., 0.],
@@ -391,32 +389,17 @@ class Boxes3D:
             - Boxes widths, shape of :math:`(N,)` or :math:`(B,N)`.
 
         Example:
-            >>> boxes_xyzxyz = torch.tensor([[[ 0,  1,  2],
-            ...         [10,  1,  2],
-            ...         [10, 21,  2],
-            ...         [ 0, 21,  2],
-            ...         [ 0,  1, 32],
-            ...         [10,  1, 32],
-            ...         [10, 21, 32],
-            ...         [ 0, 21, 32]],
-            ...        [[ 3,  4,  5],
-            ...         [43,  4,  5],
-            ...         [43, 54,  5],
-            ...         [ 3, 54,  5],
-            ...         [ 3,  4, 65],
-            ...         [43,  4, 65],
-            ...         [43, 54, 65],
-            ...         [ 3, 54, 65]]]) # 2x8x3
+            >>> boxes_xyzxyz = torch.tensor([[ 0,  1,  2, 10, 21, 32], [3, 4, 5, 43, 54, 65]])
             >>> boxes3d = Boxes3D.from_tensor(boxes_xyzxyz)
             >>> boxes3d.get_boxes_shape()
-            (tensor([30, 60]), tensor([20, 50]), tensor([10, 40]))
+            (tensor([30., 60.]), tensor([20., 50.]), tensor([10., 40.]))
         """
         boxes_xyzwhd = self.to_tensor(mode='xyzwhd')
         widths, heights, depths = boxes_xyzwhd[..., 3], boxes_xyzwhd[..., 4], boxes_xyzwhd[..., 5]
         return depths, heights, widths
 
     @classmethod
-    def from_tensor(cls, boxes: torch.Tensor, mode: str = "xyzxyz") -> "Boxes3D":
+    def from_tensor(cls, boxes: torch.Tensor, mode: str = "xyzxyz", validate_boxes: bool = True) -> "Boxes3D":
         r"""Helper method to easily create :class:`Boxes3D` from 3D boxes stored in another format.
 
         Args:
@@ -425,18 +408,22 @@ class Boxes3D:
 
                 * 'xyzxyz': boxes are assumed to be in the format ``xmin, ymin, zmin, xmax, ymax, zmax`` where
                   ``width = xmax - xmin``, ``height = ymax - ymin`` and ``depth = zmax - zmin``.
-                * 'xyzxyz_plus_1': similar to 'xyzxyz' mode but where box width, length and depth are defined as
+                * 'xyzxyz_plus': similar to 'xyzxyz' mode but where box width, length and depth are defined as
                   ``width = xmax - xmin + 1``, ``height = ymax - ymin + 1`` and ``depth = zmax - zmin + 1``.
                 * 'xyzwhd': boxes are assumed to be in the format ``xmin, ymin, zmin, width, height, depth`` where
                   ``width = xmax - xmin``, ``height = ymax - ymin`` and ``depth = zmax - zmin``.
-                * 'xyzwhd_plus_1': similar to 'xyzwhd' mode but where box width, length and depth are defined as
+                * 'xyzwhd_plus': similar to 'xyzwhd' mode but where box width, length and depth are defined as
                    ``width = xmax - xmin + 1``, ``height = ymax - ymin + 1`` and ``depth = zmax - zmin + 1``.
+
+            validate_boxes: check if boxes are valid rectangles or not. Valid rectangles are those with width, height
+                and depth >= 1 (>= 2 when mode ends with '_plus' suffix).
+
         Returns:
             :class:`Boxes3D` class containing the original `boxes` in the format specified by ``mode``.
 
         Examples:
             >>> boxes_xyzxyz = torch.as_tensor([[0, 3, 6, 1, 4, 8], [5, 1, 3, 8, 4, 9]])
-            >>> Boxes3D.from_tensor(boxes_xyzxyz, mode='xyzxyz')
+            >>> boxes = Boxes3D.from_tensor(boxes_xyzxyz, mode='xyzxyz')
         """
         if not (2 <= boxes.ndim <= 3 and boxes.shape[-1] == 6):
             raise ValueError(f"BBox shape must be (N, 6) or (B, N, 6). Got {boxes.shape}.")
@@ -447,19 +434,27 @@ class Boxes3D:
 
         xmin, ymin, zmin = boxes[..., 0], boxes[..., 1], boxes[..., 2]
         mode = mode.lower()
-        if mode in ("xyzxyz", "xyzxyz_plus_1"):
+        if mode in ("xyzxyz", "xyzxyz_plus"):
             width = boxes[..., 3] - boxes[..., 0]
             height = boxes[..., 4] - boxes[..., 1]
             depth = boxes[..., 5] - boxes[..., 2]
-        elif mode in ("xyzwhd", "xyzwhd_plus_1"):
+        elif mode in ("xyzwhd", "xyzwhd_plus"):
             depth, height, width = boxes[..., 4], boxes[..., 3], boxes[..., 5]
         else:
             raise ValueError(f"Unknown mode {mode}")
 
-        if mode.endswith("plus_1"):
+        if mode.endswith("plus"):
             height = height - 1
             width = width - 1
             depth = depth - 1
+
+        if validate_boxes:
+            if (width <= 0).any():
+                raise ValueError("Some boxes have negative widths or 0.")
+            if (height <= 0).any():
+                raise ValueError("Some boxes have negative heights or 0.")
+            if (depth <= 0).any():
+                raise ValueError("Some boxes have negative depths or 0.")
 
         hexahedrons = _boxes3d_to_polygons3d(xmin, ymin, zmin, width, height, depth)
         hexahedrons = hexahedrons if batched else hexahedrons.squeeze(0)
@@ -476,24 +471,24 @@ class Boxes3D:
 
                 * 'xyzxyz': boxes are assumed to be in the format ``xmin, ymin, zmin, xmax, ymax, zmax`` where
                   ``width = xmax - xmin``, ``height = ymax - ymin`` and ``depth = zmax - zmin``.
-                * 'xyzxyz_plus_1': similar to 'xyzxyz' mode but where box width, length and depth are defined as
+                * 'xyzxyz_plus': similar to 'xyzxyz' mode but where box width, length and depth are defined as
                    ``width = xmax - xmin + 1``, ``height = ymax - ymin + 1`` and ``depth = zmax - zmin + 1``.
                 * 'xyzwhd': boxes are assumed to be in the format ``xmin, ymin, zmin, width, height, depth`` where
                   ``width = xmax - xmin``, ``height = ymax - ymin`` and ``depth = zmax - zmin``.
-                * 'xyzwhd_plus_1': similar to 'xyzwhd' mode but where box width, length and depth are defined as
+                * 'xyzwhd_plus': similar to 'xyzwhd' mode but where box width, length and depth are defined as
                    ``width = xmax - xmin + 1``, ``height = ymax - ymin + 1`` and ``depth = zmax - zmin + 1``.
                 * 'vertices': boxes are defined by their vertices points in the following ``clockwise`` order:
                   *front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
                   back-top-right, back-bottom-right,  back-bottom-left*. Vertices coordinates are in (x,y, z) order.
                   Finally, box width, height and depth are defined as ``width = xmax - xmin``, ``height = ymax - ymin``
                   and ``depth = zmax - zmin``.
-                * 'vertices_plus_1': similar to 'vertices' mode but where box width, length and depth are defined as
+                * 'vertices_plus': similar to 'vertices' mode but where box width, length and depth are defined as
                   ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``.
 
         Returns:
             3D Boxes tensor in the ``mode`` format. The shape depends with the ``mode`` value:
 
-                * 'vertices' or 'verticies_plus_1': :math:`(N, 8, 3)` or :math:`(B, N, 8, 3)`.
+                * 'vertices' or 'verticies_plus': :math:`(N, 8, 3)` or :math:`(B, N, 8, 3)`.
                 * Any other value: :math:`(N, 6)` or :math:`(B, N, 6)`.
 
 
@@ -510,9 +505,9 @@ class Boxes3D:
         )
 
         mode = mode.lower()
-        if mode in ("xyzxyz", "xyzxyz_plus_1"):
+        if mode in ("xyzxyz", "xyzxyz_plus"):
             pass
-        elif mode in ("xyzwhd", "xyzwhd_plus_1", "vertices", "vertices_plus_1"):
+        elif mode in ("xyzwhd", "xyzwhd_plus", "vertices", "vertices_plus"):
             width = boxes[..., 3] - boxes[..., 0]
             height = boxes[..., 4] - boxes[..., 1]
             depth = boxes[..., 5] - boxes[..., 2]
@@ -522,7 +517,7 @@ class Boxes3D:
         else:
             raise ValueError(f"Unknown mode {mode}")
 
-        if mode.endswith("plus_1"):
+        if mode.endswith("plus"):
             offset = torch.as_tensor([0, 0, 0, 1, 1, 1], device=boxes.device, dtype=boxes.dtype)
             boxes = boxes + offset
 
@@ -551,7 +546,7 @@ class Boxes3D:
             It is currently non-differentiable.
 
         Examples:
-            >>> boxes_xyzxyz = torch.tensor([[
+            >>> boxes = Boxes3D([[  # Equivalent to boxes = Boxes.3Dfrom_tensor([[1,1,1,3,3,2]])
             ...     [1., 1., 1.],
             ...     [3., 1., 1.],
             ...     [3., 3., 1.],
@@ -561,7 +556,6 @@ class Boxes3D:
             ...     [3., 3., 2.],
             ...     [1., 3., 2.],
             ... ]])  # 1x8x3
-            >>> boxes = Boxes3D.from_tensor(boxes_xyzxyz)
             >>> boxes.to_mask(4, 5, 5)
             tensor([[[0., 0., 0., 0., 0.],
                      [0., 0., 0., 0., 0.],
