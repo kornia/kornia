@@ -382,7 +382,7 @@ class TestYuv420ToRgb(BaseTester):
         refrgb = torch.tensor([[[255, 255], [255, 255]], [[255, 255], [255, 255]], [[255, 255], [255, 255]]],
                               device=device, dtype=torch.uint8)
         y = torch.tensor([[[255, 255], [255, 255]]], device=device, dtype=torch.uint8).type(dtype) / 255.0
-        uv = torch.tensor([[[0]], [[0]]], dtype=torch.int8).type(torch.float) / 255.0
+        uv = torch.tensor([[[0]], [[0]]], device=device, dtype=torch.int8).type(torch.float) / 255.0
 
         resrgb = (kornia.color.yuv420_to_rgb(y, uv) * 255.0).round().type(torch.uint8)
         assert_close(refrgb, resrgb)
@@ -391,7 +391,7 @@ class TestYuv420ToRgb(BaseTester):
         refrgb = torch.tensor([[[221, 221], [221, 221]], [[17, 17], [17, 17]], [[1, 1], [1, 1]]],
                               device=device, dtype=torch.uint8)
         y = torch.tensor([[[76, 76], [76, 76]]], device=device, dtype=torch.uint8).type(dtype) / 255.0
-        uv = torch.tensor([[[-37]], [[127]]], dtype=torch.int8).type(torch.float) / 255.0
+        uv = torch.tensor([[[-37]], [[127]]], device=device, dtype=torch.int8).type(torch.float) / 255.0
 
         resrgb = (kornia.color.yuv420_to_rgb(y, uv) * 255.0).round().type(torch.uint8)
         assert_close(refrgb, resrgb)
