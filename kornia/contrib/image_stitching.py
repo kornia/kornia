@@ -34,6 +34,8 @@ class ImageStitcher(nn.Module):
         self.matcher = matcher
         self.estimator = estimator
         self.blending_method = blending_method
+        if estimator not in ['ransac', 'vanilla']:
+            raise NotImplementedError
         if estimator == "ransac":
             self.ransac = K.geometry.RANSAC('homography')
 
@@ -45,17 +47,17 @@ class ImageStitcher(nn.Module):
             keypoints2: matched keypoint set from the other image, shaped as :math:`(N, 2)`.
         """
         if self.estimator == "vanilla":
-            return K.find_homography_dlt_iterated(
+            homo = K.find_homography_dlt_iterated(
                 keypoints2[None],
                 keypoints1[None],
                 torch.ones_like(keypoints1[None, :, 0])
             )
-
-        if self.estimator == "ransac":
+        elif self.estimator == "ransac":
             homo, _ = self.ransac(keypoints2, keypoints1)
-            return homo[None]
-
-        raise NotImplementedError
+            homo = homo[None]
+        else:
+            raise NotImplementedError
+        return homo
 
     def estimate_transform(self, **kwargs) -> torch.Tensor:
         """Compute the corresponding homography."""
@@ -63,6 +65,8 @@ class ImageStitcher(nn.Module):
         kp1, kp2, idx = kwargs['keypoints0'], kwargs['keypoints1'], kwargs['batch_indexes']
         for i in range(len(idx.unique())):
             homos.append(self._estimate_homography(kp1[idx == i], kp2[idx == i]))
+        if len(homos) == 0:
+            raise RuntimeError("Compute homography failed. No matched keypoints found.")
         return torch.cat(homos)
 
     def compute_mask(self, image_1: torch.Tensor, image_2: torch.Tensor) -> torch.Tensor:
@@ -73,8 +77,9 @@ class ImageStitcher(nn.Module):
         """Blend two images together."""
         if self.blending_method == "naive":
             out = torch.where(mask == 1, src_img, dst_img)
-            return out
-        raise NotImplementedError
+        else:
+            raise NotImplementedError
+        return out
 
     def preprocess(self, image_1: torch.Tensor, image_2: torch.Tensor):
         """Preprocess input to the required format."""
@@ -84,8 +89,9 @@ class ImageStitcher(nn.Module):
                 "image0": K.color.rgb_to_grayscale(image_1),
                 "image1": K.color.rgb_to_grayscale(image_2)
             }
-            return input_dict
-        raise NotImplementedError
+        else:
+            raise NotImplementedError
+        return input_dict
 
     def forward(self, images_left: torch.Tensor, images_right: torch.Tensor) -> torch.Tensor:
         # TODO: accept a list of images for composing paranoma

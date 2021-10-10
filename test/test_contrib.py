@@ -317,3 +317,30 @@ class TestLambdaModule:
         input = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         func = kornia.bgr_to_grayscale
         assert gradcheck(kornia.contrib.Lambda(func), (input,), raise_exception=True)
+
+
+class TestImageStitcher:
+
+    @pytest.mark.parametrize("estimator", ['ransac', 'vanilla'])
+    def test_smoke(self, device, dtype):
+        B, C, H, W = 1, 3, 224, 224
+        input1 = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        input2 = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        # NOTE: This will need to download the pretrained weights.
+        matcher = kornia.feature.LoFTR()
+        stitcher = kornia.contrib.ImageStitcher(matcher).to(device=device, dtype=dtype)
+        assert stitcher(input1, input2).shape == torch.Size([1, 3, 224, 448])
+
+    def test_exception(self, device, dtype):
+        B, C, H, W = 1, 3, 224, 224
+        input1 = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        input2 = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        # NOTE: This will need to download the pretrained weights.
+        matcher = kornia.feature.LoFTR(None)
+
+        with pytest.raises(NotImplementedError):
+            stitcher = kornia.contrib.ImageStitcher(matcher, estimator='random').to(device=device, dtype=dtype)
+
+        stitcher = kornia.contrib.ImageStitcher(matcher).to(device=device, dtype=dtype)
+        with pytest.raises(RuntimeError):
+            stitcher(input1, input2)
