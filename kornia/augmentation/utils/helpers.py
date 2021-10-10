@@ -8,7 +8,7 @@ from kornia.utils import _extract_device_dtype
 
 
 def _validate_input(f: Callable) -> Callable:
-    r"""Validates the 2D input of the wrapped function.
+    r"""Validate the 2D input of the wrapped function.
 
     Args:
         f: a function that takes the first argument as tensor.
@@ -31,7 +31,7 @@ def _validate_input(f: Callable) -> Callable:
 
 
 def _validate_input3d(f: Callable) -> Callable:
-    r"""Validates the 3D input of the wrapped function.
+    r"""Validate the 3D input of the wrapped function.
 
     Args:
         f: a function that takes the first argument as tensor.

@@ -13,7 +13,7 @@ TupleTensor = Tuple[torch.Tensor, torch.Tensor]
 def oneway_transfer_error(
     pts1: torch.Tensor, pts2: torch.Tensor, H: torch.Tensor, squared: bool = True, eps: float = 1e-8
 ) -> torch.Tensor:
-    r"""Returns transfer error in image 2 for correspondences given the homography matrix.
+    r"""Return transfer error in image 2 for correspondences given the homography matrix.
 
     Args:
         pts1: correspondences from the left images with shape
@@ -52,7 +52,7 @@ def oneway_transfer_error(
 def symmetric_transfer_error(
     pts1: torch.Tensor, pts2: torch.Tensor, H: torch.Tensor, squared: bool = True, eps: float = 1e-8
 ) -> torch.Tensor:
-    r"""Returns Symmetric transfer error for correspondences given the homography matrix.
+    r"""Return Symmetric transfer error for correspondences given the homography matrix.
 
     Args:
         pts1: correspondences from the left images with shape
@@ -92,7 +92,7 @@ def symmetric_transfer_error(
 def find_homography_dlt(
     points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
-    r"""Computes the homography matrix using the DLT formulation.
+    r"""Compute the homography matrix using the DLT formulation.
 
     The linear system is solved by using the Weighted Least Squares Solution for the 4 Points algorithm.
 
@@ -151,7 +151,7 @@ def find_homography_dlt(
 def find_homography_dlt_iterated(
     points1: torch.Tensor, points2: torch.Tensor, weights: torch.Tensor, soft_inl_th: float = 3.0, n_iter: int = 5
 ) -> torch.Tensor:
-    r"""Computes the homography matrix using the iteratively-reweighted least squares (IRWLS).
+    r"""Compute the homography matrix using the iteratively-reweighted least squares (IRWLS).
 
     The linear system is solved by using the Reweighted Least Squares Solution for the 4 Points algorithm.
 

@@ -20,7 +20,7 @@ class TestIntegrationSoftArgmax2d:
     width = 320
 
     def generate_sample(self, base_target, std_val=1.0):
-        """Generates a random sample around the given point.
+        """Generate a random sample around the given point.
 
         The standard deviation is in pixel.
         """

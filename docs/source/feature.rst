@@ -30,6 +30,8 @@ Matching
 .. autofunction:: match_mnn
 .. autofunction:: match_snn
 .. autofunction:: match_smnn
+.. autoclass:: LoFTR
+
 
 
 Local Affine Frames (LAF)

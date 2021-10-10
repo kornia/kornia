@@ -12,6 +12,7 @@ from kornia.augmentation import (
     ColorJitter,
     Denormalize,
     Normalize,
+    PadTo,
     RandomBoxBlur,
     RandomChannelShuffle,
     RandomCrop,
@@ -2609,9 +2610,9 @@ class TestNormalize:
         f = Normalize(mean=mean, std=std, p=1)
         data = torch.ones(2, 3, 256, 313)
         if isinstance(mean, float):
-            expected = (data - torch.tensor(mean)) / torch.tensor(std)
+            expected = (data - torch.as_tensor(mean)) / torch.as_tensor(std)
         else:
-            expected = (data - torch.tensor(mean[0])) / torch.tensor(std[0])
+            expected = (data - torch.as_tensor(mean[0])) / torch.as_tensor(std[0])
         assert_close(f(data), expected)
 
     @staticmethod
@@ -2780,3 +2781,12 @@ class TestRandomBoxBlur:
         img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
         aug = RandomBoxBlur(p=1.0)
         assert img.shape == aug(img).shape
+
+
+class TestPadTo:
+    def test_smoke(self, device, dtype):
+        img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
+        aug = PadTo(size=(4, 5))
+        out = aug(img)
+        assert out.shape == (1, 1, 4, 5)
+        assert (aug.inverse(out) == img).all()

@@ -4,12 +4,7 @@ from typing import Iterator, List, NamedTuple, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
-from kornia.augmentation.base import (
-    _AugmentationBase,
-    IntensityAugmentationBase2D,
-    MixAugmentationBase,
-    TensorWithTransformMat,
-)
+from kornia.augmentation.base import _AugmentationBase, MixAugmentationBase, TensorWithTransformMat
 from kornia.augmentation.container.base import SequentialBase
 from kornia.contrib.extract_patches import extract_tensor_patches
 
@@ -26,7 +21,7 @@ class PatchParamItem(NamedTuple):
 class PatchSequential(ImageSequential):
     r"""Container for performing patch-level image data augmentation.
 
-    .. image:: https://kornia-tutorials.readthedocs.io/en/latest/_images/data_patch_sequential_5_1.png
+    .. image:: https://kornia-tutorials.readthedocs.io/en/latest/_images/data_patch_sequential_7_0.png
 
     PatchSequential breaks input images into patches by a given grid size, which will be resembled back
     afterwards.
@@ -128,20 +123,6 @@ class PatchSequential(ImageSequential):
         self.grid_size = grid_size
         self.padding = padding
         self.patchwise_apply = patchwise_apply
-
-    def is_intensity_only(self) -> bool:
-        """Check if all transformations are intensity-based.
-
-        Note: patch processing would break the continuity of labels (e.g. bbounding boxes, masks).
-        """
-        for arg in self.children():
-            if isinstance(arg, (ImageSequential,)):
-                for _arg in arg.children():
-                    if not isinstance(_arg, IntensityAugmentationBase2D):
-                        return False
-            elif not isinstance(_arg, IntensityAugmentationBase2D):
-                return False
-        return True
 
     def contains_label_operations(self, params: List[PatchParamItem]) -> bool:  # type: ignore
         for param in params:
@@ -377,6 +358,21 @@ class PatchSequential(ImageSequential):
         else:
             _input = _input.reshape(in_shape)
         return _input, label
+
+    def inverse(  # type: ignore
+        self,
+        input: torch.Tensor,
+        params: List[ParamItem],
+    ) -> torch.Tensor:
+        """Inverse transformation.
+
+        Used to inverse a tensor according to the performed transformation by a forward pass, or with respect to
+        provided parameters.
+        """
+        if self.is_intensity_only():
+            return input
+
+        raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
 
     def forward(  # type: ignore
         self, input: torch.Tensor, label: Optional[torch.Tensor] = None, params: Optional[List[PatchParamItem]] = None

@@ -11,7 +11,7 @@ def draw_rectangle(
     color: Optional[torch.Tensor] = None,
     fill: Optional[bool] = None,
 ) -> torch.Tensor:
-    r"""Draws N rectangles on a batch of image tensors.
+    r"""Draw N rectangles on a batch of image tensors.
 
     Args:
         image: is tensor of BxCxHxW.

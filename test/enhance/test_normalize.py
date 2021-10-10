@@ -125,9 +125,9 @@ class TestNormalize:
         f = kornia.enhance.Normalize(mean=mean, std=std)
         data = torch.ones(2, 3, 256, 313)
         if isinstance(mean, float):
-            expected = (data - torch.tensor(mean)) / torch.tensor(std)
+            expected = (data - torch.as_tensor(mean)) / torch.as_tensor(std)
         else:
-            expected = (data - torch.tensor(mean[0])) / torch.tensor(std[0])
+            expected = (data - torch.as_tensor(mean[0])) / torch.as_tensor(std[0])
         assert_close(f(data), expected)
 
     @staticmethod
