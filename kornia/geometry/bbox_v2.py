@@ -103,8 +103,8 @@ class Boxes:
         if not boxes.is_floating_point():
             if raise_if_not_floating_point:
                 raise ValueError(f"Coordinates must be in floating point. Got {boxes.dtype}")
-            else:
-                boxes = boxes.float()
+
+            boxes = boxes.float()
 
         if len(boxes.shape) == 0:
             # Use reshape, so we don't end up creating a new tensor that does not depend on
@@ -318,8 +318,8 @@ class Boxes:
         if inplace:
             self._boxes = transformed_boxes
             return self
-        else:
-            return Boxes(transformed_boxes, False)
+
+        return Boxes(transformed_boxes, False)
 
     def transform_boxes_(self, M: torch.Tensor) -> "Boxes":
         """Inplace version of :func:`Boxes.transform_boxes`"""
@@ -367,8 +367,8 @@ class Boxes3D:
         if not boxes.is_floating_point():
             if raise_if_not_floating_point:
                 raise ValueError(f"Coordinates must be in floating point. Got {boxes.dtype}.")
-            else:
-                boxes = boxes.float()
+
+            boxes = boxes.float()
 
         if len(boxes.shape) == 0:
             # Use reshape, so we don't end up creating a new tensor that does not depend on
@@ -630,8 +630,8 @@ class Boxes3D:
         if inplace:
             self._boxes = transformed_boxes
             return self
-        else:
-            return Boxes3D(transformed_boxes, False)
+
+        return Boxes3D(transformed_boxes, False)
 
     def transform_boxes_(self, M: torch.Tensor) -> "Boxes3D":
         """Inplace version of :func:`Boxes3D.transform_boxes`"""

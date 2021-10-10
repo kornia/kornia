@@ -221,9 +221,6 @@ class TestBoxes2D:
         assert_allclose(batched_masks, expected_batched_masks)
 
     def test_to(self, device, dtype):
-        if device == torch.device('cpu'):
-            pass
-
         boxes = Boxes.from_tensor(torch.as_tensor([[1, 2, 3, 4]], device='cpu', dtype=torch.float32))
         assert boxes.to(device=device)._boxes.device == device
         assert boxes.to(dtype=dtype)._boxes.dtype == dtype
@@ -673,9 +670,6 @@ class TestBbox3D:
         assert_allclose(batched_masks, expected_batched_masks)
 
     def test_to(self, device, dtype):
-        if device == torch.device('cpu'):
-            pass
-
         boxes = Boxes3D.from_tensor(torch.as_tensor([[1, 2, 3, 4, 5, 6]], device='cpu', dtype=torch.float32))
         assert boxes.to(device=device)._boxes.device == device
         assert boxes.to(dtype=dtype)._boxes.dtype == dtype
