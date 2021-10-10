@@ -11,7 +11,14 @@ class Lambda(nn.Module):
         func: Callable function.
 
     Returns:
-        A torch.Tensor which is the output of the user-defined lambda
+        The output of the user-defined lambda.
+
+    Example:
+        >>> import kornia
+        >>> x = torch.rand(1, 3, 5, 5)
+        >>> f = Lambda(lambda x: kornia.color.rgb_to_grayscale(x))
+        >>> f(x).shape
+        torch.Size([1, 1, 5, 5])
     """
 
     def __init__(self, func: Callable) -> None:
