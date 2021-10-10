@@ -50,6 +50,7 @@ class RANSAC(nn.Module):
         self.model_type = model_type
         self.confidence = confidence
         self.max_lo_iters = max_lo_iters
+        self.model_type = model_type
         if model_type == 'homography':
             self.error_fn = symmetric_transfer_error  # type: ignore
             self.minimal_solver = find_homography_dlt  # type: ignore
@@ -131,7 +132,7 @@ class RANSAC(nn.Module):
         main_diagonal = torch.diagonal(models,
                                        dim1=1,
                                        dim2=2)
-        mask = main_diagonal.abs().min(dim=1)[0] > 1e-6
+        mask = main_diagonal.abs().min(dim=1)[0] > 1e-4
         return models[mask]
 
     def polish_model(self,
