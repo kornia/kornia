@@ -20,6 +20,16 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) 
 
     Returns:
         Undistorted 2D points with shape :math:`(*, N, 2)`.
+    
+    Example:
+        >>> x = torch.rand(1, 4, 2)
+        >>> K = torch.eye(3)[None]
+        >>> dist = torch.rand(1, 4)
+        >>> undistort_points(x, K, dist)
+        tensor([[[ 0.6198,  0.5452],
+                 [ 0.7274,  0.6173],
+                 [ 0.7422, -0.7141],
+                 [ 0.5008, -0.1313]]])
     """
     if points.dim() < 2 and points.shape[-1] != 2: 
         raise ValueError(f'points shape is invalid. Got {points.shape}.')
