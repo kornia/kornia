@@ -10,3 +10,11 @@ yapf
 isort
 numpy
 scipy
+sphinx
+sphinx-autodoc-typehints
+sphinx-autodoc-defaultargs
+sphinx-copybutton
+sphinxcontrib.bibtex
+sphinxcontrib.youtube
+sphinx_design
+furo
