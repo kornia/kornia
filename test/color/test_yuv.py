@@ -118,7 +118,7 @@ class TestRgbToYuv420(BaseTester):
         refuv = torch.tensor([[[0]], [[0]]], dtype=torch.int8)
 
         resy = (kornia.color.rgb_to_yuv420(rgb)[0] * 255.0).type(torch.uint8)
-        resuv = (kornia.color.rgb_to_yuv420(rgb)[1] * 255.0).clip(-128, 127).type(torch.int8)
+        resuv = (kornia.color.rgb_to_yuv420(rgb)[1] * 255.0).clamp(-128, 127).type(torch.int8)
         assert_close(refy, resy)
         assert_close(refuv, resuv)
 
@@ -129,7 +129,7 @@ class TestRgbToYuv420(BaseTester):
         refuv = torch.tensor([[[0]], [[0]]], dtype=torch.int8)
 
         resy = (kornia.color.rgb_to_yuv420(rgb)[0] * 255.0).type(torch.uint8)
-        resuv = (kornia.color.rgb_to_yuv420(rgb)[1] * 255.0).clip(-128, 127).type(torch.int8)
+        resuv = (kornia.color.rgb_to_yuv420(rgb)[1] * 255.0).clamp(-128, 127).type(torch.int8)
         assert_close(refy, resy)
         assert_close(refuv, resuv)
 
@@ -140,7 +140,7 @@ class TestRgbToYuv420(BaseTester):
         refuv = torch.tensor([[[0]], [[0]]], dtype=torch.int8)
 
         resy = (kornia.color.rgb_to_yuv420(rgb)[0] * 255.0).type(torch.uint8)
-        resuv = (kornia.color.rgb_to_yuv420(rgb)[1] * 255.0).clip(-128, 127).type(torch.int8)
+        resuv = (kornia.color.rgb_to_yuv420(rgb)[1] * 255.0).clamp(-128, 127).type(torch.int8)
         assert_close(refy, resy)
         assert_close(refuv, resuv)
 
@@ -151,7 +151,7 @@ class TestRgbToYuv420(BaseTester):
         refuv = torch.tensor([[[-37]], [[127]]], dtype=torch.int8)
 
         resy = (kornia.color.rgb_to_yuv420(rgb)[0] * 255.0).type(torch.uint8)
-        resuv = (kornia.color.rgb_to_yuv420(rgb)[1] * 255.0).clip(-128, 127).type(torch.int8)
+        resuv = (kornia.color.rgb_to_yuv420(rgb)[1] * 255.0).clamp(-128, 127).type(torch.int8)
         assert_close(refy, resy)
         assert_close(refuv, resuv)
 
@@ -162,7 +162,7 @@ class TestRgbToYuv420(BaseTester):
         refuv = torch.tensor([[[111]], [[-25]]], dtype=torch.int8)
 
         resy = (kornia.color.rgb_to_yuv420(rgb)[0] * 255.0).type(torch.uint8)
-        resuv = (kornia.color.rgb_to_yuv420(rgb)[1] * 255.0).clip(-128, 127).type(torch.int8)
+        resuv = (kornia.color.rgb_to_yuv420(rgb)[1] * 255.0).clamp(-128, 127).type(torch.int8)
         assert_close(refy, resy)
         assert_close(refuv, resuv)
 
