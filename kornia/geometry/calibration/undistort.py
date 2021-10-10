@@ -95,7 +95,10 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) 
 
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/undistort.dispatch.cpp#L287
-def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) -> torch.Tensor:
+def undistort_image(
+    image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor,
+    normalize_image: bool = True
+) -> torch.Tensor:
     r"""Compensate an image for lens distortion.
 
     Radial :math:`(k_1, k_2, k_3, k_4, k_4, k_6)`,
@@ -138,6 +141,12 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
 
     # Remap image to undistort
     out = remap(image, mapx, mapy, align_corners=True)
-    out = torch.round(torch.clamp(out, 0, 255)).to(torch.uint8)
+
+    if normalize_image:
+        # Convert image to [0,1] range
+        out = out / 255.0
+    else:
+        # Convert image to uint8 and [0,255] range
+        out = torch.round(torch.clamp(out, 0, 255)).to(torch.uint8)
 
     return out
