@@ -112,8 +112,8 @@ class TestRgbToYuv420(BaseTester):
     def test_unit_white(self, device, dtype):  # skipcq: PYL-R0201
         rgb = torch.tensor([[[255, 255], [255, 255]], [[255, 255], [255, 255]], [[255, 255], [255, 255]]],
                            device=device, dtype=torch.uint8).type(dtype) / 255.0
-        refy = torch.tensor([[[255, 255], [255, 255]]], dtype=torch.uint8)
-        refuv = torch.tensor([[[0]], [[0]]], dtype=torch.int8)
+        refy = torch.tensor([[[255, 255], [255, 255]]], device=device, dtype=torch.uint8)
+        refuv = torch.tensor([[[0]], [[0]]], device=device, dtype=torch.int8)
 
         resy = (kornia.color.rgb_to_yuv420(rgb)[0] * 255.0).round().type(torch.uint8)
         resuv = (kornia.color.rgb_to_yuv420(rgb)[1] * 255.0).round().clamp(-128, 127).type(torch.int8)
@@ -123,8 +123,8 @@ class TestRgbToYuv420(BaseTester):
     def test_unit_black(self, device, dtype):  # skipcq: PYL-R0201
         rgb = torch.tensor([[[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]]],
                            device=device, dtype=torch.uint8).type(dtype) / 255.0
-        refy = torch.tensor([[[0, 0], [0, 0]]], dtype=torch.uint8)
-        refuv = torch.tensor([[[0]], [[0]]], dtype=torch.int8)
+        refy = torch.tensor([[[0, 0], [0, 0]]], device=device, dtype=torch.uint8)
+        refuv = torch.tensor([[[0]], [[0]]], device=device, dtype=torch.int8)
 
         resy = (kornia.color.rgb_to_yuv420(rgb)[0] * 255.0).round().type(torch.uint8)
         resuv = (kornia.color.rgb_to_yuv420(rgb)[1] * 255.0).round().clamp(-128, 127).type(torch.int8)
@@ -134,8 +134,8 @@ class TestRgbToYuv420(BaseTester):
     def test_unit_gray(self, device, dtype):  # skipcq: PYL-R0201
         rgb = torch.tensor([[[127, 127], [127, 127]], [[127, 127], [127, 127]], [[127, 127], [127, 127]]],
                            device=device, dtype=torch.uint8).type(dtype) / 255.0
-        refy = torch.tensor([[[127, 127], [127, 127]]], dtype=torch.uint8)
-        refuv = torch.tensor([[[0]], [[0]]], dtype=torch.int8)
+        refy = torch.tensor([[[127, 127], [127, 127]]], device=device, dtype=torch.uint8)
+        refuv = torch.tensor([[[0]], [[0]]], device=device, dtype=torch.int8)
 
         resy = (kornia.color.rgb_to_yuv420(rgb)[0] * 255.0).round().type(torch.uint8)
         resuv = (kornia.color.rgb_to_yuv420(rgb)[1] * 255.0).round().clamp(-128, 127).type(torch.int8)
@@ -145,8 +145,8 @@ class TestRgbToYuv420(BaseTester):
     def test_unit_red(self, device, dtype):  # skipcq: PYL-R0201
         rgb = torch.tensor([[[255, 255], [255, 255]], [[0, 0], [0, 0]], [[0, 0], [0, 0]]],
                            device=device, dtype=torch.uint8).type(dtype) / 255.0
-        refy = torch.tensor([[[76, 76], [76, 76]]], dtype=torch.uint8)
-        refuv = torch.tensor([[[-37]], [[127]]], dtype=torch.int8)
+        refy = torch.tensor([[[76, 76], [76, 76]]], device=device, dtype=torch.uint8)
+        refuv = torch.tensor([[[-37]], [[127]]], device=device, dtype=torch.int8)
 
         resy = (kornia.color.rgb_to_yuv420(rgb)[0] * 255.0).round().type(torch.uint8)
         resuv = (kornia.color.rgb_to_yuv420(rgb)[1] * 255.0).round().clamp(-128, 127).type(torch.int8)
@@ -156,8 +156,8 @@ class TestRgbToYuv420(BaseTester):
     def test_unit_blue(self, device, dtype):  # skipcq: PYL-R0201
         rgb = torch.tensor([[[0, 0], [0, 0]], [[0, 0], [0, 0]], [[255, 255], [255, 255]]],
                            device=device, dtype=torch.uint8).type(dtype) / 255.0
-        refy = torch.tensor([[[29, 29], [29, 29]]], dtype=torch.uint8)
-        refuv = torch.tensor([[[111]], [[-25]]], dtype=torch.int8)
+        refy = torch.tensor([[[29, 29], [29, 29]]], device=device, dtype=torch.uint8)
+        refuv = torch.tensor([[[111]], [[-25]]], device=device, dtype=torch.int8)
 
         resy = (kornia.color.rgb_to_yuv420(rgb)[0] * 255.0).type(torch.uint8)
         resuv = (kornia.color.rgb_to_yuv420(rgb)[1] * 255.0).clamp(-128, 127).type(torch.int8)
@@ -380,7 +380,7 @@ class TestYuv420ToRgb(BaseTester):
     # ref values manually checked vs rec 601
     def test_unit_white(self, device, dtype):  # skipcq: PYL-R0201
         refrgb = torch.tensor([[[255, 255], [255, 255]], [[255, 255], [255, 255]], [[255, 255], [255, 255]]],
-                              dtype=torch.uint8)
+                              device=device, dtype=torch.uint8)
         y = torch.tensor([[[255, 255], [255, 255]]], device=device, dtype=torch.uint8).type(dtype) / 255.0
         uv = torch.tensor([[[0]], [[0]]], dtype=torch.int8).type(torch.float) / 255.0
 
@@ -389,7 +389,7 @@ class TestYuv420ToRgb(BaseTester):
 
     def test_unit_red(self, device, dtype):  # skipcq: PYL-R0201
         refrgb = torch.tensor([[[221, 221], [221, 221]], [[17, 17], [17, 17]], [[1, 1], [1, 1]]],
-                              dtype=torch.uint8)
+                              device=device, dtype=torch.uint8)
         y = torch.tensor([[[76, 76], [76, 76]]], device=device, dtype=torch.uint8).type(dtype) / 255.0
         uv = torch.tensor([[[-37]], [[127]]], dtype=torch.int8).type(torch.float) / 255.0
 
