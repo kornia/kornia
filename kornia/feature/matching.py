@@ -1,6 +1,8 @@
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict
 
 import torch
+import torch.nn as nn
+
 from kornia.feature import extract_patches_from_pyramid, get_laf_center
 
 def match_nn(
