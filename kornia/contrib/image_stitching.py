@@ -35,7 +35,7 @@ class ImageStitcher(nn.Module):
         self.estimator = estimator
         self.blending_method = blending_method
         if estimator not in ['ransac', 'vanilla']:
-            raise NotImplementedError
+            raise NotImplementedError(f"Unsupported estimator {estimator}. Use ‘ransac’ or ‘vanilla’ instead.")
         if estimator == "ransac":
             self.ransac = K.geometry.RANSAC('homography')
 
@@ -56,7 +56,7 @@ class ImageStitcher(nn.Module):
             homo, _ = self.ransac(keypoints2, keypoints1)
             homo = homo[None]
         else:
-            raise NotImplementedError
+            raise NotImplementedError(f"Unsupported estimator {estimator}. Use ‘ransac’ or ‘vanilla’ instead.")
         return homo
 
     def estimate_transform(self, **kwargs) -> torch.Tensor:
@@ -78,7 +78,7 @@ class ImageStitcher(nn.Module):
         if self.blending_method == "naive":
             out = torch.where(mask == 1, src_img, dst_img)
         else:
-            raise NotImplementedError
+            raise NotImplementedError(f"Unsupported blending method {blending_method}. Use ‘naive’.")
         return out
 
     def preprocess(self, image_1: torch.Tensor, image_2: torch.Tensor):
@@ -90,7 +90,7 @@ class ImageStitcher(nn.Module):
                 "image1": K.color.rgb_to_grayscale(image_2)
             }
         else:
-            raise NotImplementedError
+            raise NotImplementedError(f"The preprocessor for {self.matcher} has not been implmented.")
         return input_dict
 
     def forward(self, images_left: torch.Tensor, images_right: torch.Tensor) -> torch.Tensor:
