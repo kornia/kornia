@@ -11,8 +11,6 @@ from kornia.geometry.transform.imgwarp import angle_to_rotation_matrix
 from kornia.geometry.transform.pyramid import build_pyramid
 from kornia.testing import check_is_tensor
 
-
-
 __all__ = [
     "ImageRegistrator",
     "Homography",

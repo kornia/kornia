@@ -1,9 +1,10 @@
-from typing import Optional, Tuple, Dict
+from typing import Dict, Optional, Tuple
 
 import torch
 import torch.nn as nn
 
 from kornia.feature import extract_patches_from_pyramid, get_laf_center
+
 
 def match_nn(
     desc1: torch.Tensor, desc2: torch.Tensor, dm: Optional[torch.Tensor] = None
@@ -187,7 +188,10 @@ def match_smnn(
 
 
 class DescriptorMatcher(nn.Module):
-    """Module version of matching functions. See :function:`~kornia.feature.match_snn` for details"""
+    """Module version of matching functions.
+
+    See :function:`~kornia.feature.match_snn` for details
+    """
     known_modes = ['nn', 'mnn', 'snn', 'smnn']
     def __init__(self, match_mode: str = 'snn', th: float = 0.8) -> None:
         super().__init__()
