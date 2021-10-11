@@ -4,6 +4,7 @@ from typing import Tuple, Union
 import torch
 
 from kornia.geometry.epipolar import numeric
+from kornia.utils._compat import linalg_qr
 
 
 def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:
@@ -131,7 +132,7 @@ def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tenso
     # Trick to turn QR-decomposition into RQ-decomposition
     reverse = torch.tensor([[0, 0, 1], [0, 1, 0], [1, 0, 0]], device=P.device, dtype=P.dtype).unsqueeze(0)
     submat_3x3 = torch.matmul(reverse, submat_3x3).permute(0, 2, 1)
-    ortho_mat, upper_mat = torch.linalg.qr(submat_3x3)
+    ortho_mat, upper_mat = linalg_qr(submat_3x3)
     ortho_mat = torch.matmul(reverse, ortho_mat.permute(0, 2, 1))
     upper_mat = torch.matmul(reverse, torch.matmul(upper_mat.permute(0, 2, 1), reverse))
 
