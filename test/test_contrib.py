@@ -1,6 +1,6 @@
 import pytest
-from mock import patch, PropertyMock
 import torch
+from unittest.mock import patch, PropertyMock
 from torch.autograd import gradcheck
 
 import kornia
