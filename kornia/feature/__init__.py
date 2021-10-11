@@ -37,7 +37,14 @@ from .laf import (
     scale_laf,
     set_laf_orientation,
 )
-from .matching import match_mnn, match_nn, match_smnn, match_snn
+from .matching import (
+    match_mnn,
+    match_nn,
+    match_smnn,
+    match_snn,
+    DescriptorMatcher,
+    LocalFeatureMatcher,
+)
 from .mkd import MKDDescriptor
 from .orientation import LAFOrienter, OriNet, PatchDominantGradientOrientation
 from .scale_space_detector import PassLAF, ScaleSpaceDetector
@@ -95,5 +102,7 @@ __all__ = [
     "match_mnn",
     "match_snn",
     "match_smnn",
+    "DescriptorMatcher",
     "LoFTR",
+    "LocalFeatureMatcher",
 ]
