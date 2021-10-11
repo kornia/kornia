@@ -322,12 +322,12 @@ class TestLambdaModule:
 class TestImageStitcher:
 
     @pytest.mark.parametrize("estimator", ['ransac', 'vanilla'])
-    def test_smoke(self, device, dtype):
+    def test_smoke(self, estimator, device, dtype):
         B, C, H, W = 1, 3, 224, 224
         input1 = torch.rand(B, C, H, W, device=device, dtype=dtype)
         input2 = torch.rand(B, C, H, W, device=device, dtype=dtype)
         # NOTE: This will need to download the pretrained weights.
-        matcher = kornia.feature.LoFTR()
+        matcher = kornia.feature.LoFTR(estimator=estimator)
         stitcher = kornia.contrib.ImageStitcher(matcher).to(device=device, dtype=dtype)
         assert stitcher(input1, input2).shape == torch.Size([1, 3, 224, 448])
 
