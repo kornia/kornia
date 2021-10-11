@@ -129,7 +129,7 @@ def undistort_image(
         image = image.float()
 
     # Create point coordinates for each pixel of the image
-    xy_grid: torch.Tensor = kornia.utils.create_meshgrid(rows, cols, False, image.device)
+    xy_grid: torch.Tensor = kornia.utils.create_meshgrid(rows, cols, False, image.device, image.dtype)
     pts: torch.Tensor = torch.cat(
         [xy_grid[..., 0].reshape(-1, 1), xy_grid[..., 1].reshape(-1, 1)], 1
     )  # (rows*cols)x2
