@@ -279,8 +279,8 @@ class LocalFeatureMatcher(nn.Module):
           lafs1, descs1 = feats_dict1['lafs'], feats_dict1['descriptors'],
         else:
           lafs1, descs1 = data['lafs1'], data['descriptors1']
-        keypoints0 = KF.get_laf_center(lafs0)
-        keypoints1 = KF.get_laf_center(lafs1)
+        keypoints0 = get_laf_center(lafs0)
+        keypoints1 = get_laf_center(lafs1)
 
         out_keypoints0 = []
         out_keypoints1 = []
