@@ -1,4 +1,5 @@
 import pytest
+from mock import patch, PropertyMock
 import torch
 from torch.autograd import gradcheck
 
@@ -326,10 +327,22 @@ class TestImageStitcher:
         B, C, H, W = 1, 3, 224, 224
         input1 = torch.rand(B, C, H, W, device=device, dtype=dtype)
         input2 = torch.rand(B, C, H, W, device=device, dtype=dtype)
-        # NOTE: This will need to download the pretrained weights.
-        matcher = kornia.feature.LoFTR()
-        stitcher = kornia.contrib.ImageStitcher(matcher, estimator=estimator).to(device=device, dtype=dtype)
-        assert stitcher(input1, input2).shape == torch.Size([1, 3, 224, 448])
+        return_value = {
+            "keypoints0": torch.rand((15, 2), device=device, dtype=dtype),
+            "keypoints1": torch.rand((15, 2), device=device, dtype=dtype),
+            "confidence": torch.rand((15,), device=device, dtype=dtype),
+            "batch_indexes": torch.zeros((15,), device=device, dtype=dtype)
+        }
+        with patch(
+            'kornia.contrib.ImageStitcher.on_matcher',
+            new_callable=PropertyMock, return_value=lambda x: return_value
+        ):
+            # NOTE: This will need to download the pretrained weights.
+            # To avoid that, we mock as below
+            matcher = kornia.feature.LoFTR(None)
+            stitcher = kornia.contrib.ImageStitcher(matcher, estimator=estimator).to(device=device, dtype=dtype)
+            # stitcher.matcher.return_value = return_value
+            assert stitcher(input1, input2).shape == torch.Size([1, 3, 224, 448])
 
     def test_exception(self, device, dtype):
         B, C, H, W = 1, 3, 224, 224

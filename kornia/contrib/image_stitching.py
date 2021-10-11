@@ -56,7 +56,7 @@ class ImageStitcher(nn.Module):
             homo, _ = self.ransac(keypoints2, keypoints1)
             homo = homo[None]
         else:
-            raise NotImplementedError(f"Unsupported estimator {estimator}. Use ‘ransac’ or ‘vanilla’ instead.")
+            raise NotImplementedError(f"Unsupported estimator {self.estimator}. Use ‘ransac’ or ‘vanilla’ instead.")
         return homo
 
     def estimate_transform(self, **kwargs) -> torch.Tensor:
@@ -78,7 +78,7 @@ class ImageStitcher(nn.Module):
         if self.blending_method == "naive":
             out = torch.where(mask == 1, src_img, dst_img)
         else:
-            raise NotImplementedError(f"Unsupported blending method {blending_method}. Use ‘naive’.")
+            raise NotImplementedError(f"Unsupported blending method {self.blending_method}. Use ‘naive’.")
         return out
 
     def preprocess(self, image_1: torch.Tensor, image_2: torch.Tensor):
@@ -93,11 +93,14 @@ class ImageStitcher(nn.Module):
             raise NotImplementedError(f"The preprocessor for {self.matcher} has not been implmented.")
         return input_dict
 
+    def on_matcher(self, input) -> dict:
+        return self.matcher(input)
+
     def forward(self, images_left: torch.Tensor, images_right: torch.Tensor) -> torch.Tensor:
         # TODO: accept a list of images for composing paranoma
         input = self.preprocess(images_left, images_right)
         mask = self.compute_mask(images_left, images_right)
-        correspondences = self.matcher(input)
+        correspondences = self.on_matcher(input)
         homo = self.estimate_transform(**correspondences)
         src_img = K.geometry.warp_perspective(images_right, homo, (mask.shape[-2], mask.shape[-1]))
         dst_img = torch.cat([images_left, torch.zeros_like(images_right)], dim=-1)
