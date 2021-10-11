@@ -39,7 +39,7 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) 
         raise ValueError(f'K matrix shape is invalid. Got {K.shape}.')
 
     if dist.shape[-1] not in [4, 5, 8, 12, 14]:
-        raise ValueError(f'Invalid number of distortion coefficients. Got {dist.shape[-1]}')
+        raise ValueError(f"Invalid number of distortion coefficients. Got {dist.shape[-1]}")
 
     # Adding zeros to obtain vector with 14 coeffs.
     if dist.shape[-1] < 14:

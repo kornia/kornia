@@ -3,7 +3,7 @@ import torch
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/distortion_model.hpp#L75
 def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool = False) -> torch.Tensor:
-    r"""Estimate the tilt projection matrix or the inverse tilt projection matrix
+    r"""Estimate the tilt projection matrix or the inverse tilt projection matrix.
 
     Args:
         taux: Rotation angle in radians around the :math:`x`-axis with shape :math:`(*, 1)`.
@@ -43,7 +43,6 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
 
         return invTilt
 
-    else:
         Pz = torch.stack(
             [R[..., 2, 2], zero, -R[..., 0, 2], zero, R[..., 2, 2], -R[..., 1, 2], zero, zero, one], -1
         ).reshape(-1, 3, 3)
