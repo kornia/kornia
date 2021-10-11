@@ -79,7 +79,11 @@ def filter2d(
         raise TypeError(f"Input border_type is not torch.Tensor. Got {type(kernel)}")
 
     if not isinstance(border_type, str):
-        raise TypeError(f"Input border_type is not string. Got {type(kernel)}")
+        raise TypeError(f"Input border_type is not string. Got {type(border_type)}")
+
+    if border_type not in ['constant', 'reflect', 'replicate', 'circular']:
+        raise ValueError(f"Invalid border type, we expect 'constant', \
+        'reflect', 'replicate', 'circular'. Got:{border_type}")
 
     if not isinstance(padding, str):
         raise TypeError(f"Input padding is not string. Got {type(padding)}")
