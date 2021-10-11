@@ -327,8 +327,8 @@ class TestImageStitcher:
         input1 = torch.rand(B, C, H, W, device=device, dtype=dtype)
         input2 = torch.rand(B, C, H, W, device=device, dtype=dtype)
         # NOTE: This will need to download the pretrained weights.
-        matcher = kornia.feature.LoFTR(estimator=estimator)
-        stitcher = kornia.contrib.ImageStitcher(matcher).to(device=device, dtype=dtype)
+        matcher = kornia.feature.LoFTR()
+        stitcher = kornia.contrib.ImageStitcher(matcher, estimator=estimator).to(device=device, dtype=dtype)
         assert stitcher(input1, input2).shape == torch.Size([1, 3, 224, 448])
 
     def test_exception(self, device, dtype):
