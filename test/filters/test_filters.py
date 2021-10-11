@@ -8,19 +8,36 @@ from kornia.testing import assert_close
 
 
 class TestFilter2D:
-    def test_smoke(self, device, dtype):
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    def test_smoke(self, padding, device, dtype):
         kernel = torch.rand(1, 3, 3, device=device, dtype=dtype)
+        _, height, width = kernel.shape
         input = torch.ones(1, 1, 7, 8, device=device, dtype=dtype)
-        assert kornia.filter2d(input, kernel).shape == input.shape
+        b, c, h, w = input.shape
+        if padding == 'same':
+            out = kornia.filter2d(input, kernel, padding=padding)
+            assert out.shape == (b, c, h, w)
+        else:
+            out = kornia.filter2d(input, kernel, padding=padding)
+            assert out.shape == (b, c, h - height + 1, w - width + 1)
 
     @pytest.mark.parametrize("batch_size", [2, 3, 6, 8])
-    def test_batch(self, batch_size, device, dtype):
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    def test_batch(self, batch_size, padding, device, dtype):
         B: int = batch_size
         kernel = torch.rand(1, 3, 3, device=device, dtype=dtype)
+        _, height, width = kernel.shape
         input = torch.ones(B, 3, 7, 8, device=device, dtype=dtype)
-        assert kornia.filter2d(input, kernel).shape == input.shape
+        b, c, h, w = input.shape
+        if padding == 'same':
+            out = kornia.filter2d(input, kernel, padding=padding)
+            assert out.shape == (b, c, h, w)
+        else:
+            out = kornia.filter2d(input, kernel, padding=padding)
+            assert out.shape == (b, c, h - height + 1, w - width + 1)
 
-    def test_mean_filter(self, device, dtype):
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    def test_mean_filter(self, padding, device, dtype):
         kernel = torch.ones(1, 3, 3, device=device, dtype=dtype)
         input = torch.tensor(
             [
@@ -37,7 +54,7 @@ class TestFilter2D:
             device=device,
             dtype=dtype,
         )
-        expected = torch.tensor(
+        expected_same = torch.tensor(
             [
                 [
                     [
@@ -53,10 +70,28 @@ class TestFilter2D:
             dtype=dtype,
         )
 
-        actual = kornia.filter2d(input, kernel)
-        assert_close(actual, expected)
+        expected_valid = torch.tensor(
+            [
+                [
+                    [
+                        [5.0, 5.0, 5.0],
+                        [5.0, 5.0, 5.0],
+                        [5.0, 5.0, 5.0],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
-    def test_mean_filter_2batch_2ch(self, device, dtype):
+        actual = kornia.filter2d(input, kernel, padding=padding)
+        if padding == 'same':
+            assert_close(actual, expected_same)
+        else:
+            assert_close(actual, expected_valid)
+
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    def test_mean_filter_2batch_2ch(self, padding, device, dtype):
         kernel = torch.ones(1, 3, 3, device=device, dtype=dtype)
         input = torch.tensor(
             [
@@ -74,7 +109,7 @@ class TestFilter2D:
             dtype=dtype,
         ).expand(2, 2, -1, -1)
 
-        expected = torch.tensor(
+        expected_same = torch.tensor(
             [
                 [
                     [
@@ -90,10 +125,28 @@ class TestFilter2D:
             dtype=dtype,
         ).expand(2, 2, -1, -1)
 
-        actual = kornia.filter2d(input, kernel)
-        assert_close(actual, expected)
+        expected_valid = torch.tensor(
+            [
+                [
+                    [
+                        [5.0, 5.0, 5.0],
+                        [5.0, 5.0, 5.0],
+                        [5.0, 5.0, 5.0],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        ).expand(2, 2, -1, -1)
 
-    def test_normalized_mean_filter(self, device, dtype):
+        actual = kornia.filter2d(input, kernel, padding=padding)
+        if padding == 'same':
+            assert_close(actual, expected_same)
+        else:
+            assert_close(actual, expected_valid)
+
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    def test_normalized_mean_filter(self, padding, device, dtype):
         kernel = torch.ones(1, 3, 3).to(device)
         input = torch.tensor(
             [
@@ -112,7 +165,7 @@ class TestFilter2D:
         ).expand(2, 2, -1, -1)
 
         nv: float = 5.0 / 9  # normalization value
-        expected = torch.tensor(
+        expected_same = torch.tensor(
             [
                 [
                     [
@@ -128,12 +181,30 @@ class TestFilter2D:
             dtype=dtype,
         ).expand(2, 2, -1, -1)
 
-        actual = kornia.filter2d(input, kernel, normalized=True)
+        expected_valid = torch.tensor(
+            [
+                [
+                    [
+                        [nv, nv, nv],
+                        [nv, nv, nv],
+                        [nv, nv, nv],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        ).expand(2, 2, -1, -1)
+
+        actual = kornia.filter2d(input, kernel, normalized=True, padding=padding)
 
         tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
-        assert_close(actual, expected, rtol=tol_val, atol=tol_val)
+        if padding == 'same':
+            assert_close(actual, expected_same, rtol=tol_val, atol=tol_val)
+        else:
+            assert_close(actual, expected_valid, rtol=tol_val, atol=tol_val)
 
-    def test_even_sized_filter(self, device, dtype):
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    def test_even_sized_filter(self, padding, device, dtype):
         kernel = torch.ones(1, 2, 2, device=device, dtype=dtype)
         input = torch.tensor(
             [
@@ -151,7 +222,7 @@ class TestFilter2D:
             dtype=dtype,
         )
 
-        expected = torch.tensor(
+        expected_same = torch.tensor(
             [
                 [
                     [
@@ -167,15 +238,34 @@ class TestFilter2D:
             dtype=dtype,
         )
 
-        actual = kornia.filter2d(input, kernel)
-        assert_close(actual, expected)
+        expected_valid = torch.tensor(
+            [
+                [
+                    [
+                        [0.0, 0.0, 0.0, 0.0],
+                        [0.0, 5.0, 5.0, 0.0],
+                        [0.0, 5.0, 5.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
-    def test_noncontiguous(self, device, dtype):
+        actual = kornia.filter2d(input, kernel, padding=padding)
+        if padding == 'same':
+            assert_close(actual, expected_same)
+        else:
+            assert_close(actual, expected_valid)
+
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    def test_noncontiguous(self, padding, device, dtype):
         batch_size = 3
         inp = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
         kernel = torch.ones(1, 2, 2, device=device, dtype=dtype)
 
-        actual = kornia.filter2d(inp, kernel)
+        actual = kornia.filter2d(inp, kernel, padding=padding)
         assert_close(actual, actual)
 
     def test_gradcheck(self, device):
@@ -187,14 +277,15 @@ class TestFilter2D:
         kernel = utils.tensor_to_gradcheck_var(kernel)  # to var
         assert gradcheck(kornia.filter2d, (input, kernel), raise_exception=True)
 
-    def test_jit(self, device, dtype):
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    def test_jit(self, padding, device, dtype):
         op = kornia.filter2d
         op_script = torch.jit.script(op)
 
         kernel = torch.rand(1, 3, 3, device=device, dtype=dtype)
         input = torch.ones(1, 1, 7, 8, device=device, dtype=dtype)
-        expected = op(input, kernel)
-        actual = op_script(input, kernel)
+        expected = op(input, kernel, padding=padding)
+        actual = op_script(input, kernel, padding=padding)
         assert_close(actual, expected)
 
 
