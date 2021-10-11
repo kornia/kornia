@@ -4,6 +4,7 @@ from torch.autograd import gradcheck
 
 import kornia
 from kornia.testing import assert_close, tensor_to_gradcheck_var
+from kornia.geometry.calibration.pnp import _mean_isotropic_scale_normalize
 
 
 class TestSolvePnpDlt:
@@ -134,8 +135,35 @@ class TestSolvePnpDlt:
 
         # Different tolerances for dtype torch.float32
         if dtype == torch.float32:
-            atol, rtol = 1e-5, 1e-2
+            atol, rtol = 1e-5, 4e-2
         else:
             atol, rtol = 1e-5, 1e-4
 
         assert_close(pred_img_points, img_points, atol=atol, rtol=rtol)
+
+
+class TestNormalization:
+
+    @pytest.mark.parametrize("dimension", (2, 3, 5))
+    def test_smoke(self, dimension, device, dtype):
+
+        batch_size = 10
+        num_points = 100
+        points = torch.rand((batch_size, num_points, dimension), device=device, dtype=dtype)
+        points_norm, transform = _mean_isotropic_scale_normalize(points)
+
+        assert points_norm.shape == (batch_size, num_points, dimension)
+        assert transform.shape == (batch_size, dimension + 1, dimension + 1)
+
+    @pytest.mark.parametrize("dimension", (2, 3, 5))
+    def test_gradcheck(self, dimension, device, dtype):
+
+        batch_size = 3
+        num_points = 5
+        points = torch.rand((batch_size, num_points, dimension), device=device, dtype=dtype)
+        points = tensor_to_gradcheck_var(points)
+
+        assert gradcheck(
+            _mean_isotropic_scale_normalize,
+            (points,), raise_exception=True,
+        )

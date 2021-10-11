@@ -7,7 +7,7 @@ from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.linalg import compose_transformations, transform_points
 
 
-def mean_isotropic_scale_normalize(
+def _mean_isotropic_scale_normalize(
     points: torch.Tensor, eps: float = 1e-8
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Normalizes points.
@@ -17,12 +17,15 @@ def mean_isotropic_scale_normalize(
        eps : Small value to avoid division by zero error.
 
     Returns:
-       tuple containing the normalized points in the shape :math:`(B, N, D)` and the transformation matrix
+       Tuple containing the normalized points in the shape :math:`(B, N, D)` and the transformation matrix
        in the shape :math:`(B, D+1, D+1)`.
 
     """
+    if type(points) is not torch.Tensor:
+        raise TypeError(f"Type of points is not torch.Tensor. Got {type(points)}")
+
     if len(points.shape) != 3:
-        raise AssertionError(points.shape)
+        raise AssertionError(f"points must be of shape (B, N, D). Got shape {points.shape}.")
 
     x_mean = torch.mean(points, dim=1, keepdim=True)  # Bx1xD
     scale = (points - x_mean).norm(dim=-1, p=2).mean(dim=-1)  # B
@@ -36,7 +39,7 @@ def mean_isotropic_scale_normalize(
     transform[:, idxs, idxs] = transform[:, idxs, idxs] * scale[:, None]
     transform[:, idxs, D_int] = transform[:, idxs, D_int] + (-scale[:, None] * x_mean[:, 0, idxs])
 
-    points_norm = kornia.transform_points(transform, points)  # BxNxD
+    points_norm = transform_points(transform, points)  # BxNxD
 
     return (points_norm, transform)
 
@@ -44,7 +47,7 @@ def mean_isotropic_scale_normalize(
 def solve_pnp_dlt(
     world_points: torch.Tensor, img_points: torch.Tensor,
     intrinsics: torch.Tensor, weights: Optional[torch.Tensor] = None,
-    eps: float = 1e-8,
+    svd_eps: float = 1e-4, norm_eps: float = 1e-8,
 ) -> torch.Tensor:
     r"""This function attempts to solve the Perspective-n-Point (PnP)
     problem using Direct Linear Transform (DLT).
@@ -56,9 +59,16 @@ def solve_pnp_dlt(
     world to camera transformation matrices.
 
     This implementation needs at least 6 points (i.e. :math:`N \geq 6`) to
-    provide solutions. This function cannot be used if all the 3D world
-    points (of any element of the batch) lie on a line or if all the
-    3D world points (of any element of the batch) lie on a plane.
+    provide solutions.
+
+    This function cannot be used if all the 3D world points (of any element
+    of the batch) lie on a line or if all the 3D world points (of any element
+    of the batch) lie on a plane. This function attempts to check for these
+    conditions and throws an AssertionError if found. Do note that this check
+    is sensitive to the value of the svd_eps parameter.
+
+    Another bad condition occurs when the camera and the points lie on a
+    twisted cubic. However, this function does not check for this condition.
 
     Args:
         world_points : A tensor with shape :math:`(B, N, 3)` representing
@@ -69,8 +79,8 @@ def solve_pnp_dlt(
           the intrinsic matrices.
         weights : This parameter is not used currently and is just a
           placeholder for API consistency.
-        eps : A small float value to avoid numerical precision issues
-          and division by zero errors.
+        svd_eps : A small float value to avoid numerical precision issues.
+        norm_eps : A small float value to avoid division by zero errors.
 
     Returns:
         A tensor with shape :math:`(B, 3, 4)` representing the estimated world to
@@ -95,8 +105,14 @@ def solve_pnp_dlt(
     if type(intrinsics) is not torch.Tensor:
         raise TypeError(f"Type of intrinsics is not torch.Tensor. Got {type(intrinsics)}")
 
-    if type(eps) is not float:
-        raise TypeError(f"Type of eps is not float. Got {type(world_points)}")
+    if (weights is not None) and (type(weights) is not torch.Tensor):
+        raise TypeError(f"If weights is not None, then type of weights should be torch.Tensor. Got {type(weights)}")
+
+    if type(svd_eps) is not float:
+        raise TypeError(f"Type of svd_eps is not float. Got {type(svd_eps)}")
+
+    if type(norm_eps) is not float:
+        raise TypeError(f"Type of norm_eps is not float. Got {type(norm_eps)}")
 
     if (len(world_points.shape) != 3) or (world_points.shape[2] != 3):
         raise AssertionError(
@@ -125,39 +141,39 @@ def solve_pnp_dlt(
             f"Got {world_points.shape[1]} points."
         )
 
-    # torch.set_printoptions(precision=6, sci_mode=False)
     B, N = world_points.shape[:2]
 
     # Getting normalized world points.
-    norm_world_points, norm_world_transform = mean_isotropic_scale_normalize(world_points)
+    world_points_norm, world_transform_norm = _mean_isotropic_scale_normalize(world_points)
 
-    # Checking if world_points (of any element of the batch) has rank = 3. This
-    # function cannot be used if all world_points (of any element of the batch) lie
+    # Checking if world_points_norm (of any element of the batch) has rank = 3. This
+    # function cannot be used if all world points (of any element of the batch) lie
     # on a line or if all world points (of any element of the batch) lie on a plane.
-    _, s, _ = torch.svd(norm_world_points)
-    if torch.any(s[:, -1] < eps):
+    _, s, _ = torch.svd(world_points_norm)
+    if torch.any(s[:, -1] < svd_eps):
         raise AssertionError(
-            f"The last singular value is smaller than {eps}. This function "
-            f"cannot be used if all world_points (of any element of the batch) "
-            f"lie on a line or if all world_points (of any element of the batch) "
-            f"lie on a plane."
+            f"The last singular value of one/more of the elements of the batch is smaller "
+            f"than {svd_eps}. This function cannot be used if all world_points (of any "
+            f"element of the batch) lie on a line or if all world_points (of any "
+            f"element of the batch) lie on a plane."
         )
 
     intrinsics_inv = torch.inverse(intrinsics)
-    norm_world_points_h = convert_points_to_homogeneous(norm_world_points)
+    world_points_norm_h = convert_points_to_homogeneous(world_points_norm)
 
     # Transforming img_points with intrinsics_inv to get img_points_
     img_points_ = transform_points(intrinsics_inv, img_points)
+
     # Normalizing img_points_
-    norm_img_points, norm_img_transform = mean_isotropic_scale_normalize(img_points_)
-    inv_norm_img_transform = torch.inverse(norm_img_transform)
+    img_points_norm, img_transform_norm = _mean_isotropic_scale_normalize(img_points_)
+    inv_img_transform_norm = torch.inverse(img_transform_norm)
 
     # Setting up the system (the matrix A in Ax=0)
     system = torch.zeros((B, 2 * N, 12), dtype=world_points.dtype, device=world_points.device)
-    system[:, 0::2, 0:4] = norm_world_points_h
-    system[:, 1::2, 4:8] = norm_world_points_h
-    system[:, 0::2, 8:12] = norm_world_points_h * (-1) * norm_img_points[..., 0:1]
-    system[:, 1::2, 8:12] = norm_world_points_h * (-1) * norm_img_points[..., 1:2]
+    system[:, 0::2, 0:4] = world_points_norm_h
+    system[:, 1::2, 4:8] = world_points_norm_h
+    system[:, 0::2, 8:12] = world_points_norm_h * (-1) * img_points_norm[..., 0:1]
+    system[:, 1::2, 8:12] = world_points_norm_h * (-1) * img_points_norm[..., 1:2]
 
     # Getting the solution vectors.
     _, _, v = torch.svd(system)
@@ -165,6 +181,14 @@ def solve_pnp_dlt(
 
     # Reshaping the solution vectors to the correct shape.
     solution = solution.reshape(B, 3, 4)
+
+    # Creating solution_4x4
+    solution_4x4 = kornia.eye_like(4, solution)
+    solution_4x4[:, :3, :] = solution
+
+    # De-normalizing the solution
+    temp = torch.bmm(solution_4x4, world_transform_norm)
+    solution = torch.bmm(inv_img_transform_norm, temp[:, :3, :])
 
     # We obtained one solution for each element of the batch. We may
     # need to multiply each solution with a scalar. This is because
@@ -185,21 +209,9 @@ def solve_pnp_dlt(
     # matrix should be 1. Here we use the 0th column to calculate norm_col.
     # We then multiply solution with mul_factor.
     norm_col = torch.sqrt(torch.sum(input=solution[:, :3, 0] ** 2, dim=1))
-    mul_factor = (1 / (norm_col + eps))[:, None, None]
-    solution = solution * mul_factor
+    mul_factor = (1 / (norm_col + norm_eps))[:, None, None]
+    pred_world_to_cam = solution * mul_factor
 
-    solution_4x4 = kornia.eye_like(4, solution)
-    solution_4x4[:, :3, :] = solution
-
-    # De-normalizing the solution
-    temp = torch.bmm(solution_4x4, norm_world_transform)
-    pred_world_to_cam = torch.bmm(inv_norm_img_transform, temp[:, :3, :])
-
-    # Fixing the scale of pred_world_to_cam
-    norm_col = torch.sqrt(torch.sum(input=pred_world_to_cam[:, :3, 0] ** 2, dim=1))
-    mul_factor = (1 / (norm_col + eps))[:, None, None]
-    pred_world_to_cam = pred_world_to_cam * mul_factor
-
-    # TODO: Implement algorithm to refine pred_world_to_cam
+    # TODO: Implement algorithm to refine the solution
 
     return pred_world_to_cam
