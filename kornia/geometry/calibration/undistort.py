@@ -127,9 +127,7 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
 
     # Create point coordinates for each pixel of the image
     xy_grid: torch.Tensor = kornia.utils.create_meshgrid(rows, cols, False, image.device, image.dtype)
-    pts: torch.Tensor = torch.cat(
-        [xy_grid[..., 0].reshape(-1, 1), xy_grid[..., 1].reshape(-1, 1)], 1
-    )  # (rows*cols)x2
+    pts = xy_grid.reshape(-1, 2)  # (rows*cols)x2 matrix of pixel coordinates
 
     # Distort points and define maps
     ptsd: torch.Tensor = distort_points(pts, K, dist)  # Bx(rows*cols)x2
