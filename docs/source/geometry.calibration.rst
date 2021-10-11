@@ -69,7 +69,7 @@ where :math:`r = \bar{u}^2 + \bar{v}^2`. With this model we consider radial :mat
 \end{align}
 `
 
-where :math:`\mathbf{R}(\tau_x, \tau_y)` is a 3D rotation matrix defined by an :math:`X` and :math:`Y` rotation given by the angles :math:`\tau_x` and :math:`\tau_y`. Furtheremore, :math:`\mathbf{R}_{ij}(\tau_x, \tau_y)` represent the :math:`i`-th row and :math:`j`-th column from :math:`\mathbf{R}(\tau_x, \tau_y)` matrix.
+where :math:`\mathbf{R}(\tau_x, \tau_y)` is a 3D rotation matrix defined by an :math:`X` and :math:`Y` rotation given by the angles :math:`\tau_x` and :math:`\tau_y`. Furthermore, :math:`\mathbf{R}_{ij}(\tau_x, \tau_y)` represent the :math:`i`-th row and :math:`j`-th column from :math:`\mathbf{R}(\tau_x, \tau_y)` matrix.
 
 :math:`
 \begin{align}
@@ -121,4 +121,4 @@ To compensate for lens distortion a set of 2D points, i.e., to estimate the undi
 
 .. autofunction:: distort_points
 
-.. autofunction:: tiltProjection
+.. autofunction:: tilt_projection
