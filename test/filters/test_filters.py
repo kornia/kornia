@@ -15,10 +15,11 @@ class TestFilter2D:
         input = torch.ones(1, 1, 7, 8, device=device, dtype=dtype)
         b, c, h, w = input.shape
         if padding == 'same':
-            assert kornia.filter2d(input, kernel, padding=padding).shape == (b, c, h, w)
+            out = kornia.filter2d(input, kernel, padding=padding)
+            assert out.shape == (b, c, h, w)
         else:
-            assert kornia.filter2d(
-                input, kernel, padding=padding).shape == (b, c, h - ((height // 2) * 2), w - ((width // 2) * 2))
+            out = kornia.filter2d(input, kernel, padding=padding)
+            assert out.shape == (b, c, h - height + 1, w - width + 1)
 
     @pytest.mark.parametrize("batch_size", [2, 3, 6, 8])
     @pytest.mark.parametrize("padding", ["same", "valid"])
@@ -29,10 +30,11 @@ class TestFilter2D:
         input = torch.ones(B, 3, 7, 8, device=device, dtype=dtype)
         b, c, h, w = input.shape
         if padding == 'same':
-            assert kornia.filter2d(input, kernel, padding=padding).shape == (b, c, h, w)
+            out = kornia.filter2d(input, kernel, padding=padding)
+            assert out.shape == (b, c, h, w)
         else:
-            assert kornia.filter2d(
-                input, kernel, padding=padding).shape == (b, c, h - ((height // 2) * 2), w - ((width // 2) * 2))
+            out = kornia.filter2d(input, kernel, padding=padding)
+            assert out.shape == (b, c, h - height + 1, w - width + 1)
 
     @pytest.mark.parametrize("padding", ["same", "valid"])
     def test_mean_filter(self, padding, device, dtype):

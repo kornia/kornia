@@ -51,7 +51,7 @@ def filter2d(
           ``'replicate'`` or ``'circular'``.
         normalized: If True, kernel will be L1 normalized.
         padding: This defines the type of padding.
-          2 modes available ``'same'`` or ``'valid'``
+          2 modes available ``'same'`` or ``'valid'``.
 
     Return:
         torch.Tensor: the convolved tensor of same size and numbers of channels
@@ -84,6 +84,9 @@ def filter2d(
     if not isinstance(padding, str):
         raise TypeError(f"Input padding is not string. Got {type(padding)}")
 
+    if padding not in ['valid', 'same']:
+        raise ValueError(f"Invalid padding mode, we expect 'valid' or 'same'. Got: {padding}")
+
     if not len(input.shape) == 4:
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
 
@@ -114,9 +117,11 @@ def filter2d(
     output = F.conv2d(input, tmp_kernel, groups=tmp_kernel.size(0), padding=0, stride=1)
 
     if padding == 'same':
-        return output.view(b, c, h, w)
+        out = output.view(b, c, h, w)
     else:
-        return output.view(b, c, h - height + 1, w - width + 1)
+        out = output.view(b, c, h - height + 1, w - width + 1)
+
+    return out
 
 
 def filter3d(
