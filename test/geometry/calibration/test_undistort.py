@@ -202,9 +202,54 @@ class TestUndistortImage:
         imu = undistort_image(im, K, distCoeff)
         assert imu.shape == (1, 3, 5, 5)
 
-    def test_gradcheck(self, device, dtype):
-        im = torch.rand(1, 1, 15, 15, device=device, dtype=dtype, requires_grad=True)
-        K = torch.rand(3, 3, device=device, dtype=dtype)
-        distCoeff = torch.rand(4, device=device, dtype=dtype)
+    def test_opencv(self, device, dtype):
+        im = torch.tensor(
+            [
+                [
+                    [
+                        [116, 75, 230, 5, 32],
+                        [9, 182, 97, 213, 3],
+                        [91, 10, 33, 141, 230],
+                        [229, 63, 221, 244, 61],
+                        [19, 137, 23, 59, 227]
+                    ]
+                ]
+            ],
+            device=device, dtype=dtype
+        )
+
+        K = torch.tensor(
+            [[2, 0, 2], [0, 2, 2], [0, 0, 1]],
+            device=device,
+            dtype=dtype
+        )
+
+        dist = torch.tensor([0.2290, 0.9565, 0.0083, 0.0475], device=device, dtype=dtype)
+
+        # Expected output generated with OpenCV:
+        # import cv2
+        # imu_expected = cv2.undistort(np.uint8(im[0,0].numpy()), K.numpy(), dist.numpy())
+        imu_expected = torch.tensor(
+            [
+                [
+                    [
+                        [0, 0, 0, 0, 0],
+                        [0, 124, 112, 82, 0],
+                        [0, 13, 33, 158, 0],
+                        [0, 108, 197, 150, 0],
+                        [0, 0, 0, 0, 0]
+                    ]
+                ]
+            ],
+            device=device, dtype=dtype
+        )
+
+        imu = undistort_image(im, K, dist)
+        assert_close(imu, imu_expected / 255., rtol=1e-2, atol=1e-2)
+
+    def test_gradcheck(self, device):
+        im = torch.rand(1, 1, 15, 15, device=device, dtype=torch.float64, requires_grad=True)
+        K = torch.rand(3, 3, device=device, dtype=torch.float64)
+        distCoeff = torch.rand(4, device=device, dtype=torch.float64)
 
         assert gradcheck(undistort_image, (im, K, distCoeff), raise_exception=True)
