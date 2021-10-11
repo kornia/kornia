@@ -125,7 +125,7 @@ def undistort_image(
         raise ValueError(f'Invalid number of distortion coefficients. Got {dist.shape[-1]}')
 
     B, _, rows, cols = image.shape
-    if image.dtype != torch.float:
+    if not image.is_floating_point():
         image = image.float()
 
     # Create point coordinates for each pixel of the image
