@@ -3,8 +3,8 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia
-from kornia.testing import assert_close, tensor_to_gradcheck_var
 from kornia.geometry.calibration.pnp import _mean_isotropic_scale_normalize
+from kornia.testing import assert_close, tensor_to_gradcheck_var
 
 
 class TestSolvePnpDlt:
