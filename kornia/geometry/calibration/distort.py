@@ -43,6 +43,7 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
 
         return invTilt
 
+    else:
         Pz = torch.stack(
             [R[..., 2, 2], zero, -R[..., 0, 2], zero, R[..., 2, 2], -R[..., 1, 2], zero, zero, one], -1
         ).reshape(-1, 3, 3)
