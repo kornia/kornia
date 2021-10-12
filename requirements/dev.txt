@@ -10,3 +10,4 @@ yapf
 isort
 numpy
 scipy
+-r ../docs/requirements.txt
