@@ -42,7 +42,7 @@ def raw_to_rgb(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
 
     Example:
         >>> rawinput = torch.randn(2, 1, 4, 6)
-        >>> rgb = raw_to_rgb(rawinput) # 2x3x4x5
+        >>> rgb = raw_to_rgb(rawinput, CFA.RG) # 2x3x4x6
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. " f"Got {type(image)}")
@@ -136,7 +136,7 @@ def raw_to_rgb(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
                           dtype=image.dtype, device=image.device)
 
     # This is done on all samples but result for the known green samples is then overwritten by the input
-    gu = torch.nn.functional.conv2d(gpadded, kernel, padding='valid')
+    gu = torch.nn.functional.conv2d(gpadded, kernel)
 
     # overwrite the already known samples which otherwise have values from r/b
     # this depends on the CFA configuration
@@ -178,7 +178,7 @@ def rgb_to_raw(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
 
     Example:
         >>> rgbinput = torch.rand(2, 3, 4, 6)
-        >>> raw = rgb_to_raw(rgbinput) # 2x1x4x6
+        >>> raw = rgb_to_raw(rgbinput, CFA.BG) # 2x1x4x6
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
