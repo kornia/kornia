@@ -3,6 +3,7 @@ from .hls import hls_to_rgb, HlsToRgb, rgb_to_hls, RgbToHls
 from .hsv import hsv_to_rgb, HsvToRgb, rgb_to_hsv, RgbToHsv
 from .lab import lab_to_rgb, LabToRgb, rgb_to_lab, RgbToLab
 from .luv import luv_to_rgb, LuvToRgb, rgb_to_luv, RgbToLuv
+from .raw import CFA, raw_to_rgb, RawToRgb, rgb_to_raw, RgbToRaw
 from .rgb import (
     bgr_to_rgb,
     bgr_to_rgba,
@@ -84,4 +85,9 @@ __all__ = [
     "LuvToRgb",
     "LabToRgb",
     "RgbToLab",
+    "RgbToRaw",
+    "RawToRgb",
+    "raw_to_rgb",
+    "rgb_to_raw",
+    "CFA",
 ]
