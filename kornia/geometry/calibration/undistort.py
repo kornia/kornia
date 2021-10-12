@@ -1,7 +1,8 @@
 import torch
-import kornia
-from kornia.geometry.calibration.distort import tilt_projection, distort_points
+
+from kornia.utils import create_meshgrid
 from kornia.geometry.transform.imgwarp import remap
+from kornia.geometry.calibration.distort import tilt_projection, distort_points
 
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/undistort.dispatch.cpp#L384
@@ -119,14 +120,15 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
         raise ValueError(f'K matrix shape is invalid. Got {K.shape}.')
 
     if dist.shape[-1] not in [4, 5, 8, 12, 14]:
-        raise ValueError(f'Invalid number of distortion coefficients. Got {dist.shape[-1]}')
+        raise ValueError(f'Invalid number of distortion coefficients. Got {dist.shape[-1]}.')
+
+    if not image.is_floating_point():
+        raise ValueError(f'Invalid input image data type. Input should be float. Got {image.dtype}.')
 
     B, _, rows, cols = image.shape
-    if not image.is_floating_point():
-        image = image.float()
 
     # Create point coordinates for each pixel of the image
-    xy_grid: torch.Tensor = kornia.utils.create_meshgrid(rows, cols, False, image.device, image.dtype)
+    xy_grid: torch.Tensor = create_meshgrid(rows, cols, False, image.device, image.dtype)
     pts = xy_grid.reshape(-1, 2)  # (rows*cols)x2 matrix of pixel coordinates
 
     # Distort points and define maps
@@ -136,7 +138,5 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
 
     # Remap image to undistort
     out = remap(image, mapx, mapy, align_corners=True)
-    # Convert image to [0,1] range
-    out = out / 255.0
 
     return out

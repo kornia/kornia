@@ -244,7 +244,7 @@ class TestUndistortImage:
             device=device, dtype=dtype
         )
 
-        imu = undistort_image(im, K, dist)
+        imu = undistort_image(im / 255., K, dist)
         assert_close(imu, imu_expected / 255., rtol=1e-2, atol=1e-2)
 
     def test_gradcheck(self, device):
