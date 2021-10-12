@@ -21,8 +21,8 @@ def _mean_isotropic_scale_normalize(
        in the shape :math:`(B, D+1, D+1)`.
 
     """
-    if type(points) is not torch.Tensor:
-        raise TypeError(f"Type of points is not torch.Tensor. Got {type(points)}")
+    if not isinstance(points, torch.Tensor):
+        raise AssertionError(f"points is not an instance of torch.Tensor. Type of points is {type(points)}")
 
     if len(points.shape) != 3:
         raise AssertionError(f"points must be of shape (B, N, D). Got shape {points.shape}.")
@@ -96,23 +96,32 @@ def solve_pnp_dlt(
     # 4. http://www.cs.cmu.edu/~16385/s17/Slides/11.3_Pose_Estimation.pdf
     # 5. https://www.ece.mcmaster.ca/~shirani/vision/hartley_ch7.pdf
 
-    if type(world_points) is not torch.Tensor:
-        raise TypeError(f"Type of world_points is not torch.Tensor. Got {type(world_points)}")
+    if not isinstance(world_points, torch.Tensor):
+        raise AssertionError(
+            f"world_points is not an instance of torch.Tensor. Type of world_points is {type(world_points)}"
+        )
 
-    if type(img_points) is not torch.Tensor:
-        raise TypeError(f"Type of img_points is not torch.Tensor. Got {type(img_points)}")
+    if not isinstance(img_points, torch.Tensor):
+        raise AssertionError(
+            f"img_points is not an instance of torch.Tensor. Type of img_points is {type(img_points)}"
+        )
 
-    if type(intrinsics) is not torch.Tensor:
-        raise TypeError(f"Type of intrinsics is not torch.Tensor. Got {type(intrinsics)}")
+    if not isinstance(intrinsics, torch.Tensor):
+        raise AssertionError(
+            f"intrinsics is not an instance of torch.Tensor. Type of intrinsics is {type(intrinsics)}"
+        )
 
-    if (weights is not None) and (type(weights) is not torch.Tensor):
-        raise TypeError(f"If weights is not None, then type of weights should be torch.Tensor. Got {type(weights)}")
+    if (weights is not None) and (not isinstance(weights, torch.Tensor)):
+        raise AssertionError(
+            f"If weights is not None, then weights should be an instance "
+            f"of torch.Tensor. Type of weights is {type(weights)}"
+        )
 
     if type(svd_eps) is not float:
-        raise TypeError(f"Type of svd_eps is not float. Got {type(svd_eps)}")
+        raise AssertionError(f"Type of svd_eps is not float. Got {type(svd_eps)}")
 
     if type(norm_eps) is not float:
-        raise TypeError(f"Type of norm_eps is not float. Got {type(norm_eps)}")
+        raise AssertionError(f"Type of norm_eps is not float. Got {type(norm_eps)}")
 
     if (len(world_points.shape) != 3) or (world_points.shape[2] != 3):
         raise AssertionError(
@@ -161,11 +170,11 @@ def solve_pnp_dlt(
     intrinsics_inv = torch.inverse(intrinsics)
     world_points_norm_h = convert_points_to_homogeneous(world_points_norm)
 
-    # Transforming img_points with intrinsics_inv to get img_points_
-    img_points_ = transform_points(intrinsics_inv, img_points)
+    # Transforming img_points with intrinsics_inv to get img_points_inv
+    img_points_inv = transform_points(intrinsics_inv, img_points)
 
-    # Normalizing img_points_
-    img_points_norm, img_transform_norm = _mean_isotropic_scale_normalize(img_points_)
+    # Normalizing img_points_inv
+    img_points_norm, img_transform_norm = _mean_isotropic_scale_normalize(img_points_inv)
     inv_img_transform_norm = torch.inverse(img_transform_norm)
 
     # Setting up the system (the matrix A in Ax=0)
@@ -187,8 +196,8 @@ def solve_pnp_dlt(
     solution_4x4[:, :3, :] = solution
 
     # De-normalizing the solution
-    temp = torch.bmm(solution_4x4, world_transform_norm)
-    solution = torch.bmm(inv_img_transform_norm, temp[:, :3, :])
+    intermediate = torch.bmm(solution_4x4, world_transform_norm)
+    solution = torch.bmm(inv_img_transform_norm, intermediate[:, :3, :])
 
     # We obtained one solution for each element of the batch. We may
     # need to multiply each solution with a scalar. This is because
@@ -211,7 +220,5 @@ def solve_pnp_dlt(
     norm_col = torch.sqrt(torch.sum(input=solution[:, :3, 0] ** 2, dim=1))
     mul_factor = (1 / (norm_col + norm_eps))[:, None, None]
     pred_world_to_cam = solution * mul_factor
-
-    # TODO: Implement algorithm to refine the solution
 
     return pred_world_to_cam
