@@ -191,6 +191,7 @@ class DescriptorMatcher(nn.Module):
     """Module version of matching functions.
 
     See :function:`~kornia.feature.match_snn` for details
+ 
     Args:
         match_mode: type of matching, can be `nn`, `snn`, `mnn`, `smnn`. Default `snn`.
         th: threshold on distance ratio, or other quality measure. Default 0.8
@@ -213,7 +214,8 @@ class DescriptorMatcher(nn.Module):
         Return:
           - Descriptor distance of matching descriptors, shape of. :math:`(B3, 1)`.
           - Long tensor indexes of matching descriptors in desc1 and desc2,
-            shape of :math:`(B3, 2)` where 0 <= B3 <= B1."""
+            shape of :math:`(B3, 2)` where 0 <= B3 <= B1.
+        """
         if self.match_mode == 'nn':
             out = match_nn(desc1, desc2)
         elif self.match_mode == 'mnn':
@@ -229,11 +231,12 @@ class DescriptorMatcher(nn.Module):
 
 class LocalFeatureMatcher(nn.Module):
     r"""Module, which finds correspondences between two images based on local features.
+ 
     Args:
-        detector: Local feature detector. See :class:`~kornia.feature.ScaleSpaceDetector`
+        detector: Local feature detector. See :class:`~kornia.feature.ScaleSpaceDetector`.
         descriptor: Local patch descriptor, see :class:`~kornia.feature.HardNet`
-                    or :class:`~kornia.feature.SIFTDescriptor`
-        matcher: Descriptor matcher, see :class:`~kornia.feature.DescriptorMatcher`
+                    or :class:`~kornia.feature.SIFTDescriptor`.
+        matcher: Descriptor matcher, see :class:`~kornia.feature.DescriptorMatcher`.
 
     Returns:
         Dictionary with image correspondences and confidence scores.
