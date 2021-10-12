@@ -121,7 +121,7 @@ requirements = [
 
 def load_requirements(filename: str):
     with open(filename) as f:
-        return [x.strip() for x in f.readlines()]
+        return [x.strip() for x in f.readlines() if "-r" != x[0:2]]
 
 
 requirements_extras = {
