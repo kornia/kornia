@@ -39,9 +39,9 @@ class PatchDominantGradientOrientation(nn.Module):
     Zero angle points towards right.
 
     Args:
-        patch_size:
-        num_angular_bins:
-        eps: for safe division, and arctan.
+        patch_size: size of the (square) input patch
+        num_angular_bins: number of histogram bins
+        eps: for safe division, and arctan. Default is 1e-8
     """
 
     def __init__(self, patch_size: int = 32, num_angular_bins: int = 36, eps: float = 1e-8):
@@ -72,7 +72,7 @@ class PatchDominantGradientOrientation(nn.Module):
 
     def forward(self, patch: torch.Tensor) -> torch.Tensor:
         """Args:
-            patch: (torch.Tensor) shape [Bx1xHxW]
+            patch: shape [Bx1xHxW]
         Returns:
             torch.Tensor: angle shape [B]"""
         if not isinstance(patch, torch.Tensor):

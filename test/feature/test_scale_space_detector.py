@@ -62,3 +62,15 @@ class TestScaleSpaceDetector:
         patches = torch.rand(batch_size, channels, height, width, device=device)
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
         assert gradcheck(ScaleSpaceDetector(2).to(device), patches, raise_exception=True, nondet_tol=1e-4)
+
+    @pytest.mark.skip("Now needs a LOT of refactoring, e.g. switching modules and functions in feature")
+    @pytest.mark.jit
+    def test_jit(self, device, dtype):
+        B, C, H, W = 1, 1, 32, 32
+        patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        matcher = ScaleSpaceDetector(3).to(device).eval()
+        model_jit = torch.jit.script(ScaleSpaceDetector(3).to(device).eval())
+        lafs, resps = model(input)
+        lafs_jit, resps_jit = model_jit(input)
+        assert_close(lafs, lafs_jit)
+        assert_close(resps, resps_jit)

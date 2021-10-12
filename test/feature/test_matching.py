@@ -3,6 +3,9 @@ from torch.autograd import gradcheck
 
 import kornia.testing as utils  # test utils
 from kornia.feature.matching import *
+from kornia.feature.scale_space_detector import ScaleSpaceDetector
+from kornia.feature import SIFTDescriptor
+from kornia.geometry import resize
 from kornia.testing import assert_close
 
 
@@ -179,3 +182,41 @@ class TestMatchSMNN:
         matcher_jit = torch.jit.script(DescriptorMatcher(match_type, 0.8).to(device))
         assert_close(matcher(desc1, desc2)[0], matcher_jit(desc1, desc2)[0])
         assert_close(matcher(desc1, desc2)[1], matcher_jit(desc1, desc2)[1])
+
+
+class TestLocalFeatureMatcher:
+    def test_smoke(self, device):
+        matcher = LocalFeatureMatcher(ScaleSpaceDetector(10),
+                                      SIFTDescriptor(32),
+                                      DescriptorMatcher('snn', 0.8)).to(device)
+
+    @pytest.mark.skip("Takes too long time (but works)")
+    def test_gradcheck(self, device):
+        matcher = LocalFeatureMatcher(ScaleSpaceDetector(4),
+                                      SIFTDescriptor(8, 2, 1),
+                                      DescriptorMatcher('nn', 1.0)).to(device)
+        patches = torch.rand(1, 1, 32, 32, device=device)
+        patches05 = resize(patches, (48, 48))
+        patches = utils.tensor_to_gradcheck_var(patches)  # to var
+        patches05 = utils.tensor_to_gradcheck_var(patches05)  # to var
+        def proxy_forward(x, y):
+            return matcher({"image0": x, "image1": y})["keypoints0"]
+        assert gradcheck(proxy_forward, (patches, patches05), eps=1e-4, atol=1e-4, raise_exception=True)
+
+    @pytest.mark.skip("ScaleSpaceDetector now is not jittable")
+    @pytest.mark.jit
+    def test_jit(self, device, dtype):
+        B, C, H, W = 1, 1, 32, 32
+        patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        patches2x = resize(patches, (48, 48))
+        input = {"image0": patches, "image1": patches2x}
+        matcher = LocalFeatureMatcher(ScaleSpaceDetector(50),
+                                      SIFTDescriptor(32),
+                                      DescriptorMatcher('snn', 0.8)).to(device).eval()
+        model_jit = torch.jit.script(LocalFeatureMatcher(ScaleSpaceDetector(50),
+                                                         SIFTDescriptor(32),
+                                                         DescriptorMatcher('snn', 0.8)).to(device).eval())
+        out = model(input)
+        out_jit = model(input)
+        for k, v in out.items():
+            assert_close(v, out_jit[k])

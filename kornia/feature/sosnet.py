@@ -26,7 +26,7 @@ class SOSNet(nn.Module):
         >>> sosnet = SOSNet()
         >>> descs = sosnet(input) # 8x128
     """
-
+    patch_size = 32
     def __init__(self, pretrained: bool = False) -> None:
         super().__init__()
 
