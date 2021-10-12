@@ -2,9 +2,9 @@ import pytest
 from torch.autograd import gradcheck
 
 import kornia.testing as utils  # test utils
+from kornia.feature import SIFTDescriptor
 from kornia.feature.matching import *
 from kornia.feature.scale_space_detector import ScaleSpaceDetector
-from kornia.feature import SIFTDescriptor
 from kornia.geometry import resize
 from kornia.testing import assert_close
 
