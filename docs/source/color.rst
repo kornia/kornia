@@ -179,6 +179,8 @@ Bayer RAW
     Learn more: https://en.wikipedia.org/wiki/Bayer_filter
 
 .. autoclass:: CFA
+    :members:
+    :undoc-members:
 
 .. autofunction:: rgb_to_raw
 .. autofunction:: raw_to_rgb
