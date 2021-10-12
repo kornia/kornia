@@ -183,13 +183,17 @@ class ScalePyramid(nn.Module):
             cur_level = x
         return cur_level, cur_sigma, pixel_distance
 
-    def forward(self, x: torch.Tensor) -> Tuple[List, List, List]:  # type: ignore
-        bs, _, _, _ = x.size()
+    def forward(self, x: torch.Tensor) -> Tuple[List[torch.Tensor],
+                                                List[torch.Tensor],
+                                                List[torch.Tensor]]:
+        bs = x.shape[0]
         cur_level, cur_sigma, pixel_distance = self.get_first_level(x)
 
-        sigmas = [cur_sigma * torch.ones(bs, self.n_levels + self.extra_levels).to(x.device).to(x.dtype)]
+        sigmas: List[torch.Tensor] = []
+        sigams = [cur_sigma * torch.ones(bs, self.n_levels + self.extra_levels).to(x.device).to(x.dtype)]
+        pixel_dists: List[torch.Tensor] = []
         pixel_dists = [pixel_distance * torch.ones(bs, self.n_levels + self.extra_levels).to(x.device).to(x.dtype)]
-        pyr = [[cur_level]]
+        pyr: List[List[torch.Tensor]] = [[cur_level]]
         oct_idx = 0
         while True:
             cur_level = pyr[-1][0]
@@ -221,9 +225,10 @@ class ScalePyramid(nn.Module):
             sigmas.append(cur_sigma * torch.ones(bs, self.n_levels + self.extra_levels).to(x.device))
             pixel_dists.append(pixel_distance * torch.ones(bs, self.n_levels + self.extra_levels).to(x.device))
             oct_idx += 1
+        pyr_out: List[torch.Tensor] = []
         for i in range(len(pyr)):
-            pyr[i] = torch.stack(pyr[i], dim=2)  # type: ignore
-        return pyr, sigmas, pixel_dists
+            pyr_out.append(torch.stack(pyr[i], dim=2))
+        return pyr_out, sigmas, pixel_dists
 
 
 def pyrdown(input: torch.Tensor, border_type: str = 'reflect', align_corners: bool = False) -> torch.Tensor:

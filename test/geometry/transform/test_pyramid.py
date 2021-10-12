@@ -122,6 +122,22 @@ class TestScalePyramid:
 
         assert gradcheck(sp_tuple, (img,), raise_exception=True, nondet_tol=1e-4)
 
+    @pytest.mark.jit
+    def test_jit(self, device, dtype):
+        batch_size, channels, height, width = 1, 2, 7, 9
+        from kornia.geometry import ScalePyramid as SP
+        model = SP()
+        model_jit = torch.jit.script(SP())
+        img = torch.rand(1, 2, 7, 9, device=device, dtype=dtype)
+        pyr, sigmas, pixel_dists = model(img)
+        pyr_jit, sigmas_jit, pixel_dists_jit = model_jit(img)
+        for p, pj in zip(pyr, pyr_jit):
+            assert_close(p, pj)
+        for p, pj in zip(sigmas, sigmas_jit):
+            assert_close(p, pj)
+        for p, pj in zip(pixel_dists, pixel_dists_jit):
+            assert_close(p, pj)
+
 
 class TestBuildPyramid:
     def test_smoke(self, device, dtype):
