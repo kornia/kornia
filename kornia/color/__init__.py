@@ -37,6 +37,7 @@ from .yuv import (
     yuv_to_rgb,
     YuvToRgb,
 )
+from .raw import CFA, raw_to_rgb, rgb_to_raw, RgbToRaw, RawToRgb
 
 __all__ = [
     "grayscale_to_rgb",
@@ -84,4 +85,9 @@ __all__ = [
     "LuvToRgb",
     "LabToRgb",
     "RgbToLab",
+    "RgbToRaw",
+    "RawToRgb",
+    "raw_to_rgb",
+    "rgb_to_raw",
+    "CFA",
 ]
