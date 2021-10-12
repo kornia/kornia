@@ -659,7 +659,7 @@ class SimpleKD(nn.Module):
 
         relative: bool = kernel_type == 'polar'
         sigma: float = 1.4 * (patch_size / 64)
-
+        self.patch_size = patch_size
         # Sequence of modules.
         smoothing = GaussianBlur2d((5, 5), (sigma, sigma), 'replicate')
         gradients = MKDGradients()

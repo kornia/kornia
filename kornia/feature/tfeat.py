@@ -37,7 +37,7 @@ class TFeat(nn.Module):
         >>> tfeat = TFeat()
         >>> descs = tfeat(input) # 16x128
     """
-
+    patch_size = 32
     def __init__(self, pretrained: bool = False) -> None:
         super().__init__()
         self.features = nn.Sequential(

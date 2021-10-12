@@ -33,7 +33,7 @@ class HardNet(nn.Module):
         >>> hardnet = HardNet()
         >>> descs = hardnet(input) # 16x128
     """
-
+    patch_size = 32
     def __init__(self, pretrained: bool = False) -> None:
         super().__init__()
         self.features = nn.Sequential(
@@ -105,7 +105,7 @@ class HardNet8(nn.Module):
         >>> hardnet = HardNet8()
         >>> descs = hardnet(input) # 16x128
     """
-
+    patch_size = 32
     def __init__(self, pretrained: bool = False):
         super().__init__()
         self.features = nn.Sequential(

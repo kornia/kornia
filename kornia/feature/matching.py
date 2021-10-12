@@ -240,7 +240,7 @@ class LocalFeatureMatcher(nn.Module):
         >>> img1 = torch.rand(1, 1, 320, 200)
         >>> img2 = torch.rand(1, 1, 128, 128)
         >>> input = {"image0": img1, "image1": img2}
-        >>> gftt_hardnet_matcher = matcher(kornia.ScaleSpaceDetector(500),
+        >>> gftt_hardnet_matcher = LocalFeatureMatcher(kornia.ScaleSpaceDetector(500),
         >>>                                kornia.feature.HardNet(True),
         >>>                                kornia.feature.DescriptorMatcher())
         >>> out = gftt_hardnet_matcher(input)
@@ -253,15 +253,16 @@ class LocalFeatureMatcher(nn.Module):
         self.matcher = matcher
         self.eval()
 
-    def extract_features(self, image: torch.Tensor) -> Dict:
+    def extract_features(self, image: torch.Tensor) -> Dict[str, torch.Tensor]:
         '''Function for feature extraction from simple image'''
         lafs0, resps0 = self.detector(image)
-        patches = extract_patches_from_pyramid(image, lafs0)
+        patch_size: int = self.descriptor.patch_size
+        patches = extract_patches_from_pyramid(image, lafs0, PS = patch_size)
         B, N, CH, H, W = patches.size()
         descs0 = self.descriptor(patches.view(B * N, CH, H, W)).view(B, N, -1)
         return {"lafs": lafs0, "responses": resps0, "descriptors": descs0}
 
-    def forward(self, data: Dict) -> Dict:
+    def forward(self, data: Dict) -> Dict[str, torch.Tensor]:
         """
         Args:
             data: {
@@ -295,12 +296,12 @@ class LocalFeatureMatcher(nn.Module):
         keypoints0 = get_laf_center(lafs0)
         keypoints1 = get_laf_center(lafs1)
 
-        out_keypoints0 = []
-        out_keypoints1 = []
-        out_confidence = []
-        out_batch_indexes = []
-        out_lafs0 = []
-        out_lafs1 = []
+        out_keypoints0: List[torch.Tensor] = []
+        out_keypoints1: List[torch.Tensor] = []
+        out_confidence: List[torch.Tensor] = []
+        out_batch_indexes: List[torch.Tensor] = []
+        out_lafs0: List[torch.Tensor] = []
+        out_lafs1: List[torch.Tensor] = []
 
         for batch_idx in range(num_image_pairs):
             dists, idxs = self.matcher(descs0[batch_idx], descs1[batch_idx])
