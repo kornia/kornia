@@ -1,5 +1,6 @@
-import pytest
 import warnings
+
+import pytest
 import torch
 from torch.autograd import gradcheck
 
