@@ -190,7 +190,7 @@ class ScalePyramid(nn.Module):
         cur_level, cur_sigma, pixel_distance = self.get_first_level(x)
 
         sigmas: List[torch.Tensor] = []
-        sigams = [cur_sigma * torch.ones(bs, self.n_levels + self.extra_levels).to(x.device).to(x.dtype)]
+        sigmas = [cur_sigma * torch.ones(bs, self.n_levels + self.extra_levels).to(x.device).to(x.dtype)]
         pixel_dists: List[torch.Tensor] = []
         pixel_dists = [pixel_distance * torch.ones(bs, self.n_levels + self.extra_levels).to(x.device).to(x.dtype)]
         pyr: List[List[torch.Tensor]] = [[cur_level]]

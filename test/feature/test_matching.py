@@ -199,6 +199,7 @@ class TestLocalFeatureMatcher:
         patches05 = resize(patches, (48, 48))
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
         patches05 = utils.tensor_to_gradcheck_var(patches05)  # to var
+
         def proxy_forward(x, y):
             return matcher({"image0": x, "image1": y})["keypoints0"]
         assert gradcheck(proxy_forward, (patches, patches05), eps=1e-4, atol=1e-4, raise_exception=True)

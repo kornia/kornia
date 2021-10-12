@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Dict
+from typing import Optional, Tuple, Dict, List
 
 import torch
 import torch.nn as nn
@@ -257,7 +257,7 @@ class LocalFeatureMatcher(nn.Module):
         '''Function for feature extraction from simple image'''
         lafs0, resps0 = self.detector(image)
         patch_size: int = self.descriptor.patch_size
-        patches = extract_patches_from_pyramid(image, lafs0, PS = patch_size)
+        patches = extract_patches_from_pyramid(image, lafs0, PS=patch_size)
         B, N, CH, H, W = patches.size()
         descs0 = self.descriptor(patches.view(B * N, CH, H, W)).view(B, N, -1)
         return {"lafs": lafs0, "responses": resps0, "descriptors": descs0}
