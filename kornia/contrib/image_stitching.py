@@ -1,3 +1,5 @@
+from typing import Optional, Tuple
+
 import torch
 import torch.nn as nn
 
@@ -69,10 +71,6 @@ class ImageStitcher(nn.Module):
             raise RuntimeError("Compute homography failed. No matched keypoints found.")
         return torch.cat(homos)
 
-    def compute_mask(self, image_1: torch.Tensor, image_2: torch.Tensor) -> torch.Tensor:
-        """Compute the image blending mask."""
-        return torch.cat([torch.zeros_like(image_1), torch.ones_like(image_2)], dim=-1)
-
     def blend_image(self, src_img: torch.Tensor, dst_img: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         """Blend two images together."""
         if self.blending_method == "naive":
@@ -93,15 +91,39 @@ class ImageStitcher(nn.Module):
             raise NotImplementedError(f"The preprocessor for {self.matcher} has not been implmented.")
         return input_dict
 
+    def postprocess(self, image: torch.Tensor, mask: Optional[torch.Tensor]) -> torch.Tensor:
+        if mask is None:
+            return image
+        # TODO: implement autocrop to remove the black border.
+        return image
+
     def on_matcher(self, input) -> dict:
         return self.matcher(input)
 
-    def forward(self, images_left: torch.Tensor, images_right: torch.Tensor) -> torch.Tensor:
-        # TODO: accept a list of images for composing paranoma
+    def stitch_pair(
+        self, images_left: torch.Tensor, images_right: torch.Tensor,
+        mask_left: Optional[torch.Tensor] = None, mask_right: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        # Compute the transformed images
         input = self.preprocess(images_left, images_right)
-        mask = self.compute_mask(images_left, images_right)
+        out_shape = (images_left.shape[-2], images_left.shape[-1] + images_right.shape[-1])
         correspondences = self.on_matcher(input)
         homo = self.estimate_transform(**correspondences)
-        src_img = K.geometry.warp_perspective(images_right, homo, (mask.shape[-2], mask.shape[-1]))
+        src_img = K.geometry.warp_perspective(images_right, homo, out_shape)
         dst_img = torch.cat([images_left, torch.zeros_like(images_right)], dim=-1)
-        return self.blend_image(src_img, dst_img, mask)
+
+        # Compute the transformed masks
+        if mask_left is None:
+            mask_left = torch.zeros_like(images_left)
+        if mask_right is None:
+            mask_right = torch.ones_like(images_right)
+        src_mask = K.geometry.warp_perspective(mask_right, homo, out_shape, mode='nearest')
+        dst_mask = torch.cat([torch.ones_like(mask_left), torch.zeros_like(mask_right)], dim=-1)
+        return self.blend_image(src_img, dst_img, src_mask), (dst_mask + src_mask).bool().to(src_mask.dtype)
+
+    def forward(self, *imgs: torch.Tensor) -> torch.Tensor:
+        img_out = imgs[0]
+        mask_left: Optional[torch.Tensor] = None
+        for i in range(len(imgs) - 1):
+            img_out, mask_left = self.stitch_pair(img_out, imgs[i + 1], mask_left)
+        return self.postprocess(img_out, mask_left)
