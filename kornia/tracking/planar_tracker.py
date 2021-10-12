@@ -46,7 +46,7 @@ class HomographyTracker(nn.Module):
                                                                           resp_module=CornerGFTT(),
                                                                           nms_module=ConvQuadInterp3d(10, 2e-4),
                                                                           mr_size=6.0,
-                                                                          aff_module=LAFAffNetShapeEstimator(32),
+                                                                          aff_module=LAFAffNetShapeEstimator(True),
                                                                           ori_module=LAFOrienter(patch_size=19)),
 
                                                         HardNet(True),
@@ -83,7 +83,7 @@ class HomographyTracker(nn.Module):
     def no_match(self):
       return None, False
 
-    def match_initial(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def match_initial(self, x: torch.Tensor) -> Tuple[torch.Tensor, bool]:
       input_dict ={"image0": self.target,
                    "image1": x}
       for k, v in self.target_initial_representation.items():
@@ -99,7 +99,7 @@ class HomographyTracker(nn.Module):
       self.previous_homography = H.clone()
       return H, True
 
-    def track_next_frame(self, x: torch.Tensor)-> Tuple[torch.Tensor, torch.Tensor]:
+    def track_next_frame(self, x: torch.Tensor)-> Tuple[torch.Tensor, bool]:
         Hwarp = self.previous_homography.clone()[None]
         # make a bit of border for safety
         Hwarp[:, 0:2, 0:2] = Hwarp[:, 0:2, 0:2] / 0.8
@@ -126,7 +126,7 @@ class HomographyTracker(nn.Module):
         self.previous_homography = H.clone()
         return H, True
 
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, bool]:
       if self.previous_homography is not None:
         return self.track_next_frame(x)
       return self.match_initial(x)
