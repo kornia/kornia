@@ -5,9 +5,10 @@ import torch.nn as nn
 
 
 class CFA(Enum):
-    r"""Defines the configuration of the color filter array, so far only bayer images is supported
-    and the enum sets the pixel order for bayer. Note that this can change due to things like rotations
-    and cropping of images. Take care if including the translations in pipeline.
+    r"""Defines the configuration of the color filter array.
+
+    So far only bayer images is supported and the enum sets the pixel order for bayer. Note that this can change due
+    to things like rotations and cropping of images. Take care if including the translations in pipeline.
     This implementations is optimized to be reasonably fast, look better than simple nearest neighbour.
     On top of this care is taken to make it reversible going raw -> rgb -> raw. the raw samples remain intact
     during conversion and only unknown samples are interpolated.
@@ -27,9 +28,10 @@ class CFA(Enum):
 
 
 def raw_to_rgb(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
-    r"""Convert a raw bayer image to RGB version of image. We are assuming a CFA
-    with 2 green, 1 red, 1 blue. A bilinear interpolation is used for R/G and a fix convolution
-    for the green pixels. To simplify calculations we expect the Height Widht to be evenly divisible by 2
+    r"""Convert a raw bayer image to RGB version of image.
+
+    We are assuming a CFA with 2 green, 1 red, 1 blue. A bilinear interpolation is used for R/G and a fix convolution
+    for the green pixels. To simplify calculations we expect the Height Width to be evenly divisible by 2
 
     The image data is assumed to be in the range of (0, 1). Image H/W is assumed to be evenly divisible by 2
     for simplicity reasons
@@ -46,17 +48,16 @@ def raw_to_rgb(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. " f"Got {type(image)}")
+
     if image.dim() < 3 or image.size(-3) != 1:
         raise ValueError(f"Input size must have a shape of (*, 1, H, W). " f"Got {image.shape}.")
+
     if len(image.shape) < 2 or image.shape[-2] % 2 == 1 or image.shape[-1] % 2 == 1:
         raise ValueError(f"Input H&W must be evenly disible by 2. Got {image.shape}")
 
-    dosqueeze = False
-    # for compatibility with pytorch funcitons, make sure we are always 4 dimensions and
-    # strip the extra at the end, if necessary
-    if len(image.shape) == 3:
-        image = image.unsqueeze(0)
-        dosqueeze = True
+    imagesize = image.size()
+
+    image = image.view(-1, 1, image.shape[-2], image.shape[-1])
 
     # BG is defined as pel 1,1 being blue, that is the top left is actually green. This matches
     # opencv naming so makes sense to keep
@@ -115,7 +116,7 @@ def raw_to_rgb(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
     # and we crop the area afterwards. This is since the interpolation will be between first and last pixel
     # evenly spaced between them while the B/R samples will be missing in the corners were they are assumed to exist
     # Further we need to do align_corners to start the interpolation from the middle of the samples in the corners, that
-    # way we get to keep the knwon blue samples across the whole image
+    # way we get to keep the known blue samples across the whole image
     rpadded = torch.nn.functional.pad(r, rpad, 'replicate')
     bpadded = torch.nn.functional.pad(b, bpad, 'replicate')
     # use explicit padding instead of conv2d padding to be able to use reflect which mirror the correct colors
@@ -155,11 +156,11 @@ def raw_to_rgb(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
     else:
         raise ValueError(f"Unsupported CFA " f"Got {cfa}.")
 
-    rgb: torch.Tensor = torch.cat([ru, gu, bu], dim=-3)
+    ru = ru.view(imagesize)
+    gu = gu.view(imagesize)
+    bu = bu.view(imagesize)
 
-    # return possibly missing batch dim
-    if dosqueeze:
-        rgb = rgb.squeeze(0)
+    rgb: torch.Tensor = torch.cat([ru, gu, bu], dim=-3)
 
     return rgb
 
@@ -222,7 +223,7 @@ class RawToRgb(nn.Module):
         >>> output = rgb(rawinput)  # 2x3x4x5
     """
 
-    def __init__(self, cfa: CFA = CFA.BG) -> None:
+    def __init__(self, cfa: CFA) -> None:
         super().__init__()
         self.cfa = cfa
 
@@ -248,7 +249,7 @@ class RgbToRaw(nn.Module):
         >>> output = raw(rgbinput)  # 2x1x4x6
     """
 
-    def __init__(self, cfa: CFA = CFA.BG) -> None:
+    def __init__(self, cfa: CFA) -> None:
         super().__init__()
         self.cfa = cfa
 
