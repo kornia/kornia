@@ -46,7 +46,7 @@ class TestRawToRgb(BaseTester):
 
     # With he current implementations we should get back an identical raw representation when doing raw -> rgb -> raw
     # Note that with more advanced implementations this may not necessarily be true or desirable
-    def test_forth_and_back(self, device, dtype):
+    def test_forth_and_back(self, device, dtype):  # skipcq: PYL-R0201
         data = torch.rand(1, 80, 80, device=device, dtype=dtype)
         raw = kornia.color.rgb_to_raw
         rgb = kornia.color.raw_to_rgb
@@ -56,14 +56,14 @@ class TestRawToRgb(BaseTester):
             assert_close(data_out, data)
 
     # make sure different cfas are actually different
-    def test_cfas_not_the_same(self, device, dtype):
+    def test_cfas_not_the_same(self, device, dtype):  # skipcq: PYL-R0201
         data = torch.rand(1, 16, 16, device=device, dtype=dtype)
         assert torch.max(kornia.color.raw_to_rgb(data, kornia.color.CFA.BG)
                          - kornia.color.raw_to_rgb(data, kornia.color.CFA.RG)) > 0.0
 
     # The outcome will be very different for different implementations
     # Here we compare against a current baseline, it is safe to update this if the underlying algorithm changes
-    def test_functional(self, device, dtype):
+    def test_functional(self, device, dtype):  # skipcq: PYL-R0201
         data = torch.tensor(
             [
                 [
@@ -98,7 +98,7 @@ class TestRawToRgb(BaseTester):
         assert_close(img_rgb, expected)
 
     # If we roll the data and the different CFAs they give the same result (expect on edges!)
-    def test_cfa_on_rolled(self, device, dtype):
+    def test_cfa_on_rolled(self, device, dtype):  # skipcq: PYL-R0201
         data = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
         bgres = kornia.color.raw_to_rgb(data, kornia.color.raw.CFA.BG)
         gbres = kornia.color.raw_to_rgb(data.roll((0, 1), (-2, -1)), kornia.color.raw.CFA.GB)
