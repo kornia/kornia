@@ -227,7 +227,7 @@ class RawToRgb(nn.Module):
         super().__init__()
         self.cfa = cfa
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor: 
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
         return raw_to_rgb(image, cfa=self.cfa)
 
 
