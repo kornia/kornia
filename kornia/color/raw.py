@@ -31,9 +31,9 @@ def raw_to_rgb(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
     r"""Convert a raw bayer image to RGB version of image.
 
     We are assuming a CFA with 2 green, 1 red, 1 blue. A bilinear interpolation is used for R/G and a fix convolution
-    for the green pixels. To simplify calculations we expect the Height Width to be evenly divisible by 2
+    for the green pixels. To simplify calculations we expect the Height Width to be evenly divisible by 2.
 
-    The image data is assumed to be in the range of (0, 1). Image H/W is assumed to be evenly divisible by 2
+    The image data is assumed to be in the range of (0, 1). Image H/W is assumed to be evenly divisible by 2.
     for simplicity reasons
 
     Args:
@@ -172,7 +172,7 @@ def rgb_to_raw(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
 
     Args:
         image: RGB image to be converted to bayer raw with shape :math:`(*,3,H,W)`.
-        cfa: Which color filter array do we want the output to mimic. I.e. which pixels are red/green/blue
+        cfa: Which color filter array do we want the output to mimic. I.e. which pixels are red/green/blue.
 
     Returns:
         raw version of the image with shape :math:`(*,1,H,W)`.
@@ -227,7 +227,7 @@ class RawToRgb(nn.Module):
         super().__init__()
         self.cfa = cfa
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, image: torch.Tensor) -> torch.Tensor: 
         return raw_to_rgb(image, cfa=self.cfa)
 
 
@@ -253,5 +253,5 @@ class RgbToRaw(nn.Module):
         super().__init__()
         self.cfa = cfa
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgb_to_raw(image, cfa=self.cfa)
