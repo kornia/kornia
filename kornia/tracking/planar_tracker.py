@@ -85,7 +85,7 @@ class HomographyTracker(nn.Module):
         return torch.empty(3, 3), False
 
     def match_initial(self, x: torch.Tensor) -> Tuple[torch.Tensor, bool]:
-        '''The frame `x` is matched with initial_matcher and  verified with ransac'''
+        """The frame `x` is matched with initial_matcher and  verified with ransac."""
         input_dict = {"image0": self.target,
                       "image1": x}
         for k, v in self.target_initial_representation.items():
@@ -102,8 +102,8 @@ class HomographyTracker(nn.Module):
         return H, True
 
     def track_next_frame(self, x: torch.Tensor) -> Tuple[torch.Tensor, bool]:
-        '''The frame `x` is prewarped according to the previous frame
-        homography, matched with fast_matcher verified with ransac'''
+        """The frame `x` is prewarped according to the previous frame homography, matched with fast_matcher
+        verified with ransac."""
         if self.previous_homography is not None:  # mypy, shut up
             Hwarp = self.previous_homography.clone()[None]
         # make a bit of border for safety

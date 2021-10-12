@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Dict, List
+from typing import Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -188,7 +188,9 @@ def match_smnn(
 
 
 class DescriptorMatcher(nn.Module):
-    """Module version of matching functions. See :function:`~kornia.feature.match_snn` for details
+    """Module version of matching functions.
+
+    See :function:`~kornia.feature.match_snn` for details
     Args:
         match_mode: type of matching, can be `nn`, `snn`, `mnn`, `smnn`. Default `snn`.
         th: threshold on distance ratio, or other quality measure. Default 0.8
@@ -254,7 +256,7 @@ class LocalFeatureMatcher(nn.Module):
         self.eval()
 
     def extract_features(self, image: torch.Tensor) -> Dict[str, torch.Tensor]:
-        '''Function for feature extraction from simple image'''
+        """Function for feature extraction from simple image."""
         lafs0, resps0 = self.detector(image)
         patch_size: int = self.descriptor.patch_size
         patches = extract_patches_from_pyramid(image, lafs0, PS=patch_size)
