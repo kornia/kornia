@@ -191,7 +191,7 @@ class DescriptorMatcher(nn.Module):
     """Module version of matching functions.
 
     See :function:`~kornia.feature.match_snn` for details
- 
+
     Args:
         match_mode: type of matching, can be `nn`, `snn`, `mnn`, `smnn`. Default `snn`.
         th: threshold on distance ratio, or other quality measure. Default 0.8
@@ -231,7 +231,7 @@ class DescriptorMatcher(nn.Module):
 
 class LocalFeatureMatcher(nn.Module):
     r"""Module, which finds correspondences between two images based on local features.
- 
+
     Args:
         detector: Local feature detector. See :class:`~kornia.feature.ScaleSpaceDetector`.
         descriptor: Local patch descriptor, see :class:`~kornia.feature.HardNet`

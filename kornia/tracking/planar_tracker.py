@@ -29,7 +29,7 @@ __all__ = [
 class HomographyTracker(nn.Module):
     r"""Module, which performs local-feature-based tracking of the target planar object in the
     sequence of the frames.
- 
+
     Args:
       initial_matcher: image matching module, e.g.  :class:`~kornia.feature.LocalFeatureMatcher`
                         or :class:`~kornia.feature.LoFTR`.
