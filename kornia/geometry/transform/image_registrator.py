@@ -12,7 +12,6 @@ from kornia.geometry.transform.pyramid import build_pyramid
 from kornia.testing import check_is_tensor
 
 
-
 __all__ = [
     "ImageRegistrator",
     "Homography",

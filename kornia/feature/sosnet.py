@@ -27,9 +27,9 @@ class SOSNet(nn.Module):
         >>> descs = sosnet(input) # 8x128
     """
     patch_size = 32
+
     def __init__(self, pretrained: bool = False) -> None:
         super().__init__()
-
         self.layers = nn.Sequential(
             nn.InstanceNorm2d(1, affine=False),
             nn.Conv2d(1, 32, kernel_size=3, padding=1, bias=False),
