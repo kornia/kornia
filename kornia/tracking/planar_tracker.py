@@ -28,14 +28,15 @@ __all__ = [
 
 class HomographyTracker(nn.Module):
     r"""Module, which performs local-feature-based tracking of the target planar object in the
-    sequence of the frames..
+    sequence of the frames.
+ 
     Args:
       initial_matcher: image matching module, e.g.  :class:`~kornia.feature.LocalFeatureMatcher`
-                        or :class:`~kornia.feature.LoFTR`
+                        or :class:`~kornia.feature.LoFTR`.
       fast_matcher: fast image matching module, e.g.  :class:`~kornia.feature.LocalFeatureMatcher`
-                        or :class:`~kornia.feature.LoFTR`
-      ransac: homography estimation module, see  :class:`~kornia.feature.RANSAC`
-      minimum_inliers_num: threshold for number inliers for matching to be successful
+                        or :class:`~kornia.feature.LoFTR`.
+      ransac: homography estimation module, see  :class:`~kornia.feature.RANSAC`.
+      minimum_inliers_num: threshold for number inliers for matching to be successful.
 
     Example:
         >>> from kornia.tracking import HomographyTracker
