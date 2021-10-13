@@ -121,7 +121,7 @@ def raw_to_rgb(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
     bpadded = torch.nn.functional.pad(b, list(bpad), 'replicate')
     # use explicit padding instead of conv2d padding to be able to use reflect which mirror the correct colors
     # for a 2x2 bayer filter
-    gpadded = torch.nn.functional.pad(image, list(1, 1, 1, 1), 'reflect')
+    gpadded = torch.nn.functional.pad(image, [1, 1, 1, 1], 'reflect')
 
     ru = torch.nn.functional.interpolate(rpadded, size=(image.shape[-2] + 1, image.shape[-1] + 1),
                                          mode='bilinear', align_corners=True)
