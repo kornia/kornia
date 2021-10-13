@@ -1,7 +1,7 @@
 from .blur import box_blur, BoxBlur
 from .blur_pool import blur_pool2d, BlurPool2D, max_blur_pool2d, MaxBlurPool2D
 from .canny import Canny, canny
-from .filter import filter2d, filter2D, filter3d, filter3D, separable_filter2d
+from .filter import filter2d, filter2D, filter3d, filter3D, filter2d_separable
 from .gaussian import gaussian_blur2d, GaussianBlur2d
 from .kernels import (
     gaussian,

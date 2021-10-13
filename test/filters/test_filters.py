@@ -276,7 +276,7 @@ class TestFilter2D:
         kernel_y = torch.ones(1, 3, device=device, dtype=dtype)
         kernel = kernel_y.t() @ kernel_x
         out = kornia.filter2d(inp, kernel[None], padding=padding)
-        out_sep = kornia.filters.separable_filter2d(inp, kernel_x, kernel_y, padding=padding)
+        out_sep = kornia.filters.filter2d_separable(inp, kernel_x, kernel_y, padding=padding)
         assert_close(out, out_sep)
 
     def test_gradcheck(self, device):
