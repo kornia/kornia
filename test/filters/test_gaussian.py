@@ -39,6 +39,7 @@ def test_get_gaussian_kernel2d(ksize_x, ksize_y, sigma):
     assert kernel.shape == (ksize_x, ksize_y)
     assert kernel.sum().item() == pytest.approx(1.0)
 
+
 @pytest.mark.parametrize("ksize_x", [5, 11])
 @pytest.mark.parametrize("ksize_y", [3, 7])
 @pytest.mark.parametrize("sigma", [1.5, 2.1])
@@ -56,6 +57,7 @@ def test_separable(ksize_x, ksize_y, sigma, device, dtype):
                                              separable=True)
 
     assert_close(out, out_sep)
+
 
 class TestGaussianBlur2d:
     @pytest.mark.parametrize("batch_shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
