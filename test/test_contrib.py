@@ -49,7 +49,6 @@ class TestMobileViT:
 
         img = torch.rand(B, 3, ih, iw, device=device, dtype=dtype)
         mvit = kornia.contrib.MobileViT(
-            image_size=image_size,
             mode=mode,
             patch_size=patch_size
         ).to(device, dtype)
