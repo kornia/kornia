@@ -4,11 +4,12 @@ import torch
 import torch.nn as nn
 
 import kornia
-from kornia.filters.kernels import get_gaussian_kernel2d
+from kornia.filters.kernels import get_gaussian_kernel2d, get_gaussian_kernel1d
 
 
 def gaussian_blur2d(
-    input: torch.Tensor, kernel_size: Tuple[int, int], sigma: Tuple[float, float], border_type: str = 'reflect'
+    input: torch.Tensor, kernel_size: Tuple[int, int], sigma: Tuple[float, float], border_type: str = 'reflect',
+    separable: bool = True,
 ) -> torch.Tensor:
     r"""Create an operator that blurs a tensor using a Gaussian filter.
 
@@ -24,6 +25,7 @@ def gaussian_blur2d(
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+        separable: run as two 1d-convolutions
 
     Returns:
         the blurred tensor with shape :math:`(B, C, H, W)`.
@@ -38,9 +40,14 @@ def gaussian_blur2d(
         >>> output.shape
         torch.Size([2, 4, 5, 5])
     """
-    kernel: torch.Tensor = torch.unsqueeze(get_gaussian_kernel2d(kernel_size, sigma), dim=0)
-
-    return kornia.filter2d(input, kernel, border_type)
+    if separable:
+        kernel_x: torch.Tensor = get_gaussian_kernel1d(kernel_size[0], sigma[0])
+        kernel_y: torch.Tensor = get_gaussian_kernel1d(kernel_size[1], sigma[1])
+        out = kornia.filters.separable_filter2d(input, kernel_x[None], kernel_y[None], border_type)
+    else:
+        kernel: torch.Tensor = torch.unsqueeze(get_gaussian_kernel2d(kernel_size, sigma), dim=0)
+        out = kornia.filter2d(input, kernel, border_type)
+    return out
 
 
 class GaussianBlur2d(nn.Module):
@@ -55,6 +62,7 @@ class GaussianBlur2d(nn.Module):
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+        separable: run as two 1d-convolutions
 
     Returns:
         the blurred tensor.
@@ -72,11 +80,16 @@ class GaussianBlur2d(nn.Module):
         torch.Size([2, 4, 5, 5])
     """
 
-    def __init__(self, kernel_size: Tuple[int, int], sigma: Tuple[float, float], border_type: str = 'reflect') -> None:
+    def __init__(self,
+                 kernel_size: Tuple[int, int],
+                 sigma: Tuple[float, float],
+                 border_type: str = 'reflect',
+                 separable: bool = True) -> None:
         super().__init__()
         self.kernel_size: Tuple[int, int] = kernel_size
         self.sigma: Tuple[float, float] = sigma
         self.border_type = border_type
+        self.separable = separable
 
     def __repr__(self) -> str:
         return (
@@ -89,8 +102,14 @@ class GaussianBlur2d(nn.Module):
             + ', '
             + 'border_type='
             + self.border_type
+            + 'separable='
+            + self.separable
             + ')'
         )
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        return gaussian_blur2d(input, self.kernel_size, self.sigma, self.border_type)
+        return gaussian_blur2d(input,
+                               self.kernel_size,
+                               self.sigma,
+                               self.border_type,
+                               self.separable)

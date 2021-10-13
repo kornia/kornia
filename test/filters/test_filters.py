@@ -268,6 +268,18 @@ class TestFilter2D:
         actual = kornia.filter2d(inp, kernel, padding=padding)
         assert_close(actual, actual)
 
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    def test_separable(self, padding, device, dtype):
+        batch_size = 3
+        inp = torch.rand(3, 9, 9, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
+        kernel_x = torch.ones(1, 3, device=device, dtype=dtype)
+        kernel_y = torch.ones(3, 1, device=device, dtype=dtype)
+        kernel = kernel_y @ kernel_x
+        print (kernel[None].shape)
+        out = kornia.filter2d(inp, kernel[None], padding=padding)
+        out_sep = kornia.filters.separable_filter2d(inp, kernel_x, kernel_y, padding=padding)
+        assert_close(out, out_sep)
+
     def test_gradcheck(self, device):
         kernel = torch.rand(1, 3, 3, device=device)
         input = torch.ones(1, 1, 7, 8, device=device)

@@ -39,13 +39,28 @@ def test_get_gaussian_kernel2d(ksize_x, ksize_y, sigma):
     assert kernel.shape == (ksize_x, ksize_y)
     assert kernel.sum().item() == pytest.approx(1.0)
 
+@pytest.mark.parametrize("ksize_x", [5, 11])
+@pytest.mark.parametrize("ksize_y", [3, 7])
+@pytest.mark.parametrize("sigma", [1.5, 2.1])
+def test_separable(ksize_x, ksize_y, sigma, device, dtype):
+    input = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
+    out = kornia.filters.gaussian_blur2d(input,
+                                         (ksize_x, ksize_y),
+                                         (sigma, sigma),
+                                         "replicate")
+    out_sep = kornia.filters.gaussian_blur2d(input,
+                                             (ksize_x, ksize_y),
+                                             (sigma, sigma),
+                                             "replicate",
+                                             separable=True)
+
+    assert_close(out, out_sep)
 
 class TestGaussianBlur2d:
     @pytest.mark.parametrize("batch_shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
     def test_cardinality(self, batch_shape, device, dtype):
         kernel_size = (5, 7)
         sigma = (1.5, 2.1)
-
         input = torch.rand(batch_shape, device=device, dtype=dtype)
         actual = kornia.filters.gaussian_blur2d(input, kernel_size, sigma, "replicate")
         assert actual.shape == batch_shape

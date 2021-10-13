@@ -73,10 +73,10 @@ def filter2d(
                   [0., 0., 0., 0., 0.]]]])
     """
     if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Input border_type is not torch.Tensor. Got {type(input)}")
+        raise TypeError(f"Input input is not torch.Tensor. Got {type(input)}")
 
     if not isinstance(kernel, torch.Tensor):
-        raise TypeError(f"Input border_type is not torch.Tensor. Got {type(kernel)}")
+        raise TypeError(f"Input kernel is not torch.Tensor. Got {type(kernel)}")
 
     if not isinstance(border_type, str):
         raise TypeError(f"Input border_type is not string. Got {type(border_type)}")
@@ -94,8 +94,8 @@ def filter2d(
     if not len(input.shape) == 4:
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
 
-    if not len(kernel.shape) == 3 and kernel.shape[0] != 1:
-        raise ValueError(f"Invalid kernel shape, we expect 1xHxW. Got: {kernel.shape}")
+    if (not len(kernel.shape) == 3) and not ((kernel.shape[0] == 0) or (kernel.shape[0] == input.shape[0])):
+        raise ValueError(f"Invalid kernel shape, we expect 1xHxW or BxHxW. Got: {kernel.shape}")
 
     # prepare kernel
     b, c, h, w = input.shape
@@ -125,6 +125,56 @@ def filter2d(
     else:
         out = output.view(b, c, h - height + 1, w - width + 1)
 
+    return out
+
+
+def separable_filter2d(
+    input: torch.Tensor, kernel_x: torch.Tensor, kernel_y: torch.Tensor, border_type: str = 'reflect', normalized: bool = False,
+    padding: str = 'same'
+) -> torch.Tensor:
+    r"""Convolve a tensor with two 1d kernels, in x and y directions.
+
+    The function applies a given kernel to a tensor. The kernel is applied
+    independently at each depth channel of the tensor. Before applying the
+    kernel, the function applies padding according to the specified mode so
+    that the output remains in the same shape.
+
+    Args:
+        input: the input tensor with shape of
+          :math:`(B, C, H, W)`.
+        kernel_x: the kernel to be convolved with the input
+          tensor. The kernel shape must be :math:`(1, kW)` or :math:`(B, kW)`.
+        kernel_y: the kernel to be convolved with the input
+          tensor. The kernel shape must be :math:`(1, kH)` or :math:`(B, kH)`.
+        border_type: the padding mode to be applied before convolving.
+          The expected modes are: ``'constant'``, ``'reflect'``,
+          ``'replicate'`` or ``'circular'``.
+        normalized: If True, kernel will be L1 normalized.
+        padding: This defines the type of padding.
+          2 modes available ``'same'`` or ``'valid'``.
+
+    Return:
+        torch.Tensor: the convolved tensor of same size and numbers of channels
+        as the input with shape :math:`(B, C, H, W)`.
+
+    Example:
+        >>> input = torch.tensor([[[
+        ...    [0., 0., 0., 0., 0.],
+        ...    [0., 0., 0., 0., 0.],
+        ...    [0., 0., 5., 0., 0.],
+        ...    [0., 0., 0., 0., 0.],
+        ...    [0., 0., 0., 0., 0.],]]])
+        >>> kernel = torch.ones(1, 3)
+
+        >>> separable_filter2d(input, kernel, kernel, padding='same')
+        tensor([[[[0., 0., 0., 0., 0.],
+                  [0., 5., 5., 5., 0.],
+                  [0., 5., 5., 5., 0.],
+                  [0., 5., 5., 5., 0.],
+                  [0., 0., 0., 0., 0.]]]])
+    """
+    out_x = filter2d(input, kernel_x.unsqueeze(0), border_type, normalized, padding)
+    out = filter2d(out_x, kernel_y.unsqueeze(0), border_type, normalized, padding)
     return out
 
 
