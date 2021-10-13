@@ -128,10 +128,12 @@ def filter2d(
     return out
 
 
-def separable_filter2d(
-    input: torch.Tensor, kernel_x: torch.Tensor, kernel_y: torch.Tensor, border_type: str = 'reflect', normalized: bool = False,
-    padding: str = 'same'
-) -> torch.Tensor:
+def separable_filter2d(input: torch.Tensor,
+                       kernel_x: torch.Tensor,
+                       kernel_y: torch.Tensor,
+                       border_type: str = 'reflect',
+                       normalized: bool = False,
+                       padding: str = 'same') -> torch.Tensor:
     r"""Convolve a tensor with two 1d kernels, in x and y directions.
 
     The function applies a given kernel to a tensor. The kernel is applied
