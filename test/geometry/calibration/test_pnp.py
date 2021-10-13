@@ -26,6 +26,19 @@ class TestSolvePnpDlt:
 
         return img_points
 
+    @staticmethod
+    def _get_world_points_and_img_points(cam_points, world_to_cam_4x4, repeated_intrinsics):
+        r"""Calculates world_points and img_points.
+
+        Since cam_points will have shape (B, N, 3), repeated_intrinsics should have
+        shape (B, N, 3, 3) so that kornia.geometry.project_points can be used.
+        """
+        cam_to_world_4x4 = kornia.geometry.inverse_transformation(world_to_cam_4x4)
+        world_points = kornia.geometry.transform_points(cam_to_world_4x4, cam_points)
+        img_points = kornia.geometry.project_points(cam_points, repeated_intrinsics)
+
+        return world_points, img_points
+
     def _get_test_data(self, num_points, device, dtype):
         """Creates some test data.
 
@@ -72,13 +85,20 @@ class TestSolvePnpDlt:
 
         intrinsics = torch.stack([intrinsic_1, intrinsic_2], dim=0)
 
-        world_points = self._get_samples(
-            shape=(batch_size, num_points, 3),
+        cam_points_xy = self._get_samples(
+            shape=(batch_size, num_points, 2),
             low=-100, high=100, dtype=dtype, device=device,
         )
+        cam_points_z = self._get_samples(
+            shape=(batch_size, num_points, 1),
+            low=0.5, high=100, dtype=dtype, device=device,
+        )
+        cam_points = torch.cat([cam_points_xy, cam_points_z], dim=-1)
 
         repeated_intrinsics = intrinsics.unsqueeze(1).repeat(1, num_points, 1, 1)
-        img_points = self._project_to_image(world_points, world_to_cam_mats, repeated_intrinsics)
+        world_points, img_points = self._get_world_points_and_img_points(
+            cam_points, world_to_cam_mats, repeated_intrinsics
+        )
         world_to_cam_3x4 = world_to_cam_mats[:, :3, :]
 
         return intrinsics, world_to_cam_3x4, world_points, img_points
@@ -135,9 +155,9 @@ class TestSolvePnpDlt:
 
         # Different tolerances for dtype torch.float32
         if dtype == torch.float32:
-            atol, rtol = 1e-5, 4e-2
+            atol, rtol = 1e-2, 1e-1
         else:
-            atol, rtol = 1e-5, 1e-4
+            atol, rtol = 1e-3, 1e-3
 
         assert_close(pred_img_points, img_points, atol=atol, rtol=rtol)
 
