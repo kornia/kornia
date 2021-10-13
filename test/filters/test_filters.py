@@ -275,7 +275,6 @@ class TestFilter2D:
         kernel_x = torch.ones(1, 3, device=device, dtype=dtype)
         kernel_y = torch.ones(1, 3, device=device, dtype=dtype)
         kernel = kernel_y.t() @ kernel_x
-        print (kernel[None].shape)
         out = kornia.filter2d(inp, kernel[None], padding=padding)
         out_sep = kornia.filters.separable_filter2d(inp, kernel_x, kernel_y, padding=padding)
         assert_close(out, out_sep)
