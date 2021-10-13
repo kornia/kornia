@@ -168,7 +168,7 @@ def filter2d_separable(input: torch.Tensor,
         ...    [0., 0., 0., 0., 0.],]]])
         >>> kernel = torch.ones(1, 3)
 
-        >>> separable_filter2d(input, kernel, kernel, padding='same')
+        >>> filter2d_separable(input, kernel, kernel, padding='same')
         tensor([[[[0., 0., 0., 0., 0.],
                   [0., 5., 5., 5., 0.],
                   [0., 5., 5., 5., 0.],
