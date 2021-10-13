@@ -23,10 +23,10 @@ def compose_transformations(trans_01: torch.Tensor, trans_12: torch.Tensor) -> t
     Args:
         trans_01: tensor with the homogeneous transformation from
           a reference frame 1 respect to a frame 0. The tensor has must have a
-          shape of :math:`(B, 4, 4)` or :math:`(4, 4)`.
+          shape of :math:`(N, 4, 4)` or :math:`(4, 4)`.
         trans_12: tensor with the homogeneous transformation from
           a reference frame 2 respect to a frame 1. The tensor has must have a
-          shape of :math:`(B, 4, 4)` or :math:`(4, 4)`.
+          shape of :math:`(N, 4, 4)` or :math:`(4, 4)`.
 
     Returns:
         the transformation between the two frames with shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
