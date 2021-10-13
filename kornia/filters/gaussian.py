@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 import kornia
-from kornia.filters.kernels import get_gaussian_kernel2d, get_gaussian_kernel1d
+from kornia.filters.kernels import get_gaussian_kernel1d, get_gaussian_kernel2d
 
 
 def gaussian_blur2d(
