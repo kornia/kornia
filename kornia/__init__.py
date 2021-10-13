@@ -90,9 +90,6 @@ from kornia.filters import (
     unsharp_mask,
 )
 from kornia.geometry import *
-from kornia.tracking import (
-    HomographyTracker
-)
 from kornia.losses import (
     dice_loss,
     inverse_depth_smoothness_loss,
@@ -104,6 +101,7 @@ from kornia.losses import (
     tversky_loss,
 )
 from kornia.testing import xla_is_available
+from kornia.tracking import HomographyTracker
 from kornia.utils import (
     create_meshgrid,
     image_to_tensor,
