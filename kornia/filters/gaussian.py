@@ -26,7 +26,7 @@ def gaussian_blur2d(input: torch.Tensor,
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
-        separable: run as two 1d-convolutions
+        separable: run as composition of two 1d-convolutions.
 
     Returns:
         the blurred tensor with shape :math:`(B, C, H, W)`.
@@ -46,8 +46,8 @@ def gaussian_blur2d(input: torch.Tensor,
         kernel_y: torch.Tensor = get_gaussian_kernel1d(kernel_size[0], sigma[0])
         out = kornia.filters.separable_filter2d(input, kernel_x[None], kernel_y[None], border_type)
     else:
-        kernel: torch.Tensor = torch.unsqueeze(get_gaussian_kernel2d(kernel_size, sigma), dim=0)
-        out = kornia.filter2d(input, kernel, border_type)
+        kernel: torch.Tensor = get_gaussian_kernel2d(kernel_size, sigma)
+        out = kornia.filters.filter2d(input, kernel[None], border_type)
     return out
 
 
@@ -63,7 +63,7 @@ class GaussianBlur2d(nn.Module):
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
-        separable: run as two 1d-convolutions
+        separable: run as composition of two 1d-convolutions.
 
     Returns:
         the blurred tensor.

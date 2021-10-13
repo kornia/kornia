@@ -50,7 +50,7 @@ __all__ = [
     "motion_blur",
     "motion_blur3d",
     "filter2d",
-    "separable_filter2d",
+    "filter2d_separable",
     "filter3d",
     "filter2D",
     "filter3D",

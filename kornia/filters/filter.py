@@ -128,7 +128,7 @@ def filter2d(
     return out
 
 
-def separable_filter2d(input: torch.Tensor,
+def filter2d_separable(input: torch.Tensor,
                        kernel_x: torch.Tensor,
                        kernel_y: torch.Tensor,
                        border_type: str = 'reflect',

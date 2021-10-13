@@ -29,7 +29,7 @@ Filtering API
 -------------
 
 .. autofunction:: filter2d
-.. autofunction:: separable_filter2d
+.. autofunction:: filter2d_separable
 .. autofunction:: filter3d
 
 Kernels
