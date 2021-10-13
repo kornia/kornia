@@ -265,7 +265,7 @@ class TestTransformBoxes2D:
         expected_boxes_xyxy = torch.tensor([[372.7360, 103.0150, 114.6880, 410.5225]], device=device, dtype=dtype)
 
         boxes = Boxes.from_tensor(boxes_xyxy)
-        expected_boxes = Boxes.from_tensor(expected_boxes_xyxy)
+        expected_boxes = Boxes.from_tensor(expected_boxes_xyxy, validate_boxes=False)
 
         trans_mat = torch.tensor([[[-1.0, 0.0, 512.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
 
@@ -280,7 +280,7 @@ class TestTransformBoxes2D:
         expected_boxes_xyxy = torch.tensor([[372.7360, 103.0150, 114.6880, 410.5225]], device=device, dtype=dtype)
 
         boxes = Boxes.from_tensor(boxes_xyxy)
-        expected_boxes = Boxes.from_tensor(expected_boxes_xyxy)
+        expected_boxes = Boxes.from_tensor(expected_boxes_xyxy, validate_boxes=False)
 
         trans_mat = torch.tensor([[[-1.0, 0.0, 512.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
 
@@ -333,7 +333,7 @@ class TestTransformBoxes2D:
         )
 
         boxes = Boxes.from_tensor(boxes_xyxy)
-        expected_boxes = Boxes.from_tensor(expected_boxes_xyxy)
+        expected_boxes = Boxes.from_tensor(expected_boxes_xyxy, validate_boxes=False)
 
         out = boxes.transform_boxes(trans_mat)
         assert_allclose(out._boxes, expected_boxes._boxes, atol=1e-4, rtol=1e-4)
@@ -344,7 +344,7 @@ class TestTransformBoxes2D:
             [
                 [139.2640, 103.0150, 258.0480, 307.5075],
                 [1.0240, 80.5547, 510.9760, 431.4453],
-                [165.2053, 262.1440, 345.4293, 246.7840],
+                [165.2053, 262.1440, 345.4293, 546.7840],
                 [119.8080, 144.2067, 137.2160, 265.9225],
             ],
             device=device,
@@ -722,7 +722,7 @@ class TestTransformBoxes3D:
         )
 
         boxes = Boxes3D.from_tensor(boxes_xyzxyz)
-        expected_boxes = Boxes3D.from_tensor(expected_boxes_xyzxyz)
+        expected_boxes = Boxes3D.from_tensor(expected_boxes_xyzxyz, validate_boxes=False)
 
         trans_mat = torch.tensor(
             [[[-1.0, 0.0, 0.0, 512.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 2.0, 1.0], [0.0, 0.0, 0.0, 1.0]]],
@@ -745,7 +745,7 @@ class TestTransformBoxes3D:
         )
 
         boxes = Boxes3D.from_tensor(boxes_xyzxyz)
-        expected_boxes = Boxes3D.from_tensor(expected_boxes_xyzxyz)
+        expected_boxes = Boxes3D.from_tensor(expected_boxes_xyzxyz, validate_boxes=False)
 
         trans_mat = torch.tensor(
             [[[-1.0, 0.0, 0.0, 512.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 2.0, 1.0], [0.0, 0.0, 0.0, 1.0]]],
@@ -765,7 +765,7 @@ class TestTransformBoxes3D:
                 [139.2640, 103.0150, 283.162, 397.3120, 410.5225, 453.185],
                 [1.0240, 80.5547, 469.50, 512.0000, 512.0000, 512.0],
                 [165.2053, 262.1440, 42.98, 510.6347, 508.9280, 784.443],
-                [119.8080, 144.2067, 234.21, 257.0240, 410.1292, 86.14],
+                [119.8080, 144.2067, 234.21, 257.0240, 410.1292, 386.14],
             ],
             device=device,
             dtype=dtype,
@@ -779,13 +779,13 @@ class TestTransformBoxes3D:
                     [372.7360, 103.0150, 567.324, 114.6880, 410.5225, 907.37],
                     [510.9760, 80.5547, 940.0, 0.0000, 512.0000, 1025.0],
                     [346.7947, 262.1440, 86.96, 1.3653, 508.9280, 1569.886],
-                    [392.1920, 144.2067, 469.42, 254.9760, 410.1292, 173.28],
+                    [392.1920, 144.2067, 469.42, 254.9760, 410.1292, 773.28],
                 ],
                 [
                     [139.2640, 103.0150, 283.162, 397.3120, 410.5225, 453.185],
                     [1.0240, 80.5547, 469.50, 512.0000, 512.0000, 512.0],
                     [165.2053, 262.1440, 42.98, 510.6347, 508.9280, 784.443],
-                    [119.8080, 144.2067, 234.21, 257.0240, 410.1292, 86.14],
+                    [119.8080, 144.2067, 234.21, 257.0240, 410.1292, 386.14],
                 ],
             ],
             device=device,
@@ -802,7 +802,7 @@ class TestTransformBoxes3D:
         )
 
         boxes = Boxes3D.from_tensor(boxes_xyzxyz)
-        expected_boxes = Boxes3D.from_tensor(expected_boxes_xyzxyz)
+        expected_boxes = Boxes3D.from_tensor(expected_boxes_xyzxyz, validate_boxes=False)
 
         out = boxes.transform_boxes(trans_mat)
         assert_allclose(out._boxes, expected_boxes._boxes, atol=1e-4, rtol=1e-4)
@@ -814,7 +814,7 @@ class TestTransformBoxes3D:
                 [139.2640, 103.0150, 283.162, 397.3120, 410.5225, 453.185],
                 [1.0240, 80.5547, 469.50, 512.0000, 512.0000, 512.0],
                 [165.2053, 262.1440, 42.98, 510.6347, 508.9280, 784.443],
-                [119.8080, 144.2067, 234.21, 257.0240, 410.1292, 86.14],
+                [119.8080, 144.2067, 234.21, 257.0240, 410.1292, 386.14],
             ],
             device=device,
             dtype=dtype,

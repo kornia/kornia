@@ -93,11 +93,12 @@ class Boxes:
         raise_if_not_floating_point: flag to control floating point casting behaviour when `boxes` is not a floating
             point tensor. True to raise an error when `boxes` isn't a floating point tensor, False to cast to float.
 
-    **2D boxes format** is defined as a floating data type tensor of shape ``Nx4x2`` or ``BxNx4x2``
-    where each box is a `quadrilateral <https://en.wikipedia.org/wiki/Quadrilateral>`_ defined by it's 4 vertices
-    coordinates (A, B, C, D). Coordinates must be in ``x, y`` order. The height and width of a box is defined as
-    ``width = xmax - xmin`` and ``height = ymax - ymin``. Examples of
-    `quadrilaterals <https://en.wikipedia.org/wiki/Quadrilateral>`_ are rectangles, rhombus and trapezoids.
+    Note:
+        **2D boxes format** is defined as a floating data type tensor of shape ``Nx4x2`` or ``BxNx4x2``
+        where each box is a `quadrilateral <https://en.wikipedia.org/wiki/Quadrilateral>`_ defined by it's 4 vertices
+        coordinates (A, B, C, D). Coordinates must be in ``x, y`` order. The height and width of a box is defined as
+        ``width = xmax - xmin`` and ``height = ymax - ymin``. Examples of
+        `quadrilaterals <https://en.wikipedia.org/wiki/Quadrilateral>`_ are rectangles, rhombus and trapezoids.
     """
     def __init__(self, boxes: torch.Tensor, raise_if_not_floating_point: bool = True):
         if not boxes.is_floating_point():
@@ -159,6 +160,16 @@ class Boxes:
         Examples:
             >>> boxes_xyxy = torch.as_tensor([[0, 3, 1, 4], [5, 1, 8, 4]])
             >>> boxes = Boxes.from_tensor(boxes_xyxy, mode='xyxy')
+            >>> boxes._boxes  # (2, 4, 2)
+            tensor([[[0., 3.],
+                     [1., 3.],
+                     [1., 4.],
+                     [0., 4.]],
+            <BLANKLINE>
+                    [[5., 1.],
+                     [8., 1.],
+                     [8., 4.],
+                     [5., 4.]]])
         """
         if not (2 <= boxes.ndim <= 3 and boxes.shape[-1] == 4):
             raise ValueError(f"Boxes shape must be (N, 4) or (B, N, 4). Got {boxes.shape}.")
@@ -357,11 +368,12 @@ class Boxes3D:
         raise_if_not_floating_point: flag to control floating point casting behaviour when `boxes` is not a floating
             point tensor. True to raise an error when `boxes` isn't a floating point tensor, False to cast to float.
 
-    **3D boxes format** is defined as a floating data type tensor of shape ``Nx8x3`` or ``BxNx8x3`` where each box is
-    a `hexahedron <https://en.wikipedia.org/wiki/Hexahedron>`_ defined by it's 8 vertices coordinates. Coordinates must
-    be in ``x, y, z`` order. The height, width and depth of a box is defined as ``width = xmax - xmin``,
-    ``height = ymax - ymin`` and ``depth = zmax - zmin``. Examples of
-    `hexahedrons <https://en.wikipedia.org/wiki/Hexahedron>`_ are cubes and rhombohedrons.
+    Note:
+        **3D boxes format** is defined as a floating data type tensor of shape ``Nx8x3`` or ``BxNx8x3`` where each box
+        is a `hexahedron <https://en.wikipedia.org/wiki/Hexahedron>`_ defined by it's 8 vertices coordinates.
+        Coordinates must be in ``x, y, z`` order. The height, width and depth of a box is defined as
+        ``width = xmax - xmin``, ``height = ymax - ymin`` and ``depth = zmax - zmin``. Examples of
+        `hexahedrons <https://en.wikipedia.org/wiki/Hexahedron>`_ are cubes and rhombohedrons.
     """
     def __init__(self, boxes: torch.Tensor, raise_if_not_floating_point: bool = True):
         if not boxes.is_floating_point():
@@ -424,6 +436,24 @@ class Boxes3D:
         Examples:
             >>> boxes_xyzxyz = torch.as_tensor([[0, 3, 6, 1, 4, 8], [5, 1, 3, 8, 4, 9]])
             >>> boxes = Boxes3D.from_tensor(boxes_xyzxyz, mode='xyzxyz')
+            >>> boxes._boxes  # (2, 8, 3)
+            tensor([[[0., 3., 6.],
+                     [1., 3., 6.],
+                     [1., 4., 6.],
+                     [0., 4., 6.],
+                     [0., 3., 8.],
+                     [1., 3., 8.],
+                     [1., 4., 8.],
+                     [0., 4., 8.]],
+            <BLANKLINE>
+                    [[5., 1., 3.],
+                     [8., 1., 3.],
+                     [8., 4., 3.],
+                     [5., 4., 3.],
+                     [5., 1., 9.],
+                     [8., 1., 9.],
+                     [8., 4., 9.],
+                     [5., 4., 9.]]])
         """
         if not (2 <= boxes.ndim <= 3 and boxes.shape[-1] == 6):
             raise ValueError(f"BBox shape must be (N, 6) or (B, N, 6). Got {boxes.shape}.")
