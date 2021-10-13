@@ -41,8 +41,8 @@ def gaussian_blur2d(
         torch.Size([2, 4, 5, 5])
     """
     if separable:
-        kernel_x: torch.Tensor = get_gaussian_kernel1d(kernel_size[0], sigma[0])
-        kernel_y: torch.Tensor = get_gaussian_kernel1d(kernel_size[1], sigma[1])
+        kernel_x: torch.Tensor = get_gaussian_kernel1d(kernel_size[1], sigma[1])
+        kernel_y: torch.Tensor = get_gaussian_kernel1d(kernel_size[0], sigma[0])
         out = kornia.filters.separable_filter2d(input, kernel_x[None], kernel_y[None], border_type)
     else:
         kernel: torch.Tensor = torch.unsqueeze(get_gaussian_kernel2d(kernel_size, sigma), dim=0)

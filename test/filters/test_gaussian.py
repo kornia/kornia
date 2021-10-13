@@ -47,7 +47,8 @@ def test_separable(ksize_x, ksize_y, sigma, device, dtype):
     out = kornia.filters.gaussian_blur2d(input,
                                          (ksize_x, ksize_y),
                                          (sigma, sigma),
-                                         "replicate")
+                                         "replicate",
+                                         separable=False)
     out_sep = kornia.filters.gaussian_blur2d(input,
                                              (ksize_x, ksize_y),
                                              (sigma, sigma),

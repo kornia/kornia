@@ -273,8 +273,8 @@ class TestFilter2D:
         batch_size = 3
         inp = torch.rand(3, 9, 9, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
         kernel_x = torch.ones(1, 3, device=device, dtype=dtype)
-        kernel_y = torch.ones(3, 1, device=device, dtype=dtype)
-        kernel = kernel_y @ kernel_x
+        kernel_y = torch.ones(1, 3, device=device, dtype=dtype)
+        kernel = kernel_y.t() @ kernel_x
         print (kernel[None].shape)
         out = kornia.filter2d(inp, kernel[None], padding=padding)
         out_sep = kornia.filters.separable_filter2d(inp, kernel_x, kernel_y, padding=padding)

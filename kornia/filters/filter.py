@@ -174,7 +174,7 @@ def separable_filter2d(
                   [0., 0., 0., 0., 0.]]]])
     """
     out_x = filter2d(input, kernel_x.unsqueeze(0), border_type, normalized, padding)
-    out = filter2d(out_x, kernel_y.unsqueeze(0), border_type, normalized, padding)
+    out = filter2d(out_x, kernel_y.unsqueeze(-1), border_type, normalized, padding)
     return out
 
 
