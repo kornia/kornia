@@ -153,13 +153,7 @@ class TestSolvePnpDlt:
             world_points, pred_world_to_cam_4x4, repeated_intrinsics
         )
 
-        # Different tolerances for dtype torch.float32
-        if dtype == torch.float32:
-            atol, rtol = 1e-2, 1e-1
-        else:
-            atol, rtol = 1e-3, 1e-3
-
-        assert_close(pred_img_points, img_points, atol=atol, rtol=rtol)
+        assert_close(pred_img_points, img_points, atol=1e-3, rtol=1e-3)
 
 
 class TestNormalization:

@@ -47,7 +47,7 @@ def _mean_isotropic_scale_normalize(
 def solve_pnp_dlt(
     world_points: torch.Tensor, img_points: torch.Tensor,
     intrinsics: torch.Tensor, weights: Optional[torch.Tensor] = None,
-    svd_eps: float = 1e-4, norm_eps: float = 1e-8,
+    svd_eps: float = 1e-4,
 ) -> torch.Tensor:
     r"""This function attempts to solve the Perspective-n-Point (PnP)
     problem using Direct Linear Transform (DLT).
@@ -80,7 +80,6 @@ def solve_pnp_dlt(
         weights : This parameter is not used currently and is just a
           placeholder for API consistency.
         svd_eps : A small float value to avoid numerical precision issues.
-        norm_eps : A small float value to avoid division by zero errors.
 
     Returns:
         A tensor with shape :math:`(B, 3, 4)` representing the estimated world to
@@ -119,9 +118,6 @@ def solve_pnp_dlt(
 
     if type(svd_eps) is not float:
         raise AssertionError(f"Type of svd_eps is not float. Got {type(svd_eps)}")
-
-    if type(norm_eps) is not float:
-        raise AssertionError(f"Type of norm_eps is not float. Got {type(norm_eps)}")
 
     if (len(world_points.shape) != 3) or (world_points.shape[2] != 3):
         raise AssertionError(
@@ -218,7 +214,7 @@ def solve_pnp_dlt(
     # matrix should be 1. Here we use the 0th column to calculate norm_col.
     # We then multiply solution with mul_factor.
     norm_col = torch.sqrt(torch.sum(input=solution[:, :3, 0] ** 2, dim=1))
-    mul_factor = (1 / (norm_col + norm_eps))[:, None, None]
+    mul_factor = (1 / norm_col)[:, None, None]
     temp = solution * mul_factor
 
     # To make sure that the rotation matrix would be orthogonal, we apply
