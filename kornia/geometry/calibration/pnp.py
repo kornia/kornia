@@ -215,22 +215,7 @@ def solve_pnp_dlt(
     # We then multiply solution with mul_factor.
     norm_col = torch.sqrt(torch.sum(input=solution[:, :3, 0] ** 2, dim=1))
     mul_factor = (1 / norm_col)[:, None, None]
-    temp = solution * mul_factor
-
-    # To make sure that the rotation matrix would be orthogonal, we apply
-    # QR decomposition.
-    ortho, right = torch.qr(temp)
-
-    # We may need to fix the signs of the columns of the ortho matrix.
-    # If right[i, j, j] is negative, then we need to flip the signs of
-    # the column ortho[i, :, j]. The below code performs the necessary
-    # operations in an better way.
-    mask = kornia.eye_like(3, ortho)
-    col_sign_fix = torch.sign(mask * right[:, :3, :3])
-    rot_mat = torch.bmm(ortho, col_sign_fix)
-
-    # Preparing the final output.
-    pred_world_to_cam = torch.cat([rot_mat, temp[:, :3, 3:4]], dim=-1)
+    pred_world_to_cam = solution * mul_factor
 
     # TODO: Implement algorithm to refine the solution.
 

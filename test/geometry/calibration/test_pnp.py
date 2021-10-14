@@ -125,7 +125,7 @@ class TestSolvePnpDlt:
 
         assert gradcheck(
             kornia.geometry.solve_pnp_dlt, (world_points, img_points, intrinsics),
-            raise_exception=True, atol=1e-3
+            raise_exception=True,
         )
 
     @pytest.mark.parametrize("num_points", (6, 20, 1000))
