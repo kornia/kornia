@@ -222,14 +222,14 @@ class MobileViT(nn.Module):
     Based on: https://github.com/chinhsuanwu/mobilevit-pytorch
 
     Args:
-        image_size: must be divisible by 32 but greater than 32, defaults to (256, 256).
         mode: 'xxs', 'xs' or 's', defaults to 'xxs'.
-        patch_size: image_size must be divisible by patch_size, defaults to (2, 2).
+        in_channels: the number of channels for the input image.
+        patch_size: image_size must be divisible by patch_size.
         dropout: dropout ratio in Transformer.
 
     Example:
         >>> img = torch.rand(1, 3, 256, 256)
-        >>> mvit = MobileViT(image_size=(256, 256), mode='xxs')
+        >>> mvit = MobileViT(mode='xxs')
         >>> mvit(img).shape
         torch.Size([1, 320, 8, 8])
     """
@@ -237,6 +237,7 @@ class MobileViT(nn.Module):
     def __init__(
         self,
         mode: str = 'xxs',
+        in_channels: int = 3,
         patch_size: Tuple[int, int] = (2, 2),
         dropout: float = 0.
     ) -> None:
@@ -257,7 +258,7 @@ class MobileViT(nn.Module):
         kernel_size = 3
         depth = [2, 4, 3]
 
-        self.conv1 = conv_nxn_bn(3, channels[0], stride=2)
+        self.conv1 = conv_nxn_bn(in_channels, channels[0], stride=2)
 
         self.mv2 = nn.ModuleList([])
         self.mv2.append(MV2Block(channels[0], channels[1], 1, expansion))
