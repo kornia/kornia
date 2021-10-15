@@ -97,6 +97,8 @@ class ImageStitcher(nn.Module):
         # NOTE: assumes no batch mode. This method keeps all valid regions after stitching.
         mask_: torch.Tensor = mask.sum((0, 1))
         index: int = int(mask_.any(0).int().argmin().item())
+        if index == 0:  # If no redundant space
+            return image
         return image[..., :index]
 
     def on_matcher(self, input) -> dict:
