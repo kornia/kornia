@@ -31,7 +31,9 @@ class ImageStitcher(nn.Module):
         plt.imshow(K.tensor_to_image(out))
     """
 
-    def __init__(self, matcher: nn.Module, estimator: str = 'ransac', blending_method: str = "naive") -> None:
+    def __init__(
+        self, matcher: nn.Module, estimator: str = 'ransac', blending_method: str = "naive",
+    ) -> None:
         super().__init__()
         self.matcher = matcher
         self.estimator = estimator
@@ -91,11 +93,11 @@ class ImageStitcher(nn.Module):
             raise NotImplementedError(f"The preprocessor for {self.matcher} has not been implmented.")
         return input_dict
 
-    def postprocess(self, image: torch.Tensor, mask: Optional[torch.Tensor]) -> torch.Tensor:
-        if mask is None:
-            return image
-        # TODO: implement autocrop to remove the black border.
-        return image
+    def postprocess(self, image: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        # NOTE: assumes no batch mode. This method keeps all valid regions after stitching.
+        mask_: torch.Tensor = mask.sum((0, 1))
+        index: int = int(mask_.int().any(0).argmin().item())
+        return image[..., :index]
 
     def on_matcher(self, input) -> dict:
         return self.matcher(input)
@@ -114,16 +116,17 @@ class ImageStitcher(nn.Module):
 
         # Compute the transformed masks
         if mask_left is None:
-            mask_left = torch.zeros_like(images_left)
+            mask_left = torch.ones_like(images_left)
         if mask_right is None:
             mask_right = torch.ones_like(images_right)
+        # 'nearest' to ensure no floating points in the mask
         src_mask = K.geometry.warp_perspective(mask_right, homo, out_shape, mode='nearest')
-        dst_mask = torch.cat([torch.ones_like(mask_left), torch.zeros_like(mask_right)], dim=-1)
+        dst_mask = torch.cat([mask_left, torch.zeros_like(mask_right)], dim=-1)
         return self.blend_image(src_img, dst_img, src_mask), (dst_mask + src_mask).bool().to(src_mask.dtype)
 
     def forward(self, *imgs: torch.Tensor) -> torch.Tensor:
         img_out = imgs[0]
-        mask_left: Optional[torch.Tensor] = None
+        mask_left = torch.ones_like(img_out)
         for i in range(len(imgs) - 1):
             img_out, mask_left = self.stitch_pair(img_out, imgs[i + 1], mask_left)
         return self.postprocess(img_out, mask_left)
