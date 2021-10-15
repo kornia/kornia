@@ -1,5 +1,5 @@
-Image Matching
-==============
+Image Matching and Stitching
+============================
 
 Image matching is a process of finding pixel and region correspondences between two images of the same scene.
 Such correspondences are useful for 3D reconstruction of the scene and relative camera pose estimation.
@@ -22,3 +22,20 @@ However we recommend to start with high-level API, such as :py:class:`~kornia.fe
 .. image:: https://raw.githubusercontent.com/kornia/data/main/matching/matching_loftr.jpg
 
 You also can go through or full tutorial using Colab found `here <https://kornia-tutorials.readthedocs.io/en/latest/image_matching.html>`_.
+
+
+Image stitching is the process of combining multiple images with overlapping fields of view to produce a segmented panorama. Here, we provide :py:class:`~kornia.contrib.ImageStitcher` to easily stitch a number of images.
+
+.. image:: https://raw.githubusercontent.com/kornia/data/main/matching/stitch_before.jpg
+
+.. code:: python
+
+    from kornia.contrib import ImageStitcher
+
+    matcher = KF.LoFTR(pretrained='outdoor')
+    IS = ImageStitcher(matcher, estimator='ransac').cuda()
+    # NOTE: it would require a large CPU memory if many images.
+    with torch.no_grad():
+        out = IS(*imgs)
+
+.. image:: https://raw.githubusercontent.com/kornia/data/main/matching/stitch_after.jpg
