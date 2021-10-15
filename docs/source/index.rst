@@ -57,6 +57,7 @@ Join the community
    applications/image_augmentations
    applications/image_classification
    applications/image_matching
+   applications/image_stitching
    applications/image_registration
    applications/semantic_segmentation
    applications/video_deblur
