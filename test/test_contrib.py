@@ -342,8 +342,9 @@ class TestImageStitcher:
             # To avoid that, we mock as below
             matcher = kornia.feature.LoFTR(None)
             stitcher = kornia.contrib.ImageStitcher(matcher, estimator=estimator).to(device=device, dtype=dtype)
-            # stitcher.matcher.return_value = return_value
-            assert stitcher(input1, input2).shape == torch.Size([1, 3, 224, 448])
+            out = stitcher(input1, input2)
+            assert out.shape[:-1] == torch.Size([1, 3, 224])
+            assert out.shape[-1] <= 448
 
     def test_exception(self, device, dtype):
         B, C, H, W = 1, 3, 224, 224
