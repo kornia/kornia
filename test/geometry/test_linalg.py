@@ -129,8 +129,8 @@ class TestComposeTransforms:
         trans_01 = identity_matrix(batch_size=batch_size, device=device, dtype=dtype)
         trans_12 = identity_matrix(batch_size=batch_size, device=device, dtype=dtype)
 
-        to_check_1 = kornia.compose_transformations(trans_01, trans_12)
-        to_check_2 = kornia.compose_transformations(trans_01[0], trans_12[0])
+        to_check_1 = kornia.geometry.compose_transformations(trans_01, trans_12)
+        to_check_2 = kornia.geometry.compose_transformations(trans_01[0], trans_12[0])
 
         assert to_check_1.shape == (batch_size, 4, 4)
         assert to_check_2.shape == (4, 4)
@@ -144,21 +144,21 @@ class TestComposeTransforms:
 
         # Testing if exception is thrown when both inputs have shape (3, 3)
         with pytest.raises(ValueError):
-            _ = kornia.compose_transformations(to_check_5, to_check_5)
+            _ = kornia.geometry.compose_transformations(to_check_5, to_check_5)
 
         # Testing if exception is thrown when both inputs have shape (5, 10, 10)
         with pytest.raises(ValueError):
-            _ = kornia.compose_transformations(to_check_2, to_check_2)
+            _ = kornia.geometry.compose_transformations(to_check_2, to_check_2)
 
         # Testing if exception is thrown when one input has shape (6, 4, 4)
         # whereas the other input has shape (4, 4)
         with pytest.raises(ValueError):
-            _ = kornia.compose_transformations(to_check_3, to_check_4)
+            _ = kornia.geometry.compose_transformations(to_check_3, to_check_4)
 
         # Testing if exception is thrown when one input has shape (7, 4, 4, 3)
         # whereas the other input has shape (4, 4)
         with pytest.raises(ValueError):
-            _ = kornia.compose_transformations(to_check_1, to_check_4)
+            _ = kornia.geometry.compose_transformations(to_check_1, to_check_4)
 
     def test_translation_4x4(self, device, dtype):
         offset = 10
@@ -194,8 +194,8 @@ class TestInverseTransformation:
         batch_size = 2
         trans_01 = identity_matrix(batch_size=batch_size, device=device, dtype=dtype)
 
-        to_check_1 = kornia.inverse_transformation(trans_01)
-        to_check_2 = kornia.inverse_transformation(trans_01[0])
+        to_check_1 = kornia.geometry.inverse_transformation(trans_01)
+        to_check_2 = kornia.geometry.inverse_transformation(trans_01[0])
 
         assert to_check_1.shape == (batch_size, 4, 4)
         assert to_check_2.shape == (4, 4)
@@ -207,15 +207,15 @@ class TestInverseTransformation:
 
         # Testing if exception is thrown when the input has shape (7, 4, 4, 3)
         with pytest.raises(ValueError):
-            _ = kornia.inverse_transformation(to_check_1)
+            _ = kornia.geometry.inverse_transformation(to_check_1)
 
         # Testing if exception is thrown when the input has shape (5, 10, 10)
         with pytest.raises(ValueError):
-            _ = kornia.inverse_transformation(to_check_2)
+            _ = kornia.geometry.inverse_transformation(to_check_2)
 
         # Testing if exception is thrown when the input has shape (3, 3)
         with pytest.raises(ValueError):
-            _ = kornia.inverse_transformation(to_check_3)
+            _ = kornia.geometry.inverse_transformation(to_check_3)
 
     def test_translation_4x4(self, device, dtype):
         offset = 10
@@ -264,8 +264,8 @@ class TestRelativeTransformation:
         trans_01 = identity_matrix(batch_size=batch_size, device=device, dtype=dtype)
         trans_02 = identity_matrix(batch_size=batch_size, device=device, dtype=dtype)
 
-        to_check_1 = kornia.relative_transformation(trans_01, trans_02)
-        to_check_2 = kornia.relative_transformation(trans_01[0], trans_02[0])
+        to_check_1 = kornia.geometry.relative_transformation(trans_01, trans_02)
+        to_check_2 = kornia.geometry.relative_transformation(trans_01[0], trans_02[0])
 
         assert to_check_1.shape == (batch_size, 4, 4)
         assert to_check_2.shape == (4, 4)
@@ -279,21 +279,21 @@ class TestRelativeTransformation:
 
         # Testing if exception is thrown when both inputs have shape (3, 3)
         with pytest.raises(ValueError):
-            _ = kornia.relative_transformation(to_check_5, to_check_5)
+            _ = kornia.geometry.relative_transformation(to_check_5, to_check_5)
 
         # Testing if exception is thrown when both inputs have shape (5, 10, 10)
         with pytest.raises(ValueError):
-            _ = kornia.relative_transformation(to_check_2, to_check_2)
+            _ = kornia.geometry.relative_transformation(to_check_2, to_check_2)
 
         # Testing if exception is thrown when one input has shape (6, 4, 4)
         # whereas the other input has shape (4, 4)
         with pytest.raises(ValueError):
-            _ = kornia.relative_transformation(to_check_3, to_check_4)
+            _ = kornia.geometry.relative_transformation(to_check_3, to_check_4)
 
         # Testing if exception is thrown when one input has shape (7, 4, 4, 3)
         # whereas the other input has shape (4, 4)
         with pytest.raises(ValueError):
-            _ = kornia.relative_transformation(to_check_1, to_check_4)
+            _ = kornia.geometry.relative_transformation(to_check_1, to_check_4)
 
     def test_translation_4x4(self, device, dtype):
         offset = 10.0
