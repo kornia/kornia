@@ -6,11 +6,22 @@ from torch import nn
 __all__ = ["MobileViT"]
 
 
+class SiLU(nn.Module):
+    """Module SiLU (Sigmoid Linear Units)
+
+    This implementation is to support pytorch < 1.8, and will be deprecated after 1.8.
+
+    Paper: https://arxiv.org/abs/1702.03118
+    """
+    def forward(self, x):
+        return x * torch.sigmoid(x)
+
+
 def conv_1x1_bn(inp: int, oup: int) -> nn.Module:
     return nn.Sequential(
         nn.Conv2d(inp, oup, 1, 1, 0, bias=False),
         nn.BatchNorm2d(oup),
-        nn.SiLU()
+        SiLU()
     )
 
 
@@ -18,7 +29,7 @@ def conv_nxn_bn(inp: int, oup: int, kernal_size: int = 3, stride: int = 1) -> nn
     return nn.Sequential(
         nn.Conv2d(inp, oup, kernal_size, stride, 1, bias=False),
         nn.BatchNorm2d(oup),
-        nn.SiLU()
+        SiLU()
     )
 
 
@@ -37,7 +48,7 @@ class FeedForward(nn.Module):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(dim, hidden_dim),
-            nn.SiLU(),
+            SiLU(),
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, dim),
             nn.Dropout(dropout)
@@ -134,7 +145,7 @@ class MV2Block(nn.Module):
                 # depthwise
                 nn.Conv2d(hidden_dim, hidden_dim, 3, stride, 1, groups=hidden_dim, bias=False),
                 nn.BatchNorm2d(hidden_dim),
-                nn.SiLU(),
+                SiLU(),
                 # pointwise
                 nn.Conv2d(hidden_dim, oup, 1, 1, 0, bias=False),
                 nn.BatchNorm2d(oup),
@@ -144,11 +155,11 @@ class MV2Block(nn.Module):
                 # pointwise
                 nn.Conv2d(inp, hidden_dim, 1, 1, 0, bias=False),
                 nn.BatchNorm2d(hidden_dim),
-                nn.SiLU(),
+                SiLU(),
                 # depthwise
                 nn.Conv2d(hidden_dim, hidden_dim, 3, stride, 1, groups=hidden_dim, bias=False),
                 nn.BatchNorm2d(hidden_dim),
-                nn.SiLU(),
+                SiLU(),
                 # pointwise
                 nn.Conv2d(hidden_dim, oup, 1, 1, 0, bias=False),
                 nn.BatchNorm2d(oup),
