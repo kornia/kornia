@@ -31,7 +31,7 @@ def test_list_of_images_to_tensor(num_of_images, image_shape):
         with pytest.raises(ValueError):
             kornia.image_list_to_tensor([])
         return
-    for i in range(num_of_images):
+    for _ in range(num_of_images):
         images.append(np.ones(shape=image_shape))
     if len(image_shape) != 3:
         with pytest.raises(ValueError):
