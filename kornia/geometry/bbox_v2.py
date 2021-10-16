@@ -290,6 +290,11 @@ class Boxes:
                      [0., 0., 0., 0., 0.],
                      [0., 0., 0., 0., 0.]]])
         """
+        if self._boxes.requires_grad:
+            raise RuntimeError(
+                "Boxes.to_tensor isn't differentiable. Please, create boxes from tensors with `requires_grad=False`."
+            )
+
         if self._is_batch:  # (B, N, 4, 2)
             mask = torch.zeros(
                 (self._boxes.shape[0], self._boxes.shape[1], height, width), dtype=self.dtype, device=self.device
@@ -521,12 +526,21 @@ class Boxes3D:
                 * 'vertices' or 'verticies_plus': :math:`(N, 8, 3)` or :math:`(B, N, 8, 3)`.
                 * Any other value: :math:`(N, 6)` or :math:`(B, N, 6)`.
 
+        Note:
+            It is currently non-differentiable due to a bug. See github issue
+            `#1304 <https://github.com/kornia/kornia/issues/1396>`_.
 
         Examples:
             >>> boxes_xyzxyz = torch.as_tensor([[0, 3, 6, 1, 4, 8], [5, 1, 3, 8, 4, 9]])
             >>> boxes = Boxes3D.from_tensor(boxes_xyzxyz, mode='xyzxyz')
             >>> assert (boxes.to_tensor(mode='xyzxyz') == boxes_xyzxyz).all()
         """
+        if self._boxes.requires_grad:
+            raise RuntimeError("Boxes3D.to_tensor doesn't support computing gradients since they aren't accurate. "
+                               "Please, create boxes from tensors with `requires_grad=False`. "
+                               "This is a known bug. Help is needed to fix it. For more information, "
+                               "see https://github.com/kornia/kornia/issues/1396.")
+
         batched_boxes = self._boxes if self._is_batch else self._boxes.unsqueeze(0)
 
         # Create boxes in xyzxyz format.
@@ -611,6 +625,10 @@ class Boxes3D:
                      [0., 0., 0., 0., 0.],
                      [0., 0., 0., 0., 0.]]])
         """
+        if self._boxes.requires_grad:
+            raise RuntimeError(
+                "Boxes.to_tensor isn't differentiable. Please, create boxes from tensors with `requires_grad=False`."
+            )
 
         if self._is_batch:  # (B, N, 8, 3)
             mask = torch.zeros(
