@@ -13,6 +13,7 @@ __all__ = [
     "create_meshgrid3d",
     "tensor_to_image",
     "image_to_tensor",
+    "image_list_to_tensor",
     "save_pointcloud_ply",
     "load_pointcloud_ply",
     "draw_rectangle",
