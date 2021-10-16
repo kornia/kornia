@@ -8,6 +8,7 @@ from kornia.contrib.extract_patches import (
 )
 from kornia.contrib.lambda_module import Lambda
 from kornia.contrib.vit import VisionTransformer
+from kornia.contrib.vit_mobile import MobileViT
 
 __all__ = [
     "connected_components",
@@ -16,6 +17,7 @@ __all__ = [
     "combine_tensor_patches",
     "CombineTensorPatches",
     "VisionTransformer",
+    "MobileViT",
     "ClassificationHead",
     "Lambda"
 ]
