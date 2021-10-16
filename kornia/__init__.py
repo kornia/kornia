@@ -103,6 +103,7 @@ from kornia.testing import xla_is_available
 from kornia.utils import (
     create_meshgrid,
     image_to_tensor,
+    image_list_to_tensor,
     load_pointcloud_ply,
     one_hot,
     save_pointcloud_ply,
