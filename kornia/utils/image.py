@@ -73,6 +73,8 @@ def image_list_to_tensor(images: List["np.array"]) -> torch.Tensor:
     """
     if not images:
         raise ValueError("Input list of numpy images is empty")
+    if len(images[0].shape) != 3:
+        raise ValueError("Input images must be three dimensional arrays")
 
     list_of_tensors: List[torch.Tensor] = []
     for image in images:
