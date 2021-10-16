@@ -21,6 +21,7 @@ Image Classification
 --------------------
 
 .. autoclass:: VisionTransformer
+.. autoclass:: MobileViT
 .. autoclass:: ClassificationHead
 
 Lambda
