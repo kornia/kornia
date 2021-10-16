@@ -1,11 +1,11 @@
+from typing import List
+
 import numpy as np
 import pytest
 import torch
 
 import kornia
 from kornia.testing import assert_close
-
-from typing import List
 
 
 @pytest.mark.parametrize(
