@@ -56,7 +56,7 @@ def image_to_tensor(image: "np.ndarray", keepdim: bool = True) -> torch.Tensor:
     return tensor.unsqueeze(0) if not keepdim else tensor
 
 
-def image_list_to_tensor(images: List["np.array"]) -> torch.Tensor:
+def image_list_to_tensor(images: List["np.ndarray"]) -> torch.Tensor:
     """Converts a list of numpy images to a PyTorch 4d tensor image.
 
     Args:
