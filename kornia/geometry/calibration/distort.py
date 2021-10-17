@@ -42,22 +42,21 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
             [invR22, zero, R[..., 0, 2] * invR22, zero, invR22, R[..., 1, 2] * invR22, zero, zero, one], -1
         ).reshape(-1, 3, 3)
 
-        invTilt = R.transpose(-1, -2) @ invPz
+        inv_tilt = R.transpose(-1, -2) @ invPz
         if ndim == 0:
-            invTilt = torch.squeeze(invTilt)
+            inv_tilt = torch.squeeze(inv_tilt)
 
-        return invTilt
+        return inv_tilt
 
-    else:
-        Pz = torch.stack(
-            [R[..., 2, 2], zero, -R[..., 0, 2], zero, R[..., 2, 2], -R[..., 1, 2], zero, zero, one], -1
-        ).reshape(-1, 3, 3)
+    Pz = torch.stack(
+        [R[..., 2, 2], zero, -R[..., 0, 2], zero, R[..., 2, 2], -R[..., 1, 2], zero, zero, one], -1
+    ).reshape(-1, 3, 3)
 
-        tilt = Pz @ R.transpose(-1, -2)
-        if ndim == 0:
-            tilt = torch.squeeze(tilt)
+    tilt = Pz @ R.transpose(-1, -2)
+    if ndim == 0:
+        tilt = torch.squeeze(tilt)
 
-        return tilt
+    return tilt
 
 
 def distort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) -> torch.Tensor:
@@ -137,7 +136,7 @@ def distort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
         xd = points_untilt[..., 0] / points_untilt[..., 2]
         yd = points_untilt[..., 1] / points_untilt[..., 2]
 
-    # Covert points from normalized camera coordinates to pixel coordinates
+    # Convert points from normalized camera coordinates to pixel coordinates
     x = fx * xd + cx
     y = fy * yd + cy
 
