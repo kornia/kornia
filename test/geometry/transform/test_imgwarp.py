@@ -1,7 +1,6 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
-from torch.functional import align_tensors
 
 import kornia
 import kornia.testing as utils  # test utils
