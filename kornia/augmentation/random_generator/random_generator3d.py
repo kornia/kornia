@@ -119,7 +119,7 @@ def random_affine_generator3d(
             dim=1,
         )
     else:
-        scale = torch.ones(batch_size, device=device, dtype=dtype).repeat(1, 3)
+        scale = torch.ones(batch_size, device=device, dtype=dtype).reshape(batch_size, 1).repeat(1, 3)
 
     if translate is not None:
         if translate.shape != torch.Size([3]):
