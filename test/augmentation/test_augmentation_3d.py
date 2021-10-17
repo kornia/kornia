@@ -962,6 +962,7 @@ class TestRandomEqualize3D:
 
         return batch.to(device, dtype)
 
+
 class TestRandomAffine3D:
 
     @staticmethod
