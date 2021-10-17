@@ -96,7 +96,7 @@ class ImageStitcher(nn.Module):
     def postprocess(self, image: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         # NOTE: assumes no batch mode. This method keeps all valid regions after stitching.
         mask_: torch.Tensor = mask.sum((0, 1))
-        index: int = int(mask_.any(0).int().argmin().item())
+        index: int = int(mask_.bool().any(0).long().argmin().item())
         if index == 0:  # If no redundant space
             return image
         return image[..., :index]
