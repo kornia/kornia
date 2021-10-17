@@ -213,7 +213,7 @@ def solve_pnp_dlt(
     # matrices are 1. Do note that the norm of any column of a rotation
     # matrix should be 1. Here we use the 0th column to calculate norm_col.
     # We then multiply solution with mul_factor.
-    norm_col = torch.sqrt(torch.sum(input=solution[:, :3, 0] ** 2, dim=1))
+    norm_col = torch.norm(input=solution[:, :3, 0], p=2, dim=1)
     mul_factor = (1 / norm_col)[:, None, None]
     pred_world_to_cam = solution * mul_factor
 
