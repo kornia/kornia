@@ -653,6 +653,7 @@ def quaternion_log_to_exp(
     Args:
         quaternion: a tensor containing a quaternion to be converted.
           The tensor can be of shape :math:`(*, 3)`.
+        eps: a small number for clamping.
         order: quaternion coefficient order. Note: 'xyzw' will be deprecated in favor of 'wxyz'.
 
     Return:
@@ -708,7 +709,7 @@ def quaternion_exp_to_log(
     Args:
         quaternion: a tensor containing a quaternion to be converted.
           The tensor can be of shape :math:`(*, 4)`.
-        eps: A small number for clamping.
+        eps: a small number for clamping.
         order: quaternion coefficient order. Note: 'xyzw' will be deprecated in favor of 'wxyz'.
 
     Return:

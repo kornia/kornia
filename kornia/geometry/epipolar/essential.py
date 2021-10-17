@@ -123,7 +123,7 @@ def motion_from_essential(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tens
         The tuple is as following :math:`[(*, 4, 3, 3), (*, 4, 3, 1)]`.
 
     """
-    if not (len(E_mat.shape) >= 2 and E_mat.shape[-2:]):
+    if not (len(E_mat.shape) >= 2 and E_mat.shape[-2:] == (3, 3)):
         raise AssertionError(E_mat.shape)
 
     # decompose the essential matrix by its possible poses
@@ -169,7 +169,7 @@ def motion_from_essential_choose_solution(
         The tuple is as following :math:`[(*, 3, 3), (*, 3, 1), (*, N, 3)]`.
 
     """
-    if not (len(E_mat.shape) >= 2 and E_mat.shape[-2:]):
+    if not (len(E_mat.shape) >= 2 and E_mat.shape[-2:] == (3, 3)):
         raise AssertionError(E_mat.shape)
     if not (len(K1.shape) >= 2 and K1.shape[-2:] == (3, 3)):
         raise AssertionError(K1.shape)

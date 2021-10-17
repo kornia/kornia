@@ -29,7 +29,7 @@ def cross_product_matrix(x: torch.Tensor) -> torch.Tensor:
 
 
 def eye_like(n: int, input: torch.Tensor) -> torch.Tensor:
-    r"""Return a 2-D tensor with ones on the diagonal and zeros elsewhere with same size as the input.
+    r"""Return a 2-D tensor with ones on the diagonal and zeros elsewhere with the same batch size as the input.
 
     Args:
         n: the number of rows :math:`(N)`.
@@ -37,7 +37,7 @@ def eye_like(n: int, input: torch.Tensor) -> torch.Tensor:
           The expected shape is :math:`(B, *)`.
 
     Returns:
-       The identity matrix with same size as input :math:`(B, N, N)`.
+       The identity matrix with the same batch size as the input :math:`(B, N, N)`.
 
     """
     if n <= 0:
@@ -50,15 +50,15 @@ def eye_like(n: int, input: torch.Tensor) -> torch.Tensor:
 
 
 def vec_like(n, tensor):
-    r"""Return a 2-D tensor with a vector containing zeros with same size as the input.
+    r"""Return a 2-D tensor with a vector containing zeros with the same batch size as the input.
 
     Args:
         n: the number of rows :math:`(N)`.
-        input: image tensor that will determine the batch size of the output matrix.
+        tensor: image tensor that will determine the batch size of the output matrix.
           The expected shape is :math:`(B, *)`.
 
     Returns:
-        The vector with same size as input :math:`(B, N, 1)`.
+        The vector with the same batch size as the input :math:`(B, N, 1)`.
 
     """
     if n <= 0:
