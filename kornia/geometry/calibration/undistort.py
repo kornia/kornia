@@ -1,8 +1,14 @@
 import torch
 
 from kornia.geometry.calibration.distort import distort_points, tilt_projection
+from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform.imgwarp import remap
 from kornia.utils import create_meshgrid
+
+__all__ = [
+    "undistort_points",
+    "undistort_image",
+]
 
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/undistort.dispatch.cpp#L384
@@ -24,14 +30,15 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) 
         Undistorted 2D points with shape :math:`(*, N, 2)`.
 
     Example:
+        >>> _ = torch.manual_seed(0)
         >>> x = torch.rand(1, 4, 2)
         >>> K = torch.eye(3)[None]
         >>> dist = torch.rand(1, 4)
         >>> undistort_points(x, K, dist)
-        tensor([[[ 0.6198,  0.5452],
-                 [ 0.7274,  0.6173],
-                 [ 0.7422, -0.7141],
-                 [ 0.5008, -0.1313]]])
+        tensor([[[-0.1513, -0.1165],
+                 [ 0.0711,  0.1100],
+                 [-0.0697,  0.0228],
+                 [-0.1843, -0.1606]]])
     """
     if points.dim() < 2 and points.shape[-1] != 2:
         raise ValueError(f'points shape is invalid. Got {points.shape}.')
@@ -60,9 +67,7 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) 
         inv_tilt = tilt_projection(dist[..., 12], dist[..., 13], True)
 
         # Transposed untilt points (instead of [x,y,1]^T, we obtain [x,y,1])
-        points_untilt = torch.stack([x, y, torch.ones_like(x)], -1) @ inv_tilt.transpose(-2, -1)
-        x = points_untilt[..., 0] / points_untilt[..., 2]
-        y = points_untilt[..., 1] / points_untilt[..., 2]
+        x, y = transform_points(inv_tilt, torch.stack([x, y], dim=-1)).unbind(-1)
 
     # Iteratively undistort points
     x0, y0 = x, y
@@ -112,6 +117,15 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
 
     Returns:
         Undistorted image with shape :math:`(*, C, H, W)`.
+
+    Example:
+        >>> img = torch.rand(1, 3, 5, 5)
+        >>> K = torch.eye(3)[None]
+        >>> dist_coeff = torch.rand(4)
+        >>> out = undistort_image(img, K, dist_coeff)
+        >>> out.shape
+        torch.Size([1, 3, 5, 5])
+
     """
     if len(image.shape) < 2:
         raise ValueError(f"Image shape is invalid. Got: {image.shape}.")

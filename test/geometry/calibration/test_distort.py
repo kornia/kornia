@@ -3,6 +3,7 @@ import torch
 from torch.autograd import gradcheck
 
 from kornia.geometry.calibration.distort import distort_points
+from kornia.testing import assert_close
 
 
 class TestDistortPoints:
@@ -13,6 +14,7 @@ class TestDistortPoints:
         pointsu = distort_points(points, K, distCoeff)
         assert points.shape == pointsu.shape
 
+    def test_smoke_batch(self, device, dtype):
         points = torch.rand(1, 1, 2, device=device, dtype=dtype)
         K = torch.rand(1, 3, 3, device=device, dtype=dtype)
         distCoeff = torch.rand(1, 4, device=device, dtype=dtype)
@@ -38,3 +40,13 @@ class TestDistortPoints:
         distCoeff = torch.rand(1, 4, device=device, dtype=torch.float64)
 
         assert gradcheck(distort_points, (points, K, distCoeff), raise_exception=True)
+
+    def test_jit(self, device, dtype):
+        points = torch.rand(1, 1, 2, device=device, dtype=dtype)
+        K = torch.rand(1, 3, 3, device=device, dtype=dtype)
+        distCoeff = torch.rand(1, 4, device=device, dtype=dtype)
+        inputs = (points, K, distCoeff)
+
+        op = distort_points
+        op_jit = torch.jit.script(op)
+        assert_close(op(*inputs), op_jit(*inputs))
