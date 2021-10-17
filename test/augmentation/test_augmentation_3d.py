@@ -105,7 +105,8 @@ class TestRandomHorizontalFlip3D:
         assert (f1(input)[1] == identity).all()
 
     def test_batch_random_affine_3d(self, device):
-        f = RandomAffine3D((0, 0, 0), p=1., return_transform=True) # No rotation
+
+        f = RandomAffine3D((0, 0, 0), p=1., return_transform=True)  # No rotation
         input = torch.tensor([[[[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]]]])  # 1 x 1 x 1 x 3 x 3
 
         expected = torch.tensor([[[[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]]]])  # 1 x 1 x 1 x 3 x 3
