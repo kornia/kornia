@@ -159,10 +159,9 @@ def _compute_luts(
         max_val: float = max(clip * pixels // num_bins, 1)
         histos.clamp_(max=max_val)
         clipped: torch.Tensor = pixels - histos.sum(1)
-        remainder: torch.Tensor = torch.remainder(clipped, num_bins)
-        redist: torch.Tensor = (clipped - remainder) / num_bins
+        residual: torch.Tensor = torch.remainder(clipped, num_bins)
+        redist: torch.Tensor = (clipped - residual).div(num_bins)
         histos += redist[None].transpose(0, 1)
-        residual: torch.Tensor = remainder
         # trick to avoid using a loop to assign the residual
         v_range: torch.Tensor = torch.arange(num_bins, device=histos.device)
         mat_range: torch.Tensor = v_range.repeat(histos.shape[0], 1)
@@ -201,13 +200,13 @@ def _map_luts(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
     # precompute idxs for non corner regions (doing it in cpu seems slightly faster)
     j_idxs = torch.empty(0, 4, dtype=torch.long)
     if gh > 2:
-        j_floor = torch.arange(1, gh - 1).view(gh - 2, 1) // 2
+        j_floor = torch.arange(1, gh - 1).view(gh - 2, 1).div(2, rounding_mode="trunc")
         j_idxs = torch.tensor([[0, 0, 1, 1], [-1, -1, 0, 0]] * ((gh - 2) // 2))  # reminder + j_idxs[:, 0:2] -= 1
         j_idxs += j_floor
 
     i_idxs = torch.empty(0, 4, dtype=torch.long)
     if gw > 2:
-        i_floor = torch.arange(1, gw - 1).view(gw - 2, 1) // 2
+        i_floor = torch.arange(1, gw - 1).view(gw - 2, 1).div(2, rounding_mode="trunc")
         i_idxs = torch.tensor([[0, 1, 0, 1], [-1, 0, -1, 0]] * ((gw - 2) // 2))  # reminder + i_idxs[:, [0, 2]] -= 1
         i_idxs += i_floor
 
@@ -345,7 +344,6 @@ def equalize_clahe(input: torch.Tensor,
         torch.Size([2, 3, 10, 20])
 
     """
-
     if not isinstance(clip_limit, float):
         raise TypeError(f"Input clip_limit type is not float. Got {type(clip_limit)}")
 
