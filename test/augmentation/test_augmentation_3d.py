@@ -8,6 +8,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.augmentation import (
+    RandomAffine3D,
     RandomCrop,
     RandomCrop3D,
     RandomDepthicalFlip3D,
@@ -15,7 +16,6 @@ from kornia.augmentation import (
     RandomHorizontalFlip3D,
     RandomRotation3D,
     RandomVerticalFlip3D,
-    RandomAffine3D
 )
 from kornia.testing import assert_close
 
