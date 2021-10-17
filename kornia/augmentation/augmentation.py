@@ -105,6 +105,17 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
     ) -> torch.Tensor:
         return hflip(input)
 
+    def inverse_transform(
+        self,
+        input: torch.Tensor,
+        transform: Optional[torch.Tensor] = None,
+        size: Optional[Tuple[int, int]] = None,
+        **kwargs,
+    ) -> torch.Tensor:
+        return self.apply_transform(
+            input, params=self._params, transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype)
+        )
+
 
 class RandomVerticalFlip(GeometricAugmentationBase2D):
     r"""Apply a random vertical flip to a tensor image or a batch of tensor images with a given probability.
@@ -160,6 +171,17 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         return vflip(input)
+
+    def inverse_transform(
+        self,
+        input: torch.Tensor,
+        transform: Optional[torch.Tensor] = None,
+        size: Optional[Tuple[int, int]] = None,
+        **kwargs,
+    ) -> torch.Tensor:
+        return self.apply_transform(
+            input, params=self._params, transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype)
+        )
 
 
 class ColorJitter(IntensityAugmentationBase2D):
@@ -496,6 +518,17 @@ class RandomPerspective(GeometricAugmentationBase2D):
             input, transform, (height, width), mode=self.resample.name.lower(), align_corners=self.align_corners
         )
 
+    def inverse_transform(
+        self,
+        input: torch.Tensor,
+        transform: Optional[torch.Tensor] = None,
+        size: Optional[Tuple[int, int]] = None,
+        **kwargs,
+    ) -> torch.Tensor:
+        return self.apply_transform(
+            input, params=self._params, transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype)
+        )
+
 
 class RandomAffine(GeometricAugmentationBase2D):
     r"""Apply a random 2D affine transformation to a tensor image.
@@ -686,6 +719,17 @@ class RandomAffine(GeometricAugmentationBase2D):
             padding_mode=self.padding_mode.name.lower(),
         )
 
+    def inverse_transform(
+        self,
+        input: torch.Tensor,
+        transform: Optional[torch.Tensor] = None,
+        size: Optional[Tuple[int, int]] = None,
+        **kwargs,
+    ) -> torch.Tensor:
+        return self.apply_transform(
+            input, params=self._params, transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype)
+        )
+
 
 class CenterCrop(GeometricAugmentationBase2D):
     r"""Crop a given image tensor at the center.
@@ -848,17 +892,19 @@ class RandomRotation(GeometricAugmentationBase2D):
         ...                       [0., 0., 1., 2.]])
         >>> aug = RandomRotation(degrees=45.0, return_transform=True, p=1.)
         >>> out = aug(input)
-        >>> out
-        (tensor([[[[0.9824, 0.0088, 0.0000, 1.9649],
+        >>> out[0]
+        tensor([[[[0.9824, 0.0088, 0.0000, 1.9649],
                   [0.0000, 0.0029, 0.0000, 0.0176],
                   [0.0029, 1.0000, 1.9883, 0.0000],
-                  [0.0000, 0.0088, 1.0117, 1.9649]]]]), tensor([[[ 1.0000, -0.0059,  0.0088],
+                  [0.0000, 0.0088, 1.0117, 1.9649]]]])
+        >>> out[1]
+        tensor([[[ 1.0000, -0.0059,  0.0088],
                  [ 0.0059,  1.0000, -0.0088],
-                 [ 0.0000,  0.0000,  1.0000]]]))
+                 [ 0.0000,  0.0000,  1.0000]]])
         >>> aug.inverse(out)
-        tensor([[[[9.6526e-01, 8.6823e-03, 1.7263e-02, 1.9305e+00],
+        tensor([[[[9.6526e-01, 8.6824e-03, 1.7263e-02, 1.9305e+00],
                   [8.6398e-03, 2.9485e-03, 5.8971e-03, 1.7365e-02],
-                  [2.9055e-03, 9.9416e-01, 1.9825e+00, 2.3134e-02],
+                  [2.9054e-03, 9.9416e-01, 1.9825e+00, 2.3134e-02],
                   [2.5777e-05, 1.1640e-02, 9.9992e-01, 1.9392e+00]]]])
     """
 
@@ -910,6 +956,17 @@ class RandomRotation(GeometricAugmentationBase2D):
     ) -> torch.Tensor:
         transform = cast(torch.Tensor, transform)
         return affine(input, transform[..., :2, :3], self.resample.name.lower(), 'zeros', self.align_corners)
+
+    def inverse_transform(
+        self,
+        input: torch.Tensor,
+        transform: Optional[torch.Tensor] = None,
+        size: Optional[Tuple[int, int]] = None,
+        **kwargs,
+    ) -> torch.Tensor:
+        return self.apply_transform(
+            input, params=self._params, transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype)
+        )
 
 
 class RandomCrop(GeometricAugmentationBase2D):
@@ -2052,6 +2109,7 @@ class RandomFisheye(GeometricAugmentationBase2D):
         gamma = self.dist(self.gamma[:1], self.gamma[1:]).rsample(shape[:1])
         return dict(center_x=center_x, center_y=center_y, gamma=gamma)
 
+    # TODO: It is incorrect to return identity
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return self.identity_matrix(input)
 
@@ -2131,6 +2189,7 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
             noise = torch.rand(B, 2, H, W, device=self.device, dtype=self.dtype)
         return dict(noise=noise * 2 - 1)
 
+    # TODO: It is incorrect to return identity
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return self.identity_matrix(input)
 
@@ -2184,6 +2243,7 @@ class RandomThinPlateSpline(GeometricAugmentationBase2D):
         dst = src + self.dist.rsample(src.shape)
         return dict(src=src, dst=dst)
 
+    # TODO: It is incorrect to return identity
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return self.identity_matrix(input)
 
@@ -2197,7 +2257,7 @@ class RandomThinPlateSpline(GeometricAugmentationBase2D):
         return warp_image_tps(input, src, kernel, affine, self.align_corners)
 
 
-class RandomBoxBlur(GeometricAugmentationBase2D):
+class RandomBoxBlur(IntensityAugmentationBase2D):
     """Add random blur with a box filter to an image tensor.
 
     .. image:: _static/img/RandomBoxBlur.png
@@ -2243,3 +2303,87 @@ class RandomBoxBlur(GeometricAugmentationBase2D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         return box_blur(input, self.kernel_size, self.border_type, self.normalized)
+
+
+class PadTo(GeometricAugmentationBase2D):
+    r"""Pad the given sample to a specific size.
+
+    Args:
+        size: a tuple of ints in the format (height, width) that give the spatial
+            dimensions to pad inputs to.
+        pad_mode: the type of padding to perform on the image (valid values
+            are those accepted by torch.nn.functional.pad)
+        pad_value: fill value for 'constant' padding applied to the image
+        p: probability of the image being flipped.
+        return_transform: if ``True`` return the matrix describing the transformation applied to each
+                          input tensor. If ``False`` and the input is a tuple the applied transformation
+                          won't be concatenated.
+        same_on_batch: apply the same transformation across the batch.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+                 to the batch form (False).
+
+    Shape:
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Output: :math:`(B, C, H, W)`
+
+    .. note::
+        This function internally uses :func:`torch.nn.functional.pad`.
+
+    Examples:
+        >>> img = torch.tensor([[[[0., 0., 0.],
+        ...                       [0., 0., 0.],
+        ...                       [0., 0., 0.]]]])
+        >>> pad = PadTo((4, 5), pad_value=1.)
+        >>> out = pad(img)
+        >>> out
+        tensor([[[[0., 0., 0., 1., 1.],
+                  [0., 0., 0., 1., 1.],
+                  [0., 0., 0., 1., 1.],
+                  [1., 1., 1., 1., 1.]]]])
+        >>> pad.inverse(out)
+        tensor([[[[0., 0., 0.],
+                  [0., 0., 0.],
+                  [0., 0., 0.]]]])
+    """
+    def __init__(
+        self,
+        size: Tuple[int, int],
+        pad_mode: str = "constant",
+        pad_value: Union[int, float] = 0,
+        return_transform: bool = False,
+    ) -> None:
+        super().__init__(p=1., return_transform=return_transform, same_on_batch=True, p_batch=1.)
+        self.size = size
+        self.pad_mode = pad_mode
+        self.pad_value = pad_value
+
+    def __repr__(self) -> str:
+        return self.__class__.__name__ + f"({super().__repr__()})"
+
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        input_size = torch.tensor(batch_shape[-2:], dtype=torch.long).expand(batch_shape[0], -1)
+        return dict(input_size=input_size)
+
+    # TODO: It is incorrect to return identity
+    # TODO: Having a resampled version with ``warp_affine``
+    def compute_transformation(self, image: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return self.identity_matrix(image)
+
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        _, _, height, width = input.shape
+        height_pad: int = self.size[0] - height
+        width_pad: int = self.size[1] - width
+        return torch.nn.functional.pad(
+            input, [0, width_pad, 0, height_pad], mode=self.pad_mode, value=self.pad_value)
+
+    def inverse_transform(
+        self,
+        input: torch.Tensor,
+        transform: Optional[torch.Tensor] = None,
+        size: Optional[Tuple[int, int]] = None,
+        **kwargs
+    ) -> torch.Tensor:
+        size = cast(Tuple[int, int], size)
+        return input[..., :size[0], :size[1]]

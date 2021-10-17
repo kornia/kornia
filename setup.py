@@ -19,7 +19,7 @@ from setuptools import find_packages, setup
 
 # NOTE(maintainers): modify this variable each time you do a release
 
-version = '0.5.10'  # this a tag for the current development version
+version = '0.5.11'  # this a tag for the current development version
 
 
 # NOTE(maintainers): update this dictionary each time you do a release
@@ -28,6 +28,7 @@ version = '0.5.10'  # this a tag for the current development version
 # Once a pytorch version (in the future) breaks a kornia version, we could just
 # add a maximal version.
 kornia_pt_dependencies = {
+    '0.5.11': '>=1.6.0',
     '0.5.10': '>=1.6.0',
     '0.5.9': '>=1.6.0',
     '0.5.8': '>=1.6.0',
@@ -106,7 +107,7 @@ class clean(distutils.command.clean.clean):
                         shutil.rmtree(filename, ignore_errors=True)
 
         # It's an old-style class in Python 2.7...
-        distutils.command.clean.clean.run(self)
+        super().run()
 
     # remove compiled and temporary files
     subprocess.call(['rm -rf dist/ build/ kornia.egg*'], shell=True)
@@ -116,6 +117,18 @@ requirements = [
     'torch' + kornia_pt_dependencies[dep_version(version)],
     'packaging'  # REMOVE once we deprecate pytorch > 1.7.1. See: issue #1264
 ]
+
+
+def load_requirements(filename: str):
+    with open(filename) as f:
+        return [x.strip() for x in f.readlines() if "-r" != x[0:2]]
+
+
+requirements_extras = {
+    "x": load_requirements("requirements/x.txt"),
+    "dev": load_requirements("requirements/dev.txt"),
+}
+requirements_extras["all"] = requirements_extras["x"] + requirements_extras["dev"]
 
 
 if __name__ == '__main__':
@@ -138,7 +151,8 @@ if __name__ == '__main__':
         packages=find_packages(exclude=('docs', 'test', 'examples')),
         package_data={"kornia": ["py.typed"]},
         zip_safe=True,
-        install_requires=requirements,
+        install_require=requirements,
+        extras_require=requirements_extras,
         keywords=['computer vision', 'deep learning', 'pytorch'],
         project_urls={
             "Bug Tracker": "https://github.com/kornia/kornia/issues",

@@ -16,7 +16,7 @@ repos:
       - id: pretty-format-json
 
   - repo: https://github.com/psf/black
-    rev: 21.8b0
+    rev: 21.9b0
     hooks:
       - id: black
         args: [--diff]
@@ -37,12 +37,12 @@ repos:
       - id: isort
 
   - repo: https://github.com/PyCQA/flake8
-    rev: 3.9.2
+    rev: 4.0.1
     hooks:
       - id: flake8
 
   - repo: https://github.com/asottile/pyupgrade
-    rev: v2.26.0
+    rev: v2.29.0
     hooks:
       - id: pyupgrade
         args: [--py36-plus]

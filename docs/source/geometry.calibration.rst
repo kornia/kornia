@@ -113,6 +113,9 @@ v_d = f_v \bar{v}'_d + v_0 \enspace.
 \end{equation}
 `
 
+Undistortion
+------------
+
 To compensate for lens distortion a set of 2D points, i.e., to estimate the undistorted coordinates for a given set of distorted points, we need to inverse the previously explained distortion model. For the case of undistorting an image, instead of estimating the undistorted location for each pixel, we distort each pixel in the destination image (final undistorted image) to match them with the input image. We finally interpolate the intensity values at each pixel.
 
 .. autofunction:: undistort_image
@@ -122,3 +125,8 @@ To compensate for lens distortion a set of 2D points, i.e., to estimate the undi
 .. autofunction:: distort_points
 
 .. autofunction:: tilt_projection
+
+Perspective-n-Point (PnP)
+-------------------------
+
+.. autofunction:: solve_pnp_dlt

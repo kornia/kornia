@@ -1,8 +1,6 @@
-from typing import Optional
-
 import torch
 
-from kornia.utils.metrics.confusion_matrix import confusion_matrix
+from .confusion_matrix import confusion_matrix
 
 
 def mean_iou(input: torch.Tensor, target: torch.Tensor, num_classes: int, eps: float = 1e-6) -> torch.Tensor:
@@ -23,6 +21,12 @@ def mean_iou(input: torch.Tensor, target: torch.Tensor, num_classes: int, eps: f
     Returns:
         ta tensor representing the mean intersection-over union
         with shape :math:`(B, K)` where K is the number of classes.
+
+    Example:
+        >>> logits = torch.tensor([[0, 1, 0]])
+        >>> target = torch.tensor([[0, 1, 0]])
+        >>> mean_iou(logits, target, num_classes=3)
+        tensor([[1., 1., 1.]])
     """
     if not torch.is_tensor(input) and input.dtype is not torch.int64:
         raise TypeError("Input input type is not a torch.Tensor with " "torch.int64 dtype. Got {}".format(type(input)))

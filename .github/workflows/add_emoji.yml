@@ -1,0 +1,14 @@
+name: Add Emoji
+on: pull_request
+
+jobs:
+  add-emoji:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout 🛎️
+        uses: actions/checkout@v2
+
+      - name: Add emoji 🥰
+        uses: tiena2cva/action-emoji@v1
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

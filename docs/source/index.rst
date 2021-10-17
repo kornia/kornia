@@ -1,15 +1,11 @@
-Kornia
-======
+
+.. image:: https://github.com/kornia/data/raw/main/kornia_banner_pixie.png
+   :align: center
 
 State-of-the-art and curated Computer Vision algorithms for AI.
 
 Kornia AI is on the mission to leverage and democratize the next generation of Computer Vision tools and Deep Learning libraries
 within the context of an Open Source community.
-
-.. image:: https://github.com/kornia/data/raw/main/kornia_pytorch_banner.png
-   :align: center
-
-Kornia is powerful and easy to use:
 
 .. code:: python
 
@@ -17,6 +13,18 @@ Kornia is powerful and easy to use:
    >>> registrator = K.ImageRegistrator('similarity')
    >>> model = registrator(img1, img2)
 
+Ready to use with state-of-the art Deep Learning models:
+
+.. code:: python
+
+   >>> import torch.nn as nn
+   >>> import kornia.contrib as K
+   >>> classifier = nn.Sequential(
+   ...   K.VisionTransformer(image_size=224, patch_size=16),
+   ...   K.ClassificationHead(num_classes=1000),
+   ... )
+   >>> logits = classifier(img)    # BxN
+   >>> scores = logits.argmax(-1)  # B
 
 Join the community
 ------------------
@@ -38,15 +46,19 @@ Join the community
    get-started/installation
    get-started/about
    Tutorials <https://kornia-tutorials.readthedocs.io/en/latest/>
+   get-started/training
+   OpenCV AI Kit <https://docs.luxonis.com/en/latest/pages/tutorials/creating-custom-nn-models/#kornia>
 
 .. toctree::
    :caption: KORNIA APPLICATIONS
    :hidden:
 
    applications/intro
-   applications/image_registration
    applications/image_augmentations
+   applications/image_classification
    applications/image_matching
+   applications/image_registration
+   applications/semantic_segmentation
    applications/video_deblur
 
 .. toctree::
@@ -72,8 +84,10 @@ Join the community
    filters
    geometry
    losses
+   metrics
    morphology
    utils
+   x
 
 .. toctree::
    :caption: SUPPORT

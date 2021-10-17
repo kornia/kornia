@@ -10,7 +10,21 @@ try:
 except ImportError:
     pass
 
-from kornia import augmentation, color, contrib, enhance, feature, filters, geometry, jit, losses, morphology, utils
+from kornia import (
+    augmentation,
+    color,
+    contrib,
+    enhance,
+    feature,
+    filters,
+    geometry,
+    jit,
+    losses,
+    metrics,
+    morphology,
+    utils,
+    x,
+)
 from kornia.color import (
     bgr_to_grayscale,
     bgr_to_rgb,
@@ -69,6 +83,7 @@ from kornia.filters import (
     laplacian,
     median_blur,
     motion_blur,
+    motion_blur3d,
     sobel,
     spatial_gradient,
     unsharp_mask,
@@ -87,6 +102,7 @@ from kornia.losses import (
 from kornia.testing import xla_is_available
 from kornia.utils import (
     create_meshgrid,
+    image_list_to_tensor,
     image_to_tensor,
     load_pointcloud_ply,
     one_hot,
