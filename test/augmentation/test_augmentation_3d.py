@@ -104,26 +104,6 @@ class TestRandomHorizontalFlip3D:
         assert (f1(input)[0] == input).all()
         assert (f1(input)[1] == identity).all()
 
-    def test_batch_random_affine_3d(self, device):
-
-        f = RandomAffine3D((0, 0, 0), p=1., return_transform=True)  # No rotation
-        input = torch.tensor([[[[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]]]])  # 1 x 1 x 1 x 3 x 3
-
-        expected = torch.tensor([[[[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]]]])  # 1 x 1 x 1 x 3 x 3
-        expected = expected.to(device)
-
-        expected_transform = torch.tensor(
-            [[[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]]
-        )  # 1 x 4 x 4
-        expected_transform = expected_transform.to(device)
-
-        input = input.repeat(5, 3, 1, 1, 1)  # 5 x 3 x 3 x 3 x 3
-        expected = expected.repeat(5, 3, 1, 1, 1)  # 5 x 3 x 3 x 3 x 3
-        expected_transform = expected_transform.repeat(5, 1, 1)  # 5 x 4 x 4
-
-        assert (f(input)[0] == expected).all()
-        assert (f(input)[1] == expected_transform).all()
-
     def test_same_on_batch(self, device):
         f = RandomHorizontalFlip3D(p=0.5, same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 1, 1, 1, 1)
@@ -981,3 +961,26 @@ class TestRandomEqualize3D:
         batch = torch.stack([image3d] * bs)
 
         return batch.to(device, dtype)
+
+class TestRandomAffine3D:
+
+    @staticmethod
+    def test_batch_random_affine_3d(device):
+
+        f = RandomAffine3D((0, 0, 0), p=1., return_transform=True)  # No rotation
+        input = torch.tensor([[[[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]]]])  # 1 x 1 x 1 x 3 x 3
+
+        expected = torch.tensor([[[[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]]]])  # 1 x 1 x 1 x 3 x 3
+        expected = expected.to(device)
+
+        expected_transform = torch.tensor(
+            [[[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]]
+        )  # 1 x 4 x 4
+        expected_transform = expected_transform.to(device)
+
+        input = input.repeat(5, 3, 1, 1, 1)  # 5 x 3 x 3 x 3 x 3
+        expected = expected.repeat(5, 3, 1, 1, 1)  # 5 x 3 x 3 x 3 x 3
+        expected_transform = expected_transform.repeat(5, 1, 1)  # 5 x 4 x 4
+
+        assert (f(input)[0] == expected).all()
+        assert (f(input)[1] == expected_transform).all()
