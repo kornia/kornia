@@ -653,7 +653,8 @@ def _blend_one(input1: torch.Tensor, input2: torch.Tensor, factor: torch.Tensor)
 def _build_lut(histo, step):
     # Compute the cumulative sum, shifting by step // 2
     # and then normalization by step.
-    lut = (torch.cumsum(histo, 0) + (step // 2)) // step
+    step_trunc = torch.div(step, 2, rounding_mode='trunc')
+    lut = torch.div(torch.cumsum(histo, 0) + step_trunc, step, rounding_mode='trunc')
     # Shift lut, prepending with 0.
     lut = torch.cat([torch.zeros(1, device=lut.device, dtype=lut.dtype), lut[:-1]])
     # Clip the counts to be in range.  This is done
@@ -676,6 +677,7 @@ def _scale_channel(im: torch.Tensor) -> torch.Tensor:
 
     if min_.item() < 0.0 and not torch.isclose(min_, torch.tensor(0.0, dtype=min_.dtype)):
         raise ValueError(f"Values in the input tensor must greater or equal to 0.0. Found {min_.item()}.")
+
     if max_.item() > 1.0 and not torch.isclose(max_, torch.tensor(1.0, dtype=max_.dtype)):
         raise ValueError(f"Values in the input tensor must lower or equal to 1.0. Found {max_.item()}.")
 
@@ -683,12 +685,12 @@ def _scale_channel(im: torch.Tensor) -> torch.Tensor:
     if ndims not in (2, 3):
         raise TypeError(f"Input tensor must have 2 or 3 dimensions. Found {ndims}.")
 
-    im = im * 255
+    im = im * 255.
     # Compute the histogram of the image channel.
     histo = _torch_histc_cast(im, bins=256, min=0, max=255)
     # For the purposes of computing the step, filter out the nonzeros.
     nonzero_histo = torch.reshape(histo[histo != 0], [-1])
-    step = (torch.sum(nonzero_histo) - nonzero_histo[-1]) // 255
+    step = torch.div(torch.sum(nonzero_histo) - nonzero_histo[-1], 255, rounding_mode='trunc')
 
     # If step is zero, return the original image.  Otherwise, build
     # lut from the full histogram and step and then index from it.

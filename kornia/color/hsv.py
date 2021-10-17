@@ -1,25 +1,7 @@
 import math
-from typing import Tuple
 
 import torch
 import torch.nn as nn
-
-from kornia.utils._compat import torch_version
-from packaging import version
-
-# TODO: remove once pytorch 1.6 is deprecated and keep first branch
-if version.parse(torch_version()) > version.parse("1.6.0"):
-    def _compute_max_argmax(img: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        max_rgb, argmax_rgb = img.max(-3)
-        return max_rgb, argmax_rgb
-else:
-    def _compute_max_argmax(img: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        # The first or last occurrence is not guaranteed before 1.6.0
-        # https://github.com/pytorch/pytorch/issues/20414
-        max_rgb, _ = img.max(-3)
-        max_mask = img == max_rgb.unsqueeze(-3)
-        _, argmax_rgb = ((max_mask.cumsum(-3) == 1) & max_mask).max(-3)
-        return max_rgb, argmax_rgb
 
 
 def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
@@ -51,8 +33,7 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    # TODO: remove if/else statement once pytorch 1.6 is deprecated and keep first branch
-    max_rgb, argmax_rgb = _compute_max_argmax(image)
+    max_rgb, argmax_rgb = image.max(-3)
     min_rgb, argmin_rgb = image.min(-3)
     deltac = max_rgb - min_rgb
 
