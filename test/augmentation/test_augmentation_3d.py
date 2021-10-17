@@ -965,11 +965,10 @@ class TestRandomEqualize3D:
 
 class TestRandomAffine3D:
 
-    @staticmethod
-    def test_batch_random_affine_3d(device):
+    def test_batch_random_affine_3d(self, device):
 
         f = RandomAffine3D((0, 0, 0), p=1., return_transform=True)  # No rotation
-        input = torch.tensor([[[[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]]]])  # 1 x 1 x 1 x 3 x 3
+        tensor = torch.tensor([[[[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]]]])  # 1 x 1 x 1 x 3 x 3
 
         expected = torch.tensor([[[[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]]]])  # 1 x 1 x 1 x 3 x 3
         expected = expected.to(device)
@@ -979,9 +978,9 @@ class TestRandomAffine3D:
         )  # 1 x 4 x 4
         expected_transform = expected_transform.to(device)
 
-        input = input.repeat(5, 3, 1, 1, 1)  # 5 x 3 x 3 x 3 x 3
+        tensor = tensor.repeat(5, 3, 1, 1, 1)  # 5 x 3 x 3 x 3 x 3
         expected = expected.repeat(5, 3, 1, 1, 1)  # 5 x 3 x 3 x 3 x 3
         expected_transform = expected_transform.repeat(5, 1, 1)  # 5 x 4 x 4
 
-        assert (f(input)[0] == expected).all()
-        assert (f(input)[1] == expected_transform).all()
+        assert (f(tensor)[0] == expected).all()
+        assert (f(tensor)[1] == expected_transform).all()
