@@ -441,9 +441,9 @@ class TestRemap:
         op = kornia.geometry.remap
         op_script = torch.jit.script(op)
 
-        input = (img, grid[..., 0], grid[..., 1], 'bilinear', 'zeros', True)
-        actual = op_script(*input)
-        expected = op(*input)
+        inputs = (img, grid[..., 0], grid[..., 1], 'bilinear', 'zeros', True)
+        actual = op_script(*inputs)
+        expected = op(*inputs)
         assert_close(actual, expected, rtol=1e-4, atol=1e-4)
 
 

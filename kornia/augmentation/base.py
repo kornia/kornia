@@ -238,7 +238,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             params = self.forward_parameters(batch_shape)
         if 'batch_prob' not in params:
             params['batch_prob'] = torch.tensor([True] * batch_shape[0])
-            # TODO(jian): we cannot throw a warning everytime.
+            # TODO(jian): we cannot throw a warning every time.
             # warnings.warn("`batch_prob` is not found in params. Will assume applying on all data.")
 
         self._params = params

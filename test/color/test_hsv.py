@@ -115,7 +115,7 @@ class TestRgbToHsv(BaseTester):
         fcn = kornia.color.rgb_to_hsv
         assert_close(ops(img), fcn(img))
 
-    @pytest.mark.skip(reason="workign but causes some warnings tdue to boolean conversion.")
+    @pytest.mark.skip(reason="working but causes some warnings tdue to boolean conversion.")
     def test_onnx(self, device, dtype):
         B, C, H, W = 1, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
