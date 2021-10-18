@@ -106,6 +106,7 @@ class LoFTR(nn.Module):
                 'mask0'(optional) : (torch.Tensor): (N, H1, W1) '0' indicates a padded position
                 'mask1'(optional) : (torch.Tensor): (N, H2, W2)
             }
+
         Returns:
             out: {
                     "keypoints0": (torch.Tensor): (NC, 2) matching keypoints from image0
@@ -113,6 +114,7 @@ class LoFTR(nn.Module):
                     "confidence": (torch.Tensor): (NC) - confidence score [0, 1]
                     "batch_indexes": (torch.Tensor): (NC) - batch indexes for the keypoints
             }
+
         """
 
         # 1. Local Feature CNN

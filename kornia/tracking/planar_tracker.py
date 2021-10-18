@@ -30,8 +30,8 @@ class HomographyTracker(nn.Module):
 
     Example:
         >>> from kornia.tracking import HomographyTracker
-        >>> target = torch.rand(1, 1, 16, 16)
-        >>> img_dst = torch.rand(1, 1, 32, 32)
+        >>> target = torch.rand(1, 1, 32, 32)
+        >>> img_dst = torch.rand(1, 1, 64, 64)
         >>> tracker = HomographyTracker()
         >>> tracker.set_target(target)
         >>> homography, success = tracker(img_dst)

@@ -21,7 +21,9 @@ Descriptors
 .. autoclass:: HardNet8
 .. autoclass:: TFeat
 .. autoclass:: SOSNet
-
+.. autoclass:: LAFDescriptor
+   :members: forward
+.. autofunction:: get_laf_descriptors
 
 Matching
 -----------
@@ -30,7 +32,20 @@ Matching
 .. autofunction:: match_mnn
 .. autofunction:: match_snn
 .. autofunction:: match_smnn
+
+
+.. autoclass:: DescriptorMatcher
+.. autoclass:: LocalFeature
+   :members: forward
+.. autoclass:: SIFTFeature
+   :members: forward
+.. autoclass:: GFTTAffNetHardNet
+   :members: forward
+.. autoclass:: LocalFeatureMatcher
+   :members: forward
 .. autoclass:: LoFTR
+   :members: forward
+
 
 
 

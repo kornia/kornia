@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 from kornia.color import rgb_to_grayscale
-from kornia.feature import extract_patches_from_pyramid
+from kornia.feature.laf import extract_patches_from_pyramid
 from kornia.feature.affine_shape import LAFAffNetShapeEstimator
 from kornia.feature.hardnet import HardNet
 from kornia.feature.laf import get_laf_center, raise_error_if_laf_is_not_valid
@@ -20,16 +20,17 @@ def get_laf_descriptors(img: torch.Tensor,
                         patch_descriptor: nn.Module,
                         patch_size: int = 32,
                         grayscale_descriptor: bool = True) -> torch.Tensor:
-    """Function to get local descriptors, corresponding to LAFs (keypoints)
-        Args:
-            img (torch.Tensor): image features with shape [BxCxHxW]
-            lafs (torch.Tensor): local affine frames [BxNx2x3]
-            patch_descriptor (nn.Module): patch descriptor,
-        e.g. :class:`kornia.feature.SIFTDescriptor` or :class:`kornia.feature.HardNet`
-            patch_size (int): patch size in pixels, which descriptor expects
-            grayscale_descriptor (bool): True if patch_descriptor expects single-channel image
-        Returns:
-            descriptors (torch.Tensor): local descriptors of shape [BxNxD] where D is descriptor size. """
+    r"""Function to get local descriptors, corresponding to LAFs (keypoints)
+
+    Args:
+        img (torch.Tensor): image features with shape [BxCxHxW]
+        lafs (torch.Tensor): local affine frames [BxNx2x3]
+        patch_descriptor (nn.Module): patch descriptor, e.g. :class:`kornia.feature.SIFTDescriptor` or :class:`kornia.feature.HardNet`
+        patch_size (int): patch size in pixels, which descriptor expects
+        grayscale_descriptor (bool): True if patch_descriptor expects single-channel image
+
+    Returns:
+        descriptors (torch.Tensor): local descriptors of shape [BxNxD] where D is descriptor size. """
     raise_error_if_laf_is_not_valid(lafs)
     dev: torch.device = img.device
     dtype: torch.dtype = img.dtype
@@ -49,14 +50,15 @@ def get_laf_descriptors(img: torch.Tensor,
 
 
 class LAFDescriptor(nn.Module):
-    """Module to get local descriptors, corresponding to LAFs (keypoints).
-
+    r"""Module to get local descriptors, corresponding to LAFs (keypoints).
     See :func:`~kornia.feature.get_laf_descriptors`
+
     Args:
         patch_descriptor_module (nn.Module): patch descriptor, e.g.
     :class:`kornia.feature.SIFTDescriptor` or :class:`kornia.feature.HardNet`
         patch_size (int): patch size in pixels, which descriptor expects
         grayscale_descriptor (bool): True if patch_descriptor expects single-channel image
+
     Returns:
         descriptors (torch.Tensor): local descriptors of shape [BxNxD] where D is descriptor size.
     """
@@ -78,13 +80,15 @@ class LAFDescriptor(nn.Module):
             'grayscale_descriptor=' + str(self.grayscale_descriptor) + ')'
 
     def forward(self, img: torch.Tensor, lafs: torch.Tensor) -> torch.Tensor:
-        """Three stage local feature detection.
+        r"""Three stage local feature detection.
 
         First the location and scale of interest points are determined by
         detect function. Then affine shape and orientation.
+
         Args:
             img (torch.Tensor): image features with shape [BxCxHxW]
             lafs (torch.Tensor): local affine frames [BxNx2x3]
+
         Returns:
             descriptors (torch.Tensor): local descriptors of shape [BxNxD] where D is descriptor size.
         """
@@ -123,7 +127,6 @@ class LocalFeature(nn.Module):
 
 class SIFTFeature(LocalFeature):
     """Convenience module, which implements DoG detector + (Root)SIFT descriptor.
-
     Still not as good as OpenCV/VLFeat because of https://github.com/kornia/kornia/pull/884, but we are working on it
     """
     def __init__(self,
@@ -170,7 +173,6 @@ class GFTTAffNetHardNet(LocalFeature):
 
 class LocalFeatureMatcher(nn.Module):
     r"""Module, which finds correspondences between two images based on local features.
-
     Args:
         detector: Local feature detector. See :class:`~kornia.feature.ScaleSpaceDetector`.
         descriptor: Local patch descriptor, see :class:`~kornia.feature.HardNet`
@@ -184,9 +186,7 @@ class LocalFeatureMatcher(nn.Module):
         >>> img1 = torch.rand(1, 1, 320, 200)
         >>> img2 = torch.rand(1, 1, 128, 128)
         >>> input = {"image0": img1, "image1": img2}
-        >>> gftt_hardnet_matcher = LocalFeatureMatcher(kornia.ScaleSpaceDetector(500),
-        >>>                                kornia.feature.HardNet(True),
-        >>>                                kornia.feature.DescriptorMatcher())
+        >>> gftt_hardnet_matcher = LocalFeatureMatcher(GFTTAffNetHardNet(10), kornia.feature.DescriptorMatcher('snn', 0.8))  # noqa: E501
         >>> out = gftt_hardnet_matcher(input)
     """
 
@@ -220,6 +220,7 @@ class LocalFeatureMatcher(nn.Module):
                 'mask0'(optional) : (torch.Tensor): (N, H1, W1) '0' indicates a padded position
                 'mask1'(optional) : (torch.Tensor): (N, H2, W2)
             }
+
         Returns:
             out: {
                     "keypoints0": (torch.Tensor): (NC, 2) matching keypoints from image0

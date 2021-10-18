@@ -31,8 +31,8 @@ class RANSAC(nn.Module):
         max_local_iterations: number of local optimization (polishing) iterations.
 
     Returns:
-        - estimated model, shape of :math:`(3, 3)`.
-        - the inlier/outlier mask, shape of :math:`(1, N), where N is number of input correspondences`.
+        estimated model, shape of :math:`(3, 3)`.
+        the inlier/outlier mask, shape of :math:`(1, N), where N is number of input correspondences`.
     """
     supported_models = ['homography', 'fundamental']
 
@@ -155,15 +155,15 @@ class RANSAC(nn.Module):
                 kp1: torch.Tensor,
                 kp2: torch.Tensor,
                 weights: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Main forward method to execute the RANSAC algorithm.
-            Args:
-                kp1 (torch.Tensor): source image keypoints :math:`(N, 2)`.
-                kp2 (torch.Tensor): distance image keypoints :math:`(N, 2)`.
-                weights (torch.Tensor): optional correspondences weights. Not used now
+        r"""Main forward method to execute the RANSAC algorithm.
+        Args:
+            kp1 (torch.Tensor): source image keypoints :math:`(N, 2)`.
+            kp2 (torch.Tensor): distance image keypoints :math:`(N, 2)`.
+            weights (torch.Tensor): optional correspondences weights. Not used now
 
-            Returns:
-                - estimated model, shape of :math:`(1, 3, 3)`.
-                - the inlier/outlier mask, shape of :math:`(1, N), where N is number of input correspondences`.
+        Returns:
+            - estimated model, shape of :math:`(1, 3, 3)`.
+            - the inlier/outlier mask, shape of :math:`(1, N), where N is number of input correspondences`.
             """
         if not isinstance(kp1, torch.Tensor):
             raise TypeError(f"Input kp1 is not torch.Tensor. Got {type(kp1)}")

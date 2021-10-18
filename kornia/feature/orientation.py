@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from kornia.constants import pi
-from kornia.feature import (
+from kornia.feature.laf import (
     extract_patches_from_pyramid,
     get_laf_orientation,
     raise_error_if_laf_is_not_valid,
