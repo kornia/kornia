@@ -4,10 +4,9 @@ from torch.autograd import gradcheck
 
 import kornia
 import kornia.testing as utils  # test utils
-from kornia.geometry.transform import ImageRegistrator
-from kornia.testing import assert_close
-from kornia.geometry.transform import denormalize_homography
 from kornia.geometry import transform_points
+from kornia.geometry.transform import denormalize_homography, ImageRegistrator
+from kornia.testing import assert_close
 
 
 class TestSimilarity:

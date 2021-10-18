@@ -1,21 +1,18 @@
-from typing import Tuple, List, Optional, Dict
+from typing import Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
 
-from kornia.feature.laf import (
-    raise_error_if_laf_is_not_valid,
-    get_laf_center,
-)
-from kornia.feature.hardnet import HardNet
-from kornia.feature.siftdesc import SIFTDescriptor
-from kornia.feature.responses import BlobDoG, CornerGFTT
-from kornia.feature.orientation import LAFOrienter, PassLAF
-from kornia.feature.affine_shape import LAFAffNetShapeEstimator
-from kornia.feature.scale_space_detector import ScaleSpaceDetector
-from kornia.feature import extract_patches_from_pyramid
-from kornia.geometry import ScalePyramid, ConvQuadInterp3d
 from kornia.color import rgb_to_grayscale
+from kornia.feature import extract_patches_from_pyramid
+from kornia.feature.affine_shape import LAFAffNetShapeEstimator
+from kornia.feature.hardnet import HardNet
+from kornia.feature.laf import get_laf_center, raise_error_if_laf_is_not_valid
+from kornia.feature.orientation import LAFOrienter, PassLAF
+from kornia.feature.responses import BlobDoG, CornerGFTT
+from kornia.feature.scale_space_detector import ScaleSpaceDetector
+from kornia.feature.siftdesc import SIFTDescriptor
+from kornia.geometry import ConvQuadInterp3d, ScalePyramid
 
 
 def get_laf_descriptors(img: torch.Tensor,
@@ -52,20 +49,23 @@ def get_laf_descriptors(img: torch.Tensor,
 
 
 class LAFDescriptor(nn.Module):
-    """Module to get local descriptors, corresponding to LAFs (keypoints). See :func:`~kornia.feature.get_laf_descriptors`
-        Args:
-            patch_descriptor_module (nn.Module): patch descriptor, e.g.
-        :class:`kornia.feature.SIFTDescriptor` or :class:`kornia.feature.HardNet`
-            patch_size (int): patch size in pixels, which descriptor expects
-            grayscale_descriptor (bool): True if patch_descriptor expects single-channel image
-        Returns:
-            descriptors (torch.Tensor): local descriptors of shape [BxNxD] where D is descriptor size. """
+    """Module to get local descriptors, corresponding to LAFs (keypoints).
+
+    See :func:`~kornia.feature.get_laf_descriptors`
+    Args:
+        patch_descriptor_module (nn.Module): patch descriptor, e.g.
+    :class:`kornia.feature.SIFTDescriptor` or :class:`kornia.feature.HardNet`
+        patch_size (int): patch size in pixels, which descriptor expects
+        grayscale_descriptor (bool): True if patch_descriptor expects single-channel image
+    Returns:
+        descriptors (torch.Tensor): local descriptors of shape [BxNxD] where D is descriptor size.
+    """
 
     def __init__(self,
                  patch_descriptor_module: nn.Module = HardNet(True),
                  patch_size: int = 32,
                  grayscale_descriptor: bool = True):
-        super(LAFDescriptor, self).__init__()
+        super().__init__()
         self.descriptor = patch_descriptor_module
         self.patch_size = patch_size
         self.grayscale_descriptor = grayscale_descriptor
@@ -78,23 +78,26 @@ class LAFDescriptor(nn.Module):
             'grayscale_descriptor=' + str(self.grayscale_descriptor) + ')'
 
     def forward(self, img: torch.Tensor, lafs: torch.Tensor) -> torch.Tensor:
-        """Three stage local feature detection. First the location and scale of interest points are determined by
+        """Three stage local feature detection.
+
+        First the location and scale of interest points are determined by
         detect function. Then affine shape and orientation.
         Args:
             img (torch.Tensor): image features with shape [BxCxHxW]
             lafs (torch.Tensor): local affine frames [BxNx2x3]
         Returns:
-            descriptors (torch.Tensor): local descriptors of shape [BxNxD] where D is descriptor size. """
+            descriptors (torch.Tensor): local descriptors of shape [BxNxD] where D is descriptor size.
+        """
         return get_laf_descriptors(img, lafs, self.descriptor, self.patch_size, self.grayscale_descriptor)
 
 
 class LocalFeature(nn.Module):
-    """Module, which combines local feature detector and descriptor, (see :class:`kornia.feature.ScaleSpaceDetector`
-        see :class:`kornia.feature.LAFDescriptor`)"""
+    """Module, which combines local feature detector and descriptor, (see
+    :class:`kornia.feature.ScaleSpaceDetector` see :class:`kornia.feature.LAFDescriptor`)"""
     def __init__(self,
                  detector: ScaleSpaceDetector,
                  descriptor: LAFDescriptor):
-        super(LocalFeature, self).__init__()
+        super().__init__()
         self.detector = detector
         self.descriptor = descriptor
 
@@ -120,8 +123,9 @@ class LocalFeature(nn.Module):
 
 class SIFTFeature(LocalFeature):
     """Convenience module, which implements DoG detector + (Root)SIFT descriptor.
-    Still not as good as OpenCV/VLFeat because of
-    https://github.com/kornia/kornia/pull/884, but we are working on it"""
+
+    Still not as good as OpenCV/VLFeat because of https://github.com/kornia/kornia/pull/884, but we are working on it
+    """
     def __init__(self,
                  num_features: int = 8000,
                  upright: bool = False,

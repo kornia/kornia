@@ -5,12 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-from kornia.feature import (
-    DescriptorMatcher,
-    GFTTAffNetHardNet,
-    LocalFeatureMatcher,
-    LoFTR,
-)
+from kornia.feature import DescriptorMatcher, GFTTAffNetHardNet, LocalFeatureMatcher, LoFTR
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.ransac import RANSAC
 from kornia.geometry.transform.imgwarp import warp_perspective

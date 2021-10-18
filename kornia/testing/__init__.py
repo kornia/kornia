@@ -136,6 +136,7 @@ def _get_precision_by_name(
 try:
     # torch.testing.assert_close is only available for torch>=1.9
     from torch.testing import assert_close as _assert_close  # type: ignore
+
     #from torch.testing._core import _get_default_tolerance
 
     def assert_close(

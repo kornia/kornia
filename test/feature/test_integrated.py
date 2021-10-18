@@ -3,16 +3,10 @@ import torch
 import torch.nn as nn
 from torch.autograd import gradcheck
 
-import kornia.testing as utils  # test utils
 import kornia
+import kornia.testing as utils  # test utils
 from kornia.feature import *
-from kornia.geometry import (
-    ConvQuadInterp3d,
-    ScalePyramid,
-    resize,
-    RANSAC,
-    transform_points
-)
+from kornia.geometry import ConvQuadInterp3d, RANSAC, resize, ScalePyramid, transform_points
 from kornia.testing import assert_close
 
 

@@ -7,8 +7,8 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils
 from kornia.geometry import RANSAC
-from kornia.testing import assert_close
 from kornia.geometry.epipolar import sampson_epipolar_distance
+from kornia.testing import assert_close
 
 
 class TestRANSACHomography:

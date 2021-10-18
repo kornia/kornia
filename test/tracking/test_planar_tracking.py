@@ -3,12 +3,12 @@ import torch
 import torch.nn as nn
 from torch.autograd import gradcheck
 
-import kornia.testing as utils  # test utils
 import kornia
-from kornia.tracking import *
+import kornia.testing as utils  # test utils
 from kornia.feature import *
 from kornia.geometry import transform_points
 from kornia.testing import assert_close
+from kornia.tracking import *
 
 
 class TestHomographyTracker:
