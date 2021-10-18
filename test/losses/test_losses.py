@@ -455,7 +455,7 @@ class TestDivergenceLoss:
         target = torch.randn((2, 4, 10, 16), dtype=dtype, device=device)
         args = (input, target)
         op = kornia.losses.kl_div_loss_2d
-        op_jit = torch.jit.script(op, args)
+        op_jit = torch.jit.script(op)
         assert_close(op(*args), op_jit(*args), rtol=0, atol=1e-5)
 
     def test_jit_js(self, device, dtype):
@@ -463,7 +463,7 @@ class TestDivergenceLoss:
         target = torch.randn((2, 4, 10, 16), dtype=dtype, device=device)
         args = (input, target)
         op = kornia.losses.js_div_loss_2d
-        op_jit = torch.jit.script(op, args)
+        op_jit = torch.jit.script(op)
         assert_close(op(*args), op_jit(*args), rtol=0, atol=1e-5)
 
 
