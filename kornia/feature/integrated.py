@@ -25,7 +25,7 @@ def get_laf_descriptors(img: torch.Tensor,
     Args:
         img (torch.Tensor): image features with shape [BxCxHxW]
         lafs (torch.Tensor): local affine frames [BxNx2x3]
-        patch_descriptor (nn.Module): patch descriptor, e.g. :class:`kornia.feature.SIFTDescriptor` or :class:`kornia.feature.HardNet`
+        patch_descriptor (nn.Module): patch descriptor, e.g. :class:`kornia.feature.SIFTDescriptor` or :class:`kornia.feature.HardNet`  # noqa: E501
         patch_size (int): patch size in pixels, which descriptor expects
         grayscale_descriptor (bool): True if patch_descriptor expects single-channel image
 
