@@ -4,10 +4,9 @@ import torch
 import torch.nn as nn
 
 from kornia.color import rgb_to_grayscale
-from kornia.feature.laf import extract_patches_from_pyramid
 from kornia.feature.affine_shape import LAFAffNetShapeEstimator
 from kornia.feature.hardnet import HardNet
-from kornia.feature.laf import get_laf_center, raise_error_if_laf_is_not_valid
+from kornia.feature.laf import extract_patches_from_pyramid, get_laf_center, raise_error_if_laf_is_not_valid
 from kornia.feature.orientation import LAFOrienter, PassLAF
 from kornia.feature.responses import BlobDoG, CornerGFTT
 from kornia.feature.scale_space_detector import ScaleSpaceDetector
@@ -127,6 +126,7 @@ class LocalFeature(nn.Module):
 
 class SIFTFeature(LocalFeature):
     """Convenience module, which implements DoG detector + (Root)SIFT descriptor.
+
     Still not as good as OpenCV/VLFeat because of https://github.com/kornia/kornia/pull/884, but we are working on it
     """
     def __init__(self,
