@@ -39,7 +39,7 @@ class HomographyTracker(nn.Module):
         >>> img_dst = torch.rand(1, 1, 32, 32)
         >>> tracker = HomographyTracker()
         >>> tracker.set_target(target)
-        >>> homography, success = tracker()
+        >>> homography, success = tracker(img_dst)
     """
     def __init__(self,
                  initial_matcher=LocalFeatureMatcher(GFTTAffNetHardNet(3000),
