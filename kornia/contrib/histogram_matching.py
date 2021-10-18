@@ -45,7 +45,7 @@ def interp(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor) -> torch.Tensor:
     """Interpolate ``x`` tensor according to ``xp`` and ``fp`` as in ``np.interp``.
 
     This implementation cannot reproduce numpy results identically, but reasonable.
-    Code refered to `here <https://github.com/pytorch/pytorch/issues/1552#issuecomment-926972915>`_.
+    Code referred to `here <https://github.com/pytorch/pytorch/issues/1552#issuecomment-926972915>`_.
     """
 
     slopes = (fp[1:] - fp[:-1]) / (xp[1:] - xp[:-1])
