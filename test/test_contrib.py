@@ -1,3 +1,5 @@
+from unittest.mock import patch, PropertyMock
+
 import pytest
 import torch
 from torch.autograd import gradcheck
@@ -334,3 +336,43 @@ class TestLambdaModule:
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         func = kornia.bgr_to_grayscale
         assert gradcheck(kornia.contrib.Lambda(func), (img,), raise_exception=True)
+
+
+class TestImageStitcher:
+
+    @pytest.mark.parametrize("estimator", ['ransac', 'vanilla'])
+    def test_smoke(self, estimator, device, dtype):
+        B, C, H, W = 1, 3, 224, 224
+        input1 = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        input2 = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        return_value = {
+            "keypoints0": torch.rand((15, 2), device=device, dtype=dtype),
+            "keypoints1": torch.rand((15, 2), device=device, dtype=dtype),
+            "confidence": torch.rand((15,), device=device, dtype=dtype),
+            "batch_indexes": torch.zeros((15,), device=device, dtype=dtype)
+        }
+        with patch(
+            'kornia.contrib.ImageStitcher.on_matcher',
+            new_callable=PropertyMock, return_value=lambda x: return_value
+        ):
+            # NOTE: This will need to download the pretrained weights.
+            # To avoid that, we mock as below
+            matcher = kornia.feature.LoFTR(None)
+            stitcher = kornia.contrib.ImageStitcher(matcher, estimator=estimator).to(device=device, dtype=dtype)
+            out = stitcher(input1, input2)
+            assert out.shape[:-1] == torch.Size([1, 3, 224])
+            assert out.shape[-1] <= 448
+
+    def test_exception(self, device, dtype):
+        B, C, H, W = 1, 3, 224, 224
+        input1 = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        input2 = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        # NOTE: This will need to download the pretrained weights.
+        matcher = kornia.feature.LoFTR(None)
+
+        with pytest.raises(NotImplementedError):
+            stitcher = kornia.contrib.ImageStitcher(matcher, estimator='random').to(device=device, dtype=dtype)
+
+        stitcher = kornia.contrib.ImageStitcher(matcher).to(device=device, dtype=dtype)
+        with pytest.raises(RuntimeError):
+            stitcher(input1, input2)
