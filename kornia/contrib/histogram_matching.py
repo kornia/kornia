@@ -6,7 +6,7 @@ def histogram_matching(source: torch.Tensor, template: torch.Tensor) -> torch.Te
 
     `Histogram matching <https://en.wikipedia.org/wiki/Histogram_matching>`_ is the transformation
     of an image so that its histogram matches a specified histogram. In this implementation, the
-    histogram is computed over the flattened image array. Code refered to
+    histogram is computed over the flattened image array. Code referred to
     `here <https://stackoverflow.com/questions/32655686/histogram-matching-of-two-images-in-python-2-x>`_.
 
     Args:
