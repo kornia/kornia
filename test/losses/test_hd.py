@@ -122,23 +122,8 @@ class TestHausdorffLoss:
         loss(logits, labels)
 
     @pytest.mark.parametrize("hd,shape", [
-        [kornia.losses.HausdorffERLoss, (10, 10)],
-        [kornia.losses.HausdorffERLoss3D, (10, 10, 10)],
-    ])
-    def test_jit(self, hd, shape, device, dtype):
-        num_classes = 3
-        logits = torch.rand(2, num_classes, *shape, dtype=dtype, device=device)
-        labels = (torch.rand(2, 1, *shape, dtype=dtype, device=device) * (num_classes - 1)).long()
-        loss = hd(k=2)
-
-        op_script = torch.jit.trace(loss, (logits, labels))
-        actual = op_script(logits, labels)
-        expected = loss(logits, labels)
-        assert_close(actual, expected)
-
-    @pytest.mark.parametrize("hd,shape", [
-        [kornia.losses.HausdorffERLoss, (100, 100)],
-        [kornia.losses.HausdorffERLoss3D, (100, 100, 100)],
+        [kornia.losses.HausdorffERLoss, (50, 50)],
+        [kornia.losses.HausdorffERLoss3D, (50, 50, 50)],
     ])
     def test_numeric(self, hd, shape, device, dtype):
         num_classes = 3
@@ -152,10 +137,9 @@ class TestHausdorffLoss:
         assert_close(actual, expected)
 
     @pytest.mark.parametrize("hd,shape", [
-        [kornia.losses.HausdorffERLoss, (10, 10)],
-        [kornia.losses.HausdorffERLoss3D, (10, 10, 10)],
+        [kornia.losses.HausdorffERLoss, (5, 5)],
+        [kornia.losses.HausdorffERLoss3D, (5, 5, 5)],
     ])
-    @pytest.mark.skip(reason='It passed, but will take too much time to run.')
     def test_gradcheck(self, hd, shape, device):
         num_classes = 3
         logits = torch.rand(2, num_classes, *shape, device=device)
