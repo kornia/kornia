@@ -24,6 +24,9 @@ class TestHomographyTracker:
                                                                           dtype)
         tracker = HomographyTracker(matcher, matcher, minimum_inliers_num=100)
         data = torch.load("data/test/loftr_outdoor_and_homography_data.pt")
+        for k in data.keys():
+            if isinstance(data[k], torch.Tensor):
+                data[k] = data[k].to(device, dtype)
         tracker.set_target(data["image0"])
         homography, success = tracker(torch.zeros_like(data["image0"]))
         assert not success
@@ -33,9 +36,12 @@ class TestHomographyTracker:
     def test_real(self, device, dtype):
         # This is not unit test, but that is quite good integration test
         matcher = LocalFeatureMatcher(GFTTAffNetHardNet(1000),
-                                      DescriptorMatcher('snn', 0.8)).to(device)
-        tracker = HomographyTracker(matcher).to(device, dtype)
+                                      DescriptorMatcher('snn', 0.8)).to(device, dtype)
+        tracker = HomographyTracker(matcher, matcher).to(device, dtype)
         data = torch.load("data/test/loftr_outdoor_and_homography_data.pt")
+        for k in data.keys():
+            if isinstance(data[k], torch.Tensor):
+                data[k] = data[k].to(device, dtype)
         h0, w0 = data["image0"].shape[2:]
         data["image0"] = resize(data["image0"], (int(h0 // 2), int(w0 // 2)))
         data["image1"] = resize(data["image1"], (int(h0 // 2), int(w0 // 2)))
