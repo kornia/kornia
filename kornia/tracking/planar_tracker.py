@@ -111,7 +111,8 @@ class HomographyTracker(nn.Module):
         Hwarp[:, 0:2, 0:2] = Hwarp[:, 0:2, 0:2] / 0.8
         Hwarp[:, 0:2, 2] -= 10.0
         Hinv = torch.inverse(Hwarp)
-        frame_warped = warp_perspective(x, Hinv, tuple(self.target.shape[2:]))
+        h, w = self.target.shape[2:]
+        frame_warped = warp_perspective(x, Hinv, (h, w))
         input_dict = {"image0": self.target,
                       "image1": frame_warped}
         for k, v in self.target_fast_representation.items():
