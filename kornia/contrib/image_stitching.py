@@ -103,8 +103,8 @@ class ImageStitcher(nn.Module):
             return image
         return image[..., :index]
 
-    def on_matcher(self, input) -> dict:
-        return self.matcher(input)
+    def on_matcher(self, data) -> dict:
+        return self.matcher(data)
 
     def stitch_pair(
         self, images_left: torch.Tensor, images_right: torch.Tensor,
@@ -112,9 +112,9 @@ class ImageStitcher(nn.Module):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         # Compute the transformed images
         input_dict: Dict[str, torch.Tensor] = self.preprocess(images_left, images_right)
-        out_shape = (images_left.shape[-2], images_left.shape[-1] + images_right.shape[-1])
+        out_shape: Tuple[int, int] = (images_left.shape[-2], images_left.shape[-1] + images_right.shape[-1])
         correspondences: dict = self.on_matcher(input_dict)
-        homo = self.estimate_transform(**correspondences)
+        homo: torch.Tensor = self.estimate_transform(**correspondences)
         src_img = K.geometry.warp_perspective(images_right, homo, out_shape)
         dst_img = torch.cat([images_left, torch.zeros_like(images_right)], dim=-1)
 
