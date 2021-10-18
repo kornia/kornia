@@ -6,6 +6,8 @@ import kornia
 import kornia.testing as utils  # test utils
 from kornia.geometry.transform import ImageRegistrator
 from kornia.testing import assert_close
+from kornia.geometry.transform import denormalize_homography
+from kornia.geometry import transform_points
 
 
 class TestSimilarity:
@@ -66,7 +68,7 @@ class TestImageRegistrator:
             ir = kornia.geometry.transform.ImageRegistrator(model_type).to(device)
             print(ir)
 
-    def test_registration(self, device):
+    def test_registration_toy(self, device):
         ch, height, width = 3, 16, 18
         homography = torch.eye(3, device=device)[None]
         homography[..., 0, 0] = 1.05
@@ -87,3 +89,29 @@ class TestImageRegistrator:
                                           img_dst,
                                           output_intermediate_models=True)
         assert len(intermediate) == 2
+
+    def test_registration_real(self, device):
+        data = torch.load("data/test/loftr_outdoor_and_homography_data.pt")
+        IR = ImageRegistrator('homography',
+                              num_iterations=1200,
+                              lr=2e-2,
+                              pyramid_levels=5).to(device=device)
+        model = IR.register(data['image0'], data['image1'])
+        homography_gt = torch.inverse(data['H_gt']).float()
+        homography_gt = homography_gt / homography_gt[2, 2]
+        h0, w0 = data['image0'].shape[2], data['image0'].shape[3]
+        h1, w1 = data['image1'].shape[2], data['image1'].shape[3]
+
+        model_denormalized = denormalize_homography(model, (h0, w0), (h1, w1))
+        model_denormalized = model_denormalized / model_denormalized[0, 2, 2]
+
+        bbox = torch.tensor([[0, 0],
+                     [ w0, 0],
+                     [w0, h0],
+                     [0, h0]]).float()[None]
+        bbox_in_2_gt = transform_points(homography_gt[None].float(), bbox)
+        bbox_in_2_gt_est = transform_points(model_denormalized, bbox)
+        # The tolerance is huge, because the error is in pixels
+        # and transformation is quite significant, so
+        # 20 px  reprojection error is not super huge
+        assert_close(bbox_in_2_gt, bbox_in_2_gt_est, atol=15, rtol=0.1)

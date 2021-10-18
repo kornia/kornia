@@ -21,6 +21,32 @@ class TestLoFTR:
         if device == torch.device('cpu'):
             loftr = LoFTR('indoor').to(device)
 
+    @pytest.mark.skipif(torch.__version__.startswith('1.6'),
+                        reason='1.6.0 not supporting the pretrained weights as they are packed.')
+    def test_pretrained_indoor(self, device):
+        if device != torch.device('cpu'):
+            return
+        import os
+        print(os.getcwd())
+        loftr = LoFTR('indoor').to(device)
+        data = torch.load("data/test/loftr_indoor_and_fundamental_data.pt")
+        with torch.no_grad():
+            out = loftr(data)
+        assert_close(out['keypoints0'], data["loftr_indoor_tentatives0"])
+        assert_close(out['keypoints1'], data["loftr_indoor_tentatives1"])
+
+    @pytest.mark.skipif(torch.__version__.startswith('1.6'),
+                        reason='1.6.0 not supporting the pretrained weights as they are packed.')
+    def test_pretrained_outdoor(self, device):
+        if device != torch.device('cpu'):
+            return
+        loftr = LoFTR('outdoor').to(device)
+        data = torch.load("data/test/loftr_outdoor_and_homography_data.pt")
+        with torch.no_grad():
+            out = loftr(data)
+        assert_close(out['keypoints0'], data["loftr_outdoor_tentatives0"])
+        assert_close(out['keypoints1'], data["loftr_outdoor_tentatives1"])
+
     @pytest.mark.skip("Takes too long time (but works)")
     def test_gradcheck(self, device):
         patches = torch.rand(1, 1, 32, 32, device=device)
