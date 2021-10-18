@@ -96,6 +96,7 @@ class TestLAFDescriptor:
         assert_close(descs_test, descs_reference)
 
     def test_gradcheck(self, device):
+        dtype = torch.double
         B, C, H, W = 1, 1, 32, 32
         PS = 16
         img = torch.rand(B, C, H, W, device=device)
@@ -164,30 +165,6 @@ class TestSIFTFeature:
     def test_smoke(self, device, dtype):
         sift = SIFTFeature()
 
-    def test_same(self, device, dtype):
-        PS = 41
-        num_features = 5
-        data = torch.load("data/test/loftr_indoor_and_fundamental_data.pt")
-        img = data['image0'].to(device=device, dtype=dtype)
-        img = resize(img, (128, 128))
-        det = ScaleSpaceDetector(num_features,
-                                 resp_module=BlobDoG(),
-                                 nms_module=ConvQuadInterp3d(10),
-                                 scale_pyr_module=ScalePyramid(3, 1.6, 32, double_image=True),
-                                 ori_module=PassLAF(),
-                                 scale_space_response=True,
-                                 minima_are_also_good=True,
-                                 mr_size=6.0).to(device)
-        desc = SIFTDescriptor(PS, rootsift=True)
-        local_feature = LocalFeature(det, LAFDescriptor(desc, PS)).to(device, dtype)
-        sift_feature = SIFTFeature(5, True).to(device, dtype)
-        with torch.no_grad():
-            lafs, responses, descs = local_feature(img)
-            lafs1, responses1, descs1 = sift_feature(img)
-        assert_close(lafs, lafs1)
-        assert_close(responses, responses1)
-        assert_close(descs, descs1)
-
     @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device):
         B, C, H, W = 1, 1, 32, 32
@@ -220,9 +197,12 @@ class TestLocalFeatureMatcher:
 
     def test_nomatch(self, device, dtype):
         matcher = LocalFeatureMatcher(GFTTAffNetHardNet(100),
-                                      DescriptorMatcher('snn', 0.8)).to(device)
-        ransac = RANSAC('homography', 1.0, 2048, 10).to(device)
+                                      DescriptorMatcher('snn', 0.8)).to(device, dtype)
+        ransac = RANSAC('homography', 1.0, 2048, 10).to(device, dtype)
         data = torch.load("data/test/loftr_outdoor_and_homography_data.pt")
+        for k in data.keys():
+            if isinstance(data[k], torch.Tensor):
+                data[k] = data[k].to(device, dtype)
         pts_src = data['pts0'].to(device, dtype)
         pts_dst = data['pts1'].to(device, dtype)
         with torch.no_grad():
@@ -249,6 +229,9 @@ class TestLocalFeatureMatcher:
                                       DescriptorMatcher('snn', 0.8)).to(device, dtype)
         ransac = RANSAC('homography', 1.0, 2048, 10).to(device, dtype)
         data = torch.load("data/test/loftr_outdoor_and_homography_data.pt")
+        for k in data.keys():
+            if isinstance(data[k], torch.Tensor):
+                data[k] = data[k].to(device, dtype)
         pts_src = data['pts0'].to(device, dtype)
         pts_dst = data['pts1'].to(device, dtype)
         with torch.no_grad():
@@ -267,8 +250,11 @@ class TestLocalFeatureMatcher:
         feat = SIFTFeature(2000)
         matcher = LocalFeatureMatcher(feat,
                                       DescriptorMatcher('snn', 0.8)).to(device)
-        ransac = RANSAC('homography', 1.0, 2048, 10).to(device)
+        ransac = RANSAC('homography', 1.0, 2048, 10).to(device, dtype)
         data = torch.load("data/test/loftr_outdoor_and_homography_data.pt")
+        for k in data.keys():
+            if isinstance(data[k], torch.Tensor):
+                data[k] = data[k].to(device, dtype)
         pts_src = data['pts0'].to(device, dtype)
         pts_dst = data['pts1'].to(device, dtype)
         lafs, resps, descs = feat(data["image0"])
@@ -292,9 +278,12 @@ class TestLocalFeatureMatcher:
     def test_real_gftt(self, device, dtype):
         # This is not unit test, but that is quite good integration test
         matcher = LocalFeatureMatcher(GFTTAffNetHardNet(2000),
-                                      DescriptorMatcher('snn', 0.8)).to(device)
-        ransac = RANSAC('homography', 1.0, 2048, 10).to(device)
+                                      DescriptorMatcher('snn', 0.8)).to(device, dtype)
+        ransac = RANSAC('homography', 1.0, 2048, 10).to(device, dtype)
         data = torch.load("data/test/loftr_outdoor_and_homography_data.pt")
+        for k in data.keys():
+            if isinstance(data[k], torch.Tensor):
+                data[k] = data[k].to(device, dtype)
         pts_src = data['pts0'].to(device, dtype)
         pts_dst = data['pts1'].to(device, dtype)
         with torch.no_grad():

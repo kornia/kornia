@@ -193,7 +193,7 @@ class RANSAC(nn.Module):
             # Estimate models
             models = self.estimate_model_from_minsample(kp1_sampled, kp2_sampled)
             models = self.remove_bad_models(models)
-            if models is None:
+            if (models is None) or (len(models) == 0):
                 continue
             # Score the models and select the best one
             model, inliers, model_score = self.verify(kp1, kp2, models, self.inl_th)
@@ -202,6 +202,8 @@ class RANSAC(nn.Module):
                 # Local optimization
                 for lo_step in range(self.max_lo_iters):
                     model_lo = self.polish_model(kp1, kp2, inliers)
+                    if (model_lo is None) or (len(model_lo) == 0):
+                        continue
                     _, inliers_lo, score_lo = self.verify(kp1, kp2, model_lo, self.inl_th)
                     # print (f"Orig score = {best_model_score}, LO score = {score_lo} TC={num_tc}")
                     if score_lo > model_score:
