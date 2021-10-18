@@ -40,6 +40,7 @@ from .laf import (
 from .matching import *
 from .mkd import MKDDescriptor
 from .orientation import LAFOrienter, OriNet, PatchDominantGradientOrientation
+from .integrated import *
 from .scale_space_detector import PassLAF, ScaleSpaceDetector
 from .siftdesc import SIFTDescriptor
 from .sosnet import SOSNet
@@ -71,6 +72,7 @@ __all__ = [
     "get_laf_center",
     "get_laf_orientation",
     "set_laf_orientation",
+    "get_laf_descriptors",
     "scale_laf",
     "SIFTDescriptor",
     "MKDDescriptor",
@@ -96,6 +98,10 @@ __all__ = [
     "match_snn",
     "match_smnn",
     "LocalFeatureMatcher",
+    "LocalFeature",
+    "SIFTFeature",
+    "GFTTAffNetHardNet",
+    "LAFDescriptor",
     "DescriptorMatcher",
     "LoFTR",
 ]

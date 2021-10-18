@@ -6,18 +6,13 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 from kornia.feature import (
-    CornerGFTT,
     DescriptorMatcher,
-    HardNet,
-    LAFAffNetShapeEstimator,
-    LAFOrienter,
+    GFTTAffNetHardNet,
     LocalFeatureMatcher,
     LoFTR,
-    ScaleSpaceDetector,
 )
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.ransac import RANSAC
-from kornia.geometry.subpix import ConvQuadInterp3d
 from kornia.geometry.transform.imgwarp import warp_perspective
 from kornia.testing import check_is_tensor
 
@@ -47,14 +42,7 @@ class HomographyTracker(nn.Module):
         >>> homography, success = tracker()
     """
     def __init__(self,
-                 initial_matcher=LocalFeatureMatcher(ScaleSpaceDetector(2000,
-                                                                        resp_module=CornerGFTT(),
-                                                                        nms_module=ConvQuadInterp3d(10, 2e-4),
-                                                                        mr_size=6.0,
-                                                                        aff_module=LAFAffNetShapeEstimator(True),
-                                                                        ori_module=LAFOrienter(patch_size=19)),
-
-                                                     HardNet(True),
+                 initial_matcher=LocalFeatureMatcher(GFTTAffNetHardNet(3000),
                                                      DescriptorMatcher('smnn', 0.95)),
                  fast_matcher=LoFTR('outdoor'),
                  ransac=RANSAC('homography',

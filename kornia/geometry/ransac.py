@@ -24,9 +24,9 @@ class RANSAC(nn.Module):
 
     Args:
         model_type: type of model to estimate, e.g. "homography" or "fundamental".
+        inliers_threshold: threshold for the correspondence to be an inlier.
         batch_size: number of generated samples at once.
         max_iterations: maximum batches to generate. Actual number of models to try is ``batch_size * max_iterations``.
-        inliers_threshold: threshold for the correspondence to be an inlier.
         confidence: desired confidence of the result, used for the early stopping.
         max_local_iterations: number of local optimization (polishing) iterations.
 
@@ -38,9 +38,9 @@ class RANSAC(nn.Module):
 
     def __init__(self,
                  model_type: str = 'homography',
+                 inl_th: float = 2.0,
                  batch_size: int = 2048,
                  max_iter: int = 10,
-                 inl_th: float = 2.0,
                  confidence: float = 0.99,
                  max_lo_iters: int = 5):
         super().__init__()
