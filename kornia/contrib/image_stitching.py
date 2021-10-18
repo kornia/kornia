@@ -90,7 +90,7 @@ class ImageStitcher(nn.Module):
                 "image1": K.color.rgb_to_grayscale(image_2)
             }
         else:
-            raise NotImplementedError(f"The preprocessor for {self.matcher} has not been implmented.")
+            raise NotImplementedError(f"The preprocessor for {self.matcher} has not been implemented.")
         return input_dict
 
     def postprocess(self, image: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
