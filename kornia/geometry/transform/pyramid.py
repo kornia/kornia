@@ -30,7 +30,7 @@ def _get_pyramid_gaussian_kernel() -> torch.Tensor:
 
 
 class PyrDown(nn.Module):
-    r"""Blurs a tensor and downsamples it.
+    r"""Blur a tensor and downsamples it.
 
     Args:
         border_type: the padding mode to be applied before convolving.
@@ -51,7 +51,7 @@ class PyrDown(nn.Module):
     """
 
     def __init__(self, border_type: str = 'reflect', align_corners: bool = False) -> None:
-        super(PyrDown, self).__init__()
+        super().__init__()
         self.border_type: str = border_type
         self.align_corners: bool = align_corners
 
@@ -60,7 +60,7 @@ class PyrDown(nn.Module):
 
 
 class PyrUp(nn.Module):
-    r"""Upsamples a tensor and then blurs it.
+    r"""Upsample a tensor and then blurs it.
 
     Args:
         borde_type: the padding mode to be applied before convolving.
@@ -81,7 +81,7 @@ class PyrUp(nn.Module):
     """
 
     def __init__(self, border_type: str = 'reflect', align_corners: bool = False):
-        super(PyrUp, self).__init__()
+        super().__init__()
         self.border_type: str = border_type
         self.align_corners: bool = align_corners
 
@@ -90,7 +90,7 @@ class PyrUp(nn.Module):
 
 
 class ScalePyramid(nn.Module):
-    r"""Creates an scale pyramid of image, usually used for local feature detection.
+    r"""Create an scale pyramid of image, usually used for local feature detection.
 
     Images are consequently smoothed with Gaussian blur and downscaled.
 
@@ -117,7 +117,7 @@ class ScalePyramid(nn.Module):
     """
 
     def __init__(self, n_levels: int = 3, init_sigma: float = 1.6, min_size: int = 15, double_image: bool = False):
-        super(ScalePyramid, self).__init__()
+        super().__init__()
         # 3 extra levels are needed for DoG nms.
         self.n_levels = n_levels
         self.extra_levels: int = 3
@@ -184,7 +184,7 @@ class ScalePyramid(nn.Module):
         return cur_level, cur_sigma, pixel_distance
 
     def forward(self, x: torch.Tensor) -> Tuple[List, List, List]:  # type: ignore
-        bs, ch, h, w = x.size()
+        bs, _, _, _ = x.size()
         cur_level, cur_sigma, pixel_distance = self.get_first_level(x)
 
         sigmas = [cur_sigma * torch.ones(bs, self.n_levels + self.extra_levels).to(x.device).to(x.dtype)]
@@ -227,7 +227,7 @@ class ScalePyramid(nn.Module):
 
 
 def pyrdown(input: torch.Tensor, border_type: str = 'reflect', align_corners: bool = False) -> torch.Tensor:
-    r"""Blurs a tensor and downsamples it.
+    r"""Blur a tensor and downsamples it.
 
     .. image:: _static/img/pyrdown.png
 
@@ -250,10 +250,11 @@ def pyrdown(input: torch.Tensor, border_type: str = 'reflect', align_corners: bo
     if not len(input.shape) == 4:
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
     kernel: torch.Tensor = _get_pyramid_gaussian_kernel()
-    b, c, height, width = input.shape
+    _, _, height, width = input.shape
     # blur image
     x_blur: torch.Tensor = filter2d(input, kernel, border_type)
 
+    # TODO: use kornia.geometry.resize/rescale
     # downsample.
     out: torch.Tensor = F.interpolate(
         x_blur, size=(height // 2, width // 2), mode='bilinear', align_corners=align_corners
@@ -262,7 +263,7 @@ def pyrdown(input: torch.Tensor, border_type: str = 'reflect', align_corners: bo
 
 
 def pyrup(input: torch.Tensor, border_type: str = 'reflect', align_corners: bool = False) -> torch.Tensor:
-    r"""Upsamples a tensor and then blurs it.
+    r"""Upsample a tensor and then blurs it.
 
     .. image:: _static/img/pyrup.png
 
@@ -287,7 +288,8 @@ def pyrup(input: torch.Tensor, border_type: str = 'reflect', align_corners: bool
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
     kernel: torch.Tensor = _get_pyramid_gaussian_kernel()
     # upsample tensor
-    b, c, height, width = input.shape
+    _, _, height, width = input.shape
+    # TODO: use kornia.geometry.resize/rescale
     x_up: torch.Tensor = F.interpolate(
         input, size=(height * 2, width * 2), mode='bilinear', align_corners=align_corners
     )
@@ -300,7 +302,7 @@ def pyrup(input: torch.Tensor, border_type: str = 'reflect', align_corners: bool
 def build_pyramid(
     input: torch.Tensor, max_level: int, border_type: str = 'reflect', align_corners: bool = False
 ) -> List[torch.Tensor]:
-    r"""Constructs the Gaussian pyramid for an image.
+    r"""Construct the Gaussian pyramid for an image.
 
     .. image:: _static/img/build_pyramid.png
 

@@ -18,7 +18,7 @@ def elastic_transform2d(
     align_corners: bool = False,
     mode: str = 'bilinear',
 ) -> torch.Tensor:
-    r"""Applies elastic transform of images as described in :cite:`Simard2003BestPF`.
+    r"""Apply elastic transform of images as described in :cite:`Simard2003BestPF`.
 
     .. image:: _static/img/elastic_transform2d.png
 
@@ -29,7 +29,7 @@ def elastic_transform2d(
           it is expected to be in x-y.
         kernel_size: the size of the Gaussian kernel.
         sigma: The standard deviation of the Gaussian in the y and x directions,
-          respecitvely. Larger sigma results in smaller pixel displacements.
+          respectively. Larger sigma results in smaller pixel displacements.
         alpha : The scaling factor that controls the intensity of the deformation
           in the y and x directions, respectively.
         align_corners: Interpolation flag used by ```grid_sample```.
@@ -87,7 +87,7 @@ def elastic_transform2d(
     disp = torch.cat([disp_x, disp_y], dim=1).permute(0, 2, 3, 1)
 
     # Warp image based on displacement matrix
-    b, c, h, w = image.shape
+    _, _, h, w = image.shape
     grid = kornia.utils.create_meshgrid(h, w, device=image.device).to(image.dtype)
     warped = F.grid_sample(image, (grid + disp).clamp(-1, 1), align_corners=align_corners, mode=mode)
 

@@ -10,7 +10,7 @@ def one_hot(
     dtype: Optional[torch.dtype] = None,
     eps: float = 1e-6,
 ) -> torch.Tensor:
-    r"""Converts an integer label x-D tensor to a one-hot (x+1)-D tensor.
+    r"""Convert an integer label x-D tensor to a one-hot (x+1)-D tensor.
 
     Args:
         labels: tensor with labels of shape :math:`(N, *)`, where N is batch size.
@@ -36,10 +36,10 @@ def one_hot(
 
     """
     if not isinstance(labels, torch.Tensor):
-        raise TypeError("Input labels type is not a torch.Tensor. Got {}".format(type(labels)))
+        raise TypeError(f"Input labels type is not a torch.Tensor. Got {type(labels)}")
 
     if not labels.dtype == torch.int64:
-        raise ValueError("labels must be of the same dtype torch.int64. Got: {}".format(labels.dtype))
+        raise ValueError(f"labels must be of the same dtype torch.int64. Got: {labels.dtype}")
 
     if num_classes < 1:
         raise ValueError("The number of classes must be bigger than one." " Got: {}".format(num_classes))

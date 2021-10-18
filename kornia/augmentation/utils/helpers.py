@@ -8,7 +8,7 @@ from kornia.utils import _extract_device_dtype
 
 
 def _validate_input(f: Callable) -> Callable:
-    r"""Validates the 2D input of the wrapped function.
+    r"""Validate the 2D input of the wrapped function.
 
     Args:
         f: a function that takes the first argument as tensor.
@@ -31,7 +31,7 @@ def _validate_input(f: Callable) -> Callable:
 
 
 def _validate_input3d(f: Callable) -> Callable:
-    r"""Validates the 3D input of the wrapped function.
+    r"""Validate the 3D input of the wrapped function.
 
     Args:
         f: a function that takes the first argument as tensor.
@@ -46,7 +46,8 @@ def _validate_input3d(f: Callable) -> Callable:
             raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
         input_shape = len(input.shape)
-        assert input_shape == 5, f'Expect input of 5 dimensions, got {input_shape} instead'
+        if input_shape != 5:
+            raise AssertionError(f'Expect input of 5 dimensions, got {input_shape} instead')
         _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
         return f(input, *args, **kwargs)
@@ -151,14 +152,15 @@ def _transform_output_shape(
         trans_matrix = None
 
     if trans_matrix is not None:
-        if len(out_tensor.shape) > len(shape):  # if output is broadcasted
-            assert trans_matrix.shape[0] == 1, (
+        if len(out_tensor.shape) > len(shape) and trans_matrix.shape[0] != 1:
+            raise AssertionError(
                 f'Dimension 0 of transformation matrix is ' f'expected to be 1, got {trans_matrix.shape[0]}'
             )
         trans_matrix = trans_matrix.squeeze(0)
 
     for dim in range(len(out_tensor.shape) - len(shape)):
-        assert out_tensor.shape[0] == 1, f'Dimension {dim} of input is ' f'expected to be 1, got {out_tensor.shape[0]}'
+        if out_tensor.shape[0] != 1:
+            raise AssertionError(f'Dimension {dim} of input is ' f'expected to be 1, got {out_tensor.shape[0]}')
         out_tensor = out_tensor.squeeze(0)
 
     return (out_tensor, trans_matrix) if is_tuple else out_tensor  # type: ignore
@@ -224,7 +226,6 @@ def _adapted_uniform(
     low: Union[float, int, torch.Tensor],
     high: Union[float, int, torch.Tensor],
     same_on_batch: bool = False,
-    epsilon: float = 1e-6,
 ) -> torch.Tensor:
     r"""The uniform sampling function that accepts 'same_on_batch'.
 
@@ -269,4 +270,5 @@ def _adapted_beta(
 
 
 def _shape_validation(param: torch.Tensor, shape: Union[tuple, list], name: str) -> None:
-    assert param.shape == torch.Size(shape), f"Invalid shape for {name}. Expected {shape}. Got {param.shape}"
+    if param.shape != torch.Size(shape):
+        raise AssertionError(f"Invalid shape for {name}. Expected {shape}. Got {param.shape}")

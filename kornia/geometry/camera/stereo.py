@@ -21,7 +21,7 @@ class StereoException(Exception):
             "https://kornia.readthedocs.io/en/latest/geometry.camera.stereo.html for further information and examples."
         )
         final_msg = msg + doc_help
-        # type ignore becauce of mypy error:
+        # type ignore because of mypy error:
         # Too many arguments for "__init__" of "BaseException"
         super().__init__(final_msg, *args, **kwargs)  # type: ignore
 
@@ -109,7 +109,7 @@ class StereoCamera:
 
     @property
     def batch_size(self) -> int:
-        r"""Returns the batch size of the storage.
+        r"""Return the batch size of the storage.
 
         Returns:
            scalar with the batch size
@@ -118,7 +118,7 @@ class StereoCamera:
 
     @property
     def fx(self) -> torch.Tensor:
-        r"""Returns the focal length in the x-direction.
+        r"""Return the focal length in the x-direction.
 
         Note that the focal lengths of the rectified left and right
         camera are assumed to be equal.
@@ -142,7 +142,7 @@ class StereoCamera:
 
     @property
     def cx_left(self) -> torch.Tensor:
-        r"""Returns the x-coordinate of the principal point for the left camera.
+        r"""Return the x-coordinate of the principal point for the left camera.
 
         Returns:
             tensor of shape :math:`(B)`
@@ -151,7 +151,7 @@ class StereoCamera:
 
     @property
     def cx_right(self) -> torch.Tensor:
-        r"""Returns the x-coordinate of the principal point for the right camera.
+        r"""Return the x-coordinate of the principal point for the right camera.
 
         Returns:
             tensor of shape :math:`(B)`
@@ -160,7 +160,7 @@ class StereoCamera:
 
     @property
     def cy(self) -> torch.Tensor:
-        r"""Returns the y-coordinate of the principal point.
+        r"""Return the y-coordinate of the principal point.
 
         Note that the y-coordinate of the principal points
         is assumed to be equal for the left and right camera.
@@ -260,7 +260,7 @@ def _check_Q_matrix(Q_matrix: torch.Tensor):
         raise StereoException(f"Expected 'Q_matrix' to be an instance of torch.Tensor but got {type(Q_matrix)}.")
 
     if not len(Q_matrix.shape) == 3:
-        raise StereoException(f"Expected 'Q_matrix' to have 3 dimenstions." f"Got {Q_matrix.shape}")
+        raise StereoException(f"Expected 'Q_matrix' to have 3 dimensions." f"Got {Q_matrix.shape}")
 
     if not Q_matrix.shape[1:] == (4, 4):
         raise StereoException(

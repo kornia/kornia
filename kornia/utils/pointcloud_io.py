@@ -17,7 +17,7 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
         raise TypeError("Input filename must be a string in with the .ply  " "extension. Got {}".format(filename))
 
     if not torch.is_tensor(pointcloud):
-        raise TypeError("Input pointcloud type is not a torch.Tensor. Got {}".format(type(pointcloud)))
+        raise TypeError(f"Input pointcloud type is not a torch.Tensor. Got {type(pointcloud)}")
 
     if not len(pointcloud.shape) == 3 and pointcloud.shape[-1] == 3:
         raise TypeError("Input pointcloud must be in the following shape " "HxWx3. Got {}.".format(pointcloud.shape))
@@ -31,11 +31,12 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
         for idx in range(num_points):
             xyz = xyz_vec[idx]
             if not bool(torch.isfinite(xyz).any()):
+                num_points -= 1
                 continue
             x: float = xyz[0].item()
             y: float = xyz[1].item()
             z: float = xyz[2].item()
-            data_str += '{0} {1} {2}\n'.format(x, y, z)
+            data_str += f'{x} {y} {z}\n'
 
         f.write("ply\n")
         f.write("format ascii 1.0\n")
@@ -65,9 +66,9 @@ def load_pointcloud_ply(filename: str, header_size: int = 8) -> torch.Tensor:
     if not os.path.isfile(filename):
         raise ValueError("Input filename is not an existing file.")
     if not (isinstance(header_size, int) and header_size > 0):
-        raise TypeError("Input header_size must be a positive integer. Got {}.".format(header_size))
+        raise TypeError(f"Input header_size must be a positive integer. Got {header_size}.")
     # open the file and populate tensor
-    with open(filename, 'r') as f:
+    with open(filename) as f:
         points = []
 
         # skip header

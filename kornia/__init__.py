@@ -6,11 +6,25 @@ if sys.version_info < (3, 6, 0):
     raise RuntimeError("Kornia requires Python 3.6.0 or later")
 
 try:
-    from .version import __version__  # noqa: F401
+    from .version import __version__
 except ImportError:
     pass
 
-from kornia import augmentation, color, contrib, enhance, feature, filters, geometry, jit, losses, morphology, utils
+from kornia import (
+    augmentation,
+    color,
+    contrib,
+    enhance,
+    feature,
+    filters,
+    geometry,
+    jit,
+    losses,
+    metrics,
+    morphology,
+    utils,
+    x,
+)
 from kornia.color import (
     bgr_to_grayscale,
     bgr_to_rgb,
@@ -37,7 +51,7 @@ from kornia.color import (
     yuv_to_rgb,
 )
 from kornia.constants import *
-from kornia.contrib import extract_tensor_patches, max_blur_pool2d
+from kornia.contrib import extract_tensor_patches
 from kornia.enhance import (
     adjust_brightness,
     adjust_contrast,
@@ -51,7 +65,7 @@ from kornia.enhance import (
     zca_mean,
     zca_whiten,
 )
-from kornia.feature import gftt_response, harris_response, hessian_response, MKDDescriptor, nms2d, SIFTDescriptor
+from kornia.feature import DeFMO, gftt_response, harris_response, hessian_response, MKDDescriptor, nms2d, SIFTDescriptor
 from kornia.filters import (
     box_blur,
     canny,
@@ -69,6 +83,7 @@ from kornia.filters import (
     laplacian,
     median_blur,
     motion_blur,
+    motion_blur3d,
     sobel,
     spatial_gradient,
     unsharp_mask,
@@ -87,6 +102,7 @@ from kornia.losses import (
 from kornia.testing import xla_is_available
 from kornia.utils import (
     create_meshgrid,
+    image_list_to_tensor,
     image_to_tensor,
     load_pointcloud_ply,
     one_hot,

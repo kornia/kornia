@@ -5,9 +5,10 @@ import torch
 
 def _common_param_check(batch_size: int, same_on_batch: Optional[bool] = None):
     """Valid batch_size and same_on_batch params."""
-    assert type(batch_size) is int and batch_size >= 0, f"`batch_size` shall be a positive integer. Got {batch_size}."
-    if same_on_batch is not None:
-        assert type(same_on_batch) is bool, f"`same_on_batch` shall be boolean. Got {same_on_batch}."
+    if not (type(batch_size) is int and batch_size >= 0):
+        raise AssertionError(f"`batch_size` shall be a positive integer. Got {batch_size}.")
+    if same_on_batch is not None and type(same_on_batch) is not bool:
+        raise AssertionError(f"`same_on_batch` shall be boolean. Got {same_on_batch}.")
 
 
 def _range_bound(
@@ -47,7 +48,7 @@ def _range_bound(
 
 
 def _joint_range_check(ranged_factor: torch.Tensor, name: str, bounds: Optional[Tuple[float, float]] = None) -> None:
-    """check if bounds[0] <= ranged_factor[0] <= ranged_factor[1] <= bounds[1]"""
+    """Check if bounds[0] <= ranged_factor[0] <= ranged_factor[1] <= bounds[1]"""
     if bounds is None:
         bounds = (float('-inf'), float('inf'))
     if ranged_factor.dim() == 1 and len(ranged_factor) == 2:
@@ -69,7 +70,7 @@ def _singular_range_check(
     skip_none: bool = False,
     mode: str = '2d',
 ) -> None:
-    """check if bounds[0] <= ranged_factor[0] <= bounds[1] and bounds[0] <= ranged_factor[1] <= bounds[1]"""
+    """Check if bounds[0] <= ranged_factor[0] <= bounds[1] and bounds[0] <= ranged_factor[1] <= bounds[1]"""
     if mode == '2d':
         dim_size = 2
     elif mode == '3d':
@@ -98,8 +99,7 @@ def _tuple_range_reader(
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> torch.Tensor:
-    """
-    Given target_size, it will generate the corresponding (target_size, 2) range tensor for element-wise params.
+    """Given target_size, it will generate the corresponding (target_size, 2) range tensor for element-wise params.
 
     Example:
     >>> degree = torch.tensor([0.2, 0.3])
@@ -172,6 +172,5 @@ def _tuple_range_reader(
                 f"Degrees must be a {list(target_shape)} tensor for the degree range for independent operation."
                 f"Got {input_range}"
             )
-            input_range_tmp = input_range
 
     return input_range_tmp

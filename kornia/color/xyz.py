@@ -3,7 +3,7 @@ import torch.nn as nn
 
 
 def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
-    r"""Converts a RGB image to XYZ.
+    r"""Convert a RGB image to XYZ.
 
     .. image:: _static/img/rgb_to_xyz.png
 
@@ -18,10 +18,10 @@ def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
         >>> output = rgb_to_xyz(input)  # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(image)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}".format(image.shape))
+        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
     r: torch.Tensor = image[..., 0, :, :]
     g: torch.Tensor = image[..., 1, :, :]
@@ -37,7 +37,7 @@ def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
 
 
 def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
-    r"""Converts a XYZ image to RGB.
+    r"""Convert a XYZ image to RGB.
 
     Args:
         image: XYZ Image to be converted to RGB with shape :math:`(*, 3, H, W)`.
@@ -50,10 +50,10 @@ def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
         >>> output = xyz_to_rgb(input)  # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(image)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}".format(image.shape))
+        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
     x: torch.Tensor = image[..., 0, :, :]
     y: torch.Tensor = image[..., 1, :, :]
@@ -69,7 +69,7 @@ def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
 
 class RgbToXyz(nn.Module):
-    r"""Converts an image from RGB to XYZ.
+    r"""Convert an image from RGB to XYZ.
 
     The image data is assumed to be in the range of (0, 1).
 

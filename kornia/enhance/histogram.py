@@ -9,8 +9,8 @@ __all__ = ["histogram", "histogram2d", "image_histogram2d"]
 def marginal_pdf(
     values: torch.Tensor, bins: torch.Tensor, sigma: torch.Tensor, epsilon: float = 1e-10
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Function that calculates the marginal probability distribution function of the input tensor
-        based on the number of histogram bins.
+    """Calculate the marginal probability distribution function of the input tensor based on the number of
+    histogram bins.
 
     Args:
         values: shape [BxNx1].
@@ -22,17 +22,16 @@ def marginal_pdf(
         Tuple[torch.Tensor, torch.Tensor]:
           - torch.Tensor: shape [BxN].
           - torch.Tensor: shape [BxNxNUM_BINS].
-
     """
 
     if not isinstance(values, torch.Tensor):
-        raise TypeError("Input values type is not a torch.Tensor. Got {}".format(type(values)))
+        raise TypeError(f"Input values type is not a torch.Tensor. Got {type(values)}")
 
     if not isinstance(bins, torch.Tensor):
-        raise TypeError("Input bins type is not a torch.Tensor. Got {}".format(type(bins)))
+        raise TypeError(f"Input bins type is not a torch.Tensor. Got {type(bins)}")
 
     if not isinstance(sigma, torch.Tensor):
-        raise TypeError("Input sigma type is not a torch.Tensor. Got {}".format(type(sigma)))
+        raise TypeError(f"Input sigma type is not a torch.Tensor. Got {type(sigma)}")
 
     if not values.dim() == 3:
         raise ValueError("Input values must be a of the shape BxNx1." " Got {}".format(values.shape))
@@ -54,8 +53,8 @@ def marginal_pdf(
 
 
 def joint_pdf(kernel_values1: torch.Tensor, kernel_values2: torch.Tensor, epsilon: float = 1e-10) -> torch.Tensor:
-    """Function that calculates the joint probability distribution function of the input tensors
-       based on the number of histogram bins.
+    """Calculate the joint probability distribution function of the input tensors based on the number of histogram
+    bins.
 
     Args:
         kernel_values1: shape [BxNxNUM_BINS].
@@ -64,14 +63,13 @@ def joint_pdf(kernel_values1: torch.Tensor, kernel_values2: torch.Tensor, epsilo
 
     Returns:
         shape [BxNUM_BINSxNUM_BINS].
-
     """
 
     if not isinstance(kernel_values1, torch.Tensor):
-        raise TypeError("Input kernel_values1 type is not a torch.Tensor. Got {}".format(type(kernel_values1)))
+        raise TypeError(f"Input kernel_values1 type is not a torch.Tensor. Got {type(kernel_values1)}")
 
     if not isinstance(kernel_values2, torch.Tensor):
-        raise TypeError("Input kernel_values2 type is not a torch.Tensor. Got {}".format(type(kernel_values2)))
+        raise TypeError(f"Input kernel_values2 type is not a torch.Tensor. Got {type(kernel_values2)}")
 
     if not kernel_values1.dim() == 3:
         raise ValueError("Input kernel_values1 must be a of the shape BxN." " Got {}".format(kernel_values1.shape))
@@ -93,7 +91,7 @@ def joint_pdf(kernel_values1: torch.Tensor, kernel_values2: torch.Tensor, epsilo
 
 
 def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsilon: float = 1e-10) -> torch.Tensor:
-    """Function that estimates the histogram of the input tensor.
+    """Estimate the histogram of the input tensor.
 
     The calculation uses kernel density estimation which requires a bandwidth (smoothing) parameter.
 
@@ -122,7 +120,7 @@ def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsi
 def histogram2d(
     x1: torch.Tensor, x2: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsilon: float = 1e-10
 ) -> torch.Tensor:
-    """Function that estimates the 2d histogram of the input tensor.
+    """Estimate the 2d histogram of the input tensor.
 
     The calculation uses kernel density estimation which requires a bandwidth (smoothing) parameter.
 
@@ -145,8 +143,8 @@ def histogram2d(
         torch.Size([2, 128, 128])
     """
 
-    pdf1, kernel_values1 = marginal_pdf(x1.unsqueeze(2), bins, bandwidth, epsilon)
-    pdf2, kernel_values2 = marginal_pdf(x2.unsqueeze(2), bins, bandwidth, epsilon)
+    _, kernel_values1 = marginal_pdf(x1.unsqueeze(2), bins, bandwidth, epsilon)
+    _, kernel_values2 = marginal_pdf(x2.unsqueeze(2), bins, bandwidth, epsilon)
 
     pdf = joint_pdf(kernel_values1, kernel_values2)
 
@@ -217,19 +215,6 @@ def image_histogram2d(
     if not isinstance(return_pdf, bool):
         raise TypeError(f"Return_pdf type is not a bool. Got {type(return_pdf)}.")
 
-    device = image.device
-
-    if image.dim() == 4:
-        batch_size, n_channels, height, width = image.size()
-    elif image.dim() == 3:
-        batch_size = 1
-        n_channels, height, width = image.size()
-    elif image.dim() == 2:
-        height, width = image.size()
-        batch_size, n_channels = 1, 1
-    else:
-        raise ValueError(f"Input values must be a tensor of the shape " f"BxCxHxW, CxHxW or HxW. Got {image.shape}.")
-
     if bandwidth is None:
         bandwidth = (max - min) / n_bins
     if centers is None:
@@ -252,7 +237,7 @@ def image_histogram2d(
 
     hist = torch.sum(kernel_values, dim=(-2, -1)).permute(1, 2, 0)
     if return_pdf:
-        normalization = torch.sum(hist, dim=-1).unsqueeze(0) + eps
+        normalization = torch.sum(hist, dim=-1, keepdim=True) + eps
         pdf = hist / normalization
         if image.dim() == 2:
             hist = hist.squeeze()
@@ -266,4 +251,4 @@ def image_histogram2d(
         hist = hist.squeeze()
     elif image.dim() == 3:
         hist = hist.squeeze(0)
-    return hist, torch.zeros_like(hist, dtype=hist.dtype, device=device)
+    return hist, torch.zeros_like(hist, dtype=hist.dtype, device=hist.device)

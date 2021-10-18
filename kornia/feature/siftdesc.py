@@ -10,7 +10,7 @@ from kornia.geometry.conversions import pi
 
 
 def get_sift_pooling_kernel(ksize: int = 25) -> torch.Tensor:
-    r"""Returns a weighted pooling kernel for SIFT descriptor.
+    r"""Return a weighted pooling kernel for SIFT descriptor.
 
     Args:
         ksize: kernel_size.
@@ -19,13 +19,13 @@ def get_sift_pooling_kernel(ksize: int = 25) -> torch.Tensor:
         the pooling kernel with shape :math:`(ksize, ksize)`.
     """
     ks_2: float = float(ksize) / 2.0
-    xc2: torch.Tensor = ks_2 - (torch.arange(ksize).float() + 0.5 - ks_2).abs()  # type: ignore # noqa
+    xc2: torch.Tensor = ks_2 - (torch.arange(ksize).float() + 0.5 - ks_2).abs()  # type: ignore
     kernel: torch.Tensor = torch.ger(xc2, xc2) / (ks_2 ** 2)
     return kernel
 
 
 def get_sift_bin_ksize_stride_pad(patch_size: int, num_spatial_bins: int) -> Tuple:
-    r"""Returns a tuple with SIFT parameters.
+    r"""Return a tuple with SIFT parameters.
 
     Args:
         patch_size: the given patch size.
@@ -100,7 +100,7 @@ class SIFTDescriptor(nn.Module):
         rootsift: bool = True,
         clipval: float = 0.2,
     ) -> None:
-        super(SIFTDescriptor, self).__init__()
+        super().__init__()
         self.eps = 1e-10
         self.num_ang_bins = num_ang_bins
         self.num_spatial_bins = num_spatial_bins
@@ -123,7 +123,7 @@ class SIFTDescriptor(nn.Module):
             padding=(self.pad, self.pad),
             bias=False,
         )
-        self.pk.weight.data.copy_(nw.reshape(1, 1, nw.size(0), nw.size(1)))  # type: ignore  # noqa
+        self.pk.weight.data.copy_(nw.reshape(1, 1, nw.size(0), nw.size(1)))  # type: ignore
         return
 
     def get_pooling_kernel(self) -> torch.Tensor:
@@ -134,9 +134,9 @@ class SIFTDescriptor(nn.Module):
 
     def forward(self, input):
         if not isinstance(input, torch.Tensor):
-            raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
+            raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
         if not len(input.shape) == 4:
-            raise ValueError("Invalid input shape, we expect Bx1xHxW. Got: {}".format(input.shape))
+            raise ValueError(f"Invalid input shape, we expect Bx1xHxW. Got: {input.shape}")
         B, CH, W, H = input.size()
         if (W != self.patch_size) or (H != self.patch_size) or (CH != 1):
             raise TypeError(
@@ -164,7 +164,7 @@ class SIFTDescriptor(nn.Module):
 
         ang_bins = []
         for i in range(0, self.num_ang_bins):
-            out = self.pk((bo0_big == i).to(input.dtype) * wo0_big + (bo1_big == i).to(input.dtype) * wo1_big)  # noqa
+            out = self.pk((bo0_big == i).to(input.dtype) * wo0_big + (bo1_big == i).to(input.dtype) * wo1_big)
             ang_bins.append(out)
         ang_bins = torch.cat(ang_bins, dim=1)
         ang_bins = ang_bins.view(B, -1)
@@ -184,7 +184,7 @@ def sift_describe(
     rootsift: bool = True,
     clipval: float = 0.2,
 ) -> torch.Tensor:
-    r"""Computes the sift descriptor.
+    r"""Compute the sift descriptor.
 
     See :class:`~kornia.feature.SIFTDescriptor` for details.
     """

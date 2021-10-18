@@ -1,7 +1,9 @@
 ---
 name: "\U0001F680Feature Request"
-about: Submit a proposal/request for a new Kornia feature
-
+about: Suggest an idea for this project
+title: ''
+labels: enhancement, help wanted
+assignees: ''
 ---
 
 ## 🚀 Feature
@@ -9,7 +11,7 @@ about: Submit a proposal/request for a new Kornia feature
 
 ## Motivation
 
-<!-- Please outline the motivation for the proposal. Is your feature request related to a problem? e.g., I'm always frustrated when [...]. If this is related to another GitHub issue, please link here too -->
+<!-- A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]. If this is related to another GitHub issue, please link here too -->
 
 ## Pitch
 
@@ -22,3 +24,13 @@ about: Submit a proposal/request for a new Kornia feature
 ## Additional context
 
 <!-- Add any other context or screenshots about the feature request here. -->
+
+______________________________________________________________________
+
+#### Consider also to contribute to Kornia universe projects :)
+
+<sub>
+
+- [**Tutorials**](https://github.com/kornia/tutorials): our repository containing the tutorials.
+
+</sub>

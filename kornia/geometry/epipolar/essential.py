@@ -20,10 +20,14 @@ def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.
         The essential matrix with shape :math:`(*, 3, 3)`.
 
     """
-    assert len(F_mat.shape) >= 2 and F_mat.shape[-2:] == (3, 3), F_mat.shape
-    assert len(K1.shape) >= 2 and K1.shape[-2:] == (3, 3), K1.shape
-    assert len(K2.shape) >= 2 and K2.shape[-2:] == (3, 3), K2.shape
-    assert len(F_mat.shape[:-2]) == len(K1.shape[:-2]) == len(K2.shape[:-2])
+    if not (len(F_mat.shape) >= 2 and F_mat.shape[-2:] == (3, 3)):
+        raise AssertionError(F_mat.shape)
+    if not (len(K1.shape) >= 2 and K1.shape[-2:] == (3, 3)):
+        raise AssertionError(K1.shape)
+    if not (len(K2.shape) >= 2 and K2.shape[-2:] == (3, 3)):
+        raise AssertionError(K2.shape)
+    if not len(F_mat.shape[:-2]) == len(K1.shape[:-2]) == len(K2.shape[:-2]):
+        raise AssertionError
 
     return K2.transpose(-2, -1) @ F_mat @ K1
 
@@ -42,10 +46,11 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
        The shape of the tensors with be same input :math:`[(*, 3, 3), (*, 3, 3), (*, 3, 1)]`.
 
     """
-    assert len(E_mat.shape) >= 2 and E_mat.shape[-2:], E_mat.shape
+    if not (len(E_mat.shape) >= 2 and E_mat.shape[-2:]):
+        raise AssertionError(E_mat.shape)
 
     # decompose matrix by its singular values
-    U, S, V = torch.svd(E_mat)
+    U, _, V = torch.svd(E_mat)
     Vt = V.transpose(-2, -1)
 
     mask = torch.ones_like(E_mat)
@@ -86,10 +91,14 @@ def essential_from_Rt(R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: 
         The Essential matrix with the shape :math:`(*, 3, 3)`.
 
     """
-    assert len(R1.shape) >= 2 and R1.shape[-2:] == (3, 3), R1.shape
-    assert len(t1.shape) >= 2 and t1.shape[-2:] == (3, 1), t1.shape
-    assert len(R2.shape) >= 2 and R2.shape[-2:] == (3, 3), R2.shape
-    assert len(t2.shape) >= 2 and t2.shape[-2:] == (3, 1), t2.shape
+    if not (len(R1.shape) >= 2 and R1.shape[-2:] == (3, 3)):
+        raise AssertionError(R1.shape)
+    if not (len(t1.shape) >= 2 and t1.shape[-2:] == (3, 1)):
+        raise AssertionError(t1.shape)
+    if not (len(R2.shape) >= 2 and R2.shape[-2:] == (3, 3)):
+        raise AssertionError(R2.shape)
+    if not (len(t2.shape) >= 2 and t2.shape[-2:] == (3, 1)):
+        raise AssertionError(t2.shape)
 
     # first compute the camera relative motion
     R, t = relative_camera_motion(R1, t1, R2, t2)
@@ -104,7 +113,7 @@ def motion_from_essential(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tens
     r"""Get Motion (R's and t's ) from Essential matrix.
 
     Computes and return four possible poses exist for the decomposition of the Essential
-    matrix. The posible solutions are :math:`[R1,t], [R1,−t], [R2,t], [R2,−t]`.
+    matrix. The possible solutions are :math:`[R1,t], [R1,−t], [R2,t], [R2,−t]`.
 
     Args:
         E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
@@ -114,7 +123,8 @@ def motion_from_essential(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tens
         The tuple is as following :math:`[(*, 4, 3, 3), (*, 4, 3, 1)]`.
 
     """
-    assert len(E_mat.shape) >= 2 and E_mat.shape[-2:], E_mat.shape
+    if not (len(E_mat.shape) >= 2 and E_mat.shape[-2:] == (3, 3)):
+        raise AssertionError(E_mat.shape)
 
     # decompose the essential matrix by its possible poses
     R1, R2, t = decompose_essential_matrix(E_mat)
@@ -159,15 +169,23 @@ def motion_from_essential_choose_solution(
         The tuple is as following :math:`[(*, 3, 3), (*, 3, 1), (*, N, 3)]`.
 
     """
-    assert len(E_mat.shape) >= 2 and E_mat.shape[-2:], E_mat.shape
-    assert len(K1.shape) >= 2 and K1.shape[-2:] == (3, 3), K1.shape
-    assert len(K2.shape) >= 2 and K2.shape[-2:] == (3, 3), K2.shape
-    assert len(x1.shape) >= 2 and x1.shape[-1] == 2, x1.shape
-    assert len(x2.shape) >= 2 and x2.shape[-1] == 2, x2.shape
-    assert len(E_mat.shape[:-2]) == len(K1.shape[:-2]) == len(K2.shape[:-2])
+    if not (len(E_mat.shape) >= 2 and E_mat.shape[-2:] == (3, 3)):
+        raise AssertionError(E_mat.shape)
+    if not (len(K1.shape) >= 2 and K1.shape[-2:] == (3, 3)):
+        raise AssertionError(K1.shape)
+    if not (len(K2.shape) >= 2 and K2.shape[-2:] == (3, 3)):
+        raise AssertionError(K2.shape)
+    if not (len(x1.shape) >= 2 and x1.shape[-1] == 2):
+        raise AssertionError(x1.shape)
+    if not (len(x2.shape) >= 2 and x2.shape[-1] == 2):
+        raise AssertionError(x2.shape)
+    if not len(E_mat.shape[:-2]) == len(K1.shape[:-2]) == len(K2.shape[:-2]):
+        raise AssertionError
     if mask is not None:
-        assert len(mask.shape) >= 1, mask.shape
-        assert mask.shape == x1.shape[:-1], mask.shape
+        if len(mask.shape) < 1:
+            raise AssertionError(mask.shape)
+        if mask.shape != x1.shape[:-1]:
+            raise AssertionError(mask.shape)
 
     unbatched = len(E_mat.shape) == 2
 
@@ -210,7 +228,7 @@ def motion_from_essential_choose_solution(
     d1 = projection.depth(R1, t1, X)
     d2 = projection.depth(R2, t2, X)
 
-    # verify the point values that have a postive depth value
+    # verify the point values that have a positive depth value
     depth_mask = (d1 > 0.0) & (d2 > 0.0)
     if mask is not None:
         depth_mask &= mask.unsqueeze(1)
@@ -233,7 +251,7 @@ def motion_from_essential_choose_solution(
 def relative_camera_motion(
     R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: torch.Tensor
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    r"""Computes the relative camera motion between two cameras.
+    r"""Compute the relative camera motion between two cameras.
 
     Given the motion parameters of two cameras, computes the motion parameters of the second
     one assuming the first one to be at the origin. If :math:`T1` and :math:`T2` are the camera motions,
@@ -250,10 +268,14 @@ def relative_camera_motion(
         translation vector with the shape of :math:`[(*, 3, 3), (*, 3, 1)]`.
 
     """
-    assert len(R1.shape) >= 2 and R1.shape[-2:] == (3, 3), R1.shape
-    assert len(t1.shape) >= 2 and t1.shape[-2:] == (3, 1), t1.shape
-    assert len(R2.shape) >= 2 and R2.shape[-2:] == (3, 3), R2.shape
-    assert len(t2.shape) >= 2 and t2.shape[-2:] == (3, 1), t2.shape
+    if not (len(R1.shape) >= 2 and R1.shape[-2:] == (3, 3)):
+        raise AssertionError(R1.shape)
+    if not (len(t1.shape) >= 2 and t1.shape[-2:] == (3, 1)):
+        raise AssertionError(t1.shape)
+    if not (len(R2.shape) >= 2 and R2.shape[-2:] == (3, 3)):
+        raise AssertionError(R2.shape)
+    if not (len(t2.shape) >= 2 and t2.shape[-2:] == (3, 1)):
+        raise AssertionError(t2.shape)
 
     # compute first the relative rotation
     R = R2 @ R1.transpose(-2, -1)

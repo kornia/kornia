@@ -50,7 +50,6 @@ class TestNMS2d:
         assert_close(scores, expected, atol=1e-4, rtol=1e-3)
 
     def test_gradcheck(self, device):
-        k = 0.04
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width, device=device)
         img = utils.tensor_to_gradcheck_var(img)  # to var

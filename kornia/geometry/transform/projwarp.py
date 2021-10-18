@@ -25,9 +25,9 @@ def warp_affine3d(
     dsize: Tuple[int, int, int],
     flags: str = 'bilinear',
     padding_mode: str = 'zeros',
-    align_corners: Optional[bool] = None,
+    align_corners: bool = True,
 ) -> torch.Tensor:
-    r"""Applies a projective transformation a to 3d tensor.
+    r"""Apply a projective transformation a to 3d tensor.
 
     .. warning::
         This API signature it is experimental and might suffer some changes in the future.
@@ -46,23 +46,15 @@ def warp_affine3d(
         torch.Tensor: the warped 3d tensor with shape :math:`(B, C, D, H, W)`.
 
     .. note::
-        This function is often used in conjuntion with :func:`get_perspective_transform3d`.
+        This function is often used in conjunction with :func:`get_perspective_transform3d`.
     """
-    assert len(src.shape) == 5, src.shape
-    assert len(M.shape) == 3 and M.shape[-2:] == (3, 4), M.shape
-    assert len(dsize) == 3, dsize
+    if len(src.shape) != 5:
+        raise AssertionError(src.shape)
+    if not (len(M.shape) == 3 and M.shape[-2:] == (3, 4)):
+        raise AssertionError(M.shape)
+    if len(dsize) != 3:
+        raise AssertionError(dsize)
     B, C, D, H, W = src.size()
-
-    # TODO: remove the statement below in kornia v0.6
-    if align_corners is None:
-        message: str = (
-            "The align_corners default value has been changed. By default now is set True "
-            "in order to match cv2.warpAffine. In case you want to keep your previous "
-            "behaviour set it to False. This warning will disappear in kornia > v0.6."
-        )
-        warnings.warn(message)
-        # set default value for align corners
-        align_corners = True
 
     size_src: Tuple[int, int, int] = (D, H, W)
     size_out: Tuple[int, int, int] = dsize
@@ -99,14 +91,16 @@ def projection_from_Rt(rmat: torch.Tensor, tvec: torch.Tensor) -> torch.Tensor:
        the projection matrix with shape :math:`(*, 3, 4)`.
 
     """
-    assert len(rmat.shape) >= 2 and rmat.shape[-2:] == (3, 3), rmat.shape
-    assert len(tvec.shape) >= 2 and tvec.shape[-2:] == (3, 1), tvec.shape
+    if not (len(rmat.shape) >= 2 and rmat.shape[-2:] == (3, 3)):
+        raise AssertionError(rmat.shape)
+    if not (len(tvec.shape) >= 2 and tvec.shape[-2:] == (3, 1)):
+        raise AssertionError(tvec.shape)
 
     return torch.cat([rmat, tvec], dim=-1)  # Bx3x4
 
 
 def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales: torch.Tensor) -> torch.Tensor:
-    r"""Calculates the projection matrix for a 3D rotation.
+    r"""Calculate the projection matrix for a 3D rotation.
 
     .. warning::
         This API signature it is experimental and might suffer some changes in the future.
@@ -124,12 +118,16 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
         the projection matrix of 3D rotation with shape :math:`(B, 3, 4)`.
 
     .. note::
-        This function is often used in conjuntion with :func:`warp_affine3d`.
+        This function is often used in conjunction with :func:`warp_affine3d`.
     """
-    assert len(center.shape) == 2 and center.shape[-1] == 3, center.shape
-    assert len(angles.shape) == 2 and angles.shape[-1] == 3, angles.shape
-    assert center.device == angles.device, (center.device, angles.device)
-    assert center.dtype == angles.dtype, (center.dtype, angles.dtype)
+    if not (len(center.shape) == 2 and center.shape[-1] == 3):
+        raise AssertionError(center.shape)
+    if not (len(angles.shape) == 2 and angles.shape[-1] == 3):
+        raise AssertionError(angles.shape)
+    if center.device != angles.device:
+        raise AssertionError(center.device, angles.device)
+    if center.dtype != angles.dtype:
+        raise AssertionError(center.dtype, angles.dtype)
 
     # create rotation matrix
     angle_axis_rad: torch.Tensor = K.deg2rad(angles)
@@ -145,7 +143,7 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
     to_origin_mat = from_origin_mat.clone()
     to_origin_mat = _torch_inverse_cast(from_origin_mat)
 
-    # append tranlation with zeros
+    # append translation with zeros
     proj_mat = projection_from_Rt(rmat, torch.zeros_like(center)[..., None])  # Bx3x4
 
     # chain 4x4 transforms
@@ -222,29 +220,28 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
         the perspective transformation with shape :math:`(B, 4, 4)`.
 
     .. note::
-        This function is often used in conjuntion with :func:`warp_perspective3d`.
+        This function is often used in conjunction with :func:`warp_perspective3d`.
     """
     if not isinstance(src, (torch.Tensor)):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(src)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(src)}")
 
     if not isinstance(dst, (torch.Tensor)):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(dst)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(dst)}")
 
     if not src.shape[-2:] == (8, 3):
-        raise ValueError("Inputs must be a Bx8x3 tensor. Got {}".format(src.shape))
+        raise ValueError(f"Inputs must be a Bx8x3 tensor. Got {src.shape}")
 
     if not src.shape == dst.shape:
-        raise ValueError("Inputs must have the same shape. Got {}".format(dst.shape))
+        raise ValueError(f"Inputs must have the same shape. Got {dst.shape}")
 
     if not (src.shape[0] == dst.shape[0]):
-        raise ValueError(
-            "Inputs must have same batch size dimension. Expect {} but got {}".format(src.shape, dst.shape)
-        )
+        raise ValueError(f"Inputs must have same batch size dimension. Expect {src.shape} but got {dst.shape}")
 
-    assert src.device == dst.device and src.dtype == dst.dtype, (
-        f"Expect `src` and `dst` to be in the same device (Got {src.dtype}, {dst.dtype}) "
-        f"with the same dtype (Got {src.dtype}, {dst.dtype})."
-    )
+    if not (src.device == dst.device and src.dtype == dst.dtype):
+        raise AssertionError(
+            f"Expect `src` and `dst` to be in the same device (Got {src.dtype}, {dst.dtype}) "
+            f"with the same dtype (Got {src.dtype}, {dst.dtype})."
+        )
 
     # we build matrix A by using only 4 point correspondence. The linear
     # system is solved with the least square method, so here
@@ -286,7 +283,7 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
     )
 
     # solve the system Ax = b
-    X, LU = _torch_solve_cast(b, A)
+    X, _ = _torch_solve_cast(b, A)
 
     # create variable to return
     batch_size = src.shape[0]
@@ -376,7 +373,7 @@ def warp_perspective3d(
     border_mode: str = 'zeros',
     align_corners: bool = False,
 ) -> torch.Tensor:
-    r"""Applies a perspective transformation to an image.
+    r"""Apply a perspective transformation to an image.
 
     The function warp_perspective transforms the source image using
     the specified matrix:
@@ -401,16 +398,16 @@ def warp_perspective3d(
         the warped input image :math:`(B, C, D, H, W)`.
 
     .. note::
-        This function is often used in conjuntion with :func:`get_perspective_transform3d`.
+        This function is often used in conjunction with :func:`get_perspective_transform3d`.
     """
     check_is_tensor(src)
     check_is_tensor(M)
 
     if not len(src.shape) == 5:
-        raise ValueError("Input src must be a BxCxDxHxW tensor. Got {}".format(src.shape))
+        raise ValueError(f"Input src must be a BxCxDxHxW tensor. Got {src.shape}")
 
     if not (len(M.shape) == 3 or M.shape[-2:] == (4, 4)):
-        raise ValueError("Input M must be a Bx4x4 tensor. Got {}".format(M.shape))
+        raise ValueError(f"Input M must be a Bx4x4 tensor. Got {M.shape}")
 
     # launches the warper
     d, h, w = src.shape[-3:]
@@ -426,7 +423,7 @@ def transform_warp_impl3d(
     padding_mode: str,
     align_corners: bool,
 ) -> torch.Tensor:
-    """Compute the transform in normalized cooridnates and perform the warping."""
+    """Compute the transform in normalized coordinates and perform the warping."""
     dst_norm_trans_src_norm: torch.Tensor = normalize_homography3d(dst_pix_trans_src_pix, dsize_src, dsize_dst)
 
     src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)

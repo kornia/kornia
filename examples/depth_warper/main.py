@@ -9,8 +9,9 @@ import kornia as dgm
 
 
 def load_depth(file_name):
-    """Loads the depth using the syntel SDK and converts to torch.Tensor"""
-    assert os.path.isfile(file_name), "Invalid file {}".format(file_name)
+    """Load the depth using the syntel SDK and converts to torch.Tensor."""
+    if not os.path.isfile(file_name):
+        raise AssertionError(f"Invalid file {file_name}")
     import sintel_io
 
     depth = sintel_io.depth_read(file_name)
@@ -18,8 +19,9 @@ def load_depth(file_name):
 
 
 def load_camera_data(file_name):
-    """Loads the camera data using the syntel SDK and converts to torch.Tensor."""
-    assert os.path.isfile(file_name), "Invalid file {}".format(file_name)
+    """Load the camera data using the syntel SDK and converts to torch.Tensor."""
+    if not os.path.isfile(file_name):
+        raise AssertionError(f"Invalid file {file_name}")
     import sintel_io
 
     intrinsic, extrinsic = sintel_io.cam_read(file_name)
@@ -27,8 +29,9 @@ def load_camera_data(file_name):
 
 
 def load_image(file_name):
-    """Loads the image with OpenCV and converts to torch.Tensor"""
-    assert os.path.isfile(file_name), "Invalid file {}".format(file_name)
+    """Load the image with OpenCV and converts to torch.Tensor."""
+    if not os.path.isfile(file_name):
+        raise AssertionError(f"Invalid file {file_name}")
 
     # load image with OpenCV
     img = cv2.imread(file_name, cv2.IMREAD_COLOR)
@@ -50,7 +53,7 @@ def load_data(root_path, sequence_name, frame_id):
     # load camera data and create pinhole
     height, width = image.shape[-2:]
     intrinsics, extrinsics = load_camera_data(camera_file)
-    camera = create_pinhole(intrinsics, extrinsics, height, width)
+    camera = dgm.utils.create_pinhole(intrinsics, extrinsics, height, width)
     return image, depth, camera
 
 
@@ -67,10 +70,6 @@ def DepthWarperApp():
     parser.add_argument('--seed', type=int, default=666, metavar='S', help='random seed (default: 666)')
     args = parser.parse_args()
 
-    # define the device to use for inference
-    use_cuda = args.cuda and torch.cuda.is_available()
-    device = torch.device('cuda' if use_cuda else 'cpu')
-
     torch.manual_seed(args.seed)
 
     # configure syntel SDK path
@@ -80,7 +79,7 @@ def DepthWarperApp():
     # load the data
     root_dir = os.path.join(root_path, 'training')
     img_ref, depth_ref, cam_ref = load_data(root_dir, args.sequence_name, args.frame_ref_id)
-    img_i, depth_i, cam_i = load_data(root_dir, args.sequence_name, args.frame_i_id)
+    img_i, _, cam_i = load_data(root_dir, args.sequence_name, args.frame_i_id)
 
     # instantiate the homography warper from `kornia`
     warper = dgm.DepthWarper(cam_i)
@@ -97,7 +96,7 @@ def DepthWarperApp():
     img_vis_warped_masked = mask * (0.5 * img_i_to_ref + img_ref)
 
     # save warped image to disk
-    file_name = os.path.join(args.output_dir, 'warped_{0}_to_{1}.png'.format(args.frame_i_id, args.frame_ref_id))
+    file_name = os.path.join(args.output_dir, f'warped_{args.frame_i_id}_to_{args.frame_ref_id}.png')
     cv2.imwrite(file_name, dgm.utils.tensor_to_image(255.0 * img_vis_warped))
     cv2.imwrite(file_name + 'mask.png', dgm.utils.tensor_to_image(255.0 * mask))
     cv2.imwrite(file_name + 'warpedmask.png', dgm.utils.tensor_to_image(255.0 * img_vis_warped_masked))

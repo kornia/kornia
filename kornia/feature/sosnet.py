@@ -28,7 +28,7 @@ class SOSNet(nn.Module):
     """
 
     def __init__(self, pretrained: bool = False) -> None:
-        super(SOSNet, self).__init__()
+        super().__init__()
 
         self.layers = nn.Sequential(
             nn.InstanceNorm2d(1, affine=False),
@@ -59,7 +59,7 @@ class SOSNet(nn.Module):
         if pretrained:
             pretrained_dict = torch.hub.load_state_dict_from_url(urls['lib'], map_location=lambda storage, loc: storage)
             self.load_state_dict(pretrained_dict, strict=True)
-
+        self.eval()
         return
 
     def forward(self, input: torch.Tensor, eps: float = 1e-10) -> torch.Tensor:

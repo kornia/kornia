@@ -1,5 +1,23 @@
+from kornia.contrib.classification import ClassificationHead
 from kornia.contrib.connected_components import connected_components
-from kornia.contrib.extract_patches import extract_tensor_patches, ExtractTensorPatches
-from kornia.contrib.max_blur_pool import max_blur_pool2d, MaxBlurPool2d
+from kornia.contrib.extract_patches import (
+    combine_tensor_patches,
+    CombineTensorPatches,
+    extract_tensor_patches,
+    ExtractTensorPatches,
+)
+from kornia.contrib.lambda_module import Lambda
+from kornia.contrib.vit import VisionTransformer
+from kornia.contrib.vit_mobile import MobileViT
 
-__all__ = ["connected_components", "extract_tensor_patches", "max_blur_pool2d", "ExtractTensorPatches", "MaxBlurPool2d"]
+__all__ = [
+    "connected_components",
+    "extract_tensor_patches",
+    "ExtractTensorPatches",
+    "combine_tensor_patches",
+    "CombineTensorPatches",
+    "VisionTransformer",
+    "MobileViT",
+    "ClassificationHead",
+    "Lambda"
+]

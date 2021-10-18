@@ -5,6 +5,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## :rocket: [0.5.11] - 2021-08-30
+### :new:  New Features
+- Add Vision Transformer (ViT) ([#1296](https://github.com/kornia/kornia/pull/1296))
+- Add ImageRegistrator API ([#1253](https://github.com/kornia/kornia/pull/1253))
+- Add LoFTR inference ([#1218](https://github.com/kornia/kornia/pull/1218))
+- Added differentiable Hausdorff Distance (HD) loss ([#1254](https://github.com/kornia/kornia/pull/1254))
+- Add PadTo to kornia.augmentation ([#1286](https://github.com/kornia/kornia/pull/1286))
+
+### :zap:  Code refactor
+- Return all learned modules by default in eval() mode ([#1266](https://github.com/kornia/kornia/pull/1266))
+- Enable ImageSequential and VideoSequential to AugmentationSequential (#1231)
+- Specify that angles are in radians ([#1287](https://github.com/kornia/kornia/pull/1287))
+- Removed deprecated codes for v6.0 ([#1281](https://github.com/kornia/kornia/pull/1281))
+
+### :lady_beetle:  Bug fixes
+- Fix save_pointcloud_ply fn counting point with inf coordinates ([#1263](https://github.com/kornia/kornia/pull/1263))
+- Fixes torch version parse and add temporal packaging dependency ([#1284](https://github.com/kornia/kornia/pull/1284))
+- Fix issue of image_histogram2d ([#1295](https://github.com/kornia/kornia/pull/1295))
+
+
+## [0.5.10] - 2021-08-30
+
+### Added
+- Added Basic pool request for DeFMO. ([#1135](https://github.com/kornia/kornia/pull/1135))
+- Added homography error metrics, and improved find_homography_iter ([#1222](https://github.com/kornia/kornia/pull/1222))
+
+### Fixed
+- Fixed wrong param name ([#1197](https://github.com/kornia/kornia/pull/1197))
+- Fixed NotImplementedError for the rtvec ([#1215)](https://github.com/kornia/kornia/pull/1215))
+- Fixes warnings and add compatibility stub in torch solve ([#1235](https://github.com/kornia/kornia/pull/1235))
+
+### Changed
+- Ensure CenterCrop indices are integers ([#1208](https://github.com/kornia/kornia/pull/1208))
+- Added tests, fixed docstrings and made some other changes ([#1211](https://github.com/kornia/kornia/pull/1211))
+- Upgrade to modern Python syntax ([#1213](https://github.com/kornia/kornia/pull/1213))
+- Code health improvements [#1199, #1200, #1198, #1202, #1203, #1205, #1208, #1210, #1214, #1220]
+- Enable pyupgrade as pre-commit ([#1221](https://github.com/kornia/kornia/pull/1221))
+- Add bandit tool in the pre-commit ([#1228](https://github.com/kornia/kornia/pull/1228))
+
+
 ## [0.5.8] - 2021-08-06
 
 ### Added

@@ -32,8 +32,9 @@ __all__ = [
 
 
 def _compute_tensor_center(tensor: torch.Tensor) -> torch.Tensor:
-    """Computes the center of tensor plane for (H, W), (C, H, W) and (B, C, H, W)."""
-    assert 2 <= len(tensor.shape) <= 4, f"Must be a 3D tensor as HW, CHW and BCHW. Got {tensor.shape}."
+    """Compute the center of tensor plane for (H, W), (C, H, W) and (B, C, H, W)."""
+    if not 2 <= len(tensor.shape) <= 4:
+        raise AssertionError(f"Must be a 3D tensor as HW, CHW and BCHW. Got {tensor.shape}.")
     height, width = tensor.shape[-2:]
     center_x: float = float(width - 1) / 2
     center_y: float = float(height - 1) / 2
@@ -42,8 +43,9 @@ def _compute_tensor_center(tensor: torch.Tensor) -> torch.Tensor:
 
 
 def _compute_tensor_center3d(tensor: torch.Tensor) -> torch.Tensor:
-    """Computes the center of tensor plane for (D, H, W), (C, D, H, W) and (B, C, D, H, W)."""
-    assert 3 <= len(tensor.shape) <= 5, f"Must be a 3D tensor as DHW, CDHW and BCDHW. Got {tensor.shape}."
+    """Compute the center of tensor plane for (D, H, W), (C, D, H, W) and (B, C, D, H, W)."""
+    if not 3 <= len(tensor.shape) <= 5:
+        raise AssertionError(f"Must be a 3D tensor as DHW, CDHW and BCDHW. Got {tensor.shape}.")
     depth, height, width = tensor.shape[-3:]
     center_x: float = float(width - 1) / 2
     center_y: float = float(height - 1) / 2
@@ -53,7 +55,7 @@ def _compute_tensor_center3d(tensor: torch.Tensor) -> torch.Tensor:
 
 
 def _compute_rotation_matrix(angle: torch.Tensor, center: torch.Tensor) -> torch.Tensor:
-    """Computes a pure affine rotation matrix."""
+    """Compute a pure affine rotation matrix."""
     scale: torch.Tensor = torch.ones_like(center)
     matrix: torch.Tensor = get_rotation_matrix2d(center, angle, scale)
     return matrix
@@ -62,7 +64,7 @@ def _compute_rotation_matrix(angle: torch.Tensor, center: torch.Tensor) -> torch
 def _compute_rotation_matrix3d(
     yaw: torch.Tensor, pitch: torch.Tensor, roll: torch.Tensor, center: torch.Tensor
 ) -> torch.Tensor:
-    """Computes a pure affine rotation matrix."""
+    """Compute a pure affine rotation matrix."""
     if len(yaw.shape) == len(pitch.shape) == len(roll.shape) == 0:
         yaw = yaw.unsqueeze(dim=0)
         pitch = pitch.unsqueeze(dim=0)
@@ -73,9 +75,8 @@ def _compute_rotation_matrix3d(
         pitch = pitch.unsqueeze(dim=1)
         roll = roll.unsqueeze(dim=1)
 
-    assert (
-        len(yaw.shape) == len(pitch.shape) == len(roll.shape) == 2
-    ), f"Expected yaw, pitch, roll to be (B, 1). Got {yaw.shape}, {pitch.shape}, {roll.shape}."
+    if not (len(yaw.shape) == len(pitch.shape) == len(roll.shape) == 2):
+        raise AssertionError(f"Expected yaw, pitch, roll to be (B, 1). Got {yaw.shape}, {pitch.shape}, {roll.shape}.")
 
     angles: torch.Tensor = torch.cat([yaw, pitch, roll], dim=1)
     scales: torch.Tensor = torch.ones_like(yaw)
@@ -84,7 +85,7 @@ def _compute_rotation_matrix3d(
 
 
 def _compute_translation_matrix(translation: torch.Tensor) -> torch.Tensor:
-    """Computes affine matrix for translation."""
+    """Compute affine matrix for translation."""
     matrix: torch.Tensor = torch.eye(3, device=translation.device, dtype=translation.dtype)
     matrix = matrix.repeat(translation.shape[0], 1, 1)
 
@@ -95,14 +96,14 @@ def _compute_translation_matrix(translation: torch.Tensor) -> torch.Tensor:
 
 
 def _compute_scaling_matrix(scale: torch.Tensor, center: torch.Tensor) -> torch.Tensor:
-    """Computes affine matrix for scaling."""
+    """Compute affine matrix for scaling."""
     angle: torch.Tensor = torch.zeros(scale.shape[:1], device=scale.device, dtype=scale.dtype)
     matrix: torch.Tensor = get_rotation_matrix2d(center, angle, scale)
     return matrix
 
 
 def _compute_shear_matrix(shear: torch.Tensor) -> torch.Tensor:
-    """Computes affine matrix for shearing."""
+    """Compute affine matrix for shearing."""
     matrix: torch.Tensor = torch.eye(3, device=shear.device, dtype=shear.dtype)
     matrix = matrix.repeat(shear.shape[0], 1, 1)
 
@@ -121,7 +122,7 @@ def affine(
     matrix: torch.Tensor,
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
-    align_corners: Optional[bool] = None,
+    align_corners: bool = True,
 ) -> torch.Tensor:
     r"""Apply an affine transformation to the image.
 
@@ -228,7 +229,7 @@ def rotate(
     center: Union[None, torch.Tensor] = None,
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
-    align_corners: Optional[bool] = None,
+    align_corners: bool = True,
 ) -> torch.Tensor:
     r"""Rotate the tensor anti-clockwise about the center.
 
@@ -262,13 +263,13 @@ def rotate(
         torch.Size([1, 3, 4, 4])
     """
     if not isinstance(tensor, torch.Tensor):
-        raise TypeError("Input tensor type is not a torch.Tensor. Got {}".format(type(tensor)))
+        raise TypeError(f"Input tensor type is not a torch.Tensor. Got {type(tensor)}")
 
     if not isinstance(angle, torch.Tensor):
-        raise TypeError("Input angle type is not a torch.Tensor. Got {}".format(type(angle)))
+        raise TypeError(f"Input angle type is not a torch.Tensor. Got {type(angle)}")
 
     if center is not None and not isinstance(center, torch.Tensor):
-        raise TypeError("Input center type is not a torch.Tensor. Got {}".format(type(center)))
+        raise TypeError(f"Input center type is not a torch.Tensor. Got {type(center)}")
 
     if len(tensor.shape) not in (3, 4):
         raise ValueError("Invalid tensor shape, we expect CxHxW or BxCxHxW. " "Got: {}".format(tensor.shape))
@@ -320,19 +321,19 @@ def rotate3d(
         torch.Tensor: The rotated tensor with shape as input.
     """
     if not isinstance(tensor, torch.Tensor):
-        raise TypeError("Input tensor type is not a torch.Tensor. Got {}".format(type(tensor)))
+        raise TypeError(f"Input tensor type is not a torch.Tensor. Got {type(tensor)}")
 
     if not isinstance(yaw, torch.Tensor):
-        raise TypeError("yaw is not a torch.Tensor. Got {}".format(type(yaw)))
+        raise TypeError(f"yaw is not a torch.Tensor. Got {type(yaw)}")
 
     if not isinstance(pitch, torch.Tensor):
-        raise TypeError("pitch is not a torch.Tensor. Got {}".format(type(pitch)))
+        raise TypeError(f"pitch is not a torch.Tensor. Got {type(pitch)}")
 
     if not isinstance(roll, torch.Tensor):
-        raise TypeError("roll is not a torch.Tensor. Got {}".format(type(roll)))
+        raise TypeError(f"roll is not a torch.Tensor. Got {type(roll)}")
 
     if center is not None and not isinstance(center, torch.Tensor):
-        raise TypeError("Input center type is not a torch.Tensor. Got {}".format(type(center)))
+        raise TypeError(f"Input center type is not a torch.Tensor. Got {type(center)}")
 
     if len(tensor.shape) not in (4, 5):
         raise ValueError("Invalid tensor shape, we expect CxDxHxW or BxCxDxHxW. " "Got: {}".format(tensor.shape))
@@ -358,7 +359,7 @@ def translate(
     translation: torch.Tensor,
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
-    align_corners: Optional[bool] = None,
+    align_corners: bool = True,
 ) -> torch.Tensor:
     r"""Translate the tensor in pixel units.
 
@@ -386,10 +387,10 @@ def translate(
         torch.Size([1, 3, 4, 4])
     """
     if not isinstance(tensor, torch.Tensor):
-        raise TypeError("Input tensor type is not a torch.Tensor. Got {}".format(type(tensor)))
+        raise TypeError(f"Input tensor type is not a torch.Tensor. Got {type(tensor)}")
 
     if not isinstance(translation, torch.Tensor):
-        raise TypeError("Input translation type is not a torch.Tensor. Got {}".format(type(translation)))
+        raise TypeError(f"Input translation type is not a torch.Tensor. Got {type(translation)}")
 
     if len(tensor.shape) not in (3, 4):
         raise ValueError("Invalid tensor shape, we expect CxHxW or BxCxHxW. " "Got: {}".format(tensor.shape))
@@ -407,7 +408,7 @@ def scale(
     center: Union[None, torch.Tensor] = None,
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
-    align_corners: Optional[bool] = None,
+    align_corners: bool = True,
 ) -> torch.Tensor:
     r"""Scale the tensor by a factor.
 
@@ -439,10 +440,10 @@ def scale(
         torch.Size([1, 3, 4, 4])
     """
     if not isinstance(tensor, torch.Tensor):
-        raise TypeError("Input tensor type is not a torch.Tensor. Got {}".format(type(tensor)))
+        raise TypeError(f"Input tensor type is not a torch.Tensor. Got {type(tensor)}")
 
     if not isinstance(scale_factor, torch.Tensor):
-        raise TypeError("Input scale_factor type is not a torch.Tensor. Got {}".format(type(scale_factor)))
+        raise TypeError(f"Input scale_factor type is not a torch.Tensor. Got {type(scale_factor)}")
 
     if len(scale_factor.shape) == 1:
         # convert isotropic scaling to x-y direction
@@ -495,10 +496,10 @@ def shear(
         torch.Size([1, 3, 4, 4])
     """
     if not isinstance(tensor, torch.Tensor):
-        raise TypeError("Input tensor type is not a torch.Tensor. Got {}".format(type(tensor)))
+        raise TypeError(f"Input tensor type is not a torch.Tensor. Got {type(tensor)}")
 
     if not isinstance(shear, torch.Tensor):
-        raise TypeError("Input shear type is not a torch.Tensor. Got {}".format(type(shear)))
+        raise TypeError(f"Input shear type is not a torch.Tensor. Got {type(shear)}")
 
     if len(tensor.shape) not in (3, 4):
         raise ValueError("Invalid tensor shape, we expect CxHxW or BxCxHxW. " "Got: {}".format(tensor.shape))
@@ -560,10 +561,10 @@ def resize(
         torch.Size([1, 3, 6, 8])
     """
     if not isinstance(input, torch.Tensor):
-        raise TypeError("Input tensor type is not a torch.Tensor. Got {}".format(type(input)))
+        raise TypeError(f"Input tensor type is not a torch.Tensor. Got {type(input)}")
 
     if len(input.shape) < 2:
-        raise ValueError('Input tensor must have at least two dimensions. Got {}'.format(len(input.shape)))
+        raise ValueError(f'Input tensor must have at least two dimensions. Got {len(input.shape)}')
 
     input_size = h, w = input.shape[-2:]
     if isinstance(size, int):
@@ -676,7 +677,7 @@ class Resize(nn.Module):
         side: str = "short",
         antialias: bool = False,
     ) -> None:
-        super(Resize, self).__init__()
+        super().__init__()
         self.size: Union[int, Tuple[int, int]] = size
         self.interpolation: str = interpolation
         self.align_corners: Optional[bool] = align_corners
@@ -738,7 +739,7 @@ class Affine(nn.Module):
         center: Optional[torch.Tensor] = None,
         mode: str = 'bilinear',
         padding_mode: str = 'zeros',
-        align_corners: Optional[bool] = None,
+        align_corners: bool = True,
     ) -> None:
         batch_sizes = [arg.size()[0] for arg in (angle, translation, scale_factor, shear) if arg is not None]
         if not batch_sizes:
@@ -818,7 +819,7 @@ class Rescale(nn.Module):
         self,
         factor: Union[float, Tuple[float, float]],
         interpolation: str = "bilinear",
-        align_corners: Optional[bool] = None,
+        align_corners: bool = True,
         antialias: bool = False,
     ) -> None:
         super().__init__()
@@ -865,14 +866,14 @@ class Rotate(nn.Module):
         center: Union[None, torch.Tensor] = None,
         mode: str = 'bilinear',
         padding_mode: str = 'zeros',
-        align_corners: Optional[bool] = None,
+        align_corners: bool = True,
     ) -> None:
-        super(Rotate, self).__init__()
+        super().__init__()
         self.angle: torch.Tensor = angle
         self.center: Union[None, torch.Tensor] = center
         self.mode: str = mode
         self.padding_mode: str = padding_mode
-        self.align_corners: Optional[bool] = align_corners
+        self.align_corners: bool = align_corners
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return rotate(input, self.angle, self.center, self.mode, self.padding_mode, self.align_corners)
@@ -907,13 +908,13 @@ class Translate(nn.Module):
         translation: torch.Tensor,
         mode: str = 'bilinear',
         padding_mode: str = 'zeros',
-        align_corners: Optional[bool] = None,
+        align_corners: bool = True,
     ) -> None:
-        super(Translate, self).__init__()
+        super().__init__()
         self.translation: torch.Tensor = translation
         self.mode: str = mode
         self.padding_mode: str = padding_mode
-        self.align_corners: Optional[bool] = align_corners
+        self.align_corners: bool = align_corners
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return translate(input, self.translation, self.mode, self.padding_mode, self.align_corners)
@@ -953,14 +954,14 @@ class Scale(nn.Module):
         center: Union[None, torch.Tensor] = None,
         mode: str = 'bilinear',
         padding_mode: str = 'zeros',
-        align_corners: Optional[bool] = None,
+        align_corners: bool = True,
     ) -> None:
-        super(Scale, self).__init__()
+        super().__init__()
         self.scale_factor: torch.Tensor = scale_factor
         self.center: Union[None, torch.Tensor] = center
         self.mode: str = mode
         self.padding_mode: str = padding_mode
-        self.align_corners: Optional[bool] = align_corners
+        self.align_corners: bool = align_corners
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return scale(input, self.scale_factor, self.center, self.mode, self.padding_mode, self.align_corners)
@@ -991,9 +992,9 @@ class Shear(nn.Module):
     """
 
     def __init__(
-        self, shear: torch.Tensor, mode: str = 'bilinear', padding_mode: str = 'zeros', align_corners: bool = False
+        self, shear: torch.Tensor, mode: str = 'bilinear', padding_mode: str = 'zeros', align_corners: bool = True
     ) -> None:
-        super(Shear, self).__init__()
+        super().__init__()
         self.shear: torch.Tensor = shear
         self.mode: str = mode
         self.padding_mode: str = padding_mode

@@ -2,6 +2,7 @@
 #
 import distutils.command.clean
 import glob
+import io
 import os
 import shutil
 import subprocess
@@ -11,14 +12,14 @@ from setuptools import find_packages, setup
 
 ################
 # The variables below define the current version under
-# development and the current pytorch supported verions.
+# development and the current pytorch supported versions.
 # WARNING: Becareful and do not touch those variables,
 # unless you are a maintainer. Otherwise, could brake
 # the package backward compatibility.
 
 # NOTE(maintainers): modify this variable each time you do a release
 
-version = '0.5.8'  # this a tag for the current development version
+version = '0.5.11'  # this a tag for the current development version
 
 
 # NOTE(maintainers): update this dictionary each time you do a release
@@ -27,6 +28,9 @@ version = '0.5.8'  # this a tag for the current development version
 # Once a pytorch version (in the future) breaks a kornia version, we could just
 # add a maximal version.
 kornia_pt_dependencies = {
+    '0.5.11': '>=1.6.0',
+    '0.5.10': '>=1.6.0',
+    '0.5.9': '>=1.6.0',
     '0.5.8': '>=1.6.0',
     '0.5.7': '>=1.6.0',
     '0.5.6': '>=1.6.0',
@@ -46,7 +50,7 @@ kornia_pt_dependencies = {
 }
 
 
-# version can be overiden eg with KORNIA_BUILD_VERSION so we map each possible kornia version to the dictionary keys
+# version can be overridden eg with KORNIA_BUILD_VERSION so we map each possible kornia version to the dictionary keys
 def dep_version(version):
     compatible_versions = [v for v in kornia_pt_dependencies if v >= version]
     compatible_versions += [sorted(kornia_pt_dependencies)[-1]]
@@ -62,7 +66,7 @@ cwd = os.path.dirname(os.path.abspath(__file__))
 
 try:
     sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=cwd).decode('ascii').strip()
-except Exception:
+except subprocess.CalledProcessError:
     pass
 
 if os.getenv('KORNIA_BUILD_VERSION'):
@@ -71,29 +75,29 @@ elif os.getenv('KORNIA_RELEASE'):
     pass
 elif sha != 'Unknown':
     version += '+' + sha[:7]
-print("Building wheel {}-{}".format(package_name, version))
+print(f"Building wheel {package_name}-{version}")
 
 
 def write_version_file():
     version_path = os.path.join(cwd, 'kornia', 'version.py')
     with open(version_path, 'w') as f:
-        f.write("__version__ = '{}'\n".format(version))
-        f.write("git_version = {}\n".format(repr(sha)))
+        f.write(f"__version__ = '{version}'\n")
+        f.write(f"git_version = {repr(sha)}\n")
 
 
 def read(*names, **kwargs):
-    with io.open(os.path.join(os.path.dirname(__file__), *names), encoding=kwargs.get("encoding", "utf8")) as fp:
+    with open(os.path.join(os.path.dirname(__file__), *names), encoding=kwargs.get("encoding", "utf8")) as fp:
         return fp.read()
 
 
 # open readme file and set long description
-with open("README.md", "r", encoding="utf-8") as fh:
+with open("README.md", encoding="utf-8") as fh:
     long_description = fh.read()
 
 
 class clean(distutils.command.clean.clean):
     def run(self):
-        with open('.gitignore', 'r') as f:
+        with open('.gitignore') as f:
             ignores = f.read()
             for wildcard in filter(None, ignores.split('\n')):
                 for filename in glob.glob(wildcard):
@@ -103,13 +107,28 @@ class clean(distutils.command.clean.clean):
                         shutil.rmtree(filename, ignore_errors=True)
 
         # It's an old-style class in Python 2.7...
-        distutils.command.clean.clean.run(self)
+        super().run()
 
     # remove compiled and temporary files
     subprocess.call(['rm -rf dist/ build/ kornia.egg*'], shell=True)
 
 
-requirements = ['torch' + kornia_pt_dependencies[dep_version(version)]]
+requirements = [
+    'torch' + kornia_pt_dependencies[dep_version(version)],
+    'packaging'  # REMOVE once we deprecate pytorch > 1.7.1. See: issue #1264
+]
+
+
+def load_requirements(filename: str):
+    with open(filename) as f:
+        return [x.strip() for x in f.readlines() if "-r" != x[0:2]]
+
+
+requirements_extras = {
+    "x": load_requirements("requirements/x.txt"),
+    "dev": load_requirements("requirements/dev.txt"),
+}
+requirements_extras["all"] = requirements_extras["x"] + requirements_extras["dev"]
 
 
 if __name__ == '__main__':
@@ -132,7 +151,8 @@ if __name__ == '__main__':
         packages=find_packages(exclude=('docs', 'test', 'examples')),
         package_data={"kornia": ["py.typed"]},
         zip_safe=True,
-        install_requires=requirements,
+        install_require=requirements,
+        extras_require=requirements_extras,
         keywords=['computer vision', 'deep learning', 'pytorch'],
         project_urls={
             "Bug Tracker": "https://github.com/kornia/kornia/issues",

@@ -48,11 +48,11 @@ class TestIntegrationFocalLoss:
         # NOTE: uncomment to compare against vanilla cross entropy
         # criterion = nn.CrossEntropyLoss()
 
-        for iter_id in range(self.num_iterations):
+        for _ in range(self.num_iterations):
             sample = self.generate_sample(target).to(device)
             output = m(sample)
             loss = criterion(output, target.to(device))
-            logger.debug("Loss: {}".format(loss.item()))
+            logger.debug(f"Loss: {loss.item()}")
 
             optimizer.zero_grad()
             loss.backward()
@@ -60,7 +60,7 @@ class TestIntegrationFocalLoss:
 
         sample = self.generate_sample(target).to(device)
         output_argmax = torch.argmax(m(sample), dim=1)
-        logger.debug("Output argmax: \n{}".format(output_argmax))
+        logger.debug(f"Output argmax: \n{output_argmax}")
 
         # TODO(edgar): replace by IoU or find a more stable solution
         #              for this test. The issue is that depending on

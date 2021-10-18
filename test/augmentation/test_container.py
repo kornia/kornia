@@ -39,8 +39,8 @@ class TestVideoSequential:
     def test_exception(self, shape, data_format, device, dtype):
         aug_list = K.VideoSequential(K.ColorJitter(0.1, 0.1, 0.1, 0.1), data_format=data_format, same_on_frame=True)
         with pytest.raises(AssertionError):
-            input = torch.randn(*shape, device=device, dtype=dtype)
-            output = aug_list(input)
+            img = torch.randn(*shape, device=device, dtype=dtype)
+            aug_list(img)
 
     @pytest.mark.parametrize(
         'augmentation',
@@ -95,7 +95,7 @@ class TestVideoSequential:
             input = torch.randn(2, 3, 1, 5, 6, device=device, dtype=dtype).repeat(1, 1, 4, 1, 1)
             output = aug_list(input)
             if aug_list.return_label:
-                output, label = output
+                output, _ = output
             assert (output[:, :, 0] == output[:, :, 1]).all()
             assert (output[:, :, 1] == output[:, :, 2]).all()
             assert (output[:, :, 2] == output[:, :, 3]).all()
@@ -103,7 +103,7 @@ class TestVideoSequential:
             input = torch.randn(2, 1, 3, 5, 6, device=device, dtype=dtype).repeat(1, 4, 1, 1, 1)
             output = aug_list(input)
             if aug_list.return_label:
-                output, label = output
+                output, _ = output
             assert (output[:, 0] == output[:, 1]).all()
             assert (output[:, 1] == output[:, 2]).all()
             assert (output[:, 2] == output[:, 3]).all()
@@ -150,6 +150,11 @@ class TestVideoSequential:
 
 
 class TestSequential:
+    def test_exception(self, device, dtype):
+        inp = torch.randn(1, 3, 30, 30, device=device, dtype=dtype)
+        with pytest.raises(Exception):  # AssertError and NotImplementedError
+            K.ImageSequential(K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0)).inverse(inp)
+
     @pytest.mark.parametrize('same_on_batch', [True, False, None])
     @pytest.mark.parametrize("return_transform", [True, False, None])
     @pytest.mark.parametrize("keepdim", [True, False, None])
@@ -186,6 +191,12 @@ class TestSequential:
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
             kornia.filters.MedianBlur((3, 3)),
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0, return_transform=True),
+            K.ImageSequential(
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0)
+            ),
+            K.ImageSequential(
+                K.RandomAffine(360, p=1.0)
+            ),
             K.RandomAffine(360, p=1.0),
             K.RandomMixUp(p=1.0),
             return_transform=return_transform,
@@ -193,11 +204,12 @@ class TestSequential:
         )
         out = aug(inp)
         if aug.return_label:
-            out, label = out
+            out, _ = out
         if isinstance(out, (tuple,)):
             assert out[0].shape == inp.shape
         else:
             assert out.shape == inp.shape
+        aug.inverse(inp)
         reproducibility_test(inp, aug)
 
 
@@ -217,6 +229,10 @@ class TestAugmentationSequential:
     def test_mixup(self, inp, return_transform, random_apply, same_on_batch, device, dtype):
         inp = torch.as_tensor(inp, device=device, dtype=dtype)
         aug = K.AugmentationSequential(
+            K.ImageSequential(
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+                K.RandomAffine(360, p=1.0, return_transform=True),
+            ),
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
             K.RandomAffine(360, p=1.0),
             K.RandomMixUp(p=1.0),
@@ -227,11 +243,39 @@ class TestAugmentationSequential:
         )
         out = aug(inp)
         if aug.return_label:
-            out, label = out
+            out, _ = out
         if return_transform and isinstance(out, (tuple, list)):
             out = out[0]
         assert out.shape[-3:] == inp.shape[-3:]
         reproducibility_test(inp, aug)
+
+    def test_video(self, device, dtype):
+        input = torch.randn(2, 3, 5, 6, device=device, dtype=dtype)[None]
+        bbox = torch.tensor([[
+            [1., 1.],
+            [2., 1.],
+            [2., 2.],
+            [1., 2.],
+        ]], device=device, dtype=dtype).expand(2, -1, -1)[None]
+        points = torch.tensor([[[1., 1.]]], device=device, dtype=dtype).expand(2, -1, -1)[None]
+        aug_list = K.AugmentationSequential(
+            K.VideoSequential(
+                kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+                kornia.augmentation.RandomAffine(360, p=1.0),
+            ),
+            data_keys=["input", "mask", "bbox", "keypoints"]
+        )
+        out = aug_list(input, input, bbox, points)
+        assert out[0].shape == input.shape
+        assert out[1].shape == input.shape
+        assert out[2].shape == bbox.shape
+        assert out[3].shape == points.shape
+
+        out_inv = aug_list.inverse(*out)
+        assert out_inv[0].shape == input.shape
+        assert out_inv[1].shape == input.shape
+        assert out_inv[2].shape == bbox.shape
+        assert out_inv[3].shape == points.shape
 
     def test_random_flips(self, device, dtype):
         inp = torch.randn(1, 3, 510, 1020, device=device, dtype=dtype)
@@ -268,6 +312,10 @@ class TestAugmentationSequential:
             torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 1000, 500
         )[:, None].float()
         aug = K.AugmentationSequential(
+            K.ImageSequential(
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+                K.RandomAffine(360, p=1.0, return_transform=True),
+            ),
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
             K.RandomAffine(360, p=1.0),
             data_keys=["input", "mask", "bbox", "keypoints"],
@@ -299,7 +347,12 @@ class TestAugmentationSequential:
         )[:, None].float()
 
         aug = K.AugmentationSequential(
-            K.RandomAffine(360, p=1.0, return_transform=False), data_keys=['input', 'mask', 'bbox', 'keypoints']
+            K.ImageSequential(
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+                K.RandomAffine(360, p=1.0, return_transform=True),
+            ),
+            K.RandomAffine(360, p=1.0, return_transform=False),
+            data_keys=['input', 'mask', 'bbox', 'keypoints']
         )
         reproducibility_test((inp, mask, bbox, keypoints), aug)
 
@@ -323,6 +376,10 @@ class TestAugmentationSequential:
             torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 1000, 500
         )[:, None].float()
         aug = K.AugmentationSequential(
+            K.ImageSequential(
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+                K.RandomAffine(360, p=1.0, return_transform=True),
+            ),
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0, return_transform=True),
             K.RandomAffine(360, p=1.0, return_transform=True),
             data_keys=["input", "mask", "bbox", "keypoints"],
@@ -351,12 +408,16 @@ class TestAugmentationSequential:
             torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 1000, 500
         )[:, None].float()
         aug = K.AugmentationSequential(
+            K.ImageSequential(
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+                K.RandomAffine(360, p=1.0, return_transform=True),
+            ),
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0, return_transform=True),
             K.RandomAffine(360, p=1.0, return_transform=True),
             data_keys=["input", "mask", "bbox", "keypoints"],
             random_apply=random_apply,
         )
-        with pytest.raises(Exception):  # No parameters avaliable for inversing.
+        with pytest.raises(Exception):  # No parameters available for inversing.
             aug.inverse(inp, mask, bbox, keypoints)
 
         out = aug(inp, mask, bbox, keypoints)
@@ -437,7 +498,7 @@ class TestPatchSequential:
         input = torch.randn(*shape, device=device, dtype=dtype)
         out = seq(input)
         if seq.return_label:
-            out, label = out
+            out, _ = out
         assert out.shape[-3:] == input.shape[-3:]
 
         reproducibility_test(input, seq)

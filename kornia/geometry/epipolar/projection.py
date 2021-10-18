@@ -4,15 +4,16 @@ from typing import Tuple, Union
 import torch
 
 from kornia.geometry.epipolar import numeric
+from kornia.utils._compat import linalg_qr
 
 
 def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:
-    r"""Returns a 3x3 instrinsics matrix, with same size as the input.
+    r"""Return a 3x3 instrinsics matrix, with same size as the input.
 
     The center of projection will be based in the input image size.
 
     Args:
-        focal: the focal length for tha camera matrix.
+        focal: the focal length for the camera matrix.
         input: image tensor that will determine the batch size and image height
           and width. It is assumed to be a tensor in the shape of :math:`(B, C, H, W)`.
 
@@ -20,10 +21,12 @@ def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:
         The camera matrix with the shape of :math:`(B, 3, 3)`.
 
     """
-    assert len(input.shape) == 4, input.shape
-    assert focal > 0, focal
+    if len(input.shape) != 4:
+        raise AssertionError(input.shape)
+    if focal <= 0:
+        raise AssertionError(focal)
 
-    B, _, H, W = input.shape
+    _, _, H, W = input.shape
 
     intrinsics = numeric.eye_like(3, input)
     intrinsics[..., 0, 0] *= focal
@@ -34,7 +37,7 @@ def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:
 
 
 def random_intrinsics(low: Union[float, torch.Tensor], high: Union[float, torch.Tensor]) -> torch.Tensor:
-    r"""Generates a random camera matrix based on a given uniform distribution.
+    r"""Generate a random camera matrix based on a given uniform distribution.
 
     Args:
         low: lower range (inclusive).
@@ -45,7 +48,7 @@ def random_intrinsics(low: Union[float, torch.Tensor], high: Union[float, torch.
 
     """
     sampler = torch.distributions.Uniform(low, high)
-    fx, fy, cx, cy = [sampler.sample((1,)) for _ in range(4)]
+    fx, fy, cx, cy = (sampler.sample((1,)) for _ in range(4))
     zeros, ones = torch.zeros_like(fx), torch.ones_like(fx)
     camera_matrix: torch.Tensor = torch.cat([fx, zeros, cx, zeros, fy, cy, zeros, zeros, ones])
     return camera_matrix.view(1, 3, 3)
@@ -87,10 +90,14 @@ def projection_from_KRt(K: torch.Tensor, R: torch.Tensor, t: torch.Tensor) -> to
        The projection matrix P with shape :math:`(B, 4, 4)`.
 
     """
-    assert K.shape[-2:] == (3, 3), K.shape
-    assert R.shape[-2:] == (3, 3), R.shape
-    assert t.shape[-2:] == (3, 1), t.shape
-    assert len(K.shape) == len(R.shape) == len(t.shape)
+    if K.shape[-2:] != (3, 3):
+        raise AssertionError(K.shape)
+    if R.shape[-2:] != (3, 3):
+        raise AssertionError(R.shape)
+    if t.shape[-2:] != (3, 1):
+        raise AssertionError(t.shape)
+    if not len(K.shape) == len(R.shape) == len(t.shape):
+        raise AssertionError
 
     Rt: torch.Tensor = torch.cat([R, t], dim=-1)  # 3x4
     Rt_h = torch.nn.functional.pad(Rt, [0, 0, 0, 1], "constant", 0.0)  # 4x4
@@ -103,7 +110,7 @@ def projection_from_KRt(K: torch.Tensor, R: torch.Tensor, t: torch.Tensor) -> to
 
 
 def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    r"""This function decomposes the Projection matrix into Camera-Matrix, Rotation Matrix and Translation vector.
+    r"""Decompose the Projection matrix into Camera-Matrix, Rotation Matrix and Translation vector.
 
     Args:
         P: the projection matrix with shape :math:`(B, 3, 4)`.
@@ -114,8 +121,10 @@ def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tenso
         - The Translation vector with shape :math:`(B, 3)`.
 
     """
-    assert P.shape[-2:] == (3, 4), "P must be of shape [B, 3, 4]"
-    assert len(P.shape) == 3
+    if P.shape[-2:] != (3, 4):
+        raise AssertionError("P must be of shape [B, 3, 4]")
+    if len(P.shape) != 3:
+        raise AssertionError
 
     submat_3x3 = P[:, 0:3, 0:3]
     last_column = P[:, 0:3, 3].unsqueeze(-1)
@@ -123,7 +132,7 @@ def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tenso
     # Trick to turn QR-decomposition into RQ-decomposition
     reverse = torch.tensor([[0, 0, 1], [0, 1, 0], [1, 0, 0]], device=P.device, dtype=P.dtype).unsqueeze(0)
     submat_3x3 = torch.matmul(reverse, submat_3x3).permute(0, 2, 1)
-    ortho_mat, upper_mat = torch.qr(submat_3x3)
+    ortho_mat, upper_mat = linalg_qr(submat_3x3)
     ortho_mat = torch.matmul(reverse, ortho_mat.permute(0, 2, 1))
     upper_mat = torch.matmul(reverse, torch.matmul(upper_mat.permute(0, 2, 1), reverse))
 
@@ -140,7 +149,7 @@ def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tenso
 
 
 def depth(R: torch.Tensor, t: torch.Tensor, X: torch.Tensor) -> torch.Tensor:
-    r"""Returns the depth of a point transformed by a rigid transform.
+    r"""Return the depth of a point transformed by a rigid transform.
 
     Args:
        R: The rotation matrix with shape :math:`(*, 3, 3)`.
@@ -162,10 +171,11 @@ def depth(R: torch.Tensor, t: torch.Tensor, X: torch.Tensor) -> torch.Tensor:
 
 
 def _nullspace(A):
-    '''Compute the null space of A.
+    """Compute the null space of A.
+
     Return the smallest singular value and the corresponding vector.
-    '''
-    u, s, vh = torch.svd(A)
+    """
+    _, s, vh = torch.svd(A)
     return s[..., -1], vh[..., -1]
 
 
@@ -173,14 +183,16 @@ def projections_from_fundamental(F_mat: torch.Tensor) -> torch.Tensor:
     r"""Get the projection matrices from the Fundamental Matrix.
 
     Args:
-       F_mat: the fundamental matrix with the shape :math:`(*, 3, 3)`.
+       F_mat: the fundamental matrix with the shape :math:`(B, 3, 3)`.
 
     Returns:
-        The projection matrices with shape :math:`(*, 4, 4, 2)`.
+        The projection matrices with shape :math:`(B, 3, 4, 2)`.
 
     """
-    assert len(F_mat.shape) >= 2, F_mat.shape
-    assert F_mat.shape[-2:] == (3, 3), F_mat.shape
+    if len(F_mat.shape) != 3:
+        raise AssertionError(F_mat.shape)
+    if F_mat.shape[-2:] != (3, 3):
+        raise AssertionError(F_mat.shape)
 
     R1 = numeric.eye_like(3, F_mat)  # Bx3x3
     t1 = numeric.vec_like(3, F_mat)  # Bx3

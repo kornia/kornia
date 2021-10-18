@@ -1,0 +1,6 @@
+
+data_path: ./data
+batch_size: 64
+num_epochs: 250
+lr: 1e-3
+output_path: ./output

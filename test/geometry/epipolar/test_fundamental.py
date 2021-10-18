@@ -1,3 +1,5 @@
+from typing import Dict
+
 import pytest
 import test_common as utils
 import torch
@@ -26,7 +28,7 @@ class TestNormalizePoints:
     def test_mean_std(self, device, dtype):
         points = torch.tensor([[[0.0, 0.0], [0.0, 2.0], [1.0, 1.0], [1.0, 3.0]]], device=device, dtype=dtype)
 
-        points_norm, trans = epi.normalize_points(points)
+        points_norm, _ = epi.normalize_points(points)
         points_std, points_mean = torch.std_mean(points_norm, dim=1)
 
         assert_close(points_mean, torch.zeros_like(points_mean))

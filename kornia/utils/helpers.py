@@ -2,6 +2,8 @@ from typing import Any, List, Optional, Tuple
 
 import torch
 
+from kornia.utils._compat import solve
+
 
 def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.device, torch.dtype]:
     """Check if all the input are in the same device (only if when they are torch.Tensor).
@@ -37,11 +39,11 @@ def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.devic
 def _torch_inverse_cast(input: torch.Tensor) -> torch.Tensor:
     """Helper function to make torch.inverse work with other than fp32/64.
 
-    The function torch.inverse is only implemented for fp32/64 which makes
-    impossible to be used by fp16 or others. What this function does, is cast
-    input data type to fp32, apply torch.inverse, and cast back to the input dtype.
+    The function torch.inverse is only implemented for fp32/64 which makes impossible to be used by fp16 or others. What
+    this function does, is cast input data type to fp32, apply torch.inverse, and cast back to the input dtype.
     """
-    assert isinstance(input, torch.Tensor), f"Input must be torch.Tensor. Got: {type(input)}."
+    if not isinstance(input, torch.Tensor):
+        raise AssertionError(f"Input must be torch.Tensor. Got: {type(input)}.")
     dtype: torch.dtype = input.dtype
     if dtype not in (torch.float32, torch.float64):
         dtype = torch.float32
@@ -51,11 +53,11 @@ def _torch_inverse_cast(input: torch.Tensor) -> torch.Tensor:
 def _torch_histc_cast(input: torch.Tensor, bins: int, min: int, max: int) -> torch.Tensor:
     """Helper function to make torch.histc work with other than fp32/64.
 
-    The function torch.histc is only implemented for fp32/64 which makes
-    impossible to be used by fp16 or others. What this function does, is cast
-    input data type to fp32, apply torch.inverse, and cast back to the input dtype.
+    The function torch.histc is only implemented for fp32/64 which makes impossible to be used by fp16 or others. What
+    this function does, is cast input data type to fp32, apply torch.inverse, and cast back to the input dtype.
     """
-    assert isinstance(input, torch.Tensor), f"Input must be torch.Tensor. Got: {type(input)}."
+    if not isinstance(input, torch.Tensor):
+        raise AssertionError(f"Input must be torch.Tensor. Got: {type(input)}.")
     dtype: torch.dtype = input.dtype
     if dtype not in (torch.float32, torch.float64):
         dtype = torch.float32
@@ -71,7 +73,8 @@ def _torch_svd_cast(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, to
 
     NOTE: in torch 1.8.1 this function is recommended to use as torch.linalg.svd
     """
-    assert isinstance(input, torch.Tensor), f"Input must be torch.Tensor. Got: {type(input)}."
+    if not isinstance(input, torch.Tensor):
+        raise AssertionError(f"Input must be torch.Tensor. Got: {type(input)}.")
     dtype: torch.dtype = input.dtype
     if dtype not in (torch.float32, torch.float64):
         dtype = torch.float32
@@ -81,18 +84,19 @@ def _torch_svd_cast(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, to
     return (out1.to(input.dtype), out2.to(input.dtype), out3.to(input.dtype))
 
 
+# TODO: return only `torch.Tensor` and review all the calls to adjust
 def _torch_solve_cast(input: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """Helper function to make torch.solve work with other than fp32/64.
 
-    The function torch.solve is only implemented for fp32/64 which makes
-    impossible to be used by fp16 or others. What this function does, is cast
-    input data type to fp32, apply torch.svd, and cast back to the input dtype.
+    The function torch.solve is only implemented for fp32/64 which makes impossible to be used by fp16 or others. What
+    this function does, is cast input data type to fp32, apply torch.svd, and cast back to the input dtype.
     """
-    assert isinstance(input, torch.Tensor), f"Input must be torch.Tensor. Got: {type(input)}."
+    if not isinstance(input, torch.Tensor):
+        raise AssertionError(f"Input must be torch.Tensor. Got: {type(input)}.")
     dtype: torch.dtype = input.dtype
     if dtype not in (torch.float32, torch.float64):
         dtype = torch.float32
 
-    out1, out2 = torch.solve(input.to(dtype), A.to(dtype))
+    out = solve(A.to(dtype), input.to(dtype))
 
-    return (out1.to(input.dtype), out2.to(input.dtype))
+    return (out.to(input.dtype), out)

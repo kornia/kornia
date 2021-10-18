@@ -1,3 +1,6 @@
+import warnings
+from typing import Optional
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -14,7 +17,7 @@ def focal_loss(
     alpha: float,
     gamma: float = 2.0,
     reduction: str = 'none',
-    eps: float = 1e-8,
+    eps: Optional[float] = None,
 ) -> torch.Tensor:
     r"""Criterion that computes Focal loss.
 
@@ -37,7 +40,7 @@ def focal_loss(
           will be applied, ``'mean'``: the sum of the output will be divided by
           the number of elements in the output, ``'sum'``: the output will be
           summed.
-        eps: Scalar to enforce numerical stabiliy.
+        eps: Deprecated: scalar to enforce numerical stabiliy. This is no longer used.
 
     Return:
         the computed loss.
@@ -49,29 +52,34 @@ def focal_loss(
         >>> output = focal_loss(input, target, alpha=0.5, gamma=2.0, reduction='mean')
         >>> output.backward()
     """
+    if eps is not None and not torch.jit.is_scripting():
+        warnings.warn(
+            "`focal_loss` has been reworked for improved numerical stability "
+            "and the `eps` argument is no longer necessary",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
     if not isinstance(input, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if not len(input.shape) >= 2:
-        raise ValueError("Invalid input shape, we expect BxCx*. Got: {}".format(input.shape))
+        raise ValueError(f"Invalid input shape, we expect BxCx*. Got: {input.shape}")
 
     if input.size(0) != target.size(0):
-        raise ValueError(
-            'Expected input batch_size ({}) to match target batch_size ({}).'.format(input.size(0), target.size(0))
-        )
+        raise ValueError(f'Expected input batch_size ({input.size(0)}) to match target batch_size ({target.size(0)}).')
 
     n = input.size(0)
     out_size = (n,) + input.size()[2:]
     if target.size()[1:] != input.size()[2:]:
-        raise ValueError('Expected target size {}, got {}'.format(out_size, target.size()))
+        raise ValueError(f'Expected target size {out_size}, got {target.size()}')
 
     if not input.device == target.device:
-        raise ValueError(
-            "input and target must be in the same device. Got: {} and {}".format(input.device, target.device)
-        )
+        raise ValueError(f"input and target must be in the same device. Got: {input.device} and {target.device}")
 
     # compute softmax over the classes axis
-    input_soft: torch.Tensor = F.softmax(input, dim=1) + eps
+    input_soft: torch.Tensor = F.softmax(input, dim=1)
+    log_input_soft: torch.Tensor = F.log_softmax(input, dim=1)
 
     # create the labels one hot tensor
     target_one_hot: torch.Tensor = one_hot(target, num_classes=input.shape[1], device=input.device, dtype=input.dtype)
@@ -79,8 +87,8 @@ def focal_loss(
     # compute the actual focal loss
     weight = torch.pow(-input_soft + 1.0, gamma)
 
-    focal = -alpha * weight * torch.log(input_soft)
-    loss_tmp = torch.sum(target_one_hot * focal, dim=1)
+    focal = -alpha * weight * log_input_soft
+    loss_tmp = torch.einsum('bc...,bc...->b...', (target_one_hot, focal))
 
     if reduction == 'none':
         loss = loss_tmp
@@ -89,7 +97,7 @@ def focal_loss(
     elif reduction == 'sum':
         loss = torch.sum(loss_tmp)
     else:
-        raise NotImplementedError("Invalid reduction mode: {}".format(reduction))
+        raise NotImplementedError(f"Invalid reduction mode: {reduction}")
     return loss
 
 
@@ -113,7 +121,8 @@ class FocalLoss(nn.Module):
           will be applied, ``'mean'``: the sum of the output will be divided by
           the number of elements in the output, ``'sum'``: the output will be
           summed.
-        eps: Scalar to enforce numerical stabiliy.
+        eps: Deprecated: scalar to enforce numerical stability. This is no longer
+          used.
 
     Shape:
         - Input: :math:`(N, C, *)` where C = number of classes.
@@ -130,12 +139,12 @@ class FocalLoss(nn.Module):
         >>> output.backward()
     """
 
-    def __init__(self, alpha: float, gamma: float = 2.0, reduction: str = 'none', eps: float = 1e-8) -> None:
-        super(FocalLoss, self).__init__()
+    def __init__(self, alpha: float, gamma: float = 2.0, reduction: str = 'none', eps: Optional[float] = None) -> None:
+        super().__init__()
         self.alpha: float = alpha
         self.gamma: float = gamma
         self.reduction: str = reduction
-        self.eps: float = eps
+        self.eps: Optional[float] = eps
 
     def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         return focal_loss(input, target, self.alpha, self.gamma, self.reduction, self.eps)
@@ -147,7 +156,7 @@ def binary_focal_loss_with_logits(
     alpha: float = 0.25,
     gamma: float = 2.0,
     reduction: str = 'none',
-    eps: float = 1e-8,
+    eps: Optional[float] = None,
 ) -> torch.Tensor:
     r"""Function that computes Binary Focal loss.
 
@@ -159,8 +168,8 @@ def binary_focal_loss_with_logits(
        - :math:`p_t` is the model's estimated probability for each class.
 
     Args:
-        input: input data tensor with shape :math:`(N, 1, *)`.
-        target: the target tensor with shape :math:`(N, 1, *)`.
+        input: input data tensor of arbitrary shape.
+        target: the target tensor with shape matching input.
         alpha: Weighting factor for the rare class :math:`\alpha \in [0, 1]`.
         gamma: Focusing parameter :math:`\gamma >= 0`.
         reduction: Specifies the reduction to apply to the
@@ -168,38 +177,41 @@ def binary_focal_loss_with_logits(
           will be applied, ``'mean'``: the sum of the output will be divided by
           the number of elements in the output, ``'sum'``: the output will be
           summed.
-        eps: for numerically stability when dividing.
+        eps: Deprecated: scalar for numerically stability when dividing. This is no longer used.
 
     Returns:
         the computed loss.
 
     Examples:
-        >>> num_classes = 1
         >>> kwargs = {"alpha": 0.25, "gamma": 2.0, "reduction": 'mean'}
-        >>> logits = torch.tensor([[[[6.325]]],[[[5.26]]],[[[87.49]]]])
+        >>> logits = torch.tensor([[[6.325]],[[5.26]],[[87.49]]])
         >>> labels = torch.tensor([[[1.]],[[1.]],[[0.]]])
         >>> binary_focal_loss_with_logits(logits, labels, **kwargs)
-        tensor(4.6052)
+        tensor(21.8725)
     """
 
-    if not isinstance(input, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
-
-    if not len(input.shape) >= 2:
-        raise ValueError("Invalid input shape, we expect BxCx*. Got: {}".format(input.shape))
-
-    if input.size(0) != target.size(0):
-        raise ValueError(
-            'Expected input batch_size ({}) to match target batch_size ({}).'.format(input.size(0), target.size(0))
+    if eps is not None and not torch.jit.is_scripting():
+        warnings.warn(
+            "`binary_focal_loss_with_logits` has been reworked for improved numerical stability "
+            "and the `eps` argument is no longer necessary",
+            DeprecationWarning,
+            stacklevel=2,
         )
 
-    probs = torch.sigmoid(input)
-    target = target.unsqueeze(dim=1)
-    loss_tmp = -alpha * torch.pow((1.0 - probs + eps), gamma) * target * torch.log(probs + eps) - (
-        1 - alpha
-    ) * torch.pow(probs + eps, gamma) * (1.0 - target) * torch.log(1.0 - probs + eps)
+    if not isinstance(input, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
-    loss_tmp = loss_tmp.squeeze(dim=1)
+    if not len(input.shape) >= 2:
+        raise ValueError(f"Invalid input shape, we expect BxCx*. Got: {input.shape}")
+
+    if input.size(0) != target.size(0):
+        raise ValueError(f'Expected input batch_size ({input.size(0)}) to match target batch_size ({target.size(0)}).')
+
+    probs_pos = torch.sigmoid(input)
+    probs_neg = torch.sigmoid(-input)
+    loss_tmp = -alpha * torch.pow(probs_neg, gamma) * target * F.logsigmoid(input) - (
+        1 - alpha
+    ) * torch.pow(probs_pos, gamma) * (1.0 - target) * F.logsigmoid(-input)
 
     if reduction == 'none':
         loss = loss_tmp
@@ -208,7 +220,7 @@ def binary_focal_loss_with_logits(
     elif reduction == 'sum':
         loss = torch.sum(loss_tmp)
     else:
-        raise NotImplementedError("Invalid reduction mode: {}".format(reduction))
+        raise NotImplementedError(f"Invalid reduction mode: {reduction}")
     return loss
 
 
@@ -234,25 +246,23 @@ class BinaryFocalLossWithLogits(nn.Module):
           summed.
 
     Shape:
-        - Input: :math:`(N, 1, *)`.
-        - Target: :math:`(N, 1, *)`.
+        - Input: :math:`(N, *)`.
+        - Target: :math:`(N, *)`.
 
     Examples:
-        >>> N = 1  # num_classes
         >>> kwargs = {"alpha": 0.25, "gamma": 2.0, "reduction": 'mean'}
         >>> loss = BinaryFocalLossWithLogits(**kwargs)
-        >>> input = torch.randn(1, N, 3, 5, requires_grad=True)
-        >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
+        >>> input = torch.randn(1, 3, 5, requires_grad=True)
+        >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(2)
         >>> output = loss(input, target)
         >>> output.backward()
     """
 
     def __init__(self, alpha: float, gamma: float = 2.0, reduction: str = 'none') -> None:
-        super(BinaryFocalLossWithLogits, self).__init__()
+        super().__init__()
         self.alpha: float = alpha
         self.gamma: float = gamma
         self.reduction: str = reduction
-        self.eps: float = 1e-8
 
     def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        return binary_focal_loss_with_logits(input, target, self.alpha, self.gamma, self.reduction, self.eps)
+        return binary_focal_loss_with_logits(input, target, self.alpha, self.gamma, self.reduction)

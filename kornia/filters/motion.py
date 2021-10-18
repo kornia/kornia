@@ -34,7 +34,7 @@ class MotionBlur(nn.Module):
     """
 
     def __init__(self, kernel_size: int, angle: float, direction: float, border_type: str = 'constant') -> None:
-        super(MotionBlur, self).__init__()
+        super().__init__()
         self.kernel_size = kernel_size
         self.angle: float = angle
         self.direction: float = direction
@@ -83,7 +83,7 @@ class MotionBlur3D(nn.Module):
         direction: float,
         border_type: str = 'constant',
     ) -> None:
-        super(MotionBlur3D, self).__init__()
+        super().__init__()
         self.kernel_size = kernel_size
         self.angle: Tuple[float, float, float]
         if isinstance(angle, float):
@@ -145,7 +145,8 @@ def motion_blur(
         >>> torch.allclose(out_1[0], out_1[1])
         False
     """
-    assert border_type in ["constant", "reflect", "replicate", "circular"]
+    if border_type not in ["constant", "reflect", "replicate", "circular"]:
+        raise AssertionError
     kernel: torch.Tensor = get_motion_kernel2d(kernel_size, angle, direction, mode)
     return kornia.filter2d(input, kernel, border_type)
 
@@ -188,6 +189,7 @@ def motion_blur3d(
         >>> torch.allclose(out_1[0], out_1[1])
         False
     """
-    assert border_type in ["constant", "reflect", "replicate", "circular"]
+    if border_type not in ["constant", "reflect", "replicate", "circular"]:
+        raise AssertionError
     kernel: torch.Tensor = get_motion_kernel3d(kernel_size, angle, direction, mode)
     return kornia.filter3d(input, kernel, border_type)

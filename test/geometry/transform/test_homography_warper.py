@@ -194,7 +194,7 @@ class TestHomographyWarper:
         # instantiate warper
         warper = kornia.HomographyWarper(height, width, align_corners=True)
 
-        for i in range(self.num_tests):
+        for _ in range(self.num_tests):
             # generate homography noise
             homo_delta = torch.rand_like(dst_homo_src) * 0.3
 
@@ -254,7 +254,7 @@ class TestHomographyWarper:
         # create base homography
         dst_homo_src = utils.create_eye_batch(batch_size, eye_size, device=device, dtype=dtype)
 
-        for i in range(self.num_tests):
+        for _ in range(self.num_tests):
             # generate homography noise
             homo_delta = torch.rand_like(dst_homo_src) * 0.3
 

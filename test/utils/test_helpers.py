@@ -38,7 +38,7 @@ from kornia.utils.helpers import _torch_histc_cast, _torch_inverse_cast, _torch_
     ],
 )
 def test_extract_device_dtype(tensor_list, out_device, out_dtype, will_throw_error):
-    # Add GPU tests when GPU testing avaliable
+    # Add GPU tests when GPU testing available
     if torch.cuda.is_available():
         import warnings
 
@@ -100,7 +100,7 @@ class TestSolveCast:
         A = torch.randn(2, 3, 1, 4, 4, device=device, dtype=dtype)
         B = torch.randn(2, 3, 1, 4, 6, device=device, dtype=dtype)
 
-        X, LU = _torch_solve_cast(B, A)
+        X, _ = _torch_solve_cast(B, A)
         error = torch.dist(B, A.matmul(X))
 
         tol_val: float = 1e-1 if dtype == torch.float16 else 1e-4

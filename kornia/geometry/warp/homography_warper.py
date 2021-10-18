@@ -19,7 +19,7 @@ __all__ = [
 
 
 def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
-    __doc__ = HMW.warp_grid.__doc__
+    __doc__ = HMW.warp_grid.__doc__  # skipcq: PYL-W0612
     warnings.warn(
         "`warp_grid` is deprecated and will be removed > 0.6.0. "
         "Please use `kornia.geometry.transform.warp_grid instead.`",
@@ -30,7 +30,7 @@ def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
 
 
 def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
-    __doc__ = HMW.warp_grid3d.__doc__
+    __doc__ = HMW.warp_grid3d.__doc__  # skipcq: PYL-W0612
     warnings.warn(
         "`warp_grid3d` is deprecated. Please use `kornia.geometry.transform.warp_grid3d instead.`",
         DeprecationWarning,
@@ -49,7 +49,7 @@ def homography_warp(
     align_corners: bool = False,
     normalized_coordinates: bool = True,
 ) -> torch.Tensor:
-    __doc__ = HMW.homography_warp.__doc__
+    __doc__ = HMW.homography_warp.__doc__  # skipcq: PYL-W0612
     warnings.warn(
         "`homography_warp` is deprecated and will be removed > 0.6.0."
         "Please use `kornia.geometry.transform.homography_warp instead.`",
@@ -70,7 +70,7 @@ def homography_warp3d(
     align_corners: bool = False,
     normalized_coordinates: bool = True,
 ) -> torch.Tensor:
-    __doc__ = HMW.homography_warp3d.__doc__
+    __doc__ = HMW.homography_warp3d.__doc__  # skipcq: PYL-W0612
     warnings.warn(
         "`homography_warp3d` is deprecated and will be removed > 0.6.0. "
         "Please use `kornia.geometry.transform.homography_warp3d instead.`",
@@ -83,7 +83,7 @@ def homography_warp3d(
 
 
 class HomographyWarper(HMW.HomographyWarper):
-    __doc__ = HMW.HomographyWarper.__doc__
+    __doc__ = HMW.HomographyWarper.__doc__  # skipcq: PYL-W0612
 
     def __init__(
         self,
@@ -94,7 +94,7 @@ class HomographyWarper(HMW.HomographyWarper):
         normalized_coordinates: bool = True,
         align_corners: bool = False,
     ) -> None:
-        super(HomographyWarper, self).__init__(height, width, mode, padding_mode, normalized_coordinates, align_corners)
+        super().__init__(height, width, mode, padding_mode, normalized_coordinates, align_corners)
         warnings.warn(
             "`HomographyWarper` is deprecated and will be removed > 0.6.0. "
             "Please use `kornia.geometry.transform.HomographyWarper instead.`",
@@ -110,7 +110,7 @@ def normal_transform_pixel(
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> torch.Tensor:
-    __doc__ = HMW.normal_transform_pixel.__doc__
+    __doc__ = HMW.normal_transform_pixel.__doc__  # skipcq: PYL-W0612
     warnings.warn(
         "`normal_transform_pixel` is deprecated and will be removed > 0.6.0."
         "Please use `kornia.geometry.transform.normal_transform_pixel instead.`",
@@ -128,7 +128,7 @@ def normal_transform_pixel3d(
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> torch.Tensor:
-    __doc__ = HMW.normal_transform_pixel3d.__doc__
+    __doc__ = HMW.normal_transform_pixel3d.__doc__  # skipcq: PYL-W0612
     warnings.warn(
         "`normal_transform_pixel3d` is deprecated and will be removed > 0.6.0. "
         "Please use `kornia.geometry.transform.normal_transform_pixel3d instead.`",
@@ -141,7 +141,7 @@ def normal_transform_pixel3d(
 def normalize_homography(
     dst_pix_trans_src_pix: torch.Tensor, dsize_src: Tuple[int, int], dsize_dst: Tuple[int, int]
 ) -> torch.Tensor:
-    __doc__ = HMW.normalize_homography.__doc__
+    __doc__ = HMW.normalize_homography.__doc__  # skipcq: PYL-W0612
     warnings.warn(
         "`normalize_homography` is deprecated and will be removed > 0.6.0. "
         "Please use `kornia.geometry.transform.normalize_homography instead.`",
@@ -154,7 +154,7 @@ def normalize_homography(
 def normalize_homography3d(
     dst_pix_trans_src_pix: torch.Tensor, dsize_src: Tuple[int, int, int], dsize_dst: Tuple[int, int, int]
 ) -> torch.Tensor:
-    __doc__ = HMW.normalize_homography3d.__doc__
+    __doc__ = HMW.normalize_homography3d.__doc__  # skipcq: PYL-W0612
     warnings.warn(
         "`normalize_homography3d` is deprecated and will be removed > 0.6.0. "
         "Please use `kornia.geometry.transform.normalize_homography3d instead.`",

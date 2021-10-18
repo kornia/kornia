@@ -12,6 +12,7 @@ from kornia.augmentation import (
     ColorJitter,
     Denormalize,
     Normalize,
+    PadTo,
     RandomBoxBlur,
     RandomChannelShuffle,
     RandomCrop,
@@ -57,7 +58,7 @@ class CommonTests(BaseTester):
 
     @pytest.fixture(scope="class")
     def param_set(self, request):
-        raise NotImplementedError("param_set must be overriden in subclasses")
+        raise NotImplementedError("param_set must be overridden in subclasses")
 
     ############################################################################################################
     # Test cases
@@ -216,14 +217,12 @@ class CommonTests(BaseTester):
 
     def _test_random_p_0_implementation(self, params):
         augmentation = self._create_augmentation_from_params(**params, p=0.0, return_transform=False)
-        expected_output_shape = torch.Size((2, 3, 4, 5))
         test_input = torch.rand((2, 3, 4, 5), device=self.device, dtype=self.dtype)
         output = augmentation(test_input)
         assert (output == test_input).all()
 
     def _test_random_p_0_return_transform_implementation(self, params):
         augmentation = self._create_augmentation_from_params(**params, p=0.0, return_transform=True)
-        expected_output_shape = torch.Size((2, 3, 4, 5))
         expected_transformation_shape = torch.Size((2, 3, 3))
         test_input = torch.rand((2, 3, 4, 5), device=self.device, dtype=self.dtype)
         output, transformation = augmentation(test_input)
@@ -571,12 +570,12 @@ class TestRandomHorizontalFlipAlternative(CommonTests):
             [[[[0.3, 0.2, 0.1], [0.6, 0.5, 0.4], [0.9, 0.8, 0.7]]]], device=self.device, dtype=self.dtype
         ).repeat(
             (2, 1, 1, 1)
-        )  # noqa: E501
+        )
         expected_transformation = torch.tensor(
             [[[-1.0, 0.0, 2.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=self.device, dtype=self.dtype
         ).repeat(
             (2, 1, 1)
-        )  # noqa: E501
+        )
         parameters = {}
         self._test_random_p_1_return_transform_implementation(
             input_tensor=input_tensor,
@@ -644,12 +643,12 @@ class TestRandomVerticalFlipAlternative(CommonTests):
             [[[[0.7, 0.8, 0.9], [0.4, 0.5, 0.6], [0.1, 0.2, 0.3]]]], device=self.device, dtype=self.dtype
         ).repeat(
             (2, 1, 1, 1)
-        )  # noqa: E501
+        )
         expected_transformation = torch.tensor(
             [[[1.0, 0.0, 0.0], [0.0, -1.0, 2.0], [0.0, 0.0, 1.0]]], device=self.device, dtype=self.dtype
         ).repeat(
             (2, 1, 1)
-        )  # noqa: E501
+        )
         parameters = {}
         self._test_random_p_1_return_transform_implementation(
             input_tensor=input_tensor,
@@ -2611,9 +2610,9 @@ class TestNormalize:
         f = Normalize(mean=mean, std=std, p=1)
         data = torch.ones(2, 3, 256, 313)
         if isinstance(mean, float):
-            expected = (data - torch.tensor(mean)) / torch.tensor(std)
+            expected = (data - torch.as_tensor(mean)) / torch.as_tensor(std)
         else:
-            expected = (data - torch.tensor(mean[0])) / torch.tensor(std[0])
+            expected = (data - torch.as_tensor(mean[0])) / torch.as_tensor(std[0])
         assert_close(f(data), expected)
 
     @staticmethod
@@ -2782,3 +2781,12 @@ class TestRandomBoxBlur:
         img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
         aug = RandomBoxBlur(p=1.0)
         assert img.shape == aug(img).shape
+
+
+class TestPadTo:
+    def test_smoke(self, device, dtype):
+        img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
+        aug = PadTo(size=(4, 5))
+        out = aug(img)
+        assert out.shape == (1, 1, 4, 5)
+        assert (aug.inverse(out) == img).all()

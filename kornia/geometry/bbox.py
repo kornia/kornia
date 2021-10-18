@@ -14,9 +14,8 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
             of Bx4x2, where each box is defined in the following ``clockwise`` order: top-left, top-right, bottom-right,
             bottom-left. The coordinates must be in the x, y order.
     """
-    assert len(boxes.shape) == 3 and boxes.shape[1:] == torch.Size(
-        [4, 2]
-    ), f"Box shape must be (B, 4, 2). Got {boxes.shape}."
+    if not (len(boxes.shape) == 3 and boxes.shape[1:] == torch.Size([4, 2])):
+        raise AssertionError(f"Box shape must be (B, 4, 2). Got {boxes.shape}.")
 
     if not torch.allclose((boxes[:, 1, 0] - boxes[:, 0, 0] + 1), (boxes[:, 2, 0] - boxes[:, 3, 0] + 1)):
         raise ValueError(
@@ -43,28 +42,24 @@ def validate_bbox3d(boxes: torch.Tensor) -> bool:
             front-bottom-right, front-bottom-left, back-top-left, back-top-right, back-bottom-right, back-bottom-left.
             The coordinates must be in the x, y, z order.
     """
-    assert len(boxes.shape) == 3 and boxes.shape[1:] == torch.Size(
-        [8, 3]
-    ), f"Box shape must be (B, 8, 3). Got {boxes.shape}."
+    if not (len(boxes.shape) == 3 and boxes.shape[1:] == torch.Size([8, 3])):
+        raise AssertionError(f"Box shape must be (B, 8, 3). Got {boxes.shape}.")
 
     left = torch.index_select(boxes, 1, torch.tensor([1, 2, 5, 6], device=boxes.device, dtype=torch.long))[:, :, 0]
     right = torch.index_select(boxes, 1, torch.tensor([0, 3, 4, 7], device=boxes.device, dtype=torch.long))[:, :, 0]
     widths = left - right + 1
-    assert torch.allclose(
-        widths.permute(1, 0), widths[:, 0]
-    ), f"Boxes must have be cube, while get different widths {widths}."
+    if not torch.allclose(widths.permute(1, 0), widths[:, 0]):
+        raise AssertionError(f"Boxes must have be cube, while get different widths {widths}.")
 
     bot = torch.index_select(boxes, 1, torch.tensor([2, 3, 6, 7], device=boxes.device, dtype=torch.long))[:, :, 1]
     upper = torch.index_select(boxes, 1, torch.tensor([0, 1, 4, 5], device=boxes.device, dtype=torch.long))[:, :, 1]
     heights = bot - upper + 1
-    assert torch.allclose(
-        heights.permute(1, 0), heights[:, 0]
-    ), f"Boxes must have be cube, while get different heights {heights}."
+    if not torch.allclose(heights.permute(1, 0), heights[:, 0]):
+        raise AssertionError(f"Boxes must have be cube, while get different heights {heights}.")
 
     depths = boxes[:, 4:, 2] - boxes[:, :4, 2] + 1
-    assert torch.allclose(
-        depths.permute(1, 0), depths[:, 0]
-    ), f"Boxes must have be cube, while get different depths {depths}."
+    if not torch.allclose(depths.permute(1, 0), depths[:, 0]):
+        raise AssertionError(f"Boxes must have be cube, while get different depths {depths}.")
 
     return True
 
@@ -182,22 +177,14 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
     """
     validate_bbox(boxes)
     # zero padding the surroudings
-    mask = torch.zeros((len(boxes), height + 2, width + 2))
+    mask = torch.zeros((len(boxes), height + 2, width + 2), dtype=torch.float, device=boxes.device)
     # push all points one pixel off
     # in order to zero-out the fully filled rows or columns
-    boxes += 1
-
-    mask_out = []
-    # TODO: Looking for a vectorized way
-    for m, box in zip(mask, boxes):
-        m = m.index_fill(1, torch.arange(box[0, 0].item(), box[1, 0].item() + 1, dtype=torch.long), torch.tensor(1))
-        m = m.index_fill(0, torch.arange(box[1, 1].item(), box[2, 1].item() + 1, dtype=torch.long), torch.tensor(1))
-        m = m.unsqueeze(dim=0)
-        m_out = (m == 1).all(dim=1) * (m == 1).all(dim=2).T
-        m_out = m_out[1:-1, 1:-1]
-        mask_out.append(m_out)
-
-    return torch.stack(mask_out, dim=0).float()
+    box_i = (boxes + 1).long()
+    # set all pixels within box to 1
+    for msk, bx in zip(mask, box_i):
+        msk[bx[0, 1]:bx[2, 1] + 1, bx[0, 0]:bx[1, 0] + 1] = 1.0
+    return mask[:, 1:-1, 1:-1]
 
 
 def bbox_to_mask3d(boxes: torch.Tensor, size: Tuple[int, int, int]) -> torch.Tensor:
@@ -312,22 +299,21 @@ def bbox_generator(
                  [3, 3],
                  [1, 3]]])
     """
-    assert x_start.shape == y_start.shape and x_start.dim() in [
-        0,
-        1,
-    ], f"`x_start` and `y_start` must be a scalar or (B,). Got {x_start}, {y_start}."
-    assert width.shape == height.shape and width.dim() in [
-        0,
-        1,
-    ], f"`width` and `height` must be a scalar or (B,). Got {width}, {height}."
-    assert x_start.dtype == y_start.dtype == width.dtype == height.dtype, (
-        "All tensors must be in the same dtype. Got "
-        f"`x_start`({x_start.dtype}), `y_start`({x_start.dtype}), `width`({width.dtype}), `height`({height.dtype})."
-    )
-    assert x_start.device == y_start.device == width.device == height.device, (
-        "All tensors must be in the same device. Got "
-        f"`x_start`({x_start.device}), `y_start`({x_start.device}), `width`({width.device}), `height`({height.device})."
-    )
+    if not (x_start.shape == y_start.shape and x_start.dim() in [0, 1]):
+        raise AssertionError(f"`x_start` and `y_start` must be a scalar or (B,). Got {x_start}, {y_start}.")
+    if not (width.shape == height.shape and width.dim() in [0, 1]):
+        raise AssertionError(f"`width` and `height` must be a scalar or (B,). Got {width}, {height}.")
+    if not x_start.dtype == y_start.dtype == width.dtype == height.dtype:
+        raise AssertionError(
+            "All tensors must be in the same dtype. Got "
+            f"`x_start`({x_start.dtype}), `y_start`({x_start.dtype}), `width`({width.dtype}), `height`({height.dtype})."
+        )
+    if not x_start.device == y_start.device == width.device == height.device:
+        raise AssertionError(
+            "All tensors must be in the same device. Got "
+            f"`x_start`({x_start.device}), `y_start`({x_start.device}), "
+            f"`width`({width.device}), `height`({height.device})."
+        )
 
     bbox = torch.tensor([[[0, 0], [0, 0], [0, 0], [0, 0]]], device=x_start.device, dtype=x_start.dtype).repeat(
         1 if x_start.dim() == 0 else len(x_start), 1, 1
@@ -393,24 +379,24 @@ def bbox_generator3d(
                  [43, 54, 65],
                  [ 3, 54, 65]]])
     """
-    assert x_start.shape == y_start.shape == z_start.shape and x_start.dim() in [
-        0,
-        1,
-    ], f"`x_start`, `y_start` and `z_start` must be a scalar or (B,). Got {x_start}, {y_start}, {z_start}."
-    assert width.shape == height.shape == depth.shape and width.dim() in [
-        0,
-        1,
-    ], f"`width`, `height` and `depth` must be a scalar or (B,). Got {width}, {height}, {depth}."
-    assert x_start.dtype == y_start.dtype == z_start.dtype == width.dtype == height.dtype == depth.dtype, (
-        "All tensors must be in the same dtype. "
-        f"Got `x_start`({x_start.dtype}), `y_start`({x_start.dtype}), `z_start`({x_start.dtype}), "
-        f"`width`({width.dtype}), `height`({height.dtype}) and `depth`({depth.dtype})."
-    )
-    assert x_start.device == y_start.device == z_start.device == width.device == height.device == depth.device, (
-        "All tensors must be in the same device. "
-        f"Got `x_start`({x_start.device}), `y_start`({x_start.device}), `z_start`({x_start.device}), "
-        f"`width`({width.device}), `height`({height.device}) and `depth`({depth.device})."
-    )
+    if not (x_start.shape == y_start.shape == z_start.shape and x_start.dim() in [0, 1]):
+        raise AssertionError(
+            f"`x_start`, `y_start` and `z_start` must be a scalar or (B,). Got {x_start}, {y_start}, {z_start}."
+        )
+    if not (width.shape == height.shape == depth.shape and width.dim() in [0, 1]):
+        raise AssertionError(f"`width`, `height` and `depth` must be a scalar or (B,). Got {width}, {height}, {depth}.")
+    if not x_start.dtype == y_start.dtype == z_start.dtype == width.dtype == height.dtype == depth.dtype:
+        raise AssertionError(
+            "All tensors must be in the same dtype. "
+            f"Got `x_start`({x_start.dtype}), `y_start`({x_start.dtype}), `z_start`({x_start.dtype}), "
+            f"`width`({width.dtype}), `height`({height.dtype}) and `depth`({depth.dtype})."
+        )
+    if not x_start.device == y_start.device == z_start.device == width.device == height.device == depth.device:
+        raise AssertionError(
+            "All tensors must be in the same device. "
+            f"Got `x_start`({x_start.device}), `y_start`({x_start.device}), `z_start`({x_start.device}), "
+            f"`width`({width.device}), `height`({height.device}) and `depth`({depth.device})."
+        )
 
     # front
     bbox = torch.tensor(
@@ -446,9 +432,8 @@ def transform_bbox(trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = "xy
             ``xmin, ymin, width, height``
     Returns:
         The set of transformed points in the specified mode
-
-
     """
+
     if not isinstance(mode, str):
         raise TypeError(f"Mode must be a string. Got {type(mode)}")
 

@@ -6,6 +6,7 @@ import torch.nn as nn
 import kornia
 from kornia.augmentation.base import _AugmentationBase, MixAugmentationBase, TensorWithTransformMat
 from kornia.augmentation.container.base import SequentialBase
+from kornia.augmentation.container.utils import InputApplyInverse, MaskApplyInverse
 
 from .image import ImageSequential, ParamItem
 
@@ -82,12 +83,11 @@ class VideoSequential(ImageSequential):
         same_on_frame: bool = True,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
     ) -> None:
-        super(VideoSequential, self).__init__(
-            *args, same_on_batch=None, return_transform=None, keepdim=None, random_apply=random_apply
-        )
+        super().__init__(*args, same_on_batch=None, return_transform=None, keepdim=None, random_apply=random_apply)
         self.same_on_frame = same_on_frame
         self.data_format = data_format.upper()
-        assert self.data_format in ["BCTHW", "BTCHW"], f"Only `BCTHW` and `BTCHW` are supported. Got `{data_format}`."
+        if self.data_format not in ["BCTHW", "BTCHW"]:
+            raise AssertionError(f"Only `BCTHW` and `BTCHW` are supported. Got `{data_format}`.")
         self._temporal_channel: int
         if self.data_format == "BCTHW":
             self._temporal_channel = 2
@@ -102,7 +102,7 @@ class VideoSequential(ImageSequential):
         """Repeat parameters across channels.
 
         The input is shaped as (B, ...), while to output (B * same_on_frame, ...), which
-        to guarentee that the same transformation would happen for each frame.
+        to guarantee that the same transformation would happen for each frame.
 
         (B1, B2, ..., Bn) => (B1, ... B1, B2, ..., B2, ..., Bn, ..., Bn)
                               | ch_size | | ch_size |  ..., | ch_size |
@@ -177,18 +177,46 @@ class VideoSequential(ImageSequential):
             params.append(param)
         return params
 
+    def inverse(self, input: torch.Tensor, params: Optional[List[ParamItem]] = None) -> torch.Tensor:
+        """Inverse transformation.
+
+        Used to inverse a tensor according to the performed transformation by a forward pass, or with respect to
+        provided parameters.
+        """
+        if self.apply_inverse_func in (InputApplyInverse, MaskApplyInverse):
+            frame_num: int = input.size(self._temporal_channel)
+            input, _ = self._input_shape_convert_in(input, None, frame_num)
+        else:
+            batch_size: int = input.size(0)
+            input = input.view(-1, *input.shape[2:])
+
+        input = super().inverse(input, params)
+        if self.apply_inverse_func in (InputApplyInverse, MaskApplyInverse):
+            input, _ = self._input_shape_convert_back(input, None, frame_num)
+        else:
+            input = input.view(batch_size, -1, *input.shape[1:])
+
+        return input
+
     def forward(  # type: ignore
         self, input: torch.Tensor, label: Optional[torch.Tensor] = None, params: Optional[List[ParamItem]] = None
     ) -> Union[TensorWithTransformMat, Tuple[TensorWithTransformMat, torch.Tensor]]:
         """Define the video computation performed."""
-        assert len(input.shape) == 5, f"Input must be a 5-dim tensor. Got {input.shape}."
+        if len(input.shape) != 5:
+            raise AssertionError(f"Input must be a 5-dim tensor. Got {input.shape}.")
 
         if params is None:
             params = self.forward_parameters(input.shape)
 
         # Size of T
-        frame_num = input.size(self._temporal_channel)
-        input, label = self._input_shape_convert_in(input, label, frame_num)
+        if self.apply_inverse_func in (InputApplyInverse, MaskApplyInverse):
+            frame_num: int = input.size(self._temporal_channel)
+            input, label = self._input_shape_convert_in(input, label, frame_num)
+        else:
+            if label is not None:
+                raise ValueError(f"Invalid label value. Got {label}")
+            batch_size: int = input.size(0)
+            input = input.view(-1, *input.shape[2:])
 
         out = super().forward(input, label, params)  # type: ignore
         if self.return_label:
@@ -197,9 +225,19 @@ class VideoSequential(ImageSequential):
             output = cast(TensorWithTransformMat, out)
 
         if isinstance(output, (tuple, list)):
-            _out, label = self._input_shape_convert_back(output[0], label, frame_num)
-            output = (_out, output[1])
+            if self.apply_inverse_func in (InputApplyInverse, MaskApplyInverse):
+                _out, label = self._input_shape_convert_back(output[0], label, frame_num)
+                output = (_out, output[1])
+            else:
+                if label is not None:
+                    raise ValueError(f"Invalid label value. Got {label}")
+                output = output[0].view(batch_size, -1, *output[0].shape[1:])
         else:
-            output, label = self._input_shape_convert_back(output, label, frame_num)
+            if self.apply_inverse_func in (InputApplyInverse, MaskApplyInverse):
+                output, label = self._input_shape_convert_back(output, label, frame_num)
+            else:
+                if label is not None:
+                    raise ValueError(f"Invalid label value. Got {label}")
+                output = output.view(batch_size, -1, *output.shape[1:])
 
         return self.__packup_output__(output, label)

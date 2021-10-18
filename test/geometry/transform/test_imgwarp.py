@@ -459,7 +459,7 @@ class TestRemap:
         grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=False, device=device).to(dtype)
         grid += 1.0  # apply some shift
         input_tuple = (img, grid[..., 0], grid[..., 1])
-        op_traced = torch.jit.trace(op_script, input_tuple)
+        _ = torch.jit.trace(op_script, input_tuple)
 
         # 2. Generate different input
         batch_size, channels, height, width = 2, 2, 2, 5

@@ -401,9 +401,8 @@ def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5)
         raise TypeError(f"The factor should be either a float or torch.Tensor. " f"Got {type(thresholds)}")
 
     if isinstance(thresholds, torch.Tensor) and len(thresholds.shape) != 0:
-        assert (
-            input.size(0) == len(thresholds) and len(thresholds.shape) == 1
-        ), f"threshholds must be a 1-d vector of shape ({input.size(0)},). Got {thresholds}"
+        if not (input.size(0) == len(thresholds) and len(thresholds.shape) == 1):
+            raise AssertionError(f"thresholds must be a 1-d vector of shape ({input.size(0)},). Got {thresholds}")
         # TODO: I am not happy about this line, but no easy to do batch-wise operation
         thresholds = thresholds.to(input.device).to(input.dtype)
         thresholds = torch.stack([x.expand(*input.shape[-3:]) for x in thresholds])
@@ -464,14 +463,12 @@ def solarize(
         if isinstance(additions, float):
             additions = torch.tensor(additions)
 
-        assert torch.all(
-            (additions < 0.5) * (additions > -0.5)
-        ), f"The value of 'addition' is between -0.5 and 0.5. Got {additions}."
+        if not torch.all((additions < 0.5) * (additions > -0.5)):
+            raise AssertionError(f"The value of 'addition' is between -0.5 and 0.5. Got {additions}.")
 
         if isinstance(additions, torch.Tensor) and len(additions.shape) != 0:
-            assert (
-                input.size(0) == len(additions) and len(additions.shape) == 1
-            ), f"additions must be a 1-d vector of shape ({input.size(0)},). Got {additions}"
+            if not (input.size(0) == len(additions) and len(additions.shape) == 1):
+                raise AssertionError(f"additions must be a 1-d vector of shape ({input.size(0)},). Got {additions}")
             # TODO: I am not happy about this line, but no easy to do batch-wise operation
             additions = additions.to(input.device).to(input.dtype)
             additions = torch.stack([x.expand(*input.shape[-3:]) for x in additions])
@@ -548,17 +545,20 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
 
     res = []
     if len(bits.shape) == 1:
-        assert (
-            bits.shape[0] == input.shape[0]
-        ), f"Batch size must be equal between bits and input. Got {bits.shape[0]}, {input.shape[0]}."
+        if bits.shape[0] != input.shape[0]:
+            raise AssertionError(
+                f"Batch size must be equal between bits and input. Got {bits.shape[0]}, {input.shape[0]}."
+            )
 
         for i in range(input.shape[0]):
             res.append(_posterize_one(input[i], bits[i]))
         return torch.stack(res, dim=0)
 
-    assert (
-        bits.shape == input.shape[: len(bits.shape)]
-    ), f"Batch and channel must be equal between bits and input. Got {bits.shape}, {input.shape[:len(bits.shape)]}."
+    if bits.shape != input.shape[: len(bits.shape)]:
+        raise AssertionError(
+            "Batch and channel must be equal between bits and input. "
+            f"Got {bits.shape}, {input.shape[:len(bits.shape)]}."
+        )
     _input = input.view(-1, *input.shape[len(bits.shape) :])
     _bits = bits.flatten()
     for i in range(input.shape[0]):
@@ -592,8 +592,8 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
     if not isinstance(factor, torch.Tensor):
         factor = torch.tensor(factor, device=input.device, dtype=input.dtype)
 
-    if len(factor.size()) != 0:
-        assert factor.shape == torch.Size([input.size(0)]), (
+    if len(factor.size()) != 0 and factor.shape != torch.Size([input.size(0)]):
+        raise AssertionError(
             "Input batch size shall match with factor size if factor is not a 0-dim tensor. "
             f"Got {input.size(0)} and {factor.shape}"
         )
@@ -632,11 +632,13 @@ def _blend_one(input1: torch.Tensor, input2: torch.Tensor, factor: torch.Tensor)
     Returns:
         : image tensor with the batch in the zero position.
     """
-    assert isinstance(input1, torch.Tensor), f"`input1` must be a tensor. Got {input1}."
-    assert isinstance(input2, torch.Tensor), f"`input1` must be a tensor. Got {input2}."
+    if not isinstance(input1, torch.Tensor):
+        raise AssertionError(f"`input1` must be a tensor. Got {input1}.")
+    if not isinstance(input2, torch.Tensor):
+        raise AssertionError(f"`input1` must be a tensor. Got {input2}.")
 
-    if isinstance(factor, torch.Tensor):
-        assert len(factor.size()) == 0, f"Factor shall be a float or single element tensor. Got {factor}."
+    if isinstance(factor, torch.Tensor) and len(factor.size()) != 0:
+        raise AssertionError(f"Factor shall be a float or single element tensor. Got {factor}.")
     if factor == 0.0:
         return input1
     if factor == 1.0:
@@ -731,7 +733,7 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
 
 @perform_keep_shape_video
 def equalize3d(input: torch.Tensor) -> torch.Tensor:
-    r"""Equalizes the values for a 3D volumetric tensor.
+    r"""Equalize the values for a 3D volumetric tensor.
 
     Implements Equalize function for a sequence of images using PyTorch ops based on uint8 format:
     https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L352
@@ -753,7 +755,7 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
 
 
 def invert(input: torch.Tensor, max_val: torch.Tensor = torch.tensor(1.0)) -> torch.Tensor:
-    r"""Inverts the values of an input tensor by its maximum value.
+    r"""Invert the values of an input tensor by its maximum value.
 
     .. image:: _static/img/invert.png
 
@@ -775,8 +777,10 @@ def invert(input: torch.Tensor, max_val: torch.Tensor = torch.tensor(1.0)) -> to
         >>> invert(img, torch.tensor([[[[1.]]]])).shape
         torch.Size([1, 3, 4, 4])
     """
-    assert isinstance(input, torch.Tensor), f"Input is not a torch.Tensor. Got: {type(input)}"
-    assert isinstance(max_val, torch.Tensor), f"max_val is not a torch.Tensor. Got: {type(max_val)}"
+    if not isinstance(input, torch.Tensor):
+        raise AssertionError(f"Input is not a torch.Tensor. Got: {type(input)}")
+    if not isinstance(max_val, torch.Tensor):
+        raise AssertionError(f"max_val is not a torch.Tensor. Got: {type(max_val)}")
     return max_val.to(input.dtype) - input
 
 
@@ -816,7 +820,7 @@ class AdjustSaturation(nn.Module):
     """
 
     def __init__(self, saturation_factor: Union[float, torch.Tensor]) -> None:
-        super(AdjustSaturation, self).__init__()
+        super().__init__()
         self.saturation_factor: Union[float, torch.Tensor] = saturation_factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
@@ -860,7 +864,7 @@ class AdjustHue(nn.Module):
     """
 
     def __init__(self, hue_factor: Union[float, torch.Tensor]) -> None:
-        super(AdjustHue, self).__init__()
+        super().__init__()
         self.hue_factor: Union[float, torch.Tensor] = hue_factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
@@ -897,7 +901,7 @@ class AdjustGamma(nn.Module):
     """
 
     def __init__(self, gamma: Union[float, torch.Tensor], gain: Union[float, torch.Tensor] = 1.0) -> None:
-        super(AdjustGamma, self).__init__()
+        super().__init__()
         self.gamma: Union[float, torch.Tensor] = gamma
         self.gain: Union[float, torch.Tensor] = gain
 
@@ -935,7 +939,7 @@ class AdjustContrast(nn.Module):
     """
 
     def __init__(self, contrast_factor: Union[float, torch.Tensor]) -> None:
-        super(AdjustContrast, self).__init__()
+        super().__init__()
         self.contrast_factor: Union[float, torch.Tensor] = contrast_factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
@@ -971,7 +975,7 @@ class AdjustBrightness(nn.Module):
     """
 
     def __init__(self, brightness_factor: Union[float, torch.Tensor]) -> None:
-        super(AdjustBrightness, self).__init__()
+        super().__init__()
         self.brightness_factor: Union[float, torch.Tensor] = brightness_factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
@@ -979,7 +983,7 @@ class AdjustBrightness(nn.Module):
 
 
 class Invert(nn.Module):
-    r"""Inverts the values of an input tensor by its maximum value.
+    r"""Invert the values of an input tensor by its maximum value.
 
     Args:
         input: The input tensor to invert with an arbitatry shape.
@@ -1001,7 +1005,7 @@ class Invert(nn.Module):
     """
 
     def __init__(self, max_val: torch.Tensor = torch.tensor(1.0)) -> None:
-        super(Invert, self).__init__()
+        super().__init__()
         if not isinstance(max_val, nn.Parameter):
             self.register_buffer("max_val", max_val)
         else:

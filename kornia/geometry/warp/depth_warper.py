@@ -10,7 +10,7 @@ __all__ = ["depth_warp", "DepthWarper"]
 
 
 class DepthWarper(_DepthWarper):
-    __doc__ = _DepthWarper.__doc__
+    __doc__ = _DepthWarper.__doc__  # skipcq: PYL-W0612
 
     def __init__(
         self,
@@ -21,7 +21,7 @@ class DepthWarper(_DepthWarper):
         padding_mode: str = 'zeros',
         align_corners: bool = True,
     ):
-        super(DepthWarper, self).__init__(
+        super().__init__(
             pinhole_dst=pinhole_dst,
             height=height,
             width=width,
@@ -46,7 +46,7 @@ def depth_warp(
     width: int,
     align_corners: bool = True,
 ):
-    __doc__ = _depth_warp.__doc__
+    __doc__ = _depth_warp.__doc__  # skipcq: PYL-W0612
     warnings.warn(
         "`depth_warp` is deprecated and will be removed > 0.6.0. Please use `kornia.geometry.depth_warp instead.`",
         DeprecationWarning,

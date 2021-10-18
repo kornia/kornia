@@ -26,7 +26,6 @@ def test_normalize_pixel_grid(device, dtype):
         pytest.skip('"inverse_cuda" not implemented for "Half"')
 
     # generate input data
-    batch_size = 1
     height, width = 2, 4
 
     # create points grid

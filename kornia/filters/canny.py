@@ -21,7 +21,7 @@ def canny(
     hysteresis: bool = True,
     eps: float = 1e-6,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    r"""Finds edges of the input image and filters them using the Canny algorithm.
+    r"""Find edges of the input image and filters them using the Canny algorithm.
 
     .. image:: _static/img/canny.png
 
@@ -52,10 +52,10 @@ def canny(
         torch.Size([5, 1, 4, 4])
     """
     if not isinstance(input, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if not len(input.shape) == 4:
-        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}".format(input.shape))
+        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
 
     if low_threshold > high_threshold:
         raise ValueError(
@@ -65,14 +65,10 @@ def canny(
         )
 
     if low_threshold < 0 and low_threshold > 1:
-        raise ValueError(
-            "Invalid input threshold. low_threshold should be in range (0,1). Got: {}".format(low_threshold)
-        )
+        raise ValueError(f"Invalid input threshold. low_threshold should be in range (0,1). Got: {low_threshold}")
 
     if high_threshold < 0 and high_threshold > 1:
-        raise ValueError(
-            "Invalid input threshold. high_threshold should be in range (0,1). Got: {}".format(high_threshold)
-        )
+        raise ValueError(f"Invalid input threshold. high_threshold should be in range (0,1). Got: {high_threshold}")
 
     device: torch.device = input.device
     dtype: torch.dtype = input.dtype
@@ -191,7 +187,7 @@ class Canny(nn.Module):
         hysteresis: bool = True,
         eps: float = 1e-6,
     ) -> None:
-        super(Canny, self).__init__()
+        super().__init__()
 
         if low_threshold > high_threshold:
             raise ValueError(
@@ -202,14 +198,10 @@ class Canny(nn.Module):
             )
 
         if low_threshold < 0 or low_threshold > 1:
-            raise ValueError(
-                "Invalid input threshold. low_threshold should be in range (0,1). Got: {}".format(low_threshold)
-            )
+            raise ValueError(f"Invalid input threshold. low_threshold should be in range (0,1). Got: {low_threshold}")
 
         if high_threshold < 0 or high_threshold > 1:
-            raise ValueError(
-                "Invalid input threshold. high_threshold should be in range (0,1). Got: {}".format(high_threshold)
-            )
+            raise ValueError(f"Invalid input threshold. high_threshold should be in range (0,1). Got: {high_threshold}")
 
         # Gaussian blur parameters
         self.kernel_size = kernel_size

@@ -97,7 +97,7 @@ def main():
             h_dif, w_dif = int(h - h_new), int(w - w_new)
             out = torch.nn.functional.pad(out, (w_dif // 2, w_dif // 2, 0, h_dif))
 
-        out = torch.cat([img_in[0], *[out[i] for i in range(out.size(0))]], dim=-1)
+        out = torch.cat([img_in[0], *(out[i] for i in range(out.size(0)))], dim=-1)
         # save the output image
         out_np = K.utils.tensor_to_image((out * 255.0).byte())
         cv2.imwrite(str(OUTPUT_PATH / f"{aug_name}.png"), out_np)
@@ -119,7 +119,7 @@ def main():
         torch.manual_seed(seed)
         # apply the augmentaiton to the image and concat
         out, _ = aug(img_in, torch.tensor([0, 1]))
-        out = torch.cat([img_in[0], img_in[1], *[out[i] for i in range(out.size(0))]], dim=-1)
+        out = torch.cat([img_in[0], img_in[1], *(out[i] for i in range(out.size(0)))], dim=-1)
         # save the output image
         out_np = K.utils.tensor_to_image((out * 255.0).byte())
         cv2.imwrite(str(OUTPUT_PATH / f"{aug_name}.png"), out_np)
@@ -128,7 +128,7 @@ def main():
 
     mod = importlib.import_module("kornia.color")
     color_transforms_list: dict = {
-        "grayscale_to_rgb": ((), 1),
+        "grayscale_to_rgb": ((), 3),
         "rgb_to_bgr": ((), 1),
         "rgb_to_grayscale": ((), 1),
         "rgb_to_hsv": ((), 1),
@@ -162,10 +162,10 @@ def main():
         # save the output image
         if fn_name == "grayscale_to_rgb":
             out = torch.cat(
-                [K.rgb_to_grayscale(img2[0]).repeat(3, 1, 1), *[out[i] for i in range(out.size(0))]], dim=-1
+                [K.rgb_to_grayscale(img2[0]).repeat(3, 1, 1), *(out[i] for i in range(out.size(0)))], dim=-1
             )
         else:
-            out = torch.cat([img2[0], *[out[i] for i in range(out.size(0))]], dim=-1)
+            out = torch.cat([img2[0], *(out[i] for i in range(out.size(0)))], dim=-1)
         out_np = K.utils.tensor_to_image((out * 255.0).byte())
         cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
@@ -198,7 +198,7 @@ def main():
         fn = getattr(mod, fn_name)
         out = fn(*args_in)
         # save the output image
-        out = torch.cat([img_in[0], *[out[i] for i in range(out.size(0))]], dim=-1)
+        out = torch.cat([img_in[0], *(out[i] for i in range(out.size(0)))], dim=-1)
         out_np = K.utils.tensor_to_image((out * 255.0).byte())
         cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
@@ -225,7 +225,7 @@ def main():
         fn = getattr(mod, fn_name)
         out = fn(*args_in)
         # save the output image
-        out = torch.cat([img_in[0], *[out[i] for i in range(out.size(0))]], dim=-1)
+        out = torch.cat([img_in[0], *(out[i] for i in range(out.size(0)))], dim=-1)
         out_np = K.utils.tensor_to_image((out * 255.0).byte())
         cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
@@ -265,7 +265,7 @@ def main():
         if fn_name == "spatial_gradient":
             out = out.permute(2, 1, 0, 3, 4).squeeze()
         # save the output image
-        out = torch.cat([img_in[0], *[out[i] for i in range(out.size(0))]], dim=-1)
+        out = torch.cat([img_in[0], *(out[i] for i in range(out.size(0)))], dim=-1)
         out_np = K.utils.tensor_to_image((out * 255.0).byte())
         cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
@@ -337,7 +337,7 @@ def main():
                 _out.append(out_tmp)
             out = torch.cat(_out)
         # save the output image
-        out = torch.cat([img_in[0], *[out[i] for i in range(out.size(0))]], dim=-1)
+        out = torch.cat([img_in[0], *(out[i] for i in range(out.size(0)))], dim=-1)
         out_np = K.utils.tensor_to_image((out * 255.0).byte())
         cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"

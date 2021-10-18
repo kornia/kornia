@@ -81,7 +81,7 @@ def homography_warp(
     align_corners: bool = False,
     normalized_coordinates: bool = True,
 ) -> torch.Tensor:
-    r"""Warp image patchs or tensors by normalized 2D homographies.
+    r"""Warp image patches or tensors by normalized 2D homographies.
 
     See :class:`~kornia.geometry.warp.HomographyWarper` for details.
 
@@ -127,7 +127,7 @@ def homography_warp3d(
     align_corners: bool = False,
     normalized_coordinates: bool = True,
 ) -> torch.Tensor:
-    r"""Warp image patchs or tensors by normalized 3D homographies.
+    r"""Warp image patches or tensors by normalized 3D homographies.
 
     Args:
         patch_src: The image or tensor to warp. Should be from source of shape :math:`(N, C, D, H, W)`.
@@ -178,7 +178,7 @@ class HomographyWarper(nn.Module):
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
           ``'zeros'`` | ``'border'`` | ``'reflection'``.
-        normalized_coordinates: wether to use a grid with normalized coordinates.
+        normalized_coordinates: whether to use a grid with normalized coordinates.
         align_corners: interpolation flag.
     """
     _warped_grid: Optional[torch.Tensor]
@@ -192,7 +192,7 @@ class HomographyWarper(nn.Module):
         normalized_coordinates: bool = True,
         align_corners: bool = False,
     ) -> None:
-        super(HomographyWarper, self).__init__()
+        super().__init__()
         self.width: int = width
         self.height: int = height
         self.mode: str = mode
@@ -206,7 +206,7 @@ class HomographyWarper(nn.Module):
         self._warped_grid = None
 
     def precompute_warp_grid(self, src_homo_dst: torch.Tensor) -> None:
-        r"""Compute and store internaly the transformations of the points.
+        r"""Compute and store internally the transformations of the points.
 
         Useful when the same homography/homographies are reused.
 
@@ -366,9 +366,7 @@ def normalize_homography(
     check_is_tensor(dst_pix_trans_src_pix)
 
     if not (len(dst_pix_trans_src_pix.shape) == 3 or dst_pix_trans_src_pix.shape[-2:] == (3, 3)):
-        raise ValueError(
-            "Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {}".format(dst_pix_trans_src_pix.shape)
-        )
+        raise ValueError(f"Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {dst_pix_trans_src_pix.shape}")
 
     # source and destination sizes
     src_h, src_w = dsize_src
@@ -402,9 +400,7 @@ def denormalize_homography(
     check_is_tensor(dst_pix_trans_src_pix)
 
     if not (len(dst_pix_trans_src_pix.shape) == 3 or dst_pix_trans_src_pix.shape[-2:] == (3, 3)):
-        raise ValueError(
-            "Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {}".format(dst_pix_trans_src_pix.shape)
-        )
+        raise ValueError(f"Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {dst_pix_trans_src_pix.shape}")
 
     # source and destination sizes
     src_h, src_w = dsize_src
@@ -440,9 +436,7 @@ def normalize_homography3d(
     check_is_tensor(dst_pix_trans_src_pix)
 
     if not (len(dst_pix_trans_src_pix.shape) == 3 or dst_pix_trans_src_pix.shape[-2:] == (4, 4)):
-        raise ValueError(
-            "Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {}".format(dst_pix_trans_src_pix.shape)
-        )
+        raise ValueError(f"Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {dst_pix_trans_src_pix.shape}")
 
     # source and destination sizes
     src_d, src_h, src_w = dsize_src

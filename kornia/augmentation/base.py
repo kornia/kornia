@@ -38,7 +38,7 @@ class _BasicAugmentationBase(nn.Module):
     def __init__(
         self, p: float = 0.5, p_batch: float = 1.0, same_on_batch: bool = False, keepdim: bool = False
     ) -> None:
-        super(_BasicAugmentationBase, self).__init__()
+        super().__init__()
         self.p = p
         self.p_batch = p_batch
         self.same_on_batch = same_on_batch
@@ -57,8 +57,7 @@ class _BasicAugmentationBase(nn.Module):
         return input
 
     def __check_batching__(self, input: TensorWithTransformMat):
-        """Check if a transformation matrix is returned,
-        it has to be in the same batching mode as output."""
+        """Check if a transformation matrix is returned, it has to be in the same batching mode as output."""
         raise NotImplementedError
 
     def transform_tensor(self, input: torch.Tensor) -> torch.Tensor:
@@ -143,7 +142,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
           probabilities batch-wise.
         return_transform: if ``True`` return the matrix describing the geometric transformation applied to each
-          input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+          input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
@@ -157,7 +156,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         p_batch: float = 1.0,
         keepdim: bool = False,
     ) -> None:
-        super(_AugmentationBase, self).__init__(p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=keepdim)
         self.p = p
         self.p_batch = p_batch
         self.return_transform = return_transform
@@ -258,7 +257,7 @@ class AugmentationBase2D(_AugmentationBase):
         p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
           probabilities batch-wise.
         return_transform: if ``True`` return the matrix describing the geometric transformation applied to each
-          input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+          input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it to the batch
           form ``False``.
@@ -268,12 +267,15 @@ class AugmentationBase2D(_AugmentationBase):
         if isinstance(input, tuple):
             inp, mat = input
             if len(inp.shape) == 4:
-                assert len(mat.shape) == 3, 'Input tensor is in batch mode ' 'but transformation matrix is not'
-                assert mat.shape[0] == inp.shape[0], (
-                    f'In batch dimension, input has {inp.shape[0]}' f'but transformation matrix has {mat.shape[0]}'
-                )
-            elif len(inp.shape) == 3 or len(inp.shape) == 2:
-                assert len(mat.shape) == 2, 'Input tensor is in non-batch mode ' 'but transformation matrix is not'
+                if len(mat.shape) != 3:
+                    raise AssertionError('Input tensor is in batch mode ' 'but transformation matrix is not')
+                if mat.shape[0] != inp.shape[0]:
+                    raise AssertionError(
+                        f"In batch dimension, input has {inp.shape[0]} but transformation matrix has {mat.shape[0]}"
+                    )
+            elif len(inp.shape) in (2, 3):
+                if len(mat.shape) != 2:
+                    raise AssertionError("Input tensor is in non-batch mode but transformation matrix is not")
             else:
                 raise ValueError(f'Unrecognized output shape. Expected 2, 3, or 4, got {len(inp.shape)}')
 
@@ -299,7 +301,7 @@ class IntensityAugmentationBase2D(AugmentationBase2D):
         p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
           probabilities batch-wise.
         return_transform: if ``True`` return the matrix describing the geometric transformation applied to each
-          input tensor. If ``False`` and the input is a tuple the applied transformation  wont be concatenated.
+          input tensor. If ``False`` and the input is a tuple the applied transformation  won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
@@ -321,7 +323,7 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
         p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
           probabilities batch-wise.
         return_transform: if ``True`` return the matrix describing the geometric transformation applied to each
-          input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+          input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
@@ -335,9 +337,7 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
         **kwargs,
     ) -> torch.Tensor:
         """By default, the exact transformation as ``apply_transform`` will be used."""
-        return self.apply_transform(
-            input, params=self._params, transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype)
-        )
+        raise NotImplementedError
 
     def compute_inverse_transformation(self, transform: torch.Tensor):
         """Compute the inverse transform of given transformation matrices."""
@@ -377,7 +377,7 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
         if params is None:
             params = self._params
         if size is None and "input_size" in params:
-            # Majorly for copping functions
+            # Majorly for cropping functions
             size = params['input_size'].unique(dim=0).squeeze().numpy().tolist()
             size = (size[0], size[1])
         if 'batch_prob' not in params:
@@ -410,7 +410,7 @@ class AugmentationBase3D(_AugmentationBase):
         p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
           probabilities batch-wise.
         return_transform: if ``True`` return the matrix describing the geometric transformation applied to each
-          input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+          input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
     """
 
@@ -418,12 +418,15 @@ class AugmentationBase3D(_AugmentationBase):
         if isinstance(input, tuple):
             inp, mat = input
             if len(inp.shape) == 5:
-                assert len(mat.shape) == 3, 'Input tensor is in batch mode ' 'but transformation matrix is not'
-                assert mat.shape[0] == inp.shape[0], (
-                    f'In batch dimension, input has {inp.shape[0]}' f'but transformation matrix has {mat.shape[0]}'
-                )
-            elif len(inp.shape) == 3 or len(inp.shape) == 4:
-                assert len(mat.shape) == 2, 'Input tensor is in non-batch mode ' 'but transformation matrix is not'
+                if len(mat.shape) != 3:
+                    raise AssertionError('Input tensor is in batch mode ' 'but transformation matrix is not')
+                if mat.shape[0] != inp.shape[0]:
+                    raise AssertionError(
+                        f"In batch dimension, input has {inp.shape[0]} but transformation matrix has {mat.shape[0]}"
+                    )
+            elif len(inp.shape) in (3, 4):
+                if len(mat.shape) != 2:
+                    raise AssertionError("Input tensor is in non-batch mode but transformation matrix is not")
             else:
                 raise ValueError(f'Unrecognized output shape. Expected 3, 4 or 5, got {len(inp.shape)}')
 
@@ -453,18 +456,21 @@ class MixAugmentationBase(_BasicAugmentationBase):
     """
 
     def __init__(self, p: float, p_batch: float, same_on_batch: bool = False, keepdim: bool = False) -> None:
-        super(MixAugmentationBase, self).__init__(p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=keepdim)
 
     def __check_batching__(self, input: TensorWithTransformMat):
         if isinstance(input, tuple):
             inp, mat = input
             if len(inp.shape) == 4:
-                assert len(mat.shape) == 3, 'Input tensor is in batch mode ' 'but transformation matrix is not'
-                assert mat.shape[0] == inp.shape[0], (
-                    f'In batch dimension, input has {inp.shape[0]}' f'but transformation matrix has {mat.shape[0]}'
-                )
-            elif len(inp.shape) == 3 or len(inp.shape) == 2:
-                assert len(mat.shape) == 2, 'Input tensor is in non-batch mode ' 'but transformation matrix is not'
+                if len(mat.shape) != 3:
+                    raise AssertionError('Input tensor is in batch mode ' 'but transformation matrix is not')
+                if mat.shape[0] != inp.shape[0]:
+                    raise AssertionError(
+                        f"In batch dimension, input has {inp.shape[0]} but transformation matrix has {mat.shape[0]}"
+                    )
+            elif len(inp.shape) in (2, 3):
+                if len(mat.shape) != 2:
+                    raise AssertionError("Input tensor is in non-batch mode but transformation matrix is not")
             else:
                 raise ValueError(f'Unrecognized output shape. Expected 2, 3, or 4, got {len(inp.shape)}')
 

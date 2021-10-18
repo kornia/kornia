@@ -9,14 +9,14 @@ from kornia.geometry import angle_to_rotation_matrix
 
 
 def raise_error_if_laf_is_not_valid(laf: torch.Tensor) -> None:
-    """Auxilary function, which verifies that input.
+    """Auxiliary function, which verifies that input.
 
     Args:
         laf: [BxNx2x3] shape.
     """
-    laf_message: str = "Invalid laf shape, we expect BxNx2x3. Got: {}".format(laf.shape)
+    laf_message: str = f"Invalid laf shape, we expect BxNx2x3. Got: {laf.shape}"
     if not isinstance(laf, torch.Tensor):
-        raise TypeError("Laf type is not a torch.Tensor. Got {}".format(type(laf)))
+        raise TypeError(f"Laf type is not a torch.Tensor. Got {type(laf)}")
     if len(laf.shape) != 4:
         raise ValueError(laf_message)
     if laf.size(2) != 2 or laf.size(3) != 3:
@@ -25,7 +25,7 @@ def raise_error_if_laf_is_not_valid(laf: torch.Tensor) -> None:
 
 
 def get_laf_scale(LAF: torch.Tensor) -> torch.Tensor:
-    """Returns a scale of the LAFs.
+    """Return a scale of the LAFs.
 
     Args:
         LAF: tensor [BxNx2x3] or [BxNx2x2].
@@ -48,7 +48,7 @@ def get_laf_scale(LAF: torch.Tensor) -> torch.Tensor:
 
 
 def get_laf_center(LAF: torch.Tensor) -> torch.Tensor:
-    """Returns a center (keypoint) of the LAFs.
+    """Return a center (keypoint) of the LAFs.
 
     Args:
         LAF: tensor [BxNx2x3].
@@ -70,7 +70,7 @@ def get_laf_center(LAF: torch.Tensor) -> torch.Tensor:
 
 
 def get_laf_orientation(LAF: torch.Tensor) -> torch.Tensor:
-    """Returns orientation of the LAFs, in degrees.
+    """Return orientation of the LAFs, in degrees.
 
     Args:
         LAF: (torch.Tensor): tensor [BxNx2x3].
@@ -92,7 +92,7 @@ def get_laf_orientation(LAF: torch.Tensor) -> torch.Tensor:
 
 
 def set_laf_orientation(LAF: torch.Tensor, angles_degrees: torch.Tensor) -> torch.Tensor:
-    """Changes the orientation of the LAFs.
+    """Change the orientation of the LAFs.
 
     Args:
         LAF: tensor [BxNx2x3].
@@ -104,7 +104,6 @@ def set_laf_orientation(LAF: torch.Tensor, angles_degrees: torch.Tensor) -> torc
     Shape:
         - Input: :math: `(B, N, 2, 3)`, `(B, N, 1)`
         - Output: :math: `(B, N, 2, 3)`
-
     """
     raise_error_if_laf_is_not_valid(LAF)
     B, N = LAF.shape[:2]
@@ -116,7 +115,7 @@ def set_laf_orientation(LAF: torch.Tensor, angles_degrees: torch.Tensor) -> torc
 
 
 def laf_from_center_scale_ori(xy: torch.Tensor, scale: torch.Tensor, ori: torch.Tensor) -> torch.Tensor:
-    """Returns orientation of the LAFs, in radians. Useful to create kornia LAFs from OpenCV keypoints.
+    """Return orientation of the LAFs, in radians. Useful to create kornia LAFs from OpenCV keypoints.
 
     Args:
         xy: tensor [BxNx2].
@@ -129,7 +128,7 @@ def laf_from_center_scale_ori(xy: torch.Tensor, scale: torch.Tensor, ori: torch.
     names = ['xy', 'scale', 'ori']
     for var_name, var, req_shape in zip(names, [xy, scale, ori], [("B", "N", 2), ("B", "N", 1, 1), ("B", "N", 1)]):
         if not isinstance(var, torch.Tensor):
-            raise TypeError("{} type is not a torch.Tensor. Got {}".format(var_name, type(var)))
+            raise TypeError(f"{var_name} type is not a torch.Tensor. Got {type(var)}")
         if len(var.shape) != len(req_shape):  # type: ignore  # because it does not like len(tensor.shape)
             raise TypeError("{} shape should be must be [{}]. " "Got {}".format(var_name, str(req_shape), var.size()))
         for i, dim in enumerate(req_shape):  # type: ignore # because it wants typing for dim
@@ -174,7 +173,7 @@ def scale_laf(laf: torch.Tensor, scale_coef: Union[float, torch.Tensor]) -> torc
 
 
 def make_upright(laf: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
-    """Rectifies the affine matrix, so that it becomes upright.
+    """Rectify the affine matrix, so that it becomes upright.
 
     Args:
         laf: tensor of LAFs.
@@ -194,7 +193,7 @@ def make_upright(laf: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
     raise_error_if_laf_is_not_valid(laf)
     det = get_laf_scale(laf)
     scale = det
-    # The function is equivalent to doing 2x2 SVD and reseting rotation
+    # The function is equivalent to doing 2x2 SVD and resetting rotation
     # matrix to an identity: U, S, V = svd(LAF); LAF_upright = U * S.
     b2a2 = torch.sqrt(laf[..., 0:1, 1:2] ** 2 + laf[..., 0:1, 0:1] ** 2) + eps
     laf1_ell = torch.cat([(b2a2 / det).contiguous(), torch.zeros_like(det)], dim=3)
@@ -210,7 +209,7 @@ def make_upright(laf: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
 
 
 def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
-    """Converts ellipse regions to LAF format.
+    """Convert ellipse regions to LAF format.
 
     Ellipse (a, b, c) and upright covariance matrix [a11 a12; 0 a22] are connected
     by inverse matrix square root: A = invsqrt([a b; b c]).
@@ -259,7 +258,7 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
 
 
 def laf_to_boundary_points(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
-    """Converts LAFs to boundary points of the regions + center.
+    """Convert LAFs to boundary points of the regions + center.
 
     Used for local features visualization, see visualize_laf function.
 
@@ -294,7 +293,7 @@ def laf_to_boundary_points(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
 
 
 def get_laf_pts_to_draw(LAF: torch.Tensor, img_idx: int = 0):
-    """Returns numpy array for drawing LAFs (local features).
+    """Return numpy array for drawing LAFs (local features).
 
     Args:
         LAF:
@@ -322,7 +321,7 @@ def get_laf_pts_to_draw(LAF: torch.Tensor, img_idx: int = 0):
 
 
 def denormalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
-    """De-normalizes LAFs from scale to image scale.
+    """De-normalize LAFs from scale to image scale.
 
         B,N,H,W = images.size()
         MIN_SIZE = min(H,W)
@@ -344,7 +343,7 @@ def denormalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
         - Output:  :math:`(B, N, 2, 3)`
     """
     raise_error_if_laf_is_not_valid(LAF)
-    n, ch, h, w = images.size()
+    _, _, h, w = images.size()
     wf = float(w)
     hf = float(h)
     min_size = min(hf, wf)
@@ -355,7 +354,7 @@ def denormalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
 
 
 def normalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
-    """Normalizes LAFs to [0,1] scale from pixel scale. See below:
+    """Normalize LAFs to [0,1] scale from pixel scale. See below:
         B,N,H,W = images.size()
         MIN_SIZE = min(H,W)
         [a11 a21 x]
@@ -376,7 +375,7 @@ def normalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
         - Output:  :math:`(B, N, 2, 3)`
     """
     raise_error_if_laf_is_not_valid(LAF)
-    n, ch, h, w = images.size()
+    _, _, h, w = images.size()
     wf: float = float(w)
     hf: float = float(h)
     min_size = min(hf, wf)
@@ -396,11 +395,10 @@ def generate_patch_grid_from_normalized_LAF(img: torch.Tensor, LAF: torch.Tensor
 
     Returns:
         grid
-
     """
     raise_error_if_laf_is_not_valid(LAF)
     B, N, _, _ = LAF.size()
-    num, ch, h, w = img.size()
+    _, ch, h, w = img.size()
 
     # norm, then renorm is needed for allowing detection on one resolution
     # and extraction at arbitrary other
@@ -433,7 +431,7 @@ def extract_patches_simple(
         nlaf: torch.Tensor = normalize_laf(laf, img)
     else:
         nlaf = laf
-    num, ch, h, w = img.size()
+    _, ch, h, w = img.size()
     B, N, _, _ = laf.size()
     out = []
     # for loop temporarily, to be refactored
@@ -472,7 +470,7 @@ def extract_patches_from_pyramid(
     else:
         nlaf = laf
     B, N, _, _ = laf.size()
-    num, ch, h, w = img.size()
+    _, ch, h, w = img.size()
     scale = 2.0 * get_laf_scale(denormalize_laf(nlaf, img)) / float(PS)
     half: float = 0.5
     pyr_idx = (scale.log2() + half).relu().long()
@@ -480,7 +478,7 @@ def extract_patches_from_pyramid(
     cur_pyr_level = 0
     out = torch.zeros(B, N, ch, PS, PS).to(nlaf.dtype).to(nlaf.device)
     while min(cur_img.size(2), cur_img.size(3)) >= PS:
-        num, ch, h, w = cur_img.size()
+        _, ch, h, w = cur_img.size()
         # for loop temporarily, to be refactored
         for i in range(B):
             scale_mask = (pyr_idx[i] == cur_pyr_level).squeeze()
@@ -501,7 +499,7 @@ def extract_patches_from_pyramid(
 
 
 def laf_is_inside_image(laf: torch.Tensor, images: torch.Tensor, border: int = 0) -> torch.Tensor:
-    """Checks if the LAF is touching or partly outside the image boundary.
+    """Check if the LAF is touching or partly outside the image boundary.
 
     Returns the mask of LAFs, which are fully inside the image, i.e. valid.
 
@@ -514,7 +512,7 @@ def laf_is_inside_image(laf: torch.Tensor, images: torch.Tensor, border: int = 0
         mask with shape :math:`(B, N)`.
     """
     raise_error_if_laf_is_not_valid(laf)
-    n, ch, h, w = images.size()
+    _, _, h, w = images.size()
     pts: torch.Tensor = laf_to_boundary_points(laf, 12)
     good_lafs_mask: torch.Tensor = (
         (pts[..., 0] >= border) * (pts[..., 0] <= w - border) * (pts[..., 1] >= border) * (pts[..., 1] <= h - border)
@@ -524,8 +522,8 @@ def laf_is_inside_image(laf: torch.Tensor, images: torch.Tensor, border: int = 0
 
 
 def laf_to_three_points(laf: torch.Tensor):
-    """Converts local affine frame(LAF) to alternative representation: coordinates of
-    LAF center, LAF-x unit vector, LAF-y unit vector.
+    """Convert local affine frame(LAF) to alternative representation: coordinates of LAF center, LAF-x unit vector,
+    LAF-y unit vector.
 
     Args:
         laf:  :math:`(B, N, 2, 3)`.
@@ -539,7 +537,7 @@ def laf_to_three_points(laf: torch.Tensor):
 
 
 def laf_from_three_points(threepts: torch.Tensor):
-    """Converts three points to local affine frame.
+    """Convert three points to local affine frame.
 
     Order is (0,0), (0, 1), (1, 0).
 

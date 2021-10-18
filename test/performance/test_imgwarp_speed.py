@@ -23,6 +23,6 @@ def test_performance_speed(device, dtype):
             As += 0.1 * torch.rand(As.size()).to(device)
             torch.cuda.synchronize(device)
             t = time()
-            kornia_wa = kornia.warp_affine(inpt, As, (PS, PS))
+            _ = kornia.warp_affine(inpt, As, (PS, PS))
             print(f"inp={input_shape}, PS={PS}, dev={device}, {time() - t}, sec")
             torch.cuda.synchronize(device)

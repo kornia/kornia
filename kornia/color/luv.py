@@ -15,7 +15,7 @@ https://github.com/scikit-image/scikit-image/blob/a48bf6774718c64dade4548153ae16
 
 
 def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
-    r"""Converts a RGB image to Luv.
+    r"""Convert a RGB image to Luv.
 
     .. image:: _static/img/rgb_to_luv.png
 
@@ -34,10 +34,10 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
         >>> output = rgb_to_luv(input)  # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(image)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}".format(image.shape))
+        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
     # Convert from sRGB to Linear RGB
     lin_rgb = rgb_to_linear_rgb(image)
@@ -68,7 +68,7 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 
 
 def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
-    r"""Converts a Luv image to RGB.
+    r"""Convert a Luv image to RGB.
 
     Args:
         image: Luv image to be converted to RGB with shape :math:`(*, 3, H, W)`.
@@ -82,10 +82,10 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
         >>> output = luv_to_rgb(input)  # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(image)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}".format(image.shape))
+        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
     L: torch.Tensor = image[..., 0, :, :]
     u: torch.Tensor = image[..., 1, :, :]
@@ -117,7 +117,7 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 
 
 class RgbToLuv(nn.Module):
-    r"""Converts an image from RGB to Luv.
+    r"""Convert an image from RGB to Luv.
 
     The image data is assumed to be in the range of :math:`[0, 1]`. Luv
     color is computed using the D65 illuminant and Observer 2.
@@ -147,7 +147,7 @@ class RgbToLuv(nn.Module):
 
 
 class LuvToRgb(nn.Module):
-    r"""Converts an image from Luv to RGB.
+    r"""Convert an image from Luv to RGB.
 
     Returns:
         RGB version of the image.

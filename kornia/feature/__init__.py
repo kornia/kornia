@@ -1,3 +1,4 @@
+from .loftr import LoFTR
 from .nms import nms2d, nms3d, NonMaximaSuppression2d, NonMaximaSuppression3d
 from .responses import (
     BlobDoG,
@@ -15,6 +16,7 @@ non_maxima_suppression2d = nms2d
 non_maxima_suppression3d = nms3d
 
 from .affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
+from .defmo import DeFMO
 from .hardnet import HardNet, HardNet8
 from .laf import (
     denormalize_laf,
@@ -74,6 +76,7 @@ __all__ = [
     "MKDDescriptor",
     "HardNet",
     "HardNet8",
+    "DeFMO",
     "TFeat",
     "OriNet",
     "LAFAffNetShapeEstimator",
@@ -92,4 +95,5 @@ __all__ = [
     "match_mnn",
     "match_snn",
     "match_smnn",
+    "LoFTR",
 ]

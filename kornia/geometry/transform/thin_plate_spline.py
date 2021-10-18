@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 
 from kornia.utils import create_meshgrid
+from kornia.utils.helpers import _torch_solve_cast
 
 __all__ = ["get_tps_transform", "warp_points_tps", "warp_image_tps"]
 
@@ -43,7 +44,7 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> Tup
     Returns:
         :math:`(B, N, 2)` tensor of kernel weights and :math:`(B, 3, 2)`
             tensor of affine weights. The last dimension contains the x-transform and y-transform weights
-            as seperate columns.
+            as separate columns.
 
     Example:
         >>> points_src = torch.rand(1, 5, 2)
@@ -51,7 +52,7 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> Tup
         >>> kernel_weights, affine_weights = get_tps_transform(points_src, points_dst)
 
     .. note::
-        This function is often used in conjuntion with :func:`warp_points_tps`, :func:`warp_image_tps`.
+        This function is often used in conjunction with :func:`warp_points_tps`, :func:`warp_image_tps`.
     """
     if not isinstance(points_src, torch.Tensor):
         raise TypeError(f"Input points_src is not torch.Tensor. Got {type(points_src)}")
@@ -82,7 +83,7 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> Tup
     l_matrix: torch.Tensor = torch.cat((k_matrix, p_matrix), -1)
     l_matrix = torch.cat((l_matrix, p_matrix_t), 1)
 
-    weights, _ = torch.solve(dest_with_zeros, l_matrix)
+    weights, _ = _torch_solve_cast(dest_with_zeros, l_matrix)
     kernel_weights: torch.Tensor = weights[:, :-3]
     affine_weights: torch.Tensor = weights[:, -3:]
 
@@ -117,7 +118,7 @@ def warp_points_tps(
         >>> warped_correct = torch.allclose(warped, points_dst)
 
     .. note::
-        This function is often used in conjuntion with :func:`get_tps_transform`.
+        This function is often used in conjunction with :func:`get_tps_transform`.
     """
     if not isinstance(points_src, torch.Tensor):
         raise TypeError(f"Input points_src is not torch.Tensor. Got {type(points_src)}")
@@ -194,7 +195,7 @@ def warp_image_tps(
         >>> warped_image = warp_image_tps(image, points_src, kernel_weights, affine_weights)
 
     .. note::
-        This function is often used in conjuntion with :func:`get_tps_transform`.
+        This function is often used in conjunction with :func:`get_tps_transform`.
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input image is not torch.Tensor. Got {type(image)}")

@@ -2,15 +2,16 @@ from typing import Optional
 
 import torch
 
+# TODO: implement width of the line
+
 
 def draw_rectangle(
     image: torch.Tensor,
     rectangle: torch.Tensor,
     color: Optional[torch.Tensor] = None,
     fill: Optional[bool] = None,
-    width: int = 1,
 ) -> torch.Tensor:
-    r"""Draws N rectangles on a batch of image tensors.
+    r"""Draw N rectangles on a batch of image tensors.
 
     Args:
         image: is tensor of BxCxHxW.
@@ -20,7 +21,7 @@ def draw_rectangle(
         color: a size 1, size 3, BxNx1, or BxNx3 tensor.
             If C is 3, and color is 1 channel it will be broadcasted.
         fill: is a flag used to fill the boxes with color if True.
-        width: The line width (Not implemented yet).
+
     Returns:
         This operation modifies image inplace but also returns the drawn tensor for
         convenience with same shape the of the input BxCxHxW.
@@ -33,8 +34,10 @@ def draw_rectangle(
 
     batch, c, h, w = image.shape
     batch_rect, num_rectangle, num_points = rectangle.shape
-    assert batch == batch_rect, "Image batch and rectangle batch must be equal"
-    assert num_points == 4, "Number of points in rectangle must be 4"
+    if batch != batch_rect:
+        raise AssertionError("Image batch and rectangle batch must be equal")
+    if num_points != 4:
+        raise AssertionError("Number of points in rectangle must be 4")
 
     # clone rectangle, in case it's been expanded assignment from clipping causes problems
     rectangle = rectangle.long().clone()

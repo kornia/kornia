@@ -29,8 +29,9 @@ def load_data(root_path, sequence_name, frame_id):
 
 
 def load_depth(file_name):
-    """Loads the depth using the sintel SDK and converts to torch.Tensor"""
-    assert os.path.isfile(file_name), "Invalid file {}".format(file_name)
+    """Load the depth using the sintel SDK and converts to torch.Tensor."""
+    if not os.path.isfile(file_name):
+        raise AssertionError(f"Invalid file {file_name}")
     import sintel_io
 
     depth = sintel_io.depth_read(file_name)
@@ -38,8 +39,9 @@ def load_depth(file_name):
 
 
 def load_camera_data(file_name):
-    """Loads the camera data using the sintel SDK and converts to torch.Tensor."""
-    assert os.path.isfile(file_name), "Invalid file {}".format(file_name)
+    """Load the camera data using the sintel SDK and converts to torch.Tensor."""
+    if not os.path.isfile(file_name):
+        raise AssertionError(f"Invalid file {file_name}")
     import sintel_io
 
     intrinsic, extrinsic = sintel_io.cam_read(file_name)
@@ -47,8 +49,9 @@ def load_camera_data(file_name):
 
 
 def load_image(file_name):
-    """Loads the image with OpenCV and converts to torch.Tensor"""
-    assert os.path.isfile(file_name), "Invalid file {}".format(file_name)
+    """Load the image with OpenCV and converts to torch.Tensor."""
+    if not os.path.isfile(file_name):
+        raise AssertionError(f"Invalid file {file_name}")
 
     # load image with OpenCV
     img = cv2.imread(file_name, cv2.IMREAD_COLOR)
@@ -59,7 +62,8 @@ def load_image(file_name):
 
 
 def clip_and_convert_tensor(tensor):
-    """convert the input torch.Tensor to OpenCV image,clip it to be between
+    """Convert the input torch.Tensor to OpenCV image,clip it to be between.
+
     [0, 255] and convert it to unit
     """
     img = tgm.utils.tensor_to_image(255.0 * tensor)  # convert tensor to numpy
@@ -70,7 +74,7 @@ def clip_and_convert_tensor(tensor):
 
 class InvDepth(nn.Module):
     def __init__(self, height, width, min_depth=0.50, max_depth=25.0):
-        super(InvDepth, self).__init__()
+        super().__init__()
         self._min_range = 1.0 / max_depth
         self._max_range = 1.0 / min_depth
 
@@ -130,7 +134,7 @@ def DepthRegressionApp():
 
     # load the data
     root_dir = os.path.join(root_path, 'training')
-    img_ref, depth_ref, cam_ref = load_data(root_dir, args.sequence_name, args.frame_ref_id)
+    img_ref, _, cam_ref = load_data(root_dir, args.sequence_name, args.frame_ref_id)
     img_i, _, cam_i = load_data(root_dir, args.sequence_name, args.frame_i_id)
 
     # instantiate the depth warper from `kornia`
@@ -163,7 +167,7 @@ def DepthRegressionApp():
         optimizer.step()
 
         if iter_idx % args.log_interval == 0 or iter_idx == args.num_iterations - 1:
-            print('Train iteration: {}/{}\tLoss: {:.6}'.format(iter_idx, args.num_iterations, loss.item()))
+            print(f'Train iteration: {iter_idx}/{args.num_iterations}\tLoss: {loss.item():.6}')
 
             if iter_idx % args.log_interval_vis == 0:
                 # merge warped and target image for  visualization
@@ -179,12 +183,12 @@ def DepthRegressionApp():
                 inv_depth_ref_vis = inv_depth_ref_vis.astype('uint8')
 
                 # save warped image and depth to disk
-                def file_name(x):
-                    return os.path.join(args.output_dir, "{0}_{1}.png".format(x, iter_idx))
+                def file_name(output_dir, file_name, iter_idx):
+                    return os.path.join(output_dir, f"{file_name}_{iter_idx}.png")
 
-                cv2.imwrite(file_name("warped"), img_i_to_ref_vis)
-                cv2.imwrite(file_name("warped_both"), img_both_vis)
-                cv2.imwrite(file_name("inv_depth_ref"), inv_depth_ref_vis)
+                cv2.imwrite(file_name(args.output_dir, "warped", iter_idx), img_i_to_ref_vis)
+                cv2.imwrite(file_name(args.output_dir, "warped_both", iter_idx), img_both_vis)
+                cv2.imwrite(file_name(args.output_dir, "inv_depth_ref", iter_idx), inv_depth_ref_vis)
 
 
 if __name__ == "__main__":

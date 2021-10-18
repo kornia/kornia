@@ -1,9 +1,7 @@
 <div align="center">
 <p align="center">
-  <img width="50%" src="https://github.com/kornia/kornia/blob/master/docs/source/_static/img/kornia_logo.png" />
+  <img width="75%" src="https://github.com/kornia/data/raw/main/kornia_banner_pixie.png" />
 </p>
-
-**The open-source and Computer Vision 2.0 library**
 
 ---
 
@@ -30,6 +28,8 @@ English | [简体中文](README_zh-CN.md)
 [![codecov](https://codecov.io/gh/kornia/kornia/branch/master/graph/badge.svg?token=FzCb7e0Bso)](https://codecov.io/gh/kornia/kornia)
 [![Documentation Status](https://readthedocs.org/projects/kornia/badge/?version=latest)](https://kornia.readthedocs.io/en/latest/?badge=latest)
 [![pre-commit.ci status](https://results.pre-commit.ci/badge/github/kornia/kornia/master.svg)](https://results.pre-commit.ci/latest/github/kornia/kornia/master)
+
+<a href="https://www.producthunt.com/posts/kornia?utm_source=badge-featured&utm_medium=badge&utm_souce=badge-kornia" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=306439&theme=light" alt="Kornia - Computer vision library for deep learning | Product Hunt" style="width: 250px; height: 54px;" width="250" height="54" /></a>
 
 </p>
 </div>
@@ -72,6 +72,7 @@ At a granular level, Kornia is a library that consists of the following componen
 
   ```bash
   pip install kornia
+  pip install kornia[x]  # to get the training API !
   ```
 
 <details>
@@ -108,9 +109,12 @@ Run our Jupyter notebooks [tutorials](https://kornia-tutorials.readthedocs.io/en
   </a>
 </div>
 
+:triangular_flag_on_post: **Updates**
+- :white_check_mark: Integrated to [Huggingface Spaces](https://huggingface.co/spaces) with [Gradio](https://github.com/gradio-app/gradio). See [Gradio Web Demo](https://huggingface.co/spaces/akhaliq/Kornia-LoFTR).
+
 ## Cite
 
-If you are using kornia in your research-related documents, it is recommended that you cite the paper. Se more in [CITATION](https://github.com/kornia/kornia/blob/master/CITATION.md).
+If you are using kornia in your research-related documents, it is recommended that you cite the paper. See more in [CITATION](https://github.com/kornia/kornia/blob/master/CITATION.md).
 
   ```bash
   @inproceedings{eriba2019kornia,
@@ -123,11 +127,11 @@ If you are using kornia in your research-related documents, it is recommended th
   ```
 
 ## Contributing
-We appreciate all contributions. If you are planning to contribute back bug-fixes, please do so without any further discussion. If you plan to contribute new features, utility functions or extensions, please first open an issue and discuss the feature with us. Please, consider reading the [CONTRIBUTING](https://github.com/arraiyopensource/kornia/blob/master/CONTRIBUTING.rst) notes. The participation in this open source project is subject to [Code of Conduct](https://github.com/arraiyopensource/kornia/blob/master/CODE_OF_CONDUCT.md).
+We appreciate all contributions. If you are planning to contribute back bug-fixes, please do so without any further discussion. If you plan to contribute new features, utility functions or extensions, please first open an issue and discuss the feature with us. Please, consider reading the [CONTRIBUTING](https://github.com/kornia/kornia/blob/master/CONTRIBUTING.rst) notes. The participation in this open source project is subject to [Code of Conduct](https://github.com/kornia/kornia/blob/master/CODE_OF_CONDUCT.md).
 
 
 ## Community
-- **forums:** discuss implementations, research, etc. [GitHub Forums](https://github.com/kornia/kornia/discussions)
-- **GitHub issues:** bug reports, feature requests, install issues, RFCs, thoughts, etc. [OPEN](https://github.com/kornia/kornia/issues/new/choose)
+- **Forums:** discuss implementations, research, etc. [GitHub Forums](https://github.com/kornia/kornia/discussions)
+- **GitHub Issues:** bug reports, feature requests, install issues, RFCs, thoughts, etc. [OPEN](https://github.com/kornia/kornia/issues/new/choose)
 - **Slack:** Join our workspace to keep in touch with our core contributors and be part of our community. [JOIN HERE](https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-CnydWe5fmvkcktIeRFGCEQ)
-- for general information, please visit our website at www.kornia.org
+- For general information, please visit our website at www.kornia.org

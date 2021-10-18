@@ -1,4 +1,3 @@
-import warnings
 from typing import Optional, Tuple
 
 import torch
@@ -10,6 +9,7 @@ from kornia.geometry.conversions import (
     deg2rad,
     normalize_pixel_coordinates,
 )
+from kornia.geometry.epipolar import eye_like
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform.homography_warper import normalize_homography
 from kornia.geometry.transform.projwarp import get_projective_transform
@@ -37,11 +37,11 @@ def warp_perspective(
     dsize: Tuple[int, int],
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
-    align_corners: Optional[bool] = None,
+    align_corners: bool = True,
 ) -> torch.Tensor:
-    r"""Applies a perspective transformation to an image.
+    r"""Apply a perspective transformation to an image.
 
-    .. image:: https://kornia-tutorials.readthedocs.io/en/latest/_images/warp_perspective_10_2.png
+    .. image:: https://kornia-tutorials.readthedocs.io/en/latest/_images/warp_perspective_10_1.png
 
     The function warp_perspective transforms the source image using
     the specified matrix:
@@ -71,36 +71,25 @@ def warp_perspective(
        torch.Size([1, 4, 4, 2])
 
     .. note::
-        This function is often used in conjuntion with :func:`get_perspective_transform`.
+        This function is often used in conjunction with :func:`get_perspective_transform`.
 
     .. note::
         See a working example `here <https://kornia-tutorials.readthedocs.io/en/
         latest/warp_perspective.html>`_.
     """
     if not isinstance(src, torch.Tensor):
-        raise TypeError("Input src type is not a torch.Tensor. Got {}".format(type(src)))
+        raise TypeError(f"Input src type is not a torch.Tensor. Got {type(src)}")
 
     if not isinstance(M, torch.Tensor):
-        raise TypeError("Input M type is not a torch.Tensor. Got {}".format(type(M)))
+        raise TypeError(f"Input M type is not a torch.Tensor. Got {type(M)}")
 
     if not len(src.shape) == 4:
-        raise ValueError("Input src must be a BxCxHxW tensor. Got {}".format(src.shape))
+        raise ValueError(f"Input src must be a BxCxHxW tensor. Got {src.shape}")
 
     if not (len(M.shape) == 3 and M.shape[-2:] == (3, 3)):
-        raise ValueError("Input M must be a Bx3x3 tensor. Got {}".format(M.shape))
+        raise ValueError(f"Input M must be a Bx3x3 tensor. Got {M.shape}")
 
-    # TODO: remove the statement below in kornia v0.6
-    if align_corners is None:
-        message: str = (
-            "The align_corners default value has been changed. By default now is set True "
-            "in order to match cv2.warpPerspective. In case you want to keep your previous "
-            "behaviour set it to False. This warning will disappear in kornia > v0.6."
-        )
-        warnings.warn(message)
-        # set default value for align corners
-        align_corners = True
-
-    B, C, H, W = src.size()
+    B, _, H, W = src.size()
     h_out, w_out = dsize
 
     # we normalize the 3x3 transformation matrix and convert to 3x4
@@ -123,9 +112,9 @@ def warp_affine(
     dsize: Tuple[int, int],
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
-    align_corners: Optional[bool] = None,
+    align_corners: bool = True,
 ) -> torch.Tensor:
-    r"""Applies an affine transformation to a tensor.
+    r"""Apply an affine transformation to a tensor.
 
     .. image:: _static/img/warp_affine.png
 
@@ -148,7 +137,7 @@ def warp_affine(
         the warped tensor with shape :math:`(B, C, H, W)`.
 
     .. note::
-        This function is often used in conjuntion with :func:`get_rotation_matrix2d`,
+        This function is often used in conjunction with :func:`get_rotation_matrix2d`,
         :func:`get_shear_matrix2d`, :func:`get_affine_matrix2d`, :func:`invert_affine_transform`.
 
     .. note::
@@ -163,27 +152,16 @@ def warp_affine(
        torch.Size([1, 4, 4, 2])
     """
     if not isinstance(src, torch.Tensor):
-        raise TypeError("Input src type is not a torch.Tensor. Got {}".format(type(src)))
+        raise TypeError(f"Input src type is not a torch.Tensor. Got {type(src)}")
 
     if not isinstance(M, torch.Tensor):
-        raise TypeError("Input M type is not a torch.Tensor. Got {}".format(type(M)))
+        raise TypeError(f"Input M type is not a torch.Tensor. Got {type(M)}")
 
     if not len(src.shape) == 4:
-        raise ValueError("Input src must be a BxCxHxW tensor. Got {}".format(src.shape))
+        raise ValueError(f"Input src must be a BxCxHxW tensor. Got {src.shape}")
 
     if not (len(M.shape) == 3 or M.shape[-2:] == (2, 3)):
-        raise ValueError("Input M must be a Bx2x3 tensor. Got {}".format(M.shape))
-
-    # TODO: remove the statement below in kornia v0.6
-    if align_corners is None:
-        message: str = (
-            "The align_corners default value has been changed. By default now is set True "
-            "in order to match cv2.warpAffine. In case you want to keep your previous "
-            "behaviour set it to False. This warning will disappear in kornia > v0.6."
-        )
-        warnings.warn(message)
-        # set default value for align corners
-        align_corners = True
+        raise ValueError(f"Input M must be a Bx2x3 tensor. Got {M.shape}")
 
     B, C, H, W = src.size()
 
@@ -200,7 +178,7 @@ def warp_affine(
 
 
 def get_perspective_transform(src, dst):
-    r"""Calculates a perspective transform from four pairs of the corresponding
+    r"""Calculate a perspective transform from four pairs of the corresponding
     points.
 
     The function calculates the matrix of a perspective transform so that:
@@ -234,24 +212,22 @@ def get_perspective_transform(src, dst):
         the perspective transformation with shape :math:`(B, 3, 3)`.
 
     .. note::
-        This function is often used in conjuntion with :func:`warp_perspective`.
+        This function is often used in conjunction with :func:`warp_perspective`.
     """
     if not isinstance(src, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(src)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(src)}")
 
     if not isinstance(dst, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(dst)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(dst)}")
 
     if not src.shape[-2:] == (4, 2):
-        raise ValueError("Inputs must be a Bx4x2 tensor. Got {}".format(src.shape))
+        raise ValueError(f"Inputs must be a Bx4x2 tensor. Got {src.shape}")
 
     if not src.shape == dst.shape:
-        raise ValueError("Inputs must have the same shape. Got {}".format(dst.shape))
+        raise ValueError(f"Inputs must have the same shape. Got {dst.shape}")
 
     if not (src.shape[0] == dst.shape[0]):
-        raise ValueError(
-            "Inputs must have same batch size dimension. Expect {} but got {}".format(src.shape, dst.shape)
-        )
+        raise ValueError(f"Inputs must have same batch size dimension. Expect {src.shape} but got {dst.shape}")
 
     # we build matrix A by using only 4 point correspondence. The linear
     # system is solved with the least square method, so here
@@ -280,7 +256,7 @@ def get_perspective_transform(src, dst):
     )
 
     # solve the system Ax = b
-    X, LU = _torch_solve_cast(b, A)
+    X, _ = _torch_solve_cast(b, A)
 
     # create variable to return
     batch_size = src.shape[0]
@@ -330,7 +306,7 @@ def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
 
 
 def get_rotation_matrix2d(center: torch.Tensor, angle: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
-    r"""Calculates an affine matrix of 2D rotation.
+    r"""Calculate an affine matrix of 2D rotation.
 
     The function calculates the following matrix:
 
@@ -370,25 +346,25 @@ def get_rotation_matrix2d(center: torch.Tensor, angle: torch.Tensor, scale: torc
                  [-0.7071,  0.7071,  0.0000]]])
 
     .. note::
-        This function is often used in conjuntion with :func:`warp_affine`.
+        This function is often used in conjunction with :func:`warp_affine`.
     """
     if not isinstance(center, torch.Tensor):
-        raise TypeError("Input center type is not a torch.Tensor. Got {}".format(type(center)))
+        raise TypeError(f"Input center type is not a torch.Tensor. Got {type(center)}")
 
     if not isinstance(angle, torch.Tensor):
-        raise TypeError("Input angle type is not a torch.Tensor. Got {}".format(type(angle)))
+        raise TypeError(f"Input angle type is not a torch.Tensor. Got {type(angle)}")
 
     if not isinstance(scale, torch.Tensor):
-        raise TypeError("Input scale type is not a torch.Tensor. Got {}".format(type(scale)))
+        raise TypeError(f"Input scale type is not a torch.Tensor. Got {type(scale)}")
 
     if not (len(center.shape) == 2 and center.shape[1] == 2):
-        raise ValueError("Input center must be a Bx2 tensor. Got {}".format(center.shape))
+        raise ValueError(f"Input center must be a Bx2 tensor. Got {center.shape}")
 
     if not len(angle.shape) == 1:
-        raise ValueError("Input angle must be a B tensor. Got {}".format(angle.shape))
+        raise ValueError(f"Input angle must be a B tensor. Got {angle.shape}")
 
     if not (len(scale.shape) == 2 and scale.shape[1] == 2):
-        raise ValueError("Input scale must be a Bx2 tensor. Got {}".format(scale.shape))
+        raise ValueError(f"Input scale must be a Bx2 tensor. Got {scale.shape}")
 
     if not (center.shape[0] == angle.shape[0] == scale.shape[0]):
         raise ValueError(
@@ -404,30 +380,21 @@ def get_rotation_matrix2d(center: torch.Tensor, angle: torch.Tensor, scale: torc
             )
         )
 
-    # convert angle and apply scale
-    rotation_matrix: torch.Tensor = angle_to_rotation_matrix(angle)
-    scaling_matrix: torch.Tensor = torch.eye(2, device=rotation_matrix.device, dtype=rotation_matrix.dtype).repeat(
-        rotation_matrix.size(0), 1, 1
-    )
+    shift_m = eye_like(3, center)
+    shift_m[:, :2, 2] = center
 
-    scaling_matrix = scaling_matrix * scale.unsqueeze(dim=2).repeat(1, 1, 2)
-    scaled_rotation: torch.Tensor = rotation_matrix @ scaling_matrix
-    alpha: torch.Tensor = scaled_rotation[:, 0, 0]
-    beta: torch.Tensor = scaled_rotation[:, 0, 1]
+    shift_m_inv = eye_like(3, center)
+    shift_m_inv[:, :2, 2] = -center
 
-    # unpack the center to x, y coordinates
-    x: torch.Tensor = center[..., 0]
-    y: torch.Tensor = center[..., 1]
+    scale_m = eye_like(3, center)
+    scale_m[:, 0, 0] *= scale[:, 0]
+    scale_m[:, 1, 1] *= scale[:, 1]
 
-    # create output tensor
-    batch_size: int = center.shape[0]
-    one = torch.tensor(1.0, device=center.device, dtype=center.dtype)
-    M: torch.Tensor = torch.zeros(batch_size, 2, 3, device=center.device, dtype=center.dtype)
+    rotat_m = eye_like(3, center)
+    rotat_m[:, :2, :2] = angle_to_rotation_matrix(angle)
 
-    M[..., 0:2, 0:2] = scaled_rotation
-    M[..., 0, 2] = (one - alpha) * x - beta * y
-    M[..., 1, 2] = beta * x + (one - alpha) * y
-    return M
+    affine_m = shift_m @ rotat_m @ scale_m @ shift_m_inv
+    return affine_m[:, :2, :]  # Bx2x3
 
 
 def remap(
@@ -439,7 +406,7 @@ def remap(
     align_corners: Optional[bool] = None,
     normalized_coordinates: bool = False,
 ) -> torch.Tensor:
-    r"""Applies a generic geometrical transformation to a tensor.
+    r"""Apply a generic geometrical transformation to a tensor.
 
     .. image:: _static/img/remap.png
 
@@ -476,16 +443,16 @@ def remap(
                   [0., 0.]]]])
 
     .. note::
-        This function is often used in conjuntion with :func:`kornia.utils.create_meshgrid`.
+        This function is often used in conjunction with :func:`kornia.utils.create_meshgrid`.
     """
     if not isinstance(tensor, torch.Tensor):
-        raise TypeError("Input tensor type is not a torch.Tensor. Got {}".format(type(tensor)))
+        raise TypeError(f"Input tensor type is not a torch.Tensor. Got {type(tensor)}")
 
     if not isinstance(map_x, torch.Tensor):
-        raise TypeError("Input map_x type is not a torch.Tensor. Got {}".format(type(map_x)))
+        raise TypeError(f"Input map_x type is not a torch.Tensor. Got {type(map_x)}")
 
     if not isinstance(map_y, torch.Tensor):
-        raise TypeError("Input map_y type is not a torch.Tensor. Got {}".format(type(map_y)))
+        raise TypeError(f"Input map_y type is not a torch.Tensor. Got {type(map_y)}")
 
     if not tensor.shape[-2:] == map_x.shape[-2:] == map_y.shape[-2:]:
         raise ValueError("Inputs last two dimensions must match.")
@@ -510,7 +477,7 @@ def remap(
 
 
 def invert_affine_transform(matrix: torch.Tensor) -> torch.Tensor:
-    r"""Inverts an affine transformation.
+    r"""Invert an affine transformation.
 
     The function computes an inverse affine transformation represented by
     2×3 matrix:
@@ -531,13 +498,13 @@ def invert_affine_transform(matrix: torch.Tensor) -> torch.Tensor:
         the reverse affine transform with shape :math:`(B, 2, 3)`.
 
     .. note::
-        This function is often used in conjuntion with :func:`warp_affine`.
+        This function is often used in conjunction with :func:`warp_affine`.
     """
     if not isinstance(matrix, torch.Tensor):
-        raise TypeError("Input matrix type is not a torch.Tensor. Got {}".format(type(matrix)))
+        raise TypeError(f"Input matrix type is not a torch.Tensor. Got {type(matrix)}")
 
     if not (len(matrix.shape) == 3 and matrix.shape[-2:] == (2, 3)):
-        raise ValueError("Input matrix must be a Bx2x3 tensor. Got {}".format(matrix.shape))
+        raise ValueError(f"Input matrix must be a Bx2x3 tensor. Got {matrix.shape}")
 
     matrix_tmp: torch.Tensor = convert_affinematrix_to_homography(matrix)
     matrix_inv: torch.Tensor = torch.inverse(matrix_tmp)
@@ -553,7 +520,7 @@ def get_affine_matrix2d(
     sx: Optional[torch.Tensor] = None,
     sy: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    r"""Composes affine matrix from the components.
+    r"""Compose affine matrix from the components.
 
     Args:
         translations: tensor containing the translation vector with shape :math:`(B, 2)`.
@@ -567,7 +534,7 @@ def get_affine_matrix2d(
         the affine transformation matrix :math:`(B, 3, 3)`.
 
     .. note::
-        This function is often used in conjuntion with :func:`warp_affine`, :func:`warp_perspective`.
+        This function is often used in conjunction with :func:`warp_affine`, :func:`warp_perspective`.
     """
     transform: torch.Tensor = get_rotation_matrix2d(center, -angle, scale)
     transform[..., 2] += translations  # tx/ty
@@ -583,7 +550,7 @@ def get_affine_matrix2d(
 
 
 def get_shear_matrix2d(center: torch.Tensor, sx: Optional[torch.Tensor] = None, sy: Optional[torch.Tensor] = None):
-    r"""Composes shear matrix Bx4x4 from the components.
+    r"""Compose shear matrix Bx4x4 from the components.
 
     Note: Ordered shearing, shear x-axis then y-axis.
 
@@ -613,7 +580,7 @@ def get_shear_matrix2d(center: torch.Tensor, sx: Optional[torch.Tensor] = None, 
                  [  0.0000,   0.0000,   1.0000]]])
 
     .. note::
-        This function is often used in conjuntion with :func:`warp_affine`, :func:`warp_perspective`.
+        This function is often used in conjunction with :func:`warp_affine`, :func:`warp_perspective`.
     """
     sx = torch.tensor([0.0]).repeat(center.size(0)) if sx is None else sx
     sy = torch.tensor([0.0]).repeat(center.size(0)) if sy is None else sy
@@ -628,10 +595,10 @@ def get_shear_matrix2d(center: torch.Tensor, sx: Optional[torch.Tensor] = None, 
         [
             ones,
             -sx_tan,
-            sx_tan * y,  # type: ignore   # noqa: E241
+            sx_tan * y,  # type: ignore
             -sy_tan,
             ones + sx_tan * sy_tan,
-            sy_tan * (sx_tan * y + x),  # noqa: E241
+            sy_tan * (sx_tan * y + x),
         ],
         dim=-1,
     ).view(-1, 2, 3)
@@ -652,7 +619,7 @@ def get_affine_matrix3d(
     szx: Optional[torch.Tensor] = None,
     szy: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    r"""Composes 3d affine matrix from the components.
+    r"""Compose 3d affine matrix from the components.
 
     Args:
         translations: tensor containing the translation vector (dx,dy,dz) with shape :math:`(B, 3)`.
@@ -672,7 +639,7 @@ def get_affine_matrix3d(
         the 3d affine transformation matrix :math:`(B, 3, 3)`.
 
     .. note::
-        This function is often used in conjuntion with :func:`warp_perspective`.
+        This function is often used in conjunction with :func:`warp_perspective`.
     """
     transform: torch.Tensor = get_projective_transform(center, -angles, scale)
     transform[..., 3] += translations  # tx/ty/tz
@@ -695,7 +662,7 @@ def get_shear_matrix3d(
     szx: Optional[torch.Tensor] = None,
     szy: Optional[torch.Tensor] = None,
 ):
-    r"""Composes shear matrix Bx4x4 from the components.
+    r"""Compose shear matrix Bx4x4 from the components.
     Note: Ordered shearing, shear x-axis then y-axis then z-axis.
 
     .. math::
@@ -740,7 +707,7 @@ def get_shear_matrix3d(
                  [  0.0000,   0.0000,   0.0000,   1.0000]]])
 
     .. note::
-        This function is often used in conjuntion with :func:`warp_perspective3d`.
+        This function is often used in conjunction with :func:`warp_perspective3d`.
     """
     sxy = torch.tensor([0.0]).repeat(center.size(0)) if sxy is None else sxy
     sxz = torch.tensor([0.0]).repeat(center.size(0)) if sxz is None else sxz
@@ -781,7 +748,6 @@ def get_shear_matrix3d(
 
 
 def _compute_shear_matrix_3d(sxy_tan, sxz_tan, syx_tan, syz_tan, szx_tan, szy_tan):
-    zeros = torch.zeros_like(sxy_tan)  # type: ignore
     ones = torch.ones_like(sxy_tan)  # type: ignore
 
     m00, m10, m20 = ones, sxy_tan, sxz_tan

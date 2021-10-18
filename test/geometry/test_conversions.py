@@ -12,7 +12,7 @@ from kornia.testing import assert_close, create_eye_batch, tensor_to_gradcheck_v
 
 @pytest.fixture
 def atol(device, dtype):
-    """Lower tolerance for cuda-float16 only"""
+    """Lower tolerance for cuda-float16 only."""
     if 'cuda' in device.type and dtype == torch.float16:
         return 1.0e-3
     return 1.0e-4
@@ -20,7 +20,7 @@ def atol(device, dtype):
 
 @pytest.fixture
 def rtol(device, dtype):
-    """Lower tolerance for cuda-float16 only"""
+    """Lower tolerance for cuda-float16 only."""
     if 'cuda' in device.type and dtype == torch.float16:
         return 1.0e-3
     return 1.0e-4
@@ -971,7 +971,6 @@ def test_deg2rad(batch_shape, device, dtype, atol, rtol):
 
     assert_close(x_deg, x_rad_to_deg, atol=atol, rtol=rtol)
 
-    eps = torch.finfo(dtype).eps
     assert gradcheck(kornia.deg2rad, (tensor_to_gradcheck_var(x_deg),), raise_exception=True)
 
 

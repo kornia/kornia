@@ -14,13 +14,17 @@ def connected_components(input: torch.Tensor, num_iterations: int = 100) -> torc
 
     https://gist.github.com/efirdc/5d8bd66859e574c683a504a4690ae8bc
 
-    .. note::
+    .. warning::
         This is an experimental API subject to changes and optimization improvements.
+
+    .. note::
+       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
+       connected_components.html>`__.
 
     Args:
         input: the binarized input image with shape :math:`(*, 1, H, W)`.
           The image must be in floating point with range [0, 1].
-        num_iterations: the number of iterations to make the algorith to converge.
+        num_iterations: the number of iterations to make the algorithm to converge.
 
     Return:
         The labels image with the same shape of the input image.
@@ -33,7 +37,7 @@ def connected_components(input: torch.Tensor, num_iterations: int = 100) -> torc
         raise TypeError(f"Input input type is not a torch.Tensor. Got: {type(input)}")
 
     if not isinstance(num_iterations, int) or num_iterations < 1:
-        raise TypeError("Input num_iterations must be a postive integer.")
+        raise TypeError("Input num_iterations must be a positive integer.")
 
     if len(input.shape) < 3 or input.shape[-3] != 1:
         raise ValueError(f"Input image shape must be (*,1,H,W). Got: {input.shape}")

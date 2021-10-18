@@ -6,13 +6,13 @@ import torch.nn as nn
 urls: Dict[str, str] = {}
 urls[
     "liberty"
-] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-liberty.params"  # noqa pylint: disable
+] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-liberty.params"  # pylint: disable
 urls[
     "notredame"
-] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-notredame.params"  # noqa pylint: disable
+] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-notredame.params"  # pylint: disable
 urls[
     "yosemite"
-] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-yosemite.params"  # noqa pylint: disable
+] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-yosemite.params"  # pylint: disable
 
 
 class TFeat(nn.Module):
@@ -39,7 +39,7 @@ class TFeat(nn.Module):
     """
 
     def __init__(self, pretrained: bool = False) -> None:
-        super(TFeat, self).__init__()
+        super().__init__()
         self.features = nn.Sequential(
             nn.InstanceNorm2d(1, affine=False),
             nn.Conv2d(1, 32, kernel_size=7),
@@ -55,6 +55,7 @@ class TFeat(nn.Module):
                 urls['liberty'], map_location=lambda storage, loc: storage
             )
             self.load_state_dict(pretrained_dict, strict=True)
+        self.eval()
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         x = self.features(input)

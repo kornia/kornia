@@ -14,7 +14,7 @@ class RandomMixUp(MixAugmentationBase):
 
     .. image:: _static/img/RandomMixUp.png
 
-    Implemention for `mixup: BEYOND EMPIRICAL RISK MINIMIZATION` :cite:`zhang2018mixup`.
+    Implementation for `mixup: BEYOND EMPIRICAL RISK MINIMIZATION` :cite:`zhang2018mixup`.
 
     The function returns (inputs, labels), in which the inputs is the tensor that contains the mixup images
     while the labels is a :math:`(B, 3)` tensor that contains (label_batch, label_permuted_batch, lambda) for
@@ -85,7 +85,7 @@ class RandomMixUp(MixAugmentationBase):
         p: float = 1.0,
         keepdim: bool = False,
     ) -> None:
-        super(RandomMixUp, self).__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self.lambda_val = lambda_val
 
     def __repr__(self) -> str:
@@ -127,7 +127,7 @@ class RandomCutMix(MixAugmentationBase):
 
     .. image:: _static/img/RandomCutMix.png
 
-    Implemention for `CutMix: Regularization Strategy to Train Strong Classifiers with
+    Implementation for `CutMix: Regularization Strategy to Train Strong Classifiers with
     Localizable Features` :cite:`yun2019cutmix`.
 
     The function returns (inputs, labels), in which the inputs is the tensor that contains the mixup images
@@ -212,7 +212,7 @@ class RandomCutMix(MixAugmentationBase):
         p: float = 1.0,
         keepdim: bool = False,
     ) -> None:
-        super(RandomCutMix, self).__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self.height = height
         self.width = width
         self.num_mix = num_mix
