@@ -28,9 +28,8 @@ class TestHomographyTracker:
         homography, success = tracker(torch.zeros_like(data["image0"]))
         assert not success
 
-    #@pytest.mark.skipif(torch.__version__.startswith('1.6'),
-    #                        reason='1.6.0 not supporting the pretrained weights as they are packed.')
-    @pytest.mark.skip('1.6.0 not supporting the pretrained weights as they are packed.')
+    @pytest.mark.skipif(torch.__version__.startswith('1.6'),
+                        reason='1.6.0 not supporting the pretrained weights as they are packed.')
     def test_real(self, device, dtype):
         # This is not unit test, but that is quite good integration test
         tracker = HomographyTracker().to(device, dtype)

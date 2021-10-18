@@ -22,13 +22,13 @@ class TestGetLAFDescriptors:
         PS = 16
         img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         img_gray = kornia.color.rgb_to_grayscale(img)
-        centers = torch.tensor([[H/3.0, W/3.],
-                                [2*H/3.0, W/2.]],
-                                device=device,
-                                dtype=dtype).view(1, 2, 2)
+        centers = torch.tensor([[H / 3.0, W / 3.],
+                                [2.0 * H / 3.0, W / 2.]],
+                               device=device,
+                               dtype=dtype).view(1, 2, 2)
         scales = torch.tensor([(H + W) / 4.0, (H + W) / 8.0],
-                                device=device,
-                                dtype=dtype).view(1, 2, 1, 1)
+                              device=device,
+                              dtype=dtype).view(1, 2, 1, 1)
         ori = torch.tensor([0.0, 30.],
                            device=device,
                            dtype=dtype).view(1, 2, 1)
@@ -50,19 +50,23 @@ class TestGetLAFDescriptors:
         B, C, H, W = 1, 1, 32, 32
         PS = 16
         img = torch.rand(B, C, H, W, device=device)
-        centers = torch.tensor([[H/3.0, W/3.],
-                                [2*H/3.0, W/2.]],
-                                device=device).view(1, 2, 2)
+        centers = torch.tensor([[H / 3.0, W / 3.],
+                                [2.0 * H / 3.0, W / 2.]],
+                               device=device,
+                               dtype=dtype).view(1, 2, 2)
         scales = torch.tensor([(H + W) / 4.0, (H + W) / 8.0],
-                                device=device).view(1, 2, 1, 1)
+                              device=device,
+                              dtype=dtype).view(1, 2, 1, 1)
         ori = torch.tensor([0.0, 30.],
-                           device=device).view(1, 2, 1)
+                           device=device,
+                           dtype=dtype).view(1, 2, 1)
         lafs = kornia.feature.laf_from_center_scale_ori(centers, scales, ori)
         img = utils.tensor_to_gradcheck_var(img)  # to var
         lafs = utils.tensor_to_gradcheck_var(lafs)  # to var
+
         class MeanPatch(nn.Module):
             def forward(self, input):
-                return input.mean(dim=(2,3))
+                return input.mean(dim=(2, 3))
         desc = MeanPatch()
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(get_laf_descriptors,
@@ -76,13 +80,13 @@ class TestLAFDescriptor:
         PS = 16
         img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         img_gray = kornia.color.rgb_to_grayscale(img)
-        centers = torch.tensor([[H/3.0, W/3.],
-                                [2*H/3.0, W/2.]],
-                                device=device,
-                                dtype=dtype).view(1, 2, 2)
+        centers = torch.tensor([[H / 3.0, W / 3.],
+                                [2.0 * H / 3.0, W / 2.]],
+                               device=device,
+                               dtype=dtype).view(1, 2, 2)
         scales = torch.tensor([(H + W) / 4.0, (H + W) / 8.0],
-                                device=device,
-                                dtype=dtype).view(1, 2, 1, 1)
+                              device=device,
+                              dtype=dtype).view(1, 2, 1, 1)
         ori = torch.tensor([0.0, 30.],
                            device=device,
                            dtype=dtype).view(1, 2, 1)
@@ -101,19 +105,23 @@ class TestLAFDescriptor:
         B, C, H, W = 1, 1, 32, 32
         PS = 16
         img = torch.rand(B, C, H, W, device=device)
-        centers = torch.tensor([[H/3.0, W/3.],
-                                [2*H/3.0, W/2.]],
-                                device=device).view(1, 2, 2)
+        centers = torch.tensor([[H / 3.0, W / 3.],
+                                [2.0 * H / 3.0, W / 2.]],
+                               device=device,
+                               dtype=dtype).view(1, 2, 2)
         scales = torch.tensor([(H + W) / 4.0, (H + W) / 8.0],
-                                device=device).view(1, 2, 1, 1)
+                              device=device,
+                              dtype=dtype).view(1, 2, 1, 1)
         ori = torch.tensor([0.0, 30.],
-                           device=device).view(1, 2, 1)
+                           device=device,
+                           dtype=dtype).view(1, 2, 1)
         lafs = kornia.feature.laf_from_center_scale_ori(centers, scales, ori)
         img = utils.tensor_to_gradcheck_var(img)  # to var
         lafs = utils.tensor_to_gradcheck_var(lafs)  # to var
+
         class MeanPatch(nn.Module):
             def forward(self, input):
-                return input.mean(dim=(2,3))
+                return input.mean(dim=(2, 3))
         desc = MeanPatch()
         lafdesc = LAFDescriptor(MeanPatch(), PS)
         img = utils.tensor_to_gradcheck_var(img)  # to var
@@ -252,7 +260,7 @@ class TestLocalFeatureMatcher:
         with torch.no_grad():
             out = matcher(data)
         homography, inliers = ransac(out['keypoints0'], out['keypoints1'])
-        assert (inliers.sum().item() > 50) # we have enough inliers
+        assert (inliers.sum().item() > 50)  # we have enough inliers
         # Reprojection error of 5px is OK
         assert_close(
             transform_points(homography[None], pts_src[None]),
@@ -279,7 +287,7 @@ class TestLocalFeatureMatcher:
         with torch.no_grad():
             out = matcher(data)
         homography, inliers = ransac(out['keypoints0'], out['keypoints1'])
-        assert (inliers.sum().item() > 50) # we have enough inliers
+        assert (inliers.sum().item() > 50)  # we have enough inliers
         # Reprojection error of 5px is OK
         assert_close(
             transform_points(homography[None], pts_src[None]),
@@ -298,7 +306,7 @@ class TestLocalFeatureMatcher:
         with torch.no_grad():
             out = matcher(data)
         homography, inliers = ransac(out['keypoints0'], out['keypoints1'])
-        assert (inliers.sum().item() > 50) # we have enough inliers
+        assert (inliers.sum().item() > 50)  # we have enough inliers
         # Reprojection error of 5px is OK
         assert_close(
             transform_points(homography[None], pts_src[None]),

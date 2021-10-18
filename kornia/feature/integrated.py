@@ -193,8 +193,8 @@ class LocalFeatureMatcher(nn.Module):
         self.eval()
 
     def extract_features(self,
-                        image: torch.Tensor,
-                        mask: Optional[torch.Tensor] = None) -> Dict[str, torch.Tensor]:
+                         image: torch.Tensor,
+                         mask: Optional[torch.Tensor] = None) -> Dict[str, torch.Tensor]:
         """Function for feature extraction from simple image."""
         lafs0, resps0, descs0 = self.local_feature(image, mask)
         return {"lafs": lafs0, "responses": resps0, "descriptors": descs0}
