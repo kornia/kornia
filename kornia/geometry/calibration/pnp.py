@@ -88,6 +88,37 @@ def solve_pnp_dlt(
     Returns:
         A tensor with shape :math:`(B, 3, 4)` representing the estimated world to
         camera transformation matrices (also known as the extrinsic matrices).
+
+    Example:
+        >>> world_points = torch.tensor([[
+        ...     [ -12.7270,  -89.8532,  -63.0994], [ -12.1998,  -83.9055,  -64.7339],
+        ...     [ -15.1191, -120.8419,  -52.0851], [ -13.4082, -137.2118,  -42.9774],
+        ...     [ -13.8576,  -95.0873,  -61.2726], [ -10.7982,  -82.9056,  -62.0320],
+        ... ]], dtype=torch.float32)
+        >>>
+        >>> img_points = torch.tensor([[
+        ...     [ 25.,  32.], [ 61.,  21.], [ 45.,  60.],
+        ...     [ 90.,  67.], [ 12.,  65.], [540., 250.],
+        ... ]], dtype=torch.float32)
+        >>>
+        >>> intrinsics = torch.tensor([[
+        ...     [ 500.,    0.,  250.],
+        ...     [   0.,  500.,  250.],
+        ...     [   0.,    0.,    1.],
+        ... ]], dtype=torch.float32)
+        >>>
+        >>> print(world_points.shape, img_points.shape, intrinsics.shape)
+        torch.Size([1, 6, 3]) torch.Size([1, 6, 2]) torch.Size([1, 3, 3])
+        >>>
+        >>> pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics)
+        >>>
+        >>> print(pred_world_to_cam.shape)
+        torch.Size([1, 3, 4])
+        >>>
+        >>> print(pred_world_to_cam)
+        tensor([[[ 7.4932e-01,  4.7886e-01,  4.5750e-01,  7.8143e+01],
+                 [-6.6168e-01,  5.6720e-01,  4.8917e-01,  7.0223e+01],
+                 [-2.6304e-02, -6.6945e-01,  7.4265e-01, -6.3175e+00]]])
     """
     # This function was implemented based on ideas inspired from multiple references.
     # ============
