@@ -156,6 +156,7 @@ class RANSAC(nn.Module):
                 kp2: torch.Tensor,
                 weights: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         r"""Main forward method to execute the RANSAC algorithm.
+
         Args:
             kp1 (torch.Tensor): source image keypoints :math:`(N, 2)`.
             kp2 (torch.Tensor): distance image keypoints :math:`(N, 2)`.
@@ -178,7 +179,7 @@ class RANSAC(nn.Module):
                              equal shape at at least [{self.minimal_sample_size}, 2], \
                              got {kp1.shape}, {kp2.shape}")
 
-        best_score_total: float = 1.0
+        best_score_total: float = float(self.minimal_sample_size)
         num_tc: int = len(kp1)
         best_model_total = torch.zeros(3, 3, dtype=kp1.dtype, device=kp1.device)
         inliers_best_total: torch.Tensor = torch.zeros(num_tc, 1, device=kp1.device, dtype=torch.bool)

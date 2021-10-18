@@ -137,7 +137,7 @@ try:
     # torch.testing.assert_close is only available for torch>=1.9
     from torch.testing import assert_close as _assert_close  # type: ignore
 
-    #from torch.testing._core import _get_default_tolerance
+    from torch.testing._core import _get_default_tolerance
 
     def assert_close(
         actual: torch.Tensor,
@@ -149,8 +149,7 @@ try:
     ) -> None:
         if rtol is None and atol is None:
             with contextlib.suppress(Exception):
-                #rtol, atol = _get_default_tolerance(actual, expected)
-                rtol, atol = 1e-4, 1e-4
+                rtol, atol = _get_default_tolerance(actual, expected)
 
         return _assert_close(actual, expected, rtol=rtol, atol=atol, check_stride=False, equal_nan=True, **kwargs)
 

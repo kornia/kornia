@@ -42,15 +42,15 @@ class TestGetLAFDescriptors:
 
     def test_gradcheck(self, device):
         B, C, H, W = 1, 1, 32, 32
+        dtype = torch.double
         PS = 16
         img = torch.rand(B, C, H, W, device=device)
         centers = torch.tensor([[H / 3.0, W / 3.],
                                 [2.0 * H / 3.0, W / 2.]],
                                device=device,
-                               dtype=dtype).view(1, 2, 2)
+                               dtype=torch.double).view(1, 2, 2)
         scales = torch.tensor([(H + W) / 4.0, (H + W) / 8.0],
-                              device=device,
-                              dtype=dtype).view(1, 2, 1, 1)
+                              device=device, dtype=torch.double).view(1, 2, 1, 1)
         ori = torch.tensor([0.0, 30.],
                            device=device,
                            dtype=dtype).view(1, 2, 1)
@@ -246,8 +246,8 @@ class TestLocalFeatureMatcher:
     def test_real_sift(self, device, dtype):
         # This is not unit test, but that is quite good integration test
         matcher = LocalFeatureMatcher(SIFTFeature(2000),
-                                      DescriptorMatcher('snn', 0.8)).to(device)
-        ransac = RANSAC('homography', 1.0, 2048, 10).to(device)
+                                      DescriptorMatcher('snn', 0.8)).to(device, dtype)
+        ransac = RANSAC('homography', 1.0, 2048, 10).to(device, dtype)
         data = torch.load("data/test/loftr_outdoor_and_homography_data.pt")
         pts_src = data['pts0'].to(device, dtype)
         pts_dst = data['pts1'].to(device, dtype)
