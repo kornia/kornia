@@ -81,8 +81,9 @@ class AugmentationSequential(ImageSequential):
         >>> [o.shape for o in out_inv]
         [torch.Size([2, 3, 5, 6]), torch.Size([2, 3, 5, 6]), torch.Size([2, 4, 2]), torch.Size([2, 1, 2])]
 
+    This example demonstrates the integration of VideoSequential and AugmentationSequential.
+
     Examples:
-        This example demonstrates the integration of VideoSequential and AugmentationSequential.
         >>> import kornia
         >>> input = torch.randn(2, 3, 5, 6)[None]
         >>> bbox = torch.tensor([[

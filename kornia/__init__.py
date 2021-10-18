@@ -102,6 +102,7 @@ from kornia.losses import (
 from kornia.testing import xla_is_available
 from kornia.utils import (
     create_meshgrid,
+    image_list_to_tensor,
     image_to_tensor,
     load_pointcloud_ply,
     one_hot,

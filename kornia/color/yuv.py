@@ -50,8 +50,8 @@ def rgb_to_yuv420(image: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         image: RGB Image to be converted to YUV with shape :math:`(*, 3, H, W)`.
 
     Returns:
-       Tensor containing the Y plane with shape :math:`(*, 1, H, W)
-       Tensor containing the UV planes with shape :math:`(*, 2, H/2, W/2)
+        A Tensor containing the Y plane with shape :math:`(*, 1, H, W)`
+        A Tensor containing the UV planes with shape :math:`(*, 2, H/2, W/2)`
 
     Example:
         >>> input = torch.rand(2, 3, 4, 6)
@@ -67,9 +67,8 @@ def rgb_to_yuv420(image: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         raise ValueError(f"Input H&W must be evenly disible by 2. Got {image.shape}")
 
     yuvimage = rgb_to_yuv(image)
-    yuvchunks = torch.chunk(yuvimage, 3, dim=-3)
 
-    return (yuvchunks[0], torch.nn.functional.avg_pool2d(torch.cat(yuvchunks[1:3], dim=-3), (2, 2)))
+    return (yuvimage[..., :1, :, :], torch.nn.functional.avg_pool2d(yuvimage[..., 1:3, :, :], (2, 2)))
 
 
 def rgb_to_yuv422(image: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -82,8 +81,8 @@ def rgb_to_yuv422(image: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         image: RGB Image to be converted to YUV with shape :math:`(*, 3, H, W)`.
 
     Returns:
-       Tensor containing the Y plane with shape :math:`(*, 1, H, W)
-       Tensor containing the UV planes with shape :math:`(*, 2, H, W/2)
+       A Tensor containing the Y plane with shape :math:`(*, 1, H, W)`
+       A Tensor containing the UV planes with shape :math:`(*, 2, H, W/2)`
 
     Example:
         >>> input = torch.rand(2, 3, 4, 6)
@@ -100,10 +99,7 @@ def rgb_to_yuv422(image: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
 
     yuvimage = rgb_to_yuv(image)
 
-    # use chunk to handle 3 and 4 dimensions
-    yuvchunks = torch.chunk(yuvimage, 3, dim=-3)
-
-    return (yuvchunks[0], torch.nn.functional.avg_pool2d(torch.cat(yuvchunks[1:3], dim=-3), (1, 2)))
+    return (yuvimage[..., :1, :, :], torch.nn.functional.avg_pool2d(yuvimage[..., 1:3, :, :], (1, 2)))
 
 
 def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
@@ -149,7 +145,7 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
 
     Args:
         imagey: Y (luma) Image plane to be converted to RGB with shape :math:`(*, 1, H, W)`.
-        imageuv: UV (luma) Image planes to be converted to RGB with shape :math:`(*, 2, H/2, W/2)`.
+        imageuv: UV (chroma) Image planes to be converted to RGB with shape :math:`(*, 2, H/2, W/2)`.
 
     Returns:
         RGB version of the image with shape :math:`(*, 3, H, W)`.

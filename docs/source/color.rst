@@ -171,3 +171,19 @@ XYZ
 
 .. autoclass:: RgbToXyz
 .. autoclass:: XyzToRgb
+
+Bayer RAW
+---------
+
+.. tip::
+    Learn more: https://en.wikipedia.org/wiki/Bayer_filter
+
+.. autoclass:: CFA
+    :members:
+    :undoc-members:
+
+.. autofunction:: rgb_to_raw
+.. autofunction:: raw_to_rgb
+
+.. autoclass:: RawToRgb
+.. autoclass:: RgbToRaw
