@@ -335,7 +335,7 @@ class TestLambdaModule:
         B, C, H, W = 1, 3, 4, 5
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         func = kornia.bgr_to_grayscale
-        assert gradcheck(kornia.contrib.Lambda(func), (input,), raise_exception=True)
+        assert gradcheck(kornia.contrib.Lambda(func), (img,), raise_exception=True)
 
 
 class TestImageStitcher:
