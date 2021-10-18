@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -50,6 +50,7 @@ class ImageStitcher(nn.Module):
             keypoints1: matched keypoint set from an image, shaped as :math:`(N, 2)`.
             keypoints2: matched keypoint set from the other image, shaped as :math:`(N, 2)`.
         """
+        homo: torch.Tensor
         if self.estimator == "vanilla":
             homo = K.find_homography_dlt_iterated(
                 keypoints2[None],
@@ -65,7 +66,7 @@ class ImageStitcher(nn.Module):
 
     def estimate_transform(self, **kwargs) -> torch.Tensor:
         """Compute the corresponding homography."""
-        homos = []
+        homos: List[torch.Tensor] = []
         kp1, kp2, idx = kwargs['keypoints0'], kwargs['keypoints1'], kwargs['batch_indexes']
         for i in range(len(idx.unique())):
             homos.append(self._estimate_homography(kp1[idx == i], kp2[idx == i]))
@@ -75,17 +76,18 @@ class ImageStitcher(nn.Module):
 
     def blend_image(self, src_img: torch.Tensor, dst_img: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         """Blend two images together."""
+        out: torch.Tensor
         if self.blending_method == "naive":
             out = torch.where(mask == 1, src_img, dst_img)
         else:
             raise NotImplementedError(f"Unsupported blending method {self.blending_method}. Use ‘naive’.")
         return out
 
-    def preprocess(self, image_1: torch.Tensor, image_2: torch.Tensor):
+    def preprocess(self, image_1: torch.Tensor, image_2: torch.Tensor) -> Dict[str, torch.Tensor]:
         """Preprocess input to the required format."""
         # TODO: probably perform histogram matching here.
         if isinstance(self.matcher, K.feature.LoFTR):
-            input_dict = {  # LofTR works on grayscale images only
+            input_dict: Dict[str, torch.Tensor] = {  # LofTR works on grayscale images only
                 "image0": K.color.rgb_to_grayscale(image_1),
                 "image1": K.color.rgb_to_grayscale(image_2)
             }
@@ -109,9 +111,9 @@ class ImageStitcher(nn.Module):
         mask_left: Optional[torch.Tensor] = None, mask_right: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         # Compute the transformed images
-        input = self.preprocess(images_left, images_right)
+        input_dict: Dict[str, torch.Tensor] = self.preprocess(images_left, images_right)
         out_shape = (images_left.shape[-2], images_left.shape[-1] + images_right.shape[-1])
-        correspondences = self.on_matcher(input)
+        correspondences: dict = self.on_matcher(input_dict)
         homo = self.estimate_transform(**correspondences)
         src_img = K.geometry.warp_perspective(images_right, homo, out_shape)
         dst_img = torch.cat([images_left, torch.zeros_like(images_right)], dim=-1)
