@@ -106,12 +106,12 @@ class TestImageRegistrator:
         model_denormalized = model_denormalized / model_denormalized[0, 2, 2]
 
         bbox = torch.tensor([[0, 0],
-                     [ w0, 0],
-                     [w0, h0],
-                     [0, h0]]).float()[None]
+                             [w0, 0],
+                             [w0, h0],
+                             [0, h0]]).float()[None]
         bbox_in_2_gt = transform_points(homography_gt[None].float(), bbox)
         bbox_in_2_gt_est = transform_points(model_denormalized, bbox)
         # The tolerance is huge, because the error is in pixels
         # and transformation is quite significant, so
-        # 20 px  reprojection error is not super huge
+        # 15 px  reprojection error is not super huge
         assert_close(bbox_in_2_gt, bbox_in_2_gt_est, atol=15, rtol=0.1)

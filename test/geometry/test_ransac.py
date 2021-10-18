@@ -8,6 +8,7 @@ import kornia
 import kornia.testing as utils
 from kornia.geometry import RANSAC
 from kornia.testing import assert_close
+from kornia.geometry.epipolar import sampson_epipolar_distance
 
 
 class TestRANSACHomography:
@@ -40,6 +41,45 @@ class TestRANSACHomography:
             points_dst[:, :-1],
             rtol=1e-3,
             atol=1e-3)
+
+    def test_real_clean(self, device, dtype):
+        data = torch.load("data/test/loftr_outdoor_and_homography_data.pt")
+        # generate input data
+        homography_gt = torch.inverse(data['H_gt']).to(device, dtype)
+        homography_gt = homography_gt / homography_gt[2, 2]
+        pts_src = data['pts0'].to(device, dtype)
+        pts_dst = data['pts1'].to(device, dtype)
+        ransac = RANSAC('homography', inl_th=0.5, max_iter=20).to(device=device, dtype=dtype)
+        # compute transform from source to target
+        dst_homo_src, inliers = ransac(pts_src, pts_dst)
+
+        assert_close(
+            kornia.geometry.transform_points(dst_homo_src[None], pts_src[None]),
+            pts_dst[None],
+            rtol=1e-3,
+            atol=1e-3)
+
+    def test_real_dirty(self, device, dtype):
+        data = torch.load("data/test/loftr_outdoor_and_homography_data.pt")
+        # generate input data
+        homography_gt = torch.inverse(data['H_gt']).to(device, dtype)
+        homography_gt = homography_gt / homography_gt[2, 2]
+        pts_src = data['pts0'].to(device, dtype)
+        pts_dst = data['pts1'].to(device, dtype)
+
+        kp1 = data['loftr_outdoor_tentatives0'].to(device, dtype)
+        kp2 = data['loftr_outdoor_tentatives1'].to(device, dtype)
+
+        ransac = RANSAC('homography', inl_th=3.0, max_iter=30, max_lo_iters=10).to(device=device, dtype=dtype)
+        # compute transform from source to target
+        dst_homo_src, inliers = ransac(kp1, kp2)
+
+        # Reprojection error of 5px is OK
+        assert_close(
+            kornia.geometry.transform_points(dst_homo_src[None], pts_src[None]),
+            pts_dst[None],
+            rtol=5,
+            atol=0.15)
 
     @pytest.mark.jit
     @pytest.mark.skip(reason="find_homography_dlt is using try/except block")
@@ -119,6 +159,48 @@ class TestRANSACFundamental:
                         inl_th=1.0).to(device=device, dtype=dtype)
         F_mat, inliers = ransac(points1[0], points2[0])
         assert_close(F_mat, Fm_expected[0], rtol=1e-3, atol=1e-3)
+
+    def test_real_clean(self, device, dtype):
+        data = torch.load("data/test/loftr_indoor_and_fundamental_data.pt")
+        # generate input data
+        F_gt = data['F_gt'].to(device, dtype)
+        pts_src = data['pts0'].to(device, dtype)
+        pts_dst = data['pts1'].to(device, dtype)
+
+        ransac = RANSAC('fundamental',
+                        inl_th=1.0,
+                        max_iter=20,
+                        max_lo_iters=10).to(device=device, dtype=dtype)
+        # compute transform from source to target
+        fundamental_matrix, inliers = ransac(pts_src, pts_dst)
+        gross_errors = sampson_epipolar_distance(pts_src[None],
+                                                 pts_dst[None],
+                                                 fundamental_matrix[None],
+                                                 squared=False) > 1.0
+        assert gross_errors.sum().item() == 0
+
+    @pytest.mark.xfail(reason="might fail, becuase out F-RANSAC is not yet 7pt")
+    def test_real_dirty(self, device, dtype):
+        data = torch.load("data/test/loftr_indoor_and_fundamental_data.pt")
+        # generate input data
+        F_gt = data['F_gt'].to(device, dtype)
+        pts_src = data['pts0'].to(device, dtype)
+        pts_dst = data['pts1'].to(device, dtype)
+
+        kp1 = data['loftr_indoor_tentatives0'].to(device, dtype)
+        kp2 = data['loftr_indoor_tentatives1'].to(device, dtype)
+
+        ransac = RANSAC('fundamental',
+                        inl_th=1.0,
+                        max_iter=20,
+                        max_lo_iters=10).to(device=device, dtype=dtype)
+        # compute transform from source to target
+        fundamental_matrix, inliers = ransac(kp1, kp2)
+        gross_errors = sampson_epipolar_distance(pts_src[None],
+                                                 pts_dst[None],
+                                                 fundamental_matrix[None],
+                                                 squared=False) > 10.0
+        assert gross_errors.sum().item() < 2
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
