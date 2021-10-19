@@ -1,11 +1,9 @@
 import pytest
-
 import torch
 from torch.autograd import gradcheck
 
-
 import kornia.testing as utils  # test utils
-from kornia.feature.matching import match_nn, match_mnn, match_smnn, match_snn, DescriptorMatcher
+from kornia.feature.matching import DescriptorMatcher, match_mnn, match_nn, match_smnn, match_snn
 from kornia.geometry import resize
 from kornia.testing import assert_close
 
