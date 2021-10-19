@@ -120,37 +120,21 @@ class TestSolveWithMask:
         B = torch.randn(2, 3, 1, 4, 6, device=device, dtype=dtype)
 
         X, _, mask = safe_solve_with_mask(B, A)
-        error = torch.dist(B, A.matmul(X))
-
+        X2, _ = _torch_solve_cast(B, A)
         tol_val: float = 1e-1 if dtype == torch.float16 else 1e-4
-        assert_close(error, torch.zeros_like(error), atol=tol_val, rtol=tol_val)
+        if mask.sum() > 0:
+            assert_close(X[mask],
+                         X2[mask],
+                         atol=tol_val, rtol=tol_val)
 
+    @pytest.mark.skipif((int(torch.__version__.split('.')[0]) == 1) and (int(torch.__version__.split('.')[1]) < 9),
+                        reason='<1.9.0 not supporting')
     def test_all_bad(self, device, dtype):
         A = torch.ones(10, 3, 3, device=device, dtype=dtype)
         B = torch.ones(3, 10, device=device, dtype=dtype)
 
         X, _, mask = safe_solve_with_mask(B, A)
-        assert_close(mask, torch.zeros_like(mask))
-
-
-class TestSolveWithMask:
-    def test_smoke(self, device, dtype):
-        A = torch.randn(2, 3, 1, 4, 4, device=device, dtype=dtype)
-        B = torch.randn(2, 3, 1, 4, 6, device=device, dtype=dtype)
-
-        X, _, mask = safe_solve_with_mask(B, A)
-        error = torch.dist(B, A.matmul(X))
-
-        tol_val: float = 1e-1 if dtype == torch.float16 else 1e-4
-        assert_close(error, torch.zeros_like(error), atol=tol_val, rtol=tol_val)
-        assert_close(mask, torch.ones_like(mask), atol=tol_val, rtol=tol_val)
-
-    def test_all_bad(self, device, dtype):
-        A = torch.ones(10, 3, 3, device=device, dtype=dtype)
-        B = torch.ones(3, 10, device=device, dtype=dtype)
-
-        X, _, mask = safe_solve_with_mask(B, A)
-        assert_close(mask, torch.zeros_like(mask))
+        assert torch.equal(mask, torch.zeros_like(mask))
 
 
 class TestInverseWithMask:
@@ -162,9 +146,11 @@ class TestInverseWithMask:
         y, mask = safe_inverse_with_mask(x)
 
         assert_close(y, y_expected)
-        assert_close(mask, torch.ones_like(mask))
+        assert torch.equal(mask, torch.ones_like(mask))
 
+    @pytest.mark.skipif((int(torch.__version__.split('.')[0]) == 1) and (int(torch.__version__.split('.')[1]) < 9),
+                        reason='<1.9.0 not supporting')
     def test_all_bad(self, device, dtype):
         A = torch.ones(10, 3, 3, device=device, dtype=dtype)
         X, mask = safe_inverse_with_mask(A)
-        assert_close(mask, torch.zeros_like(mask))
+        assert torch.equal(mask, torch.zeros_like(mask))

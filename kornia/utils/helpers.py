@@ -1,8 +1,14 @@
 from typing import Any, List, Optional, Tuple
 
 import torch
+import warnings
 
 from kornia.utils._compat import solve
+
+
+def _pytorch_version_greater_1_9():
+    version = torch.__version__.split('.')
+    return (int([version]) >= 1) and (int(version[1]) >= 9)
 
 
 def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.device, torch.dtype]:
@@ -105,6 +111,10 @@ def _torch_solve_cast(input: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tenso
 def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     r"""Helper function, which avoids crashing because of singular matrix input and outputs the
     mask of valid solution"""
+    if not (_pytorch_version_greater_1_9):
+        x, y = _torch_solve_cast(B, A)
+        warnings.warn('PyTorch version < 1.9, solve validness mask maybe not correct', RuntimeWarning)
+        return x, y, torch.ones(len(A), torch.bool, device=A.dtype)
     # Based on https://github.com/pytorch/pytorch/issues/31546#issuecomment-694135622
     if not isinstance(B, torch.Tensor):
         raise AssertionError(f"B must be torch.Tensor. Got: {type(B)}.")
@@ -122,6 +132,10 @@ def safe_inverse_with_mask(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]
     r"""Helper function, which avoids crashing because of non-invertable matrix input and outputs the
     mask of valid solution"""
     # Based on https://github.com/pytorch/pytorch/issues/31546#issuecomment-694135622
+    if not (_pytorch_version_greater_1_9):
+        inv = _torch_inverse_cast(A)
+        warnings.warn('PyTorch version < 1.9, inverse validness mask maybe not correct', RuntimeWarning)
+        return torch.ones(len(A), torch.bool, device=A.dtype)
     if not isinstance(A, torch.Tensor):
         raise AssertionError(f"A must be torch.Tensor. Got: {type(A)}.")
     dtype_original: torch.dtype = A.dtype
@@ -129,11 +143,7 @@ def safe_inverse_with_mask(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]
         dtype = torch.float32
     else:
         dtype = dtype_original
-    try:
-        from torch.linalg import inv_ex
-        inverse, info = inv_ex(A.to(dtype))
-        mask = info == 0
-    except ImportError:
-        inverse = torch.inverse(A.to(dtype))
-        mask = torch.ones(len(A), dtype=torch.bool, device=A.device)
+    from torch.linalg import inv_ex
+    inverse, info = inv_ex(A.to(dtype))
+    mask = info == 0
     return inverse.to(dtype_original), mask
