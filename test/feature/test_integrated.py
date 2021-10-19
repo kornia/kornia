@@ -1,5 +1,6 @@
 import pytest
 import torch
+from torch.hub import load_state_dict_from_url
 import torch.nn as nn
 from torch.autograd import gradcheck
 
@@ -148,6 +149,7 @@ class TestLocalFeature:
         det = ScaleSpaceDetector(10)
         desc = SIFTDescriptor(32)
         local_feature = LocalFeature(det, desc).to(device, dtype)
+        assert local_feature is not None
 
     def test_same(self, device, dtype):
         B, C, H, W = 1, 1, 64, 64
@@ -182,6 +184,7 @@ class TestSIFTFeature:
     # The real test is in TestLocalFeatureMatcher
     def test_smoke(self, device, dtype):
         sift = SIFTFeature()
+        assert sift is not None
 
     @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device):
@@ -211,6 +214,7 @@ class TestLocalFeatureMatcher:
     def test_smoke(self, device):
         matcher = LocalFeatureMatcher(SIFTFeature(5),
                                       DescriptorMatcher('snn', 0.8)).to(device)
+        assert matcher is not None
 
     def test_nomatch(self, device, dtype, data):
         matcher = LocalFeatureMatcher(GFTTAffNetHardNet(100),
