@@ -1,12 +1,10 @@
 import pytest
 import torch
 
+from kornia.feature import DescriptorMatcher, GFTTAffNetHardNet, LocalFeatureMatcher, SIFTFeature
 from kornia.geometry import resize, transform_points
 from kornia.testing import assert_close
 from kornia.tracking import HomographyTracker
-from kornia.feature import (
-    LocalFeatureMatcher, SIFTFeature, DescriptorMatcher, GFTTAffNetHardNet
-)
 
 
 @pytest.fixture
