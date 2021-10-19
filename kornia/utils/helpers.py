@@ -136,7 +136,7 @@ def safe_inverse_with_mask(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]
     if not (_pytorch_version_geq(1, 9)):
         inv = _torch_inverse_cast(A)
         warnings.warn('PyTorch version < 1.9, inverse validness mask maybe not correct', RuntimeWarning)
-        return torch.ones(len(A), torch.bool, device=A.dtype)
+        return inv, torch.ones(len(A), torch.bool, device=A.dtype)
     if not isinstance(A, torch.Tensor):
         raise AssertionError(f"A must be torch.Tensor. Got: {type(A)}.")
     dtype_original: torch.dtype = A.dtype
