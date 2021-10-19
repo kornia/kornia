@@ -1,7 +1,7 @@
+import warnings
 from typing import Any, List, Optional, Tuple
 
 import torch
-import warnings
 
 from kornia.utils._compat import solve
 
