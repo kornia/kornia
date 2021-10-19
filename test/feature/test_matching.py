@@ -1,8 +1,11 @@
 import pytest
+
+import torch
 from torch.autograd import gradcheck
 
+
 import kornia.testing as utils  # test utils
-from kornia.feature.matching import *
+from kornia.feature.matching import match_nn, match_mnn, match_smnn, match_snn, DescriptorMatcher
 from kornia.geometry import resize
 from kornia.testing import assert_close
 
@@ -26,7 +29,7 @@ class TestMatchNN:
         expected_idx = torch.tensor([[0, 4], [1, 3], [2, 2], [3, 1], [4, 0]], device=device)
         assert_close(dists, expected_dists)
         assert_close(idxs, expected_idx)
-        matcher = DescriptorMatcher('nn').to(device)
+
         dists1, idxs1 = match_nn(desc1, desc2)
         assert_close(dists1, expected_dists)
         assert_close(idxs1, expected_idx)

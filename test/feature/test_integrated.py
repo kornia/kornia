@@ -5,10 +5,16 @@ from torch.autograd import gradcheck
 
 import kornia
 import kornia.testing as utils  # test utils
-from kornia.feature import *
+from kornia.feature import SIFTDescriptor, extract_patches_from_pyramid,get_laf_descriptors,LAFDescriptor,ScaleSpaceDetector, LocalFeature, GFTTAffNetHardNet,SIFTFeature,DescriptorMatcher
 from kornia.feature.integrated import LocalFeatureMatcher
-from kornia.geometry import ConvQuadInterp3d, RANSAC, resize, ScalePyramid, transform_points
+from kornia.geometry import RANSAC, resize, transform_points
 from kornia.testing import assert_close
+
+
+@pytest.fixture
+def data():
+    url = 'https://github.com/kornia/data_test/blob/main/loftr_outdoor_and_homography_data.pt?raw=true'
+    return torch.hub.load_state_dict_from_url(url)
 
 
 class TestGetLAFDescriptors:
@@ -59,10 +65,11 @@ class TestGetLAFDescriptors:
         img = utils.tensor_to_gradcheck_var(img)  # to var
         lafs = utils.tensor_to_gradcheck_var(lafs)  # to var
 
-        class MeanPatch(nn.Module):
-            def forward(self, input):
-                return input.mean(dim=(2, 3))
-        desc = MeanPatch()
+        class _MeanPatch(nn.Module):
+            def forward(self, inputs):
+                return inputs.mean(dim=(2, 3))
+
+        desc = _MeanPatch()
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(get_laf_descriptors,
                          (img, lafs, desc, PS, True),
@@ -115,11 +122,11 @@ class TestLAFDescriptor:
         img = utils.tensor_to_gradcheck_var(img)  # to var
         lafs = utils.tensor_to_gradcheck_var(lafs)  # to var
 
-        class MeanPatch(nn.Module):
-            def forward(self, input):
-                return input.mean(dim=(2, 3))
-        desc = MeanPatch()
-        lafdesc = LAFDescriptor(MeanPatch(), PS)
+        class _MeanPatch(nn.Module):
+            def forward(self, inputs):
+                return inputs.mean(dim=(2, 3))
+
+        lafdesc = LAFDescriptor(_MeanPatch(), PS)
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(lafdesc,
                          (img, lafs),
@@ -169,7 +176,6 @@ class TestSIFTFeature:
     @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device):
         B, C, H, W = 1, 1, 32, 32
-        PS = 16
         img = torch.rand(B, C, H, W, device=device)
         local_feature = SIFTFeature(2, True).to(device).to(device)
         img = utils.tensor_to_gradcheck_var(img)  # to var
@@ -179,12 +185,12 @@ class TestSIFTFeature:
 class TestGFTTAffNetHardNet:
     # The real test is in TestLocalFeatureMatcher
     def test_smoke(self, device, dtype):
-        feat = GFTTAffNetHardNet()
+        feat = GFTTAffNetHardNet().to(device, dtype)
+        assert feat is not None
 
     @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device):
         B, C, H, W = 1, 1, 32, 32
-        PS = 16
         img = torch.rand(B, C, H, W, device=device)
         local_feature = GFTTAffNetHardNet(2, True).to(device, torch.double)
         img = utils.tensor_to_gradcheck_var(img)  # to var
@@ -196,15 +202,12 @@ class TestLocalFeatureMatcher:
         matcher = LocalFeatureMatcher(SIFTFeature(5),
                                       DescriptorMatcher('snn', 0.8)).to(device)
 
-    def test_nomatch(self, device, dtype):
+    def test_nomatch(self, device, dtype, data):
         matcher = LocalFeatureMatcher(GFTTAffNetHardNet(100),
                                       DescriptorMatcher('snn', 0.8)).to(device, dtype)
-        data = torch.load("data/test/loftr_outdoor_and_homography_data.pt")
         for k in data.keys():
             if isinstance(data[k], torch.Tensor):
                 data[k] = data[k].to(device, dtype)
-        pts_src = data['pts0'].to(device, dtype)
-        pts_dst = data['pts1'].to(device, dtype)
         with torch.no_grad():
             out = matcher({"image0": data["image0"],
                            "image1": 0 * data["image0"]})
@@ -223,12 +226,11 @@ class TestLocalFeatureMatcher:
             return matcher({"image0": x, "image1": y})["keypoints0"]
         assert gradcheck(proxy_forward, (patches, patches05), eps=1e-4, atol=1e-4, raise_exception=True)
 
-    def test_real_sift(self, device, dtype):
+    def test_real_sift(self, device, dtype, data):
         # This is not unit test, but that is quite good integration test
         matcher = LocalFeatureMatcher(SIFTFeature(2000),
                                       DescriptorMatcher('snn', 0.8)).to(device, dtype)
         ransac = RANSAC('homography', 1.0, 2048, 10).to(device, dtype)
-        data = torch.load("data/test/loftr_outdoor_and_homography_data.pt")
         for k in data.keys():
             if isinstance(data[k], torch.Tensor):
                 data[k] = data[k].to(device, dtype)
@@ -246,22 +248,21 @@ class TestLocalFeatureMatcher:
             rtol=5e-2,
             atol=5)
 
-    def test_real_sift_preextract(self, device, dtype):
+    def test_real_sift_preextract(self, device, dtype, data):
         # This is not unit test, but that is quite good integration test
         feat = SIFTFeature(2000)
         matcher = LocalFeatureMatcher(feat,
                                       DescriptorMatcher('snn', 0.8)).to(device)
         ransac = RANSAC('homography', 1.0, 2048, 10).to(device, dtype)
-        data = torch.load("data/test/loftr_outdoor_and_homography_data.pt")
         for k in data.keys():
             if isinstance(data[k], torch.Tensor):
                 data[k] = data[k].to(device, dtype)
         pts_src = data['pts0'].to(device, dtype)
         pts_dst = data['pts1'].to(device, dtype)
-        lafs, resps, descs = feat(data["image0"])
+        lafs, _, descs = feat(data["image0"])
         data["lafs0"] = lafs
         data["descriptors0"] = descs
-        lafs2, resps2, descs2 = feat(data["image1"])
+        lafs2, _, descs2 = feat(data["image1"])
         data["lafs1"] = lafs2
         data["descriptors1"] = descs2
 
@@ -277,12 +278,11 @@ class TestLocalFeatureMatcher:
             rtol=5e-2,
             atol=5)
 
-    def test_real_gftt(self, device, dtype):
+    def test_real_gftt(self, device, dtype, data):
         # This is not unit test, but that is quite good integration test
         matcher = LocalFeatureMatcher(GFTTAffNetHardNet(2000),
                                       DescriptorMatcher('snn', 0.8)).to(device, dtype)
         ransac = RANSAC('homography', 1.0, 2048, 10).to(device, dtype)
-        data = torch.load("data/test/loftr_outdoor_and_homography_data.pt")
         for k in data.keys():
             if isinstance(data[k], torch.Tensor):
                 data[k] = data[k].to(device, dtype)
@@ -306,14 +306,13 @@ class TestLocalFeatureMatcher:
         B, C, H, W = 1, 1, 32, 32
         patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
         patches2x = resize(patches, (48, 48))
-        input = {"image0": patches, "image1": patches2x}
-        matcher = LocalFeatureMatcher(ScaleSpaceDetector(50),
-                                      SIFTDescriptor(32),
-                                      DescriptorMatcher('snn', 0.8)).to(device).eval()
-        model_jit = torch.jit.script(LocalFeatureMatcher(ScaleSpaceDetector(50),
-                                                         SIFTDescriptor(32),
-                                                         DescriptorMatcher('snn', 0.8)).to(device).eval())
-        out = model(input)
-        out_jit = model(input)
+        inputs = {"image0": patches, "image1": patches2x}
+        model = LocalFeatureMatcher(ScaleSpaceDetector(50),
+                                    SIFTDescriptor(32),
+                                    DescriptorMatcher('snn', 0.8)).to(device).eval()
+        model_jit = torch.jit.script(model)
+
+        out = model(inputs)
+        out_jit = model_jit(inputs)
         for k, v in out.items():
             assert_close(v, out_jit[k])

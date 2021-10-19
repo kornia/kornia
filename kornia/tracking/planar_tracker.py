@@ -51,6 +51,12 @@ class HomographyTracker(nn.Module):
         self.minimum_inliers_num = minimum_inliers_num
         self.reset_tracking()
 
+        # placeholders
+        self.target: torch.Tensor
+        self.target_initial_representation: dict
+        self.target_fast_representation: dict
+        self.previous_homography: torch.Tensor
+
     def set_target(self, target: torch.Tensor) -> None:
         self.target = target
         self.target_initial_representation = {}

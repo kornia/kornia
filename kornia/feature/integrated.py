@@ -135,7 +135,6 @@ class SIFTFeature(LocalFeature):
                  upright: bool = False,
                  rootsift: bool = True,
                  device: torch.device = torch.device('cpu')):
-        super(LocalFeature, self).__init__()
         self.patch_size: int = 41
         self.detector = ScaleSpaceDetector(num_features,
                                            resp_module=BlobDoG(),
@@ -156,7 +155,6 @@ class GFTTAffNetHardNet(LocalFeature):
                  num_features: int = 8000,
                  upright: bool = False,
                  device: torch.device = torch.device('cpu')):
-        super(LocalFeature, self).__init__()
         self.patch_size: int = 32
         self.detector = ScaleSpaceDetector(num_features,
                                            resp_module=CornerGFTT(),
