@@ -85,7 +85,8 @@ def symmetric_transfer_error(
 
     there: torch.Tensor = oneway_transfer_error(pts1, pts2, H, True, eps)
     back: torch.Tensor = oneway_transfer_error(pts2, pts1, H_inv, True, eps)
-    out = (there + back) * good_H.to(there.dtype) + max_num * (~good_H.to(there.dtype))
+    good_H_reshape: torch.Tensor = good_H.view(-1, 1).expand_as(there)
+    out = (there + back) * good_H_reshape.to(there.dtype) + max_num * (~good_H_reshape).to(there.dtype)
     if squared:
         return out
     return (out + eps).sqrt()
