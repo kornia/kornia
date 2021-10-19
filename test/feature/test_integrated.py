@@ -199,7 +199,6 @@ class TestLocalFeatureMatcher:
     def test_nomatch(self, device, dtype):
         matcher = LocalFeatureMatcher(GFTTAffNetHardNet(100),
                                       DescriptorMatcher('snn', 0.8)).to(device, dtype)
-        ransac = RANSAC('homography', 1.0, 2048, 10).to(device, dtype)
         data = torch.load("data/test/loftr_outdoor_and_homography_data.pt")
         for k in data.keys():
             if isinstance(data[k], torch.Tensor):
@@ -237,6 +236,7 @@ class TestLocalFeatureMatcher:
         pts_dst = data['pts1'].to(device, dtype)
         with torch.no_grad():
             out = matcher(data)
+        torch.random.manual_seed(0)
         homography, inliers = ransac(out['keypoints0'], out['keypoints1'])
         assert (inliers.sum().item() > 50)  # we have enough inliers
         # Reprojection error of 5px is OK
@@ -267,6 +267,7 @@ class TestLocalFeatureMatcher:
 
         with torch.no_grad():
             out = matcher(data)
+        torch.random.manual_seed(0)
         homography, inliers = ransac(out['keypoints0'], out['keypoints1'])
         assert (inliers.sum().item() > 50)  # we have enough inliers
         # Reprojection error of 5px is OK
@@ -289,6 +290,7 @@ class TestLocalFeatureMatcher:
         pts_dst = data['pts1'].to(device, dtype)
         with torch.no_grad():
             out = matcher(data)
+        torch.random.manual_seed(0)
         homography, inliers = ransac(out['keypoints0'], out['keypoints1'])
         assert (inliers.sum().item() > 50)  # we have enough inliers
         # Reprojection error of 5px is OK

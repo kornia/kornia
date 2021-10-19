@@ -16,6 +16,7 @@ class TestRANSACHomography:
         points1 = torch.rand(4, 2, device=device, dtype=dtype)
         points2 = torch.rand(4, 2, device=device, dtype=dtype)
         ransac = RANSAC('homography').to(device=device, dtype=dtype)
+        torch.random.manual_seed(0)
         H, inliers = ransac(points1, points2)
         assert H.shape == (3, 3)
 
@@ -34,6 +35,7 @@ class TestRANSACHomography:
         points_dst[:, -1, :] += 800
         ransac = RANSAC('homography', inl_th=0.5, max_iter=20).to(device=device, dtype=dtype)
         # compute transform from source to target
+        torch.random.manual_seed(0)
         dst_homo_src, inliers = ransac(points_src[0], points_dst[0])
 
         assert_close(
@@ -51,6 +53,7 @@ class TestRANSACHomography:
         pts_dst = data['pts1'].to(device, dtype)
         ransac = RANSAC('homography', inl_th=0.5, max_iter=20).to(device=device, dtype=dtype)
         # compute transform from source to target
+        torch.random.manual_seed(0)
         dst_homo_src, inliers = ransac(pts_src, pts_dst)
 
         assert_close(
@@ -72,6 +75,7 @@ class TestRANSACHomography:
 
         ransac = RANSAC('homography', inl_th=3.0, max_iter=30, max_lo_iters=10).to(device=device, dtype=dtype)
         # compute transform from source to target
+        torch.random.manual_seed(0)
         dst_homo_src, inliers = ransac(kp1, kp2)
 
         # Reprojection error of 5px is OK
@@ -89,6 +93,7 @@ class TestRANSACHomography:
         model = RANSAC('homography').to(device=device, dtype=dtype)
         model_jit = torch.jit.script(RANSAC('homography').to(device=device,
                                                              dtype=dtype))
+        torch.random.manual_seed(0)
         assert_close(model(points1, points2)[0],
                      model_jit(points1, points2)[0],
                      rtol=1e-4,
@@ -100,6 +105,7 @@ class TestRANSACFundamental:
         points1 = torch.rand(8, 2, device=device, dtype=dtype)
         points2 = torch.rand(8, 2, device=device, dtype=dtype)
         ransac = RANSAC('fundamental').to(device=device, dtype=dtype)
+        torch.random.manual_seed(0)
         Fm, inliers = ransac(points1, points2)
         assert Fm.shape == (3, 3)
 
@@ -115,6 +121,7 @@ class TestRANSACFundamental:
                         max_iter=20,
                         max_lo_iters=10).to(device=device, dtype=dtype)
         # compute transform from source to target
+        torch.random.manual_seed(0)
         fundamental_matrix, inliers = ransac(pts_src, pts_dst)
         gross_errors = sampson_epipolar_distance(pts_src[None],
                                                  pts_dst[None],
@@ -138,6 +145,7 @@ class TestRANSACFundamental:
                         max_iter=20,
                         max_lo_iters=10).to(device=device, dtype=dtype)
         # compute transform from source to target
+        torch.random.manual_seed(0)
         fundamental_matrix, inliers = ransac(kp1, kp2)
         gross_errors = sampson_epipolar_distance(pts_src[None],
                                                  pts_dst[None],
@@ -149,6 +157,7 @@ class TestRANSACFundamental:
     def test_jit(self, device, dtype):
         points1 = torch.rand(8, 2, device=device, dtype=dtype)
         points2 = torch.rand(8, 2, device=device, dtype=dtype)
+        torch.random.manual_seed(0)
         model = RANSAC('fundamental').to(device=device, dtype=dtype)
         model_jit = torch.jit.script(RANSAC('fundamental').to(device=device,
                                                               dtype=dtype))
@@ -161,6 +170,7 @@ class TestRANSACFundamental:
     def test_gradcheck(self, device):
         points1 = torch.rand(8, 2, device=device, dtype=torch.float64, requires_grad=True)
         points2 = torch.rand(8, 2, device=device, dtype=torch.float64)
+        torch.random.manual_seed(0)
         model = RANSAC('fundamental').to(device=device, dtype=torch.float64)
 
         def gradfun(p1, p2):

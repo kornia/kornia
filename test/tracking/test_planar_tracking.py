@@ -28,6 +28,7 @@ class TestHomographyTracker:
             if isinstance(data[k], torch.Tensor):
                 data[k] = data[k].to(device, dtype)
         tracker.set_target(data["image0"])
+        torch.random.manual_seed(0)
         homography, success = tracker(torch.zeros_like(data["image0"]))
         assert not success
 
@@ -47,6 +48,7 @@ class TestHomographyTracker:
         data["image1"] = resize(data["image1"], (int(h0 // 2), int(w0 // 2)))
         with torch.no_grad():
             tracker.set_target(data["image0"])
+            torch.random.manual_seed(0)
             homography, success = tracker(data["image1"])
         assert success
         pts_src = data['pts0'].to(device, dtype) / 2.0
@@ -59,6 +61,7 @@ class TestHomographyTracker:
             atol=5)
         # next frame
         with torch.no_grad():
+            torch.random.manual_seed(0)
             homography, success = tracker(data["image1"])
         assert success
         assert_close(
