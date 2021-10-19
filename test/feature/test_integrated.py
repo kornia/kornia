@@ -6,6 +6,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.feature import *
+from kornia.feature.integrated import LocalFeatureMatcher
 from kornia.geometry import ConvQuadInterp3d, RANSAC, resize, ScalePyramid, transform_points
 from kornia.testing import assert_close
 
