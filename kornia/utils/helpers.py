@@ -6,9 +6,9 @@ import warnings
 from kornia.utils._compat import solve
 
 
-def _pytorch_version_greater_1_9():
+def _pytorch_version_geq(major, minor):
     version = torch.__version__.split('.')
-    return (int([version]) >= 1) and (int(version[1]) >= 9)
+    return (int(version[0]) >= major) and (int(version[1]) >= minor)
 
 
 def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.device, torch.dtype]:
@@ -111,10 +111,10 @@ def _torch_solve_cast(input: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tenso
 def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     r"""Helper function, which avoids crashing because of singular matrix input and outputs the
     mask of valid solution"""
-    if not (_pytorch_version_greater_1_9):
-        x, y = _torch_solve_cast(B, A)
-        warnings.warn('PyTorch version < 1.9, solve validness mask maybe not correct', RuntimeWarning)
-        return x, y, torch.ones(len(A), torch.bool, device=A.dtype)
+    if not (_pytorch_version_geq(1, 10)):
+        sol, lu = _torch_solve_cast(B, A)
+        warnings.warn('PyTorch version < 1.10, solve validness mask maybe not correct', RuntimeWarning)
+        return sol, lu, torch.ones(len(A), torch.bool, device=A.dtype)
     # Based on https://github.com/pytorch/pytorch/issues/31546#issuecomment-694135622
     if not isinstance(B, torch.Tensor):
         raise AssertionError(f"B must be torch.Tensor. Got: {type(B)}.")
@@ -125,6 +125,7 @@ def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor
     valid_mask: torch.Tensor = info == 0
     A_LU_solvable = A_LU[valid_mask]
     X = torch.lu_solve(B.to(dtype), A_LU, pivots)
+    A_LU_out = A_LU
     return X.to(B.dtype), A_LU.to(A.dtype), valid_mask
 
 
@@ -132,7 +133,7 @@ def safe_inverse_with_mask(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]
     r"""Helper function, which avoids crashing because of non-invertable matrix input and outputs the
     mask of valid solution"""
     # Based on https://github.com/pytorch/pytorch/issues/31546#issuecomment-694135622
-    if not (_pytorch_version_greater_1_9):
+    if not (_pytorch_version_geq(1, 9)):
         inv = _torch_inverse_cast(A)
         warnings.warn('PyTorch version < 1.9, inverse validness mask maybe not correct', RuntimeWarning)
         return torch.ones(len(A), torch.bool, device=A.dtype)

@@ -127,8 +127,8 @@ class TestSolveWithMask:
                          X2[mask],
                          atol=tol_val, rtol=tol_val)
 
-    @pytest.mark.skipif((int(torch.__version__.split('.')[0]) == 1) and (int(torch.__version__.split('.')[1]) < 9),
-                        reason='<1.9.0 not supporting')
+    @pytest.mark.skipif((int(torch.__version__.split('.')[0]) == 1) and (int(torch.__version__.split('.')[1]) < 10),
+                        reason='<1.10.0 not supporting')
     def test_all_bad(self, device, dtype):
         A = torch.ones(10, 3, 3, device=device, dtype=dtype)
         B = torch.ones(3, 10, device=device, dtype=dtype)
