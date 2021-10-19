@@ -1,4 +1,4 @@
-from typing import Dict, Tuple, Union
+from typing import Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -26,7 +26,6 @@ class HomographyTracker(nn.Module):
         minimum_inliers_num: threshold for number inliers for matching to be successful.
 
     .. code:: python
-
         >>> from kornia.tracking import HomographyTracker
         >>> target = torch.rand(1, 1, 32, 32)
         >>> img_dst = torch.rand(1, 1, 64, 64)
@@ -55,7 +54,7 @@ class HomographyTracker(nn.Module):
         self.target: torch.Tensor
         self.target_initial_representation: dict
         self.target_fast_representation: dict
-        self.previous_homography: torch.Tensor
+        self.previous_homography: Optional[torch.Tensor]
 
     def set_target(self, target: torch.Tensor) -> None:
         self.target = target
@@ -67,7 +66,7 @@ class HomographyTracker(nn.Module):
             self.target_fast_representation = self.fast_matcher.extract_features(target)
 
     def reset_tracking(self) -> None:
-        self.previous_homography: Union[torch.Tensor, None] = None
+        self.previous_homography = None
 
     def no_match(self) -> Tuple[torch.Tensor, bool]:
         return torch.empty(3, 3), False
