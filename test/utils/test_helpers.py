@@ -8,8 +8,8 @@ from kornia.utils.helpers import (
     _torch_inverse_cast,
     _torch_solve_cast,
     _torch_svd_cast,
-    safe_solve_with_mask,
     safe_inverse_with_mask,
+    safe_solve_with_mask,
 )
 
 
