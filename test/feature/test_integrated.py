@@ -321,8 +321,7 @@ class TestLocalFeatureMatcher:
         patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
         patches2x = resize(patches, (48, 48))
         inputs = {"image0": patches, "image1": patches2x}
-        model = LocalFeatureMatcher(ScaleSpaceDetector(50),
-                                    SIFTDescriptor(32),
+        model = LocalFeatureMatcher(SIFTDescriptor(32),
                                     DescriptorMatcher('snn', 0.8)).to(device).eval()
         model_jit = torch.jit.script(model)
 
