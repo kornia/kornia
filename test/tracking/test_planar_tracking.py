@@ -45,8 +45,9 @@ class TestHomographyTracker:
         h0, w0 = data["image0"].shape[2:]
         data["image0"] = resize(data["image0"], (int(h0 // 2), int(w0 // 2)))
         data["image1"] = resize(data["image1"], (int(h0 // 2), int(w0 // 2)))
-        tracker.set_target(data["image0"])
-        homography, success = tracker(data["image1"])
+        with torch.no_grad():
+            tracker.set_target(data["image0"])
+            homography, success = tracker(data["image1"])
         assert success
         pts_src = data['pts0'].to(device, dtype) / 2.0
         pts_dst = data['pts1'].to(device, dtype) / 2.0
@@ -57,7 +58,8 @@ class TestHomographyTracker:
             rtol=5e-2,
             atol=5)
         # next frame
-        homography, success = tracker(data["image1"])
+        with torch.no_grad():
+            homography, success = tracker(data["image1"])
         assert success
         assert_close(
             transform_points(homography[None], pts_src[None]),
