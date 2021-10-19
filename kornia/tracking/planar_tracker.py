@@ -1,15 +1,12 @@
-from typing import Callable, List, Optional, Tuple, Type, Union
+from typing import Dict, Tuple, Union
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
 
 from kornia.feature import DescriptorMatcher, GFTTAffNetHardNet, LocalFeatureMatcher, LoFTR
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.ransac import RANSAC
 from kornia.geometry.transform.imgwarp import warp_perspective
-from kornia.testing import check_is_tensor
 
 __all__ = [
     "HomographyTracker",
@@ -21,14 +18,15 @@ class HomographyTracker(nn.Module):
     sequence of the frames.
 
     Args:
-      initial_matcher: image matching module, e.g.  :class:`~kornia.feature.LocalFeatureMatcher`
-                        or :class:`~kornia.feature.LoFTR`.
-      fast_matcher: fast image matching module, e.g.  :class:`~kornia.feature.LocalFeatureMatcher`
-                        or :class:`~kornia.feature.LoFTR`.
-      ransac: homography estimation module, see  :class:`~kornia.feature.RANSAC`.
-      minimum_inliers_num: threshold for number inliers for matching to be successful.
+        initial_matcher: image matching module, e.g. :class:`~kornia.feature.LocalFeatureMatcher`
+                          or :class:`~kornia.feature.LoFTR`. Default: :class:`~kornia.feature.GFTTAffNetHardNet`.
+        fast_matcher: fast image matching module, e.g. :class:`~kornia.feature.LocalFeatureMatcher`
+                          or :class:`~kornia.feature.LoFTR`. Default: :class:`~kornia.feature.DescriptorMatcher`.
+        ransac: homography estimation module. Default: :class:`~kornia.geometry.RANSAC`.
+        minimum_inliers_num: threshold for number inliers for matching to be successful.
 
-    Example:
+    .. code:: python
+
         >>> from kornia.tracking import HomographyTracker
         >>> target = torch.rand(1, 1, 32, 32)
         >>> img_dst = torch.rand(1, 1, 64, 64)
@@ -70,19 +68,23 @@ class HomographyTracker(nn.Module):
 
     def match_initial(self, x: torch.Tensor) -> Tuple[torch.Tensor, bool]:
         """The frame `x` is matched with initial_matcher and  verified with ransac."""
-        input_dict = {"image0": self.target,
-                      "image1": x}
+        input_dict: Dict[str, torch.Tensor] = {"image0": self.target, "image1": x}
+
         for k, v in self.target_initial_representation.items():
             input_dict[f'{k}0'] = v
+
         match_dict = self.initial_matcher(input_dict)
         keypoints0 = match_dict['keypoints0'][match_dict['batch_indexes'] == 0]
         keypoints1 = match_dict['keypoints1'][match_dict['batch_indexes'] == 0]
+
         if len(keypoints0) < self.minimum_inliers_num:
             return self.no_match()
         H, inliers = self.ransac(keypoints0, keypoints1)
+
         if inliers.sum().item() < self.minimum_inliers_num:
             return self.no_match()
         self.previous_homography = H.clone()
+
         return H, True
 
     def track_next_frame(self, x: torch.Tensor) -> Tuple[torch.Tensor, bool]:

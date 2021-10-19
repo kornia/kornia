@@ -48,6 +48,7 @@ extensions = [
 
 # substitutes the default values
 docstring_default_arg_substitution = 'Default: '
+autodoc_preserve_defaults = True
 
 bibtex_bibfiles = ['references.bib']
 napoleon_use_ivar = True
