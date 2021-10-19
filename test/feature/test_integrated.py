@@ -1,8 +1,8 @@
 import pytest
 import torch
-from torch.hub import load_state_dict_from_url
 import torch.nn as nn
 from torch.autograd import gradcheck
+from torch.hub import load_state_dict_from_url
 
 import kornia
 import kornia.testing as utils  # test utils
