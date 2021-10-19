@@ -29,10 +29,6 @@ class RANSAC(nn.Module):
         max_iterations: maximum batches to generate. Actual number of models to try is ``batch_size * max_iterations``.
         confidence: desired confidence of the result, used for the early stopping.
         max_local_iterations: number of local optimization (polishing) iterations.
-
-    Returns:
-        estimated model, shape of :math:`(3, 3)`.
-        the inlier/outlier mask, shape of :math:`(1, N), where N is number of input correspondences`.
     """
     supported_models = ['homography', 'fundamental']
 
@@ -163,8 +159,8 @@ class RANSAC(nn.Module):
             weights (torch.Tensor): optional correspondences weights. Not used now
 
         Returns:
-            - estimated model, shape of :math:`(1, 3, 3)`.
-            - the inlier/outlier mask, shape of :math:`(1, N), where N is number of input correspondences`.
+            - Estimated model, shape of :math:`(1, 3, 3)`.
+            - The inlier/outlier mask, shape of :math:`(1, N)`, where N is number of input correspondences.
             """
         if not isinstance(kp1, torch.Tensor):
             raise TypeError(f"Input kp1 is not torch.Tensor. Got {type(kp1)}")

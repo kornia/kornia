@@ -129,7 +129,7 @@ class TestRANSACFundamental:
                                                  squared=False) > 1.0
         assert gross_errors.sum().item() == 0
 
-    @pytest.mark.xfail(reason="might fail, becuase out F-RANSAC is not yet 7pt")
+    @pytest.mark.xfail(reason="might fail, because out F-RANSAC is not yet 7pt")
     def test_real_dirty(self, device, dtype):
         data = torch.load("data/test/loftr_indoor_and_fundamental_data.pt")
         # generate input data
