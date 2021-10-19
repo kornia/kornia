@@ -114,7 +114,7 @@ def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor
     if not (_pytorch_version_geq(1, 10)):
         sol, lu = _torch_solve_cast(B, A)
         warnings.warn('PyTorch version < 1.10, solve validness mask maybe not correct', RuntimeWarning)
-        return sol, lu, torch.ones(len(A), torch.bool, device=A.dtype)
+        return sol, lu, torch.ones(len(A), dtype=torch.bool, device=A.device)
     # Based on https://github.com/pytorch/pytorch/issues/31546#issuecomment-694135622
     if not isinstance(B, torch.Tensor):
         raise AssertionError(f"B must be torch.Tensor. Got: {type(B)}.")
@@ -136,7 +136,7 @@ def safe_inverse_with_mask(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]
     if not (_pytorch_version_geq(1, 9)):
         inv = _torch_inverse_cast(A)
         warnings.warn('PyTorch version < 1.9, inverse validness mask maybe not correct', RuntimeWarning)
-        return inv, torch.ones(len(A), torch.bool, device=A.dtype)
+        return inv, torch.ones(len(A), dtype=torch.bool, device=A.device)
     if not isinstance(A, torch.Tensor):
         raise AssertionError(f"A must be torch.Tensor. Got: {type(A)}.")
     dtype_original: torch.dtype = A.dtype
