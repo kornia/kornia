@@ -1,6 +1,6 @@
 from .draw import draw_rectangle
 from .grid import create_meshgrid, create_meshgrid3d
-from .helpers import _extract_device_dtype
+from .helpers import _extract_device_dtype, safe_inverse_with_mask, safe_solve_with_mask
 from .image import image_list_to_tensor, image_to_tensor, ImageToTensor, tensor_to_image
 from .memory import batched_forward
 from .one_hot import one_hot
@@ -18,5 +18,7 @@ __all__ = [
     "load_pointcloud_ply",
     "draw_rectangle",
     "_extract_device_dtype",
+    "safe_inverse_with_mask",
+    "safe_solve_with_mask",
     "ImageToTensor",
 ]

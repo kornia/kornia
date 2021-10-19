@@ -5,7 +5,7 @@ import torch
 
 import kornia
 from kornia.geometry.epipolar import normalize_points
-from kornia.utils import _extract_device_dtype
+from kornia.utils import _extract_device_dtype, safe_inverse_with_mask
 
 TupleTensor = Tuple[torch.Tensor, torch.Tensor]
 
@@ -78,12 +78,15 @@ def symmetric_transfer_error(
 
     if pts2.size(-1) == 3:
         pts2 = kornia.convert_points_from_homogeneous(pts2)
-
+    max_num = torch.finfo(pts1.dtype).max
     # From Hartley and Zisserman, Symmetric transfer error (4.7)
     # dist = \sum_{i} (d(x, H^-1 x')**2 + d(x', Hx)**2)
+    H_inv, good_H = safe_inverse_with_mask(H)
+
     there: torch.Tensor = oneway_transfer_error(pts1, pts2, H, True, eps)
-    back: torch.Tensor = oneway_transfer_error(pts2, pts1, torch.inverse(H), True, eps)
-    out = there + back
+    back: torch.Tensor = oneway_transfer_error(pts2, pts1, H_inv, True, eps)
+    good_H_reshape: torch.Tensor = good_H.view(-1, 1).expand_as(there)
+    out = (there + back) * good_H_reshape.to(there.dtype) + max_num * (~good_H_reshape).to(there.dtype)
     if squared:
         return out
     return (out + eps).sqrt()
