@@ -1,45 +1,44 @@
 import pytest
 import torch
-import torch.nn as nn
-from torch.autograd import gradcheck
 
-import kornia
-import kornia.testing as utils  # test utils
-from kornia.feature import *
 from kornia.geometry import resize, transform_points
 from kornia.testing import assert_close
-from kornia.tracking import *
+from kornia.tracking import HomographyTracker
+from kornia.feature import (
+    LocalFeatureMatcher, SIFTFeature, DescriptorMatcher, GFTTAffNetHardNet
+)
+
+
+@pytest.fixture
+def data():
+    url = 'https://github.com/kornia/data_test/blob/main/loftr_outdoor_and_homography_data.pt?raw=true'
+    return torch.hub.load_state_dict_from_url(url)
 
 
 class TestHomographyTracker:
-    @pytest.mark.skipif(torch.__version__.startswith('1.6'),
-                        reason='1.6.0 not supporting the pretrained weights as they are packed.')
     def test_smoke(self, device):
         tracker = HomographyTracker().to(device)
+        assert tracker is not None
 
-    def test_nomatch(self, device, dtype):
+    def test_nomatch(self, device, dtype, data):
         # This is not unit test, but that is quite good integration test
         matcher = LocalFeatureMatcher(SIFTFeature(100),
                                       DescriptorMatcher('smnn', 0.95)).to(device,
                                                                           dtype)
         tracker = HomographyTracker(matcher, matcher, minimum_inliers_num=100)
-        data = torch.load("data/test/loftr_outdoor_and_homography_data.pt")
         for k in data.keys():
             if isinstance(data[k], torch.Tensor):
                 data[k] = data[k].to(device, dtype)
         tracker.set_target(data["image0"])
         torch.random.manual_seed(0)
-        homography, success = tracker(torch.zeros_like(data["image0"]))
+        _, success = tracker(torch.zeros_like(data["image0"]))
         assert not success
 
-    @pytest.mark.skipif(torch.__version__.startswith('1.6'),
-                        reason='1.6.0 not supporting the pretrained weights as they are packed.')
-    def test_real(self, device, dtype):
+    def test_real(self, device, dtype, data):
         # This is not unit test, but that is quite good integration test
         matcher = LocalFeatureMatcher(GFTTAffNetHardNet(1000),
                                       DescriptorMatcher('snn', 0.8)).to(device, dtype)
         tracker = HomographyTracker(matcher, matcher).to(device, dtype)
-        data = torch.load("data/test/loftr_outdoor_and_homography_data.pt")
         for k in data.keys():
             if isinstance(data[k], torch.Tensor):
                 data[k] = data[k].to(device, dtype)
