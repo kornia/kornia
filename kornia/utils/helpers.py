@@ -100,3 +100,40 @@ def _torch_solve_cast(input: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tenso
     out = solve(A.to(dtype), input.to(dtype))
 
     return (out.to(input.dtype), out)
+
+
+def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    r"""Helper function, which avoids crashing because of singular matrix input and outputs the
+    mask of valid solution"""
+    # Based on https://github.com/pytorch/pytorch/issues/31546#issuecomment-694135622
+    if not isinstance(B, torch.Tensor):
+        raise AssertionError(f"B must be torch.Tensor. Got: {type(B)}.")
+    dtype: torch.dtype = B.dtype
+    if dtype not in (torch.float32, torch.float64):
+        dtype = torch.float32
+    A_LU, pivots, info = torch.lu(A.to(dtype), get_infos=True)
+    valid_mask: torch.Tensor = info == 0
+    A_LU_solvable = A_LU[valid_mask]
+    X = torch.lu_solve(B.to(dtype), A_LU, pivots)
+    return X.to(B.dtype), A_LU.to(A.dtype), valid_mask
+
+
+def safe_inverse_with_mask(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    r"""Helper function, which avoids crashing because of non-invertable matrix input and outputs the
+    mask of valid solution"""
+    # Based on https://github.com/pytorch/pytorch/issues/31546#issuecomment-694135622
+    if not isinstance(A, torch.Tensor):
+        raise AssertionError(f"A must be torch.Tensor. Got: {type(A)}.")
+    dtype_original: torch.dtype = A.dtype
+    if dtype_original not in (torch.float32, torch.float64):
+        dtype = torch.float32
+    else:
+        dtype = dtype_original
+    try:
+        from torch.linalg import inv_ex
+        inverse, info = inv_ex(A.to(dtype))
+        mask = info == 0
+    except ImportError:
+        inverse = torch.inverse(A.to(dtype))
+        mask = torch.ones(len(A), dtype=torch.bool, device=A.device)
+    return inverse.to(dtype_original), mask

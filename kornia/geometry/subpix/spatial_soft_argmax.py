@@ -8,7 +8,7 @@ import kornia
 from kornia.geometry.conversions import normalize_pixel_coordinates, normalize_pixel_coordinates3d
 from kornia.geometry.subpix import dsnt
 from kornia.utils import create_meshgrid, create_meshgrid3d
-from kornia.utils.helpers import _torch_solve_cast
+from kornia.utils.helpers import safe_solve_with_mask
 
 
 def _get_window_grid_kernel2d(h: int, w: int, device: torch.device = torch.device('cpu')) -> torch.Tensor:
@@ -615,13 +615,14 @@ def conv_quad_interp3d(
 
     Hes = torch.stack([dxx, dxy, dxs, dxy, dyy, dys, dxs, dys, dss], dim=-1).view(-1, 3, 3)
 
-    # The following is needed to avoid singular cases
-    Hes += torch.rand(Hes[0].size(), device=Hes.device).abs()[None] * eps
-
     nms_mask: torch.Tensor = kornia.feature.nms3d(input, (3, 3, 3), True)
     x_solved: torch.Tensor = torch.zeros_like(b)
-    x_solved_masked, _ = _torch_solve_cast(b[nms_mask.view(-1)], Hes[nms_mask.view(-1)])
-    x_solved.masked_scatter_(nms_mask.view(-1, 1, 1), x_solved_masked)
+    x_solved_masked, _, solved_correctly = safe_solve_with_mask(b[nms_mask.view(-1)], Hes[nms_mask.view(-1)])
+
+    #  Kill those points, where we cannot solve
+    new_nms_mask = nms_mask.masked_scatter(nms_mask, solved_correctly)
+
+    x_solved.masked_scatter_(new_nms_mask.view(-1, 1, 1), x_solved_masked[solved_correctly])
     dx: torch.Tensor = -x_solved
 
     # Ignore ones, which are far from window center
@@ -630,7 +631,7 @@ def conv_quad_interp3d(
     dy: torch.Tensor = 0.5 * torch.bmm(b.permute(0, 2, 1), dx)
     y_max = input + dy.view(B, CH, D, H, W)
     if strict_maxima_bonus > 0:
-        y_max += strict_maxima_bonus * nms_mask.to(input.dtype)
+        y_max += strict_maxima_bonus * new_nms_mask.to(input.dtype)
 
     dx_res: torch.Tensor = dx.flip(1).reshape(B, CH, D, H, W, 3).permute(0, 1, 5, 2, 3, 4)
     coords_max: torch.Tensor = grid_global.repeat(B, 1, 1, 1, 1).unsqueeze(1)

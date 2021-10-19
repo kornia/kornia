@@ -3,7 +3,14 @@ import torch
 
 from kornia.testing import assert_close
 from kornia.utils import _extract_device_dtype
-from kornia.utils.helpers import _torch_histc_cast, _torch_inverse_cast, _torch_solve_cast, _torch_svd_cast
+from kornia.utils.helpers import (
+    _torch_histc_cast,
+    _torch_inverse_cast,
+    _torch_solve_cast,
+    _torch_svd_cast,
+    safe_solve_with_mask,
+    safe_inverse_with_mask,
+)
 
 
 @pytest.mark.parametrize(
@@ -105,3 +112,59 @@ class TestSolveCast:
 
         tol_val: float = 1e-1 if dtype == torch.float16 else 1e-4
         assert_close(error, torch.zeros_like(error), atol=tol_val, rtol=tol_val)
+
+
+class TestSolveWithMask:
+    def test_smoke(self, device, dtype):
+        A = torch.randn(2, 3, 1, 4, 4, device=device, dtype=dtype)
+        B = torch.randn(2, 3, 1, 4, 6, device=device, dtype=dtype)
+
+        X, _, mask = safe_solve_with_mask(B, A)
+        error = torch.dist(B, A.matmul(X))
+
+        tol_val: float = 1e-1 if dtype == torch.float16 else 1e-4
+        assert_close(error, torch.zeros_like(error), atol=tol_val, rtol=tol_val)
+
+    def test_all_bad(self, device, dtype):
+        A = torch.ones(10, 3, 3, device=device, dtype=dtype)
+        B = torch.ones(3, 10, device=device, dtype=dtype)
+
+        X, _, mask = safe_solve_with_mask(B, A)
+        assert_close(mask, torch.zeros_like(mask))
+
+
+class TestSolveWithMask:
+    def test_smoke(self, device, dtype):
+        A = torch.randn(2, 3, 1, 4, 4, device=device, dtype=dtype)
+        B = torch.randn(2, 3, 1, 4, 6, device=device, dtype=dtype)
+
+        X, _, mask = safe_solve_with_mask(B, A)
+        error = torch.dist(B, A.matmul(X))
+
+        tol_val: float = 1e-1 if dtype == torch.float16 else 1e-4
+        assert_close(error, torch.zeros_like(error), atol=tol_val, rtol=tol_val)
+        assert_close(mask, torch.ones_like(mask), atol=tol_val, rtol=tol_val)
+
+    def test_all_bad(self, device, dtype):
+        A = torch.ones(10, 3, 3, device=device, dtype=dtype)
+        B = torch.ones(3, 10, device=device, dtype=dtype)
+
+        X, _, mask = safe_solve_with_mask(B, A)
+        assert_close(mask, torch.zeros_like(mask))
+
+
+class TestInverseWithMask:
+    def test_smoke(self, device, dtype):
+        x = torch.tensor([[4.0, 7.0], [2.0, 6.0]], device=device, dtype=dtype)
+
+        y_expected = torch.tensor([[0.6, -0.7], [-0.2, 0.4]], device=device, dtype=dtype)
+
+        y, mask = safe_inverse_with_mask(x)
+
+        assert_close(y, y_expected)
+        assert_close(mask, torch.ones_like(mask))
+
+    def test_all_bad(self, device, dtype):
+        A = torch.ones(10, 3, 3, device=device, dtype=dtype)
+        X, mask = safe_inverse_with_mask(A)
+        assert_close(mask, torch.zeros_like(mask))
