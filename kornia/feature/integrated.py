@@ -135,8 +135,8 @@ class SIFTFeature(LocalFeature):
                  upright: bool = False,
                  rootsift: bool = True,
                  device: torch.device = torch.device('cpu')):
-        self.patch_size: int = 41
-        self.detector = ScaleSpaceDetector(num_features,
+        patch_size: int = 41
+        detector = ScaleSpaceDetector(num_features,
                                            resp_module=BlobDoG(),
                                            nms_module=ConvQuadInterp3d(10),
                                            scale_pyr_module=ScalePyramid(3, 1.6, 32, double_image=True),
@@ -144,9 +144,10 @@ class SIFTFeature(LocalFeature):
                                            scale_space_response=True,
                                            minima_are_also_good=True,
                                            mr_size=6.0).to(device)
-        self.descriptor = LAFDescriptor(SIFTDescriptor(patch_size=self.patch_size, rootsift=rootsift),
-                                        patch_size=self.patch_size,
+        descriptor = LAFDescriptor(SIFTDescriptor(patch_size=patch_size, rootsift=rootsift),
+                                        patch_size=patch_size,
                                         grayscale_descriptor=True).to(device)
+        super().__init__(detector, descriptor)
 
 
 class GFTTAffNetHardNet(LocalFeature):
@@ -155,17 +156,17 @@ class GFTTAffNetHardNet(LocalFeature):
                  num_features: int = 8000,
                  upright: bool = False,
                  device: torch.device = torch.device('cpu')):
-        self.patch_size: int = 32
-        self.detector = ScaleSpaceDetector(num_features,
+        detector = ScaleSpaceDetector(num_features,
                                            resp_module=CornerGFTT(),
                                            nms_module=ConvQuadInterp3d(10, 1e-5),
                                            scale_pyr_module=ScalePyramid(3, 1.6, 32, double_image=False),
                                            ori_module=PassLAF() if upright else LAFOrienter(19),
                                            aff_module=LAFAffNetShapeEstimator(True).eval(),
                                            mr_size=6.0).to(device)
-        self.descriptor = LAFDescriptor(HardNet(True).eval(),
+        descriptor = LAFDescriptor(HardNet(True).eval(),
                                         patch_size=32,
                                         grayscale_descriptor=True).to(device)
+        super().__init__(detector, descriptor)
 
 
 class LocalFeatureMatcher(nn.Module):
