@@ -52,8 +52,10 @@ default_cfg = {'backbone_type': 'ResNetFPN',
 
 class LoFTR(nn.Module):
     r"""Module, which finds correspondences between two images.
+
     This is based on the original code from paper "LoFTR: Detector-Free Local
     Feature Matching with Transformers". See :cite:`LoFTR2021` for more details.
+
     If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
 
     Args:
@@ -64,7 +66,6 @@ class LoFTR(nn.Module):
 
     Returns:
         Dictionary with image correspondences and confidence scores.
-
 
     Example:
         >>> img1 = torch.rand(1, 1, 320, 200)
@@ -97,24 +98,22 @@ class LoFTR(nn.Module):
             self.load_state_dict(pretrained_dict['state_dict'])
         self.eval()
 
-    def forward(self, data: Dict) -> Dict:
+    def forward(self, data: dict) -> Dict[str, torch.Tensor]:
         """
         Args:
-            data: {
-                'image0': (torch.Tensor): (N, 1, H1, W1)
-                'image1': (torch.Tensor): (N, 1, H2, W2)
-                'mask0'(optional) : (torch.Tensor): (N, H1, W1) '0' indicates a padded position
-                'mask1'(optional) : (torch.Tensor): (N, H2, W2)
-            }
+            data: dictionary containing the input data in the following format:
+
+        Keyword Args:
+            image0: left image with shape :math:`(N, 1, H1, W1)`.
+            image1: right image with shape :math:`(N, 1, H2, W2)`.
+            mask0 (optional): left image mask. '0' indicates a padded position :math:`(N, H1, W1)`.
+            mask1 (optional): right image mask. '0' indicates a padded position :math:`(N, H2, W2)`.
 
         Returns:
-            out: {
-                    "keypoints0": (torch.Tensor): (NC, 2) matching keypoints from image0
-                    "keypoints1":  (torch.Tensor): (NC, 2) matching keypoints from image1
-                    "confidence": (torch.Tensor): (NC) - confidence score [0, 1]
-                    "batch_indexes": (torch.Tensor): (NC) - batch indexes for the keypoints
-            }
-
+            - ``keypoints0``, matching keypoints from image0 :math:`(NC, 2)`.
+            - ``keypoints1``, matching keypoints from image1 :math:`(NC, 2)`.
+            - ``confidence``, confidence score [0, 1] :math:`(NC)`.
+            - ``batch_indexes``, batch indexes for the keypoints and lafs :math:`(NC)`.
         """
 
         # 1. Local Feature CNN

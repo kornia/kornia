@@ -23,30 +23,34 @@ Descriptors
 .. autoclass:: SOSNet
 .. autoclass:: LAFDescriptor
    :members: forward
+
 .. autofunction:: get_laf_descriptors
 
 Matching
------------
+--------
 
 .. autofunction:: match_nn
 .. autofunction:: match_mnn
 .. autofunction:: match_snn
 .. autofunction:: match_smnn
 
-
 .. autoclass:: DescriptorMatcher
+   :members: forward
+
 .. autoclass:: LocalFeature
    :members: forward
+
 .. autoclass:: SIFTFeature
    :members: forward
+
 .. autoclass:: GFTTAffNetHardNet
    :members: forward
+
 .. autoclass:: LocalFeatureMatcher
    :members: forward
+
 .. autoclass:: LoFTR
    :members: forward
-
-
 
 
 Local Affine Frames (LAF)
@@ -90,18 +94,25 @@ Module
 
 .. autoclass:: ScaleSpaceDetector
    :members: forward
+
 .. autoclass:: PassLAF
    :members: forward
+
 .. autoclass:: PatchAffineShapeEstimator
    :members: forward
+
 .. autoclass:: LAFAffineShapeEstimator
    :members: forward
+
 .. autoclass:: LAFOrienter
    :members: forward
+
 .. autoclass:: PatchDominantGradientOrientation
    :members: forward
+
 .. autoclass:: OriNet
    :members: forward
+
 .. autoclass:: LAFAffNetShapeEstimator
    :members: forward
 

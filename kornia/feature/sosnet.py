@@ -18,8 +18,8 @@ class SOSNet(nn.Module):
         pretrained: Download and set pretrained weights to the model.
 
     Shape:
-        - Input: (B, 1, 32, 32)
-        - Output: (B, 128)
+        - Input: :math:`(B, 1, 32, 32)`
+        - Output: :math:`(B, 128)`
 
     Examples:
         >>> input = torch.rand(8, 1, 32, 32)

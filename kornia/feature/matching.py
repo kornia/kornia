@@ -190,31 +190,32 @@ def match_smnn(
 class DescriptorMatcher(nn.Module):
     """Module version of matching functions.
 
-    See :function:`~kornia.feature.match_snn` for details
+    See :func:`~kornia.feature.match_snn` for more details.
 
     Args:
-        match_mode: type of matching, can be `nn`, `snn`, `mnn`, `smnn`. Default `snn`.
-        th: threshold on distance ratio, or other quality measure. Default 0.8
+        match_mode: type of matching, can be `nn`, `snn`, `mnn`, `smnn`.
+        th: threshold on distance ratio, or other quality measure.
     """
     known_modes = ['nn', 'mnn', 'snn', 'smnn']
 
     def __init__(self, match_mode: str = 'snn', th: float = 0.8) -> None:
         super().__init__()
-        if match_mode.lower() not in self.known_modes:
+        _match_mode: str = match_mode.lower()
+        if _match_mode not in self.known_modes:
             raise NotImplementedError(f"{match_mode} is not supported. Try one of {self.known_modes}")
-        self.match_mode = match_mode.lower()
+        self.match_mode = _match_mode
         self.th = th
 
     def forward(self, desc1: torch.Tensor, desc2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Args:
-          desc1: Batch of descriptors of a shape :math:`(B1, D)`.
-          desc2: Batch of descriptors of a shape :math:`(B2, D)`.
+            desc1: Batch of descriptors of a shape :math:`(B1, D)`.
+            desc2: Batch of descriptors of a shape :math:`(B2, D)`.
 
         Return:
-          - Descriptor distance of matching descriptors, shape of. :math:`(B3, 1)`.
-          - Long tensor indexes of matching descriptors in desc1 and desc2,
-            shape of :math:`(B3, 2)` where 0 <= B3 <= B1.
+            - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
+            - Long tensor indexes of matching descriptors in desc1 and desc2,
+                shape of :math:`(B3, 2)` where :math:`0 <= B3 <= B1`.
         """
         if self.match_mode == 'nn':
             out = match_nn(desc1, desc2)
