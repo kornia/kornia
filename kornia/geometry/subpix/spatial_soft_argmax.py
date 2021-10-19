@@ -8,7 +8,7 @@ import kornia
 from kornia.geometry.conversions import normalize_pixel_coordinates, normalize_pixel_coordinates3d
 from kornia.geometry.subpix import dsnt
 from kornia.utils import create_meshgrid, create_meshgrid3d
-from kornia.utils.helpers import safe_solve_with_mask, _pytorch_version_geq
+from kornia.utils.helpers import _pytorch_version_geq, safe_solve_with_mask
 
 
 def _get_window_grid_kernel2d(h: int, w: int, device: torch.device = torch.device('cpu')) -> torch.Tensor:
