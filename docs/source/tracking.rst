@@ -5,4 +5,3 @@ kornia.tracking
 
 .. autoclass:: HomographyTracker
    :members:
-
