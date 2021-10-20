@@ -31,10 +31,10 @@ def sampson_epipolar_distance(
         raise ValueError(f"Fm must be a (*, 3, 3) tensor. Got {Fm.shape}")
 
     if pts1.size(-1) == 2:
-        pts1 = kornia.convert_points_to_homogeneous(pts1)
+        pts1 = kornia.geometry.convert_points_to_homogeneous(pts1)
 
     if pts2.size(-1) == 2:
-        pts2 = kornia.convert_points_to_homogeneous(pts2)
+        pts2 = kornia.geometry.convert_points_to_homogeneous(pts2)
 
     # From Hartley and Zisserman, Sampson error (11.9)
     # sam =  (x'^T F x) ** 2 / (  (((Fx)_1**2) + (Fx)_2**2)) +  (((F^Tx')_1**2) + (F^Tx')_2**2)) )
@@ -83,10 +83,10 @@ def symmetrical_epipolar_distance(
         raise ValueError(f"Fm must be a (*, 3, 3) tensor. Got {Fm.shape}")
 
     if pts1.size(-1) == 2:
-        pts1 = kornia.convert_points_to_homogeneous(pts1)
+        pts1 = kornia.geometry.convert_points_to_homogeneous(pts1)
 
     if pts2.size(-1) == 2:
-        pts2 = kornia.convert_points_to_homogeneous(pts2)
+        pts2 = kornia.geometry.convert_points_to_homogeneous(pts2)
 
     # From Hartley and Zisserman, symmetric epipolar distance (11.10)
     # sed = (x'^T F x) ** 2 /  (((Fx)_1**2) + (Fx)_2**2)) +  1/ (((F^Tx')_1**2) + (F^Tx')_2**2))

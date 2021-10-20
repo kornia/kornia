@@ -1,15 +1,19 @@
 import torch
 
-import kornia
-from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
+'''from kornia.feature.laf import (
+    raise_error_if_laf_is_not_valid,
+    laf_from_three_points,
+    laf_to_three_points,
+)'''
 from kornia.testing import check_is_tensor
+
+from .conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 
 __all__ = [
     "compose_transformations",
     "relative_transformation",
     "inverse_transformation",
     "transform_points",
-    "perspective_transform_lafs",
 ]
 
 
@@ -202,7 +206,7 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
     return points_0
 
 
-def perspective_transform_lafs(trans_01: torch.Tensor, lafs_1: torch.Tensor) -> torch.Tensor:
+'''def perspective_transform_lafs(trans_01: torch.Tensor, lafs_1: torch.Tensor) -> torch.Tensor:
     r"""Function that applies perspective transformations to a set of local affine frames (LAFs).
 
     Args:
@@ -245,7 +249,7 @@ def perspective_transform_lafs(trans_01: torch.Tensor, lafs_1: torch.Tensor) -> 
         torch.Size([2, 3, 3])
         >>> lafs_0 = perspective_transform_lafs(trans_01, lafs_1)  # BxNx2x3
     """
-    kornia.feature.laf.raise_error_if_laf_is_not_valid(lafs_1)
+    raise_error_if_laf_is_not_valid(lafs_1)
     if not torch.is_tensor(trans_01):
         raise TypeError("Input type is not a torch.Tensor")
 
@@ -260,72 +264,16 @@ def perspective_transform_lafs(trans_01: torch.Tensor, lafs_1: torch.Tensor) -> 
 
     bs, n, _, _ = lafs_1.size()
     # First, we convert LAF to points
-    threepts_1 = kornia.feature.laf.laf_to_three_points(lafs_1)
+    threepts_1 = laf_to_three_points(lafs_1)
     points_1 = threepts_1.permute(0, 1, 3, 2).reshape(bs, n * 3, 2)
 
     # First, transform the points
     points_0 = transform_points(trans_01, points_1)
+
     # Back to LAF format
     threepts_0 = points_0.view(bs, n, 3, 2).permute(0, 1, 3, 2)
-    return kornia.feature.laf.laf_from_three_points(threepts_0)
+    return laf_from_three_points(threepts_0)'''
 
 
 # TODO:
 # - project_points: from opencv
-
-# layer api
-
-# NOTE: is it needed ?
-'''class TransformPoints(nn.Module):
-    r"""Create an object to transform a set of points.
-
-    Args:
-        dst_pose_src (torhc.Tensor): tensor for transformations of
-          shape :math:`(B, D+1, D+1)`.
-
-    Returns:
-        torch.Tensor: tensor of N-dimensional points.
-
-    Shape:
-        - Input: :math:`(B, D, N)`
-        - Output: :math:`(B, N, D)`
-
-    Examples:
-        >>> input = torch.rand(2, 4, 3)  # BxNx3
-        >>> transform = torch.eye(4).view(1, 4, 4)   # Bx4x4
-        >>> transform_op = kornia.TransformPoints(transform)
-        >>> output = transform_op(input)  # BxNx3
-    """
-
-    def __init__(self, dst_homo_src: torch.Tensor) -> None:
-        super(TransformPoints, self).__init__()
-        self.dst_homo_src: torch.Tensor = dst_homo_src
-
-    def forward(self, points_src: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return transform_points(self.dst_homo_src, points_src)
-
-
-class InversePose(nn.Module):
-    r"""Create a transformation that inverts a 4x4 pose.
-
-    Args:
-        points (Tensor): tensor with poses.
-
-    Returns:
-        Tensor: tensor with inverted poses.
-
-    Shape:
-        - Input: :math:`(N, 4, 4)`
-        - Output: :math:`(N, 4, 4)`
-
-    Example:
-        >>> pose = torch.rand(1, 4, 4)  # Nx4x4
-        >>> transform = kornia.InversePose()
-        >>> pose_inv = transform(pose)  # Nx4x4
-    """
-
-    def __init__(self):
-        super(InversePose, self).__init__()
-
-    def forward(self, input):
-        return inverse_pose(input)'''

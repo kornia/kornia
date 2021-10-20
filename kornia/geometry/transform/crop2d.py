@@ -3,7 +3,7 @@ from typing import Tuple
 import torch
 
 from kornia.geometry.bbox import infer_bbox_shape, validate_bbox
-from kornia.geometry.transform.imgwarp import get_perspective_transform, warp_affine
+from .imgwarp import get_perspective_transform, warp_affine
 
 __all__ = [
     "crop_and_resize",

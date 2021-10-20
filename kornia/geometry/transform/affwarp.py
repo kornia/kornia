@@ -3,11 +3,12 @@ from typing import Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
-import kornia
-from kornia.geometry.transform.imgwarp import get_affine_matrix2d, get_rotation_matrix2d, warp_affine
-from kornia.geometry.transform.projwarp import get_projective_transform, warp_affine3d
+from kornia.filters.gaussian import gaussian_blur2d
 from kornia.utils import _extract_device_dtype
 from kornia.utils.image import perform_keep_shape_image
+
+from .imgwarp import get_affine_matrix2d, get_rotation_matrix2d, warp_affine
+from .projwarp import get_projective_transform, warp_affine3d
 
 __all__ = [
     "affine",
@@ -595,7 +596,7 @@ def resize(
         if (ks[1] % 2) == 0:
             ks = ks[0], ks[1] + 1
 
-        input = kornia.filters.gaussian_blur2d(input, ks, sigmas)
+        input = gaussian_blur2d(input, ks, sigmas)
 
     output = torch.nn.functional.interpolate(input, size=size, mode=interpolation, align_corners=align_corners)
     return output

@@ -50,7 +50,7 @@ class ImageStitcher(nn.Module):
         """
         homo: torch.Tensor
         if self.estimator == "vanilla":
-            homo = K.find_homography_dlt_iterated(
+            homo = K.geometry.homography.find_homography_dlt_iterated(
                 keypoints2[None],
                 keypoints1[None],
                 torch.ones_like(keypoints1[None, :, 0])

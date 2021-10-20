@@ -6,9 +6,10 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 from kornia.geometry.conversions import convert_affinematrix_to_homography
-from kornia.geometry.transform.homography_warper import HomographyWarper
-from kornia.geometry.transform.imgwarp import angle_to_rotation_matrix
-from kornia.geometry.transform.pyramid import build_pyramid
+
+from .homography_warper import HomographyWarper
+from .imgwarp import angle_to_rotation_matrix
+from .pyramid import build_pyramid
 
 __all__ = [
     "ImageRegistrator",

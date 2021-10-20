@@ -4,7 +4,9 @@ import torch
 import torch.nn as nn
 
 from kornia.color import rgb_to_grayscale
-from kornia.geometry import ConvQuadInterp3d, ScalePyramid
+from kornia.geometry.transform import ScalePyramid
+from kornia.geometry.subpix import ConvQuadInterp3d
+
 from .affine_shape import LAFAffNetShapeEstimator
 from .hardnet import HardNet
 from .laf import extract_patches_from_pyramid, get_laf_center, raise_error_if_laf_is_not_valid

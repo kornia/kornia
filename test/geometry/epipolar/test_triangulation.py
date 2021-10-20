@@ -40,7 +40,7 @@ class TestTriangulation:
         x2 = scene['points2d'][1:2]
 
         X = epi.triangulate_points(P1, P2, x1, x2)
-        x_reprojected = kornia.transform_points(scene['P'], X.expand(num_views, -1, -1))
+        x_reprojected = kornia.geometry.transform_points(scene['P'], X.expand(num_views, -1, -1))
 
         assert_close(scene['points3d'], X, rtol=1e-4, atol=1e-4)
         assert_close(scene['points2d'], x_reprojected, rtol=1e-4, atol=1e-4)
@@ -48,8 +48,8 @@ class TestTriangulation:
     def test_gradcheck(self, device):
         points1 = torch.rand(1, 8, 2, device=device, dtype=torch.float64, requires_grad=True)
         points2 = torch.rand(1, 8, 2, device=device, dtype=torch.float64)
-        P1 = epi.eye_like(3, points1)
+        P1 = kornia.eye_like(3, points1)
         P1 = torch.nn.functional.pad(P1, [0, 1])
-        P2 = epi.eye_like(3, points2)
+        P2 = kornia.eye_like(3, points2)
         P2 = torch.nn.functional.pad(P2, [0, 1])
         assert gradcheck(epi.triangulate_points, (P1, P2, points1, points2), raise_exception=True)

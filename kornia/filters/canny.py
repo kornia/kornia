@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from kornia.color import rgb_to_grayscale
+# TODO: this is a circular dependency
 from kornia.geometry.conversions import rad2deg
 
 from .gaussian import gaussian_blur2d

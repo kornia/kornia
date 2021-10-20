@@ -3,11 +3,16 @@ from typing import List, Tuple
 
 import torch
 
-import kornia as K
-from kornia.geometry.conversions import convert_affinematrix_to_homography3d
-from kornia.geometry.transform.homography_warper import homography_warp3d, normalize_homography3d
+import kornia
+from kornia.geometry.conversions import (
+    deg2rad,
+    convert_affinematrix_to_homography3d,
+    angle_axis_to_rotation_matrix,
+)
 from kornia.testing import check_is_tensor
 from kornia.utils.helpers import _torch_inverse_cast, _torch_solve_cast
+
+from .homography_warper import homography_warp3d, normalize_homography3d
 
 __all__ = [
     "warp_affine3d",
@@ -129,9 +134,9 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
         raise AssertionError(center.dtype, angles.dtype)
 
     # create rotation matrix
-    angle_axis_rad: torch.Tensor = K.deg2rad(angles)
-    rmat: torch.Tensor = K.angle_axis_to_rotation_matrix(angle_axis_rad)  # Bx3x3
-    scaling_matrix: torch.Tensor = K.eye_like(3, rmat)
+    angle_axis_rad: torch.Tensor = deg2rad(angles)
+    rmat: torch.Tensor = angle_axis_to_rotation_matrix(angle_axis_rad)  # Bx3x3
+    scaling_matrix: torch.Tensor = kornia.eye_like(3, rmat)
     scaling_matrix = scaling_matrix * scales.unsqueeze(dim=1)
     rmat = rmat @ scaling_matrix.to(rmat)
 

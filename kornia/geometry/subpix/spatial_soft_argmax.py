@@ -4,11 +4,24 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import kornia
+from kornia.filters.sobel import spatial_gradient3d
 from kornia.geometry.conversions import normalize_pixel_coordinates, normalize_pixel_coordinates3d
-from kornia.geometry.subpix import dsnt
 from kornia.utils import create_meshgrid, create_meshgrid3d
 from kornia.utils.helpers import _pytorch_version_geq, safe_solve_with_mask
+
+from .dsnt import spatial_expectation2d, spatial_softmax2d
+from .nms import nms3d
+
+__all__ = [
+    "conv_soft_argmax2d",
+    "conv_soft_argmax3d",
+    "ConvSoftArgmax2d",
+    "ConvSoftArgmax3d",
+    "spatial_soft_argmax2d",
+    "SpatialSoftArgmax2d",
+    "conv_quad_interp3d",
+    "ConvQuadInterp3d",
+]
 
 
 def _get_window_grid_kernel2d(h: int, w: int, device: torch.device = torch.device('cpu')) -> torch.Tensor:
@@ -492,7 +505,7 @@ def conv_soft_argmax3d(
         in_levels: int = input.size(2)
         out_levels: int = x_softmaxpool.size(2)
         skip_levels: int = (in_levels - out_levels) // 2
-        strict_maxima: torch.Tensor = F.avg_pool3d(kornia.feature.nms3d(input, kernel_size), 1, stride, 0)
+        strict_maxima: torch.Tensor = F.avg_pool3d(nms3d(input, kernel_size), 1, stride, 0)
         strict_maxima = strict_maxima[:, :, skip_levels: out_levels - skip_levels]
         x_softmaxpool *= 1.0 + strict_maxima_bonus * strict_maxima
     x_softmaxpool = x_softmaxpool.view(b, c, x_softmaxpool.size(2), x_softmaxpool.size(3), x_softmaxpool.size(4))
@@ -524,8 +537,8 @@ def spatial_soft_argmax2d(
         >>> spatial_soft_argmax2d(input, normalized_coordinates=False)
         tensor([[[1.0000, 1.0000]]])
     """
-    input_soft: torch.Tensor = dsnt.spatial_softmax2d(input, temperature)
-    output: torch.Tensor = dsnt.spatial_expectation2d(input_soft, normalized_coordinates)
+    input_soft: torch.Tensor = spatial_softmax2d(input, temperature)
+    output: torch.Tensor = spatial_expectation2d(input_soft, normalized_coordinates)
     return output
 
 
@@ -602,9 +615,9 @@ def conv_quad_interp3d(
 
     # to determine the location we are solving system of linear equations Ax = b, where b is 1st order gradient
     # and A is Hessian matrix
-    b: torch.Tensor = kornia.filters.spatial_gradient3d(input, order=1, mode='diff')  #
+    b: torch.Tensor = spatial_gradient3d(input, order=1, mode='diff')  #
     b = b.permute(0, 1, 3, 4, 5, 2).reshape(-1, 3, 1)
-    A: torch.Tensor = kornia.filters.spatial_gradient3d(input, order=2, mode='diff')
+    A: torch.Tensor = spatial_gradient3d(input, order=2, mode='diff')
     A = A.permute(0, 1, 3, 4, 5, 2).reshape(-1, 6)
     dxx = A[..., 0]
     dyy = A[..., 1]
@@ -618,7 +631,7 @@ def conv_quad_interp3d(
         # The following is needed to avoid singular cases
         Hes += torch.rand(Hes[0].size(), device=Hes.device).abs()[None] * eps
 
-    nms_mask: torch.Tensor = kornia.feature.nms3d(input, (3, 3, 3), True)
+    nms_mask: torch.Tensor = nms3d(input, (3, 3, 3), True)
     x_solved: torch.Tensor = torch.zeros_like(b)
     x_solved_masked, _, solved_correctly = safe_solve_with_mask(b[nms_mask.view(-1)], Hes[nms_mask.view(-1)])
 

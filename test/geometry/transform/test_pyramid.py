@@ -126,7 +126,7 @@ class TestScalePyramid:
 class TestBuildPyramid:
     def test_smoke(self, device, dtype):
         input = torch.ones(1, 2, 4, 5, device=device, dtype=dtype)
-        pyramid = kornia.build_pyramid(input, max_level=1)
+        pyramid = kornia.geometry.transform.build_pyramid(input, max_level=1)
         assert len(pyramid) == 1
         assert pyramid[0].shape == (1, 2, 4, 5)
 
@@ -136,7 +136,7 @@ class TestBuildPyramid:
     def test_num_levels(self, batch_size, channels, max_level, device, dtype):
         height, width = 16, 20
         input = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
-        pyramid = kornia.build_pyramid(input, max_level)
+        pyramid = kornia.geometry.transform.build_pyramid(input, max_level)
         assert len(pyramid) == max_level
         for i in range(1, max_level):
             img = pyramid[i]
@@ -149,4 +149,4 @@ class TestBuildPyramid:
         batch_size, channels, height, width = 1, 2, 7, 9
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.build_pyramid, (img, max_level), raise_exception=True)
+        assert gradcheck(kornia.geometry.transform.build_pyramid, (img, max_level), raise_exception=True)

@@ -43,7 +43,7 @@ class TestCam2Pixel:
         torch.manual_seed(seed)
         cam_coords_src = self._get_samples((batch_size, H, W, 3), low, high, device, dtype)
 
-        pixel_coords_dst = kornia.cam2pixel(cam_coords_src=cam_coords_src, dst_proj_src=proj_mat, eps=eps)
+        pixel_coords_dst = kornia.geometry.camera.cam2pixel(cam_coords_src=cam_coords_src, dst_proj_src=proj_mat, eps=eps)
         assert pixel_coords_dst.shape == (batch_size, H, W, 2)
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
@@ -65,13 +65,13 @@ class TestCam2Pixel:
         torch.manual_seed(seed)
         cam_coords_input = self._get_samples((batch_size, H, W, 3), low, high, device, dtype)
 
-        pixel_coords_output = kornia.cam2pixel(cam_coords_src=cam_coords_input, dst_proj_src=proj_mat, eps=eps)
+        pixel_coords_output = kornia.geometry.camera.cam2pixel(cam_coords_src=cam_coords_input, dst_proj_src=proj_mat, eps=eps)
 
         last_ch = torch.ones((batch_size, H, W, 1), device=device, dtype=dtype)
         pixel_coords_concat = torch.cat([pixel_coords_output, last_ch], axis=-1)
 
         depth = cam_coords_input[..., 2:3].permute(0, 3, 1, 2).contiguous()
-        cam_coords_output = kornia.pixel2cam(
+        cam_coords_output = kornia.geometry.camera.pixel2cam(
             depth=depth, intrinsics_inv=intrinsics_inv, pixel_coords=pixel_coords_concat
         )
 
@@ -105,7 +105,7 @@ class TestCam2Pixel:
         proj_mat = tensor_to_gradcheck_var(proj_mat)
 
         assert gradcheck(
-            kornia.geometry.cam2pixel, (cam_coords_src, proj_mat, eps), raise_exception=True, atol=atol, rtol=rtol
+            kornia.geometry.camera.cam2pixel, (cam_coords_src, proj_mat, eps), raise_exception=True, atol=atol, rtol=rtol
         )
 
 
@@ -146,7 +146,7 @@ class TestPixel2Cam:
 
         intrinsics_inv = self._create_intrinsics_inv(batch_size, fx, fy, cx, cy, device=device, dtype=dtype)
 
-        output = kornia.pixel2cam(depth=depth, intrinsics_inv=intrinsics_inv, pixel_coords=pixel_coords_input)
+        output = kornia.geometry.camera.pixel2cam(depth=depth, intrinsics_inv=intrinsics_inv, pixel_coords=pixel_coords_input)
 
         assert output.shape == (batch_size, H, W, 3)
 
@@ -170,12 +170,12 @@ class TestPixel2Cam:
         intrinsics = self._create_intrinsics(batch_size, fx, fy, cx, cy, device=device, dtype=dtype)
         intrinsics_inv = self._create_intrinsics_inv(batch_size, fx, fy, cx, cy, device=device, dtype=dtype)
 
-        cam_coords = kornia.pixel2cam(depth=depth, intrinsics_inv=intrinsics_inv, pixel_coords=pixel_coords_input)
+        cam_coords = kornia.geometry.camera.pixel2cam(depth=depth, intrinsics_inv=intrinsics_inv, pixel_coords=pixel_coords_input)
 
         # Setting the projection matrix to the intrinsic matrix for
         # simplicity (i.e. assuming that the RT matrix is an identity matrix)
         proj_mat = intrinsics
-        pixel_coords_output = kornia.cam2pixel(cam_coords_src=cam_coords, dst_proj_src=proj_mat, eps=eps)
+        pixel_coords_output = kornia.geometry.camera.cam2pixel(cam_coords_src=cam_coords, dst_proj_src=proj_mat, eps=eps)
         pixel_coords_concat = torch.cat([pixel_coords_output, last_ch], axis=-1)
 
         assert_close(pixel_coords_concat, pixel_coords_input, atol=1e-4, rtol=1e-4)
@@ -205,7 +205,7 @@ class TestPixel2Cam:
         intrinsics_inv = tensor_to_gradcheck_var(intrinsics_inv)
         pixel_coords_input = tensor_to_gradcheck_var(pixel_coords_input)
 
-        assert gradcheck(kornia.geometry.pixel2cam, (depth, intrinsics_inv, pixel_coords_input), raise_exception=True)
+        assert gradcheck(kornia.geometry.camera.pixel2cam, (depth, intrinsics_inv, pixel_coords_input), raise_exception=True)
 
 
 class TestPinholeCamera:
@@ -229,8 +229,8 @@ class TestPinholeCamera:
         extrinsics = torch.eye(4, device=device, dtype=dtype)[None]
         height = torch.ones(1, device=device, dtype=dtype)
         width = torch.ones(1, device=device, dtype=dtype)
-        pinhole = kornia.PinholeCamera(intrinsics, extrinsics, height, width)
-        assert isinstance(pinhole, kornia.PinholeCamera)
+        pinhole = kornia.geometry.camera.PinholeCamera(intrinsics, extrinsics, height, width)
+        assert isinstance(pinhole, kornia.geometry.camera.PinholeCamera)
 
     def test_pinhole_camera_attributes(self, device, dtype):
         batch_size = 1
@@ -243,7 +243,7 @@ class TestPinholeCamera:
         height = torch.ones(batch_size, device=device, dtype=dtype) * height
         width = torch.ones(batch_size, device=device, dtype=dtype) * width
 
-        pinhole = kornia.PinholeCamera(intrinsics, extrinsics, height, width)
+        pinhole = kornia.geometry.camera.PinholeCamera(intrinsics, extrinsics, height, width)
 
         assert pinhole.batch_size == batch_size
         assert pinhole.fx.item() == fx
@@ -271,7 +271,7 @@ class TestPinholeCamera:
         height = torch.ones(batch_size, device=device, dtype=dtype) * height
         width = torch.ones(batch_size, device=device, dtype=dtype) * width
 
-        pinhole = kornia.PinholeCamera(intrinsics, extrinsics, height, width)
+        pinhole = kornia.geometry.camera.PinholeCamera(intrinsics, extrinsics, height, width)
 
         assert pinhole.tx.item() == tx
         assert pinhole.ty.item() == ty
@@ -306,7 +306,7 @@ class TestPinholeCamera:
         height = torch.ones(batch_size, device=device, dtype=dtype) * height
         width = torch.ones(batch_size, device=device, dtype=dtype) * width
 
-        pinhole = kornia.PinholeCamera(intrinsics, extrinsics, height, width)
+        pinhole = kornia.geometry.camera.PinholeCamera(intrinsics, extrinsics, height, width)
 
         assert pinhole.batch_size == batch_size
         assert pinhole.fx.shape[0] == batch_size
@@ -336,7 +336,7 @@ class TestPinholeCamera:
         width = torch.ones(batch_size, device=device, dtype=dtype) * width
         scale_factor = torch.ones(batch_size, device=device, dtype=dtype) * scale_val
 
-        pinhole = kornia.PinholeCamera(intrinsics, extrinsics, height, width)
+        pinhole = kornia.geometry.camera.PinholeCamera(intrinsics, extrinsics, height, width)
         pinhole_scale = pinhole.scale(scale_factor)
 
         assert_close(
@@ -367,7 +367,7 @@ class TestPinholeCamera:
         width = torch.ones(batch_size, device=device, dtype=dtype) * width
         scale_factor = torch.ones(batch_size, device=device, dtype=dtype) * scale_val
 
-        pinhole = kornia.PinholeCamera(intrinsics, extrinsics, height, width)
+        pinhole = kornia.geometry.camera.PinholeCamera(intrinsics, extrinsics, height, width)
         pinhole_scale = pinhole.clone()
         pinhole_scale.scale_(scale_factor)
 
@@ -386,132 +386,3 @@ class TestPinholeCamera:
         assert_close(pinhole_scale.height, pinhole.height * scale_val, atol=1e-4, rtol=1e-4)
         assert_close(pinhole_scale.width, pinhole.width * scale_val, atol=1e-4, rtol=1e-4)
 
-
-'''@pytest.mark.parametrize("batch_size", [1, 2, 5, 6])
-def test_scale_pinhole(batch_size, device_type):
-    # generate input data
-    device = torch.device(device_type)
-    pinholes = torch.rand(batch_size, 12, device=device, dtype=dtype)
-    scales = torch.rand(batch_size, device=device, dtype=dtype)
-
-    pinholes_scale = kornia.scale_pinhole(pinholes, scales)
-    assert_close(
-        pinholes_scale[..., :6] / scales.unsqueeze(-1), pinholes[..., :6])
-
-    # evaluate function gradient
-    pinholes = utils.tensor_to_gradcheck_var(pinholes)  # to var
-    scales = utils.tensor_to_gradcheck_var(scales)  # to var
-    assert gradcheck(kornia.scale_pinhole, (pinholes, scales,),
-                     raise_exception=True)
-
-
-@pytest.mark.parametrize("batch_size", [1, 2, 5, 6])
-def test_pinhole_matrix(batch_size, device_type):
-    # generate input data
-    image_height, image_width = 32., 32.
-    cx, cy = image_width / 2, image_height / 2
-    fx, fy = 1., 1.
-    rx, ry, rz = 0., 0., 0.
-    tx, ty, tz = 0., 0., 0.
-    offset_x = 10.  # we will apply a 10units offset to `i` camera
-    eps = 1e-6
-
-    pinhole = utils.create_pinhole(
-        fx, fy, cx, cy, image_height, image_width, rx, ry, rx, tx, ty, tz)
-    pinhole = pinhole.repeat(batch_size, 1).to(torch.device(device_type))
-
-    pinhole_matrix = kornia.pinhole_matrix(pinhole)
-
-    ones = torch.ones(batch_size)
-    assert bool((pinhole_matrix[:, 0, 0] == fx * ones).all())
-    assert bool((pinhole_matrix[:, 1, 1] == fy * ones).all())
-    assert bool((pinhole_matrix[:, 0, 2] == cx * ones).all())
-    assert bool((pinhole_matrix[:, 1, 2] == cy * ones).all())
-
-    # functional
-    assert kornia.PinholeMatrix()(pinhole).shape == (batch_size, 4, 4)
-
-    # evaluate function gradient
-    pinhole = utils.tensor_to_gradcheck_var(pinhole)  # to var
-    assert gradcheck(kornia.pinhole_matrix, (pinhole,),
-                     raise_exception=True)
-
-
-@pytest.mark.parametrize("batch_size", [1, 2, 5, 6])
-def test_inverse_pinhole_matrix(batch_size, device_type):
-    # generate input data
-    image_height, image_width = 32., 32.
-    cx, cy = image_width / 2, image_height / 2
-    fx, fy = 1., 1.
-    rx, ry, rz = 0., 0., 0.
-    tx, ty, tz = 0., 0., 0.
-    offset_x = 10.  # we will apply a 10units offset to `i` camera
-    eps = 1e-6
-
-    pinhole = utils.create_pinhole(
-        fx, fy, cx, cy, image_height, image_width, rx, ry, rx, tx, ty, tz)
-    pinhole = pinhole.repeat(batch_size, 1).to(torch.device(device_type))
-
-    pinhole_matrix = kornia.inverse_pinhole_matrix(pinhole)
-
-    ones = torch.ones(batch_size)
-    assert_close(pinhole_matrix[:, 0, 0], (1. / fx) * ones)
-    assert_close(pinhole_matrix[:, 1, 1], (1. / fy) * ones)
-    assert_close(
-        pinhole_matrix[:, 0, 2], (-1. * cx / fx) * ones)
-    assert_close(
-        pinhole_matrix[:, 1, 2], (-1. * cy / fx) * ones)
-
-    # functional
-    assert kornia.InversePinholeMatrix()(pinhole).shape == (batch_size, 4, 4)
-
-    # evaluate function gradient
-    pinhole = utils.tensor_to_gradcheck_var(pinhole)  # to var
-    assert gradcheck(kornia.pinhole_matrix, (pinhole,),
-                     raise_exception=True)
-
-
-@pytest.mark.parametrize("batch_size", [1, 2, 5, 6])
-def test_homography_i_H_ref(batch_size, device_type):
-    # generate input data
-    device = torch.device(device_type)
-    image_height, image_width = 32., 32.
-    cx, cy = image_width / 2, image_height / 2
-    fx, fy = 1., 1.
-    rx, ry, rz = 0., 0., 0.
-    tx, ty, tz = 0., 0., 0.
-    offset_x = 10.  # we will apply a 10units offset to `i` camera
-    eps = 1e-6
-
-    pinhole_ref = utils.create_pinhole(
-        fx, fy, cx, cy, image_height, image_width, rx, ry, rx, tx, ty, tz)
-    pinhole_ref = pinhole_ref.repeat(batch_size, 1, device=device, dtype=dtype)
-
-    pinhole_i = utils.create_pinhole(
-        fx,
-        fy,
-        cx,
-        cy,
-        image_height,
-        image_width,
-        rx,
-        ry,
-        rx,
-        tx + offset_x,
-        ty,
-        tz)
-    pinhole_i = pinhole_i.repeat(batch_size, 1, device=device, dtype=dtype)
-
-    # compute homography from ref to i
-    i_H_ref = kornia.homography_i_H_ref(pinhole_i, pinhole_ref) + eps
-    i_H_ref_inv = torch.inverse(i_H_ref)
-
-    # compute homography from i to ref
-    ref_H_i = kornia.homography_i_H_ref(pinhole_ref, pinhole_i) + eps
-    assert_close(i_H_ref_inv, ref_H_i)
-
-    # evaluate function gradient
-    assert gradcheck(kornia.homography_i_H_ref,
-                     (utils.tensor_to_gradcheck_var(pinhole_ref) + eps,
-                      utils.tensor_to_gradcheck_var(pinhole_i) + eps,),
-                     raise_exception=True)'''

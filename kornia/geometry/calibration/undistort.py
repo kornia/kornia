@@ -1,9 +1,10 @@
 import torch
 
-from kornia.geometry.calibration.distort import distort_points, tilt_projection
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform.imgwarp import remap
 from kornia.utils import create_meshgrid
+
+from .distort import distort_points, tilt_projection
 
 __all__ = [
     "undistort_points",

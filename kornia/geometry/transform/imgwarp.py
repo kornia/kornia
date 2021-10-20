@@ -3,18 +3,19 @@ from typing import Optional, Tuple
 import torch
 import torch.nn.functional as F
 
+import kornia
 from kornia.geometry.conversions import (
     convert_affinematrix_to_homography,
     convert_affinematrix_to_homography3d,
     deg2rad,
     normalize_pixel_coordinates,
 )
-from kornia.geometry.epipolar import eye_like
 from kornia.geometry.linalg import transform_points
-from kornia.geometry.transform.homography_warper import normalize_homography
-from kornia.geometry.transform.projwarp import get_projective_transform
 from kornia.utils import create_meshgrid
 from kornia.utils.helpers import _torch_inverse_cast, _torch_solve_cast
+
+from .homography_warper import normalize_homography
+from .projwarp import get_projective_transform
 
 __all__ = [
     "warp_perspective",
@@ -380,17 +381,17 @@ def get_rotation_matrix2d(center: torch.Tensor, angle: torch.Tensor, scale: torc
             )
         )
 
-    shift_m = eye_like(3, center)
+    shift_m = kornia.eye_like(3, center)
     shift_m[:, :2, 2] = center
 
-    shift_m_inv = eye_like(3, center)
+    shift_m_inv = kornia.eye_like(3, center)
     shift_m_inv[:, :2, 2] = -center
 
-    scale_m = eye_like(3, center)
+    scale_m = kornia.eye_like(3, center)
     scale_m[:, 0, 0] *= scale[:, 0]
     scale_m[:, 1, 1] *= scale[:, 1]
 
-    rotat_m = eye_like(3, center)
+    rotat_m = kornia.eye_like(3, center)
     rotat_m[:, :2, :2] = angle_to_rotation_matrix(angle)
 
     affine_m = shift_m @ rotat_m @ scale_m @ shift_m_inv

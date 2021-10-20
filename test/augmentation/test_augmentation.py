@@ -2238,7 +2238,7 @@ class TestRandomCrop:
         img = torch.ones(1, 1, 5, 6, device=device, dtype=dtype)
 
         actual = op_script(img)
-        expected = kornia.center_crop3d(img)
+        expected = kornia.geometry.transform.center_crop3d(img)
         assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.skip("Need to fix Union type")

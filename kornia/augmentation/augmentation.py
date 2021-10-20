@@ -20,10 +20,10 @@ from kornia.enhance import (
 )
 from kornia.enhance.normalize import denormalize, normalize
 from kornia.filters import box_blur, gaussian_blur2d, motion_blur
-from kornia.geometry import (
+from kornia.geometry.conversions import deg2rad
+from kornia.geometry.transform import (
     affine,
     crop_by_transform_mat,
-    deg2rad,
     elastic_transform2d,
     get_affine_matrix2d,
     get_perspective_transform,

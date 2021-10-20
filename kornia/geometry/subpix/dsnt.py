@@ -11,6 +11,12 @@ import torch.nn.functional as F
 from kornia.testing import check_is_tensor
 from kornia.utils.grid import create_meshgrid
 
+__all__ = [
+    "spatial_softmax2d",
+    "spatial_expectation2d",
+    "render_gaussian2d",
+]
+
 
 def _validate_batched_image_tensor_input(tensor):
     check_is_tensor(tensor)

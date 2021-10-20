@@ -151,7 +151,7 @@ class TestWarpAffine:
         img_a = kornia.geometry.warp_affine(img_b, aff_ab, (h, w))
 
         # invert the transform
-        aff_ba = kornia.convert_affinematrix_to_homography(aff_ab).inverse()[..., :2, :]
+        aff_ba = kornia.geometry.conversions.convert_affinematrix_to_homography(aff_ab).inverse()[..., :2, :]
         img_b_hat = kornia.geometry.warp_affine(img_a, aff_ba, (h, w))
         assert_close(img_b_hat, img_b, atol=1e-3, rtol=1e-3)
 

@@ -4,7 +4,17 @@ from typing import Tuple
 
 import torch
 
-import kornia
+from kornia.geometry.conversions import convert_points_to_homogeneous
+from kornia.geometry.linalg import transform_points
+
+__all__ = [ 
+    "normalize_points",
+    "normalize_transformation",
+    "find_fundamental",
+    "compute_correspond_epilines",
+    "fundamental_from_essential",
+    "fundamental_from_projections",
+]
 
 
 def normalize_points(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -43,7 +53,7 @@ def normalize_points(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Ten
     )  # Bx9
 
     transform = transform.view(-1, 3, 3)  # Bx3x3
-    points_norm = kornia.transform_points(transform, points)  # BxNx2
+    points_norm = transform_points(transform, points)  # BxNx2
 
     return (points_norm, transform)
 
@@ -139,7 +149,7 @@ def compute_correspond_epilines(points: torch.Tensor, F_mat: torch.Tensor) -> to
     if not (len(F_mat.shape) == 3 and F_mat.shape[-2:] == (3, 3)):
         raise AssertionError(F_mat.shape)
 
-    points_h: torch.Tensor = kornia.convert_points_to_homogeneous(points)
+    points_h: torch.Tensor = convert_points_to_homogeneous(points)
 
     # project points and retrieve lines components
     a, b, c = torch.chunk(F_mat @ points_h.permute(0, 2, 1), dim=1, chunks=3)

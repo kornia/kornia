@@ -4,7 +4,8 @@ import pytest
 import torch
 from torch.autograd import gradcheck
 
-from kornia import enhance, rotate
+from kornia import enhance
+from kornia.geometry import rotate
 from kornia.testing import assert_close, BaseTester, tensor_to_gradcheck_var
 
 

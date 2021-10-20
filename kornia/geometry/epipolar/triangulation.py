@@ -2,7 +2,11 @@
 
 import torch
 
-import kornia
+from kornia.geometry.conversions import convert_points_from_homogeneous
+
+__all__ = [
+    "triangulate_points",
+]
 
 # https://github.com/opencv/opencv_contrib/blob/master/modules/sfm/src/triangulation.cpp#L68
 
@@ -61,5 +65,5 @@ def triangulate_points(
     _, _, V = torch.svd(X)
 
     points3d_h = V[..., -1]
-    points3d: torch.Tensor = kornia.convert_points_from_homogeneous(points3d_h)
+    points3d: torch.Tensor = convert_points_from_homogeneous(points3d_h)
     return points3d

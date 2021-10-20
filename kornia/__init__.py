@@ -10,98 +10,73 @@ try:
 except ImportError:
     pass
 
-from kornia import (  # noqa: 403
+import torch
+
+# NOTE: kornia.geomtry must go first since it is the core of the library
+# and by changing the import order you might get into a circular dependencies issue.
+from kornia import geometry
+from kornia import (
     augmentation,
     color,
     contrib,
     enhance,
     feature,
     filters,
-    geometry,
-    jit,
     losses,
     metrics,
     morphology,
     utils,
     x,
 )
-'''from kornia.color import (
-    bgr_to_grayscale,
-    bgr_to_rgb,
-    bgr_to_rgba,
-    grayscale_to_rgb,
-    hls_to_rgb,
-    hsv_to_rgb,
-    lab_to_rgb,
-    luv_to_rgb,
-    rgb_to_bgr,
-    rgb_to_grayscale,
-    rgb_to_hls,
-    rgb_to_hsv,
-    rgb_to_lab,
-    rgb_to_luv,
-    rgb_to_rgba,
-    rgb_to_xyz,
-    rgb_to_ycbcr,
-    rgb_to_yuv,
-    rgba_to_bgr,
-    rgba_to_rgb,
-    xyz_to_rgb,
-    ycbcr_to_rgb,
-    yuv_to_rgb,
-)'''
-#from kornia.constants import *
-#from kornia.contrib import extract_tensor_patches
-'''from kornia.enhance import (
-    adjust_brightness,
-    adjust_contrast,
-    adjust_gamma,
-    adjust_hue,
-    adjust_saturation,
-    denormalize,
-    linear_transform,
-    normalize,
-    normalize_min_max,
-    zca_mean,
-    zca_whiten,
-)'''
-#from kornia.feature import DeFMO, gftt_response, harris_response, hessian_response, MKDDescriptor, nms2d, SIFTDescriptor
-'''from kornia.filters import (
-    box_blur,
-    canny,
-    filter2d,
-    filter3d,
-    gaussian_blur2d,
-    get_gaussian_discrete_kernel1d,
-    get_gaussian_erf_kernel1d,
-    get_gaussian_kernel1d,
-    get_gaussian_kernel2d,
-    get_laplacian_kernel1d,
-    get_laplacian_kernel2d,
-    get_motion_kernel2d,
-    get_motion_kernel3d,
-    laplacian,
-    median_blur,
-    motion_blur,
-    motion_blur3d,
-    sobel,
-    spatial_gradient,
-    unsharp_mask,
-)'''
-from kornia.geometry import *
-'''from kornia.losses import (
-    dice_loss,
-    inverse_depth_smoothness_loss,
-    js_div_loss_2d,
-    kl_div_loss_2d,
-    psnr_loss,
-    ssim,
-    total_variation,
-    tversky_loss,
-)'''
+
+# NOTE: we are going to expose to top level very few things
+
+from kornia.constants import pi
 from kornia.testing import xla_is_available
 from kornia.utils import (
     create_meshgrid,
     image_to_tensor,
     tensor_to_image,
 )
+
+
+def eye_like(n: int, input: torch.Tensor) -> torch.Tensor:
+    r"""Return a 2-D tensor with ones on the diagonal and zeros elsewhere with the same batch size as the input.
+
+    Args:
+        n: the number of rows :math:`(N)`.
+        input: image tensor that will determine the batch size of the output matrix.
+          The expected shape is :math:`(B, *)`.
+
+    Returns:
+       The identity matrix with the same batch size as the input :math:`(B, N, N)`.
+
+    """
+    if n <= 0:
+        raise AssertionError(type(n), n)
+    if len(input.shape) < 1:
+        raise AssertionError(input.shape)
+
+    identity = torch.eye(n, device=input.device, dtype=input.dtype)
+    return identity[None].repeat(input.shape[0], 1, 1)
+
+
+def vec_like(n, tensor):
+    r"""Return a 2-D tensor with a vector containing zeros with the same batch size as the input.
+
+    Args:
+        n: the number of rows :math:`(N)`.
+        tensor: image tensor that will determine the batch size of the output matrix.
+          The expected shape is :math:`(B, *)`.
+
+    Returns:
+        The vector with the same batch size as the input :math:`(B, N, 1)`.
+
+    """
+    if n <= 0:
+        raise AssertionError(type(n), n)
+    if len(tensor.shape) < 1:
+        raise AssertionError(tensor.shape)
+
+    vec = torch.zeros(n, 1, device=tensor.device, dtype=tensor.dtype)
+    return vec[None].repeat(tensor.shape[0], 1, 1)

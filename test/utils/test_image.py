@@ -29,15 +29,15 @@ def test_list_of_images_to_tensor(num_of_images, image_shape):
     images: List[np.array] = []
     if num_of_images == 0:
         with pytest.raises(ValueError):
-            kornia.image_list_to_tensor([])
+            kornia.utils.image_list_to_tensor([])
         return
     for _ in range(num_of_images):
         images.append(np.ones(shape=image_shape))
     if len(image_shape) != 3:
         with pytest.raises(ValueError):
-            kornia.image_list_to_tensor(images)
+            kornia.utils.image_list_to_tensor(images)
         return
-    tensor = kornia.image_list_to_tensor(images)
+    tensor = kornia.utils.image_list_to_tensor(images)
     assert tensor.shape == (num_of_images, image_shape[-1], image_shape[-3], image_shape[-2])
 
 

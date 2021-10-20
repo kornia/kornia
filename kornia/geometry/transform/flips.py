@@ -1,6 +1,15 @@
 import torch
 import torch.nn as nn
 
+__all__ = [
+    "Vflip",
+    "Hflip",
+    "Rot180",
+    "rot180",
+    "hflip",
+    "vflip",
+]
+
 
 class Vflip(nn.Module):
     r"""Vertically flip a tensor image or a batch of tensor images.

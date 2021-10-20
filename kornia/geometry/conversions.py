@@ -8,7 +8,6 @@ import torch.nn.functional as F
 from kornia.constants import pi
 
 __all__ = [
-    # functional api
     "rad2deg",
     "deg2rad",
     "pol2cart",

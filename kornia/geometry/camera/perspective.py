@@ -3,6 +3,8 @@ import torch.nn.functional as F
 
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 
+__all__ = ["unproject_points", "project_points"]
+
 
 def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch.Tensor:
     r"""Project a 3d point onto the 2d camera plane.

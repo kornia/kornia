@@ -251,7 +251,7 @@ class TestExtractTensorPatches:
     def test_jit(self, device):
         @torch.jit.script
         def op_script(img: torch.Tensor, height: int, width: int) -> torch.Tensor:
-            return kornia.denormalize_pixel_coordinates(img, height, width)
+            return kornia.geometry.denormalize_pixel_coordinates(img, height, width)
 
         height, width = 3, 4
         grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=True).to(device)

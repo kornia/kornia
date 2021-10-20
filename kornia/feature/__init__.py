@@ -1,10 +1,4 @@
 from .loftr import LoFTR
-from .nms import (
-    nms2d,
-    nms3d,
-    NonMaximaSuppression2d,
-    NonMaximaSuppression3d,
-)
 from .responses import (
     BlobDoG,
     BlobHessian,
@@ -48,6 +42,7 @@ from .laf import (
     raise_error_if_laf_is_not_valid,
     scale_laf,
     set_laf_orientation,
+    perspective_transform_lafs,
 )
 from .matching import (
     match_nn,
@@ -67,10 +62,6 @@ from .siftdesc import SIFTDescriptor
 from .sosnet import SOSNet
 from .tfeat import TFeat
 
-# Backward compatibility
-non_maxima_suppression2d = nms2d
-non_maxima_suppression3d = nms3d
-
 __all__ = [
     "match_nn",
     "match_mnn",
@@ -84,16 +75,10 @@ __all__ = [
     "GFTTAffNetHardNet",
     "LocalFeatureMatcher",
     "SOSNet",
-    "nms2d",
-    "nms3d",
-    "non_maxima_suppression2d",
-    "non_maxima_suppression3d",
     "harris_response",
     "gftt_response",
     "hessian_response",
     "dog_response",
-    "NonMaximaSuppression2d",
-    "NonMaximaSuppression3d",
     "CornerHarris",
     "CornerGFTT",
     "BlobHessian",
@@ -141,4 +126,5 @@ __all__ = [
     "LAFDescriptor",
     "DescriptorMatcher",
     "LoFTR",
+    "perspective_transform_lafs",
 ]

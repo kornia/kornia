@@ -4,7 +4,9 @@ from typing import Dict, Optional
 import torch
 import torch.nn as nn
 
-from kornia.filters import get_gaussian_kernel2d, SpatialGradient
+from kornia.filters.kernels import get_gaussian_kernel2d
+from kornia.filters.sobel import SpatialGradient
+
 from .laf import (
     ellipse_to_laf,
     extract_patches_from_pyramid,
