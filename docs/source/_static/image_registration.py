@@ -2,7 +2,6 @@ import os
 
 import cv2
 import imageio
-import matplotlib.pyplot as plt
 import torch
 
 import kornia as K
@@ -17,6 +16,7 @@ def load_timg(file_name):
     # convert image to torch tensor
     tensor = K.image_to_tensor(img, None).float() / 255.
     return K.color.bgr_to_rgb(tensor)
+
 
 registrator = KG.ImageRegistrator('similarity')
 
