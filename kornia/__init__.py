@@ -25,7 +25,7 @@ from kornia import (
     utils,
     x,
 )
-from kornia.color import (
+'''from kornia.color import (
     bgr_to_grayscale,
     bgr_to_rgb,
     bgr_to_rgba,
@@ -49,7 +49,7 @@ from kornia.color import (
     xyz_to_rgb,
     ycbcr_to_rgb,
     yuv_to_rgb,
-)
+)'''
 from kornia.constants import *
 from kornia.contrib import extract_tensor_patches
 from kornia.enhance import (

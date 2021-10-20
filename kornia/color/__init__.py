@@ -1,4 +1,11 @@
-from .gray import bgr_to_grayscale, BgrToGrayscale, grayscale_to_rgb, GrayscaleToRgb, rgb_to_grayscale, RgbToGrayscale
+from .gray import (
+    bgr_to_grayscale,
+    BgrToGrayscale,
+    grayscale_to_rgb,
+    GrayscaleToRgb,
+    rgb_to_grayscale,
+    RgbToGrayscale,
+)
 from .hls import hls_to_rgb, HlsToRgb, rgb_to_hls, RgbToHls
 from .hsv import hsv_to_rgb, HsvToRgb, rgb_to_hsv, RgbToHsv
 from .lab import lab_to_rgb, LabToRgb, rgb_to_lab, RgbToLab
@@ -90,4 +97,17 @@ __all__ = [
     "raw_to_rgb",
     "rgb_to_raw",
     "CFA",
+    "GrayscaleToRgb",
+    "luv_to_rgb",
+    "rgb_to_luv",
+    "bgr_to_rgba",
+    "BgrToRgba",
+    "linear_rgb_to_rgb",
+    "LinearRgbToRgb",
+    "rgb_to_linear_rgb",
+    "rgba_to_rgb",
+    "rgba_to_bgr",
+    "RgbaToRgb",
+    "RgbaToBgr",
+    "RgbToLinearRgb",
 ]
