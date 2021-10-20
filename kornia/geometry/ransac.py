@@ -1,6 +1,6 @@
 """Module containing RANSAC modules."""
 import math
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -135,7 +135,7 @@ class RANSAC(nn.Module):
                      kp1: torch.Tensor,
                      kp2: torch.Tensor,
                      inliers: torch.Tensor) -> torch.Tensor:
-        # ToDo: Replace this with MAGSAC++ polisher
+        # TODO: Replace this with MAGSAC++ polisher
         kp1_inl = kp1[inliers][None]
         kp2_inl = kp2[inliers][None]
         num_inl = kp1_inl.size(1)
