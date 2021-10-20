@@ -24,14 +24,6 @@ class HomographyTracker(nn.Module):
                           or :class:`~kornia.feature.LoFTR`. Default: :class:`~kornia.feature.DescriptorMatcher`.
         ransac: homography estimation module. Default: :class:`~kornia.geometry.RANSAC`.
         minimum_inliers_num: threshold for number inliers for matching to be successful.
-
-    .. code:: python
-        >>> from kornia.tracking import HomographyTracker
-        >>> target = torch.rand(1, 1, 32, 32)
-        >>> img_dst = torch.rand(1, 1, 64, 64)
-        >>> tracker = HomographyTracker()
-        >>> tracker.set_target(target)
-        >>> homography, success = tracker(img_dst)
     """
     def __init__(self,
                  initial_matcher=LocalFeatureMatcher(GFTTAffNetHardNet(3000),
