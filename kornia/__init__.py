@@ -89,7 +89,7 @@ from kornia.feature import DeFMO, gftt_response, harris_response, hessian_respon
     unsharp_mask,
 )'''
 from kornia.geometry import *
-from kornia.losses import (
+'''from kornia.losses import (
     dice_loss,
     inverse_depth_smoothness_loss,
     js_div_loss_2d,
@@ -98,7 +98,7 @@ from kornia.losses import (
     ssim,
     total_variation,
     tversky_loss,
-)
+)'''
 from kornia.testing import xla_is_available
 from kornia.utils import (
     create_meshgrid,
