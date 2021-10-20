@@ -1,11 +1,8 @@
-import random
-
 import pytest
 import torch
 from torch.autograd import gradcheck
 
 import kornia
-import kornia.testing as utils
 from kornia.geometry import RANSAC
 from kornia.testing import assert_close
 

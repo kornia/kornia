@@ -1,9 +1,6 @@
-import pytest
 import torch
-from torch.autograd import gradcheck
 
 import kornia
-import kornia.testing as utils  # test utils
 from kornia.geometry.transform import ImageRegistrator
 from kornia.testing import assert_close
 

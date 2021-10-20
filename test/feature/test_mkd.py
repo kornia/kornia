@@ -1,9 +1,11 @@
 import pytest
+import torch
 from torch.autograd import gradcheck
 
 import kornia.testing as utils  # test utils
-from kornia.feature.mkd import *
+from kornia.feature.mkd import get_grid_dict, get_kron_order, MKDDescriptor, MKDGradients, VonMisesKernel, EmbedGradients, ExplicitSpacialEncoding, spatial_kernel_embedding, Whitening, SimpleKD, COEFFS
 from kornia.testing import assert_close
+from math import pi
 
 
 @pytest.mark.parametrize("ps", [5, 13, 25])
