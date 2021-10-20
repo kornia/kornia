@@ -5,8 +5,6 @@ import torch.nn as nn
 
 import kornia as K
 
-__all__ = ["ImageStitcher"]
-
 
 class ImageStitcher(nn.Module):
     """Stitch two images with overlapping fields of view.

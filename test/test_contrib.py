@@ -326,7 +326,7 @@ class TestLambdaModule:
     def test_lambda(self, shape, device, dtype):
         B, C, H, W = shape
         img = torch.rand(B, C, H, W, device=device, dtype=dtype)
-        func = kornia.bgr_to_grayscale
+        func = kornia.color.bgr_to_grayscale
         lambda_module = kornia.contrib.Lambda(func)
         out = lambda_module(img)
         assert isinstance(out, torch.Tensor)
@@ -334,7 +334,7 @@ class TestLambdaModule:
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 1, 3, 4, 5
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        func = kornia.bgr_to_grayscale
+        func = kornia.color.bgr_to_grayscale
         assert gradcheck(kornia.contrib.Lambda(func), (img,), raise_exception=True)
 
 

@@ -50,9 +50,9 @@ from kornia import (
     ycbcr_to_rgb,
     yuv_to_rgb,
 )'''
-from kornia.constants import *
-from kornia.contrib import extract_tensor_patches
-from kornia.enhance import (
+#from kornia.constants import *
+#from kornia.contrib import extract_tensor_patches
+'''from kornia.enhance import (
     adjust_brightness,
     adjust_contrast,
     adjust_gamma,
@@ -64,9 +64,9 @@ from kornia.enhance import (
     normalize_min_max,
     zca_mean,
     zca_whiten,
-)
+)'''
 from kornia.feature import DeFMO, gftt_response, harris_response, hessian_response, MKDDescriptor, nms2d, SIFTDescriptor
-from kornia.filters import (
+'''from kornia.filters import (
     box_blur,
     canny,
     filter2d,
@@ -87,7 +87,7 @@ from kornia.filters import (
     sobel,
     spatial_gradient,
     unsharp_mask,
-)
+)'''
 from kornia.geometry import *
 from kornia.losses import (
     dice_loss,

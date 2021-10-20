@@ -3,8 +3,8 @@ from typing import Tuple, Union
 import torch
 import torch.nn as nn
 
-import kornia
-from kornia.filters.kernels_geometry import get_motion_kernel2d, get_motion_kernel3d
+from .filter import filter2d, filter3d
+from .kernels_geometry import get_motion_kernel2d, get_motion_kernel3d
 
 
 class MotionBlur(nn.Module):
@@ -148,7 +148,7 @@ def motion_blur(
     if border_type not in ["constant", "reflect", "replicate", "circular"]:
         raise AssertionError
     kernel: torch.Tensor = get_motion_kernel2d(kernel_size, angle, direction, mode)
-    return kornia.filter2d(input, kernel, border_type)
+    return filter2d(input, kernel, border_type)
 
 
 def motion_blur3d(
@@ -192,4 +192,4 @@ def motion_blur3d(
     if border_type not in ["constant", "reflect", "replicate", "circular"]:
         raise AssertionError
     kernel: torch.Tensor = get_motion_kernel3d(kernel_size, angle, direction, mode)
-    return kornia.filter3d(input, kernel, border_type)
+    return filter3d(input, kernel, border_type)
