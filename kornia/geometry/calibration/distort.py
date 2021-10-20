@@ -81,7 +81,7 @@ def distort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
         >>> K = torch.eye(3)[None]
         >>> dist_coeff = torch.rand(1, 4)
         >>> distort_points(points, K, dist_coeff)
-        tensor([[[3.6138, 5.4226]]])
+        tensor([[[0.6189, 2.6966]]])
 
     """
     if points.dim() < 2 and points.shape[-1] != 2:

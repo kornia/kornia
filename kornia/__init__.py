@@ -14,6 +14,7 @@ import torch
 
 # NOTE: kornia.geometry must go first since it is the core of the library
 # and by changing the import order you might get into a circular dependencies issue.
+from kornia import geometry
 from kornia import (
     augmentation,
     color,
@@ -21,7 +22,6 @@ from kornia import (
     enhance,
     feature,
     filters,
-    geometry,
     losses,
     metrics,
     morphology,

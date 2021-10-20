@@ -7,7 +7,7 @@ from hydra.core.config_store import ConfigStore
 from hydra.utils import to_absolute_path
 
 import kornia as K
-from kornia.x import Configuration, Lambda, ModelCheckpoint, SemanticSegmentationTrainer
+from kornia.x import Configuration, Lambda, SemanticSegmentationTrainer
 
 cs = ConfigStore.instance()
 # Registering the Config class with the name 'config'.
@@ -80,18 +80,12 @@ def my_app(config: Configuration) -> None:
         target = sample["target"].squeeze(1).long()
         return {"input": sample["input"], "target": target}
 
-    model_checkpoint = ModelCheckpoint(
-        filepath="./outputs", monitor="iou",
-    )
-
     trainer = SemanticSegmentationTrainer(
         model, train_dataloader, valid_daloader, criterion, optimizer, scheduler, config,
         callbacks={
             "preprocess": preprocess,
             "augmentations": augmentations,
             "on_before_model": on_before_model,
-            # "on_after_model": on_after_model,
-            "on_checkpoint": model_checkpoint,
         }
     )
     trainer.fit()
