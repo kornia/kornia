@@ -9,12 +9,12 @@ from kornia.testing import assert_close
 
 
 class TestLoFTR:
-    def test_pretrained_outdoor_smoke(self, device):
-        loftr = LoFTR('outdoor').to(device)
+    def test_pretrained_outdoor_smoke(self, device, dtype):
+        loftr = LoFTR('outdoor').to(device, dtype)
         assert loftr is not None
 
-    def test_pretrained_indoor_smoke(self, device):
-        loftr = LoFTR('indoor').to(device)
+    def test_pretrained_indoor_smoke(self, device, dtype):
+        loftr = LoFTR('indoor').to(device, dtype)
         assert loftr is not None
 
     @pytest.mark.parametrize("data", ["loftr_fund"], indirect=True)

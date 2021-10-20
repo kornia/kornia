@@ -227,8 +227,8 @@ class LocalFeatureMatcher(nn.Module):
             - ``keypoints0``, matching keypoints from image0 :math:`(NC, 2)`.
             - ``keypoints1``, matching keypoints from image1 :math:`(NC, 2)`.
             - ``confidence``, confidence score [0, 1] :math:`(NC)`.
-            - ``keypoints0``, matching LAFs from image0 :math:`(1, NC, 2, 3)`.
-            - ``keypoints1``, matching LAFs from image1 :math:`(1, NC, 2, 3)`.
+            - ``lafs0``, matching LAFs from image0 :math:`(1, NC, 2, 3)`.
+            - ``lafs1``, matching LAFs from image1 :math:`(1, NC, 2, 3)`.
             - ``batch_indexes``, batch indexes for the keypoints and lafs :math:`(NC)`.
         """
         num_image_pairs: int = data['image0'].shape[0]

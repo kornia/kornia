@@ -190,7 +190,8 @@ def match_smnn(
 class DescriptorMatcher(nn.Module):
     """Module version of matching functions.
 
-    See :func:`~kornia.feature.match_snn` for more details.
+    See :func:`~kornia.feature.match_nn`, :func:`~kornia.feature.match_snn`,
+        :func:`~kornia.feature.match_mnn` or :func:`~kornia.feature.match_smnn` for more details.
 
     Args:
         match_mode: type of matching, can be `nn`, `snn`, `mnn`, `smnn`.
