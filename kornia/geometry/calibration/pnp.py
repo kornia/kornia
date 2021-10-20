@@ -156,6 +156,26 @@ def solve_pnp_dlt(
     if type(svd_eps) is not float:
         raise AssertionError(f"Type of svd_eps is not float. Got {type(svd_eps)}")
 
+    accepted_dtypes = (torch.float32, torch.float64)
+
+    if world_points.dtype not in accepted_dtypes:
+        raise AssertionError(
+            f"world_points must have one of the following dtypes {accepted_dtypes}. "
+            f"Currently it has {world_points.dtype}."
+        )
+
+    if img_points.dtype not in accepted_dtypes:
+        raise AssertionError(
+            f"img_points must have one of the following dtypes {accepted_dtypes}. "
+            f"Currently it has {img_points.dtype}."
+        )
+
+    if intrinsics.dtype not in accepted_dtypes:
+        raise AssertionError(
+            f"intrinsics must have one of the following dtypes {accepted_dtypes}. "
+            f"Currently it has {intrinsics.dtype}."
+        )
+
     if (len(world_points.shape) != 3) or (world_points.shape[2] != 3):
         raise AssertionError(
             f"world_points must be of shape (B, N, 3). Got shape {world_points.shape}."
