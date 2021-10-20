@@ -1,6 +1,5 @@
 from itertools import product
 from typing import Dict
-
 import numpy
 import pytest
 import torch
@@ -93,3 +92,12 @@ def add_np(doctest_namespace):
     doctest_namespace["np"] = numpy
     doctest_namespace["torch"] = torch
     doctest_namespace["kornia"] = kornia
+
+
+@pytest.fixture(scope='session')
+def data(request):
+    url = {
+        'loftr_homo': 'https://github.com/kornia/data_test/blob/main/loftr_outdoor_and_homography_data.pt?raw=true',
+        'loftr_fund': 'https://github.com/kornia/data_test/blob/main/loftr_indoor_and_fundamental_data.pt?raw=true',
+    }
+    return torch.hub.load_state_dict_from_url(url[request.param])
