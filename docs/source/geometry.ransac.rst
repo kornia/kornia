@@ -6,3 +6,4 @@ kornia.geometry.ransac
 Module with RANSAC
 
 .. autoclass:: RANSAC
+   :members: forward
