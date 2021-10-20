@@ -4,8 +4,8 @@ from typing import Union
 import torch
 import torch.nn.functional as F
 
+from kornia.geometry.conversions import convert_points_from_homogeneous, rad2deg
 from kornia.geometry.linalg import transform_points
-from kornia.geometry.conversions import rad2deg, convert_points_from_homogeneous
 from kornia.geometry.transform import angle_to_rotation_matrix, pyrdown
 
 

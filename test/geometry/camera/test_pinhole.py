@@ -385,4 +385,3 @@ class TestPinholeCamera:
         )  # cy
         assert_close(pinhole_scale.height, pinhole.height * scale_val, atol=1e-4, rtol=1e-4)
         assert_close(pinhole_scale.width, pinhole.width * scale_val, atol=1e-4, rtol=1e-4)
-

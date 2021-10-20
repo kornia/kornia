@@ -1,13 +1,13 @@
 """Module to generate synthetic 3d scenes."""
-from typing import Dict
 import math
+from typing import Dict
 
 import torch
 
 from kornia.geometry.conversions import angle_axis_to_rotation_matrix
 from kornia.geometry.linalg import transform_points
 
-from .projection import random_intrinsics, projection_from_KRt
+from .projection import projection_from_KRt, random_intrinsics
 
 
 def generate_scene(num_views: int, num_points: int) -> Dict[str, torch.Tensor]:

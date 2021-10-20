@@ -2,9 +2,9 @@ import pytest
 import torch
 from torch.autograd import gradcheck
 
-from kornia.geometry.conversions import rad2deg
-from kornia.feature.orientation import PassLAF, PatchDominantGradientOrientation, OriNet, LAFOrienter
 import kornia.testing as utils  # test utils
+from kornia.feature.orientation import LAFOrienter, OriNet, PassLAF, PatchDominantGradientOrientation
+from kornia.geometry.conversions import rad2deg
 from kornia.testing import assert_close
 
 

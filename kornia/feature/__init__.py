@@ -1,28 +1,13 @@
-from .loftr import LoFTR
-from .responses import (
-    BlobDoG,
-    BlobHessian,
-    CornerGFTT,
-    CornerHarris,
-    dog_response,
-    gftt_response,
-    harris_response,
-    hessian_response,
-)
-from .affine_shape import (
-    LAFAffineShapeEstimator,
-    LAFAffNetShapeEstimator,
-    PatchAffineShapeEstimator,
-)
+from .affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
 from .defmo import DeFMO
 from .hardnet import HardNet, HardNet8
 from .integrated import (
     get_laf_descriptors,
+    GFTTAffNetHardNet,
     LAFDescriptor,
     LocalFeature,
-    SIFTFeature,
-    GFTTAffNetHardNet,
     LocalFeatureMatcher,
+    SIFTFeature,
 )
 from .laf import (
     denormalize_laf,
@@ -39,23 +24,24 @@ from .laf import (
     laf_to_three_points,
     make_upright,
     normalize_laf,
+    perspective_transform_lafs,
     raise_error_if_laf_is_not_valid,
     scale_laf,
     set_laf_orientation,
-    perspective_transform_lafs,
 )
-from .matching import (
-    match_nn,
-    match_mnn,
-    match_snn,
-    match_smnn,
-    DescriptorMatcher,
-)
+from .loftr import LoFTR
+from .matching import DescriptorMatcher, match_mnn, match_nn, match_smnn, match_snn
 from .mkd import MKDDescriptor
-from .orientation import (
-    LAFOrienter,
-    OriNet,
-    PatchDominantGradientOrientation,
+from .orientation import LAFOrienter, OriNet, PatchDominantGradientOrientation
+from .responses import (
+    BlobDoG,
+    BlobHessian,
+    CornerGFTT,
+    CornerHarris,
+    dog_response,
+    gftt_response,
+    harris_response,
+    hessian_response,
 )
 from .scale_space_detector import PassLAF, ScaleSpaceDetector
 from .siftdesc import SIFTDescriptor

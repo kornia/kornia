@@ -5,7 +5,6 @@ from .mean_iou import mean_iou
 from .psnr import psnr
 from .ssim import ssim, SSIM
 
-
 __all__ = [
     "accuracy",
     "AverageMeter",

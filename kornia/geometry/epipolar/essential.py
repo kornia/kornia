@@ -6,7 +6,7 @@ import torch
 import kornia
 
 from .numeric import cross_product_matrix
-from .projection import projection_from_KRt, depth_from_point
+from .projection import depth_from_point, projection_from_KRt
 from .triangulation import triangulate_points
 
 __all__ = [

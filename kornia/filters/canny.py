@@ -9,8 +9,8 @@ from kornia.color import rgb_to_grayscale
 from kornia.geometry.conversions import rad2deg
 
 from .gaussian import gaussian_blur2d
-from .sobel import spatial_gradient
 from .kernels import get_canny_nms_kernel, get_hysteresis_kernel
+from .sobel import spatial_gradient
 
 
 def canny(

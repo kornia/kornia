@@ -3,7 +3,7 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia.testing as utils  # test utils
-from kornia.feature.affine_shape import PatchAffineShapeEstimator, LAFAffineShapeEstimator, LAFAffNetShapeEstimator
+from kornia.feature.affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
 from kornia.testing import assert_close
 
 

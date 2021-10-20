@@ -14,7 +14,6 @@ import torch
 
 # NOTE: kornia.geomtry must go first since it is the core of the library
 # and by changing the import order you might get into a circular dependencies issue.
-from kornia import geometry
 from kornia import (
     augmentation,
     color,
@@ -22,22 +21,19 @@ from kornia import (
     enhance,
     feature,
     filters,
+    geometry,
     losses,
     metrics,
     morphology,
     utils,
     x,
 )
+from kornia.constants import pi
+from kornia.testing import xla_is_available
+from kornia.utils import create_meshgrid, image_to_tensor, tensor_to_image
 
 # NOTE: we are going to expose to top level very few things
 
-from kornia.constants import pi
-from kornia.testing import xla_is_available
-from kornia.utils import (
-    create_meshgrid,
-    image_to_tensor,
-    tensor_to_image,
-)
 
 
 def eye_like(n: int, input: torch.Tensor) -> torch.Tensor:

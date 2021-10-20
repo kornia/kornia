@@ -5,8 +5,8 @@ import torch
 
 from kornia.utils import _extract_device_dtype, safe_inverse_with_mask
 
-from .epipolar import normalize_points
 from .conversions import convert_points_from_homogeneous
+from .epipolar import normalize_points
 from .linalg import transform_points
 
 TupleTensor = Tuple[torch.Tensor, torch.Tensor]

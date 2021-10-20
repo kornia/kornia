@@ -9,12 +9,7 @@ from kornia.constants import pi
 from kornia.filters import get_gaussian_kernel2d, SpatialGradient
 from kornia.geometry import rad2deg
 
-from .laf import (
-    extract_patches_from_pyramid,
-    get_laf_orientation,
-    raise_error_if_laf_is_not_valid,
-    set_laf_orientation,
-)
+from .laf import extract_patches_from_pyramid, get_laf_orientation, raise_error_if_laf_is_not_valid, set_laf_orientation
 
 urls: Dict[str, str] = {}
 urls["orinet"] = "https://github.com/ducha-aiki/affnet/raw/master/pretrained/OriNet.pth"

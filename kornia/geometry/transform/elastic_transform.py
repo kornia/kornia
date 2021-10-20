@@ -3,7 +3,7 @@ from typing import Tuple
 import torch
 import torch.nn.functional as F
 
-from kornia.filters import get_gaussian_kernel2d, filter2d
+from kornia.filters import filter2d, get_gaussian_kernel2d
 from kornia.utils import create_meshgrid
 
 __all__ = ["elastic_transform2d"]

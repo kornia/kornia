@@ -8,7 +8,6 @@ from .ssim import ssim_loss, SSIMLoss
 from .total_variation import total_variation, TotalVariation
 from .tversky import tversky_loss, TverskyLoss
 
-
 __all__ = [
     "inverse_depth_smoothness_loss",
     "InverseDepthSmoothnessLoss",

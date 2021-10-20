@@ -4,8 +4,8 @@ import torch
 import torch.nn as nn
 
 from kornia.color import rgb_to_grayscale
-from kornia.geometry.transform import ScalePyramid
 from kornia.geometry.subpix import ConvQuadInterp3d
+from kornia.geometry.transform import ScalePyramid
 
 from .affine_shape import LAFAffNetShapeEstimator
 from .hardnet import HardNet
