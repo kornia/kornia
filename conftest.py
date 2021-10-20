@@ -95,10 +95,14 @@ def add_np(doctest_namespace):
     doctest_namespace["kornia"] = kornia
 
 
+# the commit hash for the data version
+sha: str = 'cb8f42bf28b9f347df6afba5558738f62a11f28a'
+
+
 @pytest.fixture(scope='session')
 def data(request):
     url = {
-        'loftr_homo': 'https://github.com/kornia/data_test/blob/main/loftr_outdoor_and_homography_data.pt?raw=true',
-        'loftr_fund': 'https://github.com/kornia/data_test/blob/main/loftr_indoor_and_fundamental_data.pt?raw=true',
+        'loftr_homo': f'https://github.com/kornia/data_test/{sha}/main/loftr_outdoor_and_homography_data.pt?raw=true',
+        'loftr_fund': f'https://github.com/kornia/data_test/{sha}/main/loftr_indoor_and_fundamental_data.pt?raw=true',
     }
     return torch.hub.load_state_dict_from_url(url[request.param])

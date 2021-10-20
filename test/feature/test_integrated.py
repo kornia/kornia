@@ -234,6 +234,7 @@ class TestLocalFeatureMatcher:
 
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_real_sift(self, device, dtype, data):
+        torch.random.manual_seed(0)
         # This is not unit test, but that is quite good integration test
         matcher = LocalFeatureMatcher(SIFTFeature(2000),
                                       DescriptorMatcher('snn', 0.8)).to(device, dtype)
@@ -243,7 +244,6 @@ class TestLocalFeatureMatcher:
         pts_dst = data_dev['pts1']
         with torch.no_grad():
             out = matcher(data_dev)
-        torch.random.manual_seed(0)
         homography, inliers = ransac(out['keypoints0'], out['keypoints1'])
         assert (inliers.sum().item() > 50)  # we have enough inliers
         # Reprojection error of 5px is OK
@@ -255,6 +255,7 @@ class TestLocalFeatureMatcher:
 
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_real_sift_preextract(self, device, dtype, data):
+        torch.random.manual_seed(0)
         # This is not unit test, but that is quite good integration test
         feat = SIFTFeature(2000)
         matcher = LocalFeatureMatcher(feat,
@@ -274,7 +275,6 @@ class TestLocalFeatureMatcher:
 
         with torch.no_grad():
             out = matcher(data_dev)
-        torch.random.manual_seed(0)
         homography, inliers = ransac(out['keypoints0'], out['keypoints1'])
         assert (inliers.sum().item() > 50)  # we have enough inliers
         # Reprojection error of 5px is OK
@@ -286,6 +286,7 @@ class TestLocalFeatureMatcher:
 
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_real_gftt(self, device, dtype, data):
+        torch.random.manual_seed(0)
         # This is not unit test, but that is quite good integration test
         matcher = LocalFeatureMatcher(GFTTAffNetHardNet(2000),
                                       DescriptorMatcher('snn', 0.8)).to(device, dtype)
@@ -295,7 +296,6 @@ class TestLocalFeatureMatcher:
         pts_dst = data_dev['pts1']
         with torch.no_grad():
             out = matcher(data_dev)
-        torch.random.manual_seed(0)
         homography, inliers = ransac(out['keypoints0'], out['keypoints1'])
         assert (inliers.sum().item() > 50)  # we have enough inliers
         # Reprojection error of 5px is OK
