@@ -12,11 +12,8 @@ except ImportError:
 
 import torch
 
-# isort:maintain_block
-
 # NOTE: kornia.geometry must go first since it is the core of the library
 # and by changing the import order you might get into a circular dependencies issue.
-from kornia import geometry
 from kornia import (
     augmentation,
     color,
@@ -24,6 +21,7 @@ from kornia import (
     enhance,
     feature,
     filters,
+    geometry,
     losses,
     metrics,
     morphology,
@@ -34,6 +32,9 @@ from kornia import (
 from kornia.constants import pi
 from kornia.testing import xla_is_available
 from kornia.utils import create_meshgrid, image_to_tensor, tensor_to_image
+
+# isort:maintain_block
+
 # isort:end_maintain_block
 
 def eye_like(n: int, input: torch.Tensor) -> torch.Tensor:
