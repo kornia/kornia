@@ -1,6 +1,5 @@
 """Module to perform projective transformations to tensors."""
-import warnings
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 import torch
 

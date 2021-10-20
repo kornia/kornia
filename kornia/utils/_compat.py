@@ -27,4 +27,4 @@ if version.parse(torch_version()) > version.parse("1.7.1"):
     # Python 3.6 / PyTorch 1.7.0, 1.7.1
     from torch.linalg import qr as linalg_qr  # type: ignore
 else:
-    from torch import qr as linalg_qr  # type: ignore
+    from torch import qr as linalg_qr  # type: ignore # noqa: F401

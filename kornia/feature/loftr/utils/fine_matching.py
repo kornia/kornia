@@ -65,7 +65,7 @@ class FineMatching(nn.Module):
 
     @torch.no_grad()
     def get_fine_match(self, coords_normed, data):
-        W, WW, C, scale = self.W, self.WW, self.C, self.scale
+        W, _, _, scale = self.W, self.WW, self.C, self.scale
 
         # mkpts0_f and mkpts1_f
         mkpts0_f = data['mkpts0_c']

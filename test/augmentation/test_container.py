@@ -1,5 +1,6 @@
 import pytest
 import torch
+from torch.jit import Error
 
 import kornia
 import kornia.augmentation as K
@@ -477,7 +478,7 @@ class TestPatchSequential:
         torch.manual_seed(11)
         try:  # skip wrong param settings.
             seq = K.PatchSequential(
-                kornia.color.RgbToBgr(),
+                K.color.RgbToBgr(),
                 K.ColorJitter(0.1, 0.1, 0.1, 0.1),
                 K.ImageSequential(
                     K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
@@ -492,7 +493,8 @@ class TestPatchSequential:
                 keepdim=keepdim,
                 random_apply=random_apply,
             )
-        except:
+        # TODO: improve me and remove the exception.
+        except Exception:
             return
 
         input = torch.randn(*shape, device=device, dtype=dtype)

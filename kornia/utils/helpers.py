@@ -123,9 +123,7 @@ def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor
         dtype = torch.float32
     A_LU, pivots, info = torch.lu(A.to(dtype), get_infos=True)
     valid_mask: torch.Tensor = info == 0
-    A_LU_solvable = A_LU[valid_mask]
     X = torch.lu_solve(B.to(dtype), A_LU, pivots)
-    A_LU_out = A_LU
     return X.to(B.dtype), A_LU.to(A.dtype), valid_mask
 
 

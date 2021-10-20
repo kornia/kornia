@@ -1,4 +1,4 @@
-from typing import Callable, List, Optional, Tuple, Type, Union
+from typing import Callable, List, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -9,7 +9,6 @@ from kornia.geometry.conversions import convert_affinematrix_to_homography
 from kornia.geometry.transform.homography_warper import HomographyWarper
 from kornia.geometry.transform.imgwarp import angle_to_rotation_matrix
 from kornia.geometry.transform.pyramid import build_pyramid
-from kornia.testing import check_is_tensor
 
 __all__ = [
     "ImageRegistrator",

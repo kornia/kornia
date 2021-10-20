@@ -2,10 +2,10 @@ import pytest
 import torch
 from torch.autograd import gradcheck
 
-import kornia
-from kornia.geometry import RANSAC
+from kornia.geometry import RANSAC, transform_points
 from kornia.geometry.epipolar import sampson_epipolar_distance
 from kornia.testing import assert_close
+import kornia.testing as utils  # test utils
 
 
 class TestRANSACHomography:
@@ -27,7 +27,7 @@ class TestRANSACHomography:
         H[2:, :2] = H[2:, :2] + 0.001 * torch.rand_like(H[2:, :2])
 
         points_src = 100.0 * torch.rand(1, 20, 2, device=device, dtype=dtype)
-        points_dst = kornia.geometry.transform_points(H[None], points_src)
+        points_dst = transform_points(H[None], points_src)
 
         # making last point an outlier
         points_dst[:, -1, :] += 800
@@ -36,7 +36,7 @@ class TestRANSACHomography:
         dst_homo_src, _ = ransac(points_src[0], points_dst[0])
 
         assert_close(
-            kornia.geometry.transform_points(dst_homo_src[None], points_src[:, :-1]),
+            transform_points(dst_homo_src[None], points_src[:, :-1]),
             points_dst[:, :-1],
             rtol=1e-3,
             atol=1e-3)
@@ -56,7 +56,7 @@ class TestRANSACHomography:
         dst_homo_src, _ = ransac(pts_src, pts_dst)
 
         assert_close(
-            kornia.geometry.transform_points(dst_homo_src[None], pts_src[None]),
+            transform_points(dst_homo_src[None], pts_src[None]),
             pts_dst[None],
             rtol=1e-3,
             atol=1e-3)
@@ -81,7 +81,7 @@ class TestRANSACHomography:
 
         # Reprojection error of 5px is OK
         assert_close(
-            kornia.geometry.transform_points(dst_homo_src[None], pts_src[None]),
+            transform_points(dst_homo_src[None], pts_src[None]),
             pts_dst[None],
             rtol=5,
             atol=0.15)

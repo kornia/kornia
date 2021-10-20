@@ -315,7 +315,7 @@ def get_laf_pts_to_draw(LAF: torch.Tensor, img_idx: int = 0):
     """
     # TODO: Refactor doctest
     raise_error_if_laf_is_not_valid(LAF)
-    pts = laf_to_boundary_points(LAF[img_idx : img_idx + 1])[0]
+    pts = laf_to_boundary_points(LAF[img_idx: img_idx + 1])[0]
     pts_np = pts.detach().permute(1, 0, 2).cpu().numpy()
     return (pts_np[..., 0], pts_np[..., 1])
 
@@ -436,10 +436,10 @@ def extract_patches_simple(
     out = []
     # for loop temporarily, to be refactored
     for i in range(B):
-        grid = generate_patch_grid_from_normalized_LAF(img[i : i + 1], nlaf[i : i + 1], PS).to(img.device)
+        grid = generate_patch_grid_from_normalized_LAF(img[i: i + 1], nlaf[i: i + 1], PS).to(img.device)
         out.append(
             F.grid_sample(
-                img[i : i + 1].expand(grid.size(0), ch, h, w),
+                img[i: i + 1].expand(grid.size(0), ch, h, w),
                 grid,  # type: ignore
                 padding_mode="border",
                 align_corners=False,
@@ -485,9 +485,9 @@ def extract_patches_from_pyramid(
             if (scale_mask.float().sum()) == 0:
                 continue
             scale_mask = (scale_mask > 0).view(-1)
-            grid = generate_patch_grid_from_normalized_LAF(cur_img[i : i + 1], nlaf[i : i + 1, scale_mask, :, :], PS)
+            grid = generate_patch_grid_from_normalized_LAF(cur_img[i: i + 1], nlaf[i: i + 1, scale_mask, :, :], PS)
             patches = F.grid_sample(
-                cur_img[i : i + 1].expand(grid.size(0), ch, h, w),
+                cur_img[i: i + 1].expand(grid.size(0), ch, h, w),
                 grid,  # type: ignore
                 padding_mode="border",
                 align_corners=False,

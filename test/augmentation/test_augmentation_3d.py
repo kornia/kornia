@@ -1,5 +1,3 @@
-from typing import Tuple, Union
-
 import pytest
 import torch
 import torch.nn as nn
@@ -8,6 +6,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.augmentation import (
+    CenterCrop3D,
     RandomAffine3D,
     RandomCrop,
     RandomCrop3D,
@@ -858,25 +857,25 @@ class TestRandomCrop3D:
 class TestCenterCrop3D:
     def test_no_transform(self, device, dtype):
         inp = torch.rand(1, 2, 4, 4, 4, device=device, dtype=dtype)
-        out = kornia.augmentation.CenterCrop3D(2)(inp)
+        out = CenterCrop3D(2)(inp)
         assert out.shape == (1, 2, 2, 2, 2)
 
     def test_transform(self, device, dtype):
         inp = torch.rand(1, 2, 5, 4, 8, device=device, dtype=dtype)
-        out = kornia.augmentation.CenterCrop3D(2, return_transform=True)(inp)
+        out = CenterCrop3D(2, return_transform=True)(inp)
         assert len(out) == 2
         assert out[0].shape == (1, 2, 2, 2, 2)
         assert out[1].shape == (1, 4, 4)
 
     def test_no_transform_tuple(self, device, dtype):
         inp = torch.rand(1, 2, 5, 4, 8, device=device, dtype=dtype)
-        out = kornia.augmentation.CenterCrop3D((3, 4, 5))(inp)
+        out = CenterCrop3D((3, 4, 5))(inp)
         assert out.shape == (1, 2, 3, 4, 5)
 
     def test_gradcheck(self, device, dtype):
         input = torch.rand(1, 2, 3, 4, 5, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.augmentation.CenterCrop3D(3), (input,), raise_exception=True)
+        assert gradcheck(CenterCrop3D(3), (input,), raise_exception=True)
 
 
 class TestRandomEqualize3D:

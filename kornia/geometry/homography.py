@@ -141,7 +141,7 @@ def find_homography_dlt(
 
     try:
         _, _, V = torch.svd(A)
-    except:
+    except ValueError:
         warnings.warn('SVD did not converge', RuntimeWarning)
         return torch.empty((points1_norm.size(0), 3, 3), device=device, dtype=dtype)
 

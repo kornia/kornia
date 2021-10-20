@@ -303,7 +303,7 @@ class TestLambdaModule:
         return tensor + 2
 
     def add_x_mul_y(self, tensor, x, y=2):
-        return torch.mul(tensor + x , y)
+        return torch.mul(tensor + x, y)
 
     def test_smoke(self, device, dtype):
         B, C, H, W = 1, 3, 4, 5

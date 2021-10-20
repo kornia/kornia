@@ -3,7 +3,6 @@ from typing import Optional, Union
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from kornia.color.hsv import hsv_to_rgb, rgb_to_hsv
 from kornia.utils.helpers import _torch_histc_cast
@@ -559,7 +558,7 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
             "Batch and channel must be equal between bits and input. "
             f"Got {bits.shape}, {input.shape[:len(bits.shape)]}."
         )
-    _input = input.view(-1, *input.shape[len(bits.shape) :])
+    _input = input.view(-1, *input.shape[len(bits.shape):])
     _bits = bits.flatten()
     for i in range(input.shape[0]):
         res.append(_posterize_one(_input[i], _bits[i]))

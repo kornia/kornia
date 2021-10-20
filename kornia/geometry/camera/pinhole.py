@@ -498,7 +498,6 @@ def get_optical_pose_base(pinholes: torch.Tensor) -> torch.Tensor:
     """
     if not (len(pinholes.shape) == 2 and pinholes.shape[1] == 12):
         raise AssertionError(pinholes.shape)
-    optical_pose_parent = pinholes[..., 6:]
     # TODO: where is rtvec_to_pose?
     raise NotImplementedError
     # TODO: We have rtvec_to_pose in torchgeometry

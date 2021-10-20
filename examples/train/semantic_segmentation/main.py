@@ -5,7 +5,6 @@ import torch.nn as nn
 import torchvision
 from hydra.core.config_store import ConfigStore
 from hydra.utils import to_absolute_path
-from matplotlib.pyplot import figure
 
 import kornia as K
 from kornia.x import Configuration, Lambda, ModelCheckpoint, SemanticSegmentationTrainer
@@ -81,19 +80,6 @@ def my_app(config: Configuration) -> None:
         target = sample["target"].squeeze(1).long()
         return {"input": sample["input"], "target": target}
 
-    '''def on_after_model(self, output: torch.Tensor, sample: dict):
-        import matplotlib.pyplot as plt
-        # image
-        plt.figure()
-        plt.imshow(K.utils.tensor_to_image(torchvision.utils.make_grid(sample["input"].cpu())))
-        # labels
-        plt.figure()
-        plt.imshow(K.utils.tensor_to_image(torchvision.utils.make_grid(sample["target"].unsqueeze(1).cpu())))
-        # labels predicted
-        plt.figure()
-        plt.imshow(K.utils.tensor_to_image(torchvision.utils.make_grid(output.argmax(1).unsqueeze(1).cpu())))
-        plt.show()'''
-
     model_checkpoint = ModelCheckpoint(
         filepath="./outputs", monitor="iou",
     )
@@ -109,6 +95,7 @@ def my_app(config: Configuration) -> None:
         }
     )
     trainer.fit()
+
 
 if __name__ == "__main__":
     my_app()

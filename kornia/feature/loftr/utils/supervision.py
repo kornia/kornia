@@ -1,5 +1,3 @@
-from math import log
-
 import torch
 
 from kornia.utils import create_meshgrid
