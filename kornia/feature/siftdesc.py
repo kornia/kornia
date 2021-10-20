@@ -62,8 +62,8 @@ class SIFTDescriptor(nn.Module):
         SIFT descriptor of the patches with shape.
 
     Shape:
-        - Input: (B, 1, num_spatial_bins, num_spatial_bins)
-        - Output: (B, num_ang_bins * num_spatial_bins ** 2)
+        - Input: :math:`(B, 1, \text{num_spatial_bins}, \text{num_spatial_bins})`
+        - Output: :math:`(B, \text{num_ang_bins * num_spatial_bins ** 2})`
 
     Example:
         >>> input = torch.rand(23, 1, 32, 32)

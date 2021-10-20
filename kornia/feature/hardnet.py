@@ -22,17 +22,18 @@ class HardNet(nn.Module):
         pretrained: Download and set pretrained weights to the model.
 
     Returns:
-        HardNet descriptor of the patches.
+        torch.Tensor: HardNet descriptor of the patches.
 
     Shape:
-        - Input: (B, 1, 32, 32)
-        - Output: (B, 128)
+        - Input: :math:`(B, 1, 32, 32)`
+        - Output: :math:`(B, 128)`
 
     Examples:
         >>> input = torch.rand(16, 1, 32, 32)
         >>> hardnet = HardNet()
         >>> descs = hardnet(input) # 16x128
     """
+    patch_size = 32
 
     def __init__(self, pretrained: bool = False) -> None:
         super().__init__()
@@ -94,17 +95,18 @@ class HardNet8(nn.Module):
         pretrained: Download and set pretrained weights to the model.
 
     Returns:
-        HardNet8 descriptor of the patches.
+        torch.Tensor: HardNet8 descriptor of the patches.
 
     Shape:
-        - Input: (B, 1, 32, 32)
-        - Output: (B, 128)
+        - Input: :math:`(B, 1, 32, 32)`
+        - Output: :math:`(B, 128)`
 
     Examples:
         >>> input = torch.rand(16, 1, 32, 32)
         >>> hardnet = HardNet8()
         >>> descs = hardnet(input) # 16x128
     """
+    patch_size = 32
 
     def __init__(self, pretrained: bool = False):
         super().__init__()

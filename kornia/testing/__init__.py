@@ -41,6 +41,13 @@ def tensor_to_gradcheck_var(tensor, dtype=torch.float64, requires_grad=True):
     return tensor.requires_grad_(requires_grad).type(dtype)
 
 
+def dict_to(data: dict, device: torch.device, dtype: torch.dtype) -> dict:
+    out: dict = {}
+    for key, val in data.items():
+        out[key] = val.to(device, dtype) if isinstance(val, torch.Tensor) else val
+    return out
+
+
 def compute_patch_error(x, y, h, w):
     """Compute the absolute error between patches."""
     return torch.abs(x - y)[..., h // 4 : -h // 4, w // 4 : -w // 4].mean()
@@ -151,7 +158,6 @@ try:
                 rtol, atol = _get_default_tolerance(actual, expected)
 
         return _assert_close(actual, expected, rtol=rtol, atol=atol, check_stride=False, equal_nan=True, **kwargs)
-
 
 except ImportError:
     # Partial backport of torch.testing.assert_close for torch<1.9

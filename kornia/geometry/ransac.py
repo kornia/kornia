@@ -1,6 +1,6 @@
 """Module containing RANSAC modules."""
 import math
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -24,23 +24,19 @@ class RANSAC(nn.Module):
 
     Args:
         model_type: type of model to estimate, e.g. "homography" or "fundamental".
+        inliers_threshold: threshold for the correspondence to be an inlier.
         batch_size: number of generated samples at once.
         max_iterations: maximum batches to generate. Actual number of models to try is ``batch_size * max_iterations``.
-        inliers_threshold: threshold for the correspondence to be an inlier.
         confidence: desired confidence of the result, used for the early stopping.
         max_local_iterations: number of local optimization (polishing) iterations.
-
-    Returns:
-        - estimated model, shape of :math:`(3, 3)`.
-        - the inlier/outlier mask, shape of :math:`(1, N), where N is number of input correspondences`.
     """
     supported_models = ['homography', 'fundamental']
 
     def __init__(self,
                  model_type: str = 'homography',
+                 inl_th: float = 2.0,
                  batch_size: int = 2048,
                  max_iter: int = 10,
-                 inl_th: float = 2.0,
                  confidence: float = 0.99,
                  max_lo_iters: int = 5):
         super().__init__()
@@ -139,7 +135,7 @@ class RANSAC(nn.Module):
                      kp1: torch.Tensor,
                      kp2: torch.Tensor,
                      inliers: torch.Tensor) -> torch.Tensor:
-        # ToDo: Replace this with MAGSAC++ polisher
+        # TODO: Replace this with MAGSAC++ polisher
         kp1_inl = kp1[inliers][None]
         kp2_inl = kp2[inliers][None]
         num_inl = kp1_inl.size(1)
@@ -155,15 +151,16 @@ class RANSAC(nn.Module):
                 kp1: torch.Tensor,
                 kp2: torch.Tensor,
                 weights: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Main forward method to execute the RANSAC algorithm.
-            Args:
-                kp1 (torch.Tensor): source image keypoints :math:`(N, 2)`.
-                kp2 (torch.Tensor): distance image keypoints :math:`(N, 2)`.
-                weights (torch.Tensor): optional correspondences weights. Not used now
+        r"""Main forward method to execute the RANSAC algorithm.
 
-            Returns:
-                - estimated model, shape of :math:`(1, 3, 3)`.
-                - the inlier/outlier mask, shape of :math:`(1, N), where N is number of input correspondences`.
+        Args:
+            kp1 (torch.Tensor): source image keypoints :math:`(N, 2)`.
+            kp2 (torch.Tensor): distance image keypoints :math:`(N, 2)`.
+            weights (torch.Tensor): optional correspondences weights. Not used now
+
+        Returns:
+            - Estimated model, shape of :math:`(1, 3, 3)`.
+            - The inlier/outlier mask, shape of :math:`(1, N)`, where N is number of input correspondences.
             """
         if not isinstance(kp1, torch.Tensor):
             raise TypeError(f"Input kp1 is not torch.Tensor. Got {type(kp1)}")
@@ -178,7 +175,7 @@ class RANSAC(nn.Module):
                              equal shape at at least [{self.minimal_sample_size}, 2], \
                              got {kp1.shape}, {kp2.shape}")
 
-        best_score_total: float = 1.0
+        best_score_total: float = float(self.minimal_sample_size)
         num_tc: int = len(kp1)
         best_model_total = torch.zeros(3, 3, dtype=kp1.dtype, device=kp1.device)
         inliers_best_total: torch.Tensor = torch.zeros(num_tc, 1, device=kp1.device, dtype=torch.bool)
@@ -192,7 +189,7 @@ class RANSAC(nn.Module):
             # Estimate models
             models = self.estimate_model_from_minsample(kp1_sampled, kp2_sampled)
             models = self.remove_bad_models(models)
-            if models is None:
+            if (models is None) or (len(models) == 0):
                 continue
             # Score the models and select the best one
             model, inliers, model_score = self.verify(kp1, kp2, models, self.inl_th)
@@ -201,6 +198,8 @@ class RANSAC(nn.Module):
                 # Local optimization
                 for lo_step in range(self.max_lo_iters):
                     model_lo = self.polish_model(kp1, kp2, inliers)
+                    if (model_lo is None) or (len(model_lo) == 0):
+                        continue
                     _, inliers_lo, score_lo = self.verify(kp1, kp2, model_lo, self.inl_th)
                     # print (f"Orig score = {best_model_score}, LO score = {score_lo} TC={num_tc}")
                     if score_lo > model_score:

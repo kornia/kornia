@@ -9,17 +9,31 @@ from kornia.testing import assert_close
 
 
 class TestLoFTR:
-    @pytest.mark.skipif(torch.__version__.startswith('1.6'),
-                        reason='1.6.0 not supporting the pretrained weights as they are packed.')
-    def test_pretrained_outdoor_smoke(self, device):
-        if device == torch.device('cpu'):
-            loftr = LoFTR('outdoor').to(device)
+    def test_pretrained_outdoor_smoke(self, device, dtype):
+        loftr = LoFTR('outdoor').to(device, dtype)
+        assert loftr is not None
 
-    @pytest.mark.skipif(torch.__version__.startswith('1.6'),
-                        reason='1.6.0 not supporting the pretrained weights as they are packed.')
-    def test_pretrained_indoor_smoke(self, device):
-        if device == torch.device('cpu'):
-            loftr = LoFTR('indoor').to(device)
+    def test_pretrained_indoor_smoke(self, device, dtype):
+        loftr = LoFTR('indoor').to(device, dtype)
+        assert loftr is not None
+
+    @pytest.mark.parametrize("data", ["loftr_fund"], indirect=True)
+    def test_pretrained_indoor(self, device, dtype, data):
+        loftr = LoFTR('indoor').to(device, dtype)
+        data_dev = utils.dict_to(data, device, dtype)
+        with torch.no_grad():
+            out = loftr(data_dev)
+        assert_close(out['keypoints0'], data_dev["loftr_indoor_tentatives0"])
+        assert_close(out['keypoints1'], data_dev["loftr_indoor_tentatives1"])
+
+    @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
+    def test_pretrained_outdoor(self, device, dtype, data):
+        loftr = LoFTR('outdoor').to(device, dtype)
+        data_dev = utils.dict_to(data, device, dtype)
+        with torch.no_grad():
+            out = loftr(data_dev)
+        assert_close(out['keypoints0'], data_dev["loftr_outdoor_tentatives0"])
+        assert_close(out['keypoints1'], data_dev["loftr_outdoor_tentatives1"])
 
     @pytest.mark.skip("Takes too long time (but works)")
     def test_gradcheck(self, device):
@@ -35,15 +49,14 @@ class TestLoFTR:
         assert gradcheck(proxy_forward, (patches, patches05), eps=1e-4, atol=1e-4, raise_exception=True)
 
     @pytest.mark.skip("does not like transformer.py:L99, zip iteration")
-    @pytest.mark.jit
     def test_jit(self, device, dtype):
         B, C, H, W = 1, 1, 32, 32
         patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
         patches2x = resize(patches, (48, 48))
         input = {"image0": patches, "image1": patches2x}
         model = LoFTR().to(patches.device, patches.dtype).eval()
-        model_jit = torch.jit.script(LoFTR().to(patches.device, patches.dtype).eval())
+        model_jit = torch.jit.script(model)
         out = model(input)
-        out_jit = model(input)
+        out_jit = model_jit(input)
         for k, v in out.items():
             assert_close(v, out_jit[k])
