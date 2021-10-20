@@ -71,17 +71,7 @@ class TestFilter2D:
         )
 
         expected_valid = torch.tensor(
-            [
-                [
-                    [
-                        [5.0, 5.0, 5.0],
-                        [5.0, 5.0, 5.0],
-                        [5.0, 5.0, 5.0],
-                    ]
-                ]
-            ],
-            device=device,
-            dtype=dtype,
+            [[[[5.0, 5.0, 5.0], [5.0, 5.0, 5.0], [5.0, 5.0, 5.0]]]], device=device, dtype=dtype
         )
 
         actual = kornia.filters.filter2d(input, kernel, padding=padding)
@@ -126,17 +116,7 @@ class TestFilter2D:
         ).expand(2, 2, -1, -1)
 
         expected_valid = torch.tensor(
-            [
-                [
-                    [
-                        [5.0, 5.0, 5.0],
-                        [5.0, 5.0, 5.0],
-                        [5.0, 5.0, 5.0],
-                    ]
-                ]
-            ],
-            device=device,
-            dtype=dtype,
+            [[[[5.0, 5.0, 5.0], [5.0, 5.0, 5.0], [5.0, 5.0, 5.0]]]], device=device, dtype=dtype
         ).expand(2, 2, -1, -1)
 
         actual = kornia.filters.filter2d(input, kernel, padding=padding)
@@ -182,17 +162,7 @@ class TestFilter2D:
         ).expand(2, 2, -1, -1)
 
         expected_valid = torch.tensor(
-            [
-                [
-                    [
-                        [nv, nv, nv],
-                        [nv, nv, nv],
-                        [nv, nv, nv],
-                    ]
-                ]
-            ],
-            device=device,
-            dtype=dtype,
+            [[[[nv, nv, nv], [nv, nv, nv], [nv, nv, nv]]]], device=device, dtype=dtype
         ).expand(2, 2, -1, -1)
 
         actual = kornia.filters.filter2d(input, kernel, normalized=True, padding=padding)
@@ -239,16 +209,7 @@ class TestFilter2D:
         )
 
         expected_valid = torch.tensor(
-            [
-                [
-                    [
-                        [0.0, 0.0, 0.0, 0.0],
-                        [0.0, 5.0, 5.0, 0.0],
-                        [0.0, 5.0, 5.0, 0.0],
-                        [0.0, 0.0, 0.0, 0.0],
-                    ]
-                ]
-            ],
+            [[[[0.0, 0.0, 0.0, 0.0], [0.0, 5.0, 5.0, 0.0], [0.0, 5.0, 5.0, 0.0], [0.0, 0.0, 0.0, 0.0]]]],
             device=device,
             dtype=dtype,
         )

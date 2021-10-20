@@ -169,7 +169,9 @@ class TestDepthWarper:
 
         # evaluate function gradient
         assert gradcheck(
-            kornia.geometry.depth.depth_warp, (pinhole_dst, pinhole_src, depth_src, img_dst, height, width), raise_exception=True
+            kornia.geometry.depth.depth_warp,
+            (pinhole_dst, pinhole_src, depth_src, img_dst, height, width),
+            raise_exception=True,
         )
 
     # TODO(edgar): we should include a test showing some kind of occlusion

@@ -45,16 +45,8 @@ def test_get_gaussian_kernel2d(ksize_x, ksize_y, sigma):
 @pytest.mark.parametrize("sigma", [1.5, 2.1])
 def test_separable(ksize_x, ksize_y, sigma, device, dtype):
     input = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
-    out = kornia.filters.gaussian_blur2d(input,
-                                         (ksize_x, ksize_y),
-                                         (sigma, sigma),
-                                         "replicate",
-                                         separable=False)
-    out_sep = kornia.filters.gaussian_blur2d(input,
-                                             (ksize_x, ksize_y),
-                                             (sigma, sigma),
-                                             "replicate",
-                                             separable=True)
+    out = kornia.filters.gaussian_blur2d(input, (ksize_x, ksize_y), (sigma, sigma), "replicate", separable=False)
+    out_sep = kornia.filters.gaussian_blur2d(input, (ksize_x, ksize_y), (sigma, sigma), "replicate", separable=True)
 
     assert_close(out, out_sep)
 

@@ -177,7 +177,9 @@ class TestResize:
         new_size = 4
         input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.geometry.transform.Resize(new_size, align_corners=False), (input,), raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.transform.Resize(new_size, align_corners=False), (input,), raise_exception=True
+        )
 
 
 class TestRescale:
@@ -703,7 +705,7 @@ class TestAffine2d:
 class TestGetAffineMatrix:
     def test_smoke(self, device, dtype):
         H, W = 5, 5
-        translation = torch.tensor([[0., 0.]], device=device, dtype=dtype)
+        translation = torch.tensor([[0.0, 0.0]], device=device, dtype=dtype)
         # NOTE: ideally the center should be [W * 0.5, H * 0.5]
         center = torch.tensor([[W // 2, H // 2]], device=device, dtype=dtype)
         zoom1 = torch.ones([1, 1], device=device, dtype=dtype) * 0.5
@@ -714,7 +716,7 @@ class TestGetAffineMatrix:
 
         img = torch.ones(1, 1, H, W, device=device, dtype=dtype)
         expected = torch.zeros_like(img)
-        expected[..., 1:4] = 1.
+        expected[..., 1:4] = 1.0
 
         out = kornia.geometry.transform.warp_affine(img, affine_mat[:, :2], (H, W))
         assert_close(out, expected)

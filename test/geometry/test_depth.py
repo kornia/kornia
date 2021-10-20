@@ -300,7 +300,9 @@ class TestWarpFrameDepth:
             dtype=dtype,
         )
 
-        image_dst = kornia.geometry.depth.warp_frame_depth(image_src, depth_dst, src_trans_dst, camera_matrix, normalize_points=True)
+        image_dst = kornia.geometry.depth.warp_frame_depth(
+            image_src, depth_dst, src_trans_dst, camera_matrix, normalize_points=True
+        )
         assert_close(image_dst, image_dst_expected, rtol=1e-3, atol=1e-3)
 
     def test_gradcheck(self, device, dtype):
@@ -318,5 +320,7 @@ class TestWarpFrameDepth:
 
         # evaluate function gradient
         assert gradcheck(
-            kornia.geometry.depth.warp_frame_depth, (image_src, depth_dst, src_trans_dst, camera_matrix), raise_exception=True
+            kornia.geometry.depth.warp_frame_depth,
+            (image_src, depth_dst, src_trans_dst, camera_matrix),
+            raise_exception=True,
         )

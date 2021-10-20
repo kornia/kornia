@@ -96,9 +96,9 @@ class TestCenterCrop3D:
         expected = inp[
             :,
             :,
-            (inp.size(2) // 2 - crop_size[0] // 2): (inp.size(2) // 2 + crop_size[0] // 2 + 1),
-            (inp.size(3) // 2 - crop_size[1] // 2): (inp.size(3) // 2 + crop_size[1] // 2 + 1),
-            (inp.size(4) // 2 - crop_size[2] // 2): (inp.size(4) // 2 + crop_size[2] // 2 + 1),
+            (inp.size(2) // 2 - crop_size[0] // 2) : (inp.size(2) // 2 + crop_size[0] // 2 + 1),
+            (inp.size(3) // 2 - crop_size[1] // 2) : (inp.size(3) // 2 + crop_size[1] // 2 + 1),
+            (inp.size(4) // 2 - crop_size[2] // 2) : (inp.size(4) // 2 + crop_size[2] // 2 + 1),
         ]
         out_crop = kornia.geometry.transform.center_crop3d(inp, crop_size, align_corners=True)
         assert_close(out_crop, expected, rtol=1e-4, atol=1e-4)
@@ -114,9 +114,9 @@ class TestCenterCrop3D:
         expected = inp[
             :,
             :,
-            (inp.size(2) // 2 - crop_size[0] // 2): (inp.size(2) // 2 + crop_size[0] // 2 + 1),
-            (inp.size(3) // 2 - crop_size[1] // 2): (inp.size(3) // 2 + crop_size[1] // 2 + 1),
-            (inp.size(4) // 2 - crop_size[2] // 2): (inp.size(4) // 2 + crop_size[2] // 2 + 1),
+            (inp.size(2) // 2 - crop_size[0] // 2) : (inp.size(2) // 2 + crop_size[0] // 2 + 1),
+            (inp.size(3) // 2 - crop_size[1] // 2) : (inp.size(3) // 2 + crop_size[1] // 2 + 1),
+            (inp.size(4) // 2 - crop_size[2] // 2) : (inp.size(4) // 2 + crop_size[2] // 2 + 1),
         ]
         out_crop = kornia.geometry.transform.center_crop3d(inp, crop_size, align_corners=True)
         assert_close(out_crop, expected, rtol=1e-4, atol=1e-4)

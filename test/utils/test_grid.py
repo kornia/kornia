@@ -42,7 +42,9 @@ def test_normalize_pixel_grid(device, dtype):
     grid_pix = torch.unsqueeze(grid_pix, dim=0)
 
     # grid from pixel space to normalized
-    norm_trans_pix = kornia.geometry.transform.normal_transform_pixel(height, width, device=device, dtype=dtype)  # 1x3x3
+    norm_trans_pix = kornia.geometry.transform.normal_transform_pixel(
+        height, width, device=device, dtype=dtype
+    )  # 1x3x3
     pix_trans_norm = torch.inverse(norm_trans_pix)  # 1x3x3
     # transform grids
     grid_pix_to_norm = kornia.geometry.linalg.transform_points(norm_trans_pix, grid_pix)

@@ -65,8 +65,8 @@ class TestDrawRectangle:
                         random_w_rectangle[
                             b,
                             :,
-                            points_list[b][n][1]: points_list[b][n][3] + 1,
-                            points_list[b][n][0]: points_list[b][n][2] + 1,
+                            points_list[b][n][1] : points_list[b][n][3] + 1,
+                            points_list[b][n][0] : points_list[b][n][2] + 1,
                         ].sum()
                         == (points_list[b][n][3] - points_list[b][n][1] + 1)
                         * (points_list[b][n][2] - points_list[b][n][0] + 1)
@@ -75,25 +75,25 @@ class TestDrawRectangle:
                 else:
                     assert (
                         random_w_rectangle[
-                            b, :, points_list[b][n][1]: points_list[b][n][3] + 1, points_list[b][n][0]
+                            b, :, points_list[b][n][1] : points_list[b][n][3] + 1, points_list[b][n][0]
                         ].sum()
                         == (points_list[b][n][3] - points_list[b][n][1] + 1) * 3
                     )
                     assert (
                         random_w_rectangle[
-                            b, :, points_list[b][n][1]: points_list[b][n][3] + 1, points_list[b][n][2]
+                            b, :, points_list[b][n][1] : points_list[b][n][3] + 1, points_list[b][n][2]
                         ].sum()
                         == (points_list[b][n][3] - points_list[b][n][1] + 1) * 3
                     )
                     assert (
                         random_w_rectangle[
-                            b, :, points_list[b][n][1], points_list[b][n][0]: points_list[b][n][2] + 1
+                            b, :, points_list[b][n][1], points_list[b][n][0] : points_list[b][n][2] + 1
                         ].sum()
                         == (points_list[b][n][2] - points_list[b][n][0] + 1) * 3
                     )
                     assert (
                         random_w_rectangle[
-                            b, :, points_list[b][n][1], points_list[b][n][0]: points_list[b][n][2] + 1
+                            b, :, points_list[b][n][1], points_list[b][n][0] : points_list[b][n][2] + 1
                         ].sum()
                         == (points_list[b][n][2] - points_list[b][n][0] + 1) * 3
                     )

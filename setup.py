@@ -2,11 +2,9 @@
 #
 import distutils.command.clean
 import glob
-import io
 import os
 import shutil
 import subprocess
-import sys
 
 from setuptools import find_packages, setup
 
@@ -115,7 +113,7 @@ class clean(distutils.command.clean.clean):
 
 requirements = [
     'torch' + kornia_pt_dependencies[dep_version(version)],
-    'packaging'  # REMOVE once we deprecate pytorch > 1.7.1. See: issue #1264
+    'packaging',  # REMOVE once we deprecate pytorch > 1.7.1. See: issue #1264
 ]
 
 
@@ -124,10 +122,7 @@ def load_requirements(filename: str):
         return [x.strip() for x in f.readlines() if "-r" != x[0:2]]
 
 
-requirements_extras = {
-    "x": load_requirements("requirements/x.txt"),
-    "dev": load_requirements("requirements/dev.txt"),
-}
+requirements_extras = {"x": load_requirements("requirements/x.txt"), "dev": load_requirements("requirements/dev.txt")}
 requirements_extras["all"] = requirements_extras["x"] + requirements_extras["dev"]
 
 

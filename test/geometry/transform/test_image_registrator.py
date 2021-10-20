@@ -25,12 +25,8 @@ class TestSimilarity:
         sc = 0.5
         sim = kornia.geometry.transform.Similarity(True, True, True).to(device, dtype)
         sim.scale.data *= sc
-        expected = torch.tensor([[0.5, 0, 0.],
-                                [0, 0.5, 0],
-                                [0, 0, 1]], device=device, dtype=dtype)[None]
-        inv_expected = torch.tensor([[2.0, 0, 0.],
-                                    [0, 2.0, 0],
-                                    [0, 0, 1]], device=device, dtype=dtype)[None]
+        expected = torch.tensor([[0.5, 0, 0.0], [0, 0.5, 0], [0, 0, 1]], device=device, dtype=dtype)[None]
+        inv_expected = torch.tensor([[2.0, 0, 0.0], [0, 2.0, 0], [0, 0, 1]], device=device, dtype=dtype)[None]
         assert_close(sim.forward_inverse(), inv_expected, atol=1e-4, rtol=1e-4)
         assert_close(sim(), expected, atol=1e-4, rtol=1e-4)
 
@@ -58,11 +54,7 @@ class TestHomography:
 
 class TestImageRegistrator:
     def test_smoke(self, device, dtype):
-        for model_type in ['homography',
-                           'similarity',
-                           'translation',
-                           'scale',
-                           'rotation']:
+        for model_type in ['homography', 'similarity', 'translation', 'scale', 'rotation']:
             ir = kornia.geometry.transform.ImageRegistrator(model_type).to(device, dtype)
             assert ir is not None
 
@@ -73,28 +65,17 @@ class TestImageRegistrator:
         homography[..., 1, 1] = 1.05
         homography[..., 0, 2] = 0.01
         img_src = torch.rand(1, ch, height, width, device=device, dtype=dtype)
-        img_dst = kornia.geometry.homography_warp(img_src,
-                                                  homography,
-                                                  (height, width),
-                                                  align_corners=False)
-        IR = ImageRegistrator('Similarity',
-                              num_iterations=500,
-                              lr=3e-4,
-                              pyramid_levels=2).to(device, dtype)
+        img_dst = kornia.geometry.homography_warp(img_src, homography, (height, width), align_corners=False)
+        IR = ImageRegistrator('Similarity', num_iterations=500, lr=3e-4, pyramid_levels=2).to(device, dtype)
         model = IR.register(img_src, img_dst)
         assert_close(model, homography, atol=1e-3, rtol=1e-3)
-        model, intermediate = IR.register(img_src,
-                                          img_dst,
-                                          output_intermediate_models=True)
+        model, intermediate = IR.register(img_src, img_dst, output_intermediate_models=True)
         assert len(intermediate) == 2
 
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_registration_real(self, device, dtype, data):
         data_dev = utils.dict_to(data, device, dtype)
-        IR = ImageRegistrator('homography',
-                              num_iterations=1200,
-                              lr=2e-2,
-                              pyramid_levels=5).to(device, dtype)
+        IR = ImageRegistrator('homography', num_iterations=1200, lr=2e-2, pyramid_levels=5).to(device, dtype)
         model = IR.register(data_dev['image0'], data_dev['image1'])
         homography_gt = torch.inverse(data_dev['H_gt'])
         homography_gt = homography_gt / homography_gt[2, 2]
@@ -104,10 +85,7 @@ class TestImageRegistrator:
         model_denormalized = denormalize_homography(model, (h0, w0), (h1, w1))
         model_denormalized = model_denormalized / model_denormalized[0, 2, 2]
 
-        bbox = torch.tensor([[[0, 0],
-                             [w0, 0],
-                             [w0, h0],
-                             [0, h0]]], device=device, dtype=dtype)
+        bbox = torch.tensor([[[0, 0], [w0, 0], [w0, h0], [0, h0]]], device=device, dtype=dtype)
         bbox_in_2_gt = transform_points(homography_gt[None], bbox)
         bbox_in_2_gt_est = transform_points(model_denormalized, bbox)
         # The tolerance is huge, because the error is in pixels

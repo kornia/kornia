@@ -450,8 +450,10 @@ class TestConvSoftArgmax3d:
 
 
 class TestConvQuadInterp3d:
-    @pytest.mark.skipif((int(torch.__version__.split('.')[0]) == 1) and (int(torch.__version__.split('.')[1]) < 9),
-                        reason='<1.9.0 not supporting')
+    @pytest.mark.skipif(
+        (int(torch.__version__.split('.')[0]) == 1) and (int(torch.__version__.split('.')[1]) < 9),
+        reason='<1.9.0 not supporting',
+    )
     def test_smoke(self, device, dtype):
         input = torch.randn(2, 3, 3, 4, 4, device=device, dtype=dtype)
         nms = kornia.geometry.ConvQuadInterp3d(1)
@@ -459,8 +461,10 @@ class TestConvQuadInterp3d:
         assert coord.shape == (2, 3, 3, 3, 4, 4)
         assert val.shape == (2, 3, 3, 4, 4)
 
-    @pytest.mark.skipif((int(torch.__version__.split('.')[0]) == 1) and (int(torch.__version__.split('.')[1]) < 9),
-                        reason='<1.9.0 not supporting')
+    @pytest.mark.skipif(
+        (int(torch.__version__.split('.')[0]) == 1) and (int(torch.__version__.split('.')[1]) < 9),
+        reason='<1.9.0 not supporting',
+    )
     def test_gradcheck(self, device, dtype):
         input = torch.rand(1, 1, 3, 5, 5, device=device, dtype=dtype)
         input[0, 0, 1, 2, 2] += 20.0

@@ -428,8 +428,9 @@ class TestRemap:
         grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=False, device=device).to(dtype)
         grid = utils.tensor_to_gradcheck_var(grid, requires_grad=False)  # to var
 
-        assert gradcheck(kornia.geometry.remap, (img, grid[..., 0], grid[..., 1], 'bilinear', 'zeros', True),
-                         raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.remap, (img, grid[..., 0], grid[..., 1], 'bilinear', 'zeros', True), raise_exception=True
+        )
 
     def test_jit(self, device, dtype):
         batch_size, channels, height, width = 1, 1, 3, 4

@@ -212,7 +212,11 @@ class TestWarpImage:
         kernel, affine = kornia.geometry.transform.get_tps_transform(src, dst)
         image = torch.rand(batch_size, 3, 8, 8, requires_grad=True, **opts)
         assert gradcheck(
-            kornia.geometry.transform.warp_image_tps, (image, dst, kernel, affine), raise_exception=True, atol=1e-4, rtol=1e-4
+            kornia.geometry.transform.warp_image_tps,
+            (image, dst, kernel, affine),
+            raise_exception=True,
+            atol=1e-4,
+            rtol=1e-4,
         )
 
     @pytest.mark.jit

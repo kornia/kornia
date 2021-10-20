@@ -17,11 +17,10 @@ class TestVisionTransformer:
     @pytest.mark.parametrize("image_size", [32, 224])
     def test_smoke(self, device, dtype, B, H, D, image_size):
         patch_size = 16
-        T = image_size**2 // patch_size**2 + 1  # tokens size
+        T = image_size ** 2 // patch_size ** 2 + 1  # tokens size
 
         img = torch.rand(B, 3, image_size, image_size, device=device, dtype=dtype)
-        vit = kornia.contrib.VisionTransformer(
-            image_size=image_size, num_heads=H, embed_dim=D).to(device, dtype)
+        vit = kornia.contrib.VisionTransformer(image_size=image_size, num_heads=H, embed_dim=D).to(device, dtype)
 
         out = vit(img)
         assert isinstance(out, torch.Tensor) and out.shape == (B, T, D)
@@ -34,6 +33,7 @@ class TestVisionTransformer:
     def test_backbone(self, device, dtype):
         def backbone_mock(x):
             return torch.ones(1, 128, 14, 14, device=device, dtype=dtype)
+
         img = torch.rand(1, 3, 32, 32, device=device, dtype=dtype)
         vit = kornia.contrib.VisionTransformer(backbone=backbone_mock).to(device, dtype)
         out = vit(img)
@@ -50,10 +50,7 @@ class TestMobileViT:
         channel = {'xxs': 320, 'xs': 384, 's': 640}
 
         img = torch.rand(B, 3, ih, iw, device=device, dtype=dtype)
-        mvit = kornia.contrib.MobileViT(
-            mode=mode,
-            patch_size=patch_size
-        ).to(device, dtype)
+        mvit = kornia.contrib.MobileViT(mode=mode, patch_size=patch_size).to(device, dtype)
 
         out = mvit(img)
         assert isinstance(out, torch.Tensor) and out.shape == (B, channel[mode], 8, 8)
@@ -74,9 +71,7 @@ class TestConnectedComponents:
         out = kornia.contrib.connected_components(img, num_iterations=10)
         assert out.shape == (1, 1, 3, 4)
 
-    @pytest.mark.parametrize("shape", [
-        (1, 3, 4), (2, 1, 3, 4)
-    ])
+    @pytest.mark.parametrize("shape", [(1, 3, 4), (2, 1, 3, 4)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.rand(shape, device=device, dtype=dtype)
         out = kornia.contrib.connected_components(img, num_iterations=10)
@@ -271,34 +266,33 @@ class TestCombineTensorPatches:
     def test_smoke(self, device, dtype):
         img = torch.arange(16, device=device, dtype=dtype).view(1, 1, 4, 4)
         m = kornia.contrib.CombineTensorPatches((2, 2))
-        patches = kornia.contrib.extract_tensor_patches(
-            img, window_size=(2, 2), stride=(2, 2))
+        patches = kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(2, 2))
         assert m(patches).shape == (1, 1, 4, 4)
         assert (img == m(patches)).all()
 
     def test_error(self, device, dtype):
         patches = kornia.contrib.extract_tensor_patches(
-            torch.arange(16, device=device, dtype=dtype).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2), padding=1)
+            torch.arange(16, device=device, dtype=dtype).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2), padding=1
+        )
         with pytest.raises(NotImplementedError):
             kornia.contrib.combine_tensor_patches(patches, window_size=(2, 2), stride=(3, 2))
 
     def test_padding1(self, device, dtype):
         img = torch.arange(16, device=device, dtype=dtype).view(1, 1, 4, 4)
-        patches = kornia.contrib.extract_tensor_patches(
-            img, window_size=(2, 2), stride=(2, 2), padding=1)
+        patches = kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(2, 2), padding=1)
         m = kornia.contrib.CombineTensorPatches((2, 2), unpadding=1)
         assert m(patches).shape == (1, 1, 4, 4)
         assert (img == m(patches)).all()
 
     def test_gradcheck(self, device, dtype):
         patches = kornia.contrib.extract_tensor_patches(
-            torch.arange(16., device=device, dtype=dtype).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2))
+            torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2)
+        )
         img = utils.tensor_to_gradcheck_var(patches)  # to var
         assert gradcheck(kornia.contrib.combine_tensor_patches, (img, (2, 2), (2, 2)), raise_exception=True)
 
 
 class TestLambdaModule:
-
     def add_2_layer(self, tensor):
         return tensor + 2
 
@@ -339,7 +333,6 @@ class TestLambdaModule:
 
 
 class TestImageStitcher:
-
     @pytest.mark.parametrize("estimator", ['ransac', 'vanilla'])
     def test_smoke(self, estimator, device, dtype):
         B, C, H, W = 1, 3, 224, 224
@@ -349,11 +342,10 @@ class TestImageStitcher:
             "keypoints0": torch.rand((15, 2), device=device, dtype=dtype),
             "keypoints1": torch.rand((15, 2), device=device, dtype=dtype),
             "confidence": torch.rand((15,), device=device, dtype=dtype),
-            "batch_indexes": torch.zeros((15,), device=device, dtype=dtype)
+            "batch_indexes": torch.zeros((15,), device=device, dtype=dtype),
         }
         with patch(
-            'kornia.contrib.ImageStitcher.on_matcher',
-            new_callable=PropertyMock, return_value=lambda x: return_value
+            'kornia.contrib.ImageStitcher.on_matcher', new_callable=PropertyMock, return_value=lambda x: return_value
         ):
             # NOTE: This will need to download the pretrained weights.
             # To avoid that, we mock as below

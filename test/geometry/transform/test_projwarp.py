@@ -292,12 +292,16 @@ class TestPerspectiveTransform3D:
 
         # TODO: get_perspective_transform3d seems to be correct since it would result in the
         # expected output for cropping volumes. Not sure what is going on here.
-        assert_close(kornia.geometry.linalg.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-4, atol=1e-4)
+        assert_close(
+            kornia.geometry.linalg.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-4, atol=1e-4
+        )
 
         # compute gradient check
         points_src = utils.tensor_to_gradcheck_var(points_src)  # to var
         points_dst = utils.tensor_to_gradcheck_var(points_dst)  # to var
-        assert gradcheck(kornia.geometry.transform.get_perspective_transform3d, (points_src, points_dst), raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.transform.get_perspective_transform3d, (points_src, points_dst), raise_exception=True
+        )
 
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_get_perspective_transform3d_2(self, batch_size, device, dtype):
@@ -357,4 +361,6 @@ class TestPerspectiveTransform3D:
         # compute gradient check
         points_src = utils.tensor_to_gradcheck_var(src)  # to var
         points_dst = utils.tensor_to_gradcheck_var(dst)  # to var
-        assert gradcheck(kornia.geometry.transform.get_perspective_transform3d, (points_src, points_dst), raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.transform.get_perspective_transform3d, (points_src, points_dst), raise_exception=True
+        )
