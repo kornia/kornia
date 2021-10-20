@@ -33,10 +33,6 @@ from kornia.constants import pi
 from kornia.testing import xla_is_available
 from kornia.utils import create_meshgrid, image_to_tensor, tensor_to_image
 
-# isort:maintain_block
-
-# isort:end_maintain_block
-
 def eye_like(n: int, input: torch.Tensor) -> torch.Tensor:
     r"""Return a 2-D tensor with ones on the diagonal and zeros elsewhere with the same batch size as the input.
 
