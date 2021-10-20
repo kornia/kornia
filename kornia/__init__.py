@@ -14,24 +14,14 @@ import torch
 
 # NOTE: kornia.geometry must go first since it is the core of the library
 # and by changing the import order you might get into a circular dependencies issue.
+from kornia import augmentation, color, contrib, enhance, feature, filters
 from kornia import geometry as geometry
-from kornia import (
-    augmentation,
-    color,
-    contrib,
-    enhance,
-    feature,
-    filters,
-    losses,
-    metrics,
-    morphology,
-    utils,
-    x,
-)
+from kornia import losses, metrics, morphology, utils, x
 # NOTE: we are going to expose to top level very few things
 from kornia.constants import pi
 from kornia.testing import xla_is_available
 from kornia.utils import create_meshgrid, image_to_tensor, tensor_to_image
+
 
 def eye_like(n: int, input: torch.Tensor) -> torch.Tensor:
     r"""Return a 2-D tensor with ones on the diagonal and zeros elsewhere with the same batch size as the input.
