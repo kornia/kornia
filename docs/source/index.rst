@@ -72,6 +72,7 @@ Join the community
    models/hardnet
    models/affnet
 
+
 .. toctree::
    :caption: API REFERENCE
    :maxdepth: 2
@@ -87,6 +88,7 @@ Join the community
    losses
    metrics
    morphology
+   tracking
    utils
    x
 

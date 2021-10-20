@@ -18,18 +18,18 @@ class SOSNet(nn.Module):
         pretrained: Download and set pretrained weights to the model.
 
     Shape:
-        - Input: (B, 1, 32, 32)
-        - Output: (B, 128)
+        - Input: :math:`(B, 1, 32, 32)`
+        - Output: :math:`(B, 128)`
 
     Examples:
         >>> input = torch.rand(8, 1, 32, 32)
         >>> sosnet = SOSNet()
         >>> descs = sosnet(input) # 8x128
     """
+    patch_size = 32
 
     def __init__(self, pretrained: bool = False) -> None:
         super().__init__()
-
         self.layers = nn.Sequential(
             nn.InstanceNorm2d(1, affine=False),
             nn.Conv2d(1, 32, kernel_size=3, padding=1, bias=False),

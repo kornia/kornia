@@ -262,8 +262,8 @@ class CoarseMatching(nn.Module):
         coarse_matches.update({
             'gt_mask': mconf == 0,
             'm_bids': b_ids[mconf != 0],  # mconf == 0 => gt matches
-            'mkpts0_c': mkpts0_c[mconf != 0],
-            'mkpts1_c': mkpts1_c[mconf != 0],
+            'mkpts0_c': mkpts0_c[mconf != 0].to(dtype=conf_matrix.dtype),
+            'mkpts1_c': mkpts1_c[mconf != 0].to(dtype=conf_matrix.dtype),
             'mconf': mconf[mconf != 0]
         })
 

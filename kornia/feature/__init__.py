@@ -18,6 +18,7 @@ non_maxima_suppression3d = nms3d
 from .affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
 from .defmo import DeFMO
 from .hardnet import HardNet, HardNet8
+from .integrated import *
 from .laf import (
     denormalize_laf,
     ellipse_to_laf,
@@ -37,7 +38,7 @@ from .laf import (
     scale_laf,
     set_laf_orientation,
 )
-from .matching import match_mnn, match_nn, match_smnn, match_snn
+from .matching import *
 from .mkd import MKDDescriptor
 from .orientation import LAFOrienter, OriNet, PatchDominantGradientOrientation
 from .scale_space_detector import PassLAF, ScaleSpaceDetector
@@ -71,6 +72,7 @@ __all__ = [
     "get_laf_center",
     "get_laf_orientation",
     "set_laf_orientation",
+    "get_laf_descriptors",
     "scale_laf",
     "SIFTDescriptor",
     "MKDDescriptor",
@@ -95,5 +97,11 @@ __all__ = [
     "match_mnn",
     "match_snn",
     "match_smnn",
+    "LocalFeatureMatcher",
+    "LocalFeature",
+    "SIFTFeature",
+    "GFTTAffNetHardNet",
+    "LAFDescriptor",
+    "DescriptorMatcher",
     "LoFTR",
 ]
