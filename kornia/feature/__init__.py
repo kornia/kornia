@@ -1,5 +1,10 @@
 from .loftr import LoFTR
-from .nms import nms2d, nms3d, NonMaximaSuppression2d, NonMaximaSuppression3d
+from .nms import (
+    nms2d,
+    nms3d,
+    NonMaximaSuppression2d,
+    NonMaximaSuppression3d,
+)
 from .responses import (
     BlobDoG,
     BlobHessian,
@@ -10,15 +15,21 @@ from .responses import (
     harris_response,
     hessian_response,
 )
-
-# Backward compatibility
-non_maxima_suppression2d = nms2d
-non_maxima_suppression3d = nms3d
-
-from .affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
+from .affine_shape import (
+    LAFAffineShapeEstimator,
+    LAFAffNetShapeEstimator,
+    PatchAffineShapeEstimator,
+)
 from .defmo import DeFMO
 from .hardnet import HardNet, HardNet8
-from .integrated import *
+from .integrated import (
+    get_laf_descriptors,
+    LAFDescriptor,
+    LocalFeature,
+    SIFTFeature,
+    GFTTAffNetHardNet,
+    LocalFeatureMatcher,
+)
 from .laf import (
     denormalize_laf,
     ellipse_to_laf,
@@ -38,15 +49,41 @@ from .laf import (
     scale_laf,
     set_laf_orientation,
 )
-from .matching import *
+from .matching import (
+    match_nn,
+    match_mnn,
+    match_snn,
+    match_smnn,
+    DescriptorMatcher,
+)
 from .mkd import MKDDescriptor
-from .orientation import LAFOrienter, OriNet, PatchDominantGradientOrientation
+from .orientation import (
+    LAFOrienter,
+    OriNet,
+    PatchDominantGradientOrientation,
+)
 from .scale_space_detector import PassLAF, ScaleSpaceDetector
 from .siftdesc import SIFTDescriptor
 from .sosnet import SOSNet
 from .tfeat import TFeat
 
+# Backward compatibility
+non_maxima_suppression2d = nms2d
+non_maxima_suppression3d = nms3d
+
 __all__ = [
+    "match_nn",
+    "match_mnn",
+    "match_snn",
+    "match_smnn",
+    "DescriptorMatcher",
+    "get_laf_descriptors",
+    "LAFDescriptor",
+    "LocalFeature",
+    "SIFTFeature",
+    "GFTTAffNetHardNet",
+    "LocalFeatureMatcher",
+    "SOSNet",
     "nms2d",
     "nms3d",
     "non_maxima_suppression2d",

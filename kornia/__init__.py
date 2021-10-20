@@ -6,11 +6,11 @@ if sys.version_info < (3, 6, 0):
     raise RuntimeError("Kornia requires Python 3.6.0 or later")
 
 try:
-    from .version import __version__
+    from .version import __version__  # nopa: 401
 except ImportError:
     pass
 
-from kornia import (
+from kornia import (  # noqa: 403
     augmentation,
     color,
     contrib,
@@ -65,7 +65,7 @@ from kornia import (
     zca_mean,
     zca_whiten,
 )'''
-from kornia.feature import DeFMO, gftt_response, harris_response, hessian_response, MKDDescriptor, nms2d, SIFTDescriptor
+#from kornia.feature import DeFMO, gftt_response, harris_response, hessian_response, MKDDescriptor, nms2d, SIFTDescriptor
 '''from kornia.filters import (
     box_blur,
     canny,
@@ -102,10 +102,6 @@ from kornia.geometry import *
 from kornia.testing import xla_is_available
 from kornia.utils import (
     create_meshgrid,
-    image_list_to_tensor,
     image_to_tensor,
-    load_pointcloud_ply,
-    one_hot,
-    save_pointcloud_ply,
     tensor_to_image,
 )

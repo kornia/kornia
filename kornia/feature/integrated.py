@@ -4,14 +4,14 @@ import torch
 import torch.nn as nn
 
 from kornia.color import rgb_to_grayscale
-from kornia.feature.affine_shape import LAFAffNetShapeEstimator
-from kornia.feature.hardnet import HardNet
-from kornia.feature.laf import extract_patches_from_pyramid, get_laf_center, raise_error_if_laf_is_not_valid
-from kornia.feature.orientation import LAFOrienter, PassLAF
-from kornia.feature.responses import BlobDoG, CornerGFTT
-from kornia.feature.scale_space_detector import ScaleSpaceDetector
-from kornia.feature.siftdesc import SIFTDescriptor
 from kornia.geometry import ConvQuadInterp3d, ScalePyramid
+from .affine_shape import LAFAffNetShapeEstimator
+from .hardnet import HardNet
+from .laf import extract_patches_from_pyramid, get_laf_center, raise_error_if_laf_is_not_valid
+from .orientation import LAFOrienter, PassLAF
+from .responses import BlobDoG, CornerGFTT
+from .scale_space_detector import ScaleSpaceDetector
+from .siftdesc import SIFTDescriptor
 
 
 def get_laf_descriptors(img: torch.Tensor,

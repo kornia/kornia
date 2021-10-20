@@ -4,8 +4,7 @@ from typing import Union
 import torch
 import torch.nn.functional as F
 
-import kornia
-from kornia.geometry import angle_to_rotation_matrix
+from kornia.geometry import angle_to_rotation_matrix, rad2deg, convert_points_from_homogeneous, pyrdown
 
 
 def raise_error_if_laf_is_not_valid(laf: torch.Tensor) -> None:
@@ -88,7 +87,7 @@ def get_laf_orientation(LAF: torch.Tensor) -> torch.Tensor:
     """
     raise_error_if_laf_is_not_valid(LAF)
     angle_rad: torch.Tensor = torch.atan2(LAF[..., 0, 1], LAF[..., 0, 0])
-    return kornia.rad2deg(angle_rad).unsqueeze(-1)
+    return rad2deg(angle_rad).unsqueeze(-1)
 
 
 def set_laf_orientation(LAF: torch.Tensor, angles_degrees: torch.Tensor) -> torch.Tensor:
@@ -138,7 +137,7 @@ def laf_from_center_scale_ori(xy: torch.Tensor, scale: torch.Tensor, ori: torch.
                 raise TypeError(
                     "{} shape should be must be [{}]. " "Got {}".format(var_name, str(req_shape), var.size())
                 )
-    unscaled_laf: torch.Tensor = torch.cat([kornia.angle_to_rotation_matrix(ori.squeeze(-1)), xy.unsqueeze(-1)], dim=-1)
+    unscaled_laf: torch.Tensor = torch.cat([angle_to_rotation_matrix(ori.squeeze(-1)), xy.unsqueeze(-1)], dim=-1)
     laf: torch.Tensor = scale_laf(unscaled_laf, scale)
     return laf
 
@@ -289,7 +288,7 @@ def laf_to_boundary_points(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
     aux = torch.tensor([0.0, 0.0, 1.0]).view(1, 1, 3).expand(B * N, 1, 3)
     HLAF = torch.cat([LAF.view(-1, 2, 3), aux.to(LAF.device).to(LAF.dtype)], dim=1)
     pts_h = torch.bmm(HLAF, pts.permute(0, 2, 1)).permute(0, 2, 1)
-    return kornia.convert_points_from_homogeneous(pts_h.view(B, N, n_pts, 3))
+    return convert_points_from_homogeneous(pts_h.view(B, N, n_pts, 3))
 
 
 def get_laf_pts_to_draw(LAF: torch.Tensor, img_idx: int = 0):
@@ -493,7 +492,7 @@ def extract_patches_from_pyramid(
                 align_corners=False,
             )
             out[i].masked_scatter_(scale_mask.view(-1, 1, 1, 1), patches)
-        cur_img = kornia.pyrdown(cur_img)
+        cur_img = pyrdown(cur_img)
         cur_pyr_level += 1
     return out
 
