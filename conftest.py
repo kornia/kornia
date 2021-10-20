@@ -1,5 +1,6 @@
 from itertools import product
 from typing import Dict
+
 import numpy
 import pytest
 import torch
