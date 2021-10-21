@@ -1,29 +1,29 @@
 from ._metrics import sampson_epipolar_distance, symmetrical_epipolar_distance
 from .essential import (
-    essential_from_fundamental,
     decompose_essential_matrix,
+    essential_from_fundamental,
     essential_from_Rt,
     motion_from_essential,
     motion_from_essential_choose_solution,
     relative_camera_motion,
 )
 from .fundamental import (
-    normalize_points,
-    normalize_transformation,
-    find_fundamental,
     compute_correspond_epilines,
+    find_fundamental,
     fundamental_from_essential,
     fundamental_from_projections,
+    normalize_points,
+    normalize_transformation,
 )
 from .numeric import cross_product_matrix
 from .projection import (
+    depth_from_point,
     intrinsics_like,
+    KRt_from_projection,
+    projection_from_KRt,
+    projections_from_fundamental,
     random_intrinsics,
     scale_intrinsics,
-    projection_from_KRt,
-    KRt_from_projection,
-    depth_from_point,
-    projections_from_fundamental,
 )
 from .scene import generate_scene
 from .triangulation import triangulate_points

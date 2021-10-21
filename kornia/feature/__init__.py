@@ -1,8 +1,4 @@
-from .affine_shape import (
-    LAFAffineShapeEstimator,
-    LAFAffNetShapeEstimator,
-    PatchAffineShapeEstimator,
-)
+from .affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
 from .defmo import DeFMO
 from .hardnet import HardNet, HardNet8
 from .integrated import (
@@ -34,19 +30,9 @@ from .laf import (
     set_laf_orientation,
 )
 from .loftr import LoFTR
-from .matching import (
-    DescriptorMatcher,
-    match_mnn,
-    match_nn,
-    match_smnn,
-    match_snn,
-)
+from .matching import DescriptorMatcher, match_mnn, match_nn, match_smnn, match_snn
 from .mkd import MKDDescriptor
-from .orientation import (
-    LAFOrienter,
-    OriNet,
-    PatchDominantGradientOrientation,
-)
+from .orientation import LAFOrienter, OriNet, PatchDominantGradientOrientation
 from .responses import (
     BlobDoG,
     BlobHessian,

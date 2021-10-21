@@ -1,4 +1,4 @@
-from .distort import tilt_projection, distort_points
+from .distort import distort_points, tilt_projection
 from .pnp import solve_pnp_dlt
 from .undistort import undistort_image, undistort_points
 

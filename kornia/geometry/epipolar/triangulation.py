@@ -4,7 +4,6 @@ import torch
 
 from kornia.geometry.conversions import convert_points_from_homogeneous
 
-
 # https://github.com/opencv/opencv_contrib/blob/master/modules/sfm/src/triangulation.cpp#L68
 
 

@@ -7,8 +7,8 @@ import torch.nn.functional as F
 from kornia.filters.sobel import spatial_gradient3d
 from kornia.geometry.conversions import normalize_pixel_coordinates, normalize_pixel_coordinates3d
 from kornia.utils import create_meshgrid, create_meshgrid3d
-from kornia.utils.helpers import safe_solve_with_mask
 from kornia.utils._compat import torch_version_geq
+from kornia.utils.helpers import safe_solve_with_mask
 
 from .dsnt import spatial_expectation2d, spatial_softmax2d
 from .nms import nms3d
