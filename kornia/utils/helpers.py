@@ -3,12 +3,7 @@ from typing import Any, List, Optional, Tuple
 
 import torch
 
-from kornia.utils._compat import solve
-
-
-def _pytorch_version_geq(major, minor):
-    version = torch.__version__.split('.')
-    return (int(version[0]) >= major) and (int(version[1]) >= minor)
+from kornia.utils._compat import solve, torch_version_geq
 
 
 def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.device, torch.dtype]:
@@ -111,7 +106,7 @@ def _torch_solve_cast(input: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tenso
 def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     r"""Helper function, which avoids crashing because of singular matrix input and outputs the
     mask of valid solution"""
-    if not (_pytorch_version_geq(1, 10)):
+    if not torch_version_geq(1, 10):
         sol, lu = _torch_solve_cast(B, A)
         warnings.warn('PyTorch version < 1.10, solve validness mask maybe not correct', RuntimeWarning)
         return sol, lu, torch.ones(len(A), dtype=torch.bool, device=A.device)
@@ -131,7 +126,7 @@ def safe_inverse_with_mask(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]
     r"""Helper function, which avoids crashing because of non-invertable matrix input and outputs the
     mask of valid solution"""
     # Based on https://github.com/pytorch/pytorch/issues/31546#issuecomment-694135622
-    if not (_pytorch_version_geq(1, 9)):
+    if not torch_version_geq(1, 9):
         inv = _torch_inverse_cast(A)
         warnings.warn('PyTorch version < 1.9, inverse validness mask maybe not correct', RuntimeWarning)
         return inv, torch.ones(len(A), dtype=torch.bool, device=A.device)
@@ -142,7 +137,7 @@ def safe_inverse_with_mask(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]
         dtype = torch.float32
     else:
         dtype = dtype_original
-    from torch.linalg import inv_ex
+    from torch.linalg import inv_ex  # type: ignore # (not available in 1.8.1)
     inverse, info = inv_ex(A.to(dtype))
     mask = info == 0
     return inverse.to(dtype_original), mask

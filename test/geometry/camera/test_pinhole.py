@@ -25,7 +25,7 @@ class TestCam2Pixel:
         """Return a tensor having the given shape and whose values are in the range [low, high)"""
         return ((high - low) * torch.rand(shape, device=device, dtype=dtype)) + low
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", (1,))
     def test_smoke(self, batch_size, device, dtype):
         H, W = 250, 500
         fx, fy = W, H
@@ -81,7 +81,7 @@ class TestCam2Pixel:
 
         assert_close(cam_coords_output, cam_coords_input, atol=1e-4, rtol=1e-4)
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", (1,))
     def test_gradcheck(self, batch_size, device, dtype):
         H, W = 10, 20
         fx, fy = W, H
@@ -194,7 +194,7 @@ class TestPixel2Cam:
 
         assert_close(pixel_coords_concat, pixel_coords_input, atol=1e-4, rtol=1e-4)
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", (1,))
     def test_gradcheck(self, batch_size, device, dtype):
         H, W = 10, 20
         fx, fy = W, H

@@ -2,8 +2,6 @@ from typing import Optional, Tuple
 
 import torch
 
-__all__ = ["histogram", "histogram2d", "image_histogram2d"]
-
 
 def marginal_pdf(
     values: torch.Tensor, bins: torch.Tensor, sigma: torch.Tensor, epsilon: float = 1e-10

@@ -3,20 +3,10 @@ from typing import Tuple, Union
 
 import torch
 
-import kornia
+from kornia.utils import eye_like, vec_like
 from kornia.utils._compat import linalg_qr
 
 from .numeric import cross_product_matrix
-
-__all__ = [
-    "intrinsics_like",
-    "random_intrinsics",
-    "scale_intrinsics",
-    "projection_from_KRt",
-    "KRt_from_projection",
-    "depth_from_point",
-    "projections_from_fundamental",
-]
 
 
 def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:
@@ -40,7 +30,7 @@ def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:
 
     _, _, H, W = input.shape
 
-    intrinsics = kornia.eye_like(3, input)
+    intrinsics = eye_like(3, input)
     intrinsics[..., 0, 0] *= focal
     intrinsics[..., 1, 1] *= focal
     intrinsics[..., 0, 2] += 1.0 * W / 2
@@ -206,8 +196,8 @@ def projections_from_fundamental(F_mat: torch.Tensor) -> torch.Tensor:
     if F_mat.shape[-2:] != (3, 3):
         raise AssertionError(F_mat.shape)
 
-    R1 = kornia.eye_like(3, F_mat)  # Bx3x3
-    t1 = kornia.vec_like(3, F_mat)  # Bx3
+    R1 = eye_like(3, F_mat)  # Bx3x3
+    t1 = vec_like(3, F_mat)  # Bx3
 
     Ft_mat = F_mat.transpose(-2, -1)
 

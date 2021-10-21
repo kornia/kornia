@@ -3,8 +3,7 @@ from typing import Optional, Union
 import torch
 import torch.nn as nn
 
-from kornia.filters.gaussian import gaussian_blur2d
-from kornia.filters.sobel import spatial_gradient
+from kornia.filters import gaussian_blur2d, spatial_gradient
 
 
 def harris_response(

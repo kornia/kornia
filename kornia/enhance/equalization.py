@@ -11,8 +11,6 @@ from kornia.utils.image import perform_keep_shape_image
 
 from .histogram import histogram
 
-__all__ = ["equalize_clahe"]
-
 
 def _compute_tiles(
     imgs: torch.Tensor, grid_size: Tuple[int, int], even_tile_size: bool = False

@@ -3,15 +3,14 @@ from typing import Optional, Tuple
 import torch
 import torch.nn.functional as F
 
-import kornia
 from kornia.geometry.conversions import (
+    angle_to_rotation_matrix,
     convert_affinematrix_to_homography,
     convert_affinematrix_to_homography3d,
-    deg2rad,
     normalize_pixel_coordinates,
 )
 from kornia.geometry.linalg import transform_points
-from kornia.utils import create_meshgrid
+from kornia.utils import create_meshgrid, eye_like
 from kornia.utils.helpers import _torch_inverse_cast, _torch_solve_cast
 
 from .homography_warper import normalize_homography
@@ -24,7 +23,6 @@ __all__ = [
     "get_rotation_matrix2d",
     "remap",
     "invert_affine_transform",
-    "angle_to_rotation_matrix",
     "get_affine_matrix2d",
     "get_affine_matrix3d",
     "get_shear_matrix2d",
@@ -283,29 +281,6 @@ def _build_perspective_param(p: torch.Tensor, q: torch.Tensor, axis: str) -> tor
     raise NotImplementedError(f"perspective params for axis `{axis}` is not implemented.")
 
 
-def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
-    r"""Create a rotation matrix out of angles in degrees.
-
-    Args:
-        angle: tensor of angles in degrees, any shape.
-
-    Returns:
-        tensor of *x2x2 rotation matrices.
-
-    Shape:
-        - Input: :math:`(*)`
-        - Output: :math:`(*, 2, 2)`
-
-    Example:
-        >>> input = torch.rand(1, 3)  # Nx3
-        >>> output = angle_to_rotation_matrix(input)  # Nx3x2x2
-    """
-    ang_rad = deg2rad(angle)
-    cos_a: torch.Tensor = torch.cos(ang_rad)
-    sin_a: torch.Tensor = torch.sin(ang_rad)
-    return torch.stack([cos_a, sin_a, -sin_a, cos_a], dim=-1).view(*angle.shape, 2, 2)
-
-
 def get_rotation_matrix2d(center: torch.Tensor, angle: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
     r"""Calculate an affine matrix of 2D rotation.
 
@@ -381,17 +356,17 @@ def get_rotation_matrix2d(center: torch.Tensor, angle: torch.Tensor, scale: torc
             )
         )
 
-    shift_m = kornia.eye_like(3, center)
+    shift_m = eye_like(3, center)
     shift_m[:, :2, 2] = center
 
-    shift_m_inv = kornia.eye_like(3, center)
+    shift_m_inv = eye_like(3, center)
     shift_m_inv[:, :2, 2] = -center
 
-    scale_m = kornia.eye_like(3, center)
+    scale_m = eye_like(3, center)
     scale_m[:, 0, 0] *= scale[:, 0]
     scale_m[:, 1, 1] *= scale[:, 1]
 
-    rotat_m = kornia.eye_like(3, center)
+    rotat_m = eye_like(3, center)
     rotat_m[:, :2, :2] = angle_to_rotation_matrix(angle)
 
     affine_m = shift_m @ rotat_m @ scale_m @ shift_m_inv

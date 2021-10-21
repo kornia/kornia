@@ -4,9 +4,13 @@ from typing import Union
 import torch
 import torch.nn.functional as F
 
-from kornia.geometry.conversions import convert_points_from_homogeneous, rad2deg
+from kornia.geometry.conversions import (
+    convert_points_from_homogeneous,
+    rad2deg,
+    angle_to_rotation_matrix,
+)
 from kornia.geometry.linalg import transform_points
-from kornia.geometry.transform import angle_to_rotation_matrix, pyrdown
+from kornia.geometry.transform import pyrdown
 
 
 def raise_error_if_laf_is_not_valid(laf: torch.Tensor) -> None:

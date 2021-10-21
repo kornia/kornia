@@ -5,10 +5,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-from kornia.geometry.conversions import convert_affinematrix_to_homography
+from kornia.geometry.conversions import (
+    convert_affinematrix_to_homography,
+    angle_to_rotation_matrix,
+)
 
 from .homography_warper import HomographyWarper
-from .imgwarp import angle_to_rotation_matrix
 from .pyramid import build_pyramid
 
 __all__ = [

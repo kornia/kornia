@@ -1,12 +1,11 @@
 from typing import Tuple
+import math
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from kornia.color import rgb_to_grayscale
-# TODO: this is a circular dependency
-from kornia.geometry.conversions import rad2deg
 
 from .gaussian import gaussian_blur2d
 from .kernels import get_canny_nms_kernel, get_hysteresis_kernel
@@ -93,7 +92,7 @@ def canny(
     angle: torch.Tensor = torch.atan2(gy, gx)
 
     # Radians to Degrees
-    angle = rad2deg(angle)
+    angle = 180. * angle / math.pi
 
     # Round angle to the nearest 45 degree
     angle = torch.round(angle / 45) * 45

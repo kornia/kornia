@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.geometry import ConvSoftArgmax3d
+from kornia.geometry.subpix import ConvSoftArgmax3d
 from kornia.geometry.transform import ScalePyramid
 
 from .laf import denormalize_laf, laf_is_inside_image, normalize_laf

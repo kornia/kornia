@@ -7,21 +7,11 @@ import torch.nn.functional as F
 from kornia.filters.sobel import spatial_gradient3d
 from kornia.geometry.conversions import normalize_pixel_coordinates, normalize_pixel_coordinates3d
 from kornia.utils import create_meshgrid, create_meshgrid3d
-from kornia.utils.helpers import _pytorch_version_geq, safe_solve_with_mask
+from kornia.utils.helpers import safe_solve_with_mask
+from kornia.utils._compat import torch_version_geq
 
 from .dsnt import spatial_expectation2d, spatial_softmax2d
 from .nms import nms3d
-
-__all__ = [
-    "conv_soft_argmax2d",
-    "conv_soft_argmax3d",
-    "ConvSoftArgmax2d",
-    "ConvSoftArgmax3d",
-    "spatial_soft_argmax2d",
-    "SpatialSoftArgmax2d",
-    "conv_quad_interp3d",
-    "ConvQuadInterp3d",
-]
 
 
 def _get_window_grid_kernel2d(h: int, w: int, device: torch.device = torch.device('cpu')) -> torch.Tensor:
@@ -627,7 +617,7 @@ def conv_quad_interp3d(
     dxs = 0.25 * A[..., 5]  # normalization to match OpenCV implementation
 
     Hes = torch.stack([dxx, dxy, dxs, dxy, dyy, dys, dxs, dys, dss], dim=-1).view(-1, 3, 3)
-    if not _pytorch_version_geq(1, 10):
+    if not torch_version_geq(1, 10):
         # The following is needed to avoid singular cases
         Hes += torch.rand(Hes[0].size(), device=Hes.device).abs()[None] * eps
 

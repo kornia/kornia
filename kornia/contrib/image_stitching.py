@@ -3,7 +3,11 @@ from typing import Dict, List, Optional, Tuple
 import torch
 import torch.nn as nn
 
-import kornia as K
+from kornia.color import rgb_to_grayscale
+from kornia.feature import LoFTR
+from kornia.geometry.transform import warp_perspective
+from kornia.geometry.homography import find_homography_dlt_iterated
+from kornia.geometry.ransac import RANSAC
 
 
 class ImageStitcher(nn.Module):
@@ -39,7 +43,7 @@ class ImageStitcher(nn.Module):
         if estimator not in ['ransac', 'vanilla']:
             raise NotImplementedError(f"Unsupported estimator {estimator}. Use ‘ransac’ or ‘vanilla’ instead.")
         if estimator == "ransac":
-            self.ransac = K.geometry.RANSAC('homography')
+            self.ransac = RANSAC('homography')
 
     def _estimate_homography(self, keypoints1: torch.Tensor, keypoints2: torch.Tensor) -> torch.Tensor:
         """Estimate homography by the matched keypoints.
@@ -50,7 +54,7 @@ class ImageStitcher(nn.Module):
         """
         homo: torch.Tensor
         if self.estimator == "vanilla":
-            homo = K.geometry.homography.find_homography_dlt_iterated(
+            homo = find_homography_dlt_iterated(
                 keypoints2[None],
                 keypoints1[None],
                 torch.ones_like(keypoints1[None, :, 0])
@@ -84,10 +88,10 @@ class ImageStitcher(nn.Module):
     def preprocess(self, image_1: torch.Tensor, image_2: torch.Tensor) -> Dict[str, torch.Tensor]:
         """Preprocess input to the required format."""
         # TODO: probably perform histogram matching here.
-        if isinstance(self.matcher, K.feature.LoFTR):
+        if isinstance(self.matcher, LoFTR):
             input_dict: Dict[str, torch.Tensor] = {  # LofTR works on grayscale images only
-                "image0": K.color.rgb_to_grayscale(image_1),
-                "image1": K.color.rgb_to_grayscale(image_2)
+                "image0": rgb_to_grayscale(image_1),
+                "image1": rgb_to_grayscale(image_2)
             }
         else:
             raise NotImplementedError(f"The preprocessor for {self.matcher} has not been implemented.")
@@ -113,7 +117,7 @@ class ImageStitcher(nn.Module):
         out_shape: Tuple[int, int] = (images_left.shape[-2], images_left.shape[-1] + images_right.shape[-1])
         correspondences: dict = self.on_matcher(input_dict)
         homo: torch.Tensor = self.estimate_transform(**correspondences)
-        src_img = K.geometry.warp_perspective(images_right, homo, out_shape)
+        src_img = warp_perspective(images_right, homo, out_shape)
         dst_img = torch.cat([images_left, torch.zeros_like(images_right)], dim=-1)
 
         # Compute the transformed masks
@@ -122,7 +126,7 @@ class ImageStitcher(nn.Module):
         if mask_right is None:
             mask_right = torch.ones_like(images_right)
         # 'nearest' to ensure no floating points in the mask
-        src_mask = K.geometry.warp_perspective(mask_right, homo, out_shape, mode='nearest')
+        src_mask = warp_perspective(mask_right, homo, out_shape, mode='nearest')
         dst_mask = torch.cat([mask_left, torch.zeros_like(mask_right)], dim=-1)
         return self.blend_image(src_img, dst_img, src_mask), (dst_mask + src_mask).bool().to(src_mask.dtype)
 

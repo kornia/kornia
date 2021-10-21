@@ -3,7 +3,7 @@ from typing import Optional, Tuple
 
 import torch
 
-import kornia
+from kornia.utils import eye_like, vec_like
 
 from .numeric import cross_product_matrix
 from .projection import depth_from_point, projection_from_KRt
@@ -217,8 +217,8 @@ def motion_from_essential_choose_solution(
     Rs, ts = motion_from_essential(E_mat)
 
     # set reference view pose and compute projection matrix
-    R1 = kornia.eye_like(3, E_mat)  # Bx3x3
-    t1 = kornia.vec_like(3, E_mat)  # Bx3x1
+    R1 = eye_like(3, E_mat)  # Bx3x3
+    t1 = vec_like(3, E_mat)  # Bx3x1
 
     # compute the projection matrices for first camera
     R1 = R1[:, None].expand(-1, 4, -1, -1)
