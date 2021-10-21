@@ -28,7 +28,7 @@ class TestLoFTR:
     def test_pretrained_indoor(self, device, dtype, data):
         loftr = LoFTR('indoor').to(device, dtype)
         data_dev = utils.dict_to(data, device, dtype)
-        with torch.inference_mode():
+        with torch.no_grads():
             out = loftr(data_dev)
         assert_close(out['keypoints0'], data_dev["loftr_indoor_tentatives0"])
         assert_close(out['keypoints1'], data_dev["loftr_indoor_tentatives1"])
@@ -40,7 +40,7 @@ class TestLoFTR:
     def test_pretrained_outdoor(self, device, dtype, data):
         loftr = LoFTR('outdoor').to(device, dtype)
         data_dev = utils.dict_to(data, device, dtype)
-        with torch.inference_mode():
+        with torch.no_grads():
             out = loftr(data_dev)
         assert_close(out['keypoints0'], data_dev["loftr_outdoor_tentatives0"])
         assert_close(out['keypoints1'], data_dev["loftr_outdoor_tentatives1"])

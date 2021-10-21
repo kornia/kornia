@@ -62,7 +62,8 @@ class TestGetLAFDescriptors:
 
         desc = _MeanPatch()
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(get_laf_descriptors, (img, lafs, desc, PS, True), eps=1e-3, atol=1e-3, raise_exception=True, nondet_tol=1e-3)
+        assert gradcheck(get_laf_descriptors, (img, lafs, desc, PS, True),
+                         eps=1e-3, atol=1e-3, raise_exception=True, nondet_tol=1e-3)
 
 
 class TestLAFDescriptor:

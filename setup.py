@@ -1,6 +1,7 @@
 # Welcome to the Kornia setup.py.
 #
 import sys
+import re
 
 # Make sure that kornia is running on Python 3.6.0 or later
 # (to avoid running into this bug: https://bugs.python.org/issue29246)
@@ -11,17 +12,26 @@ if sys.version_info < (3, 6, 0):
 
 from setuptools import find_packages, setup
 
-import versioneer
 
-# open readme file and set long description
-with open("README.md", encoding="utf-8") as fh:
-    long_description = fh.read()
+def find_version(file_path: str) -> str:
+    version_file = open(file_path, "rt").read()
+    version_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]", version_file, re.M)
+    if not version_match:
+        raise RuntimeError(f"Unable to find version string in {file_path}")
+    return version_match.group(1)
+
+
+VERSION = find_version("kornia/_version.py")
 
 
 # NOTE: kornia MUST only require PyTorch
 requirements = [
     'torch>=1.8.1', 'packaging',
 ]
+
+# open readme file and set long description
+with open("README.md", encoding="utf-8") as fh:
+    long_description = fh.read()
 
 
 def load_requirements(filename: str):
@@ -39,10 +49,9 @@ requirements_extras["all"] = requirements_extras["x"] + requirements_extras["dev
 if __name__ == '__main__':
     setup(
         name='kornia',
-        version=versioneer.get_version(),
-        cmdclass=versioneer.get_cmdclass(),
+        version=VERSION,
         author='Edgar Riba',
-        author_email='contact@kornia.org',
+        author_email='edgar@kornia.org',
         url='https://www.kornia.org',
         download_url='https://github.com/kornia/kornia',
         license='Apache License 2.0',

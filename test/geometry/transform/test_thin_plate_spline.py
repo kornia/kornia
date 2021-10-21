@@ -151,7 +151,8 @@ class TestWarpImage:
         warp = kornia.geometry.transform.warp_image_tps(tensor, dst, kernel, affine)
         assert warp.shape == tensor.shape
 
-    @pytest.mark.skipif(torch_version_geq(1, 10),
+    @pytest.mark.skipif(
+        torch_version_geq(1, 10),
         reason="for some reason the solver detects singular matrices in pytorch >=1.10.")
     @pytest.mark.parametrize('batch_size', [1, 3])
     def test_warp(self, batch_size, device, dtype):
