@@ -2,10 +2,10 @@ from typing import Optional, Tuple
 
 import torch
 
-import kornia
 from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.linalg import transform_points
 from kornia.utils._compat import linalg_qr
+from kornia.utils import eye_like
 
 
 def _mean_isotropic_scale_normalize(
@@ -241,7 +241,7 @@ def solve_pnp_dlt(
     solution = solution.reshape(B, 3, 4)
 
     # Creating solution_4x4
-    solution_4x4 = kornia.eye_like(4, solution)
+    solution_4x4 = eye_like(4, solution)
     solution_4x4[:, :3, :] = solution
 
     # De-normalizing the solution
@@ -278,7 +278,7 @@ def solve_pnp_dlt(
     # If right[i, j, j] is negative, then we need to flip the signs of
     # the column ortho[i, :, j]. The below code performs the necessary
     # operations in an better way.
-    mask = kornia.eye_like(3, ortho)
+    mask = eye_like(3, ortho)
     col_sign_fix = torch.sign(mask * right)
     rot_mat = torch.bmm(ortho, col_sign_fix)
 
