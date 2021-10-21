@@ -1,4 +1,3 @@
-
 # This file helps to compute a version number in source trees obtained from
 # git-archive tarball (such as those provided by githubs download-from-tag
 # feature). Distribution tarballs (built by setup.py sdist) and build
@@ -92,7 +91,7 @@ def run_command(commands, args, cwd=None, verbose=False, hide_stderr=False,
             return None, None
     else:
         if verbose:
-            print("unable to find command, tried %s" % (commands,))
+            print(f"unable to find command, tried {commands}")
         return None, None
     stdout = process.communicate()[0].strip().decode()
     if process.returncode != 0:
@@ -106,9 +105,8 @@ def run_command(commands, args, cwd=None, verbose=False, hide_stderr=False,
 def versions_from_parentdir(parentdir_prefix, root, verbose):
     """Try to determine the version from the parent directory name.
 
-    Source tarballs conventionally unpack into a directory that includes both
-    the project name and a version string. We will also support searching up
-    two directory levels for an appropriately named parent directory
+    Source tarballs conventionally unpack into a directory that includes both the project name and a version string. We
+    will also support searching up two directory levels for an appropriately named parent directory
     """
     rootdirs = []
 
@@ -136,7 +134,7 @@ def git_get_keywords(versionfile_abs):
     # _version.py.
     keywords = {}
     try:
-        with open(versionfile_abs, "r") as fobj:
+        with open(versionfile_abs) as fobj:
             for line in fobj:
                 if line.strip().startswith("git_refnames ="):
                     mo = re.search(r'=\s*"(.*)"', line)
@@ -223,9 +221,8 @@ def git_versions_from_keywords(keywords, tag_prefix, verbose):
 def git_pieces_from_vcs(tag_prefix, root, verbose, runner=run_command):
     """Get version from 'git describe' in the root of the source tree.
 
-    This only gets called if the git-archive 'subst' keywords were *not*
-    expanded, and _version.py hasn't already been rewritten with a short
-    version string, meaning we're inside a checked out source tree.
+    This only gets called if the git-archive 'subst' keywords were *not* expanded, and _version.py hasn't already been
+    rewritten with a short version string, meaning we're inside a checked out source tree.
     """
     GITS = ["git"]
     TAG_PREFIX_REGEX = "*"
@@ -245,7 +242,7 @@ def git_pieces_from_vcs(tag_prefix, root, verbose, runner=run_command):
     describe_out, rc = runner(GITS, ["describe", "--tags", "--dirty",
                                      "--always", "--long",
                                      "--match",
-                                     "%s%s" % (tag_prefix, TAG_PREFIX_REGEX)],
+                                     f"{tag_prefix}{TAG_PREFIX_REGEX}"],
                               cwd=root)
     # --long was added in git-1.5.5
     if describe_out is None:
@@ -413,8 +410,8 @@ def render_pep440_branch(pieces):
 def pep440_split_post(ver):
     """Split pep440 version string at the post-release segment.
 
-    Returns the release segments before the post-release and the
-    post-release version number (or -1 if no post-release segment is present).
+    Returns the release segments before the post-release and the post-release version number (or -1 if no post-release
+    segment is present).
     """
     vc = str.split(ver, ".post")
     return vc[0], int(vc[1] or 0) if len(vc) == 2 else None

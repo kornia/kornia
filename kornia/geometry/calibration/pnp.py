@@ -4,8 +4,8 @@ import torch
 
 from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.linalg import transform_points
-from kornia.utils._compat import linalg_qr
 from kornia.utils import eye_like
+from kornia.utils._compat import linalg_qr
 
 
 def _mean_isotropic_scale_normalize(

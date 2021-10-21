@@ -1,4 +1,3 @@
-
 # Version: 0.21
 
 """The Versioneer - like a rocketeer, but for versions.
@@ -297,8 +296,8 @@ class VersioneerConfig:
 def get_root():
     """Get the project root directory.
 
-    We require that all commands are run from the project root, i.e. the
-    directory that contains setup.py, setup.cfg, and versioneer.py .
+    We require that all commands are run from the project root, i.e. the directory that contains setup.py, setup.cfg,
+    and versioneer.py .
     """
     root = os.path.realpath(os.path.abspath(os.getcwd()))
     setup_py = os.path.join(root, "setup.py")
@@ -341,7 +340,7 @@ def get_config_from_root(root):
     # the top of versioneer.py for instructions on writing your setup.cfg .
     setup_cfg = os.path.join(root, "setup.cfg")
     parser = configparser.ConfigParser()
-    with open(setup_cfg, "r") as cfg_file:
+    with open(setup_cfg) as cfg_file:
         parser.read_file(cfg_file)
     VCS = parser.get("versioneer", "VCS")  # mandatory
 
@@ -403,7 +402,7 @@ def run_command(commands, args, cwd=None, verbose=False, hide_stderr=False,
             return None, None
     else:
         if verbose:
-            print("unable to find command, tried %s" % (commands,))
+            print(f"unable to find command, tried {commands}")
         return None, None
     stdout = process.communicate()[0].strip().decode()
     if process.returncode != 0:
@@ -1070,7 +1069,7 @@ def git_get_keywords(versionfile_abs):
     # _version.py.
     keywords = {}
     try:
-        with open(versionfile_abs, "r") as fobj:
+        with open(versionfile_abs) as fobj:
             for line in fobj:
                 if line.strip().startswith("git_refnames ="):
                     mo = re.search(r'=\s*"(.*)"', line)
@@ -1157,9 +1156,8 @@ def git_versions_from_keywords(keywords, tag_prefix, verbose):
 def git_pieces_from_vcs(tag_prefix, root, verbose, runner=run_command):
     """Get version from 'git describe' in the root of the source tree.
 
-    This only gets called if the git-archive 'subst' keywords were *not*
-    expanded, and _version.py hasn't already been rewritten with a short
-    version string, meaning we're inside a checked out source tree.
+    This only gets called if the git-archive 'subst' keywords were *not* expanded, and _version.py hasn't already been
+    rewritten with a short version string, meaning we're inside a checked out source tree.
     """
     GITS = ["git"]
     TAG_PREFIX_REGEX = "*"
@@ -1179,7 +1177,7 @@ def git_pieces_from_vcs(tag_prefix, root, verbose, runner=run_command):
     describe_out, rc = runner(GITS, ["describe", "--tags", "--dirty",
                                      "--always", "--long",
                                      "--match",
-                                     "%s%s" % (tag_prefix, TAG_PREFIX_REGEX)],
+                                     f"{tag_prefix}{TAG_PREFIX_REGEX}"],
                               cwd=root)
     # --long was added in git-1.5.5
     if describe_out is None:
@@ -1285,8 +1283,7 @@ def git_pieces_from_vcs(tag_prefix, root, verbose, runner=run_command):
 def do_vcs_install(manifest_in, versionfile_source, ipy):
     """Git-specific installation logic for Versioneer.
 
-    For Git, this means creating/changing .gitattributes to mark _version.py
-    for export-subst keyword substitution.
+    For Git, this means creating/changing .gitattributes to mark _version.py for export-subst keyword substitution.
     """
     GITS = ["git"]
     if sys.platform == "win32":
@@ -1304,7 +1301,7 @@ def do_vcs_install(manifest_in, versionfile_source, ipy):
     files.append(versioneer_file)
     present = False
     try:
-        with open(".gitattributes", "r") as fobj:
+        with open(".gitattributes") as fobj:
             for line in fobj:
                 if line.strip().startswith(versionfile_source):
                     if "export-subst" in line.strip().split()[1:]:
@@ -1322,9 +1319,8 @@ def do_vcs_install(manifest_in, versionfile_source, ipy):
 def versions_from_parentdir(parentdir_prefix, root, verbose):
     """Try to determine the version from the parent directory name.
 
-    Source tarballs conventionally unpack into a directory that includes both
-    the project name and a version string. We will also support searching up
-    two directory levels for an appropriately named parent directory
+    Source tarballs conventionally unpack into a directory that includes both the project name and a version string. We
+    will also support searching up two directory levels for an appropriately named parent directory
     """
     rootdirs = []
 
@@ -1386,7 +1382,7 @@ def write_to_version_file(filename, versions):
     with open(filename, "w") as f:
         f.write(SHORT_VERSION_PY % contents)
 
-    print("set %s to '%s'" % (filename, versions["version"]))
+    print("set {} to '{}'".format(filename, versions["version"]))
 
 
 def plus_or_dot(pieces):
@@ -1454,8 +1450,8 @@ def render_pep440_branch(pieces):
 def pep440_split_post(ver):
     """Split pep440 version string at the post-release segment.
 
-    Returns the release segments before the post-release and the
-    post-release version number (or -1 if no post-release segment is present).
+    Returns the release segments before the post-release and the post-release version number (or -1 if no post-release
+    segment is present).
     """
     vc = str.split(ver, ".post")
     return vc[0], int(vc[1] or 0) if len(vc) == 2 else None
@@ -1686,7 +1682,7 @@ def get_versions(verbose=False):
     try:
         ver = versions_from_file(versionfile_abs)
         if verbose:
-            print("got version from file %s %s" % (versionfile_abs, ver))
+            print(f"got version from file {versionfile_abs} {ver}")
         return ver
     except NotThisMethod:
         pass
@@ -1727,8 +1723,7 @@ def get_version():
 def get_cmdclass(cmdclass=None):
     """Get the custom setuptools/distutils subclasses used by Versioneer.
 
-    If the package uses a different cmdclass (e.g. one from numpy), it
-    should be provide as an argument.
+    If the package uses a different cmdclass (e.g. one from numpy), it should be provide as an argument.
     """
     if "versioneer" in sys.modules:
         del sys.modules["versioneer"]
@@ -1838,6 +1833,7 @@ def get_cmdclass(cmdclass=None):
 
     if "cx_Freeze" in sys.modules:  # cx_freeze enabled?
         from cx_Freeze.dist import build_exe as _build_exe
+
         # nczeczulin reports that py2exe won't like the pep440-style string
         # as FILEVERSION, but it can be used for PRODUCTVERSION, e.g.
         # setup(console=[{
@@ -2004,7 +2000,7 @@ def do_setup():
                        "__init__.py")
     if os.path.exists(ipy):
         try:
-            with open(ipy, "r") as f:
+            with open(ipy) as f:
                 old = f.read()
         except OSError:
             old = ""
@@ -2031,7 +2027,7 @@ def do_setup():
     manifest_in = os.path.join(root, "MANIFEST.in")
     simple_includes = set()
     try:
-        with open(manifest_in, "r") as f:
+        with open(manifest_in) as f:
             for line in f:
                 if line.startswith("include "):
                     for include in line.split()[1:]:
@@ -2068,7 +2064,7 @@ def scan_setup_py():
     found = set()
     setters = False
     errors = 0
-    with open("setup.py", "r") as f:
+    with open("setup.py") as f:
         for line in f.readlines():
             if "import versioneer" in line:
                 found.add("import")

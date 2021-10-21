@@ -9,9 +9,9 @@ if sys.version_info < (3, 6, 0):
     raise RuntimeError("Kornia requires Python 3.6.0 or later.")
 
 
-import versioneer
 from setuptools import find_packages, setup
 
+import versioneer
 
 # open readme file and set long description
 with open("README.md", encoding="utf-8") as fh:
