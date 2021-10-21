@@ -1,15 +1,3 @@
-# Make sure that kornia is running on Python 3.6.0 or later
-# (to avoid running into this bug: https://bugs.python.org/issue29246)
-import sys
-
-if sys.version_info < (3, 6, 0):
-    raise RuntimeError("Kornia requires Python 3.6.0 or later")
-
-try:
-    from .version import __version__  # nopa: 401
-except ImportError:
-    pass
-
 # NOTE: kornia filters and geometry must go first since are the core of the library
 # and by changing the import order you might get into a circular dependencies issue.
 from . import filters
@@ -38,3 +26,6 @@ from kornia.utils import (
     image_to_tensor,
     tensor_to_image,
 )
+
+from . import _version
+__version__ = _version.get_versions()['version']
