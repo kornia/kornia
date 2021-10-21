@@ -279,6 +279,32 @@ class TestWarpPerspective:
         patch_warped = kornia.warp_perspective(patch, dst_trans_src, (dst_h, dst_w))
         assert_close(patch_warped, expected)
 
+    @pytest.mark.parametrize("batch_size", [1, 5])
+    @pytest.mark.parametrize("channels", [1, 5])
+    def test_crop_src_dst_type_mismatch(self, batch_size, channels, device):
+        # generate input data
+        src_h, src_w = 3, 3
+        dst_h, dst_w = 3, 3
+
+        # [x, y] origin
+        # top-left, top-right, bottom-right, bottom-left
+        points_src = torch.tensor(
+            [[[0, 0], [0, src_w - 1], [src_h - 1, src_w - 1], [src_h - 1, 0]]], device=device, dtype=torch.int64
+        )
+
+        # [x, y] destination
+        # top-left, top-right, bottom-right, bottom-left
+        points_dst = torch.tensor(
+            [[[0, 0], [0, dst_w - 1], [dst_h - 1, dst_w - 1], [dst_h - 1, 0]]], device=device, dtype=torch.float32
+        )
+
+        # compute transformation between points
+        try:
+            kornia.get_perspective_transform(points_src, points_dst).expand(batch_size, -1, -1)
+        except TypeError as err:
+            assert err.args[0] == f"Source data type {points_src.dtype} must match " \
+                                  f"Destination data type {points_dst.dtype}"
+
     def test_crop_center_resize(self, device, dtype):
         # generate input data
         dst_h, dst_w = 4, 4
