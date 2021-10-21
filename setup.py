@@ -1,7 +1,7 @@
 # Welcome to the Kornia setup.py.
 #
-import sys
 import re
+import sys
 
 # Make sure that kornia is running on Python 3.6.0 or later
 # (to avoid running into this bug: https://bugs.python.org/issue29246)
@@ -14,7 +14,7 @@ from setuptools import find_packages, setup
 
 
 def find_version(file_path: str) -> str:
-    version_file = open(file_path, "rt").read()
+    version_file = open(file_path).read()
     version_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]", version_file, re.M)
     if not version_match:
         raise RuntimeError(f"Unable to find version string in {file_path}")
