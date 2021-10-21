@@ -52,7 +52,7 @@ repos:
     hooks:
       - id: bandit
         language_version: python3
-        exclude: ^test/
+        exclude: ^test/,versioneer.py,kornia/_version.py
         args:
           - -s
           - "B404,B602,B603,B607"
