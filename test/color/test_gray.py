@@ -92,7 +92,7 @@ class TestGrayscaleToRgb(BaseTester):
         B, C, H, W = 2, 1, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.grayscale_to_rgb
-        op_jit = kornia.jit.grayscale_to_rgb
+        op_jit = torch.jit.script(op)
         assert_close(op(img), op_jit(img))
 
     @pytest.mark.nn
@@ -203,7 +203,7 @@ class TestRgbToGrayscale(BaseTester):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.rgb_to_grayscale
-        op_jit = kornia.jit.rgb_to_grayscale
+        op_jit = torch.jit.script(op)
         assert_close(op(img), op_jit(img))
 
     @pytest.mark.nn
@@ -296,7 +296,7 @@ class TestBgrToGrayscale(BaseTester):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.rgb_to_grayscale
-        op_jit = kornia.jit.bgr_to_grayscale
+        op_jit = torch.jit.script(op)
         assert_close(op(img), op_jit(img))
 
     @pytest.mark.nn

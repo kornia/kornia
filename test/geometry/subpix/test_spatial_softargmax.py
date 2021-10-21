@@ -156,7 +156,7 @@ class TestSpatialSoftArgmax2d:
     def test_jit(self, device, dtype):
         input = torch.rand((2, 3, 7, 7), dtype=dtype, device=device)
         op = kornia.geometry.subpix.spatial_soft_argmax2d
-        op_jit = kornia.jit.spatial_soft_argmax2d
+        op_jit = torch.jit.script(op)
         assert_close(op(input), op_jit(input), rtol=0, atol=1e-5)
 
     @pytest.mark.skip(reason="it works but raises some warnings.")

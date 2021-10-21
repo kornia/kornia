@@ -37,7 +37,7 @@ class TestRenderGaussian2d:
         std = torch.tensor([0.25, 0.25], dtype=dtype, device=device)
         args = (mean, std, (5, 5), True)
         op = kornia.geometry.dsnt.render_gaussian2d
-        op_jit = kornia.jit.render_gaussian2d
+        op_jit = torch.jit.script(op)
         assert_close(op(*args), op_jit(*args), rtol=0, atol=1e-5)
 
     @pytest.mark.skip(reason="it works but raises some warnings.")
@@ -65,7 +65,7 @@ class TestSpatialSoftmax2d:
 
     def test_jit(self, input):
         op = kornia.geometry.dsnt.spatial_softmax2d
-        op_jit = kornia.jit.spatial_softmax2d
+        op_jit = torch.jit.script(op)
         assert_close(op(input), op_jit(input), rtol=0, atol=1e-5)
 
     @pytest.mark.skip(reason="it works but raises some warnings.")
@@ -99,7 +99,7 @@ class TestSpatialExpectation2d:
     def test_jit(self, example):
         input = example[0]
         op = kornia.geometry.dsnt.spatial_expectation2d
-        op_jit = kornia.jit.spatial_expectation2d
+        op_jit = torch.jit.script(op)
         assert_close(op(input), op_jit(input), rtol=0, atol=1e-5)
 
     @pytest.mark.skip(reason="it works but raises some warnings.")
