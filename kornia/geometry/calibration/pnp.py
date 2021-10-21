@@ -5,6 +5,7 @@ import torch
 import kornia
 from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.linalg import transform_points
+from kornia.utils._compat import linalg_qr
 
 
 def _mean_isotropic_scale_normalize(
@@ -84,6 +85,38 @@ def solve_pnp_dlt(
     Returns:
         A tensor with shape :math:`(B, 3, 4)` representing the estimated world to
         camera transformation matrices (also known as the extrinsic matrices).
+
+    Example:
+        >>> world_points = torch.tensor([[
+        ...     [ 5. , -5. ,  0. ], [ 0. ,  0. ,  1.5],
+        ...     [ 2.5,  3. ,  6. ], [ 9. , -2. ,  3. ],
+        ...     [-4. ,  5. ,  2. ], [-5. ,  5. ,  1. ],
+        ... ]], dtype=torch.float64)
+        >>>
+        >>> img_points = torch.tensor([[
+        ...     [1409.1504, -800.936 ], [ 407.0207, -182.1229],
+        ...     [ 392.7021,  177.9428], [1016.838 ,   -2.9416],
+        ...     [ -63.1116,  142.9204], [-219.3874,   99.666 ],
+        ... ]], dtype=torch.float64)
+        >>>
+        >>> intrinsics = torch.tensor([[
+        ...     [ 500.,    0.,  250.],
+        ...     [   0.,  500.,  250.],
+        ...     [   0.,    0.,    1.],
+        ... ]], dtype=torch.float64)
+        >>>
+        >>> print(world_points.shape, img_points.shape, intrinsics.shape)
+        torch.Size([1, 6, 3]) torch.Size([1, 6, 2]) torch.Size([1, 3, 3])
+        >>>
+        >>> pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics)
+        >>>
+        >>> print(pred_world_to_cam.shape)
+        torch.Size([1, 3, 4])
+        >>>
+        >>> pred_world_to_cam
+        tensor([[[ 0.9392, -0.3432, -0.0130,  1.6734],
+                 [ 0.3390,  0.9324, -0.1254, -4.3634],
+                 [ 0.0552,  0.1134,  0.9920,  3.7785]]], dtype=torch.float64)
     """
     # This function was implemented based on ideas inspired from multiple references.
     # ============
@@ -118,6 +151,26 @@ def solve_pnp_dlt(
 
     if type(svd_eps) is not float:
         raise AssertionError(f"Type of svd_eps is not float. Got {type(svd_eps)}")
+
+    accepted_dtypes = (torch.float32, torch.float64)
+
+    if world_points.dtype not in accepted_dtypes:
+        raise AssertionError(
+            f"world_points must have one of the following dtypes {accepted_dtypes}. "
+            f"Currently it has {world_points.dtype}."
+        )
+
+    if img_points.dtype not in accepted_dtypes:
+        raise AssertionError(
+            f"img_points must have one of the following dtypes {accepted_dtypes}. "
+            f"Currently it has {img_points.dtype}."
+        )
+
+    if intrinsics.dtype not in accepted_dtypes:
+        raise AssertionError(
+            f"intrinsics must have one of the following dtypes {accepted_dtypes}. "
+            f"Currently it has {intrinsics.dtype}."
+        )
 
     if (len(world_points.shape) != 3) or (world_points.shape[2] != 3):
         raise AssertionError(
@@ -215,7 +268,22 @@ def solve_pnp_dlt(
     # We then multiply solution with mul_factor.
     norm_col = torch.norm(input=solution[:, :3, 0], p=2, dim=1)
     mul_factor = (1 / norm_col)[:, None, None]
-    pred_world_to_cam = solution * mul_factor
+    temp = solution * mul_factor
+
+    # To make sure that the rotation matrix would be orthogonal, we apply
+    # QR decomposition.
+    ortho, right = linalg_qr(temp[:, :3, :3])
+
+    # We may need to fix the signs of the columns of the ortho matrix.
+    # If right[i, j, j] is negative, then we need to flip the signs of
+    # the column ortho[i, :, j]. The below code performs the necessary
+    # operations in an better way.
+    mask = kornia.eye_like(3, ortho)
+    col_sign_fix = torch.sign(mask * right)
+    rot_mat = torch.bmm(ortho, col_sign_fix)
+
+    # Preparing the final output.
+    pred_world_to_cam = torch.cat([rot_mat, temp[:, :3, 3:4]], dim=-1)
 
     # TODO: Implement algorithm to refine the solution.
 
