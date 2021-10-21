@@ -2,8 +2,7 @@ from typing import cast, Tuple, Union
 
 import torch
 
-# TODO: this is a circular dependency - think about a proper solution
-import kornia.geometry as geometry
+import kornia  # TODO: this is a circular dependency - think about a proper solution
 from kornia.utils import _extract_device_dtype
 
 
@@ -88,7 +87,7 @@ def get_motion_kernel2d(
         raise AssertionError
     kernel = kernel.unsqueeze(1)
     # rotate (counterclockwise) kernel by given angle
-    kernel = geometry.rotate(kernel, angle, mode=mode, align_corners=True)
+    kernel = kornia.geometry.rotate(kernel, angle, mode=mode, align_corners=True)
     kernel = kernel[:, 0]
     kernel = kernel / kernel.sum(dim=(1, 2), keepdim=True)
     return kernel
@@ -190,7 +189,7 @@ def get_motion_kernel3d(
         raise AssertionError
     kernel = kernel.unsqueeze(1)
     # rotate (counterclockwise) kernel by given angle
-    kernel = geometry.rotate3d(kernel, angle[:, 0], angle[:, 1], angle[:, 2], mode=mode, align_corners=True)
+    kernel = kornia.geometry.rotate3d(kernel, angle[:, 0], angle[:, 1], angle[:, 2], mode=mode, align_corners=True)
     kernel = kernel[:, 0]
     kernel = kernel / kernel.sum(dim=(1, 2, 3), keepdim=True)
 
