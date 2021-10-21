@@ -220,6 +220,9 @@ def get_perspective_transform(src, dst):
     if not isinstance(dst, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(dst)}")
 
+    if not src.dtype == dst.dtype:
+        raise TypeError(f"Source data type {src.dtype} must match Destination data type {dst.dtype}")
+
     if not src.shape[-2:] == (4, 2):
         raise ValueError(f"Inputs must be a Bx4x2 tensor. Got {src.shape}")
 
@@ -260,7 +263,7 @@ def get_perspective_transform(src, dst):
 
     # create variable to return
     batch_size = src.shape[0]
-    M = torch.ones(batch_size, 9, device=src.device, dtype=X.dtype)
+    M = torch.ones(batch_size, 9, device=src.device, dtype=src.dtype)
     M[..., :8] = torch.squeeze(X, dim=-1)
 
     return M.view(-1, 3, 3)  # Bx3x3
