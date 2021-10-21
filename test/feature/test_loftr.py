@@ -1,4 +1,3 @@
-import os
 import sys
 
 import pytest
@@ -22,7 +21,7 @@ class TestLoFTR:
         assert loftr is not None
 
     @pytest.mark.skipif(torch_version_geq(1, 10), reason="RuntimeError: CUDA out of memory with pytorch>=1.10")
-    @pytest.mark.skipif(os.getenv("CI") is True and "win" in sys.platform,
+    @pytest.mark.skipif(sys.platform == "win32",
                         reason="this test takes so much memory in the CI with Windows")
     @pytest.mark.parametrize("data", ["loftr_fund"], indirect=True)
     def test_pretrained_indoor(self, device, dtype, data):
@@ -34,7 +33,7 @@ class TestLoFTR:
         assert_close(out['keypoints1'], data_dev["loftr_indoor_tentatives1"])
 
     @pytest.mark.skipif(torch_version_geq(1, 10), reason="RuntimeError: CUDA out of memory with pytorch>=1.10")
-    @pytest.mark.skipif(os.getenv("CI") is True and "win" in sys.platform,
+    @pytest.mark.skipif(sys.platform == "win32",
                         reason="this test takes so much memory in the CI with Windows")
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_pretrained_outdoor(self, device, dtype, data):
