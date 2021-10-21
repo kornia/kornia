@@ -52,10 +52,13 @@ repos:
     hooks:
       - id: bandit
         language_version: python3
-        exclude: ^test/,versioneer.py,kornia/_version.py
+        #exclude: ^test/
         args:
           - -s
           - "B404,B602,B603,B607"
+          - -x
+          - "test,versioneer.py,kornia/_version.py"
+          - -r
 
   - repo: https://github.com/myint/docformatter
     rev: v1.4
