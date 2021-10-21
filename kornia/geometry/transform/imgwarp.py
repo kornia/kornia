@@ -260,7 +260,7 @@ def get_perspective_transform(src, dst):
 
     # create variable to return
     batch_size = src.shape[0]
-    M = torch.ones(batch_size, 9, device=src.device, dtype=src.dtype)
+    M = torch.ones(batch_size, 9, device=src.device, dtype=X.dtype)
     M[..., :8] = torch.squeeze(X, dim=-1)
 
     return M.view(-1, 3, 3)  # Bx3x3
