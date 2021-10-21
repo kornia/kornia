@@ -39,7 +39,6 @@ class TestPatchAffineShapeEstimator:
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
         assert gradcheck(ori, (patches,), raise_exception=True, nondet_tol=1e-4)
 
-    @pytest.mark.jit
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 13, 13
         patches = torch.ones(B, C, H, W, device=device, dtype=dtype)

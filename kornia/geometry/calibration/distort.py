@@ -72,12 +72,10 @@ def distort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
         Undistorted 2D points with shape :math:`(*, N, 2)`.
 
     Example:
-        >>> _ = torch.manual_seed(0)
         >>> points = torch.rand(1, 1, 2)
         >>> K = torch.eye(3)[None]
         >>> dist_coeff = torch.rand(1, 4)
-        >>> distort_points(points, K, dist_coeff)
-        tensor([[[1.0717, 3.6009]]])
+        >>> points_dist = distort_points(points, K, dist_coeff)
 
     """
     if points.dim() < 2 and points.shape[-1] != 2:

@@ -1024,7 +1024,7 @@ class TestRotationMatrixToAngleAxis:
     def test_rand_quaternion_gradcheck(self, batch_size, device, dtype, atol, rtol):
         # generate input data
         quaternion = torch.rand(batch_size, 4, device=device, dtype=dtype)
-        quaternion = kornia.geometry.conversions.normalize_quaternion(quaternion)
+        quaternion = kornia.geometry.conversions.normalize_quaternion(quaternion + 1e-6)
         rotation_matrix = kornia.geometry.conversions.quaternion_to_rotation_matrix(
             quaternion=quaternion, order=QuaternionCoeffOrder.WXYZ
         )

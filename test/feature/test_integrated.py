@@ -43,15 +43,14 @@ class TestGetLAFDescriptors:
         assert_close(descs_test_from_rgb, descs_reference)
         assert_close(descs_test_from_gray, descs_reference)
 
-    def test_gradcheck(self, device):
+    def test_gradcheck(self, device, dtype=torch.float64):
         B, C, H, W = 1, 1, 32, 32
-        dtype = torch.double
         PS = 16
         img = torch.rand(B, C, H, W, device=device)
-        centers = torch.tensor([[H / 3.0, W / 3.0], [2.0 * H / 3.0, W / 2.0]], device=device, dtype=torch.double).view(
+        centers = torch.tensor([[H / 3.0, W / 3.0], [2.0 * H / 3.0, W / 2.0]], device=device, dtype=dtype).view(
             1, 2, 2
         )
-        scales = torch.tensor([(H + W) / 4.0, (H + W) / 8.0], device=device, dtype=torch.double).view(1, 2, 1, 1)
+        scales = torch.tensor([(H + W) / 4.0, (H + W) / 8.0], device=device, dtype=dtype).view(1, 2, 1, 1)
         ori = torch.tensor([0.0, 30.0], device=device, dtype=dtype).view(1, 2, 1)
         lafs = kornia.feature.laf_from_center_scale_ori(centers, scales, ori)
         img = utils.tensor_to_gradcheck_var(img)  # to var
@@ -63,7 +62,7 @@ class TestGetLAFDescriptors:
 
         desc = _MeanPatch()
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(get_laf_descriptors, (img, lafs, desc, PS, True), eps=1e-3, atol=1e-3, raise_exception=True)
+        assert gradcheck(get_laf_descriptors, (img, lafs, desc, PS, True), eps=1e-3, atol=1e-3, raise_exception=True, nondet_tol=1e-3)
 
 
 class TestLAFDescriptor:
@@ -86,8 +85,7 @@ class TestLAFDescriptor:
         descs_reference = sift(patches.view(B1 * N1, CH1, H1, W1)).view(B1, N1, -1)
         assert_close(descs_test, descs_reference)
 
-    def test_gradcheck(self, device):
-        dtype = torch.double
+    def test_gradcheck(self, device, dtype=torch.float64):
         B, C, H, W = 1, 1, 32, 32
         PS = 16
         img = torch.rand(B, C, H, W, device=device)
@@ -104,7 +102,7 @@ class TestLAFDescriptor:
 
         lafdesc = LAFDescriptor(_MeanPatch(), PS)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(lafdesc, (img, lafs), eps=1e-3, atol=1e-3, raise_exception=True)
+        assert gradcheck(lafdesc, (img, lafs), eps=1e-3, atol=1e-3, raise_exception=True, nondet_tol=1e-3)
 
 
 class TestLocalFeature:
@@ -137,8 +135,8 @@ class TestLocalFeature:
         B, C, H, W = 1, 1, 32, 32
         PS = 16
         img = torch.rand(B, C, H, W, device=device)
-        local_feature = LocalFeature(ScaleSpaceDetector(2), LAFDescriptor(SIFTDescriptor(PS), PS)).to(device)
         img = utils.tensor_to_gradcheck_var(img)  # to var
+        local_feature = LocalFeature(ScaleSpaceDetector(2), LAFDescriptor(SIFTDescriptor(PS), PS)).to(device, img.dtype)
         assert gradcheck(local_feature, img, eps=1e-4, atol=1e-4, raise_exception=True)
 
 
@@ -167,8 +165,8 @@ class TestGFTTAffNetHardNet:
     def test_gradcheck(self, device):
         B, C, H, W = 1, 1, 32, 32
         img = torch.rand(B, C, H, W, device=device)
-        local_feature = GFTTAffNetHardNet(2, True).to(device, torch.double)
         img = utils.tensor_to_gradcheck_var(img)  # to var
+        local_feature = GFTTAffNetHardNet(2, True).to(device, img.dtype)
         assert gradcheck(local_feature, img, eps=1e-4, atol=1e-4, raise_exception=True)
 
 
