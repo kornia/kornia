@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 from kornia.color import rgb_to_grayscale
-from kornia.feature import LoFTR
+from kornia.feature import LocalFeatureMatcher, LoFTR
 from kornia.geometry.homography import find_homography_dlt_iterated
 from kornia.geometry.ransac import RANSAC
 from kornia.geometry.transform import warp_perspective
@@ -88,7 +88,7 @@ class ImageStitcher(nn.Module):
     def preprocess(self, image_1: torch.Tensor, image_2: torch.Tensor) -> Dict[str, torch.Tensor]:
         """Preprocess input to the required format."""
         # TODO: probably perform histogram matching here.
-        if isinstance(self.matcher, LoFTR):
+        if isinstance(self.matcher, LoFTR) or isinstance(self.matcher, LocalFeatureMatcher):
             input_dict: Dict[str, torch.Tensor] = {  # LofTR works on grayscale images only
                 "image0": rgb_to_grayscale(image_1),
                 "image1": rgb_to_grayscale(image_2)
