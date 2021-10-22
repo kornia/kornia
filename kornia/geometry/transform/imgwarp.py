@@ -219,6 +219,9 @@ def get_perspective_transform(src, dst):
     if not isinstance(dst, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(dst)}")
 
+    if not src.dtype == dst.dtype:
+        raise TypeError(f"Source data type {src.dtype} must match Destination data type {dst.dtype}")
+
     if not src.shape[-2:] == (4, 2):
         raise ValueError(f"Inputs must be a Bx4x2 tensor. Got {src.shape}")
 
