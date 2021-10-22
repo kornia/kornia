@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 
 from kornia.color import rgb_to_grayscale
-from kornia.feature import LoFTR, LocalFeatureMatcher
+from kornia.feature import LocalFeatureMatcher, LoFTR
 from kornia.geometry.homography import find_homography_dlt_iterated
 from kornia.geometry.ransac import RANSAC
 from kornia.geometry.transform import warp_perspective
