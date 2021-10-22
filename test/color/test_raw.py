@@ -61,41 +61,47 @@ class TestRawToRgb(BaseTester):
     # make sure different cfas are actually different
     def test_cfas_not_the_same(self, device, dtype):  # skipcq: PYL-R0201
         data = torch.rand(1, 16, 16, device=device, dtype=dtype)
-        assert torch.max(kornia.color.raw_to_rgb(data, kornia.color.CFA.BG)
-                         - kornia.color.raw_to_rgb(data, kornia.color.CFA.RG)) > 0.0
+        assert (
+            torch.max(
+                kornia.color.raw_to_rgb(data, kornia.color.CFA.BG) - kornia.color.raw_to_rgb(data, kornia.color.CFA.RG)
+            )
+            > 0.0
+        )
 
     # The outcome will be very different for different implementations
     # Here we compare against a current baseline, it is safe to update this if the underlying algorithm changes
     def test_functional(self, device, dtype):  # skipcq: PYL-R0201
         data = torch.tensor(
-            [
-                [
-                    [1, 0.5, 0.2, 0.4],
-                    [0.75, 0.25, 0.8, 0.3],
-                    [0.65, 0.15, 0.7, 0.2],
-                    [0.55, 0.5, 0.6, 0.1],
-                ]
-            ],
+            [[[1, 0.5, 0.2, 0.4], [0.75, 0.25, 0.8, 0.3], [0.65, 0.15, 0.7, 0.2], [0.55, 0.5, 0.6, 0.1]]],
             device=device,
             dtype=dtype,
         )
         # checked by hand as correct interpolation. Note the ugly replication that happens for Red on the last column
         # and row. We shall accept to live with that
-        expected = torch.tensor([[[1.0000, 0.6000, 0.2000, 0.2000],
-                                  [0.8250, 0.6375, 0.4500, 0.4500],
-                                  [0.6500, 0.6750, 0.7000, 0.7000],
-                                  [0.6500, 0.6750, 0.7000, 0.7000]],
-                                 [[0.6250, 0.5000, 0.6250, 0.4000],
-                                  [0.7500, 0.5500, 0.8000, 0.5500],
-                                  [0.4000, 0.1500, 0.4375, 0.2000],
-                                  [0.5500, 0.3625, 0.6000, 0.4000]],
-                                 [[0.2500, 0.2500, 0.2750, 0.3000],
-                                  [0.2500, 0.2500, 0.2750, 0.3000],
-                                  [0.3750, 0.3750, 0.2875, 0.2000],
-                                  [0.5000, 0.5000, 0.3000, 0.1000]]],
-                                device=device,
-                                dtype=dtype,
-                                )
+        expected = torch.tensor(
+            [
+                [
+                    [1.0000, 0.6000, 0.2000, 0.2000],
+                    [0.8250, 0.6375, 0.4500, 0.4500],
+                    [0.6500, 0.6750, 0.7000, 0.7000],
+                    [0.6500, 0.6750, 0.7000, 0.7000],
+                ],
+                [
+                    [0.6250, 0.5000, 0.6250, 0.4000],
+                    [0.7500, 0.5500, 0.8000, 0.5500],
+                    [0.4000, 0.1500, 0.4375, 0.2000],
+                    [0.5500, 0.3625, 0.6000, 0.4000],
+                ],
+                [
+                    [0.2500, 0.2500, 0.2750, 0.3000],
+                    [0.2500, 0.2500, 0.2750, 0.3000],
+                    [0.3750, 0.3750, 0.2875, 0.2000],
+                    [0.5000, 0.5000, 0.3000, 0.1000],
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
         img_rgb = kornia.color.raw_to_rgb(data, kornia.color.raw.CFA.BG)
         assert_close(img_rgb, expected)

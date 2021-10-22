@@ -48,6 +48,7 @@ extensions = [
 
 # substitutes the default values
 docstring_default_arg_substitution = 'Default: '
+autodoc_preserve_defaults = True
 
 bibtex_bibfiles = ['references.bib']
 napoleon_use_ivar = True
@@ -123,6 +124,7 @@ html_theme_options = {
         "color-sidebar-background-border": "#3980F5",
         "color-sidebar-caption-text": "white",
         "color-sidebar-link-text--top-level": "white",
+        "color-sidebar-link-text": "white",
         "sidebar-caption-font-size": "normal",
         "color-sidebar-item-background--hover": " #5dade2",
     },

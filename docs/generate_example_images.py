@@ -146,7 +146,7 @@ def main():
         # import function and apply
         fn = getattr(mod, fn_name)
         if fn_name == "grayscale_to_rgb":
-            out = fn(K.rgb_to_grayscale(img2), *args)
+            out = fn(K.color.rgb_to_grayscale(img2), *args)
         else:
             out = fn(img2, *args)
         # perform normalization to visualize
@@ -162,7 +162,7 @@ def main():
         # save the output image
         if fn_name == "grayscale_to_rgb":
             out = torch.cat(
-                [K.rgb_to_grayscale(img2[0]).repeat(3, 1, 1), *(out[i] for i in range(out.size(0)))], dim=-1
+                [K.color.rgb_to_grayscale(img2[0]).repeat(3, 1, 1), *(out[i] for i in range(out.size(0)))], dim=-1
             )
         else:
             out = torch.cat([img2[0], *(out[i] for i in range(out.size(0)))], dim=-1)

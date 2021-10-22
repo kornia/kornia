@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from torch.nn.functional import mse_loss as mse
 
 import kornia.metrics as metrics
 

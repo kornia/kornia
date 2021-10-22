@@ -36,7 +36,7 @@ class FineMatching(nn.Module):
                 raise ValueError("M >0, when training, see coarse_matching.py")
             # logger.warning('No matches found in coarse-level.')
             data.update({
-                'expec_f': torch.empty(0, 3, device=feat_f0.device),
+                'expec_f': torch.empty(0, 3, device=feat_f0.device, dtype=feat_f0.dtype),
                 'mkpts0_f': data['mkpts0_c'],
                 'mkpts1_f': data['mkpts1_c'],
             })
@@ -49,7 +49,9 @@ class FineMatching(nn.Module):
 
         # compute coordinates from heatmap
         coords_normalized = dsnt.spatial_expectation2d(heatmap[None], True)[0]  # [M, 2]
-        grid_normalized = create_meshgrid(W, W, True, heatmap.device).reshape(1, -1, 2)  # [1, WW, 2]
+        grid_normalized = create_meshgrid(
+            W, W, normalized_coordinates=True, device=heatmap.device, dtype=heatmap.dtype
+        ).reshape(1, -1, 2)  # [1, WW, 2]
 
         # compute std over <x, y>
         var = torch.sum(grid_normalized**2 * heatmap.view(-1, WW, 1), dim=1) - coords_normalized**2  # [M, 2]
@@ -63,7 +65,7 @@ class FineMatching(nn.Module):
 
     @torch.no_grad()
     def get_fine_match(self, coords_normed, data):
-        W, WW, C, scale = self.W, self.WW, self.C, self.scale
+        W, _, _, scale = self.W, self.WW, self.C, self.scale
 
         # mkpts0_f and mkpts1_f
         mkpts0_f = data['mkpts0_c']

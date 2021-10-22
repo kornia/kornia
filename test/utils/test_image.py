@@ -1,3 +1,5 @@
+from typing import List
+
 import numpy as np
 import pytest
 import torch
@@ -13,6 +15,23 @@ def test_image_to_tensor_keep_dtype(input_dtype, expected_dtype):
     image = np.ones((1, 3, 4, 5), dtype=input_dtype)
     tensor = kornia.image_to_tensor(image)
     assert tensor.dtype == expected_dtype
+
+
+@pytest.mark.parametrize("num_of_images, image_shape", [(2, (4, 3, 1)), (0, (1, 2, 3)), (5, (2, 3, 2, 5))])
+def test_list_of_images_to_tensor(num_of_images, image_shape):
+    images: List[np.array] = []
+    if num_of_images == 0:
+        with pytest.raises(ValueError):
+            kornia.utils.image_list_to_tensor([])
+        return
+    for _ in range(num_of_images):
+        images.append(np.ones(shape=image_shape))
+    if len(image_shape) != 3:
+        with pytest.raises(ValueError):
+            kornia.utils.image_list_to_tensor(images)
+        return
+    tensor = kornia.utils.image_list_to_tensor(images)
+    assert tensor.shape == (num_of_images, image_shape[-1], image_shape[-3], image_shape[-2])
 
 
 @pytest.mark.parametrize(

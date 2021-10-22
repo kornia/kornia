@@ -8,6 +8,11 @@ def torch_version() -> str:
     return torch.__version__.split('+')[0]
 
 
+def torch_version_geq(major, minor) -> bool:
+    _version = version.parse(torch_version())
+    return _version >= version.parse(f"{major}.{minor}")
+
+
 if version.parse(torch_version()) > version.parse("1.7.1"):
     # TODO: remove the type: ignore once Python 3.6 is deprecated.
     # It turns out that Pytorch has no attribute `torch.linalg` for
@@ -27,4 +32,4 @@ if version.parse(torch_version()) > version.parse("1.7.1"):
     # Python 3.6 / PyTorch 1.7.0, 1.7.1
     from torch.linalg import qr as linalg_qr  # type: ignore
 else:
-    from torch import qr as linalg_qr  # type: ignore
+    from torch import qr as linalg_qr  # type: ignore # noqa: F401

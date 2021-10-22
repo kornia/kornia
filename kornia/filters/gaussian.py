@@ -3,8 +3,8 @@ from typing import Tuple
 import torch
 import torch.nn as nn
 
-import kornia
-from kornia.filters.kernels import get_gaussian_kernel1d, get_gaussian_kernel2d
+from .filter import filter2d, filter2d_separable
+from .kernels import get_gaussian_kernel1d, get_gaussian_kernel2d
 
 
 def gaussian_blur2d(input: torch.Tensor,
@@ -44,10 +44,10 @@ def gaussian_blur2d(input: torch.Tensor,
     if separable:
         kernel_x: torch.Tensor = get_gaussian_kernel1d(kernel_size[1], sigma[1])
         kernel_y: torch.Tensor = get_gaussian_kernel1d(kernel_size[0], sigma[0])
-        out = kornia.filters.filter2d_separable(input, kernel_x[None], kernel_y[None], border_type)
+        out = filter2d_separable(input, kernel_x[None], kernel_y[None], border_type)
     else:
         kernel: torch.Tensor = get_gaussian_kernel2d(kernel_size, sigma)
-        out = kornia.filters.filter2d(input, kernel[None], border_type)
+        out = filter2d(input, kernel[None], border_type)
     return out
 
 

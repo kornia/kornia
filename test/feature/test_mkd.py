@@ -1,8 +1,23 @@
+from math import pi
+
 import pytest
+import torch
 from torch.autograd import gradcheck
 
 import kornia.testing as utils  # test utils
-from kornia.feature.mkd import *
+from kornia.feature.mkd import (
+    COEFFS,
+    EmbedGradients,
+    ExplicitSpacialEncoding,
+    get_grid_dict,
+    get_kron_order,
+    MKDDescriptor,
+    MKDGradients,
+    SimpleKD,
+    spatial_kernel_embedding,
+    VonMisesKernel,
+    Whitening,
+)
 from kornia.testing import assert_close
 
 
@@ -131,9 +146,7 @@ class TestVonMisesKernel:
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 13, 13
         patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
-        model = (
-            VonMisesKernel(patch_size=13, coeffs=[0.38214156, 0.48090413]).to(patches.device, patches.dtype).eval()
-        )
+        model = VonMisesKernel(patch_size=13, coeffs=[0.38214156, 0.48090413]).to(patches.device, patches.dtype).eval()
         model_jit = torch.jit.script(
             VonMisesKernel(patch_size=13, coeffs=[0.38214156, 0.48090413]).to(patches.device, patches.dtype).eval()
         )
@@ -442,9 +455,7 @@ class TestSimpleKD:
     def test_jit(self, device, dtype):
         batch_size, channels, ps = 1, 1, 19
         patches = torch.rand(batch_size, channels, ps, ps).to(device)
-        model = (
-            SimpleKD(patch_size=ps, kernel_type='polar', whitening='lw').to(patches.device, patches.dtype).eval()
-        )
+        model = SimpleKD(patch_size=ps, kernel_type='polar', whitening='lw').to(patches.device, patches.dtype).eval()
         model_jit = torch.jit.script(
             SimpleKD(patch_size=ps, kernel_type='polar', whitening='lw').to(patches.device, patches.dtype).eval()
         )

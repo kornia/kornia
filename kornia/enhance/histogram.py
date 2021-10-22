@@ -1,9 +1,6 @@
-import math
 from typing import Optional, Tuple
 
 import torch
-
-__all__ = ["histogram", "histogram2d", "image_histogram2d"]
 
 
 def marginal_pdf(

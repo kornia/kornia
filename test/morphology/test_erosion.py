@@ -46,10 +46,12 @@ class TestErode:
             rtol=1e-4,
         )
         assert_close(
-            erosion(tensor,
-                    torch.ones_like(structural_element),
-                    structuring_element=structural_element,
-                    engine='convolution'),
+            erosion(
+                tensor,
+                torch.ones_like(structural_element),
+                structuring_element=structural_element,
+                engine='convolution',
+            ),
             expected,
             atol=1e-3,
             rtol=1e-3,

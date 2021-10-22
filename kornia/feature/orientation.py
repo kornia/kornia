@@ -6,14 +6,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from kornia.constants import pi
-from kornia.feature import (
-    extract_patches_from_pyramid,
-    get_laf_orientation,
-    raise_error_if_laf_is_not_valid,
-    set_laf_orientation,
-)
 from kornia.filters import get_gaussian_kernel2d, SpatialGradient
 from kornia.geometry import rad2deg
+
+from .laf import extract_patches_from_pyramid, get_laf_orientation, raise_error_if_laf_is_not_valid, set_laf_orientation
 
 urls: Dict[str, str] = {}
 urls["orinet"] = "https://github.com/ducha-aiki/affnet/raw/master/pretrained/OriNet.pth"
@@ -39,8 +35,8 @@ class PatchDominantGradientOrientation(nn.Module):
     Zero angle points towards right.
 
     Args:
-        patch_size:
-        num_angular_bins:
+        patch_size: size of the (square) input patch.
+        num_angular_bins: number of histogram bins.
         eps: for safe division, and arctan.
     """
 
@@ -72,7 +68,7 @@ class PatchDominantGradientOrientation(nn.Module):
 
     def forward(self, patch: torch.Tensor) -> torch.Tensor:
         """Args:
-            patch: (torch.Tensor) shape [Bx1xHxW]
+            patch: shape [Bx1xHxW]
         Returns:
             torch.Tensor: angle shape [B]"""
         if not isinstance(patch, torch.Tensor):

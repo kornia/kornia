@@ -3,8 +3,6 @@ from typing import Tuple
 import torch
 from torch import nn
 
-__all__ = ["MobileViT"]
-
 
 class SiLU(nn.Module):
     """Module SiLU (Sigmoid Linear Units)

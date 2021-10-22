@@ -288,21 +288,25 @@ class TestPerspectiveTransform3D:
         points_dst = points_src + norm
 
         # compute transform from source to target
-        dst_homo_src = kornia.get_perspective_transform3d(points_src, points_dst)
+        dst_homo_src = kornia.geometry.transform.get_perspective_transform3d(points_src, points_dst)
 
         # TODO: get_perspective_transform3d seems to be correct since it would result in the
         # expected output for cropping volumes. Not sure what is going on here.
-        assert_close(kornia.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-4, atol=1e-4)
+        assert_close(
+            kornia.geometry.linalg.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-4, atol=1e-4
+        )
 
         # compute gradient check
         points_src = utils.tensor_to_gradcheck_var(points_src)  # to var
         points_dst = utils.tensor_to_gradcheck_var(points_dst)  # to var
-        assert gradcheck(kornia.get_perspective_transform3d, (points_src, points_dst), raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.transform.get_perspective_transform3d, (points_src, points_dst), raise_exception=True
+        )
 
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_get_perspective_transform3d_2(self, batch_size, device, dtype):
         torch.manual_seed(0)
-        src = kornia.bbox_generator3d(
+        src = kornia.geometry.bbox.bbox_generator3d(
             torch.randint_like(torch.ones(batch_size), 0, 50, dtype=dtype),
             torch.randint_like(torch.ones(batch_size), 0, 50, dtype=dtype),
             torch.randint_like(torch.ones(batch_size), 0, 50, dtype=dtype),
@@ -310,7 +314,7 @@ class TestPerspectiveTransform3D:
             torch.randint(0, 50, (1,), dtype=dtype).repeat(batch_size),
             torch.randint(0, 50, (1,), dtype=dtype).repeat(batch_size),
         ).to(device=device, dtype=dtype)
-        dst = kornia.bbox_generator3d(
+        dst = kornia.geometry.bbox.bbox_generator3d(
             torch.randint_like(torch.ones(batch_size), 0, 50, dtype=dtype),
             torch.randint_like(torch.ones(batch_size), 0, 50, dtype=dtype),
             torch.randint_like(torch.ones(batch_size), 0, 50, dtype=dtype),
@@ -318,7 +322,7 @@ class TestPerspectiveTransform3D:
             torch.randint(0, 50, (1,), dtype=dtype).repeat(batch_size),
             torch.randint(0, 50, (1,), dtype=dtype).repeat(batch_size),
         ).to(device=device, dtype=dtype)
-        out = kornia.get_perspective_transform3d(src, dst)
+        out = kornia.geometry.transform.get_perspective_transform3d(src, dst)
         if batch_size == 1:
             expected = torch.tensor(
                 [
@@ -357,4 +361,6 @@ class TestPerspectiveTransform3D:
         # compute gradient check
         points_src = utils.tensor_to_gradcheck_var(src)  # to var
         points_dst = utils.tensor_to_gradcheck_var(dst)  # to var
-        assert gradcheck(kornia.get_perspective_transform3d, (points_src, points_dst), raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.transform.get_perspective_transform3d, (points_src, points_dst), raise_exception=True
+        )

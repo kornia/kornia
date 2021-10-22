@@ -191,12 +191,8 @@ class TestSequential:
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
             kornia.filters.MedianBlur((3, 3)),
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0, return_transform=True),
-            K.ImageSequential(
-                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0)
-            ),
-            K.ImageSequential(
-                K.RandomAffine(360, p=1.0)
-            ),
+            K.ImageSequential(K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0)),
+            K.ImageSequential(K.RandomAffine(360, p=1.0)),
             K.RandomAffine(360, p=1.0),
             K.RandomMixUp(p=1.0),
             return_transform=return_transform,
@@ -230,8 +226,7 @@ class TestAugmentationSequential:
         inp = torch.as_tensor(inp, device=device, dtype=dtype)
         aug = K.AugmentationSequential(
             K.ImageSequential(
-                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
-                K.RandomAffine(360, p=1.0, return_transform=True),
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0, return_transform=True)
             ),
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
             K.RandomAffine(360, p=1.0),
@@ -251,19 +246,15 @@ class TestAugmentationSequential:
 
     def test_video(self, device, dtype):
         input = torch.randn(2, 3, 5, 6, device=device, dtype=dtype)[None]
-        bbox = torch.tensor([[
-            [1., 1.],
-            [2., 1.],
-            [2., 2.],
-            [1., 2.],
-        ]], device=device, dtype=dtype).expand(2, -1, -1)[None]
-        points = torch.tensor([[[1., 1.]]], device=device, dtype=dtype).expand(2, -1, -1)[None]
+        bbox = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype).expand(
+            2, -1, -1
+        )[None]
+        points = torch.tensor([[[1.0, 1.0]]], device=device, dtype=dtype).expand(2, -1, -1)[None]
         aug_list = K.AugmentationSequential(
             K.VideoSequential(
-                kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
-                kornia.augmentation.RandomAffine(360, p=1.0),
+                kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), kornia.augmentation.RandomAffine(360, p=1.0)
             ),
-            data_keys=["input", "mask", "bbox", "keypoints"]
+            data_keys=["input", "mask", "bbox", "keypoints"],
         )
         out = aug_list(input, input, bbox, points)
         assert out[0].shape == input.shape
@@ -313,8 +304,7 @@ class TestAugmentationSequential:
         )[:, None].float()
         aug = K.AugmentationSequential(
             K.ImageSequential(
-                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
-                K.RandomAffine(360, p=1.0, return_transform=True),
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0, return_transform=True)
             ),
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
             K.RandomAffine(360, p=1.0),
@@ -348,11 +338,10 @@ class TestAugmentationSequential:
 
         aug = K.AugmentationSequential(
             K.ImageSequential(
-                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
-                K.RandomAffine(360, p=1.0, return_transform=True),
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0, return_transform=True)
             ),
             K.RandomAffine(360, p=1.0, return_transform=False),
-            data_keys=['input', 'mask', 'bbox', 'keypoints']
+            data_keys=['input', 'mask', 'bbox', 'keypoints'],
         )
         reproducibility_test((inp, mask, bbox, keypoints), aug)
 
@@ -377,8 +366,7 @@ class TestAugmentationSequential:
         )[:, None].float()
         aug = K.AugmentationSequential(
             K.ImageSequential(
-                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
-                K.RandomAffine(360, p=1.0, return_transform=True),
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0, return_transform=True)
             ),
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0, return_transform=True),
             K.RandomAffine(360, p=1.0, return_transform=True),
@@ -409,8 +397,7 @@ class TestAugmentationSequential:
         )[:, None].float()
         aug = K.AugmentationSequential(
             K.ImageSequential(
-                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
-                K.RandomAffine(360, p=1.0, return_transform=True),
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0, return_transform=True)
             ),
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0, return_transform=True),
             K.RandomAffine(360, p=1.0, return_transform=True),
@@ -477,7 +464,7 @@ class TestPatchSequential:
         torch.manual_seed(11)
         try:  # skip wrong param settings.
             seq = K.PatchSequential(
-                kornia.color.RgbToBgr(),
+                K.color.RgbToBgr(),
                 K.ColorJitter(0.1, 0.1, 0.1, 0.1),
                 K.ImageSequential(
                     K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
@@ -492,7 +479,8 @@ class TestPatchSequential:
                 keepdim=keepdim,
                 random_apply=random_apply,
             )
-        except:
+        # TODO: improve me and remove the exception.
+        except Exception:
             return
 
         input = torch.randn(*shape, device=device, dtype=dtype)

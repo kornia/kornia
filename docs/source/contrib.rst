@@ -24,7 +24,12 @@ Image Classification
 .. autoclass:: MobileViT
 .. autoclass:: ClassificationHead
 
+Image Stitching
+---------------
+
+.. autoclass:: ImageStitcher
+
 Lambda
---------------------
+------
 
 .. autoclass:: Lambda

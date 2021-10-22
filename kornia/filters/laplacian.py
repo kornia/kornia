@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 
-import kornia
-from kornia.filters.kernels import get_laplacian_kernel2d, normalize_kernel2d
+from .filter import filter2d
+from .kernels import get_laplacian_kernel2d, normalize_kernel2d
 
 
 def laplacian(
@@ -41,7 +41,7 @@ def laplacian(
     if normalized:
         kernel = normalize_kernel2d(kernel)
 
-    return kornia.filter2d(input, kernel, border_type)
+    return filter2d(input, kernel, border_type)
 
 
 class Laplacian(nn.Module):
