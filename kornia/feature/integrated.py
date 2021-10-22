@@ -62,7 +62,7 @@ class LAFDescriptor(nn.Module):
     """
 
     def __init__(self,
-                 patch_descriptor_module: nn.Module = HardNet(True),
+                 patch_descriptor_module: nn.Module,
                  patch_size: int = 32,
                  grayscale_descriptor: bool = True) -> None:
         super().__init__()
