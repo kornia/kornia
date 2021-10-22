@@ -1,10 +1,5 @@
 import torch
 
-__all__ = [
-    "tilt_projection",
-    "distort_points",
-]
-
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/distortion_model.hpp#L75
 def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool = False) -> torch.Tensor:
@@ -80,8 +75,7 @@ def distort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
         >>> points = torch.rand(1, 1, 2)
         >>> K = torch.eye(3)[None]
         >>> dist_coeff = torch.rand(1, 4)
-        >>> distort_points(points, K, dist_coeff)
-        tensor([[[3.6138, 5.4226]]])
+        >>> points_dist = distort_points(points, K, dist_coeff)
 
     """
     if points.dim() < 2 and points.shape[-1] != 2:

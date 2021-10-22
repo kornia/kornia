@@ -31,7 +31,7 @@ class TestWarping:
         ).float()
 
         height, width = img_dst_t.shape[-2:]
-        warper = kornia.HomographyWarper(height, width)
+        warper = kornia.geometry.transform.HomographyWarper(height, width)
         dst_homo_src = MyHomography(init_homo=init_homo).to(device)
 
         learning_rate = self.lr

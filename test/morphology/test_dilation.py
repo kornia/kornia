@@ -40,19 +40,20 @@ class TestDilate:
             None, None, :, :
         ]
         assert_close(
-            dilation(tensor,
-                     torch.ones_like(structural_element),
-                     structuring_element=structural_element,
-                     engine='unfold'),
+            dilation(
+                tensor, torch.ones_like(structural_element), structuring_element=structural_element, engine='unfold'
+            ),
             expected,
             atol=1e-3,
             rtol=1e-3,
         )
         assert_close(
-            dilation(tensor,
-                     torch.ones_like(structural_element),
-                     structuring_element=structural_element,
-                     engine='convolution'),
+            dilation(
+                tensor,
+                torch.ones_like(structural_element),
+                structuring_element=structural_element,
+                engine='convolution',
+            ),
             expected,
             atol=1e-3,
             rtol=1e-3,

@@ -16,7 +16,7 @@ def test_callback_modelcheckpoint(tmp_path, model):
     assert cb is not None
 
     metric = {'test_monitor': AverageMeter()}
-    metric['test_monitor'].avg = 1.
+    metric['test_monitor'].avg = 1.0
 
     cb(model, epoch=0, valid_metric=metric)
     assert cb.best_metric == 1.0

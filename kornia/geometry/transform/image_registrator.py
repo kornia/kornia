@@ -1,15 +1,14 @@
-from typing import Callable, List, Optional, Tuple, Type, Union
+from typing import Callable, List, Tuple, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-from kornia.geometry.conversions import convert_affinematrix_to_homography
-from kornia.geometry.transform.homography_warper import HomographyWarper
-from kornia.geometry.transform.imgwarp import angle_to_rotation_matrix
-from kornia.geometry.transform.pyramid import build_pyramid
-from kornia.testing import check_is_tensor
+from kornia.geometry.conversions import angle_to_rotation_matrix, convert_affinematrix_to_homography
+
+from .homography_warper import HomographyWarper
+from .pyramid import build_pyramid
 
 __all__ = [
     "ImageRegistrator",

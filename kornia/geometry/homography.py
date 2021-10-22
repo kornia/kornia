@@ -3,9 +3,11 @@ from typing import Optional, Tuple
 
 import torch
 
-import kornia
-from kornia.geometry.epipolar import normalize_points
 from kornia.utils import _extract_device_dtype, safe_inverse_with_mask
+
+from .conversions import convert_points_from_homogeneous
+from .epipolar import normalize_points
+from .linalg import transform_points
 
 TupleTensor = Tuple[torch.Tensor, torch.Tensor]
 
@@ -35,14 +37,14 @@ def oneway_transfer_error(
         raise ValueError(f"H must be a (*, 3, 3) tensor. Got {H.shape}")
 
     if pts1.size(-1) == 3:
-        pts1 = kornia.convert_points_from_homogeneous(pts1)
+        pts1 = convert_points_from_homogeneous(pts1)
 
     if pts2.size(-1) == 3:
-        pts2 = kornia.convert_points_from_homogeneous(pts2)
+        pts2 = convert_points_from_homogeneous(pts2)
 
     # From Hartley and Zisserman, Error in one image (4.6)
     # dist = \sum_{i} ( d(x', Hx)**2)
-    pts1_in_2: torch.Tensor = kornia.transform_points(H, pts1)
+    pts1_in_2: torch.Tensor = transform_points(H, pts1)
     error_squared: torch.Tensor = (pts1_in_2 - pts2).pow(2).sum(dim=-1)
     if squared:
         return error_squared
@@ -74,10 +76,11 @@ def symmetric_transfer_error(
         raise ValueError(f"H must be a (*, 3, 3) tensor. Got {H.shape}")
 
     if pts1.size(-1) == 3:
-        pts1 = kornia.convert_points_from_homogeneous(pts1)
+        pts1 = convert_points_from_homogeneous(pts1)
 
     if pts2.size(-1) == 3:
-        pts2 = kornia.convert_points_from_homogeneous(pts2)
+        pts2 = convert_points_from_homogeneous(pts2)
+
     max_num = torch.finfo(pts1.dtype).max
     # From Hartley and Zisserman, Symmetric transfer error (4.7)
     # dist = \sum_{i} (d(x, H^-1 x')**2 + d(x', Hx)**2)
@@ -141,7 +144,7 @@ def find_homography_dlt(
 
     try:
         _, _, V = torch.svd(A)
-    except:
+    except ValueError:
         warnings.warn('SVD did not converge', RuntimeWarning)
         return torch.empty((points1_norm.size(0), 3, 3), device=device, dtype=dtype)
 

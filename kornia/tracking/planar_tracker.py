@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -6,11 +6,7 @@ import torch.nn as nn
 from kornia.feature import DescriptorMatcher, GFTTAffNetHardNet, LocalFeatureMatcher, LoFTR
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.ransac import RANSAC
-from kornia.geometry.transform.imgwarp import warp_perspective
-
-__all__ = [
-    "HomographyTracker",
-]
+from kornia.geometry.transform import warp_perspective
 
 
 class HomographyTracker(nn.Module):

@@ -103,7 +103,7 @@ class CoarseMatching(nn.Module):
                 'mconf' (torch.Tensor): [M]}
             NOTE: M' != M during training.
         """
-        N, L, S, C = feat_c0.size(0), feat_c0.size(1), feat_c1.size(1), feat_c0.size(2)
+        _, L, S, _ = feat_c0.size(0), feat_c0.size(1), feat_c1.size(1), feat_c0.size(2)
 
         # normalize
         feat_c0, feat_c1 = map(lambda feat: feat / feat.shape[-1]**.5,

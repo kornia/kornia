@@ -54,5 +54,4 @@ transforms, camera, conversions, linalg and depth. We next describe each of them
    geometry.linalg
    geometry.subpix
    geometry.transform
-   geometry.warp
    geometry.ransac

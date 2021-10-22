@@ -1,8 +1,6 @@
 import torch
 import torch.nn as nn
 
-__all__ = ["add_weighted", "AddWeighted"]
-
 
 def add_weighted(src1: torch.Tensor, alpha: float, src2: torch.Tensor, beta: float, gamma: float) -> torch.Tensor:
     r"""Calculate the weighted sum of two Tensors.

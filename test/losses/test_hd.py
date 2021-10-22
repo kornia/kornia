@@ -31,9 +31,7 @@ class HausdorffERLossNumpy(nn.Module):
         self.kernel3D = np.array([bound, cross, bound]).squeeze()[None] * (1 / 7)
 
     @torch.no_grad()
-    def perform_erosion(
-        self, pred: np.ndarray, target: np.ndarray
-    ) -> np.ndarray:
+    def perform_erosion(self, pred: np.ndarray, target: np.ndarray) -> np.ndarray:
         bound = (pred - target) ** 2
 
         if bound.ndim == 5:
@@ -65,9 +63,7 @@ class HausdorffERLossNumpy(nn.Module):
 
         return eroted
 
-    def forward_one(
-        self, pred: torch.Tensor, target: torch.Tensor
-    ) -> torch.Tensor:
+    def forward_one(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """
         Uses one binary channel: 1 - fg, 0 - bg
         pred: (b, 1, x, y, z) or (b, 1, x, y)
@@ -76,43 +72,42 @@ class HausdorffERLossNumpy(nn.Module):
         assert pred.size(1) == target.size(1) == 1
         # pred = torch.sigmoid(pred)
 
-        eroted = torch.from_numpy(
-            self.perform_erosion(pred.cpu().numpy(), target.cpu().numpy())
-        ).to(dtype=pred.dtype, device=pred.device)
+        eroted = torch.from_numpy(self.perform_erosion(pred.cpu().numpy(), target.cpu().numpy())).to(
+            dtype=pred.dtype, device=pred.device
+        )
 
         loss = eroted.mean()
 
         return loss
 
-    def forward(
-        self, pred: torch.Tensor, target: torch.Tensor
-    ) -> torch.Tensor:
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """
         Uses one binary channel: 1 - fg, 0 - bg
         pred: (b, 1, x, y, z) or (b, 1, x, y)
         target: (b, 1, x, y, z) or (b, 1, x, y)
         """
         assert pred.dim() == 4 or pred.dim() == 5, "Only 2D and 3D supported"
-        assert (
-            pred.dim() == target.dim() and target.size(1) == 1
-        ), "Prediction and target need to be of same dimension"
-        return torch.stack([
-            self.forward_one(
-                pred[:, i:i + 1],
-                torch.where(
-                    target == i,
-                    torch.tensor(1, device=target.device, dtype=target.dtype),
-                    torch.tensor(0, device=target.device, dtype=target.dtype))
-            ) for i in range(pred.size(1))]).mean()
+        assert pred.dim() == target.dim() and target.size(1) == 1, "Prediction and target need to be of same dimension"
+        return torch.stack(
+            [
+                self.forward_one(
+                    pred[:, i : i + 1],
+                    torch.where(
+                        target == i,
+                        torch.tensor(1, device=target.device, dtype=target.dtype),
+                        torch.tensor(0, device=target.device, dtype=target.dtype),
+                    ),
+                )
+                for i in range(pred.size(1))
+            ]
+        ).mean()
 
 
 class TestHausdorffLoss:
-
     @pytest.mark.parametrize("reduction", ['mean', 'none', 'sum'])
-    @pytest.mark.parametrize("hd,shape", [
-        [kornia.losses.HausdorffERLoss, (10, 10)],
-        [kornia.losses.HausdorffERLoss3D, (10, 10, 10)],
-    ])
+    @pytest.mark.parametrize(
+        "hd,shape", [[kornia.losses.HausdorffERLoss, (10, 10)], [kornia.losses.HausdorffERLoss3D, (10, 10, 10)]]
+    )
     def test_smoke_none(self, hd, shape, reduction, device, dtype):
         num_classes = 3
         logits = torch.rand(2, num_classes, *shape, dtype=dtype, device=device)
@@ -121,10 +116,9 @@ class TestHausdorffLoss:
 
         loss(logits, labels)
 
-    @pytest.mark.parametrize("hd,shape", [
-        [kornia.losses.HausdorffERLoss, (50, 50)],
-        [kornia.losses.HausdorffERLoss3D, (50, 50, 50)],
-    ])
+    @pytest.mark.parametrize(
+        "hd,shape", [[kornia.losses.HausdorffERLoss, (50, 50)], [kornia.losses.HausdorffERLoss3D, (50, 50, 50)]]
+    )
     def test_numeric(self, hd, shape, device, dtype):
         num_classes = 3
         logits = torch.rand(2, num_classes, *shape, dtype=dtype, device=device)
@@ -136,10 +130,9 @@ class TestHausdorffLoss:
         actual = loss(logits, labels)
         assert_close(actual, expected)
 
-    @pytest.mark.parametrize("hd,shape", [
-        [kornia.losses.HausdorffERLoss, (5, 5)],
-        [kornia.losses.HausdorffERLoss3D, (5, 5, 5)],
-    ])
+    @pytest.mark.parametrize(
+        "hd,shape", [[kornia.losses.HausdorffERLoss, (5, 5)], [kornia.losses.HausdorffERLoss3D, (5, 5, 5)]]
+    )
     def test_gradcheck(self, hd, shape, device):
         num_classes = 3
         logits = torch.rand(2, num_classes, *shape, device=device)
@@ -147,6 +140,4 @@ class TestHausdorffLoss:
         loss = hd(k=2)
 
         logits = utils.tensor_to_gradcheck_var(logits)  # to var
-        assert gradcheck(
-            loss, (logits, labels,), raise_exception=True
-        )
+        assert gradcheck(loss, (logits, labels), raise_exception=True)
