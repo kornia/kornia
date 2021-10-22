@@ -63,6 +63,7 @@ if __name__ == '__main__':
         tests_require=['pytest'],
         packages=find_packages(exclude=('docs', 'test', 'examples')),
         package_data={"kornia": ["py.typed"]},
+        data_files=[('', ['requirements/x.txt', 'requirements/dev.txt'])],
         zip_safe=True,
         install_requires=requirements,
         extras_require=requirements_extras,
