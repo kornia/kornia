@@ -168,7 +168,7 @@ class TestRgbToRgba(BaseTester):
             dtype=dtype,
         )  # Bx4x2x2
 
-        assert_close(kornia.rgb_to_rgba(data, aval), expected)
+        assert_close(kornia.color.rgb_to_rgba(data, aval), expected)
 
     @pytest.mark.parametrize("aval", [0.4, 45.0])
     def test_unit_aval_th(self, device, dtype, aval):
@@ -190,7 +190,7 @@ class TestRgbToRgba(BaseTester):
         )  # Bx4x2x2
 
         aval = torch.full_like(data[:, :1], aval)  # Bx1xHxW
-        assert_close(kornia.rgb_to_rgba(data, aval), expected)
+        assert_close(kornia.color.rgb_to_rgba(data, aval), expected)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):

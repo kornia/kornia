@@ -3,8 +3,10 @@ from typing import Tuple, Union
 
 import torch
 
-from kornia.geometry.epipolar import numeric
+from kornia.utils import eye_like, vec_like
 from kornia.utils._compat import linalg_qr
+
+from .numeric import cross_product_matrix
 
 
 def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:
@@ -28,7 +30,7 @@ def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:
 
     _, _, H, W = input.shape
 
-    intrinsics = numeric.eye_like(3, input)
+    intrinsics = eye_like(3, input)
     intrinsics[..., 0, 0] *= focal
     intrinsics[..., 1, 1] *= focal
     intrinsics[..., 0, 2] += 1.0 * W / 2
@@ -148,7 +150,7 @@ def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tenso
     return K, R, t
 
 
-def depth(R: torch.Tensor, t: torch.Tensor, X: torch.Tensor) -> torch.Tensor:
+def depth_from_point(R: torch.Tensor, t: torch.Tensor, X: torch.Tensor) -> torch.Tensor:
     r"""Return the depth of a point transformed by a rigid transform.
 
     Args:
@@ -194,14 +196,14 @@ def projections_from_fundamental(F_mat: torch.Tensor) -> torch.Tensor:
     if F_mat.shape[-2:] != (3, 3):
         raise AssertionError(F_mat.shape)
 
-    R1 = numeric.eye_like(3, F_mat)  # Bx3x3
-    t1 = numeric.vec_like(3, F_mat)  # Bx3
+    R1 = eye_like(3, F_mat)  # Bx3x3
+    t1 = vec_like(3, F_mat)  # Bx3
 
     Ft_mat = F_mat.transpose(-2, -1)
 
     _, e2 = _nullspace(Ft_mat)
 
-    R2 = numeric.cross_product_matrix(e2) @ F_mat  # Bx3x3
+    R2 = cross_product_matrix(e2) @ F_mat  # Bx3x3
     t2 = e2[..., :, None]  # Bx3x1
 
     P1 = torch.cat([R1, t1], dim=-1)  # Bx3x4

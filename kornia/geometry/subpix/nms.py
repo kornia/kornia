@@ -142,13 +142,13 @@ class NonMaximaSuppression3d(nn.Module):
         return x * (mask.to(x.dtype))
 
 
-# functiona api
+# functional api
 
 
 def nms2d(input: torch.Tensor, kernel_size: Tuple[int, int], mask_only: bool = False) -> torch.Tensor:
     r"""Apply non maxima suppression to filter.
 
-    See :class:`~kornia.feature.NonMaximaSuppression2d` for details.
+    See :class:`~kornia.geometry.subpix.NonMaximaSuppression2d` for details.
     """
     return NonMaximaSuppression2d(kernel_size)(input, mask_only)
 

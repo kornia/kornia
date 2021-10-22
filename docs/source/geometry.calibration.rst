@@ -19,6 +19,7 @@ The pinhole model is an ideal projection model that not considers lens distortio
     1
     \end{bmatrix} \enspace,
     \end{align}
+
 which is equivalent to directly using the internal parameters: focals :math:`f_u, f_v` and principal point :math:`(u_0, v_0)` to estimated the normalized coordinates
 
 .. math::

@@ -72,20 +72,11 @@ Local Affine Frames (LAF)
 .. autofunction:: laf_to_three_points
 .. autofunction:: laf_from_three_points
 .. autofunction:: raise_error_if_laf_is_not_valid
-
-Non Maxima Suppression
-----------------------
-
-.. autofunction:: non_maxima_suppression2d
-.. autofunction:: non_maxima_suppression3d
-.. autofunction:: nms2d
-.. autofunction:: nms3d
+.. autofunction:: perspective_transform_lafs
 
 Module
 ------
 
-.. autoclass:: NonMaximaSuppression2d
-.. autoclass:: NonMaximaSuppression3d
 .. autoclass:: BlobHessian
 .. autoclass:: CornerGFTT
 .. autoclass:: CornerHarris

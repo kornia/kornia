@@ -50,13 +50,12 @@ def configuration():
 class TestsemanticSegmentationTrainer:
     def test_fit(self, model, dataloader, criterion, optimizer, scheduler, configuration):
         trainer = SemanticSegmentationTrainer(
-            model, dataloader, dataloader, criterion, optimizer, scheduler, configuration,
+            model, dataloader, dataloader, criterion, optimizer, scheduler, configuration
         )
         trainer.fit()
 
     def test_exception(self, model, dataloader, criterion, optimizer, scheduler, configuration):
         with pytest.raises(ValueError):
             SemanticSegmentationTrainer(
-                model, dataloader, dataloader, criterion, optimizer, scheduler, configuration,
-                callbacks={'frodo': None},
+                model, dataloader, dataloader, criterion, optimizer, scheduler, configuration, callbacks={'frodo': None}
             )

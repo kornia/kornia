@@ -50,7 +50,7 @@ def dict_to(data: dict, device: torch.device, dtype: torch.dtype) -> dict:
 
 def compute_patch_error(x, y, h, w):
     """Compute the absolute error between patches."""
-    return torch.abs(x - y)[..., h // 4 : -h // 4, w // 4 : -w // 4].mean()
+    return torch.abs(x - y)[..., h // 4: -h // 4, w // 4: -w // 4].mean()
 
 
 def check_is_tensor(obj):
@@ -143,7 +143,7 @@ def _get_precision_by_name(
 try:
     # torch.testing.assert_close is only available for torch>=1.9
     from torch.testing import assert_close as _assert_close  # type: ignore
-    from torch.testing._core import _get_default_tolerance
+    from torch.testing._core import _get_default_tolerance  # type: ignore
 
     def assert_close(
         actual: torch.Tensor,

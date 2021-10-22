@@ -2,6 +2,7 @@ import pytest
 import torch
 from torch.autograd import gradcheck
 
+import kornia
 import kornia.geometry.epipolar as epi
 from kornia.testing import assert_close
 
@@ -34,7 +35,7 @@ class TestSkewSymmetric:
 class TestEyeLike:
     def test_smoke(self, device, dtype):
         image = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
-        identity = epi.eye_like(3, image)
+        identity = kornia.eye_like(3, image)
         assert identity.shape == (1, 3, 3)
         assert identity.device == image.device
         assert identity.dtype == image.dtype
@@ -43,7 +44,7 @@ class TestEyeLike:
     def test_shape(self, batch_size, eye_size, device, dtype):
         B, N = batch_size, eye_size
         image = torch.rand(B, 3, 4, 4, device=device, dtype=dtype)
-        identity = epi.eye_like(N, image)
+        identity = kornia.eye_like(N, image)
         assert identity.shape == (B, N, N)
         assert identity.device == image.device
         assert identity.dtype == image.dtype
@@ -52,7 +53,7 @@ class TestEyeLike:
 class TestVecLike:
     def test_smoke(self, device, dtype):
         image = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
-        vec = epi.vec_like(3, image)
+        vec = kornia.vec_like(3, image)
         assert vec.shape == (1, 3, 1)
         assert vec.device == image.device
         assert vec.dtype == image.dtype
@@ -61,7 +62,7 @@ class TestVecLike:
     def test_shape(self, batch_size, eye_size, device, dtype):
         B, N = batch_size, eye_size
         image = torch.rand(B, 3, 4, 4, device=device, dtype=dtype)
-        vec = epi.vec_like(N, image)
+        vec = kornia.vec_like(N, image)
         assert vec.shape == (B, N, 1)
         assert vec.device == image.device
         assert vec.dtype == image.dtype

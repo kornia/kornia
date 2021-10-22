@@ -6,17 +6,19 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from kornia.filters.sobel import spatial_gradient
-from kornia.geometry.camera import cam2pixel, PinholeCamera, pixel2cam, project_points, unproject_points
-from kornia.geometry.conversions import normalize_pixel_coordinates
-from kornia.geometry.linalg import (
-    compose_transformations,
-    convert_points_to_homogeneous,
-    inverse_transformation,
-    transform_points,
-)
 from kornia.utils import create_meshgrid
 
-__all__ = ["depth_to_3d", "depth_to_normals", "warp_frame_depth", "depth_warp", "DepthWarper"]
+from .camera import cam2pixel, PinholeCamera, pixel2cam, project_points, unproject_points
+from .conversions import normalize_pixel_coordinates
+from .linalg import compose_transformations, convert_points_to_homogeneous, inverse_transformation, transform_points
+
+__all__ = [
+    "depth_to_3d",
+    "depth_to_normals",
+    "warp_frame_depth",
+    "depth_warp",
+    "DepthWarper"
+]
 
 
 def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_points: bool = False) -> torch.Tensor:

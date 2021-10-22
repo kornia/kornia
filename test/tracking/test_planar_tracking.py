@@ -20,9 +20,7 @@ class TestHomographyTracker:
 
     def test_nomatch(self, device, dtype, data):
         # This is not unit test, but that is quite good integration test
-        matcher = LocalFeatureMatcher(SIFTFeature(100),
-                                      DescriptorMatcher('smnn', 0.95)).to(device,
-                                                                          dtype)
+        matcher = LocalFeatureMatcher(SIFTFeature(100), DescriptorMatcher('smnn', 0.95)).to(device, dtype)
         tracker = HomographyTracker(matcher, matcher, minimum_inliers_num=100)
         for k in data.keys():
             if isinstance(data[k], torch.Tensor):
@@ -34,8 +32,7 @@ class TestHomographyTracker:
 
     def test_real(self, device, dtype, data):
         # This is not unit test, but that is quite good integration test
-        matcher = LocalFeatureMatcher(GFTTAffNetHardNet(1000),
-                                      DescriptorMatcher('snn', 0.8)).to(device, dtype)
+        matcher = LocalFeatureMatcher(GFTTAffNetHardNet(1000), DescriptorMatcher('snn', 0.8)).to(device, dtype)
         tracker = HomographyTracker(matcher, matcher).to(device, dtype)
         for k in data.keys():
             if isinstance(data[k], torch.Tensor):
@@ -51,18 +48,10 @@ class TestHomographyTracker:
         pts_src = data['pts0'].to(device, dtype) / 2.0
         pts_dst = data['pts1'].to(device, dtype) / 2.0
         # Reprojection error of 5px is OK
-        assert_close(
-            transform_points(homography[None], pts_src[None]),
-            pts_dst[None],
-            rtol=5e-2,
-            atol=5)
+        assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
         # next frame
         with torch.no_grad():
             torch.random.manual_seed(0)
             homography, success = tracker(data["image1"])
         assert success
-        assert_close(
-            transform_points(homography[None], pts_src[None]),
-            pts_dst[None],
-            rtol=5e-2,
-            atol=5)
+        assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)

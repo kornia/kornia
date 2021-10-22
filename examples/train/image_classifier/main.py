@@ -73,5 +73,6 @@ def my_app(config: Configuration) -> None:
     )
     trainer.fit()
 
+
 if __name__ == "__main__":
     my_app()

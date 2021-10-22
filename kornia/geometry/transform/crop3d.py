@@ -1,9 +1,10 @@
-from typing import Optional, Tuple
+from typing import Tuple
 
 import torch
 
 from kornia.geometry.bbox import infer_bbox_shape3d, validate_bbox3d
-from kornia.geometry.transform.projwarp import get_perspective_transform3d, warp_affine3d
+
+from .projwarp import get_perspective_transform3d, warp_affine3d
 
 __all__ = [
     "crop_and_resize3d",

@@ -49,6 +49,7 @@ __all__ = [
     "ColorJitter",
     "Normalize",
     "Denormalize",
+    "PadTo",
     "RandomAffine",
     "RandomBoxBlur",
     "RandomCrop",

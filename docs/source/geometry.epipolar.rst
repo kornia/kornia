@@ -47,8 +47,6 @@ Numeric
 -------
 
 .. autofunction:: cross_product_matrix
-.. autofunction:: eye_like
-.. autofunction:: vec_like
 
 Triangulation
 -------------

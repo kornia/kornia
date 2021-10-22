@@ -23,7 +23,7 @@ English | [简体中文](README_zh-CN.md)
 [![Slack](https://img.shields.io/badge/Slack-4A154B?logo=slack&logoColor=white)](https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-CnydWe5fmvkcktIeRFGCEQ)
 [![Twitter](https://img.shields.io/twitter/follow/kornia_foss?style=social)](https://twitter.com/kornia_foss)
 
-[![tests-cpu-versions](https://github.com/kornia/kornia/actions/workflows/tests_cpu_versions.yml/badge.svg)](https://github.com/kornia/kornia/actions/workflows/tests_cpu_versions.yml)
+[![tests-cpu](https://github.com/kornia/kornia/actions/workflows/tests_cpu.yml/badge.svg)](https://github.com/kornia/kornia/actions/workflows/tests_cpu.yml)
 [![tests-cuda](https://github.com/kornia/kornia/actions/workflows/tests_cuda.yml/badge.svg)](https://github.com/kornia/kornia/actions/workflows/tests_cuda.yml)
 [![codecov](https://codecov.io/gh/kornia/kornia/branch/master/graph/badge.svg?token=FzCb7e0Bso)](https://codecov.io/gh/kornia/kornia)
 [![Documentation Status](https://readthedocs.org/projects/kornia/badge/?version=latest)](https://kornia.readthedocs.io/en/latest/?badge=latest)

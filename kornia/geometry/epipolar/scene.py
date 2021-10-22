@@ -1,10 +1,13 @@
 """Module to generate synthetic 3d scenes."""
+import math
 from typing import Dict
 
 import torch
 
-import kornia
-from kornia.geometry import epipolar
+from kornia.geometry.conversions import angle_axis_to_rotation_matrix
+from kornia.geometry.linalg import transform_points
+
+from .projection import projection_from_KRt, random_intrinsics
 
 
 def generate_scene(num_views: int, num_points: int) -> Dict[str, torch.Tensor]:
@@ -12,14 +15,14 @@ def generate_scene(num_views: int, num_points: int) -> Dict[str, torch.Tensor]:
     points3d = torch.rand(1, num_points, 3)  # NxMx3
 
     # Create random camera matrix
-    K = epipolar.random_intrinsics(0.0, 100.0)  # 1x3x3
+    K = random_intrinsics(0.0, 100.0)  # 1x3x3
 
     # Create random rotation per view
-    ang = torch.rand(num_views, 1) * kornia.pi * 2.0
+    ang = torch.rand(num_views, 1) * math.pi * 2.0
 
     rvec = torch.rand(num_views, 3)
     rvec = ang * rvec / torch.norm(rvec, dim=1, keepdim=True)  # Nx3
-    rot_mat = kornia.angle_axis_to_rotation_matrix(rvec)  # Nx3x3
+    rot_mat = angle_axis_to_rotation_matrix(rvec)  # Nx3x3
     # matches with cv2.Rodrigues -> yay !
 
     # Create random translation per view
@@ -34,9 +37,9 @@ def generate_scene(num_views: int, num_points: int) -> Dict[str, torch.Tensor]:
     tvec[:, 2, 0] = torch.where(min_dist < 0, tz - min_dist + 1.0, tz)
 
     # compute projection matrices
-    P = epipolar.projection_from_KRt(K, rot_mat, tvec)
+    P = projection_from_KRt(K, rot_mat, tvec)
 
     # project points3d and backproject to image plane
-    points2d = kornia.transform_points(P, points3d.expand(num_views, -1, -1))
+    points2d = transform_points(P, points3d.expand(num_views, -1, -1))
 
     return dict(K=K, R=rot_mat, t=tvec, P=P, points3d=points3d, points2d=points2d)

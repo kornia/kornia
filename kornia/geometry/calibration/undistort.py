@@ -1,14 +1,10 @@
 import torch
 
-from kornia.geometry.calibration.distort import distort_points, tilt_projection
 from kornia.geometry.linalg import transform_points
-from kornia.geometry.transform.imgwarp import remap
+from kornia.geometry.transform import remap
 from kornia.utils import create_meshgrid
 
-__all__ = [
-    "undistort_points",
-    "undistort_image",
-]
+from .distort import distort_points, tilt_projection
 
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/undistort.dispatch.cpp#L384

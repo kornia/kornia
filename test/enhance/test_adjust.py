@@ -90,7 +90,7 @@ class TestAdjustSaturation:
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.adjust_saturation, (img, 2.0), raise_exception=True)
+        assert gradcheck(kornia.enhance.adjust_saturation, (img, 2.0), raise_exception=True)
 
 
 class TestAdjustHue:
@@ -146,7 +146,7 @@ class TestAdjustHue:
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.adjust_hue, (img, 2.0), raise_exception=True)
+        assert gradcheck(kornia.enhance.adjust_hue, (img, 2.0), raise_exception=True)
 
 
 class TestAdjustGamma:
@@ -239,7 +239,7 @@ class TestAdjustGamma:
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
         img = tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.adjust_gamma, (img, 1.0, 2.0), raise_exception=True)
+        assert gradcheck(kornia.enhance.adjust_gamma, (img, 1.0, 2.0), raise_exception=True)
 
 
 class TestAdjustContrast:
@@ -389,7 +389,7 @@ class TestAdjustContrast:
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
         img = tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.adjust_contrast, (img, 2.0), raise_exception=True)
+        assert gradcheck(kornia.enhance.adjust_contrast, (img, 2.0), raise_exception=True)
 
 
 class TestAdjustBrightness:
@@ -491,7 +491,7 @@ class TestAdjustBrightness:
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
         img = tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.adjust_brightness, (img, 2.0), raise_exception=True)
+        assert gradcheck(kornia.enhance.adjust_brightness, (img, 2.0), raise_exception=True)
 
 
 class TestEqualize:

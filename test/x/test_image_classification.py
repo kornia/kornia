@@ -17,10 +17,7 @@ class DummyDatasetClassification(Dataset):
 
 @pytest.fixture
 def model():
-    return nn.Sequential(
-        VisionTransformer(image_size=32),
-        ClassificationHead(num_classes=10),
-    )
+    return nn.Sequential(VisionTransformer(image_size=32), ClassificationHead(num_classes=10))
 
 
 @pytest.fixture
@@ -52,16 +49,12 @@ def configuration():
 
 
 class TestImageClassifierTrainer:
-
     def test_fit(self, model, dataloader, criterion, optimizer, scheduler, configuration):
-        trainer = ImageClassifierTrainer(
-            model, dataloader, dataloader, criterion, optimizer, scheduler, configuration,
-        )
+        trainer = ImageClassifierTrainer(model, dataloader, dataloader, criterion, optimizer, scheduler, configuration)
         trainer.fit()
 
     def test_exception(self, model, dataloader, criterion, optimizer, scheduler, configuration):
         with pytest.raises(ValueError):
             ImageClassifierTrainer(
-                model, dataloader, dataloader, criterion, optimizer, scheduler, configuration,
-                callbacks={'frodo': None},
+                model, dataloader, dataloader, criterion, optimizer, scheduler, configuration, callbacks={'frodo': None}
             )

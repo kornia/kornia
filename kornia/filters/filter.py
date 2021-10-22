@@ -3,8 +3,8 @@ from typing import List
 import torch
 import torch.nn.functional as F
 
-from kornia.filters.__tmp__ import _deprecation_wrapper
-from kornia.filters.kernels import normalize_kernel2d
+from .__tmp__ import _deprecation_wrapper
+from .kernels import normalize_kernel2d
 
 
 def _compute_padding(kernel_size: List[int]) -> List[int]:

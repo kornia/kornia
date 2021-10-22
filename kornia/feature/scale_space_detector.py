@@ -4,11 +4,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.feature.laf import denormalize_laf, laf_is_inside_image, normalize_laf
-from kornia.feature.orientation import PassLAF
-from kornia.feature.responses import BlobHessian
-from kornia.geometry import ConvSoftArgmax3d
+from kornia.geometry.subpix import ConvSoftArgmax3d
 from kornia.geometry.transform import ScalePyramid
+
+from .laf import denormalize_laf, laf_is_inside_image, normalize_laf
+from .orientation import PassLAF
+from .responses import BlobHessian
 
 
 def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor, num_levels: int) -> torch.Tensor:
