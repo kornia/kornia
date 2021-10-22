@@ -17,4 +17,4 @@ Learn more: https://paperswithcode.com/task/image-stitching/
     with torch.no_grad():
         out = IS(*imgs)
 
-.. image:: https://raw.githubusercontent.com/kornia/data/main/matching/stitch_after.png
+.. image:: https://raw.githubusercontent.com/kornia/data/main/panorama/out_panorama.jpg
