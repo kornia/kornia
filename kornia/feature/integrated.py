@@ -167,7 +167,7 @@ class GFTTAffNetHardNet(LocalFeature):
                                       ori_module=PassLAF() if upright else LAFOrienter(19),
                                       aff_module=LAFAffNetShapeEstimator(True).eval(),
                                       mr_size=6.0).to(device)
-        descriptor = LAFDescriptor(HardNet(True).eval(),
+        descriptor = LAFDescriptor(None,
                                    patch_size=32,
                                    grayscale_descriptor=True).to(device)
         super().__init__(detector, descriptor)
