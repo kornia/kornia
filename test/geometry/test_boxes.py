@@ -448,6 +448,28 @@ class TestBbox3D:
             and (w == torch.as_tensor([[10.0, 40.0]], device=device)).all()
         )
 
+    def test_get_boxes_shape_batch(self, device, dtype):
+        t_box1 = torch.tensor(
+            [[[0, 1, 2], [0, 1, 32], [10, 21, 2], [0, 21, 2], [10, 1, 32], [10, 21, 32], [10, 1, 2], [0, 21, 32]]],
+            device=device,
+            dtype=dtype
+        )
+        t_box2 = torch.tensor(
+            [[[3, 4, 5], [3, 4, 65], [43, 54, 5], [3, 54, 5], [43, 4, 5], [43, 4, 65], [43, 54, 65], [3, 54, 65]]],
+            device=device,
+            dtype=dtype
+        )
+        batched_boxes = Boxes3D(torch.stack([t_box1, t_box2]))
+
+        d, h, w = batched_boxes.get_boxes_shape()
+        assert d.ndim == 2 and h.ndim == 2 and w.ndim == 2
+        assert d.shape == (2, 1) and h.shape == (2, 1) and w.shape == (2, 1)
+        assert (
+            (d == torch.as_tensor([[30.0], [60.0]], device=device)).all()
+            and (h == torch.as_tensor([[20.0], [50.0]], device=device)).all()
+            and (w == torch.as_tensor([[10.0], [40.0]], device=device)).all()
+        )
+
     @pytest.mark.parametrize('shape', [(1, 6), (1, 1, 6)])
     def test_from_tensor(self, shape: Tuple[int], device, dtype):
         box_xyzxyz = torch.as_tensor([[1, 2, 3, 4, 5, 6]], device=device, dtype=dtype).view(*shape)
