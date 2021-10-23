@@ -4,7 +4,10 @@ from typing import Dict, Optional
 import torch
 import torch.nn as nn
 
-from kornia.feature.laf import (
+from kornia.filters.kernels import get_gaussian_kernel2d
+from kornia.filters.sobel import SpatialGradient
+
+from .laf import (
     ellipse_to_laf,
     extract_patches_from_pyramid,
     get_laf_scale,
@@ -12,7 +15,6 @@ from kornia.feature.laf import (
     raise_error_if_laf_is_not_valid,
     scale_laf,
 )
-from kornia.filters import get_gaussian_kernel2d, SpatialGradient
 
 urls: Dict[str, str] = {}
 urls["affnet"] = "https://github.com/ducha-aiki/affnet/raw/master/pretrained/AffNet.pth"

@@ -9,14 +9,14 @@ from kornia.testing import assert_close
 
 @pytest.mark.parametrize("window_size", [5])
 def test_get_laplacian_kernel(window_size):
-    kernel = kornia.get_laplacian_kernel1d(window_size)
+    kernel = kornia.filters.get_laplacian_kernel1d(window_size)
     assert kernel.shape == (window_size,)
     assert kernel.sum().item() == pytest.approx(0.0)
 
 
 @pytest.mark.parametrize("window_size", [7])
 def test_get_laplacian_kernel2d(window_size):
-    kernel = kornia.get_laplacian_kernel2d(window_size)
+    kernel = kornia.filters.get_laplacian_kernel2d(window_size)
     assert kernel.shape == (window_size, window_size)
     assert kernel.sum().item() == pytest.approx(0.0)
     expected = torch.tensor(
@@ -58,7 +58,7 @@ class TestLaplacian:
         # evaluate function gradient
         input = torch.rand(batch_shape, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)
-        assert gradcheck(kornia.laplacian, (input, kernel_size), raise_exception=True)
+        assert gradcheck(kornia.filters.laplacian, (input, kernel_size), raise_exception=True)
 
     def test_jit(self, device, dtype):
         op = kornia.filters.laplacian

@@ -21,9 +21,15 @@ Image Classification
 --------------------
 
 .. autoclass:: VisionTransformer
+.. autoclass:: MobileViT
 .. autoclass:: ClassificationHead
 
+Image Stitching
+---------------
+
+.. autoclass:: ImageStitcher
+
 Lambda
---------------------
+------
 
 .. autoclass:: Lambda

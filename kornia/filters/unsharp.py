@@ -3,7 +3,7 @@ from typing import Tuple
 import torch
 import torch.nn as nn
 
-from kornia.filters import gaussian_blur2d
+from .gaussian import gaussian_blur2d
 
 
 def unsharp_mask(

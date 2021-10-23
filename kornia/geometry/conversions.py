@@ -8,7 +8,6 @@ import torch.nn.functional as F
 from kornia.constants import pi
 
 __all__ = [
-    # functional api
     "rad2deg",
     "deg2rad",
     "pol2cart",
@@ -30,6 +29,7 @@ __all__ = [
     "normalize_quaternion",
     "denormalize_pixel_coordinates3d",
     "normalize_pixel_coordinates3d",
+    "angle_to_rotation_matrix",
 ]
 
 
@@ -456,7 +456,7 @@ def rotation_matrix_to_quaternion(
 def normalize_quaternion(quaternion: torch.Tensor, eps: float = 1.0e-12) -> torch.Tensor:
     r"""Normalize a quaternion.
 
-    The quaternion should be in (x, y, z, w) format.
+    The quaternion should be in (x, y, z, w) or (w, x, y, z) format.
 
     Args:
         quaternion: a tensor containing a quaternion to be normalized.
@@ -653,6 +653,7 @@ def quaternion_log_to_exp(
     Args:
         quaternion: a tensor containing a quaternion to be converted.
           The tensor can be of shape :math:`(*, 3)`.
+        eps: a small number for clamping.
         order: quaternion coefficient order. Note: 'xyzw' will be deprecated in favor of 'wxyz'.
 
     Return:
@@ -708,7 +709,7 @@ def quaternion_exp_to_log(
     Args:
         quaternion: a tensor containing a quaternion to be converted.
           The tensor can be of shape :math:`(*, 4)`.
-        eps: A small number for clamping.
+        eps: a small number for clamping.
         order: quaternion coefficient order. Note: 'xyzw' will be deprecated in favor of 'wxyz'.
 
     Return:
@@ -976,3 +977,26 @@ def denormalize_pixel_coordinates3d(
     factor: torch.Tensor = torch.tensor(2.0) / (dhw - 1).clamp(eps)
 
     return torch.tensor(1.0) / factor * (pixel_coordinates + 1)
+
+
+def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
+    r"""Create a rotation matrix out of angles in degrees.
+
+    Args:
+        angle: tensor of angles in degrees, any shape.
+
+    Returns:
+        tensor of *x2x2 rotation matrices.
+
+    Shape:
+        - Input: :math:`(*)`
+        - Output: :math:`(*, 2, 2)`
+
+    Example:
+        >>> input = torch.rand(1, 3)  # Nx3
+        >>> output = angle_to_rotation_matrix(input)  # Nx3x2x2
+    """
+    ang_rad = deg2rad(angle)
+    cos_a: torch.Tensor = torch.cos(ang_rad)
+    sin_a: torch.Tensor = torch.sin(ang_rad)
+    return torch.stack([cos_a, sin_a, -sin_a, cos_a], dim=-1).view(*angle.shape, 2, 2)

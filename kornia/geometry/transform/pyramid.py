@@ -5,10 +5,16 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.filters.filter import filter2d
-from kornia.filters.gaussian import gaussian_blur2d
+from kornia.filters import filter2d, gaussian_blur2d
 
-__all__ = ["PyrDown", "PyrUp", "ScalePyramid", "pyrdown", "pyrup", "build_pyramid"]
+__all__ = [
+    "PyrDown",
+    "PyrUp",
+    "ScalePyramid",
+    "pyrdown",
+    "pyrup",
+    "build_pyramid"
+]
 
 
 def _get_pyramid_gaussian_kernel() -> torch.Tensor:

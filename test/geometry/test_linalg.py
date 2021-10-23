@@ -93,11 +93,11 @@ class TestTransformPoints:
         dst_homo_src = dst_homo_src.to(device)
 
         # transform the points from dst to ref
-        points_dst = kornia.transform_points(dst_homo_src, points_src)
+        points_dst = kornia.geometry.linalg.transform_points(dst_homo_src, points_src)
 
         # transform the points from ref to dst
         src_homo_dst = torch.inverse(dst_homo_src)
-        points_dst_to_src = kornia.transform_points(src_homo_dst, points_dst)
+        points_dst_to_src = kornia.geometry.linalg.transform_points(src_homo_dst, points_dst)
 
         # projected should be equal as initial
         assert_close(points_src, points_dst_to_src, atol=1e-4, rtol=1e-4)
@@ -124,13 +124,49 @@ class TestTransformPoints:
 
 
 class TestComposeTransforms:
+    def test_smoke(self, device, dtype):
+        batch_size = 2
+        trans_01 = identity_matrix(batch_size=batch_size, device=device, dtype=dtype)
+        trans_12 = identity_matrix(batch_size=batch_size, device=device, dtype=dtype)
+
+        to_check_1 = kornia.geometry.compose_transformations(trans_01, trans_12)
+        to_check_2 = kornia.geometry.compose_transformations(trans_01[0], trans_12[0])
+
+        assert to_check_1.shape == (batch_size, 4, 4)
+        assert to_check_2.shape == (4, 4)
+
+    def test_exception(self, device, dtype):
+        to_check_1 = torch.rand((7, 4, 4, 3), device=device, dtype=dtype)
+        to_check_2 = torch.rand((5, 10, 10), device=device, dtype=dtype)
+        to_check_3 = torch.rand((6, 4, 4), device=device, dtype=dtype)
+        to_check_4 = torch.rand((4, 4), device=device, dtype=dtype)
+        to_check_5 = torch.rand((3, 3), device=device, dtype=dtype)
+
+        # Testing if exception is thrown when both inputs have shape (3, 3)
+        with pytest.raises(ValueError):
+            _ = kornia.geometry.compose_transformations(to_check_5, to_check_5)
+
+        # Testing if exception is thrown when both inputs have shape (5, 10, 10)
+        with pytest.raises(ValueError):
+            _ = kornia.geometry.compose_transformations(to_check_2, to_check_2)
+
+        # Testing if exception is thrown when one input has shape (6, 4, 4)
+        # whereas the other input has shape (4, 4)
+        with pytest.raises(ValueError):
+            _ = kornia.geometry.compose_transformations(to_check_3, to_check_4)
+
+        # Testing if exception is thrown when one input has shape (7, 4, 4, 3)
+        # whereas the other input has shape (4, 4)
+        with pytest.raises(ValueError):
+            _ = kornia.geometry.compose_transformations(to_check_1, to_check_4)
+
     def test_translation_4x4(self, device, dtype):
         offset = 10
         trans_01 = identity_matrix(batch_size=1, device=device, dtype=dtype)[0]
         trans_12 = identity_matrix(batch_size=1, device=device, dtype=dtype)[0]
         trans_12[..., :3, -1] += offset  # add offset to translation vector
 
-        trans_02 = kornia.compose_transformations(trans_01, trans_12)
+        trans_02 = kornia.geometry.linalg.compose_transformations(trans_01, trans_12)
         assert_close(trans_02, trans_12, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -140,7 +176,7 @@ class TestComposeTransforms:
         trans_12 = identity_matrix(batch_size, device=device, dtype=dtype)
         trans_12[..., :3, -1] += offset  # add offset to translation vector
 
-        trans_02 = kornia.compose_transformations(trans_01, trans_12)
+        trans_02 = kornia.geometry.linalg.compose_transformations(trans_01, trans_12)
         assert_close(trans_02, trans_12, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -150,17 +186,44 @@ class TestComposeTransforms:
 
         trans_01 = utils.tensor_to_gradcheck_var(trans_01)  # to var
         trans_12 = utils.tensor_to_gradcheck_var(trans_12)  # to var
-        assert gradcheck(kornia.compose_transformations, (trans_01, trans_12), raise_exception=True)
+        assert gradcheck(kornia.geometry.linalg.compose_transformations, (trans_01, trans_12), raise_exception=True)
 
 
 class TestInverseTransformation:
+    def test_smoke(self, device, dtype):
+        batch_size = 2
+        trans_01 = identity_matrix(batch_size=batch_size, device=device, dtype=dtype)
+
+        to_check_1 = kornia.geometry.inverse_transformation(trans_01)
+        to_check_2 = kornia.geometry.inverse_transformation(trans_01[0])
+
+        assert to_check_1.shape == (batch_size, 4, 4)
+        assert to_check_2.shape == (4, 4)
+
+    def test_exception(self, device, dtype):
+        to_check_1 = torch.rand((7, 4, 4, 3), device=device, dtype=dtype)
+        to_check_2 = torch.rand((5, 10, 10), device=device, dtype=dtype)
+        to_check_3 = torch.rand((3, 3), device=device, dtype=dtype)
+
+        # Testing if exception is thrown when the input has shape (7, 4, 4, 3)
+        with pytest.raises(ValueError):
+            _ = kornia.geometry.inverse_transformation(to_check_1)
+
+        # Testing if exception is thrown when the input has shape (5, 10, 10)
+        with pytest.raises(ValueError):
+            _ = kornia.geometry.inverse_transformation(to_check_2)
+
+        # Testing if exception is thrown when the input has shape (3, 3)
+        with pytest.raises(ValueError):
+            _ = kornia.geometry.inverse_transformation(to_check_3)
+
     def test_translation_4x4(self, device, dtype):
         offset = 10
         trans_01 = identity_matrix(batch_size=1, device=device, dtype=dtype)[0]
         trans_01[..., :3, -1] += offset  # add offset to translation vector
 
-        trans_10 = kornia.inverse_transformation(trans_01)
-        trans_01_hat = kornia.inverse_transformation(trans_10)
+        trans_10 = kornia.geometry.linalg.inverse_transformation(trans_01)
+        trans_01_hat = kornia.geometry.linalg.inverse_transformation(trans_10)
         assert_close(trans_01, trans_01_hat, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -169,8 +232,8 @@ class TestInverseTransformation:
         trans_01 = identity_matrix(batch_size, device=device, dtype=dtype)
         trans_01[..., :3, -1] += offset  # add offset to translation vector
 
-        trans_10 = kornia.inverse_transformation(trans_01)
-        trans_01_hat = kornia.inverse_transformation(trans_10)
+        trans_10 = kornia.geometry.linalg.inverse_transformation(trans_01)
+        trans_01_hat = kornia.geometry.linalg.inverse_transformation(trans_10)
         assert_close(trans_01, trans_01_hat, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -184,26 +247,62 @@ class TestInverseTransformation:
         trans_01[..., :3, -1] += offset  # add offset to translation vector
         trans_01[..., :3, :3] = rmat_01[..., :3, :3]
 
-        trans_10 = kornia.inverse_transformation(trans_01)
-        trans_01_hat = kornia.inverse_transformation(trans_10)
+        trans_10 = kornia.geometry.linalg.inverse_transformation(trans_01)
+        trans_01_hat = kornia.geometry.linalg.inverse_transformation(trans_10)
         assert_close(trans_01, trans_01_hat, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_gradcheck(self, batch_size, device, dtype):
         trans_01 = identity_matrix(batch_size, device=device, dtype=dtype)
         trans_01 = utils.tensor_to_gradcheck_var(trans_01)  # to var
-        assert gradcheck(kornia.inverse_transformation, (trans_01,), raise_exception=True)
+        assert gradcheck(kornia.geometry.linalg.inverse_transformation, (trans_01,), raise_exception=True)
 
 
 class TestRelativeTransformation:
+    def test_smoke(self, device, dtype):
+        batch_size = 2
+        trans_01 = identity_matrix(batch_size=batch_size, device=device, dtype=dtype)
+        trans_02 = identity_matrix(batch_size=batch_size, device=device, dtype=dtype)
+
+        to_check_1 = kornia.geometry.relative_transformation(trans_01, trans_02)
+        to_check_2 = kornia.geometry.relative_transformation(trans_01[0], trans_02[0])
+
+        assert to_check_1.shape == (batch_size, 4, 4)
+        assert to_check_2.shape == (4, 4)
+
+    def test_exception(self, device, dtype):
+        to_check_1 = torch.rand((7, 4, 4, 3), device=device, dtype=dtype)
+        to_check_2 = torch.rand((5, 10, 10), device=device, dtype=dtype)
+        to_check_3 = torch.rand((6, 4, 4), device=device, dtype=dtype)
+        to_check_4 = torch.rand((4, 4), device=device, dtype=dtype)
+        to_check_5 = torch.rand((3, 3), device=device, dtype=dtype)
+
+        # Testing if exception is thrown when both inputs have shape (3, 3)
+        with pytest.raises(ValueError):
+            _ = kornia.geometry.relative_transformation(to_check_5, to_check_5)
+
+        # Testing if exception is thrown when both inputs have shape (5, 10, 10)
+        with pytest.raises(ValueError):
+            _ = kornia.geometry.relative_transformation(to_check_2, to_check_2)
+
+        # Testing if exception is thrown when one input has shape (6, 4, 4)
+        # whereas the other input has shape (4, 4)
+        with pytest.raises(ValueError):
+            _ = kornia.geometry.relative_transformation(to_check_3, to_check_4)
+
+        # Testing if exception is thrown when one input has shape (7, 4, 4, 3)
+        # whereas the other input has shape (4, 4)
+        with pytest.raises(ValueError):
+            _ = kornia.geometry.relative_transformation(to_check_1, to_check_4)
+
     def test_translation_4x4(self, device, dtype):
         offset = 10.0
         trans_01 = identity_matrix(batch_size=1, device=device, dtype=dtype)[0]
         trans_02 = identity_matrix(batch_size=1, device=device, dtype=dtype)[0]
         trans_02[..., :3, -1] += offset  # add offset to translation vector
 
-        trans_12 = kornia.relative_transformation(trans_01, trans_02)
-        trans_02_hat = kornia.compose_transformations(trans_01, trans_12)
+        trans_12 = kornia.geometry.linalg.relative_transformation(trans_01, trans_02)
+        trans_02_hat = kornia.geometry.linalg.compose_transformations(trans_01, trans_12)
         assert_close(trans_02_hat, trans_02, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -218,8 +317,8 @@ class TestRelativeTransformation:
         trans_02[..., :3, -1] += offset  # add offset to translation vector
         trans_02[..., :3, :3] = rmat_02[..., :3, :3]
 
-        trans_12 = kornia.relative_transformation(trans_01, trans_02)
-        trans_02_hat = kornia.compose_transformations(trans_01, trans_12)
+        trans_12 = kornia.geometry.linalg.relative_transformation(trans_01, trans_02)
+        trans_02_hat = kornia.geometry.linalg.compose_transformations(trans_01, trans_12)
         assert_close(trans_02_hat, trans_02, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -229,36 +328,4 @@ class TestRelativeTransformation:
 
         trans_01 = utils.tensor_to_gradcheck_var(trans_01)  # to var
         trans_02 = utils.tensor_to_gradcheck_var(trans_02)  # to var
-        assert gradcheck(kornia.relative_transformation, (trans_01, trans_02), raise_exception=True)
-
-
-class TestTransformLAFs:
-    @pytest.mark.parametrize("batch_size", [1, 2, 5])
-    @pytest.mark.parametrize("num_points", [2, 3, 5])
-    def test_transform_points(self, batch_size, num_points, device, dtype):
-        # generate input data
-        eye_size = 3
-        lafs_src = torch.rand(batch_size, num_points, 2, 3, device=device, dtype=dtype)
-
-        dst_homo_src = utils.create_random_homography(batch_size, eye_size).to(device=device, dtype=dtype)
-
-        # transform the points from dst to ref
-        lafs_dst = kornia.perspective_transform_lafs(dst_homo_src, lafs_src)
-
-        # transform the points from ref to dst
-        src_homo_dst = torch.inverse(dst_homo_src)
-        lafs_dst_to_src = kornia.perspective_transform_lafs(src_homo_dst, lafs_dst)
-
-        # projected should be equal as initial
-        assert_close(lafs_src, lafs_dst_to_src)
-
-    def test_gradcheck(self, device, dtype):
-        # generate input data
-        batch_size, num_points = 2, 3
-        eye_size = 3
-        points_src = torch.rand(batch_size, num_points, 2, 3, device=device, dtype=dtype)
-        dst_homo_src = utils.create_random_homography(batch_size, eye_size).to(device=device, dtype=dtype)
-        # evaluate function gradient
-        points_src = utils.tensor_to_gradcheck_var(points_src)  # to var
-        dst_homo_src = utils.tensor_to_gradcheck_var(dst_homo_src)  # to var
-        assert gradcheck(kornia.perspective_transform_lafs, (dst_homo_src, points_src), raise_exception=True)
+        assert gradcheck(kornia.geometry.linalg.relative_transformation, (trans_01, trans_02), raise_exception=True)

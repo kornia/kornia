@@ -150,7 +150,7 @@ class TestZCA:
 
         expected = torch.sqrt(unbiased_val * torch.abs(data)) * torch.sign(data)
 
-        actual = kornia.zca_whiten(data, unbiased=unbiased)
+        actual = kornia.enhance.zca_whiten(data, unbiased=unbiased)
 
         tol_val: float = utils._get_precision(device, dtype)
         assert_close(actual, expected, atol=tol_val, rtol=tol_val)

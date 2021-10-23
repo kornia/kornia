@@ -1,5 +1,5 @@
 from functools import wraps
-from typing import Callable, TYPE_CHECKING
+from typing import Callable, List, TYPE_CHECKING
 
 import torch
 import torch.nn as nn
@@ -54,6 +54,33 @@ def image_to_tensor(image: "np.ndarray", keepdim: bool = True) -> torch.Tensor:
         raise ValueError(f"Cannot process image with shape {input_shape}")
 
     return tensor.unsqueeze(0) if not keepdim else tensor
+
+
+def image_list_to_tensor(images: List["np.ndarray"]) -> torch.Tensor:
+    """Converts a list of numpy images to a PyTorch 4d tensor image.
+
+    Args:
+        images: list of images, each of the form :math:`(H, W, C)`.
+        Image shapes must be consistent
+
+    Returns:
+        tensor of the form :math:`(B, C, H, W)`.
+
+    Example:
+        >>> imgs = [np.ones((4, 4, 1)), np.zeros((4, 4, 1))]
+        >>> image_list_to_tensor(imgs).shape
+        torch.Size([2, 1, 4, 4])
+    """
+    if not images:
+        raise ValueError("Input list of numpy images is empty")
+    if len(images[0].shape) != 3:
+        raise ValueError("Input images must be three dimensional arrays")
+
+    list_of_tensors: List[torch.Tensor] = []
+    for image in images:
+        list_of_tensors.append(image_to_tensor(image))
+    tensor: torch.Tensor = torch.stack(list_of_tensors)
+    return tensor
 
 
 def _to_bchw(tensor: torch.Tensor) -> torch.Tensor:

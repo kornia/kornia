@@ -110,8 +110,14 @@ class TestRgbToYuv420(BaseTester):
     # Test max/min values. This is essentially testing the transform rather than the subsampling
     # ref values manually checked vs rec 601
     def test_unit_white(self, device, dtype):  # skipcq: PYL-R0201
-        rgb = torch.tensor([[[255, 255], [255, 255]], [[255, 255], [255, 255]], [[255, 255], [255, 255]]],
-                           device=device, dtype=torch.uint8).type(dtype) / 255.0
+        rgb = (
+            torch.tensor(
+                [[[255, 255], [255, 255]], [[255, 255], [255, 255]], [[255, 255], [255, 255]]],
+                device=device,
+                dtype=torch.uint8,
+            ).type(dtype)
+            / 255.0
+        )
         refy = torch.tensor([[[255, 255], [255, 255]]], device=device, dtype=torch.uint8)
         refuv = torch.tensor([[[0]], [[0]]], device=device, dtype=torch.int8)
 
@@ -121,8 +127,12 @@ class TestRgbToYuv420(BaseTester):
         assert_close(refuv, resuv)
 
     def test_unit_black(self, device, dtype):  # skipcq: PYL-R0201
-        rgb = torch.tensor([[[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]]],
-                           device=device, dtype=torch.uint8).type(dtype) / 255.0
+        rgb = (
+            torch.tensor([[[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]]], device=device, dtype=torch.uint8).type(
+                dtype
+            )
+            / 255.0
+        )
         refy = torch.tensor([[[0, 0], [0, 0]]], device=device, dtype=torch.uint8)
         refuv = torch.tensor([[[0]], [[0]]], device=device, dtype=torch.int8)
 
@@ -132,8 +142,14 @@ class TestRgbToYuv420(BaseTester):
         assert_close(refuv, resuv)
 
     def test_unit_gray(self, device, dtype):  # skipcq: PYL-R0201
-        rgb = torch.tensor([[[127, 127], [127, 127]], [[127, 127], [127, 127]], [[127, 127], [127, 127]]],
-                           device=device, dtype=torch.uint8).type(dtype) / 255.0
+        rgb = (
+            torch.tensor(
+                [[[127, 127], [127, 127]], [[127, 127], [127, 127]], [[127, 127], [127, 127]]],
+                device=device,
+                dtype=torch.uint8,
+            ).type(dtype)
+            / 255.0
+        )
         refy = torch.tensor([[[127, 127], [127, 127]]], device=device, dtype=torch.uint8)
         refuv = torch.tensor([[[0]], [[0]]], device=device, dtype=torch.int8)
 
@@ -143,8 +159,12 @@ class TestRgbToYuv420(BaseTester):
         assert_close(refuv, resuv)
 
     def test_unit_red(self, device, dtype):  # skipcq: PYL-R0201
-        rgb = torch.tensor([[[255, 255], [255, 255]], [[0, 0], [0, 0]], [[0, 0], [0, 0]]],
-                           device=device, dtype=torch.uint8).type(dtype) / 255.0
+        rgb = (
+            torch.tensor(
+                [[[255, 255], [255, 255]], [[0, 0], [0, 0]], [[0, 0], [0, 0]]], device=device, dtype=torch.uint8
+            ).type(dtype)
+            / 255.0
+        )
         refy = torch.tensor([[[76, 76], [76, 76]]], device=device, dtype=torch.uint8)
         refuv = torch.tensor([[[-37]], [[127]]], device=device, dtype=torch.int8)
 
@@ -154,8 +174,12 @@ class TestRgbToYuv420(BaseTester):
         assert_close(refuv, resuv)
 
     def test_unit_blue(self, device, dtype):  # skipcq: PYL-R0201
-        rgb = torch.tensor([[[0, 0], [0, 0]], [[0, 0], [0, 0]], [[255, 255], [255, 255]]],
-                           device=device, dtype=torch.uint8).type(dtype) / 255.0
+        rgb = (
+            torch.tensor(
+                [[[0, 0], [0, 0]], [[0, 0], [0, 0]], [[255, 255], [255, 255]]], device=device, dtype=torch.uint8
+            ).type(dtype)
+            / 255.0
+        )
         refy = torch.tensor([[[29, 29], [29, 29]]], device=device, dtype=torch.uint8)
         refuv = torch.tensor([[[111]], [[-25]]], device=device, dtype=torch.int8)
 
@@ -379,8 +403,11 @@ class TestYuv420ToRgb(BaseTester):
     # Test max/min values. This is essentially testing the transform rather than the subsampling
     # ref values manually checked vs rec 601
     def test_unit_white(self, device, dtype):  # skipcq: PYL-R0201
-        refrgb = torch.tensor([[[255, 255], [255, 255]], [[255, 255], [255, 255]], [[255, 255], [255, 255]]],
-                              device=device, dtype=torch.uint8)
+        refrgb = torch.tensor(
+            [[[255, 255], [255, 255]], [[255, 255], [255, 255]], [[255, 255], [255, 255]]],
+            device=device,
+            dtype=torch.uint8,
+        )
         y = torch.tensor([[[255, 255], [255, 255]]], device=device, dtype=torch.uint8).type(dtype) / 255.0
         uv = torch.tensor([[[0]], [[0]]], device=device, dtype=torch.int8).type(torch.float) / 255.0
 
@@ -388,8 +415,9 @@ class TestYuv420ToRgb(BaseTester):
         assert_close(refrgb, resrgb)
 
     def test_unit_red(self, device, dtype):  # skipcq: PYL-R0201
-        refrgb = torch.tensor([[[221, 221], [221, 221]], [[17, 17], [17, 17]], [[1, 1], [1, 1]]],
-                              device=device, dtype=torch.uint8)
+        refrgb = torch.tensor(
+            [[[221, 221], [221, 221]], [[17, 17], [17, 17]], [[1, 1], [1, 1]]], device=device, dtype=torch.uint8
+        )
         y = torch.tensor([[[76, 76], [76, 76]]], device=device, dtype=torch.uint8).type(dtype) / 255.0
         uv = torch.tensor([[[-37]], [[127]]], device=device, dtype=torch.int8).type(torch.float) / 255.0
 

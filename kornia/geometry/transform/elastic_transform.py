@@ -3,8 +3,8 @@ from typing import Tuple
 import torch
 import torch.nn.functional as F
 
-import kornia
-from kornia.filters.kernels import get_gaussian_kernel2d
+from kornia.filters import filter2d, get_gaussian_kernel2d
+from kornia.utils import create_meshgrid
 
 __all__ = ["elastic_transform2d"]
 
@@ -80,15 +80,15 @@ def elastic_transform2d(
     disp_x: torch.Tensor = noise[:, :1]
     disp_y: torch.Tensor = noise[:, 1:]
 
-    disp_x = kornia.filters.filter2d(disp_x, kernel=kernel_y, border_type='constant') * alpha[0]
-    disp_y = kornia.filters.filter2d(disp_y, kernel=kernel_x, border_type='constant') * alpha[1]
+    disp_x = filter2d(disp_x, kernel=kernel_y, border_type='constant') * alpha[0]
+    disp_y = filter2d(disp_y, kernel=kernel_x, border_type='constant') * alpha[1]
 
     # stack and normalize displacement
     disp = torch.cat([disp_x, disp_y], dim=1).permute(0, 2, 3, 1)
 
     # Warp image based on displacement matrix
     _, _, h, w = image.shape
-    grid = kornia.utils.create_meshgrid(h, w, device=image.device).to(image.dtype)
+    grid = create_meshgrid(h, w, device=image.device).to(image.dtype)
     warped = F.grid_sample(image, (grid + disp).clamp(-1, 1), align_corners=align_corners, mode=mode)
 
     return warped

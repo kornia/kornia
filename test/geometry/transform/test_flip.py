@@ -9,13 +9,13 @@ from kornia.testing import assert_close
 
 class TestVflip:
     def smoke_test(self, device, dtype):
-        f = kornia.Vflip()
+        f = kornia.geometry.transform.Vflip()
         repr = "Vflip()"
         assert str(f) == repr
 
     def test_vflip(self, device, dtype):
 
-        f = kornia.Vflip()
+        f = kornia.geometry.transform.Vflip()
         input = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]], device=device, dtype=dtype)  # 3 x 3
 
         expected = torch.tensor(
@@ -30,7 +30,7 @@ class TestVflip:
 
         input = input.repeat(2, 1, 1)  # 2 x 3 x 3
 
-        f = kornia.Vflip()
+        f = kornia.geometry.transform.Vflip()
         expected = torch.tensor(
             [[[0.0, 1.0, 1.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]], device=device, dtype=dtype
         )  # 1 x 3 x 3
@@ -44,7 +44,7 @@ class TestVflip:
         @torch.jit.script
         def op_script(data: torch.Tensor) -> torch.Tensor:
 
-            return kornia.vflip(data)
+            return kornia.geometry.transform.vflip(data)
 
         input = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]], device=device, dtype=dtype)  # 3 x 3
 
@@ -72,18 +72,18 @@ class TestVflip:
 
         input = utils.tensor_to_gradcheck_var(input)  # to var
 
-        assert gradcheck(kornia.Vflip(), (input,), raise_exception=True)
+        assert gradcheck(kornia.geometry.transform.Vflip(), (input,), raise_exception=True)
 
 
 class TestHflip:
     def smoke_test(self, device, dtype):
-        f = kornia.Hflip()
+        f = kornia.geometry.transform.Hflip()
         repr = "Hflip()"
         assert str(f) == repr
 
     def test_hflip(self, device, dtype):
 
-        f = kornia.Hflip()
+        f = kornia.geometry.transform.Hflip()
         input = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]], device=device, dtype=dtype)  # 3 x 3
 
         expected = torch.tensor(
@@ -100,7 +100,7 @@ class TestHflip:
 
         input = input.repeat(2, 1, 1)  # 2 x 3 x 3
 
-        f = kornia.Hflip()
+        f = kornia.geometry.transform.Hflip()
         expected = torch.tensor(
             [[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [1.0, 1.0, 0.0]]], device=device, dtype=dtype
         )  # 3 x 3
@@ -114,7 +114,7 @@ class TestHflip:
         @torch.jit.script
         def op_script(data: torch.Tensor) -> torch.Tensor:
 
-            return kornia.hflip(data)
+            return kornia.geometry.transform.hflip(data)
 
         input = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]], device=device, dtype=dtype)  # 3 x 3
 
@@ -142,18 +142,18 @@ class TestHflip:
 
         input = utils.tensor_to_gradcheck_var(input)  # to var
 
-        assert gradcheck(kornia.Hflip(), (input,), raise_exception=True)
+        assert gradcheck(kornia.geometry.transform.Hflip(), (input,), raise_exception=True)
 
 
 class TestRot180:
     def smoke_test(self, device, dtype):
-        f = kornia.Rot180()
+        f = kornia.geometry.transform.Rot180()
         repr = "Rot180()"
         assert str(f) == repr
 
     def test_rot180(self, device, dtype):
 
-        f = kornia.Rot180()
+        f = kornia.geometry.transform.Rot180()
         input = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]], device=device, dtype=dtype)  # 3 x 3
 
         expected = torch.tensor(
@@ -168,7 +168,7 @@ class TestRot180:
 
         input = input.repeat(2, 1, 1)  # 2 x 3 x 3
 
-        f = kornia.Rot180()
+        f = kornia.geometry.transform.Rot180()
         expected = torch.tensor(
             [[1.0, 1.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]], device=device, dtype=dtype
         )  # 1 x 3 x 3
@@ -182,7 +182,7 @@ class TestRot180:
         @torch.jit.script
         def op_script(data: torch.Tensor) -> torch.Tensor:
 
-            return kornia.rot180(data)
+            return kornia.geometry.transform.rot180(data)
 
         input = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]], device=device, dtype=dtype)  # 3 x 3
 
@@ -210,4 +210,4 @@ class TestRot180:
 
         input = utils.tensor_to_gradcheck_var(input)  # to var
 
-        assert gradcheck(kornia.Rot180(), (input,), raise_exception=True)
+        assert gradcheck(kornia.geometry.transform.Rot180(), (input,), raise_exception=True)

@@ -93,29 +93,62 @@ class NonMaximaSuppression3d(nn.Module):
             raise AssertionError(x.shape)
         # find local maximum values
         B, CH, D, H, W = x.size()
-        max_non_center = (
-            F.conv3d(
-                F.pad(x, list(self.padding)[::-1], mode='replicate'),
-                self.kernel.repeat(CH, 1, 1, 1, 1).to(x.device, x.dtype),
-                stride=1,
-                groups=CH,
+        if self.kernel_size == (3, 3, 3):
+            mask = torch.zeros(B, CH, D, H, W, device=x.device, dtype=torch.bool)
+            center = slice(1, -1)
+            left = slice(0, -2)
+            right = slice(2, None)
+            center_tensor = x[..., center, center, center]
+            mask[..., 1: -1, 1: -1, 1: -1] = ((center_tensor > x[..., center, center, left]) &  # noqa: W504
+                                              (center_tensor > x[..., center, center, right]) &  # noqa: W504
+                                              (center_tensor > x[..., center, left, center]) &  # noqa: W504
+                                              (center_tensor > x[..., center, left, left]) &  # noqa: W504
+                                              (center_tensor > x[..., center, left, right]) &  # noqa: W504
+                                              (center_tensor > x[..., center, right, center]) &  # noqa: W504
+                                              (center_tensor > x[..., center, right, left]) &  # noqa: W504
+                                              (center_tensor > x[..., center, right, right]) &  # noqa: W504
+                                              (center_tensor > x[..., left, center, center]) &  # noqa: W504
+                                              (center_tensor > x[..., left, center, left]) &  # noqa: W504
+                                              (center_tensor > x[..., left, center, right]) &  # noqa: W504
+                                              (center_tensor > x[..., left, left, center]) &  # noqa: W504
+                                              (center_tensor > x[..., left, left, left]) &  # noqa: W504
+                                              (center_tensor > x[..., left, left, right]) &  # noqa: W504
+                                              (center_tensor > x[..., left, right, center]) &  # noqa: W504
+                                              (center_tensor > x[..., left, right, left]) &  # noqa: W504
+                                              (center_tensor > x[..., left, right, right]) &  # noqa: W504
+                                              (center_tensor > x[..., right, center, center]) &  # noqa: W504
+                                              (center_tensor > x[..., right, center, left]) &  # noqa: W504
+                                              (center_tensor > x[..., right, center, right]) &  # noqa: W504
+                                              (center_tensor > x[..., right, left, center]) &  # noqa: W504
+                                              (center_tensor > x[..., right, left, left]) &  # noqa: W504
+                                              (center_tensor > x[..., right, left, right]) &  # noqa: W504
+                                              (center_tensor > x[..., right, right, center]) &  # noqa: W504
+                                              (center_tensor > x[..., right, right, left]) &  # noqa: W504
+                                              (center_tensor > x[..., right, right, right]))
+        else:
+            max_non_center = (
+                F.conv3d(
+                    F.pad(x, list(self.padding)[::-1], mode='replicate'),
+                    self.kernel.repeat(CH, 1, 1, 1, 1).to(x.device, x.dtype),
+                    stride=1,
+                    groups=CH,
+                )
+                .view(B, CH, -1, D, H, W)
+                .max(dim=2, keepdim=False)[0]
             )
-            .view(B, CH, -1, D, H, W)
-            .max(dim=2, keepdim=False)[0]
-        )
-        mask = x > max_non_center
+            mask = x > max_non_center
         if mask_only:
             return mask
         return x * (mask.to(x.dtype))
 
 
-# functiona api
+# functional api
 
 
 def nms2d(input: torch.Tensor, kernel_size: Tuple[int, int], mask_only: bool = False) -> torch.Tensor:
     r"""Apply non maxima suppression to filter.
 
-    See :class:`~kornia.feature.NonMaximaSuppression2d` for details.
+    See :class:`~kornia.geometry.subpix.NonMaximaSuppression2d` for details.
     """
     return NonMaximaSuppression2d(kernel_size)(input, mask_only)
 

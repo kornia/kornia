@@ -17,10 +17,11 @@ def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch
         tensor of (u, v) cam coordinates with shape :math:`(*, 2)`.
 
     Example:
+        >>> _ = torch.manual_seed(0)
         >>> X = torch.rand(1, 3)
         >>> K = torch.eye(3)[None]
         >>> project_points(X, K)
-        tensor([[1.4210, 0.9953]])
+        tensor([[5.6088, 8.6827]])
     """
     if not isinstance(point_3d, torch.Tensor):
         raise TypeError(f"Input point_3d type is not a torch.Tensor. Got {type(point_3d)}")
@@ -81,11 +82,12 @@ def unproject_points(
         tensor of (x, y, z) world coordinates with shape :math:`(*, 3)`.
 
     Example:
+        >>> _ = torch.manual_seed(0)
         >>> x = torch.rand(1, 2)
         >>> depth = torch.ones(1, 1)
         >>> K = torch.eye(3)[None]
         >>> unproject_points(x, depth, K)
-        tensor([[0.2711, 0.6923, 1.0000]])
+        tensor([[0.4963, 0.7682, 1.0000]])
     """
     if not isinstance(point_2d, torch.Tensor):
         raise TypeError(f"Input point_2d type is not a torch.Tensor. Got {type(point_2d)}")

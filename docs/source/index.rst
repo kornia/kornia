@@ -57,6 +57,7 @@ Join the community
    applications/image_augmentations
    applications/image_classification
    applications/image_matching
+   applications/image_stitching
    applications/image_registration
    applications/semantic_segmentation
    applications/video_deblur
@@ -70,6 +71,7 @@ Join the community
    models/defmo
    models/hardnet
    models/affnet
+
 
 .. toctree::
    :caption: API REFERENCE
@@ -86,6 +88,7 @@ Join the community
    losses
    metrics
    morphology
+   tracking
    utils
    x
 

@@ -26,25 +26,25 @@ Create the dataloaders and transforms:
 
 .. literalinclude:: ../../../examples/train/semantic_segmentation/main.py
    :language: python
-   :lines: 21-47
+   :lines: 20-46
 
 Define your model, losses, optimizers and schedulers:
 
 .. literalinclude:: ../../../examples/train/semantic_segmentation/main.py
    :language: python
-   :lines: 49-61
+   :lines: 48-60
 
 Create your preprocessing and augmentations pipeline:
 
 .. literalinclude:: ../../../examples/train/semantic_segmentation/main.py
    :language: python
-   :lines: 63-82
+   :lines: 62-81
 
 Finally, instantiate the :py:class:`~kornia.x.SemanticSegmentationTrainer` and execute your training pipeline.
 
 .. literalinclude:: ../../../examples/train/semantic_segmentation/main.py
    :language: python
-   :lines: 101-111
+   :lines: 83-91
 
 .. seealso::
    Play with the full example `here <https://github.com/kornia/kornia/tree/master/examples/train/semantic_segmentation>`_

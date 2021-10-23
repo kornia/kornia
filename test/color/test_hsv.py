@@ -115,18 +115,6 @@ class TestRgbToHsv(BaseTester):
         fcn = kornia.color.rgb_to_hsv
         assert_close(ops(img), fcn(img))
 
-    def test_onnx(self, device, dtype):
-        B, C, H, W = 1, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
-        torch.onnx.export(
-            kornia.color.RgbToHsv(),
-            (img),  # Dummy input for shape
-            "model.onnx",
-            opset_version=12,
-            do_constant_folding=True,
-            verbose=True,
-        )
-
 
 class TestHsvToRgb(BaseTester):
     def test_smoke(self, device, dtype):

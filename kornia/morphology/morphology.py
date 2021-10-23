@@ -3,6 +3,16 @@ from typing import List, Optional
 import torch
 import torch.nn.functional as F
 
+__all__ = [
+    "dilation",
+    "erosion",
+    "opening",
+    "closing",
+    "gradient",
+    "top_hat",
+    "bottom_hat"
+]
+
 
 def _neight2channels_like_kernel(kernel: torch.Tensor) -> torch.Tensor:
     h, w = kernel.size()

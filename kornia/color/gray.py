@@ -1,5 +1,3 @@
-import warnings
-
 import torch
 import torch.nn as nn
 
@@ -15,6 +13,7 @@ def grayscale_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     Args:
         image: grayscale image to be converted to RGB with shape :math:`(*,1,H,W)`.
+
     Returns:
         RGB version of the image with shape :math:`(*,3,H,W)`.
 
@@ -24,12 +23,16 @@ def grayscale_to_rgb(image: torch.Tensor) -> torch.Tensor:
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. " f"Got {type(image)}")
+
     if image.dim() < 3 or image.size(-3) != 1:
         raise ValueError(f"Input size must have a shape of (*, 1, H, W). " f"Got {image.shape}.")
+
     rgb: torch.Tensor = torch.cat([image, image, image], dim=-3)
-    image_is_float: bool = torch.is_floating_point(image)
-    if not image_is_float:
-        warnings.warn(f"Input image is not of float dtype. Got {image.dtype}")
+
+    # TODO: we should find a better way to raise this kind of warnings
+    # if not torch.is_floating_point(image):
+    #     warnings.warn(f"Input image is not of float dtype. Got {image.dtype}")
+
     return rgb
 
 
@@ -72,16 +75,14 @@ def rgb_to_grayscale(
     r: torch.Tensor = image[..., 0:1, :, :]
     g: torch.Tensor = image[..., 1:2, :, :]
     b: torch.Tensor = image[..., 2:3, :, :]
-    image_is_float: bool = torch.is_floating_point(image)
-    if not image_is_float:
-        warnings.warn(f"Input image is not of float dtype. Got {image.dtype}")
-    if (image.dtype != rgb_weights.dtype) and not image_is_float:
+
+    if not torch.is_floating_point(image) and (image.dtype != rgb_weights.dtype):
         raise TypeError(
             f"Input image and rgb_weights should be of same dtype. Got {image.dtype} and {rgb_weights.dtype}"
         )
-    w_tmp: torch.Tensor = rgb_weights.to(image.device, image.dtype)
-    gray: torch.Tensor = w_tmp[..., 0] * r + w_tmp[..., 1] * g + w_tmp[..., 2] * b
-    return gray
+
+    w_r, w_g, w_b = rgb_weights.to(image).unbind()
+    return w_r * r + w_g * g + w_b * b
 
 
 def bgr_to_grayscale(image: torch.Tensor) -> torch.Tensor:
@@ -106,8 +107,7 @@ def bgr_to_grayscale(image: torch.Tensor) -> torch.Tensor:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
     image_rgb = bgr_to_rgb(image)
-    gray: torch.Tensor = rgb_to_grayscale(image_rgb)
-    return gray
+    return rgb_to_grayscale(image_rgb)
 
 
 class GrayscaleToRgb(nn.Module):

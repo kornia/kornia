@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple, Type, Union
+from typing import Any, Dict, Optional, Tuple, Type
 
 import pytest
 import torch
@@ -32,7 +32,9 @@ from kornia.augmentation import (
 )
 from kornia.augmentation.base import AugmentationBase2D
 from kornia.constants import pi, Resample
+from kornia.geometry import transform_points
 from kornia.testing import assert_close, BaseTester, default_with_one_parameter_changed
+from kornia.utils import create_meshgrid
 from kornia.utils.helpers import _torch_inverse_cast
 
 # TODO same_on_batch tests?
@@ -283,11 +285,11 @@ class CommonTests(BaseTester):
         if (transform == kornia.eye_like(3, transform)).all():
             pytest.skip("Test not relevant for intensity augmentations.")
 
-        indices = kornia.create_meshgrid(
+        indices = create_meshgrid(
             height=output.shape[-2], width=output.shape[-1], normalized_coordinates=False, device=self.device
         )
         output_indices = indices.reshape((1, -1, 2)).to(dtype=self.dtype)
-        input_indices = kornia.geometry.transform_points(_torch_inverse_cast(transform.to(self.dtype)), output_indices)
+        input_indices = transform_points(_torch_inverse_cast(transform.to(self.dtype)), output_indices)
 
         output_indices = output_indices.round().long().squeeze(0)
         input_indices = input_indices.round().long().squeeze(0)
@@ -568,14 +570,10 @@ class TestRandomHorizontalFlipAlternative(CommonTests):
         ).repeat((2, 1, 1, 1))
         expected_output = torch.tensor(
             [[[[0.3, 0.2, 0.1], [0.6, 0.5, 0.4], [0.9, 0.8, 0.7]]]], device=self.device, dtype=self.dtype
-        ).repeat(
-            (2, 1, 1, 1)
-        )
+        ).repeat((2, 1, 1, 1))
         expected_transformation = torch.tensor(
             [[[-1.0, 0.0, 2.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=self.device, dtype=self.dtype
-        ).repeat(
-            (2, 1, 1)
-        )
+        ).repeat((2, 1, 1))
         parameters = {}
         self._test_random_p_1_return_transform_implementation(
             input_tensor=input_tensor,
@@ -641,14 +639,10 @@ class TestRandomVerticalFlipAlternative(CommonTests):
         ).repeat((2, 1, 1, 1))
         expected_output = torch.tensor(
             [[[[0.7, 0.8, 0.9], [0.4, 0.5, 0.6], [0.1, 0.2, 0.3]]]], device=self.device, dtype=self.dtype
-        ).repeat(
-            (2, 1, 1, 1)
-        )
+        ).repeat((2, 1, 1, 1))
         expected_transformation = torch.tensor(
             [[[1.0, 0.0, 0.0], [0.0, -1.0, 2.0], [0.0, 0.0, 1.0]]], device=self.device, dtype=self.dtype
-        ).repeat(
-            (2, 1, 1)
-        )
+        ).repeat((2, 1, 1))
         parameters = {}
         self._test_random_p_1_return_transform_implementation(
             input_tensor=input_tensor,
@@ -1480,7 +1474,7 @@ class TestColorJitter:
     def test_gradcheck(self, device, dtype):
         input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.augmentation.ColorJitter(p=1.0), (input,), raise_exception=True)
+        assert gradcheck(ColorJitter(p=1.0), (input,), raise_exception=True)
 
 
 class TestRectangleRandomErasing:
@@ -1522,18 +1516,6 @@ class TestRectangleRandomErasing:
         input = torch.rand(batch_shape, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(rand_rec, (input, rect_params), raise_exception=True)
-
-    @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self, device, dtype):
-        @torch.jit.script
-        def op_script(img):
-            return kornia.augmentation.random_rectangle_erase(img, (0.2, 0.4), (0.3, 0.5))
-
-        batch_size, channels, height, width = 2, 3, 64, 64
-        img = torch.ones(batch_size, channels, height, width)
-        expected = RandomErasing(1.0, (0.2, 0.4), (0.3, 0.5))(img)
-        actual = op_script(img)
-        assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
 
 class TestRandomGrayscale:
@@ -1624,7 +1606,7 @@ class TestRandomGrayscale:
             dtype=dtype,
         )
 
-        img_gray = kornia.augmentation.RandomGrayscale(p=1.0)(data)
+        img_gray = RandomGrayscale(p=1.0)(data)
         assert_close(img_gray, expected, atol=1e-4, rtol=1e-4)
 
     def test_opencv_false(self, device, dtype):
@@ -1660,7 +1642,7 @@ class TestRandomGrayscale:
 
         expected = data
 
-        img_gray = kornia.augmentation.RandomGrayscale(p=0.0)(data)
+        img_gray = RandomGrayscale(p=0.0)(data)
         assert_close(img_gray, expected, atol=1e-4, rtol=1e-4)
 
     def test_opencv_true_batch(self, device, dtype):
@@ -1723,7 +1705,7 @@ class TestRandomGrayscale:
         )
         expected = expected.unsqueeze(0).repeat(4, 1, 1, 1)
 
-        img_gray = kornia.augmentation.RandomGrayscale(p=1.0)(data)
+        img_gray = RandomGrayscale(p=1.0)(data)
         assert_close(img_gray, expected, atol=1e-4, rtol=1e-4)
 
     def test_opencv_false_batch(self, device, dtype):
@@ -1758,7 +1740,7 @@ class TestRandomGrayscale:
 
         expected = data
 
-        img_gray = kornia.augmentation.RandomGrayscale(p=0.0)(data)
+        img_gray = RandomGrayscale(p=0.0)(data)
         assert_close(img_gray, expected, atol=1e-4, rtol=1e-4)
 
     def test_random_grayscale_sequential_batch(self, device, dtype):
@@ -1776,27 +1758,27 @@ class TestRandomGrayscale:
     def test_gradcheck(self, device, dtype):
         input = torch.rand((3, 5, 5), device=device, dtype=dtype)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.augmentation.RandomGrayscale(p=1.0), (input,), raise_exception=True)
-        assert gradcheck(kornia.augmentation.RandomGrayscale(p=0.0), (input,), raise_exception=True)
+        assert gradcheck(RandomGrayscale(p=1.0), (input,), raise_exception=True)
+        assert gradcheck(RandomGrayscale(p=0.0), (input,), raise_exception=True)
 
 
 class TestCenterCrop:
     def test_no_transform(self, device, dtype):
         inp = torch.rand(1, 2, 4, 4, device=device, dtype=dtype)
-        out = kornia.augmentation.CenterCrop(2)(inp)
+        out = CenterCrop(2)(inp)
         assert out.shape == (1, 2, 2, 2)
-        aug = kornia.augmentation.CenterCrop(2, cropping_mode="resample")
+        aug = CenterCrop(2, cropping_mode="resample")
         out = aug(inp)
         assert out.shape == (1, 2, 2, 2)
         assert aug.inverse(out).shape == (1, 2, 4, 4)
 
     def test_transform(self, device, dtype):
         inp = torch.rand(1, 2, 5, 4, device=device, dtype=dtype)
-        out = kornia.augmentation.CenterCrop(2, return_transform=True)(inp)
+        out = CenterCrop(2, return_transform=True)(inp)
         assert len(out) == 2
         assert out[0].shape == (1, 2, 2, 2)
         assert out[1].shape == (1, 3, 3)
-        aug = kornia.augmentation.CenterCrop(2, cropping_mode="resample", return_transform=True)
+        aug = CenterCrop(2, cropping_mode="resample", return_transform=True)
         out = aug(inp)
         assert out[0].shape == (1, 2, 2, 2)
         assert out[1].shape == (1, 3, 3)
@@ -1804,9 +1786,9 @@ class TestCenterCrop:
 
     def test_no_transform_tuple(self, device, dtype):
         inp = torch.rand(1, 2, 5, 4, device=device, dtype=dtype)
-        out = kornia.augmentation.CenterCrop((3, 4))(inp)
+        out = CenterCrop((3, 4))(inp)
         assert out.shape == (1, 2, 3, 4)
-        aug = kornia.augmentation.CenterCrop((3, 4), cropping_mode="resample")
+        aug = CenterCrop((3, 4), cropping_mode="resample")
         out = aug(inp)
         assert out.shape == (1, 2, 3, 4)
         assert aug.inverse(out).shape == (1, 2, 5, 4)
@@ -1825,7 +1807,7 @@ class TestCenterCrop:
     def test_gradcheck(self, device, dtype):
         input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.augmentation.CenterCrop(3), (input,), raise_exception=True)
+        assert gradcheck(CenterCrop(3), (input,), raise_exception=True)
 
 
 class TestRandomRotation:
@@ -2248,7 +2230,7 @@ class TestRandomCrop:
         img = torch.ones(1, 1, 5, 6, device=device, dtype=dtype)
 
         actual = op_script(img)
-        expected = kornia.center_crop3d(img)
+        expected = kornia.geometry.transform.center_crop3d(img)
         assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.skip("Need to fix Union type")

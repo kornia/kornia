@@ -2,7 +2,19 @@ from typing import Tuple
 
 import torch
 
-import kornia
+from .linalg import transform_points
+
+__all__ = [
+    "validate_bbox",
+    "validate_bbox3d",
+    "infer_bbox_shape",
+    "infer_bbox_shape3d",
+    "bbox_to_mask",
+    "bbox_to_mask3d",
+    "bbox_generator",
+    "bbox_generator3d",
+    "transform_bbox",
+]
 
 
 @torch.jit.ignore
@@ -445,7 +457,7 @@ def transform_bbox(trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = "xy
         boxes[..., -2] = boxes[..., 0] + boxes[..., -2]  # x + w
         boxes[..., -1] = boxes[..., 1] + boxes[..., -1]  # y + h
 
-    transformed_boxes: torch.Tensor = kornia.transform_points(trans_mat, boxes.view(boxes.shape[0], -1, 2))
+    transformed_boxes: torch.Tensor = transform_points(trans_mat, boxes.view(boxes.shape[0], -1, 2))
     transformed_boxes = transformed_boxes.view_as(boxes)
 
     if mode == 'xywh':

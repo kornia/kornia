@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 
-class _HausdorffERLossBase(nn.Module):
+class _HausdorffERLossBase(torch.jit.ScriptModule):
     """Base class for binary Hausdorff loss based on morphological erosion.
 
     This is an Hausdorff Distance (HD) Loss that based on morphological erosion,which provided
@@ -75,7 +75,8 @@ class _HausdorffERLossBase(nn.Module):
 
         return eroded
 
-    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    # NOTE: we add type ignore because the forward pass does not work well with subclassing
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:  # type: ignore
         """Compute Hausdorff loss.
 
         Args:
@@ -91,6 +92,7 @@ class _HausdorffERLossBase(nn.Module):
                 "Prediction and target need to be of same size, and target should not be one-hot."
                 f"Got {pred.shape} and {target.shape}."
             )
+
         if pred.size(1) < target.max().item():
             raise ValueError("Invalid target value.")
 
@@ -105,14 +107,17 @@ class _HausdorffERLossBase(nn.Module):
             )
             for i in range(pred.size(1))
         ])
+
         if self.reduction == 'mean':
-            return out.mean()
+            out = out.mean()
         elif self.reduction == 'sum':
-            return out.sum()
+            out = out.sum()
         elif self.reduction == 'none':
-            return out
+            pass
         else:
             raise NotImplementedError(f"reduction `{self.reduction}` has not been implemented yet.")
+
+        return out
 
 
 class HausdorffERLoss(_HausdorffERLossBase):
@@ -160,7 +165,8 @@ class HausdorffERLoss(_HausdorffERLossBase):
         kernel = cross * 0.2
         return kernel[None]
 
-    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    # NOTE: we add type ignore because the forward pass does not work well with subclassing
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:  # type: ignore
         """Compute Hausdorff loss.
 
         Args:
@@ -173,6 +179,7 @@ class HausdorffERLoss(_HausdorffERLossBase):
         """
         if pred.dim() != 4:
             raise ValueError(f"Only 2D images supported. Got {pred.dim()}.")
+
         if not (target.max() < pred.size(1) and target.min() >= 0 and target.dtype == torch.long):
             raise ValueError(
                 f"Expect long type target value in range (0, {pred.size(1)})."
@@ -230,7 +237,8 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
         kernel = torch.stack([bound, cross, bound], dim=1) * (1 / 7)
         return kernel[None]
 
-    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    # NOTE: we add type ignore because the forward pass does not work well with subclassing
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:  # type: ignore
         """Compute 3D Hausdorff loss.
 
         Args:
@@ -243,4 +251,5 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
         """
         if pred.dim() != 5:
             raise ValueError(f"Only 3D images supported. Got {pred.dim()}.")
+
         return super().forward(pred, target)

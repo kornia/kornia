@@ -4,6 +4,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+****
+## :rocket: [0.6.0] - 2021-10-22
+
+### :new:  New Features
+- Add Training API (#1307)
+- Added combine patches (#1309)
+- Add semantic segmentation trainer (#1323)
+- Add vanilla LO-RANSAC (#1335)
+- Add Lambda function module (#1346)
+- Add support for YUV420 and YUV422 to complement current YUV444 (#1360)
+- Add raw to rgb color conversion (#1380)
+- Implement separable_filter2d (#1385)
+- Add MobileViT to contrib (#1388)
+- Add solve_pnp_dlt (#1349)
+- Add function image_list_to_tensor to utils (#1393)
+- Add undistort_image function (#1303)
+- Create kormia.metrics submodule (#1325)
+- Add Image Stitching API (#1358)
+- Add Homography Tracker API (#1389)
+
+### :exclamation: Changes
+- Refactor library namespaces [pre-release][0.6-rc1] (#1412)
+- deprecate 1.6/1.7 and add 1.9.1 (#1399)
+
+### :zap:  Improvements
+- Improve bbox_to_mask (#1351)
+- Refactor unfold->conv for morphology backbone (#1107)
+- Improve focal loss for numerical stability (#1362)
+- Add more border_type options for filter2D (#1375)
+- Replace deprecated torch.qr (#1376)
+- Add special case hardcoded implementtion for local features speed up (#1387)
+- Enable non/batched connected components (#1193)
+- Remove warnings during testing (#1401)
+
+### :lady_beetle:  Bug fixes
+- Fix binary focal loss (#1313)
+- Fix kornia.geometry.subpix.spatial_soft_argmax imports (#1318)
+- Fixed a simple typo in __init__.py (#1319)
+- Fix path to dev requirements file in a setup_dev_env.sh (#1324)
+- Fix bug in create_meshgrid3d along depth (#1330)
+- Fix anisotropic scale error (#1340)
+- Fix rgb_to_hsv for onnx (#1329)
+- Fixed useless return in ransac.py (#1352)
+- Fixed classificationhead typo and leave out some of the guesswork (#1354)
+- Fix clahe differentiability and tests (#1356)
+- Fixes singular matrix inverse/solve for RANSAC and ConvQuad3d (#1408)
+- Change intermediate datatype to fix imgwarp (#1413)
 
 ## :rocket: [0.5.11] - 2021-08-30
 ### :new:  New Features
