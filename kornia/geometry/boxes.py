@@ -46,10 +46,10 @@ def _boxes_to_polygons(
     polygons[..., 0] = xmin.unsqueeze(-1)
     polygons[..., 1] = ymin.unsqueeze(-1)
     # Shift top-right, bottom-right, bottom-left points to the right coordinates
-    polygons[..., 1, 0] += width  # Top right
-    polygons[..., 2, 0] += width  # Bottom right
-    polygons[..., 2, 1] += height  # Bottom right
-    polygons[..., 3, 1] += height  # Bottom left
+    polygons[..., 1, 0] += width - 1  # Top right
+    polygons[..., 2, 0] += width - 1  # Bottom right
+    polygons[..., 2, 1] += height - 1  # Bottom right
+    polygons[..., 3, 1] += height - 1  # Bottom left
     return polygons
 
 
@@ -71,14 +71,14 @@ def _boxes3d_to_polygons3d(
     front_vertices[..., 1] = ymin.unsqueeze(-1)
     front_vertices[..., 2] = zmin.unsqueeze(-1)
     # Shift front-top-right, front-bottom-right, front-bottom-left points to the right coordinates
-    front_vertices[..., 1, 0] += width  # Top right
-    front_vertices[..., 2, 0] += width  # Bottom right
-    front_vertices[..., 2, 1] += height  # Bottom right
-    front_vertices[..., 3, 1] += height  # Bottom left
+    front_vertices[..., 1, 0] += width - 1  # Top right
+    front_vertices[..., 2, 0] += width - 1  # Bottom right
+    front_vertices[..., 2, 1] += height - 1  # Bottom right
+    front_vertices[..., 3, 1] += height - 1  # Bottom left
 
     # Back
     back_vertices = front_vertices.clone()
-    back_vertices[..., 2] += depth.unsqueeze(-1)
+    back_vertices[..., 2] += depth.unsqueeze(-1) - 1
 
     polygons3d = torch.cat([front_vertices, back_vertices], dim=-2)
     return polygons3d
@@ -97,7 +97,7 @@ class Boxes:
         **2D boxes format** is defined as a floating data type tensor of shape ``Nx4x2`` or ``BxNx4x2``
         where each box is a `quadrilateral <https://en.wikipedia.org/wiki/Quadrilateral>`_ defined by it's 4 vertices
         coordinates (A, B, C, D). Coordinates must be in ``x, y`` order. The height and width of a box is defined as
-        ``width = xmax - xmin`` and ``height = ymax - ymin``. Examples of
+        ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. Examples of
         `quadrilaterals <https://en.wikipedia.org/wiki/Quadrilateral>`_ are rectangles, rhombus and trapezoids.
     """
     def __init__(self, boxes: torch.Tensor, raise_if_not_floating_point: bool = True):
@@ -231,7 +231,7 @@ class Boxes:
         """
         batched_boxes = self._boxes if self._is_batch else self._boxes.unsqueeze(0)
 
-        # Create boxes in xyxy format.
+        # Create boxes in xyxy_plus format.
         boxes = torch.stack([batched_boxes.amin(dim=-2), batched_boxes.amax(dim=-2)], dim=-2).view(
             batched_boxes.shape[0], batched_boxes.shape[1], 4
         )
@@ -240,14 +240,14 @@ class Boxes:
         if mode in ("xyxy", "xyxy_plus"):
             pass
         elif mode in ("xywh", "vertices", "vertices_plus"):
-            height, width = boxes[..., 3] - boxes[..., 1], boxes[..., 2] - boxes[..., 0]
+            height, width = boxes[..., 3] - boxes[..., 1] + 1, boxes[..., 2] - boxes[..., 0] + 1
             boxes[..., 2] = width
             boxes[..., 3] = height
         else:
             raise ValueError(f"Unknown mode {mode}")
 
-        if mode.endswith("plus"):
-            offset = torch.as_tensor([0, 0, -1, -1], device=boxes.device, dtype=boxes.dtype)
+        if mode in ("xyxy", "vertices"):
+            offset = torch.as_tensor([0, 0, 1, 1], device=boxes.device, dtype=boxes.dtype)
             boxes = boxes + offset
 
         if mode.startswith('vertices'):
@@ -371,7 +371,7 @@ class Boxes3D:
         **3D boxes format** is defined as a floating data type tensor of shape ``Nx8x3`` or ``BxNx8x3`` where each box
         is a `hexahedron <https://en.wikipedia.org/wiki/Hexahedron>`_ defined by it's 8 vertices coordinates.
         Coordinates must be in ``x, y, z`` order. The height, width and depth of a box is defined as
-        ``width = xmax - xmin``, ``height = ymax - ymin`` and ``depth = zmax - zmin``. Examples of
+        ``width = xmax - xmin + 1``, ``height = ymax - ymin + 1`` and ``depth = zmax - zmin + 1``. Examples of
         `hexahedrons <https://en.wikipedia.org/wiki/Hexahedron>`_ are cubes and rhombohedrons.
     """
     def __init__(self, boxes: torch.Tensor, raise_if_not_floating_point: bool = True):
@@ -532,7 +532,7 @@ class Boxes3D:
 
         batched_boxes = self._boxes if self._is_batch else self._boxes.unsqueeze(0)
 
-        # Create boxes in xyzxyz format.
+        # Create boxes in xyzxyz_plus format.
         boxes = torch.stack([batched_boxes.amin(dim=-2), batched_boxes.amax(dim=-2)], dim=-2).view(
             batched_boxes.shape[0], batched_boxes.shape[1], 6
         )
@@ -540,18 +540,18 @@ class Boxes3D:
         mode = mode.lower()
         if mode in ("xyzxyz", "xyzxyz_plus"):
             pass
-        elif mode in ("xyzwhd", "xyzwhd_plus", "vertices", "vertices_plus"):
-            width = boxes[..., 3] - boxes[..., 0]
-            height = boxes[..., 4] - boxes[..., 1]
-            depth = boxes[..., 5] - boxes[..., 2]
+        elif mode in ("xyzwhd", "vertices", "vertices_plus"):
+            width = boxes[..., 3] - boxes[..., 0] + 1
+            height = boxes[..., 4] - boxes[..., 1] + 1
+            depth = boxes[..., 5] - boxes[..., 2] + 1
             boxes[..., 3] = width
             boxes[..., 4] = height
             boxes[..., 5] = depth
         else:
             raise ValueError(f"Unknown mode {mode}")
 
-        if mode.endswith("plus"):
-            offset = torch.as_tensor([0, 0, 0, -1, -1, -1], device=boxes.device, dtype=boxes.dtype)
+        if mode in ("xyzxyz", "vertices"):
+            offset = torch.as_tensor([0, 0, 0, 1, 1, 1], device=boxes.device, dtype=boxes.dtype)
             boxes = boxes + offset
 
         if mode.startswith('vertices'):

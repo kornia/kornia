@@ -49,22 +49,22 @@ class TestBoxes2D:
 
         # Single box
         h, w = box.get_boxes_shape()
-        assert (h.item(), w.item()) == (1, 2)
+        assert (h.item(), w.item()) == (2, 3)
 
         # Boxes
         h, w = boxes.get_boxes_shape()
         assert h.ndim == 1 and w.ndim == 1
         assert len(h) == 2 and len(w) == 2
-        assert (h == torch.as_tensor([1.0, 2.0], device=device)).all() and (
-            w == torch.as_tensor([2.0, 3.0], device=device)
+        assert (h == torch.as_tensor([2.0, 3.0], device=device)).all() and (
+            w == torch.as_tensor([3.0, 4.0], device=device)
         ).all()
 
         # Box batch
         h, w = boxes_batch.get_boxes_shape()
         assert h.ndim == 2 and w.ndim == 2
         assert h.shape == (1, 2) and w.shape == (1, 2)
-        assert (h == torch.as_tensor([[1.0, 2.0]], device=device)).all() and (
-            w == torch.as_tensor([[2.0, 3.0]], device=device)
+        assert (h == torch.as_tensor([[2.0, 3.0]], device=device)).all() and (
+            w == torch.as_tensor([[3.0, 4.0]], device=device)
         ).all()
 
     def test_get_boxes_shape_batch(self, device, dtype):
@@ -75,8 +75,8 @@ class TestBoxes2D:
         h, w = batched_boxes.get_boxes_shape()
         assert h.ndim == 2 and w.ndim == 2
         assert h.shape == (2, 1) and w.shape == (2, 1)
-        assert (h == torch.as_tensor([[1], [2]], device=device)).all() and (
-            w == torch.as_tensor([[2], [3]], device=device)
+        assert (h == torch.as_tensor([[2], [3]], device=device)).all() and (
+            w == torch.as_tensor([[3], [4]], device=device)
         ).all()
 
     @pytest.mark.parametrize('shape', [(1, 4), (1, 1, 4)])
@@ -85,7 +85,7 @@ class TestBoxes2D:
         box_xyxy_plus = torch.as_tensor([[1, 2, 2, 3]], device=device, dtype=dtype).view(*shape)
         box_xywh = torch.as_tensor([[1, 2, 2, 2]], device=device, dtype=dtype).view(*shape)
 
-        expected_box = torch.as_tensor([[[1, 2], [3, 2], [3, 4], [1, 4]]], device=device, dtype=dtype).view(*shape, 2)
+        expected_box = torch.as_tensor([[[1, 2], [2, 2], [2, 3], [1, 3]]], device=device, dtype=dtype).view(*shape, 2)
 
         boxes_xyxy = Boxes.from_tensor(box_xyxy, mode='xyxy')._boxes
         boxes_xyxy_plus = Boxes.from_tensor(box_xyxy_plus, mode='xyxy_plus')._boxes
@@ -120,7 +120,7 @@ class TestBoxes2D:
     @pytest.mark.parametrize('shape', [(1, 4), (1, 1, 4)])
     def test_boxes_to_tensor(self, shape: Tuple[int], device, dtype):
         # quadrilateral with randomized vertices to reflect possible transforms.
-        box = Boxes(torch.as_tensor([[[3, 2], [3, 4], [1, 4], [1, 2]]], device=device, dtype=dtype).view(*shape, 2))
+        box = Boxes(torch.as_tensor([[[2, 2], [2, 3], [1, 3], [1, 2]]], device=device, dtype=dtype).view(*shape, 2))
 
         expected_box_xyxy = torch.as_tensor([[1, 2, 3, 4]], device=device, dtype=dtype).view(*shape)
         expected_box_xyxy_plus = torch.as_tensor([[1, 2, 2, 3]], device=device, dtype=dtype).view(*shape)
@@ -155,10 +155,10 @@ class TestBoxes2D:
 
     def test_boxes_to_mask(self, device, dtype):
         t_box1 = torch.tensor(
-            [[[1.0, 1.0], [4.0, 1.0], [4.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype
+            [[[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype
         )  # (1, 4, 2)
         t_box2 = torch.tensor(
-            [[[2.0, 2.0], [5.0, 2.0], [5.0, 6.0], [5.0, 2.0]]], device=device, dtype=dtype
+            [[[2.0, 2.0], [4.0, 2.0], [4.0, 5.0], [2.0, 4.0]]], device=device, dtype=dtype
         )  # (1, 4, 2)
         box1, box2 = Boxes(t_box1), Boxes(t_box2)
         two_boxes = Boxes(torch.cat([t_box1, t_box2]))  # (2, 4, 2)
@@ -260,8 +260,8 @@ class TestBoxes2D:
 class TestTransformBoxes2D:
     def test_transform_boxes(self, device, dtype):
         # Define boxes in XYXY format for simplicity.
-        boxes_xyxy = torch.tensor([[139.2640, 103.0150, 397.3120, 410.5225]], device=device, dtype=dtype)
-        expected_boxes_xyxy = torch.tensor([[372.7360, 103.0150, 114.6880, 410.5225]], device=device, dtype=dtype)
+        boxes_xyxy = torch.tensor([[139.2640, 103.0150, 398.3120, 411.5225]], device=device, dtype=dtype)
+        expected_boxes_xyxy = torch.tensor([[372.7360, 103.0150, 115.6880, 411.5225]], device=device, dtype=dtype)
 
         boxes = Boxes.from_tensor(boxes_xyxy)
         expected_boxes = Boxes.from_tensor(expected_boxes_xyxy, validate_boxes=False)
@@ -275,8 +275,8 @@ class TestTransformBoxes2D:
 
     def test_transform_boxes_(self, device, dtype):
         # Define boxes in XYXY format for simplicity.
-        boxes_xyxy = torch.tensor([[139.2640, 103.0150, 397.3120, 410.5225]], device=device, dtype=dtype)
-        expected_boxes_xyxy = torch.tensor([[372.7360, 103.0150, 114.6880, 410.5225]], device=device, dtype=dtype)
+        boxes_xyxy = torch.tensor([[139.2640, 103.0150, 398.3120, 411.5225]], device=device, dtype=dtype)
+        expected_boxes_xyxy = torch.tensor([[372.7360, 103.0150, 115.6880, 411.5225]], device=device, dtype=dtype)
 
         boxes = Boxes.from_tensor(boxes_xyxy)
         expected_boxes = Boxes.from_tensor(expected_boxes_xyxy, validate_boxes=False)
@@ -292,10 +292,10 @@ class TestTransformBoxes2D:
         # Define boxes in XYXY format for simplicity.
         boxes_xyxy = torch.tensor(
             [
-                [139.2640, 103.0150, 397.3120, 410.5225],
-                [1.0240, 80.5547, 512.0000, 512.0000],
-                [165.2053, 262.1440, 510.6347, 508.9280],
-                [119.8080, 144.2067, 257.0240, 410.1292],
+                [139.2640, 103.0150, 398.3120, 411.5225],
+                [1.0240, 80.5547, 513.0000, 513.0000],
+                [165.2053, 262.1440, 511.6347, 509.9280],
+                [119.8080, 144.2067, 258.0240, 411.1292],
             ],
             device=device,
             dtype=dtype,
@@ -306,16 +306,16 @@ class TestTransformBoxes2D:
         expected_boxes_xyxy = torch.tensor(
             [
                 [
-                    [372.7360, 103.0150, 114.6880, 410.5225],
-                    [510.9760, 80.5547, 0.0000, 512.0000],
-                    [346.7947, 262.1440, 1.3653, 508.9280],
-                    [392.1920, 144.2067, 254.9760, 410.1292],
+                    [372.7360, 103.0150, 115.6880, 411.5225],
+                    [510.9760, 80.5547, 1.0000, 513.0000],
+                    [346.7947, 262.1440, 2.3653, 509.9280],
+                    [392.1920, 144.2067, 255.9760, 411.1292],
                 ],
                 [
-                    [139.2640, 103.0150, 397.3120, 410.5225],
-                    [1.0240, 80.5547, 512.0000, 512.0000],
-                    [165.2053, 262.1440, 510.6347, 508.9280],
-                    [119.8080, 144.2067, 257.0240, 410.1292],
+                    [139.2640, 103.0150, 398.3120, 411.5225],
+                    [1.0240, 80.5547, 513.0000, 513.0000],
+                    [165.2053, 262.1440, 511.6347, 509.9280],
+                    [119.8080, 144.2067, 258.0240, 411.1292],
                 ],
             ],
             device=device,
@@ -426,16 +426,16 @@ class TestBbox3D:
 
         # Single box
         d, h, w = box.get_boxes_shape()
-        assert (d.item(), h.item(), w.item()) == (30.0, 20.0, 10.0)
+        assert (d.item(), h.item(), w.item()) == (31.0, 21.0, 11.0)
 
         # Boxes
         d, h, w = boxes.get_boxes_shape()
         assert h.ndim == 1 and w.ndim == 1
         assert len(d) == 2 and len(h) == 2 and len(w) == 2
         assert (
-            (d == torch.as_tensor([30.0, 60.0], device=device)).all()
-            and (h == torch.as_tensor([20.0, 50.0], device=device)).all()
-            and (w == torch.as_tensor([10.0, 40.0], device=device)).all()
+            (d == torch.as_tensor([31.0, 61.0], device=device)).all()
+            and (h == torch.as_tensor([21.0, 51.0], device=device)).all()
+            and (w == torch.as_tensor([11.0, 41.0], device=device)).all()
         )
 
         # Box batch
@@ -443,9 +443,9 @@ class TestBbox3D:
         assert h.ndim == 2 and w.ndim == 2
         assert h.shape == (1, 2) and w.shape == (1, 2)
         assert (
-            (d == torch.as_tensor([[30.0, 60.0]], device=device)).all()
-            and (h == torch.as_tensor([[20.0, 50.0]], device=device)).all()
-            and (w == torch.as_tensor([[10.0, 40.0]], device=device)).all()
+            (d == torch.as_tensor([[31.0, 61.0]], device=device)).all()
+            and (h == torch.as_tensor([[21.0, 51.0]], device=device)).all()
+            and (w == torch.as_tensor([[11.0, 41.0]], device=device)).all()
         )
 
     def test_get_boxes_shape_batch(self, device, dtype):
@@ -465,9 +465,9 @@ class TestBbox3D:
         assert d.ndim == 2 and h.ndim == 2 and w.ndim == 2
         assert d.shape == (2, 1) and h.shape == (2, 1) and w.shape == (2, 1)
         assert (
-            (d == torch.as_tensor([[30.0], [60.0]], device=device)).all()
-            and (h == torch.as_tensor([[20.0], [50.0]], device=device)).all()
-            and (w == torch.as_tensor([[10.0], [40.0]], device=device)).all()
+            (d == torch.as_tensor([[31.0], [61.0]], device=device)).all()
+            and (h == torch.as_tensor([[21.0], [51.0]], device=device)).all()
+            and (w == torch.as_tensor([[11.0], [41.0]], device=device)).all()
         )
 
     @pytest.mark.parametrize('shape', [(1, 6), (1, 1, 6)])
@@ -477,7 +477,7 @@ class TestBbox3D:
         box_xyzwhd = torch.as_tensor([[1, 2, 3, 3, 3, 3]], device=device, dtype=dtype).view(*shape)
 
         expected_box = torch.as_tensor(
-            [[[1, 2, 3], [4, 2, 3], [4, 5, 3], [1, 5, 3], [1, 2, 6], [4, 2, 6], [4, 5, 6], [1, 5, 6]]],  # Front  # Back
+            [[[1, 2, 3], [3, 2, 3], [3, 4, 3], [1, 4, 3], [1, 2, 5], [3, 2, 5], [3, 4, 5], [1, 4, 5]]],  # Front  # Back
             device=device,
             dtype=dtype,
         ).view(*shape[:-1], 8, 3)
@@ -517,7 +517,7 @@ class TestBbox3D:
         # Hexahedron with randomized vertices to reflect possible transforms.
         box = Boxes3D(
             torch.as_tensor(
-                [[[3, 2, 1], [1, 2, 1], [3, 4, 3], [1, 4, 3], [3, 2, 3], [1, 4, 1], [3, 4, 1], [1, 2, 3]]],
+                [[[2, 2, 1], [1, 2, 1], [2, 3, 2], [1, 3, 2], [2, 2, 2], [1, 3, 1], [2, 3, 1], [1, 2, 2]]],
                 device=device,
                 dtype=dtype,
             ).view(*shape[:-1], 8, 3)
@@ -563,13 +563,13 @@ class TestBbox3D:
             [
                 [
                     [1.0, 1.0, 1.0],
-                    [4.0, 1.0, 1.0],
-                    [4.0, 3.0, 1.0],
-                    [1.0, 3.0, 1.0],  # Front
-                    [1.0, 1.0, 3.0],
-                    [4.0, 1.0, 3.0],
-                    [4.0, 3.0, 3.0],
-                    [1.0, 3.0, 3.0],  # Back
+                    [3.0, 1.0, 1.0],
+                    [3.0, 2.0, 1.0],
+                    [1.0, 2.0, 1.0],  # Front
+                    [1.0, 1.0, 2.0],
+                    [3.0, 1.0, 2.0],
+                    [3.0, 2.0, 2.0],
+                    [1.0, 2.0, 2.0],  # Back
                 ]
             ],
             device=device,
@@ -579,13 +579,13 @@ class TestBbox3D:
             [
                 [
                     [2.0, 2.0, 1.0],
-                    [5.0, 2.0, 1.0],
-                    [5.0, 6.0, 1.0],
-                    [5.0, 2.0, 1.0],  # Front
-                    [2.0, 2.0, 2.0],
-                    [5.0, 2.0, 2.0],
-                    [5.0, 6.0, 2.0],
-                    [5.0, 2.0, 2.0],  # Back
+                    [4.0, 2.0, 1.0],
+                    [4.0, 5.0, 1.0],
+                    [4.0, 2.0, 1.0],  # Front
+                    [2.0, 2.0, 1.0],
+                    [4.0, 2.0, 1.0],
+                    [4.0, 5.0, 1.0],
+                    [4.0, 5.0, 1.0],  # Back
                 ]
             ],
             device=device,
@@ -739,10 +739,10 @@ class TestTransformBoxes3D:
     def test_transform_boxes(self, device, dtype):
         # Define boxes in XYZXYZ format for simplicity.
         boxes_xyzxyz = torch.tensor(
-            [[139.2640, 103.0150, 283.162, 397.3120, 410.5225, 453.185]], device=device, dtype=dtype
+            [[139.2640, 103.0150, 283.162, 398.3120, 411.5225, 454.185]], device=device, dtype=dtype
         )
         expected_boxes_xyzxyz = torch.tensor(
-            [[372.7360, 103.0150, 567.324, 114.6880, 410.5225, 907.37]], device=device, dtype=dtype
+            [[372.7360, 103.0150, 567.324, 115.6880, 411.5225, 908.37]], device=device, dtype=dtype
         )
 
         boxes = Boxes3D.from_tensor(boxes_xyzxyz)
@@ -762,10 +762,10 @@ class TestTransformBoxes3D:
     def test_transform_boxes_(self, device, dtype):
         # Define boxes in XYZXYZ format for simplicity.
         boxes_xyzxyz = torch.tensor(
-            [[139.2640, 103.0150, 283.162, 397.3120, 410.5225, 453.185]], device=device, dtype=dtype
+            [[139.2640, 103.0150, 283.162, 398.3120, 411.5225, 454.185]], device=device, dtype=dtype
         )
         expected_boxes_xyzxyz = torch.tensor(
-            [[372.7360, 103.0150, 567.324, 114.6880, 410.5225, 907.37]], device=device, dtype=dtype
+            [[372.7360, 103.0150, 567.324, 115.6880, 411.5225, 908.37]], device=device, dtype=dtype
         )
 
         boxes = Boxes3D.from_tensor(boxes_xyzxyz)
@@ -786,10 +786,10 @@ class TestTransformBoxes3D:
         # Define boxes in XYZXYZ format for simplicity.
         boxes_xyzxyz = torch.tensor(
             [
-                [139.2640, 103.0150, 283.162, 397.3120, 410.5225, 453.185],
-                [1.0240, 80.5547, 469.50, 512.0000, 512.0000, 512.0],
-                [165.2053, 262.1440, 42.98, 510.6347, 508.9280, 784.443],
-                [119.8080, 144.2067, 234.21, 257.0240, 410.1292, 386.14],
+                [139.2640, 103.0150, 283.162, 398.3120, 411.5225, 454.185],
+                [1.0240, 80.5547, 469.50, 513.0000, 513.0000, 513.0],
+                [165.2053, 262.1440, 42.98, 511.6347, 509.9280, 785.443],
+                [119.8080, 144.2067, 234.21, 258.0240, 411.1292, 387.14],
             ],
             device=device,
             dtype=dtype,
@@ -800,16 +800,16 @@ class TestTransformBoxes3D:
         expected_boxes_xyzxyz = torch.tensor(
             [
                 [
-                    [372.7360, 103.0150, 567.324, 114.6880, 410.5225, 907.37],
-                    [510.9760, 80.5547, 940.0, 0.0000, 512.0000, 1025.0],
-                    [346.7947, 262.1440, 86.96, 1.3653, 508.9280, 1569.886],
-                    [392.1920, 144.2067, 469.42, 254.9760, 410.1292, 773.28],
+                    [372.7360, 103.0150, 567.324, 115.6880, 411.5225, 908.37],
+                    [510.9760, 80.5547, 940.0, 1.0000, 513.0000, 1026.0],
+                    [346.7947, 262.1440, 86.96, 2.3653, 509.9280, 1570.886],
+                    [392.1920, 144.2067, 469.42, 255.9760, 411.1292, 774.28],
                 ],
                 [
-                    [139.2640, 103.0150, 283.162, 397.3120, 410.5225, 453.185],
-                    [1.0240, 80.5547, 469.50, 512.0000, 512.0000, 512.0],
-                    [165.2053, 262.1440, 42.98, 510.6347, 508.9280, 784.443],
-                    [119.8080, 144.2067, 234.21, 257.0240, 410.1292, 386.14],
+                    [139.2640, 103.0150, 283.162, 398.3120, 411.5225, 454.185],
+                    [1.0240, 80.5547, 469.50, 513.0000, 513.0000, 513.0],
+                    [165.2053, 262.1440, 42.98, 511.6347, 509.9280, 785.443],
+                    [119.8080, 144.2067, 234.21, 258.0240, 411.1292, 387.14],
                 ],
             ],
             device=device,
