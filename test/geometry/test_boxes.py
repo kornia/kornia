@@ -82,16 +82,14 @@ class TestBoxes2D:
     @pytest.mark.parametrize('shape', [(1, 4), (1, 1, 4)])
     def test_from_tensor(self, shape: Tuple[int], device, dtype):
         box_xyxy = torch.as_tensor([[1, 2, 3, 4]], device=device, dtype=dtype).view(*shape)
-        box_xyxy_plus = torch.as_tensor([[1, 2, 4, 5]], device=device, dtype=dtype).view(*shape)
+        box_xyxy_plus = torch.as_tensor([[1, 2, 2, 3]], device=device, dtype=dtype).view(*shape)
         box_xywh = torch.as_tensor([[1, 2, 2, 2]], device=device, dtype=dtype).view(*shape)
-        box_xywh_plus = torch.as_tensor([[1, 2, 3, 3]], device=device, dtype=dtype).view(*shape)
 
         expected_box = torch.as_tensor([[[1, 2], [3, 2], [3, 4], [1, 4]]], device=device, dtype=dtype).view(*shape, 2)
 
         boxes_xyxy = Boxes.from_tensor(box_xyxy, mode='xyxy')._boxes
         boxes_xyxy_plus = Boxes.from_tensor(box_xyxy_plus, mode='xyxy_plus')._boxes
         boxes_xywh = Boxes.from_tensor(box_xywh, mode='xywh')._boxes
-        boxes_xywh_plus = Boxes.from_tensor(box_xywh_plus, mode='xywh_plus')._boxes
 
         assert boxes_xyxy.shape == expected_box.shape
         assert_allclose(boxes_xyxy, expected_box)
@@ -102,13 +100,10 @@ class TestBoxes2D:
         assert boxes_xywh.shape == expected_box.shape
         assert_allclose(boxes_xywh, expected_box)
 
-        assert boxes_xywh_plus.shape == expected_box.shape
-        assert_allclose(boxes_xywh_plus, expected_box)
-
     @pytest.mark.parametrize('shape', [(1, 4), (1, 1, 4)])
     def test_from_invalid_tensor(self, shape: Tuple[int], device, dtype):
         box_xyxy = torch.as_tensor([[1, 2, -3, 4]], device=device, dtype=dtype).view(*shape)  # Invalid width
-        box_xyxy_plus = torch.as_tensor([[1, 2, 3, 3]], device=device, dtype=dtype).view(*shape)  # Invalid height
+        box_xyxy_plus = torch.as_tensor([[1, 2, 0, 3]], device=device, dtype=dtype).view(*shape)  # Invalid height
 
         try:
             Boxes.from_tensor(box_xyxy, mode='xyxy')
@@ -128,18 +123,20 @@ class TestBoxes2D:
         box = Boxes(torch.as_tensor([[[3, 2], [3, 4], [1, 4], [1, 2]]], device=device, dtype=dtype).view(*shape, 2))
 
         expected_box_xyxy = torch.as_tensor([[1, 2, 3, 4]], device=device, dtype=dtype).view(*shape)
-        expected_box_xyxy_plus = torch.as_tensor([[1, 2, 4, 5]], device=device, dtype=dtype).view(*shape)
+        expected_box_xyxy_plus = torch.as_tensor([[1, 2, 2, 3]], device=device, dtype=dtype).view(*shape)
         expected_box_xywh = torch.as_tensor([[1, 2, 2, 2]], device=device, dtype=dtype).view(*shape)
-        expected_box_xywh_plus = torch.as_tensor([[1, 2, 3, 3]], device=device, dtype=dtype).view(*shape)
         expected_vertices = torch.as_tensor([[[1, 2], [3, 2], [3, 4], [1, 4]]], device=device, dtype=dtype).view(
+            *shape, 2
+        )
+        expected_vertices_plus = torch.as_tensor([[[1, 2], [2, 2], [2, 3], [1, 3]]], device=device, dtype=dtype).view(
             *shape, 2
         )
 
         boxes_xyxy = box.to_tensor(mode='xyxy')
         boxes_xyxy_plus = box.to_tensor(mode='xyxy_plus')
         boxes_xywh = box.to_tensor(mode='xywh')
-        boxes_xywh_plus = box.to_tensor(mode='xywh_plus')
         boxes_vertices = box.to_tensor(mode='vertices')
+        boxes_vertices_plus = box.to_tensor(mode='vertices_plus')
 
         assert boxes_xyxy.shape == expected_box_xyxy.shape
         assert_allclose(boxes_xyxy, expected_box_xyxy)
@@ -150,11 +147,11 @@ class TestBoxes2D:
         assert boxes_xywh.shape == expected_box_xywh.shape
         assert_allclose(boxes_xywh, expected_box_xywh)
 
-        assert boxes_xywh_plus.shape == expected_box_xywh_plus.shape
-        assert_allclose(boxes_xywh_plus, expected_box_xywh_plus)
-
         assert boxes_vertices.shape == expected_vertices.shape
         assert_allclose(boxes_vertices, expected_vertices)
+
+        assert boxes_vertices_plus.shape == expected_vertices_plus.shape
+        assert_allclose(boxes_vertices_plus, expected_vertices_plus)
 
     def test_boxes_to_mask(self, device, dtype):
         t_box1 = torch.tensor(
@@ -246,15 +243,17 @@ class TestBoxes2D:
 
         assert gradcheck(partial(apply_boxes_method, method='to_tensor'), (t_boxes2,), raise_exception=True)
         assert gradcheck(
-            partial(apply_boxes_method, method='to_tensor', mode='xywh_plus'), (t_boxes3,), raise_exception=True
+            partial(apply_boxes_method, method='to_tensor', mode='xyxy_plus'), (t_boxes3,), raise_exception=True
         )
         assert gradcheck(
             partial(apply_boxes_method, method='to_tensor', mode='vertices_plus'), (t_boxes4,), raise_exception=True
         )
         assert gradcheck(partial(apply_boxes_method, method='get_boxes_shape'), (t_boxes1,), raise_exception=True)
-        assert gradcheck(lambda x: Boxes.from_tensor(x)._boxes, (t_boxes_xyxy,), raise_exception=True)
         assert gradcheck(
-            lambda x: Boxes.from_tensor(x, mode='xywh_plus')._boxes, (t_boxes_xyxy1,), raise_exception=True
+            lambda x: Boxes.from_tensor(x, mode='xyxy_plus')._boxes, (t_boxes_xyxy,), raise_exception=True
+        )
+        assert gradcheck(
+            lambda x: Boxes.from_tensor(x, mode='xywh')._boxes, (t_boxes_xyxy1,), raise_exception=True
         )
 
 
@@ -452,9 +451,8 @@ class TestBbox3D:
     @pytest.mark.parametrize('shape', [(1, 6), (1, 1, 6)])
     def test_from_tensor(self, shape: Tuple[int], device, dtype):
         box_xyzxyz = torch.as_tensor([[1, 2, 3, 4, 5, 6]], device=device, dtype=dtype).view(*shape)
-        box_xyzxyz_plus = torch.as_tensor([[1, 2, 3, 5, 6, 7]], device=device, dtype=dtype).view(*shape)
+        box_xyzxyz_plus = torch.as_tensor([[1, 2, 3, 3, 4, 5]], device=device, dtype=dtype).view(*shape)
         box_xyzwhd = torch.as_tensor([[1, 2, 3, 3, 3, 3]], device=device, dtype=dtype).view(*shape)
-        box_xyzwhd_plus = torch.as_tensor([[1, 2, 3, 4, 4, 4]], device=device, dtype=dtype).view(*shape)
 
         expected_box = torch.as_tensor(
             [[[1, 2, 3], [4, 2, 3], [4, 5, 3], [1, 5, 3], [1, 2, 6], [4, 2, 6], [4, 5, 6], [1, 5, 6]]],  # Front  # Back
@@ -465,7 +463,6 @@ class TestBbox3D:
         kornia_xyzxyz = Boxes3D.from_tensor(box_xyzxyz, mode='xyzxyz')._boxes
         kornia_xyzxyz_plus = Boxes3D.from_tensor(box_xyzxyz_plus, mode='xyzxyz_plus')._boxes
         kornia_xyzwhd = Boxes3D.from_tensor(box_xyzwhd, mode='xyzwhd')._boxes
-        kornia_xyzwhd_plus = Boxes3D.from_tensor(box_xyzwhd_plus, mode='xyzwhd_plus')._boxes
 
         assert kornia_xyzxyz.shape == expected_box.shape
         assert_allclose(kornia_xyzxyz, expected_box)
@@ -476,13 +473,10 @@ class TestBbox3D:
         assert kornia_xyzwhd.shape == expected_box.shape
         assert_allclose(kornia_xyzwhd, expected_box)
 
-        assert kornia_xyzwhd_plus.shape == expected_box.shape
-        assert_allclose(kornia_xyzwhd_plus, expected_box)
-
     @pytest.mark.parametrize('shape', [(1, 6), (1, 1, 6)])
     def test_from_invalid_tensor(self, shape: Tuple[int], device, dtype):
         box_xyzxyz = torch.as_tensor([[1, 2, 3, 4, -5, 6]], device=device, dtype=dtype).view(*shape)
-        box_xyzxyz_plus = torch.as_tensor([[1, 2, 3, 5, 6, 4]], device=device, dtype=dtype).view(*shape)
+        box_xyzxyz_plus = torch.as_tensor([[1, 2, 3, 0, 6, 4]], device=device, dtype=dtype).view(*shape)
 
         try:
             Boxes3D.from_tensor(box_xyzxyz, mode='xyzxyz')
@@ -508,11 +502,15 @@ class TestBbox3D:
         )
 
         expected_box_xyzxyz = torch.as_tensor([[1, 2, 1, 3, 4, 3]], device=device, dtype=dtype).view(*shape)
-        expected_box_xyzxyz_plus = torch.as_tensor([[1, 2, 1, 4, 5, 4]], device=device, dtype=dtype).view(*shape)
+        expected_box_xyzxyz_plus = torch.as_tensor([[1, 2, 1, 2, 3, 2]], device=device, dtype=dtype).view(*shape)
         expected_box_xyzwhd = torch.as_tensor([[1, 2, 1, 2, 2, 2]], device=device, dtype=dtype).view(*shape)
-        expected_box_xyzwhd_plus = torch.as_tensor([[1, 2, 1, 3, 3, 3]], device=device, dtype=dtype).view(*shape)
         expected_vertices = torch.as_tensor(
             [[[1, 2, 1], [3, 2, 1], [3, 4, 1], [1, 4, 1], [1, 2, 3], [3, 2, 3], [3, 4, 3], [1, 4, 3]]],  # Front  # Back
+            device=device,
+            dtype=dtype,
+        ).view(*shape[:-1], 8, 3)
+        expected_vertices_plus = torch.as_tensor(
+            [[[1, 2, 1], [2, 2, 1], [2, 3, 1], [1, 3, 1], [1, 2, 2], [2, 2, 2], [2, 3, 2], [1, 3, 2]]],  # Front  # Back
             device=device,
             dtype=dtype,
         ).view(*shape[:-1], 8, 3)
@@ -520,8 +518,8 @@ class TestBbox3D:
         kornia_xyzxyz = box.to_tensor(mode='xyzxyz')
         kornia_xyzxyz_plus = box.to_tensor(mode='xyzxyz_plus')
         kornia_xyzwhd = box.to_tensor(mode='xyzwhd')
-        kornia_xyzwhd_plus = box.to_tensor(mode='xyzwhd_plus')
         kornia_vertices = box.to_tensor(mode='vertices')
+        kornia_vertices_plus = box.to_tensor(mode='vertices_plus')
 
         assert kornia_xyzxyz.shape == expected_box_xyzxyz.shape
         assert_allclose(kornia_xyzxyz, expected_box_xyzxyz)
@@ -532,11 +530,11 @@ class TestBbox3D:
         assert kornia_xyzwhd.shape == expected_box_xyzwhd.shape
         assert_allclose(kornia_xyzwhd, expected_box_xyzwhd)
 
-        assert kornia_xyzwhd_plus.shape == expected_box_xyzwhd_plus.shape
-        assert_allclose(kornia_xyzwhd_plus, expected_box_xyzwhd_plus)
-
         assert kornia_vertices.shape == expected_vertices.shape
         assert_allclose(kornia_vertices, expected_vertices)
+
+        assert kornia_vertices_plus.shape == expected_vertices_plus.shape
+        assert_allclose(kornia_vertices_plus, expected_vertices_plus)
 
     def test_bbox_to_mask(self, device, dtype):
         t_box1 = torch.tensor(
@@ -701,15 +699,17 @@ class TestBbox3D:
         # in their gradient. See https://github.com/kornia/kornia/issues/1396.
         # assert gradcheck(partial(apply_boxes_method, method='to_tensor'), (t_boxes2,), raise_exception=True)
         # assert gradcheck(
-        #     partial(apply_boxes_method, method='to_tensor', mode='xywh_plus'), (t_boxes3,), raise_exception=True
+        #     partial(apply_boxes_method, method='to_tensor', mode='xyzxyz_plus'), (t_boxes3,), raise_exception=True
         # )
         # assert gradcheck(
         #     partial(apply_boxes_method, method='to_tensor', mode='vertices_plus'), (t_boxes4,), raise_exception=True
         # )
         # assert gradcheck(partial(apply_boxes_method, method='get_boxes_shape'), (t_boxes1,), raise_exception=True)
-        assert gradcheck(lambda x: Boxes3D.from_tensor(x)._boxes, (t_boxes_xyzxyz,), raise_exception=True)
         assert gradcheck(
-            lambda x: Boxes3D.from_tensor(x, mode='xyzwhd_plus')._boxes, (t_boxes_xyzxyz1,), raise_exception=True
+            lambda x: Boxes3D.from_tensor(x, mode='xyzxyz_plus')._boxes, (t_boxes_xyzxyz,), raise_exception=True
+        )
+        assert gradcheck(
+            lambda x: Boxes3D.from_tensor(x, mode='xyzwhd')._boxes, (t_boxes_xyzxyz1,), raise_exception=True
         )
 
 

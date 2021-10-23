@@ -148,8 +148,6 @@ class Boxes:
                   ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``.
                 * 'xywh': boxes are assumed to be in the format ``xmin, ymin, width, height`` where
                   ``width = xmax - xmin`` and ``height = ymax - ymin``.
-                * 'xyxy_plus': similar to 'xywh' mode but where box width and length are defined as
-                  ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``.
 
             validate_boxes: check if boxes are valid rectangles or not. Valid rectangles are those with width
                 and height >= 1 (>= 2 when mode ends with '_plus' suffix).
@@ -180,16 +178,14 @@ class Boxes:
 
         xmin, ymin = boxes[..., 0], boxes[..., 1]
         mode = mode.lower()
-        if mode in ("xyxy", "xyxy_plus"):
+        if mode == "xyxy":
             height, width = boxes[..., 3] - boxes[..., 1], boxes[..., 2] - boxes[..., 0]
-        elif mode in ("xywh", "xywh_plus"):
+        elif mode == "xyxy_plus":
+            height, width = boxes[..., 3] - boxes[..., 1] + 1, boxes[..., 2] - boxes[..., 0] + 1
+        elif mode == "xywh":
             height, width = boxes[..., 3], boxes[..., 2]
         else:
             raise ValueError(f"Unknown mode {mode}")
-
-        if mode.endswith("plus"):
-            height = height - 1
-            width = width - 1
 
         if validate_boxes:
             if (width <= 0).any():
@@ -216,8 +212,6 @@ class Boxes:
                   ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``.
                 * 'xywh': boxes are defined as ``xmin, ymin, width, height`` where ``width = xmax - xmin``
                   and ``height = ymax - ymin``.
-                * 'xywh_plus': similar to 'xywh' mode but where box width and length are defined as
-                  ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``.
                 * 'vertices': boxes are defined by their vertices points in the following ``clockwise`` order:
                   *top-left, top-right, bottom-right, bottom-left*. Vertices coordinates are in (x,y) order. Finally,
                   box width and height are defined as ``width = xmax - xmin`` and ``height = ymax - ymin``.
@@ -245,7 +239,7 @@ class Boxes:
         mode = mode.lower()
         if mode in ("xyxy", "xyxy_plus"):
             pass
-        elif mode in ("xywh", "xywh_plus", "vertices", "vertices_plus"):
+        elif mode in ("xywh", "vertices", "vertices_plus"):
             height, width = boxes[..., 3] - boxes[..., 1], boxes[..., 2] - boxes[..., 0]
             boxes[..., 2] = width
             boxes[..., 3] = height
@@ -253,7 +247,7 @@ class Boxes:
             raise ValueError(f"Unknown mode {mode}")
 
         if mode.endswith("plus"):
-            offset = torch.as_tensor([0, 0, 1, 1], device=boxes.device, dtype=boxes.dtype)
+            offset = torch.as_tensor([0, 0, -1, -1], device=boxes.device, dtype=boxes.dtype)
             boxes = boxes + offset
 
         if mode.startswith('vertices'):
@@ -429,8 +423,6 @@ class Boxes3D:
                   ``width = xmax - xmin + 1``, ``height = ymax - ymin + 1`` and ``depth = zmax - zmin + 1``.
                 * 'xyzwhd': boxes are assumed to be in the format ``xmin, ymin, zmin, width, height, depth`` where
                   ``width = xmax - xmin``, ``height = ymax - ymin`` and ``depth = zmax - zmin``.
-                * 'xyzwhd_plus': similar to 'xyzwhd' mode but where box width, length and depth are defined as
-                   ``width = xmax - xmin + 1``, ``height = ymax - ymin + 1`` and ``depth = zmax - zmin + 1``.
 
             validate_boxes: check if boxes are valid rectangles or not. Valid rectangles are those with width, height
                 and depth >= 1 (>= 2 when mode ends with '_plus' suffix).
@@ -469,19 +461,18 @@ class Boxes3D:
 
         xmin, ymin, zmin = boxes[..., 0], boxes[..., 1], boxes[..., 2]
         mode = mode.lower()
-        if mode in ("xyzxyz", "xyzxyz_plus"):
+        if mode == "xyzxyz":
             width = boxes[..., 3] - boxes[..., 0]
             height = boxes[..., 4] - boxes[..., 1]
             depth = boxes[..., 5] - boxes[..., 2]
-        elif mode in ("xyzwhd", "xyzwhd_plus"):
+        elif mode == "xyzxyz_plus":
+            width = boxes[..., 3] - boxes[..., 0] + 1
+            height = boxes[..., 4] - boxes[..., 1] + 1
+            depth = boxes[..., 5] - boxes[..., 2] + 1
+        elif mode == "xyzwhd":
             depth, height, width = boxes[..., 4], boxes[..., 3], boxes[..., 5]
         else:
             raise ValueError(f"Unknown mode {mode}")
-
-        if mode.endswith("plus"):
-            height = height - 1
-            width = width - 1
-            depth = depth - 1
 
         if validate_boxes:
             if (width <= 0).any():
@@ -510,8 +501,6 @@ class Boxes3D:
                    ``width = xmax - xmin + 1``, ``height = ymax - ymin + 1`` and ``depth = zmax - zmin + 1``.
                 * 'xyzwhd': boxes are assumed to be in the format ``xmin, ymin, zmin, width, height, depth`` where
                   ``width = xmax - xmin``, ``height = ymax - ymin`` and ``depth = zmax - zmin``.
-                * 'xyzwhd_plus': similar to 'xyzwhd' mode but where box width, length and depth are defined as
-                   ``width = xmax - xmin + 1``, ``height = ymax - ymin + 1`` and ``depth = zmax - zmin + 1``.
                 * 'vertices': boxes are defined by their vertices points in the following ``clockwise`` order:
                   *front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
                   back-top-right, back-bottom-right,  back-bottom-left*. Vertices coordinates are in (x,y, z) order.
@@ -562,7 +551,7 @@ class Boxes3D:
             raise ValueError(f"Unknown mode {mode}")
 
         if mode.endswith("plus"):
-            offset = torch.as_tensor([0, 0, 0, 1, 1, 1], device=boxes.device, dtype=boxes.dtype)
+            offset = torch.as_tensor([0, 0, 0, -1, -1, -1], device=boxes.device, dtype=boxes.dtype)
             boxes = boxes + offset
 
         if mode.startswith('vertices'):
