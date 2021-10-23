@@ -67,6 +67,7 @@ Join the community
    :hidden:
 
    models/vit
+   models/vit_mobile
    models/loftr
    models/defmo
    models/hardnet
