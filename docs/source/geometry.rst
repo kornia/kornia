@@ -45,7 +45,7 @@ transforms, camera, conversions, linalg and depth. We next describe each of them
    :maxdepth: 3
 
    geometry.bbox
-   geometry.bbox_v2
+   geometry.boxes
    geometry.calibration
    geometry.camera
    geometry.conversions

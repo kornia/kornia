@@ -7,7 +7,7 @@ from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
 import kornia.testing as utils
-from kornia.geometry.bbox_v2 import Boxes, Boxes3D
+from kornia.geometry.boxes import Boxes, Boxes3D
 
 
 class TestBoxes2D:

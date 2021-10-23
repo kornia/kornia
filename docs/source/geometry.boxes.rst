@@ -1,7 +1,7 @@
-kornia.geometry.bbox_v2
+kornia.geometry.boxes
 =======================
 
 Module with useful functionalities for 2D and 3D bounding boxes manipulation.
 
-.. automodule:: kornia.geometry.bbox_v2
+.. automodule:: kornia.geometry.boxes
     :members:
