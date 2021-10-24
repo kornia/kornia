@@ -82,7 +82,7 @@ class TestFindHomographyDLT:
         weights = torch.ones(1, 4, device=device, dtype=dtype)
         H = find_homography_dlt(points1, points2, weights)
         assert H.shape == (1, 3, 3)
- 
+
     def test_nocrash(self, device, dtype):
         points1 = torch.rand(1, 4, 2, device=device, dtype=dtype)
         points2 = torch.rand(1, 4, 2, device=device, dtype=dtype)
