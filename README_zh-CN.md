@@ -112,7 +112,7 @@
 
 如果您在与研究相关的文档中使用 Kornia，您可以引用我们的论文。更多信息可以在 [CITATION](https://github.com/kornia/kornia/blob/master/CITATION.md) 看到。
 
-  ```bash
+  ```bibtex
   @inproceedings{eriba2019kornia,
     author    = {E. Riba, D. Mishkin, D. Ponsa, E. Rublee and G. Bradski},
     title     = {Kornia: an Open Source Differentiable Computer Vision Library for PyTorch},
