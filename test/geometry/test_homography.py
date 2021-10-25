@@ -83,6 +83,14 @@ class TestFindHomographyDLT:
         H = find_homography_dlt(points1, points2, weights)
         assert H.shape == (1, 3, 3)
 
+    def test_nocrash(self, device, dtype):
+        points1 = torch.rand(1, 4, 2, device=device, dtype=dtype)
+        points2 = torch.rand(1, 4, 2, device=device, dtype=dtype)
+        weights = torch.ones(1, 4, device=device, dtype=dtype)
+        points1[0, 0, 0] = float('nan')
+        H = find_homography_dlt(points1, points2, weights)
+        assert H.shape == (1, 3, 3)
+
     @pytest.mark.parametrize("batch_size, num_points", [(1, 4), (2, 5), (3, 6)])
     def test_shape(self, batch_size, num_points, device, dtype):
         B, N = batch_size, num_points
