@@ -116,7 +116,7 @@ Run our Jupyter notebooks [tutorials](https://kornia-tutorials.readthedocs.io/en
 
 If you are using kornia in your research-related documents, it is recommended that you cite the paper. See more in [CITATION](https://github.com/kornia/kornia/blob/master/CITATION.md).
 
-  ```bash
+  ```bibtex
   @inproceedings{eriba2019kornia,
     author    = {E. Riba, D. Mishkin, D. Ponsa, E. Rublee and G. Bradski},
     title     = {Kornia: an Open Source Differentiable Computer Vision Library for PyTorch},
