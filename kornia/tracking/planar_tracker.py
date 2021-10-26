@@ -1,11 +1,10 @@
 from typing import Dict, Optional, Tuple
-from kornia.feature.integrated import LocalFeature
 
-import torch
 import torch
 import torch.nn as nn
 
 from kornia.feature import DescriptorMatcher, GFTTAffNetHardNet, LocalFeatureMatcher, LoFTR
+from kornia.feature.integrated import LocalFeature
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.ransac import RANSAC
 from kornia.geometry.transform import warp_perspective
@@ -45,7 +44,7 @@ class HomographyTracker(nn.Module):
         self.target_initial_representation: dict
         self.target_fast_representation: dict
         self.previous_homography: Optional[torch.Tensor]
-    
+
     @property
     def device(self) -> torch.device:
         return self.target.device
