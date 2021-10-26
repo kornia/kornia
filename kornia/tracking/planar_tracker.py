@@ -34,13 +34,14 @@ class HomographyTracker(nn.Module):
         self.ransac = ransac or RANSAC(
             'homography', inl_th=5.0, batch_size=4096, max_iter=10, max_lo_iters=10)
         self.minimum_inliers_num = minimum_inliers_num
-        self.reset_tracking()
 
         # placeholders
         self.target: torch.Tensor
-        self.target_initial_representation: dict
-        self.target_fast_representation: dict
-        self.previous_homography: Optional[torch.Tensor]
+        self.target_initial_representation: Dict[str, torch.Tensor] = {}
+        self.target_fast_representation: Dict[str, torch.Tensor] = {}
+        self.previous_homography: Optional[torch.Tensor] = None
+
+        self.reset_tracking()
 
     @property
     def device(self) -> torch.device:
@@ -56,9 +57,9 @@ class HomographyTracker(nn.Module):
         self.target_initial_representation = {}
         self.target_fast_representation = {}
         if hasattr(self.initial_matcher, 'extract_features'):
-            self.target_initial_representation = self.initial_matcher.extract_features(target)
+            self.target_initial_representation = self.initial_matcher.extract_features(target)  # type: ignore
         if hasattr(self.fast_matcher, 'extract_features'):
-            self.target_fast_representation = self.fast_matcher.extract_features(target)
+            self.target_fast_representation = self.fast_matcher.extract_features(target)  # type: ignore
 
     def reset_tracking(self) -> None:
         self.previous_homography = None
@@ -73,7 +74,7 @@ class HomographyTracker(nn.Module):
         for k, v in self.target_initial_representation.items():
             input_dict[f'{k}0'] = v
 
-        match_dict = self.initial_matcher(input_dict)
+        match_dict: Dict[str, torch.Tensor] = self.initial_matcher(input_dict)
         keypoints0 = match_dict['keypoints0'][match_dict['batch_indexes'] == 0]
         keypoints1 = match_dict['keypoints1'][match_dict['batch_indexes'] == 0]
 
@@ -98,8 +99,7 @@ class HomographyTracker(nn.Module):
         Hinv = torch.inverse(Hwarp)
         h, w = self.target.shape[2:]
         frame_warped = warp_perspective(x, Hinv, (h, w))
-        input_dict = {"image0": self.target,
-                      "image1": frame_warped}
+        input_dict: Dict[str, torch.Tensor] = {"image0": self.target, "image1": frame_warped}
         for k, v in self.target_fast_representation.items():
             input_dict[f'{k}0'] = v
 
