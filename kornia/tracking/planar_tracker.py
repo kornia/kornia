@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 
 from kornia.feature import DescriptorMatcher, GFTTAffNetHardNet, LocalFeatureMatcher, LoFTR
+from kornia.feature.integrated import LocalFeature
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.ransac import RANSAC
 from kornia.geometry.transform import warp_perspective
@@ -22,42 +23,49 @@ class HomographyTracker(nn.Module):
         minimum_inliers_num: threshold for number inliers for matching to be successful.
     """
     def __init__(self,
-                 initial_matcher=LocalFeatureMatcher(GFTTAffNetHardNet(3000),
-                                                     DescriptorMatcher('smnn', 0.95)),
-                 fast_matcher=LoFTR('outdoor'),
-                 ransac=RANSAC('homography',
-                               inl_th=5.0,
-                               batch_size=4096,
-                               max_iter=10,
-                               max_lo_iters=10),
+                 initial_matcher: Optional[LocalFeature] = None,
+                 fast_matcher: Optional[nn.Module] = None,
+                 ransac: Optional[nn.Module] = None,
                  minimum_inliers_num: int = 30) -> None:
         super().__init__()
-        self.initial_matcher = initial_matcher
-        self.fast_matcher = fast_matcher
-        self.ransac = ransac
+        self.initial_matcher = initial_matcher or (
+            LocalFeatureMatcher(GFTTAffNetHardNet(3000), DescriptorMatcher('smnn', 0.95)))
+        self.fast_matcher = fast_matcher or LoFTR('outdoor')
+        self.ransac = ransac or RANSAC(
+            'homography', inl_th=5.0, batch_size=4096, max_iter=10, max_lo_iters=10)
         self.minimum_inliers_num = minimum_inliers_num
-        self.reset_tracking()
 
         # placeholders
         self.target: torch.Tensor
-        self.target_initial_representation: dict
-        self.target_fast_representation: dict
-        self.previous_homography: Optional[torch.Tensor]
+        self.target_initial_representation: Dict[str, torch.Tensor] = {}
+        self.target_fast_representation: Dict[str, torch.Tensor] = {}
+        self.previous_homography: Optional[torch.Tensor] = None
 
+        self.reset_tracking()
+
+    @property
+    def device(self) -> torch.device:
+        return self.target.device
+
+    @property
+    def dtype(self) -> torch.dtype:
+        return self.target.dtype
+
+    @torch.no_grad()
     def set_target(self, target: torch.Tensor) -> None:
         self.target = target
         self.target_initial_representation = {}
         self.target_fast_representation = {}
         if hasattr(self.initial_matcher, 'extract_features'):
-            self.target_initial_representation = self.initial_matcher.extract_features(target)
+            self.target_initial_representation = self.initial_matcher.extract_features(target)  # type: ignore
         if hasattr(self.fast_matcher, 'extract_features'):
-            self.target_fast_representation = self.fast_matcher.extract_features(target)
+            self.target_fast_representation = self.fast_matcher.extract_features(target)  # type: ignore
 
     def reset_tracking(self) -> None:
         self.previous_homography = None
 
     def no_match(self) -> Tuple[torch.Tensor, bool]:
-        return torch.empty(3, 3), False
+        return torch.empty(3, 3, device=self.device, dtype=self.dtype), False
 
     def match_initial(self, x: torch.Tensor) -> Tuple[torch.Tensor, bool]:
         """The frame `x` is matched with initial_matcher and  verified with ransac."""
@@ -66,7 +74,7 @@ class HomographyTracker(nn.Module):
         for k, v in self.target_initial_representation.items():
             input_dict[f'{k}0'] = v
 
-        match_dict = self.initial_matcher(input_dict)
+        match_dict: Dict[str, torch.Tensor] = self.initial_matcher(input_dict)
         keypoints0 = match_dict['keypoints0'][match_dict['batch_indexes'] == 0]
         keypoints1 = match_dict['keypoints1'][match_dict['batch_indexes'] == 0]
 
@@ -91,8 +99,7 @@ class HomographyTracker(nn.Module):
         Hinv = torch.inverse(Hwarp)
         h, w = self.target.shape[2:]
         frame_warped = warp_perspective(x, Hinv, (h, w))
-        input_dict = {"image0": self.target,
-                      "image1": frame_warped}
+        input_dict: Dict[str, torch.Tensor] = {"image0": self.target, "image1": frame_warped}
         for k, v in self.target_fast_representation.items():
             input_dict[f'{k}0'] = v
 
