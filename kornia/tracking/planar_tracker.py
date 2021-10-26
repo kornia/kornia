@@ -1,5 +1,7 @@
 from typing import Dict, Optional, Tuple
+from kornia.feature.integrated import LocalFeature
 
+import torch
 import torch
 import torch.nn as nn
 
@@ -22,19 +24,19 @@ class HomographyTracker(nn.Module):
         minimum_inliers_num: threshold for number inliers for matching to be successful.
     """
     def __init__(self,
-                 initial_matcher=LocalFeatureMatcher(GFTTAffNetHardNet(3000),
-                                                     DescriptorMatcher('smnn', 0.95)),
-                 fast_matcher=LoFTR('outdoor'),
-                 ransac=RANSAC('homography',
-                               inl_th=5.0,
-                               batch_size=4096,
-                               max_iter=10,
-                               max_lo_iters=10),
+                 initial_matcher: Optional[LocalFeature] = None,
+                 fast_matcher: Optional[nn.Module] = None,
+                 ransac: Optional[nn.Module] = None,
                  minimum_inliers_num: int = 30) -> None:
         super().__init__()
-        self.initial_matcher = initial_matcher
-        self.fast_matcher = fast_matcher
-        self.ransac = ransac
+        self.initial_matcher = initial_matcher or (
+            LocalFeatureMatcher(GFTTAffNetHardNet(3000), DescriptorMatcher('smnn', 0.95)))
+        self.fast_matcher = fast_matcher or LoFTR('outdoor')
+        self.ransac = ransac or RANSAC('homography',
+                                        inl_th=5.0,
+                                        batch_size=4096,
+                                        max_iter=10,
+                                        max_lo_iters=10)
         self.minimum_inliers_num = minimum_inliers_num
         self.reset_tracking()
 
@@ -43,7 +45,16 @@ class HomographyTracker(nn.Module):
         self.target_initial_representation: dict
         self.target_fast_representation: dict
         self.previous_homography: Optional[torch.Tensor]
+    
+    @property
+    def device(self) -> torch.device:
+        return self.target.device
 
+    @property
+    def dtype(self) -> torch.dtype:
+        return self.target.dtype
+
+    @torch.no_grad()
     def set_target(self, target: torch.Tensor) -> None:
         self.target = target
         self.target_initial_representation = {}
@@ -57,7 +68,7 @@ class HomographyTracker(nn.Module):
         self.previous_homography = None
 
     def no_match(self) -> Tuple[torch.Tensor, bool]:
-        return torch.empty(3, 3), False
+        return torch.empty(3, 3, device=self.device, dtype=self.dtype), False
 
     def match_initial(self, x: torch.Tensor) -> Tuple[torch.Tensor, bool]:
         """The frame `x` is matched with initial_matcher and  verified with ransac."""
