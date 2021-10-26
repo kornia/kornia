@@ -16,6 +16,7 @@ from . import (
     losses,
     metrics,
     morphology,
+    tracking,
     utils,
     x,
 )
