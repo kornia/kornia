@@ -31,11 +31,8 @@ class HomographyTracker(nn.Module):
         self.initial_matcher = initial_matcher or (
             LocalFeatureMatcher(GFTTAffNetHardNet(3000), DescriptorMatcher('smnn', 0.95)))
         self.fast_matcher = fast_matcher or LoFTR('outdoor')
-        self.ransac = ransac or RANSAC('homography',
-                                        inl_th=5.0,
-                                        batch_size=4096,
-                                        max_iter=10,
-                                        max_lo_iters=10)
+        self.ransac = ransac or RANSAC(
+            'homography', inl_th=5.0, batch_size=4096, max_iter=10, max_lo_iters=10)
         self.minimum_inliers_num = minimum_inliers_num
         self.reset_tracking()
 
