@@ -1,6 +1,6 @@
 """Module containing the functionalities for computing the Fundamental Matrix."""
 
-from typing import Tuple, Optional
+from typing import Optional, Tuple
 
 import torch
 

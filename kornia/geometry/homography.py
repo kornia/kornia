@@ -3,11 +3,7 @@ from typing import Optional, Tuple
 
 import torch
 
-from kornia.utils import (
-    _extract_device_dtype,
-    safe_inverse_with_mask,
-    safe_solve_with_mask,
-)
+from kornia.utils import _extract_device_dtype, safe_inverse_with_mask, safe_solve_with_mask
 
 from .conversions import convert_points_from_homogeneous
 from .epipolar import normalize_points
