@@ -6,7 +6,6 @@ import torch
 
 from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.linalg import transform_points
-from kornia.utils import _extract_device_dtype
 
 
 def normalize_points(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -90,9 +89,9 @@ def find_fundamental(points1: torch.Tensor,
         raise AssertionError(points1.shape, points2.shape)
     if points1.shape[1] < 8:
         raise AssertionError(points1.shape)
-
-    device = points1.device
-    dtype = points1.dtype
+    if not (weights is None):
+        if not (len(weights.shape) == 2 and weights.shape[1] == points1.shape[1]):
+            raise AssertionError(weights.shape)
 
     points1_norm, transform1 = normalize_points(points1)
     points2_norm, transform2 = normalize_points(points2)
