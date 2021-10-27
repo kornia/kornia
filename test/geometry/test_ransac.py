@@ -37,7 +37,6 @@ class TestRANSACHomography:
 
         assert_close(transform_points(dst_homo_src[None], points_src[:, :-1]), points_dst[:, :-1], rtol=1e-3, atol=1e-3)
 
-    @pytest.mark.xfail(reason="might slightly and randomly imprecise due to RANSAC randomness")
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_real_clean(self, device, dtype, data):
         # generate input data
@@ -51,9 +50,8 @@ class TestRANSACHomography:
         # compute transform from source to target
         dst_homo_src, _ = ransac(pts_src, pts_dst)
 
-        assert_close(transform_points(dst_homo_src[None], pts_src[None]), pts_dst[None], rtol=1e-3, atol=1e-3)
+        assert_close(transform_points(dst_homo_src[None], pts_src[None]), pts_dst[None], rtol=1e-2, atol=1.0)
 
-    @pytest.mark.xfail(reason="might slightly and randomly imprecise due to RANSAC randomness")
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_real_dirty(self, device, dtype, data):
         # generate input data
@@ -72,7 +70,7 @@ class TestRANSACHomography:
         dst_homo_src, _ = ransac(kp1, kp2)
 
         # Reprojection error of 5px is OK
-        assert_close(transform_points(dst_homo_src[None], pts_src[None]), pts_dst[None], rtol=5, atol=0.15)
+        assert_close(transform_points(dst_homo_src[None], pts_src[None]), pts_dst[None], rtol=0.15, atol=5)
 
     @pytest.mark.skip(reason="find_homography_dlt is using try/except block")
     def test_jit(self, device, dtype):
