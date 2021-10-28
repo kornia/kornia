@@ -3,9 +3,10 @@ from typing import Optional, Tuple
 import torch
 
 import kornia
+from kornia.geometry.linalg import transform_points
+__all__ = ["Boxes", "Boxes3D"]
 
-
-def _is_floating_point_dtype(dtype: torch.dtype):
+def _is_floating_point_dtype(dtype: torch.dtype) -> bool:
     return dtype in (torch.float16, torch.float32, torch.float64, torch.bfloat16, torch.half)
 
 
@@ -30,7 +31,7 @@ def _transform_boxes(boxes: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
             f"Batch size mismatch. Got {points.shape[0]} for boxes and {M.shape[0]} for the transformation matrix."
         )
 
-    transformed_boxes: torch.Tensor = kornia.transform_points(M, points)
+    transformed_boxes: torch.Tensor = transform_points(M, points)
     transformed_boxes = transformed_boxes.view_as(boxes)
     return transformed_boxes
 
@@ -60,7 +61,7 @@ def _boxes3d_to_polygons3d(
     width: torch.Tensor,
     height: torch.Tensor,
     depth: torch.Tensor,
-):
+) -> torch.Tensor:
     if not xmin.ndim == ymin.ndim == zmin.ndim == width.ndim == height.ndim == depth.ndim == 2:
         raise ValueError("We expect to create a batch of 3D boxes (hexahedrons) in vertices format (B, N, 8, 3)")
 
@@ -100,7 +101,7 @@ class Boxes:
         ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. Examples of
         `quadrilaterals <https://en.wikipedia.org/wiki/Quadrilateral>`_ are rectangles, rhombus and trapezoids.
     """
-    def __init__(self, boxes: torch.Tensor, raise_if_not_floating_point: bool = True):
+    def __init__(self, boxes: torch.Tensor, raise_if_not_floating_point: bool = True) -> None:
         if not boxes.is_floating_point():
             if raise_if_not_floating_point:
                 raise ValueError(f"Coordinates must be in floating point. Got {boxes.dtype}")
