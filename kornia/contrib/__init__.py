@@ -1,6 +1,7 @@
 from .classification import ClassificationHead
 from .connected_components import connected_components
 from .extract_patches import combine_tensor_patches, CombineTensorPatches, extract_tensor_patches, ExtractTensorPatches
+from .histogram_matching import histogram_matching, interp
 from .image_stitching import ImageStitcher
 from .lambda_module import Lambda
 from .vit import VisionTransformer
@@ -12,6 +13,8 @@ __all__ = [
     "ExtractTensorPatches",
     "combine_tensor_patches",
     "CombineTensorPatches",
+    "histogram_matching",
+    "interp",
     "VisionTransformer",
     "MobileViT",
     "ClassificationHead",

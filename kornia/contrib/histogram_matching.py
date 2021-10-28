@@ -15,6 +15,9 @@ def histogram_matching(source: torch.Tensor, template: torch.Tensor) -> torch.Te
 
     Returns:
         matched: The transformed output image.
+
+    Note:
+        This function does not matches histograms element-wisely if input a batched tensor.
     """
 
     oldshape = source.shape
@@ -46,6 +49,14 @@ def interp(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor) -> torch.Tensor:
 
     This implementation cannot reproduce numpy results identically, but reasonable.
     Code referred to `here <https://github.com/pytorch/pytorch/issues/1552#issuecomment-926972915>`_.
+
+    Args:
+        x: the input tensor that needs to be interpolated.
+        xp: the x-coordinates of the referred data points.
+        fp: the y-coordinates of the referred data points, same length as ``xp``.
+
+    Returns:
+        The interpolated values, same shape as ``x``.
     """
 
     slopes = (fp[1:] - fp[:-1]) / (xp[1:] - xp[:-1])

@@ -368,3 +368,29 @@ class TestImageStitcher:
         stitcher = kornia.contrib.ImageStitcher(matcher).to(device=device, dtype=dtype)
         with pytest.raises(RuntimeError):
             stitcher(input1, input2)
+        input = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
+        func = kornia.bgr_to_grayscale
+        assert gradcheck(kornia.contrib.Lambda(func), (input,), raise_exception=True)
+
+
+class TestHistMatch:
+
+    def test_interp(self, device, dtype):
+        xp = torch.tensor([1, 2, 3], device=device, dtype=dtype)
+        fp = torch.tensor([4, 2, 0], device=device, dtype=dtype)
+        x = torch.tensor([4, 5, 6], device=device, dtype=dtype)
+        x_hat_expected = torch.tensor([-2., -4., -6.], device=device, dtype=dtype)
+        x_hat = kornia.contrib.interp(x, xp, fp)
+        assert (x_hat_expected == x_hat).all()
+
+    def test_histmatch(self, device, dtype):
+        src = torch.randn(3, 32, 32, device=device, dtype=dtype)
+        dst = torch.randn(3, 48, 48, device=device, dtype=dtype)
+        exp = kornia.contrib.histogram_matching(src, dst)
+        assert exp.shape == src.shape
+
+    def test_grad(self, device):
+        B, C, H, W = 1, 3, 32, 32
+        src = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
+        dst = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
+        assert gradcheck(kornia.contrib.histogram_matching, (src, dst,), raise_exception=True)
