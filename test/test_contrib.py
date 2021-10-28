@@ -368,9 +368,6 @@ class TestImageStitcher:
         stitcher = kornia.contrib.ImageStitcher(matcher).to(device=device, dtype=dtype)
         with pytest.raises(RuntimeError):
             stitcher(input1, input2)
-        input = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        func = kornia.color.bgr_to_grayscale
-        assert gradcheck(kornia.contrib.Lambda(func), (input,), raise_exception=True)
 
 
 class TestHistMatch:
