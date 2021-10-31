@@ -80,42 +80,86 @@ def homography_warp(
     padding_mode: str = 'zeros',
     align_corners: bool = False,
     normalized_coordinates: bool = True,
+    normalized_homography: bool = True,
 ) -> torch.Tensor:
     r"""Warp image patches or tensors by normalized 2D homographies.
 
     See :class:`~kornia.geometry.warp.HomographyWarper` for details.
 
     Args:
-        patch_src: The image or tensor to warp. Should be from source of shape :math:`(N, C, H, W)`.
+        patch_src: The image or tensor to warp. Should be from source of shape
+          if homography normalized :math:`(N, C, H, W)`.
+          if homography not normalized :math:`(B, C, H, W)`
         src_homo_dst: The homography or stack of homographies from destination to source of shape
-          :math:`(N, 3, 3)`.
-        dsize: The height and width of the image to warp.
+          if homography normalized :math:`(N, 3, 3)`
+          if homography not normalized :math:`(B, 3, 3)`.
+        dsize:
+          if homography normalized: The height and width of the image to warp.
+          if homography not normalized: size of the output image (height, width).
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
         normalized_coordinates: Whether the homography assumes [-1, 1] normalized coordinates or not.
+        normalized_homography: show is homography normalized.
 
     Return:
         Patch sampled at locations from source to destination.
 
-    Example:
+    Example_1:
         >>> input = torch.rand(1, 3, 32, 32)
         >>> homography = torch.eye(3).view(1, 3, 3)
         >>> output = homography_warp(input, homography, (32, 32))
+    Example_2
+        >>> img = torch.rand(1, 4, 5, 6)
+        >>> H = torch.eye(3)[None]
+        >>> out = homography_warp(img, H, (4, 2), align_corners=True, normalized_homography=False)
+        >>> print(out.shape)
+        torch.Size([1, 4, 4, 2])
+
     """
-    if not src_homo_dst.device == patch_src.device:
-        raise TypeError(
-            "Patch and homography must be on the same device. \
-                         Got patch.device: {} src_H_dst.device: {}.".format(
-                patch_src.device, src_homo_dst.device
+    if normalized_homography:
+        if not src_homo_dst.device == patch_src.device:
+            raise TypeError(
+                "Patch and homography must be on the same device. \
+                             Got patch.device: {} src_H_dst.device: {}.".format(
+                    patch_src.device, src_homo_dst.device
+                )
             )
-        )
 
-    height, width = dsize
-    grid = create_meshgrid(height, width, normalized_coordinates=normalized_coordinates)
-    warped_grid = warp_grid(grid, src_homo_dst)
+        height, width = dsize
+        grid = create_meshgrid(height, width, normalized_coordinates=normalized_coordinates)
+        warped_grid = warp_grid(grid, src_homo_dst)
 
-    return F.grid_sample(patch_src, warped_grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
+        return F.grid_sample(patch_src, warped_grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
+    else:
+        mode = 'bilinear'
+        align_corners = True
+        if not isinstance(patch_src, torch.Tensor):
+            raise TypeError(f"Input src type is not a torch.Tensor. Got {type(patch_src)}")
+
+        if not isinstance(src_homo_dst, torch.Tensor):
+            raise TypeError(f"Input M type is not a torch.Tensor. Got {type(src_homo_dst)}")
+
+        if not len(patch_src.shape) == 4:
+            raise ValueError(f"Input src must be a BxCxHxW tensor. Got {patch_src.shape}")
+
+        if not (len(src_homo_dst.shape) == 3 and src_homo_dst.shape[-2:] == (3, 3)):
+            raise ValueError(f"Input M must be a Bx3x3 tensor. Got {src_homo_dst.shape}")
+
+        B, _, H, W = patch_src.size()
+        h_out, w_out = dsize
+
+        # we normalize the 3x3 transformation matrix and convert to 3x4
+        dst_norm_trans_src_norm: torch.Tensor = normalize_homography(src_homo_dst, (H, W), (h_out, w_out))  # Bx3x3
+
+        src_norm_trans_dst_norm = _torch_inverse_cast(dst_norm_trans_src_norm)  # Bx3x3
+
+        # this piece of code substitutes F.affine_grid since it does not support 3x3
+        grid = (
+            create_meshgrid(h_out, w_out, normalized_coordinates=True, device=patch_src.device).to(patch_src.dtype).repeat(B, 1, 1, 1))
+        grid = transform_points(src_norm_trans_dst_norm[:, None, None], grid)
+
+        return F.grid_sample(patch_src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
 
 
 def homography_warp3d(

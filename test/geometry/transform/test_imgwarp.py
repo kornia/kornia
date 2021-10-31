@@ -221,7 +221,8 @@ class TestWarpPerspective:
         expected[..., 1:, 1:] = img_b[..., :2, :3]
 
         # Same as opencv: cv2.warpPerspective(kornia.tensor_to_image(img_b), homo_ab[0].numpy(), (w, h))
-        img_a = kornia.geometry.warp_perspective(img_b, homo_ab, (h, w))
+        # img_a = kornia.geometry.warp_perspective(img_b, homo_ab, (h, w))
+        img_a = kornia.geometry.homography_warp(img_b, homo_ab, (h, w), normalized_homography=False)
         assert_close(img_a, expected, atol=1e-4, rtol=1e-4)
 
     def test_rotation_inverse(self, device, dtype):
