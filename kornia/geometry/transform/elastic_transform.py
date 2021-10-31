@@ -3,9 +3,9 @@ from typing import Tuple, Union
 import torch
 import torch.nn.functional as F
 
+from kornia.constants import SamplePadding
 from kornia.filters import filter2d, get_gaussian_kernel2d
 from kornia.utils import create_meshgrid
-from kornia.constants import SamplePadding
 
 __all__ = ["elastic_transform2d"]
 
