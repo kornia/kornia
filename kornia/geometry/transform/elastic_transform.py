@@ -1,10 +1,11 @@
-from typing import Tuple
+from typing import Tuple, Union
 
 import torch
 import torch.nn.functional as F
 
 from kornia.filters import filter2d, get_gaussian_kernel2d
 from kornia.utils import create_meshgrid
+from kornia.constants import SamplePadding
 
 __all__ = ["elastic_transform2d"]
 
@@ -17,6 +18,7 @@ def elastic_transform2d(
     alpha: Tuple[float, float] = (1.0, 1.0),
     align_corners: bool = False,
     mode: str = 'bilinear',
+    padding_mode: Union[str, int, SamplePadding] = SamplePadding.ZEROS.name
 ) -> torch.Tensor:
     r"""Apply elastic transform of images as described in :cite:`Simard2003BestPF`.
 
@@ -34,6 +36,7 @@ def elastic_transform2d(
           in the y and x directions, respectively.
         align_corners: Interpolation flag used by ```grid_sample```.
         mode: Interpolation mode used by ```grid_sample```. Either ``'bilinear'`` or ``'nearest'``.
+        padding_mode: The padding used by ```grid_sample```. Either "zeros" (0), "border" (1) or "refection" (2).
 
     .. note:
         ```sigma``` and ```alpha``` can also be a ``torch.Tensor``. However, you could not torchscript
@@ -89,6 +92,7 @@ def elastic_transform2d(
     # Warp image based on displacement matrix
     _, _, h, w = image.shape
     grid = create_meshgrid(h, w, device=image.device).to(image.dtype)
-    warped = F.grid_sample(image, (grid + disp).clamp(-1, 1), align_corners=align_corners, mode=mode)
+    warped = F.grid_sample(image, (grid + disp).clamp(-1, 1), align_corners=align_corners, mode=mode,
+                           padding_mode=SamplePadding.get(padding_mode).name.lower())
 
     return warped

@@ -2146,6 +2146,8 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
           in the y and x directions, respectively.
         align_corners: Interpolation flag used by `grid_sample`.
         mode: Interpolation mode used by `grid_sample`. Either 'bilinear' or 'nearest'.
+        padding_mode: The padding used by ```grid_sample```. Either "zeros" (0), "border" (1) or "refection" (2).
+
         return_transform: if ``True`` return the matrix describing the transformation applied to each
             input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
@@ -2168,6 +2170,7 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
         alpha: Tuple[float, float] = (1.0, 1.0),
         align_corners: bool = False,
         mode: str = 'bilinear',
+        padding_mode: Union[str, int, SamplePadding] = SamplePadding.ZEROS.name,
         return_transform: bool = False,
         same_on_batch: bool = False,
         p: float = 0.5,
@@ -2178,6 +2181,7 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
         self.alpha = alpha
         self.align_corners = align_corners
         self.mode = mode
+        self.padding_mode = padding_mode
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
@@ -2198,7 +2202,8 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         return elastic_transform2d(
-            input, params['noise'].to(input), self.kernel_size, self.sigma, self.alpha, self.align_corners, self.mode
+            input, params['noise'].to(input), self.kernel_size, self.sigma, self.alpha, self.align_corners, self.mode,
+            self.padding_mode
         )
 
 
