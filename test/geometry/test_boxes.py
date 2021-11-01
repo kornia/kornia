@@ -699,10 +699,11 @@ class TestBbox3D:
         assert boxes_moved._boxes.device == device, boxes_moved._boxes.dtype == dtype
 
     def test_gradcheck(self, device, dtype):
-        def apply_boxes_method(tensor: torch.Tensor, method: str, **kwargs):
-            boxes = Boxes3D(tensor)
-            result = getattr(boxes, method)(**kwargs)
-            return result._boxes if isinstance(result, Boxes3D) else result
+        # Uncomment when enabling gradient checks
+        # def apply_boxes_method(tensor: torch.Tensor, method: str, **kwargs):
+        #     boxes = Boxes3D(tensor)
+        #     result = getattr(boxes, method)(**kwargs)
+        #     return result._boxes if isinstance(result, Boxes3D) else result
 
         t_boxes1 = torch.tensor(
             [[[0, 1, 2], [10, 1, 2], [10, 21, 2], [0, 21, 2], [0, 1, 32], [10, 1, 32], [10, 21, 32], [0, 21, 32]]],
@@ -711,9 +712,10 @@ class TestBbox3D:
         )
 
         t_boxes1 = utils.tensor_to_gradcheck_var(t_boxes1)
-        t_boxes2 = utils.tensor_to_gradcheck_var(t_boxes1.detach().clone())
-        t_boxes3 = utils.tensor_to_gradcheck_var(t_boxes1.detach().clone())
-        t_boxes4 = utils.tensor_to_gradcheck_var(t_boxes1.detach().clone())
+        # Uncomment when enabling gradient checks
+        # t_boxes2 = utils.tensor_to_gradcheck_var(t_boxes1.detach().clone())
+        # t_boxes3 = utils.tensor_to_gradcheck_var(t_boxes1.detach().clone())
+        # t_boxes4 = utils.tensor_to_gradcheck_var(t_boxes1.detach().clone())
         t_boxes_xyzxyz = utils.tensor_to_gradcheck_var(torch.tensor([[1.0, 3.0, 8.0, 5.0, 6.0, 12.0]]))
         t_boxes_xyzxyz1 = utils.tensor_to_gradcheck_var(t_boxes_xyzxyz.detach().clone())
 

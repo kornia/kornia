@@ -2,10 +2,10 @@ from typing import Optional, Tuple
 
 import torch
 
-import kornia
 from kornia.geometry.linalg import transform_points
 
 __all__ = ["Boxes", "Boxes3D"]
+
 
 def _is_floating_point_dtype(dtype: torch.dtype) -> bool:
     return dtype in (torch.float16, torch.float32, torch.float64, torch.bfloat16, torch.half)
@@ -112,7 +112,7 @@ class Boxes:
         if len(boxes.shape) == 0:
             # Use reshape, so we don't end up creating a new tensor that does not depend on
             # the inputs (and consequently confuses jit)
-            quadrilaterals = boxes.reshape((-1, 4))
+            boxes = boxes.reshape((-1, 4))
 
         if not (3 <= boxes.ndim <= 4 and boxes.shape[-2:] == (4, 2)):
             raise ValueError(f"Boxes shape must be (N, 4, 2) or (B, N, 4, 2). Got {boxes.shape}.")
