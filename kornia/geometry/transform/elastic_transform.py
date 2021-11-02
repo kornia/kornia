@@ -18,7 +18,7 @@ def elastic_transform2d(
     alpha: Tuple[float, float] = (1.0, 1.0),
     align_corners: bool = False,
     mode: str = 'bilinear',
-    padding_mode: Union[str, int, SamplePadding] = SamplePadding.ZEROS.name
+    padding_mode: str = SamplePadding.ZEROS.name
 ) -> torch.Tensor:
     r"""Apply elastic transform of images as described in :cite:`Simard2003BestPF`.
 
