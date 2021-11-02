@@ -55,7 +55,7 @@ repos:
         language_version: python3
         exclude: ^test/
       - id: bandit
-        name: bandit test
+        name: bandit only the test directory
         language_version: python3
         files: ^test/
         args:
