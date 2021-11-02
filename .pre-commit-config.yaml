@@ -51,7 +51,7 @@ repos:
     rev: 1.7.0
     hooks:
       - id: bandit
-        name: bandit non-test
+        name: bandit excluding the test directory
         language_version: python3
         exclude: ^test/
       - id: bandit
