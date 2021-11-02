@@ -59,7 +59,7 @@ repos:
         language_version: python3
         files: ^test/
         args:
-          - -s
+          - --skip
           - "B101,B311"
 
   - repo: https://github.com/myint/docformatter
