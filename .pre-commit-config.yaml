@@ -51,11 +51,16 @@ repos:
     rev: 1.7.0
     hooks:
       - id: bandit
+        name: bandit excluding the test directory
         language_version: python3
         exclude: ^test/
+      - id: bandit
+        name: bandit only the test directory
+        language_version: python3
+        files: ^test/
         args:
-          - -s
-          - "B404,B602,B603,B607"
+          - --skip
+          - "B101,B311"
 
   - repo: https://github.com/myint/docformatter
     rev: v1.4
