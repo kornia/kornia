@@ -74,6 +74,23 @@ class VideoSequential(ImageSequential):
         >>> out2, lab2 = aug_list(input, label, params=aug_list._params)
         >>> torch.equal(output, out2)
         True
+
+    Perform `OneOf <https://albumentations.ai/docs/api_reference/core/composition/#albumentations.core.composition.OneOf>`__
+    transformation with ``random_apply=1`` in ``VideoSequential``.
+
+        >>> import kornia
+        >>> input = torch.randn(2, 3, 1, 5, 6).repeat(1, 1, 4, 1, 1)
+        >>> aug_list = VideoSequential(
+        ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...     kornia.augmentation.RandomAffine(360, p=1.0),
+        ...     kornia.augmentation.RandomMixUp(p=1.0),
+        ... data_format="BCTHW",
+        ... same_on_frame=False,
+        ... random_apply=1,
+        ...)
+        >>> out= aug_list(input)
+        >>> out.shape
+        torch.Size([2, 3, 4, 5, 6])
     """
 
     def __init__(

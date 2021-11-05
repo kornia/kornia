@@ -68,6 +68,22 @@ class ImageSequential(SequentialBase):
         >>> out2, lab2 = aug_list(input, label=label, params=aug_list._params)
         >>> torch.equal(out[0], out2[0]), torch.equal(out[1], out2[1]), torch.equal(lab[1], lab2[1])
         (True, True, True)
+
+    Perform `OneOf <https://albumentations.ai/docs/api_reference/core/composition/#albumentations.core.composition.OneOf>`__
+    transformation with ``random_apply=1`` in ``ImageSequential``.
+
+        >>> import kornia
+        >>> input = torch.randn(2, 3, 5, 6)
+        >>> aug_list = ImageSequential(
+        ...     kornia.color.BgrToRgb(),
+        ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...     kornia.filters.MedianBlur((3, 3)),
+        ...     kornia.augmentation.RandomAffine(360, p=1.0),
+        ...     random_apply=1,
+        ... )
+        >>> out= aug_list(input)
+        >>> out.shape
+        torch.Size([2, 3, 5, 6])
     """
 
     def __init__(

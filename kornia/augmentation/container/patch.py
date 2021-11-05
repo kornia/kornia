@@ -86,6 +86,27 @@ class PatchSequential(ImageSequential):
         >>> out1 = seq(input, params=seq._params)
         >>> torch.equal(out, out1)
         True
+
+    Perform `OneOf <https://albumentations.ai/docs/api_reference/core/composition/#albumentations.core.composition.OneOf>`__
+    transformation with ``random_apply=1`` in ``PatchSequential``.
+
+        >>> import kornia
+        >>> input = torch.randn(2, 3, 224, 224)
+        >>> seq = PatchSequential(
+        ...     ImageSequential(
+        ...         K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
+        ...         K.RandomPerspective(0.2, p=0.5),
+        ...         K.RandomSolarize(0.1, 0.1, p=0.5),
+        ...     ),
+        ...     K.RandomAffine(360, p=1.0),
+        ...     K.RandomSolarize(0.1, 0.1, p=0.1),
+        ...     grid_size=(2,2),
+        ...     patchwise_apply=True,
+        ...     random_apply=1,
+        ... )
+        >>> out = seq(input)
+        >>> out.shape
+        torch.Size([2, 3, 224, 224])
     """
 
     def __init__(

@@ -82,7 +82,6 @@ class AugmentationSequential(ImageSequential):
 
     This example demonstrates the integration of VideoSequential and AugmentationSequential.
 
-    Examples:
         >>> import kornia
         >>> input = torch.randn(2, 3, 5, 6)[None]
         >>> bbox = torch.tensor([[
@@ -98,6 +97,32 @@ class AugmentationSequential(ImageSequential):
         ...         kornia.augmentation.RandomAffine(360, p=1.0),
         ...     ),
         ...     data_keys=["input", "mask", "bbox", "keypoints"]
+        ... )
+        >>> out = aug_list(input, input, bbox, points)
+        >>> [o.shape for o in out]
+        [torch.Size([1, 2, 3, 5, 6]), torch.Size([1, 2, 3, 5, 6]), torch.Size([1, 2, 4, 2]), torch.Size([1, 2, 1, 2])]
+
+    Perform `OneOf <https://albumentations.ai/docs/api_reference/core/composition/#albumentations.core.composition.OneOf>`__
+    transformation with ``random_apply=1`` in ``AugmentationSequential``.
+
+        >>> import kornia
+        >>> input = torch.randn(2, 3, 5, 6)[None]
+        >>> bbox = torch.tensor([[
+        ...     [1., 1.],
+        ...     [2., 1.],
+        ...     [2., 2.],
+        ...     [1., 2.],
+        ... ]]).expand(2, -1, -1)[None]
+        >>> points = torch.tensor([[[1., 1.]]]).expand(2, -1, -1)[None]
+        >>> aug_list = AugmentationSequential(
+        ...     VideoSequential(
+        ...         kornia.augmentation.RandomAffine(360, p=1.0),
+        ...     ),
+        ...     VideoSequential(
+        ...         kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...     ),
+        ...     data_keys=["input", "mask", "bbox", "keypoints"],
+        ...     random_apply=1,
         ... )
         >>> out = aug_list(input, input, bbox, points)
         >>> [o.shape for o in out]
