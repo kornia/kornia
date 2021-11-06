@@ -36,7 +36,7 @@ def elastic_transform2d(
           in the y and x directions, respectively.
         align_corners: Interpolation flag used by ```grid_sample```.
         mode: Interpolation mode used by ```grid_sample```. Either ``'bilinear'`` or ``'nearest'``.
-        padding_mode: The padding used by ```grid_sample```. Either "zeros" (0), "border" (1) or "refection" (2).
+        padding_mode: The padding used by ```grid_sample```. Either ``'zeros'``, ``'border'`` or ``'refection'``.
 
     .. note:
         ```sigma``` and ```alpha``` can also be a ``torch.Tensor``. However, you could not torchscript
@@ -93,6 +93,6 @@ def elastic_transform2d(
     _, _, h, w = image.shape
     grid = create_meshgrid(h, w, device=image.device).to(image.dtype)
     warped = F.grid_sample(image, (grid + disp).clamp(-1, 1), align_corners=align_corners, mode=mode,
-                           padding_mode=SamplePadding.get(padding_mode).name.lower())
+                           padding_mode=padding_mode)
 
     return warped

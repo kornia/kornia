@@ -2146,7 +2146,7 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
           in the y and x directions, respectively.
         align_corners: Interpolation flag used by `grid_sample`.
         mode: Interpolation mode used by `grid_sample`. Either 'bilinear' or 'nearest'.
-        padding_mode: The padding used by ```grid_sample```. Either "zeros" (0), "border" (1) or "refection" (2).
+        padding_mode: The padding used by ```grid_sample```. Either 'zeros', 'border' or 'refection'.
 
         return_transform: if ``True`` return the matrix describing the transformation applied to each
             input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
