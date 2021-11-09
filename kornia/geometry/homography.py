@@ -186,7 +186,7 @@ def find_homography_dlt_iterated(
 
 
 def sample_is_valid_for_homography(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
-    '''Function, which implements oriented contraint check from [Marquez-Neila2015]
+    '''Function, which implements oriented contraint check from :cite:`Marquez-Neila2015`
     Analogous to https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/usac/degeneracy.cpp#L88
     Args:
         points1: A set of points in the first image with a tensor shape :math:`(B, 4, 2)`.
