@@ -3,6 +3,7 @@ import torch
 
 def comp_ray_dir_cam(H, W, focal):
     """Compute ray directions in the camera coordinate, which only depends on intrinsics.
+
     This could be further transformed to world coordinate later, using camera poses.
     :return: (H, W, 3) torch.float32
     """
@@ -24,6 +25,7 @@ def comp_ray_dir_cam(H, W, focal):
 
 def comp_ray_dir_cam_fxfy(H, W, fx, fy):
     """Compute ray directions in the camera coordinate, which only depends on intrinsics.
+
     This could be further transformed to world coordinate later, using camera poses.
     :return: (H, W, 3) torch.float32
     """

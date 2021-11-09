@@ -1,11 +1,11 @@
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
 
 
 class LearnFocal(nn.Module):
     def __init__(self, H, W, req_grad, fx_only = False, order=2, init_focal=None):
-        super(LearnFocal, self).__init__()
+        super().__init__()
         self.H = H
         self.W = W
         self.fx_only = fx_only  # If True, output [fx, fx]. If False, output [fx, fy]
