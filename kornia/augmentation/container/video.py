@@ -79,7 +79,7 @@ class VideoSequential(ImageSequential):
     transformation with ``random_apply=1`` and ``random_apply_weights`` in ``VideoSequential``.
 
         >>> import kornia
-        >>> input = torch.randn(2, 3, 1, 5, 6).repeat(1, 1, 4, 1, 1)
+        >>> input, label = torch.randn(2, 3, 1, 5, 6).repeat(1, 1, 4, 1, 1), torch.tensor([0, 1])
         >>> aug_list = VideoSequential(
         ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
@@ -89,8 +89,8 @@ class VideoSequential(ImageSequential):
         ... random_apply=1,
         ... random_apply_weights=[0.5, 0.3, 0.8]
         ... )
-        >>> out= aug_list(input)
-        >>> out.shape
+        >>> out= aug_list(input, label)
+        >>> out[0].shape
         torch.Size([2, 3, 4, 5, 6])
     """
 

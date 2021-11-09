@@ -101,7 +101,7 @@ class PatchSequential(ImageSequential):
         ...     K.RandomAffine(360, p=1.0),
         ...     K.RandomSolarize(0.1, 0.1, p=0.1),
         ...     grid_size=(2,2),
-        ...     patchwise_apply=True,
+        ...     patchwise_apply=False,
         ...     random_apply=1,
         ...     random_apply_weights=[0.5, 0.3, 0.8]
         ... )
