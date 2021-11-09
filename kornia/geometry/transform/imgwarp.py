@@ -36,7 +36,7 @@ def warp_perspective(
     dsize: Tuple[int, int],
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
-    padding_tensor: torch.Tensor = torch.zeros(3), # needed for jit
+    padding_tensor: torch.Tensor = torch.zeros(3),  # needed for jit
     align_corners: bool = True,
 ) -> torch.Tensor:
     r"""Apply a perspective transformation to an image.
@@ -57,7 +57,8 @@ def warp_perspective(
         M: transformation matrix with shape :math:`(B, 3, 3)`.
         dsize: size of the output image (height, width).
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
-        padding_mode (str): padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'`` | ``'fill'``.
+        padding_mode (str): padding mode for outside grid values 
+          ``'zeros'`` | ``'border'`` | ``'reflection'`` | ``'fill'``.
         padding_tensor: tensor of shape :math:`(3)` that fills the padding area. Only supported for RGB.
         align_corners(bool, optional): interpolation flag.
 
