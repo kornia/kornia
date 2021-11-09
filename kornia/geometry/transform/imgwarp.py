@@ -36,6 +36,7 @@ def warp_perspective(
     dsize: Tuple[int, int],
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
+    padding_tensor: torch.Tensor = torch.zeros(3),
     align_corners: bool = True,
 ) -> torch.Tensor:
     r"""Apply a perspective transformation to an image.
@@ -56,7 +57,8 @@ def warp_perspective(
         M: transformation matrix with shape :math:`(B, 3, 3)`.
         dsize: size of the output image (height, width).
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
-        padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``.
+        padding_mode (str): padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'`` | ``'fill'``.
+        padding_tensor: tensor of shape :math:`(3)` that fills the padding area. Only supported for RGB.
         align_corners(bool, optional): interpolation flag.
 
     Returns:
@@ -87,6 +89,14 @@ def warp_perspective(
 
     if not (len(M.shape) == 3 and M.shape[-2:] == (3, 3)):
         raise ValueError(f"Input M must be a Bx3x3 tensor. Got {M.shape}")
+        
+    if padding_mode == "fill" and padding_tensor is None:
+        raise ValueError("Padding_tensor needs to be supplied when padding_mode is 'fill'.")
+    
+    # fill padding is only supported for 1 or 3 channels because we can't set padding_tensor default
+    # to None as this gives jit issues.
+    if padding_mode == "fill" and padding_tensor.shape != torch.Size([3]):
+        raise ValueError(f"Padding_tensor only supported for 3 channels. Got {padding_tensor.shape}")
 
     B, _, H, W = src.size()
     h_out, w_out = dsize
@@ -102,7 +112,15 @@ def warp_perspective(
     )
     grid = transform_points(src_norm_trans_dst_norm[:, None, None], grid)
 
-    return F.grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
+    if padding_mode == "fill":
+        # warp a mask of ones, then multiple with padding_tensor and add to src warp
+        ones_mask = torch.ones_like(src)
+        padding_tensor = padding_tensor.to(ones_mask.device)
+        inv_ones_mask = 1 - F.grid_sample(ones_mask, grid, align_corners=align_corners, mode=mode, padding_mode="zeros")
+        inv_color_mask = inv_ones_mask * padding_tensor.unsqueeze(-1).unsqueeze(-1)
+        return F.grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode="zeros") + inv_color_mask
+    else:
+        return F.grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
 
 
 def warp_affine(
