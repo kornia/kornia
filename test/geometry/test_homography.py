@@ -10,8 +10,8 @@ from kornia.geometry.homography import (
     find_homography_dlt,
     find_homography_dlt_iterated,
     oneway_transfer_error,
-    symmetric_transfer_error,
     sample_is_valid_for_homography,
+    symmetric_transfer_error,
 )
 from kornia.testing import assert_close
 
