@@ -82,7 +82,7 @@ class ImageSequential(SequentialBase):
         ...     kornia.filters.MedianBlur((3, 3)),
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
         ...     random_apply=1,
-        ...     random_apply_weights=[0.5, 0.3, 0.2]
+        ...     random_apply_weights=[0.5, 0.3, 0.2, 0.5]
         ... )
         >>> out= aug_list(input)
         >>> out.shape
