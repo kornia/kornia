@@ -72,7 +72,7 @@ class ImageSequential(SequentialBase):
         (True, True, True)
 
     Perform `OneOf <https://albumentations.ai/docs/api_reference/core/composition/#albumentations.core.composition.OneOf>`__
-    transformation with ``random_apply=1`` in ``ImageSequential``.
+    transformation with ``random_apply=1`` and ``random_apply_weights`` in ``ImageSequential``.
 
         >>> import kornia
         >>> input = torch.randn(2, 3, 5, 6)
@@ -82,6 +82,7 @@ class ImageSequential(SequentialBase):
         ...     kornia.filters.MedianBlur((3, 3)),
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
         ...     random_apply=1,
+        ...     random_apply_weights=[0.5, 0.3, 0.2]
         ... )
         >>> out= aug_list(input)
         >>> out.shape

@@ -88,7 +88,7 @@ class PatchSequential(ImageSequential):
         True
 
     Perform `OneOf <https://albumentations.ai/docs/api_reference/core/composition/#albumentations.core.composition.OneOf>`__
-    transformation with ``random_apply=1`` in ``PatchSequential``.
+    transformation with ``random_apply=1`` and ``random_apply_weights`` in ``PatchSequential``.
 
         >>> import kornia
         >>> input = torch.randn(2, 3, 224, 224)
@@ -103,6 +103,7 @@ class PatchSequential(ImageSequential):
         ...     grid_size=(2,2),
         ...     patchwise_apply=True,
         ...     random_apply=1,
+        ...     random_apply_weights=[0.5, 0.3, 0.8]
         ... )
         >>> out = seq(input)
         >>> out.shape

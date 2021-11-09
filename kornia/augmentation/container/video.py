@@ -76,7 +76,7 @@ class VideoSequential(ImageSequential):
         True
 
     Perform `OneOf <https://albumentations.ai/docs/api_reference/core/composition/#albumentations.core.composition.OneOf>`__
-    transformation with ``random_apply=1`` in ``VideoSequential``.
+    transformation with ``random_apply=1`` and ``random_apply_weights`` in ``VideoSequential``.
 
         >>> import kornia
         >>> input = torch.randn(2, 3, 1, 5, 6).repeat(1, 1, 4, 1, 1)
@@ -87,6 +87,7 @@ class VideoSequential(ImageSequential):
         ... data_format="BCTHW",
         ... same_on_frame=False,
         ... random_apply=1,
+        ... random_apply_weights=[0.5, 0.3, 0.8]
         ... )
         >>> out= aug_list(input)
         >>> out.shape
