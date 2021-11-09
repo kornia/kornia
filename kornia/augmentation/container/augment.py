@@ -137,6 +137,7 @@ class AugmentationSequential(ImageSequential):
         return_transform: Optional[bool] = None,
         keepdim: Optional[bool] = None,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
+        random_apply_weights: Optional[List[float]] = None,
     ) -> None:
         super().__init__(
             *args,
@@ -144,6 +145,7 @@ class AugmentationSequential(ImageSequential):
             return_transform=return_transform,
             keepdim=keepdim,
             random_apply=random_apply,
+            random_apply_weights=random_apply_weights,
         )
 
         self.data_keys = [DataKey.get(inp) for inp in data_keys]

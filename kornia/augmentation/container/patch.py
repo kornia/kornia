@@ -118,6 +118,7 @@ class PatchSequential(ImageSequential):
         keepdim: Optional[bool] = None,
         patchwise_apply: bool = True,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
+        random_apply_weights: Optional[List[float]] = None,
     ) -> None:
         _random_apply: Optional[Union[int, Tuple[int, int]]]
 
@@ -137,7 +138,8 @@ class PatchSequential(ImageSequential):
         else:
             _random_apply = random_apply
         super().__init__(
-            *args, same_on_batch=same_on_batch, return_transform=False, keepdim=keepdim, random_apply=_random_apply
+            *args, same_on_batch=same_on_batch, return_transform=False, keepdim=keepdim, random_apply=_random_apply,
+            random_apply_weights=random_apply_weights
         )
         if padding not in ("same", "valid"):
             raise ValueError(f"`padding` must be either `same` or `valid`. Got {padding}.")
