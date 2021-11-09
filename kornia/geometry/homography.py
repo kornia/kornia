@@ -212,5 +212,5 @@ def sample_is_valid_for_homography(points1: torch.Tensor, points2: torch.Tensor)
                              src_perm[..., 2:3, :]) @ src_perm[..., 0:1, :].permute(0, 1, 3, 2)).sign()
     right_sign = (torch.cross(dst_perm[..., 1:2, :],
                               dst_perm[..., 2:3, :]) @ dst_perm[..., 0:1, :].permute(0, 1, 3, 2)).sign()
-    sample_is_valid = (left_sign == right_sign).view(-1, 4).max(dim=1)[0]
+    sample_is_valid = (left_sign == right_sign).view(-1, 4).min(dim=1)[0]
     return sample_is_valid
