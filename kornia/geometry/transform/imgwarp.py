@@ -89,10 +89,10 @@ def warp_perspective(
 
     if not (len(M.shape) == 3 and M.shape[-2:] == (3, 3)):
         raise ValueError(f"Input M must be a Bx3x3 tensor. Got {M.shape}")
-        
+
     if padding_mode == "fill" and padding_tensor is None:
         raise ValueError("Padding_tensor needs to be supplied when padding_mode is 'fill'.")
-    
+
     # fill padding is only supported for 3 channels because we can't set padding_tensor default
     # to None as this gives jit issues.
     if padding_mode == "fill" and padding_tensor.shape != torch.Size([3]):
