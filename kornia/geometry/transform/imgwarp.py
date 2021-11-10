@@ -216,7 +216,6 @@ def _warp_and_fill(
     ones_mask = torch.ones_like(src)
     fill_value = fill_value.to(ones_mask)[None, :, None, None]  # cast and add dimensions for broadcasting
     inv_ones_mask = 1 - F.grid_sample(ones_mask, grid, align_corners=align_corners, mode=mode, padding_mode="zeros")
-    print(inv_ones_mask.shape, fill_value.shape)
     inv_color_mask = inv_ones_mask * fill_value
     return F.grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode="zeros") + inv_color_mask
 
