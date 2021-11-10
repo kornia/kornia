@@ -194,7 +194,7 @@ def warp_affine(
     return F.grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
 
 
-def _warp_and_fill(
+def _fill_and_warp(
     src: torch.Tensor,
     grid: torch.Tensor,
     mode: str,
