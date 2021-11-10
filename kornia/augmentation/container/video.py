@@ -74,6 +74,23 @@ class VideoSequential(ImageSequential):
         >>> out2, lab2 = aug_list(input, label, params=aug_list._params)
         >>> torch.equal(output, out2)
         True
+
+    Perform ``OneOf`` transformation with ``random_apply=1`` and ``random_apply_weights`` in ``VideoSequential``.
+
+        >>> import kornia
+        >>> input, label = torch.randn(2, 3, 1, 5, 6).repeat(1, 1, 4, 1, 1), torch.tensor([0, 1])
+        >>> aug_list = VideoSequential(
+        ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...     kornia.augmentation.RandomAffine(360, p=1.0),
+        ...     kornia.augmentation.RandomMixUp(p=1.0),
+        ... data_format="BCTHW",
+        ... same_on_frame=False,
+        ... random_apply=1,
+        ... random_apply_weights=[0.5, 0.3, 0.8]
+        ... )
+        >>> out= aug_list(input, label)
+        >>> out[0].shape
+        torch.Size([2, 3, 4, 5, 6])
     """
 
     def __init__(
@@ -82,8 +99,12 @@ class VideoSequential(ImageSequential):
         data_format: str = "BTCHW",
         same_on_frame: bool = True,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
+        random_apply_weights: Optional[List[float]] = None,
     ) -> None:
-        super().__init__(*args, same_on_batch=None, return_transform=None, keepdim=None, random_apply=random_apply)
+        super().__init__(
+            *args, same_on_batch=None, return_transform=None, keepdim=None, random_apply=random_apply,
+            random_apply_weights=random_apply_weights
+        )
         self.same_on_frame = same_on_frame
         self.data_format = data_format.upper()
         if self.data_format not in ["BCTHW", "BTCHW"]:

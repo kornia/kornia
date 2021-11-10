@@ -150,10 +150,15 @@ class TestVideoSequential:
 
 
 class TestSequential:
-    def test_exception(self, device, dtype):
+
+    @pytest.mark.parametrize('random_apply_weights', [None, [0.8, 0.9]])
+    def test_exception(self, random_apply_weights, device, dtype):
         inp = torch.randn(1, 3, 30, 30, device=device, dtype=dtype)
         with pytest.raises(Exception):  # AssertError and NotImplementedError
-            K.ImageSequential(K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0)).inverse(inp)
+            K.ImageSequential(
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+                random_apply_weights=random_apply_weights
+            ).inverse(inp)
 
     @pytest.mark.parametrize('same_on_batch', [True, False, None])
     @pytest.mark.parametrize("return_transform", [True, False, None])
