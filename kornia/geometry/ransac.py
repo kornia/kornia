@@ -11,8 +11,7 @@ from kornia.geometry import (
     find_homography_dlt_iterated,
     symmetrical_epipolar_distance,
 )
-
-from kornia.geometry.homography import sample_is_valid_for_homography, oneway_transfer_error
+from kornia.geometry.homography import oneway_transfer_error, sample_is_valid_for_homography
 
 __all__ = ["RANSAC"]
 
