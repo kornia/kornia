@@ -11,7 +11,8 @@ from kornia.geometry import (
     find_homography_dlt_iterated,
     symmetrical_epipolar_distance,
 )
-from kornia.geometry.homography import sample_is_valid_for_homography, symmetric_transfer_error
+
+from kornia.geometry.homography import sample_is_valid_for_homography, oneway_transfer_error
 
 __all__ = ["RANSAC"]
 
@@ -47,7 +48,7 @@ class RANSAC(nn.Module):
         self.max_lo_iters = max_lo_iters
         self.model_type = model_type
         if model_type == 'homography':
-            self.error_fn = symmetric_transfer_error  # type: ignore
+            self.error_fn = oneway_transfer_error  # type: ignore
             self.minimal_solver = find_homography_dlt  # type: ignore
             self.polisher_solver = find_homography_dlt_iterated  # type: ignore
             self.minimal_sample_size = 4
