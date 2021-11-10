@@ -71,8 +71,7 @@ class ImageSequential(SequentialBase):
         >>> torch.equal(out[0], out2[0]), torch.equal(out[1], out2[1]), torch.equal(lab[1], lab2[1])
         (True, True, True)
 
-    Perform `OneOf <https://albumentations.ai/docs/api_reference/core/composition/#albumentations.core.composition.OneOf>`__
-    transformation with ``random_apply=1`` and ``random_apply_weights`` in ``ImageSequential``.
+    Perform ``OneOf`` transformation with ``random_apply=1`` and ``random_apply_weights`` in ``ImageSequential``.
 
         >>> import kornia
         >>> input = torch.randn(2, 3, 5, 6)

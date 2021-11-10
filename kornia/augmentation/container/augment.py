@@ -102,8 +102,7 @@ class AugmentationSequential(ImageSequential):
         >>> [o.shape for o in out]
         [torch.Size([1, 2, 3, 5, 6]), torch.Size([1, 2, 3, 5, 6]), torch.Size([1, 2, 4, 2]), torch.Size([1, 2, 1, 2])]
 
-    Perform `OneOf <https://albumentations.ai/docs/api_reference/core/composition/#albumentations.core.composition.OneOf>`__
-    transformation with ``random_apply=1`` and ``random_apply_weights`` in ``AugmentationSequential``.
+    Perform ``OneOf`` transformation with ``random_apply=1`` and ``random_apply_weights`` in ``AugmentationSequential``.
 
         >>> import kornia
         >>> input = torch.randn(2, 3, 5, 6)[None]

@@ -75,8 +75,7 @@ class VideoSequential(ImageSequential):
         >>> torch.equal(output, out2)
         True
 
-    Perform `OneOf <https://albumentations.ai/docs/api_reference/core/composition/#albumentations.core.composition.OneOf>`__
-    transformation with ``random_apply=1`` and ``random_apply_weights`` in ``VideoSequential``.
+    Perform ``OneOf`` transformation with ``random_apply=1`` and ``random_apply_weights`` in ``VideoSequential``.
 
         >>> import kornia
         >>> input, label = torch.randn(2, 3, 1, 5, 6).repeat(1, 1, 4, 1, 1), torch.tensor([0, 1])
