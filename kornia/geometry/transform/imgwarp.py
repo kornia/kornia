@@ -37,6 +37,7 @@ def warp_perspective(
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
     align_corners: bool = True,
+    fill_value: torch.Tensor = torch.zeros(3),  # needed for jit
 ) -> torch.Tensor:
     r"""Apply a perspective transformation to an image.
 
@@ -56,8 +57,9 @@ def warp_perspective(
         M: transformation matrix with shape :math:`(B, 3, 3)`.
         dsize: size of the output image (height, width).
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
-        padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``.
-        align_corners(bool, optional): interpolation flag.
+        padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'`` | ``'fill'``.
+        align_corners: interpolation flag.
+        fill_value: tensor of shape :math:`(3)` that fills the padding area. Only supported for RGB.
 
     Returns:
         the warped input image :math:`(B, C, H, W)`.
@@ -88,6 +90,11 @@ def warp_perspective(
     if not (len(M.shape) == 3 and M.shape[-2:] == (3, 3)):
         raise ValueError(f"Input M must be a Bx3x3 tensor. Got {M.shape}")
 
+    # fill padding is only supported for 3 channels because we can't set fill_value default
+    # to None as this gives jit issues.
+    if padding_mode == "fill" and fill_value.shape != torch.Size([3]):
+        raise ValueError(f"Padding_tensor only supported for 3 channels. Got {fill_value.shape}")
+
     B, _, H, W = src.size()
     h_out, w_out = dsize
 
@@ -102,6 +109,8 @@ def warp_perspective(
     )
     grid = transform_points(src_norm_trans_dst_norm[:, None, None], grid)
 
+    if padding_mode == "fill":
+        return _fill_and_warp(src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value)
     return F.grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
 
 
@@ -112,6 +121,7 @@ def warp_affine(
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
     align_corners: bool = True,
+    fill_value: torch.Tensor = torch.zeros(3),  # needed for jit
 ) -> torch.Tensor:
     r"""Apply an affine transformation to a tensor.
 
@@ -129,8 +139,9 @@ def warp_affine(
         M: affine transformation of shape :math:`(B, 2, 3)`.
         dsize: size of the output image (height, width).
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
-        padding_mode (str): padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``.
+        padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'`` | ``'fill'``.
         align_corners : mode for grid_generation.
+        fill_value: tensor of shape :math:`(3)` that fills the padding area. Only supported for RGB.
 
     Returns:
         the warped tensor with shape :math:`(B, C, H, W)`.
@@ -162,6 +173,11 @@ def warp_affine(
     if not (len(M.shape) == 3 or M.shape[-2:] == (2, 3)):
         raise ValueError(f"Input M must be a Bx2x3 tensor. Got {M.shape}")
 
+    # fill padding is only supported for 3 channels because we can't set fill_value default
+    # to None as this gives jit issues.
+    if padding_mode == "fill" and fill_value.shape != torch.Size([3]):
+        raise ValueError(f"Padding_tensor only supported for 3 channels. Got {fill_value.shape}")
+
     B, C, H, W = src.size()
 
     # we generate a 3x3 transformation matrix from 2x3 affine
@@ -173,7 +189,35 @@ def warp_affine(
 
     grid = F.affine_grid(src_norm_trans_dst_norm[:, :2, :], [B, C, dsize[0], dsize[1]], align_corners=align_corners)
 
+    if padding_mode == "fill":
+        return _fill_and_warp(src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value)
     return F.grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
+
+
+def _fill_and_warp(
+    src: torch.Tensor,
+    grid: torch.Tensor,
+    mode: str,
+    align_corners: bool,
+    fill_value: torch.Tensor,
+) -> torch.Tensor:
+    r"""Warp a mask of ones, then multiple with fill_value and add to default warp.
+
+    Args:
+        src: input tensor of shape :math:`(B, 3, H, W)`.
+        grid: grid tensor from `transform_points`.
+        mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
+        align_corners: interpolation flag.
+        fill_value: tensor of shape :math:`(3)` that fills the padding area. Only supported for RGB.
+
+    Returns:
+        the warped and filled tensor with shape :math:`(B, 3, H, W)`.
+    """
+    ones_mask = torch.ones_like(src)
+    fill_value = fill_value.to(ones_mask)[None, :, None, None]  # cast and add dimensions for broadcasting
+    inv_ones_mask = 1 - F.grid_sample(ones_mask, grid, align_corners=align_corners, mode=mode, padding_mode="zeros")
+    inv_color_mask = inv_ones_mask * fill_value
+    return F.grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode="zeros") + inv_color_mask
 
 
 def get_perspective_transform(src, dst):
