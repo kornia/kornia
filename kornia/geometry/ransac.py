@@ -188,6 +188,8 @@ class RANSAC(nn.Module):
             kp2_sampled = kp2[idxs]
 
             kp1_sampled, kp2_sampled = self.remove_bad_samples(kp1_sampled, kp2_sampled)
+            if len(kp1_sampled) == 0:
+                continue
             # Estimate models
             models = self.estimate_model_from_minsample(kp1_sampled, kp2_sampled)
             models = self.remove_bad_models(models)
