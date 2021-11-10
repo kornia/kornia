@@ -110,7 +110,7 @@ def warp_perspective(
     grid = transform_points(src_norm_trans_dst_norm[:, None, None], grid)
 
     if padding_mode == "fill":
-        return _warp_and_fill(src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value)
+        return _fill_and_warp(src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value)
     return F.grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
 
 
@@ -190,7 +190,7 @@ def warp_affine(
     grid = F.affine_grid(src_norm_trans_dst_norm[:, :2, :], [B, C, dsize[0], dsize[1]], align_corners=align_corners)
 
     if padding_mode == "fill":
-        return _warp_and_fill(src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value)
+        return _fill_and_warp(src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value)
     return F.grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
 
 
