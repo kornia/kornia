@@ -82,7 +82,6 @@ class AugmentationSequential(ImageSequential):
 
     This example demonstrates the integration of VideoSequential and AugmentationSequential.
 
-    Examples:
         >>> import kornia
         >>> input = torch.randn(2, 3, 5, 6)[None]
         >>> bbox = torch.tensor([[
@@ -102,6 +101,32 @@ class AugmentationSequential(ImageSequential):
         >>> out = aug_list(input, input, bbox, points)
         >>> [o.shape for o in out]
         [torch.Size([1, 2, 3, 5, 6]), torch.Size([1, 2, 3, 5, 6]), torch.Size([1, 2, 4, 2]), torch.Size([1, 2, 1, 2])]
+
+    Perform ``OneOf`` transformation with ``random_apply=1`` and ``random_apply_weights`` in ``AugmentationSequential``.
+
+        >>> import kornia
+        >>> input = torch.randn(2, 3, 5, 6)[None]
+        >>> bbox = torch.tensor([[
+        ...     [1., 1.],
+        ...     [2., 1.],
+        ...     [2., 2.],
+        ...     [1., 2.],
+        ... ]]).expand(2, -1, -1)[None]
+        >>> points = torch.tensor([[[1., 1.]]]).expand(2, -1, -1)[None]
+        >>> aug_list = AugmentationSequential(
+        ...     VideoSequential(
+        ...         kornia.augmentation.RandomAffine(360, p=1.0),
+        ...     ),
+        ...     VideoSequential(
+        ...         kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...     ),
+        ...     data_keys=["input", "mask", "bbox", "keypoints"],
+        ...     random_apply=1,
+        ...     random_apply_weights=[0.5, 0.3]
+        ... )
+        >>> out = aug_list(input, input, bbox, points)
+        >>> [o.shape for o in out]
+        [torch.Size([1, 2, 3, 5, 6]), torch.Size([1, 2, 3, 5, 6]), torch.Size([1, 2, 4, 2]), torch.Size([1, 2, 1, 2])]
     """
 
     def __init__(
@@ -112,6 +137,7 @@ class AugmentationSequential(ImageSequential):
         return_transform: Optional[bool] = None,
         keepdim: Optional[bool] = None,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
+        random_apply_weights: Optional[List[float]] = None,
     ) -> None:
         super().__init__(
             *args,
@@ -119,6 +145,7 @@ class AugmentationSequential(ImageSequential):
             return_transform=return_transform,
             keepdim=keepdim,
             random_apply=random_apply,
+            random_apply_weights=random_apply_weights,
         )
 
         self.data_keys = [DataKey.get(inp) for inp in data_keys]
