@@ -179,7 +179,8 @@ class TestWarpAffine:
 
         img_b = torch.arange(float(3 * h * w), device=device, dtype=dtype).view(1, 3, h, w)
 
-        fill_value = torch.tensor([0.5, 0.2, 0.1])
+        # normally fill_value will also be converted to the right device and type in warp_affine
+        fill_value = torch.tensor([0.5, 0.2, 0.1], device=device, dtype=dtype)
 
         img_a = kornia.geometry.warp_affine(img_b, aff_ab, (h, w), padding_mode="fill", fill_value=fill_value)
         top_row_mean = img_a[..., :1, :].mean(dim=[0, 2, 3])
@@ -383,7 +384,8 @@ class TestWarpPerspective:
         homo_ab = kornia.eye_like(3, img_b)
         homo_ab[..., :2, -1] += offset
 
-        fill_value = torch.tensor([0.5, 0.2, 0.1])
+        # normally fill_value will also be converted to the right device and type in warp_perspective
+        fill_value = torch.tensor([0.5, 0.2, 0.1], device=device, dtype=dtype)
 
         img_a = kornia.geometry.warp_perspective(img_b, homo_ab, (h, w), padding_mode="fill", fill_value=fill_value)
         top_row_mean = img_a[..., :1, :].mean(dim=[0, 2, 3])
