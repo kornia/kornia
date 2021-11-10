@@ -11,7 +11,7 @@ from kornia.geometry import (
     find_homography_dlt_iterated,
     symmetrical_epipolar_distance,
 )
-from kornia.geometry.homography import oneway_transfer_error
+from kornia.geometry.homography import oneway_transfer_error, sample_is_valid_for_homography
 
 __all__ = ["RANSAC"]
 
@@ -119,6 +119,9 @@ class RANSAC(nn.Module):
         """"""
         # ToDo: add (model-specific) verification of the samples,
         # E.g. constraints on not to be a degenerate sample
+        if self.model_type == 'homography':
+            mask = sample_is_valid_for_homography(kp1, kp2)
+            return kp1[mask], kp2[mask]
         return kp1, kp2
 
     def remove_bad_models(self, models: torch.Tensor) -> torch.Tensor:
@@ -185,6 +188,8 @@ class RANSAC(nn.Module):
             kp2_sampled = kp2[idxs]
 
             kp1_sampled, kp2_sampled = self.remove_bad_samples(kp1_sampled, kp2_sampled)
+            if len(kp1_sampled) == 0:
+                continue
             # Estimate models
             models = self.estimate_model_from_minsample(kp1_sampled, kp2_sampled)
             models = self.remove_bad_models(models)
