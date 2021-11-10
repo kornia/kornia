@@ -183,15 +183,17 @@ def find_homography_dlt_iterated(
 
 
 def sample_is_valid_for_homography(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
-    '''Function, which implements oriented contraint check from :cite:`Marquez-Neila2015`
+    """Function, which implements oriented constraint check from :cite:`Marquez-Neila2015`.
+
     Analogous to https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/usac/degeneracy.cpp#L88
+
     Args:
         points1: A set of points in the first image with a tensor shape :math:`(B, 4, 2)`.
         points2: A set of points in the second image with a tensor shape :math:`(B, 4, 2)`.
 
     Returns:
-        mask: if the minimal sample is good for homography estimation:math:`(B, 3, 3)`.
-        '''
+        Mask with the minimal sample is good for homography estimation:math:`(B, 3, 3)`.
+    """
     if points1.shape != points2.shape:
         raise AssertionError(points1.shape)
     if not (len(points1.shape) >= 1 and points1.shape[-1] == 2):
