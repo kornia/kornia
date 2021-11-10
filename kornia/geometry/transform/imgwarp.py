@@ -39,18 +39,14 @@ def warp_perspective(
     align_corners: bool = True,
 ) -> torch.Tensor:
     r"""Apply a perspective transformation to an image.
-
     .. image:: https://kornia-tutorials.readthedocs.io/en/latest/_images/warp_perspective_10_1.png
-
     The function warp_perspective transforms the source image using
     the specified matrix:
-
     .. math::
         \text{dst} (x, y) = \text{src} \left(
         \frac{M^{-1}_{11} x + M^{-1}_{12} y + M^{-1}_{13}}{M^{-1}_{31} x + M^{-1}_{32} y + M^{-1}_{33}} ,
         \frac{M^{-1}_{21} x + M^{-1}_{22} y + M^{-1}_{23}}{M^{-1}_{31} x + M^{-1}_{32} y + M^{-1}_{33}}
         \right )
-
     Args:
         src: input image with shape :math:`(B, C, H, W)`.
         M: transformation matrix with shape :math:`(B, 3, 3)`.
@@ -58,20 +54,16 @@ def warp_perspective(
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners(bool, optional): interpolation flag.
-
     Returns:
         the warped input image :math:`(B, C, H, W)`.
-
     Example:
        >>> img = torch.rand(1, 4, 5, 6)
        >>> H = torch.eye(3)[None]
        >>> out = warp_perspective(img, H, (4, 2), align_corners=True)
        >>> print(out.shape)
        torch.Size([1, 4, 4, 2])
-
     .. note::
         This function is often used in conjunction with :func:`get_perspective_transform`.
-
     .. note::
         See a working example `here <https://kornia-tutorials.readthedocs.io/en/
         latest/warp_perspective.html>`_.
