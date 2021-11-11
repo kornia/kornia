@@ -31,12 +31,14 @@ class ImageSequential(SequentialBase):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False). If None, it will not overwrite the function-wise settings.
         random_apply: randomly select a sublist (order agnostic) of args to
-            apply transformation.
+            apply transformation. The selection probablity aligns to the ``random_apply_weights``.
             If int, a fixed number of transformations will be selected.
             If (a,), x number of transformations (a <= x <= len(args)) will be selected.
             If (a, b), x number of transformations (a <= x <= b) will be selected.
             If True, the whole list of args will be processed as a sequence in a random order.
             If False, the whole list of args will be processed as a sequence in original order.
+        random_apply_weights: a list of selection weights for each operation. The length shall be as
+            same as the number of operations. By default, operations are sampled uniformly.
 
     .. note::
         Transformation matrix returned only considers the transformation applied in ``kornia.augmentation`` module.
@@ -68,6 +70,22 @@ class ImageSequential(SequentialBase):
         >>> out2, lab2 = aug_list(input, label=label, params=aug_list._params)
         >>> torch.equal(out[0], out2[0]), torch.equal(out[1], out2[1]), torch.equal(lab[1], lab2[1])
         (True, True, True)
+
+    Perform ``OneOf`` transformation with ``random_apply=1`` and ``random_apply_weights`` in ``ImageSequential``.
+
+        >>> import kornia
+        >>> input = torch.randn(2, 3, 5, 6)
+        >>> aug_list = ImageSequential(
+        ...     kornia.color.BgrToRgb(),
+        ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...     kornia.filters.MedianBlur((3, 3)),
+        ...     kornia.augmentation.RandomAffine(360, p=1.0),
+        ...     random_apply=1,
+        ...     random_apply_weights=[0.5, 0.3, 0.2, 0.5]
+        ... )
+        >>> out= aug_list(input)
+        >>> out.shape
+        torch.Size([2, 3, 5, 6])
     """
 
     def __init__(
@@ -77,11 +95,18 @@ class ImageSequential(SequentialBase):
         return_transform: Optional[bool] = None,
         keepdim: Optional[bool] = None,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
+        random_apply_weights: Optional[List[float]] = None,
         if_unsupported_ops: str = 'raise'
     ) -> None:
         super().__init__(*args, same_on_batch=same_on_batch, return_transform=return_transform, keepdim=keepdim)
 
         self.random_apply: Union[Tuple[int, int], bool] = self._read_random_apply(random_apply, len(args))
+        if random_apply_weights is not None and len(random_apply_weights) != len(self):
+            raise ValueError(
+                "The length of `random_apply_weights` must be as same as the number of operations."
+                f"Got {len(random_apply_weights)} and {len(self)}."
+            )
+        self.random_apply_weights = torch.as_tensor(random_apply_weights or torch.ones((len(self),)))
         self.return_label: Optional[bool] = None
         self.apply_inverse_func: Type[ApplyInverseInterface] = InputApplyInverse
         self.if_unsupported_ops = if_unsupported_ops
@@ -123,7 +148,7 @@ class ImageSequential(SequentialBase):
             Mix augmentations (e.g. RandomMixUp) will be only applied once even in a random forward.
         """
         num_samples = int(torch.randint(*self.random_apply, (1,)).item())  # type: ignore
-        multinomial_weights = torch.ones((len(self),))
+        multinomial_weights = self.random_apply_weights.clone()
         # Mix augmentation can only be applied once per forward
         mix_indices = self.get_mix_augmentation_indices(self.named_children())
         # kick out the mix augmentations
