@@ -9,7 +9,7 @@ from kornia.testing import check_is_tensor
 from kornia.utils import create_meshgrid, create_meshgrid3d
 from kornia.utils.helpers import _torch_inverse_cast
 
-from .imgwarp import warp_perspective
+import kornia.geometry.transform.imgwarp
 
 __all__ = [
     "HomographyWarper",
@@ -130,7 +130,7 @@ def homography_warp(
         warped_grid = warp_grid(grid, src_homo_dst)
 
         return F.grid_sample(patch_src, warped_grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
-    return warp_perspective(
+    return kornia.geometry.transform.imgwarp.warp_perspective(
         patch_src, src_homo_dst, dsize, mode='bilinear', padding_mode=padding_mode, align_corners=True
     )
 
