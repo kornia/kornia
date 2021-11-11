@@ -257,10 +257,7 @@ def train_model(imgs: torch.Tensor, n_epoch = 1, device: str = 'cpu')->Tuple[nn.
                 # writer.add_image('eval/img', rendered_img.permute(2, 0, 1), global_step=epoch_i)
                 # writer.add_image('eval/depth', rendered_depth.unsqueeze(0), global_step=epoch_i)
 
-    if device == 'cpu':
-        pose_history = torch.stack(pose_history).detach().cpu().numpy()  # (n_epoch, N_img, 3)
-    else:
-        pose_history = torch.stack(pose_history).detach().gpu().numpy()  # (n_epoch, N_img, 3)
+    pose_history = torch.stack(pose_history).detach().cpu().numpy()  # (n_epoch, N_img, 3)
     print('Training finished.')
 
     return nerf_model, focal_net, pose_param_net
