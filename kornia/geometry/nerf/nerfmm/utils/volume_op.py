@@ -2,8 +2,7 @@ import torch
 
 
 def get_ndc_rays(H, W, focal, near, rays_o, rays_d):
-    """
-    This function is modified from https://github.com/kwea123/nerf_pl.
+    """This function is modified from https://github.com/kwea123/nerf_pl.
 
     Transform rays from world coordinate to NDC.
     NDC: Space such that the canvas is a cube with sides [-1, 1] in each axis.
@@ -47,8 +46,7 @@ def get_ndc_rays(H, W, focal, near, rays_o, rays_d):
 
 
 def get_ndc_rays_fxfy(H, W, fxfy, near, rays_o, rays_d):
-    """
-    This function is modified from https://github.com/kwea123/nerf_pl.
+    """This function is modified from https://github.com/kwea123/nerf_pl.
 
     Transform rays from world coordinate to NDC.
     NDC: Space such that the canvas is a cube with sides [-1, 1] in each axis.

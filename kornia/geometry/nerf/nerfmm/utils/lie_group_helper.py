@@ -58,7 +58,8 @@ def vec2skew(v):
 
 
 def Exp(r):
-    """so(3) vector to SO(3) matrix
+    """so(3) vector to SO(3) matrix.
+
     :param r: (3, ) axis-angle, torch tensor
     :return:  (3, 3)
     """

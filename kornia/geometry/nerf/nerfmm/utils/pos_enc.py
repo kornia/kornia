@@ -2,8 +2,8 @@ import torch
 
 
 def encode_position(input, levels, inc_input):
-    """
-    For each scalar, we encode it using a series of sin() and cos() functions with different frequency.
+    """For each scalar, we encode it using a series of sin() and cos() functions with different frequency.
+
         - With L pairs of sin/cos function, each scalar is encoded to a vector that has 2L elements. Concatenating with
           itself results in 2L+1 elements.
         - With C channels, we get C(2L+1) channels output.

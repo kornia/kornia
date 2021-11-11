@@ -1,10 +1,11 @@
 import unittest
-import torch
 from typing import Tuple
 
-from kornia.geometry.nerf.from_nerfmm import train_model
+import torch
 import torch.nn as nn
 from enum import Enum
+
+from kornia.geometry.nerf.from_nerfmm import train_model
 
 
 class CameraCalibration:

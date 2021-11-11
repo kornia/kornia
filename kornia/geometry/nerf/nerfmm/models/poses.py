@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+
 from kornia.geometry.nerf.nerfmm.utils.lie_group_helper import make_c2w
 
 
@@ -11,7 +12,7 @@ class LearnPose(nn.Module):
         :param learn_t:  True/False
         :param init_c2w: (N, 4, 4) torch tensor
         """
-        super(LearnPose, self).__init__()
+        super().__init__()
         self.num_cams = num_cams
         self.init_c2w = None
         if init_c2w is not None:

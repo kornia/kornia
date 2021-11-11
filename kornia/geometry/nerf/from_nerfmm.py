@@ -1,18 +1,16 @@
-from kornia.geometry.nerf.nerfmm.utils.pos_enc import encode_position
-from kornia.geometry.nerf.nerfmm.utils.volume_op import volume_rendering, volume_sampling_ndc
-from kornia.geometry.nerf.nerfmm.utils.comp_ray_dir import comp_ray_dir_cam_fxfy
-from kornia.geometry.nerf.nerfmm.utils.training_utils import mse2psnr
+from typing import Tuple
 
-from kornia.geometry.nerf.nerfmm.models.intrinsics import LearnFocal
-from kornia.geometry.nerf.nerfmm.models.poses import LearnPose
-
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import numpy as np
-
-from typing import Tuple
+from kornia.geometry.nerf.nerfmm.models.intrinsics import LearnFocal
+from kornia.geometry.nerf.nerfmm.models.poses import LearnPose
+from kornia.geometry.nerf.nerfmm.utils.comp_ray_dir import comp_ray_dir_cam_fxfy
+from kornia.geometry.nerf.nerfmm.utils.pos_enc import encode_position
+from kornia.geometry.nerf.nerfmm.utils.training_utils import mse2psnr
+from kornia.geometry.nerf.nerfmm.utils.volume_op import volume_rendering, volume_sampling_ndc
 
 
 class TinyNerf(nn.Module):
@@ -22,7 +20,7 @@ class TinyNerf(nn.Module):
         :param dir_in_dims: scalar, number of channels of encoded directions
         :param D:           scalar, number of hidden dimensions
         """
-        super(TinyNerf, self).__init__()
+        super().__init__()
 
         self.pos_in_dims = pos_in_dims
         self.dir_in_dims = dir_in_dims
@@ -241,7 +239,7 @@ def train_model(imgs: torch.Tensor, n_epoch = 1, device: str = 'cpu')->Tuple[nn.
         # writer.add_scalar('train/psnr', train_psnr, epoch_i)
 
         fxfy = focal_net()
-        print('epoch {0:4d} Training PSNR {1:.3f}, estimated fx {2:.1f} fy {3:.1f}'.format(epoch_i, train_psnr, fxfy[0],
+        print('epoch {:4d} Training PSNR {:.3f}, estimated fx {:.1f} fy {:.1f}'.format(epoch_i, train_psnr, fxfy[0],
                                                                                            fxfy[1]))
 
         scheduler_nerf.step()
@@ -274,11 +272,8 @@ def normalize(v):
 
 
 def create_spiral_poses(radii, focus_depth, n_poses=120, n_circle=2):
-    """
-    Computes poses that follow a spiral path for rendering purpose.
-    See https://github.com/Fyusion/LLFF/issues/19
-    In particular, the path looks like:
-    https://tinyurl.com/ybgtfns3
+    """Computes poses that follow a spiral path for rendering purpose. See
+    https://github.com/Fyusion/LLFF/issues/19 In particular, the path looks like: https://tinyurl.com/ybgtfns3.
 
     Inputs:
         radii: (3) radii of the spiral for each axis
@@ -307,4 +302,3 @@ def create_spiral_poses(radii, focus_depth, n_poses=120, n_circle=2):
         poses_spiral += [np.stack([x, y, z, center], 1)]  # (3, 4)
 
     return np.stack(poses_spiral, 0)  # (n_poses, 3, 4)
-
