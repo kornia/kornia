@@ -4,10 +4,11 @@ from typing import Tuple
 
 from kornia.geometry.nerf.from_nerfmm import train_model
 import torch.nn as nn
+from enum import Enum
 
 
 class CameraCalibration:
-    def __init__(self, nerf_model: torch.nn.Module, n_epoch: int = 1):
+    def __init__(self, nerf_model: torch.nn.Module, n_epoch: int = 1, device: str = 'cpu'):
         self._nerf_model = nerf_model
         self._images: torch.Tensor = None
         self._nerf_model: nn.Module = None
@@ -15,13 +16,14 @@ class CameraCalibration:
         self._pose_param_net: nn.Module = None
 
         self._n_epoch = n_epoch
+        self._device = device
 
     def add_images(self, images: torch.Tensor):
         self._images = images
 
     def run(self):
         self._nerf_model, self._focal_net, self._pose_param_net = \
-            train_model(self._images, n_epoch = self._n_epoch)
+            train_model(self._images, n_epoch = self._n_epoch, device = self._device)
 
     def model(self) -> nn.Module:
         return self._nerf_model
