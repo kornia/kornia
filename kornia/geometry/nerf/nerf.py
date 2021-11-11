@@ -1,9 +1,9 @@
 import unittest
+from enum import Enum
 from typing import Tuple
 
 import torch
 import torch.nn as nn
-from enum import Enum
 
 from kornia.geometry.nerf.from_nerfmm import train_model
 
