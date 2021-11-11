@@ -111,13 +111,13 @@ def model_render_image(c2w, rays_cam, t_vals, ray_params, H, W, fxfy, nerf_model
 
 
 def train_one_epoch(imgs, H, W, ray_params, opt_nerf, opt_focal,
-                    opt_pose, nerf_model, focal_net, pose_param_net):
+                    opt_pose, nerf_model, focal_net, pose_param_net, device):
     nerf_model.train()
     focal_net.train()
     pose_param_net.train()
 
     t_vals = torch.linspace(ray_params.NEAR, ray_params.FAR, ray_params.N_SAMPLE,
-                            device='cpu')  # (N_sample,) sample position
+                            device=device)  # (N_sample,) sample position
     L2_loss_epoch = []
 
     # shuffle the training imgs
@@ -133,12 +133,12 @@ def train_one_epoch(imgs, H, W, ray_params, opt_nerf, opt_focal,
 
         # KEY 1: compute ray directions using estimated intrinsics online.
         ray_dir_cam = comp_ray_dir_cam_fxfy(H, W, fxfy[0], fxfy[1])
-        img = imgs[i].to('cpu')  # (H, W, 4)
+        img = imgs[i].to(device)  # (H, W, 4)
         c2w = pose_param_net(i)  # (4, 4)
 
         # sample 32x32 pixel on an image and their rays for training.
-        r_id = torch.randperm(H, device='cpu')[:32]  # (N_select_rows)
-        c_id = torch.randperm(W, device='cpu')[:32]  # (N_select_cols)
+        r_id = torch.randperm(H, device=device)[:32]  # (N_select_rows)
+        c_id = torch.randperm(W, device=device)[:32]  # (N_select_cols)
         ray_selected_cam = ray_dir_cam[r_id][:, c_id]  # (N_select_rows, N_select_cols, 3)
         img_selected = img[r_id][:, c_id]  # (N_select_rows, N_select_cols, 3)
 
@@ -165,14 +165,14 @@ def train_one_epoch(imgs, H, W, ray_params, opt_nerf, opt_focal,
     return L2_loss_epoch_mean
 
 
-def render_novel_view(c2w, H, W, fxfy, ray_params, nerf_model):
+def render_novel_view(c2w, H, W, fxfy, ray_params, nerf_model, device):
     nerf_model.eval()
 
     ray_dir_cam = comp_ray_dir_cam_fxfy(H, W, fxfy[0], fxfy[1])
     t_vals = torch.linspace(ray_params.NEAR, ray_params.FAR, ray_params.N_SAMPLE,
-                            device='cpu')  # (N_sample,) sample position
+                            device=device)  # (N_sample,) sample position
 
-    c2w = c2w.to('cpu')  # (4, 4)
+    c2w = c2w.to(device)  # (4, 4)
 
     # split an image to rows when the input image resolution is high
     rays_dir_cam_split_rows = ray_dir_cam.split(10, dim=0)  # input 10 rows each time
@@ -194,7 +194,7 @@ def render_novel_view(c2w, H, W, fxfy, ray_params, nerf_model):
     return rendered_img, rendered_depth
 
 
-def train_model(imgs: torch.Tensor, n_epoch = 1)->Tuple[nn.Module, nn.Module, nn.Module]:
+def train_model(imgs: torch.Tensor, n_epoch = 1, device: str = 'cpu')->Tuple[nn.Module, nn.Module, nn.Module]:
     # n_epoch = 1 # 200  # set to 1000 to get slightly better results. we use 10K epoch in our paper.
     EVAL_INTERVAL = 50  # render an image to visualise for every this interval.
 
@@ -202,11 +202,18 @@ def train_model(imgs: torch.Tensor, n_epoch = 1)->Tuple[nn.Module, nn.Module, nn
     N_IMGS = imgs.shape[0]
     H = imgs.shape[1]
     W = imgs.shape[2]
-    focal_net = LearnFocal(H, W, req_grad=True)
-    pose_param_net = LearnPose(num_cams=N_IMGS, learn_R=True, learn_t=True)
+    if device == 'cpu':
+        focal_net = LearnFocal(H, W, req_grad=True)
+        pose_param_net = LearnPose(num_cams=N_IMGS, learn_R=True, learn_t=True)
 
-    # Get a tiny NeRF model. Hidden dimension set to 128
-    nerf_model = TinyNerf(pos_in_dims=63, dir_in_dims=27, D=128)
+        # Get a tiny NeRF model. Hidden dimension set to 128
+        nerf_model = TinyNerf(pos_in_dims=63, dir_in_dims=27, D=128)
+    else:
+        focal_net = LearnFocal(H, W, req_grad=True).cuda()
+        pose_param_net = LearnPose(num_cams=N_IMGS, learn_R=True, learn_t=True).cuda()
+
+        # Get a tiny NeRF model. Hidden dimension set to 128
+        nerf_model = TinyNerf(pos_in_dims=63, dir_in_dims=27, D=128).cuda()
 
     # Set lr and scheduler: these are just stair-case exponantial decay lr schedulers.
     opt_nerf = torch.optim.Adam(nerf_model.parameters(), lr=0.001)
@@ -228,7 +235,7 @@ def train_model(imgs: torch.Tensor, n_epoch = 1)->Tuple[nn.Module, nn.Module, nn
     print('Training... Check results in the tensorboard above.')
     for epoch_i in range(n_epoch):
         L2_loss = train_one_epoch(imgs, H, W, ray_params, opt_nerf, opt_focal,
-                                  opt_pose, nerf_model, focal_net, pose_param_net)
+                                  opt_pose, nerf_model, focal_net, pose_param_net, device)
         train_psnr = mse2psnr(L2_loss)
 
         # writer.add_scalar('train/psnr', train_psnr, epoch_i)
@@ -248,11 +255,14 @@ def train_model(imgs: torch.Tensor, n_epoch = 1)->Tuple[nn.Module, nn.Module, nn
             if (epoch_i + 1) % EVAL_INTERVAL == 0:
                 eval_c2w = torch.eye(4, dtype=torch.float32)  # (4, 4)
                 fxfy = focal_net()
-                rendered_img, rendered_depth = render_novel_view(eval_c2w, H, W, fxfy, ray_params, nerf_model)
+                rendered_img, rendered_depth = render_novel_view(eval_c2w, H, W, fxfy, ray_params, nerf_model, device)
                 # writer.add_image('eval/img', rendered_img.permute(2, 0, 1), global_step=epoch_i)
                 # writer.add_image('eval/depth', rendered_depth.unsqueeze(0), global_step=epoch_i)
 
-    pose_history = torch.stack(pose_history).detach().cpu().numpy()  # (n_epoch, N_img, 3)
+    if device == 'cpu':
+        pose_history = torch.stack(pose_history).detach().cpu().numpy()  # (n_epoch, N_img, 3)
+    else:
+        pose_history = torch.stack(pose_history).detach().gpu().numpy()  # (n_epoch, N_img, 3)
     print('Training finished.')
 
     return nerf_model, focal_net, pose_param_net
