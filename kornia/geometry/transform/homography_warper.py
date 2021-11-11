@@ -5,10 +5,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from kornia.geometry.linalg import transform_points
-from kornia.geometry.transform import warp_perspective
 from kornia.testing import check_is_tensor
 from kornia.utils import create_meshgrid, create_meshgrid3d
 from kornia.utils.helpers import _torch_inverse_cast
+
+from .imgwarp import warp_perspective
 
 __all__ = [
     "HomographyWarper",
