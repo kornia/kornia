@@ -16,8 +16,9 @@ pool: gpu-pool
 steps:
 
 - bash: |
-    apt list -i |grep nvidia
-    apt list -i |grep cuda
+    ls -l /usr/local | grep cuda
+    /usr/local/cuda/bin/nvcc --version
+    nvcc --version
     whereis nvidia
     nvidia-smi
     python --version
