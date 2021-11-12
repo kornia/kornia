@@ -6,8 +6,8 @@
 trigger:
 - master
 
-pool:
-  vmImage: ubuntu-latest
+pool: nvidia-pool
+
 strategy:
   matrix:
     Python36:
