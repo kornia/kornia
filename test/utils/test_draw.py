@@ -7,9 +7,7 @@ from kornia.utils.draw import draw_line
 
 class TestDrawLine:
     def test_draw_line_vertical(self, device):
-        """
-        Test drawing a vertical line.
-        """
+        """Test drawing a vertical line."""
         img = torch.zeros(1, 8, 8, device=device)
         img = draw_line(img, torch.tensor([6, 2]), torch.tensor([6, 0]), 255)
         img_mask = img == torch.tensor([[0., 0., 0., 0., 0., 0., 255., 0.],
@@ -23,9 +21,7 @@ class TestDrawLine:
         assert torch.all(img_mask)
 
     def test_draw_line_horizontal(self, device):
-        """
-        Test drawing a horizontal line.
-        """
+        """Test drawing a horizontal line."""
         img = torch.zeros(1, 8, 8, device=device)
         img = draw_line(img, torch.tensor([6, 4]), torch.tensor([0, 4]), 255)
         img_mask = img == torch.tensor([[0., 0., 0., 0., 0., 0., 0., 0.],
@@ -39,9 +35,7 @@ class TestDrawLine:
         assert torch.all(img_mask)
 
     def test_draw_line_m_lte_neg1(self, device):
-        """
-        Test drawing a line with m <= -1.
-        """
+        """Test drawing a line with m <= -1."""
         img = torch.zeros(1, 8, 8, device=device)
         img = draw_line(img, torch.tensor([0, 7]), torch.tensor([6, 0]), 255)
         img_mask = img == torch.tensor([[0., 0., 0., 0., 0., 0., 255., 0.],
@@ -55,9 +49,7 @@ class TestDrawLine:
         assert torch.all(img_mask)
 
     def test_draw_line_m_lt_0_gte_neg1(self, device):
-        """
-        Test drawing a line with -1 < m < 0.
-        """
+        """Test drawing a line with -1 < m < 0."""
         img = torch.zeros(1, 8, 8, device=device)
         img = draw_line(img, torch.tensor([1, 5]), torch.tensor([7, 0]), 255)
         img_mask = img == torch.tensor([[0., 0., 0., 0., 0., 0., 0., 255.],
@@ -71,9 +63,7 @@ class TestDrawLine:
         assert torch.all(img_mask)
 
     def test_draw_line_m_gt_0_lt_1(self, device):
-        """
-        Test drawing a line with 0 < m < 1.
-        """
+        """Test drawing a line with 0 < m < 1."""
         img = torch.zeros(1, 8, 8, device=device)
         img = draw_line(img, torch.tensor([0, 0]), torch.tensor([6, 2]), 255)
         img_mask = img == torch.tensor([[255., 255., 0., 0., 0., 0., 0., 0.],
@@ -87,9 +77,7 @@ class TestDrawLine:
         assert torch.all(img_mask)
 
     def test_draw_line_m_gte_1(self, device):
-        """
-        Test drawing a line with m >= 1.
-        """
+        """Test drawing a line with m >= 1."""
         img = torch.zeros(1, 8, 8, device=device)
         img = draw_line(img, torch.tensor([3, 7]), torch.tensor([1, 4]), 255)
         img_mask = img == torch.tensor([[0., 0., 0., 0., 0., 0., 0., 0.],
