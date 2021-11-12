@@ -6,10 +6,11 @@
 trigger:
 - master
 
-pool: gpu-pool
+pool: gpu2-pool
 
 container:
-  image: nvcr.io/nvidia/pytorch:21.10-py3
+  #image: nvcr.io/nvidia/pytorch:21.10-py3
+  image: pytorch/pytorch:1.9.1-cuda11.1-cudnn8-devel
   options: --gpus all
 
 steps:
