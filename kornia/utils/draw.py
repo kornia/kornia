@@ -23,6 +23,84 @@ def _draw_pixel(
     """
     image[:, y, x] = color
 
+def draw_line(
+    image : torch.Tensor,
+    p1 : torch.Tensor, p2 : torch.Tensor,
+    color : torch.Tensor,
+    ):
+    r"""Draw a single line into an image.
+
+    Args:
+        image: the input image to where to draw the lines with shape (C,H,W).
+        p1: the start point of the line with shape (2).
+        p2: the end point of the line with shape (2).
+        color: the color of the line with shape (3).
+
+    Return:
+        the image containing the line.
+    """
+
+    # assign points
+    x1, y1 = p1
+    x2, y2 = p2
+
+    # calcullate coefficients A,B,C of line
+    # from equation Ax + By + C = 0
+    A = y2 - y1
+    B = x1 - x2
+    C = x2 * y1 - x1 * y2
+
+    # make sure A is positive to utilize the functiom properly
+    if (A < 0):
+        A = -A
+        B = -B
+        C = -C
+
+    # calculate the slope of the line
+    # check for division by zero
+    if (B != 0):
+        m = -A/B
+        
+    # make sure you start drawing in the right direction
+    x1, x2 = min(x1, x2), max(x1, x2)
+    y1, y2 = min(y1, y2), max(y1, y2)
+
+    # line equation that determines the distance away from the line
+    line_equation = lambda x, y: A*x + B*y + C
+
+    # vertical line
+    if B == 0:
+        image[:, y1:y2+1, x1] = color
+    # horizontal line
+    elif A == 0:
+        image[:, y1, x1:x2+1] = color
+    # slope between 0 and 1
+    elif 0 < m < 1:
+        for i in range(x1, x2+ 1):
+            _draw_pixel(image, i, y1, color)
+            if line_equation(i + 1, y1 + 0.5) > 0:
+                y1 += 1
+    # slope greater than or equal to 1
+    elif m >= 1:
+        for j in range(y1, y2 + 1):
+            _draw_pixel(image, x1, j, color)
+            if line_equation(x1 + 0.5, j + 1) < 0:
+                x1 += 1
+    # slope less then -1
+    elif m <= -1:
+        for j in range(y1, y2+ 1):
+            _draw_pixel(image, x2, j, color)
+            if line_equation(x2 - 0.5, j + 1) > 0:
+                x2 -= 1
+    # slope between -1 and 0
+    elif -1 < m < 0:
+        for i in range(x1, x2+ 1):
+            _draw_pixel(image, i, y2, color)
+            if line_equation(i + 1, y2 - 0.5) > 0:
+                y2 -=  1
+      
+    return image
+
 
 def draw_rectangle(
     image: torch.Tensor,
