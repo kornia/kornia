@@ -242,30 +242,17 @@ class ColorJitter(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._device, self._dtype = _extract_device_dtype([brightness, contrast, hue, saturation])
         self.brightness = brightness
         self.contrast = contrast
         self.saturation = saturation
         self.hue = hue
+        self._param_generator = rg.ColorJitterGenerator(brightness, contrast, saturation, hue)
 
     def __repr__(self) -> str:
-        repr = f"brightness={self.brightness}, contrast={self.contrast}, saturation={self.saturation}, hue={self.hue}"
-        return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
+        return self.__class__.__name__ + f"({self._param_generator.__repr__()}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        brightness: torch.Tensor = _range_bound(
-            self.brightness, 'brightness', center=1.0, bounds=(0, 2), device=self._device, dtype=self._dtype
-        )
-        contrast: torch.Tensor = _range_bound(
-            self.contrast, 'contrast', center=1.0, device=self._device, dtype=self._dtype
-        )
-        saturation: torch.Tensor = _range_bound(
-            self.saturation, 'saturation', center=1.0, device=self._device, dtype=self._dtype
-        )
-        hue: torch.Tensor = _range_bound(self.hue, 'hue', bounds=(-0.5, 0.5), device=self._device, dtype=self._dtype)
-        return rg.random_color_jitter_generator(
-            batch_shape[0], brightness, contrast, saturation, hue, self.same_on_batch, self.device, self.dtype
-        )
+        return self._param_generator(batch_shape, self.same_on_batch)
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None

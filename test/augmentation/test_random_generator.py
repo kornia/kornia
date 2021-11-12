@@ -17,6 +17,7 @@ from kornia.augmentation.random_generator import (
     random_rotation_generator,
     random_sharpness_generator,
     random_solarize_generator,
+    ColorJitterGenerator,
 )
 from kornia.testing import assert_close
 from kornia.utils._compat import torch_version_geq
@@ -83,14 +84,12 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
     def test_valid_param_combinations(
         self, brightness, contrast, saturation, hue, batch_size, same_on_batch, device, dtype
     ):
-        random_color_jitter_generator(
-            batch_size,
-            brightness.to(device=device, dtype=dtype) if brightness is not None else None,
-            contrast.to(device=device, dtype=dtype) if contrast is not None else None,
-            saturation.to(device=device, dtype=dtype) if saturation is not None else None,
-            hue.to(device=device, dtype=dtype) if hue is not None else None,
-            same_on_batch,
-        )
+        ColorJitterGenerator(
+            torch.as_tensor(brightness if brightness is not None else torch.tensor([0., 0.]), device=device, dtype=dtype),
+            torch.as_tensor(contrast if contrast is not None else torch.tensor([0., 0.]), device=device, dtype=dtype),
+            torch.as_tensor(saturation if saturation is not None else torch.tensor([0., 0.]), device=device, dtype=dtype),
+            torch.as_tensor(hue if hue is not None else torch.tensor([0., 0.]), device=device, dtype=dtype),
+        )(torch.Size([batch_size]), same_on_batch)
 
     @pytest.mark.parametrize(
         'brightness,contrast,saturation,hue',
@@ -98,33 +97,28 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
             # Should be failed if value out of bounds or tensor.shape != [1, 2]
             (torch.tensor([-1.0, 2.0]), None, None, None),
             (torch.tensor([0.0, 3.0]), None, None, None),
-            (torch.tensor(0.0), None, None, None),
             (torch.tensor([0.0]), None, None, None),
             (torch.tensor([0.0, 1.0, 2.0]), None, None, None),
             (None, torch.tensor([-1.0, 2.0]), None, None),
-            (None, torch.tensor(0.0), None, None),
             (None, torch.tensor([0.0]), None, None),
             (None, torch.tensor([0.0, 1.0, 2.0]), None, None),
             (None, None, torch.tensor([-1.0, 2.0]), None),
-            (None, None, torch.tensor(0.0), None),
             (None, None, torch.tensor([0.0]), None),
             (None, None, torch.tensor([0.0, 1.0, 2.0]), None),
             (None, None, None, torch.tensor([-1.0, 0.0])),
             (None, None, None, torch.tensor([0, 1.0])),
-            (None, None, None, torch.tensor(0.0)),
             (None, None, None, torch.tensor([0.0])),
             (None, None, None, torch.tensor([0.0, 1.0, 2.0])),
         ],
     )
     def test_invalid_param_combinations(self, brightness, contrast, saturation, hue, device, dtype):
         with pytest.raises(Exception):
-            random_color_jitter_generator(
-                8,
-                brightness.to(device=device, dtype=dtype) if brightness is not None else None,
-                contrast.to(device=device, dtype=dtype) if contrast is not None else None,
-                saturation.to(device=device, dtype=dtype) if saturation is not None else None,
-                hue.to(device=device, dtype=dtype) if hue is not None else None,
-            )
+            ColorJitterGenerator(
+                torch.as_tensor(brightness if brightness is not None else torch.tensor([0., 0.]), device=device, dtype=dtype),
+                torch.as_tensor(contrast if contrast is not None else torch.tensor([0., 0.]), device=device, dtype=dtype),
+                torch.as_tensor(saturation if saturation is not None else torch.tensor([0., 0.]), device=device, dtype=dtype),
+                torch.as_tensor(hue if hue is not None else torch.tensor([0., 0.]), device=device, dtype=dtype),
+            )(torch.Size([8]))
 
     def test_random_gen(self, device, dtype):
         # TODO(jian): crashes with pytorch 1.10, cuda and fp64
@@ -132,13 +126,12 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
             pytest.skip("AssertionError: Tensor-likes are not close!")
         torch.manual_seed(42)
         batch_size = 8
-        jitter_params = random_color_jitter_generator(
-            batch_size,
+        jitter_params = ColorJitterGenerator(
             brightness=torch.tensor([0.8, 1.2], device=device, dtype=dtype),
             contrast=torch.tensor([0.7, 1.3], device=device, dtype=dtype),
             saturation=torch.tensor([0.6, 1.4], device=device, dtype=dtype),
             hue=torch.tensor([-0.1, 0.1], device=device, dtype=dtype),
-        )
+        )(torch.Size([batch_size]))
 
         expected_jitter_params = {
             'brightness_factor': torch.tensor(
@@ -178,14 +171,12 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
     def test_same_on_batch(self, device, dtype):
         torch.manual_seed(42)
         batch_size = 8
-        jitter_params = random_color_jitter_generator(
-            batch_size,
+        jitter_params = ColorJitterGenerator(
             brightness=torch.tensor([0.8, 1.2], device=device, dtype=dtype),
             contrast=torch.tensor([0.7, 1.3], device=device, dtype=dtype),
             saturation=torch.tensor([0.6, 1.4], device=device, dtype=dtype),
             hue=torch.tensor([-0.1, 0.1], device=device, dtype=dtype),
-            same_on_batch=True,
-        )
+        )(torch.Size([batch_size]), same_on_batch=True)
 
         expected_res = {
             'brightness_factor': torch.tensor([1.1529] * batch_size, device=device, dtype=dtype),
