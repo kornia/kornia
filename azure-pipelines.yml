@@ -9,17 +9,12 @@ trigger:
 pool: nvidia-pool
 
 container:
-  # base ML image: mcr.microsoft.com/azureml/openmpi3.1.2-cuda10.2-cudnn8-ubuntu18.04
-  # run on torch 1.8 as it's the LTS version
-  image: "pytorchlightning/pytorch_lightning:base-cuda-py3.7-torch1.8"
-  # default shm size is 64m. Increase it to avoid:
-  # 'Error while creating shared memory: unhandled system error, NCCL version 2.7.8'
-  options: "--runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=all --shm-size=512m"
+  image: pytorch/pytorch:1.6.0-cuda10.1-cudnn7-runtime
+  options: --gpus all
 
 steps:
 
 - bash: |
-    lspci | egrep 'VGA|3D'
     whereis nvidia
     nvidia-smi
     python --version
@@ -27,13 +22,11 @@ steps:
     pip list
   displayName: 'Image info & NVIDIA'
 
-
 - script: |
     python -m pip install --upgrade pip
-    pip install -r requirements.txt
+    pip install .[all]
   displayName: 'Install dependencies'
 
 - script: |
-    pip install pytest pytest-azurepipelines
-    pytest
+    pytest -v --device cuda --dtype float32,float64 ./test
   displayName: 'pytest'
