@@ -9,7 +9,7 @@ trigger:
 pool: nvidia-pool
 
 container:
-  image: pytorch/pytorch:1.9.0-cuda10.2-cudnn7-runtime
+  image: pytorch/pytorch:1.9.1-cuda11.1-cudnn8-devel
   options: --gpus all
 
 steps:
