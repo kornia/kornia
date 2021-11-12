@@ -6,7 +6,7 @@
 trigger:
 - master
 
-pool: nvidia-pool
+pool: gpu-pool
 
 container:
   image: pytorch/pytorch:1.9.1-cuda11.1-cudnn8-devel
