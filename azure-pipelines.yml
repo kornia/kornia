@@ -8,9 +8,9 @@ trigger:
 
 pool: gpu-pool
 
-container:
-  image: pytorch/pytorch:1.9.1-cuda11.1-cudnn8-devel
-  options: --gpus all
+#container:
+#  image: pytorch/pytorch:1.9.1-cuda11.1-cudnn8-devel
+#  options: --gpus all
 
 steps:
 
