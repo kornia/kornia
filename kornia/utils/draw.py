@@ -4,6 +4,25 @@ import torch
 
 # TODO: implement width of the line
 
+def _draw_pixel(
+    image: torch.Tensor,
+    x: int,
+    y: int,
+    color: torch.Tensor,
+    ):
+    r"""Draws a pixel into an image.
+
+    Args:
+        image: the input image to where to draw the lines with shape (C,H,W).
+        x: the x coordinate of the pixel.
+        y: the y coordinate of the pixel.
+        color: the color of the pixel with shape (3).
+    
+    Return:
+        Nothing is returned
+    """
+    image[:, y, x] = color
+
 
 def draw_rectangle(
     image: torch.Tensor,
