@@ -422,8 +422,8 @@ class RandomPerspective(GeometricAugmentationBase2D):
     .. image:: _static/img/RandomPerspective.png
 
     Args:
-        p: probability of the image being perspectively transformed..
-        distortion_scale: it controls the degree of distortion and ranges from 0 to 1.
+        p: probability of the image being perspectively transformed.
+        distortion_scale: the degree of distortion, ranged from 0 to 1.
         resample: the interpolation method to use.
         return_transform: if ``True`` return the matrix describing the transformation
                           applied to each.
@@ -467,32 +467,22 @@ class RandomPerspective(GeometricAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._device, self._dtype = _extract_device_dtype([distortion_scale])
-        self.distortion_scale = distortion_scale
         self.resample: Resample = Resample.get(resample)
         self.align_corners = align_corners
         self.flags: Dict[str, torch.Tensor] = dict(
             interpolation=torch.tensor(self.resample.value), align_corners=torch.tensor(align_corners)
         )
+        self._param_generator = rg.PerspectiveGenerator(distortion_scale)
 
     def __repr__(self) -> str:
         repr = (
-            f"distortion_scale={self.distortion_scale}, interpolation={self.resample.name}, "
-            f"align_corners={self.align_corners}"
+            f"{self._param_generator.__repr__()}, "
+            f"interpolation={self.resample.name}, align_corners={self.align_corners}"
         )
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        distortion_scale = torch.as_tensor(self.distortion_scale, device=self._device, dtype=self._dtype)
-        return rg.random_perspective_generator(
-            batch_shape[0],
-            batch_shape[-2],
-            batch_shape[-1],
-            distortion_scale,
-            self.same_on_batch,
-            self.device,
-            self.dtype,
-        )
+        return self._param_generator(batch_shape, self.same_on_batch)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return get_perspective_transform(params['start_points'].to(input), params['end_points'].to(input))

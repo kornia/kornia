@@ -5,7 +5,7 @@ import torch.nn as nn
 from torch.distributions import Bernoulli, Uniform
 
 from kornia.geometry.bbox import bbox_generator
-from kornia.utils import _extract_device_dtype
+from kornia.utils.helpers import _extract_device_dtype, _deprecated
 
 from ..utils import _adapted_beta, _adapted_sampling, _adapted_rsampling, _adapted_uniform, _common_param_check, _joint_range_check, _range_bound
 
@@ -57,7 +57,7 @@ class ColorJitterGenerator(RandomGeneratorBase):
         hue: The hue factor to apply.
 
     Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+        A dict of parameters to be passed for transformation.
             - brightness_factor: element-wise brightness factors with a shape of (B,).
             - contrast_factor: element-wise contrast factors with a shape of (B,).
             - hue_factor: element-wise hue factors with a shape of (B,).
@@ -113,6 +113,7 @@ class ColorJitterGenerator(RandomGeneratorBase):
 
     def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type:ignore
         batch_size = batch_shape[0]
+        _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.brightness, self.contrast, self.hue, self.saturation])
         brightness_factor = _adapted_rsampling((batch_size,), self.brightness_sampler, same_on_batch)
         contrast_factor = _adapted_rsampling((batch_size,), self.contrast_sampler, same_on_batch)
@@ -125,6 +126,69 @@ class ColorJitterGenerator(RandomGeneratorBase):
             saturation_factor=saturation_factor.to(device=_device, dtype=_dtype),
             order=torch.randperm(4, device=self._device, dtype=self._dtype).to(device=_device, dtype=_dtype).long(),
         )
+
+
+class PerspectiveGenerator(RandomGeneratorBase):
+    r"""Get parameters for ``perspective`` for a random perspective transform.
+
+    Args:
+        distortion_scale: the degree of distortion, ranged from 0 to 1.
+
+    Returns:
+        A dict of parameters to be passed for transformation.
+            - start_points (torch.Tensor): element-wise perspective source areas with a shape of (B, 4, 2).
+            - end_points (torch.Tensor): element-wise perspective target areas with a shape of (B, 4, 2).
+
+    Note:
+        The generated random numbers are not reproducible across different devices and dtypes.
+    """
+    def __init__(self, distortion_scale: Union[torch.Tensor, float] = 0.5) -> None:
+        super().__init__()
+        self.distortion_scale = distortion_scale
+        self.set_rng_device_and_dtype()
+
+    def __repr__(self):
+        repr = f"distortion_scale={self.distortion_scale}"
+        return repr
+
+    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+        self._distortion_scale = torch.as_tensor(self.distortion_scale, device=device, dtype=dtype)
+        if not (self._distortion_scale.dim() == 0 and 0 <= self._distortion_scale <= 1):
+            raise AssertionError(f"'distortion_scale' must be a scalar within [0, 1]. Got {self._distortion_scale}.")
+        self.rand_val_sampler = Uniform(torch.tensor(0, device=device, dtype=dtype), torch.tensor(1, device=device, dtype=dtype))
+
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type:ignore
+        batch_size = batch_shape[0]
+        height = batch_shape[-2]
+        width = batch_shape[-1]
+
+        self._device, self._dtype = _extract_device_dtype([self.distortion_scale])
+        _common_param_check(batch_size, same_on_batch)
+        if not (type(height) is int and height > 0 and type(width) is int and width > 0):
+            raise AssertionError(f"'height' and 'width' must be integers. Got {height}, {width}.")
+
+        start_points: torch.Tensor = torch.tensor(
+            [[[0.0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]]],
+            device=self._device,
+            dtype=self._dtype,
+        ).expand(batch_size, -1, -1)
+
+        # generate random offset not larger than half of the image
+        fx = self._distortion_scale * width / 2
+        fy = self._distortion_scale * height / 2
+
+        factor = torch.stack([fx, fy], dim=0).view(-1, 1, 2)
+
+        # TODO: This line somehow breaks the gradcheck
+        rand_val: torch.Tensor = _adapted_rsampling(
+            start_points.shape, self.rand_val_sampler, same_on_batch).to(device=self._device, dtype=self._dtype)
+
+        pts_norm = torch.tensor(
+            [[[1, 1], [-1, 1], [-1, -1], [1, -1]]], device=self._device, dtype=self._dtype
+        )
+        end_points = start_points + factor * rand_val * pts_norm
+
+        return dict(start_points=start_points, end_points=end_points)
 
 
 def random_prob_generator(
@@ -160,6 +224,7 @@ def random_prob_generator(
     return probs_mask
 
 
+@_deprecated(ColorJitterGenerator.__class__.__name__)
 def random_color_jitter_generator(
     batch_size: int,
     brightness: Optional[torch.Tensor] = None,

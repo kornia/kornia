@@ -1,9 +1,26 @@
 import warnings
-from typing import Any, List, Optional, Tuple
+from typing import Any, Callable, List, Optional, Tuple
+from inspect import isfunction, isclass
 
 import torch
+from functools import partial, wraps
 
 from kornia.utils._compat import solve, torch_version_geq
+
+
+def _deprecated(func: Callable = None, replacing_text: str = ''):
+    if func is None:
+        return partial(_deprecated, replacing_text=replacing_text)
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        name: str = ""
+        if isclass(func):
+            name = func.__class__.__name__
+        if isfunction(func):
+            name = func.__class__.__name__
+        warnings.warn(f"`{name}` is deprecated in favor of {replacing_text}.")
+    return wrapper
 
 
 def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.device, torch.dtype]:

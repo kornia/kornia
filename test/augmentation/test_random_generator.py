@@ -18,6 +18,7 @@ from kornia.augmentation.random_generator import (
     random_sharpness_generator,
     random_solarize_generator,
     ColorJitterGenerator,
+    PerspectiveGenerator,
 )
 from kornia.testing import assert_close
 from kornia.utils._compat import torch_version_geq
@@ -199,13 +200,8 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(self, height, width, distortion_scale, batch_size, same_on_batch, device, dtype):
-        random_perspective_generator(
-            batch_size=8,
-            height=height,
-            width=width,
-            distortion_scale=distortion_scale.to(device=device, dtype=dtype),
-            same_on_batch=same_on_batch,
-        )
+        PerspectiveGenerator(distortion_scale.to(device=device, dtype=dtype))(
+            torch.Size([batch_size, 1, height, width]), same_on_batch)
 
     @pytest.mark.parametrize(
         'height,width,distortion_scale',
@@ -220,17 +216,15 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
     )
     def test_invalid_param_combinations(self, height, width, distortion_scale, device, dtype):
         with pytest.raises(Exception):
-            random_perspective_generator(
-                batch_size=8,
-                height=height,
-                width=width,
-                distortion_scale=distortion_scale.to(device=device, dtype=dtype),
-            )
+            PerspectiveGenerator(distortion_scale.to(device=device, dtype=dtype))(
+                torch.Size([8, 1, height, width]))
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
         batch_size = 2
-        res = random_perspective_generator(batch_size, 200, 200, torch.tensor(0.5, device=device, dtype=dtype))
+        res = PerspectiveGenerator(torch.tensor(0.5, device=device, dtype=dtype))(
+            torch.Size([batch_size, 1, 200, 200]))
+
         expected = dict(
             start_points=torch.tensor(
                 [
@@ -256,9 +250,8 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
     def test_same_on_batch(self, device, dtype):
         torch.manual_seed(42)
         batch_size = 2
-        res = random_perspective_generator(
-            batch_size, 200, 200, torch.tensor(0.5, device=device, dtype=dtype), same_on_batch=True
-        )
+        res = PerspectiveGenerator(torch.tensor(0.5, device=device, dtype=dtype))(
+            torch.Size([batch_size, 1, 200, 200]), same_on_batch=True)
         expected = dict(
             start_points=torch.tensor(
                 [[[0.0, 0.0], [199.0, 0.0], [199.0, 199.0], [0.0, 199.0]]], device=device, dtype=dtype
