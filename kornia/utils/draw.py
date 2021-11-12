@@ -4,12 +4,13 @@ import torch
 
 # TODO: implement width of the line
 
+
 def _draw_pixel(
     image: torch.Tensor,
     x: int,
     y: int,
     color: torch.Tensor,
-    ):
+):
     r"""Draws a pixel into an image.
 
     Args:
@@ -17,17 +18,18 @@ def _draw_pixel(
         x: the x coordinate of the pixel.
         y: the y coordinate of the pixel.
         color: the color of the pixel with shape (3).
-    
+
     Return:
         Nothing is returned
     """
     image[:, y, x] = color
 
+
 def draw_line(
     image : torch.Tensor,
     p1 : torch.Tensor, p2 : torch.Tensor,
     color : torch.Tensor,
-    ):
+) -> torch.Tensor:
     r"""Draw a single line into an image.
 
     Args:
@@ -59,24 +61,25 @@ def draw_line(
     # calculate the slope of the line
     # check for division by zero
     if (B != 0):
-        m = -A/B
-        
+        m = -A / B
+
     # make sure you start drawing in the right direction
     x1, x2 = min(x1, x2), max(x1, x2)
     y1, y2 = min(y1, y2), max(y1, y2)
 
     # line equation that determines the distance away from the line
-    line_equation = lambda x, y: A*x + B*y + C
+    def line_equation(x, y):
+        return A * x + B * y + C
 
     # vertical line
     if B == 0:
-        image[:, y1:y2+1, x1] = color
+        image[:, y1:y2 + 1, x1] = color
     # horizontal line
     elif A == 0:
-        image[:, y1, x1:x2+1] = color
+        image[:, y1, x1:x2 + 1] = color
     # slope between 0 and 1
     elif 0 < m < 1:
-        for i in range(x1, x2+ 1):
+        for i in range(x1, x2 + 1):
             _draw_pixel(image, i, y1, color)
             if line_equation(i + 1, y1 + 0.5) > 0:
                 y1 += 1
@@ -88,17 +91,17 @@ def draw_line(
                 x1 += 1
     # slope less then -1
     elif m <= -1:
-        for j in range(y1, y2+ 1):
+        for j in range(y1, y2 + 1):
             _draw_pixel(image, x2, j, color)
             if line_equation(x2 - 0.5, j + 1) > 0:
                 x2 -= 1
     # slope between -1 and 0
     elif -1 < m < 0:
-        for i in range(x1, x2+ 1):
+        for i in range(x1, x2 + 1):
             _draw_pixel(image, i, y2, color)
             if line_equation(i + 1, y2 - 0.5) > 0:
-                y2 -=  1
-      
+                y2 -= 1
+
     return image
 
 
