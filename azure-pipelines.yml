@@ -10,7 +10,7 @@ pool: gpu-pool
 
 container:
   image: nvcr.io/nvidia/pytorch:21.06-py3
-  options: --gpus all
+  options: --gpus all --shm-size 32G
   #image: pytorch/pytorch:1.9.1-cuda11.1-cudnn8-devel
   #options: --gpus all --shm-size 8G
 
