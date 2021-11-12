@@ -8,9 +8,9 @@ trigger:
 
 pool: gpu-pool
 
-container:
-  image: nvcr.io/nvidia/pytorch:20.05-py3
-  options: --gpus all
+#container:
+  #image: nvcr.io/nvidia/pytorch:20.02-py3
+  #options: --gpus all
 
 steps:
 
