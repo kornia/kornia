@@ -942,6 +942,7 @@ class RandomCrop(GeometricAugmentationBase2D):
             interpolation=torch.tensor(self.resample.value), align_corners=torch.tensor(align_corners)
         )
         self.cropping_mode = cropping_mode
+        self._param_generator = rg.CropGenerator(size, None)
 
     def __repr__(self) -> str:
         repr = (
@@ -949,16 +950,6 @@ class RandomCrop(GeometricAugmentationBase2D):
             f"padding_mode={self.padding_mode}, resample={self.resample.name}"
         )
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
-
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return rg.random_crop_generator(
-            batch_shape[0],
-            (batch_shape[-2], batch_shape[-1]),
-            self.size,
-            same_on_batch=self.same_on_batch,
-            device=self.device,
-            dtype=self.dtype,
-        )
 
     def compute_padding(self, shape: torch.Size) -> List[int]:
         if len(shape) != 4:
