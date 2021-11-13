@@ -8,9 +8,9 @@ from functools import partial, wraps
 from kornia.utils._compat import solve, torch_version_geq
 
 
-def _deprecated(func: Callable = None, replacing_text: str = ''):
+def _deprecated(func: Callable = None, replace_with: Optional[str] = None):
     if func is None:
-        return partial(_deprecated, replacing_text=replacing_text)
+        return partial(_deprecated, replace_with=replace_with)
 
     @wraps(func)
     def wrapper(*args, **kwargs):
@@ -19,7 +19,10 @@ def _deprecated(func: Callable = None, replacing_text: str = ''):
             name = func.__class__.__name__
         if isfunction(func):
             name = func.__class__.__name__
-        warnings.warn(f"`{name}` is deprecated in favor of {replacing_text}.")
+        if replace_with is not None:
+            warnings.warn(f"`{name}` is deprecated in favor of {replace_with}.", category=DeprecationWarning)
+        else:
+            warnings.warn(f"`{name}` is deprecated and will be removed in the future versions.", category=DeprecationWarning)
     return wrapper
 
 

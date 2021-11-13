@@ -251,9 +251,6 @@ class ColorJitter(IntensityAugmentationBase2D):
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({self._param_generator.__repr__()}, {super().__repr__()})"
 
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return self._param_generator(batch_shape, self.same_on_batch)
-
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
@@ -379,29 +376,14 @@ class RandomErasing(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._device, self._dtype = _extract_device_dtype([scale, ratio])
         self.scale = scale
         self.ratio = ratio
         self.value: float = float(value)
+        self._param_generator = rg.RectangleEraseGenerator(scale, ratio, float(value))
 
     def __repr__(self) -> str:
         repr = f"scale={self.scale}, ratio={self.ratio}, value={self.value}"
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
-
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        scale = torch.as_tensor(self.scale, device=self._device, dtype=self._dtype)
-        ratio = torch.as_tensor(self.ratio, device=self._device, dtype=self._dtype)
-        return rg.random_rectangles_params_generator(
-            batch_shape[0],
-            batch_shape[-2],
-            batch_shape[-1],
-            scale=scale,
-            ratio=ratio,
-            value=self.value,
-            same_on_batch=self.same_on_batch,
-            device=self.device,
-            dtype=self.dtype,
-        )
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
@@ -480,9 +462,6 @@ class RandomPerspective(GeometricAugmentationBase2D):
             f"interpolation={self.resample.name}, align_corners={self.align_corners}"
         )
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
-
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return self._param_generator(batch_shape, self.same_on_batch)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return get_perspective_transform(params['start_points'].to(input), params['end_points'].to(input))
@@ -591,6 +570,7 @@ class RandomAffine(GeometricAugmentationBase2D):
         self.resample: Resample = Resample.get(resample)
         self.padding_mode: SamplePadding = SamplePadding.get(padding_mode)
         self.align_corners = align_corners
+        self._param_generator = rg.AffineGenerator(self.degrees, self.translate, self.scale, self.shear)
         self.flags: Dict[str, torch.Tensor] = dict(
             resample=torch.tensor(self.resample.value),
             padding_mode=torch.tensor(self.padding_mode.value),
@@ -603,75 +583,6 @@ class RandomAffine(GeometricAugmentationBase2D):
             f"resample={self.resample.name}"
         )
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
-
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        degrees = _range_bound(self.degrees, 'degrees', 0, (-360, 360), device=self._device, dtype=self._dtype)
-        translate: Optional[torch.Tensor] = None
-        scale: Optional[torch.Tensor] = None
-        shear: Optional[torch.Tensor] = None
-
-        if self.translate is not None:
-            translate = _range_bound(
-                self.translate, 'translate', bounds=(0, 1), check='singular', device=self._device, dtype=self._dtype
-            )
-        if self.scale is not None:
-            scale = torch.as_tensor(self.scale, device=self._device, dtype=self._dtype)
-            if len(scale) == 2:
-                scale = _range_bound(
-                    scale, 'scale', bounds=(0, float('inf')), check='singular', device=self._device, dtype=self._dtype
-                )
-            elif len(scale) == 4:
-                scale = torch.cat(
-                    [
-                        _range_bound(
-                            scale[:2],
-                            'scale_x',
-                            bounds=(0, float('inf')),
-                            check='singular',
-                            device=self._device,
-                            dtype=self._dtype,
-                        ),
-                        _range_bound(
-                            scale[2:],
-                            'scale_y',
-                            bounds=(0, float('inf')),
-                            check='singular',
-                            device=self._device,
-                            dtype=self._dtype,
-                        ),
-                    ]
-                )
-            else:
-                raise ValueError(f"'scale' expected to be either 2 or 4 elements. Got {scale}")
-        if self.shear is not None:
-            shear = torch.as_tensor(self.shear, device=self._device, dtype=self._dtype)
-            shear = torch.stack(
-                [
-                    _range_bound(
-                        shear if shear.dim() == 0 else shear[:2],
-                        'shear-x',
-                        0,
-                        (-360, 360),
-                        device=self._device,
-                        dtype=self._dtype,
-                    ),
-                    torch.tensor([0, 0], device=self._device, dtype=self._dtype)
-                    if shear.dim() == 0 or len(shear) == 2
-                    else _range_bound(shear[2:], 'shear-y', 0, (-360, 360), device=self._device, dtype=self._dtype),
-                ]
-            )
-        return rg.random_affine_generator(
-            batch_shape[0],
-            batch_shape[-2],
-            batch_shape[-1],
-            degrees,
-            translate,
-            scale,
-            shear,
-            self.same_on_batch,
-            self.device,
-            self.dtype,
-        )
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return get_affine_matrix2d(
@@ -903,6 +814,7 @@ class RandomRotation(GeometricAugmentationBase2D):
         self.degrees = degrees
         self.resample: Resample = Resample.get(resample)
         self.align_corners = align_corners
+        self._param_generator = rg.RotationGenerator(degrees)
         self.flags: Dict[str, torch.Tensor] = dict(
             interpolation=torch.tensor(self.resample.value), align_corners=torch.tensor(align_corners)
         )
@@ -910,10 +822,6 @@ class RandomRotation(GeometricAugmentationBase2D):
     def __repr__(self) -> str:
         repr = f"degrees={self.degrees}, interpolation={self.resample.name}"
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
-
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        degrees = _range_bound(self.degrees, 'degrees', 0, (-360, 360), device=self._device, dtype=self._dtype)
-        return rg.random_rotation_generator(batch_shape[0], degrees, self.same_on_batch, self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         # TODO: Update to use `get_rotation_matrix2d`

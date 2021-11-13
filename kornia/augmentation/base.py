@@ -15,6 +15,7 @@ from .utils import (
     _transform_output_shape,
     _validate_input_dtype,
 )
+from .random_generator import RandomGeneratorBase
 
 TensorWithTransformMat = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
 
@@ -48,6 +49,7 @@ class _BasicAugmentationBase(nn.Module):
             self._p_gen = Bernoulli(self.p)
         if p_batch != 0.0 or p_batch != 1.0:
             self._p_batch_gen = Bernoulli(self.p_batch)
+        self._param_generator: Optional[RandomGeneratorBase] = None
         self.set_rng_device_and_dtype(torch.device('cpu'), torch.get_default_dtype())
 
     def __repr__(self) -> str:
@@ -65,7 +67,10 @@ class _BasicAugmentationBase(nn.Module):
         raise NotImplementedError
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return {}
+        if self._param_generator is not None:
+            return self._param_generator(batch_shape, self.same_on_batch)
+        else:
+            return {}
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         raise NotImplementedError
@@ -78,6 +83,8 @@ class _BasicAugmentationBase(nn.Module):
         """
         self.device = device
         self.dtype = dtype
+        if self._param_generator is not None:
+            self._param_generator.set_rng_device_and_dtype(device, dtype)
 
     def __batch_prob_generator__(
         self, batch_shape: torch.Size, p: float, p_batch: float, same_on_batch: bool

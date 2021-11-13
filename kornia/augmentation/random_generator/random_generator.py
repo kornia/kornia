@@ -1,4 +1,5 @@
 from typing import cast, Dict, Optional, Tuple, Union, List
+from functools import partial
 
 import torch
 import torch.nn as nn
@@ -11,7 +12,7 @@ from ..utils import _adapted_beta, _adapted_sampling, _adapted_rsampling, _adapt
 
 
 class RandomGeneratorBase(nn.Module):
-    """
+    """Base class for generating random augmentation parameters.
     """
     def __init__(self) -> None:
         super().__init__()
@@ -22,8 +23,6 @@ class RandomGeneratorBase(nn.Module):
         Note:
             The generated random numbers are not reproducible across different devices and dtypes.
         """
-        self._device = device
-        self._dtype = dtype
         self.make_samplers(device, dtype)
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
@@ -45,6 +44,148 @@ class ProbabilityGenerator(RandomGeneratorBase):
     def forward(self, batch_size: int, same_on_batch: bool = False):
         probs_mask: torch.Tensor = _adapted_sampling((batch_size,), self.sampler, same_on_batch).bool()
         return probs_mask
+
+
+class AffineGenerator(RandomGeneratorBase):
+    r"""Get parameters for ``affine`` for a random affine transform.
+
+    Args:
+        degrees: Range of degrees to select from like (min, max).
+        translate: tuple of maximum absolute fraction for horizontal
+            and vertical translations. For example translate=(a, b), then horizontal shift
+            is randomly sampled in the range -img_width * a < dx < img_width * a and vertical shift is
+            randomly sampled in the range -img_height * b < dy < img_height * b. Will not translate by default.
+        scale: scaling factor interval, e.g (a, b), then scale is
+            randomly sampled from the range a <= scale <= b. Will keep original scale by default.
+        shear: Range of degrees to select from.
+            Shear is a 2x2 tensor, a x-axis shear in (shear[0][0], shear[0][1]) and y-axis shear in
+            (shear[1][0], shear[1][1]) will be applied. Will not apply shear by default.
+
+    Returns:
+        A dict of parameters to be passed for transformation.1
+            - translations (torch.Tensor): element-wise translations with a shape of (B, 2).
+            - center (torch.Tensor): element-wise center with a shape of (B, 2).
+            - scale (torch.Tensor): element-wise scales with a shape of (B, 2).
+            - angle (torch.Tensor): element-wise rotation angles with a shape of (B,).
+            - sx (torch.Tensor): element-wise x-axis shears with a shape of (B,).
+            - sy (torch.Tensor): element-wise y-axis shears with a shape of (B,).
+
+    Note:
+        The generated random numbers are not reproducible across different devices and dtypes. By default,
+        the parameters will be generated on CPU in float32. This can be changed by calling
+        ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
+    """
+    def __init__(
+        self,
+        degrees: Union[torch.Tensor, float, Tuple[float, float]],
+        translate: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
+        scale: Optional[Union[torch.Tensor, Tuple[float, float], Tuple[float, float, float, float]]] = None,
+        shear: Optional[Union[torch.Tensor, float, Tuple[float, float]]] = None,
+    ) -> None:
+        super().__init__()
+        self.degrees = degrees
+        self.translate = translate
+        self.scale = scale
+        self.shear = shear
+
+    def make_samplers(self, device, dtype):
+        degrees = _range_bound(self.degrees, 'degrees', 0, (-360, 360), device=device, dtype=dtype)
+        translate_x_sampler: Optional[Uniform] = None
+        translate_y_sampler: Optional[Uniform] = None
+        scale_2_sampler: Optional[Uniform] = None
+        scale_4_sampler: Optional[Uniform] = None
+        shear_x_sampler: Optional[Uniform] = None
+        shear_y_sampler: Optional[Uniform] = None
+
+        if self.translate is not None:
+            translate = _range_bound(
+                self.translate, 'translate', bounds=(0, 1), check='singular', device=device, dtype=dtype
+            )
+            translate_x_sampler = Uniform(-translate[0], translate[0], validate_args=False)
+            translate_y_sampler = Uniform(-translate[1], translate[1], validate_args=False)
+        if self.scale is not None:
+            scale = torch.as_tensor(self.scale, device=device, dtype=dtype)
+            if len(scale) == 2:
+                scale = _range_bound(
+                    scale, 'scale', bounds=(0, float('inf')), check='singular', device=device, dtype=dtype
+                )
+                scale_2_sampler = Uniform(scale[0], scale[1])
+            elif len(scale) == 4:
+                scale = torch.cat([
+                    _range_bound(
+                        scale[:2], 'scale_x', bounds=(0, float('inf')), check='singular', device=device, dtype=dtype,
+                    ),
+                    _range_bound(
+                        scale[2:], 'scale_y', bounds=(0, float('inf')), check='singular', device=device, dtype=dtype,
+                    ),
+                ])
+                scale_4_sampler = Uniform(scale[2], scale[3], validate_args=False)
+            else:
+                raise ValueError(f"'scale' expected to be either 2 or 4 elements. Got {scale}")
+        if self.shear is not None:
+            shear = torch.as_tensor(self.shear, device=device, dtype=dtype)
+            shear = torch.stack([
+                _range_bound(
+                    shear if shear.dim() == 0 else shear[:2], 'shear-x', 0, (-360, 360),
+                    device=device, dtype=dtype,
+                ),
+                torch.tensor([0, 0], device=device, dtype=dtype)
+                if shear.dim() == 0 or len(shear) == 2
+                else _range_bound(shear[2:], 'shear-y', 0, (-360, 360), device=device, dtype=dtype),
+            ])
+            shear_x_sampler = Uniform(shear[0][0], shear[0][1], validate_args=False)
+            shear_y_sampler = Uniform(shear[1][0], shear[1][1], validate_args=False)
+
+        self.degree_sampler = Uniform(degrees[0], degrees[1], validate_args=False)
+        self.translate_x_sampler = translate_x_sampler
+        self.translate_y_sampler = translate_y_sampler
+        self.scale_2_sampler = scale_2_sampler
+        self.scale_4_sampler = scale_4_sampler
+        self.shear_x_sampler = shear_x_sampler
+        self.shear_y_sampler = shear_y_sampler
+
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type: ignore
+        batch_size = batch_shape[0]
+        height = batch_shape[-2]
+        width = batch_shape[-1]
+
+        _device, _dtype = _extract_device_dtype([self.degrees, self.translate, self.scale, self.shear])
+        _common_param_check(batch_size, same_on_batch)
+        if not (isinstance(width, (int,)) and isinstance(height, (int,)) and width > 0 and height > 0):
+            raise AssertionError(f"`width` and `height` must be positive integers. Got {width}, {height}.")
+
+        angle = _adapted_rsampling((batch_size,), self.degree_sampler, same_on_batch).to(device=_device, dtype=_dtype)
+
+        # compute tensor ranges
+        if self.scale is not None:
+            _scale = _adapted_rsampling((batch_size,), self.scale_2_sampler, same_on_batch).unsqueeze(1).repeat(1, 2)
+            if self.scale_4_sampler is not None:
+                _scale[:, 1] = _adapted_rsampling((batch_size,), self.scale_4_sampler, same_on_batch)
+            _scale = _scale.to(device=_device, dtype=_dtype)
+        else:
+            _scale = torch.ones((batch_size, 2), device=_device, dtype=_dtype)
+
+        if self.translate is not None:
+            translations = torch.stack([
+                _adapted_rsampling((batch_size,), self.translate_x_sampler, same_on_batch) * width,
+                _adapted_rsampling((batch_size,), self.translate_y_sampler, same_on_batch) * height,
+            ], dim=-1)
+            translations = translations.to(device=_device, dtype=_dtype)
+        else:
+            translations = torch.zeros((batch_size, 2), device=_device, dtype=_dtype)
+
+        center: torch.Tensor = torch.tensor([width, height], device=_device, dtype=_dtype).view(1, 2) / 2.0 - 0.5
+        center = center.expand(batch_size, -1)
+
+        if self.shear is not None:
+            sx = _adapted_rsampling((batch_size,), self.shear_x_sampler, same_on_batch)
+            sy = _adapted_rsampling((batch_size,), self.shear_y_sampler, same_on_batch)
+            sx = sx.to(device=_device, dtype=_dtype)
+            sy = sy.to(device=_device, dtype=_dtype)
+        else:
+            sx = sy = torch.tensor([0] * batch_size, device=_device, dtype=_dtype)
+
+        return dict(translations=translations, center=center, scale=_scale, angle=angle, sx=sx, sy=sy)
 
 
 class ColorJitterGenerator(RandomGeneratorBase):
@@ -110,6 +251,7 @@ class ColorJitterGenerator(RandomGeneratorBase):
         self.contrast_sampler = Uniform(contrast[0], contrast[1], validate_args=False)
         self.hue_sampler = Uniform(hue[0], hue[1], validate_args=False)
         self.saturation_sampler = Uniform(saturation[0], saturation[1], validate_args=False)
+        self.randperm = partial(torch.randperm, device=device, dtype=dtype)
 
     def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type:ignore
         batch_size = batch_shape[0]
@@ -124,7 +266,7 @@ class ColorJitterGenerator(RandomGeneratorBase):
             contrast_factor=contrast_factor.to(device=_device, dtype=_dtype),
             hue_factor=hue_factor.to(device=_device, dtype=_dtype),
             saturation_factor=saturation_factor.to(device=_device, dtype=_dtype),
-            order=torch.randperm(4, device=self._device, dtype=self._dtype).to(device=_device, dtype=_dtype).long(),
+            order=self.randperm(4).to(device=_device, dtype=_dtype).long(),
         )
 
 
@@ -140,7 +282,9 @@ class PerspectiveGenerator(RandomGeneratorBase):
             - end_points (torch.Tensor): element-wise perspective target areas with a shape of (B, 4, 2).
 
     Note:
-        The generated random numbers are not reproducible across different devices and dtypes.
+        The generated random numbers are not reproducible across different devices and dtypes. By default,
+        the parameters will be generated on CPU in float32. This can be changed by calling
+        ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
     """
     def __init__(self, distortion_scale: Union[torch.Tensor, float] = 0.5) -> None:
         super().__init__()
@@ -155,22 +299,26 @@ class PerspectiveGenerator(RandomGeneratorBase):
         self._distortion_scale = torch.as_tensor(self.distortion_scale, device=device, dtype=dtype)
         if not (self._distortion_scale.dim() == 0 and 0 <= self._distortion_scale <= 1):
             raise AssertionError(f"'distortion_scale' must be a scalar within [0, 1]. Got {self._distortion_scale}.")
-        self.rand_val_sampler = Uniform(torch.tensor(0, device=device, dtype=dtype), torch.tensor(1, device=device, dtype=dtype))
+        self.rand_val_sampler = Uniform(
+            torch.tensor(0, device=device, dtype=dtype),
+            torch.tensor(1, device=device, dtype=dtype),
+            validate_args=False
+        )
 
     def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type:ignore
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]
 
-        self._device, self._dtype = _extract_device_dtype([self.distortion_scale])
+        _device, _dtype = _extract_device_dtype([self.distortion_scale])
         _common_param_check(batch_size, same_on_batch)
         if not (type(height) is int and height > 0 and type(width) is int and width > 0):
             raise AssertionError(f"'height' and 'width' must be integers. Got {height}, {width}.")
 
         start_points: torch.Tensor = torch.tensor(
             [[[0.0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]]],
-            device=self._device,
-            dtype=self._dtype,
+            device=_device,
+            dtype=_dtype,
         ).expand(batch_size, -1, -1)
 
         # generate random offset not larger than half of the image
@@ -181,14 +329,164 @@ class PerspectiveGenerator(RandomGeneratorBase):
 
         # TODO: This line somehow breaks the gradcheck
         rand_val: torch.Tensor = _adapted_rsampling(
-            start_points.shape, self.rand_val_sampler, same_on_batch).to(device=self._device, dtype=self._dtype)
+            start_points.shape, self.rand_val_sampler, same_on_batch).to(device=_device, dtype=_dtype)
 
         pts_norm = torch.tensor(
-            [[[1, 1], [-1, 1], [-1, -1], [1, -1]]], device=self._device, dtype=self._dtype
+            [[[1, 1], [-1, 1], [-1, -1], [1, -1]]], device=_device, dtype=_dtype
         )
         end_points = start_points + factor * rand_val * pts_norm
 
         return dict(start_points=start_points, end_points=end_points)
+
+
+class RectangleEraseGenerator(RandomGeneratorBase):
+    r"""Get parameters for ```erasing``` transformation for erasing transform.
+
+    Args:
+        scale (torch.Tensor): range of size of the origin size cropped. Shape (2).
+        ratio (torch.Tensor): range of aspect ratio of the origin aspect ratio cropped. Shape (2).
+        value (float): value to be filled in the erased area.
+
+    Returns:
+        A dict of parameters to be passed for transformation.
+            - widths (torch.Tensor): element-wise erasing widths with a shape of (B,).
+            - heights (torch.Tensor): element-wise erasing heights with a shape of (B,).
+            - xs (torch.Tensor): element-wise erasing x coordinates with a shape of (B,).
+            - ys (torch.Tensor): element-wise erasing y coordinates with a shape of (B,).
+            - values (torch.Tensor): element-wise filling values with a shape of (B,).
+
+    Note:
+        The generated random numbers are not reproducible across different devices and dtypes. By default,
+        the parameters will be generated on CPU in float32. This can be changed by calling
+        ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
+    """
+    def __init__(
+        self, 
+        scale: Union[torch.Tensor, Tuple[float, float]] = (0.02, 0.33),
+        ratio: Union[torch.Tensor, Tuple[float, float]] = (0.3, 3.3),
+        value: float = 0.
+    ) -> None:
+        super().__init__()
+        self.scale = scale
+        self.ratio = ratio
+        self.value = value
+        self.set_rng_device_and_dtype()
+
+    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+        scale = torch.as_tensor(self.scale, device=device, dtype=dtype)
+        ratio = torch.as_tensor(self.ratio, device=device, dtype=dtype)
+
+        if not (isinstance(self.value, (int, float)) and self.value >= 0 and self.value <= 1):
+            raise AssertionError(f"'value' must be a number between 0 - 1. Got {self.value}.")
+        _joint_range_check(scale, 'scale', bounds=(0, float('inf')))
+        _joint_range_check(ratio, 'ratio', bounds=(0, float('inf')))
+
+        self.scale_sampler = Uniform(scale[0], scale[1], validate_args=False)
+        
+        if ratio[0] < 1.0 and ratio[1] > 1.0:
+            self.ratio_sampler1 = Uniform(ratio[0], 1, validate_args=False)
+            self.ratio_sampler2 = Uniform(0, ratio[1], validate_args=False)
+            self.index_sampler = Uniform(
+                torch.tensor(0, device=device, dtype=dtype),
+                torch.tensor(1, device=device, dtype=dtype),
+                validate_args=False
+            )
+        else:
+            self.ratio_sampler = Uniform(ratio[0], ratio[1], validate_args=False)
+        self.uniform_sampler = Uniform(
+            torch.tensor(0, device=device, dtype=dtype),
+            torch.tensor(1, device=device, dtype=dtype),
+            validate_args=False
+        )
+
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type:ignore
+        batch_size = batch_shape[0]
+        height = batch_shape[-2]
+        width = batch_shape[-1]
+
+        _common_param_check(batch_size, same_on_batch)
+        _device, _dtype = _extract_device_dtype([self.ratio, self.scale])
+        images_area = height * width
+        target_areas = _adapted_rsampling((batch_size,), self.scale_sampler, same_on_batch) * images_area
+
+        if self.ratio[0] < 1.0 and self.ratio[1] > 1.0:
+            aspect_ratios1 = _adapted_rsampling((batch_size,), self.ratio_sampler1, same_on_batch)
+            aspect_ratios2 = _adapted_rsampling((batch_size,), self.ratio_sampler2, same_on_batch)
+            if same_on_batch:
+                rand_idxs = torch.round(
+                    _adapted_rsampling((1,), self.index_sampler, same_on_batch)).repeat(batch_size).bool()
+            else:
+                rand_idxs = torch.round(
+                    _adapted_rsampling((batch_size,), self.index_sampler, same_on_batch)).bool()
+            aspect_ratios = torch.where(rand_idxs, aspect_ratios1, aspect_ratios2)
+        else:
+            aspect_ratios = _adapted_rsampling((batch_size,), self.ratio_sampler, same_on_batch)
+
+        aspect_ratios = aspect_ratios.to(device=_device, dtype=_dtype)
+
+        # based on target areas and aspect ratios, rectangle params are computed
+        heights = torch.min(
+            torch.max(
+                torch.round((target_areas * aspect_ratios) ** (1 / 2)), torch.tensor(1.0, device=_device, dtype=_dtype)
+            ),
+            torch.tensor(height, device=_device, dtype=_dtype),
+        )
+
+        widths = torch.min(
+            torch.max(
+                torch.round((target_areas / aspect_ratios) ** (1 / 2)), torch.tensor(1.0, device=_device, dtype=_dtype)
+            ),
+            torch.tensor(width, device=_device, dtype=_dtype),
+        )
+
+        xs_ratio = _adapted_rsampling((batch_size,), self.uniform_sampler, same_on_batch).to(device=_device, dtype=_dtype)
+        ys_ratio = _adapted_rsampling((batch_size,), self.uniform_sampler, same_on_batch).to(device=_device, dtype=_dtype)
+
+        xs = xs_ratio * (width - widths + 1)
+        ys = ys_ratio * (height - heights + 1)
+
+        return dict(
+            widths=widths.floor(),
+            heights=heights.floor(),
+            xs=xs.floor(),
+            ys=ys.floor(),
+            values=torch.tensor([self.value] * batch_size, device=_device, dtype=_dtype),
+        )
+
+
+class RotationGenerator(RandomGeneratorBase):
+    r"""Get parameters for ``rotate`` for a random rotate transform.
+
+    Args:
+        degrees: range of degrees to select from. If degrees is a number the
+          range of degrees to select from will be (-degrees, +degrees).
+
+    Returns:
+        A dict of parameters to be passed for transformation.
+            - degrees (torch.Tensor): element-wise rotation degrees with a shape of (B,).
+
+    Note:
+        The generated random numbers are not reproducible across different devices and dtypes. By default,
+        the parameters will be generated on CPU in float32. This can be changed by calling
+        ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
+    """
+    def __init__(
+        self, degrees: Union[torch.Tensor, float, Tuple[float, float], List[float]]
+    ) -> None:
+        super().__init__()
+        self.degrees = degrees
+        self.set_rng_device_and_dtype()
+
+    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+        degrees = _range_bound(self.degrees, 'degrees', 0, (-360, 360), device=device, dtype=dtype)
+        self.degree_sampler = Uniform(degrees[0], degrees[1], validate_args=False)
+
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type:ignore
+        batch_size = batch_shape[0]
+        _common_param_check(batch_size, same_on_batch)
+        _device, _dtype = _extract_device_dtype([self.degrees])
+        degrees = _adapted_rsampling((batch_size,), self.degree_sampler, same_on_batch).to(device=_device, dtype=_dtype)
+        return dict(degrees=degrees)
 
 
 def random_prob_generator(
@@ -224,7 +522,7 @@ def random_prob_generator(
     return probs_mask
 
 
-@_deprecated(ColorJitterGenerator.__class__.__name__)
+@_deprecated(replace_with=ColorJitterGenerator.__class__.__name__)
 def random_color_jitter_generator(
     batch_size: int,
     brightness: Optional[torch.Tensor] = None,
@@ -290,6 +588,7 @@ def random_color_jitter_generator(
     )
 
 
+@_deprecated(replace_with=PerspectiveGenerator.__class__.__name__)
 def random_perspective_generator(
     batch_size: int,
     height: int,
@@ -352,6 +651,7 @@ def random_perspective_generator(
     return dict(start_points=start_points, end_points=end_points)
 
 
+@_deprecated(replace_with=AffineGenerator.__class__.__name__)
 def random_affine_generator(
     batch_size: int,
     height: int,
@@ -1066,7 +1366,7 @@ def random_sharpness_generator(
 ) -> Dict[str, torch.Tensor]:
     r"""Generate random sharpness parameters for a batch of images.
 
-    Args:
+    Args:0
         batch_size (int): the number of images.
         sharpness (torch.Tensor): Must be above 0. Default value is sampled from (0, 1).
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
