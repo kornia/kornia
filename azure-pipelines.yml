@@ -9,7 +9,8 @@ trigger:
 pool: gpu-pool
 
 container:
-  image: nvcr.io/nvidia/pytorch:21.06-py3
+  #image: nvcr.io/nvidia/pytorch:21.06-py3
+  image: pytorch/pytorch:1.9.1-cuda11.1-cudnn8-runtime
   options: --gpus all --shm-size 64G
   #image: pytorch/pytorch:1.9.1-cuda11.1-cudnn8-devel
   #options: --gpus all --shm-size 8G
