@@ -15,6 +15,9 @@ container:
   #image: pytorch/pytorch:1.9.1-cuda11.1-cudnn8-devel
   #options: --gpus all --shm-size 8G
 
+workspace:
+  clean: all # what to clean up before the job runs
+
 steps:
 
 - bash: |
