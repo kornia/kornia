@@ -1502,25 +1502,18 @@ class RandomSolarize(IntensityAugmentationBase2D):
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
+        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self._device, self._dtype = _extract_device_dtype([thresholds, additions])
         self.thresholds = thresholds
         self.additions = additions
+        self._param_generator = rg.PlainUniformGenerator(
+            (self.thresholds, 'thresholds_factor', 0.5, (0.0, 1.0)),
+            (self.additions, 'additions_factor', 0., (-0.5, 0.5)),
+        )
 
     def __repr__(self) -> str:
         repr = f"thresholds={self.thresholds}, additions={self.additions}"
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
-
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        thresholds = _range_bound(
-            self.thresholds, 'thresholds', center=0.5, bounds=(0.0, 1.0), device=self._device, dtype=self._dtype
-        )
-        additions = _range_bound(
-            self.additions, 'additions', bounds=(-0.5, 0.5), device=self._device, dtype=self._dtype
-        )
-        return rg.random_solarize_generator(
-            batch_shape[0], thresholds, additions, self.same_on_batch, self.device, self.dtype
-        )
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None

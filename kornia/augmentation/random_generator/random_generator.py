@@ -1,14 +1,25 @@
-from typing import cast, Dict, Optional, Tuple, Union, List
+from typing import cast, Dict, Optional, Tuple, Union, List, Any
 from functools import partial
 
 import torch
 import torch.nn as nn
-from torch.distributions import Bernoulli, Uniform
+from torch.distributions import Distribution, Bernoulli, Uniform
 
 from kornia.geometry.bbox import bbox_generator
 from kornia.utils.helpers import _extract_device_dtype, _deprecated
 
-from ..utils import _adapted_beta, _adapted_sampling, _adapted_rsampling, _adapted_uniform, _common_param_check, _joint_range_check, _range_bound
+from ..utils import (
+    _adapted_beta,
+    _adapted_sampling,
+    _adapted_rsampling,
+    _adapted_uniform,
+    _common_param_check,
+    _joint_range_check,
+    _range_bound,
+)
+
+# factor, name, center, range
+ParameterBound = Tuple[Any, str, float, Tuple[float, float]]
 
 
 class RandomGeneratorBase(nn.Module):
@@ -17,7 +28,9 @@ class RandomGeneratorBase(nn.Module):
     def __init__(self) -> None:
         super().__init__()
 
-    def set_rng_device_and_dtype(self, device: torch.device = torch.device('cpu'), dtype: torch.dtype = torch.float32) -> None:
+    def set_rng_device_and_dtype(
+        self, device: torch.device = torch.device('cpu'), dtype: torch.dtype = torch.float32
+    ) -> None:
         """Change the random generation device and dtype.
 
         Note:
@@ -32,6 +45,34 @@ class RandomGeneratorBase(nn.Module):
         raise NotImplementedError
 
 
+class PlainUniformGenerator(RandomGeneratorBase):
+    def __init__(self, *samplers: ParameterBound) -> None:
+        super().__init__()
+        self.samplers = samplers
+        for factor, name, _, _ in samplers:
+            if isinstance(factor, torch.Tensor):
+                self.register_buffer(name, factor)
+
+    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+        self.sampler_dict: Dict[str, Distribution] = {}
+        for factor, name, center, bound in self.samplers:
+            _joint_range_check(factor, name, bounds=bound)
+            t: torch.Tensor = _range_bound(
+                factor, name, center=center, bounds=bound, device=device, dtype=dtype
+            )
+            self.sampler_dict.update({name: Uniform(t[0], t[1])})
+
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type: ignore
+        batch_size = batch_shape[0]
+        _common_param_check(batch_size, same_on_batch)
+        _device, _dtype = _extract_device_dtype([t for t, _, _, _ in self.samplers])
+
+        return dict({
+            name: _adapted_rsampling((batch_size,), dist, same_on_batch).to(
+                device=_device, dtype=_dtype) for name, dist in self.sampler_dict.items()
+        })
+
+
 class ProbabilityGenerator(RandomGeneratorBase):
     def __init__(self, p: float = 0.5) -> None:
         super().__init__()
@@ -41,7 +82,8 @@ class ProbabilityGenerator(RandomGeneratorBase):
         p = torch.tensor(float(self._p), device=device, dtype=dtype)
         self.sampler = Bernoulli(p)
 
-    def forward(self, batch_size: int, same_on_batch: bool = False):
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type: ignore
+        batch_size = batch_shape[0]
         probs_mask: torch.Tensor = _adapted_sampling((batch_size,), self.sampler, same_on_batch).bool()
         return probs_mask
 
@@ -365,7 +407,12 @@ class CropGenerator(RandomGeneratorBase):
             ):
                 raise AssertionError(f"`resize_to` must be a tuple of 2 positive integers. Got {self.resize_to}.")
             crop_dst = torch.tensor(
-                [[[0, 0], [self.resize_to[1] - 1, 0], [self.resize_to[1] - 1, self.resize_to[0] - 1], [0, self.resize_to[0] - 1]]],
+                [[
+                    [0, 0],
+                    [self.resize_to[1] - 1, 0],
+                    [self.resize_to[1] - 1, self.resize_to[0] - 1],
+                    [0, self.resize_to[0] - 1]
+                ]],
                 device=_device,
                 dtype=_dtype,
             ).repeat(batch_size, 1, 1)
@@ -629,8 +676,10 @@ class RectangleEraseGenerator(RandomGeneratorBase):
             torch.tensor(width, device=_device, dtype=_dtype),
         )
 
-        xs_ratio = _adapted_rsampling((batch_size,), self.uniform_sampler, same_on_batch).to(device=_device, dtype=_dtype)
-        ys_ratio = _adapted_rsampling((batch_size,), self.uniform_sampler, same_on_batch).to(device=_device, dtype=_dtype)
+        xs_ratio = _adapted_rsampling(
+            (batch_size,), self.uniform_sampler, same_on_batch).to(device=_device, dtype=_dtype)
+        ys_ratio = _adapted_rsampling(
+            (batch_size,), self.uniform_sampler, same_on_batch).to(device=_device, dtype=_dtype)
 
         xs = xs_ratio * (width - widths + 1)
         ys = ys_ratio * (height - heights + 1)
