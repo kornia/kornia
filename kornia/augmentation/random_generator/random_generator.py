@@ -19,7 +19,7 @@ from ..utils import (
 )
 
 # factor, name, center, range
-ParameterBound = Tuple[Any, str, float, Tuple[float, float]]
+ParameterBound = Tuple[Any, str, Optional[float], Optional[Tuple[float, float]]]
 
 
 class RandomGeneratorBase(nn.Module):
@@ -52,15 +52,18 @@ class PlainUniformGenerator(RandomGeneratorBase):
         for factor, name, _, _ in samplers:
             if isinstance(factor, torch.Tensor):
                 self.register_buffer(name, factor)
+        self.set_rng_device_and_dtype()
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         self.sampler_dict: Dict[str, Distribution] = {}
         for factor, name, center, bound in self.samplers:
-            _joint_range_check(factor, name, bounds=bound)
-            t: torch.Tensor = _range_bound(
-                factor, name, center=center, bounds=bound, device=device, dtype=dtype
-            )
-            self.sampler_dict.update({name: Uniform(t[0], t[1])})
+            if center is None or bound is None:
+                pass
+            else:
+                factor = _range_bound(
+                    factor, name, center=center, bounds=bound, device=device, dtype=dtype
+                )
+            self.sampler_dict.update({name: Uniform(factor[0], factor[1])})
 
     def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type: ignore
         batch_size = batch_shape[0]
@@ -129,6 +132,7 @@ class AffineGenerator(RandomGeneratorBase):
         self.translate = translate
         self.scale = scale
         self.shear = shear
+        self.set_rng_device_and_dtype()
 
     def make_samplers(self, device, dtype):
         degrees = _range_bound(self.degrees, 'degrees', 0, (-360, 360), device=device, dtype=dtype)
@@ -622,7 +626,7 @@ class RectangleEraseGenerator(RandomGeneratorBase):
         
         if ratio[0] < 1.0 and ratio[1] > 1.0:
             self.ratio_sampler1 = Uniform(ratio[0], 1, validate_args=False)
-            self.ratio_sampler2 = Uniform(0, ratio[1], validate_args=False)
+            self.ratio_sampler2 = Uniform(1, ratio[1], validate_args=False)
             self.index_sampler = Uniform(
                 torch.tensor(0, device=device, dtype=dtype),
                 torch.tensor(1, device=device, dtype=dtype),
@@ -761,7 +765,7 @@ def random_prob_generator(
     return probs_mask
 
 
-@_deprecated(replace_with=ColorJitterGenerator.__class__.__name__)
+@_deprecated(replace_with=ColorJitterGenerator.__name__)
 def random_color_jitter_generator(
     batch_size: int,
     brightness: Optional[torch.Tensor] = None,
@@ -827,7 +831,7 @@ def random_color_jitter_generator(
     )
 
 
-@_deprecated(replace_with=PerspectiveGenerator.__class__.__name__)
+@_deprecated(replace_with=PerspectiveGenerator.__name__)
 def random_perspective_generator(
     batch_size: int,
     height: int,
@@ -890,7 +894,7 @@ def random_perspective_generator(
     return dict(start_points=start_points, end_points=end_points)
 
 
-@_deprecated(replace_with=AffineGenerator.__class__.__name__)
+@_deprecated(replace_with=AffineGenerator.__name__)
 def random_affine_generator(
     batch_size: int,
     height: int,
@@ -993,7 +997,7 @@ def random_affine_generator(
     return dict(translations=translations, center=center, scale=_scale, angle=angle, sx=sx, sy=sy)
 
 
-@_deprecated(replace_with=RotationGenerator.__class__.__name__)
+@_deprecated(replace_with=RotationGenerator.__name__)
 def random_rotation_generator(
     batch_size: int,
     degrees: torch.Tensor,
@@ -1031,7 +1035,7 @@ def random_rotation_generator(
     return dict(degrees=_degrees)
 
 
-@_deprecated(replace_with=CropGenerator.__class__.__name__)
+@_deprecated(replace_with=CropGenerator.__name__)
 def random_crop_generator(
     batch_size: int,
     input_size: Tuple[int, int],
@@ -1250,7 +1254,7 @@ def random_crop_size_generator(
     return dict(size=torch.stack([h_out, w_out], dim=1).to(device=_device, dtype=_dtype))
 
 
-@_deprecated(replace_with=RectangleEraseGenerator.__class__.__name__)
+@_deprecated(replace_with=RectangleEraseGenerator.__name__)
 def random_rectangles_params_generator(
     batch_size: int,
     height: int,

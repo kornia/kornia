@@ -18,11 +18,13 @@ def _deprecated(func: Callable = None, replace_with: Optional[str] = None):
         if isclass(func):
             name = func.__class__.__name__
         if isfunction(func):
-            name = func.__class__.__name__
+            name = func.__name__
         if replace_with is not None:
-            warnings.warn(f"`{name}` is deprecated in favor of {replace_with}.", category=DeprecationWarning)
+            warnings.warn(f"`{name}` is deprecated in favor of `{replace_with}`.", category=DeprecationWarning)
         else:
             warnings.warn(f"`{name}` is deprecated and will be removed in the future versions.", category=DeprecationWarning)
+        return func(*args, **kwargs)
+
     return wrapper
 
 

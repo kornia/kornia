@@ -1420,6 +1420,10 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
             "border_type": torch.tensor(self.border_type.value),
             "interpolation": torch.tensor(self.resample.value),
         }
+        self._param_generator = rg.PlainUniformGenerator(
+            (self.thresholds, 'thresholds_factor', 0.5, (0.0, 1.0)),
+            (self.additions, 'additions_factor', 0., (-0.5, 0.5)),
+        )
 
     def __repr__(self) -> str:
         repr = (
@@ -1637,19 +1641,13 @@ class RandomSharpness(IntensityAugmentationBase2D):
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self._device, self._dtype = _extract_device_dtype([sharpness])
         self.sharpness = sharpness
+        self._param_generator = rg.PlainUniformGenerator(
+            (self.sharpness, 'sharpness_factor', 0., (0, float('inf'))),
+        )
 
     def __repr__(self) -> str:
         repr = f"sharpness={self.sharpness}"
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
-
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        sharpness = torch.as_tensor(self.sharpness, device=self._device, dtype=self._dtype)
-        if sharpness.dim() == 0:
-            sharpness = sharpness.repeat(2)
-            sharpness[0] = 0.0
-        elif not (sharpness.dim() == 1 and sharpness.size(0) == 2):
-            raise ValueError(f"'sharpness' must be a scalar or a length 2 tensor. Got {sharpness}.")
-        return rg.random_sharpness_generator(batch_shape[0], sharpness, self.same_on_batch, self.device, self.dtype)
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
@@ -1959,7 +1957,11 @@ class RandomFisheye(GeometricAugmentationBase2D):
         self.center_x = self._check_tensor(center_x)
         self.center_y = self._check_tensor(center_y)
         self.gamma = self._check_tensor(gamma)
-        self.dist = torch.distributions.Uniform
+        self._param_generator = rg.PlainUniformGenerator(
+            (self.center_x[:, None], 'center_x', None, None),
+            (self.center_y[:, None], 'center_y', None, None),
+            (self.gamma[:, None], 'gamma', None, None),
+        )
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
@@ -1972,12 +1974,6 @@ class RandomFisheye(GeometricAugmentationBase2D):
             raise ValueError(f"Tensor must be of shape (2,). Got: {data.shape}.")
 
         return data
-
-    def generate_parameters(self, shape: torch.Size) -> Dict[str, torch.Tensor]:
-        center_x = self.dist(self.center_x[:1], self.center_x[1:]).rsample(shape[:1])
-        center_y = self.dist(self.center_y[:1], self.center_y[1:]).rsample(shape[:1])
-        gamma = self.dist(self.gamma[:1], self.gamma[1:]).rsample(shape[:1])
-        return dict(center_x=center_x, center_y=center_y, gamma=gamma)
 
     # TODO: It is incorrect to return identity
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
