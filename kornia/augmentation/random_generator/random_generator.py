@@ -2,6 +2,7 @@ from typing import cast, Dict, Optional, Tuple, Union, List, Any
 from functools import partial
 
 import torch
+from torch.functional import Tensor
 import torch.nn as nn
 from torch.distributions import Distribution, Bernoulli, Uniform
 
@@ -426,11 +427,11 @@ class CropGenerator(RandomGeneratorBase):
         return dict(src=crop_src, dst=crop_dst, input_size=_input_size)
 
 
-class CropSizeGenerator(RandomGeneratorBase):
+class ResizedCropGenerator(CropGenerator):
     r"""Get cropping heights and widths for ```crop``` transformation for resized crop transform.
 
     Args:
-        size (Tuple[int, int]): expected output size of each edge.
+        output_size (Tuple[int, int]): expected output size of each edge.
         scale (torch.Tensor): range of size of the origin size cropped with (2,) shape.
         ratio (torch.Tensor): range of aspect ratio of the origin aspect ratio cropped with (2,) shape.
 
@@ -448,12 +449,24 @@ class CropSizeGenerator(RandomGeneratorBase):
                 [27., 28.],
                 [26., 29.]])}
     """
-    def __init__(self, size: Tuple[int, int], scale: torch.Tensor, ratio: torch.Tensor) -> None:
-        super().__init__()
-        self.size = size
+    def __init__(
+        self,
+        output_size: Tuple[int, int],
+        scale: Union[torch.Tensor, Tuple[float, float]],
+        ratio: Union[torch.Tensor, Tuple[float, float]]
+    ) -> None:
         self.scale = scale
         self.ratio = ratio
-        self.set_rng_device_and_dtype()
+        self.output_size = output_size
+        if not (
+            len(output_size) == 2
+            and isinstance(output_size[0], (int,))
+            and isinstance(output_size[1], (int,))
+            and output_size[0] > 0
+            and output_size[1] > 0
+        ):
+            raise AssertionError(f"`output_size` must be a tuple of 2 positive integers. Got {output_size}.")
+        super().__init__(size=output_size, resize_to=self.output_size)  # fake an intermedia crop size
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         scale = torch.as_tensor(self.scale, device=device, dtype=dtype)
@@ -470,7 +483,11 @@ class CropSizeGenerator(RandomGeneratorBase):
         _device, _dtype = _extract_device_dtype([self.scale, self.ratio])
 
         if batch_size == 0:
-            return dict(size=torch.zeros([0, 2], device=_device, dtype=_dtype))
+            return dict(
+                src=torch.zeros([0, 4, 2], device=_device, dtype=_dtype),
+                dst=torch.zeros([0, 4, 2], device=_device, dtype=_dtype),
+                size=torch.zeros([0, 2], device=_device, dtype=_dtype),
+            )
 
         rand = _adapted_rsampling(
             (batch_size, 10), self.rand_sampler, same_on_batch).to(device=_device, dtype=_dtype)
@@ -493,12 +510,13 @@ class CropSizeGenerator(RandomGeneratorBase):
         if not cond_bool.all():
             # Fallback to center crop
             in_ratio = float(size[0]) / float(size[1])
-            if in_ratio < self.ratio.min():
+            _min = self.ratio.min() if isinstance(self.ratio, torch.Tensor) else min(self.ratio)
+            if in_ratio < _min:
                 h_ct = torch.tensor(size[0], device=_device, dtype=_dtype)
-                w_ct = torch.round(h_ct / self.ratio.min())
-            elif in_ratio > self.ratio.min():
+                w_ct = torch.round(h_ct / _min)
+            elif in_ratio > _min:
                 w_ct = torch.tensor(size[1], device=_device, dtype=_dtype)
-                h_ct = torch.round(w_ct * self.ratio.min())
+                h_ct = torch.round(w_ct * _min)
             else:  # whole image
                 h_ct = torch.tensor(size[0], device=_device, dtype=_dtype)
                 w_ct = torch.tensor(size[1], device=_device, dtype=_dtype)
@@ -508,7 +526,9 @@ class CropSizeGenerator(RandomGeneratorBase):
             h_out = h_out.where(cond_bool, h_ct)
             w_out = w_out.where(cond_bool, w_ct)
 
-        return dict(size=torch.stack([h_out, w_out], dim=1))
+        # Update the crop size.
+        self.size = torch.stack([h_out, w_out], dim=1)
+        return super().forward(batch_shape, same_on_batch)
 
 
 class PerspectiveGenerator(RandomGeneratorBase):
@@ -730,6 +750,119 @@ class RotationGenerator(RandomGeneratorBase):
         _device, _dtype = _extract_device_dtype([self.degrees])
         degrees = _adapted_rsampling((batch_size,), self.degree_sampler, same_on_batch).to(device=_device, dtype=_dtype)
         return dict(degrees=degrees)
+
+
+class MotionBlurGenerator(RandomGeneratorBase):
+    r"""Get parameters for motion blur.
+
+    Args:
+        kernel_size: motion kernel size (odd and positive).
+            If int, the kernel will have a fixed size.
+            If Tuple[int, int], it will randomly generate the value from the range batch-wisely.
+        angle: angle of the motion blur in degrees (anti-clockwise rotation).
+            If float, it will generate the value from (-angle, angle).
+        direction: forward/backward direction of the motion blur.
+            Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
+            while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
+            uniformly (but still angled) motion blur.
+            If float, it will generate the value from (-direction, direction).
+            If Tuple[int, int], it will randomly generate the value from the range.
+
+    Returns:
+        A dict of parameters to be passed for transformation.
+            - ksize_factor (torch.Tensor): element-wise kernel size factors with a shape of (B,).
+            - angle_factor (torch.Tensor): element-wise angle factors with a shape of (B,).
+            - direction_factor (torch.Tensor): element-wise direction factors with a shape of (B,).
+
+    Note:
+        The generated random numbers are not reproducible across different devices and dtypes. By default,
+        the parameters will be generated on CPU in float32. This can be changed by calling
+        ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
+    """
+
+    def __init__(
+        self, 
+        kernel_size: Union[int, Tuple[int, int]],
+        angle: Union[torch.Tensor, float, Tuple[float, float]],
+        direction: Union[torch.Tensor, float, Tuple[float, float]],
+    ) -> None:
+        super().__init__()
+        self.kernel_size = kernel_size
+        self.angle = angle
+        self.direction = direction
+        self.set_rng_device_and_dtype()
+
+    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+        angle = _range_bound(self.angle, 'angle', center=0.0, bounds=(-360, 360)).to(device=device, dtype=dtype)
+        direction = _range_bound(self.direction, 'direction', center=0.0, bounds=(-1, 1)).to(device=device, dtype=dtype)
+        if isinstance(self.kernel_size, int):
+            if not (self.kernel_size >= 3 and self.kernel_size % 2 == 1):
+                raise AssertionError(f"`kernel_size` must be odd and greater than 3. Got {self.kernel_size}.")
+            self.ksize_sampler = Uniform(self.kernel_size // 2, self.kernel_size // 2, validate_args=False)
+        elif isinstance(self.kernel_size, tuple):
+            # kernel_size is fixed across the batch
+            if len(self.kernel_size) != 2:
+                raise AssertionError(f"`kernel_size` must be (2,) if it is a tuple. Got {self.kernel_size}.")
+            self.ksize_sampler = Uniform(self.kernel_size[0] // 2, self.kernel_size[1] // 2, validate_args=False)
+        else:
+            raise TypeError(f"Unsupported type: {type(self.kernel_size)}")
+
+        self.angle_sampler = Uniform(angle[0], angle[1], validate_args=False)
+        self.direction_sampler = Uniform(direction[0], direction[1], validate_args=False)
+
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type:ignore
+        batch_size = batch_shape[0]
+        _common_param_check(batch_size, same_on_batch)
+        # self.ksize_factor.expand((batch_size, -1))
+        _device, _dtype = _extract_device_dtype([self.angle, self.direction])
+        angle_factor = _adapted_rsampling((batch_size,), self.angle_sampler, same_on_batch)
+        direction_factor = _adapted_rsampling((batch_size,), self.direction_sampler, same_on_batch)
+        ksize_factor = _adapted_rsampling((batch_size,), self.ksize_sampler, same_on_batch).int() * 2 + 1
+
+        return dict(
+            ksize_factor=ksize_factor.to(device=_device, dtype=torch.int32),
+            angle_factor=angle_factor.to(device=_device, dtype=_dtype),
+            direction_factor=direction_factor.to(device=_device, dtype=_dtype),
+        )
+
+
+class PosterizeGenerator(RandomGeneratorBase):
+    r"""Generate random posterize parameters for a batch of images.
+
+    Args:
+        bits: Integer that ranged from (0, 8], in which 0 gives black image and 8 gives the original.
+            If int x, bits will be generated from (x, 8).
+            If tuple (x, y), bits will be generated from (x, y).
+
+    Returns:
+        A dict of parameters to be passed for transformation.
+            - bits_factor (torch.Tensor): element-wise bit factors with a shape of (B,).
+
+    Note:
+        The generated random numbers are not reproducible across different devices and dtypes. By default,
+        the parameters will be generated on CPU in float32. This can be changed by calling
+        ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
+    """
+    def __init__(self, bits: Union[int, Tuple[int, int], torch.Tensor]) -> None:
+        super().__init__()
+        self.bits = bits
+        self.set_rng_device_and_dtype()
+    
+    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+        bits = torch.as_tensor(self.bits, device=device, dtype=dtype)
+        if len(bits.size()) == 0:
+            bits = bits.repeat(2)
+            bits[1] = 8
+        elif not (len(bits.size()) == 1 and bits.size(0) == 2):
+            raise ValueError(f"'bits' shall be either a scalar or a length 2 tensor. Got {bits}.")
+        self.bit_sampler = Uniform(bits[0], bits[1], validate_args=False)
+
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type:ignore
+        batch_size = batch_shape[0]
+        _common_param_check(batch_size, same_on_batch)
+        _device, _dtype = _extract_device_dtype([self.bits if isinstance(self.bits, torch.Tensor) else None])
+        bits_factor = _adapted_rsampling((batch_size,), self.bit_sampler, same_on_batch)
+        return dict(bits_factor=bits_factor.to(device=_device, dtype=torch.int32))
 
 
 def random_prob_generator(
@@ -1170,6 +1303,7 @@ def random_crop_generator(
     return dict(src=crop_src, dst=crop_dst, input_size=_input_size)
 
 
+@_deprecated()
 def random_crop_size_generator(
     batch_size: int,
     size: Tuple[int, int],
@@ -1445,6 +1579,7 @@ def center_crop_generator(
     return dict(src=points_src, dst=points_dst, input_size=_input_size)
 
 
+@_deprecated(replace_with=MotionBlurGenerator.__name__)
 def random_motion_blur_generator(
     batch_size: int,
     kernel_size: Union[int, Tuple[int, int]],
@@ -1515,6 +1650,7 @@ def random_motion_blur_generator(
     )
 
 
+@_deprecated()
 def random_solarize_generator(
     batch_size: int,
     thresholds: torch.Tensor = torch.tensor([0.4, 0.6]),
@@ -1571,6 +1707,7 @@ def random_solarize_generator(
     )
 
 
+@_deprecated()
 def random_posterize_generator(
     batch_size: int,
     bits: torch.Tensor = torch.tensor([3, 5]),
@@ -1603,6 +1740,7 @@ def random_posterize_generator(
     return dict(bits_factor=bits_factor.to(device=bits.device, dtype=torch.int32))
 
 
+@_deprecated()
 def random_sharpness_generator(
     batch_size: int,
     sharpness: torch.Tensor = torch.tensor([0, 1.0]),

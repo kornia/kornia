@@ -942,7 +942,7 @@ class RandomCrop(GeometricAugmentationBase2D):
             interpolation=torch.tensor(self.resample.value), align_corners=torch.tensor(align_corners)
         )
         self.cropping_mode = cropping_mode
-        self._param_generator = rg.CropGenerator(size, None)
+        self._param_generator = rg.CropGenerator(size)
 
     def __repr__(self) -> str:
         repr = (
@@ -1155,32 +1155,11 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
             interpolation=torch.tensor(self.resample.value), align_corners=torch.tensor(align_corners)
         )
         self.cropping_mode = cropping_mode
+        self._param_generator = rg.ResizedCropGenerator(size, scale, ratio)
 
     def __repr__(self) -> str:
         repr = f"size={self.size}, scale={self.scale}, ratio={self.ratio}, interpolation={self.resample.name}"
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
-
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        scale = torch.as_tensor(self.scale, device=self._device, dtype=self._dtype)
-        ratio = torch.as_tensor(self.ratio, device=self._device, dtype=self._dtype)
-        target_size: torch.Tensor = rg.random_crop_size_generator(
-            batch_shape[0],
-            (batch_shape[-2], batch_shape[-1]),
-            scale,
-            ratio,
-            self.same_on_batch,
-            self.device,
-            self.dtype,
-        )['size']
-        return rg.random_crop_generator(
-            batch_shape[0],
-            (batch_shape[-2], batch_shape[-1]),
-            target_size,
-            resize_to=self.size,
-            same_on_batch=self.same_on_batch,
-            device=self.device,
-            dtype=self.dtype,
-        )
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         transform: torch.Tensor = get_perspective_transform(params['src'].to(input), params['dst'].to(input))
@@ -1411,7 +1390,7 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self.kernel_size: Union[int, Tuple[int, int]] = kernel_size
         self._device, self._dtype = _extract_device_dtype([angle, direction])
-
+        self._param_generator = rg.MotionBlurGenerator(kernel_size, angle, direction)
         self.angle = angle
         self.direction = direction
         self.border_type = BorderType.get(border_type)
@@ -1420,10 +1399,6 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
             "border_type": torch.tensor(self.border_type.value),
             "interpolation": torch.tensor(self.resample.value),
         }
-        self._param_generator = rg.PlainUniformGenerator(
-            (self.thresholds, 'thresholds_factor', 0.5, (0.0, 1.0)),
-            (self.additions, 'additions_factor', 0., (-0.5, 0.5)),
-        )
 
     def __repr__(self) -> str:
         repr = (
@@ -1431,17 +1406,6 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
             + f"border_type='{self.border_type.name.lower()}'"
         )
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
-
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        angle = _range_bound(
-            self.angle, 'angle', center=0.0, bounds=(-360, 360), device=self._device, dtype=self._dtype
-        )
-        direction = _range_bound(
-            self.direction, 'direction', center=0.0, bounds=(-1, 1), device=self._device, dtype=self._dtype
-        )
-        return rg.random_motion_blur_generator(
-            batch_shape[0], self.kernel_size, angle, direction, self.same_on_batch, self.device, self.dtype
-        )
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
@@ -1577,19 +1541,11 @@ class RandomPosterize(IntensityAugmentationBase2D):
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self._device, self._dtype = _extract_device_dtype([bits])
         self.bits = bits
+        self._param_generator = rg.PosterizeGenerator(bits)
 
     def __repr__(self) -> str:
         repr = f"(bits={self.bits}"
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
-
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        bits = torch.as_tensor(self.bits, device=self._device, dtype=self._dtype)
-        if len(bits.size()) == 0:
-            bits = bits.repeat(2)
-            bits[1] = 8
-        elif not (len(bits.size()) == 1 and bits.size(0) == 2):
-            raise ValueError(f"'bits' shall be either a scalar or a length 2 tensor. Got {bits}.")
-        return rg.random_posterize_generator(batch_shape[0], bits, self.same_on_batch, self.device, self.dtype)
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
