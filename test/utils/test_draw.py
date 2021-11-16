@@ -98,9 +98,7 @@ class TestDrawLine:
                                  torch.tensor([0, 8]),
                              ])
     def test_p1_out_of_bounds(self, p1, device):
-        """
-        Tests that an exception is raised if p1 is out of bounds
-        """
+        """Tests that an exception is raised if p1 is out of bounds."""
         img = torch.zeros(1, 8, 8, device=device)
         with pytest.raises(ValueError) as excinfo:
             draw_line(img, p1, torch.tensor([0, 0]), torch.tensor([255]))
@@ -115,9 +113,7 @@ class TestDrawLine:
                                  torch.tensor([0, 8]),
                              ])
     def test_p2_out_of_bounds(self, p2, device):
-        """
-        Tests that an exception is raised if p2 is out of bounds
-        """
+        """Tests that an exception is raised if p2 is out of bounds."""
         img = torch.zeros(1, 8, 8, device=device)
         with pytest.raises(ValueError) as excinfo:
             draw_line(img, torch.tensor([0, 0]), p2, torch.tensor([255]))
