@@ -42,7 +42,7 @@ from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute
 from kornia.utils import _extract_device_dtype, create_meshgrid
 
 from . import random_generator as rg
-from .utils import _range_bound, _transform_input
+from .utils import _transform_input
 
 
 class RandomHorizontalFlip(GeometricAugmentationBase2D):
