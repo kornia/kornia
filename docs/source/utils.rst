@@ -3,13 +3,18 @@ kornia.utils
 
 .. currentmodule:: kornia.utils
 
+Draw
+----
+
+.. autofunction:: draw_line
+.. autofunction:: draw_rectangle
+
 Image
 -----
 
 .. autofunction:: tensor_to_image
 .. autofunction:: image_to_tensor
 .. autofunction:: image_list_to_tensor
-.. autofunction:: draw_rectangle
 
 Grid
 ----
