@@ -44,7 +44,7 @@ def draw_line(
 
     Examples:
     >>> image = torch.zeros(1, 8, 8)
-    >>> draw_line(img, torch.tensor([6, 4]), torch.tensor([0, 4]), torch.tensor([255]))
+    >>> draw_line(image, torch.tensor([6, 4]), torch.tensor([0, 4]), torch.tensor([255]))
     torch.tensor([[[0., 0., 0., 0., 0., 0., 0., 0.],
     ...           [0., 0., 0., 0., 0., 0., 0., 0.],
     ...           [0., 0., 0., 0., 0., 0., 0., 0.],
