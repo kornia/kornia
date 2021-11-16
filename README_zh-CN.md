@@ -1,6 +1,6 @@
 <div align="center">
 <p align="center">
-  <img width="50%" src="https://github.com/kornia/kornia/blob/master/docs/source/_static/img/kornia_logo.svg" />
+  <img width="75%" src="https://github.com/kornia/data/raw/main/kornia_banner_pixie.png" />
 </p>
 
 **The open-source and Computer Vision 2.0 library**
@@ -135,7 +135,8 @@
 扫描下方的二维码可关注 Kornia 的官方交流QQ群（679683070）。
 
 <div align="center">
-  <img src="https://github.com/kornia/kornia/raw/master/docs/source/_static/img/cn_community_qq.jpg" width="75%" height="75%">
+  <img src="https://github.com/kornia/kornia/raw/master/docs/source/_static/img/cn_community_qq.jpg" width="45%">
+  <img src="https://github.com/kornia/kornia/raw/master/docs/source/_static/img/cn_community_zhihu.jpg" width="45%">
 </div>
 
 我们会在 Kornia 交流社区为大家
