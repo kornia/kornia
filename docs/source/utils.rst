@@ -3,6 +3,11 @@ kornia.utils
 
 .. currentmodule:: kornia.utils
 
+Draw
+----
+
+.. autofunction:: draw_line
+
 Image
 -----
 
