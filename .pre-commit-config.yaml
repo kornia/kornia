@@ -32,7 +32,7 @@ repos:
           - "*.bib,*.ipynb"
 
   - repo: https://github.com/PyCQA/isort
-    rev: 5.10.0
+    rev: 5.10.1
     hooks:
       - id: isort
 
@@ -48,7 +48,7 @@ repos:
         args: [--py36-plus]
 
   - repo: https://github.com/PyCQA/bandit
-    rev: 1.7.0
+    rev: 1.7.1
     hooks:
       - id: bandit
         name: bandit excluding the test directory
