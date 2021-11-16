@@ -1,17 +1,17 @@
-from typing import cast, Dict, Optional, Tuple, Union, List, Any
 from functools import partial
+from typing import Any, cast, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-from torch.distributions import Distribution, Bernoulli, Uniform
+from torch.distributions import Bernoulli, Distribution, Uniform
 
 from kornia.geometry.bbox import bbox_generator
-from kornia.utils.helpers import _extract_device_dtype, _deprecated
+from kornia.utils.helpers import _deprecated, _extract_device_dtype
 
 from ..utils import (
     _adapted_beta,
-    _adapted_sampling,
     _adapted_rsampling,
+    _adapted_sampling,
     _adapted_uniform,
     _common_param_check,
     _joint_range_check,
@@ -23,8 +23,7 @@ ParameterBound = Tuple[Any, str, Optional[float], Optional[Tuple[float, float]]]
 
 
 class _PostInitInjectionMetaClass(type):
-    """To inject the ``__post_init__`` function after the creation of each instance.
-    """
+    """To inject the ``__post_init__`` function after the creation of each instance."""
     def __call__(cls, *args, **kwargs):
         obj = type.__call__(cls, *args, **kwargs)
         obj.__post_init__()
@@ -32,8 +31,7 @@ class _PostInitInjectionMetaClass(type):
 
 
 class RandomGeneratorBase(nn.Module, metaclass=_PostInitInjectionMetaClass):
-    """Base class for generating random augmentation parameters.
-    """
+    """Base class for generating random augmentation parameters."""
     def __init__(self) -> None:
         super().__init__()
 
@@ -75,7 +73,7 @@ class PlainUniformGenerator(RandomGeneratorBase):
         The generated random numbers are not reproducible across different devices and dtypes. By default,
         the parameters will be generated on CPU in float32. This can be changed by calling
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
-    
+
     Example:
         >>> _ = torch.manual_seed(44)
         >>> PlainUniformGenerator(
@@ -706,7 +704,7 @@ class RectangleEraseGenerator(RandomGeneratorBase):
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
     """
     def __init__(
-        self, 
+        self,
         scale: Union[torch.Tensor, Tuple[float, float]] = (0.02, 0.33),
         ratio: Union[torch.Tensor, Tuple[float, float]] = (0.3, 3.3),
         value: float = 0.
@@ -730,7 +728,7 @@ class RectangleEraseGenerator(RandomGeneratorBase):
         _joint_range_check(ratio, 'ratio', bounds=(0, float('inf')))
 
         self.scale_sampler = Uniform(scale[0], scale[1], validate_args=False)
-        
+
         if ratio[0] < 1.0 and ratio[1] > 1.0:
             self.ratio_sampler1 = Uniform(ratio[0], 1, validate_args=False)
             self.ratio_sampler2 = Uniform(1, ratio[1], validate_args=False)
@@ -873,7 +871,7 @@ class MotionBlurGenerator(RandomGeneratorBase):
     """
 
     def __init__(
-        self, 
+        self,
         kernel_size: Union[int, Tuple[int, int]],
         angle: Union[torch.Tensor, float, Tuple[float, float]],
         direction: Union[torch.Tensor, float, Tuple[float, float]],

@@ -3,20 +3,20 @@ import torch
 from torch._C import Size
 
 from kornia.augmentation.random_generator import (
-    center_crop_generator,
-    random_cutmix_generator,
-    random_mixup_generator,
-    ColorJitterGenerator,
-    PerspectiveGenerator,
     AffineGenerator,
+    center_crop_generator,
+    ColorJitterGenerator,
     CropGenerator,
     MotionBlurGenerator,
+    PerspectiveGenerator,
     PlainUniformGenerator,
     PosterizeGenerator,
     ProbabilityGenerator,
+    random_cutmix_generator,
+    random_mixup_generator,
     RectangleEraseGenerator,
     ResizedCropGenerator,
-    RotationGenerator
+    RotationGenerator,
 )
 from kornia.testing import assert_close
 from kornia.utils._compat import torch_version_geq

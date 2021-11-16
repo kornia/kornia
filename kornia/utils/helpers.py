@@ -1,9 +1,9 @@
 import warnings
+from functools import partial, wraps
+from inspect import isclass, isfunction
 from typing import Any, Callable, List, Optional, Tuple
-from inspect import isfunction, isclass
 
 import torch
-from functools import partial, wraps
 
 from kornia.utils._compat import solve, torch_version_geq
 
