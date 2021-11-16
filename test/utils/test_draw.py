@@ -102,6 +102,74 @@ class TestDrawLine:
                                         [0., 0., 0., 255., 0., 0., 0., 0.]])
         assert torch.all(img_mask)
 
+    @pytest.mark.parametrize('p1',
+                             [
+                                 torch.tensor([-1, 0]),
+                                 torch.tensor([0, -1]),
+                                 torch.tensor([8, 0]),
+                                 torch.tensor([0, 8]),
+                             ])
+    def test_p1_out_of_bounds(self, p1, device):
+        """
+        Tests that an exception is raised if p1 is out of bounds
+        """
+        img = torch.zeros(1, 8, 8, device=device)
+        with pytest.raises(ValueError) as excinfo:
+            draw_line(img, p1, torch.tensor([0, 0]), torch.tensor([255]))
+
+        assert 'p1 is out of bounds.' == str(excinfo.value)
+
+    @pytest.mark.parametrize('p2',
+                             [
+                                 torch.tensor([-1, 0]),
+                                 torch.tensor([0, -1]),
+                                 torch.tensor([8, 0]),
+                                 torch.tensor([0, 8]),
+                             ])
+    def test_p2_out_of_bounds(self, p2, device):
+        """
+        Tests that an exception is raised if p2 is out of bounds
+        """
+        img = torch.zeros(1, 8, 8, device=device)
+        with pytest.raises(ValueError) as excinfo:
+            draw_line(img, torch.tensor([0, 0]), p2, torch.tensor([255]))
+
+        assert 'p2 is out of bounds.' == str(excinfo.value)
+
+    @pytest.mark.parametrize('img_size', [(200, 100), (32, 3, 20, 20)])
+    def test_image_size(self, img_size, device):
+        img = torch.zeros(*img_size, device=device)
+        with pytest.raises(ValueError) as excinfo:
+            draw_line(img, torch.tensor([0, 0]), torch.tensor([1, 1]), torch.tensor([255]))
+
+        assert 'image must have 3 dimensions (C,H,W).' == str(excinfo.value)
+
+    @pytest.mark.parametrize('img_size,color',
+                             [
+                                 ((1, 8, 8), torch.tensor([23, 53])),
+                                 ((3, 8, 8), torch.tensor([255]))
+                             ])
+    def test_color_image_channel_size(self, img_size, color, device):
+        img = torch.zeros(*img_size, device=device)
+        with pytest.raises(ValueError) as excinfo:
+            draw_line(img, torch.tensor([0, 0]), torch.tensor([1, 1]), color)
+
+        assert 'color must have the same number of channels as the image.' == str(excinfo.value)
+
+    @pytest.mark.parametrize('p1,p2',
+                             [
+                                 ((0, 1), (1, 5, 2)),
+                                 ((0, 1, 2), (1, 5)),
+                                 (torch.tensor([0, 1]), torch.tensor([0, 2, 3])),
+                                 (torch.tensor([0, 1, 5]), torch.tensor([0, 2])),
+                             ])
+    def test_point_size(self, p1, p2, device):
+        img = torch.zeros(1, 8, 8, device=device)
+        with pytest.raises(ValueError) as excinfo:
+            draw_line(img, p1, p2, torch.tensor([255]))
+
+        assert 'p1 and p2 must have length 2.' == str(excinfo.value)
+
 
 class TestDrawRectangle:
     @pytest.mark.parametrize('batch', (4, 17))
