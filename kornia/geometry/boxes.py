@@ -103,6 +103,9 @@ class Boxes:
         `quadrilaterals <https://en.wikipedia.org/wiki/Quadrilateral>`_ are rectangles, rhombus and trapezoids.
     """
     def __init__(self, boxes: torch.Tensor, raise_if_not_floating_point: bool = True) -> None:
+        if not isinstance(boxes, torch.Tensor):
+            raise TypeError(f"Input boxes is not a Tensor. Got: {type(boxes)}.")
+
         if not boxes.is_floating_point():
             if raise_if_not_floating_point:
                 raise ValueError(f"Coordinates must be in floating point. Got {boxes.dtype}")
@@ -162,14 +165,14 @@ class Boxes:
             >>> boxes = Boxes.from_tensor(boxes_xyxy, mode='xyxy')
             >>> boxes._boxes  # (2, 4, 2)
             tensor([[[0., 3.],
-                     [1., 3.],
-                     [1., 4.],
-                     [0., 4.]],
+                     [0., 3.],
+                     [0., 3.],
+                     [0., 3.]],
             <BLANKLINE>
                     [[5., 1.],
-                     [8., 1.],
-                     [8., 4.],
-                     [5., 4.]]])
+                     [7., 1.],
+                     [7., 3.],
+                     [5., 3.]]])
         """
         if not (2 <= boxes.ndim <= 3 and boxes.shape[-1] == 4):
             raise ValueError(f"Boxes shape must be (N, 4) or (B, N, 4). Got {boxes.shape}.")
@@ -273,17 +276,17 @@ class Boxes:
             It is currently non-differentiable.
 
         Examples:
-            >>> boxes = Boxes([[  # Equivalent to boxes = Boxes.from_tensor([[1,1,4,3]])
+            >>> boxes = Boxes(torch.tensor([[  # Equivalent to boxes = Boxes.from_tensor([[1,1,4,3]])
             ...        [1., 1.],
             ...        [4., 1.],
             ...        [4., 3.],
             ...        [1., 3.],
-            ...   ]])  # 1x4x2
+            ...   ]]))  # 1x4x2
             >>> boxes.to_mask(5, 5)
             tensor([[[0., 0., 0., 0., 0.],
-                     [0., 1., 1., 1., 0.],
-                     [0., 1., 1., 1., 0.],
-                     [0., 0., 0., 0., 0.],
+                     [0., 1., 1., 1., 1.],
+                     [0., 1., 1., 1., 1.],
+                     [0., 1., 1., 1., 1.],
                      [0., 0., 0., 0., 0.]]])
         """
         if self._boxes.requires_grad:
@@ -377,6 +380,9 @@ class Boxes3D:
         `hexahedrons <https://en.wikipedia.org/wiki/Hexahedron>`_ are cubes and rhombohedrons.
     """
     def __init__(self, boxes: torch.Tensor, raise_if_not_floating_point: bool = True):
+        if not isinstance(boxes, torch.Tensor):
+            raise TypeError(f"Input boxes is not a Tensor. Got: {type(boxes)}.")
+
         if not boxes.is_floating_point():
             if raise_if_not_floating_point:
                 raise ValueError(f"Coordinates must be in floating point. Got {boxes.dtype}.")
@@ -437,22 +443,22 @@ class Boxes3D:
             >>> boxes = Boxes3D.from_tensor(boxes_xyzxyz, mode='xyzxyz')
             >>> boxes._boxes  # (2, 8, 3)
             tensor([[[0., 3., 6.],
-                     [1., 3., 6.],
-                     [1., 4., 6.],
-                     [0., 4., 6.],
-                     [0., 3., 8.],
-                     [1., 3., 8.],
-                     [1., 4., 8.],
-                     [0., 4., 8.]],
+                     [0., 3., 6.],
+                     [0., 3., 6.],
+                     [0., 3., 6.],
+                     [0., 3., 7.],
+                     [0., 3., 7.],
+                     [0., 3., 7.],
+                     [0., 3., 7.]],
             <BLANKLINE>
                     [[5., 1., 3.],
-                     [8., 1., 3.],
-                     [8., 4., 3.],
-                     [5., 4., 3.],
-                     [5., 1., 9.],
-                     [8., 1., 9.],
-                     [8., 4., 9.],
-                     [5., 4., 9.]]])
+                     [7., 1., 3.],
+                     [7., 3., 3.],
+                     [5., 3., 3.],
+                     [5., 1., 8.],
+                     [7., 1., 8.],
+                     [7., 3., 8.],
+                     [5., 3., 8.]]])
         """
         if not (2 <= boxes.ndim <= 3 and boxes.shape[-1] == 6):
             raise ValueError(f"BBox shape must be (N, 6) or (B, N, 6). Got {boxes.shape}.")
@@ -581,7 +587,7 @@ class Boxes3D:
             It is currently non-differentiable.
 
         Examples:
-            >>> boxes = Boxes3D([[  # Equivalent to boxes = Boxes.3Dfrom_tensor([[1,1,1,3,3,2]])
+            >>> boxes = Boxes3D(torch.tensor([[  # Equivalent to boxes = Boxes.3Dfrom_tensor([[1,1,1,3,3,2]])
             ...     [1., 1., 1.],
             ...     [3., 1., 1.],
             ...     [3., 3., 1.],
@@ -590,31 +596,31 @@ class Boxes3D:
             ...     [3., 1., 2.],
             ...     [3., 3., 2.],
             ...     [1., 3., 2.],
-            ... ]])  # 1x8x3
+            ... ]]))  # 1x8x3
             >>> boxes.to_mask(4, 5, 5)
-            tensor([[[0., 0., 0., 0., 0.],
-                     [0., 0., 0., 0., 0.],
-                     [0., 0., 0., 0., 0.],
-                     [0., 0., 0., 0., 0.],
-                     [0., 0., 0., 0., 0.]],
+            tensor([[[[0., 0., 0., 0., 0.],
+                      [0., 0., 0., 0., 0.],
+                      [0., 0., 0., 0., 0.],
+                      [0., 0., 0., 0., 0.],
+                      [0., 0., 0., 0., 0.]],
             <BLANKLINE>
-                    [[0., 0., 0., 0., 0.],
-                     [0., 1., 1., 0., 0.],
-                     [0., 1., 1., 0., 0.],
-                     [0., 0., 0., 0., 0.],
-                     [0., 0., 0., 0., 0.]],
+                     [[0., 0., 0., 0., 0.],
+                      [0., 1., 1., 1., 0.],
+                      [0., 1., 1., 1., 0.],
+                      [0., 1., 1., 1., 0.],
+                      [0., 0., 0., 0., 0.]],
             <BLANKLINE>
-                    [[0., 0., 0., 0., 0.],
-                     [0., 0., 0., 0., 0.],
-                     [0., 0., 0., 0., 0.],
-                     [0., 0., 0., 0., 0.],
-                     [0., 0., 0., 0., 0.]],
+                     [[0., 0., 0., 0., 0.],
+                      [0., 1., 1., 1., 0.],
+                      [0., 1., 1., 1., 0.],
+                      [0., 1., 1., 1., 0.],
+                      [0., 0., 0., 0., 0.]],
             <BLANKLINE>
-                    [[0., 0., 0., 0., 0.],
-                     [0., 0., 0., 0., 0.],
-                     [0., 0., 0., 0., 0.],
-                     [0., 0., 0., 0., 0.],
-                     [0., 0., 0., 0., 0.]]])
+                     [[0., 0., 0., 0., 0.],
+                      [0., 0., 0., 0., 0.],
+                      [0., 0., 0., 0., 0.],
+                      [0., 0., 0., 0., 0.],
+                      [0., 0., 0., 0., 0.]]]])
         """
         if self._boxes.requires_grad:
             raise RuntimeError(
