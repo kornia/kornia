@@ -6,9 +6,9 @@ from kornia.utils.draw import draw_line
 
 
 class TestDrawLine:
-    def test_draw_line_vertical(self, device):
+    def test_draw_line_vertical(self, dtype, device):
         """Test drawing a vertical line."""
-        img = torch.zeros(1, 8, 8, device=device)
+        img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
         img = draw_line(img, torch.tensor([6, 2]), torch.tensor([6, 0]), torch.tensor([255]))
         img_mask = img == torch.tensor([[0., 0., 0., 0., 0., 0., 255., 0.],
                                         [0., 0., 0., 0., 0., 0., 255., 0.],
@@ -20,9 +20,9 @@ class TestDrawLine:
                                         [0., 0., 0., 0., 0., 0., 0., 0.]])
         assert torch.all(img_mask)
 
-    def test_draw_line_horizontal(self, device):
+    def test_draw_line_horizontal(self, dtype, device):
         """Test drawing a horizontal line."""
-        img = torch.zeros(1, 8, 8, device=device)
+        img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
         img = draw_line(img, torch.tensor([6, 4]), torch.tensor([0, 4]), torch.tensor([255]))
         img_mask = img == torch.tensor([[0., 0., 0., 0., 0., 0., 0., 0.],
                                         [0., 0., 0., 0., 0., 0., 0., 0.],
@@ -34,9 +34,9 @@ class TestDrawLine:
                                         [0., 0., 0., 0., 0., 0., 0., 0.]])
         assert torch.all(img_mask)
 
-    def test_draw_line_m_lte_neg1(self, device):
+    def test_draw_line_m_lte_neg1(self, dtype, device):
         """Test drawing a line with m <= -1."""
-        img = torch.zeros(1, 8, 8, device=device)
+        img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
         img = draw_line(img, torch.tensor([0, 7]), torch.tensor([6, 0]), torch.tensor([255]))
         img_mask = img == torch.tensor([[0., 0., 0., 0., 0., 0., 255., 0.],
                                         [0., 0., 0., 0., 0., 255., 0., 0.],
@@ -48,9 +48,9 @@ class TestDrawLine:
                                         [255., 0., 0., 0., 0., 0., 0., 0.]])
         assert torch.all(img_mask)
 
-    def test_draw_line_m_lt_0_gte_neg1(self, device):
+    def test_draw_line_m_lt_0_gte_neg1(self, dtype, device):
         """Test drawing a line with -1 < m < 0."""
-        img = torch.zeros(1, 8, 8, device=device)
+        img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
         img = draw_line(img, torch.tensor([1, 5]), torch.tensor([7, 0]), torch.tensor([255]))
         img_mask = img == torch.tensor([[0., 0., 0., 0., 0., 0., 0., 255.],
                                         [0., 0., 0., 0., 0., 0., 255., 0.],
@@ -62,9 +62,9 @@ class TestDrawLine:
                                         [0., 0., 0., 0., 0., 0., 0., 0.]])
         assert torch.all(img_mask)
 
-    def test_draw_line_m_gt_0_lt_1(self, device):
+    def test_draw_line_m_gt_0_lt_1(self, dtype, device):
         """Test drawing a line with 0 < m < 1."""
-        img = torch.zeros(1, 8, 8, device=device)
+        img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
         img = draw_line(img, torch.tensor([0, 0]), torch.tensor([6, 2]), torch.tensor([255]))
         img_mask = img == torch.tensor([[255., 255., 0., 0., 0., 0., 0., 0.],
                                         [0., 0., 255., 255., 255., 0., 0., 0.],
@@ -76,9 +76,9 @@ class TestDrawLine:
                                         [0., 0., 0., 0., 0., 0., 0., 0.]])
         assert torch.all(img_mask)
 
-    def test_draw_line_m_gte_1(self, device):
+    def test_draw_line_m_gte_1(self, dtype, device):
         """Test drawing a line with m >= 1."""
-        img = torch.zeros(1, 8, 8, device=device)
+        img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
         img = draw_line(img, torch.tensor([3, 7]), torch.tensor([1, 4]), torch.tensor([255]))
         img_mask = img == torch.tensor([[0., 0., 0., 0., 0., 0., 0., 0.],
                                         [0., 0., 0., 0., 0., 0., 0., 0.],
@@ -97,11 +97,11 @@ class TestDrawLine:
                                  torch.tensor([8, 0]),
                                  torch.tensor([0, 8]),
                              ])
-    def test_p1_out_of_bounds(self, p1, device):
+    def test_p1_out_of_bounds(self, p1, dtype, device):
         """
         Tests that an exception is raised if p1 is out of bounds
         """
-        img = torch.zeros(1, 8, 8, device=device)
+        img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
         with pytest.raises(ValueError) as excinfo:
             draw_line(img, p1, torch.tensor([0, 0]), torch.tensor([255]))
 
@@ -114,19 +114,19 @@ class TestDrawLine:
                                  torch.tensor([8, 0]),
                                  torch.tensor([0, 8]),
                              ])
-    def test_p2_out_of_bounds(self, p2, device):
+    def test_p2_out_of_bounds(self, p2, dtype, device):
         """
         Tests that an exception is raised if p2 is out of bounds
         """
-        img = torch.zeros(1, 8, 8, device=device)
+        img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
         with pytest.raises(ValueError) as excinfo:
             draw_line(img, torch.tensor([0, 0]), p2, torch.tensor([255]))
 
         assert 'p2 is out of bounds.' == str(excinfo.value)
 
     @pytest.mark.parametrize('img_size', [(200, 100), (32, 3, 20, 20)])
-    def test_image_size(self, img_size, device):
-        img = torch.zeros(*img_size, device=device)
+    def test_image_size(self, img_size, dtype, device):
+        img = torch.zeros(*img_size, dtype=dtype, device=device)
         with pytest.raises(ValueError) as excinfo:
             draw_line(img, torch.tensor([0, 0]), torch.tensor([1, 1]), torch.tensor([255]))
 
@@ -137,8 +137,8 @@ class TestDrawLine:
                                  ((1, 8, 8), torch.tensor([23, 53])),
                                  ((3, 8, 8), torch.tensor([255]))
                              ])
-    def test_color_image_channel_size(self, img_size, color, device):
-        img = torch.zeros(*img_size, device=device)
+    def test_color_image_channel_size(self, img_size, color, dtype, device):
+        img = torch.zeros(*img_size, dtype=dtype, device=device)
         with pytest.raises(ValueError) as excinfo:
             draw_line(img, torch.tensor([0, 0]), torch.tensor([1, 1]), color)
 
@@ -151,8 +151,8 @@ class TestDrawLine:
                                  (torch.tensor([0, 1]), torch.tensor([0, 2, 3])),
                                  (torch.tensor([0, 1, 5]), torch.tensor([0, 2])),
                              ])
-    def test_point_size(self, p1, p2, device):
-        img = torch.zeros(1, 8, 8, device=device)
+    def test_point_size(self, p1, p2, dtype, device):
+        img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
         with pytest.raises(ValueError) as excinfo:
             draw_line(img, p1, p2, torch.tensor([255]))
 
