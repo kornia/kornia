@@ -132,7 +132,7 @@
 - 常见信息请访问我们的网站 www.kornia.org
 
 ## 中文社区
-扫描下方的二维码可关注 Kornia 的官方交流QQ群（679683070）。
+扫描下方的二维码可关注 Kornia 的官方交流QQ群（679683070）以及Kornia知乎账号。
 
 <div align="center">
   <img src="https://github.com/kornia/kornia/raw/master/docs/source/_static/img/cn_community_qq.jpg" width="45%">
