@@ -4,24 +4,20 @@ from torch._C import Size
 
 from kornia.augmentation.random_generator import (
     center_crop_generator,
-    random_affine_generator,
-    random_color_jitter_generator,
-    random_crop_generator,
-    random_crop_size_generator,
     random_cutmix_generator,
     random_mixup_generator,
-    random_motion_blur_generator,
-    random_perspective_generator,
-    random_posterize_generator,
-    random_prob_generator,
-    random_rectangles_params_generator,
-    random_rotation_generator,
-    random_sharpness_generator,
-    random_solarize_generator,
     ColorJitterGenerator,
     PerspectiveGenerator,
+    AffineGenerator,
+    CropGenerator,
+    MotionBlurGenerator,
+    PlainUniformGenerator,
+    PosterizeGenerator,
+    ProbabilityGenerator,
+    RectangleEraseGenerator,
+    ResizedCropGenerator,
+    RotationGenerator
 )
-from kornia.augmentation.random_generator.random_generator import AffineGenerator, CropGenerator, MotionBlurGenerator, PlainUniformGenerator, PosterizeGenerator, RectangleEraseGenerator, ResizedCropGenerator, RotationGenerator
 from kornia.testing import assert_close
 from kornia.utils._compat import torch_version_geq
 
@@ -44,8 +40,8 @@ class TestRandomProbGen(RandomGeneratorBaseTests):
     @pytest.mark.parametrize('p', [0.0, 0.5, 1.0])
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
     @pytest.mark.parametrize('same_on_batch', [True, False])
-    def test_valid_param_combinations(self, p, batch_size, same_on_batch, device, dtype):
-        random_prob_generator(batch_size=batch_size, p=p, same_on_batch=same_on_batch)
+    def test_valid_param_combinations(self, p, batch_size, same_on_batch):
+        ProbabilityGenerator(p)(torch.Size([batch_size]), same_on_batch)
 
     @pytest.mark.parametrize(
         'p',
@@ -55,9 +51,9 @@ class TestRandomProbGen(RandomGeneratorBaseTests):
             (2.0),
         ],
     )
-    def test_invalid_param_combinations(self, p, device, dtype):
+    def test_invalid_param_combinations(self, p):
         with pytest.raises(Exception):
-            random_prob_generator(batch_size=8, p=p)
+            ProbabilityGenerator(p)(torch.Size([8]))
 
     @pytest.mark.parametrize(
         'p,expected',
@@ -66,14 +62,14 @@ class TestRandomProbGen(RandomGeneratorBaseTests):
     def test_random_gen(self, p, expected, device, dtype):
         torch.manual_seed(42)
         batch_size = 8
-        res = random_prob_generator(batch_size=batch_size, p=p)
+        res = ProbabilityGenerator(p)(torch.Size([batch_size]))
         assert (res == torch.tensor(expected)).long().sum() == batch_size
 
     @pytest.mark.parametrize("seed,expected", [(42, [False] * 8), (0, [True] * 8)])
     def test_same_on_batch(self, seed, expected, device, dtype):
         torch.manual_seed(seed)
         batch_size = 8
-        res = random_prob_generator(batch_size=batch_size, p=0.5, same_on_batch=True)
+        res = ProbabilityGenerator(0.5)(torch.Size([batch_size]), True)
         assert (res == torch.tensor(expected)).long().sum() == batch_size
 
 

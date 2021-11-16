@@ -140,7 +140,7 @@ class ProbabilityGenerator(RandomGeneratorBase):
         self.p = p
 
     def make_samplers(self, device, dtype):
-        p = torch.tensor(float(self._p), device=device, dtype=dtype)
+        p = torch.tensor(float(self.p), device=device, dtype=dtype)
         self.sampler = Bernoulli(p)
 
     def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type: ignore
