@@ -57,6 +57,21 @@ def draw_line(
 
     """
 
+    if (len(p1) != 2) or (len(p2) != 2):
+        raise ValueError("p1 and p2 must have length 2.")
+
+    if len(image.size()) != 3:
+        raise ValueError("image must have 3 dimensions (C,H,W).")
+
+    if (color.size(0) != image.size(0)):
+        raise ValueError("color must have the same number of channels as the image.")
+
+    if (p1[0] >= image.size(2)) or (p1[1] >= image.size(1) or (p1[0] < 0) or (p1[1] < 0)):
+        raise ValueError("p1 is out of bounds.")
+
+    if (p2[0] >= image.size(2)) or (p2[1] >= image.size(1) or (p2[0] < 0) or (p2[1] < 0)):
+        raise ValueError("p2 is out of bounds.")
+
     # assign points
     x1, y1 = p1
     x2, y2 = p2
