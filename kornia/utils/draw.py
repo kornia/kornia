@@ -10,36 +10,51 @@ def _draw_pixel(
     x: int,
     y: int,
     color: torch.Tensor,
-):
+) -> None:
     r"""Draws a pixel into an image.
 
     Args:
-        image: the input image to where to draw the lines with shape (C,H,W).
+        image: the input image to where to draw the lines with shape :math`(C,H,W)`.
         x: the x coordinate of the pixel.
         y: the y coordinate of the pixel.
-        color: the color of the pixel with shape (3).
+        color: the color of the pixel with :math`(C)` where :math`C` is the number of channels of the image.
 
     Return:
-        Nothing is returned
+        Nothing is returned.
     """
     image[:, y, x] = color
 
 
 def draw_line(
-    image : torch.Tensor,
-    p1 : torch.Tensor, p2 : torch.Tensor,
-    color : torch.Tensor,
+    image: torch.Tensor,
+    p1: torch.Tensor,
+    p2: torch.Tensor,
+    color: torch.Tensor,
 ) -> torch.Tensor:
     r"""Draw a single line into an image.
 
     Args:
-        image: the input image to where to draw the lines with shape (C,H,W).
-        p1: the start point of the line with shape (2).
-        p2: the end point of the line with shape (2).
-        color: the color of the line with shape (3).
+        image: the input image to where to draw the lines with shape :math`(C,H,W)`.
+        p1: the start point [x y] of the line with shape (2).
+        p2: the end point [x y] of the line with shape (2).
+        color: the color of the line with shape :math`(C)` where :math`C` is the number of channels of the image.
 
     Return:
-        the image containing the line.
+        the image with containing the line.
+
+    Examples:
+    >>> image = torch.zeros(1, 8, 8, device=device)
+    >>> image = draw_line(image, (6, 4), (0, 4), 255)
+    >>> image
+    torch.tensor([[[0., 0., 0., 0., 0., 0., 0., 0.],
+    ...           [0., 0., 0., 0., 0., 0., 0., 0.],
+    ...           [0., 0., 0., 0., 0., 0., 0., 0.],
+    ...           [0., 0., 0., 0., 0., 0., 0., 0.],
+    ...           [255., 255., 255., 255., 255., 255., 255., 0.],
+    ...           [0., 0., 0., 0., 0., 0., 0., 0.],
+    ...           [0., 0., 0., 0., 0., 0., 0., 0.],
+    ...           [0., 0., 0., 0., 0., 0., 0., 0.]]]
+
     """
 
     # assign points
