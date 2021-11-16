@@ -1,6 +1,5 @@
 from typing import cast, Dict, Optional, Tuple, Union, List, Any
 from functools import partial
-from dataclasses import dataclass
 
 import torch
 import torch.nn as nn

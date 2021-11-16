@@ -435,9 +435,6 @@ class RandomPerspective(GeometricAugmentationBase2D):
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self.resample: Resample = Resample.get(resample)
         self.align_corners = align_corners
-        self.flags: Dict[str, torch.Tensor] = dict(
-            interpolation=torch.tensor(self.resample.value), align_corners=torch.tensor(align_corners)
-        )
         self._param_generator = rg.PerspectiveGenerator(distortion_scale)
 
     def __repr__(self) -> str:
@@ -548,11 +545,6 @@ class RandomAffine(GeometricAugmentationBase2D):
         self.padding_mode: SamplePadding = SamplePadding.get(padding_mode)
         self.align_corners = align_corners
         self._param_generator = rg.AffineGenerator(degrees, translate, scale, shear)
-        self.flags: Dict[str, torch.Tensor] = dict(
-            resample=torch.tensor(self.resample.value),
-            padding_mode=torch.tensor(self.padding_mode.value),
-            align_corners=torch.tensor(align_corners),
-        )
 
     def __repr__(self) -> str:
         return f"({super().__repr__()[:-1]}, resample={self.resample.name})"
@@ -662,9 +654,6 @@ class CenterCrop(GeometricAugmentationBase2D):
             raise Exception(f"Invalid size type. Expected (int, tuple(int, int). " f"Got: {type(size)}.")
         self.resample = Resample.get(resample)
         self.align_corners = align_corners
-        self.flags: Dict[str, torch.Tensor] = dict(
-            interpolation=torch.tensor(self.resample.value), align_corners=torch.tensor(align_corners)
-        )
         self.cropping_mode = cropping_mode
 
     def __repr__(self) -> str:
@@ -787,9 +776,6 @@ class RandomRotation(GeometricAugmentationBase2D):
         self.resample: Resample = Resample.get(resample)
         self.align_corners = align_corners
         self._param_generator = rg.RotationGenerator(degrees)
-        self.flags: Dict[str, torch.Tensor] = dict(
-            interpolation=torch.tensor(self.resample.value), align_corners=torch.tensor(align_corners)
-        )
 
     def __repr__(self) -> str:
         return f"({super().__repr__()[:-1]}, interpolation={self.resample.name})"
@@ -909,9 +895,6 @@ class RandomCrop(GeometricAugmentationBase2D):
         self.padding_mode = padding_mode
         self.resample: Resample = Resample.get(resample)
         self.align_corners = align_corners
-        self.flags: Dict[str, torch.Tensor] = dict(
-            interpolation=torch.tensor(self.resample.value), align_corners=torch.tensor(align_corners)
-        )
         self.cropping_mode = cropping_mode
         self._param_generator = rg.CropGenerator(size)
 
@@ -980,7 +963,7 @@ class RandomCrop(GeometricAugmentationBase2D):
                 y2 = int(params['src'][i, 3, 1]) + 1
                 out[i] = input[i : i + 1, :, y1:y2, x1:x2]
             return out
-        raise NotImplementedError(f"Not supported type: {self.flags['mode']}.")
+        raise NotImplementedError(f"Not supported type: {self.cropping_mode}.")
 
     def inverse_transform(
         self,
@@ -1122,9 +1105,6 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         self.ratio = ratio
         self.resample: Resample = Resample.get(resample)
         self.align_corners = align_corners
-        self.flags: Dict[str, torch.Tensor] = dict(
-            interpolation=torch.tensor(self.resample.value), align_corners=torch.tensor(align_corners)
-        )
         self.cropping_mode = cropping_mode
         self._param_generator = rg.ResizedCropGenerator(size, scale, ratio)
 
@@ -1366,10 +1346,6 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         self.direction = direction
         self.border_type = BorderType.get(border_type)
         self.resample = Resample.get(resample)
-        self.flags: Dict[str, torch.Tensor] = {
-            "border_type": torch.tensor(self.border_type.value),
-            "interpolation": torch.tensor(self.resample.value),
-        }
 
     def __repr__(self) -> str:
         repr = f"border_type='{self.border_type.name.lower()}'"

@@ -172,7 +172,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         self.return_transform = return_transform
 
     def __repr__(self) -> str:
-        return super().__repr__() + f", return_transform={self.return_transform}"
+        return self.__class__.__name__ + f"({super().__repr__()}, return_transform={self.return_transform})"
 
     def identity_matrix(self, input: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError
@@ -273,9 +273,6 @@ class AugmentationBase2D(_AugmentationBase):
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it to the batch
           form ``False``.
     """
-
-    def __repr__(self) -> str:
-        return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def __check_batching__(self, input: TensorWithTransformMat):
         if isinstance(input, tuple):
