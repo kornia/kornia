@@ -53,7 +53,10 @@ class _BasicAugmentationBase(nn.Module):
         self.set_rng_device_and_dtype(torch.device('cpu'), torch.get_default_dtype())
 
     def __repr__(self) -> str:
-        return f"p={self.p}, p_batch={self.p_batch}, same_on_batch={self.same_on_batch}"
+        txt = f"p={self.p}, p_batch={self.p_batch}, same_on_batch={self.same_on_batch}"
+        if isinstance(self._param_generator, RandomGeneratorBase):
+            txt = f"{str(self._param_generator)}, {txt}"
+        return txt
 
     def __unpack_input__(self, input: torch.Tensor) -> torch.Tensor:
         return input
@@ -270,6 +273,9 @@ class AugmentationBase2D(_AugmentationBase):
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it to the batch
           form ``False``.
     """
+
+    def __repr__(self) -> str:
+        return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def __check_batching__(self, input: TensorWithTransformMat):
         if isinstance(input, tuple):

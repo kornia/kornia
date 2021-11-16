@@ -96,6 +96,10 @@ class PlainUniformGenerator(RandomGeneratorBase):
             if isinstance(factor, torch.Tensor):
                 self.register_buffer(name, factor)
 
+    def __repr__(self) -> str:
+        repr = ", ".join([f"{name}={factor}" for factor, name, _, _ in self.samplers])
+        return repr
+
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         self.sampler_dict: Dict[str, Distribution] = {}
         for factor, name, center, bound in self.samplers:
@@ -139,7 +143,11 @@ class ProbabilityGenerator(RandomGeneratorBase):
         super().__init__()
         self.p = p
 
-    def make_samplers(self, device, dtype):
+    def __repr__(self) -> str:
+        repr = f"p={self.p}"
+        return repr
+
+    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         p = torch.tensor(float(self.p), device=device, dtype=dtype)
         self.sampler = Bernoulli(p)
 
@@ -195,7 +203,11 @@ class AffineGenerator(RandomGeneratorBase):
         self.scale = scale
         self.shear = shear
 
-    def make_samplers(self, device, dtype):
+    def __repr__(self) -> str:
+        repr = f"degrees={self.degrees}, translate={self.translate}, scale={self.scale}, shear={self.shear}"
+        return repr
+
+    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         degrees = _range_bound(self.degrees, 'degrees', 0, (-360, 360), device=device, dtype=dtype)
         translate_x_sampler: Optional[Uniform] = None
         translate_y_sampler: Optional[Uniform] = None
@@ -270,7 +282,7 @@ class AffineGenerator(RandomGeneratorBase):
         angle = _adapted_rsampling((batch_size,), self.degree_sampler, same_on_batch).to(device=_device, dtype=_dtype)
 
         # compute tensor ranges
-        if self.scale is not None:
+        if self.scale_2_sampler is not None:
             _scale = _adapted_rsampling((batch_size,), self.scale_2_sampler, same_on_batch).unsqueeze(1).repeat(1, 2)
             if self.scale_4_sampler is not None:
                 _scale[:, 1] = _adapted_rsampling((batch_size,), self.scale_4_sampler, same_on_batch)
@@ -278,7 +290,7 @@ class AffineGenerator(RandomGeneratorBase):
         else:
             _scale = torch.ones((batch_size, 2), device=_device, dtype=_dtype)
 
-        if self.translate is not None:
+        if self.translate_x_sampler is not None and self.translate_y_sampler is not None:
             translations = torch.stack([
                 _adapted_rsampling((batch_size,), self.translate_x_sampler, same_on_batch) * width,
                 _adapted_rsampling((batch_size,), self.translate_y_sampler, same_on_batch) * height,
@@ -290,7 +302,7 @@ class AffineGenerator(RandomGeneratorBase):
         center: torch.Tensor = torch.tensor([width, height], device=_device, dtype=_dtype).view(1, 2) / 2.0 - 0.5
         center = center.expand(batch_size, -1)
 
-        if self.shear is not None:
+        if self.shear_x_sampler is not None and self.shear_y_sampler is not None:
             sx = _adapted_rsampling((batch_size,), self.shear_x_sampler, same_on_batch)
             sy = _adapted_rsampling((batch_size,), self.shear_y_sampler, same_on_batch)
             sx = sx.to(device=_device, dtype=_dtype)
@@ -338,7 +350,7 @@ class ColorJitterGenerator(RandomGeneratorBase):
         self.saturation = saturation
         self.hue = hue
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         repr = f"brightness={self.brightness}, contrast={self.contrast}, saturation={self.saturation}, hue={self.hue}"
         return repr
 
@@ -408,6 +420,12 @@ class CropGenerator(RandomGeneratorBase):
         super().__init__()
         self.size = size
         self.resize_to = resize_to
+
+    def __repr__(self) -> str:
+        repr = f"crop_size={self.size}"
+        if self.resize_to is not None:
+            repr += f", resize_to={self.resize_to}"
+        return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         self.rand_sampler = Uniform(
@@ -532,6 +550,10 @@ class ResizedCropGenerator(CropGenerator):
             raise AssertionError(f"`output_size` must be a tuple of 2 positive integers. Got {output_size}.")
         super().__init__(size=output_size, resize_to=self.output_size)  # fake an intermedia crop size
 
+    def __repr__(self) -> str:
+        repr = f"scale={self.scale}, resize_to={self.ratio}, output_size={self.output_size}"
+        return repr
+
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         scale = torch.as_tensor(self.scale, device=device, dtype=dtype)
         ratio = torch.as_tensor(self.ratio, device=device, dtype=dtype)
@@ -615,7 +637,7 @@ class PerspectiveGenerator(RandomGeneratorBase):
         super().__init__()
         self.distortion_scale = distortion_scale
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         repr = f"distortion_scale={self.distortion_scale}"
         return repr
 
@@ -694,6 +716,10 @@ class RectangleEraseGenerator(RandomGeneratorBase):
         self.scale = scale
         self.ratio = ratio
         self.value = value
+
+    def __repr__(self) -> str:
+        repr = f"scale={self.scale}, resize_to={self.ratio}, value={self.value}"
+        return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         scale = torch.as_tensor(self.scale, device=device, dtype=dtype)
@@ -803,6 +829,10 @@ class RotationGenerator(RandomGeneratorBase):
         super().__init__()
         self.degrees = degrees
 
+    def __repr__(self) -> str:
+        repr = f"degrees={self.scale}"
+        return repr
+
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         degrees = _range_bound(self.degrees, 'degrees', 0, (-360, 360), device=device, dtype=dtype)
         self.degree_sampler = Uniform(degrees[0], degrees[1], validate_args=False)
@@ -853,6 +883,10 @@ class MotionBlurGenerator(RandomGeneratorBase):
         self.kernel_size = kernel_size
         self.angle = angle
         self.direction = direction
+
+    def __repr__(self) -> str:
+        repr = f"kernel_size={self.kernel_size}, angle={self.angle}, direction={self.direction}"
+        return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         angle = _range_bound(self.angle, 'angle', center=0.0, bounds=(-360, 360)).to(device=device, dtype=dtype)
@@ -908,6 +942,10 @@ class PosterizeGenerator(RandomGeneratorBase):
     def __init__(self, bits: Union[int, Tuple[int, int], torch.Tensor]) -> None:
         super().__init__()
         self.bits = bits
+
+    def __repr__(self) -> str:
+        repr = f"bits={self.bits}"
+        return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         bits = torch.as_tensor(self.bits, device=device, dtype=dtype)
