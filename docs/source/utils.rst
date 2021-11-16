@@ -7,6 +7,7 @@ Draw
 ----
 
 .. autofunction:: draw_line
+.. autofunction:: draw_rectangle
 
 Image
 -----
@@ -14,7 +15,6 @@ Image
 .. autofunction:: tensor_to_image
 .. autofunction:: image_to_tensor
 .. autofunction:: image_list_to_tensor
-.. autofunction:: draw_rectangle
 
 Grid
 ----
