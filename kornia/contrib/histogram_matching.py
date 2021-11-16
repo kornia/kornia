@@ -14,7 +14,7 @@ def histogram_matching(source: torch.Tensor, template: torch.Tensor) -> torch.Te
         template: Template image. It can have different dimensions to source.
 
     Returns:
-        matched: The transformed output image.
+        The transformed output image as the same shape as the source image.
 
     Note:
         This function does not matches histograms element-wisely if input a batched tensor.
@@ -58,7 +58,9 @@ def interp(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor) -> torch.Tensor:
     Returns:
         The interpolated values, same shape as ``x``.
     """
-
+    assert x.dim() == xp.dim() == fp.dim() == 1, (
+        f"Required 1D vector across ``x``, ``xp``, ``fp``. Got {x.dim()}, {xp.dim()}, {fp.dim()}."
+    )
     slopes = (fp[1:] - fp[:-1]) / (xp[1:] - xp[:-1])
     locs = torch.searchsorted(xp, x)
     locs = locs.clip(1, len(xp) - 1) - 1

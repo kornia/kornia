@@ -381,10 +381,18 @@ class TestHistMatch:
         assert (x_hat_expected == x_hat).all()
 
     def test_histmatch(self, device, dtype):
-        src = torch.randn(3, 32, 32, device=device, dtype=dtype)
-        dst = torch.randn(3, 48, 48, device=device, dtype=dtype)
-        exp = kornia.contrib.histogram_matching(src, dst)
-        assert exp.shape == src.shape
+        torch.manual_seed(44)
+        src = torch.randn(1, 4, 4, device=device, dtype=dtype)
+        dst = torch.randn(1, 16, 16, device=device, dtype=dtype)
+        out = kornia.contrib.histogram_matching(src, dst)
+        exp = torch.tensor([[
+            [0.9356, 0.8270, 1.3687, 0.5640],
+            [0.6273, 0.9119, 0.4965, 0.4020],
+            [0.4353, 0.1475, 0.3384, 0.2580],
+            [0.0606, 0.7531, 0.2139, 0.6932]
+        ]])
+        assert exp.shape == out.shape
+        assert_close(out, exp, rtol=1e-4, atol=1e-4)
 
     @pytest.mark.skip(reason="not differentiable now.")
     def test_grad(self, device):
