@@ -43,7 +43,7 @@ def draw_line(
         the image with containing the line.
 
     Examples:
-    >>> image = torch.zeros(1, 8, 8, device=device)
+    >>> image = torch.zeros(1, 8, 8)
     >>> image = draw_line(image, (6, 4), (0, 4), 255)
     >>> image
     torch.tensor([[[0., 0., 0., 0., 0., 0., 0., 0.],
