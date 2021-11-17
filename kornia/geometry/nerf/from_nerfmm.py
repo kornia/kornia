@@ -58,7 +58,7 @@ class TinyNerf(nn.Module):
         return rgb_den
 
 
-class RayParameters():
+class RayParameters:
     def __init__(self):
         self.NEAR, self.FAR = 0.0, 1.0  # ndc near far
         self.N_SAMPLE = 128  # samples per ray
@@ -121,7 +121,7 @@ def train_one_epoch(imgs, H, W, ray_params, opt_nerf, opt_focal,
     # shuffle the training imgs
     N_IMGS = imgs.shape[0]
 
-    print("N_IMGS = ", N_IMGS, " H = ", H, " W = ", W)
+    # print("N_IMGS = ", N_IMGS, " H = ", H, " W = ", W)
 
     ids = np.arange(N_IMGS)
     np.random.shuffle(ids)
@@ -145,7 +145,7 @@ def train_one_epoch(imgs, H, W, ray_params, opt_nerf, opt_focal,
                                            H, W, fxfy, nerf_model, perturb_t=True, sigma_noise_std=0.0)
         rgb_rendered = render_result['rgb']  # (N_select_rows, N_select_cols, 3)
 
-        print("SHAPES: ", rgb_rendered.shape, img_selected.shape)
+        # print("SHAPES: ", rgb_rendered.shape, img_selected.shape)
 
         L2_loss = F.mse_loss(rgb_rendered, img_selected)  # loss for one image
 
@@ -193,10 +193,9 @@ def render_novel_view(c2w, H, W, fxfy, ray_params, nerf_model, device):
 
 
 def train_model(imgs: torch.Tensor, n_epoch = 1, device: str = 'cpu')->Tuple[nn.Module, nn.Module, nn.Module]:
-    # n_epoch = 1 # 200  # set to 1000 to get slightly better results. we use 10K epoch in our paper.
     EVAL_INTERVAL = 50  # render an image to visualise for every this interval.
 
-    # Initialise all trainabled parameters
+    # Initialise all trainable parameters
     N_IMGS = imgs.shape[0]
     H = imgs.shape[1]
     W = imgs.shape[2]
@@ -227,7 +226,7 @@ def train_model(imgs: torch.Tensor, n_epoch = 1, device: str = 'cpu')->Tuple[nn.
     # writer = SummaryWriter(log_dir=os.path.join('logs', scene_name, str(datetime.datetime.now().strftime('%y%m%d_%H%M%S'))))
 
     # Store poses to visualise them later
-    pose_history = []
+    # pose_history = []
 
     # Training
     print('Training... Check results in the tensorboard above.')
@@ -246,18 +245,18 @@ def train_model(imgs: torch.Tensor, n_epoch = 1, device: str = 'cpu')->Tuple[nn.
         scheduler_focal.step()
         scheduler_pose.step()
 
-        learned_c2ws = torch.stack([pose_param_net(i) for i in range(N_IMGS)])  # (N, 4, 4)
-        pose_history.append(learned_c2ws[:, :3, 3])  # (N, 3) only store positions as we vis in 2D.
+        # learned_c2ws = torch.stack([pose_param_net(i) for i in range(N_IMGS)])  # (N, 4, 4)
+        # pose_history.append(learned_c2ws[:, :3, 3])  # (N, 3) only store positions as we vis in 2D.
 
-        with torch.no_grad():
-            if (epoch_i + 1) % EVAL_INTERVAL == 0:
-                eval_c2w = torch.eye(4, dtype=torch.float32)  # (4, 4)
-                fxfy = focal_net()
-                rendered_img, rendered_depth = render_novel_view(eval_c2w, H, W, fxfy, ray_params, nerf_model, device)
-                # writer.add_image('eval/img', rendered_img.permute(2, 0, 1), global_step=epoch_i)
-                # writer.add_image('eval/depth', rendered_depth.unsqueeze(0), global_step=epoch_i)
+        # with torch.no_grad():
+        #     if (epoch_i + 1) % EVAL_INTERVAL == 0:
+        #         eval_c2w = torch.eye(4, dtype=torch.float32)  # (4, 4)
+        #         fxfy = focal_net()
+        #         rendered_img, rendered_depth = render_novel_view(eval_c2w, H, W, fxfy, ray_params, nerf_model, device)
+        #         # writer.add_image('eval/img', rendered_img.permute(2, 0, 1), global_step=epoch_i)
+        #         # writer.add_image('eval/depth', rendered_depth.unsqueeze(0), global_step=epoch_i)
 
-    pose_history = torch.stack(pose_history).detach().cpu().numpy()  # (n_epoch, N_img, 3)
+    # pose_history = torch.stack(pose_history).detach().cpu().numpy()  # (n_epoch, N_img, 3)
     print('Training finished.')
 
     return nerf_model, focal_net, pose_param_net
