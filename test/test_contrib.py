@@ -390,7 +390,7 @@ class TestHistMatch:
             [0.6273, 0.9119, 0.4965, 0.4020],
             [0.4353, 0.1475, 0.3384, 0.2580],
             [0.0606, 0.7531, 0.2139, 0.6932]
-        ]])
+        ]], device=device, dtype=dtype)
         assert exp.shape == out.shape
         assert_close(out, exp, rtol=1e-4, atol=1e-4)
 
