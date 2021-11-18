@@ -219,7 +219,7 @@ class TestHomographyWarper:
             # same transform precomputing the grid
             warper.precompute_warp_grid(_torch_inverse_cast(dst_homo_src_i))
             patch_dst_to_src_precomputed = warper(patch_dst)
-            assert (patch_dst_to_src_precomputed == patch_dst_to_src).all()
+            assert_close(patch_dst_to_src_precomputed, patch_dst_to_src, atol=1e-4, rtol=1e-4)
 
             # projected should be equal as initial
             error = utils.compute_patch_error(patch_src, patch_dst_to_src, height, width)
