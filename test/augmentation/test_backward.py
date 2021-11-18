@@ -51,7 +51,7 @@ class TestColorJitterBackward:
 
         if len(list(aug.parameters())) != 0:
             mse = nn.MSELoss()
-            opt = torch.optim.SGD(aug.parameters(), lr=0.1)
+            opt = torch.optim.SGD(aug.parameters(), lr=10)
             loss = mse(output, torch.ones_like(output) * 2)
             loss.backward()
             opt.step()

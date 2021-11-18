@@ -295,9 +295,7 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
             (100, 100, torch.tensor([10, 20]), None, torch.tensor([1]), None),
             (100, 100, torch.tensor([10, 20]), None, torch.tensor([1, 2, 3]), None),
             (100, 100, torch.tensor([10, 20]), None, None, torch.tensor([1])),
-            (100, 100, torch.tensor([10, 20]), None, None, torch.tensor([1, 2])),
             (10, 10, torch.tensor([1, 2]), None, None, torch.tensor([1, 2, 3])),
-            (10, 10, torch.tensor([1, 2]), None, None, torch.tensor([1, 2, 3, 4])),
             (10, 10, torch.tensor([1, 2]), None, None, torch.tensor([1, 2, 3, 4, 5])),
         ],
     )

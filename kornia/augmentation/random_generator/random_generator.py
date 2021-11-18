@@ -101,7 +101,7 @@ class PlainUniformGenerator(RandomGeneratorBase):
         self.sampler_dict: Dict[str, Distribution] = {}
         for factor, name, center, bound in self.samplers:
             if center is None and bound is None:
-                pass
+                factor = torch.as_tensor(factor, device=device, dtype=dtype)
             elif center is None or bound is None:
                 raise ValueError(f"`center` and `bound` should be both None or provided. Got {center} and {bound}.")
             else:
@@ -218,12 +218,14 @@ class AffineGenerator(RandomGeneratorBase):
                     _range_bound(self.scale[:2], 'scale_x', bounds=(0, float('inf')), check='singular'),
                     _range_bound(self.scale[2:], 'scale_y', bounds=(0, float('inf')), check='singular'),
                 ]).to(device=device, dtype=dtype)
+            else:
+                raise ValueError(f"'scale' expected to be either 2 or 4 elements. Got {self.scale}")
         _shear: Optional[torch.Tensor] = None
         if self.shear is not None:
-            if isinstance(self.shear, torch.Tensor) and self.shear.shape == torch.Size([2, 2]):
-                _shear = self.shear
+            shear = torch.as_tensor(self.shear, device=device, dtype=dtype)
+            if shear.shape == torch.Size([2, 2]):
+                _shear = shear
             else:
-                shear = torch.as_tensor(self.shear, device=device, dtype=dtype)
                 _shear = torch.stack([
                     _range_bound(shear if shear.dim() == 0 else shear[:2], 'shear-x', 0, (-360, 360)),
                     torch.tensor([0, 0], device=device, dtype=dtype) if shear.dim() == 0 or len(shear) == 2
@@ -458,11 +460,15 @@ class CropGenerator(RandomGeneratorBase):
 
         if same_on_batch:
             # If same_on_batch, select the first then repeat.
-            x_start = (_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch) * x_diff[0]).floor()
-            y_start = (_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch) * y_diff[0]).floor()
+            x_start = (_adapted_rsampling(
+                (batch_size,), self.rand_sampler, same_on_batch).to(x_diff) * x_diff[0]).floor()
+            y_start = (_adapted_rsampling(
+                (batch_size,), self.rand_sampler, same_on_batch).to(y_diff) * y_diff[0]).floor()
         else:
-            x_start = (_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch) * x_diff).floor()
-            y_start = (_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch) * y_diff).floor()
+            x_start = (_adapted_rsampling(
+                (batch_size,), self.rand_sampler, same_on_batch).to(x_diff) * x_diff).floor()
+            y_start = (_adapted_rsampling(
+                (batch_size,), self.rand_sampler, same_on_batch).to(y_diff) * y_diff).floor()
         crop_src = bbox_generator(
             x_start.view(-1).to(device=_device, dtype=_dtype),
             y_start.view(-1).to(device=_device, dtype=_dtype),
@@ -752,7 +758,8 @@ class RectangleEraseGenerator(RandomGeneratorBase):
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.ratio, self.scale])
         images_area = height * width
-        target_areas = _adapted_rsampling((batch_size,), self.scale_sampler, same_on_batch) * images_area
+        target_areas = _adapted_rsampling(
+            (batch_size,), self.scale_sampler, same_on_batch).to(device=_device, dtype=_dtype) * images_area
 
         if self.ratio[0] < 1.0 and self.ratio[1] > 1.0:
             aspect_ratios1 = _adapted_rsampling((batch_size,), self.ratio_sampler1, same_on_batch)
