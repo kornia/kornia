@@ -110,7 +110,7 @@ class PlainUniformGenerator(RandomGeneratorBase):
                 )
             self.sampler_dict.update({name: Uniform(factor[0], factor[1])})
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type: ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type:ignore
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([t for t, _, _, _ in self.samplers])
@@ -148,7 +148,7 @@ class ProbabilityGenerator(RandomGeneratorBase):
         p = torch.tensor(float(self.p), device=device, dtype=dtype)
         self.sampler = Bernoulli(p)
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type: ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type:ignore
         batch_size = batch_shape[0]
         probs_mask: torch.Tensor = _adapted_sampling((batch_size,), self.sampler, same_on_batch).bool()
         return probs_mask
@@ -216,7 +216,7 @@ class AffineGenerator(RandomGeneratorBase):
             elif len(self.scale) == 4:
                 _scale = torch.cat([
                     _range_bound(self.scale[:2], 'scale_x', bounds=(0, float('inf')), check='singular'),
-                    _range_bound(self.scale[2:], 'scale_y', bounds=(0, float('inf')), check='singular'),
+                    _range_bound(self.scale[2:], 'scale_y', bounds=(0, float('inf')), check='singular'),  # type:ignore
                 ]).to(device=device, dtype=dtype)
             else:
                 raise ValueError(f"'scale' expected to be either 2 or 4 elements. Got {self.scale}")
@@ -596,10 +596,10 @@ class ResizedCropGenerator(CropGenerator):
             # Fallback to center crop
             in_ratio = float(size[0]) / float(size[1])
             _min = self.ratio.min() if isinstance(self.ratio, torch.Tensor) else min(self.ratio)
-            if in_ratio < _min:  # type: ignore
+            if in_ratio < _min:  # type:ignore
                 h_ct = torch.tensor(size[0], device=_device, dtype=_dtype)
                 w_ct = torch.round(h_ct / _min)
-            elif in_ratio > _min:  # type: ignore
+            elif in_ratio > _min:  # type:ignore
                 w_ct = torch.tensor(size[1], device=_device, dtype=_dtype)
                 h_ct = torch.round(w_ct * _min)
             else:  # whole image
