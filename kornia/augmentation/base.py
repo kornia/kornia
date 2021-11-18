@@ -6,6 +6,7 @@ import torch.nn as nn
 from torch.distributions import Bernoulli
 
 import kornia
+from kornia.augmentation.random_generator.random_generator import AffineGenerator
 from kornia.utils.helpers import _torch_inverse_cast
 
 from .random_generator import RandomGeneratorBase

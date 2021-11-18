@@ -46,7 +46,11 @@ class RandomGeneratorBase(nn.Module, metaclass=_PostInitInjectionMetaClass):
         Note:
             The generated random numbers are not reproducible across different devices and dtypes.
         """
+        self.valid_parameters()
         self.make_samplers(device, dtype)
+
+    def valid_parameters(self,) -> None:
+        pass
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         raise NotImplementedError
@@ -203,9 +207,30 @@ class AffineGenerator(RandomGeneratorBase):
     def __repr__(self) -> str:
         repr = f"degrees={self.degrees}, translate={self.translate}, scale={self.scale}, shear={self.shear}"
         return repr
+    
+    def valid_parameters(self,):
+        self._degrees = _range_bound(self.degrees, 'degrees', 0, (-360, 360))
+        self._translate = self.translate if self.translate is None else \
+            _range_bound(self.translate, 'translate', bounds=(0, 1), check='singular')
+        self._scale: Optional[torch.Tensor] = None
+        if self.scale is not None:
+            if len(self.scale) == 2:
+                self._scale = _range_bound(self.scale[:2], 'scale', bounds=(0, float('inf')), check='singular')
+            elif len(self.scale) == 4:
+                self._scale = torch.cat([
+                    _range_bound(self.scale[:2], 'scale_x', bounds=(0, float('inf')), check='singular'),
+                    _range_bound(self.scale[2:], 'scale_y', bounds=(0, float('inf')), check='singular'),
+                ])
+        self._shear: Optional[torch.Tensor] = None
+        if self.shear is not None:
+            shear = torch.as_tensor(self.shear)
+            self._shear = torch.stack([
+                _range_bound(shear if shear.dim() == 0 else shear[:2], 'shear-x', 0, (-360, 360)),
+                torch.tensor([0, 0]) if shear.dim() == 0 or len(shear) == 2
+                else _range_bound(shear[2:], 'shear-y', 0, (-360, 360)),
+            ])
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        degrees = _range_bound(self.degrees, 'degrees', 0, (-360, 360), device=device, dtype=dtype)
         translate_x_sampler: Optional[Uniform] = None
         translate_y_sampler: Optional[Uniform] = None
         scale_2_sampler: Optional[Uniform] = None
@@ -213,52 +238,24 @@ class AffineGenerator(RandomGeneratorBase):
         shear_x_sampler: Optional[Uniform] = None
         shear_y_sampler: Optional[Uniform] = None
 
-        if self.translate is not None:
-            translate = _range_bound(
-                self.translate, 'translate', bounds=(0, 1), check='singular', device=device, dtype=dtype
-            )
-            translate_x_sampler = Uniform(-translate[0], translate[0], validate_args=False)
-            translate_y_sampler = Uniform(-translate[1], translate[1], validate_args=False)
-        if self.scale is not None:
-            scale = torch.as_tensor(self.scale, device=device, dtype=dtype)
-            if len(scale) == 2:
-                scale = _range_bound(
-                    scale, 'scale', bounds=(0, float('inf')), check='singular', device=device, dtype=dtype
-                )
-                scale_2_sampler = Uniform(scale[0], scale[1])
-            elif len(scale) == 4:
-                scale = torch.cat([
-                    _range_bound(
-                        scale[:2], 'scale_x', bounds=(0, float('inf')), check='singular', device=device, dtype=dtype,
-                    ),
-                    _range_bound(
-                        scale[2:], 'scale_y', bounds=(0, float('inf')), check='singular', device=device, dtype=dtype,
-                    ),
-                ])
-                scale_4_sampler = Uniform(scale[2], scale[3], validate_args=False)
+        if self._translate is not None:
+            translate_x_sampler = Uniform(-self._translate[0], self._translate[0], validate_args=False)
+            translate_y_sampler = Uniform(-self._translate[1], self._translate[1], validate_args=False)
+        if self._scale is not None:
+            if len(self._scale) == 2:
+                scale_2_sampler = Uniform(self._scale[0], self._scale[1], validate_args=False)
+            elif len(self._scale) == 4:
+                scale_2_sampler = Uniform(self._scale[0], self._scale[1], validate_args=False)
+                scale_4_sampler = Uniform(self._scale[2], self._scale[3], validate_args=False)
             else:
-                raise ValueError(f"'scale' expected to be either 2 or 4 elements. Got {scale}")
-        if self.shear is not None:
-            if not isinstance(self.shear, torch.Tensor):
-                shear = torch.as_tensor(self.shear, device=device, dtype=dtype)
-                shear = torch.stack([
-                    _range_bound(
-                        shear if shear.dim() == 0 else shear[:2], 'shear-x', 0, (-360, 360),
-                        device=device, dtype=dtype,
-                    ),
-                    torch.tensor([0, 0], device=device, dtype=dtype)
-                    if shear.dim() == 0 or len(shear) == 2
-                    else _range_bound(shear[2:], 'shear-y', 0, (-360, 360), device=device, dtype=dtype),
-                ])
-            else:
-                shear = self.shear
+                raise ValueError(f"'scale' expected to be either 2 or 4 elements. Got {self.scale}")
+        if self._shear is not None:
+            _joint_range_check(cast(torch.Tensor, self._shear)[0], "shear")
+            _joint_range_check(cast(torch.Tensor, self._shear)[1], "shear")
+            shear_x_sampler = Uniform(self._shear[0][0], self._shear[0][1], validate_args=False)
+            shear_y_sampler = Uniform(self._shear[1][0], self._shear[1][1], validate_args=False)
 
-            _joint_range_check(cast(torch.Tensor, shear)[0], "shear")
-            _joint_range_check(cast(torch.Tensor, shear)[1], "shear")
-            shear_x_sampler = Uniform(shear[0][0], shear[0][1], validate_args=False)
-            shear_y_sampler = Uniform(shear[1][0], shear[1][1], validate_args=False)
-
-        self.degree_sampler = Uniform(degrees[0], degrees[1], validate_args=False)
+        self.degree_sampler = Uniform(self._degrees[0], self._degrees[1], validate_args=False)
         self.translate_x_sampler = translate_x_sampler
         self.translate_y_sampler = translate_y_sampler
         self.scale_2_sampler = scale_2_sampler
