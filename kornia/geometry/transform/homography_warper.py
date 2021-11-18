@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 from kornia.utils import create_meshgrid
 
-from .imgwarp import warp_grid, homography_warp
+from .imgwarp import homography_warp, warp_grid
 
 __all__ = [
     "HomographyWarper",
