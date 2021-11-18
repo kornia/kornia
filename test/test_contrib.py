@@ -382,8 +382,9 @@ class TestHistMatch:
 
     def test_histmatch(self, device, dtype):
         torch.manual_seed(44)
-        src = torch.randn(1, 4, 4, device=device, dtype=dtype)
-        dst = torch.randn(1, 16, 16, device=device, dtype=dtype)
+        # generate random value by CPU.
+        src = torch.randn(1, 4, 4).to(device=device, dtype=dtype)
+        dst = torch.randn(1, 16, 16).to(device=device, dtype=dtype)
         out = kornia.contrib.histogram_matching(src, dst)
         exp = torch.tensor([[
             [0.9356, 0.8270, 1.3687, 0.5640],
