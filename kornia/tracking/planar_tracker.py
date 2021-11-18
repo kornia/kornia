@@ -84,7 +84,7 @@ class HomographyTracker(nn.Module):
         match_dict: Dict[str, torch.Tensor] = self.initial_matcher(input_dict)
         keypoints0 = match_dict['keypoints0'][match_dict['batch_indexes'] == 0]
         keypoints1 = match_dict['keypoints1'][match_dict['batch_indexes'] == 0]
-        
+
         self.keypoints0_num = len(keypoints0)
         self.keypoints1_num = len(keypoints1)
 
