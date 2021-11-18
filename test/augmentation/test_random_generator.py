@@ -1,6 +1,5 @@
 import pytest
 import torch
-from torch._C import Size
 
 from kornia.augmentation.random_generator import (
     AffineGenerator,

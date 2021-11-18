@@ -220,12 +220,15 @@ class AffineGenerator(RandomGeneratorBase):
                 ]).to(device=device, dtype=dtype)
         _shear: Optional[torch.Tensor] = None
         if self.shear is not None:
-            shear = torch.as_tensor(self.shear, device=device, dtype=dtype)
-            _shear = torch.stack([
-                _range_bound(shear if shear.dim() == 0 else shear[:2], 'shear-x', 0, (-360, 360)),
-                torch.tensor([0, 0], device=device, dtype=dtype) if shear.dim() == 0 or len(shear) == 2
-                else _range_bound(shear[2:], 'shear-y', 0, (-360, 360)),
-            ])
+            if isinstance(self.shear, torch.Tensor) and self.shear.shape == torch.Size([2, 2]):
+                _shear = self.shear
+            else:
+                shear = torch.as_tensor(self.shear, device=device, dtype=dtype)
+                _shear = torch.stack([
+                    _range_bound(shear if shear.dim() == 0 else shear[:2], 'shear-x', 0, (-360, 360)),
+                    torch.tensor([0, 0], device=device, dtype=dtype) if shear.dim() == 0 or len(shear) == 2
+                    else _range_bound(shear[2:], 'shear-y', 0, (-360, 360)),
+                ])
 
         translate_x_sampler: Optional[Uniform] = None
         translate_y_sampler: Optional[Uniform] = None
