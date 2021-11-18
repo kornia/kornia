@@ -368,3 +368,12 @@ class TestImageStitcher:
         stitcher = kornia.contrib.ImageStitcher(matcher).to(device=device, dtype=dtype)
         with pytest.raises(RuntimeError):
             stitcher(input1, input2)
+
+
+class TestConvDistanceTransform:
+    @pytest.mark.parametrize("kernel_size", [3, 5, 7])
+    def test_smoke(self, device, dtype):
+        pass
+
+    def test_exception(self, device, dtype):
+        pass
