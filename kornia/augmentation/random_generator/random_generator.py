@@ -46,11 +46,7 @@ class RandomGeneratorBase(nn.Module, metaclass=_PostInitInjectionMetaClass):
         Note:
             The generated random numbers are not reproducible across different devices and dtypes.
         """
-        self.valid_parameters()
         self.make_samplers(device, dtype)
-
-    def valid_parameters(self,) -> None:
-        pass
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         raise NotImplementedError
@@ -208,29 +204,29 @@ class AffineGenerator(RandomGeneratorBase):
         repr = f"degrees={self.degrees}, translate={self.translate}, scale={self.scale}, shear={self.shear}"
         return repr
 
-    def valid_parameters(self,):
-        self._degrees = _range_bound(self.degrees, 'degrees', 0, (-360, 360))
-        self._translate = self.translate if self.translate is None else \
-            _range_bound(self.translate, 'translate', bounds=(0, 1), check='singular')
-        self._scale: Optional[torch.Tensor] = None
+    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+        _degrees = _range_bound(self.degrees, 'degrees', 0, (-360, 360)).to(device=device, dtype=dtype)
+        _translate = self.translate if self.translate is None else \
+            _range_bound(self.translate, 'translate', bounds=(0, 1), check='singular').to(device=device, dtype=dtype)
+        _scale: Optional[torch.Tensor] = None
         if self.scale is not None:
             if len(self.scale) == 2:
-                self._scale = _range_bound(self.scale[:2], 'scale', bounds=(0, float('inf')), check='singular')
+                _scale = _range_bound(
+                    self.scale[:2], 'scale', bounds=(0, float('inf')), check='singular').to(device=device, dtype=dtype)
             elif len(self.scale) == 4:
-                self._scale = torch.cat([
+                _scale = torch.cat([
                     _range_bound(self.scale[:2], 'scale_x', bounds=(0, float('inf')), check='singular'),
                     _range_bound(self.scale[2:], 'scale_y', bounds=(0, float('inf')), check='singular'),
-                ])
-        self._shear: Optional[torch.Tensor] = None
+                ]).to(device=device, dtype=dtype)
+        _shear: Optional[torch.Tensor] = None
         if self.shear is not None:
-            shear = torch.as_tensor(self.shear)
-            self._shear = torch.stack([
+            shear = torch.as_tensor(self.shear, device=device, dtype=dtype)
+            _shear = torch.stack([
                 _range_bound(shear if shear.dim() == 0 else shear[:2], 'shear-x', 0, (-360, 360)),
-                torch.tensor([0, 0]) if shear.dim() == 0 or len(shear) == 2
+                torch.tensor([0, 0], device=device, dtype=dtype) if shear.dim() == 0 or len(shear) == 2
                 else _range_bound(shear[2:], 'shear-y', 0, (-360, 360)),
             ])
 
-    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         translate_x_sampler: Optional[Uniform] = None
         translate_y_sampler: Optional[Uniform] = None
         scale_2_sampler: Optional[Uniform] = None
@@ -238,24 +234,24 @@ class AffineGenerator(RandomGeneratorBase):
         shear_x_sampler: Optional[Uniform] = None
         shear_y_sampler: Optional[Uniform] = None
 
-        if self._translate is not None:
-            translate_x_sampler = Uniform(-self._translate[0], self._translate[0], validate_args=False)
-            translate_y_sampler = Uniform(-self._translate[1], self._translate[1], validate_args=False)
-        if self._scale is not None:
-            if len(self._scale) == 2:
-                scale_2_sampler = Uniform(self._scale[0], self._scale[1], validate_args=False)
-            elif len(self._scale) == 4:
-                scale_2_sampler = Uniform(self._scale[0], self._scale[1], validate_args=False)
-                scale_4_sampler = Uniform(self._scale[2], self._scale[3], validate_args=False)
+        if _translate is not None:
+            translate_x_sampler = Uniform(-_translate[0], _translate[0], validate_args=False)
+            translate_y_sampler = Uniform(-_translate[1], _translate[1], validate_args=False)
+        if _scale is not None:
+            if len(_scale) == 2:
+                scale_2_sampler = Uniform(_scale[0], _scale[1], validate_args=False)
+            elif len(_scale) == 4:
+                scale_2_sampler = Uniform(_scale[0], _scale[1], validate_args=False)
+                scale_4_sampler = Uniform(_scale[2], _scale[3], validate_args=False)
             else:
                 raise ValueError(f"'scale' expected to be either 2 or 4 elements. Got {self.scale}")
-        if self._shear is not None:
-            _joint_range_check(cast(torch.Tensor, self._shear)[0], "shear")
-            _joint_range_check(cast(torch.Tensor, self._shear)[1], "shear")
-            shear_x_sampler = Uniform(self._shear[0][0], self._shear[0][1], validate_args=False)
-            shear_y_sampler = Uniform(self._shear[1][0], self._shear[1][1], validate_args=False)
+        if _shear is not None:
+            _joint_range_check(cast(torch.Tensor, _shear)[0], "shear")
+            _joint_range_check(cast(torch.Tensor, _shear)[1], "shear")
+            shear_x_sampler = Uniform(_shear[0][0], _shear[0][1], validate_args=False)
+            shear_y_sampler = Uniform(_shear[1][0], _shear[1][1], validate_args=False)
 
-        self.degree_sampler = Uniform(self._degrees[0], self._degrees[1], validate_args=False)
+        self.degree_sampler = Uniform(_degrees[0], _degrees[1], validate_args=False)
         self.translate_x_sampler = translate_x_sampler
         self.translate_y_sampler = translate_y_sampler
         self.scale_2_sampler = scale_2_sampler
@@ -665,7 +661,7 @@ class PerspectiveGenerator(RandomGeneratorBase):
         fx = self._distortion_scale * width / 2
         fy = self._distortion_scale * height / 2
 
-        factor = torch.stack([fx, fy], dim=0).view(-1, 1, 2)
+        factor = torch.stack([fx, fy], dim=0).view(-1, 1, 2).to(device=_device, dtype=_dtype)
 
         # TODO: This line somehow breaks the gradcheck
         rand_val: torch.Tensor = _adapted_rsampling(
@@ -674,6 +670,7 @@ class PerspectiveGenerator(RandomGeneratorBase):
         pts_norm = torch.tensor(
             [[[1, 1], [-1, 1], [-1, -1], [1, -1]]], device=_device, dtype=_dtype
         )
+
         end_points = start_points + factor * rand_val * pts_norm
 
         return dict(start_points=start_points, end_points=end_points)
