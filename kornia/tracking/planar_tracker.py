@@ -40,6 +40,7 @@ class HomographyTracker(nn.Module):
         self.target_initial_representation: Dict[str, torch.Tensor] = {}
         self.target_fast_representation: Dict[str, torch.Tensor] = {}
         self.previous_homography: Optional[torch.Tensor] = None
+        self.inliers_sum: int = 0
 
         self.reset_tracking()
 
@@ -82,7 +83,8 @@ class HomographyTracker(nn.Module):
             return self.no_match()
         H, inliers = self.ransac(keypoints0, keypoints1)
 
-        if inliers.sum().item() < self.minimum_inliers_num:
+        self.inliers_sum = inliers.sum().item()
+        if self.inliers_sum < self.minimum_inliers_num:
             return self.no_match()
         self.previous_homography = H.clone()
 
