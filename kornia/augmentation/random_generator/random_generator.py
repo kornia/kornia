@@ -207,7 +207,7 @@ class AffineGenerator(RandomGeneratorBase):
     def __repr__(self) -> str:
         repr = f"degrees={self.degrees}, translate={self.translate}, scale={self.scale}, shear={self.shear}"
         return repr
-    
+
     def valid_parameters(self,):
         self._degrees = _range_bound(self.degrees, 'degrees', 0, (-360, 360))
         self._translate = self.translate if self.translate is None else \
