@@ -368,3 +368,36 @@ class TestImageStitcher:
         stitcher = kornia.contrib.ImageStitcher(matcher).to(device=device, dtype=dtype)
         with pytest.raises(RuntimeError):
             stitcher(input1, input2)
+
+
+class TestHistMatch:
+
+    def test_interp(self, device, dtype):
+        xp = torch.tensor([1, 2, 3], device=device, dtype=dtype)
+        fp = torch.tensor([4, 2, 0], device=device, dtype=dtype)
+        x = torch.tensor([4, 5, 6], device=device, dtype=dtype)
+        x_hat_expected = torch.tensor([-2., -4., -6.], device=device, dtype=dtype)
+        x_hat = kornia.contrib.interp(x, xp, fp)
+        assert (x_hat_expected == x_hat).all()
+
+    def test_histmatch(self, device, dtype):
+        torch.manual_seed(44)
+        # generate random value by CPU.
+        src = torch.randn(1, 4, 4).to(device=device, dtype=dtype)
+        dst = torch.randn(1, 16, 16).to(device=device, dtype=dtype)
+        out = kornia.contrib.histogram_matching(src, dst)
+        exp = torch.tensor([[
+            [0.9356, 0.8270, 1.3687, 0.5640],
+            [0.6273, 0.9119, 0.4965, 0.4020],
+            [0.4353, 0.1475, 0.3384, 0.2580],
+            [0.0606, 0.7531, 0.2139, 0.6932]
+        ]], device=device, dtype=dtype)
+        assert exp.shape == out.shape
+        assert_close(out, exp, rtol=1e-4, atol=1e-4)
+
+    @pytest.mark.skip(reason="not differentiable now.")
+    def test_grad(self, device):
+        B, C, H, W = 1, 3, 32, 32
+        src = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
+        dst = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
+        assert gradcheck(kornia.contrib.histogram_matching, (src, dst,), raise_exception=True)
