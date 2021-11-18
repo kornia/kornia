@@ -14,7 +14,7 @@ import torch.nn.functional as F
 def make_cdt_kernel(
     kernel_size: int,
 ) -> torch.Tensor:
-    # Value of h derived from the parameters used by Pham et. al in their proposal of the algorithm.
+    # Value of h is derived from the parameters and reference code given by the authors who proposed the algorithm.
     h = -0.35
     grid_range = torch.Tensor(range(kernel_size))
 
