@@ -10,6 +10,7 @@ Angles
 .. autofunction:: deg2rad
 .. autofunction:: pol2cart
 .. autofunction:: cart2pol
+.. autofunction:: angle_to_rotation_matrix
 
 Coordinates
 -----------
@@ -21,6 +22,13 @@ Coordinates
 .. autofunction:: normalize_pixel_coordinates
 .. autofunction:: denormalize_pixel_coordinates3d
 .. autofunction:: normalize_pixel_coordinates3d
+
+Homography
+----------
+
+.. autofunction:: normalize_homography
+.. autofunction:: denormalize_homography
+.. autofunction:: normalize_homography3d
 
 Quaternion
 ----------
