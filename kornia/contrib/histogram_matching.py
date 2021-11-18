@@ -25,7 +25,7 @@ def histogram_matching(source: torch.Tensor, template: torch.Tensor) -> torch.Te
     template = template.ravel()
 
     # get the set of unique pixel values and their corresponding indices and counts.
-    s_values, bin_idx, s_counts = torch.unique(source, return_inverse=True, return_counts=True)
+    _, bin_idx, s_counts = torch.unique(source, return_inverse=True, return_counts=True)
     t_values, t_counts = torch.unique(template, return_counts=True)
 
     # take the cumsum of the counts and normalize by the number of pixels to
@@ -58,9 +58,11 @@ def interp(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor) -> torch.Tensor:
     Returns:
         The interpolated values, same shape as ``x``.
     """
-    assert x.dim() == xp.dim() == fp.dim() == 1, (
-        f"Required 1D vector across ``x``, ``xp``, ``fp``. Got {x.dim()}, {xp.dim()}, {fp.dim()}."
-    )
+    if x.dim() != xp.dim() != fp.dim() != 1:
+        raise ValueError(
+            f"Required 1D vector across ``x``, ``xp``, ``fp``. Got {x.dim()}, {xp.dim()}, {fp.dim()}."
+        )
+
     slopes = (fp[1:] - fp[:-1]) / (xp[1:] - xp[:-1])
     locs = torch.searchsorted(xp, x)
     locs = locs.clip(1, len(xp) - 1) - 1
