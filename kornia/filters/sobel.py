@@ -66,11 +66,8 @@ def spatial_gradient3d(input: torch.Tensor, mode: str = 'diff', order: int = 1) 
         order: the order of the derivatives.
 
     Return:
-        the spatial gradients of the input feature map.
-
-    Shape:
-        - Input: :math:`(B, C, D, H, W)`. D, H, W are spatial dimensions, gradient is calculated w.r.t to them.
-        - Output: :math:`(B, C, 3, D, H, W)` or :math:`(B, C, 6, D, H, W)`
+        the spatial gradients of the input feature map with shape math:`(B, C, 3, D, H, W)`
+        or :math:`(B, C, 6, D, H, W)`.
 
     Examples:
         >>> input = torch.rand(1, 4, 2, 4, 4)
