@@ -1,5 +1,3 @@
-from functools import reduce
-
 import torch
 
 from kornia.geometry.linalg import transform_points
