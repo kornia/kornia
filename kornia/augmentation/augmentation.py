@@ -1420,7 +1420,7 @@ class RandomSolarize(IntensityAugmentationBase2D):
         self.additions = additions
         self._param_generator = rg.PlainUniformGenerator(
             (self.thresholds, 'thresholds', 0.5, (0.0, 1.0)),
-            (self.additions, 'additions_factor', 0., (-0.5, 0.5)),
+            (self.additions, 'additions', 0., (-0.5, 0.5)),
         )
 
     def apply_transform(
