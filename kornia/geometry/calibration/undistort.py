@@ -1,3 +1,5 @@
+from functools import reduce
+
 import torch
 
 from kornia.geometry.linalg import transform_points
@@ -105,7 +107,7 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     distortion models are considered in this function.
 
     Args:
-        image: Input image with shape :math:`(*, C, H, W)`.
+        image: Input image with shape :math:`(*, N, C, H, W)`.
         K: Intrinsic camera matrix with shape :math:`(*, 3, 3)`.
         dist: Distortion coefficients
             :math:`(k_1,k_2,p_1,p_2[,k_3[,k_4,k_5,k_6[,s_1,s_2,s_3,s_4[,\tau_x,\tau_y]]]])`. This is
@@ -123,7 +125,7 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
         torch.Size([1, 3, 5, 5])
 
     """
-    if len(image.shape) < 2:
+    if len(image.shape) < 4:
         raise ValueError(f"Image shape is invalid. Got: {image.shape}.")
 
     if K.shape[-2:] != (3, 3):
@@ -135,7 +137,9 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     if not image.is_floating_point():
         raise ValueError(f'Invalid input image data type. Input should be float. Got {image.dtype}.')
 
-    B, _, rows, cols = image.shape
+    B_dims, image_dims = image.shape[:-3], image.shape[-3:]
+    B = int(torch.prod(torch.tensor(B_dims)))
+    channels, rows, cols = image_dims
 
     # Create point coordinates for each pixel of the image
     xy_grid: torch.Tensor = create_meshgrid(rows, cols, False, image.device, image.dtype)
@@ -147,6 +151,6 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     mapy: torch.Tensor = ptsd[..., 1].reshape(B, rows, cols)  # B x rows x cols, float
 
     # Remap image to undistort
-    out = remap(image, mapx, mapy, align_corners=True)
+    out = remap(image.reshape(-1, channels, rows, cols), mapx, mapy, align_corners=True)
 
-    return out
+    return out.reshape(B_dims + image_dims)
