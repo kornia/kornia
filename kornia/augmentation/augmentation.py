@@ -775,7 +775,9 @@ class RandomRotation(GeometricAugmentationBase2D):
         self.degrees = degrees
         self.resample: Resample = Resample.get(resample)
         self.align_corners = align_corners
-        self._param_generator = rg.RotationGenerator(degrees)
+        self._param_generator = rg.PlainUniformGenerator(
+            (self.degrees, 'degrees', 0., (-360., 360.)),
+        )
 
     def __repr__(self) -> str:
         return f"({super().__repr__()[:-1]}, interpolation={self.resample.name})"

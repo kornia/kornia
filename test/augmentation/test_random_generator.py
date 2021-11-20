@@ -15,7 +15,6 @@ from kornia.augmentation.random_generator import (
     random_mixup_generator,
     RectangleEraseGenerator,
     ResizedCropGenerator,
-    RotationGenerator,
 )
 from kornia.testing import assert_close
 from kornia.utils._compat import torch_version_geq
@@ -363,36 +362,6 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
         assert_close(res['angle'], expected['angle'], rtol=1e-4, atol=1e-4)
         assert_close(res['sx'], expected['sx'], rtol=1e-4, atol=1e-4)
         assert_close(res['sy'], expected['sy'], rtol=1e-4, atol=1e-4)
-
-
-class TestRandomRotationGen(RandomGeneratorBaseTests):
-    @pytest.mark.parametrize('batch_size', [0, 1, 8])
-    @pytest.mark.parametrize('degrees', [torch.tensor([0, 30])])
-    @pytest.mark.parametrize('same_on_batch', [True, False])
-    def test_valid_param_combinations(self, batch_size, degrees, same_on_batch, device, dtype):
-        RotationGenerator(degrees=degrees.to(device=device, dtype=dtype))(torch.Size([batch_size]), same_on_batch)
-
-    @pytest.mark.parametrize('degrees', [(torch.tensor([10])), (torch.tensor([10, 20, 30]))])
-    def test_invalid_param_combinations(self, degrees, device, dtype):
-        batch_size = 8
-        with pytest.raises(Exception):
-            RotationGenerator(degrees=degrees.to(device=device, dtype=dtype))(torch.Size([batch_size]))
-
-    def test_random_gen(self, device, dtype):
-        torch.manual_seed(42)
-        degrees = torch.tensor([10, 20])
-        res = RotationGenerator(degrees=degrees.to(device=device, dtype=dtype))(torch.Size([2]), False)
-        expected = dict(degrees=torch.tensor([18.8227, 19.1500], device=device, dtype=dtype))
-        assert res.keys() == expected.keys()
-        assert_close(res['degrees'], expected['degrees'])
-
-    def test_same_on_batch(self, device, dtype):
-        torch.manual_seed(42)
-        degrees = torch.tensor([10, 20])
-        res = RotationGenerator(degrees=degrees.to(device=device, dtype=dtype))(torch.Size([2]), True)
-        expected = dict(degrees=torch.tensor([18.8227, 18.8227], device=device, dtype=dtype))
-        assert res.keys() == expected.keys()
-        assert_close(res['degrees'], expected['degrees'])
 
 
 class TestRandomCropGen(RandomGeneratorBaseTests):

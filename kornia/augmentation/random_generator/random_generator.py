@@ -808,44 +808,6 @@ class RectangleEraseGenerator(RandomGeneratorBase):
         )
 
 
-class RotationGenerator(RandomGeneratorBase):
-    r"""Get parameters for ``rotate`` for a random rotate transform.
-
-    Args:
-        degrees: range of degrees to select from. If degrees is a number the
-          range of degrees to select from will be (-degrees, +degrees).
-
-    Returns:
-        A dict of parameters to be passed for transformation.
-            - degrees (torch.Tensor): element-wise rotation degrees with a shape of (B,).
-
-    Note:
-        The generated random numbers are not reproducible across different devices and dtypes. By default,
-        the parameters will be generated on CPU in float32. This can be changed by calling
-        ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
-    """
-    def __init__(
-        self, degrees: Union[torch.Tensor, float, Tuple[float, float], List[float]]
-    ) -> None:
-        super().__init__()
-        self.degrees = degrees
-
-    def __repr__(self) -> str:
-        repr = f"degrees={self.scale}"
-        return repr
-
-    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        degrees = _range_bound(self.degrees, 'degrees', 0, (-360, 360), device=device, dtype=dtype)
-        self.degree_sampler = Uniform(degrees[0], degrees[1], validate_args=False)
-
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type:ignore
-        batch_size = batch_shape[0]
-        _common_param_check(batch_size, same_on_batch)
-        _device, _dtype = _extract_device_dtype([self.degrees])
-        degrees = _adapted_rsampling((batch_size,), self.degree_sampler, same_on_batch).to(device=_device, dtype=_dtype)
-        return dict(degrees=degrees)
-
-
 class MotionBlurGenerator(RandomGeneratorBase):
     r"""Get parameters for motion blur.
 
@@ -1231,7 +1193,7 @@ def random_affine_generator(
     return dict(translations=translations, center=center, scale=_scale, angle=angle, sx=sx, sy=sy)
 
 
-@_deprecated(replace_with=RotationGenerator.__name__)
+@_deprecated()
 def random_rotation_generator(
     batch_size: int,
     degrees: torch.Tensor,
