@@ -65,7 +65,7 @@ def conv_distance_transform(
 
     # It is possible to avoid cloning the input if boundary = input, but this would require modifying the input tensor.
     boundary = input.clone().to(torch.float32)
-    kernel.to(device)
+    kernel = kernel.to(device)
 
     # If input images have multiple channels, view the channels in the batch dimension to match kernel shape.
     if input.shape[1] > 1:
@@ -78,7 +78,7 @@ def conv_distance_transform(
         cdt = -0.35 * torch.log(cdt)
 
         # We are calculating log(0) above.
-        torch.nan_to_num(cdt, out=cdt, posinf=0.0)
+        cdt = torch.nan_to_num(cdt, posinf=0.0)
 
         mask = cdt > 0
         if mask.sum() == 0:
