@@ -16,6 +16,7 @@ from . import (
     losses,
     metrics,
     morphology,
+    optical_flow,
     tracking,
     utils,
     x,
