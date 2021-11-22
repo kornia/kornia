@@ -1,5 +1,5 @@
 import warnings
-from typing import cast, Dict, List, Optional, Tuple, Union
+from typing import cast, Any, Dict, List, Optional, Tuple, Union
 
 import torch
 from torch.nn.functional import pad
@@ -87,11 +87,8 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
         True
     """
 
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return dict(batch_shape=torch.as_tensor(batch_shape))
-
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        w: int = cast(int, params['batch_shape'][-1])
+        w: int = input.shape[-1]
         flip_mat: torch.Tensor = torch.tensor(
             [[-1, 0, w - 1], [0, 1, 0], [0, 0, 1]], device=input.device, dtype=input.dtype
         )
@@ -151,11 +148,8 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
         True
     """
 
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return dict(batch_shape=torch.as_tensor(batch_shape))
-
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        h: int = cast(int, params['batch_shape'][-2])
+        h: int = input.shape[-2]
         flip_mat: torch.Tensor = torch.tensor(
             [[1, 0, 0], [0, -1, h - 1], [0, 0, 1]], device=input.device, dtype=input.dtype
         )
@@ -433,13 +427,11 @@ class RandomPerspective(GeometricAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-        self.resample: Resample = Resample.get(resample)
-        self.align_corners = align_corners
         self._param_generator = rg.PerspectiveGenerator(distortion_scale)
-
-    def __repr__(self) -> str:
-        repr = f"interpolation={self.resample.name}, align_corners={self.align_corners}"
-        return f"({super().__repr__()[:-1]}, {repr})"
+        self.flags: Dict[str, Any] = dict(
+            align_corners=align_corners,
+            resample=Resample.get(resample)
+        )
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return get_perspective_transform(params['start_points'].to(input), params['end_points'].to(input))
@@ -450,7 +442,8 @@ class RandomPerspective(GeometricAugmentationBase2D):
         _, _, height, width = input.shape
         transform = cast(torch.Tensor, transform)
         return warp_perspective(
-            input, transform, (height, width), mode=self.resample.name.lower(), align_corners=self.align_corners
+            input, transform, (height, width), mode=self.flags['resample'].name.lower(),
+            align_corners=self.flags['align_corners']
         )
 
     def inverse_transform(
@@ -540,14 +533,12 @@ class RandomAffine(GeometricAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._device, self._dtype = _extract_device_dtype([degrees, translate, scale, shear])
-        self.resample: Resample = Resample.get(resample)
-        self.padding_mode: SamplePadding = SamplePadding.get(padding_mode)
-        self.align_corners = align_corners
         self._param_generator = rg.AffineGenerator(degrees, translate, scale, shear)
-
-    def __repr__(self) -> str:
-        return f"({super().__repr__()[:-1]}, resample={self.resample.name})"
+        self.flags = dict(
+            resample=Resample.get(resample),
+            padding_mode=SamplePadding.get(padding_mode),
+            align_corners=align_corners,
+        )
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return get_affine_matrix2d(
@@ -568,9 +559,9 @@ class RandomAffine(GeometricAugmentationBase2D):
             input,
             transform[:, :2, :],
             (height, width),
-            self.resample.name.lower(),
-            align_corners=self.align_corners,
-            padding_mode=self.padding_mode.name.lower(),
+            self.flags["resample"].name.lower(),
+            align_corners=self.flags["align_corners"],
+            padding_mode=self.flags["padding_mode"].name.lower(),
         )
 
     def inverse_transform(
@@ -652,12 +643,13 @@ class CenterCrop(GeometricAugmentationBase2D):
             self.size = (size, size)
         else:
             raise Exception(f"Invalid size type. Expected (int, tuple(int, int). " f"Got: {type(size)}.")
-        self.resample = Resample.get(resample)
-        self.align_corners = align_corners
-        self.cropping_mode = cropping_mode
 
-    def __repr__(self) -> str:
-        return f"({super().__repr__()[:-1]}, size={self.size})"
+        self.flags = dict(
+            resample=Resample.get(resample),
+            cropping_mode=cropping_mode,
+            align_corners=align_corners,
+            size=self.size
+        )
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.center_crop_generator(batch_shape[0], batch_shape[-2], batch_shape[-1], self.size, self.device)
@@ -670,12 +662,13 @@ class CenterCrop(GeometricAugmentationBase2D):
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        if self.cropping_mode == 'resample':  # uses bilinear interpolation to crop
+        if self.flags['cropping_mode'] == 'resample':  # uses bilinear interpolation to crop
             transform = cast(torch.Tensor, transform)
             return crop_by_transform_mat(
-                input, transform[:, :2, :], self.size, self.resample.name.lower(), 'zeros', self.align_corners
+                input, transform[:, :2, :], self.size, self.flags["resample"].name.lower(),
+                'zeros', self.flags["align_corners"]
             )
-        if self.cropping_mode == 'slice':  # uses advanced slicing to crop
+        if self.flags['cropping_mode'] == 'slice':  # uses advanced slicing to crop
             # TODO: implement as separated function `crop_and_resize_iterative`
             B, C, _, _ = input.shape
             H, W = self.size
@@ -687,7 +680,7 @@ class CenterCrop(GeometricAugmentationBase2D):
                 y2 = int(params['src'][i, 3, 1]) + 1
                 out[i] = input[i : i + 1, :, y1:y2, x1:x2]
             return out
-        raise NotImplementedError(f"Not supported type: {self.cropping_mode}.")
+        raise NotImplementedError(f"Not supported type: {self.flags['cropping_mode']}.")
 
     def inverse_transform(
         self,
@@ -696,14 +689,14 @@ class CenterCrop(GeometricAugmentationBase2D):
         size: Optional[Tuple[int, int]] = None,
         **kwargs,
     ) -> torch.Tensor:
-        if self.cropping_mode != 'resample':
+        if self.flags['cropping_mode'] != 'resample':
             raise NotImplementedError(
-                f"`inverse` is only applicable for resample cropping mode. Got {self.cropping_mode}."
+                f"`inverse` is only applicable for resample cropping mode. Got {self.flags['cropping_mode']}."
             )
         if size is None:
             size = self.size
-        mode = self.resample.name.lower() if "mode" not in kwargs else kwargs['mode']
-        align_corners = self.align_corners if "align_corners" not in kwargs else kwargs['align_corners']
+        mode = self.flags["resample"].name.lower() if "mode" not in kwargs else kwargs['mode']
+        align_corners = self.flags["align_corners"] if "align_corners" not in kwargs else kwargs['align_corners']
         padding_mode = 'zeros' if "padding_mode" not in kwargs else kwargs['padding_mode']
         transform = cast(torch.Tensor, transform)
         return crop_by_transform_mat(input, transform[:, :2, :], size, mode, padding_mode, align_corners)
@@ -771,16 +764,13 @@ class RandomRotation(GeometricAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._device, self._dtype = _extract_device_dtype([degrees])
-        self.degrees = degrees
-        self.resample: Resample = Resample.get(resample)
-        self.align_corners = align_corners
         self._param_generator = rg.PlainUniformGenerator(
-            (self.degrees, 'degrees', 0., (-360., 360.)),
+            (degrees, 'degrees', 0., (-360., 360.)),
         )
-
-    def __repr__(self) -> str:
-        return f"({super().__repr__()[:-1]}, interpolation={self.resample.name})"
+        self.flags = dict(
+            resample=Resample.get(resample),
+            align_corners=align_corners,
+        )
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         # TODO: Update to use `get_rotation_matrix2d`
@@ -800,7 +790,7 @@ class RandomRotation(GeometricAugmentationBase2D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         transform = cast(torch.Tensor, transform)
-        return affine(input, transform[..., :2, :3], self.resample.name.lower(), 'zeros', self.align_corners)
+        return affine(input, transform[..., :2, :3], self.flags['resample'], 'zeros', self.flags['align_corners'])
 
     def inverse_transform(
         self,
@@ -890,43 +880,45 @@ class RandomCrop(GeometricAugmentationBase2D):
         super().__init__(
             p=1.0, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim
         )
-        self.size = size
-        self.padding = padding
-        self.pad_if_needed = pad_if_needed
-        self.fill = fill
-        self.padding_mode = padding_mode
-        self.resample: Resample = Resample.get(resample)
-        self.align_corners = align_corners
-        self.cropping_mode = cropping_mode
         self._param_generator = rg.CropGenerator(size)
-
-    def __repr__(self) -> str:
-        repr = (
-            f"padding={self.padding}, fill={self.fill}, pad_if_needed={self.pad_if_needed}, "
-            f"padding_mode={self.padding_mode}, resample={self.resample.name}"
+        self.flags = dict(
+            size=size,
+            padding=padding,
+            pad_if_needed=pad_if_needed,
+            fill=fill,
+            padding_mode=padding_mode,
+            resample=Resample.get(resample),
+            align_corners=align_corners,
+            cropping_mode=cropping_mode,
         )
-        return f"({super().__repr__()[:-1]}, {repr})"
 
     def compute_padding(self, shape: torch.Size) -> List[int]:
         if len(shape) != 4:
             raise AssertionError(f"Expected BCHW. Got {shape}.")
         padding = [0, 0, 0, 0]
-        if self.padding is not None:
-            if isinstance(self.padding, int):
-                self.padding = cast(int, self.padding)
-                padding = [self.padding, self.padding, self.padding, self.padding]
-            elif isinstance(self.padding, tuple) and len(self.padding) == 2:
-                self.padding = cast(Tuple[int, int], self.padding)
-                padding = [self.padding[1], self.padding[1], self.padding[0], self.padding[0]]
-            elif isinstance(self.padding, tuple) and len(self.padding) == 4:
-                self.padding = cast(Tuple[int, int, int, int], self.padding)
-                padding = [self.padding[3], self.padding[2], self.padding[1], self.padding[0]]
+        if self.flags["padding"] is not None:
+            if isinstance(self.flags["padding"], int):
+                padding = [self.flags["padding"], self.flags["padding"], self.flags["padding"], self.flags["padding"]]
+            elif isinstance(self.flags["padding"], tuple) and len(self.flags["padding"]) == 2:
+                padding = [
+                    self.flags["padding"][1],
+                    self.flags["padding"][1],
+                    self.flags["padding"][0],
+                    self.flags["padding"][0]
+                ]
+            elif isinstance(self.flags["padding"], tuple) and len(self.flags["padding"]) == 4:
+                padding = [
+                    self.flags["padding"][3],
+                    self.flags["padding"][2],
+                    self.flags["padding"][1],
+                    self.flags["padding"][0]
+                ]
 
-        if self.pad_if_needed and shape[-2] < self.size[0]:
-            padding = [0, 0, (self.size[0] - shape[-2]), self.size[0] - shape[-2]]
+        if self.flags["pad_if_needed"] and shape[-2] < self.flags["size"][0]:
+            padding = [0, 0, (self.flags["size"][0] - shape[-2]), self.flags["size"][0] - shape[-2]]
 
-        if self.pad_if_needed and shape[-1] < self.size[1]:
-            padding = [self.size[1] - shape[-1], self.size[1] - shape[-1], 0, 0]
+        if self.flags["pad_if_needed"] and shape[-1] < self.flags["size"][1]:
+            padding = [self.flags["size"][1] - shape[-1], self.flags["size"][1] - shape[-1], 0, 0]
 
         return padding
 
@@ -934,7 +926,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         if padding is None:
             padding = self.compute_padding(input.shape)
 
-        input = pad(input, padding, value=self.fill, mode=self.padding_mode)
+        input = pad(input, padding, value=self.flags["fill"], mode=self.flags["padding_mode"])
 
         return input
 
@@ -945,19 +937,19 @@ class RandomCrop(GeometricAugmentationBase2D):
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        if self.cropping_mode == 'resample':  # uses bilinear interpolation to crop
+        if self.flags["cropping_mode"] == 'resample':  # uses bilinear interpolation to crop
             transform = cast(torch.Tensor, transform)
             return crop_by_transform_mat(
                 input,
                 transform,
-                self.size,
-                mode=self.resample.name.lower(),
+                self.flags["size"],
+                mode=self.flags["resampe"],
                 padding_mode='zeros',
-                align_corners=self.align_corners,
+                align_corners=self.flags["align_corners"],
             )
-        if self.cropping_mode == 'slice':  # uses advanced slicing to crop
+        if self.flags["cropping_mode"] == 'slice':  # uses advanced slicing to crop
             B, C, _, _ = input.shape
-            out = torch.empty(B, C, *self.size, device=input.device, dtype=input.dtype)
+            out = torch.empty(B, C, *self.flags["size"], device=input.device, dtype=input.dtype)
             for i in range(B):
                 x1 = int(params['src'][i, 0, 0])
                 x2 = int(params['src'][i, 1, 0]) + 1
@@ -965,7 +957,7 @@ class RandomCrop(GeometricAugmentationBase2D):
                 y2 = int(params['src'][i, 3, 1]) + 1
                 out[i] = input[i : i + 1, :, y1:y2, x1:x2]
             return out
-        raise NotImplementedError(f"Not supported type: {self.cropping_mode}.")
+        raise NotImplementedError(f"Not supported type: {self.flags['cropping_mode']}.")
 
     def inverse_transform(
         self,
@@ -974,13 +966,13 @@ class RandomCrop(GeometricAugmentationBase2D):
         size: Optional[Tuple[int, int]] = None,
         **kwargs,
     ) -> torch.Tensor:
-        if self.cropping_mode != 'resample':
+        if self.flags['cropping_mode'] != 'resample':
             raise NotImplementedError(
-                f"`inverse` is only applicable for resample cropping mode. Got {self.cropping_mode}."
+                f"`inverse` is only applicable for resample cropping mode. Got {self.flags['cropping_mode']}."
             )
         size = cast(Tuple[int, int], size)
-        mode = self.resample.name.lower() if "mode" not in kwargs else kwargs['mode']
-        align_corners = self.align_corners if "align_corners" not in kwargs else kwargs['align_corners']
+        mode = self.flags['resample'] if "mode" not in kwargs else kwargs['mode']
+        align_corners = self.flags['align_corners'] if "align_corners" not in kwargs else kwargs['align_corners']
         padding_mode = 'zeros' if "padding_mode" not in kwargs else kwargs['padding_mode']
         transform = cast(torch.Tensor, transform)
         return crop_by_transform_mat(input, transform[:, :2, :], size, mode, padding_mode, align_corners)

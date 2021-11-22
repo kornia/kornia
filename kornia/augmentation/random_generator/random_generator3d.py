@@ -102,6 +102,10 @@ class AffineGenerator3D(RandomGeneratorBase):
         self.translate = translate
         self.scale = scale
 
+    def __repr__(self) -> str:
+        repr = f"degrees={self.degrees}, shears={self.shears}, translate={self.translate}, scale={self.scale}"
+        return repr
+
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         degrees = _tuple_range_reader(self.degrees, 3, device, dtype)
         shear: Optional[torch.Tensor] = None
@@ -384,6 +388,10 @@ class RotationGenerator3D(RandomGeneratorBase):
         super().__init__()
         self.degrees = degrees
 
+    def __repr__(self) -> str:
+        repr = f"degrees={self.degrees}"
+        return repr
+
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         degrees = _tuple_range_reader(self.degrees, 3, device, dtype)
         self.yaw_sampler = Uniform(degrees[0][0], degrees[0][1], validate_args=False)
@@ -506,6 +514,10 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
     def __init__(self, distortion_scale: Union[torch.Tensor, float] = 0.5) -> None:
         super().__init__()
         self.distortion_scale = distortion_scale
+
+    def __repr__(self) -> str:
+        repr = f"distortion_scale={self.distortion_scale}"
+        return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         self._distortion_scale = torch.as_tensor(self.distortion_scale, device=device, dtype=dtype)

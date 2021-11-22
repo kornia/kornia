@@ -1,12 +1,12 @@
 import warnings
-from typing import cast, Dict, Optional, Tuple, Union
+from enum import Enum
+from typing import cast, Any, Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 from torch.distributions import Bernoulli
 
 import kornia
-from kornia.augmentation.random_generator.random_generator import AffineGenerator
 from kornia.utils.helpers import _torch_inverse_cast
 
 from .random_generator import RandomGeneratorBase
@@ -51,13 +51,19 @@ class _BasicAugmentationBase(nn.Module):
         if p_batch != 0.0 or p_batch != 1.0:
             self._p_batch_gen = Bernoulli(self.p_batch)
         self._param_generator: Optional[RandomGeneratorBase] = None
+        self.flags: Dict[str, Any] = {}
         self.set_rng_device_and_dtype(torch.device('cpu'), torch.get_default_dtype())
 
     def __repr__(self) -> str:
         txt = f"p={self.p}, p_batch={self.p_batch}, same_on_batch={self.same_on_batch}"
         if isinstance(self._param_generator, RandomGeneratorBase):
-            txt = f"{str(self._param_generator)}, {txt}"
-        return txt
+            txt = f", {str(self._param_generator)}, {txt}"
+        for k, v in self.flags.items():
+            if isinstance(v, Enum):
+                txt += f", {k}={v.name.lower()}"
+            else:
+                txt += f", {k}={v}"
+        return f"{self.__class__.__name__}({txt})"
 
     def __unpack_input__(self, input: torch.Tensor) -> torch.Tensor:
         return input
