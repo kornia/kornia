@@ -135,9 +135,8 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     if not image.is_floating_point():
         raise ValueError(f'Invalid input image data type. Input should be float. Got {image.dtype}.')
 
-    B_dims, image_dims = image.shape[:-3], image.shape[-3:]
-    B = int(torch.prod(torch.tensor(B_dims)))
-    channels, rows, cols = image_dims
+    channels, rows, cols = image.shape[-3:]
+    B = image.numel() // (channels * rows * cols)
 
     # Create point coordinates for each pixel of the image
     xy_grid: torch.Tensor = create_meshgrid(rows, cols, False, image.device, image.dtype)
@@ -149,6 +148,6 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     mapy: torch.Tensor = ptsd[..., 1].reshape(B, rows, cols)  # B x rows x cols, float
 
     # Remap image to undistort
-    out = remap(image.reshape(-1, channels, rows, cols), mapx, mapy, align_corners=True)
+    out = remap(image.reshape(B, channels, rows, cols), mapx, mapy, align_corners=True)
 
     return out.view_as(image)
