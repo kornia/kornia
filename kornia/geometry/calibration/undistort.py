@@ -105,7 +105,7 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     distortion models are considered in this function.
 
     Args:
-        image: Input image with shape :math:`(*, N, C, H, W)`.
+        image: Input image with shape :math:`(*, C, H, W)`.
         K: Intrinsic camera matrix with shape :math:`(*, 3, 3)`.
         dist: Distortion coefficients
             :math:`(k_1,k_2,p_1,p_2[,k_3[,k_4,k_5,k_6[,s_1,s_2,s_3,s_4[,\tau_x,\tau_y]]]])`. This is
@@ -123,7 +123,7 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
         torch.Size([1, 3, 5, 5])
 
     """
-    if len(image.shape) < 4:
+    if len(image.shape) < 3:
         raise ValueError(f"Image shape is invalid. Got: {image.shape}.")
 
     if K.shape[-2:] != (3, 3):

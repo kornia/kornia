@@ -212,13 +212,21 @@ class TestUndistortImage:
         imu = undistort_image(im, K, distCoeff)
         assert imu.shape == (1, 3, 5, 5)
 
-    def test_shape_extra_dims(self, device, dtype):
-        im = torch.rand(1, 1, 3, 5, 5, device=device, dtype=dtype).tile(3, 1, 1, 1, 1)
-        K = torch.rand(1, 3, 3, device=device, dtype=dtype).tile(3, 1, 1)
-        distCoeff = torch.rand(1, 4, device=device, dtype=dtype).tile(3, 1)
+    def test_shape_minimum_dims(self, device, dtype):
+        im = torch.rand(3, 5, 5, device=device, dtype=dtype)
+        K = torch.rand(3, 3, device=device, dtype=dtype)
+        distCoeff = torch.rand(4, device=device, dtype=dtype)
 
         imu = undistort_image(im, K, distCoeff)
-        assert imu.shape == (3, 1, 3, 5, 5)
+        assert imu.shape == (3, 5, 5)
+
+    def test_shape_extra_dims(self, device, dtype):
+        im = torch.rand(1, 1, 3, 5, 5, device=device, dtype=dtype).tile(3, 2, 1, 1, 1)
+        K = torch.rand(1, 1, 3, 3, device=device, dtype=dtype).tile(3, 2, 1, 1)
+        distCoeff = torch.rand(1, 1, 4, device=device, dtype=dtype).tile(3, 2, 1)
+
+        imu = undistort_image(im, K, distCoeff)
+        assert imu.shape == (3, 2, 3, 5, 5)
         torch.testing.assert_allclose(imu[0], imu[1])
 
     def test_opencv(self, device, dtype):
