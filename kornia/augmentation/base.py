@@ -1,6 +1,6 @@
 import warnings
 from enum import Enum
-from typing import cast, Any, Dict, Optional, Tuple, Union
+from typing import Any, cast, Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn

@@ -1,5 +1,5 @@
 import warnings
-from typing import cast, Any, Dict, List, Optional, Tuple, Union
+from typing import Any, cast, Dict, List, Optional, Tuple, Union
 
 import torch
 from torch.nn.functional import pad
