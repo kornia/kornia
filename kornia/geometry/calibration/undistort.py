@@ -151,4 +151,4 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     # Remap image to undistort
     out = remap(image.reshape(-1, channels, rows, cols), mapx, mapy, align_corners=True)
 
-    return out.reshape(B_dims + image_dims)
+    return out.view_as(image)
