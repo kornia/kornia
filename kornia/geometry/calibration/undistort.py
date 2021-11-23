@@ -117,7 +117,7 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     Example:
         >>> img = torch.rand(1, 3, 5, 5)
         >>> K = torch.eye(3)[None]
-        >>> dist_coeff = torch.rand(4)
+        >>> dist_coeff = torch.rand(1, 4)
         >>> out = undistort_image(img, K, dist_coeff)
         >>> out.shape
         torch.Size([1, 3, 5, 5])
