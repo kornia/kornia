@@ -311,6 +311,9 @@ class TestAugmentationSequential:
             K.ImageSequential(
                 K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0, return_transform=True)
             ),
+            K.AugmentationSequential(
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0, return_transform=True)
+            ),
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
             K.RandomAffine(360, p=1.0),
             data_keys=["input", "mask", "bbox", "keypoints"],
@@ -345,6 +348,9 @@ class TestAugmentationSequential:
             K.ImageSequential(
                 K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0, return_transform=True)
             ),
+            K.AugmentationSequential(
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0, return_transform=True)
+            ),
             K.RandomAffine(360, p=1.0, return_transform=False),
             data_keys=['input', 'mask', 'bbox', 'keypoints'],
         )
@@ -371,6 +377,9 @@ class TestAugmentationSequential:
         )[:, None].float()
         aug = K.AugmentationSequential(
             K.ImageSequential(
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0, return_transform=True)
+            ),
+            K.AugmentationSequential(
                 K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0, return_transform=True)
             ),
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0, return_transform=True),
@@ -402,6 +411,9 @@ class TestAugmentationSequential:
         )[:, None].float()
         aug = K.AugmentationSequential(
             K.ImageSequential(
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0, return_transform=True)
+            ),
+            K.AugmentationSequential(
                 K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0, return_transform=True)
             ),
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0, return_transform=True),
