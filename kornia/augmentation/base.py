@@ -28,6 +28,11 @@ class _BasicAugmentationBase(nn.Module):
     By default, the random computations will be happened on CPU with ``torch.get_default_dtype()``.
     To change this behaviour, please use ``set_rng_device_and_dtype``.
 
+    For automatically generating the corresponding ``__repr__`` with full customized parameters, you may need to
+    implement ``_param_generator`` by inheriting ``RandomGeneratorBase`` for generating random parameters and
+    put all static parameters inside ``self.flags``. You may take the advantage of ``PlainUniformGenerator`` to
+    generate simple uniform parmeters with less boilertemplate code.
+
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities element-wise.
         p_batch: probability for applying an augmentation to a batch. This param controls the augmentation

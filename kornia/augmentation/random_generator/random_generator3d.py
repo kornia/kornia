@@ -476,7 +476,9 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
         else:
             raise TypeError(f"Unsupported type: {type(self.kernel_size)}")
 
-        self.angle_sampler = Uniform(angle[0], angle[1], validate_args=False)
+        self.yaw_sampler = Uniform(angle[0][0], angle[0][1], validate_args=False)
+        self.pitch_sampler = Uniform(angle[1][0], angle[1][1], validate_args=False)
+        self.roll_sampler = Uniform(angle[2][0], angle[2][1], validate_args=False)
         self.direction_sampler = Uniform(direction[0], direction[1], validate_args=False)
 
     def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type:ignore
@@ -484,7 +486,11 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
         _common_param_check(batch_size, same_on_batch)
         # self.ksize_factor.expand((batch_size, -1))
         _device, _dtype = _extract_device_dtype([self.angle, self.direction])
-        angle_factor = _adapted_rsampling((batch_size,), self.angle_sampler, same_on_batch)
+        yaw_factor = _adapted_rsampling((batch_size,), self.yaw_sampler, same_on_batch)
+        pitch_factor = _adapted_rsampling((batch_size,), self.pitch_sampler, same_on_batch)
+        roll_factor = _adapted_rsampling((batch_size,), self.roll_sampler, same_on_batch)
+        angle_factor = torch.stack([yaw_factor, pitch_factor, roll_factor], dim=1)
+
         direction_factor = _adapted_rsampling((batch_size,), self.direction_sampler, same_on_batch)
         ksize_factor = _adapted_rsampling((batch_size,), self.ksize_sampler, same_on_batch).int() * 2 + 1
 
@@ -563,7 +569,8 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
 
         factor = torch.stack([fx, fy, fz], dim=0).view(-1, 1, 3).to(device=_device, dtype=_dtype)
 
-        rand_val: torch.Tensor = _adapted_rsampling(start_points.shape, self.rand_sampler, same_on_batch)
+        rand_val: torch.Tensor = _adapted_rsampling(
+            start_points.shape, self.rand_sampler, same_on_batch).to(device=_device, dtype=_dtype)
 
         pts_norm = torch.tensor(
             [[[1, 1, 1], [-1, 1, 1], [-1, -1, 1], [1, -1, 1], [1, 1, -1], [-1, 1, -1], [-1, -1, -1], [1, -1, -1]]],

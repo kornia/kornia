@@ -69,9 +69,6 @@ class RandomHorizontalFlip3D(AugmentationBase3D):
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
 
-    def __repr__(self) -> str:
-        return self.__class__.__name__ + f"({super().__repr__()})"
-
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         w: int = input.shape[-1]
         flip_mat: torch.Tensor = torch.tensor(
@@ -136,9 +133,6 @@ class RandomVerticalFlip3D(AugmentationBase3D):
         self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-
-    def __repr__(self) -> str:
-        return self.__class__.__name__ + f"({super().__repr__()})"
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         h: int = input.shape[-2]
@@ -205,9 +199,6 @@ class RandomDepthicalFlip3D(AugmentationBase3D):
         self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-
-    def __repr__(self) -> str:
-        return self.__class__.__name__ + f"({super().__repr__()})"
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         d: int = input.shape[-3]
@@ -328,25 +319,16 @@ class RandomAffine3D(AugmentationBase3D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._device, self._dtype = _extract_device_dtype([degrees, shears, translate, scale])
         self.degrees = degrees
         self.shears = shears
         self.translate = translate
         self.scale = scale
 
-        self.resample = Resample.get(resample)
-        self.align_corners = align_corners
-        self.flags: Dict[str, torch.Tensor] = dict(
-            resample=torch.tensor(self.resample.value), align_corners=torch.tensor(align_corners)
+        self.flags = dict(
+            resample=Resample.get(resample),
+            align_corners=align_corners
         )
         self._param_generator = rg.AffineGenerator3D(degrees, translate, scale, shears)
-
-    def __repr__(self) -> str:
-        repr = (
-            f"(degrees={self.degrees}, translate={self.translate}, scale={self.scale}, shear={self.shears}, "
-            f"resample={self.resample.name}, align_corners={self.align_corners}"
-        )
-        return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         transform: torch.Tensor = get_affine_matrix3d(
@@ -371,8 +353,8 @@ class RandomAffine3D(AugmentationBase3D):
             input,
             transform[:, :3, :],
             (input.shape[-3], input.shape[-2], input.shape[-1]),
-            self.resample.name.lower(),
-            align_corners=self.align_corners,
+            self.flags['resample'].name.lower(),
+            align_corners=self.flags['align_corners'],
         )
 
 
@@ -448,18 +430,11 @@ class RandomRotation3D(AugmentationBase3D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._device, self._dtype = _extract_device_dtype([degrees])
-        self.degrees = degrees
-        self.resample = Resample.get(resample)
-        self.align_corners = align_corners
-        self.flags: Dict[str, torch.Tensor] = dict(
-            resample=torch.tensor(self.resample.value), align_corners=torch.tensor(align_corners)
+        self.flags = dict(
+            resample=Resample.get(resample),
+            align_corners=align_corners
         )
         self._param_generator = rg.RotationGenerator3D(degrees)
-
-    def __repr__(self) -> str:
-        repr = f"degrees={self.degrees}, resample={self.resample.name}, align_corners={self.align_corners}"
-        return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         yaw: torch.Tensor = params["yaw"].to(input)
@@ -481,7 +456,9 @@ class RandomRotation3D(AugmentationBase3D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         transform = cast(torch.Tensor, transform)
-        return affine3d(input, transform[..., :3, :4], self.resample.name.lower(), 'zeros', self.align_corners)
+        return affine3d(
+            input, transform[..., :3, :4], self.flags['resample'].name.lower(), 'zeros', self.flags['align_corners']
+        )
 
 
 class RandomMotionBlur3D(AugmentationBase3D):
@@ -564,24 +541,11 @@ class RandomMotionBlur3D(AugmentationBase3D):
         super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
         )
-        self._device, self._dtype = _extract_device_dtype([angle, direction])
-        self.kernel_size: Union[int, Tuple[int, int]] = kernel_size
-        self.angle = angle
-        self.direction = direction
-        self.resample = Resample.get(resample)
-        self.border_type = BorderType.get(border_type)
-        self.flags: Dict[str, torch.Tensor] = {
-            "border_type": torch.tensor(self.border_type.value),
-            "interpolation": torch.tensor(self.resample.value),
-        }
-        self._param_generator = rg.MotionBlurGenerator3D(kernel_size, angle, direction)
-
-    def __repr__(self) -> str:
-        repr = (
-            f"kernel_size={self.kernel_size}, angle={self.angle}, direction={self.direction}, "
-            + f"border_type='{self.border_type.name.lower()}'"
+        self.flags = dict(
+            border_type=BorderType.get(border_type),
+            resample=Resample.get(resample),
         )
-        return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
+        self._param_generator = rg.MotionBlurGenerator3D(kernel_size, angle, direction)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return self.identity_matrix(input)
@@ -593,7 +557,8 @@ class RandomMotionBlur3D(AugmentationBase3D):
         angle = params['angle_factor']
         direction = params['direction_factor']
         return motion_blur3d(
-            input, kernel_size, angle, direction, self.border_type.name.lower(), self.resample.name.lower()
+            input, kernel_size, angle, direction, self.flags['border_type'].name.lower(),
+            self.flags['resample'].name.lower()
         )
 
 
@@ -656,24 +621,20 @@ class CenterCrop3D(AugmentationBase3D):
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
         super().__init__(p=1.0, return_transform=return_transform, same_on_batch=True, p_batch=p, keepdim=keepdim)
         if isinstance(size, tuple):
-            self.size = (size[0], size[1], size[2])
+            size = (size[0], size[1], size[2])
         elif isinstance(size, int):
-            self.size = (size, size, size)
+            size = (size, size, size)
         else:
             raise Exception(f"Invalid size type. Expected (int, tuple(int, int int). Got: {size}.")
-        self.resample = Resample.get(resample)
-        self.align_corners = align_corners
-        self.flags: Dict[str, torch.Tensor] = dict(
-            interpolation=torch.tensor(self.resample.value), align_corners=torch.tensor(align_corners)
+        self.flags = dict(
+            size = size,
+            align_corners=align_corners,
+            resample=Resample.get(resample),
         )
-
-    def __repr__(self) -> str:
-        repr = f"size={self.size}"
-        return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.center_crop_generator3d(
-            batch_shape[0], batch_shape[-3], batch_shape[-2], batch_shape[-1], self.size, device=self.device
+            batch_shape[0], batch_shape[-3], batch_shape[-2], batch_shape[-1], self.flags['size'], device=self.device
         )
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
@@ -686,7 +647,8 @@ class CenterCrop3D(AugmentationBase3D):
     ) -> torch.Tensor:
         transform = cast(torch.Tensor, transform)
         return crop_by_transform_mat3d(
-            input, transform, self.size, mode=self.resample.name.lower(), align_corners=self.align_corners
+            input, transform, self.flags['size'], mode=self.flags['resample'].name.lower(),
+            align_corners=self.flags['align_corners']
         )
 
 
@@ -758,62 +720,41 @@ class RandomCrop3D(AugmentationBase3D):
         super().__init__(
             p=1.0, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim
         )
-        self.size = size
-        self.padding = padding
-        self.pad_if_needed = pad_if_needed
-        self.fill = fill
-        self.padding_mode = padding_mode
-        self.resample = Resample.get(resample)
-        self.align_corners = align_corners
-        self.flags: Dict[str, torch.Tensor] = dict(
-            interpolation=torch.tensor(self.resample.value), align_corners=torch.tensor(align_corners)
+        self.flags = dict(
+            size=size,
+            padding=padding,
+            pad_if_needed=pad_if_needed,
+            padding_mode=padding_mode,
+            fill=fill,
+            resample=Resample.get(resample),
+            align_corners=align_corners,
         )
         self._param_generator = rg.CropGenerator3D(size, None)
 
-    def __repr__(self) -> str:
-        repr = (
-            f"crop_size={self.size}, padding={self.padding}, fill={self.fill}, pad_if_needed={self.pad_if_needed}, "
-            f"padding_mode={self.padding_mode}, resample={self.resample.name}"
-        )
-        return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
-
     def precrop_padding(self, input: torch.Tensor) -> torch.Tensor:
-        if self.padding is not None:
-            if isinstance(self.padding, int):
-                padding = [self.padding, self.padding, self.padding, self.padding, self.padding, self.padding]
-            elif isinstance(self.padding, (tuple, list)) and len(self.padding) == 3:
-                padding = [
-                    self.padding[0],
-                    self.padding[0],
-                    self.padding[1],
-                    self.padding[1],
-                    self.padding[2],
-                    self.padding[2],
-                ]
-            elif isinstance(self.padding, (tuple, list)) and len(self.padding) == 6:
-                padding = [
-                    self.padding[0],
-                    self.padding[1],
-                    self.padding[2],
-                    self.padding[3],  # type: ignore
-                    self.padding[4],  # type: ignore
-                    self.padding[5],  # type: ignore
-                ]
+        padding = self.flags['padding']
+        if padding is not None:
+            if isinstance(padding, int):
+                padding = [padding, padding, padding, padding, padding, padding]
+            elif isinstance(padding, (tuple, list)) and len(padding) == 3:
+                padding = [padding[0], padding[0], padding[1], padding[1], padding[2], padding[2]]
+            elif isinstance(padding, (tuple, list)) and len(padding) == 6:
+                padding = [padding[0], padding[1], padding[2], padding[3], padding[4], padding[5]]  # type: ignore
             else:
-                raise ValueError(f"`padding` must be an integer, 3-element-list or 6-element-list. Got {self.padding}.")
-            input = pad(input, padding, value=self.fill, mode=self.padding_mode)
+                raise ValueError(f"`padding` must be an integer, 3-element-list or 6-element-list. Got {padding}.")
+            input = pad(input, padding, value=self.flags['fill'], mode=self.flags['padding_mode'])
 
-        if self.pad_if_needed and input.shape[-3] < self.size[0]:
-            padding = [0, 0, 0, 0, self.size[0] - input.shape[-3], self.size[0] - input.shape[-3]]
-            input = pad(input, padding, value=self.fill, mode=self.padding_mode)
+        if self.flags['pad_if_needed'] and input.shape[-3] < self.flags['size'][0]:
+            padding = [0, 0, 0, 0, self.flags['size'][0] - input.shape[-3], self.flags['size'][0] - input.shape[-3]]
+            input = pad(input, padding, value=self.flags['fill'], mode=self.flags['padding_mode'])
 
-        if self.pad_if_needed and input.shape[-2] < self.size[1]:
-            padding = [0, 0, (self.size[1] - input.shape[-2]), self.size[1] - input.shape[-2], 0, 0]
-            input = pad(input, padding, value=self.fill, mode=self.padding_mode)
+        if self.flags['pad_if_needed'] and input.shape[-2] < self.flags['size'][1]:
+            padding = [0, 0, (self.flags['size'][1] - input.shape[-2]), self.flags['size'][1] - input.shape[-2], 0, 0]
+            input = pad(input, padding, value=self.flags['fill'], mode=self.flags['padding_mode'])
 
-        if self.pad_if_needed and input.shape[-1] < self.size[2]:
-            padding = [self.size[2] - input.shape[-1], self.size[2] - input.shape[-1], 0, 0, 0, 0]
-            input = pad(input, padding, value=self.fill, mode=self.padding_mode)
+        if self.flags['pad_if_needed'] and input.shape[-1] < self.flags['size'][2]:
+            padding = [self.flags['size'][2] - input.shape[-1], self.flags['size'][2] - input.shape[-1], 0, 0, 0, 0]
+            input = pad(input, padding, value=self.flags['fill'], mode=self.flags['padding_mode'])
 
         return input
 
@@ -827,7 +768,8 @@ class RandomCrop3D(AugmentationBase3D):
     ) -> torch.Tensor:
         transform = cast(torch.Tensor, transform)
         return crop_by_transform_mat3d(
-            input, transform, self.size, mode=self.resample.name.lower(), align_corners=self.align_corners
+            input, transform, self.flags['size'], mode=self.flags['resample'].name.lower(),
+            align_corners=self.flags['align_corners']
         )
 
     def forward(  # type: ignore
@@ -904,21 +846,11 @@ class RandomPerspective3D(AugmentationBase3D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._device, self._dtype = _extract_device_dtype([distortion_scale])
-        self.distortion_scale = distortion_scale
-        self.resample = Resample.get(resample)
-        self.align_corners = align_corners
-        self.flags: Dict[str, torch.Tensor] = dict(
-            interpolation=torch.tensor(self.resample.value), align_corners=torch.tensor(align_corners)
+        self.flags = dict(
+            resample=Resample.get(resample),
+            align_corners=align_corners,
         )
         self._param_generator = rg.PerspectiveGenerator3D(distortion_scale)
-
-    def __repr__(self) -> str:
-        repr = (
-            f"distortion_scale={self.distortion_scale}, resample={self.resample.name}, "
-            f"align_corners={self.align_corners}"
-        )
-        return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return get_perspective_transform3d(params['start_points'], params['end_points']).to(input)
@@ -931,8 +863,8 @@ class RandomPerspective3D(AugmentationBase3D):
             input,
             transform,
             (input.shape[-3], input.shape[-2], input.shape[-1]),
-            flags=self.resample.name.lower(),
-            align_corners=self.align_corners,
+            flags=self.flags['resample'].name.lower(),
+            align_corners=self.flags['align_corners'],
         )
 
 
@@ -978,9 +910,6 @@ class RandomEqualize3D(AugmentationBase3D):
         self, p: float = 0.5, return_transform: bool = False, same_on_batch: bool = False, keepdim: bool = False
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-
-    def __repr__(self) -> str:
-        return self.__class__.__name__ + f"({super().__repr__()})"
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return self.identity_matrix(input)

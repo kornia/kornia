@@ -90,7 +90,9 @@ class PlainUniformGenerator(RandomGeneratorBase):
             if name in names:
                 raise RuntimeError(f"factor name `{name}` has already been registered. Please check the duplication.")
             names.append(name)
-            if isinstance(factor, torch.Tensor):
+            if isinstance(factor, torch.nn.Parameter):
+                self.register_parameter(name, factor)
+            elif isinstance(factor, torch.Tensor):
                 self.register_buffer(name, factor)
 
     def __repr__(self) -> str:
@@ -108,7 +110,7 @@ class PlainUniformGenerator(RandomGeneratorBase):
                 factor = _range_bound(
                     factor, name, center=center, bounds=bound, device=device, dtype=dtype
                 )
-            self.sampler_dict.update({name: Uniform(factor[0], factor[1])})
+            self.sampler_dict.update({name: Uniform(factor[0], factor[1], validate_args=False)})
 
     def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type:ignore
         batch_size = batch_shape[0]
