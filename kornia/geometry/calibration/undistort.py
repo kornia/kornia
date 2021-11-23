@@ -135,6 +135,15 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     if not image.is_floating_point():
         raise ValueError(f'Invalid input image data type. Input should be float. Got {image.dtype}.')
 
+    if image.shape[:-3] != K.shape[:-2] or image.shape[:-3] != dist.shape[:-1]:
+        # Input with image shape (1, C, H, W), K shape (3, 3), dist shape (4) 
+        # allowed to avoid a breaking change.
+        if not all((image.shape[:-3] == (1,), K.shape[:-2] == (), dist.shape[:-1] == ())):
+            raise ValueError(
+                f'Input shape is invalid. Input batch dimensions should match. '
+                f'Got {image.shape[:-3]}, {K.shape[:-2]}, {dist.shape[:-1]}.'
+            )
+
     channels, rows, cols = image.shape[-3:]
     B = image.numel() // (channels * rows * cols)
 
