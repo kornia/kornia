@@ -286,7 +286,7 @@ class AugmentationSequential(ImageSequential):
                 input = cast(TensorWithTransformMat, out)
             outputs[idx] = input
 
-        self.return_label = label is not None or self.contains_label_operations(params)
+        self.return_label = self.return_label or label is not None or self.contains_label_operations(params)
 
         for idx, (input, dcate, out) in enumerate(zip(args, data_keys, outputs)):
             if out is not None:
