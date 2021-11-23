@@ -136,7 +136,7 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
         raise ValueError(f'Invalid input image data type. Input should be float. Got {image.dtype}.')
 
     if image.shape[:-3] != K.shape[:-2] or image.shape[:-3] != dist.shape[:-1]:
-        # Input with image shape (1, C, H, W), K shape (3, 3), dist shape (4) 
+        # Input with image shape (1, C, H, W), K shape (3, 3), dist shape (4)
         # allowed to avoid a breaking change.
         if not all((image.shape[:-3] == (1,), K.shape[:-2] == (), dist.shape[:-1] == ())):
             raise ValueError(
