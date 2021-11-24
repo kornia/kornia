@@ -2033,11 +2033,6 @@ class PadTo(GeometricAugmentationBase2D):
             pad_value=pad_value,
         )
 
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        # For inversing
-        input_size = torch.tensor(batch_shape[-2:], dtype=torch.long).expand(batch_shape[0], -1)
-        return dict(input_size=input_size)
-
     # TODO: It is incorrect to return identity
     # TODO: Having a resampled version with ``warp_affine``
     def compute_transformation(self, image: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:

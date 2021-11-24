@@ -1770,7 +1770,10 @@ class TestCenterCrop:
         aug = CenterCrop(2, cropping_mode="resample")
         out = aug(inp)
         assert out.shape == (1, 2, 2, 2)
-        assert aug.inverse(out).shape == (1, 2, 4, 4)
+        try:
+            assert aug.inverse(out).shape == (1, 2, 4, 4)
+        except:
+            assert False, aug._params['forward_input_shape']
 
     def test_transform(self, device, dtype):
         inp = torch.rand(1, 2, 5, 4, device=device, dtype=dtype)

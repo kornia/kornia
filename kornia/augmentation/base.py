@@ -366,6 +366,15 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
         """Compute the inverse transform of given transformation matrices."""
         return _torch_inverse_cast(transform)
 
+    def forward_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        params = super().forward_parameters(batch_shape)
+        # Added another input_size parameter for geometric transformations
+        # This might be needed for correctly inversing.
+        input_size = torch.tensor(batch_shape, dtype=torch.long)
+        if "forward_input_shape" not in params:
+            params.update({'forward_input_shape': input_size})
+        return params
+
     def get_transformation_matrix(
         self, input: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None
     ) -> torch.Tensor:
@@ -399,10 +408,10 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
         batch_shape = input.shape
         if params is None:
             params = self._params
-        if size is None and "input_size" in params:
+        if size is None and "forward_input_shape" in params:
             # Majorly for cropping functions
-            size = params['input_size'].unique(dim=0).squeeze().numpy().tolist()
-            size = (size[0], size[1])
+            size = params['forward_input_shape'].numpy().tolist()
+            size = (size[-2], size[-1])
         if 'batch_prob' not in params:
             params['batch_prob'] = torch.tensor([True] * batch_shape[0])
             warnings.warn("`batch_prob` is not found in params. Will assume applying on all data.")
