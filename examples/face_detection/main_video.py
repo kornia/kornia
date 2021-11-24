@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
-
 import torch
+
 import kornia as K
 from kornia.contrib import FaceDetector, FaceDetectorResults, FaceKeypoint
 
