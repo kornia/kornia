@@ -127,11 +127,13 @@ class AffineGenerator3D(RandomGeneratorBase):
         # check scale range
         self._scale: Optional[torch.Tensor] = None
         if self.scale is not None:
-            self._scale = torch.as_tensor(self.scale, device=device, dtype=dtype)
-            if self._scale.shape == torch.Size([2]):
-                self._scale = self._scale.unsqueeze(0).repeat(3, 1)
-            elif self._scale.shape != torch.Size([3, 2]):
-                raise ValueError(f"'scale' shall be either shape (2) or (3, 2). Got {self._scale}.")
+            _scale = torch.as_tensor(self.scale, device=device, dtype=dtype)
+            if _scale.shape == torch.Size([2]):
+                self._scale = _scale.unsqueeze(0).repeat(3, 1)
+            elif _scale.shape != torch.Size([3, 2]):
+                raise ValueError(f"'scale' shall be either shape (2) or (3, 2). Got {self.scale}.")
+            else:
+                self._scale = _scale
             _singular_range_check(self._scale[0], 'scale-x', bounds=(0, float('inf')), mode='2d')
             _singular_range_check(self._scale[1], 'scale-y', bounds=(0, float('inf')), mode='2d')
             _singular_range_check(self._scale[2], 'scale-z', bounds=(0, float('inf')), mode='2d')

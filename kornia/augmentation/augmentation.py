@@ -1,4 +1,3 @@
-import warnings
 from typing import Any, cast, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -39,7 +38,7 @@ from kornia.geometry.transform import (
     warp_perspective,
 )
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
-from kornia.utils import _extract_device_dtype, create_meshgrid
+from kornia.utils import create_meshgrid
 
 from . import random_generator as rg
 from .utils import _transform_input

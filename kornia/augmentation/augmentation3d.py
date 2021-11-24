@@ -16,11 +16,9 @@ from kornia.geometry import (
     warp_perspective3d,
 )
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix3d, _compute_tensor_center3d
-from kornia.utils import _extract_device_dtype
 
 from . import random_generator as rg
 from .base import AugmentationBase3D, TensorWithTransformMat
-from .utils import _range_bound, _singular_range_check, _tuple_range_reader
 
 
 class RandomHorizontalFlip3D(AugmentationBase3D):
