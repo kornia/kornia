@@ -3,7 +3,7 @@ from typing import Any, cast, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-from torch.distributions import Bernoulli, Distribution, Uniform
+from torch.distributions import Bernoulli, Distribution, Uniform, Beta
 
 from kornia.geometry.bbox import bbox_generator
 from kornia.utils.helpers import _deprecated, _extract_device_dtype
@@ -928,6 +928,176 @@ class PosterizeGenerator(RandomGeneratorBase):
         _device, _dtype = _extract_device_dtype([self.bits if isinstance(self.bits, torch.Tensor) else None])
         bits_factor = _adapted_rsampling((batch_size,), self.bit_sampler, same_on_batch)
         return dict(bits_factor=bits_factor.to(device=_device, dtype=torch.int32))
+
+
+class MixupGenerator(RandomGeneratorBase):
+    r"""Generate mixup indexes and lambdas for a batch of inputs.
+
+    Args:
+        lambda_val (torch.Tensor, optional): min-max strength for mixup images, ranged from [0., 1.].
+            If None, it will be set to tensor([0., 1.]), which means no restrictions.
+
+    Returns:
+        A dict of parameters to be passed for transformation.
+            - mix_pairs (torch.Tensor): element-wise probabilities with a shape of (B,).
+            - mixup_lambdas (torch.Tensor): element-wise probabilities with a shape of (B,).
+
+    Note:
+        The generated random numbers are not reproducible across different devices and dtypes. By default,
+        the parameters will be generated on CPU in float32. This can be changed by calling
+        ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
+    """
+
+    def __init__(self, lambda_val: Optional[Union[torch.Tensor, Tuple[float, float]]] = None, p: float = 1.0) -> None:
+        super().__init__()
+        self.lambda_val = lambda_val
+        self.p = p
+
+    def __repr__(self) -> str:
+        repr = f"lambda_val={self.lambda_val}"
+        return repr
+
+    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+        if self.lambda_val is None:
+            lambda_val = torch.tensor([0.0, 1.0], device=device, dtype=dtype)
+        else:
+            lambda_val = torch.as_tensor(self.lambda_val, device=device, dtype=dtype)
+
+        _joint_range_check(lambda_val, 'lambda_val', bounds=(0, 1))
+        self.lambda_sampler = Uniform(lambda_val[0], lambda_val[1], validate_args=False)
+        self.prob_sampler = Bernoulli(torch.tensor(float(self.p), device=device, dtype=dtype))
+
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):
+        batch_size = batch_shape[0]
+
+        _common_param_check(batch_size, same_on_batch)
+        _device, _dtype = _extract_device_dtype([self.lambda_val])
+
+        with torch.no_grad():
+            batch_probs: torch.Tensor = _adapted_sampling((batch_size,), self.prob_sampler, same_on_batch)
+        mixup_pairs: torch.Tensor = torch.randperm(batch_size, device=_device, dtype=_dtype).long()
+        mixup_lambdas: torch.Tensor = _adapted_rsampling((batch_size,), self.lambda_sampler, same_on_batch)
+        mixup_lambdas = mixup_lambdas * batch_probs
+
+        return dict(
+            mixup_pairs=mixup_pairs.to(device=_device, dtype=torch.long),
+            mixup_lambdas=mixup_lambdas.to(device=_device, dtype=_dtype),
+        )
+
+
+class CutmixGenerator(RandomGeneratorBase):
+    r"""Generate cutmix indexes and lambdas for a batch of inputs.
+
+    Args:
+        p (float): probability of applying cutmix.
+        num_mix (int): number of images to mix with. Default is 1.
+        beta (torch.Tensor, optional): hyperparameter for generating cut size from beta distribution.
+            If None, it will be set to 1.
+        cut_size (torch.Tensor, optional): controlling the minimum and maximum cut ratio from [0, 1].
+            If None, it will be set to [0, 1], which means no restriction.
+
+    Returns:
+        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+            - mix_pairs (torch.Tensor): element-wise probabilities with a shape of (num_mix, B).
+            - crop_src (torch.Tensor): element-wise probabilities with a shape of (num_mix, B, 4, 2).
+
+    Note:
+        The generated random numbers are not reproducible across different devices and dtypes. By default,
+        the parameters will be generated on CPU in float32. This can be changed by calling
+        ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
+    """
+
+    def __init__(
+        self,
+        cut_size: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
+        beta: Optional[Union[torch.Tensor, float]] = None,
+        num_mix: int = 1,
+        p: float = 1.0,
+    ) -> None:
+        super().__init__()
+        self.cut_size = cut_size
+        self.beta = beta
+        self.num_mix = num_mix
+        self.p = p
+
+        if not (num_mix >= 1 and isinstance(num_mix, (int,))):
+            raise AssertionError(f"`num_mix` must be an integer greater than 1. Got {num_mix}.")
+
+    def __repr__(self) -> str:
+        repr = f"cut_size={self.cut_size}, beta={self.beta}, num_mix={self.num_mix}"
+        return repr
+
+    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+        if self.beta is None:
+            self._beta = torch.tensor(1.0, device=device, dtype=dtype)
+        else:
+            self._beta = torch.as_tensor(self.beta, device=device, dtype=dtype)
+        if self.cut_size is None:
+            self._cut_size = torch.tensor([0.0, 1.0], device=device, dtype=dtype)
+        else:
+            self._cut_size = torch.as_tensor(self.cut_size, device=device, dtype=dtype)
+
+        _joint_range_check(self._cut_size, 'cut_size', bounds=(0, 1))
+
+        self.beta_sampler = Beta(self._beta, self._beta)
+        self.prob_sampler = Bernoulli(torch.tensor(float(self.p), device=device, dtype=dtype))
+        self.rand_sampler = Uniform(
+            torch.tensor(0., device=device, dtype=dtype),
+            torch.tensor(1., device=device, dtype=dtype),
+            validate_args=False
+        )
+
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):
+        batch_size = batch_shape[0]
+        height = batch_shape[-2]
+        width = batch_shape[-1]
+
+        if not (type(height) is int and height > 0 and type(width) is int and width > 0):
+            raise AssertionError(f"'height' and 'width' must be integers. Got {height}, {width}.")
+        _device, _dtype = _extract_device_dtype([self.beta, self.cut_size])
+        _common_param_check(batch_size, same_on_batch)
+
+        if batch_size == 0:
+            return dict(
+                mix_pairs=torch.zeros([0, 3], device=_device, dtype=torch.long),
+                crop_src=torch.zeros([0, 4, 2], device=_device, dtype=torch.long),
+            )
+
+        with torch.no_grad():
+            batch_probs: torch.Tensor = _adapted_sampling(
+                (batch_size * self.num_mix,), self.prob_sampler, same_on_batch)
+        mix_pairs: torch.Tensor = torch.rand(self.num_mix, batch_size, device=_device, dtype=_dtype).argsort(dim=1)
+        cutmix_betas: torch.Tensor = _adapted_rsampling((batch_size * self.num_mix,), self.beta_sampler, same_on_batch)
+
+        # Note: torch.clamp does not accept tensor, cutmix_betas.clamp(cut_size[0], cut_size[1]) throws:
+        # Argument 1 to "clamp" of "_TensorBase" has incompatible type "Tensor"; expected "float"
+        cutmix_betas = torch.min(torch.max(cutmix_betas, self._cut_size[0]), self._cut_size[1])
+        cutmix_rate = torch.sqrt(1.0 - cutmix_betas) * batch_probs
+
+        cut_height = (cutmix_rate * height).floor().to(device=_device, dtype=_dtype)
+        cut_width = (cutmix_rate * width).floor().to(device=_device, dtype=_dtype)
+        _gen_shape = (1,)
+
+        if same_on_batch:
+            _gen_shape = (cut_height.size(0),)
+            cut_height = cut_height[0]
+            cut_width = cut_width[0]
+
+        # Reserve at least 1 pixel for cropping.
+        x_start: torch.Tensor = _adapted_rsampling(_gen_shape, self.rand_sampler, same_on_batch) * (width - cut_width - 1)
+        y_start: torch.Tensor = _adapted_rsampling(_gen_shape, self.rand_sampler, same_on_batch) * (height - cut_height - 1)
+        x_start = x_start.floor().to(device=_device, dtype=_dtype)
+        y_start = y_start.floor().to(device=_device, dtype=_dtype)
+
+        crop_src = bbox_generator(x_start.squeeze(), y_start.squeeze(), cut_width, cut_height)
+
+        # (B * num_mix, 4, 2) => (num_mix, batch_size, 4, 2)
+        crop_src = crop_src.view(self.num_mix, batch_size, 4, 2)
+
+        return dict(
+            mix_pairs=mix_pairs.to(device=_device, dtype=torch.long),
+            crop_src=crop_src.floor().to(device=_device, dtype=_dtype),
+        )
 
 
 def random_prob_generator(
