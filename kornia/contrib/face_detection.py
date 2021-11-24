@@ -1,14 +1,13 @@
 # based on: https://github.com/ShiqiYu/libfacedetection.train/blob/74f3aa77c63234dd954d21286e9a60703b8d0868/tasks/task1/yufacedetectnet.py
-from typing import List, Optional, Tuple
 from enum import Enum
 from itertools import product as product
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from kornia.geometry.bbox import nms
-
 
 __all__ = [
     "FaceDetection",
@@ -106,7 +105,6 @@ class FaceDetection(nn.Module):
 
     Return:
         A list of :py:class:`kornia.contrib.FaceDetectionResults`.
-
     """
     def __init__(self,
                  pretrained: bool = False,
@@ -173,7 +171,7 @@ class FaceDetection(nn.Module):
 
 class _ConvDPUnit(nn.Module):
     def __init__(self, in_channels, out_channels, withBNRelu=True):
-        super(_ConvDPUnit, self).__init__()
+        super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.conv1 = nn.Conv2d(in_channels, out_channels, 1, 1, 0, bias=True, groups=1)
@@ -193,7 +191,7 @@ class _ConvDPUnit(nn.Module):
 
 class _Conv_head(nn.Module):
     def __init__(self, in_channels, mid_channels, out_channels):
-        super(_Conv_head, self).__init__()
+        super().__init__()
         self.in_channels = in_channels
         self.mid_channels = mid_channels
         self.out_channels = out_channels
@@ -211,7 +209,7 @@ class _Conv_head(nn.Module):
 
 class _Conv4layerBlock(nn.Module):
     def __init__(self, in_channels, out_channels, withBNRelu=True):
-        super(_Conv4layerBlock, self).__init__()
+        super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.conv1 = _ConvDPUnit(in_channels, in_channels, True)
@@ -225,7 +223,7 @@ class _Conv4layerBlock(nn.Module):
 
 class YuFaceDetectNet(nn.Module):
     def __init__(self, phase, pretrained: bool):
-        super(YuFaceDetectNet, self).__init__()
+        super().__init__()
         self.phase = phase
         self.num_classes = 2
 
@@ -323,8 +321,8 @@ class YuFaceDetectNet(nn.Module):
 
 # Adapted from https://github.com/Hakuyume/chainer-ssd
 def _decode(loc: torch.Tensor, priors: torch.Tensor, variances: List[float]) -> torch.Tensor:
-    """Decode locations from predictions using priors to undo
-    the encoding we did for offset regression at train time.
+    """Decode locations from predictions using priors to undo the encoding we did for offset regression at train
+    time.
 
     Args:
         loc:location predictions for loc layers. Shape: [num_priors,4].
@@ -347,7 +345,7 @@ def _decode(loc: torch.Tensor, priors: torch.Tensor, variances: List[float]) -> 
     return boxes
 
 
-class _PriorBox(object):
+class _PriorBox:
     def __init__(self, config: dict, image_size: Tuple[int, int]) -> None:
         self.min_sizes = config['min_sizes']
         self.steps = config['steps']

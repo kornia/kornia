@@ -1,10 +1,10 @@
 import argparse
 
 import cv2
-import kornia as K
 import numpy as np
 
-from kornia.contrib import FaceDetection, FaceKeypoint, FaceDetectionResults
+import kornia as K
+from kornia.contrib import FaceDetection, FaceDetectionResults, FaceKeypoint
 
 
 def draw_keypoint(img: np.ndarray, det: FaceDetectionResults, kpt_type: FaceKeypoint) -> np.ndarray:

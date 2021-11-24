@@ -1,12 +1,17 @@
-from numpy import e
 import torch
+from numpy import e
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
 import kornia
 import kornia.testing as utils
 from kornia.geometry.bbox import (
-    infer_bbox_shape, infer_bbox_shape3d, transform_bbox, validate_bbox, validate_bbox3d, nms
+    infer_bbox_shape,
+    infer_bbox_shape3d,
+    nms,
+    transform_bbox,
+    validate_bbox,
+    validate_bbox3d,
 )
 
 

@@ -43,4 +43,3 @@ Face Detection
 .. autoclass:: FaceDetectionResults
     :members:
 .. autoclass:: FaceDetection
-
