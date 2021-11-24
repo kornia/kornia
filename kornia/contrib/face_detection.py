@@ -131,10 +131,6 @@ class FaceDetector(nn.Module):
         >>> img = torch.rand(1, 3, 320, 320)
         >>> detect = FaceDetector()
         >>> res = detect(img)
-        >>> res[0].top_left
-        tensor([191.7625, -61.4981], grad_fn=<IndexBackward>)
-        >>> res[0].bottom_right
-        tensor([377.5164, 119.3549], grad_fn=<IndexBackward>)
     """
     def __init__(self,
                  pretrained: bool = False,
