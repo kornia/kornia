@@ -9,6 +9,8 @@ import kornia.testing as utils  # test utils
 from kornia.testing import assert_close
 from packaging import version
 
+from kornia.contrib import FaceDetection, FaceKeypoint, FaceDetectionResults
+
 
 class TestVisionTransformer:
     @pytest.mark.parametrize("B", [1, 2])
@@ -401,3 +403,19 @@ class TestHistMatch:
         src = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         dst = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.contrib.histogram_matching, (src, dst,), raise_exception=True)
+
+
+class TestFaceDetection:
+    def test_smoke(self, device, dtype):
+        assert kornia.contrib.FaceDetection().to(device, dtype) is not None
+
+    def test_valid(self, device, dtype):
+        torch.manual_seed(44)
+        img = torch.rand(1, 3, 320, 320, device=device, dtype=dtype)
+        face_detection = kornia.contrib.FaceDetection(pretrained=True).to(device, dtype)
+        expected = torch.tensor([
+            -4.1878,  -3.3567, 315.1421, 329.4328,  10.8249,  96.3718, 171.5290,
+            87.0605,  50.2266, 215.6090,  40.9469, 317.2725, 172.3312, 309.7812,
+            0.9035], device=device, dtype=dtype)
+        dets = face_detection(img)
+        assert_close(dets[0]._data, expected)

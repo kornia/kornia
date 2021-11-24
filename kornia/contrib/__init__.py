@@ -6,6 +6,7 @@ from .image_stitching import ImageStitcher
 from .lambda_module import Lambda
 from .vit import VisionTransformer
 from .vit_mobile import MobileViT
+from .face_detection import *
 
 __all__ = [
     "connected_components",

@@ -33,3 +33,14 @@ Lambda
 ------
 
 .. autoclass:: Lambda
+
+
+Face Detection
+--------------
+
+.. autoclass:: FaceKeypoint
+    :members:
+.. autoclass:: FaceDetectionResults
+    :members:
+.. autoclass:: FaceDetection
+
