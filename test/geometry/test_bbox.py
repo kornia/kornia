@@ -1,5 +1,4 @@
 import torch
-from numpy import e
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 

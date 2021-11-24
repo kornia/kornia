@@ -4,10 +4,10 @@ import cv2
 import numpy as np
 
 import kornia as K
-from kornia.contrib import FaceDetection, FaceDetectionResults, FaceKeypoint
+from kornia.contrib import FaceDetector, FaceDetectorResults, FaceKeypoint
 
 
-def draw_keypoint(img: np.ndarray, det: FaceDetectionResults, kpt_type: FaceKeypoint) -> np.ndarray:
+def draw_keypoint(img: np.ndarray, det: FaceDetectorResults, kpt_type: FaceKeypoint) -> np.ndarray:
     kpt = det.get_keypoint(kpt_type).int().tolist()
     return cv2.circle(img, kpt, 2, (255, 0, 0), 2)
 
@@ -23,7 +23,7 @@ def my_app(args):
     img = K.color.bgr_to_rgb(img)
 
     # detect
-    face_detection = FaceDetection(pretrained=True)
+    face_detection = FaceDetector(pretrained=True)
     dets = face_detection(img)
 
     # show image

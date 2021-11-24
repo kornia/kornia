@@ -1,13 +1,12 @@
-import argparse
-
 import cv2
 import numpy as np
 
+import torch
 import kornia as K
-from kornia.contrib import FaceDetection, FaceDetectionResults, FaceKeypoint
+from kornia.contrib import FaceDetector, FaceDetectorResults, FaceKeypoint
 
 
-def draw_keypoint(img: np.ndarray, det: FaceDetectionResults, kpt_type: FaceKeypoint) -> np.ndarray:
+def draw_keypoint(img: np.ndarray, det: FaceDetectorResults, kpt_type: FaceKeypoint) -> np.ndarray:
     kpt = det.get_keypoint(kpt_type).int().tolist()
     return cv2.circle(img, kpt, 2, (255, 0, 0), 2)
 
@@ -16,7 +15,7 @@ def my_app():
     # define a video capture object
     cap = cv2.VideoCapture(0)
 
-    face_detection = FaceDetection(pretrained=True)
+    face_detection = FaceDetector(pretrained=True)
 
     cv2.namedWindow('frame', cv2.WINDOW_NORMAL)
 
@@ -35,7 +34,8 @@ def my_app():
         img = K.color.bgr_to_rgb(img)
 
         # detect !
-        dets = face_detection(img)
+        with torch.no_grad():
+            dets = face_detection(img)
 
         # show image
 

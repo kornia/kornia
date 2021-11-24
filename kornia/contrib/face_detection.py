@@ -1,7 +1,7 @@
-# based on: https://github.com/ShiqiYu/libfacedetection.train/blob/74f3aa77c63234dd954d21286e9a60703b8d0868/tasks/task1/yufacedetectnet.py
+# based on: https://github.com/ShiqiYu/libfacedetection.train/blob/74f3aa77c63234dd954d21286e9a60703b8d0868/tasks/task1/yufacedetectnet.py  # noqa
 from enum import Enum
-from itertools import product as product
-from typing import List, Optional, Tuple
+from itertools import product
+from typing import cast, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -10,9 +10,9 @@ import torch.nn.functional as F
 from kornia.geometry.bbox import nms
 
 __all__ = [
-    "FaceDetection",
+    "FaceDetector",
+    "FaceDetectorResults",
     "FaceKeypoint",
-    "FaceDetectionResults",
 ]
 
 
@@ -20,7 +20,10 @@ url: str = "https://github.com/ShiqiYu/libfacedetection.train/raw/master/tasks/t
 
 
 class FaceKeypoint(Enum):
-    """Type to handle the facial keypoints."""
+    r"""Define the keypoints detected in a face.
+
+    The left/right convention is based on the screen viewer.
+    """
     EYE_LEFT = 0
     EYE_RIGHT = 1
     NOSE = 2
@@ -28,36 +31,49 @@ class FaceKeypoint(Enum):
     MOUTH_RIGHT = 4
 
 
-class FaceDetectionResults:
-    """Encapsulate the results obtained by the :py:class:`kornia.contrib.FaceDetector`."""
+class FaceDetectorResults:
+    r"""Encapsulate the results obtained by the :py:class:`kornia.contrib.FaceDetector`.
+
+    Args:
+        data: the encoded results coming from the feature detector with shape :math:`(14,)`.
+
+    """
     def __init__(self, data: torch.Tensor) -> None:
         if len(data) < 15:
             raise ValueError(f"Result must comes as vector of size(14). Got: {data.shape}.")
         self._data = data
 
-    def to(self, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> "FaceDetectionResults":
+    def to(self, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> "FaceDetectorResults":
         """Like :func:`torch.nn.Module.to()` method."""
         self._data = self._data.to(device=device, dtype=dtype)
         return self
 
     @property
     def xmin(self) -> torch.Tensor:
-        """Return the top-left x-coordinate."""
+        """The bounding box top-left x-coordinate."""
         return self._data[..., 0]
 
     @property
     def ymin(self) -> torch.Tensor:
+        """The bounding box top-left y-coordinate."""
         return self._data[..., 1]
 
     @property
     def xmax(self) -> torch.Tensor:
+        """The bounding box bottom-right x-coordinate."""
         return self._data[..., 2]
 
     @property
     def ymax(self) -> torch.Tensor:
+        """The bounding box bottom-right y-coordinate."""
         return self._data[..., 3]
 
     def get_keypoint(self, keypoint: FaceKeypoint) -> torch.Tensor:
+        """The [x y] position of a given facial keypoint.
+
+        Args:
+            keypoint: the keypoint type to return the position.
+        """
         if keypoint == FaceKeypoint.EYE_LEFT:
             out = self._data[..., (4, 5)]
         elif keypoint == FaceKeypoint.EYE_RIGHT:
@@ -74,26 +90,31 @@ class FaceDetectionResults:
 
     @property
     def score(self) -> torch.Tensor:
+        """The detection score."""
         return self._data[..., 14]
 
     @property
     def width(self) -> torch.Tensor:
+        """The bounding box width."""
         return self.xmax - self.xmin + 1
 
     @property
     def height(self) -> torch.Tensor:
+        """The bounding box height."""
         return self.ymax - self.ymin + 1
 
     @property
     def top_left(self) -> torch.Tensor:
+        """The [x y] position of the top-left coordinate of the bounding box."""
         return self._data[..., (0, 1)]
 
     @property
     def bottom_right(self) -> torch.Tensor:
+        """The [x y] position of the bottom-right coordinate of the bounding box."""
         return self._data[..., (2, 3)]
 
 
-class FaceDetection(nn.Module):
+class FaceDetector(nn.Module):
     """Detect faces in a given image using a CNN.
 
     Args:
@@ -104,7 +125,16 @@ class FaceDetection(nn.Module):
         keep_top_k: the maximum number of detections to return after the nms.
 
     Return:
-        A list of :py:class:`kornia.contrib.FaceDetectionResults`.
+        A list of :py:class:`kornia.contrib.FaceDetectorResults`.
+
+    Example:
+        >>> img = torch.rand(1, 3, 320, 320)
+        >>> detect = FaceDetector()
+        >>> res = detect(img)
+        >>> res[0].top_left
+        tensor([191.7625, -61.4981], grad_fn=<IndexBackward>)
+        >>> res[0].bottom_right
+        tensor([377.5164, 119.3549], grad_fn=<IndexBackward>)
     """
     def __init__(self,
                  pretrained: bool = False,
@@ -136,15 +166,17 @@ class FaceDetection(nn.Module):
             im_width, im_height, im_width, im_height,
             im_width, im_height, im_width, im_height,
             im_width, im_height,
-        ])  # 14
+        ], device=loc.device, dtype=loc.dtype)  # 14
 
-        priors = _PriorBox(self.config, image_size=(im_height, im_width))()  # Nx4
-        boxes = _decode(loc, priors, self.config['variance'])  # Nx14
+        priors = _PriorBox(self.config, image_size=(im_height, im_width))(
+            loc.device, loc.dtype
+        )  # Nx4
+        boxes = _decode(loc, priors, cast(List[float], self.config['variance']))  # Nx14
         boxes = boxes * scale
 
         # clamp here for the compatibility for ONNX
         cls_scores, iou_scores = conf[:, 1], iou[:, 0]
-        scores = (cls_scores * iou_scores.clamp_(0., 1.)).sqrt()
+        scores = (cls_scores * iou_scores.clamp(0., 1.)).sqrt()
 
         # ignore low scores
         inds = (scores > self.confidence_threshold)
@@ -162,11 +194,11 @@ class FaceDetection(nn.Module):
         # keep top-K faster NMS
         return dets[:self.keep_top_k]
 
-    def forward(self, image: torch.Tensor) -> List[FaceDetectionResults]:
+    def forward(self, image: torch.Tensor) -> List[FaceDetectorResults]:
         img = self.preprocess(image)
         loc, conf, iou = self.model(img)
         out = self.postprocess(loc, conf, iou, img)
-        return [FaceDetectionResults(o) for o in out]
+        return [FaceDetectorResults(o) for o in out]
 
 
 class _ConvDPUnit(nn.Module):
@@ -235,7 +267,7 @@ class YuFaceDetectNet(nn.Module):
         self.model5 = _Conv4layerBlock(64, 64)
         self.model6 = _Conv4layerBlock(64, 64)
 
-        self.head = self.multibox(self.num_classes)
+        self.head = self._create_multibox()
 
         if self.phase == 'test':
             self.softmax = nn.Softmax(dim=-1)
@@ -260,7 +292,7 @@ class YuFaceDetectNet(nn.Module):
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
-    def multibox(self, num_classes):
+    def _create_multibox(self):
         head_layers = []
         head_layers += [_Conv4layerBlock(self.model3.out_channels, 3 * (14 + 2 + 1), False)]
         head_layers += [_Conv4layerBlock(self.model4.out_channels, 2 * (14 + 2 + 1), False)]
@@ -269,11 +301,7 @@ class YuFaceDetectNet(nn.Module):
         return nn.Sequential(*head_layers)
 
     def forward(self, x):
-        detection_sources = list()
-        head_data = list()
-        loc_data = list()
-        conf_data = list()
-        iou_data = list()
+        detection_sources, head_data = [], []
 
         x = self.model0(x)
         x = F.max_pool2d(x, 2)
@@ -295,15 +323,13 @@ class YuFaceDetectNet(nn.Module):
         x = self.model6(x)
         detection_sources.append(x)
 
-        for (x, h) in zip(detection_sources, self.head):
-            head_data.append(h(x).permute(0, 2, 3, 1).contiguous())
+        for (x_tmp, h) in zip(detection_sources, self.head):
+            head_data.append(h(x_tmp).permute(0, 2, 3, 1).contiguous())
 
         head_data = torch.cat([o.view(o.size(0), -1) for o in head_data], 1)
         head_data = head_data.view(head_data.size(0), -1, 17)
 
-        loc_data = head_data[:, :, 0:14]
-        conf_data = head_data[:, :, 14:16]
-        iou_data = head_data[:, :, 16:17]
+        loc_data, conf_data, iou_data = head_data.split((14, 2, 1), dim=-1)
 
         if self.phase == "test":
             loc_data = loc_data.view(-1, 14)
@@ -370,7 +396,7 @@ class _PriorBox:
         self.feature_maps = [self.feature_map_3th, self.feature_map_4th,
                              self.feature_map_5th, self.feature_map_6th]
 
-    def __call__(self):
+    def __call__(self, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
         anchors = []
         for k, f in enumerate(self.feature_maps):
             min_sizes = self.min_sizes[k]
@@ -383,7 +409,7 @@ class _PriorBox:
                     cy = (i + 0.5) * self.steps[k] / self.image_size[0]
                     anchors += [cx, cy, s_kx, s_ky]
         # back to torch land
-        output = torch.tensor(anchors).view(-1, 4)
+        output = torch.tensor(anchors, device=device, dtype=dtype).view(-1, 4)
         if self.clip:
             output.clamp_(max=1, min=0)
         return output
