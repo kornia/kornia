@@ -2,8 +2,8 @@ import argparse
 
 import cv2
 import numpy as np
-
 import torch
+
 import kornia as K
 from kornia.contrib import FaceDetector, FaceDetectorResult, FaceKeypoint
 
