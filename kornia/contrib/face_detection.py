@@ -1,17 +1,17 @@
 # based on: https://github.com/ShiqiYu/libfacedetection.train/blob/74f3aa77c63234dd954d21286e9a60703b8d0868/tasks/task1/yufacedetectnet.py  # noqa
 from enum import Enum
 from itertools import product
-from typing import cast, List, Optional, Tuple
+from typing import Callable, cast, Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.geometry.bbox import nms
+from kornia.geometry.bbox import nms as nms_kornia
 
 __all__ = [
     "FaceDetector",
-    "FaceDetectorResults",
+    "FaceDetectorResult",
     "FaceKeypoint",
 ]
 
@@ -31,7 +31,7 @@ class FaceKeypoint(Enum):
     MOUTH_RIGHT = 4
 
 
-class FaceDetectorResults:
+class FaceDetectorResult:
     r"""Encapsulate the results obtained by the :py:class:`kornia.contrib.FaceDetector`.
 
     Args:
@@ -43,7 +43,7 @@ class FaceDetectorResults:
             raise ValueError(f"Result must comes as vector of size(14). Got: {data.shape}.")
         self._data = data
 
-    def to(self, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> "FaceDetectorResults":
+    def to(self, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> "FaceDetectorResult":
         """Like :func:`torch.nn.Module.to()` method."""
         self._data = self._data.to(device=device, dtype=dtype)
         return self
@@ -125,7 +125,7 @@ class FaceDetector(nn.Module):
         keep_top_k: the maximum number of detections to return after the nms.
 
     Return:
-        A list of :py:class:`kornia.contrib.FaceDetectorResults`.
+        A list of :py:class:`kornia.contrib.FaceDetectorResult`.
 
     Example:
         >>> img = torch.rand(1, 3, 320, 320)
@@ -151,12 +151,15 @@ class FaceDetector(nn.Module):
             'clip': False,
         }
         self.model = YuFaceDetectNet('test', pretrained)
+        self.nms: Callable = nms_kornia
 
     def preprocess(self, image: torch.Tensor) -> torch.Tensor:
         return image
 
-    def postprocess(self, loc: torch.Tensor, conf: torch.Tensor, iou: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
-        im_height, im_width = img.shape[-2:]
+    def postprocess(self, data: Dict[str, torch.Tensor], size: Tuple[int, int]) -> torch.Tensor:
+        loc, conf, iou = data['loc'], data['conf'], data['iou']
+        im_height, im_width = size
+
         scale = torch.tensor([
             im_width, im_height, im_width, im_height,
             im_width, im_height, im_width, im_height,
@@ -184,69 +187,45 @@ class FaceDetector(nn.Module):
 
         # performd NMS
         dets = torch.cat((boxes, scores[:, None]), dim=-1)  # Nx15
-        keep = nms(boxes[:, :4], scores, self.nms_threshold)
+        keep = self.nms(boxes[:, :4], scores, self.nms_threshold)
         dets = dets[keep, :]
 
         # keep top-K faster NMS
         return dets[:self.keep_top_k]
 
-    def forward(self, image: torch.Tensor) -> List[FaceDetectorResults]:
+    def forward(self, image: torch.Tensor) -> List[FaceDetectorResult]:
         img = self.preprocess(image)
-        loc, conf, iou = self.model(img)
-        out = self.postprocess(loc, conf, iou, img)
-        return [FaceDetectorResults(o) for o in out]
+        out = self.model(img)
+        out = self.postprocess(out, img.shape[-2:])
+        return [FaceDetectorResult(o) for o in out]
 
 
-class _ConvDPUnit(nn.Module):
+# utils for the network
+
+class ConvDPUnit(nn.Sequential):
     def __init__(self, in_channels, out_channels, withBNRelu=True):
         super().__init__()
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.conv1 = nn.Conv2d(in_channels, out_channels, 1, 1, 0, bias=True, groups=1)
-        self.conv2 = nn.Conv2d(out_channels, out_channels, 3, 1, 1, bias=True, groups=out_channels)
-        self.withBNRelu = withBNRelu
+        self.add_module("conv1", nn.Conv2d(in_channels, out_channels, 1, 1, 0, bias=True, groups=1))
+        self.add_module("conv2", nn.Conv2d(out_channels, out_channels, 3, 1, 1, bias=True, groups=out_channels))
         if withBNRelu:
-            self.bn = nn.BatchNorm2d(out_channels)
-
-    def forward(self, x):
-        x = self.conv1(x)
-        x = self.conv2(x)
-        if self.withBNRelu:
-            x = self.bn(x)
-            x = F.relu(x, inplace=True)
-        return x
+            self.add_module("bn", nn.BatchNorm2d(out_channels))
+            self.add_module("relu", nn.ReLU(inplace=True))
 
 
-class _Conv_head(nn.Module):
-    def __init__(self, in_channels, mid_channels, out_channels):
+class Conv_head(nn.Sequential):
+    def __init__(self, in_channels: int, mid_channels: int, out_channels: int) -> None:
         super().__init__()
-        self.in_channels = in_channels
-        self.mid_channels = mid_channels
-        self.out_channels = out_channels
-        self.conv1 = nn.Conv2d(in_channels, mid_channels, 3, 2, 1, bias=True, groups=1)
-        self.conv2 = _ConvDPUnit(mid_channels, out_channels)
-        self.bn1 = nn.BatchNorm2d(mid_channels)
-
-    def forward(self, x):
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = F.relu(x, inplace=True)
-        x = self.conv2(x)
-        return x
+        self.add_module("conv1", nn.Conv2d(in_channels, mid_channels, 3, 2, 1, bias=True, groups=1))
+        self.add_module("bn1", nn.BatchNorm2d(mid_channels))
+        self.add_module("relu", nn.ReLU(inplace=True))
+        self.add_module("conv2", ConvDPUnit(mid_channels, out_channels))
 
 
-class _Conv4layerBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, withBNRelu=True):
+class Conv4layerBlock(nn.Sequential):
+    def __init__(self, in_channels: int, out_channels: int, withBNRelu: bool = True) -> None:
         super().__init__()
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.conv1 = _ConvDPUnit(in_channels, in_channels, True)
-        self.conv2 = _ConvDPUnit(in_channels, out_channels, withBNRelu)
-
-    def forward(self, x):
-        x = self.conv1(x)
-        x = self.conv2(x)
-        return x
+        self.add_module("conv1", ConvDPUnit(in_channels, in_channels, True))
+        self.add_module("conv2", ConvDPUnit(in_channels, out_channels, withBNRelu))
 
 
 class YuFaceDetectNet(nn.Module):
@@ -255,18 +234,20 @@ class YuFaceDetectNet(nn.Module):
         self.phase = phase
         self.num_classes = 2
 
-        self.model0 = _Conv_head(3, 16, 16)
-        self.model1 = _Conv4layerBlock(16, 64)
-        self.model2 = _Conv4layerBlock(64, 64)
-        self.model3 = _Conv4layerBlock(64, 64)
-        self.model4 = _Conv4layerBlock(64, 64)
-        self.model5 = _Conv4layerBlock(64, 64)
-        self.model6 = _Conv4layerBlock(64, 64)
+        self.model0 = Conv_head(3, 16, 16)
+        self.model1 = Conv4layerBlock(16, 64)
+        self.model2 = Conv4layerBlock(64, 64)
+        self.model3 = Conv4layerBlock(64, 64)
+        self.model4 = Conv4layerBlock(64, 64)
+        self.model5 = Conv4layerBlock(64, 64)
+        self.model6 = Conv4layerBlock(64, 64)
 
-        self.head = self._create_multibox()
-
-        if self.phase == 'test':
-            self.softmax = nn.Softmax(dim=-1)
+        self.head = nn.Sequential(
+            Conv4layerBlock(64, 3 * (14 + 2 + 1), False),
+            Conv4layerBlock(64, 2 * (14 + 2 + 1), False),
+            Conv4layerBlock(64, 2 * (14 + 2 + 1), False),
+            Conv4layerBlock(64, 3 * (14 + 2 + 1), False),
+        )
 
         if self.phase == 'train':
             for m in self.modules():
@@ -288,16 +269,8 @@ class YuFaceDetectNet(nn.Module):
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
-    def _create_multibox(self):
-        head_layers = []
-        head_layers += [_Conv4layerBlock(self.model3.out_channels, 3 * (14 + 2 + 1), False)]
-        head_layers += [_Conv4layerBlock(self.model4.out_channels, 2 * (14 + 2 + 1), False)]
-        head_layers += [_Conv4layerBlock(self.model5.out_channels, 2 * (14 + 2 + 1), False)]
-        head_layers += [_Conv4layerBlock(self.model6.out_channels, 3 * (14 + 2 + 1), False)]
-        return nn.Sequential(*head_layers)
-
-    def forward(self, x):
-        detection_sources, head_data = [], []
+    def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
+        detection_sources, head_list = [], []
 
         x = self.model0(x)
         x = F.max_pool2d(x, 2)
@@ -319,26 +292,28 @@ class YuFaceDetectNet(nn.Module):
         x = self.model6(x)
         detection_sources.append(x)
 
+        # TODO: this makes torchscript crash
         for (x_tmp, h) in zip(detection_sources, self.head):
-            head_data.append(h(x_tmp).permute(0, 2, 3, 1).contiguous())
+            head_list.append(h(x_tmp).permute(0, 2, 3, 1).contiguous())
 
-        head_data = torch.cat([o.view(o.size(0), -1) for o in head_data], 1)
+        head_data = torch.cat([o.view(o.size(0), -1) for o in head_list], 1)
         head_data = head_data.view(head_data.size(0), -1, 17)
 
         loc_data, conf_data, iou_data = head_data.split((14, 2, 1), dim=-1)
 
         if self.phase == "test":
             loc_data = loc_data.view(-1, 14)
-            conf_data = self.softmax(conf_data.view(-1, self.num_classes))
+            conf_data = torch.softmax(conf_data.view(-1, self.num_classes), dim=-1)
             iou_data = iou_data.view(-1, 1)
-            output = (loc_data, conf_data, iou_data)
         else:
-            output = (
-                loc_data.view(loc_data.size(0), -1, 14),
-                conf_data.view(conf_data.size(0), -1, self.num_classes),
-                iou_data.view(iou_data.size(0), -1, 1)
-            )
-        return output
+            loc_data = loc_data.view(loc_data.size(0), -1, 14),
+            conf_data = conf_data.view(conf_data.size(0), -1, self.num_classes),
+            iou_data = iou_data.view(iou_data.size(0), -1, 1)
+
+        return {"loc": loc_data, "conf": conf_data, "iou": iou_data}
+
+
+# utils for post-processing
 
 
 # Adapted from https://github.com/Hakuyume/chainer-ssd

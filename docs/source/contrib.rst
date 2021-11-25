@@ -6,6 +6,8 @@ kornia.contrib
 Face Detection
 --------------
 
+.. autoclass:: FaceDetector
+
 .. autoclass:: FaceKeypoint
     :members:
     :undoc-members:
@@ -13,8 +15,6 @@ Face Detection
 .. autoclass:: FaceDetectorResults
     :members:
     :undoc-members:
-
-.. autoclass:: FaceDetector
 
 Image Segmentation
 ------------------

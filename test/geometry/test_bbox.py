@@ -260,6 +260,6 @@ class TestNMS:
             [100., 100., 200., 200.],
         ], device=device, dtype=dtype)
         scores = torch.tensor([0.9, 0.8, 0.7, 0.9], device=device, dtype=dtype)
-        expected = torch.tensor([0, 3, 1], device=device, dtype=dtype)
+        expected = torch.tensor([0, 3, 1], device=device, dtype=torch.long)
         actual = nms(boxes, scores, iou_threshold=0.8)
         assert_allclose(actual, expected)
