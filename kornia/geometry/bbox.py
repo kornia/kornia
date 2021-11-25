@@ -521,4 +521,6 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
         inds = torch.where(ovr <= iou_threshold)[0]
         order = order[inds + 1]
 
-    return torch.stack(keep)
+    if len(keep) > 0:
+        return torch.stack(keep)
+    return torch.tensor(keep)

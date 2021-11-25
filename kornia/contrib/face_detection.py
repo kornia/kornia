@@ -188,7 +188,8 @@ class FaceDetector(nn.Module):
         # performd NMS
         dets = torch.cat((boxes, scores[:, None]), dim=-1)  # Nx15
         keep = self.nms(boxes[:, :4], scores, self.nms_threshold)
-        dets = dets[keep, :]
+        if len(keep) > 0:
+            dets = dets[keep, :]
 
         # keep top-K faster NMS
         return dets[:self.keep_top_k]
