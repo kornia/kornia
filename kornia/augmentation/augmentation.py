@@ -87,7 +87,7 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
     """
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        w: int = input.shape[-1]
+        w: int = params['forward_input_shape'][-1]
         flip_mat: torch.Tensor = torch.tensor(
             [[-1, 0, w - 1], [0, 1, 0], [0, 0, 1]], device=input.device, dtype=input.dtype
         )
@@ -148,7 +148,7 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
     """
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        h: int = input.shape[-2]
+        h: int = params['forward_input_shape'][-2]
         flip_mat: torch.Tensor = torch.tensor(
             [[1, 0, 0], [0, -1, h - 1], [0, 0, 1]], device=input.device, dtype=input.dtype
         )

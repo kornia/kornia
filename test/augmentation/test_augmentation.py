@@ -137,25 +137,29 @@ class CommonTests(BaseTester):
 
         # generate_parameters can be called and returns the correct amount of parameters
         batch_shape = (4, 3, 5, 6)
-        generated_params = augmentation.generate_parameters(batch_shape)
+        generated_params = augmentation.forward_parameters(batch_shape)
         assert isinstance(generated_params, dict)
 
         # compute_transformation can be called and returns the correct shaped transformation matrix
-        expected_transformation_shape = torch.Size((batch_shape[0], 3, 3))
+        expected_transformation_shape = torch.Size((generated_params['batch_prob'].sum(), 3, 3))
         test_input = torch.ones(batch_shape, device=self.device, dtype=self.dtype)
-        transformation = augmentation.compute_transformation(test_input, generated_params)
+        transformation = augmentation.compute_transformation(test_input[generated_params['batch_prob']], generated_params)
         assert transformation.shape == expected_transformation_shape
 
         # apply_transform can be called and returns the correct batch sized output
-        output = augmentation.apply_transform(test_input, generated_params, transformation)
-        assert output.shape[0] == batch_shape[0]
+        if generated_params['batch_prob'].sum() != 0:
+            output = augmentation.apply_transform(test_input[generated_params['batch_prob']], generated_params, transformation)
+            assert output.shape[0] == generated_params['batch_prob'].sum()
+        else:
+            # Re-generate parameters if 0 batch size
+            self._test_smoke_implementation(params)
 
     def _test_smoke_call_implementation(self, params):
         batch_shape = (4, 3, 5, 6)
         expected_transformation_shape = torch.Size((batch_shape[0], 3, 3))
         test_input = torch.ones(batch_shape, device=self.device, dtype=self.dtype)
         augmentation = self._create_augmentation_from_params(**params, return_transform=False)
-        generated_params = augmentation.generate_parameters(batch_shape)
+        generated_params = augmentation.forward_parameters(batch_shape)
         test_transform = torch.rand(expected_transformation_shape, device=self.device, dtype=self.dtype)
 
         output = augmentation(test_input, params=generated_params)
@@ -182,7 +186,7 @@ class CommonTests(BaseTester):
         expected_transformation_shape = torch.Size((batch_shape[0], 3, 3))
         test_input = torch.ones(batch_shape, device=self.device, dtype=self.dtype)
         augmentation = self._create_augmentation_from_params(**params, return_transform=True)
-        generated_params = augmentation.generate_parameters(batch_shape)
+        generated_params = augmentation.forward_parameters(batch_shape)
         test_transform = torch.rand(expected_transformation_shape, device=self.device, dtype=self.dtype)
 
         output, transformation = augmentation(test_input, params=generated_params)

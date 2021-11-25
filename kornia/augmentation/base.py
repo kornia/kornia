@@ -131,6 +131,10 @@ class _BasicAugmentationBase(nn.Module):
         if _params is None:
             _params = {}
         _params['batch_prob'] = to_apply
+        # Added another input_size parameter for geometric transformations
+        # This might be needed for correctly inversing.
+        input_size = torch.tensor(batch_shape, dtype=torch.long)
+        _params.update({'forward_input_shape': input_size})
         return _params
 
     def apply_func(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> TensorWithTransformMat:
@@ -366,20 +370,11 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
         """Compute the inverse transform of given transformation matrices."""
         return _torch_inverse_cast(transform)
 
-    def forward_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        params = super().forward_parameters(batch_shape)
-        # Added another input_size parameter for geometric transformations
-        # This might be needed for correctly inversing.
-        input_size = torch.tensor(batch_shape, dtype=torch.long)
-        if "forward_input_shape" not in params:
-            params.update({'forward_input_shape': input_size})
-        return params
-
     def get_transformation_matrix(
         self, input: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None
     ) -> torch.Tensor:
         if params is not None:
-            transform = self.compute_transformation(input, params)
+            transform = self.compute_transformation(input[params['batch_prob']], params)
         elif not hasattr(self, "_transform_matrix"):
             params = self.forward_parameters(input.shape)
             transform = self.identity_matrix(input)
