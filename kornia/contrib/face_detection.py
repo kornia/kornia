@@ -115,10 +115,9 @@ class FaceDetectorResult:
 
 
 class FaceDetector(nn.Module):
-    """Detect faces in a given image using a CNN.
+    r"""Detect faces in a given image using a CNN.
 
     Args:
-        pretrained: flag to use the pretrained weights.
         top_k: the maximum number of detections to return before the nms.
         confidence_threshold: the threshold used to discard detections.
         nms_threshld: the threshold used by the nms for iou.
@@ -133,7 +132,6 @@ class FaceDetector(nn.Module):
         >>> res = detect(img)
     """
     def __init__(self,
-                 pretrained: bool = False,
                  top_k: int = 5000,
                  confidence_threshold: float = 0.3,
                  nms_threshold: float = 0.3,
@@ -150,7 +148,7 @@ class FaceDetector(nn.Module):
             'variance': [0.1, 0.2],
             'clip': False,
         }
-        self.model = YuFaceDetectNet('test', pretrained)
+        self.model = YuFaceDetectNet('test', pretrained=True)
         self.nms: Callable = nms_kornia
 
     def preprocess(self, image: torch.Tensor) -> torch.Tensor:
