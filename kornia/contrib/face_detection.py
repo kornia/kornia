@@ -154,18 +154,17 @@ class FaceDetector(nn.Module):
     def preprocess(self, image: torch.Tensor) -> torch.Tensor:
         return image
 
-    def postprocess(self, data: Dict[str, torch.Tensor], size: Tuple[int, int]) -> torch.Tensor:
+    def postprocess(self, data: Dict[str, torch.Tensor], height: int, width: int) -> torch.Tensor:
         loc, conf, iou = data['loc'], data['conf'], data['iou']
-        im_height, im_width = size
 
         scale = torch.tensor([
-            im_width, im_height, im_width, im_height,
-            im_width, im_height, im_width, im_height,
-            im_width, im_height, im_width, im_height,
-            im_width, im_height,
+            width, height, width, height,
+            width, height, width, height,
+            width, height, width, height,
+            width, height,
         ], device=loc.device, dtype=loc.dtype)  # 14
 
-        priors = _PriorBox(self.config, image_size=(im_height, im_width))(
+        priors = _PriorBox(self.config, image_size=(height, width))(
             loc.device, loc.dtype
         )  # Nx4
         boxes = _decode(loc, priors, cast(List[float], self.config['variance']))  # Nx14
@@ -195,7 +194,7 @@ class FaceDetector(nn.Module):
     def forward(self, image: torch.Tensor) -> List[FaceDetectorResult]:
         img = self.preprocess(image)
         out = self.model(img)
-        out = self.postprocess(out, img.shape[-2:])
+        out = self.postprocess(out, *img.shape[-2:])
         return [FaceDetectorResult(o) for o in out]
 
 

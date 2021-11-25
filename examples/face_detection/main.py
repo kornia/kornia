@@ -92,7 +92,7 @@ if __name__ == "__main__":
     parser.add_argument('--image_file', required=True, type=str, help='the image file to be detected.')
     parser.add_argument('--image_out', required=True, type=str, help='the file path to write the output.')
     parser.add_argument('--image_size', default=320, type=int, help='the image size to process.')
-    parser.add_argument('--vis_threshold', default=0.3, type=float, help='visualization_threshold')
+    parser.add_argument('--vis_threshold', default=0.8, type=float, help='visualization_threshold')
     parser.add_argument('--vis_keypoints', dest='vis_keypoints', action='store_true')
     parser.add_argument('--cuda', dest='cuda', action='store_true')
     parser.add_argument('--blur_faces', dest='blur_faces', action='store_true')

@@ -410,7 +410,7 @@ class TestFaceDetection:
     def test_valid(self, device, dtype):
         torch.manual_seed(44)
         img = torch.rand(1, 3, 320, 320, device=device, dtype=dtype)
-        face_detection = kornia.contrib.FaceDetector(pretrained=True).to(device, dtype)
+        face_detection = kornia.contrib.FaceDetector().to(device, dtype)
         dets = face_detection(img)
         assert len(dets) == 1
 
