@@ -163,7 +163,7 @@ class _AugmentationBase(_BasicAugmentationBase):
     Advanced augmentation base class with the functionality of transformation matrix calculations.
 
     Args:
-        pprobability for applying an augmentation. This param controls the augmentation probabilities
+        p:probability for applying an augmentation. This param controls the augmentation probabilities
           element-wise for a batch.
         p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
           probabilities batch-wise.

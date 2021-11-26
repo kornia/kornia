@@ -84,6 +84,12 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
                  [ 0.,  0.,  1.]]]))
         >>> seq.inverse(seq(input)).equal(input)
         True
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.randn(1, 3, 32, 32)
+        >>> seq = RandomHorizontalFlip(p=1.0)
+        >>> (seq(input) == seq(input, params=seq._params)).all()
+        tensor(True)
     """
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
@@ -145,6 +151,12 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
                  [ 0.,  0.,  1.]]]))
         >>> seq.inverse(seq(input)).equal(input)
         True
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.randn(1, 3, 32, 32)
+        >>> seq = RandomVerticalFlip(p=1.0)
+        >>> (seq(input) == seq(input, params=seq._params)).all()
+        tensor(True)
     """
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
@@ -215,6 +227,12 @@ class ColorJitter(IntensityAugmentationBase2D):
                  [[0.9993, 0.9993, 0.9993],
                   [0.9993, 0.9993, 0.9993],
                   [0.9993, 0.9993, 0.9993]]]])
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.randn(1, 3, 32, 32)
+        >>> aug = ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.)
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     def __init__(
@@ -277,8 +295,8 @@ class RandomGrayscale(IntensityAugmentationBase2D):
     Examples:
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.randn((1, 3, 3, 3))
-        >>> rec_er = RandomGrayscale(p=1.0)
-        >>> rec_er(inputs)
+        >>> aug = RandomGrayscale(p=1.0)
+        >>> aug(inputs)
         tensor([[[[-1.1344, -0.1330,  0.1517],
                   [-0.0791,  0.6711, -0.1413],
                   [-0.1717, -0.9023,  0.0819]],
@@ -290,6 +308,12 @@ class RandomGrayscale(IntensityAugmentationBase2D):
                  [[-1.1344, -0.1330,  0.1517],
                   [-0.0791,  0.6711, -0.1413],
                   [-0.1717, -0.9023,  0.0819]]]])
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.randn(1, 3, 32, 32)
+        >>> aug = RandomGrayscale(p=1.0)
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     def __init__(
@@ -338,11 +362,17 @@ class RandomErasing(IntensityAugmentationBase2D):
     Examples:
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.ones(1, 1, 3, 3)
-        >>> rec_er = RandomErasing((.4, .8), (.3, 1/.3), p=0.5)
-        >>> rec_er(inputs)
+        >>> aug = RandomErasing((.4, .8), (.3, 1/.3), p=0.5)
+        >>> aug(inputs)
         tensor([[[[1., 0., 0.],
                   [1., 0., 0.],
                   [1., 0., 0.]]]])
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.randn(1, 3, 32, 32)
+        >>> aug = RandomErasing((.4, .8), (.3, 1/.3), p=1.)
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     # Note: Extra params, inplace=False in Torchvision.
@@ -413,6 +443,12 @@ class RandomPerspective(GeometricAugmentationBase2D):
         tensor([[[[0.0500, 0.0961, 0.0000],
                   [0.2011, 0.3144, 0.0000],
                   [0.0031, 0.0130, 0.0053]]]])
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.randn(1, 3, 32, 32)
+        >>> aug = RandomPerspective(0.5, p=1.)
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     def __init__(
@@ -515,6 +551,12 @@ class RandomAffine(GeometricAugmentationBase2D):
         tensor([[[[0.4963, 0.7682, 0.0885],
                   [0.1320, 0.3074, 0.6341],
                   [0.4901, 0.8964, 0.4556]]]])
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.randn(1, 3, 32, 32)
+        >>> aug = RandomAffine((-15., 20.), p=1.)
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     def __init__(
@@ -621,6 +663,12 @@ class CenterCrop(GeometricAugmentationBase2D):
                   [ 0.6920,  0.6920, -0.3160, -0.3160],
                   [-1.2633, -1.2633,  0.3500,  0.3500],
                   [-1.2633, -1.2633,  0.3500,  0.3500]]]])
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.randn(1, 3, 32, 32)
+        >>> aug = CenterCrop(2, p=1., cropping_mode="resample")
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     def __init__(
@@ -748,6 +796,12 @@ class RandomRotation(GeometricAugmentationBase2D):
                   [8.6398e-03, 2.9485e-03, 5.8971e-03, 1.7365e-02],
                   [2.9054e-03, 9.9416e-01, 1.9825e+00, 2.3134e-02],
                   [2.5777e-05, 1.1640e-02, 9.9992e-01, 1.9392e+00]]]])
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.randn(1, 3, 32, 32)
+        >>> aug = RandomRotation(degrees=45.0, p=1.)
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     # Note: Extra params, center=None, fill=0 in TorchVision
@@ -858,6 +912,12 @@ class RandomCrop(GeometricAugmentationBase2D):
         tensor([[[[3., 4., 4.],
                   [3., 4., 4.],
                   [6., 7., 7.]]]])
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.randn(1, 3, 32, 32)
+        >>> aug = RandomCrop((2, 2), p=1., cropping_mode="resample")
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     def __init__(
@@ -1073,6 +1133,12 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         tensor([[[[1., 1., 2.],
                   [4., 4., 5.],
                   [7., 7., 8.]]]])
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.randn(1, 3, 32, 32)
+        >>> aug = RandomResizedCrop(size=(3, 3), scale=(3., 3.), ratio=(2., 2.), p=1., cropping_mode="resample")
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     def __init__(
@@ -1291,6 +1357,12 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
                   [0.5773, 1.0000, 1.0000, 1.0000, 0.7561],
                   [0.5773, 1.0000, 1.0000, 1.0000, 0.7561],
                   [0.5773, 1.0000, 1.0000, 1.0000, 0.7561]]]])
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.randn(1, 3, 32, 32)
+        >>> aug = RandomMotionBlur(3, 35., 0.5, p=1.)
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     def __init__(
@@ -1364,6 +1436,12 @@ class RandomSolarize(IntensityAugmentationBase2D):
                   [0.4394, 0.4923, 0.1129, 0.2594, 0.3844],
                   [0.3909, 0.2118, 0.1094, 0.2516, 0.3728],
                   [0.2278, 0.0000, 0.4876, 0.0353, 0.5100]]]])
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.randn(1, 3, 32, 32)
+        >>> aug = RandomSolarize(0.1, 0.1, p=1.)
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     def __init__(
@@ -1426,6 +1504,12 @@ class RandomPosterize(IntensityAugmentationBase2D):
                   [0.3451, 0.3765, 0.0000, 0.1569, 0.2824],
                   [0.5020, 0.6902, 0.7843, 0.1569, 0.2510],
                   [0.6588, 0.9098, 0.3765, 0.8471, 0.4078]]]])
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.randn(1, 3, 32, 32)
+        >>> aug = RandomPosterize(3, p=1.)
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     def __init__(
@@ -1476,6 +1560,12 @@ class RandomSharpness(IntensityAugmentationBase2D):
                   [0.3489, 0.4428, 0.1562, 0.2443, 0.2939],
                   [0.5185, 0.6462, 0.7050, 0.2288, 0.2823],
                   [0.6816, 0.9152, 0.3971, 0.8742, 0.4194]]]])
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.randn(1, 3, 32, 32)
+        >>> aug = RandomSharpness(1., p=1.)
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     def __init__(
@@ -1529,6 +1619,12 @@ class RandomEqualize(IntensityAugmentationBase2D):
                   [0.3489, 0.4017, 0.0223, 0.1689, 0.2939],
                   [0.5185, 0.6977, 0.8000, 0.1610, 0.2823],
                   [0.6816, 0.9152, 0.3971, 0.8742, 0.4194]]]])
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.rand(1, 3, 32, 32)
+        >>> aug = RandomEqualize(p=1.)
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     def __init__(
@@ -1574,6 +1670,12 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
                   [0.3826, 0.2638, 0.1902, 0.1620, 0.2141],
                   [0.6329, 0.6732, 0.5634, 0.4037, 0.2049],
                   [0.8307, 0.6753, 0.7147, 0.5768, 0.7097]]]])
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.randn(1, 3, 32, 32)
+        >>> aug = RandomGaussianBlur((3, 3), (0.1, 2.0), p=1.)
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     def __init__(
@@ -1625,6 +1727,12 @@ class RandomInvert(IntensityAugmentationBase2D):
                   [0.3489, 0.4017, 0.0223, 0.1689, 0.2939],
                   [0.5185, 0.6977, 0.8000, 0.1610, 0.2823],
                   [0.6816, 0.9152, 0.3971, 0.8742, 0.4194]]]])
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.randn(1, 3, 32, 32)
+        >>> aug = RandomInvert(p=1.)
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     def __init__(
@@ -1665,6 +1773,12 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
         <BLANKLINE>
                  [[0., 1.],
                   [2., 3.]]]])
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.randn(1, 3, 32, 32)
+        >>> aug = RandomChannelShuffle(p=1.)
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5) -> None:
@@ -1703,6 +1817,12 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
         >>> RandomGaussianNoise(mean=0., std=1., p=1.)(img)
         tensor([[[[ 2.5410,  0.7066],
                   [-1.1788,  1.5684]]]])
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.randn(1, 3, 32, 32)
+        >>> aug = RandomGaussianNoise(mean=0., std=1., p=1.)
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     def __init__(
@@ -1748,6 +1868,12 @@ class RandomFisheye(GeometricAugmentationBase2D):
         >>> out = RandomFisheye(center_x, center_y, gamma)(img)
         >>> out.shape
         torch.Size([1, 1, 2, 2])
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.randn(1, 3, 32, 32)
+        >>> aug = RandomFisheye(center_x, center_y, gamma, p=1.)
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     def __init__(
@@ -1827,6 +1953,12 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
         >>> out = RandomElasticTransform()(img)
         >>> out.shape
         torch.Size([1, 1, 2, 2])
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.randn(1, 3, 32, 32)
+        >>> aug = RandomElasticTransform(p=1.)
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     def __init__(
@@ -1894,6 +2026,12 @@ class RandomThinPlateSpline(GeometricAugmentationBase2D):
         >>> out = RandomThinPlateSpline()(img)
         >>> out.shape
         torch.Size([1, 1, 2, 2])
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.randn(1, 3, 32, 32)
+        >>> aug = RandomThinPlateSpline(p=1.)
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     def __init__(
@@ -1951,6 +2089,12 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
         >>> out = RandomBoxBlur((7, 7))(img)
         >>> out.shape
         torch.Size([1, 1, 24, 24])
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.randn(1, 3, 32, 32)
+        >>> aug = RandomBoxBlur((7, 7), p=1.)
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     def __init__(

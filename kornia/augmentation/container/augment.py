@@ -76,6 +76,11 @@ class AugmentationSequential(ImageSequential):
         >>> out = aug_list(input, input, bbox, points)
         >>> [o.shape for o in out]
         [torch.Size([2, 3, 5, 6]), torch.Size([2, 3, 5, 6]), torch.Size([2, 4, 2]), torch.Size([2, 1, 2])]
+        >>> # apply the exact augmentation again.
+        >>> out_rep = aug_list(input, input, bbox, points, params=aug_list._params)
+        >>> [(o == o_rep).all() for o, o_rep in zip(out, out_rep)]
+        [tensor(True), tensor(True), tensor(True), tensor(True)]
+        >>> # inverse the augmentations
         >>> out_inv = aug_list.inverse(*out)
         >>> [o.shape for o in out_inv]
         [torch.Size([2, 3, 5, 6]), torch.Size([2, 3, 5, 6]), torch.Size([2, 4, 2]), torch.Size([2, 1, 2])]

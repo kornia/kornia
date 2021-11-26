@@ -60,6 +60,12 @@ class RandomHorizontalFlip3D(AugmentationBase3D):
                  [ 0.,  1.,  0.,  0.],
                  [ 0.,  0.,  1.,  0.],
                  [ 0.,  0.,  0.,  1.]]]))
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.rand(1, 3, 32, 32, 32)
+        >>> aug = RandomHorizontalFlip3D(p=1.)
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     def __init__(
@@ -125,6 +131,12 @@ class RandomVerticalFlip3D(AugmentationBase3D):
                  [ 0., -1.,  0.,  2.],
                  [ 0.,  0.,  1.,  0.],
                  [ 0.,  0.,  0.,  1.]]]))
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.rand(1, 3, 32, 32, 32)
+        >>> aug = RandomVerticalFlip3D(p=1.)
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     def __init__(
@@ -190,6 +202,12 @@ class RandomDepthicalFlip3D(AugmentationBase3D):
                  [ 0.,  1.,  0.,  0.],
                  [ 0.,  0., -1.,  2.],
                  [ 0.,  0.,  0.,  1.]]]))
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.rand(1, 3, 32, 32, 32)
+        >>> aug = RandomDepthicalFlip3D(p=1.)
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
 
     """
 
@@ -278,6 +296,12 @@ class RandomAffine3D(AugmentationBase3D):
                  [ 0.1131,  0.9669, -0.2286,  0.1486],
                  [-0.2049,  0.2478,  0.9469,  0.0102],
                  [ 0.0000,  0.0000,  0.0000,  1.0000]]]))
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.rand(1, 3, 32, 32, 32)
+        >>> aug = RandomAffine3D((15., 20., 20.), p=1.)
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     def __init__(
@@ -410,6 +434,12 @@ class RandomRotation3D(AugmentationBase3D):
                  [-0.0603,  0.9669,  0.2478, -0.1545],
                  [ 0.2262, -0.2286,  0.9469,  0.0556],
                  [ 0.0000,  0.0000,  0.0000,  1.0000]]]))
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.rand(1, 3, 32, 32, 32)
+        >>> aug = RandomRotation3D((15., 20., 20.), p=1.)
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     def __init__(
@@ -517,6 +547,12 @@ class RandomMotionBlur3D(AugmentationBase3D):
                    [0.4307, 0.4217, 0.2977, 0.5086, 0.5406],
                    [0.3686, 0.2778, 0.5228, 0.7592, 0.6455],
                    [0.2033, 0.3014, 0.4898, 0.6164, 0.3117]]]]])
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.rand(1, 3, 32, 32, 32)
+        >>> aug = RandomMotionBlur3D(3, 35., 0.5, p=1.)
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     def __init__(
@@ -604,6 +640,12 @@ class CenterCrop3D(AugmentationBase3D):
         <BLANKLINE>
                   [[-0.6136,  0.0316],
                    [ 0.6408,  0.4412]]]]])
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.rand(1, 3, 32, 32, 32)
+        >>> aug = CenterCrop3D(24, p=1.)
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     def __init__(
@@ -698,6 +740,12 @@ class RandomCrop3D(AugmentationBase3D):
         <BLANKLINE>
                   [[-1.2633,  0.3500],
                    [ 0.1665,  0.8744]]]]])
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.rand(1, 3, 32, 32, 32)
+        >>> aug = RandomCrop3D((24, 24, 24), p=1.)
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     def __init__(
@@ -831,6 +879,12 @@ class RandomPerspective3D(AugmentationBase3D):
                   [[0.0000, 0.1153, 0.0000],
                    [0.0000, 0.0000, 0.0000],
                    [0.0000, 0.0000, 0.0000]]]]])
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.rand(1, 3, 32, 32, 32)
+        >>> aug = RandomPerspective3D(0.5, p=1.)
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     def __init__(
@@ -902,6 +956,12 @@ class RandomEqualize3D(AugmentationBase3D):
                   [[0.1610, 0.2823, 0.6816],
                    [0.9152, 0.3971, 0.8742],
                    [0.4194, 0.5529, 0.9527]]]]])
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.rand(1, 3, 32, 32, 32)
+        >>> aug = RandomEqualize3D(p=1.)
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     def __init__(
