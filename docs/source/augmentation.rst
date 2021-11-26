@@ -17,7 +17,8 @@ perform complex data augmentations pipelines.
 Benchmark
 ---------
 
-.. table:: Here is a benchmark performed on Google Colab K80 GPU with different libraries and batch sizes. This benchmark shows
+.. table:: Here is a benchmark performed on `Google Colab <https://colab.research.google.com/drive/1b-HpK4EsZR8uolztgH4roNBLaDwcMULx?usp=sharing>`_
+   K80 GPU with different libraries and batch sizes. This benchmark shows
    strong GPU augmentation speed acceleration brought by Kornia data augmentations. The image size is fixed to 224x224 and the
    unit is milliseconds (ms).
 
