@@ -251,7 +251,9 @@ class ColorJitter(IntensityAugmentationBase2D):
         self.contrast = contrast
         self.saturation = saturation
         self.hue = hue
-        self._param_generator = rg.ColorJitterGenerator(brightness, contrast, saturation, hue)
+        self._param_generator = cast(
+            rg.ColorJitterGenerator, rg.ColorJitterGenerator(brightness, contrast, saturation, hue)
+        )
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
@@ -390,7 +392,9 @@ class RandomErasing(IntensityAugmentationBase2D):
         self.scale = scale
         self.ratio = ratio
         self.value: float = float(value)
-        self._param_generator = rg.RectangleEraseGenerator(scale, ratio, float(value))
+        self._param_generator = cast(
+            rg.RectangleEraseGenerator, rg.RectangleEraseGenerator(scale, ratio, float(value))
+        )
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
@@ -462,7 +466,9 @@ class RandomPerspective(GeometricAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator = rg.PerspectiveGenerator(distortion_scale)
+        self._param_generator = cast(
+            rg.PerspectiveGenerator, rg.PerspectiveGenerator(distortion_scale)
+        )
         self.flags: Dict[str, Any] = dict(
             align_corners=align_corners,
             resample=Resample.get(resample)
@@ -574,7 +580,9 @@ class RandomAffine(GeometricAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator = rg.AffineGenerator(degrees, translate, scale, shear)
+        self._param_generator = cast(
+            rg.AffineGenerator, rg.AffineGenerator(degrees, translate, scale, shear)
+        )
         self.flags = dict(
             resample=Resample.get(resample),
             padding_mode=SamplePadding.get(padding_mode),
@@ -817,8 +825,8 @@ class RandomRotation(GeometricAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator = rg.PlainUniformGenerator(
-            (degrees, 'degrees', 0., (-360., 360.)),
+        self._param_generator = cast(
+            rg.PlainUniformGenerator, rg.PlainUniformGenerator((degrees, 'degrees', 0., (-360., 360.)))
         )
         self.flags = dict(
             resample=Resample.get(resample),
@@ -843,7 +851,8 @@ class RandomRotation(GeometricAugmentationBase2D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         transform = cast(torch.Tensor, transform)
-        return affine(input, transform[..., :2, :3], self.flags['resample'].name.lower(), 'zeros', self.flags['align_corners'])
+        return affine(
+            input, transform[..., :2, :3], self.flags['resample'].name.lower(), 'zeros', self.flags['align_corners'])
 
     def inverse_transform(
         self,
@@ -939,7 +948,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         super().__init__(
             p=1.0, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim
         )
-        self._param_generator = rg.CropGenerator(size)
+        self._param_generator = cast(rg.CropGenerator, rg.CropGenerator(size))
         self.flags = dict(
             size=size,
             padding=padding,
@@ -1158,7 +1167,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         super().__init__(
             p=1.0, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim
         )
-        self._param_generator = rg.ResizedCropGenerator(size, scale, ratio)
+        self._param_generator = cast(rg.ResizedCropGenerator, rg.ResizedCropGenerator(size, scale, ratio))
         self.flags = dict(
             size=size,
             resample=Resample.get(resample),
@@ -1454,9 +1463,11 @@ class RandomSolarize(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator = rg.PlainUniformGenerator(
-            (thresholds, 'thresholds', 0.5, (0.0, 1.0)),
-            (additions, 'additions', 0., (-0.5, 0.5)),
+        self._param_generator = cast(
+            rg.PlainUniformGenerator, rg.PlainUniformGenerator(
+                (thresholds, 'thresholds', 0.5, (0.0, 1.0)),
+                (additions, 'additions', 0., (-0.5, 0.5)),
+            )
         )
 
     def apply_transform(
@@ -1521,7 +1532,7 @@ class RandomPosterize(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator = rg.PosterizeGenerator(bits)
+        self._param_generator = cast(rg.PosterizeGenerator, rg.PosterizeGenerator(bits))
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
@@ -1577,8 +1588,8 @@ class RandomSharpness(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator = rg.PlainUniformGenerator(
-            (sharpness, 'sharpness', 0., (0, float('inf'))),
+        self._param_generator = cast(rg.PlainUniformGenerator, rg.PlainUniformGenerator(
+            (sharpness, 'sharpness', 0., (0, float('inf'))))
         )
 
     def apply_transform(
@@ -1889,10 +1900,12 @@ class RandomFisheye(GeometricAugmentationBase2D):
         self._check_tensor(center_x)
         self._check_tensor(center_y)
         self._check_tensor(gamma)
-        self._param_generator = rg.PlainUniformGenerator(
-            (center_x[:, None], 'center_x', None, None),
-            (center_y[:, None], 'center_y', None, None),
-            (gamma[:, None], 'gamma', None, None),
+        self._param_generator = cast(
+            rg.PlainUniformGenerator, rg.PlainUniformGenerator(
+                (center_x[:, None], 'center_x', None, None),
+                (center_y[:, None], 'center_y', None, None),
+                (gamma[:, None], 'gamma', None, None),
+            )
         )
 
     def _check_tensor(self, data: torch.Tensor) -> None:

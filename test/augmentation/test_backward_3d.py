@@ -256,9 +256,13 @@ class TestRandomPerspective3DBackward:
             elif resample == 'nearest' or torch.all(aug._param_generator.distortion_scale._grad == 0.0):
                 # grid_sample will return grad = 0 for resample nearest
                 # https://discuss.pytorch.org/t/autograd-issue-with-f-grid-sample/76894
-                assert (distortion_scale.to(device=device, dtype=dtype) - aug._param_generator.distortion_scale.data).sum() == 0
+                assert (
+                    distortion_scale.to(device=device, dtype=dtype) - aug._param_generator.distortion_scale.data
+                ).sum() == 0
             else:
-                assert (distortion_scale.to(device=device, dtype=dtype) - aug._param_generator.distortion_scale.data).sum() != 0
+                assert (
+                    distortion_scale.to(device=device, dtype=dtype) - aug._param_generator.distortion_scale.data
+                ).sum() != 0
 
 
 class TestRandomMotionBlur3DBackward:

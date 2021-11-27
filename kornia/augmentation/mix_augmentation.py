@@ -1,5 +1,5 @@
 import warnings
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple, Union, cast
 
 import torch
 
@@ -87,7 +87,7 @@ class RandomMixUp(MixAugmentationBase):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator = rg.MixupGenerator(lambda_val, p=p)
+        self._param_generator = cast(rg.MixupGenerator, rg.MixupGenerator(lambda_val, p=p))
 
     def apply_transform(  # type: ignore
         self, input: torch.Tensor, label: torch.Tensor, params: Dict[str, torch.Tensor]
@@ -205,7 +205,7 @@ class RandomCutMix(MixAugmentationBase):
                 "The height and width arguments will be removed finally.",
                 category=DeprecationWarning
             )
-        self._param_generator = rg.CutmixGenerator(cut_size, beta, num_mix, p=p)
+        self._param_generator = cast(rg.CutmixGenerator, rg.CutmixGenerator(cut_size, beta, num_mix, p=p))
 
     def apply_transform(  # type: ignore
         self, input: torch.Tensor, label: torch.Tensor, params: Dict[str, torch.Tensor]  # type: ignore

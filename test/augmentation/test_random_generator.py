@@ -82,10 +82,14 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
         self, brightness, contrast, saturation, hue, batch_size, same_on_batch, device, dtype
     ):
         ColorJitterGenerator(
-            torch.as_tensor(brightness if brightness is not None else torch.tensor([0., 0.]), device=device, dtype=dtype),
-            torch.as_tensor(contrast if contrast is not None else torch.tensor([0., 0.]), device=device, dtype=dtype),
-            torch.as_tensor(saturation if saturation is not None else torch.tensor([0., 0.]), device=device, dtype=dtype),
-            torch.as_tensor(hue if hue is not None else torch.tensor([0., 0.]), device=device, dtype=dtype),
+            torch.as_tensor(
+                brightness if brightness is not None else torch.tensor([0., 0.]), device=device, dtype=dtype),
+            torch.as_tensor(
+                contrast if contrast is not None else torch.tensor([0., 0.]), device=device, dtype=dtype),
+            torch.as_tensor(
+                saturation if saturation is not None else torch.tensor([0., 0.]), device=device, dtype=dtype),
+            torch.as_tensor(
+                hue if hue is not None else torch.tensor([0., 0.]), device=device, dtype=dtype),
         )(torch.Size([batch_size]), same_on_batch)
 
     @pytest.mark.parametrize(
@@ -111,9 +115,12 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
     def test_invalid_param_combinations(self, brightness, contrast, saturation, hue, device, dtype):
         with pytest.raises(Exception):
             ColorJitterGenerator(
-                torch.as_tensor(brightness if brightness is not None else torch.tensor([0., 0.]), device=device, dtype=dtype),
-                torch.as_tensor(contrast if contrast is not None else torch.tensor([0., 0.]), device=device, dtype=dtype),
-                torch.as_tensor(saturation if saturation is not None else torch.tensor([0., 0.]), device=device, dtype=dtype),
+                torch.as_tensor(
+                    brightness if brightness is not None else torch.tensor([0., 0.]), device=device, dtype=dtype),
+                torch.as_tensor(
+                    contrast if contrast is not None else torch.tensor([0., 0.]), device=device, dtype=dtype),
+                torch.as_tensor(
+                    saturation if saturation is not None else torch.tensor([0., 0.]), device=device, dtype=dtype),
                 torch.as_tensor(hue if hue is not None else torch.tensor([0., 0.]), device=device, dtype=dtype),
             )(torch.Size([8]))
 
@@ -474,16 +481,16 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
         expected = dict(
             src=torch.tensor(
                 [
-                    [[  3.,  12.], [298.,  12.], [298., 294.], [  3., 294.]],
-                    [[  8.,  20.], [284.,  20.], [284., 298.], [  8., 298.]]
+                    [[3., 12.], [298., 12.], [298., 294.], [3., 294.]],
+                    [[8., 20.], [284., 20.], [284., 298.], [8., 298.]]
                 ],
                 device=device,
                 dtype=dtype,
             ),
             dst=torch.tensor(
                 [
-                    [[ 0.,  0.], [99.,  0.], [99., 99.], [ 0., 99.]],
-                    [[ 0.,  0.], [99.,  0.], [99., 99.], [ 0., 99.]]
+                    [[0., 0.], [99., 0.], [99., 99.], [0., 99.]],
+                    [[0., 0.], [99., 0.], [99., 99.], [0., 99.]]
                 ],
                 device=device,
                 dtype=dtype,
@@ -509,16 +516,16 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
         expected = dict(
             src=torch.tensor(
                 [
-                    [[  5.,   0.], [283.,   0.], [283., 298.], [  5., 298.]],
-                    [[  5.,   0.], [283.,   0.], [283., 298.], [  5., 298.]]
+                    [[5., 0.], [283., 0.], [283., 298.], [5., 298.]],
+                    [[5., 0.], [283., 0.], [283., 298.], [5., 298.]]
                 ],
                 device=device,
                 dtype=dtype,
             ),
             dst=torch.tensor(
                 [
-                    [[ 0.,  0.], [99.,  0.], [99., 99.], [ 0., 99.]],
-                    [[ 0.,  0.], [99.,  0.], [99., 99.], [ 0., 99.]]
+                    [[0., 0.], [99., 0.], [99., 99.], [0., 99.]],
+                    [[0., 0.], [99., 0.], [99., 99.], [0., 99.]]
                 ],
                 device=device,
                 dtype=dtype,
@@ -769,7 +776,8 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
     def test_same_on_batch(self, device, dtype):
         torch.manual_seed(9)
         batch_size = 8
-        res = PosterizeGenerator(bits=torch.tensor([0, 8], device=device, dtype=dtype))(torch.Size([batch_size]), same_on_batch=True)
+        res = PosterizeGenerator(
+            bits=torch.tensor([0, 8], device=device, dtype=dtype))(torch.Size([batch_size]), same_on_batch=True)
         expected = dict(bits_factor=torch.tensor([5, 5, 5, 5, 5, 5, 5, 5], device=device, dtype=torch.int32))
         assert res.keys() == expected.keys()
         assert_close(res['bits_factor'], expected['bits_factor'], rtol=1e-4, atol=1e-4)

@@ -1084,8 +1084,10 @@ class CutmixGenerator(RandomGeneratorBase):
             cut_width = cut_width[0]
 
         # Reserve at least 1 pixel for cropping.
-        x_start: torch.Tensor = _adapted_rsampling(_gen_shape, self.rand_sampler, same_on_batch) * (width - cut_width - 1)
-        y_start: torch.Tensor = _adapted_rsampling(_gen_shape, self.rand_sampler, same_on_batch) * (height - cut_height - 1)
+        x_start: torch.Tensor = _adapted_rsampling(
+            _gen_shape, self.rand_sampler, same_on_batch) * (width - cut_width - 1)
+        y_start: torch.Tensor = _adapted_rsampling(
+            _gen_shape, self.rand_sampler, same_on_batch) * (height - cut_height - 1)
         x_start = x_start.floor().to(device=_device, dtype=_dtype)
         y_start = y_start.floor().to(device=_device, dtype=_dtype)
 

@@ -350,7 +350,7 @@ class RandomAffine3D(AugmentationBase3D):
             resample=Resample.get(resample),
             align_corners=align_corners
         )
-        self._param_generator = rg.AffineGenerator3D(degrees, translate, scale, shears)
+        self._param_generator = cast(rg.AffineGenerator3D, rg.AffineGenerator3D(degrees, translate, scale, shears))
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         transform: torch.Tensor = get_affine_matrix3d(
@@ -462,7 +462,7 @@ class RandomRotation3D(AugmentationBase3D):
             resample=Resample.get(resample),
             align_corners=align_corners
         )
-        self._param_generator = rg.RotationGenerator3D(degrees)
+        self._param_generator = cast(rg.RotationGenerator3D, rg.RotationGenerator3D(degrees))
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         yaw: torch.Tensor = params["yaw"].to(input)
@@ -579,7 +579,7 @@ class RandomMotionBlur3D(AugmentationBase3D):
             border_type=BorderType.get(border_type),
             resample=Resample.get(resample),
         )
-        self._param_generator = rg.MotionBlurGenerator3D(kernel_size, angle, direction)
+        self._param_generator = cast(rg.MotionBlurGenerator3D, rg.MotionBlurGenerator3D(kernel_size, angle, direction))
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return self.identity_matrix(input)
@@ -667,7 +667,7 @@ class CenterCrop3D(AugmentationBase3D):
         else:
             raise Exception(f"Invalid size type. Expected (int, tuple(int, int int). Got: {size}.")
         self.flags = dict(
-            size = size,
+            size=size,
             align_corners=align_corners,
             resample=Resample.get(resample),
         )
@@ -775,7 +775,7 @@ class RandomCrop3D(AugmentationBase3D):
             resample=Resample.get(resample),
             align_corners=align_corners,
         )
-        self._param_generator = rg.CropGenerator3D(size, None)
+        self._param_generator = cast(rg.CropGenerator3D, rg.CropGenerator3D(size, None))
 
     def precrop_padding(self, input: torch.Tensor) -> torch.Tensor:
         padding = self.flags['padding']
@@ -902,7 +902,7 @@ class RandomPerspective3D(AugmentationBase3D):
             resample=Resample.get(resample),
             align_corners=align_corners,
         )
-        self._param_generator = rg.PerspectiveGenerator3D(distortion_scale)
+        self._param_generator = cast(rg.PerspectiveGenerator3D, rg.PerspectiveGenerator3D(distortion_scale))
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return get_perspective_transform3d(params['start_points'], params['end_points']).to(input)
