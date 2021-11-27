@@ -1,5 +1,5 @@
-from typing import Optional, Tuple
 import warnings
+from typing import Optional, Tuple
 
 import torch
 
