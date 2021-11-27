@@ -1,4 +1,5 @@
-from typing import Tuple
+from typing import Optional, Tuple
+import warnings
 
 import torch
 
@@ -432,7 +433,9 @@ def bbox_generator3d(
     return bbox
 
 
-def transform_bbox(trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = "xyxy") -> torch.Tensor:
+def transform_bbox(
+    trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = "xyxy", restore_coordinates: Optional[bool] = None
+) -> torch.Tensor:
     r"""Function that applies a transformation matrix to a box or batch of boxes. Boxes must
     be a tensor of the shape (N, 4) or a batch of boxes (B, N, 4) and trans_mat must be a (3, 3)
     transformation matrix or a batch of transformation matrices (B, 3, 3)
@@ -443,6 +446,9 @@ def transform_bbox(trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = "xy
         mode: The format in which the boxes are provided. If set to 'xyxy' the boxes are assumed to be in the format
             ``xmin, ymin, xmax, ymax``. If set to 'xywh' the boxes are assumed to be in the format
             ``xmin, ymin, width, height``
+        restore_coordinates: In case the boxes are flipped, adding a post processing step to restore the
+            coordinates to a valid bounding box.
+
     Returns:
         The set of transformed points in the specified mode
     """
@@ -453,6 +459,15 @@ def transform_bbox(trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = "xy
     if mode not in ("xyxy", "xywh"):
         raise ValueError(f"Mode must be one of 'xyxy', 'xywh'. Got {mode}")
 
+    # (B, 4, 2) shaped polygon boxes do not need to be restored.
+    if restore_coordinates is None and boxes.shape[-2:] != torch.Size([4, 2]):
+        warnings.warn(
+            "Previous behaviour produces incorrect box coordinates if a flip transformation performed on boxes."
+            "The previous wrong behaviour has been corrected and will be removed in the future versions."
+            "If you wish to keep the previous behaviour, please set `restore_coordinates=False`."
+            "Otherwise, set `restore_coordinates=True` as an acknowledgement."
+        )
+
     # convert boxes to format xyxy
     if mode == "xywh":
         boxes[..., 2] = boxes[..., 0] + boxes[..., 2]  # x + w
@@ -461,13 +476,18 @@ def transform_bbox(trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = "xy
     transformed_boxes: torch.Tensor = transform_points(trans_mat, boxes.view(boxes.shape[0], -1, 2))
     transformed_boxes = transformed_boxes.view_as(boxes)
 
-    restored_boxes = transformed_boxes.clone()
-    # In case the boxes are flipped, we ensure it is ordered like left-top -> right-bot points
-    restored_boxes[..., 0] = torch.min(transformed_boxes[..., [0, 2]], dim=-1)[0]
-    restored_boxes[..., 1] = torch.min(transformed_boxes[..., [1, 3]], dim=-1)[0]
-    restored_boxes[..., 2] = torch.max(transformed_boxes[..., [0, 2]], dim=-1)[0]
-    restored_boxes[..., 3] = torch.max(transformed_boxes[..., [1, 3]], dim=-1)[0]
-    transformed_boxes = restored_boxes
+    if (restore_coordinates is None or restore_coordinates) and boxes.shape[-2:] != torch.Size([4, 2]):
+        restored_boxes = transformed_boxes.clone()
+        try:
+            restored_boxes[..., 0] = torch.min(transformed_boxes[..., [0, 2]], dim=-1)[0]
+        except:
+            assert False, (transformed_boxes, boxes)
+        # In case the boxes are flipped, we ensure it is ordered like left-top -> right-bot points
+        restored_boxes[..., 0] = torch.min(transformed_boxes[..., [0, 2]], dim=-1)[0]
+        restored_boxes[..., 1] = torch.min(transformed_boxes[..., [1, 3]], dim=-1)[0]
+        restored_boxes[..., 2] = torch.max(transformed_boxes[..., [0, 2]], dim=-1)[0]
+        restored_boxes[..., 3] = torch.max(transformed_boxes[..., [1, 3]], dim=-1)[0]
+        transformed_boxes = restored_boxes
 
     if mode == 'xywh':
         transformed_boxes[..., 2] = transformed_boxes[..., 2] - transformed_boxes[..., 0]
