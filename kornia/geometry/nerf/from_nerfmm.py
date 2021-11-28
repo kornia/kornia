@@ -22,8 +22,8 @@ class TinyNerf(nn.Module):
         """
         super().__init__()
 
-        self.pos_in_dims = pos_in_dims
-        self.dir_in_dims = dir_in_dims
+        # self.pos_in_dims = pos_in_dims
+        # self.dir_in_dims = dir_in_dims
 
         self.layers0 = nn.Sequential(
             nn.Linear(pos_in_dims, D), nn.ReLU(),
@@ -58,15 +58,59 @@ class TinyNerf(nn.Module):
         return rgb_den
 
 
-class RayParameters:
-    def __init__(self):
-        self.NEAR, self.FAR = 0.0, 1.0  # ndc near far
-        self.N_SAMPLE = 128  # samples per ray
-        self.POS_ENC_FREQ = 10  # positional encoding freq for location
-        self.DIR_ENC_FREQ = 4  # positional encoding freq for direction
+class OfficialNerf(nn.Module):
+    def __init__(self, pos_in_dims, dir_in_dims, D):
+        """
+        :param pos_in_dims: scalar, number of channels of encoded positions
+        :param dir_in_dims: scalar, number of channels of encoded directions
+        :param D:           scalar, number of hidden dimensions
+        """
+        super(OfficialNerf, self).__init__()
 
+        self.pos_in_dims = pos_in_dims
+        self.dir_in_dims = dir_in_dims
 
-ray_params = RayParameters()
+        self.layers0 = nn.Sequential(
+            nn.Linear(pos_in_dims, D), nn.ReLU(),
+            nn.Linear(D, D), nn.ReLU(),
+            nn.Linear(D, D), nn.ReLU(),
+            nn.Linear(D, D), nn.ReLU(),
+        )
+
+        self.layers1 = nn.Sequential(
+            nn.Linear(D + pos_in_dims, D), nn.ReLU(),  # shortcut
+            nn.Linear(D, D), nn.ReLU(),
+            nn.Linear(D, D), nn.ReLU(),
+            nn.Linear(D, D), nn.ReLU(),
+        )
+
+        self.fc_density = nn.Linear(D, 1)
+        self.fc_feature = nn.Linear(D, D)
+        self.rgb_layers = nn.Sequential(nn.Linear(D + dir_in_dims, D//2), nn.ReLU())
+        self.fc_rgb = nn.Linear(D//2, 3)
+
+        self.fc_density.bias.data = torch.tensor([0.1]).float()
+        self.fc_rgb.bias.data = torch.tensor([0.02, 0.02, 0.02]).float()
+
+    def forward(self, pos_enc, dir_enc):
+        """
+        :param pos_enc: (H, W, N_sample, pos_in_dims) encoded positions
+        :param dir_enc: (H, W, N_sample, dir_in_dims) encoded directions
+        :return: rgb_density (H, W, N_sample, 4)
+        """
+        x = self.layers0(pos_enc)  # (H, W, N_sample, D)
+        x = torch.cat([x, pos_enc], dim=3)  # (H, W, N_sample, D+pos_in_dims)
+        x = self.layers1(x)  # (H, W, N_sample, D)
+
+        density = self.fc_density(x)  # (H, W, N_sample, 1)
+
+        feat = self.fc_feature(x)  # (H, W, N_sample, D)
+        x = torch.cat([feat, dir_enc], dim=3)  # (H, W, N_sample, D+dir_in_dims)
+        x = self.rgb_layers(x)  # (H, W, N_sample, D/2)
+        rgb = self.fc_rgb(x)  # (H, W, N_sample, 3)
+
+        rgb_den = torch.cat([rgb, density], dim=3)  # (H, W, N_sample, 4)
+        return rgb_den
 
 
 def model_render_image(c2w, rays_cam, t_vals, ray_params, H, W, fxfy, nerf_model,
@@ -108,7 +152,7 @@ def model_render_image(c2w, rays_cam, t_vals, ray_params, H, W, fxfy, nerf_model
     return result
 
 
-def train_one_epoch(imgs, H, W, ray_params, opt_nerf, opt_focal,
+def train_one_epoch(imgs, H, W, ray_params, n_selected_rays, opt_nerf, opt_focal,
                     opt_pose, nerf_model, focal_net, pose_param_net, device):
     nerf_model.train()
     focal_net.train()
@@ -134,11 +178,12 @@ def train_one_epoch(imgs, H, W, ray_params, opt_nerf, opt_focal,
         img = imgs[i].to(device)  # (H, W, 4)
         c2w = pose_param_net(i)  # (4, 4)
 
-        # sample 32x32 pixel on an image and their rays for training.
-        r_id = torch.randperm(H, device=device)[:32]  # (N_select_rows)
-        c_id = torch.randperm(W, device=device)[:32]  # (N_select_cols)
+        # sample n_selected_rays x n_selected_rays pixel on an image and their rays for training.
+        r_id = torch.randperm(H, device=device)[:min(H, n_selected_rays)]  # (N_select_rows)
+        c_id = torch.randperm(W, device=device)[:min(W, n_selected_rays)]  # (N_select_cols)
         ray_selected_cam = ray_dir_cam[r_id][:, c_id]  # (N_select_rows, N_select_cols, 3)
         img_selected = img[r_id][:, c_id]  # (N_select_rows, N_select_cols, 3)
+        img_selected = img_selected.float() / 255
 
         # render an image using selected rays, pose, sample intervals, and the network
         render_result = model_render_image(c2w, ray_selected_cam, t_vals, ray_params,
@@ -190,77 +235,6 @@ def render_novel_view(c2w, H, W, fxfy, ray_params, nerf_model, device):
     rendered_img = torch.cat(rendered_img, dim=0)  # (H, W, 3)
     rendered_depth = torch.cat(rendered_depth, dim=0)  # (H, W)
     return rendered_img, rendered_depth
-
-
-def train_model(imgs: torch.Tensor, n_epoch = 1, device: str = 'cpu')->Tuple[nn.Module, nn.Module, nn.Module]:
-    EVAL_INTERVAL = 50  # render an image to visualise for every this interval.
-
-    # Initialise all trainable parameters
-    N_IMGS = imgs.shape[0]
-    H = imgs.shape[1]
-    W = imgs.shape[2]
-    if device == 'cpu':
-        focal_net = LearnFocal(H, W, req_grad=True)
-        pose_param_net = LearnPose(num_cams=N_IMGS, learn_R=True, learn_t=True)
-
-        # Get a tiny NeRF model. Hidden dimension set to 128
-        nerf_model = TinyNerf(pos_in_dims=63, dir_in_dims=27, D=128)
-    else:
-        focal_net = LearnFocal(H, W, req_grad=True).cuda()
-        pose_param_net = LearnPose(num_cams=N_IMGS, learn_R=True, learn_t=True).cuda()
-
-        # Get a tiny NeRF model. Hidden dimension set to 128
-        nerf_model = TinyNerf(pos_in_dims=63, dir_in_dims=27, D=128).cuda()
-
-    # Set lr and scheduler: these are just stair-case exponantial decay lr schedulers.
-    opt_nerf = torch.optim.Adam(nerf_model.parameters(), lr=0.001)
-    opt_focal = torch.optim.Adam(focal_net.parameters(), lr=0.001)
-    opt_pose = torch.optim.Adam(pose_param_net.parameters(), lr=0.001)
-
-    from torch.optim.lr_scheduler import MultiStepLR
-    scheduler_nerf = MultiStepLR(opt_nerf, milestones=list(range(0, 10000, 10)), gamma=0.9954)
-    scheduler_focal = MultiStepLR(opt_focal, milestones=list(range(0, 10000, 100)), gamma=0.9)
-    scheduler_pose = MultiStepLR(opt_pose, milestones=list(range(0, 10000, 100)), gamma=0.9)
-
-    # Set tensorboard writer
-    # writer = SummaryWriter(log_dir=os.path.join('logs', scene_name, str(datetime.datetime.now().strftime('%y%m%d_%H%M%S'))))
-
-    # Store poses to visualise them later
-    # pose_history = []
-
-    # Training
-    print('Training... Check results in the tensorboard above.')
-    for epoch_i in range(n_epoch):
-        L2_loss = train_one_epoch(imgs, H, W, ray_params, opt_nerf, opt_focal,
-                                  opt_pose, nerf_model, focal_net, pose_param_net, device)
-        train_psnr = mse2psnr(L2_loss)
-
-        # writer.add_scalar('train/psnr', train_psnr, epoch_i)
-
-        fxfy = focal_net()
-        print('epoch {:4d} Training PSNR {:.3f}, estimated fx {:.1f} fy {:.1f}'.format(epoch_i, train_psnr, fxfy[0],
-                                                                                           fxfy[1]))
-
-        scheduler_nerf.step()
-        scheduler_focal.step()
-        scheduler_pose.step()
-
-        # learned_c2ws = torch.stack([pose_param_net(i) for i in range(N_IMGS)])  # (N, 4, 4)
-        # pose_history.append(learned_c2ws[:, :3, 3])  # (N, 3) only store positions as we vis in 2D.
-
-        # with torch.no_grad():
-        #     if (epoch_i + 1) % EVAL_INTERVAL == 0:
-        #         eval_c2w = torch.eye(4, dtype=torch.float32)  # (4, 4)
-        #         fxfy = focal_net()
-        #         rendered_img, rendered_depth = render_novel_view(eval_c2w, H, W, fxfy, ray_params, nerf_model, device)
-        #         # writer.add_image('eval/img', rendered_img.permute(2, 0, 1), global_step=epoch_i)
-        #         # writer.add_image('eval/depth', rendered_depth.unsqueeze(0), global_step=epoch_i)
-
-    # pose_history = torch.stack(pose_history).detach().cpu().numpy()  # (n_epoch, N_img, 3)
-    print('Training finished.')
-
-    return nerf_model, focal_net, pose_param_net
-
 
 def normalize(v):
     """Normalize a vector."""
