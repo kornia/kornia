@@ -65,7 +65,7 @@ class OfficialNerf(nn.Module):
         :param dir_in_dims: scalar, number of channels of encoded directions
         :param D:           scalar, number of hidden dimensions
         """
-        super(OfficialNerf, self).__init__()
+        super().__init__()
 
         self.pos_in_dims = pos_in_dims
         self.dir_in_dims = dir_in_dims
