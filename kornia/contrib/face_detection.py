@@ -96,12 +96,12 @@ class FaceDetectorResult:
     @property
     def width(self) -> torch.Tensor:
         """The bounding box width."""
-        return self.xmax - self.xmin + 1
+        return self.xmax - self.xmin
 
     @property
     def height(self) -> torch.Tensor:
         """The bounding box height."""
-        return self.ymax - self.ymin + 1
+        return self.ymax - self.ymin
 
     @property
     def top_left(self) -> torch.Tensor:
