@@ -6,10 +6,9 @@ from torch.autograd import gradcheck
 
 import kornia
 import kornia.testing as utils  # test utils
+from kornia.contrib.face_detection import FaceKeypoint
 from kornia.testing import assert_close
 from packaging import version
-
-from kornia.contrib.face_detection import FaceKeypoint
 
 
 class TestVisionTransformer:
