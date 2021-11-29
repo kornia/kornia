@@ -131,6 +131,8 @@ class FaceDetectorResult:
 class FaceDetector(nn.Module):
     r"""Detect faces in a given image using a CNN.
 
+    By default, it uses the method described in :cite:`facedetect-yu`.
+
     Args:
         top_k: the maximum number of detections to return before the nms.
         confidence_threshold: the threshold used to discard detections.
@@ -138,7 +140,7 @@ class FaceDetector(nn.Module):
         keep_top_k: the maximum number of detections to return after the nms.
 
     Return:
-        A list of :py:class:`kornia.contrib.FaceDetectorResult`.
+        A tensor of shape :math:`(N,15)` to be used with :py:class:`kornia.contrib.FaceDetectorResult`.
 
     Example:
         >>> img = torch.rand(1, 3, 320, 320)
