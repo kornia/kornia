@@ -444,5 +444,5 @@ class TestFaceDetection:
 
     def test_results_raise(self, device, dtype):
         data = torch.zeros(14, device=device, dtype=dtype)
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(ValueError):
             _ = kornia.contrib.FaceDetectorResult(data)
