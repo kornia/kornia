@@ -127,13 +127,14 @@ class FaceDetectorResult:
         out[..., 1] += self.height
         return out
 
+
 class FaceDetector(nn.Module):
     r"""Detect faces in a given image using a CNN.
 
     Args:
         top_k: the maximum number of detections to return before the nms.
         confidence_threshold: the threshold used to discard detections.
-        nms_threshld: the threshold used by the nms for iou.
+        nms_threshold: the threshold used by the nms for iou.
         keep_top_k: the maximum number of detections to return after the nms.
 
     Return:

@@ -12,7 +12,7 @@ Face Detection
     :members:
     :undoc-members:
 
-.. autoclass:: FaceDetectorResults
+.. autoclass:: FaceDetectorResult
     :members:
     :undoc-members:
 

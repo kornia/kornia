@@ -131,7 +131,7 @@ def my_app():
         if cv2.waitKey(1) == ord('q'):
             break
 
-    # After the loop release the cap and writting objects
+    # After the loop release the cap and writing objects
     cap.release()
     out.release()
 
