@@ -3,6 +3,7 @@ from enum import Enum
 from typing import Callable, Dict, List, Optional, Tuple
 
 import torch
+from torch._C import device
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -183,10 +184,10 @@ class FaceDetector(nn.Module):
             width, height,
         ], device=loc.device, dtype=loc.dtype)  # 14
 
-        priors = _PriorBox(self.min_sizes, self.steps, self.clip, image_size=(height, width))(
-            loc.device, loc.dtype
-        )  # Nx4
-        boxes = _decode(loc, priors, self.variance)  # Nx14
+        priors = _PriorBox(self.min_sizes, self.steps, self.clip, image_size=(height, width))
+        priors = priors.to(loc.device, loc.dtype)
+
+        boxes = _decode(loc, priors(), self.variance)  # Nx14
         boxes = boxes * scale
 
         # clamp here for the compatibility for ONNX
@@ -202,6 +203,7 @@ class FaceDetector(nn.Module):
         boxes, scores = boxes[order], scores[order]
 
         # performd NMS
+        # NOTE: nms need to be revise since does not export well to onnx
         dets = torch.cat((boxes, scores[:, None]), dim=-1)  # Nx15
         keep = self.nms(boxes[:, :4], scores, self.nms_threshold)
         if len(keep) > 0:
@@ -365,6 +367,9 @@ class _PriorBox:
         self.clip = clip
         self.image_size = image_size
 
+        self.device: torch.device = torch.device('cpu')
+        self.dtype: torch.dtype = torch.float32
+
         for i in range(4):
             if(self.steps[i] != pow(2, (i + 3))):
                 raise ValueError("steps must be [8,16,32,64]")
@@ -383,7 +388,12 @@ class _PriorBox:
         self.feature_maps = [self.feature_map_3th, self.feature_map_4th,
                              self.feature_map_5th, self.feature_map_6th]
 
-    def __call__(self, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+    def to(self, device: torch.device, dtype: torch.dtype) -> '_PriorBox':
+        self.device = device
+        self.dtype = dtype
+        return self
+
+    def __call__(self) -> torch.Tensor:
         anchors: List[float] = []
         for k, f in enumerate(self.feature_maps):
             min_sizes: List[int] = self.min_sizes[k]
@@ -398,7 +408,7 @@ class _PriorBox:
                         cy = (i + 0.5) * self.steps[k] / self.image_size[0]
                         anchors += [cx, cy, s_kx, s_ky]
         # back to torch land
-        output = torch.tensor(anchors, device=device, dtype=dtype).view(-1, 4)
+        output = torch.tensor(anchors, device=self.device, dtype=self.dtype).view(-1, 4)
         if self.clip:
             output = output.clamp(max=1, min=0)
         return output
