@@ -32,12 +32,15 @@ def my_app():
     # compute scale
     width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
     height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    print(f"Video: h/w: {height}/{width} fps:{fps}")
+
     scale = 1. * args.image_size / width
     w, h = int(width * scale), int(height * scale)
 
     # create the video writer object
     fourcc = cv2.VideoWriter_fourcc('M', 'J', 'P', 'G')
-    out = cv2.VideoWriter(args.video_out, fourcc, 60.0, (w, h))
+    out = cv2.VideoWriter(args.video_out, fourcc, fps, (w, h))
 
     # create the detector object
     face_detection = FaceDetector().to(device)
@@ -62,6 +65,7 @@ def my_app():
         # detect !
         with torch.no_grad():
             dets = face_detection(img)
+        dets = [FaceDetectorResult(o) for o in dets]
 
         fps: float = cv2.getTickFrequency() / (cv2.getTickCount() - start)
 
@@ -69,16 +73,32 @@ def my_app():
 
         frame_vis = frame.copy()
 
+        frame_vis = cv2.putText(
+            frame_vis, f"FPS: {fps:.1f}", (10, 20), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
+
         for b in dets:
             if b.score < args.vis_threshold:
                 continue
 
             # draw face bounding box
-            frame_vis = cv2.rectangle(
-                frame_vis, b.top_left.int().tolist(), b.bottom_right.int().tolist(), (0, 255, 0), 2)
+            line_thickness = 2
+            line_length = 10
 
-            frame_vis = cv2.putText(
-                frame_vis, f"FPS: {fps:.1f}", (10, 20), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
+            x1, y1 = b.top_left.int().tolist()
+            frame_vis = cv2.line(frame_vis, (x1, y1), (x1 + line_length, y1), (0, 255, 0), thickness=line_thickness)
+            frame_vis = cv2.line(frame_vis, (x1, y1), (x1, y1 + line_length), (0, 255, 0), thickness=line_thickness)
+
+            x1, y1 = b.top_right.int().tolist()
+            frame_vis = cv2.line(frame_vis, (x1, y1), (x1 - line_length, y1), (0, 255, 0), thickness=line_thickness)
+            frame_vis = cv2.line(frame_vis, (x1, y1), (x1, y1 + line_length), (0, 255, 0), thickness=line_thickness)
+
+            x1, y1 = b.bottom_right.int().tolist()
+            frame_vis = cv2.line(frame_vis, (x1, y1), (x1 - line_length, y1), (0, 255, 0), thickness=line_thickness)
+            frame_vis = cv2.line(frame_vis, (x1, y1), (x1, y1 - line_length), (0, 255, 0), thickness=line_thickness)
+
+            x1, y1 = b.bottom_left.int().tolist()
+            frame_vis = cv2.line(frame_vis, (x1, y1), (x1 + line_length, y1), (0, 255, 0), thickness=line_thickness)
+            frame_vis = cv2.line(frame_vis, (x1, y1), (x1, y1 - line_length), (0, 255, 0), thickness=line_thickness)
 
             if draw_keypoints:
                 # draw facial keypoints
@@ -122,7 +142,6 @@ def my_app():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Face and Landmark Detection')
     parser.add_argument('--video_out', required=True, type=str, help='the file path to write the output.')
-    parser.add_argument('--video_fps', required=True, type=int, help='the fps to write the video.')
     parser.add_argument('--image_size', default=320, type=int, help='the image size to process.')
     parser.add_argument('--vis_threshold', default=0.8, type=float, help='visualization_threshold')
     parser.add_argument('--vis_keypoints', dest='vis_keypoints', action='store_true')

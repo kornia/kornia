@@ -48,7 +48,9 @@ def my_app(args):
 
     # create the detector and find the faces !
     face_detection = FaceDetector().to(device)
-    dets = face_detection(img)
+
+    with torch.no_grad():
+        dets = face_detection(img)
 
     # show image
 

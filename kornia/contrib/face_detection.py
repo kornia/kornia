@@ -109,10 +109,23 @@ class FaceDetectorResult:
         return self._data[..., (0, 1)]
 
     @property
+    def top_right(self) -> torch.Tensor:
+        """The [x y] position of the top-left coordinate of the bounding box."""
+        out = self.top_left
+        out[..., 0] += self.width
+        return out
+
+    @property
     def bottom_right(self) -> torch.Tensor:
         """The [x y] position of the bottom-right coordinate of the bounding box."""
         return self._data[..., (2, 3)]
 
+    @property
+    def bottom_left(self) -> torch.Tensor:
+        """The [x y] position of the top-left coordinate of the bounding box."""
+        out = self.top_left
+        out[..., 1] += self.height
+        return out
 
 class FaceDetector(nn.Module):
     r"""Detect faces in a given image using a CNN.
@@ -179,7 +192,7 @@ class FaceDetector(nn.Module):
         boxes, scores = boxes[inds], scores[inds]
 
         # keep top-K before NMS
-        order = scores.argsort(descending=True)[:self.top_k]
+        order = scores.sort(descending=True)[1][:self.top_k]
         boxes, scores = boxes[order], scores[order]
 
         # performd NMS
@@ -191,11 +204,10 @@ class FaceDetector(nn.Module):
         # keep top-K faster NMS
         return dets[:self.keep_top_k]
 
-    def forward(self, image: torch.Tensor) -> List[FaceDetectorResult]:
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
         img = self.preprocess(image)
         out = self.model(img)
-        out = self.postprocess(out, *img.shape[-2:])
-        return [FaceDetectorResult(o) for o in out]
+        return self.postprocess(out, *img.shape[-2:])
 
 
 # utils for the network
@@ -335,9 +347,9 @@ def _decode(loc: torch.Tensor, priors: torch.Tensor, variances: List[float]) -> 
         priors[:, 0:2] + loc[:, 8:10] * variances[0] * priors[:, 2:4],
         priors[:, 0:2] + loc[:, 10:12] * variances[0] * priors[:, 2:4],
         priors[:, 0:2] + loc[:, 12:14] * variances[0] * priors[:, 2:4]), 1)
-    boxes[:, 0:2] -= boxes[:, 2:4] / 2
-    boxes[:, 2:4] += boxes[:, 0:2]
-    return boxes
+    # prepare final output
+    tmp = boxes[:, 0:2] - boxes[:, 2:4] / 2
+    return torch.cat((tmp, boxes[:, 2:4] + tmp, boxes[:, 4:]), dim=-1)
 
 
 class _PriorBox:
