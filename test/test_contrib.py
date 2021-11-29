@@ -415,7 +415,6 @@ class TestFaceDetection:
         dets = face_detection(img)
         assert len(dets) == 1
 
-    @pytest.mark.skip(reason="_ConvDPUnit not properly compiling")
     def test_jit(self, device, dtype):
         op = kornia.contrib.FaceDetector().to(device, dtype)
         op_jit = torch.jit.script(op)

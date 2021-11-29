@@ -1,7 +1,6 @@
 # based on: https://github.com/ShiqiYu/libfacedetection.train/blob/74f3aa77c63234dd954d21286e9a60703b8d0868/tasks/task1/yufacedetectnet.py  # noqa
 from enum import Enum
-from itertools import product
-from typing import Callable, cast, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -164,6 +163,10 @@ class FaceDetector(nn.Module):
             'variance': [0.1, 0.2],
             'clip': False,
         }
+        self.min_sizes: List[List[int]] = [[10, 16, 24], [32, 48], [64, 96], [128, 192, 256]]
+        self.steps: List[int] = [8, 16, 32, 64]
+        self.variance: List[float] = [0.1, 0.2]
+        self.clip: bool = False
         self.model = YuFaceDetectNet('test', pretrained=True)
         self.nms: Callable = nms_kornia
 
@@ -180,10 +183,10 @@ class FaceDetector(nn.Module):
             width, height,
         ], device=loc.device, dtype=loc.dtype)  # 14
 
-        priors = _PriorBox(self.config, image_size=(height, width))(
+        priors = _PriorBox(self.min_sizes, self.steps, self.clip, image_size=(height, width))(
             loc.device, loc.dtype
         )  # Nx4
-        boxes = _decode(loc, priors, cast(List[float], self.config['variance']))  # Nx14
+        boxes = _decode(loc, priors, self.variance)  # Nx14
         boxes = boxes * scale
 
         # clamp here for the compatibility for ONNX
@@ -210,7 +213,7 @@ class FaceDetector(nn.Module):
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         img = self.preprocess(image)
         out = self.model(img)
-        return self.postprocess(out, *img.shape[-2:])
+        return self.postprocess(out, img.shape[-2], img.shape[-1])
 
 
 # utils for the network
@@ -305,9 +308,9 @@ class YuFaceDetectNet(nn.Module):
         x = self.model6(x)
         detection_sources.append(x)
 
-        # TODO: this makes torchscript crash
-        for (x_tmp, h) in zip(detection_sources, self.head):
-            head_list.append(h(x_tmp).permute(0, 2, 3, 1).contiguous())
+        for i, h in enumerate(self.head):
+            x_tmp = h(detection_sources[i])
+            head_list.append(x_tmp.permute(0, 2, 3, 1).contiguous())
 
         head_data = torch.cat([o.view(o.size(0), -1) for o in head_list], 1)
         head_data = head_data.view(head_data.size(0), -1, 17)
@@ -319,8 +322,8 @@ class YuFaceDetectNet(nn.Module):
             conf_data = torch.softmax(conf_data.view(-1, self.num_classes), dim=-1)
             iou_data = iou_data.view(-1, 1)
         else:
-            loc_data = loc_data.view(loc_data.size(0), -1, 14),
-            conf_data = conf_data.view(conf_data.size(0), -1, self.num_classes),
+            loc_data = loc_data.view(loc_data.size(0), -1, 14)
+            conf_data = conf_data.view(conf_data.size(0), -1, self.num_classes)
             iou_data = iou_data.view(iou_data.size(0), -1, 1)
 
         return {"loc": loc_data, "conf": conf_data, "iou": iou_data}
@@ -356,10 +359,10 @@ def _decode(loc: torch.Tensor, priors: torch.Tensor, variances: List[float]) -> 
 
 
 class _PriorBox:
-    def __init__(self, config: dict, image_size: Tuple[int, int]) -> None:
-        self.min_sizes = config['min_sizes']
-        self.steps = config['steps']
-        self.clip = config['clip']
+    def __init__(self, min_sizes: List[List[int]], steps: List[int], clip: bool, image_size: Tuple[int, int]) -> None:
+        self.min_sizes = min_sizes
+        self.steps = steps
+        self.clip = clip
         self.image_size = image_size
 
         for i in range(4):
@@ -381,19 +384,21 @@ class _PriorBox:
                              self.feature_map_5th, self.feature_map_6th]
 
     def __call__(self, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
-        anchors = []
+        anchors: List[float] = []
         for k, f in enumerate(self.feature_maps):
-            min_sizes = self.min_sizes[k]
-            for i, j in product(range(f[0]), range(f[1])):
-                for min_size in min_sizes:
-                    s_kx = min_size / self.image_size[1]
-                    s_ky = min_size / self.image_size[0]
+            min_sizes: List[int] = self.min_sizes[k]
+            # NOTE: the nested loop it's to make torchscript happy
+            for i in range(f[0]):
+                for j in range(f[1]):
+                    for min_size in min_sizes:
+                        s_kx = min_size / self.image_size[1]
+                        s_ky = min_size / self.image_size[0]
 
-                    cx = (j + 0.5) * self.steps[k] / self.image_size[1]
-                    cy = (i + 0.5) * self.steps[k] / self.image_size[0]
-                    anchors += [cx, cy, s_kx, s_ky]
+                        cx = (j + 0.5) * self.steps[k] / self.image_size[1]
+                        cy = (i + 0.5) * self.steps[k] / self.image_size[0]
+                        anchors += [cx, cy, s_kx, s_ky]
         # back to torch land
         output = torch.tensor(anchors, device=device, dtype=dtype).view(-1, 4)
         if self.clip:
-            output.clamp_(max=1, min=0)
+            output = output.clamp(max=1, min=0)
         return output
