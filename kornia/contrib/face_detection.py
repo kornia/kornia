@@ -3,9 +3,9 @@ from enum import Enum
 from typing import Callable, Dict, List, Optional, Tuple
 
 import torch
-from torch._C import device
 import torch.nn as nn
 import torch.nn.functional as F
+from torch._C import device
 
 from kornia.geometry.bbox import nms as nms_kornia
 
