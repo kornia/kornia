@@ -58,5 +58,5 @@ class DataKey(ConstantBase, Enum, metaclass=EnumMetaFlags):
     MASK = 1
     BBOX = 2
     BBOX_XYXY = 3
-    BBOX_XYHW = 4
+    BBOX_XYWH = 4
     KEYPOINTS = 5
