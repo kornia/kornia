@@ -313,7 +313,7 @@ class ApplyInverse:
             return MaskApplyInverse
         if DataKey.get(dcate) in [DataKey.BBOX, DataKey.BBOX_XYXY]:
             return BBoxXYXYApplyInverse
-        if DataKey.get(dcate) in [DataKey.BBOX_XYHW]:
+        if DataKey.get(dcate) in [DataKey.BBOX_XYWH]:
             return BBoxXYWHApplyInverse
         if DataKey.get(dcate) in [DataKey.KEYPOINTS]:
             return KeypointsApplyInverse
