@@ -1,5 +1,7 @@
-YuNet (face_detection)
-......................
+.. _yunet_model:
+
+YuNet
+.....
 
 .. card::
     :link: https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=9429909
