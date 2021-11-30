@@ -14,6 +14,7 @@ __all__ = [
     "bbox_generator",
     "bbox_generator3d",
     "transform_bbox",
+    "nms",
 ]
 
 
@@ -465,3 +466,61 @@ def transform_bbox(trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = "xy
         transformed_boxes[..., 3] = transformed_boxes[..., 3] - transformed_boxes[..., 1]
 
     return transformed_boxes
+
+
+def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torch.Tensor:
+    """Perform non-maxima suppression (NMS) on a given tensor of bounding boxes according to the intersection-over-
+    union (IoU).
+
+    Args:
+        boxes: tensor containing the encoded bounding boxes with the shape :math:`(N, (x_1, y_1, x_2, y_2))`.
+        scores: tensor containing the scores associated to each bounding box with shape :math:`(N,)`.
+        iou_threshold: the throshold to discard the overlapping boxes.
+
+    Return:
+        A tensor mask with the indices to keep from the input set of boxes and scores.
+
+    Example:
+        >>> boxes = torch.tensor([
+        ...     [10., 10., 20., 20.],
+        ...     [15., 5., 15., 25.],
+        ...     [100., 100., 200., 200.],
+        ...     [100., 100., 200., 200.]])
+        >>> scores = torch.tensor([0.9, 0.8, 0.7, 0.9])
+        >>> nms(boxes, scores, iou_threshold=0.8)
+        tensor([0, 3, 1])
+    """
+    if len(boxes.shape) != 2 and boxes.shape[-1] != 4:
+        raise ValueError(f"boxes expected as Nx4. Got: {boxes.shape}.")
+
+    if len(scores.shape) != 1:
+        raise ValueError(f"scores expected as N. Got: {scores.shape}.")
+
+    if boxes.shape[0] != scores.shape[0]:
+        raise ValueError(f"boxes and scores mus have same shape. Got: {boxes.shape, scores.shape}.")
+
+    x1, y1, x2, y2 = boxes.unbind(-1)
+    areas = (x2 - x1) * (y2 - y1)
+
+    _, order = scores.sort(descending=True)
+
+    keep = []
+    while order.shape[0] > 0:
+        i = order[0]
+        keep.append(i)
+        xx1 = torch.max(x1[i], x1[order[1:]])
+        yy1 = torch.max(y1[i], y1[order[1:]])
+        xx2 = torch.min(x2[i], x2[order[1:]])
+        yy2 = torch.min(y2[i], y2[order[1:]])
+
+        w = torch.clamp(xx2 - xx1, min=0.)
+        h = torch.clamp(yy2 - yy1, min=0.)
+        inter = w * h
+        ovr = inter / (areas[i] + areas[order[1:]] - inter)
+
+        inds = torch.where(ovr <= iou_threshold)[0]
+        order = order[inds + 1]
+
+    if len(keep) > 0:
+        return torch.stack(keep)
+    return torch.tensor(keep)

@@ -6,6 +6,7 @@ from torch.autograd import gradcheck
 
 import kornia
 import kornia.testing as utils  # test utils
+from kornia.contrib.face_detection import FaceKeypoint
 from kornia.testing import assert_close
 from packaging import version
 
@@ -401,3 +402,47 @@ class TestHistMatch:
         src = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         dst = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.contrib.histogram_matching, (src, dst,), raise_exception=True)
+
+
+class TestFaceDetection:
+    def test_smoke(self, device, dtype):
+        assert kornia.contrib.FaceDetector().to(device, dtype) is not None
+
+    def test_valid(self, device, dtype):
+        torch.manual_seed(44)
+        img = torch.rand(1, 3, 320, 320, device=device, dtype=dtype)
+        face_detection = kornia.contrib.FaceDetector().to(device, dtype)
+        dets = face_detection(img)
+        assert len(dets) == 1
+
+    def test_jit(self, device, dtype):
+        op = kornia.contrib.FaceDetector().to(device, dtype)
+        op_jit = torch.jit.script(op)
+        assert op_jit is not None
+
+    def test_results(self, device, dtype):
+        data = torch.tensor([
+            0., 0., 100., 200., 10., 10., 20., 10., 10., 50., 100., 50., 150., 10., 0.99,
+        ], device=device, dtype=dtype)
+        res = kornia.contrib.FaceDetectorResult(data)
+        assert res.xmin == 0.
+        assert res.ymin == 0.
+        assert res.xmax == 100.
+        assert res.ymax == 200.
+        assert res.score == 0.99
+        assert res.width == 100.
+        assert res.height == 200.
+        assert res.top_left.tolist() == [0., 0.]
+        assert res.top_right.tolist() == [100., 0.]
+        assert res.bottom_right.tolist() == [100., 200.]
+        assert res.bottom_left.tolist() == [0., 200.]
+        assert res.get_keypoint(FaceKeypoint.EYE_LEFT).tolist() == [10., 10.]
+        assert res.get_keypoint(FaceKeypoint.EYE_RIGHT).tolist() == [20., 10.]
+        assert res.get_keypoint(FaceKeypoint.NOSE).tolist() == [10., 50.]
+        assert res.get_keypoint(FaceKeypoint.MOUTH_LEFT).tolist() == [100., 50.]
+        assert res.get_keypoint(FaceKeypoint.MOUTH_RIGHT).tolist() == [150., 10.]
+
+    def test_results_raise(self, device, dtype):
+        data = torch.zeros(14, device=device, dtype=dtype)
+        with pytest.raises(ValueError):
+            _ = kornia.contrib.FaceDetectorResult(data)
