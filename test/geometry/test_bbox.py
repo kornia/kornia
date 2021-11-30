@@ -4,7 +4,14 @@ from torch.testing import assert_allclose
 
 import kornia
 import kornia.testing as utils
-from kornia.geometry.bbox import infer_bbox_shape, infer_bbox_shape3d, transform_bbox, validate_bbox, validate_bbox3d
+from kornia.geometry.bbox import (
+    infer_bbox_shape,
+    infer_bbox_shape3d,
+    nms,
+    transform_bbox,
+    validate_bbox,
+    validate_bbox3d,
+)
 
 
 class TestBbox2D:
@@ -241,4 +248,18 @@ class TestBbox3D:
 
         actual = op_script(boxes)
         expected = op(boxes)
+        assert_allclose(actual, expected)
+
+
+class TestNMS:
+    def test_smoke(self, device, dtype):
+        boxes = torch.tensor([
+            [10., 10., 20., 20.],
+            [15., 5., 15., 25.],
+            [100., 100., 200., 200.],
+            [100., 100., 200., 200.],
+        ], device=device, dtype=dtype)
+        scores = torch.tensor([0.9, 0.8, 0.7, 0.9], device=device, dtype=dtype)
+        expected = torch.tensor([0, 3, 1], device=device, dtype=torch.long)
+        actual = nms(boxes, scores, iou_threshold=0.8)
         assert_allclose(actual, expected)
