@@ -1,5 +1,6 @@
 # based on: https://github.com/ShiqiYu/libfacedetection.train/blob/74f3aa77c63234dd954d21286e9a60703b8d0868/tasks/task1/yufacedetectnet.py  # noqa
 from enum import Enum
+import math
 from typing import Callable, Dict, List, Optional, Tuple
 
 import torch
@@ -370,7 +371,7 @@ class _PriorBox:
         self.dtype: torch.dtype = torch.float32
 
         for i in range(4):
-            if(self.steps[i] != pow(2, (i + 3))):
+            if(self.steps[i] != math.pow(2, (i + 3))):
                 raise ValueError("steps must be [8,16,32,64]")
 
         self.feature_map_2th = [int(int((self.image_size[0] + 1) / 2) / 2),
