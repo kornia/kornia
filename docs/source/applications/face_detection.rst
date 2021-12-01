@@ -32,5 +32,3 @@ The Kornia AI Game
 
 .. tip::
    Play yourself with the detector and generate new images with this `tutorial <https://kornia-tutorials.readthedocs.io/en/latest/face_detection.html>`_.
-
-
