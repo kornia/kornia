@@ -70,6 +70,9 @@ def draw_line(
     if (p2[0] >= image.size(2)) or (p2[1] >= image.size(1) or (p2[0] < 0) or (p2[1] < 0)):
         raise ValueError("p2 is out of bounds.")
 
+    # make move arguments to same device and dtype as the input image
+    p1, p2, color = p1.to(image), p2.to(image), color.to(image)
+
     # assign points
     x1, y1 = p1
     x2, y2 = p2
@@ -92,8 +95,8 @@ def draw_line(
         m = -A / B
 
     # make sure you start drawing in the right direction
-    x1, x2 = min(x1, x2), max(x1, x2)
-    y1, y2 = min(y1, y2), max(y1, y2)
+    x1, x2 = min(x1, x2).long(), max(x1, x2).long()
+    y1, y2 = min(y1, y2).long(), max(y1, y2).long()
 
     # line equation that determines the distance away from the line
     def line_equation(x, y):
