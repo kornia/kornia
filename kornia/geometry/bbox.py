@@ -478,10 +478,6 @@ def transform_bbox(
 
     if (restore_coordinates is None or restore_coordinates) and boxes.shape[-2:] != torch.Size([4, 2]):
         restored_boxes = transformed_boxes.clone()
-        try:
-            restored_boxes[..., 0] = torch.min(transformed_boxes[..., [0, 2]], dim=-1)[0]
-        except:
-            assert False, (transformed_boxes, boxes)
         # In case the boxes are flipped, we ensure it is ordered like left-top -> right-bot points
         restored_boxes[..., 0] = torch.min(transformed_boxes[..., [0, 2]], dim=-1)[0]
         restored_boxes[..., 1] = torch.min(transformed_boxes[..., [1, 3]], dim=-1)[0]

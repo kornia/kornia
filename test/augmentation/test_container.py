@@ -292,8 +292,8 @@ class TestAugmentationSequential:
             K.RandomHorizontalFlip(p=1.0), data_keys=["input", "bbox"], return_transform=False, same_on_batch=False
         )
 
-        out_ver = aug_ver(inp, bbox)
-        out_hor = aug_hor(inp, bbox)
+        out_ver = aug_ver(inp.clone(), bbox.clone())
+        out_hor = aug_hor(inp.clone(), bbox.clone())
 
         assert_close(out_ver[1], expected_bbox_vertical_flip)
         assert_close(out_hor[1], expected_bbox_horizontal_flip)
