@@ -84,19 +84,24 @@ class ObjectDetectionTrainer(Trainer):
 
     def compute_loss(self, *args: torch.Tensor) -> torch.Tensor:
         if self.loss_computed_by_model:
-            return torch.stack(list(args[0].values())).sum()
+            return torch.stack(list(args[0])).sum()
         if self.criterion is None:
             raise RuntimeError("`criterion` should not be None if `loss_computed_by_model` is False.")
         return self.criterion(*args)
 
     def compute_metrics(self, *args: torch.Tensor) -> Dict[str, float]:
-        mAP, _ = mean_average_precision(
-            [a['boxes'] for a in args[0]],
-            [a['labels'] for a in args[0]],
-            [a['scores'] for a in args[0]],
-            [a['boxes'] for a in args[1]],
-            [a['labels'] for a in args[1]],
-            n_classes=self.num_classes,
-            threshold=0.000001
-        )
-        return {'mAP': mAP.item()}
+        if (
+            isinstance(args[0], dict) and "boxes" in args[0] and "labels" in args[0] and "scores" in args[0]
+            and isinstance(args[1], dict) and "boxes" in args[1] and "labels" in args[1]
+        ):
+            mAP, _ = mean_average_precision(
+                [a['boxes'] for a in args[0]],
+                [a['labels'] for a in args[0]],
+                [a['scores'] for a in args[0]],
+                [a['boxes'] for a in args[1]],
+                [a['labels'] for a in args[1]],
+                n_classes=self.num_classes,
+                threshold=0.000001
+            )
+            return {'mAP': mAP.item()}
+        return super().compute_metrics(*args)
