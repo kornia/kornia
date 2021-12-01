@@ -1,5 +1,4 @@
 from typing import Any, cast, Dict, List, Optional, Tuple, Union
-
 import torch
 from torch.nn.functional import pad
 
@@ -93,7 +92,7 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
     """
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        w: int = int(params['forward_input_shape'][-1])
+        w: int = int(params["forward_input_shape"][-1])
         flip_mat: torch.Tensor = torch.tensor(
             [[-1, 0, w - 1], [0, 1, 0], [0, 0, 1]], device=input.device, dtype=input.dtype
         )
@@ -160,7 +159,7 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
     """
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        h: int = int(params['forward_input_shape'][-2])
+        h: int = int(params["forward_input_shape"][-2])
         flip_mat: torch.Tensor = torch.tensor(
             [[1, 0, 0], [0, -1, h - 1], [0, 0, 1]], device=input.device, dtype=input.dtype
         )
@@ -259,14 +258,14 @@ class ColorJitter(IntensityAugmentationBase2D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         transforms = [
-            lambda img: adjust_brightness(img, params['brightness_factor'] - 1),
-            lambda img: adjust_contrast(img, params['contrast_factor']),
-            lambda img: adjust_saturation(img, params['saturation_factor']),
-            lambda img: adjust_hue(img, params['hue_factor'] * 2 * pi),
+            lambda img: adjust_brightness(img, params["brightness_factor"] - 1),
+            lambda img: adjust_contrast(img, params["contrast_factor"]),
+            lambda img: adjust_saturation(img, params["saturation_factor"]),
+            lambda img: adjust_hue(img, params["hue_factor"] * 2 * pi),
         ]
 
         jittered = input
-        for idx in params['order'].tolist():
+        for idx in params["order"].tolist():
             t = transforms[idx]
             jittered = t(jittered)
 
@@ -400,9 +399,9 @@ class RandomErasing(IntensityAugmentationBase2D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         _, c, h, w = input.size()
-        values = params['values'].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).repeat(1, *input.shape[1:]).to(input)
+        values = params["values"].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).repeat(1, *input.shape[1:]).to(input)
 
-        bboxes = bbox_generator(params['xs'], params['ys'], params['widths'], params['heights'])
+        bboxes = bbox_generator(params["xs"], params["ys"], params["widths"], params["heights"])
         mask = bbox_to_mask(bboxes, w, h)  # Returns B, H, W
         mask = mask.unsqueeze(1).repeat(1, c, 1, 1).to(input)  # Transform to B, c, H, W
         transformed = torch.where(mask == 1.0, values, input)
@@ -475,7 +474,7 @@ class RandomPerspective(GeometricAugmentationBase2D):
         )
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return get_perspective_transform(params['start_points'].to(input), params['end_points'].to(input))
+        return get_perspective_transform(params["start_points"].to(input), params["end_points"].to(input))
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
@@ -483,8 +482,8 @@ class RandomPerspective(GeometricAugmentationBase2D):
         _, _, height, width = input.shape
         transform = cast(torch.Tensor, transform)
         return warp_perspective(
-            input, transform, (height, width), mode=self.flags['resample'].name.lower(),
-            align_corners=self.flags['align_corners']
+            input, transform, (height, width), mode=self.flags["resample"].name.lower(),
+            align_corners=self.flags["align_corners"]
         )
 
     def inverse_transform(
@@ -591,12 +590,12 @@ class RandomAffine(GeometricAugmentationBase2D):
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return get_affine_matrix2d(
-            torch.as_tensor(params['translations'], device=input.device, dtype=input.dtype),
-            torch.as_tensor(params['center'], device=input.device, dtype=input.dtype),
-            torch.as_tensor(params['scale'], device=input.device, dtype=input.dtype),
-            torch.as_tensor(params['angle'], device=input.device, dtype=input.dtype),
-            deg2rad(torch.as_tensor(params['sx'], device=input.device, dtype=input.dtype)),
-            deg2rad(torch.as_tensor(params['sy'], device=input.device, dtype=input.dtype)),
+            torch.as_tensor(params["translations"], device=input.device, dtype=input.dtype),
+            torch.as_tensor(params["center"], device=input.device, dtype=input.dtype),
+            torch.as_tensor(params["scale"], device=input.device, dtype=input.dtype),
+            torch.as_tensor(params["angle"], device=input.device, dtype=input.dtype),
+            deg2rad(torch.as_tensor(params["sx"], device=input.device, dtype=input.dtype)),
+            deg2rad(torch.as_tensor(params["sy"], device=input.device, dtype=input.dtype)),
         )
 
     def apply_transform(
@@ -687,7 +686,7 @@ class CenterCrop(GeometricAugmentationBase2D):
         return_transform: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
-        cropping_mode: str = 'slice',
+        cropping_mode: str = "slice",
     ) -> None:
         # same_on_batch is always True for CenterCrop
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
@@ -710,29 +709,29 @@ class CenterCrop(GeometricAugmentationBase2D):
         return rg.center_crop_generator(batch_shape[0], batch_shape[-2], batch_shape[-1], self.size, self.device)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        transform: torch.Tensor = get_perspective_transform(params['src'].to(input), params['dst'].to(input))
+        transform: torch.Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
         transform = transform.expand(input.shape[0], -1, -1)
         return transform
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        if self.flags['cropping_mode'] == 'resample':  # uses bilinear interpolation to crop
+        if self.flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
             transform = cast(torch.Tensor, transform)
             return crop_by_transform_mat(
                 input, transform[:, :2, :], self.size, self.flags["resample"].name.lower(),
-                'zeros', self.flags["align_corners"]
+                "zeros", self.flags["align_corners"]
             )
-        if self.flags['cropping_mode'] == 'slice':  # uses advanced slicing to crop
+        if self.flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
             # TODO: implement as separated function `crop_and_resize_iterative`
             B, C, _, _ = input.shape
             H, W = self.size
             out = torch.empty(B, C, H, W, device=input.device, dtype=input.dtype)
             for i in range(B):
-                x1 = int(params['src'][i, 0, 0])
-                x2 = int(params['src'][i, 1, 0]) + 1
-                y1 = int(params['src'][i, 0, 1])
-                y2 = int(params['src'][i, 3, 1]) + 1
+                x1 = int(params["src"][i, 0, 0])
+                x2 = int(params["src"][i, 1, 0]) + 1
+                y1 = int(params["src"][i, 0, 1])
+                y2 = int(params["src"][i, 3, 1]) + 1
                 out[i] = input[i : i + 1, :, y1:y2, x1:x2]
             return out
         raise NotImplementedError(f"Not supported type: {self.flags['cropping_mode']}.")
@@ -744,15 +743,15 @@ class CenterCrop(GeometricAugmentationBase2D):
         size: Optional[Tuple[int, int]] = None,
         **kwargs,
     ) -> torch.Tensor:
-        if self.flags['cropping_mode'] != 'resample':
+        if self.flags["cropping_mode"] != "resample":
             raise NotImplementedError(
                 f"`inverse` is only applicable for resample cropping mode. Got {self.flags['cropping_mode']}."
             )
         if size is None:
             size = self.size
-        mode = self.flags["resample"].name.lower() if "mode" not in kwargs else kwargs['mode']
-        align_corners = self.flags["align_corners"] if "align_corners" not in kwargs else kwargs['align_corners']
-        padding_mode = 'zeros' if "padding_mode" not in kwargs else kwargs['padding_mode']
+        mode = self.flags["resample"].name.lower() if "mode" not in kwargs else kwargs["mode"]
+        align_corners = self.flags["align_corners"] if "align_corners" not in kwargs else kwargs["align_corners"]
+        padding_mode = "zeros" if "padding_mode" not in kwargs else kwargs["padding_mode"]
         transform = cast(torch.Tensor, transform)
         return crop_by_transform_mat(input, transform[:, :2, :], size, mode, padding_mode, align_corners)
 
@@ -826,7 +825,7 @@ class RandomRotation(GeometricAugmentationBase2D):
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator = cast(
-            rg.PlainUniformGenerator, rg.PlainUniformGenerator((degrees, 'degrees', 0., (-360., 360.)))
+            rg.PlainUniformGenerator, rg.PlainUniformGenerator((degrees, "degrees", 0., (-360., 360.)))
         )
         self.flags = dict(
             resample=Resample.get(resample),
@@ -852,7 +851,7 @@ class RandomRotation(GeometricAugmentationBase2D):
     ) -> torch.Tensor:
         transform = cast(torch.Tensor, transform)
         return affine(
-            input, transform[..., :2, :3], self.flags['resample'].name.lower(), 'zeros', self.flags['align_corners'])
+            input, transform[..., :2, :3], self.flags["resample"].name.lower(), "zeros", self.flags["align_corners"])
 
     def inverse_transform(
         self,
@@ -935,14 +934,14 @@ class RandomCrop(GeometricAugmentationBase2D):
         padding: Optional[Union[int, Tuple[int, int], Tuple[int, int, int, int]]] = None,
         pad_if_needed: Optional[bool] = False,
         fill: int = 0,
-        padding_mode: str = 'constant',
+        padding_mode: str = "constant",
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False,
         same_on_batch: bool = False,
         align_corners: bool = True,
         p: float = 1.0,
         keepdim: bool = False,
-        cropping_mode: str = 'slice',
+        cropping_mode: str = "slice",
     ) -> None:
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
         super().__init__(
@@ -966,7 +965,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         padding = [0, 0, 0, 0]
         if self.flags["padding"] is not None:
             if isinstance(self.flags["padding"], int):
-                padding = [self.flags["padding"], self.flags["padding"], self.flags["padding"], self.flags["padding"]]
+                padding = [self.flags["padding"]] * 4
             elif isinstance(self.flags["padding"], tuple) and len(self.flags["padding"]) == 2:
                 padding = [
                     self.flags["padding"][1],
@@ -981,6 +980,9 @@ class RandomCrop(GeometricAugmentationBase2D):
                     self.flags["padding"][1],
                     self.flags["padding"][0]
                 ]
+            else:
+                raise RuntimeError(
+                    f"Expect `padding` to be a scalar, or length 2/4 list. Got {self.flags['padding']}.")
 
         if self.flags["pad_if_needed"] and shape[-2] < self.flags["size"][0]:
             padding = [0, 0, (self.flags["size"][0] - shape[-2]), self.flags["size"][0] - shape[-2]]
@@ -999,30 +1001,30 @@ class RandomCrop(GeometricAugmentationBase2D):
         return input
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        transform: torch.Tensor = get_perspective_transform(params['src'].to(input), params['dst'].to(input))
+        transform: torch.Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
         return transform
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        if self.flags["cropping_mode"] == 'resample':  # uses bilinear interpolation to crop
+        if self.flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
             transform = cast(torch.Tensor, transform)
             return crop_by_transform_mat(
                 input,
                 transform,
                 self.flags["size"],
                 mode=self.flags["resample"].name.lower(),
-                padding_mode='zeros',
+                padding_mode="zeros",
                 align_corners=self.flags["align_corners"],
             )
-        if self.flags["cropping_mode"] == 'slice':  # uses advanced slicing to crop
+        if self.flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
             B, C, _, _ = input.shape
             out = torch.empty(B, C, *self.flags["size"], device=input.device, dtype=input.dtype)
             for i in range(B):
-                x1 = int(params['src'][i, 0, 0])
-                x2 = int(params['src'][i, 1, 0]) + 1
-                y1 = int(params['src'][i, 0, 1])
-                y2 = int(params['src'][i, 3, 1]) + 1
+                x1 = int(params["src"][i, 0, 0])
+                x2 = int(params["src"][i, 1, 0]) + 1
+                y1 = int(params["src"][i, 0, 1])
+                y2 = int(params["src"][i, 3, 1]) + 1
                 out[i] = input[i : i + 1, :, y1:y2, x1:x2]
             return out
         raise NotImplementedError(f"Not supported type: {self.flags['cropping_mode']}.")
@@ -1034,14 +1036,14 @@ class RandomCrop(GeometricAugmentationBase2D):
         size: Optional[Tuple[int, int]] = None,
         **kwargs,
     ) -> torch.Tensor:
-        if self.flags['cropping_mode'] != 'resample':
+        if self.flags["cropping_mode"] != "resample":
             raise NotImplementedError(
                 f"`inverse` is only applicable for resample cropping mode. Got {self.flags['cropping_mode']}."
             )
         size = cast(Tuple[int, int], size)
-        mode = self.flags['resample'].name.lower() if "mode" not in kwargs else kwargs['mode']
-        align_corners = self.flags['align_corners'] if "align_corners" not in kwargs else kwargs['align_corners']
-        padding_mode = 'zeros' if "padding_mode" not in kwargs else kwargs['padding_mode']
+        mode = self.flags["resample"].name.lower() if "mode" not in kwargs else kwargs["mode"]
+        align_corners = self.flags["align_corners"] if "align_corners" not in kwargs else kwargs["align_corners"]
+        padding_mode = "zeros" if "padding_mode" not in kwargs else kwargs["padding_mode"]
         transform = cast(torch.Tensor, transform)
         return crop_by_transform_mat(input, transform[:, :2, :], size, mode, padding_mode, align_corners)
 
@@ -1055,8 +1057,8 @@ class RandomCrop(GeometricAugmentationBase2D):
         out = super().inverse(input, params, size, **kwargs)
         if params is None:
             params = self._params
-        if 'padding_size' in params:
-            padding_size = params['padding_size'].unique(dim=0).cpu().squeeze().numpy().tolist()
+        if "padding_size" in params:
+            padding_size = params["padding_size"].unique(dim=0).cpu().squeeze().numpy().tolist()
             padding_size = [-padding_size[0], -padding_size[1], -padding_size[2], -padding_size[3]]
         else:
             padding_size = [0, 0, 0, 0]
@@ -1085,7 +1087,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         )
         self._params.update({"padding_size": _padding_size})
 
-        if not self._params['batch_prob'].all():
+        if not self._params["batch_prob"].all():
             # undo the pre-crop if nothing happened.
             if isinstance(out, tuple) and isinstance(input, tuple):
                 return input[0], out[1]
@@ -1161,7 +1163,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         align_corners: bool = True,
         p: float = 1.0,
         keepdim: bool = False,
-        cropping_mode: str = 'slice',
+        cropping_mode: str = "slice",
     ) -> None:
         # Since PyTorch does not support ragged tensor. So cropping function happens all the time.
         super().__init__(
@@ -1176,36 +1178,36 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         )
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        transform: torch.Tensor = get_perspective_transform(params['src'].to(input), params['dst'].to(input))
+        transform: torch.Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
         transform = transform.expand(input.shape[0], -1, -1)
         return transform
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        if self.flags['cropping_mode'] == 'resample':  # uses bilinear interpolation to crop
+        if self.flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
             transform = cast(torch.Tensor, transform)
             return crop_by_transform_mat(
                 input,
                 transform,
-                self.flags['size'],
-                mode=self.flags['resample'].name.lower(),
-                padding_mode='zeros',
-                align_corners=self.flags['align_corners'],
+                self.flags["size"],
+                mode=self.flags["resample"].name.lower(),
+                padding_mode="zeros",
+                align_corners=self.flags["align_corners"],
             )
-        if self.flags['cropping_mode'] == 'slice':  # uses advanced slicing to crop
+        if self.flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
             B, C, _, _ = input.shape
-            out = torch.empty(B, C, *self.flags['size'], device=input.device, dtype=input.dtype)
+            out = torch.empty(B, C, *self.flags["size"], device=input.device, dtype=input.dtype)
             for i in range(B):
-                x1 = int(params['src'][i, 0, 0])
-                x2 = int(params['src'][i, 1, 0]) + 1
-                y1 = int(params['src'][i, 0, 1])
-                y2 = int(params['src'][i, 3, 1]) + 1
+                x1 = int(params["src"][i, 0, 0])
+                x2 = int(params["src"][i, 1, 0]) + 1
+                y1 = int(params["src"][i, 0, 1])
+                y2 = int(params["src"][i, 3, 1]) + 1
                 out[i] = resize(
                     input[i : i + 1, :, y1:y2, x1:x2],
-                    self.flags['size'],
-                    interpolation=(self.flags['resample'].name).lower(),
-                    align_corners=self.flags['align_corners'],
+                    self.flags["size"],
+                    interpolation=(self.flags["resample"].name).lower(),
+                    align_corners=self.flags["align_corners"],
                 )
             return out
         raise NotImplementedError(f"Not supported type: {self.flags['cropping_mode']}.")
@@ -1217,14 +1219,14 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         size: Optional[Tuple[int, int]] = None,
         **kwargs,
     ) -> torch.Tensor:
-        if self.flags['cropping_mode'] != 'resample':
+        if self.flags["cropping_mode"] != "resample":
             raise NotImplementedError(
                 f"`inverse` is only applicable for resample cropping mode. Got {self.flags['cropping_mode']}."
             )
         size = cast(Tuple[int, int], size)
-        mode = self.flags['resample'].name.lower() if "mode" not in kwargs else kwargs['mode']
-        align_corners = self.flags['align_corners'] if "align_corners" not in kwargs else kwargs['align_corners']
-        padding_mode = 'zeros' if "padding_mode" not in kwargs else kwargs['padding_mode']
+        mode = self.flags["resample"].name.lower() if "mode" not in kwargs else kwargs["mode"]
+        align_corners = self.flags["align_corners"] if "align_corners" not in kwargs else kwargs["align_corners"]
+        padding_mode = "zeros" if "padding_mode" not in kwargs else kwargs["padding_mode"]
         transform = cast(torch.Tensor, transform)
         return crop_by_transform_mat(input, transform[:, :2, :], size, mode, padding_mode, align_corners)
 
@@ -1282,7 +1284,7 @@ class Normalize(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        return normalize(input, self.flags['mean'], self.flags['std'])
+        return normalize(input, self.flags["mean"], self.flags["std"])
 
 
 class Denormalize(Normalize):
@@ -1315,7 +1317,7 @@ class Denormalize(Normalize):
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        return denormalize(input, self.flags['mean'], self.flags['std'])
+        return denormalize(input, self.flags["mean"], self.flags["std"])
 
 
 class RandomMotionBlur(IntensityAugmentationBase2D):
@@ -1396,16 +1398,16 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        kernel_size: int = cast(int, params['ksize_factor'].unique().item())
-        angle = params['angle_factor']
-        direction = params['direction_factor']
+        kernel_size: int = cast(int, params["ksize_factor"].unique().item())
+        angle = params["angle_factor"]
+        direction = params["direction_factor"]
         return motion_blur(
             input,
             kernel_size,
             angle,
             direction,
-            border_type=self.flags['border_type'].name.lower(),
-            mode=self.flags['resample'].name.lower(),
+            border_type=self.flags["border_type"].name.lower(),
+            mode=self.flags["resample"].name.lower(),
         )
 
 
@@ -1465,18 +1467,18 @@ class RandomSolarize(IntensityAugmentationBase2D):
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator = cast(
             rg.PlainUniformGenerator, rg.PlainUniformGenerator(
-                (thresholds, 'thresholds', 0.5, (0.0, 1.0)),
-                (additions, 'additions', 0., (-0.5, 0.5)),
+                (thresholds, "thresholds", 0.5, (0.0, 1.0)),
+                (additions, "additions", 0., (-0.5, 0.5)),
             )
         )
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        thresholds = params['thresholds']
+        thresholds = params["thresholds"]
         additions: Optional[torch.Tensor]
-        if 'additions' in params:
-            additions = params['additions']
+        if "additions" in params:
+            additions = params["additions"]
         else:
             additions = None
         return solarize(input, thresholds, additions)
@@ -1537,7 +1539,7 @@ class RandomPosterize(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        return posterize(input, params['bits_factor'])
+        return posterize(input, params["bits_factor"])
 
 
 class RandomSharpness(IntensityAugmentationBase2D):
@@ -1589,13 +1591,13 @@ class RandomSharpness(IntensityAugmentationBase2D):
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator = cast(rg.PlainUniformGenerator, rg.PlainUniformGenerator(
-            (sharpness, 'sharpness', 0., (0, float('inf'))))
+            (sharpness, "sharpness", 0., (0, float("inf"))))
         )
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        factor = params['sharpness']
+        factor = params["sharpness"]
         return sharpness(input, factor)
 
 
@@ -1693,7 +1695,7 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         self,
         kernel_size: Tuple[int, int],
         sigma: Tuple[float, float],
-        border_type: str = 'reflect',
+        border_type: str = "reflect",
         return_transform: bool = False,
         same_on_batch: bool = False,
         p: float = 0.5,
@@ -1709,7 +1711,7 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         return gaussian_blur2d(
-            input, self.flags['kernel_size'], self.flags['sigma'], self.flags['border_type'].name.lower())
+            input, self.flags["kernel_size"], self.flags["sigma"], self.flags["border_type"].name.lower())
 
 
 class RandomInvert(IntensityAugmentationBase2D):
@@ -1761,7 +1763,7 @@ class RandomInvert(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        return invert(input, torch.as_tensor(self.flags['max_val'], device=input.device, dtype=input.dtype))
+        return invert(input, torch.as_tensor(self.flags["max_val"], device=input.device, dtype=input.dtype))
 
 
 class RandomChannelShuffle(IntensityAugmentationBase2D):
@@ -1805,7 +1807,7 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
     ) -> torch.Tensor:
         out = torch.empty_like(input)
         for i in range(out.shape[0]):
-            out[i] = input[i, params['channels'][i]]
+            out[i] = input[i, params["channels"][i]]
         return out
 
 
@@ -1854,7 +1856,7 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        return input + params['noise'].to(input.device) * self.flags['std'] + self.flags['mean']
+        return input + params["noise"].to(input.device) * self.flags["std"] + self.flags["mean"]
 
 
 class RandomFisheye(GeometricAugmentationBase2D):
@@ -1902,9 +1904,9 @@ class RandomFisheye(GeometricAugmentationBase2D):
         self._check_tensor(gamma)
         self._param_generator = cast(
             rg.PlainUniformGenerator, rg.PlainUniformGenerator(
-                (center_x[:, None], 'center_x', None, None),
-                (center_y[:, None], 'center_y', None, None),
-                (gamma[:, None], 'gamma', None, None),
+                (center_x[:, None], "center_x", None, None),
+                (center_y[:, None], "center_y", None, None),
+                (gamma[:, None], "gamma", None, None),
             )
         )
 
@@ -1928,9 +1930,9 @@ class RandomFisheye(GeometricAugmentationBase2D):
         field_x = grid[..., 0].to(input)  # 1xHxW
         field_y = grid[..., 1].to(input)  # 1xHxW
         # vectorize the random parameters
-        center_x = params['center_x'].view(B, 1, 1).to(input)
-        center_y = params['center_y'].view(B, 1, 1).to(input)
-        gamma = params['gamma'].view(B, 1, 1).to(input)
+        center_x = params["center_x"].view(B, 1, 1).to(input)
+        center_y = params["center_y"].view(B, 1, 1).to(input)
+        gamma = params["gamma"].view(B, 1, 1).to(input)
         # compute and apply the distances respect to the camera optical center
         distance = ((center_x - field_x) ** 2 + (center_y - field_y) ** 2) ** 0.5
         field_x = field_x + field_x * distance ** gamma  # BxHxw
@@ -1980,8 +1982,8 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
         sigma: Tuple[float, float] = (32.0, 32.0),
         alpha: Tuple[float, float] = (1.0, 1.0),
         align_corners: bool = False,
-        mode: str = 'bilinear',
-        padding_mode: str = 'zeros',
+        mode: str = "bilinear",
+        padding_mode: str = "zeros",
         return_transform: bool = False,
         same_on_batch: bool = False,
         p: float = 0.5,
@@ -2012,8 +2014,8 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         return elastic_transform2d(
-            input, params['noise'].to(input), self.flags['kernel_size'], self.flags['sigma'],
-            self.flags['alpha'], self.flags['align_corners'], self.flags['mode'], self.flags['padding_mode']
+            input, params["noise"].to(input), self.flags["kernel_size"], self.flags["sigma"],
+            self.flags["alpha"], self.flags["align_corners"], self.flags["mode"], self.flags["padding_mode"]
         )
 
 
@@ -2072,11 +2074,11 @@ class RandomThinPlateSpline(GeometricAugmentationBase2D):
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        src = params['src'].to(input)
-        dst = params['dst'].to(input)
+        src = params["src"].to(input)
+        dst = params["dst"].to(input)
         # NOTE: warp_image_tps need to use inverse parameters
         kernel, affine = get_tps_transform(dst, src)
-        return warp_image_tps(input, src, kernel, affine, self.flags['align_corners'])
+        return warp_image_tps(input, src, kernel, affine, self.flags["align_corners"])
 
 
 class RandomBoxBlur(IntensityAugmentationBase2D):
@@ -2113,7 +2115,7 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
     def __init__(
         self,
         kernel_size: Tuple[int, int] = (3, 3),
-        border_type: str = 'reflect',
+        border_type: str = "reflect",
         normalized: bool = True,
         return_transform: bool = False,
         same_on_batch: bool = False,
@@ -2132,7 +2134,7 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        return box_blur(input, self.flags['kernel_size'], self.flags['border_type'], self.flags['normalized'])
+        return box_blur(input, self.flags["kernel_size"], self.flags["border_type"], self.flags["normalized"])
 
 
 class PadTo(GeometricAugmentationBase2D):
@@ -2198,10 +2200,10 @@ class PadTo(GeometricAugmentationBase2D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         _, _, height, width = input.shape
-        height_pad: int = self.flags['size'][0] - height
-        width_pad: int = self.flags['size'][1] - width
+        height_pad: int = self.flags["size"][0] - height
+        width_pad: int = self.flags["size"][1] - width
         return torch.nn.functional.pad(
-            input, [0, width_pad, 0, height_pad], mode=self.flags['pad_mode'], value=self.flags['pad_value'])
+            input, [0, width_pad, 0, height_pad], mode=self.flags["pad_mode"], value=self.flags["pad_value"])
 
     def inverse_transform(
         self,

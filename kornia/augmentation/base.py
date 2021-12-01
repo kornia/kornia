@@ -31,7 +31,7 @@ class _BasicAugmentationBase(nn.Module):
     For automatically generating the corresponding ``__repr__`` with full customized parameters, you may need to
     implement ``_param_generator`` by inheriting ``RandomGeneratorBase`` for generating random parameters and
     put all static parameters inside ``self.flags``. You may take the advantage of ``PlainUniformGenerator`` to
-    generate simple uniform parmeters with less boilertemplate code.
+    generate simple uniform parameters with less boilerplate code.
 
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities element-wise.
@@ -84,8 +84,7 @@ class _BasicAugmentationBase(nn.Module):
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         if self._param_generator is not None:
             return self._param_generator(batch_shape, self.same_on_batch)
-        else:
-            return {}
+        return {}
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         raise NotImplementedError
@@ -163,7 +162,7 @@ class _AugmentationBase(_BasicAugmentationBase):
     Advanced augmentation base class with the functionality of transformation matrix calculations.
 
     Args:
-        p:probability for applying an augmentation. This param controls the augmentation probabilities
+        p: probability for applying an augmentation. This param controls the augmentation probabilities
           element-wise for a batch.
         p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
           probabilities batch-wise.

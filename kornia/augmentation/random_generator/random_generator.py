@@ -51,7 +51,7 @@ class RandomGeneratorBase(nn.Module, metaclass=_PostInitInjectionMetaClass):
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         raise NotImplementedError
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
         raise NotImplementedError
 
 
@@ -112,7 +112,7 @@ class PlainUniformGenerator(RandomGeneratorBase):
                 )
             self.sampler_dict.update({name: Uniform(factor[0], factor[1], validate_args=False)})
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([t for t, _, _, _ in self.samplers])
@@ -150,10 +150,10 @@ class ProbabilityGenerator(RandomGeneratorBase):
         p = torch.tensor(float(self.p), device=device, dtype=dtype)
         self.sampler = Bernoulli(p)
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
         batch_size = batch_shape[0]
         probs_mask: torch.Tensor = _adapted_sampling((batch_size,), self.sampler, same_on_batch).bool()
-        return probs_mask
+        return dict(probs=probs_mask)
 
 
 class AffineGenerator(RandomGeneratorBase):
@@ -266,7 +266,7 @@ class AffineGenerator(RandomGeneratorBase):
         self.shear_x_sampler = shear_x_sampler
         self.shear_y_sampler = shear_y_sampler
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type: ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type: ignore
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]
@@ -374,7 +374,7 @@ class ColorJitterGenerator(RandomGeneratorBase):
         self.saturation_sampler = Uniform(saturation[0], saturation[1], validate_args=False)
         self.randperm = partial(torch.randperm, device=device, dtype=dtype)
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.brightness, self.contrast, self.hue, self.saturation])
@@ -428,7 +428,7 @@ class CropGenerator(RandomGeneratorBase):
         self.rand_sampler = Uniform(
             torch.tensor(0., device=device, dtype=dtype), torch.tensor(1., device=device, dtype=dtype))
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.size if isinstance(self.size, torch.Tensor) else None])
@@ -564,7 +564,7 @@ class ResizedCropGenerator(CropGenerator):
             torch.tensor(0., device=device, dtype=dtype), torch.tensor(1., device=device, dtype=dtype))
         self.log_ratio_sampler = Uniform(torch.log(ratio[0]), torch.log(ratio[1]), validate_args=False)
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
         batch_size = batch_shape[0]
         size = (batch_shape[-2], batch_shape[-1])
         _device, _dtype = _extract_device_dtype([self.scale, self.ratio])
@@ -652,7 +652,7 @@ class PerspectiveGenerator(RandomGeneratorBase):
             validate_args=False
         )
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]
@@ -750,7 +750,7 @@ class RectangleEraseGenerator(RandomGeneratorBase):
             validate_args=False
         )
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]
@@ -871,7 +871,7 @@ class MotionBlurGenerator(RandomGeneratorBase):
         self.angle_sampler = Uniform(angle[0], angle[1], validate_args=False)
         self.direction_sampler = Uniform(direction[0], direction[1], validate_args=False)
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         # self.ksize_factor.expand((batch_size, -1))
@@ -922,7 +922,7 @@ class PosterizeGenerator(RandomGeneratorBase):
         _joint_range_check(bits, 'bits', (0, 8))
         self.bit_sampler = Uniform(bits[0], bits[1], validate_args=False)
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.bits if isinstance(self.bits, torch.Tensor) else None])
@@ -967,7 +967,7 @@ class MixupGenerator(RandomGeneratorBase):
         self.lambda_sampler = Uniform(lambda_val[0], lambda_val[1], validate_args=False)
         self.prob_sampler = Bernoulli(torch.tensor(float(self.p), device=device, dtype=dtype))
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
 
         _common_param_check(batch_size, same_on_batch)
@@ -1047,7 +1047,7 @@ class CutmixGenerator(RandomGeneratorBase):
             validate_args=False
         )
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]
@@ -1987,7 +1987,7 @@ def random_sharpness_generator(
 ) -> Dict[str, torch.Tensor]:
     r"""Generate random sharpness parameters for a batch of images.
 
-    Args:0
+    Args:
         batch_size (int): the number of images.
         sharpness (torch.Tensor): Must be above 0. Default value is sampled from (0, 1).
         same_on_batch (bool): apply the same transformation across the batch. Default: False.

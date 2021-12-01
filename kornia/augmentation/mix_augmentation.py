@@ -92,16 +92,16 @@ class RandomMixUp(MixAugmentationBase):
     def apply_transform(  # type: ignore
         self, input: torch.Tensor, label: torch.Tensor, params: Dict[str, torch.Tensor]
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        input_permute = input.index_select(dim=0, index=params['mixup_pairs'].to(input.device))
-        labels_permute = label.index_select(dim=0, index=params['mixup_pairs'].to(label.device))
+        input_permute = input.index_select(dim=0, index=params["mixup_pairs"].to(input.device))
+        labels_permute = label.index_select(dim=0, index=params["mixup_pairs"].to(label.device))
 
-        lam = params['mixup_lambdas'].view(-1, 1, 1, 1).expand_as(input).to(label.device)
+        lam = params["mixup_lambdas"].view(-1, 1, 1, 1).expand_as(input).to(label.device)
         inputs = input * (1 - lam) + input_permute * lam
         out_labels = torch.stack(
             [
                 label.to(input.dtype),
                 labels_permute.to(input.dtype),
-                params['mixup_lambdas'].to(label.device, input.dtype),
+                params["mixup_lambdas"].to(label.device, input.dtype),
             ],
             dim=-1,
         ).to(label.device)
@@ -211,15 +211,15 @@ class RandomCutMix(MixAugmentationBase):
         self, input: torch.Tensor, label: torch.Tensor, params: Dict[str, torch.Tensor]  # type: ignore
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         height, width = input.size(2), input.size(3)
-        num_mixes = params['mix_pairs'].size(0)
-        batch_size = params['mix_pairs'].size(1)
+        num_mixes = params["mix_pairs"].size(0)
+        batch_size = params["mix_pairs"].size(1)
 
-        _shape_validation(params['mix_pairs'], [num_mixes, batch_size], 'mix_pairs')
-        _shape_validation(params['crop_src'], [num_mixes, batch_size, 4, 2], 'crop_src')
+        _shape_validation(params["mix_pairs"], [num_mixes, batch_size], "mix_pairs")
+        _shape_validation(params["crop_src"], [num_mixes, batch_size, 4, 2], "crop_src")
 
         out_inputs = input.clone()
         out_labels = []
-        for pair, crop in zip(params['mix_pairs'], params['crop_src']):
+        for pair, crop in zip(params["mix_pairs"], params["crop_src"]):
             input_permute = input.index_select(dim=0, index=pair.to(input.device))
             labels_permute = label.index_select(dim=0, index=pair.to(label.device))
             w, h = infer_bbox_shape(crop)

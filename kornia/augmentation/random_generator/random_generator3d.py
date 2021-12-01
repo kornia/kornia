@@ -151,7 +151,7 @@ class AffineGenerator3D(RandomGeneratorBase):
             validate_args=False
         )
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         depth = batch_shape[-3]
         height = batch_shape[-2]
@@ -264,7 +264,7 @@ class CropGenerator3D(RandomGeneratorBase):
         self.rand_sampler = Uniform(
             torch.tensor(0., device=device, dtype=dtype), torch.tensor(1., device=device, dtype=dtype))
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
         batch_size, _, depth, height, width = batch_shape
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.size if isinstance(self.size, torch.Tensor) else None])
@@ -282,7 +282,7 @@ class CropGenerator3D(RandomGeneratorBase):
             isinstance(depth, (int,)) and isinstance(height, (int,)) and isinstance(width, (int,))
             and depth > 0 and height > 0 and width > 0
         ):
-            raise AssertionError(f"`batch_shape` shoud not contain negative values. Got {(batch_shape)}.")
+            raise AssertionError(f"`batch_shape` should not contain negative values. Got {(batch_shape)}.")
 
         x_diff = width - size[:, 2] + 1
         y_diff = height - size[:, 1] + 1
@@ -401,7 +401,7 @@ class RotationGenerator3D(RandomGeneratorBase):
         self.pitch_sampler = Uniform(degrees[1][0], degrees[1][1], validate_args=False)
         self.roll_sampler = Uniform(degrees[2][0], degrees[2][1], validate_args=False)
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.degrees])
@@ -484,7 +484,7 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
         self.roll_sampler = Uniform(angle[2][0], angle[2][1], validate_args=False)
         self.direction_sampler = Uniform(direction[0], direction[1], validate_args=False)
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         # self.ksize_factor.expand((batch_size, -1))
@@ -539,7 +539,7 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
             validate_args=False
         )
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False):  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
         batch_size = batch_shape[0]
         depth = batch_shape[-3]
         height = batch_shape[-2]
