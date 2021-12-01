@@ -1,9 +1,9 @@
 import pytest
 import torch
 
+from kornia.testing import assert_close
 from kornia.utils import draw_rectangle
 from kornia.utils.draw import draw_line
-from kornia.testing import assert_close
 
 
 class TestDrawLine:
