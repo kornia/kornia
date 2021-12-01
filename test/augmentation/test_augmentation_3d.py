@@ -17,7 +17,6 @@ from kornia.augmentation import (
     RandomVerticalFlip3D,
 )
 from kornia.testing import assert_close
-from kornia.utils._compat import torch_version_geq
 
 
 class TestRandomHorizontalFlip3D:
