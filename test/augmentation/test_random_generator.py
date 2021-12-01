@@ -61,14 +61,14 @@ class TestRandomProbGen(RandomGeneratorBaseTests):
         torch.manual_seed(42)
         batch_size = 8
         res = ProbabilityGenerator(p)(torch.Size([batch_size]))
-        assert (res == torch.tensor(expected)).long().sum() == batch_size
+        assert (res['probs'] == torch.tensor(expected)).long().sum() == batch_size
 
     @pytest.mark.parametrize("seed,expected", [(42, [False] * 8), (0, [True] * 8)])
     def test_same_on_batch(self, seed, expected, device, dtype):
         torch.manual_seed(seed)
         batch_size = 8
         res = ProbabilityGenerator(0.5)(torch.Size([batch_size]), True)
-        assert (res == torch.tensor(expected)).long().sum() == batch_size
+        assert (res['probs'] == torch.tensor(expected)).long().sum() == batch_size
 
 
 class TestColorJitterGen(RandomGeneratorBaseTests):
