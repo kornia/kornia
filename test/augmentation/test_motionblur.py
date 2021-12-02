@@ -67,7 +67,7 @@ class TestRandomMotionBlur:
             f._params['ksize_factor'].unique().item(),
             f._params['angle_factor'],
             f._params['direction_factor'],
-            f.border_type.name.lower(),
+            f.flags['border_type'].name.lower(),
         )
 
         assert_close(output, expected, rtol=1e-4, atol=1e-4)
@@ -149,7 +149,7 @@ class TestRandomMotionBlur3D:
             f._params['ksize_factor'].unique().item(),
             f._params['angle_factor'],
             f._params['direction_factor'],
-            f.border_type.name.lower(),
+            f.flags['border_type'].name.lower(),
         )
 
         assert_close(output, expected, rtol=1e-4, atol=1e-4)

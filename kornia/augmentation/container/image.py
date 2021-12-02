@@ -96,7 +96,7 @@ class ImageSequential(SequentialBase):
         keepdim: Optional[bool] = None,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
         random_apply_weights: Optional[List[float]] = None,
-        if_unsupported_ops: str = 'raise'
+        if_unsupported_ops: str = "raise"
     ) -> None:
         super().__init__(*args, same_on_batch=same_on_batch, return_transform=return_transform, keepdim=keepdim)
 
