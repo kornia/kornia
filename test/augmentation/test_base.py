@@ -10,9 +10,9 @@ from kornia.testing import assert_close
 
 
 class TestBasicAugmentationBase:
-    def test_smoke(self, device, dtype):
+    def test_smoke(self):
         base = _BasicAugmentationBase(p=0.5, p_batch=1.0, same_on_batch=True)
-        __repr__ = "p=0.5, p_batch=1.0, same_on_batch=True"
+        __repr__ = "_BasicAugmentationBase(p=0.5, p_batch=1.0, same_on_batch=True)"
         assert str(base) == __repr__
 
     def test_infer_input(self, device, dtype):
