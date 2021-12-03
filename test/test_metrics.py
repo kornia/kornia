@@ -209,7 +209,7 @@ class TestMeanAveragePrecision:
             [boxes], [labels], [scores], [gt_boxes], [gt_labels], 2)
 
         assert_close(mean_ap[0], torch.tensor(1., device=device, dtype=dtype))
-        assert mean_ap[1][1] == 1.0
+        assert_close(mean_ap[1][1], 1.0)
 
     def test_raise(self, device, dtype):
         boxes = torch.tensor([[100, 50, 150, 100.]], device=device, dtype=dtype)

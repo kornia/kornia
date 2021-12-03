@@ -61,7 +61,8 @@ def mean_average_precision(
         raise AssertionError
 
     # Calculate APs for each class (except background)
-    average_precisions = torch.zeros((n_classes - 1), dtype=torch.float)  # (n_classes - 1)
+    average_precisions = torch.zeros(
+        (n_classes - 1), device=_pred_boxes.device, dtype=_pred_boxes.dtype)  # (n_classes - 1)
     for c in range(1, n_classes):
         # Extract only objects with this class
         gt_class_images = _gt_images[_gt_labels == c]  # (n_class_objects)
@@ -87,9 +88,9 @@ def mean_average_precision(
 
         # In the order of decreasing scores, check if true or false positive
         gt_positives = torch.zeros(
-            (n_class_detections,), dtype=torch.float, device=pred_class_boxes.device)  # (n_class_detections)
+            (n_class_detections,), dtype=pred_class_boxes.dtype, device=pred_class_boxes.device)  # (n_class_detections)
         false_positives = torch.zeros(
-            (n_class_detections,), dtype=torch.float, device=pred_class_boxes.device)  # (n_class_detections)
+            (n_class_detections,), dtype=pred_class_boxes.dtype, device=pred_class_boxes.device)  # (n_class_detections)
         for d in range(n_class_detections):
             this_detection_box = pred_class_boxes[d].unsqueeze(0)  # (1, 4)
             this_image = pred_class_images[d]  # (), scalar
@@ -134,7 +135,8 @@ def mean_average_precision(
 
         # Find the mean of the maximum of the precisions corresponding to recalls above the threshold 't'
         recall_thresholds = torch.arange(start=0, end=1.1, step=.1).tolist()  # (11)
-        precisions = torch.zeros((len(recall_thresholds)), device=_gt_boxes.device, dtype=torch.float)  # (11)
+        precisions = torch.zeros(
+            (len(recall_thresholds)), device=_gt_boxes.device, dtype=_gt_boxes.dtype)  # (11)
         for i, t in enumerate(recall_thresholds):
             recalls_above_t = cumul_recall >= t
             if recalls_above_t.any():
