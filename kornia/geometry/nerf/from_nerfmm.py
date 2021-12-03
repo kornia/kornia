@@ -171,7 +171,7 @@ def train_one_epoch(imgs, H, W, ray_params, n_selected_rays, opt_nerf, opt_focal
     np.random.shuffle(ids)
 
     for i in ids:
-        fxfy = focal_net()
+        fxfy = focal_net(i)
 
         # KEY 1: compute ray directions using estimated intrinsics online.
         ray_dir_cam = comp_ray_dir_cam_fxfy(H, W, fxfy[0], fxfy[1])
