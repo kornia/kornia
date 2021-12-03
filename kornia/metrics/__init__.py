@@ -11,6 +11,8 @@ __all__ = [
     "AverageMeter",
     "confusion_matrix",
     "mean_iou",
+    "mean_iou_bbox",
+    "mean_average_precision",
     "psnr",
     "ssim",
     "SSIM",

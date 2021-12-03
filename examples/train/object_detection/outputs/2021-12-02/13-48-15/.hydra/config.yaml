@@ -1,0 +1,8 @@
+data_path: ./data
+batch_size: 2
+num_epochs: 2
+lr: 0.001
+output_path: ./output
+image_size:
+- 224
+- 224

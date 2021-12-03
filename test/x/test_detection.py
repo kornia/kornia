@@ -59,7 +59,7 @@ def configuration():
     return config
 
 
-class TestsemanticSegmentationTrainer:
+class TestObjectDetectionTrainer:
     @pytest.mark.parametrize("loss_computed_by_model", [True, False])
     def test_fit(self, model, dataloader, criterion, optimizer, scheduler, configuration, loss_computed_by_model):
         trainer = ObjectDetectionTrainer(

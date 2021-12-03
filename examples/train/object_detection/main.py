@@ -51,7 +51,9 @@ def my_app(config: Configuration) -> None:
     _augmentations = K.augmentation.AugmentationSequential(
         K.augmentation.RandomHorizontalFlip(p=0.75),
         K.augmentation.RandomVerticalFlip(p=0.75),
-        K.augmentation.RandomAffine(degrees=0., translate=(0.1, 0.1), scale=(0.9, 1.1)),  # NOTE: XYXY bbox format cannot handle rotated boxes
+        K.augmentation.RandomAffine(
+            degrees=0., translate=(0.1, 0.1), scale=(0.9, 1.1)
+        ),  # NOTE: XYXY bbox format cannot handle rotated boxes
         data_keys=['input', 'bbox_xyxy']
     )
 
@@ -101,6 +103,7 @@ def my_app(config: Configuration) -> None:
     )
     trainer.fit()
     trainer.evaluate()
+
 
 if __name__ == "__main__":
     my_app()

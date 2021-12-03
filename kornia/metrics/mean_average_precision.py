@@ -38,8 +38,8 @@ def mean_average_precision(
 
     # Store all (true) objects in a single continuous tensor while keeping track of the image it is from
     gt_images = []
-    for i in range(len(gt_labels)):
-        gt_images.extend([i] * gt_labels[i].size(0))
+    for i, labels in enumerate(gt_labels):
+        gt_images.extend([i] * labels.size(0))
     # (n_objects), n_objects is the total no. of objects across all images
     _gt_boxes = torch.cat(gt_boxes, dim=0)  # (n_objects, 4)
     _gt_labels = torch.cat(gt_labels, dim=0)  # (n_objects)
@@ -50,8 +50,8 @@ def mean_average_precision(
 
     # Store all detections in a single continuous tensor while keeping track of the image it is from
     pred_images = []
-    for i in range(len(pred_labels)):
-        pred_images.extend([i] * pred_labels[i].size(0))
+    for i, labels in enumerate(pred_labels):
+        pred_images.extend([i] * labels.size(0))
     _pred_boxes = torch.cat(pred_boxes, dim=0)  # (n_detections, 4)
     _pred_labels = torch.cat(pred_labels, dim=0)  # (n_detections)
     _pred_scores = torch.cat(pred_scores, dim=0)  # (n_detections)
@@ -144,9 +144,9 @@ def mean_average_precision(
         average_precisions[c - 1] = precisions.mean()  # c is in [1, n_classes - 1]
 
     # Calculate Mean Average Precision (mAP)
-    mean_average_precision = average_precisions.mean()
+    mean_ap = average_precisions.mean()
 
     # Keep class-wise average precisions in a dictionary
-    average_precision_dict = {c + 1: v for c, v in enumerate(average_precisions.tolist())}
+    ap_dict = {c + 1: v for c, v in enumerate(average_precisions.tolist())}
 
-    return mean_average_precision, average_precision_dict
+    return mean_ap, ap_dict
