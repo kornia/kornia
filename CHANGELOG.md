@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### :new:  New Features
 - Add face detection API (#1469)
 - Add container operation weights and `OneOf` documentation (#1443)
-- Add oriented contraint check to Homography RANSAC (#1453)
+- Add oriented constraint check to Homography RANSAC (#1453)
 - Add background color selection in `warp_perspective` (#1452)
 - Add `draw_line` image utility (#1456)
 - Add Bounding Boxes API (#1304)
