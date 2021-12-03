@@ -69,11 +69,11 @@ class TestTransformBoxes2D:
 
         boxes = torch.tensor([[139.2640, 103.0150, 397.3120, 410.5225]], device=device, dtype=dtype)
 
-        expected = torch.tensor([[372.7360, 103.0150, 114.6880, 410.5225]], device=device, dtype=dtype)
+        expected = torch.tensor([[114.6880, 103.0150, 372.7360, 410.5225]], device=device, dtype=dtype)
 
         trans_mat = torch.tensor([[[-1.0, 0.0, 512.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
 
-        out = transform_bbox(trans_mat, boxes)
+        out = transform_bbox(trans_mat, boxes, restore_coordinates=True)
         assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
 
     def test_transform_multiple_boxes(self, device, dtype):
@@ -94,10 +94,10 @@ class TestTransformBoxes2D:
         expected = torch.tensor(
             [
                 [
-                    [372.7360, 103.0150, 114.6880, 410.5225],
-                    [510.9760, 80.5547, 0.0000, 512.0000],
-                    [346.7947, 262.1440, 1.3653, 508.9280],
-                    [392.1920, 144.2067, 254.9760, 410.1292],
+                    [114.6880, 103.0150, 372.7360, 410.5225],
+                    [0.0000, 80.5547, 510.9760, 512.0000],
+                    [1.3652, 262.1440, 346.7947, 508.9280],
+                    [254.9760, 144.2067, 392.1920, 410.1292],
                 ],
                 [
                     [139.2640, 103.0150, 397.3120, 410.5225],
@@ -119,7 +119,7 @@ class TestTransformBoxes2D:
             dtype=dtype,
         )
 
-        out = transform_bbox(trans_mat, boxes)
+        out = transform_bbox(trans_mat, boxes, restore_coordinates=True)
         assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
 
     def test_transform_boxes_wh(self, device, dtype):
@@ -137,10 +137,10 @@ class TestTransformBoxes2D:
 
         expected = torch.tensor(
             [
-                [372.7360, 103.0150, -258.0480, 307.5075],
-                [510.9760, 80.5547, -510.9760, 431.4453],
-                [346.7947, 262.1440, -345.4293, 246.7840],
-                [392.1920, 144.2067, -137.2160, 265.9225],
+                [114.6880, 103.0150, 258.0480, 307.5075],
+                [0.0000, 80.5547, 510.9760, 431.4453],
+                [1.3654, 262.1440, 345.4293, 246.7840],
+                [254.9760, 144.2067, 137.2160, 265.9225]
             ],
             device=device,
             dtype=dtype,
@@ -148,7 +148,7 @@ class TestTransformBoxes2D:
 
         trans_mat = torch.tensor([[[-1.0, 0.0, 512.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
 
-        out = transform_bbox(trans_mat, boxes, mode='xywh')
+        out = transform_bbox(trans_mat, boxes, mode='xywh', restore_coordinates=True)
         assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
@@ -169,7 +169,7 @@ class TestTransformBoxes2D:
         trans_mat = utils.tensor_to_gradcheck_var(trans_mat)
         boxes = utils.tensor_to_gradcheck_var(boxes)
 
-        assert gradcheck(transform_bbox, (trans_mat, boxes), raise_exception=True)
+        assert gradcheck(transform_bbox, (trans_mat, boxes, "xyxy", True), raise_exception=True)
 
     def test_jit(self, device, dtype):
         boxes = torch.tensor([[139.2640, 103.0150, 258.0480, 307.5075]], device=device, dtype=dtype)
