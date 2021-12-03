@@ -21,7 +21,7 @@ class DummyModel(nn.Module):
             nn.Conv2d(3, 1, kernel_size=16, stride=16),
             nn.Flatten()
         )
-    
+
     def forward(self, x, y=None):
         return self.model(x)
 
