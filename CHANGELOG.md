@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## :rocket: [0.6.2] - 2021-12-03
 ### :new:  New Features
 - Add face detection API (#1469)
+- Add `ObjectDetectorTrainer` (#1414)
 - Add container operation weights and `OneOf` documentation (#1443)
 - Add oriented constraint check to Homography RANSAC (#1453)
 - Add background color selection in `warp_perspective` (#1452)
