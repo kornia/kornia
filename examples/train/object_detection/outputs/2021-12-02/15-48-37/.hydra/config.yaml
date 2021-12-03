@@ -1,8 +1,0 @@
-data_path: /home/edgar/data/wideface
-batch_size: 2
-num_epochs: 2
-lr: 0.001
-output_path: ./output
-image_size:
-- 224
-- 224
