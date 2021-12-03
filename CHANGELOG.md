@@ -5,6 +5,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ****
+## :rocket: [0.6.2] - 2021-12-03
+### :new:  New Features
+- Add face detection API (#1469) 
+- Add container operation weights and `OneOf` documentation (#1443) 
+- Add oriented contraint check to Homography RANSAC (#1453) 
+- Add background color selection in `warp_perspective` (#1452) 
+- Add `draw_line` image utility (#1456)
+- Add Bounding Boxes API (#1304) 
+- Add histogram_matching functionality (#1395) 
+
+### :lady_beetle:  Bug fixes
+- fix catch type for torch.svd error (#1431)
+- Fix for nested AugmentationSequential containers (#1467) 
+- Use common bbox format xywh (#1472) 
+
+### :exclamation: Changes
+- Add padding_mode for RandomElasticTransform augmentation (#1439) 
+- Expose inliers sum to HomographyTracker (#1463)
+
+### :zap:  Improvements
+- Switch to one-way error RANSAC for speed-up (#1454) 
+- Few improvements on homography tracking (#1434) 
+- Enable all bandit tests, add separate hook for tests (#1437) 
+- Merge homography_warp to warp_perspective (#1438) 
+- Random generator refactor (#1459)
+  
+
+## :rocket: [0.6.1] - 2021-10-22
+### :lady_beetle:  Bug fixes
+- Fixes PyPI tarball missing required files #1421
+- hotfix: remove mutable object in constructor #1423
+
+
 ## :rocket: [0.6.0] - 2021-10-22
 
 ### :new:  New Features
