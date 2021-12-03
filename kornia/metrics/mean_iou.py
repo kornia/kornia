@@ -81,10 +81,10 @@ def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor) -> torch.Tensor:
                 [0.1429, 0.2500]])
     """
     # TODO: support more box types. e.g. xywh,
-    assert ((boxes_1[:, 2] - boxes_1[:, 0]) > 0).all() or ((boxes_1[:, 3] - boxes_1[:, 1]) > 0).all(), \
-        "Boxes_1 does not follow (x1, y1, x2, y2) format."
-    assert ((boxes_2[:, 2] - boxes_2[:, 0]) > 0).all() or ((boxes_2[:, 3] - boxes_2[:, 1]) > 0).all(), \
-        "Boxes_2 does not follow (x1, y1, x2, y2) format."
+    if not (((boxes_1[:, 2] - boxes_1[:, 0]) > 0).all() or ((boxes_1[:, 3] - boxes_1[:, 1]) > 0).all()):
+        raise AssertionError("Boxes_1 does not follow (x1, y1, x2, y2) format.")
+    if not (((boxes_2[:, 2] - boxes_2[:, 0]) > 0).all() or ((boxes_2[:, 3] - boxes_2[:, 1]) > 0).all()):
+        raise AssertionError("Boxes_2 does not follow (x1, y1, x2, y2) format.")
     # find intersection
     lower_bounds = torch.max(boxes_1[:, :2].unsqueeze(1), boxes_2[:, :2].unsqueeze(0))  # (n1, n2, 2)
     upper_bounds = torch.min(boxes_1[:, 2:].unsqueeze(1), boxes_2[:, 2:].unsqueeze(0))  # (n1, n2, 2)

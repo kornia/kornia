@@ -23,7 +23,8 @@ class ImageClassifierTrainer(Trainer):
     """
 
     def compute_metrics(self, *args: torch.Tensor) -> Dict[str, float]:
-        assert len(args) == 2
+        if len(args) != 2:
+            raise AssertionError
         out, target = args
         acc1, acc5 = accuracy(out, target, topk=(1, 5))
         return dict(top1=acc1.item(), top5=acc5.item())
@@ -41,7 +42,8 @@ class SemanticSegmentationTrainer(Trainer):
     """
 
     def compute_metrics(self, *args: torch.Tensor) -> Dict[str, float]:
-        assert len(args) == 2
+        if len(args) != 2:
+            raise AssertionError
         out, target = args
         iou = mean_iou(out.argmax(1), target, out.shape[1]).mean()
         return dict(iou=iou.item())
@@ -67,9 +69,11 @@ class ObjectDetectionTrainer(Trainer):
         scheduler: torch.optim.lr_scheduler.CosineAnnealingLR,
         config: Configuration,
         num_classes: int,
-        callbacks: Dict[str, Callable] = {},
+        callbacks: Dict[str, Callable] = None,
         loss_computed_by_model: Optional[bool] = None,
     ) -> None:
+        if callbacks is None:
+            callbacks = {}
         super().__init__(
             model, train_dataloader, valid_dataloader, criterion, optimizer, scheduler, config, callbacks
         )

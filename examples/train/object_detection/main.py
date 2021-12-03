@@ -21,7 +21,7 @@ def my_app(config: Configuration) -> None:
 
     def collate_fn(data):
         # To map from [{A, B}, ...] => [{A}, ...], [{B}, ...]
-        return list(d[0] for d in data), list(d[1] for d in data)
+        return [d[0] for d in data], [d[1] for d in data]
 
     # create the dataset
     train_dataset = torchvision.datasets.WIDERFace(

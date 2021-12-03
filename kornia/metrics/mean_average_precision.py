@@ -33,10 +33,11 @@ def mean_average_precision(
         (tensor(1.), {1: 1.0})
     """
     # these are all lists of tensors of the same length, i.e. number of images
-    assert len(pred_boxes) == len(pred_labels) == len(pred_scores) == len(gt_boxes) == len(gt_labels)
+    if not len(pred_boxes) == len(pred_labels) == len(pred_scores) == len(gt_boxes) == len(gt_labels):
+        raise AssertionError
 
     # Store all (true) objects in a single continuous tensor while keeping track of the image it is from
-    gt_images = list()
+    gt_images = []
     for i in range(len(gt_labels)):
         gt_images.extend([i] * gt_labels[i].size(0))
     # (n_objects), n_objects is the total no. of objects across all images
@@ -44,10 +45,11 @@ def mean_average_precision(
     _gt_labels = torch.cat(gt_labels, dim=0)  # (n_objects)
     _gt_images = torch.tensor(gt_images, device=_gt_boxes.device, dtype=torch.long)
 
-    assert _gt_images.size(0) == _gt_boxes.size(0) == _gt_labels.size(0)
+    if not _gt_images.size(0) == _gt_boxes.size(0) == _gt_labels.size(0):
+        raise AssertionError
 
     # Store all detections in a single continuous tensor while keeping track of the image it is from
-    pred_images = list()
+    pred_images = []
     for i in range(len(pred_labels)):
         pred_images.extend([i] * pred_labels[i].size(0))
     _pred_boxes = torch.cat(pred_boxes, dim=0)  # (n_detections, 4)
@@ -55,7 +57,8 @@ def mean_average_precision(
     _pred_scores = torch.cat(pred_scores, dim=0)  # (n_detections)
     _pred_images = torch.tensor(pred_images, device=_pred_boxes.device, dtype=torch.long)  # (n_detections)
 
-    assert _pred_images.size(0) == _pred_boxes.size(0) == _pred_labels.size(0) == _pred_scores.size(0)
+    if not _pred_images.size(0) == _pred_boxes.size(0) == _pred_labels.size(0) == _pred_scores.size(0):
+        raise AssertionError
 
     # Calculate APs for each class (except background)
     average_precisions = torch.zeros((n_classes - 1), dtype=torch.float)  # (n_classes - 1)
