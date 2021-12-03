@@ -14,19 +14,20 @@ cs = ConfigStore.instance()
 cs.store(name="config", node=Configuration)
 
 
+class Transform(nn.Module):
+    def __init__(self, image_size):
+        super().__init__()
+        self.resize = K.geometry.Resize(image_size, interpolation='nearest')
+
+    @torch.no_grad()
+    def forward(self, x, y):
+        x = K.utils.image_to_tensor(np.array(x))
+        x, y = x.float() / 255., torch.from_numpy(y)
+        return self.resize(x), self.resize(y)
+
+
 @hydra.main(config_path=".", config_name="config.yaml")
 def my_app(config: Configuration) -> None:
-
-    class Transform(nn.Module):
-        def __init__(self, image_size):
-            super().__init__()
-            self.resize = K.geometry.Resize(image_size, interpolation='nearest')
-
-        @torch.no_grad()
-        def forward(self, x, y):
-            x = K.utils.image_to_tensor(np.array(x))
-            x, y = x.float() / 255., torch.from_numpy(y)
-            return self.resize(x), self.resize(y)
 
     # make image size homogeneous
     transform = Transform(tuple(config.image_size))
