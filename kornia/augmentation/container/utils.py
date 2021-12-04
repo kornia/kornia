@@ -288,7 +288,7 @@ class BBoxXYXYApplyInverse(ApplyInverseImpl):
     This is for transform boxes in the format [xmin, ymin, xmax, ymax].
     """
 
-    apply_func = partial(transform_bbox, mode="xyxy")
+    apply_func = partial(transform_bbox, mode="xyxy", restore_coordinates=True)
 
 
 class BBoxXYWHApplyInverse(ApplyInverseImpl):
@@ -297,7 +297,7 @@ class BBoxXYWHApplyInverse(ApplyInverseImpl):
     This is for transform boxes in the format [xmin, ymin, width, height].
     """
 
-    apply_func = partial(transform_bbox, mode="xywh")
+    apply_func = partial(transform_bbox, mode="xywh", restore_coordinates=True)
 
 
 class KeypointsApplyInverse(ApplyInverseImpl):
