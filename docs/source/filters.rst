@@ -25,6 +25,13 @@ Edge detection
 .. autofunction:: spatial_gradient
 .. autofunction:: spatial_gradient3d
 
+.. autoclass:: Laplacian
+.. autoclass:: Sobel
+.. autoclass:: Canny
+.. autoclass:: SpatialGradient
+.. autoclass:: SpatialGradient3d
+.. autoclass:: DexiNed
+
 Filtering API
 -------------
 
@@ -51,10 +58,5 @@ Module
 .. autoclass:: MaxBlurPool2D
 .. autoclass:: MedianBlur
 .. autoclass:: GaussianBlur2d
-.. autoclass:: Laplacian
-.. autoclass:: Sobel
-.. autoclass:: Canny
-.. autoclass:: SpatialGradient
-.. autoclass:: SpatialGradient3d
 .. autoclass:: MotionBlur
 .. autoclass:: UnsharpMask

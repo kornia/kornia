@@ -1,6 +1,7 @@
 from .classification import ClassificationHead
 from .connected_components import connected_components
 from .extract_patches import combine_tensor_patches, CombineTensorPatches, extract_tensor_patches, ExtractTensorPatches
+from .edge_detection import EdgeDetector
 from .face_detection import *
 from .histogram_matching import histogram_matching, interp
 from .image_stitching import ImageStitcher
@@ -21,4 +22,5 @@ __all__ = [
     "ClassificationHead",
     "Lambda",
     "ImageStitcher",
+    "EdgeDetector",
 ]

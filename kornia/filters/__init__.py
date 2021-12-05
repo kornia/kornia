@@ -1,6 +1,7 @@
 from .blur import box_blur, BoxBlur
 from .blur_pool import blur_pool2d, BlurPool2D, max_blur_pool2d, MaxBlurPool2D
 from .canny import Canny, canny
+from .dexined import DexiNed
 from .filter import filter2d, filter2D, filter2d_separable, filter3d, filter3D
 from .gaussian import gaussian_blur2d, GaussianBlur2d
 from .kernels import (
@@ -74,4 +75,5 @@ __all__ = [
     "SpatialGradient3d",
     "spatial_gradient3d",
     "UnsharpMask",
+    "DexiNed",
 ]
