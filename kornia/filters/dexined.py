@@ -89,7 +89,7 @@ class _DenseBlock(nn.Sequential):
 
 class UpConvBlock(nn.Module):
     def __init__(self, in_features, up_scale):
-        super(UpConvBlock, self).__init__()
+        super().__init__()
         self.up_factor = 2
         self.constant_features = 16
 
@@ -165,7 +165,7 @@ class DexiNed(nn.Module):
     """
 
     def __init__(self):
-        super(DexiNed, self).__init__()
+        super().__init__()
         self.block_1 = DoubleConvBlock(3, 32, 64, stride=2,)
         self.block_2 = DoubleConvBlock(64, 128, use_act=False)
         self.dblock_3 = _DenseBlock(2, 128, 256)  # [128,256,100,100]
