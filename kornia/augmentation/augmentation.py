@@ -1700,8 +1700,9 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         return_transform: bool = False,
         same_on_batch: bool = False,
         p: float = 0.5,
+        keepdim: bool = False
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0)
+        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self.flags = dict(
             kernel_size=kernel_size,
             sigma=sigma,
@@ -1755,8 +1756,9 @@ class RandomInvert(IntensityAugmentationBase2D):
         return_transform: bool = False,
         same_on_batch: bool = False,
         p: float = 0.5,
+        keepdim: bool = False
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0)
+        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self.flags = dict(
             max_val=max_val,
         )
@@ -1795,8 +1797,8 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
         tensor(True)
     """
 
-    def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0)
+    def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False) -> None:
+        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
 
     def generate_parameters(self, shape: torch.Size) -> Dict[str, torch.Tensor]:
         B, C, _, _ = shape
@@ -1846,8 +1848,9 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
         return_transform: bool = False,
         same_on_batch: bool = False,
         p: float = 0.5,
+        keepdim: bool = False
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0)
+        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self.flags = dict(mean=mean, std=std)
 
     def generate_parameters(self, shape: torch.Size) -> Dict[str, torch.Tensor]:
@@ -1898,8 +1901,9 @@ class RandomFisheye(GeometricAugmentationBase2D):
         return_transform: bool = False,
         same_on_batch: bool = False,
         p: float = 0.5,
+        keepdim: bool = False
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0)
+        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self._check_tensor(center_x)
         self._check_tensor(center_y)
         self._check_tensor(gamma)
@@ -1988,8 +1992,9 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
         return_transform: bool = False,
         same_on_batch: bool = False,
         p: float = 0.5,
+        keepdim: bool = False
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0)
+        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=False)
         self.flags = dict(
             kernel_size=kernel_size,
             sigma=sigma,
@@ -2057,8 +2062,9 @@ class RandomThinPlateSpline(GeometricAugmentationBase2D):
         return_transform: bool = False,
         same_on_batch: bool = False,
         p: float = 0.5,
+        keepdim: bool = False
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0)
+        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self.flags = dict(align_corners=align_corners)
         self.dist = torch.distributions.Uniform(-scale, scale)
 
@@ -2121,8 +2127,9 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
         return_transform: bool = False,
         same_on_batch: bool = False,
         p: float = 0.5,
+        keepdim: bool = False
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0)
+        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self.flags = dict(
             kernel_size=kernel_size,
             border_type=border_type,
@@ -2184,8 +2191,9 @@ class PadTo(GeometricAugmentationBase2D):
         pad_mode: str = "constant",
         pad_value: Union[int, float] = 0,
         return_transform: bool = False,
+        keepdim: bool = False
     ) -> None:
-        super().__init__(p=1., return_transform=return_transform, same_on_batch=True, p_batch=1.)
+        super().__init__(p=1., return_transform=return_transform, same_on_batch=True, p_batch=1., keepdim=keepdim)
         self.flags = dict(
             size=size,
             pad_mode=pad_mode,
