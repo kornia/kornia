@@ -6,6 +6,7 @@ from torch.autograd import gradcheck
 
 import kornia
 import kornia.testing as utils  # test utils
+from kornia.contrib.distance_transform import conv_distance_transform
 from kornia.testing import assert_close
 from packaging import version
 
@@ -372,8 +373,45 @@ class TestImageStitcher:
 
 class TestConvDistanceTransform:
     @pytest.mark.parametrize("kernel_size", [3, 5, 7])
-    def test_smoke(self, device, dtype):
-        pass
+    def test_smoke(self, kernel_size, device, dtype):
+        B, C, H, W = 1, 3, 100, 100
+        input = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        distance_transformer = kornia.contrib.ConvDistanceTransform(kernel_size)
+
+        output1 = distance_transformer(input)
+        output2 = kornia.contrib.conv_distance_transform(input, kernel_size)
+
+        assert isinstance(output1, torch.Tensor)
+        assert isinstance(output2, torch.Tensor)
+        assert output1.shape == input.shape
+
+    def test_module(self, device, dtype):
+        B, C, H, W = 1, 3, 99, 100
+        input = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        distance_transformer = kornia.contrib.ConvDistanceTransform()
+
+        output1 = distance_transformer(input)
+        output2 = kornia.contrib.conv_distance_transform(input)
+        tol_val: float = utils._get_precision(device, dtype)
+        assert_close(output1, output2, rtol=tol_val, atol=tol_val)
 
     def test_exception(self, device, dtype):
-        pass
+        B, C, H, W = 1, 3, 224, 224
+        input1 = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        input2 = torch.rand(C, H, W, device=device, dtype=dtype)
+
+        # Non-odd kernel size
+        with pytest.raises(ValueError):
+            ConvDT = kornia.contrib.ConvDistanceTransform(6)
+            ConvDT.forward(input)
+
+        with pytest.raises(ValueError):
+            conv_distance_transform(input1, 4)
+
+        # Invalid input dimensions
+        with pytest.raises(ValueError):
+            conv_distance_transform(input2)
+
+        # Invalid input type
+        with pytest.raises(TypeError):
+            conv_distance_transform(None)
