@@ -2043,7 +2043,7 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
                          return_transform=return_transform,
                          same_on_batch=same_on_batch,
                          p_batch=1.0,
-                         keepdim=False)
+                         keepdim=keepdim)
         self.flags = dict(
             kernel_size=kernel_size,
             sigma=sigma,
