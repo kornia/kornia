@@ -6,7 +6,6 @@ from torch.autograd import gradcheck
 
 import kornia
 import kornia.testing as utils  # test utils
-from kornia.contrib.distance_transform import conv_distance_transform
 from kornia.testing import assert_close
 from packaging import version
 
@@ -379,7 +378,7 @@ class TestConvDistanceTransform:
         distance_transformer = kornia.contrib.ConvDistanceTransform(kernel_size)
 
         output1 = distance_transformer(input1)
-        output2 = kornia.contrib.conv_distance_transform(input, kernel_size)
+        output2 = kornia.contrib.conv_distance_transform(input1, kernel_size)
 
         assert isinstance(output1, torch.Tensor)
         assert isinstance(output2, torch.Tensor)
@@ -406,12 +405,12 @@ class TestConvDistanceTransform:
             ConvDT.forward(input1)
 
         with pytest.raises(ValueError):
-            conv_distance_transform(input1, 4)
+            kornia.contrib.distance_transform.conv_distance_transform(input1, 4)
 
         # Invalid input dimensions
         with pytest.raises(ValueError):
-            conv_distance_transform(input2)
+            kornia.contrib.distance_transform.conv_distance_transform(input2)
 
         # Invalid input type
         with pytest.raises(TypeError):
-            conv_distance_transform(None)
+            kornia.contrib.distance_transform.conv_distance_transform(None)
