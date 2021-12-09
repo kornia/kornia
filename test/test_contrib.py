@@ -375,15 +375,15 @@ class TestConvDistanceTransform:
     @pytest.mark.parametrize("kernel_size", [3, 5, 7])
     def test_smoke(self, kernel_size, device, dtype):
         B, C, H, W = 1, 3, 100, 100
-        input = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        input1 = torch.rand(B, C, H, W, device=device, dtype=dtype)
         distance_transformer = kornia.contrib.ConvDistanceTransform(kernel_size)
 
-        output1 = distance_transformer(input)
+        output1 = distance_transformer(input1)
         output2 = kornia.contrib.conv_distance_transform(input, kernel_size)
 
         assert isinstance(output1, torch.Tensor)
         assert isinstance(output2, torch.Tensor)
-        assert output1.shape == input.shape
+        assert output1.shape == input1.shape
 
     def test_module(self, device, dtype):
         B, C, H, W = 1, 3, 99, 100
@@ -403,7 +403,7 @@ class TestConvDistanceTransform:
         # Non-odd kernel size
         with pytest.raises(ValueError):
             ConvDT = kornia.contrib.ConvDistanceTransform(6)
-            ConvDT.forward(input)
+            ConvDT.forward(input1)
 
         with pytest.raises(ValueError):
             conv_distance_transform(input1, 4)
