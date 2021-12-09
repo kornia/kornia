@@ -56,6 +56,9 @@ def conv_distance_transform(
     if not len(input.shape) == 4:
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
 
+    if kernel_size % 2 == 0:
+        raise ValueError("Kernel size must be an odd number.")
+
     device: torch.device = input.device
 
     n_iters = math.ceil(max(input.shape[2], input.shape[3]) / math.floor(kernel_size / 2))
@@ -107,6 +110,8 @@ class ConvDistanceTransform(nn.Module):
         kernel_size: int = 7
     ):
         super().__init__()
+        if kernel_size % 2 == 0:
+            raise ValueError("Kernel size must be an odd number.")
         self.kernel_size = kernel_size
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
