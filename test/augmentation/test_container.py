@@ -292,8 +292,8 @@ class TestAugmentationSequential:
             K.RandomHorizontalFlip(p=1.0), data_keys=["input", "bbox"], return_transform=False, same_on_batch=False
         )
 
-        out_ver = aug_ver(inp, bbox)
-        out_hor = aug_hor(inp, bbox)
+        out_ver = aug_ver(inp.clone(), bbox.clone())
+        out_hor = aug_hor(inp.clone(), bbox.clone())
 
         assert_close(out_ver[1], expected_bbox_vertical_flip)
         assert_close(out_hor[1], expected_bbox_horizontal_flip)
@@ -309,6 +309,9 @@ class TestAugmentationSequential:
         )[:, None].float()
         aug = K.AugmentationSequential(
             K.ImageSequential(
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0, return_transform=True)
+            ),
+            K.AugmentationSequential(
                 K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0, return_transform=True)
             ),
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
@@ -345,6 +348,9 @@ class TestAugmentationSequential:
             K.ImageSequential(
                 K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0, return_transform=True)
             ),
+            K.AugmentationSequential(
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0, return_transform=True)
+            ),
             K.RandomAffine(360, p=1.0, return_transform=False),
             data_keys=['input', 'mask', 'bbox', 'keypoints'],
         )
@@ -371,6 +377,9 @@ class TestAugmentationSequential:
         )[:, None].float()
         aug = K.AugmentationSequential(
             K.ImageSequential(
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0, return_transform=True)
+            ),
+            K.AugmentationSequential(
                 K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0, return_transform=True)
             ),
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0, return_transform=True),
@@ -402,6 +411,9 @@ class TestAugmentationSequential:
         )[:, None].float()
         aug = K.AugmentationSequential(
             K.ImageSequential(
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0, return_transform=True)
+            ),
+            K.AugmentationSequential(
                 K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0, return_transform=True)
             ),
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0, return_transform=True),

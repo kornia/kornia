@@ -33,46 +33,46 @@ def make_cdt_kernel(
 
 
 def conv_distance_transform(
-    input: torch.Tensor,
+    image: torch.Tensor,
     kernel_size: int = 7
 ) -> torch.Tensor:
     r"""Approximates the Manhattan distance transform of images using convolutions.
 
-    The value at each pixel in the output represents the distance to the nearest non-zero pixel in the input image.
-    The transformation is applied independently across the channel dimension of the inputs.
+    The value at each pixel in the output represents the distance to the nearest non-zero pixel in the image image.
+    The transformation is applied independently across the channel dimension of the images.
 
 
     Args:
-        input: Image with shape :math:`(B,C,H,W)`.
+        image: Image with shape :math:`(B,C,H,W)`.
         kernel_size: size of the convolution kernel. Larger kernels are more accurate but less numerically stable.
 
     Returns:
         tensor with shape :math:`(B,C,H,W)`.
 
     """
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+    if not isinstance(image, torch.Tensor):
+        raise TypeError(f"image type is not a torch.Tensor. Got {type(image)}")
 
-    if not len(input.shape) == 4:
-        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
+    if not len(image.shape) == 4:
+        raise ValueError(f"Invalid image shape, we expect BxCxHxW. Got: {image.shape}")
 
     if kernel_size % 2 == 0:
         raise ValueError("Kernel size must be an odd number.")
 
-    device: torch.device = input.device
+    device: torch.device = image.device
 
-    n_iters = math.ceil(max(input.shape[2], input.shape[3]) / math.floor(kernel_size / 2))
+    n_iters = math.ceil(max(image.shape[2], image.shape[3]) / math.floor(kernel_size / 2))
     kernel = make_cdt_kernel(kernel_size)
 
-    out = torch.zeros(input.shape, dtype=torch.float32, device=device)
+    out = torch.zeros(image.shape, dtype=torch.float32, device=device)
 
-    # It is possible to avoid cloning the input if boundary = input, but this would require modifying the input tensor.
-    boundary = input.clone().to(torch.float32)
+    # It is possible to avoid cloning the image if boundary = image, but this would require modifying the image tensor.
+    boundary = image.clone().to(torch.float32)
     kernel = kernel.to(device)
 
-    # If input images have multiple channels, view the channels in the batch dimension to match kernel shape.
-    if input.shape[1] > 1:
-        batch_channel_view_shape = (input.shape[0] * input.shape[1], 1, input.shape[2], input.shape[3])
+    # If image images have multiple channels, view the channels in the batch dimension to match kernel shape.
+    if image.shape[1] > 1:
+        batch_channel_view_shape = (image.shape[0] * image.shape[1], 1, image.shape[2], image.shape[3])
         out = out.view(*batch_channel_view_shape)
         boundary = boundary.view(*batch_channel_view_shape)
 
@@ -92,8 +92,8 @@ def conv_distance_transform(
         boundary[mask] = 1
 
     # View channels in the channel dimension, if they were added to batch dimension during transform.
-    if input.shape[1] > 1:
-        out = out.view(input.shape)
+    if image.shape[1] > 1:
+        out = out.view(image.shape)
 
     return out
 
@@ -114,5 +114,5 @@ class ConvDistanceTransform(nn.Module):
             raise ValueError("Kernel size must be an odd number.")
         self.kernel_size = kernel_size
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        return conv_distance_transform(input, self.kernel_size)
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
+        return conv_distance_transform(image, self.kernel_size)

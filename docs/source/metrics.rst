@@ -16,6 +16,12 @@ Segmentation
 .. autofunction:: confusion_matrix
 .. autofunction:: mean_iou
 
+Detection
+---------
+
+.. autofunction:: mean_average_precision
+.. autofunction:: mean_iou_bbox
+
 Image Quality
 -------------
 

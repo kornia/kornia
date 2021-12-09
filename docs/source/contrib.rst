@@ -3,6 +3,19 @@ kornia.contrib
 
 .. currentmodule:: kornia.contrib
 
+Face Detection
+--------------
+
+.. autoclass:: FaceDetector
+
+.. autoclass:: FaceKeypoint
+    :members:
+    :undoc-members:
+
+.. autoclass:: FaceDetectorResult
+    :members:
+    :undoc-members:
+
 Image Segmentation
 ------------------
 

@@ -1,11 +1,12 @@
 import enum
 import warnings
-from typing import Tuple
+from typing import Optional, Tuple
 
 import torch
 import torch.nn.functional as F
 
 from kornia.constants import pi
+from kornia.utils.helpers import _torch_inverse_cast
 
 __all__ = [
     "rad2deg",
@@ -30,6 +31,11 @@ __all__ = [
     "denormalize_pixel_coordinates3d",
     "normalize_pixel_coordinates3d",
     "angle_to_rotation_matrix",
+    "normalize_homography",
+    "denormalize_homography",
+    "normalize_homography3d",
+    "normal_transform_pixel",
+    "normal_transform_pixel3d",
 ]
 
 
@@ -983,14 +989,10 @@ def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
     r"""Create a rotation matrix out of angles in degrees.
 
     Args:
-        angle: tensor of angles in degrees, any shape.
+        angle: tensor of angles in degrees, any shape :math:`(*)`.
 
     Returns:
-        tensor of *x2x2 rotation matrices.
-
-    Shape:
-        - Input: :math:`(*)`
-        - Output: :math:`(*, 2, 2)`
+        tensor of rotation matrices with shape :math:`(*, 2, 2)`.
 
     Example:
         >>> input = torch.rand(1, 3)  # Nx3
@@ -1000,3 +1002,174 @@ def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
     cos_a: torch.Tensor = torch.cos(ang_rad)
     sin_a: torch.Tensor = torch.sin(ang_rad)
     return torch.stack([cos_a, sin_a, -sin_a, cos_a], dim=-1).view(*angle.shape, 2, 2)
+
+
+def normalize_homography(
+    dst_pix_trans_src_pix: torch.Tensor, dsize_src: Tuple[int, int], dsize_dst: Tuple[int, int]
+) -> torch.Tensor:
+    r"""Normalize a given homography in pixels to [-1, 1].
+
+    Args:
+        dst_pix_trans_src_pix: homography/ies from source to destination to be
+          normalized. :math:`(B, 3, 3)`
+        dsize_src: size of the source image (height, width).
+        dsize_dst: size of the destination image (height, width).
+
+    Returns:
+        the normalized homography of shape :math:`(B, 3, 3)`.
+    """
+    if not isinstance(dst_pix_trans_src_pix, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(dst_pix_trans_src_pix)}")
+
+    if not (len(dst_pix_trans_src_pix.shape) == 3 or dst_pix_trans_src_pix.shape[-2:] == (3, 3)):
+        raise ValueError(f"Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {dst_pix_trans_src_pix.shape}")
+
+    # source and destination sizes
+    src_h, src_w = dsize_src
+    dst_h, dst_w = dsize_dst
+
+    # compute the transformation pixel/norm for src/dst
+    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel(src_h, src_w).to(dst_pix_trans_src_pix)
+
+    src_pix_trans_src_norm = _torch_inverse_cast(src_norm_trans_src_pix)
+    dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel(dst_h, dst_w).to(dst_pix_trans_src_pix)
+
+    # compute chain transformations
+    dst_norm_trans_src_norm: torch.Tensor = dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm)
+    return dst_norm_trans_src_norm
+
+
+def normal_transform_pixel(
+    height: int,
+    width: int,
+    eps: float = 1e-14,
+    device: Optional[torch.device] = None,
+    dtype: Optional[torch.dtype] = None,
+) -> torch.Tensor:
+    r"""Compute the normalization matrix from image size in pixels to [-1, 1].
+
+    Args:
+        height image height.
+        width: image width.
+        eps: epsilon to prevent divide-by-zero errors
+
+    Returns:
+        normalized transform with shape :math:`(1, 3, 3)`.
+    """
+    tr_mat = torch.tensor([[1.0, 0.0, -1.0], [0.0, 1.0, -1.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)  # 3x3
+
+    # prevent divide by zero bugs
+    width_denom: float = eps if width == 1 else width - 1.0
+    height_denom: float = eps if height == 1 else height - 1.0
+
+    tr_mat[0, 0] = tr_mat[0, 0] * 2.0 / width_denom
+    tr_mat[1, 1] = tr_mat[1, 1] * 2.0 / height_denom
+
+    return tr_mat.unsqueeze(0)  # 1x3x3
+
+
+def normal_transform_pixel3d(
+    depth: int,
+    height: int,
+    width: int,
+    eps: float = 1e-14,
+    device: Optional[torch.device] = None,
+    dtype: Optional[torch.dtype] = None,
+) -> torch.Tensor:
+    r"""Compute the normalization matrix from image size in pixels to [-1, 1].
+
+    Args:
+        depth: image depth.
+        height: image height.
+        width: image width.
+        eps: epsilon to prevent divide-by-zero errors
+
+    Returns:
+        normalized transform with shape :math:`(1, 4, 4)`.
+    """
+    tr_mat = torch.tensor(
+        [[1.0, 0.0, 0.0, -1.0], [0.0, 1.0, 0.0, -1.0], [0.0, 0.0, 1.0, -1.0], [0.0, 0.0, 0.0, 1.0]],
+        device=device,
+        dtype=dtype,
+    )  # 4x4
+
+    # prevent divide by zero bugs
+    width_denom: float = eps if width == 1 else width - 1.0
+    height_denom: float = eps if height == 1 else height - 1.0
+    depth_denom: float = eps if depth == 1 else depth - 1.0
+
+    tr_mat[0, 0] = tr_mat[0, 0] * 2.0 / width_denom
+    tr_mat[1, 1] = tr_mat[1, 1] * 2.0 / height_denom
+    tr_mat[2, 2] = tr_mat[2, 2] * 2.0 / depth_denom
+
+    return tr_mat.unsqueeze(0)  # 1x4x4
+
+
+def denormalize_homography(
+    dst_pix_trans_src_pix: torch.Tensor, dsize_src: Tuple[int, int], dsize_dst: Tuple[int, int]
+) -> torch.Tensor:
+    r"""De-normalize a given homography in pixels from [-1, 1] to actual height and width.
+
+    Args:
+        dst_pix_trans_src_pix: homography/ies from source to destination to be
+          denormalized. :math:`(B, 3, 3)`
+        dsize_src: size of the source image (height, width).
+        dsize_dst: size of the destination image (height, width).
+
+    Returns:
+        the denormalized homography of shape :math:`(B, 3, 3)`.
+    """
+    if not isinstance(dst_pix_trans_src_pix, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(dst_pix_trans_src_pix)}")
+
+    if not (len(dst_pix_trans_src_pix.shape) == 3 or dst_pix_trans_src_pix.shape[-2:] == (3, 3)):
+        raise ValueError(f"Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {dst_pix_trans_src_pix.shape}")
+
+    # source and destination sizes
+    src_h, src_w = dsize_src
+    dst_h, dst_w = dsize_dst
+
+    # compute the transformation pixel/norm for src/dst
+    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel(src_h, src_w).to(dst_pix_trans_src_pix)
+
+    dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel(dst_h, dst_w).to(dst_pix_trans_src_pix)
+    dst_denorm_trans_dst_pix = _torch_inverse_cast(dst_norm_trans_dst_pix)
+    # compute chain transformations
+    dst_norm_trans_src_norm: torch.Tensor = dst_denorm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_norm_trans_src_pix)
+    return dst_norm_trans_src_norm
+
+
+def normalize_homography3d(
+    dst_pix_trans_src_pix: torch.Tensor, dsize_src: Tuple[int, int, int], dsize_dst: Tuple[int, int, int]
+) -> torch.Tensor:
+    r"""Normalize a given homography in pixels to [-1, 1].
+
+    Args:
+        dst_pix_trans_src_pix: homography/ies from source to destination to be
+          normalized. :math:`(B, 4, 4)`
+        dsize_src: size of the source image (depth, height, width).
+        dsize_src: size of the destination image (depth, height, width).
+
+    Returns:
+        the normalized homography.
+
+    Shape:
+        Output: :math:`(B, 4, 4)`
+    """
+    if not isinstance(dst_pix_trans_src_pix, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(dst_pix_trans_src_pix)}")
+
+    if not (len(dst_pix_trans_src_pix.shape) == 3 or dst_pix_trans_src_pix.shape[-2:] == (4, 4)):
+        raise ValueError(f"Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {dst_pix_trans_src_pix.shape}")
+
+    # source and destination sizes
+    src_d, src_h, src_w = dsize_src
+    dst_d, dst_h, dst_w = dsize_dst
+    # compute the transformation pixel/norm for src/dst
+    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel3d(src_d, src_h, src_w).to(dst_pix_trans_src_pix)
+
+    src_pix_trans_src_norm = _torch_inverse_cast(src_norm_trans_src_pix)
+    dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel3d(dst_d, dst_h, dst_w).to(dst_pix_trans_src_pix)
+    # compute chain transformations
+    dst_norm_trans_src_norm: torch.Tensor = dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm)
+    return dst_norm_trans_src_norm

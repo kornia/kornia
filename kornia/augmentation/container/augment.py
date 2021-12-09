@@ -76,6 +76,11 @@ class AugmentationSequential(ImageSequential):
         >>> out = aug_list(input, input, bbox, points)
         >>> [o.shape for o in out]
         [torch.Size([2, 3, 5, 6]), torch.Size([2, 3, 5, 6]), torch.Size([2, 4, 2]), torch.Size([2, 1, 2])]
+        >>> # apply the exact augmentation again.
+        >>> out_rep = aug_list(input, input, bbox, points, params=aug_list._params)
+        >>> [(o == o_rep).all() for o, o_rep in zip(out, out_rep)]
+        [tensor(True), tensor(True), tensor(True), tensor(True)]
+        >>> # inverse the augmentations
         >>> out_inv = aug_list.inverse(*out)
         >>> [o.shape for o in out_inv]
         [torch.Size([2, 3, 5, 6]), torch.Size([2, 3, 5, 6]), torch.Size([2, 4, 2]), torch.Size([2, 1, 2])]
@@ -286,7 +291,7 @@ class AugmentationSequential(ImageSequential):
                 input = cast(TensorWithTransformMat, out)
             outputs[idx] = input
 
-        self.return_label = label is not None or self.contains_label_operations(params)
+        self.return_label = self.return_label or label is not None or self.contains_label_operations(params)
 
         for idx, (input, dcate, out) in enumerate(zip(args, data_keys, outputs)):
             if out is not None:

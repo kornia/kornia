@@ -3,7 +3,7 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia
-import kornia.geometry.transform.projwarp as proj
+import kornia.geometry.transform as proj
 import kornia.testing as utils  # test utils
 from kornia.testing import assert_close
 

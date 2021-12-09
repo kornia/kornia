@@ -1,5 +1,6 @@
 import warnings
-from typing import cast, Dict, Optional, Tuple, Union
+from enum import Enum
+from typing import Any, cast, Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -8,6 +9,7 @@ from torch.distributions import Bernoulli
 import kornia
 from kornia.utils.helpers import _torch_inverse_cast
 
+from .random_generator import RandomGeneratorBase
 from .utils import (
     _adapted_sampling,
     _transform_input,
@@ -25,6 +27,11 @@ class _BasicAugmentationBase(nn.Module):
     Plain augmentation base class without the functionality of transformation matrix calculations.
     By default, the random computations will be happened on CPU with ``torch.get_default_dtype()``.
     To change this behaviour, please use ``set_rng_device_and_dtype``.
+
+    For automatically generating the corresponding ``__repr__`` with full customized parameters, you may need to
+    implement ``_param_generator`` by inheriting ``RandomGeneratorBase`` for generating random parameters and
+    put all static parameters inside ``self.flags``. You may take the advantage of ``PlainUniformGenerator`` to
+    generate simple uniform parameters with less boilerplate code.
 
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities element-wise.
@@ -48,10 +55,20 @@ class _BasicAugmentationBase(nn.Module):
             self._p_gen = Bernoulli(self.p)
         if p_batch != 0.0 or p_batch != 1.0:
             self._p_batch_gen = Bernoulli(self.p_batch)
+        self._param_generator: Optional[RandomGeneratorBase] = None
+        self.flags: Dict[str, Any] = {}
         self.set_rng_device_and_dtype(torch.device('cpu'), torch.get_default_dtype())
 
     def __repr__(self) -> str:
-        return f"p={self.p}, p_batch={self.p_batch}, same_on_batch={self.same_on_batch}"
+        txt = f"p={self.p}, p_batch={self.p_batch}, same_on_batch={self.same_on_batch}"
+        if isinstance(self._param_generator, RandomGeneratorBase):
+            txt = f"{str(self._param_generator)}, {txt}"
+        for k, v in self.flags.items():
+            if isinstance(v, Enum):
+                txt += f", {k}={v.name.lower()}"
+            else:
+                txt += f", {k}={v}"
+        return f"{self.__class__.__name__}({txt})"
 
     def __unpack_input__(self, input: torch.Tensor) -> torch.Tensor:
         return input
@@ -65,6 +82,8 @@ class _BasicAugmentationBase(nn.Module):
         raise NotImplementedError
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        if self._param_generator is not None:
+            return self._param_generator(batch_shape, self.same_on_batch)
         return {}
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
@@ -78,6 +97,8 @@ class _BasicAugmentationBase(nn.Module):
         """
         self.device = device
         self.dtype = dtype
+        if self._param_generator is not None:
+            self._param_generator.set_rng_device_and_dtype(device, dtype)
 
     def __batch_prob_generator__(
         self, batch_shape: torch.Size, p: float, p_batch: float, same_on_batch: bool
@@ -109,6 +130,10 @@ class _BasicAugmentationBase(nn.Module):
         if _params is None:
             _params = {}
         _params['batch_prob'] = to_apply
+        # Added another input_size parameter for geometric transformations
+        # This might be needed for correctly inversing.
+        input_size = torch.tensor(batch_shape, dtype=torch.long)
+        _params.update({'forward_input_shape': input_size})
         return _params
 
     def apply_func(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> TensorWithTransformMat:
@@ -137,7 +162,7 @@ class _AugmentationBase(_BasicAugmentationBase):
     Advanced augmentation base class with the functionality of transformation matrix calculations.
 
     Args:
-        pprobability for applying an augmentation. This param controls the augmentation probabilities
+        p: probability for applying an augmentation. This param controls the augmentation probabilities
           element-wise for a batch.
         p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
           probabilities batch-wise.
@@ -162,7 +187,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         self.return_transform = return_transform
 
     def __repr__(self) -> str:
-        return super().__repr__() + f", return_transform={self.return_transform}"
+        return self.__class__.__name__ + f"({super().__repr__()}, return_transform={self.return_transform})"
 
     def identity_matrix(self, input: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError
@@ -348,7 +373,7 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
         self, input: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None
     ) -> torch.Tensor:
         if params is not None:
-            transform = self.compute_transformation(input, params)
+            transform = self.compute_transformation(input[params['batch_prob']], params)
         elif not hasattr(self, "_transform_matrix"):
             params = self.forward_parameters(input.shape)
             transform = self.identity_matrix(input)
@@ -377,10 +402,10 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
         batch_shape = input.shape
         if params is None:
             params = self._params
-        if size is None and "input_size" in params:
+        if size is None and "forward_input_shape" in params:
             # Majorly for cropping functions
-            size = params['input_size'].unique(dim=0).squeeze().numpy().tolist()
-            size = (size[0], size[1])
+            size = params['forward_input_shape'].numpy().tolist()
+            size = (size[-2], size[-1])
         if 'batch_prob' not in params:
             params['batch_prob'] = torch.tensor([True] * batch_shape[0])
             warnings.warn("`batch_prob` is not found in params. Will assume applying on all data.")

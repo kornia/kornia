@@ -94,9 +94,13 @@ class ApplyInverseImpl(ApplyInverseInterface):
         """
 
         mat: Optional[torch.Tensor] = cls._get_transformation(input, module, param)
+        to_apply = None
+        if isinstance(module, _AugmentationBase):
+            to_apply = param.data['batch_prob']  # type: ignore
 
-        if mat is not None:
-            input = cls.apply_func(mat, input)
+        # If any inputs need to be transformed.
+        if mat is not None and to_apply is not None and to_apply.sum() != 0:
+            input[to_apply] = cls.apply_func(mat, input[to_apply])
 
         return input, label
 
@@ -166,7 +170,7 @@ class InputApplyInverse(ApplyInverseImpl):
             param: the corresponding parameters to the module.
         """
         if isinstance(module, (MixAugmentationBase,)):
-            input, label = module(input, label, params=param.data)
+            input, label = module(input, label=label, params=param.data)
         elif isinstance(module, (_AugmentationBase,)):
             input = module(input, params=param.data)
         elif isinstance(module, kornia.augmentation.container.ImageSequential):
@@ -174,7 +178,7 @@ class InputApplyInverse(ApplyInverseImpl):
             temp2 = module.return_label
             module.apply_inverse_func = InputApplyInverse
             module.return_label = True
-            input, label = module(input, label, param.data)
+            input, label = module(input, label=label, params=param.data)
             module.apply_inverse_func = temp
             module.return_label = temp2
         else:
@@ -198,11 +202,11 @@ class InputApplyInverse(ApplyInverseImpl):
             param: the corresponding parameters to the module.
         """
         if isinstance(module, GeometricAugmentationBase2D):
-            input = module.inverse(input, None if param is None else cast(Dict, param.data))
+            input = module.inverse(input, params=None if param is None else cast(Dict, param.data))
         elif isinstance(module, kornia.augmentation.container.ImageSequential):
             temp = module.apply_inverse_func
             module.apply_inverse_func = InputApplyInverse
-            input = module.inverse(input, None if param is None else cast(List, param.data))
+            input = module.inverse(input, params=None if param is None else cast(List, param.data))
             module.apply_inverse_func = temp
         return input
 
@@ -244,13 +248,13 @@ class MaskApplyInverse(ApplyInverseImpl):
 
         if isinstance(module, GeometricAugmentationBase2D):
             _param = cast(Dict[str, torch.Tensor], _param)
-            input = module(input, _param, return_transform=False)
+            input = module(input, params=_param, return_transform=False)
         elif isinstance(module, kornia.augmentation.container.ImageSequential) and not module.is_intensity_only():
             _param = cast(List[ParamItem], _param)
             temp = module.apply_inverse_func
             module.apply_inverse_func = MaskApplyInverse
             geo_param: List[ParamItem] = _get_geometric_only_param(module, _param)
-            input = cls.make_input_only_sequential(module)(input, None, geo_param)
+            input = cls.make_input_only_sequential(module)(input, label=None, params=geo_param)
             module.apply_inverse_func = temp
         else:
             pass  # No need to update anything
@@ -269,11 +273,11 @@ class MaskApplyInverse(ApplyInverseImpl):
             param: the corresponding parameters to the module.
         """
         if isinstance(module, GeometricAugmentationBase2D):
-            input = module.inverse(input, None if param is None else cast(Dict, param.data))
+            input = module.inverse(input, params=None if param is None else cast(Dict, param.data))
         elif isinstance(module, kornia.augmentation.container.ImageSequential):
             temp = module.apply_inverse_func
             module.apply_inverse_func = MaskApplyInverse
-            input = module.inverse(input, None if param is None else cast(List, param.data))
+            input = module.inverse(input, params=None if param is None else cast(List, param.data))
             module.apply_inverse_func = temp
         return input
 
@@ -284,7 +288,7 @@ class BBoxXYXYApplyInverse(ApplyInverseImpl):
     This is for transform boxes in the format [xmin, ymin, xmax, ymax].
     """
 
-    apply_func = partial(transform_bbox, mode="xyxy")
+    apply_func = partial(transform_bbox, mode="xyxy", restore_coordinates=True)
 
 
 class BBoxXYWHApplyInverse(ApplyInverseImpl):
@@ -293,7 +297,7 @@ class BBoxXYWHApplyInverse(ApplyInverseImpl):
     This is for transform boxes in the format [xmin, ymin, width, height].
     """
 
-    apply_func = partial(transform_bbox, mode="xywh")
+    apply_func = partial(transform_bbox, mode="xywh", restore_coordinates=True)
 
 
 class KeypointsApplyInverse(ApplyInverseImpl):
@@ -313,7 +317,7 @@ class ApplyInverse:
             return MaskApplyInverse
         if DataKey.get(dcate) in [DataKey.BBOX, DataKey.BBOX_XYXY]:
             return BBoxXYXYApplyInverse
-        if DataKey.get(dcate) in [DataKey.BBOX_XYHW]:
+        if DataKey.get(dcate) in [DataKey.BBOX_XYWH]:
             return BBoxXYWHApplyInverse
         if DataKey.get(dcate) in [DataKey.KEYPOINTS]:
             return KeypointsApplyInverse

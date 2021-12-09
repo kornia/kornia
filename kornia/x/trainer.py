@@ -1,5 +1,5 @@
 import logging
-from typing import Callable, Dict
+from typing import Callable, Dict, Optional
 
 import torch
 import torch.nn as nn
@@ -14,7 +14,7 @@ except ImportError:
 
 from kornia.metrics import AverageMeter
 
-from .utils import Configuration, TrainerState
+from .utils import Configuration, StatsTracker, TrainerState
 
 callbacks_whitelist = [
     # high level functions
@@ -63,7 +63,7 @@ class Trainer:
         model: nn.Module,
         train_dataloader: DataLoader,
         valid_dataloader: DataLoader,
-        criterion: nn.Module,
+        criterion: Optional[nn.Module],
         optimizer: torch.optim.Optimizer,
         scheduler: torch.optim.lr_scheduler.CosineAnnealingLR,
         config: Configuration,
@@ -79,7 +79,7 @@ class Trainer:
         self.model = self.accelerator.prepare(model)
         self.train_dataloader = self.accelerator.prepare(train_dataloader)
         self.valid_dataloader = self.accelerator.prepare(valid_dataloader)
-        self.criterion = criterion.to(self.device)
+        self.criterion = None if criterion is None else criterion.to(self.device)
         self.optimizer = self.accelerator.prepare(optimizer)
         self.scheduler = scheduler
         self.config = config
@@ -116,13 +116,13 @@ class Trainer:
             sample = self.augmentations(sample)
             sample = self.on_before_model(sample)
             # make the actual inference
-            output = self.model(sample["input"])
+            output = self.on_model(self.model, sample)
             self.on_after_model(output, sample)  # for debugging purposes
-            loss = self.criterion(output, sample["target"])
+            loss = self.compute_loss(output, sample["target"])
             self.backward(loss)
             self.optimizer.step()
 
-            losses.update(loss.item(), sample["target"].shape[0])
+            losses.update(loss.item(), len(sample["input"]))
 
             if sample_id % 50 == 0:
                 self._logger.info(
@@ -158,8 +158,33 @@ class Trainer:
 
     # events stubs
 
-    def evaluate(self):
-        ...
+    @torch.no_grad()
+    def evaluate(self) -> dict:
+        self.model.eval()
+        stats = StatsTracker()
+        for sample_id, sample in enumerate(self.valid_dataloader):
+            sample = {"input": sample[0], "target": sample[1]}  # new dataset api will come like this
+            # perform the preprocess and augmentations in batch
+            sample = self.preprocess(sample)
+            sample = self.on_before_model(sample)
+            # Forward
+            out = self.on_model(self.model, sample)
+            self.on_after_model(out, sample)
+
+            batch_size: int = len(sample["input"])
+            # measure accuracy and record loss
+            # Loss computation
+            if self.criterion is not None:
+                val_loss = self.compute_loss(out, sample["target"])
+                stats.update('losses', val_loss.item(), batch_size)
+            stats.update_from_dict(self.compute_metrics(out, sample['target']), batch_size)
+
+            if sample_id % 10 == 0:
+                self._logger.info(
+                    f"Test: {sample_id}/{len(self.valid_dataloader)} {stats}"
+                )
+
+        return stats.as_dict()
 
     def on_epoch_start(self, *args, **kwargs):
         ...
@@ -170,8 +195,20 @@ class Trainer:
     def augmentations(self, x: dict) -> dict:
         return x
 
+    def compute_metrics(self, *args: torch.Tensor) -> Dict[str, float]:
+        """Compute metrics during the evaluation."""
+        return {}
+
+    def compute_loss(self, *args: torch.Tensor) -> torch.Tensor:
+        if self.criterion is None:
+            raise RuntimeError("`criterion` should not be None.")
+        return self.criterion(*args)
+
     def on_before_model(self, x: dict) -> dict:
         return x
+
+    def on_model(self, model, sample: dict):
+        return model(sample["input"])
 
     def on_after_model(self, output: torch.Tensor, sample: dict):
         ...

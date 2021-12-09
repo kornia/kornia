@@ -8,7 +8,7 @@ where training data is limited or expensive to obtain like in biomedical applica
 .. image:: https://github.com/kornia/data/raw/main/girona_aug.png
    :align: center
 
-Learn more: `https://paperswithcode.com/task/image-registration <https://paperswithcode.com/task/image-augmentation>`_
+Learn more: `https://paperswithcode.com/task/image-augmentation <https://paperswithcode.com/task/image-augmentation>`_
 
 Kornia Augmentations
 --------------------
