@@ -305,3 +305,60 @@ def reproject_disparity_to_3D(disparity_tensor: torch.Tensor, Q_matrix: torch.Te
             f"Please ensure input are correct. If this is an error, please submit an issue."
         )
     return points
+
+
+def rectify_calibrated(left_camera_matrix, right_camera_matrix):
+    """
+    TODO
+    """
+    # Optical centers
+    c1 = -torch.inverse(left_camera_matrix[:, :, 0:3]) @ left_camera_matrix[:, :, 3].T
+    c2 = -torch.inverse(right_camera_matrix[:, :, 0:3]) @ right_camera_matrix[:, :, 3].T
+
+    # Factorize
+    A1, R1, t1 = _factorize_art(left_camera_matrix)
+    A2, R2, t2 = _factorize_art(right_camera_matrix)
+
+    # New x axis
+    v1 = c1 - c2
+    v1 = torch.squeeze(v1, -1)
+
+    # new y axis
+    v2 = torch.cross(R1[:, 2, :], v1)
+
+    # new z axis
+    v3 = torch.cross(v1, v2)
+
+    # new extrinsic parameters
+    R = torch.stack(
+        [v1 / torch.norm(v1),
+         v2 / torch.norm(v2),
+         v3 / torch.norm(v3)],
+        dim=1
+    )
+
+    # new intrinsic
+    A = (A1 + A2) / 2
+    A[:, 0, 1] = 0  # No skew
+
+    A[:, 0, 2] = A[:, 0, 2] + 160
+
+    # New projection matrices
+    Pn1 = A @ torch.cat([R, -R @ c1], dim=-1)
+    Pn2 = A @ torch.cat([R, -R @ c2], dim=-1)
+
+    # Rectifying image transformation
+    T1 = Pn1[:, 0:3, 0:3] @ torch.inverse(left_camera_matrix[:, 0:3, 0:3])
+    T2 = Pn2[:, 0:3, 0:3] @ torch.inverse(right_camera_matrix[:, 0:3, 0:3])
+
+    return T1, T2, Pn1, Pn2
+
+
+def _factorize_art(camera_matrix):
+    Q = torch.inverse(camera_matrix[:, 0:3, 0:3])
+    U, B = torch.linalg.qr(Q)
+    R = torch.inverse(U)
+    t = B @ camera_matrix[:, 0:3, 3].T
+    A = torch.inverse(B)
+    A = A / A[:, 2, 2]
+    return A, R, t
