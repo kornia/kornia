@@ -344,8 +344,6 @@ def rectify_calibrated(left_uncalibrated_projection_matrix, right_uncalibrated_p
     A = (A1 + A2) / 2
     A[:, 0, 1] = 0  # No skew
 
-    A[:, 0, 2] = A[:, 0, 2] + 160
-
     # New projection matrices
     Pn1 = A @ torch.cat([R, -R @ c1], dim=-1)
     Pn2 = A @ torch.cat([R, -R @ c2], dim=-1)
