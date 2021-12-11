@@ -308,9 +308,7 @@ def reproject_disparity_to_3D(disparity_tensor: torch.Tensor, Q_matrix: torch.Te
 
 
 def rectify_calibrated(left_uncalibrated_projection_matrix, right_uncalibrated_projection_matrix):
-    """
-    TODO
-    """
+    """TODO."""
     # Optical centers
     c1 = -torch.inverse(left_uncalibrated_projection_matrix[:, :, 0:3]) @ \
          left_uncalibrated_projection_matrix[:, :, 3].T
