@@ -1072,28 +1072,47 @@ class RandomCrop(GeometricAugmentationBase2D):
             padding_size = [0, 0, 0, 0]
         return self.precrop_padding(out, padding_size)
 
+    def forward_parameters_precrop(self, batch_shape) -> Dict[str, torch.Tensor]:
+        input_pad = self.compute_padding(batch_shape)
+        batch_shape = (
+            *batch_shape[:2],
+            batch_shape[2] + input_pad[1] + input_pad[3],  # original height + top + bottom padding
+            batch_shape[3] + input_pad[0] + input_pad[2]  # original width + left + right padding
+            )
+        padding_size = torch.tensor(tuple(input_pad), dtype=torch.long).expand(batch_shape[0], -1)
+        _params = super().forward_parameters(batch_shape)
+        _params.update({"padding_size": padding_size})
+        return _params
+
     def forward(
         self,
         input: TensorWithTransformMat,
         params: Optional[Dict[str, torch.Tensor]] = None,
         return_transform: Optional[bool] = None,
     ) -> TensorWithTransformMat:
+        padding_size = params.get("padding_size") if params else None
+        if padding_size is not None:
+            input_pad = padding_size.unique(dim=0).cpu().squeeze().numpy().tolist()
+        else:
+            input_pad = None
+
         if isinstance(input, (tuple, list)):
             input_temp = _transform_input(input[0])
-            input_pad = self.compute_padding(input[0].shape)
+            input_pad = self.compute_padding(input[0].shape) if input_pad is None else input_pad
             _input = (self.precrop_padding(input_temp, input_pad), input[1])
         else:
             input = cast(torch.Tensor, input)  # TODO: weird that cast is not working under this context.
             input_temp = _transform_input(input)
-            input_pad = self.compute_padding(input_temp.shape)
+            input_pad = self.compute_padding(input_temp.shape) if input_pad is None else input_pad
             _input = self.precrop_padding(input_temp, input_pad)  # type: ignore
         out = super().forward(_input, params, return_transform)
 
         # Update the actual input size for inverse
-        _padding_size = torch.tensor(tuple(input_pad), device=input_temp.device, dtype=torch.long).expand(
-            input_temp.size(0), -1
-        )
-        self._params.update({"padding_size": _padding_size})
+        if "padding_size" not in self._params:
+            _padding_size = torch.tensor(tuple(input_pad), device=input_temp.device, dtype=torch.long).expand(
+                input_temp.size(0), -1
+            )
+            self._params.update({"padding_size": _padding_size})
 
         if not self._params["batch_prob"].all():
             # undo the pre-crop if nothing happened.
