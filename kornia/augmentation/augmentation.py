@@ -1078,7 +1078,7 @@ class RandomCrop(GeometricAugmentationBase2D):
             *batch_shape[:2],
             batch_shape[2] + input_pad[1] + input_pad[3],  # original height + top + bottom padding
             batch_shape[3] + input_pad[0] + input_pad[2]  # original width + left + right padding
-            )
+        )
         padding_size = torch.tensor(tuple(input_pad), dtype=torch.long).expand(batch_shape[0], -1)
         _params = super().forward_parameters(batch_shape)
         _params.update({"padding_size": padding_size})
