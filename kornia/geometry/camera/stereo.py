@@ -307,17 +307,20 @@ def reproject_disparity_to_3D(disparity_tensor: torch.Tensor, Q_matrix: torch.Te
     return points
 
 
-def rectify_calibrated(left_camera_matrix, right_camera_matrix):
+def rectify_calibrated(left_uncalibrated_projection_matrix, right_uncalibrated_projection_matrix):
     """
     TODO
     """
     # Optical centers
-    c1 = -torch.inverse(left_camera_matrix[:, :, 0:3]) @ left_camera_matrix[:, :, 3].T
-    c2 = -torch.inverse(right_camera_matrix[:, :, 0:3]) @ right_camera_matrix[:, :, 3].T
+    c1 = -torch.inverse(left_uncalibrated_projection_matrix[:, :, 0:3]) @ \
+         left_uncalibrated_projection_matrix[:, :, 3].T
+
+    c2 = -torch.inverse(right_uncalibrated_projection_matrix[:, :, 0:3]) @ \
+         right_uncalibrated_projection_matrix[:, :, 3].T
 
     # Factorize
-    A1, R1, t1 = _factorize_art(left_camera_matrix)
-    A2, R2, t2 = _factorize_art(right_camera_matrix)
+    A1, R1, t1 = _factorize_art(left_uncalibrated_projection_matrix)
+    A2, R2, t2 = _factorize_art(right_uncalibrated_projection_matrix)
 
     # New x axis
     v1 = c1 - c2
@@ -348,8 +351,8 @@ def rectify_calibrated(left_camera_matrix, right_camera_matrix):
     Pn2 = A @ torch.cat([R, -R @ c2], dim=-1)
 
     # Rectifying image transformation
-    T1 = Pn1[:, 0:3, 0:3] @ torch.inverse(left_camera_matrix[:, 0:3, 0:3])
-    T2 = Pn2[:, 0:3, 0:3] @ torch.inverse(right_camera_matrix[:, 0:3, 0:3])
+    T1 = Pn1[:, 0:3, 0:3] @ torch.inverse(left_uncalibrated_projection_matrix[:, 0:3, 0:3])
+    T2 = Pn2[:, 0:3, 0:3] @ torch.inverse(right_uncalibrated_projection_matrix[:, 0:3, 0:3])
 
     return T1, T2, Pn1, Pn2
 
