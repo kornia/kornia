@@ -278,10 +278,10 @@ class TestAugmentationSequential:
         bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
 
         expected_bbox_vertical_flip = torch.tensor(
-            [[[355, 499], [660, 499], [660, 259], [355, 259]]], device=device, dtype=dtype
+            [[[355, 259], [660, 259], [660, 499], [355, 499]]], device=device, dtype=dtype
         )
         expected_bbox_horizontal_flip = torch.tensor(
-            [[[664, 10], [359, 10], [359, 250], [664, 250]]], device=device, dtype=dtype
+            [[[359, 10], [664, 10], [664, 250], [359, 250]]], device=device, dtype=dtype
         )
 
         aug_ver = K.AugmentationSequential(

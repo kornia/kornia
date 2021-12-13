@@ -100,9 +100,10 @@ def _boxes_to_quadrilaterals(
 
     if mode.startswith("vertices"):
         if mode == "vertices":
-            quadrilaterals = boxes
+            # Avoid passing reference
+            quadrilaterals = boxes.clone()
         elif mode == "vertices_plus":
-            quadrilaterals = boxes  # TODO: perform +1
+            quadrilaterals = boxes.clone()  # TODO: perform +1
         else:
             raise ValueError(f"Unknown mode {mode}")
         validate_boxes or validate_bbox(quadrilaterals)
@@ -163,6 +164,7 @@ def _boxes3d_to_polygons3d(
     return polygons3d
 
 
+# NOTE: Cannot jit with Union types with torch <= 0.10
 # @torch.jit.script
 class Boxes:
     r"""2D boxes containing N or BxN boxes.

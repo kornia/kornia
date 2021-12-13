@@ -260,15 +260,14 @@ class AugmentationSequential(ImageSequential):
                 inp.append(arg)
             elif DataKey.get(dcate) in [DataKey.BBOX, DataKey.BBOX_XYXY, DataKey.BBOX_XYWH]:
                 if DataKey.get(dcate) in [DataKey.BBOX]:
-                    mode = "vertices"
+                    mode = "vertices_plus"
                 elif DataKey.get(dcate) in [DataKey.BBOX_XYXY]:
                     mode = "xyxy"
                 elif DataKey.get(dcate) in [DataKey.BBOX_XYWH]:
                     mode = "xywh"
                 else:
                     raise ValueError(f"Unsupported mode `{DataKey.get(dcate).name}`.")
-                # NOTE: Constructing without clone will affect the origin tensor. See if we can get rid of it.
-                inp.append(Boxes.from_tensor(arg.clone(), mode=mode))  # type: ignore
+                inp.append(Boxes.from_tensor(arg, mode=mode))  # type: ignore
             else:
                 raise NotImplementedError(f"input type of {dcate} is not implemented.")
         return inp
