@@ -1,9 +1,9 @@
-from typing import List, Optional, Tuple, Union, cast
+from typing import cast, List, Optional, Tuple, Union
 
 import torch
 
-from kornia.geometry.linalg import transform_points
 from kornia.geometry.bbox import validate_bbox
+from kornia.geometry.linalg import transform_points
 
 __all__ = ["Boxes", "Boxes3D"]
 
@@ -17,12 +17,12 @@ def _merge_box_list(
 ) -> Tuple[torch.Tensor, List[int]]:
     r"""Merge a list of boxes into one tensor.
     """
-    if not all([box.shape[-2:] == torch.Size([4, 2]) and box.dim() == 3 for box in boxes]): 
+    if not all([box.shape[-2:] == torch.Size([4, 2]) and box.dim() == 3 for box in boxes]):
         raise TypeError(
             f"Input boxes must be a list of (N, 4, 2) shaped. Got: {list([box.shape for box in boxes])}.")
 
     if method == "pad":
-        max_N = max([box.shape[0] for box in boxes])
+        max_N = max(box.shape[0] for box in boxes)
         stats = [max_N - box.shape[0] for box in boxes]
         output = torch.stack([
             torch.nn.functional.pad(box, [0, 0, 0, 0, 0, pad]) for box, pad in zip(boxes, stats)
@@ -80,8 +80,7 @@ def _boxes_to_polygons(
 def _boxes_to_quadrilaterals(
     boxes: torch.Tensor, mode: str = "xyxy", validate_boxes: bool = True
 ) -> torch.Tensor:
-    """Convert from boxes to quadrilaterals.
-    """
+    """Convert from boxes to quadrilaterals."""
     mode = mode.lower()
 
     if mode.startswith("vertices"):
@@ -347,8 +346,8 @@ class Boxes:
             boxes = _boxes_to_polygons(boxes[..., 0], boxes[..., 1], boxes[..., 2], boxes[..., 3])
 
         if self._N is not None and not as_padded:
-            boxes = list([torch.nn.functional.pad(
-                o, (len(o.shape) - 1) * [0, 0] + [0, - n]) for o, n in zip(boxes, self._N)])
+            boxes = list(torch.nn.functional.pad(
+                o, (len(o.shape) - 1) * [0, 0] + [0, - n]) for o, n in zip(boxes, self._N))
         else:
             boxes = boxes if self._is_batch else boxes.squeeze(0)
         return boxes

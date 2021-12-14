@@ -4,11 +4,7 @@ from typing import Any, cast, List, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation.base import (
-    _AugmentationBase,
-    GeometricAugmentationBase2D,
-    IntensityAugmentationBase2D,
-)
+from kornia.augmentation.base import _AugmentationBase, GeometricAugmentationBase2D, IntensityAugmentationBase2D
 from kornia.constants import DataKey
 from kornia.geometry.boxes import Boxes
 
@@ -288,7 +284,7 @@ class AugmentationSequential(ImageSequential):
         if data_keys is None:
             _data_keys = self.data_keys
         else:
-            _data_keys = list([DataKey.get(inp) for inp in data_keys])
+            _data_keys = list(DataKey.get(inp) for inp in data_keys)
         self._validate_args_datakeys(*args, data_keys=_data_keys)
 
         args = self._arguments_preproc(*args, data_keys=_data_keys)
