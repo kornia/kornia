@@ -1,6 +1,6 @@
 from .classification import ClassificationHead
 from .connected_components import connected_components
-from .distance_transform import conv_distance_transform, ConvDistanceTransform
+from .distance_transform import ConvDistanceTransform, distance_transform
 from .extract_patches import combine_tensor_patches, CombineTensorPatches, extract_tensor_patches, ExtractTensorPatches
 from .face_detection import *
 from .histogram_matching import histogram_matching, interp
@@ -22,6 +22,6 @@ __all__ = [
     "ClassificationHead",
     "Lambda",
     "ImageStitcher",
-    "conv_distance_transform",
+    "distance_transform",
     "ConvDistanceTransform",
 ]

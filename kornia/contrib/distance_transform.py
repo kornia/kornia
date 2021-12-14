@@ -1,14 +1,10 @@
-"""The convolutional distance transform was proposed in: Karam, C.; Sugimoto, K.; Hirakawa, K., "Fast Convolutional
-Distance Transform," Signal Processing Letters (SPL), 2019 IEEE Journal.
-
-The algorithm implemented in conv_distance_transform is from     Pham et al, "A Differentiable Convolutional Distance
-Transform Layer for Improved Image Segmentation"     Pattern Recognition, 2021 Conference Proceedings
-"""
 import math
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+import kornia
 
 
 def make_cdt_kernel(
@@ -16,13 +12,10 @@ def make_cdt_kernel(
 ) -> torch.Tensor:
     # Value of h is derived from the parameters and reference code given by the authors who proposed the algorithm.
     h = -0.35
-    grid_range = torch.Tensor(range(kernel_size))
 
-    gridx, gridy = torch.meshgrid(grid_range, grid_range)
-    gridx = gridx - math.floor(kernel_size / 2)
-    gridy = gridy - math.floor(kernel_size / 2)
-
-    kernel = torch.hypot(gridx, gridy)
+    grid = kornia.utils.create_meshgrid(kernel_size, kernel_size, normalized_coordinates=False)
+    grid = grid - math.floor(kernel_size / 2)
+    kernel = torch.hypot(grid[0, :, :, 0], grid[0, :, :, 1])
     kernel = torch.exp(kernel / h)
 
     # for BCHW tensors
@@ -32,13 +25,14 @@ def make_cdt_kernel(
     return kernel
 
 
-def conv_distance_transform(
+def distance_transform(
     image: torch.Tensor,
     kernel_size: int = 7
 ) -> torch.Tensor:
     r"""Approximates the Manhattan distance transform of images using convolutions.
 
     The value at each pixel in the output represents the distance to the nearest non-zero pixel in the image image.
+    It uses the method described in :cite:`pham2021dtlayer`.
     The transformation is applied independently across the channel dimension of the images.
 
 
@@ -59,22 +53,20 @@ def conv_distance_transform(
     if kernel_size % 2 == 0:
         raise ValueError("Kernel size must be an odd number.")
 
-    device: torch.device = image.device
+    # n_iters is set such that the DT will be able to propagate from any corner of the image to its far,
+    # diagonally opposite corner
+    n_iters: int = math.ceil(max(image.shape[2], image.shape[3]) / math.floor(kernel_size / 2))
+    kernel: torch.Tensor = make_cdt_kernel(kernel_size).to(image)
 
-    n_iters = math.ceil(max(image.shape[2], image.shape[3]) / math.floor(kernel_size / 2))
-    kernel = make_cdt_kernel(kernel_size)
-
-    out = torch.zeros(image.shape, dtype=torch.float32, device=device)
+    out = torch.zeros_like(image)
 
     # It is possible to avoid cloning the image if boundary = image, but this would require modifying the image tensor.
-    boundary = image.clone().to(torch.float32)
-    kernel = kernel.to(device)
+    boundary = image.clone()
 
     # If image images have multiple channels, view the channels in the batch dimension to match kernel shape.
     if image.shape[1] > 1:
-        batch_channel_view_shape = (image.shape[0] * image.shape[1], 1, image.shape[2], image.shape[3])
-        out = out.view(*batch_channel_view_shape)
-        boundary = boundary.view(*batch_channel_view_shape)
+        out = out.view(-1, 1, image.shape[-2], image.shape[-1])
+        boundary = boundary.view(-1, 1, image.shape[-2], image.shape[-1])
 
     for i in range(n_iters):
         cdt = F.conv2d(boundary, kernel, padding='same')
@@ -87,7 +79,7 @@ def conv_distance_transform(
         if mask.sum() == 0:
             break
 
-        offset = i * kernel_size / 2
+        offset: int = i * kernel_size / 2
         out[mask] += offset + cdt[mask]
         boundary[mask] = 1
 
@@ -95,7 +87,7 @@ def conv_distance_transform(
     if image.shape[1] > 1:
         out = out.view(image.shape)
 
-    return out
+    return out.view_as(image)
 
 
 class ConvDistanceTransform(nn.Module):
@@ -115,4 +107,4 @@ class ConvDistanceTransform(nn.Module):
         self.kernel_size = kernel_size
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
-        return conv_distance_transform(image, self.kernel_size)
+        return distance_transform(image, self.kernel_size)
