@@ -291,7 +291,7 @@ class BBoxXYXYApplyInverse(ApplyInverseImpl):
     apply_func = partial(transform_bbox, mode="xyxy", restore_coordinates=True)
 
 
-class BBoxXYWHApplyInverse(ApplyInverseImpl):
+class BBoxXYWHApplyInverse(BBoxXYXYApplyInverse):
     """Apply and inverse transformations for bounding box tensors.
 
     This is for transform boxes in the format [xmin, ymin, width, height].

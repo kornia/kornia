@@ -138,20 +138,38 @@ class TestBoxes2D:
         boxes_vertices = box.to_tensor(mode='vertices')
         boxes_vertices_plus = box.to_tensor(mode='vertices_plus')
 
-        assert boxes_xyxy.shape == expected_box_xyxy.shape
+        assert boxes_xyxy.shape == expected_box_xyxy.shape  # type: ignore
         assert_allclose(boxes_xyxy, expected_box_xyxy)
 
-        assert boxes_xyxy_plus.shape == expected_box_xyxy_plus.shape
+        assert boxes_xyxy_plus.shape == expected_box_xyxy_plus.shape  # type: ignore
         assert_allclose(boxes_xyxy_plus, expected_box_xyxy_plus)
 
-        assert boxes_xywh.shape == expected_box_xywh.shape
+        assert boxes_xywh.shape == expected_box_xywh.shape  # type: ignore
         assert_allclose(boxes_xywh, expected_box_xywh)
 
-        assert boxes_vertices.shape == expected_vertices.shape
+        assert boxes_vertices.shape == expected_vertices.shape  # type: ignore
         assert_allclose(boxes_vertices, expected_vertices)
 
-        assert boxes_vertices_plus.shape == expected_vertices_plus.shape
+        assert boxes_vertices_plus.shape == expected_vertices_plus.shape  # type: ignore
         assert_allclose(boxes_vertices_plus, expected_vertices_plus)
+
+    @pytest.mark.parametrize('mode', ['xyxy', 'xyxy_plus', 'xywh', 'vertices', 'vertices_plus'])
+    def test_boxes_list_to_tensor_list(self, mode, device, dtype):
+        src_1 = [
+            torch.as_tensor([[[2, 2], [2, 3], [1, 3], [1, 2]]], device=device, dtype=dtype),
+            torch.as_tensor([
+                [[2, 2], [2, 3], [1, 3], [1, 2]], [[2, 2], [2, 3], [1, 3], [1, 2]]
+            ], device=device, dtype=dtype)
+        ]
+        src_2 = [
+            torch.as_tensor([[1, 1, 5, 5]], device=device, dtype=dtype),
+            torch.as_tensor([[1, 1, 5, 5], [1, 1, 5, 5]], device=device, dtype=dtype)
+        ]
+        src = src_1 if mode in ['vertices', 'vertices_plus'] else src_2
+        box = Boxes.from_tensor(src, mode=mode)
+        out = box.to_tensor(mode)
+        assert out[0].shape == src[0].shape
+        assert out[1].shape == src[1].shape
 
     def test_boxes_to_mask(self, device, dtype):
         t_box1 = torch.tensor(

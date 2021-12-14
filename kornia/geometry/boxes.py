@@ -13,24 +13,24 @@ def _is_floating_point_dtype(dtype: torch.dtype) -> bool:
 
 
 def _merge_box_list(
-    boxes: List[torch.Tensor], method: str = "pad", return_stats: bool = False
-) -> Union[torch.Tensor, Tuple[torch.Tensor, List[int]]]:
+    boxes: List[torch.Tensor], method: str = "pad"
+) -> Tuple[torch.Tensor, List[int]]:
     r"""Merge a list of boxes into one tensor.
     """
-    if not all([box.shape[-2:] == torch.Size([4, 2]) and box.dim() == 3 for box in boxes]):
-        raise TypeError(f"Input boxes must be a (N, 4, 2) list. Got: {list([box.shape for box in boxes])}.")
+    if not all([box.shape[-2:] == torch.Size([4, 2]) and box.dim() == 3 for box in boxes]): 
+        raise TypeError(
+            f"Input boxes must be a list of (N, 4, 2) shaped. Got: {list([box.shape for box in boxes])}.")
 
     if method == "pad":
-        stats = [box.shape[0] - box.shape[1] for box in boxes]
+        max_N = max([box.shape[0] for box in boxes])
+        stats = [max_N - box.shape[0] for box in boxes]
         output = torch.stack([
             torch.nn.functional.pad(box, [0, 0, 0, 0, 0, pad]) for box, pad in zip(boxes, stats)
         ], dim=0)
     else:
         raise NotImplementedError(f"`{method}` is not implemented.")
 
-    if return_stats:
-        return output, stats
-    return output
+    return output, stats
 
 
 def _transform_boxes(boxes: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
@@ -190,7 +190,7 @@ class Boxes:
         self._N: Optional[List[int]] = None
 
         if isinstance(boxes, list):
-            boxes, self._N = _merge_box_list(boxes, return_stats=True)
+            boxes, self._N = _merge_box_list(boxes)
 
         if not isinstance(boxes, torch.Tensor):
             raise TypeError(f"Input boxes is not a Tensor. Got: {type(boxes)}.")
@@ -347,7 +347,8 @@ class Boxes:
             boxes = _boxes_to_polygons(boxes[..., 0], boxes[..., 1], boxes[..., 2], boxes[..., 3])
 
         if self._N is not None and not as_padded:
-            boxes = list([torch.nn.functional.pad(o[None], [0, 0, 0, 0, 0, - n]) for o, n in zip(boxes, self._N)])
+            boxes = list([torch.nn.functional.pad(
+                o, (len(o.shape) - 1) * [0, 0] + [0, - n]) for o, n in zip(boxes, self._N)])
         else:
             boxes = boxes if self._is_batch else boxes.squeeze(0)
         return boxes
