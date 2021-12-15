@@ -135,7 +135,7 @@ class TestVideoSequential:
         if data_format == 'BCTHW':
             input = input.transpose(1, 2)
         output_2 = aug_list_2(input.reshape(-1, 3, 5, 6))
-        if any([isinstance(a, K.RandomCrop) for a in augmentations]):
+        if any(isinstance(a, K.RandomCrop) for a in augmentations):
             output_2 = output_2.view(2, 4, 3, 2, 2)
         else:
             output_2 = output_2.view(2, 4, 3, 5, 6)
