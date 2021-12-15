@@ -184,8 +184,8 @@ class VideoSequential(ImageSequential):
             if isinstance(module, RandomCrop):
                 mod_param = module.forward_parameters_precrop(batch_shape)
                 if self.same_on_frame:
-                    param["src"] = param["src"].repeat(frame_num, 1, 1)
-                    param["dst"] = param["dst"].repeat(frame_num, 1, 1)
+                    mod_param["src"] = mod_param["src"].repeat(frame_num, 1, 1)
+                    mod_param["dst"] = mod_param["dst"].repeat(frame_num, 1, 1)
                 param = ParamItem(name, mod_param)
             elif isinstance(module, (SequentialBase,)):
                 seq_param = module.forward_parameters(batch_shape)
