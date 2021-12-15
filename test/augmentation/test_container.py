@@ -113,6 +113,7 @@ class TestVideoSequential:
         'augmentations',
         [
             [K.RandomAffine(360, p=1.0)],
+            [K.RandomCrop((2, 2), padding=2)],
             [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0)],
             [K.RandomAffine(360, p=0.0), K.ImageSequential(K.RandomAffine(360, p=0.0))],
         ],
@@ -134,7 +135,10 @@ class TestVideoSequential:
         if data_format == 'BCTHW':
             input = input.transpose(1, 2)
         output_2 = aug_list_2(input.reshape(-1, 3, 5, 6))
-        output_2 = output_2.view(2, 4, 3, 5, 6)
+        if any([isinstance(a, K.RandomCrop) for a in augmentations]):
+            output_2 = output_2.view(2, 4, 3, 2, 2)
+        else:
+            output_2 = output_2.view(2, 4, 3, 5, 6)
         if data_format == 'BCTHW':
             output_2 = output_2.transpose(1, 2)
         assert (output_1 == output_2).all(), dict(aug_list_1._params)
