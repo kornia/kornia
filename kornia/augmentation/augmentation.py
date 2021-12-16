@@ -39,7 +39,7 @@ from kornia.geometry.transform import (
 )
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 from kornia.utils import create_meshgrid
-from kornia.registry import nn
+from kornia.nn import nn
 
 from . import random_generator as rg
 from .utils import _transform_input
