@@ -30,3 +30,6 @@ from kornia.utils import (
     image_to_tensor,
     tensor_to_image,
 )
+from .registry import nn
+
+

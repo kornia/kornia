@@ -39,11 +39,13 @@ from kornia.geometry.transform import (
 )
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 from kornia.utils import create_meshgrid
+from kornia.registry import nn
 
 from . import random_generator as rg
 from .utils import _transform_input
 
 
+@nn.register_module()
 class RandomHorizontalFlip(GeometricAugmentationBase2D):
     r"""Apply a random horizontal flip to a tensor image or a batch of tensor images with a given probability.
 
