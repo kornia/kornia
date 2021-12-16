@@ -24,9 +24,7 @@ def _merge_box_list(
     if method == "pad":
         max_N = max(box.shape[0] for box in boxes)
         stats = [max_N - box.shape[0] for box in boxes]
-        output = torch.stack([
-            torch.nn.functional.pad(box, [0, 0, 0, 0, 0, pad]) for box, pad in zip(boxes, stats)
-        ], dim=0)
+        output = torch.nn.utils.rnn.pad_sequence(boxes, batch_first=True)
     else:
         raise NotImplementedError(f"`{method}` is not implemented.")
 

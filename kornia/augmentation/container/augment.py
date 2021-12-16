@@ -328,7 +328,7 @@ class AugmentationSequential(ImageSequential):
                 continue
             # Using tensors straight-away
             if isinstance(arg, (Boxes,)):
-                input = arg._boxes
+                input = arg._boxes  # all boxes are in (B, N, 4, 2) format now.
             else:
                 input = arg
 

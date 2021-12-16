@@ -412,6 +412,11 @@ class TestAugmentationSequential:
                 [[355, 10], [660, 10], [660, 250], [355, 250]]
             ], device=device, dtype=dtype)
         ]
+        bbox_wh = torch.tensor([[[30, 40, 100, 100]]], device=device, dtype=dtype)
+        bbox_wh_2 = [
+            # torch.tensor([[30, 40, 100, 100]], device=device, dtype=dtype),
+            torch.tensor([[30, 40, 100, 100], [30, 40, 100, 100]], device=device, dtype=dtype)
+        ]
         keypoints = torch.tensor([[[465, 115], [545, 116]]], device=device, dtype=dtype)
         mask = bbox_to_mask(
             torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 1000, 500
@@ -425,19 +430,19 @@ class TestAugmentationSequential:
             ),
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0, return_transform=True),
             K.RandomAffine(360, p=1.0, return_transform=True),
-            data_keys=["input", "mask", "bbox", "keypoints", "bbox"],
+            data_keys=["input", "mask", "bbox", "keypoints", "bbox", "BBOX_XYWH", "BBOX_XYWH"],
             random_apply=random_apply,
         )
         with pytest.raises(Exception):  # No parameters available for inversing.
-            aug.inverse(inp, mask, bbox, keypoints, bbox_2)
+            aug.inverse(inp, mask, bbox, keypoints, bbox_2, bbox_wh, bbox_wh_2)
 
-        out = aug(inp, mask, bbox, keypoints, bbox_2)
+        out = aug(inp, mask, bbox, keypoints, bbox_2, bbox_wh, bbox_wh_2)
         assert out[0][0].shape == inp.shape
         assert out[1].shape == mask.shape
         assert out[2].shape == bbox.shape
         assert out[3].shape == keypoints.shape
 
-        reproducibility_test((inp, mask, bbox, keypoints, bbox_2), aug)
+        reproducibility_test((inp, mask, bbox, keypoints, bbox_2, bbox_wh, bbox_wh_2), aug)
 
     @pytest.mark.jit
     @pytest.mark.skip(reason="turn off due to Union Type")

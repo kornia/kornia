@@ -282,6 +282,15 @@ class MaskApplyInverse(ApplyInverseImpl):
         return input
 
 
+class BBoxApplyInverse(ApplyInverseImpl):
+    """Apply and inverse transformations for bounding box tensors.
+
+    This is for transform boxes in the format (B, N, 4, 2).
+    """
+
+    apply_func = partial(transform_bbox, mode="xyxy", restore_coordinates=True)
+
+
 class BBoxXYXYApplyInverse(ApplyInverseImpl):
     """Apply and inverse transformations for bounding box tensors.
 
@@ -291,7 +300,7 @@ class BBoxXYXYApplyInverse(ApplyInverseImpl):
     apply_func = partial(transform_bbox, mode="xyxy", restore_coordinates=True)
 
 
-class BBoxXYWHApplyInverse(BBoxXYXYApplyInverse):
+class BBoxXYWHApplyInverse(ApplyInverseImpl):
     """Apply and inverse transformations for bounding box tensors.
 
     This is for transform boxes in the format [xmin, ymin, width, height].
@@ -315,10 +324,9 @@ class ApplyInverse:
             return InputApplyInverse
         if DataKey.get(dcate) in [DataKey.MASK]:
             return MaskApplyInverse
-        if DataKey.get(dcate) in [DataKey.BBOX, DataKey.BBOX_XYXY]:
-            return BBoxXYXYApplyInverse
-        if DataKey.get(dcate) in [DataKey.BBOX_XYWH]:
-            return BBoxXYWHApplyInverse
+        if DataKey.get(dcate) in [DataKey.BBOX, DataKey.BBOX_XYXY, DataKey.BBOX_XYWH]:
+            # We are converting to (B, 4, 2) internally for all formats.
+            return BBoxApplyInverse
         if DataKey.get(dcate) in [DataKey.KEYPOINTS]:
             return KeypointsApplyInverse
         raise NotImplementedError(f"input type of {dcate} is not implemented.")
