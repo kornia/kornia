@@ -81,6 +81,10 @@ class GaussianBlur2d(nn.Module):
         torch.Size([2, 4, 5, 5])
     """
 
+    kernel: torch.Tensor
+    kernel_x: torch.Tensor
+    kernel_y: torch.Tensor
+
     def __init__(self,
                  kernel_size: Tuple[int, int],
                  sigma: Tuple[float, float],
@@ -91,6 +95,14 @@ class GaussianBlur2d(nn.Module):
         self.sigma: Tuple[float, float] = sigma
         self.border_type = border_type
         self.separable = separable
+        if separable:
+            kernel_x: torch.Tensor = get_gaussian_kernel1d(kernel_size[1], sigma[1])
+            kernel_y: torch.Tensor = get_gaussian_kernel1d(kernel_size[0], sigma[0])
+            self.register_buffer("kernel_x", kernel_x)
+            self.register_buffer("kernel_y", kernel_y)
+        else:
+            kernel: torch.Tensor = get_gaussian_kernel2d(kernel_size, sigma)
+            self.register_buffer("kernel", kernel)
 
     def __repr__(self) -> str:
         return (
@@ -109,8 +121,9 @@ class GaussianBlur2d(nn.Module):
         )
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        return gaussian_blur2d(input,
-                               self.kernel_size,
-                               self.sigma,
-                               self.border_type,
-                               self.separable)
+
+        if self.separable:
+            out = filter2d_separable(input, self.kernel_x[None], self.kernel_y[None], self.border_type)
+        else:
+            out = filter2d(input, self.kernel[None], self.border_type)
+        return out
