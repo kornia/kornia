@@ -303,29 +303,61 @@ class TestAugmentationSequential:
         assert_close(out_hor[1], expected_bbox_horizontal_flip)
 
     def test_random_crops(self, device, dtype):
-        input = torch.randn(2, 3, 3, 3, device=device, dtype=dtype)
-        bbox = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype).expand(
-            2, -1, -1
-        )
-        points = torch.tensor([[[1.0, 1.0]]], device=device, dtype=dtype).expand(2, -1, -1)
+        input = torch.randn(3, 3, 3, 3, device=device, dtype=dtype)
+        bbox = torch.tensor(
+            [[[1.0, 1.0, 2.0, 2.0], [0.0, 0.0, 1.0, 2.0], [0.0, 0.0, 2.0, 1.0]]],
+            device=device, dtype=dtype).expand(3, -1, -1)
+        points = torch.tensor([[[0.0, 0.0], [1.0, 1.0]]], device=device, dtype=dtype).expand(3, -1, -1)
         aug = K.AugmentationSequential(
-            K.RandomCrop((2, 2), padding=1, cropping_mode='resample', fill=0),
+            K.RandomCrop((3, 3), padding=1, cropping_mode='resample', fill=0),
             data_keys=["input", "mask", "bbox", "keypoints"]
         )
 
         reproducibility_test((input, input, bbox, points), aug)
 
-        out = aug(input, input, bbox, points)
-        assert out[0].shape == (2, 3, 2, 2)
+        _params = aug.forward_parameters(input.shape)
+        # specifying the crops allows us to compute by hand the expected outputs
+        _params[0].data['src'] = torch.Tensor([[[1., 2.],
+                                                [3., 2.],
+                                                [3., 4.],
+                                                [1., 4.]],
+                                               [[1., 1.],
+                                                [3., 1.],
+                                                [3., 3.],
+                                                [1., 3.]],
+                                               [[2., 0.],
+                                                [4., 0.],
+                                                [4., 2.],
+                                                [2., 2.]]])
+
+        expected_out_bbox = torch.Tensor([[[1., 0., 2., 1.],
+                                           [0., -1., 1., 1.],
+                                           [0., -1., 2., 0.]],
+                                          [[1., 1., 2., 2.],
+                                           [0., 0., 1., 2.],
+                                           [0., 0., 2., 1.]],
+                                          [[0., 2., 1., 3.],
+                                           [-1., 1., 0., 3.],
+                                           [-1., 1., 1., 2.]]])
+        expected_out_points = torch.Tensor([[[0., -1.], [1., 0.]],
+                                            [[0., 0.], [1., 1.]],
+                                            [[-1., 1.], [0., 2.]]])
+
+        out = aug(input, input, bbox, points, params=_params)
+        assert out[0].shape == (3, 3, 3, 3)
         assert_close(out[0], out[1])
         assert out[2].shape == bbox.shape
+        assert_close(out[2], expected_out_bbox)
         assert out[3].shape == points.shape
+        assert_close(out[3], expected_out_points)
 
         out_inv = aug.inverse(*out)
         assert out_inv[0].shape == input.shape
-        assert_close(out[0], out[1])
+        assert_close(out_inv[0], out_inv[1])
         assert out_inv[2].shape == bbox.shape
+        assert_close(out_inv[2], bbox)
         assert out_inv[3].shape == points.shape
+        assert_close(out_inv[3], points)
 
     @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
     @pytest.mark.parametrize('return_transform', [True, False])
