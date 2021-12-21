@@ -317,31 +317,19 @@ class TestAugmentationSequential:
 
         _params = aug.forward_parameters(input.shape)
         # specifying the crops allows us to compute by hand the expected outputs
-        _params[0].data['src'] = torch.Tensor([[[1., 2.],
-                                                [3., 2.],
-                                                [3., 4.],
-                                                [1., 4.]],
-                                               [[1., 1.],
-                                                [3., 1.],
-                                                [3., 3.],
-                                                [1., 3.]],
-                                               [[2., 0.],
-                                                [4., 0.],
-                                                [4., 2.],
-                                                [2., 2.]]])
+        _params[0].data['src'] = torch.tensor(
+            [[[1., 2.], [3., 2.], [3., 4.], [1., 4.]],
+             [[1., 1.], [3., 1.], [3., 3.], [1., 3.]],
+             [[2., 0.], [4., 0.], [4., 2.], [2., 2.]]], device=device, dtype=dtype)
 
-        expected_out_bbox = torch.Tensor([[[1., 0., 2., 1.],
-                                           [0., -1., 1., 1.],
-                                           [0., -1., 2., 0.]],
-                                          [[1., 1., 2., 2.],
-                                           [0., 0., 1., 2.],
-                                           [0., 0., 2., 1.]],
-                                          [[0., 2., 1., 3.],
-                                           [-1., 1., 0., 3.],
-                                           [-1., 1., 1., 2.]]])
-        expected_out_points = torch.Tensor([[[0., -1.], [1., 0.]],
-                                            [[0., 0.], [1., 1.]],
-                                            [[-1., 1.], [0., 2.]]])
+        expected_out_bbox = torch.tensor(
+            [[[1., 0., 2., 1.], [0., -1., 1., 1.], [0., -1., 2., 0.]],
+             [[1., 1., 2., 2.], [0., 0., 1., 2.], [0., 0., 2., 1.]],
+             [[0., 2., 1., 3.], [-1., 1., 0., 3.], [-1., 1., 1., 2.]]], device=device, dtype=dtype)
+        expected_out_points = torch.tensor(
+            [[[0., -1.], [1., 0.]],
+             [[0., 0.], [1., 1.]],
+             [[-1., 1.], [0., 2.]]], device=device, dtype=dtype)
 
         out = aug(input, input, bbox, points, params=_params)
         assert out[0].shape == (3, 3, 3, 3)
