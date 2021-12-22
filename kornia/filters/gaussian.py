@@ -122,10 +122,10 @@ class GaussianBlur2d(nn.Module):
         self._create_kernel(clear_buffers=True)
 
     def _create_kernel(self, clear_buffers=False):
-        """Create the kernel and store as buffer
-        
-        In the case that we are changing from separable non-separable we first clear any
-        buffers so as not to waste memory using clear_buffers
+        """Create the kernel and store as buffer.
+
+        In the case that we are changing from separable non-separable we first clear any buffers so as not to waste
+        memory using clear_buffers
         """
         if clear_buffers:
             existing_buffers = [x[0] for x in self.named_buffers()]
