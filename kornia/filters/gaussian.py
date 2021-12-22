@@ -93,7 +93,7 @@ class GaussianBlur2d(nn.Module):
         super().__init__()
         self._kernel_size: Tuple[int, int] = kernel_size
         self._sigma: Tuple[float, float] = sigma
-        self._border_type = border_type
+        self.border_type = border_type
         self._separable = separable
         self._create_kernel()
 
@@ -111,14 +111,6 @@ class GaussianBlur2d(nn.Module):
     @sigma.setter
     def sigma(self, value:Tuple[float,float]):
         self._sigma = value
-        self._create_kernel()
-
-    @property
-    def border_type(self):
-        self._border_type
-    @border_type.setter
-    def border_type(self, value:str):
-        self._border_type = value
         self._create_kernel()
 
     @property
@@ -168,7 +160,7 @@ class GaussianBlur2d(nn.Module):
     def forward(self, input: torch.Tensor) -> torch.Tensor:
 
         if self._separable:
-            out = filter2d_separable(input, self.kernel_x[None], self.kernel_y[None], self._border_type)
+            out = filter2d_separable(input, self.kernel_x[None], self.kernel_y[None], self.border_type)
         else:
-            out = filter2d(input, self.kernel[None], self._border_type)
+            out = filter2d(input, self.kernel[None], self.border_type)
         return out
