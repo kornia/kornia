@@ -95,3 +95,31 @@ class TestGaussianBlur2d:
 
         img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
         assert_close(op(img, *params), op_module(img))
+    
+    def test_module_change_param(self, device, dtype):
+        """Module should reflect changes to properties"""
+        orig_params = [(3, 3), (1.5, 1.5)]
+        new_params = [(1, 5), (0.2, 2.4)]
+        op = kornia.filters.gaussian_blur2d
+        op_module = kornia.filters.GaussianBlur2d(*orig_params)
+        op_module.kernel_size = new_params[0]
+        op_module.sigma = new_params[1]
+
+        img = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
+        assert_close(op(img, *new_params), op_module(img))
+    
+    def test_module_change_separable(self, device, dtype):
+        """Module should clear out unsused kernel when switching separable to non separable"""
+        params = [(3, 3), (1.5, 1.5)]
+        op = kornia.filters.gaussian_blur2d
+        op_module = kornia.filters.GaussianBlur2d(*params, separable=True)
+
+        assert list(op_module.kernel_x.shape) == [3]
+        assert list(op_module.kernel_x.shape) == [3]
+        op_module.separable = False
+        assert not getattr(op_module, "kernel_x", None)
+
+        img = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
+        assert_close(op(img, *params), op_module(img))
+
+

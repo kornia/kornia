@@ -91,39 +91,84 @@ class GaussianBlur2d(nn.Module):
                  border_type: str = 'reflect',
                  separable: bool = True) -> None:
         super().__init__()
-        self.kernel_size: Tuple[int, int] = kernel_size
-        self.sigma: Tuple[float, float] = sigma
-        self.border_type = border_type
-        self.separable = separable
-        if separable:
-            kernel_x: torch.Tensor = get_gaussian_kernel1d(kernel_size[1], sigma[1])
-            kernel_y: torch.Tensor = get_gaussian_kernel1d(kernel_size[0], sigma[0])
+        self._kernel_size: Tuple[int, int] = kernel_size
+        self._sigma: Tuple[float, float] = sigma
+        self._border_type = border_type
+        self._separable = separable
+        self._create_kernel()
+
+    @property
+    def kernel_size(self):
+        self._kernel_size
+    @kernel_size.setter
+    def kernel_size(self, value:Tuple[int,int]):
+        self._kernel_size = value
+        self._create_kernel()
+
+    @property
+    def sigma(self):
+        self._sigma
+    @sigma.setter
+    def sigma(self, value:Tuple[float,float]):
+        self._sigma = value
+        self._create_kernel()
+
+    @property
+    def border_type(self):
+        self._border_type
+    @border_type.setter
+    def border_type(self, value:str):
+        self._border_type = value
+        self._create_kernel()
+
+    @property
+    def separable(self):
+        self._separable
+    @separable.setter
+    def separable(self, value:bool):
+        self._separable = value
+        self._create_kernel(clear_buffers=True)
+
+    def _create_kernel(self, clear_buffers=False):
+        """Create the kernel and store as buffer
+        
+        In the case that we are changing from separable non-separable we first clear any
+        buffers so as not to waste memory using clear_buffers
+        """
+        if clear_buffers:
+            existing_buffers = [x[0] for x in self.named_buffers()]
+            [delattr(self, x) for x in existing_buffers]
+
+        if self._separable:
+            kernel_x: torch.Tensor = get_gaussian_kernel1d(self._kernel_size[1], self._sigma[1])
+            kernel_y: torch.Tensor = get_gaussian_kernel1d(self._kernel_size[0], self._sigma[0])
             self.register_buffer("kernel_x", kernel_x)
             self.register_buffer("kernel_y", kernel_y)
         else:
-            kernel: torch.Tensor = get_gaussian_kernel2d(kernel_size, sigma)
+            kernel: torch.Tensor = get_gaussian_kernel2d(self._kernel_size, self._sigma)
             self.register_buffer("kernel", kernel)
 
     def __repr__(self) -> str:
         return (
             self.__class__.__name__
             + '(kernel_size='
-            + str(self.kernel_size)
+            + str(self._kernel_size)
             + ', '
             + 'sigma='
-            + str(self.sigma)
+            + str(self._sigma)
             + ', '
             + 'border_type='
-            + self.border_type
+            + self._border_type
+            + ', '
             + 'separable='
-            + str(self.separable)
+            + str(self._separable)
             + ')'
         )
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
 
-        if self.separable:
-            out = filter2d_separable(input, self.kernel_x[None], self.kernel_y[None], self.border_type)
+        if self._separable:
+            out = filter2d_separable(input, self.kernel_x[None], self.kernel_y[None], self._border_type)
         else:
-            out = filter2d(input, self.kernel[None], self.border_type)
+            out = filter2d(input, self.kernel[None], self._border_type)
         return out
