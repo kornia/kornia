@@ -23,6 +23,10 @@ Containers
 Augmentation Layers
 -------------------
 
+
+2D Augmentation Layers
+++++++++++++++++++++++
+
 .. autosummary::
     :toctree: generated
     :nosignatures:
@@ -60,7 +64,7 @@ Augmentation Layers
 
 
 3D Augmentation Layers
-----------------------
+++++++++++++++++++++++
 
 .. autosummary::
     :toctree: generated
@@ -82,7 +86,7 @@ Augmentation Layers
 
 
 Mix Augmentation Layers
------------------------
+++++++++++++++++++++++++
 
 .. autosummary::
     :toctree: generated
