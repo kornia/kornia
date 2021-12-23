@@ -90,6 +90,7 @@ Join the community
    losses
    metrics
    morphology
+   nn
    tracking
    utils
    x

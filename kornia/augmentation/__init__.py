@@ -43,6 +43,7 @@ from .base import AugmentationBase2D, AugmentationBase3D
 from .container import AugmentationSequential, ImageSequential, PatchSequential, VideoSequential
 from .mix_augmentation import RandomCutMix, RandomMixUp
 
+
 __all__ = [
     "AugmentationBase2D",
     "CenterCrop",

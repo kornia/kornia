@@ -1,5 +1,7 @@
 import inspect
-from typing import Any, Optional
+import sys
+
+from typing import Any, List, Optional
 
 
 class Registry:
@@ -11,23 +13,27 @@ class Registry:
         name (str): Registry name.
     """
 
-    def __init__(self, name):
+    def __init__(self, name: str) -> None:
         self._name = name
         self._module_dict = dict()
-        self._children = dict()
+        self._children = dict()  # TODO: enable sub-namespaces.
+        # sys.modules[name] = self
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._module_dict)
 
-    def __contains__(self, key):
+    def __contains__(self, key) -> bool:
         return self.get(key) is not None
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         format_str = self.__class__.__name__ + f'(name={self._name}, items={self._module_dict})'
         return format_str
 
+    def list_modules(self, query: str) -> List[str]:
+        raise NotImplementedError
+
     def _register_module(
-        self, module_class, module_name: Optional[str] = None, force: Optional[bool] = False
+        self, module_class: Any, module_name: Optional[str] = None, force: Optional[bool] = False
     ):
         if not inspect.isclass(module_class):
             raise TypeError(f'module must be a class, but got {type(module_class)}.')
@@ -43,21 +49,20 @@ class Registry:
     ):
         """Register a module.
 
-        A record will be added to `self._module_dict`, whose key is the class
-        name or the specified name, and value is the class itself.
-        It can be used as a decorator or a normal function.
+        A record will be added to `self._module_dict` and as a class attribute,
+        whose key is the class name or the specified name, and value is the class itself.
+        This function can be used as a decorator or a normal function.
 
         Args:
-            name (str | None): The module name to be registered. If not
-                specified, the class name will be used.
-            force (bool, optional): Whether to override an existing class with
-                the same name. Default: False.
-            module (type): Module class to be registered.
+            name: The module name to be registered. If not specified, the class name will be used.
+            force: Whether to override an existing class with the same name. Default: False.
+            module: Module class to be registered.
         """
         if not isinstance(force, bool):
             raise TypeError(f'force must be a boolean, but got {type(force)}')
 
         # raise the error ahead of time
+        # TODO: handle "xx.yy.zz" names with submodules.
         if not (name is None or isinstance(name, str)):
             raise TypeError(
                 'name must be either of None, an instance of str or a sequence'
@@ -76,3 +81,12 @@ class Registry:
             return cls
 
         return _register
+
+    def register_modules_from_namespace(self, namespace: str, allowed_classes: Optional[list] = None):
+        def _predicate(module: Any):
+            if allowed_classes is not None:
+                return inspect.isclass(module) and issubclass(module, tuple(allowed_classes))
+            return inspect.isclass(module)
+
+        classes = inspect.getmembers(sys.modules[namespace], _predicate)
+        list([self.register_module(name=n, module=cls) for n, cls in classes])
