@@ -1,7 +1,6 @@
 import inspect
-import sys
 import re
-
+import sys
 from typing import Any, List, Optional
 
 
@@ -102,4 +101,4 @@ class Registry:
             return False
 
         classes = inspect.getmembers(sys.modules[namespace], _predicate)
-        list([self.register_module(name=n, module=cls) for n, cls in classes if not _pattern_matching(n)])
+        list(self.register_module(name=n, module=cls) for n, cls in classes if not _pattern_matching(n))
