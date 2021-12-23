@@ -1,7 +1,8 @@
 # import the version variable
 from ._version import __version__
 
-import kornia._nn
+# Make sure the wrapper is working before any module
+import kornia.nn
 
 # NOTE: kornia filters and geometry must go first since are the core of the library
 # and by changing the import order you might get into a circular dependencies issue.
@@ -33,4 +34,4 @@ from kornia.utils import (
     tensor_to_image,
 )
 
-kornia._nn._register()
+kornia.nn._register()

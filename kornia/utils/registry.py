@@ -1,5 +1,6 @@
 import inspect
 import sys
+import re
 
 from typing import Any, List, Optional
 
@@ -30,6 +31,7 @@ class Registry:
         return format_str
 
     def list_modules(self, query: str) -> List[str]:
+        # Search for any modules by a regex string.
         raise NotImplementedError
 
     def _register_module(
@@ -82,11 +84,22 @@ class Registry:
 
         return _register
 
-    def register_modules_from_namespace(self, namespace: str, allowed_classes: Optional[list] = None):
+    def register_modules_from_namespace(
+        self, namespace: str, allowed_classes: Optional[list] = None,
+        exclude_patterns: List[str] = []
+    ) -> None:
         def _predicate(module: Any):
             if allowed_classes is not None:
                 return inspect.isclass(module) and issubclass(module, tuple(allowed_classes))
             return inspect.isclass(module)
 
+        pattern = [re.compile(p) for p in exclude_patterns]
+
+        def _pattern_matching(name):
+            for p in pattern:
+                if p.match(name) is not None:
+                    return True
+            return False
+
         classes = inspect.getmembers(sys.modules[namespace], _predicate)
-        list([self.register_module(name=n, module=cls) for n, cls in classes])
+        list([self.register_module(name=n, module=cls) for n, cls in classes if not _pattern_matching(n)])
