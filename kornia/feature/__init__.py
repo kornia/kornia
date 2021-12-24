@@ -45,6 +45,7 @@ from .responses import (
 )
 from .scale_space_detector import PassLAF, ScaleSpaceDetector
 from .siftdesc import SIFTDescriptor
+from .sold2 import SOLD2_detector, SOLD2
 from .sosnet import SOSNet
 from .tfeat import TFeat
 
@@ -113,4 +114,6 @@ __all__ = [
     "DescriptorMatcher",
     "LoFTR",
     "perspective_transform_lafs",
+    "SOLD2_detector",
+    "SOLD2",
 ]

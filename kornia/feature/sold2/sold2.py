@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+from typing import Dict
 
 import numpy as np
 import torch
@@ -58,14 +58,18 @@ default_detector_cfg = {
 
 class SOLD2(nn.Module):
     r"""Module, which detects and describe line segments in an image.
+
     This is based on the original code from the paper "SOLD²: Self-supervised
     Occlusion-aware Line Detector and Descriptor". See :cite:`SOLD22021` for more details.
+
     Args:
-        config: Dict with initialization parameters. Do not pass it, unless you know what you are doing`.
+        config: Dict specifying parameters. The default parameters are tuned for images in the range 400~800 px.
         pretrained: If True, download and set pretrained weights to the model.
+
     Returns:
         The raw junction and line heatmaps, the semi-dense descriptor map,
         as well as the list of detected line segments (ij coordinates convention).
+
     Example:
         >>> images = torch.rand(2, 1, 512, 512)
         >>> sold2 = SOLD2()
@@ -77,7 +81,7 @@ class SOLD2(nn.Module):
         >>> matches = sold2.match(line_seg1, line_seg2, desc1[None], desc2[None])
     """
 
-    def __init__(self, pretrained: Optional[bool] = True, config: Dict = default_detector_cfg):
+    def __init__(self, pretrained: bool = True, config: Dict = default_detector_cfg):
         super().__init__()
         # Initialize some parameters
         self.config = config
@@ -105,12 +109,14 @@ class SOLD2(nn.Module):
         """
         Args:
             img: batched images with shape :math:`(N, 1, H, W)`.
-        Returns:
-            a dict with the following entries:
-            line_segments: list of line segments in each of the N images :math:`List[(n_lines, 2, 2)]`.
-            raw_junc_heatmap: raw junction heatmap of shape [N, H, W].
-            raw_line_heatmap: raw line heatmap of shape [N, H, W].
-            dense_desc: the semi-dense descriptor map of shape [N, 128, H/4, W/4].
+
+        :return:
+            - ``line_segments``: list of line segments in each of the N images :math:`List[(Nlines, 2, 2)]`.
+            - ``raw_junc_heatmap``: raw junction heatmap of shape :math:`(N, H, W)`.
+            - ``raw_line_heatmap``: raw line heatmap of shape :math:`(N, H, W)`.
+            - ``dense_desc``: the semi-dense descriptor map of shape :math:`(N, 128, H/4, W/4)`.
+
+        :rtype: dict
         """
         if ((not len(img.shape) == 4) or (not isinstance(img, torch.Tensor))):
             raise ValueError("The input image should be a 4D torch tensor.")

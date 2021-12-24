@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+from typing import Dict
 
 import math
 import numpy as np
@@ -50,20 +50,24 @@ default_detector_cfg = {
 
 class SOLD2_detector(nn.Module):
     r"""Module, which detects line segments in an image.
+
     This is based on the original code from the paper "SOLD²: Self-supervised
     Occlusion-aware Line Detector and Descriptor". See :cite:`SOLD22021` for more details.
+
     Args:
-        config: Dict with initialization parameters. Do not pass it, unless you know what you are doing`.
+        config: Dict specifying parameters. The default parameters are tuned for images in the range 400~800 px.
         pretrained: If True, download and set pretrained weights to the model.
+
     Returns:
         The raw junction and line heatmaps, as well as the list of detected line segments (ij coordinates convention).
+
     Example:
         >>> img = torch.rand(1, 1, 512, 512)
         >>> sold2_detector = SOLD2_detector()
         >>> line_segments = sold2_detector(img)["line_segments"]
     """
 
-    def __init__(self, pretrained: Optional[bool] = True, config: Dict = default_detector_cfg):
+    def __init__(self, pretrained: bool = True, config: Dict = default_detector_cfg):
         super().__init__()
         # Initialize some parameters
         self.config = config
@@ -98,11 +102,13 @@ class SOLD2_detector(nn.Module):
         """
         Args:
             img: batched images with shape :math:`(N, 1, H, W)`.
-        Returns:
-            a dict with the following entries:
-            line_segments: list of line segments in each of the N images :math:`List[(n_lines, 2, 2)]`.
-            raw_junc_heatmap: raw junction heatmap of shape [N, H, W].
-            raw_line_heatmap: raw line heatmap of shape [N, H, W].
+
+        :return:
+            - ``line_segments``: list of line segments in each of the N images :math:`List[(Nlines, 2, 2)]`.
+            - ``raw_junc_heatmap``: raw junction heatmap of shape :math:`(N, H, W)`.
+            - ``raw_line_heatmap``: raw line heatmap of shape :math:`(N, H, W)`.
+
+        :rtype: dict
         """
         if ((not len(img.shape) == 4) or (not isinstance(img, torch.Tensor))):
             raise ValueError("The input image should be a 4D torch tensor.")
