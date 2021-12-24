@@ -1,7 +1,7 @@
-from typing import Any, List, Optional
 import inspect
-import sys
 import re
+import sys
+from typing import Any, List, Optional
 
 
 class Registry:

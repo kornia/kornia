@@ -14,8 +14,7 @@ for _k, _v in _inspect.getmembers(_nn, _inspect.ismethod):
 
 
 def _register():
-    """Lazy registering for resolving the package import ordering issue.
-    """
+    """Lazy registering for resolving the package import ordering issue."""
     # Exclude the augmentation base module
     _nn.register_modules_from_namespace(
         "kornia.augmentation", allowed_classes=[_torch.nn.Module], exclude_patterns=[".*Base.?D"])
