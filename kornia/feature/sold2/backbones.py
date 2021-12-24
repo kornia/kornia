@@ -1,12 +1,11 @@
 """Implements several backbone networks."""
 
-from typing import Dict, Optional, List, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.functional import pixel_shuffle, softmax
-
 
 # [Hourglass backbone classes]
 
@@ -25,7 +24,7 @@ class HourglassBackbone(nn.Module):
                  num_stacks: Optional[int] = 2,
                  num_blocks: Optional[int] = 1,
                  num_classes: Optional[int] = 5):
-        super(HourglassBackbone, self).__init__()
+        super().__init__()
         self.head = MultitaskHead
         self.net = hg(**{
             "head": self.head,
@@ -42,7 +41,7 @@ class HourglassBackbone(nn.Module):
 
 class MultitaskHead(nn.Module):
     def __init__(self, input_channels: int, num_class: int):
-        super(MultitaskHead, self).__init__()
+        super().__init__()
 
         m = int(input_channels / 4)
         head_size = [[2], [1], [2]]
@@ -68,7 +67,7 @@ class Bottleneck2D(nn.Module):
                  planes: int,
                  stride: Union[int, Tuple[int, int]] = 1,
                  downsample: Optional[torch.nn.Module] = None):
-        super(Bottleneck2D, self).__init__()
+        super().__init__()
 
         self.bn1 = nn.BatchNorm2d(inplanes)
         self.conv1 = nn.Conv2d(inplanes, planes, kernel_size=1)
@@ -107,7 +106,7 @@ class Bottleneck2D(nn.Module):
 class Hourglass(nn.Module):
     def __init__(self, block: torch.nn.Module, num_blocks: int,
                  planes: int, depth: int, expansion: int = 2):
-        super(Hourglass, self).__init__()
+        super().__init__()
         self.depth = depth
         self.block = block
         self.expansion = expansion
@@ -149,7 +148,7 @@ class Hourglass(nn.Module):
 
 
 class HourglassNet(nn.Module):
-    """Hourglass model from Newell et al ECCV 2016"""
+    """Hourglass model from Newell et al ECCV 2016."""
 
     def __init__(self,
                  block: torch.nn.Module,
@@ -160,7 +159,7 @@ class HourglassNet(nn.Module):
                  num_classes: int,
                  input_channels: int,
                  expansion: int = 2):
-        super(HourglassNet, self).__init__()
+        super().__init__()
 
         self.inplanes = 64
         self.num_feats = 128
@@ -265,13 +264,14 @@ def hg(**kwargs):
 
 class SuperpointDecoder(nn.Module):
     """Junction decoder based on the SuperPoint architecture.
+
     Args:
         input_feat_dim: channel size of the input features.
     Returns:
         the junction heatmap, with shape (B, H, W).
     """
     def __init__(self, input_feat_dim: int = 128, grid_size: int = 8):
-        super(SuperpointDecoder, self).__init__()
+        super().__init__()
         self.relu = torch.nn.ReLU(inplace=True)
         # Perform strided convolution when using lcnn backbone.
         self.convPa = torch.nn.Conv2d(input_feat_dim, 256, kernel_size=3,
@@ -292,6 +292,7 @@ class SuperpointDecoder(nn.Module):
 
 class PixelShuffleDecoder(nn.Module):
     """Pixel shuffle decoder used to predict the line heatmap.
+
     Args:
         input_feat_dim: channel size of the input features.
         num_upsample: how many upsamples are performed.
@@ -303,7 +304,7 @@ class PixelShuffleDecoder(nn.Module):
                  input_feat_dim: int = 128,
                  num_upsample: int = 2,
                  output_channel: int = 2):
-        super(PixelShuffleDecoder, self).__init__()
+        super().__init__()
         # Get channel parameters
         self.channel_conf = self.get_channel_conf(num_upsample)
 
@@ -362,13 +363,14 @@ class PixelShuffleDecoder(nn.Module):
 
 class SuperpointDescriptor(nn.Module):
     """Descriptor decoder based on the SuperPoint arcihtecture.
+
     Args:
         input_feat_dim: channel size of the input features.
     Returns:
         the semi-dense descriptors with shape (B, 128, H/4, W/4).
     """
     def __init__(self, input_feat_dim: int = 128):
-        super(SuperpointDescriptor, self).__init__()
+        super().__init__()
         self.relu = torch.nn.ReLU(inplace=True)
         self.convPa = torch.nn.Conv2d(input_feat_dim, 256, kernel_size=3,
                                       stride=1, padding=1)
@@ -386,6 +388,7 @@ class SuperpointDescriptor(nn.Module):
 
 class SOLD2Net(nn.Module):
     """Full network for SOLD².
+
     Args:
         model_cfg: the configuration as a Dict.
     Returns:
@@ -395,7 +398,7 @@ class SOLD2Net(nn.Module):
             descriptors: semi-dense descriptors.
     """
     def __init__(self, model_cfg: Dict):
-        super(SOLD2Net, self).__init__()
+        super().__init__()
         self.cfg = model_cfg
 
         # Backbone

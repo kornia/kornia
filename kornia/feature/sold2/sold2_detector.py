@@ -1,12 +1,11 @@
+import math
 from typing import Dict
 
-import math
 import numpy as np
 import torch
 import torch.nn as nn
 
 from .backbones import SOLD2Net
-
 
 urls: Dict[str, str] = {}
 urls["wireframe"] = "https://www.polybox.ethz.ch/index.php/s/blOrW89gqSLoHOk/download"
@@ -146,7 +145,7 @@ class SOLD2_detector(nn.Module):
         return outputs
 
 
-class LineSegmentDetectionModule(object):
+class LineSegmentDetectionModule:
     r"""Module extracting line segments from junctions and line heatmaps.
     Args:
         detect_thresh: The probability threshold for mean activation (0. ~ 1.)
@@ -213,7 +212,7 @@ class LineSegmentDetectionModule(object):
             raise ValueError("[Error] Missing junction refinement config.")
 
     def convert_inputs(self, inputs, device):
-        """ Convert inputs to desired torch tensor. """
+        """Convert inputs to desired torch tensor."""
         if isinstance(inputs, np.ndarray):
             outputs = torch.tensor(inputs, dtype=torch.float32, device=device)
         elif isinstance(inputs, torch.Tensor):
@@ -225,7 +224,7 @@ class LineSegmentDetectionModule(object):
         return outputs
 
     def detect(self, junctions, heatmap, device=torch.device("cpu")):
-        """ Main function performing line segment detection. """
+        """Main function performing line segment detection."""
         # Convert inputs to torch tensor
         junctions = self.convert_inputs(junctions, device=device)
         heatmap = self.convert_inputs(heatmap, device=device)
@@ -357,7 +356,7 @@ class LineSegmentDetectionModule(object):
         return line_map_pred, junctions, heatmap
 
     def refine_heatmap(self, heatmap, ratio=0.2, valid_thresh=1e-2):
-        """ Global heatmap refinement method. """
+        """Global heatmap refinement method."""
         # Grab the top 10% values
         heatmap_values = heatmap[heatmap > valid_thresh]
         sorted_values = torch.sort(heatmap_values, descending=True)[0]
@@ -368,7 +367,7 @@ class LineSegmentDetectionModule(object):
 
     def refine_heatmap_local(self, heatmap, num_blocks=5, overlap_ratio=0.5,
                              ratio=0.2, valid_thresh=2e-3):
-        """ Local heatmap refinement method. """
+        """Local heatmap refinement method."""
         # Get the shape of the heatmap
         H, W = heatmap.shape
         increase_ratio = 1 - overlap_ratio
@@ -402,7 +401,7 @@ class LineSegmentDetectionModule(object):
         return heatmap_output
 
     def candidate_suppression(self, junctions, candidate_map):
-        """ Suppress overlapping long lines in the candidate segments. """
+        """Suppress overlapping long lines in the candidate segments."""
         # Define the distance tolerance
         dist_tolerance = self.nms_dist_tolerance
 
@@ -457,7 +456,7 @@ class LineSegmentDetectionModule(object):
 
     def refine_junction_perturb(self, junctions, line_map_pred,
                                 heatmap, H, W, device):
-        """ Refine the line endpoints in a similar way as in LSD. """
+        """Refine the line endpoints in a similar way as in LSD."""
         # Get the config
         junction_refine_cfg = self.junction_refine_cfg
 
@@ -538,7 +537,7 @@ class LineSegmentDetectionModule(object):
         return junctions_new, line_map_new
 
     def segments_to_line_map(self, junctions, segments):
-        """ Convert the list of segments to line map. """
+        """Convert the list of segments to line map."""
         # Create empty line map
         device = junctions.device
         num_junctions = junctions.shape[0]
@@ -564,7 +563,7 @@ class LineSegmentDetectionModule(object):
         return line_map
 
     def detect_bilinear(self, heatmap, cand_h, cand_w, H, W, device):
-        """ Detection by bilinear sampling. """
+        """Detection by bilinear sampling."""
         # Get the floor and ceiling locations
         cand_h_floor = torch.floor(cand_h).to(torch.long)
         cand_h_ceil = torch.ceil(cand_h).to(torch.long)
@@ -584,7 +583,7 @@ class LineSegmentDetectionModule(object):
 
     def detect_local_max(self, heatmap, cand_h, cand_w, H, W,
                          normalized_seg_length, device):
-        """ Detection by local maximum search. """
+        """Detection by local maximum search."""
         # Compute the distance threshold
         dist_thresh = (0.5 * (2 ** 0.5)
                        + self.lambda_radius * normalized_seg_length)
@@ -643,7 +642,7 @@ class LineSegmentDetectionModule(object):
 
 
 def line_map_to_segments(junctions: np.ndarray, line_map: np.ndarray) -> np.ndarray:
-    """ Convert a line map to a Nx2x2 array of segments. """
+    """Convert a line map to a Nx2x2 array of segments."""
     line_map_tmp = line_map.copy()
 
     output_segments = np.zeros([0, 2, 2])
@@ -670,7 +669,7 @@ def line_map_to_segments(junctions: np.ndarray, line_map: np.ndarray) -> np.ndar
 
 def super_nms(prob_predictions: np.ndarray, dist_thresh: float,
               prob_thresh: float = 0.01, top_k: int = 0) -> np.ndarray:
-    """ Non-maximum suppression adapted from SuperPoint. """
+    """Non-maximum suppression adapted from SuperPoint."""
     # Iterate through batch dimension
     im_h = prob_predictions.shape[1]
     im_w = prob_predictions.shape[2]
@@ -703,9 +702,7 @@ def super_nms(prob_predictions: np.ndarray, dist_thresh: float,
 
 
 def nms_fast(in_corners: np.ndarray, H: int, W: int, dist_thresh: float) -> np.ndarray:
-    """
-    Run a faster approximate Non-Max-Suppression on numpy corners shaped:
-      3xN [x_i,y_i,conf_i]^T
+    """Run a faster approximate Non-Max-Suppression on numpy corners shaped: 3xN [x_i,y_i,conf_i]^T.
 
     Algo summary: Create a grid sized HxW. Assign each corner location a 1,
     rest are zeros. Iterate through all the 1's and convert them to -1 or 0.

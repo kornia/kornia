@@ -6,8 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .backbones import SOLD2Net
-from .sold2_detector import LineSegmentDetectionModule, super_nms, line_map_to_segments
-
+from .sold2_detector import line_map_to_segments, LineSegmentDetectionModule, super_nms
 
 urls: Dict[str, str] = {}
 urls["wireframe"] = "https://www.polybox.ethz.ch/index.php/s/blOrW89gqSLoHOk/download"
@@ -158,8 +157,8 @@ class SOLD2(nn.Module):
 
     def match(self, line_seg1: np.ndarray, line_seg2: np.ndarray,
               desc1: torch.Tensor, desc2: torch.Tensor) -> np.ndarray:
-        """ Find the best matches between two sets of line segments
-            and their corresponding descriptors.
+        """Find the best matches between two sets of line segments and their corresponding descriptors.
+
         Args:
             line_seg1, line_seg2: list of line segments in two images, with shape [num_lines, 2, 2].
             desc1, desc2: semi-dense descriptor maps of the images, with shape [1, 128, H/4, W/4].
@@ -180,8 +179,8 @@ class SOLD2(nn.Module):
         return state_dict
 
 
-class WunschLineMatcher(object):
-    """ Class matching two sets of line segments with the Needleman-Wunsch algorithm. """
+class WunschLineMatcher:
+    """Class matching two sets of line segments with the Needleman-Wunsch algorithm."""
     def __init__(self, cross_check=True, num_samples=10, min_dist_pts=8,
                  top_k_candidates=10, grid_size=8, line_score=False):
         self.cross_check = cross_check
@@ -192,10 +191,7 @@ class WunschLineMatcher(object):
         self.line_score = line_score  # True to compute saliency on a line
 
     def __call__(self, line_seg1, line_seg2, desc1, desc2):
-        """
-            Find the best matches between two sets of line segments
-            and their corresponding descriptors.
-        """
+        """Find the best matches between two sets of line segments and their corresponding descriptors."""
         img_size1 = (desc1.shape[2] * self.grid_size,
                      desc1.shape[3] * self.grid_size)
         img_size2 = (desc2.shape[2] * self.grid_size,
@@ -245,9 +241,9 @@ class WunschLineMatcher(object):
         return matches
 
     def sample_line_points(self, line_seg):
-        """
-        Regularly sample points along each line segments, with a minimal
-        distance between each point. Pad the remaining points.
+        """Regularly sample points along each line segments, with a minimal distance between each point.
+
+        Pad the remaining points.
         Inputs:
             line_seg: an Nx2x2 np.array.
         Outputs:
@@ -291,9 +287,9 @@ class WunschLineMatcher(object):
         return line_points, valid_points
 
     def filter_and_match_lines(self, scores):
-        """
-        Use the scores to keep the top k best lines, compute the Needleman-
-        Wunsch algorithm on each candidate pairs, and keep the highest score.
+        """Use the scores to keep the top k best lines, compute the Needleman- Wunsch algorithm on each candidate
+        pairs, and keep the highest score.
+
         Inputs:
             scores: a (N, M, n, n) np.array containing the pairwise scores
                     of the elements to match.
@@ -331,8 +327,8 @@ class WunschLineMatcher(object):
         return matches
 
     def needleman_wunsch(self, scores):
-        """
-        Batched implementation of the Needleman-Wunsch algorithm.
+        """Batched implementation of the Needleman-Wunsch algorithm.
+
         The cost of the InDel operation is set to 0 by subtracting the gap
         penalty to the scores.
         Inputs:
@@ -357,8 +353,8 @@ class WunschLineMatcher(object):
 
 
 def keypoints_to_grid(keypoints: torch.Tensor, img_size: tuple) -> torch.Tensor:
-    """ Convert a list of keypoints into a grid in [-1, 1]² that can be
-        used in torch.nn.functional.interpolate.
+    """Convert a list of keypoints into a grid in [-1, 1]² that can be used in torch.nn.functional.interpolate.
+
     Args:
         keypoints: a tensor [N, 2] or batched tensor [B, N, 2] of N keypoints (ij coordinates convention).
         img_size: the original image size (H, W)
