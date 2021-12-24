@@ -213,8 +213,8 @@ class WunschLineMatcher(object):
         # Extract the descriptors for each point
         grid1 = keypoints_to_grid(line_points1, img_size1)
         grid2 = keypoints_to_grid(line_points2, img_size2)
-        desc1 = F.normalize(F.grid_sample(desc1, grid1)[0, :, :, 0], dim=0)
-        desc2 = F.normalize(F.grid_sample(desc2, grid2)[0, :, :, 0], dim=0)
+        desc1 = F.normalize(F.grid_sample(desc1, grid1, align_corners=False)[0, :, :, 0], dim=0)
+        desc2 = F.normalize(F.grid_sample(desc2, grid2, align_corners=False)[0, :, :, 0], dim=0)
 
         # Precompute the distance between line points for every pair of lines
         # Assign a score of -1 for unvalid points
