@@ -43,7 +43,7 @@ class HourglassBackbone(nn.Module):
 
 
 class MultitaskHead(nn.Module):
-    def __init__(self, input_channels: int, num_class: int):
+    def __init__(self, input_channels: int):
         super().__init__()
 
         m = int(input_channels / 4)
@@ -183,7 +183,7 @@ class HourglassNet(nn.Module):
             hgl.append(Hourglass(block, num_blocks, self.num_feats, depth))
             res.append(self._make_residual(block, self.num_feats, num_blocks))
             fc.append(self._make_fc(ch, ch))
-            score.append(head(ch, num_classes))
+            score.append(head(ch))
             if i < num_stacks - 1:
                 fc_.append(nn.Conv2d(ch, ch, kernel_size=1))
                 score_.append(nn.Conv2d(num_classes, ch, kernel_size=1))

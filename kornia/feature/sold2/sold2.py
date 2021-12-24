@@ -12,7 +12,7 @@ urls: Dict[str, str] = {}
 urls["wireframe"] = "https://www.polybox.ethz.ch/index.php/s/blOrW89gqSLoHOk/download"
 
 
-default_detector_cfg = {
+default_cfg = {
     'backbone_cfg': {
         'input_channel': 1,
         'depth': 4,
@@ -62,7 +62,8 @@ class SOLD2(nn.Module):
     Occlusion-aware Line Detector and Descriptor". See :cite:`SOLD22021` for more details.
 
     Args:
-        config: Dict specifying parameters. The default parameters are tuned for images in the range 400~800 px.
+        config: Dict specifying parameters. None will load the default parameters,
+            which are tuned for images in the range 400~800 px.
         pretrained: If True, download and set pretrained weights to the model.
 
     Returns:
@@ -80,16 +81,16 @@ class SOLD2(nn.Module):
         >>> matches = sold2.match(line_seg1, line_seg2, desc1[None], desc2[None])
     """
 
-    def __init__(self, pretrained: bool = True, config: Dict = default_detector_cfg):
+    def __init__(self, pretrained: bool = True, config: Dict = None):
         super().__init__()
         # Initialize some parameters
-        self.config = config
-        self.grid_size = config["grid_size"]
-        self.junc_detect_thresh = config.get("detection_thresh", 1 / 65)
-        self.max_num_junctions = config.get("max_num_junctions", 500)
+        self.config = default_cfg if config is None else config
+        self.grid_size = self.config["grid_size"]
+        self.junc_detect_thresh = self.config.get("detection_thresh", 1 / 65)
+        self.max_num_junctions = self.config.get("max_num_junctions", 500)
 
         # Load the pre-trained model
-        self.model = SOLD2Net(config)
+        self.model = SOLD2Net(self.config)
         if pretrained:
             pretrained_dict = torch.hub.load_state_dict_from_url(
                 urls["wireframe"], map_location=lambda storage, loc: storage)
@@ -98,11 +99,11 @@ class SOLD2(nn.Module):
         self.eval()
 
         # Initialize the line detector
-        self.line_detector_cfg = config["line_detector_cfg"]
-        self.line_detector = LineSegmentDetectionModule(**config["line_detector_cfg"])
+        self.line_detector_cfg = self.config["line_detector_cfg"]
+        self.line_detector = LineSegmentDetectionModule(**self.config["line_detector_cfg"])
 
         # Initialize the line matcher
-        self.line_matcher = WunschLineMatcher(**config["line_matcher_cfg"])
+        self.line_matcher = WunschLineMatcher(**self.config["line_matcher_cfg"])
 
     def forward(self, img: torch.Tensor) -> Dict:
         """
