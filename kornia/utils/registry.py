@@ -1,7 +1,7 @@
-import inspect
-import re
-import sys
 from typing import Any, List, Optional
+import inspect
+import sys
+import re
 
 
 class Registry:
@@ -17,7 +17,6 @@ class Registry:
         self._name = name
         self._module_dict = dict()
         self._children = dict()  # TODO: enable sub-namespaces.
-        # sys.modules[name] = self
 
     def __len__(self) -> int:
         return len(self._module_dict)
@@ -35,7 +34,7 @@ class Registry:
 
     def _register_module(
         self, module_class: Any, module_name: Optional[str] = None, force: Optional[bool] = False
-    ):
+    ) -> None:
         if not inspect.isclass(module_class):
             raise TypeError(f'module must be a class, but got {type(module_class)}.')
 
@@ -47,7 +46,7 @@ class Registry:
 
     def register_module(
         self, name: Optional[str] = None, force: Optional[bool] = False, module: Any = None
-    ):
+    ) -> None:
         """Register a module.
 
         A record will be added to `self._module_dict` and as a class attribute,
@@ -87,6 +86,13 @@ class Registry:
         self, namespace: str, allowed_classes: Optional[list] = None,
         exclude_patterns: List[str] = []
     ) -> None:
+        """Register modules under a namespace.
+
+        Args:
+            namespace: The namespace contains all needed modules.
+            allowed_classes: restrict  are allowed. Default: None.
+            exclude_patterns: regex patterns for class names to exclude particular modules.
+        """
         def _predicate(module: Any):
             if allowed_classes is not None:
                 return inspect.isclass(module) and issubclass(module, tuple(allowed_classes))

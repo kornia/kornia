@@ -14,10 +14,10 @@ Containers
     :nosignatures:
     :template: classtemplate.rst
 
-    kornia.nn.AugmentationSequential
-    kornia.nn.ImageSequential
-    kornia.nn.VideoSequential
-    kornia.nn.PatchSequential
+    nn.AugmentationSequential
+    nn.ImageSequential
+    nn.VideoSequential
+    nn.PatchSequential
 
 
 Augmentation Layers
@@ -32,35 +32,35 @@ Augmentation Layers
     :nosignatures:
     :template: classtemplate.rst
 
-    kornia.nn.RandomHorizontalFlip
-    kornia.nn.RandomVerticalFlip
-    kornia.nn.CenterCrop
-    kornia.nn.ColorJitter
-    kornia.nn.RandomAffine
-    kornia.nn.RandomBoxBlur
-    kornia.nn.RandomChannelShuffle
-    kornia.nn.RandomCrop
-    kornia.nn.RandomElasticTransform
-    kornia.nn.RandomEqualize
-    kornia.nn.RandomErasing
-    kornia.nn.RandomFisheye
-    kornia.nn.RandomGaussianBlur
-    kornia.nn.RandomGaussianNoise
-    kornia.nn.RandomGrayscale
-    kornia.nn.RandomHorizontalFlip
-    kornia.nn.RandomInvert
-    kornia.nn.RandomMotionBlur
-    kornia.nn.RandomPerspective
-    kornia.nn.RandomPosterize
-    kornia.nn.RandomResizedCrop
-    kornia.nn.RandomRotation
-    kornia.nn.RandomSharpness
-    kornia.nn.RandomSolarize
-    kornia.nn.RandomThinPlateSpline
-    kornia.nn.RandomVerticalFlip
-    kornia.nn.PadTo
-    kornia.nn.Normalize
-    kornia.nn.Denormalize
+    nn.RandomHorizontalFlip
+    nn.RandomVerticalFlip
+    nn.CenterCrop
+    nn.ColorJitter
+    nn.RandomAffine
+    nn.RandomBoxBlur
+    nn.RandomChannelShuffle
+    nn.RandomCrop
+    nn.RandomElasticTransform
+    nn.RandomEqualize
+    nn.RandomErasing
+    nn.RandomFisheye
+    nn.RandomGaussianBlur
+    nn.RandomGaussianNoise
+    nn.RandomGrayscale
+    nn.RandomHorizontalFlip
+    nn.RandomInvert
+    nn.RandomMotionBlur
+    nn.RandomPerspective
+    nn.RandomPosterize
+    nn.RandomResizedCrop
+    nn.RandomRotation
+    nn.RandomSharpness
+    nn.RandomSolarize
+    nn.RandomThinPlateSpline
+    nn.RandomVerticalFlip
+    nn.PadTo
+    nn.Normalize
+    nn.Denormalize
 
 
 3D Augmentation Layers
@@ -71,18 +71,18 @@ Augmentation Layers
     :nosignatures:
     :template: classtemplate.rst
 
-    kornia.nn.RandomAffine3D
-    kornia.nn.RandomRotation3D
-    kornia.nn.RandomCrop3D
-    kornia.nn.CenterCrop3D
-    kornia.nn.RandomHorizontalFlip3D
-    kornia.nn.RandomVerticalFlip3D
-    kornia.nn.RandomDepthicalFlip3D
-    kornia.nn.RandomEqualize3D
-    kornia.nn.RandomMotionBlur3D
-    kornia.nn.RandomPerspective3D
-    kornia.nn.Normalize
-    kornia.nn.Denormalize
+    nn.RandomAffine3D
+    nn.RandomRotation3D
+    nn.RandomCrop3D
+    nn.CenterCrop3D
+    nn.RandomHorizontalFlip3D
+    nn.RandomVerticalFlip3D
+    nn.RandomDepthicalFlip3D
+    nn.RandomEqualize3D
+    nn.RandomMotionBlur3D
+    nn.RandomPerspective3D
+    nn.Normalize
+    nn.Denormalize
 
 
 Mix Augmentation Layers
@@ -93,8 +93,8 @@ Mix Augmentation Layers
     :nosignatures:
     :template: classtemplate.rst
 
-    kornia.nn.RandomCutMix
-    kornia.nn.RandomMixUp
+    nn.RandomCutMix
+    nn.RandomMixUp
 
 
 Color Conversion Layers
@@ -105,34 +105,77 @@ Color Conversion Layers
     :nosignatures:
     :template: classtemplate.rst
 
-    kornia.nn.RgbToBgr
-    kornia.nn.RgbToHls
-    kornia.nn.RgbToHsv
-    kornia.nn.RgbToLab
-    kornia.nn.RgbToLinearRgb
-    kornia.nn.RgbToLuv
-    kornia.nn.RgbToRaw
-    kornia.nn.RgbToRgba
-    kornia.nn.RgbToXyz
-    kornia.nn.RgbToYcbcr
-    kornia.nn.RgbToYuv
-    kornia.nn.RgbToYuv420
-    kornia.nn.RgbToYuv422
-    kornia.nn.RgbToGrayscale
-    kornia.nn.RgbaToBgr
-    kornia.nn.RgbaToRgb
-    kornia.nn.BgrToRgb
-    kornia.nn.BgrToRgba
-    kornia.nn.BgrToGrayscale
-    kornia.nn.GrayscaleToRgb
-    kornia.nn.RawToRgb
-    kornia.nn.HlsToRgb
-    kornia.nn.HsvToRgb
-    kornia.nn.LabToRgb
-    kornia.nn.LinearRgbToRgb
-    kornia.nn.LuvToRgb
-    kornia.nn.YcbcrToRgb
-    kornia.nn.Yuv420ToRgb
-    kornia.nn.Yuv422ToRgb
-    kornia.nn.YuvToRgb
-    kornia.nn.XyzToRgb
+    nn.RgbToBgr
+    nn.RgbToHls
+    nn.RgbToHsv
+    nn.RgbToLab
+    nn.RgbToLinearRgb
+    nn.RgbToLuv
+    nn.RgbToRaw
+    nn.RgbToRgba
+    nn.RgbToXyz
+    nn.RgbToYcbcr
+    nn.RgbToYuv
+    nn.RgbToYuv420
+    nn.RgbToYuv422
+    nn.RgbToGrayscale
+    nn.RgbaToBgr
+    nn.RgbaToRgb
+    nn.BgrToRgb
+    nn.BgrToRgba
+    nn.BgrToGrayscale
+    nn.GrayscaleToRgb
+    nn.RawToRgb
+    nn.HlsToRgb
+    nn.HsvToRgb
+    nn.LabToRgb
+    nn.LinearRgbToRgb
+    nn.LuvToRgb
+    nn.YcbcrToRgb
+    nn.Yuv420ToRgb
+    nn.Yuv422ToRgb
+    nn.YuvToRgb
+    nn.XyzToRgb
+
+
+Image Enhance Layers
+--------------------
+
+.. autosummary::
+    :toctree: generated
+    :nosignatures:
+    :template: classtemplate.rst
+
+    nn.AddWeighted
+    nn.AdjustBrightness
+    nn.AdjustContrast
+    nn.AdjustGamma
+    nn.AdjustHue
+    nn.AdjustSaturation
+    nn.Denormalize
+    nn.Invert
+    nn.Normalize
+    nn.ZCAWhitening
+
+
+Filtering Layers
+--------------------
+
+.. autosummary::
+    :toctree: generated
+    :nosignatures:
+    :template: classtemplate.rst
+
+    nn.BlurPool2D
+    nn.BoxBlur
+    nn.Canny
+    nn.GaussianBlur2d
+    nn.Laplacian
+    nn.MaxBlurPool2D
+    nn.MedianBlur
+    nn.MotionBlur
+    nn.MotionBlur3D
+    nn.Sobel
+    nn.SpatialGradient
+    nn.SpatialGradient3d
+    nn.UnsharpMask
