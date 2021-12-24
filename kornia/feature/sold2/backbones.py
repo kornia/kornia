@@ -1,17 +1,18 @@
 """Implements several backbone networks."""
 
-from typing import Dict, Optional, List, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.functional import pixel_shuffle, softmax
 
-
 # [Hourglass backbone classes]
 
+
 class HourglassBackbone(nn.Module):
-    """Hourglass network, taken from https://github.com/zhou13/lcnn
+    """Hourglass network, taken from https://github.com/zhou13/lcnn.
+
     Args:
         input_channel: number of input channels.
         depth: number of residual blocks per hourglass module.
@@ -19,13 +20,14 @@ class HourglassBackbone(nn.Module):
         num_blocks: number of layers in each residual block.
         num_classes: number of heads for the output of a hourglass module.
     """
+
     def __init__(self,
                  input_channel: Optional[int] = 1,
                  depth: Optional[int] = 4,
                  num_stacks: Optional[int] = 2,
                  num_blocks: Optional[int] = 1,
                  num_classes: Optional[int] = 5):
-        super(HourglassBackbone, self).__init__()
+        super().__init__()
         self.head = MultitaskHead
         self.net = hg(**{
             "head": self.head,
@@ -42,7 +44,7 @@ class HourglassBackbone(nn.Module):
 
 class MultitaskHead(nn.Module):
     def __init__(self, input_channels: int, num_class: int):
-        super(MultitaskHead, self).__init__()
+        super().__init__()
 
         m = int(input_channels / 4)
         head_size = [[2], [1], [2]]
@@ -56,7 +58,6 @@ class MultitaskHead(nn.Module):
                 )
             )
         self.heads = nn.ModuleList(heads)
-        assert num_class == sum(sum(head_size, []))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return torch.cat([head(x) for head in self.heads], dim=1)
@@ -68,7 +69,7 @@ class Bottleneck2D(nn.Module):
                  planes: int,
                  stride: Union[int, Tuple[int, int]] = 1,
                  downsample: Optional[torch.nn.Module] = None):
-        super(Bottleneck2D, self).__init__()
+        super().__init__()
 
         self.bn1 = nn.BatchNorm2d(inplanes)
         self.conv1 = nn.Conv2d(inplanes, planes, kernel_size=1)
@@ -107,7 +108,7 @@ class Bottleneck2D(nn.Module):
 class Hourglass(nn.Module):
     def __init__(self, block: torch.nn.Module, num_blocks: int,
                  planes: int, depth: int, expansion: int = 2):
-        super(Hourglass, self).__init__()
+        super().__init__()
         self.depth = depth
         self.block = block
         self.expansion = expansion
@@ -115,20 +116,20 @@ class Hourglass(nn.Module):
 
     def _make_residual(self, block: torch.nn.Module, num_blocks: int, planes: int) -> torch.nn.Module:
         layers = []
-        for i in range(0, num_blocks):
+        for _ in range(0, num_blocks):
             layers.append(block(planes * self.expansion, planes))
         return nn.Sequential(*layers)
 
     def _make_hour_glass(self, block: torch.nn.Module, num_blocks: int, planes: int, depth: int) -> torch.nn.ModuleList:
-        hg = []
+        hgl = []
         for i in range(depth):
             res = []
-            for j in range(3):
+            for _ in range(3):
                 res.append(self._make_residual(block, num_blocks, planes))
             if i == 0:
                 res.append(self._make_residual(block, num_blocks, planes))
-            hg.append(nn.ModuleList(res))
-        return nn.ModuleList(hg)
+            hgl.append(nn.ModuleList(res))
+        return nn.ModuleList(hgl)
 
     def _hour_glass_forward(self, n: int, x: torch.Tensor) -> torch.Tensor:
         up1 = self.hg[n - 1][0](x)
@@ -149,7 +150,7 @@ class Hourglass(nn.Module):
 
 
 class HourglassNet(nn.Module):
-    """Hourglass model from Newell et al ECCV 2016"""
+    """Hourglass model from Newell et al ECCV 2016."""
 
     def __init__(self,
                  block: torch.nn.Module,
@@ -160,7 +161,7 @@ class HourglassNet(nn.Module):
                  num_classes: int,
                  input_channels: int,
                  expansion: int = 2):
-        super(HourglassNet, self).__init__()
+        super().__init__()
 
         self.inplanes = 64
         self.num_feats = 128
@@ -175,18 +176,18 @@ class HourglassNet(nn.Module):
         self.layer3 = self._make_residual(block, self.num_feats, 1)
         self.maxpool = nn.MaxPool2d(2, stride=2)
 
-        # build hourglass modules
+        # Build hourglass modules
         ch = self.num_feats * self.expansion
-        hg, res, fc, score, fc_, score_ = [], [], [], [], [], []
+        hgl, res, fc, score, fc_, score_ = [], [], [], [], [], []
         for i in range(num_stacks):
-            hg.append(Hourglass(block, num_blocks, self.num_feats, depth))
+            hgl.append(Hourglass(block, num_blocks, self.num_feats, depth))
             res.append(self._make_residual(block, self.num_feats, num_blocks))
             fc.append(self._make_fc(ch, ch))
             score.append(head(ch, num_classes))
             if i < num_stacks - 1:
                 fc_.append(nn.Conv2d(ch, ch, kernel_size=1))
                 score_.append(nn.Conv2d(num_classes, ch, kernel_size=1))
-        self.hg = nn.ModuleList(hg)
+        self.hg = nn.ModuleList(hgl)
         self.res = nn.ModuleList(res)
         self.fc = nn.ModuleList(fc)
         self.score = nn.ModuleList(score)
@@ -212,7 +213,7 @@ class HourglassNet(nn.Module):
         layers = []
         layers.append(block(self.inplanes, planes, stride, downsample))
         self.inplanes = planes * self.expansion
-        for i in range(1, blocks):
+        for _ in range(1, blocks):
             layers.append(block(self.inplanes, planes))
 
         return nn.Sequential(*layers)
@@ -265,13 +266,14 @@ def hg(**kwargs):
 
 class SuperpointDecoder(nn.Module):
     """Junction decoder based on the SuperPoint architecture.
+
     Args:
         input_feat_dim: channel size of the input features.
     Returns:
         the junction heatmap, with shape (B, H, W).
     """
     def __init__(self, input_feat_dim: int = 128, grid_size: int = 8):
-        super(SuperpointDecoder, self).__init__()
+        super().__init__()
         self.relu = torch.nn.ReLU(inplace=True)
         # Perform strided convolution when using lcnn backbone.
         self.convPa = torch.nn.Conv2d(input_feat_dim, 256, kernel_size=3,
@@ -292,6 +294,7 @@ class SuperpointDecoder(nn.Module):
 
 class PixelShuffleDecoder(nn.Module):
     """Pixel shuffle decoder used to predict the line heatmap.
+
     Args:
         input_feat_dim: channel size of the input features.
         num_upsample: how many upsamples are performed.
@@ -303,7 +306,7 @@ class PixelShuffleDecoder(nn.Module):
                  input_feat_dim: int = 128,
                  num_upsample: int = 2,
                  output_channel: int = 2):
-        super(PixelShuffleDecoder, self).__init__()
+        super().__init__()
         # Get channel parameters
         self.channel_conf = self.get_channel_conf(num_upsample)
 
@@ -362,13 +365,14 @@ class PixelShuffleDecoder(nn.Module):
 
 class SuperpointDescriptor(nn.Module):
     """Descriptor decoder based on the SuperPoint arcihtecture.
+
     Args:
         input_feat_dim: channel size of the input features.
     Returns:
         the semi-dense descriptors with shape (B, 128, H/4, W/4).
     """
     def __init__(self, input_feat_dim: int = 128):
-        super(SuperpointDescriptor, self).__init__()
+        super().__init__()
         self.relu = torch.nn.ReLU(inplace=True)
         self.convPa = torch.nn.Conv2d(input_feat_dim, 256, kernel_size=3,
                                       stride=1, padding=1)
@@ -386,6 +390,7 @@ class SuperpointDescriptor(nn.Module):
 
 class SOLD2Net(nn.Module):
     """Full network for SOLD².
+
     Args:
         model_cfg: the configuration as a Dict.
     Returns:
@@ -395,7 +400,7 @@ class SOLD2Net(nn.Module):
             descriptors: semi-dense descriptors.
     """
     def __init__(self, model_cfg: Dict):
-        super(SOLD2Net, self).__init__()
+        super().__init__()
         self.cfg = model_cfg
 
         # Backbone

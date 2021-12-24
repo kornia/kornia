@@ -45,7 +45,7 @@ from .responses import (
 )
 from .scale_space_detector import PassLAF, ScaleSpaceDetector
 from .siftdesc import SIFTDescriptor
-from .sold2 import SOLD2_detector, SOLD2
+from .sold2 import SOLD2, SOLD2_detector
 from .sosnet import SOSNet
 from .tfeat import TFeat
 

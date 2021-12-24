@@ -1,12 +1,11 @@
+import math
 from typing import Dict
 
-import math
 import numpy as np
 import torch
 import torch.nn as nn
 
 from .backbones import SOLD2Net
-
 
 urls: Dict[str, str] = {}
 urls["wireframe"] = "https://www.polybox.ethz.ch/index.php/s/blOrW89gqSLoHOk/download"
@@ -131,8 +130,8 @@ class SOLD2_detector(nn.Module):
 
         # Loop through all images
         lines = []
-        for i in range(len(junc_pred_nms)):
-            junctions = np.stack(np.where(junc_pred_nms[i]), axis=-1)
+        for i, curr_junc_pred_nms in enumerate(junc_pred_nms):
+            junctions = np.stack(np.where(curr_junc_pred_nms), axis=-1)
             # Run the line detector
             line_map, junctions, _ = self.line_detector.detect(
                 junctions, heatmap_np[i], device=device)
@@ -146,7 +145,7 @@ class SOLD2_detector(nn.Module):
         return outputs
 
 
-class LineSegmentDetectionModule(object):
+class LineSegmentDetectionModule:
     r"""Module extracting line segments from junctions and line heatmaps.
     Args:
         detect_thresh: The probability threshold for mean activation (0. ~ 1.)
@@ -213,7 +212,7 @@ class LineSegmentDetectionModule(object):
             raise ValueError("[Error] Missing junction refinement config.")
 
     def convert_inputs(self, inputs, device):
-        """ Convert inputs to desired torch tensor. """
+        """Convert inputs to desired torch tensor."""
         if isinstance(inputs, np.ndarray):
             outputs = torch.tensor(inputs, dtype=torch.float32, device=device)
         elif isinstance(inputs, torch.Tensor):
@@ -225,7 +224,7 @@ class LineSegmentDetectionModule(object):
         return outputs
 
     def detect(self, junctions, heatmap, device=torch.device("cpu")):
-        """ Main function performing line segment detection. """
+        """Main function performing line segment detection."""
         # Convert inputs to torch tensor
         junctions = self.convert_inputs(junctions, device=device)
         heatmap = self.convert_inputs(heatmap, device=device)
@@ -357,7 +356,7 @@ class LineSegmentDetectionModule(object):
         return line_map_pred, junctions, heatmap
 
     def refine_heatmap(self, heatmap, ratio=0.2, valid_thresh=1e-2):
-        """ Global heatmap refinement method. """
+        """Global heatmap refinement method."""
         # Grab the top 10% values
         heatmap_values = heatmap[heatmap > valid_thresh]
         sorted_values = torch.sort(heatmap_values, descending=True)[0]
@@ -368,7 +367,7 @@ class LineSegmentDetectionModule(object):
 
     def refine_heatmap_local(self, heatmap, num_blocks=5, overlap_ratio=0.5,
                              ratio=0.2, valid_thresh=2e-3):
-        """ Local heatmap refinement method. """
+        """Local heatmap refinement method."""
         # Get the shape of the heatmap
         H, W = heatmap.shape
         increase_ratio = 1 - overlap_ratio
@@ -402,7 +401,7 @@ class LineSegmentDetectionModule(object):
         return heatmap_output
 
     def candidate_suppression(self, junctions, candidate_map):
-        """ Suppress overlapping long lines in the candidate segments. """
+        """Suppress overlapping long lines in the candidate segments."""
         # Define the distance tolerance
         dist_tolerance = self.nms_dist_tolerance
 
@@ -457,7 +456,7 @@ class LineSegmentDetectionModule(object):
 
     def refine_junction_perturb(self, junctions, line_map_pred,
                                 heatmap, H, W, device):
-        """ Refine the line endpoints in a similar way as in LSD. """
+        """Refine the line endpoints in a similar way as in LSD."""
         # Get the config
         junction_refine_cfg = self.junction_refine_cfg
 
@@ -519,8 +518,7 @@ class LineSegmentDetectionModule(object):
             cand_w = torch.clamp(cand_samples_w, min=0, max=W - 1)
 
             # Perform bilinear sampling
-            segment_feat = self.detect_bilinear(
-                heatmap, cand_h, cand_w, H, W, device)
+            segment_feat = self.detect_bilinear(heatmap, cand_h, cand_w)
             segment_results = torch.mean(segment_feat, dim=-1)
             max_idx = torch.argmax(segment_results)
             refined_segment_lst.append(segment[max_idx, ...][None, ...])
@@ -538,7 +536,7 @@ class LineSegmentDetectionModule(object):
         return junctions_new, line_map_new
 
     def segments_to_line_map(self, junctions, segments):
-        """ Convert the list of segments to line map. """
+        """Convert the list of segments to line map."""
         # Create empty line map
         device = junctions.device
         num_junctions = junctions.shape[0]
@@ -546,7 +544,7 @@ class LineSegmentDetectionModule(object):
 
         # Iterate through every segment
         for idx in range(segments.shape[0]):
-            # Get the junctions from a single segement
+            # Get the junctions from a single segment
             seg = segments[idx, ...]
             junction1 = seg[0, :]
             junction2 = seg[1, :]
@@ -563,8 +561,8 @@ class LineSegmentDetectionModule(object):
 
         return line_map
 
-    def detect_bilinear(self, heatmap, cand_h, cand_w, H, W, device):
-        """ Detection by bilinear sampling. """
+    def detect_bilinear(self, heatmap, cand_h, cand_w):
+        """Detection by bilinear sampling."""
         # Get the floor and ceiling locations
         cand_h_floor = torch.floor(cand_h).to(torch.long)
         cand_h_ceil = torch.ceil(cand_h).to(torch.long)
@@ -584,7 +582,7 @@ class LineSegmentDetectionModule(object):
 
     def detect_local_max(self, heatmap, cand_h, cand_w, H, W,
                          normalized_seg_length, device):
-        """ Detection by local maximum search. """
+        """Detection by local maximum search."""
         # Compute the distance threshold
         dist_thresh = (0.5 * (2 ** 0.5)
                        + self.lambda_radius * normalized_seg_length)
@@ -643,7 +641,7 @@ class LineSegmentDetectionModule(object):
 
 
 def line_map_to_segments(junctions: np.ndarray, line_map: np.ndarray) -> np.ndarray:
-    """ Convert a line map to a Nx2x2 array of segments. """
+    """Convert a line map to a Nx2x2 array of segments."""
     line_map_tmp = line_map.copy()
 
     output_segments = np.zeros([0, 2, 2])
@@ -651,26 +649,26 @@ def line_map_to_segments(junctions: np.ndarray, line_map: np.ndarray) -> np.ndar
         # if no connectivity, just skip it
         if line_map_tmp[idx, :].sum() == 0:
             continue
-        # Record the line segment
-        else:
-            for idx2 in np.where(line_map_tmp[idx, :] == 1)[0]:
-                p1 = junctions[idx, :]  # HW format
-                p2 = junctions[idx2, :]
-                single_seg = np.concatenate([p1[None, ...], p2[None, ...]],
-                                            axis=0)
-                output_segments = np.concatenate(
-                    (output_segments, single_seg[None, ...]), axis=0)
 
-                # Update line_map
-                line_map_tmp[idx, idx2] = 0
-                line_map_tmp[idx2, idx] = 0
+        # Record the line segment
+        for idx2 in np.where(line_map_tmp[idx, :] == 1)[0]:
+            p1 = junctions[idx, :]  # HW format
+            p2 = junctions[idx2, :]
+            single_seg = np.concatenate([p1[None, ...], p2[None, ...]],
+                                        axis=0)
+            output_segments = np.concatenate(
+                (output_segments, single_seg[None, ...]), axis=0)
+
+            # Update line_map
+            line_map_tmp[idx, idx2] = 0
+            line_map_tmp[idx2, idx] = 0
 
     return output_segments
 
 
 def super_nms(prob_predictions: np.ndarray, dist_thresh: float,
               prob_thresh: float = 0.01, top_k: int = 0) -> np.ndarray:
-    """ Non-maximum suppression adapted from SuperPoint. """
+    """Non-maximum suppression adapted from SuperPoint."""
     # Iterate through batch dimension
     im_h = prob_predictions.shape[1]
     im_w = prob_predictions.shape[2]
@@ -703,9 +701,7 @@ def super_nms(prob_predictions: np.ndarray, dist_thresh: float,
 
 
 def nms_fast(in_corners: np.ndarray, H: int, W: int, dist_thresh: float) -> np.ndarray:
-    """
-    Run a faster approximate Non-Max-Suppression on numpy corners shaped:
-      3xN [x_i,y_i,conf_i]^T
+    """Run a faster approximate Non-Max-Suppression on numpy corners shaped: 3xN [x_i,y_i,conf_i]^T.
 
     Algo summary: Create a grid sized HxW. Assign each corner location a 1,
     rest are zeros. Iterate through all the 1's and convert them to -1 or 0.
@@ -714,7 +710,7 @@ def nms_fast(in_corners: np.ndarray, H: int, W: int, dist_thresh: float) -> np.n
     Grid Value Legend:
     -1 : Kept.
      0 : Empty or suppressed.
-     1 : To be processed (converted to either kept or supressed).
+     1 : To be processed (converted to either kept or suppressed).
 
     NOTE: The NMS first rounds points to integers, so NMS distance might not
     be exactly dist_thresh. It also assumes points are within image boundary.
