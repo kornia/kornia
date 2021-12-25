@@ -261,7 +261,7 @@ class Boxes:
         Examples:
             >>> boxes_xyxy = torch.as_tensor([[0, 3, 1, 4], [5, 1, 8, 4]])
             >>> boxes = Boxes.from_tensor(boxes_xyxy, mode='xyxy')
-            >>> boxes._boxes  # (2, 4, 2)
+            >>> boxes.data  # (2, 4, 2)
             tensor([[[0., 3.],
                      [0., 3.],
                      [0., 3.],
@@ -541,7 +541,7 @@ class Boxes3D:
         Examples:
             >>> boxes_xyzxyz = torch.as_tensor([[0, 3, 6, 1, 4, 8], [5, 1, 3, 8, 4, 9]])
             >>> boxes = Boxes3D.from_tensor(boxes_xyzxyz, mode='xyzxyz')
-            >>> boxes._boxes  # (2, 8, 3)
+            >>> boxes.data  # (2, 8, 3)
             tensor([[[0., 3., 6.],
                      [0., 3., 6.],
                      [0., 3., 6.],
@@ -785,6 +785,10 @@ class Boxes3D:
     @property
     def _is_batched(self) -> bool:
         return self._data.ndim == 4
+
+    @property
+    def data(self) -> torch.Tensor:
+        return self._data
 
     @property
     def device(self) -> torch.device:
