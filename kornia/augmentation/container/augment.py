@@ -328,7 +328,7 @@ class AugmentationSequential(ImageSequential):
                 continue
             # Using tensors straight-away
             if isinstance(arg, (Boxes,)):
-                input = arg._boxes  # all boxes are in (B, N, 4, 2) format now.
+                input = arg.data  # all boxes are in (B, N, 4, 2) format now.
             else:
                 input = arg
 
@@ -355,7 +355,7 @@ class AugmentationSequential(ImageSequential):
                     raise NotImplementedError(f"data_key {dcate} is not implemented for {module}.")
 
             if isinstance(arg, (Boxes,)):
-                arg._boxes = input
+                arg._data = input
                 outputs[idx] = arg.to_tensor()
             else:
                 outputs[idx] = input
