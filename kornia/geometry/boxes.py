@@ -437,7 +437,7 @@ class Boxes:
         return self._data.ndim == 4
 
     @property
-    def data(self) -> bool:
+    def data(self) -> torch.Tensor:
         return self._data
 
     @property
