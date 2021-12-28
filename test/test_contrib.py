@@ -374,21 +374,21 @@ class TestImageStitcher:
 class TestConvDistanceTransform:
     @pytest.mark.parametrize("kernel_size", [3, 5, 7])
     def test_smoke(self, kernel_size, device, dtype):
-        B, C, H, W = 1, 3, 100, 100
-        input1 = torch.rand(B, C, H, W, device=device, dtype=dtype)
-        distance_transformer = kornia.contrib.ConvDistanceTransform(kernel_size)
+        input1 = torch.rand(1, 3, 100, 100, device=device, dtype=dtype)
+        input2 = torch.rand(1, 1, 100, 100, device=device, dtype=dtype)
+        distance_transformer = kornia.contrib.DistanceTransform(kernel_size)
 
         output1 = distance_transformer(input1)
-        output2 = kornia.contrib.distance_transform(input1, kernel_size)
+        output2 = kornia.contrib.distance_transform(input2, kernel_size)
 
         assert isinstance(output1, torch.Tensor)
         assert isinstance(output2, torch.Tensor)
         assert output1.shape == input1.shape
 
     def test_module(self, device, dtype):
-        B, C, H, W = 1, 3, 99, 100
+        B, C, H, W = 1, 1, 99, 100
         input = torch.rand(B, C, H, W, device=device, dtype=dtype)
-        distance_transformer = kornia.contrib.ConvDistanceTransform().to(device, dtype)
+        distance_transformer = kornia.contrib.DistanceTransform().to(device, dtype)
 
         output1 = distance_transformer(input)
         output2 = kornia.contrib.distance_transform(input)
@@ -396,13 +396,13 @@ class TestConvDistanceTransform:
         assert_close(output1, output2, rtol=tol_val, atol=tol_val)
 
     def test_exception(self, device, dtype):
-        B, C, H, W = 1, 3, 224, 224
+        B, C, H, W = 1, 1, 224, 224
         input1 = torch.rand(B, C, H, W, device=device, dtype=dtype)
         input2 = torch.rand(C, H, W, device=device, dtype=dtype)
 
         # Non-odd kernel size
         with pytest.raises(ValueError):
-            ConvDT = kornia.contrib.ConvDistanceTransform(6)
+            ConvDT = kornia.contrib.DistanceTransform(6)
             ConvDT.forward(input1)
 
         with pytest.raises(ValueError):
@@ -418,6 +418,8 @@ class TestConvDistanceTransform:
 
     def test_value(self, device, dtype):
         B, C, H, W = 1, 1, 4, 4
+        kernel_size = 7
+        h = 0.35
         input1 = torch.zeros(B, C, H, W, device=device, dtype=dtype)
         input1[:, :, 1, 1] = 1.0
         expected_output1 = torch.tensor([[[
@@ -426,7 +428,7 @@ class TestConvDistanceTransform:
             [1.4142135382, 1.0000000000, 1.4142135382, 2.2360680103],
             [2.2360680103, 2.0000000000, 2.2360680103, 2.8284270763]
         ]]]).to(input1)
-        output1 = kornia.contrib.distance_transform(input1)
+        output1 = kornia.contrib.distance_transform(input1, kernel_size, h)
         assert (expected_output1 == output1).all()
 
     def test_gradcheck(self, device, dtype):
