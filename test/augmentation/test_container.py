@@ -320,7 +320,8 @@ class TestAugmentationSequential:
         _params[0].data['src'] = torch.tensor(
             [[[1., 2.], [3., 2.], [3., 4.], [1., 4.]],
              [[1., 1.], [3., 1.], [3., 3.], [1., 3.]],
-             [[2., 0.], [4., 0.], [4., 2.], [2., 2.]]], device=device, dtype=dtype)
+             [[2., 0.], [4., 0.], [4., 2.], [2., 2.]]],
+        device=_params[0].data['src'].device, dtype=_params[0].data['src'].dtype)
 
         expected_out_bbox = torch.tensor(
             [[[1., 0., 2., 1.], [0., -1., 1., 1.], [0., -1., 2., 0.]],
@@ -333,19 +334,19 @@ class TestAugmentationSequential:
 
         out = aug(input, input, bbox, points, params=_params)
         assert out[0].shape == (3, 3, 3, 3)
-        assert_close(out[0], out[1])
+        assert_close(out[0], out[1], atol=1e-4, rtol=1e-4)
         assert out[2].shape == bbox.shape
-        assert_close(out[2], expected_out_bbox)
+        assert_close(out[2], expected_out_bbox, atol=1e-4, rtol=1e-4)
         assert out[3].shape == points.shape
-        assert_close(out[3], expected_out_points)
+        assert_close(out[3], expected_out_points, atol=1e-4, rtol=1e-4)
 
         out_inv = aug.inverse(*out)
         assert out_inv[0].shape == input.shape
-        assert_close(out_inv[0], out_inv[1])
+        assert_close(out_inv[0], out_inv[1], atol=1e-4, rtol=1e-4)
         assert out_inv[2].shape == bbox.shape
-        assert_close(out_inv[2], bbox)
+        assert_close(out_inv[2], bbox, atol=1e-4, rtol=1e-4)
         assert out_inv[3].shape == points.shape
-        assert_close(out_inv[3], points)
+        assert_close(out_inv[3], points, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
     @pytest.mark.parametrize('return_transform', [True, False])

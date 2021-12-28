@@ -386,7 +386,8 @@ class BBoxXYWHApplyInverse(BBoxXYXYApplyInverse):
 class KeypointsApplyInverse(BBoxXYWHApplyInverse):
     """Apply and inverse transformations for keypoints tensors."""
 
-    apply_func = transform_points
+    # Hot fix for the typing mismatching
+    apply_func = partial(transform_points)
 
 
 class ApplyInverse:
