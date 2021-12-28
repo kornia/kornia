@@ -321,7 +321,7 @@ class TestAugmentationSequential:
             [[[1., 2.], [3., 2.], [3., 4.], [1., 4.]],
              [[1., 1.], [3., 1.], [3., 3.], [1., 3.]],
              [[2., 0.], [4., 0.], [4., 2.], [2., 2.]]],
-        device=_params[0].data['src'].device, dtype=_params[0].data['src'].dtype)
+            device=_params[0].data['src'].device, dtype=_params[0].data['src'].dtype)
 
         expected_out_bbox = torch.tensor(
             [[[1., 0., 2., 1.], [0., -1., 1., 1.], [0., -1., 2., 0.]],
