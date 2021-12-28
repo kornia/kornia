@@ -113,6 +113,7 @@ class TestVideoSequential:
         'augmentations',
         [
             [K.RandomAffine(360, p=1.0)],
+            [K.RandomCrop((2, 2), padding=2)],
             [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0)],
             [K.RandomAffine(360, p=0.0), K.ImageSequential(K.RandomAffine(360, p=0.0))],
         ],
@@ -134,7 +135,10 @@ class TestVideoSequential:
         if data_format == 'BCTHW':
             input = input.transpose(1, 2)
         output_2 = aug_list_2(input.reshape(-1, 3, 5, 6))
-        output_2 = output_2.view(2, 4, 3, 5, 6)
+        if any(isinstance(a, K.RandomCrop) for a in augmentations):
+            output_2 = output_2.view(2, 4, 3, 2, 2)
+        else:
+            output_2 = output_2.view(2, 4, 3, 5, 6)
         if data_format == 'BCTHW':
             output_2 = output_2.transpose(1, 2)
         assert (output_1 == output_2).all(), dict(aug_list_1._params)
@@ -298,6 +302,52 @@ class TestAugmentationSequential:
         assert_close(out_ver[1], expected_bbox_vertical_flip)
         assert_close(out_hor[1], expected_bbox_horizontal_flip)
 
+    def test_random_crops(self, device, dtype):
+        input = torch.randn(3, 3, 3, 3, device=device, dtype=dtype)
+        bbox = torch.tensor(
+            [[[1.0, 1.0, 2.0, 2.0], [0.0, 0.0, 1.0, 2.0], [0.0, 0.0, 2.0, 1.0]]],
+            device=device, dtype=dtype).expand(3, -1, -1)
+        points = torch.tensor([[[0.0, 0.0], [1.0, 1.0]]], device=device, dtype=dtype).expand(3, -1, -1)
+        aug = K.AugmentationSequential(
+            K.RandomCrop((3, 3), padding=1, cropping_mode='resample', fill=0),
+            data_keys=["input", "mask", "bbox", "keypoints"]
+        )
+
+        reproducibility_test((input, input, bbox, points), aug)
+
+        _params = aug.forward_parameters(input.shape)
+        # specifying the crops allows us to compute by hand the expected outputs
+        _params[0].data['src'] = torch.tensor(
+            [[[1., 2.], [3., 2.], [3., 4.], [1., 4.]],
+             [[1., 1.], [3., 1.], [3., 3.], [1., 3.]],
+             [[2., 0.], [4., 0.], [4., 2.], [2., 2.]]],
+            device=_params[0].data['src'].device, dtype=_params[0].data['src'].dtype)
+
+        expected_out_bbox = torch.tensor(
+            [[[1., 0., 2., 1.], [0., -1., 1., 1.], [0., -1., 2., 0.]],
+             [[1., 1., 2., 2.], [0., 0., 1., 2.], [0., 0., 2., 1.]],
+             [[0., 2., 1., 3.], [-1., 1., 0., 3.], [-1., 1., 1., 2.]]], device=device, dtype=dtype)
+        expected_out_points = torch.tensor(
+            [[[0., -1.], [1., 0.]],
+             [[0., 0.], [1., 1.]],
+             [[-1., 1.], [0., 2.]]], device=device, dtype=dtype)
+
+        out = aug(input, input, bbox, points, params=_params)
+        assert out[0].shape == (3, 3, 3, 3)
+        assert_close(out[0], out[1], atol=1e-4, rtol=1e-4)
+        assert out[2].shape == bbox.shape
+        assert_close(out[2], expected_out_bbox, atol=1e-4, rtol=1e-4)
+        assert out[3].shape == points.shape
+        assert_close(out[3], expected_out_points, atol=1e-4, rtol=1e-4)
+
+        out_inv = aug.inverse(*out)
+        assert out_inv[0].shape == input.shape
+        assert_close(out_inv[0], out_inv[1], atol=1e-4, rtol=1e-4)
+        assert out_inv[2].shape == bbox.shape
+        assert_close(out_inv[2], bbox, atol=1e-4, rtol=1e-4)
+        assert out_inv[3].shape == points.shape
+        assert_close(out_inv[3], points, atol=1e-4, rtol=1e-4)
+
     @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
     @pytest.mark.parametrize('return_transform', [True, False])
     def test_forward_and_inverse(self, random_apply, return_transform, device, dtype):
@@ -341,8 +391,9 @@ class TestAugmentationSequential:
         bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
         keypoints = torch.tensor([[[465, 115], [545, 116]]], device=device, dtype=dtype)
         mask = bbox_to_mask(
-            torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 1000, 500
+            torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 500, 1000
         )[:, None].float()
+        crop_size = (200, 200)
 
         aug = K.AugmentationSequential(
             K.ImageSequential(
@@ -352,9 +403,22 @@ class TestAugmentationSequential:
                 K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0, return_transform=True)
             ),
             K.RandomAffine(360, p=1.0, return_transform=False),
+            K.RandomCrop(crop_size, padding=1, cropping_mode='resample', fill=0),
             data_keys=['input', 'mask', 'bbox', 'keypoints'],
         )
         reproducibility_test((inp, mask, bbox, keypoints), aug)
+
+        out = aug(inp, mask, bbox, keypoints)
+        assert out[0].shape == (*inp.shape[:2], *crop_size)
+        assert out[1].shape == (*mask.shape[:2], *crop_size)
+        assert out[2].shape == bbox.shape
+        assert out[3].shape == keypoints.shape
+
+        out_inv = aug.inverse(*out)
+        assert out_inv[0].shape == inp.shape
+        assert out_inv[1].shape == mask.shape
+        assert out_inv[2].shape == bbox.shape
+        assert out_inv[3].shape == keypoints.shape
 
         aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0, return_transform=True))
         assert aug(inp, data_keys=['input'])[0].shape == inp.shape

@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 
 import kornia
+from kornia.augmentation import RandomCrop
 from kornia.augmentation.base import _AugmentationBase, MixAugmentationBase, TensorWithTransformMat
 from kornia.augmentation.container.base import SequentialBase
 from kornia.augmentation.container.utils import InputApplyInverse, MaskApplyInverse
@@ -180,7 +181,13 @@ class VideoSequential(ImageSequential):
 
         params = []
         for name, module in named_modules:
-            if isinstance(module, (SequentialBase,)):
+            if isinstance(module, RandomCrop):
+                mod_param = module.forward_parameters_precrop(batch_shape)
+                if self.same_on_frame:
+                    mod_param["src"] = mod_param["src"].repeat(frame_num, 1, 1)
+                    mod_param["dst"] = mod_param["dst"].repeat(frame_num, 1, 1)
+                param = ParamItem(name, mod_param)
+            elif isinstance(module, (SequentialBase,)):
                 seq_param = module.forward_parameters(batch_shape)
                 if self.same_on_frame:
                     raise ValueError("Sequential is currently unsupported for ``same_on_frame``.")
