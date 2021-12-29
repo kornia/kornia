@@ -11,7 +11,7 @@ from .distort import distort_points, tilt_projection
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/undistort.dispatch.cpp#L384
 def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor,
-                     new_K: Optional[torch.Tensor] = None, iters: int = 5) -> torch.Tensor:
+                     new_K: Optional[torch.Tensor] = None, num_iters: int = 5) -> torch.Tensor:
     r"""Compensate for lens distortion a set of 2D image points.
 
     Radial :math:`(k_1, k_2, k_3, k_4, k_4, k_6)`,
@@ -24,8 +24,9 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor,
         dist: Distortion coefficients
             :math:`(k_1,k_2,p_1,p_2[,k_3[,k_4,k_5,k_6[,s_1,s_2,s_3,s_4[,\tau_x,\tau_y]]]])`. This is
             a vector with 4, 5, 8, 12 or 14 elements with shape :math:`(*, n)`.
-        new_K: New intrinsic camera matrix with shape :math:`(*, 3, 3)`. Default: None, in this case K is used.
-        iters: Number of undistortion iterations. Default: 5.
+        new_K: Intrinsic camera matrix of the distorted image. By default, it is the same as K but you may additionally
+            scale and shift the result by using a different matrix. Shape: :math:`(*, 3, 3)`. Default: None.
+        num_iters: Number of undistortion iterations. Default: 5.
     Returns:
         Undistorted 2D points with shape :math:`(*, N, 2)`.
 
@@ -64,10 +65,7 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor,
     cy: torch.Tensor = K[..., 1:2, 2]  # princial point in y (Bx1)
     fx: torch.Tensor = K[..., 0:1, 0]  # focal in x (Bx1)
     fy: torch.Tensor = K[..., 1:2, 1]  # focal in y (Bx1)
-    new_cx: torch.Tensor = new_K[..., 0:1, 2]  # princial point in x (Bx1)
-    new_cy: torch.Tensor = new_K[..., 1:2, 2]  # princial point in y (Bx1)
-    new_fx: torch.Tensor = new_K[..., 0:1, 0]  # focal in x (Bx1)
-    new_fy: torch.Tensor = new_K[..., 1:2, 1]  # focal in y (Bx1)
+
     # This is equivalent to K^-1 [u,v,1]^T
     x: torch.Tensor = (points[..., 0] - cx) / fx  # (BxN - Bx1)/Bx1 -> BxN
     y: torch.Tensor = (points[..., 1] - cy) / fy  # (BxN - Bx1)/Bx1 -> BxN
@@ -81,7 +79,7 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor,
 
     # Iteratively undistort points
     x0, y0 = x, y
-    for _ in range(iters):
+    for _ in range(num_iters):
         r2 = x * x + y * y
 
         inv_rad_poly = (1 + dist[..., 5:6] * r2 + dist[..., 6:7] * r2 * r2 + dist[..., 7:8] * r2 ** 3) / (
@@ -104,6 +102,10 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor,
         y = (y0 - deltaY) * inv_rad_poly
 
     # Convert points from normalized camera coordinates to pixel coordinates
+    new_cx: torch.Tensor = new_K[..., 0:1, 2]  # princial point in x (Bx1)
+    new_cy: torch.Tensor = new_K[..., 1:2, 2]  # princial point in y (Bx1)
+    new_fx: torch.Tensor = new_K[..., 0:1, 0]  # focal in x (Bx1)
+    new_fy: torch.Tensor = new_K[..., 1:2, 1]  # focal in y (Bx1)
     x = new_fx * x + new_cx
     y = new_fy * y + new_cy
     return torch.stack([x, y], -1)
