@@ -18,7 +18,7 @@ def ssim(
     window_size: int,
     max_val: float = 1.0,
     eps: float = 1e-12,
-    cropping: bool = False,
+    padding: str = 'same',
 ) -> torch.Tensor:
     r"""Function that computes the Structural Similarity (SSIM) index map between two images.
 
@@ -43,8 +43,8 @@ def ssim(
         window_size: the size of the gaussian kernel to smooth the images.
         max_val: the dynamic range of the images.
         eps: Small value for numerically stability when dividing.
-        cropping: Whether to crop out the "valid" convolution area to match
-         the MATLAB implementation of original SSIM paper.
+        padding: ``'same'`` | ``'valid'``. Whether to only use the "valid" convolution
+         area to compute SSIM to match the MATLAB implementation of original SSIM paper.
 
     Returns:
        The ssim index map with shape :math:`(B, C, H, W)`.
@@ -83,11 +83,13 @@ def ssim(
     mu1: torch.Tensor = filter2d(img1, kernel)
     mu2: torch.Tensor = filter2d(img2, kernel)
 
-    if cropping:
+    if padding == 'valid':
         height, width = kernel.shape[-2:]
         cropping_shape: List[int] = _compute_padding([height, width])
         mu1 = _crop(mu1, cropping_shape)
         mu2 = _crop(mu2, cropping_shape)
+    elif padding == 'same':
+        pass
 
     mu1_sq = mu1 ** 2
     mu2_sq = mu2 ** 2
@@ -97,10 +99,12 @@ def ssim(
     mu_img2_sq = filter2d(img2 ** 2, kernel)
     mu_img1_img2 = filter2d(img1 * img2, kernel)
 
-    if cropping:
+    if padding == 'valid':
         mu_img1_sq = _crop(mu_img1_sq, cropping_shape)
         mu_img2_sq = _crop(mu_img2_sq, cropping_shape)
         mu_img1_img2 = _crop(mu_img1_img2, cropping_shape)
+    elif padding == 'same':
+        pass
 
     # compute local sigma per channel
     sigma1_sq = mu_img1_sq - mu1_sq
@@ -136,8 +140,8 @@ class SSIM(nn.Module):
         window_size: the size of the gaussian kernel to smooth the images.
         max_val: the dynamic range of the images.
         eps: Small value for numerically stability when dividing.
-        cropping: Whether to crop out the "valid" convolution area to match
-         the MATLAB implementation of original SSIM paper.
+        padding: ``'same'`` | ``'valid'``. Whether to only use the "valid" convolution
+         area to compute SSIM to match the MATLAB implementation of original SSIM paper.
 
     Shape:
         - Input: :math:`(B, C, H, W)`.
@@ -151,12 +155,12 @@ class SSIM(nn.Module):
         >>> ssim_map = ssim(input1, input2)  # 1x4x5x5
     """
 
-    def __init__(self, window_size: int, max_val: float = 1.0, eps: float = 1e-12, cropping: bool = False) -> None:
+    def __init__(self, window_size: int, max_val: float = 1.0, eps: float = 1e-12, padding: str = 'same') -> None:
         super().__init__()
         self.window_size: int = window_size
         self.max_val: float = max_val
         self.eps = eps
-        self.cropping = cropping
+        self.padding = padding
 
     def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> torch.Tensor:
-        return ssim(img1, img2, self.window_size, self.max_val, self.eps, self.cropping)
+        return ssim(img1, img2, self.window_size, self.max_val, self.eps, self.padding)

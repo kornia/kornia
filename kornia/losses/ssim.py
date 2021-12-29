@@ -11,7 +11,7 @@ def ssim_loss(
     max_val: float = 1.0,
     eps: float = 1e-12,
     reduction: str = 'mean',
-    cropping: bool = False,
+    padding: str = 'same',
 ) -> torch.Tensor:
     r"""Function that computes a loss based on the SSIM measurement.
 
@@ -33,8 +33,8 @@ def ssim_loss(
          output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
          ``'mean'``: the sum of the output will be divided by the number of elements
          in the output, ``'sum'``: the output will be summed.
-        cropping: Whether to crop out the "valid" convolution area to match
-         the MATLAB implementation of original SSIM paper.
+        padding: ``'same'`` | ``'valid'``. Whether to only use the "valid" convolution
+         area to compute SSIM to match the MATLAB implementation of original SSIM paper.
 
     Returns:
         The loss based on the ssim index.
@@ -45,7 +45,7 @@ def ssim_loss(
         >>> loss = ssim_loss(input1, input2, 5)
     """
     # compute the ssim map
-    ssim_map: torch.Tensor = metrics.ssim(img1, img2, window_size, max_val, eps, cropping)
+    ssim_map: torch.Tensor = metrics.ssim(img1, img2, window_size, max_val, eps, padding)
 
     # compute and reduce the loss
     loss = torch.clamp((1.0 - ssim_map) / 2, min=0, max=1)
@@ -78,8 +78,8 @@ class SSIMLoss(nn.Module):
          output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
          ``'mean'``: the sum of the output will be divided by the number of elements
          in the output, ``'sum'``: the output will be summed.
-        cropping: Whether to crop out the "valid" convolution area to match
-         the MATLAB implementation of original SSIM paper.
+        padding: ``'same'`` | ``'valid'``. Whether to only use the "valid" convolution
+         area to compute SSIM to match the MATLAB implementation of original SSIM paper.
 
     Returns:
         The loss based on the ssim index.
@@ -97,14 +97,14 @@ class SSIMLoss(nn.Module):
         max_val: float = 1.0,
         eps: float = 1e-12,
         reduction: str = 'mean',
-        cropping: bool = False,
+        padding: str = 'same',
     ) -> None:
         super().__init__()
         self.window_size: int = window_size
         self.max_val: float = max_val
         self.eps: float = eps
         self.reduction: str = reduction
-        self.cropping: bool = cropping
+        self.padding: str = padding
 
     def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> torch.Tensor:
-        return ssim_loss(img1, img2, self.window_size, self.max_val, self.eps, self.reduction, self.cropping)
+        return ssim_loss(img1, img2, self.window_size, self.max_val, self.eps, self.reduction, self.same)
