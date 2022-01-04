@@ -10,7 +10,7 @@ from kornia.utils import create_meshgrid
 def distance_transform(
     image: torch.Tensor,
     kernel_size: int = 3,
-    h: float = .35
+    h: float = 0.35
 ) -> torch.Tensor:
     r"""Approximates the Manhattan distance transform of images using cascaded convolution operations.
 
@@ -27,7 +27,7 @@ def distance_transform(
         tensor with shape :math:`(B,C,H,W)`.
 
     Example:
-        >>> tensor = tensor = torch.zeros(1, 1, 5, 5)
+        >>> tensor = torch.zeros(1, 1, 5, 5)
         >>> tensor[:,:, 1, 2] = 1
         >>> dt = kornia.contrib.distance_transform(tensor)
     """
@@ -43,11 +43,12 @@ def distance_transform(
     # n_iters is set such that the DT will be able to propagate from any corner of the image to its far,
     # diagonally opposite corner
     n_iters: int = math.ceil(max(image.shape[2], image.shape[3]) / math.floor(kernel_size / 2))
-    grid = create_meshgrid(kernel_size, kernel_size, normalized_coordinates=False)
+    grid = create_meshgrid(kernel_size, kernel_size, normalized_coordinates=False,
+                           device=image.device, dtype=image.dtype)
+
     grid -= math.floor(kernel_size / 2)
     kernel = torch.hypot(grid[0, :, :, 0], grid[0, :, :, 1])
     kernel = torch.exp(kernel / -h).unsqueeze(0).unsqueeze(0)
-    kernel = kernel.to(image)
 
     out = torch.zeros_like(image)
 
@@ -56,7 +57,7 @@ def distance_transform(
 
     for i in range(n_iters):
         cdt = F.conv2d(boundary, kernel, padding='same')
-        cdt = -0.35 * torch.log(cdt)
+        cdt = -h * torch.log(cdt)
 
         # We are calculating log(0) above.
         cdt = torch.nan_to_num(cdt, posinf=0.0)
@@ -65,7 +66,7 @@ def distance_transform(
         if mask.sum() == 0:
             break
 
-        offset: int = i * kernel_size / 2
+        offset: int = i * kernel_size // 2
         out += (offset + cdt) * mask
         boundary[mask == 1] = 1
 
@@ -83,7 +84,7 @@ class DistanceTransform(nn.Module):
     def __init__(
         self,
         kernel_size: int = 3,
-        h: float = .35
+        h: float = 0.35
     ):
         super().__init__()
         self.kernel_size = kernel_size
