@@ -1,16 +1,12 @@
 import warnings
 from itertools import zip_longest
-from typing import cast, List, Optional, Tuple, Union
+from typing import Any, cast, List, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation.base import (
-    _AugmentationBase,
-    GeometricAugmentationBase2D,
-    IntensityAugmentationBase2D,
-    TensorWithTransformMat,
-)
+from kornia.augmentation.base import _AugmentationBase, GeometricAugmentationBase2D, IntensityAugmentationBase2D
 from kornia.constants import DataKey
+from kornia.geometry.boxes import Boxes
 
 from .base import SequentialBase
 from .image import ImageSequential, ParamItem
@@ -19,6 +15,9 @@ from .utils import ApplyInverse
 from .video import VideoSequential
 
 __all__ = ["AugmentationSequential"]
+
+AugmentationSequentialInput = Union[
+    torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor, torch.Tensor], Tuple[List[torch.Tensor], torch.Tensor]]
 
 
 class AugmentationSequential(ImageSequential):
@@ -228,12 +227,12 @@ class AugmentationSequential(ImageSequential):
         return outputs
 
     def __packup_output__(  # type: ignore
-        self, output: List[TensorWithTransformMat], label: Optional[torch.Tensor] = None
+        self, output: List[AugmentationSequentialInput], label: Optional[torch.Tensor] = None
     ) -> Union[
-        TensorWithTransformMat,
-        Tuple[TensorWithTransformMat, Optional[torch.Tensor]],
-        List[TensorWithTransformMat],
-        Tuple[List[TensorWithTransformMat], Optional[torch.Tensor]],
+        AugmentationSequentialInput,
+        Tuple[AugmentationSequentialInput, Optional[torch.Tensor]],
+        List[AugmentationSequentialInput],
+        Tuple[List[AugmentationSequentialInput], Optional[torch.Tensor]],
     ]:
         if len(output) == 1 and isinstance(output, (tuple, list)) and self.return_label:
             return output[0], label
@@ -243,36 +242,65 @@ class AugmentationSequential(ImageSequential):
             return output, label
         return output
 
-    def forward(  # type: ignore
-        self,
-        *args: TensorWithTransformMat,
-        label: Optional[torch.Tensor] = None,
-        params: Optional[List[ParamItem]] = None,
-        data_keys: Optional[List[Union[str, int, DataKey]]] = None,
-    ) -> Union[
-        TensorWithTransformMat,
-        Tuple[TensorWithTransformMat, Optional[torch.Tensor]],
-        List[TensorWithTransformMat],
-        Tuple[List[TensorWithTransformMat], Optional[torch.Tensor]],
-    ]:
-        """Compute multiple tensors simultaneously according to ``self.data_keys``."""
-        if data_keys is None:
-            data_keys = cast(List[Union[str, int, DataKey]], self.data_keys)
-        else:
-            data_keys = [DataKey.get(inp) for inp in data_keys]
-
+    def _validate_args_datakeys(self, *args: AugmentationSequentialInput, data_keys: List[DataKey]):
         if len(args) != len(data_keys):
             raise AssertionError(
                 f"The number of inputs must align with the number of data_keys. Got {len(args)} and {len(data_keys)}."
             )
+        # TODO: validate args batching, and its consistency
+
+    def _arguments_preproc(self, *args: AugmentationSequentialInput, data_keys: List[DataKey]):
+        inp: List[Any] = []
+        for arg, dcate in zip(args, data_keys):
+            if DataKey.get(dcate) in [DataKey.INPUT, DataKey.MASK, DataKey.KEYPOINTS]:
+                inp.append(arg)
+            elif DataKey.get(dcate) in [DataKey.BBOX, DataKey.BBOX_XYXY, DataKey.BBOX_XYWH]:
+                if DataKey.get(dcate) in [DataKey.BBOX]:
+                    mode = "vertices_plus"
+                elif DataKey.get(dcate) in [DataKey.BBOX_XYXY]:
+                    mode = "xyxy"
+                elif DataKey.get(dcate) in [DataKey.BBOX_XYWH]:
+                    mode = "xywh"
+                else:
+                    raise ValueError(f"Unsupported mode `{DataKey.get(dcate).name}`.")
+                inp.append(Boxes.from_tensor(arg, mode=mode))  # type: ignore
+            else:
+                raise NotImplementedError(f"input type of {dcate} is not implemented.")
+        return inp
+
+    def forward(  # type: ignore
+        self,
+        *args: AugmentationSequentialInput,
+        label: Optional[torch.Tensor] = None,
+        params: Optional[List[ParamItem]] = None,
+        data_keys: Optional[List[Union[str, int, DataKey]]] = None,
+    ) -> Union[
+        AugmentationSequentialInput,
+        Tuple[AugmentationSequentialInput, Optional[torch.Tensor]],
+        List[AugmentationSequentialInput],
+        Tuple[List[AugmentationSequentialInput], Optional[torch.Tensor]],
+    ]:
+        """Compute multiple tensors simultaneously according to ``self.data_keys``."""
+        if data_keys is None:
+            _data_keys = self.data_keys
+        else:
+            _data_keys = list(DataKey.get(inp) for inp in data_keys)
+        self._validate_args_datakeys(*args, data_keys=_data_keys)
+
+        args = self._arguments_preproc(*args, data_keys=_data_keys)
 
         if params is None:
-            if DataKey.INPUT in data_keys:
-                _input = args[data_keys.index(DataKey.INPUT)]
-                if isinstance(_input, (tuple, list)):
+            # image data must exist if params is not provided.
+            if DataKey.INPUT in _data_keys:
+                _input = args[_data_keys.index(DataKey.INPUT)]
+                # If (input, mat) received.
+                if isinstance(_input, (tuple,)):
                     inp = _input[0]
                 else:
                     inp = _input
+                if isinstance(inp, (tuple, list,)):
+                    raise ValueError(f"`INPUT` should be a tensor but `{type(inp)}` received.")
+                # A video input shall be BCDHW while an image input shall be BCHW
                 if self.contains_video_sequential:
                     _, out_shape = self.autofill_dim(inp, dim_range=(3, 5))
                 else:
@@ -281,21 +309,29 @@ class AugmentationSequential(ImageSequential):
             else:
                 raise ValueError("`params` must be provided whilst INPUT is not in data_keys.")
 
-        outputs: List[TensorWithTransformMat] = [None] * len(data_keys)  # type: ignore
-        if DataKey.INPUT in data_keys:
-            idx = data_keys.index(DataKey.INPUT)
-            out = super().forward(args[idx], label, params=params)
+        outputs: List[AugmentationSequentialInput] = [None] * len(_data_keys)  # type: ignore
+        # Forward the first image data to freeze the parameters.
+        if DataKey.INPUT in _data_keys:
+            idx = _data_keys.index(DataKey.INPUT)
+            _inp = args[idx]
+            _out = super().forward(_inp, label, params=params)  # type: ignore
             if self.return_label:
-                input, label = cast(Tuple[TensorWithTransformMat, torch.Tensor], out)
+                _input, label = cast(Tuple[AugmentationSequentialInput, torch.Tensor], _out)
             else:
-                input = cast(TensorWithTransformMat, out)
-            outputs[idx] = input
+                _input = cast(AugmentationSequentialInput, _out)
+            outputs[idx] = _input
 
         self.return_label = self.return_label or label is not None or self.contains_label_operations(params)
 
-        for idx, (input, dcate, out) in enumerate(zip(args, data_keys, outputs)):
+        for idx, (arg, dcate, out) in enumerate(zip(args, _data_keys, outputs)):
             if out is not None:
                 continue
+            # Using tensors straight-away
+            if isinstance(arg, (Boxes,)):
+                input = arg.data  # all boxes are in (B, N, 4, 2) format now.
+            else:
+                input = arg
+
             for param in params:
                 module = self.get_submodule(param.name)
                 if dcate == DataKey.INPUT:
@@ -317,6 +353,11 @@ class AugmentationSequential(ImageSequential):
                     raise ValueError(f"Unsupported Sequential {module}.")
                 else:
                     raise NotImplementedError(f"data_key {dcate} is not implemented for {module}.")
-            outputs[idx] = input
+
+            if isinstance(arg, (Boxes,)):
+                arg._data = input
+                outputs[idx] = arg.to_tensor()
+            else:
+                outputs[idx] = input
 
         return self.__packup_output__(outputs, label)
