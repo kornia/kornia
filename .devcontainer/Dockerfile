@@ -12,6 +12,7 @@ RUN if [ "${INSTALL_NODE}" = "true" ]; then su vscode -c "umask 0002 && . /usr/l
 
 # [Optional] If your pip requirements rarely change, uncomment this section to add them to the image.
 COPY requirements/ /tmp/pip-tmp/requirements/
+COPY docs/requirements.txt /tmp/pip-tmp/docs/
 RUN pip3 --disable-pip-version-check --no-cache-dir install -r /tmp/pip-tmp/requirements/dev.txt && rm -rf /tmp/pip-tmp
 
 # [Optional] Uncomment this section to install additional OS packages.
@@ -20,4 +21,3 @@ RUN pip3 --disable-pip-version-check --no-cache-dir install -r /tmp/pip-tmp/requ
 
 # [Optional] Uncomment this line to install global node packages.
 # RUN su vscode -c "source /usr/local/share/nvm/nvm.sh && npm install -g <your-package-here>" 2>&1
-
