@@ -1,4 +1,4 @@
-from .augmentation import (
+from ._2d import (
     CenterCrop,
     ColorJitter,
     Denormalize,
@@ -8,6 +8,7 @@ from .augmentation import (
     RandomBoxBlur,
     RandomChannelShuffle,
     RandomCrop,
+    RandomCutMix,
     RandomElasticTransform,
     RandomEqualize,
     RandomErasing,
@@ -17,6 +18,7 @@ from .augmentation import (
     RandomGrayscale,
     RandomHorizontalFlip,
     RandomInvert,
+    RandomMixUp,
     RandomMotionBlur,
     RandomPerspective,
     RandomPosterize,
@@ -27,7 +29,7 @@ from .augmentation import (
     RandomThinPlateSpline,
     RandomVerticalFlip,
 )
-from .augmentation3d import (
+from ._3d import (
     CenterCrop3D,
     RandomAffine3D,
     RandomCrop3D,
@@ -39,9 +41,9 @@ from .augmentation3d import (
     RandomRotation3D,
     RandomVerticalFlip3D,
 )
-from .base import AugmentationBase2D, AugmentationBase3D
+from .base_2d import AugmentationBase2D
+from .base_3d import AugmentationBase3D
 from .container import AugmentationSequential, ImageSequential, PatchSequential, VideoSequential
-from .mix_augmentation import RandomCutMix, RandomMixUp
 
 __all__ = [
     "AugmentationBase2D",

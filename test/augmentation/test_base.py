@@ -5,7 +5,8 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia.testing as utils  # test utils
-from kornia.augmentation.base import _BasicAugmentationBase, AugmentationBase2D
+from kornia.augmentation.base import _BasicAugmentationBase
+from kornia.augmentation.base_2d import AugmentationBase2D
 from kornia.testing import assert_close
 
 

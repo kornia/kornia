@@ -1,11 +1,12 @@
-from typing import cast, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, cast
 
 import torch
 import torch.nn as nn
 
 import kornia
 from kornia.augmentation import RandomCrop
-from kornia.augmentation.base import _AugmentationBase, MixAugmentationBase, TensorWithTransformMat
+from kornia.augmentation.base import TensorWithTransformMat, _AugmentationBase
+from kornia.augmentation.base_2d import MixAugmentationBase
 from kornia.augmentation.container.base import SequentialBase
 from kornia.augmentation.container.utils import InputApplyInverse, MaskApplyInverse
 
@@ -103,8 +104,12 @@ class VideoSequential(ImageSequential):
         random_apply_weights: Optional[List[float]] = None,
     ) -> None:
         super().__init__(
-            *args, same_on_batch=None, return_transform=None, keepdim=None, random_apply=random_apply,
-            random_apply_weights=random_apply_weights
+            *args,
+            same_on_batch=None,
+            return_transform=None,
+            keepdim=None,
+            random_apply=random_apply,
+            random_apply_weights=random_apply_weights,
         )
         self.same_on_frame = same_on_frame
         self.data_format = data_format.upper()
@@ -118,7 +123,7 @@ class VideoSequential(ImageSequential):
 
     def __infer_channel_exclusive_batch_shape__(self, batch_shape: torch.Size, chennel_index: int) -> torch.Size:
         # Fix mypy complains: error: Incompatible return value type (got "Tuple[int, ...]", expected "Size")
-        return cast(torch.Size, batch_shape[:chennel_index] + batch_shape[chennel_index + 1:])
+        return cast(torch.Size, batch_shape[:chennel_index] + batch_shape[chennel_index + 1 :])
 
     def __repeat_param_across_channels__(self, param: torch.Tensor, frame_num: int) -> torch.Tensor:
         """Repeat parameters across channels.

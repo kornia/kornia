@@ -4,7 +4,8 @@ from typing import Iterator, List, NamedTuple, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
-from kornia.augmentation.base import _AugmentationBase, MixAugmentationBase, TensorWithTransformMat
+from kornia.augmentation.base import TensorWithTransformMat, _AugmentationBase
+from kornia.augmentation.base_2d import MixAugmentationBase
 from kornia.augmentation.container.base import SequentialBase
 from kornia.contrib.extract_patches import extract_tensor_patches
 
@@ -138,8 +139,12 @@ class PatchSequential(ImageSequential):
         else:
             _random_apply = random_apply
         super().__init__(
-            *args, same_on_batch=same_on_batch, return_transform=False, keepdim=keepdim, random_apply=_random_apply,
-            random_apply_weights=random_apply_weights
+            *args,
+            same_on_batch=same_on_batch,
+            return_transform=False,
+            keepdim=keepdim,
+            random_apply=_random_apply,
+            random_apply_weights=random_apply_weights,
         )
         if padding not in ("same", "valid"):
             raise ValueError(f"`padding` must be either `same` or `valid`. Got {padding}.")
@@ -382,11 +387,7 @@ class PatchSequential(ImageSequential):
             _input = _input.reshape(in_shape)
         return _input, label
 
-    def inverse(  # type: ignore
-        self,
-        input: torch.Tensor,
-        params: List[ParamItem],
-    ) -> torch.Tensor:
+    def inverse(self, input: torch.Tensor, params: List[ParamItem]) -> torch.Tensor:  # type: ignore
         """Inverse transformation.
 
         Used to inverse a tensor according to the performed transformation by a forward pass, or with respect to
