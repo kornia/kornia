@@ -2,9 +2,8 @@ from typing import Dict, Optional
 
 import torch
 
+from kornia.augmentation.base_3d import AugmentationBase3D
 from kornia.enhance import equalize3d
-
-from ..base_3d import AugmentationBase3D
 
 
 class RandomEqualize3D(AugmentationBase3D):

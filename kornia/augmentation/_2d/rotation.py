@@ -2,12 +2,11 @@ from typing import Dict, List, Optional, Tuple, Union, cast
 
 import torch
 
+from kornia.augmentation import random_generator as rg
 from kornia.augmentation.base_2d import GeometricAugmentationBase2D
 from kornia.constants import Resample
 from kornia.geometry.transform import affine
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
-
-from .. import random_generator as rg
 
 
 class RandomRotation(GeometricAugmentationBase2D):

@@ -3,10 +3,9 @@ from typing import Dict, Optional, Tuple, Union
 import torch
 from torch.distributions import Bernoulli, Beta, Uniform
 
-from kornia.geometry.bbox import bbox_generator
-from kornia.utils.helpers import _extract_device_dtype
-
-from ...utils import (
+from kornia.augmentation.random_generator._2d.probability import random_prob_generator
+from kornia.augmentation.random_generator.base import RandomGeneratorBase
+from kornia.augmentation.utils import (
     _adapted_beta,
     _adapted_rsampling,
     _adapted_sampling,
@@ -14,8 +13,8 @@ from ...utils import (
     _common_param_check,
     _joint_range_check,
 )
-from ..base import RandomGeneratorBase
-from .probability import random_prob_generator
+from kornia.geometry.bbox import bbox_generator
+from kornia.utils.helpers import _extract_device_dtype
 
 
 class CutmixGenerator(RandomGeneratorBase):

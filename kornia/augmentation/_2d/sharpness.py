@@ -2,10 +2,9 @@ from typing import Dict, Optional, Tuple, Union, cast
 
 import torch
 
+from kornia.augmentation import random_generator as rg
 from kornia.augmentation.base_2d import IntensityAugmentationBase2D
 from kornia.enhance import sharpness
-
-from .. import random_generator as rg
 
 
 class RandomSharpness(IntensityAugmentationBase2D):

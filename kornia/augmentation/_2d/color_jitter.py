@@ -2,11 +2,10 @@ from typing import Dict, List, Optional, Tuple, Union, cast
 
 import torch
 
+from kornia.augmentation import random_generator as rg
 from kornia.augmentation.base_2d import IntensityAugmentationBase2D
 from kornia.constants import pi
 from kornia.enhance import adjust_brightness, adjust_contrast, adjust_hue, adjust_saturation
-
-from .. import random_generator as rg
 
 
 class ColorJitter(IntensityAugmentationBase2D):

@@ -2,10 +2,9 @@ from typing import Dict, Optional, Tuple, Union, cast
 
 import torch
 
+from kornia.augmentation import random_generator as rg
 from kornia.augmentation.base_2d import IntensityAugmentationBase2D
 from kornia.geometry.bbox import bbox_generator, bbox_to_mask
-
-from .. import random_generator as rg
 
 
 class RandomErasing(IntensityAugmentationBase2D):

@@ -3,10 +3,15 @@ from typing import Dict, Optional, Tuple, Union, cast
 import torch
 from torch.distributions import Uniform
 
+from kornia.augmentation.random_generator.base import RandomGeneratorBase
+from kornia.augmentation.utils import (
+    _adapted_rsampling,
+    _adapted_uniform,
+    _common_param_check,
+    _joint_range_check,
+    _range_bound,
+)
 from kornia.utils.helpers import _deprecated, _extract_device_dtype
-
-from ...utils import _adapted_rsampling, _adapted_uniform, _common_param_check, _joint_range_check, _range_bound
-from ..base import RandomGeneratorBase
 
 
 class AffineGenerator(RandomGeneratorBase):

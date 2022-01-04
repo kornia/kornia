@@ -7,9 +7,8 @@ import torch.nn as nn
 from kornia.augmentation.base import TensorWithTransformMat, _AugmentationBase
 from kornia.augmentation.base_2d import MixAugmentationBase
 from kornia.augmentation.container.base import SequentialBase
+from kornia.augmentation.container.image import ImageSequential, ParamItem
 from kornia.contrib.extract_patches import extract_tensor_patches
-
-from .image import ImageSequential, ParamItem
 
 __all__ = ["PatchSequential"]
 

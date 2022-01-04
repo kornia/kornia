@@ -2,11 +2,10 @@ from typing import Dict, Optional, Tuple, Union, cast
 
 import torch
 
+from kornia.augmentation import random_generator as rg
+from kornia.augmentation.base_3d import AugmentationBase3D
 from kornia.constants import Resample
 from kornia.geometry import crop_by_transform_mat3d, get_perspective_transform3d
-
-from .. import random_generator as rg
-from ..base_3d import AugmentationBase3D
 
 
 class CenterCrop3D(AugmentationBase3D):

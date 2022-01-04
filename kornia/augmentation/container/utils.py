@@ -8,12 +8,11 @@ import torch.nn as nn
 import kornia  # lazy loading for circular dependencies
 from kornia.augmentation.base import TensorWithTransformMat, _AugmentationBase
 from kornia.augmentation.base_2d import GeometricAugmentationBase2D, MixAugmentationBase
+from kornia.augmentation.container.base import ParamItem
 from kornia.constants import DataKey
 from kornia.geometry.bbox import transform_bbox
 from kornia.geometry.linalg import transform_points
 from kornia.utils.helpers import _torch_inverse_cast
-
-from .base import ParamItem
 
 
 def _get_geometric_only_param(

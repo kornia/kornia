@@ -5,8 +5,8 @@ import torch
 import torch.nn as nn
 from torch.distributions import Bernoulli
 
-from .random_generator import RandomGeneratorBase
-from .utils import _adapted_sampling, _transform_output_shape
+from kornia.augmentation.random_generator import RandomGeneratorBase
+from kornia.augmentation.utils import _adapted_sampling, _transform_output_shape
 
 TensorWithTransformMat = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
 

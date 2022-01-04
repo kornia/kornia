@@ -2,11 +2,10 @@ from typing import Dict, Optional, Tuple, Union, cast
 
 import torch
 
+from kornia.augmentation import random_generator as rg
 from kornia.augmentation.base_2d import IntensityAugmentationBase2D
 from kornia.constants import BorderType, Resample
 from kornia.filters import motion_blur
-
-from .. import random_generator as rg
 
 
 class RandomMotionBlur(IntensityAugmentationBase2D):

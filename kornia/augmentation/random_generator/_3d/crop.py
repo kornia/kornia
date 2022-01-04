@@ -3,11 +3,10 @@ from typing import Dict, Optional, Tuple, Union
 import torch
 from torch.distributions import Uniform
 
+from kornia.augmentation.random_generator.base import RandomGeneratorBase
+from kornia.augmentation.utils import _adapted_rsampling, _adapted_uniform, _common_param_check
 from kornia.geometry.bbox import bbox_generator3d
 from kornia.utils.helpers import _deprecated, _extract_device_dtype
-
-from ...utils import _adapted_rsampling, _adapted_uniform, _common_param_check
-from ..base import RandomGeneratorBase
 
 
 class CropGenerator3D(RandomGeneratorBase):

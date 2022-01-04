@@ -3,8 +3,8 @@ from typing import Dict
 import torch
 from torch.distributions import Bernoulli
 
-from ...utils import _adapted_sampling, _common_param_check
-from ..base import RandomGeneratorBase
+from kornia.augmentation.random_generator.base import RandomGeneratorBase
+from kornia.augmentation.utils import _adapted_sampling, _common_param_check
 
 
 class ProbabilityGenerator(RandomGeneratorBase):

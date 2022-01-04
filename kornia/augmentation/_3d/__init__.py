@@ -1,8 +1,8 @@
-from .affine import RandomAffine3D
-from .center_crop import CenterCrop3D
-from .crop import RandomCrop3D
-from .equalize import RandomEqualize3D
-from .flip import RandomDepthicalFlip3D, RandomHorizontalFlip3D, RandomVerticalFlip3D
-from .motion_blur import RandomMotionBlur3D
-from .perspective import RandomPerspective3D
-from .rotation import RandomRotation3D
+from kornia.augmentation._3d.affine import RandomAffine3D
+from kornia.augmentation._3d.center_crop import CenterCrop3D
+from kornia.augmentation._3d.crop import RandomCrop3D
+from kornia.augmentation._3d.equalize import RandomEqualize3D
+from kornia.augmentation._3d.flip import RandomDepthicalFlip3D, RandomHorizontalFlip3D, RandomVerticalFlip3D
+from kornia.augmentation._3d.motion_blur import RandomMotionBlur3D
+from kornia.augmentation._3d.perspective import RandomPerspective3D
+from kornia.augmentation._3d.rotation import RandomRotation3D

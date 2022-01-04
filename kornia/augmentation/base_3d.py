@@ -2,8 +2,7 @@ import torch
 
 import kornia
 from kornia.augmentation.base import TensorWithTransformMat, _AugmentationBase
-
-from .utils import _transform_input3d, _validate_input_dtype
+from kornia.augmentation.utils import _transform_input3d, _validate_input_dtype
 
 
 class AugmentationBase3D(_AugmentationBase):

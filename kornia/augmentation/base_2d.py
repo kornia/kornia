@@ -5,9 +5,8 @@ import torch
 
 import kornia
 from kornia.augmentation.base import TensorWithTransformMat, _AugmentationBase, _BasicAugmentationBase
+from kornia.augmentation.utils import _transform_input, _transform_output_shape, _validate_input_dtype
 from kornia.utils.helpers import _torch_inverse_cast
-
-from .utils import _transform_input, _transform_output_shape, _validate_input_dtype
 
 
 class AugmentationBase2D(_AugmentationBase):

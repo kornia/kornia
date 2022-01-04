@@ -3,11 +3,10 @@ from typing import Dict, Optional, Tuple, Union, cast
 
 import torch
 
+from kornia.augmentation import random_generator as rg
+from kornia.augmentation.base_2d import MixAugmentationBase
+from kornia.augmentation.utils import _shape_validation
 from kornia.geometry.bbox import bbox_to_mask, infer_bbox_shape
-
-from .. import random_generator as rg
-from ..base_2d import MixAugmentationBase
-from ..utils import _shape_validation
 
 
 class RandomCutMix(MixAugmentationBase):

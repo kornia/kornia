@@ -2,12 +2,11 @@ from typing import Dict, Optional, Tuple, Union, cast
 
 import torch
 
+from kornia.augmentation import random_generator as rg
 from kornia.augmentation.base_2d import GeometricAugmentationBase2D
 from kornia.constants import Resample, SamplePadding
 from kornia.geometry.conversions import deg2rad
 from kornia.geometry.transform import get_affine_matrix2d, warp_affine
-
-from .. import random_generator as rg
 
 
 class RandomAffine(GeometricAugmentationBase2D):

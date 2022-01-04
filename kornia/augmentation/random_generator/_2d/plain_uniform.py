@@ -3,10 +3,9 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 from torch.distributions import Distribution, Uniform
 
+from kornia.augmentation.random_generator.base import RandomGeneratorBase
+from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
 from kornia.utils.helpers import _extract_device_dtype
-
-from ...utils import _adapted_rsampling, _common_param_check, _range_bound
-from ..base import RandomGeneratorBase
 
 # factor, name, center, range
 ParameterBound = Tuple[Any, str, Optional[float], Optional[Tuple[float, float]]]
@@ -73,9 +72,7 @@ class PlainUniformGenerator(RandomGeneratorBase):
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([t for t, _, _, _ in self.samplers])
 
-        return dict(
-            {
-                name: _adapted_rsampling((batch_size,), dist, same_on_batch).to(device=_device, dtype=_dtype)
-                for name, dist in self.sampler_dict.items()
-            }
-        )
+        return {
+            name: _adapted_rsampling((batch_size,), dist, same_on_batch).to(device=_device, dtype=_dtype)
+            for name, dist in self.sampler_dict.items()
+        }

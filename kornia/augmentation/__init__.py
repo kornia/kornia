@@ -1,4 +1,4 @@
-from ._2d import (
+from kornia.augmentation._2d import (
     CenterCrop,
     ColorJitter,
     Denormalize,
@@ -29,7 +29,7 @@ from ._2d import (
     RandomThinPlateSpline,
     RandomVerticalFlip,
 )
-from ._3d import (
+from kornia.augmentation._3d import (
     CenterCrop3D,
     RandomAffine3D,
     RandomCrop3D,
@@ -41,9 +41,9 @@ from ._3d import (
     RandomRotation3D,
     RandomVerticalFlip3D,
 )
-from .base_2d import AugmentationBase2D
-from .base_3d import AugmentationBase3D
-from .container import AugmentationSequential, ImageSequential, PatchSequential, VideoSequential
+from kornia.augmentation.base_2d import AugmentationBase2D
+from kornia.augmentation.base_3d import AugmentationBase3D
+from kornia.augmentation.container import AugmentationSequential, ImageSequential, PatchSequential, VideoSequential
 
 __all__ = [
     "AugmentationBase2D",
