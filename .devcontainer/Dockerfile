@@ -10,6 +10,9 @@ ARG INSTALL_NODE="true"
 ARG NODE_VERSION="lts/*"
 RUN if [ "${INSTALL_NODE}" = "true" ]; then su vscode -c "umask 0002 && . /usr/local/share/nvm/nvm.sh && nvm install ${NODE_VERSION} 2>&1"; fi
 
+# https://exerror.com/importerror-libgl-so-1-cannot-open-shared-object-file-no-such-file-or-directory/
+RUN apt-get update && apt install -y libgl1-mesa-glx
+
 # [Optional] If your pip requirements rarely change, uncomment this section to add them to the image.
 COPY requirements/ /tmp/pip-tmp/requirements/
 COPY docs/requirements.txt /tmp/pip-tmp/docs/
