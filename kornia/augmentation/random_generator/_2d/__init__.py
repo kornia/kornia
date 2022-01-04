@@ -10,4 +10,3 @@ from .plain_uniform import *
 from .posterize import *
 from .probability import *
 from .rectangle_earase import *
-from .resized_crop import *
