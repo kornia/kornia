@@ -1,18 +1,18 @@
 // For format details, see https://aka.ms/devcontainer.json. For config options, see the README at:
 // https://github.com/microsoft/vscode-dev-containers/tree/v0.187.0/containers/python-3
 {
-	"name": "Python 3",
-	"build": {
-		"dockerfile": "Dockerfile",
-		"context": "..",
-		"args": {
-			// Update 'VARIANT' to pick a Python version: 3, 3.6, 3.7, 3.8, 3.9, 3.10
-			"VARIANT": "3.8",
-			// Options
-			"INSTALL_NODE": "true",
-			"NODE_VERSION": "lts/*"
-		},
-	},
+    "name": "Python 3",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": "..",
+        "args": {
+            // Update 'VARIANT' to pick a Python version: 3, 3.6, 3.7, 3.8, 3.9, 3.10
+            "VARIANT": "3.8",
+            // Options
+            "INSTALL_NODE": "true",
+            "NODE_VERSION": "lts/*"
+        },
+    },
     "runArgs": [
         // Enable GPU passthrough, requires WSL2 on Windows
         //"--gpus=all",
@@ -60,7 +60,7 @@
             "--verbose"
         ],
         "python.testing.pytestArgs": [
-            "tests"
+            "test"
         ],
         "python.testing.unittestEnabled": false,
         "python.testing.pytestEnabled": true,
