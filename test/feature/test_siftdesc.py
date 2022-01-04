@@ -3,7 +3,7 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia.testing as utils  # test utils
-from kornia.feature.siftdesc import get_sift_bin_ksize_stride_pad, get_sift_pooling_kernel, SIFTDescriptor
+from kornia.feature.siftdesc import SIFTDescriptor, get_sift_bin_ksize_stride_pad, get_sift_pooling_kernel
 from kornia.testing import assert_close
 
 

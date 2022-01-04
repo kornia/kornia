@@ -1,5 +1,5 @@
 from .perspective import project_points, unproject_points
-from .pinhole import cam2pixel, PinholeCamera, pixel2cam
+from .pinhole import PinholeCamera, cam2pixel, pixel2cam
 from .stereo import StereoCamera
 
 __all__ = [
