@@ -85,8 +85,8 @@ class AffineGenerator(RandomGeneratorBase):
                     [
                         _range_bound(self.scale[:2], 'scale_x', bounds=(0, float('inf')), check='singular'),
                         _range_bound(
-                            self.scale[2:], 'scale_y', bounds=(0, float('inf')), check='singular'
-                        ),  # type:ignore
+                            self.scale[2:], 'scale_y', bounds=(0, float('inf')), check='singular'  # type:ignore
+                        ),
                     ]
                 ).to(device=device, dtype=dtype)
             else:
