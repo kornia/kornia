@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation.base_2d import IntensityAugmentationBase2D
-from kornia.enhance import denormalize, normalize
+from kornia.enhance import normalize
 
 
 class Normalize(IntensityAugmentationBase2D):
@@ -66,36 +66,3 @@ class Normalize(IntensityAugmentationBase2D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         return normalize(input, self.flags["mean"], self.flags["std"])
-
-
-class Denormalize(Normalize):
-    r"""Denormalize tensor images with mean and standard deviation.
-
-    .. math::
-        \text{input[channel] = (input[channel] * std[channel]) + mean[channel]}
-
-    Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
-
-    Args:
-        mean: Mean for each channel.
-        std: Standard deviations for each channel.
-
-    Return:
-        Denormalised tensor with same size as input :math:`(*, C, H, W)`.
-
-    .. note::
-        This function internally uses :func:`kornia.enhance.denormalize`.
-
-    Examples:
-
-        >>> norm = Denormalize(mean=torch.zeros(1, 4), std=torch.ones(1, 4))
-        >>> x = torch.rand(1, 4, 3, 3)
-        >>> out = norm(x)
-        >>> out.shape
-        torch.Size([1, 4, 3, 3])
-    """
-
-    def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        return denormalize(input, self.flags["mean"], self.flags["std"])
