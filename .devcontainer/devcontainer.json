@@ -34,6 +34,7 @@
         "python.analysis.completeFunctionParens": true,
         "python.analysis.autoSearchPaths": true,
         "python.analysis.useImportHeuristic": true,
+        "python.analysis.diagnosticMode": "workspace",
         "python.sortImports": true,
         "python.sortImports.args": [
             // isort recommends pyproject.toml
@@ -90,7 +91,7 @@
     // Use 'forwardPorts' to make a list of ports inside the container available locally.
     // "forwardPorts": [],
     // Use 'postCreateCommand' to run commands after the container is created.
-    "postCreateCommand": "pre-commit install",
+    "postCreateCommand": "pre-commit install && sudo /usr/local/bin/python setup.py develop",
     // Comment out connect as root instead. More info: https://aka.ms/vscode-remote/containers/non-root.
     "remoteUser": "vscode"
 }
