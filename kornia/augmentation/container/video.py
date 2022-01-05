@@ -5,7 +5,7 @@ import torch.nn as nn
 
 import kornia
 from kornia.augmentation import RandomCrop
-from kornia.augmentation._2d.base_2d import MixAugmentationBase
+from kornia.augmentation._2d.mix.base import MixAugmentationBase
 from kornia.augmentation.base import TensorWithTransformMat, _AugmentationBase
 from kornia.augmentation.container.base import SequentialBase
 from kornia.augmentation.container.image import ImageSequential, ParamItem
