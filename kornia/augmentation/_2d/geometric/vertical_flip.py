@@ -2,7 +2,7 @@ from typing import Dict, Optional, Tuple
 
 import torch
 
-from kornia.augmentation.base_2d import GeometricAugmentationBase2D
+from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.geometry.transform import vflip
 
 

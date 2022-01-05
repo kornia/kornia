@@ -3,7 +3,7 @@ from typing import Dict, Optional, Tuple, Union, cast
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation.base_3d import AugmentationBase3D
+from kornia.augmentation._3d.base import AugmentationBase3D
 from kornia.constants import BorderType, Resample
 from kornia.filters import motion_blur3d
 

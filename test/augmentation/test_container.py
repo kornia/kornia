@@ -3,7 +3,7 @@ import torch
 
 import kornia
 import kornia.augmentation as K
-from kornia.augmentation.base_2d import MixAugmentationBase
+from kornia.augmentation._2d.mix.base import MixAugmentationBase
 from kornia.constants import BorderType
 from kornia.geometry.bbox import bbox_to_mask
 from kornia.testing import assert_close

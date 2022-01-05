@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional, Tuple, Union, cast
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation.base_2d import GeometricAugmentationBase2D
+from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
 from kornia.geometry.transform import get_perspective_transform, warp_perspective
 

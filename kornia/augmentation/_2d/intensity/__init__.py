@@ -10,5 +10,6 @@ from kornia.augmentation._2d.intensity.grayscale import RandomGrayscale
 from kornia.augmentation._2d.intensity.invert import RandomInvert
 from kornia.augmentation._2d.intensity.motion_blur import RandomMotionBlur
 from kornia.augmentation._2d.intensity.normalize import Normalize
+from kornia.augmentation._2d.intensity.posterize import RandomPosterize
 from kornia.augmentation._2d.intensity.sharpness import RandomSharpness
 from kornia.augmentation._2d.intensity.solarize import RandomSolarize

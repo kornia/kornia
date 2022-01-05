@@ -2,7 +2,7 @@ from typing import Dict, Optional
 
 import torch
 
-from kornia.augmentation.base_2d import GeometricAugmentationBase2D
+from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.geometry.transform import get_tps_transform, warp_image_tps
 
 

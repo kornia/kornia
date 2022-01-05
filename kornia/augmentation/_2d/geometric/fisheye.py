@@ -3,7 +3,7 @@ from typing import Dict, Optional, cast
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation.base_2d import GeometricAugmentationBase2D
+from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.geometry.transform import remap
 from kornia.utils import create_meshgrid
 

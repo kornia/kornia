@@ -2,7 +2,7 @@ from typing import Dict, Optional
 
 import torch
 
-from kornia.augmentation.base_3d import AugmentationBase3D
+from kornia.augmentation._3d.base import AugmentationBase3D
 from kornia.enhance import equalize3d
 
 

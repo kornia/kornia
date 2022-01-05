@@ -3,7 +3,7 @@ from typing import Dict, Optional, Tuple, Union, cast
 import torch
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation.base_2d import MixAugmentationBase
+from kornia.augmentation._2d.mix.base import MixAugmentationBase
 
 
 class RandomMixUp(MixAugmentationBase):

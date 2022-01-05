@@ -4,8 +4,8 @@ from typing import Any, List, Optional, Tuple, Union, cast
 
 import torch
 
+from kornia.augmentation._2d.base_2d import GeometricAugmentationBase2D, IntensityAugmentationBase2D
 from kornia.augmentation.base import _AugmentationBase
-from kornia.augmentation.base_2d import GeometricAugmentationBase2D, IntensityAugmentationBase2D
 from kornia.augmentation.container.base import SequentialBase
 from kornia.augmentation.container.image import ImageSequential, ParamItem
 from kornia.augmentation.container.patch import PatchSequential

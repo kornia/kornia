@@ -4,8 +4,8 @@ from typing import Any, Iterator, List, NamedTuple, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
+from kornia.augmentation._2d.base_2d import MixAugmentationBase
 from kornia.augmentation.base import _AugmentationBase
-from kornia.augmentation.base_2d import MixAugmentationBase
 
 __all__ = ["SequentialBase", "ParamItem"]
 

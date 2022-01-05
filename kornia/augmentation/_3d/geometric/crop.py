@@ -4,7 +4,7 @@ import torch
 from torch.nn.functional import pad
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation.base_3d import AugmentationBase3D, TensorWithTransformMat
+from kornia.augmentation._3d.base import AugmentationBase3D, TensorWithTransformMat
 from kornia.constants import Resample
 from kornia.geometry import crop_by_transform_mat3d, get_perspective_transform3d
 

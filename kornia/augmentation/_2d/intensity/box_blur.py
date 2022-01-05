@@ -2,7 +2,7 @@ from typing import Dict, Optional, Tuple
 
 import torch
 
-from kornia.augmentation.base_2d import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.filters import box_blur
 
 

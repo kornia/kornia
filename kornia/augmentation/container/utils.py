@@ -6,8 +6,8 @@ import torch
 import torch.nn as nn
 
 import kornia  # lazy loading for circular dependencies
+from kornia.augmentation._2d.base_2d import GeometricAugmentationBase2D, MixAugmentationBase
 from kornia.augmentation.base import TensorWithTransformMat, _AugmentationBase
-from kornia.augmentation.base_2d import GeometricAugmentationBase2D, MixAugmentationBase
 from kornia.augmentation.container.base import ParamItem
 from kornia.constants import DataKey
 from kornia.geometry.bbox import transform_bbox

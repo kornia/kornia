@@ -2,7 +2,7 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation.base_2d import IntensityAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.enhance import normalize
 
 
