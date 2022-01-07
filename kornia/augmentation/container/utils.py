@@ -1,6 +1,7 @@
 from abc import ABCMeta, abstractmethod
 from functools import partial
 from typing import Callable, Dict, Iterator, List, Optional, Tuple, Type, Union, cast
+import warnings
 
 import torch
 import torch.nn as nn
@@ -361,8 +362,20 @@ class BBoxXYXYApplyInverse(BBoxApplyInverse):
             input[i, :, 1::2] -= padding_size[i][2]  # top padding
         return input
 
+    @classmethod
+    def apply_trans(
+        cls, input: torch.Tensor, label: Optional[torch.Tensor], module: nn.Module, param: ParamItem
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        warnings.warn("BBoxXYXYApplyInverse is no longer maintained. Please use BBoxApplyInverse instead.")
+        return super().apply_trans(input, label=label, module=module, param=param)
 
-class BBoxXYWHApplyInverse(BBoxApplyInverse):
+    @classmethod
+    def inverse(cls, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None) -> torch.Tensor:
+        warnings.warn("BBoxXYXYApplyInverse is no longer maintained. Please use BBoxApplyInverse instead.")
+        return super().inverse(input, module=module, param=param)
+
+
+class BBoxXYWHApplyInverse(BBoxXYXYApplyInverse):
     """Apply and inverse transformations for bounding box tensors.
 
     This is for transform boxes in the format [xmin, ymin, width, height].
@@ -389,7 +402,7 @@ class BBoxXYWHApplyInverse(BBoxApplyInverse):
 
 class KeypointsApplyInverse(BBoxApplyInverse):
     """Apply and inverse transformations for keypoints tensors.
-    
+
     This is for transform keypoints in the format (B, N, 2).
     """
 
