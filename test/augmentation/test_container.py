@@ -308,7 +308,7 @@ class TestAugmentationSequential:
         points = torch.tensor([[[0.0, 0.0], [1.0, 1.0]]], device=device, dtype=dtype).expand(3, -1, -1)
         aug = K.AugmentationSequential(
             K.RandomCrop((3, 3), padding=1, cropping_mode='resample', fill=0),
-            data_keys=["input", "mask", "bbox", "keypoints"],
+            data_keys=["input", "mask", "bbox_xyxy", "keypoints"],
         )
 
         reproducibility_test((input, input, bbox, points), aug)
