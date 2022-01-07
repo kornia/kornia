@@ -3,7 +3,7 @@ from typing import List, Optional, Tuple
 
 import torch
 
-from kornia.constants import pi
+import math
 
 
 def normalize_kernel2d(input: torch.Tensor) -> torch.Tensor:
@@ -635,12 +635,15 @@ def get_hysteresis_kernel(device=torch.device('cpu'), dtype=torch.float) -> torc
 
 
 def get_hanning_kernel1d(kernel_size: int, device=torch.device('cpu'), dtype=torch.float) -> torch.Tensor:
-    r"""Returns Hanning (also known as Hann) kernel, used in signal processing and KCF tracker
+    r"""Returns Hanning (also known as Hann) kernel, used in signal processing and KCF tracker.
+
     .. math::  w(n) = 0.5 - 0.5cos\\left(\\frac{2\\pi{n}}{M-1}\\right)
                \\qquad 0 \\leq n \\leq M-1
+
     See further in numpy docs https://numpy.org/doc/stable/reference/generated/numpy.hanning.html
+
     Args:
-        kernel_size: It should be positive.
+        kernel_size: The size the of the kernel. It should be positive.
 
     Returns:
         1D tensor with Hanning filter coefficients.
@@ -657,16 +660,17 @@ def get_hanning_kernel1d(kernel_size: int, device=torch.device('cpu'), dtype=tor
         raise TypeError(f"ksize must be an positive integer > 2. Got {kernel_size}")
 
     x: torch.Tensor = torch.arange(kernel_size, device=device, dtype=dtype)
-    x = 0.5 - 0.5 * torch.cos(2.0 * pi * x / float(kernel_size - 1))
+    x = 0.5 - 0.5 * torch.cos(2.0 * math.pi * x / float(kernel_size - 1))
     return x
 
 
 def get_hanning_kernel2d(kernel_size: Tuple[int, int],
                          device=torch.device('cpu'),
                          dtype=torch.float) -> torch.Tensor:
-    r"""Returns 2d Hanning kernel, used in signal processing and KCF tracker
+    r"""Returns 2d Hanning kernel, used in signal processing and KCF tracker.
+
     Args:
-        kernel_size: It should be positive.
+        kernel_size: The size of the kernel for the filter. It should be positive.
 
     Returns:
         2D tensor with Hanning filter coefficients.
