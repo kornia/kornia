@@ -339,7 +339,7 @@ class Boxes:
         else:
             raise ValueError(f"Unknown mode {mode}")
 
-        if mode in ("xyxy", "vertices"):
+        if mode in ("xyxy", "vertices_plus"):
             offset = torch.as_tensor([0, 0, 1, 1], device=boxes.device, dtype=boxes.dtype)
             boxes = boxes + offset
 

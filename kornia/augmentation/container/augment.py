@@ -186,6 +186,9 @@ class AugmentationSequential(ImageSequential):
                 "The number of inputs must align with the number of data_keys, "
                 f"Got {len(args)} and {len(data_keys)}."
             )
+
+        args = self._arguments_preproc(*args, data_keys=data_keys)
+
         if params is None:
             if self._params is None:
                 raise ValueError(
@@ -194,10 +197,15 @@ class AugmentationSequential(ImageSequential):
                 )
             params = self._params
 
-        outputs = []
-        for input, dcate in zip(args, data_keys):
-            if dcate == DataKey.INPUT and isinstance(input, (tuple, list)):
-                input, _ = input  # ignore the transformation matrix whilst inverse
+        outputs: List[AugmentationSequentialInput] = [None] * len(data_keys)  # type: ignore
+        for idx, (arg, dcate) in enumerate(zip(args, data_keys)):
+            if dcate == DataKey.INPUT and isinstance(arg, (tuple, list)):
+                input, _ = arg  # ignore the transformation matrix whilst inverse
+            # Using tensors straight-away
+            if isinstance(arg, (Boxes,)):
+                input = arg.data  # all boxes are in (B, N, 4, 2) format now.
+            else:
+                input = arg
             for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
                 if isinstance(module, (_AugmentationBase, ImageSequential)):
                     param = params[name] if name in params else param
@@ -220,7 +228,11 @@ class AugmentationSequential(ImageSequential):
                     raise ValueError(f"Unsupported Sequential {module}.")
                 else:
                     raise NotImplementedError(f"data_key {dcate} is not implemented for {module}.")
-            outputs.append(input)
+            if isinstance(arg, (Boxes,)):
+                arg._data = input
+                outputs[idx] = arg.to_tensor()
+            else:
+                outputs[idx] = input
 
         if len(outputs) == 1 and isinstance(outputs, (tuple, list)):
             return outputs[0]
@@ -286,6 +298,7 @@ class AugmentationSequential(ImageSequential):
             _data_keys = self.data_keys
         else:
             _data_keys = list(DataKey.get(inp) for inp in data_keys)
+            self.data_keys = _data_keys
         self._validate_args_datakeys(*args, data_keys=_data_keys)
 
         args = self._arguments_preproc(*args, data_keys=_data_keys)

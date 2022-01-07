@@ -6,8 +6,7 @@ import torch
 import torch.nn as nn
 
 import kornia  # lazy loading for circular dependencies
-from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
-from kornia.augmentation._2d.mix.base import MixAugmentationBase
+from kornia.augmentation import GeometricAugmentationBase2D, MixAugmentationBase, RandomCrop
 from kornia.augmentation.base import TensorWithTransformMat, _AugmentationBase
 from kornia.augmentation.container.base import ParamItem
 from kornia.constants import DataKey
@@ -269,38 +268,32 @@ class BBoxApplyInverse(ApplyInverseImpl):
     This is for transform boxes in the format (B, N, 4, 2).
     """
 
-    apply_func = partial(transform_bbox, mode="xyxy", restore_coordinates=True)
-
-
-class BBoxXYXYApplyInverse(ApplyInverseImpl):
-    """Apply and inverse transformations for bounding box tensors.
-
-    This is for transform boxes in the format [xmin, ymin, xmax, ymax].
-    """
-
-    apply_func = partial(transform_bbox, mode="xyxy", restore_coordinates=True)
-
     @classmethod
-    def _get_padding_size(cls, module, param):
-        if isinstance(module, GeometricAugmentationBase2D):  # TODO: Or only RandomCrop?
+    def _get_padding_size(cls, module, param) -> Optional[torch.Tensor]:
+        if isinstance(module, RandomCrop):
             _param = cast(Dict[str, torch.Tensor], param.data)  # type: ignore
             return _param.get("padding_size")
         else:
             return None
 
     @classmethod
-    def pad(cls, input, padding_size):
-        for i in range(len(padding_size)):
-            input[i, :, 0::2] += padding_size[i][0]  # left padding
-            input[i, :, 1::2] += padding_size[i][2]  # top padding
+    def pad(cls, input: torch.Tensor, padding_size: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            input: (B, N, 4, 2)
+            input: (B, 4)
+        """
+        input[..., 0] += padding_size[..., None, :1]  # left padding
+        input[..., 1] += padding_size[..., None, 2:3]  # top padding
         return input
 
     @classmethod
-    def unpad(cls, input, padding_size):
-        for i in range(len(padding_size)):
-            input[i, :, 0::2] -= padding_size[i][0]  # left padding
-            input[i, :, 1::2] -= padding_size[i][2]  # top padding
+    def unpad(cls, input: torch.Tensor, padding_size) -> torch.Tensor:
+        input[..., 0] -= padding_size[..., None, :1]  # left padding
+        input[..., 1] -= padding_size[..., None, 2:3]  # top padding
         return input
+
+    apply_func = partial(transform_bbox, mode="xyxy", restore_coordinates=True)
 
     @classmethod
     def apply_trans(
@@ -346,7 +339,30 @@ class BBoxXYXYApplyInverse(ApplyInverseImpl):
         return inverse
 
 
-class BBoxXYWHApplyInverse(BBoxXYXYApplyInverse):
+class BBoxXYXYApplyInverse(BBoxApplyInverse):
+    """Apply and inverse transformations for bounding box tensors.
+
+    This is for transform boxes in the format [xmin, ymin, xmax, ymax].
+    """
+
+    apply_func = partial(transform_bbox, mode="xyxy", restore_coordinates=True)
+
+    @classmethod
+    def pad(cls, input, padding_size):
+        for i in range(len(padding_size)):
+            input[i, :, 0::2] += padding_size[i][0]  # left padding
+            input[i, :, 1::2] += padding_size[i][2]  # top padding
+        return input
+
+    @classmethod
+    def unpad(cls, input, padding_size):
+        for i in range(len(padding_size)):
+            input[i, :, 0::2] -= padding_size[i][0]  # left padding
+            input[i, :, 1::2] -= padding_size[i][2]  # top padding
+        return input
+
+
+class BBoxXYWHApplyInverse(BBoxApplyInverse):
     """Apply and inverse transformations for bounding box tensors.
 
     This is for transform boxes in the format [xmin, ymin, width, height].
@@ -371,8 +387,24 @@ class BBoxXYWHApplyInverse(BBoxXYXYApplyInverse):
         return input
 
 
-class KeypointsApplyInverse(BBoxXYWHApplyInverse):
-    """Apply and inverse transformations for keypoints tensors."""
+class KeypointsApplyInverse(BBoxApplyInverse):
+    """Apply and inverse transformations for keypoints tensors.
+    
+    This is for transform keypoints in the format (B, N, 2).
+    """
+
+    @classmethod
+    def pad(cls, input, padding_size):
+        input[..., 0] += padding_size[..., :1]  # left padding
+        input[..., 1] += padding_size[..., 2:3]  # top padding
+        return input
+
+    @classmethod
+    def unpad(cls, input, padding_size):
+        # unpad only xy, not wh
+        input[..., 0] -= padding_size[..., :1]  # left padding
+        input[..., 1] -= padding_size[..., 2:3]  # top padding
+        return input
 
     # Hot fix for the typing mismatching
     apply_func = partial(transform_points)
@@ -385,7 +417,7 @@ class ApplyInverse:
     def _get_func_by_key(cls, dcate: Union[str, int, DataKey]) -> Type[ApplyInverseInterface]:
         if DataKey.get(dcate) == DataKey.INPUT:
             return InputApplyInverse
-        if DataKey.get(dcate) in [DataKey.MASK]:
+        if DataKey.get(dcate) == DataKey.MASK:
             return MaskApplyInverse
         if DataKey.get(dcate) in [DataKey.BBOX, DataKey.BBOX_XYXY, DataKey.BBOX_XYWH]:
             # We are converting to (B, 4, 2) internally for all formats.

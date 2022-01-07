@@ -349,7 +349,7 @@ class TestAugmentationSequential:
         out_inv = aug.inverse(*out)
         assert out_inv[0].shape == input.shape
         assert_close(out_inv[0], out_inv[1], atol=1e-4, rtol=1e-4)
-        assert out_inv[2].shape == bbox.shape
+        assert out_inv[2].shape == bbox.shape, (out_inv[2], bbox)
         assert_close(out_inv[2], bbox, atol=1e-4, rtol=1e-4)
         assert out_inv[3].shape == points.shape
         assert_close(out_inv[3], points, atol=1e-4, rtol=1e-4)
