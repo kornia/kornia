@@ -1,9 +1,8 @@
+import math
 from math import sqrt
 from typing import List, Optional, Tuple
 
 import torch
-
-import math
 
 
 def normalize_kernel2d(input: torch.Tensor) -> torch.Tensor:
