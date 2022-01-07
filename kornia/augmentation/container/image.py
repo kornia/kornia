@@ -6,9 +6,9 @@ import torch.nn as nn
 
 import kornia
 from kornia.augmentation import RandomCrop
-from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.augmentation._2d.mix.base import MixAugmentationBase
+from kornia.augmentation import GeometricAugmentationBase2D
+from kornia.augmentation import IntensityAugmentationBase2D
+from kornia.augmentation import MixAugmentationBase
 from kornia.augmentation.base import TensorWithTransformMat, _AugmentationBase
 from kornia.augmentation.container.base import ParamItem, SequentialBase
 from kornia.augmentation.container.utils import ApplyInverseInterface, InputApplyInverse
