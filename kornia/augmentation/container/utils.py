@@ -1,7 +1,7 @@
+import warnings
 from abc import ABCMeta, abstractmethod
 from functools import partial
 from typing import Callable, Dict, Iterator, List, Optional, Tuple, Type, Union, cast
-import warnings
 
 import torch
 import torch.nn as nn
