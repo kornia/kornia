@@ -42,8 +42,7 @@ class TestImageHistogram2d:
     @pytest.mark.skipif(
         version.parse(torch.__version__) < version.parse("1.9"), reason="Tuple cannot be jitted with PyTorch < v1.9"
     )
-    #@pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
-    @pytest.mark.parametrize("kernel", ["triangular",])
+    @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_jit(self, device, dtype, kernel):
         input = torch.linspace(0, 255, 10, device=device, dtype=dtype)
         input_x, _ = torch.meshgrid(input, input)
