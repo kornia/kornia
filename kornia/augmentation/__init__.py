@@ -1,4 +1,4 @@
-from .augmentation import (
+from kornia.augmentation._2d import (
     CenterCrop,
     ColorJitter,
     Denormalize,
@@ -8,6 +8,7 @@ from .augmentation import (
     RandomBoxBlur,
     RandomChannelShuffle,
     RandomCrop,
+    RandomCutMix,
     RandomElasticTransform,
     RandomEqualize,
     RandomErasing,
@@ -17,6 +18,7 @@ from .augmentation import (
     RandomGrayscale,
     RandomHorizontalFlip,
     RandomInvert,
+    RandomMixUp,
     RandomMotionBlur,
     RandomPerspective,
     RandomPosterize,
@@ -27,7 +29,11 @@ from .augmentation import (
     RandomThinPlateSpline,
     RandomVerticalFlip,
 )
-from .augmentation3d import (
+from kornia.augmentation._2d.base import AugmentationBase2D
+from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.mix.base import MixAugmentationBase
+from kornia.augmentation._3d import (
     CenterCrop3D,
     RandomAffine3D,
     RandomCrop3D,
@@ -39,12 +45,14 @@ from .augmentation3d import (
     RandomRotation3D,
     RandomVerticalFlip3D,
 )
-from .base import AugmentationBase2D, AugmentationBase3D
-from .container import AugmentationSequential, ImageSequential, PatchSequential, VideoSequential
-from .mix_augmentation import RandomCutMix, RandomMixUp
+from kornia.augmentation._3d.base import AugmentationBase3D
+from kornia.augmentation.container import AugmentationSequential, ImageSequential, PatchSequential, VideoSequential
 
 __all__ = [
     "AugmentationBase2D",
+    "GeometricAugmentationBase2D",
+    "IntensityAugmentationBase2D",
+    "MixAugmentationBase",
     "CenterCrop",
     "ColorJitter",
     "Normalize",

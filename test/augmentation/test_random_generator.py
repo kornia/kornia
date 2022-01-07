@@ -3,7 +3,6 @@ import torch
 
 from kornia.augmentation.random_generator import (
     AffineGenerator,
-    center_crop_generator,
     ColorJitterGenerator,
     CropGenerator,
     MotionBlurGenerator,
@@ -11,10 +10,11 @@ from kornia.augmentation.random_generator import (
     PlainUniformGenerator,
     PosterizeGenerator,
     ProbabilityGenerator,
-    random_cutmix_generator,
-    random_mixup_generator,
     RectangleEraseGenerator,
     ResizedCropGenerator,
+    center_crop_generator,
+    random_cutmix_generator,
+    random_mixup_generator,
 )
 from kornia.testing import assert_close
 from kornia.utils._compat import torch_version_geq

@@ -5,6 +5,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ****
+## :rocket: [0.X.X] - 2022-XX-XX
+### :new:  New Features
+- Devcontainer (#1515)
+
+### :lady_beetle:  Bug fixes
+
+
+### :exclamation: Changes
+- Restructure augmentation package (#1515)
+
+### :zap:  Improvements
+
+
+
 ## :rocket: [0.6.2] - 2021-12-03
 ### :new:  New Features
 - Add face detection API (#1469)

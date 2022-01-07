@@ -1,23 +1,24 @@
 import warnings
 from itertools import zip_longest
-from typing import Any, cast, List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union, cast
 
 import torch
 
-from kornia.augmentation.base import _AugmentationBase, GeometricAugmentationBase2D, IntensityAugmentationBase2D
+from kornia.augmentation import GeometricAugmentationBase2D, IntensityAugmentationBase2D
+from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.container.base import SequentialBase
+from kornia.augmentation.container.image import ImageSequential, ParamItem
+from kornia.augmentation.container.patch import PatchSequential
+from kornia.augmentation.container.utils import ApplyInverse
+from kornia.augmentation.container.video import VideoSequential
 from kornia.constants import DataKey
 from kornia.geometry.boxes import Boxes
-
-from .base import SequentialBase
-from .image import ImageSequential, ParamItem
-from .patch import PatchSequential
-from .utils import ApplyInverse
-from .video import VideoSequential
 
 __all__ = ["AugmentationSequential"]
 
 AugmentationSequentialInput = Union[
-    torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor, torch.Tensor], Tuple[List[torch.Tensor], torch.Tensor]]
+    torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor, torch.Tensor], Tuple[List[torch.Tensor], torch.Tensor]
+]
 
 
 class AugmentationSequential(ImageSequential):
@@ -298,7 +299,7 @@ class AugmentationSequential(ImageSequential):
                     inp = _input[0]
                 else:
                     inp = _input
-                if isinstance(inp, (tuple, list,)):
+                if isinstance(inp, (tuple, list)):
                     raise ValueError(f"`INPUT` should be a tensor but `{type(inp)}` received.")
                 # A video input shall be BCDHW while an image input shall be BCHW
                 if self.contains_video_sequential:
@@ -347,7 +348,7 @@ class AugmentationSequential(ImageSequential):
                     input = input.view(batch_size, -1, *input.shape[1:])
                 elif isinstance(module, PatchSequential):
                     raise NotImplementedError("Geometric involved PatchSequential is not supported.")
-                elif isinstance(module, (GeometricAugmentationBase2D, ImageSequential,)) and dcate in DataKey:
+                elif isinstance(module, (GeometricAugmentationBase2D, ImageSequential)) and dcate in DataKey:
                     input, label = ApplyInverse.apply_by_key(input, label, module, param, dcate)
                 elif isinstance(module, (SequentialBase,)):
                     raise ValueError(f"Unsupported Sequential {module}.")

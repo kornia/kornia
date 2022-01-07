@@ -2,12 +2,12 @@ from .affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, Patc
 from .defmo import DeFMO
 from .hardnet import HardNet, HardNet8
 from .integrated import (
-    get_laf_descriptors,
     GFTTAffNetHardNet,
     LAFDescriptor,
     LocalFeature,
     LocalFeatureMatcher,
     SIFTFeature,
+    get_laf_descriptors,
 )
 from .laf import (
     denormalize_laf,
