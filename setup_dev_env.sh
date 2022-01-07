@@ -16,7 +16,7 @@ conda_bin=$conda_bin_dir/conda
 
 # download and install miniconda
 # check the operating system: Mac or Linux
-platform=`uname`
+platform=$(uname)
 if [[ "$platform" == "Darwin" ]];
 then
  download_link=https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-x86_64.sh
