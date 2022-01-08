@@ -210,7 +210,6 @@ class Boxes:
         self._is_batched = True
         if boxes.ndim == 3:
             self._is_batched = False
-            boxes = boxes.unsqueeze(0)
 
         self._data = boxes
         self._mode = mode
@@ -321,7 +320,7 @@ class Boxes:
             >>> boxes = Boxes.from_tensor(boxes_xyxy)
             >>> assert (boxes_xyxy == boxes.to_tensor(mode='xyxy')).all()
         """
-        batched_boxes = self._data
+        batched_boxes = self._data if self._is_batched else self._data.unsqueeze(0)
 
         boxes: Union[torch.Tensor, List[torch.Tensor]]
 
@@ -391,9 +390,12 @@ class Boxes:
                 "Boxes.to_tensor isn't differentiable. Please, create boxes from tensors with `requires_grad=False`."
             )
 
-        mask = torch.zeros(
-            (self._data.shape[0], self._data.shape[1], height, width), dtype=self.dtype, device=self.device
-        )
+        if self._is_batched:  # (B, N, 4, 2)
+            mask = torch.zeros(
+                (self._data.shape[0], self._data.shape[1], height, width), dtype=self.dtype, device=self.device
+            )
+        else:  # (N, 4, 2)
+            mask = torch.zeros((self._data.shape[0], height, width), dtype=self.dtype, device=self.device)
 
         # Boxes coordinates can be outside the image size after transforms. Clamp values to the image size
         clipped_boxes_xyxy = cast(torch.Tensor, self.to_tensor("xyxy", as_padded_sequence=True))
@@ -405,9 +407,6 @@ class Boxes:
         for mask_channel, box_xyxy in zip(mask.view(-1, height, width), clipped_boxes_xyxy.view(-1, 4).round().int()):
             # Mask channel dimensions: (height, width)
             mask_channel[box_xyxy[1] : box_xyxy[3], box_xyxy[0] : box_xyxy[2]] = 1
-
-        if not self._is_batched:
-            mask = mask.view(self._data.shape[0], height, width)
 
         return mask
 
@@ -504,7 +503,6 @@ class Boxes3D:
         self._is_batched = True
         if boxes.ndim == 3:
             self._is_batched = False
-            boxes = boxes.unsqueeze(0)
 
         self._data = boxes
         self._mode = mode
@@ -648,7 +646,7 @@ class Boxes3D:
                                "This is a known bug. Help is needed to fix it. For more information, "
                                "see https://github.com/kornia/kornia/issues/1396.")
 
-        batched_boxes = self._data
+        batched_boxes = self._data if self._is_batched else self._data.unsqueeze(0)
 
         # Create boxes in xyzxyz_plus format.
         boxes = torch.stack([batched_boxes.amin(dim=-2), batched_boxes.amax(dim=-2)], dim=-2).view(
@@ -737,11 +735,16 @@ class Boxes3D:
                 "Boxes.to_tensor isn't differentiable. Please, create boxes from tensors with `requires_grad=False`."
             )
 
-        mask = torch.zeros(
-            (self._data.shape[0], self._data.shape[1], depth, height, width),
-            dtype=self._data.dtype,
-            device=self._data.device,
-        )
+        if self._is_batched:  # (B, N, 8, 3)
+            mask = torch.zeros(
+                (self._data.shape[0], self._data.shape[1], depth, height, width),
+                dtype=self._data.dtype,
+                device=self._data.device,
+            )
+        else:  # (N, 8, 3)
+            mask = torch.zeros(
+                (self._data.shape[0], depth, height, width), dtype=self._data.dtype, device=self._data.device
+            )
 
         # Boxes coordinates can be outside the image size after transforms. Clamp values to the image size
         clipped_boxes_xyzxyz = self.to_tensor("xyzxyz")
@@ -758,9 +761,6 @@ class Boxes3D:
             mask_channel[
                 box_xyzxyz[2] : box_xyzxyz[5], box_xyzxyz[1] : box_xyzxyz[4], box_xyzxyz[0] : box_xyzxyz[3]
             ] = 1
-
-        if not self._is_batched:
-            mask = mask.view(self._data.shape[0], depth, height, width)
 
         return mask
 

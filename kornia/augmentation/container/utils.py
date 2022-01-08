@@ -282,17 +282,43 @@ class BBoxApplyInverse(ApplyInverseImpl):
         """
         Args:
             input: (B, N, 4, 2)
-            input: (B, 4)
+            padding_size: (B, 4)
         """
-        input[..., 0] += padding_size[..., None, :1]  # left padding
-        input[..., 1] += padding_size[..., None, 2:3]  # top padding
-        return input
+
+        _input = input.clone()
+
+        if input.dim() == 3:
+            # B,4,2 to B,1,4,2
+            _input = _input[:, None]
+
+        _input[..., 0] += padding_size[..., None, :1]  # left padding
+        _input[..., 1] += padding_size[..., None, 2:3]  # top padding
+
+        if input.dim() == 3:
+            _input = _input[:, 0]  # squeeze back
+
+        return _input
 
     @classmethod
     def unpad(cls, input: torch.Tensor, padding_size) -> torch.Tensor:
-        input[..., 0] -= padding_size[..., None, :1]  # left padding
-        input[..., 1] -= padding_size[..., None, 2:3]  # top padding
-        return input
+        """
+        Args:
+            input: (B, N, 4, 2)
+            padding_size: (B, 4)
+        """
+        _input = input.clone()
+
+        if input.dim() == 3:
+            # B,4,2 to B,1,4,2
+            _input = _input[:, None]
+
+        _input[..., 0] -= padding_size[..., None, :1]  # left padding
+        _input[..., 1] -= padding_size[..., None, 2:3]  # top padding
+
+        if input.dim() == 3:
+            _input = _input[:, 0]  # squeeze back
+
+        return _input
 
     apply_func = partial(transform_bbox, mode="xyxy", restore_coordinates=True)
 
@@ -303,7 +329,7 @@ class BBoxApplyInverse(ApplyInverseImpl):
         """Apply a transformation with respect to the parameters.
 
         Args:
-            input: the input tensor.
+            input: the input tensor, (B, N, 4, 2) or (B, 4, 2).
             label: the optional label tensor.
             module: any torch Module but only kornia augmentation modules will count
                 to apply transformations.
@@ -331,13 +357,15 @@ class BBoxApplyInverse(ApplyInverseImpl):
                 to apply transformations.
             param: the corresponding parameters to the module.
         """
-        inverse = super().inverse(input, module, param)
+        _input = input.clone()
+
+        _input = super().inverse(_input, module, param)
 
         padding_size = cls._get_padding_size(module, param)
         if padding_size is not None:
-            inverse = cls.unpad(inverse, padding_size)
+            _input = cls.unpad(_input, padding_size)
 
-        return inverse
+        return _input
 
 
 class BBoxXYXYApplyInverse(BBoxApplyInverse):
@@ -408,16 +436,36 @@ class KeypointsApplyInverse(BBoxApplyInverse):
 
     @classmethod
     def pad(cls, input, padding_size):
-        input[..., 0] += padding_size[..., :1]  # left padding
-        input[..., 1] += padding_size[..., 2:3]  # top padding
-        return input
+        _input = input.clone()
+
+        if input.dim() == 2:
+            # B,2 to B,1,2
+            _input = _input[:, None]
+
+        _input[..., 0] += padding_size[..., :1]  # left padding
+        _input[..., 1] += padding_size[..., 2:3]  # top padding
+
+        if input.dim() == 2:
+            _input = _input[:, 0]  # squeeze back
+
+        return _input
 
     @classmethod
     def unpad(cls, input, padding_size):
+        _input = input.clone()
+
+        if input.dim() == 2:
+            # B,2 to B,1,2
+            _input = _input[:, None]
+
         # unpad only xy, not wh
-        input[..., 0] -= padding_size[..., :1]  # left padding
-        input[..., 1] -= padding_size[..., 2:3]  # top padding
-        return input
+        _input[..., 0] -= padding_size[..., :1]  # left padding
+        _input[..., 1] -= padding_size[..., 2:3]  # top padding
+
+        if input.dim() == 2:
+            _input = _input[:, 0]  # squeeze back
+
+        return _input
 
     # Hot fix for the typing mismatching
     apply_func = partial(transform_points)
