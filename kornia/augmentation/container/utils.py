@@ -270,12 +270,11 @@ class BBoxApplyInverse(ApplyInverseImpl):
     """
 
     @classmethod
-    def _get_padding_size(cls, module, param) -> Optional[torch.Tensor]:
+    def _get_padding_size(cls, module: nn.Module, param: ParamItem) -> Optional[torch.Tensor]:
         if isinstance(module, RandomCrop):
             _param = cast(Dict[str, torch.Tensor], param.data)  # type: ignore
             return _param.get("padding_size")
-        else:
-            return None
+        return None
 
     @classmethod
     def pad(cls, input: torch.Tensor, padding_size: torch.Tensor) -> torch.Tensor:
@@ -284,6 +283,8 @@ class BBoxApplyInverse(ApplyInverseImpl):
             input: (B, N, 4, 2)
             padding_size: (B, 4)
         """
+        assert len(input.shape) in (3, 4,), input.shape
+        assert len(padding_size.shape) == 2, padding_size.shape
 
         _input = input.clone()
 
@@ -300,12 +301,15 @@ class BBoxApplyInverse(ApplyInverseImpl):
         return _input
 
     @classmethod
-    def unpad(cls, input: torch.Tensor, padding_size) -> torch.Tensor:
+    def unpad(cls, input: torch.Tensor, padding_size: torch.Tensor) -> torch.Tensor:
         """
         Args:
             input: (B, N, 4, 2)
             padding_size: (B, 4)
         """
+        assert len(input.shape) in (3, 4,), input.shape
+        assert len(padding_size.shape) == 2, padding_size.shape
+
         _input = input.clone()
 
         if input.dim() == 3:
@@ -434,8 +438,15 @@ class KeypointsApplyInverse(BBoxApplyInverse):
     This is for transform keypoints in the format (B, N, 2).
     """
 
+    # Hot fix for the typing mismatching
+    apply_func = partial(transform_points)
+
     @classmethod
-    def pad(cls, input, padding_size):
+    def pad(cls, input: torch.Tensor, padding_size: torch.Tensor) -> torch.Tensor:
+
+        assert len(input.shape) in (2, 3,), input.shape
+        assert len(padding_size.shape) == 2, padding_size.shape
+
         _input = input.clone()
 
         if input.dim() == 2:
@@ -451,7 +462,11 @@ class KeypointsApplyInverse(BBoxApplyInverse):
         return _input
 
     @classmethod
-    def unpad(cls, input, padding_size):
+    def unpad(cls, input: torch.Tensor, padding_size: torch.Tensor) -> torch.Tensor:
+
+        assert len(input.shape) in (2, 3,), input.shape
+        assert len(padding_size.shape) == 2, padding_size.shape
+
         _input = input.clone()
 
         if input.dim() == 2:
@@ -466,9 +481,6 @@ class KeypointsApplyInverse(BBoxApplyInverse):
             _input = _input[:, 0]  # squeeze back
 
         return _input
-
-    # Hot fix for the typing mismatching
-    apply_func = partial(transform_points)
 
 
 class ApplyInverse:

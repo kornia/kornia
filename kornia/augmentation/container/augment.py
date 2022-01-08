@@ -182,7 +182,7 @@ class AugmentationSequential(ImageSequential):
         if data_keys is None:
             data_keys = cast(List[Union[str, int, DataKey]], self.data_keys)
 
-        _data_keys = list(DataKey.get(inp) for inp in data_keys)
+        _data_keys: List[DataKey] = [DataKey.get(inp) for inp in data_keys]
 
         if len(args) != len(data_keys):
             raise AssertionError(
@@ -300,7 +300,7 @@ class AugmentationSequential(ImageSequential):
         if data_keys is None:
             _data_keys = self.data_keys
         else:
-            _data_keys = list(DataKey.get(inp) for inp in data_keys)
+            _data_keys: List[DataKey] = [DataKey.get(inp) for inp in data_keys]
             self.data_keys = _data_keys
         self._validate_args_datakeys(*args, data_keys=_data_keys)
 
