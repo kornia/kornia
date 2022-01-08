@@ -270,7 +270,7 @@ class BBoxApplyInverse(ApplyInverseImpl):
     """
 
     @classmethod
-    def _get_padding_size(cls, module: nn.Module, param: ParamItem) -> Optional[torch.Tensor]:
+    def _get_padding_size(cls, module: nn.Module, param: Optional[ParamItem]) -> Optional[torch.Tensor]:
         if isinstance(module, RandomCrop):
             _param = cast(Dict[str, torch.Tensor], param.data)  # type: ignore
             return _param.get("padding_size")

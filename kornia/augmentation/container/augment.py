@@ -297,10 +297,11 @@ class AugmentationSequential(ImageSequential):
         Tuple[List[AugmentationSequentialInput], Optional[torch.Tensor]],
     ]:
         """Compute multiple tensors simultaneously according to ``self.data_keys``."""
+        _data_keys: List[DataKey]
         if data_keys is None:
             _data_keys = self.data_keys
         else:
-            _data_keys: List[DataKey] = [DataKey.get(inp) for inp in data_keys]
+            _data_keys = [DataKey.get(inp) for inp in data_keys]
             self.data_keys = _data_keys
         self._validate_args_datakeys(*args, data_keys=_data_keys)
 
