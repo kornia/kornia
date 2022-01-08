@@ -377,7 +377,7 @@ class TestAugmentationSequential:
             return_transform=return_transform,
         )
         out = aug(inp, mask, bbox, keypoints)
-        if return_transform and isinstance(out, (tuple, list)):
+        if return_transform and isinstance(out[0], (tuple, list)):
             assert out[0][0].shape == inp.shape
         else:
             assert out[0].shape == inp.shape
@@ -387,7 +387,10 @@ class TestAugmentationSequential:
         reproducibility_test((inp, mask, bbox, keypoints), aug)
 
         out_inv = aug.inverse(*out)
-        assert out_inv[0].shape == inp.shape
+        if return_transform and isinstance(out_inv[0], (tuple, list)):
+            assert out_inv[0][0].shape == inp.shape
+        else:
+            assert out_inv[0].shape == inp.shape
         assert out_inv[1].shape == mask.shape
         assert out_inv[2].shape == bbox.shape
         assert out_inv[3].shape == keypoints.shape
