@@ -181,13 +181,16 @@ class AugmentationSequential(ImageSequential):
         """
         if data_keys is None:
             data_keys = cast(List[Union[str, int, DataKey]], self.data_keys)
+
+        _data_keys = list(DataKey.get(inp) for inp in data_keys)
+
         if len(args) != len(data_keys):
             raise AssertionError(
                 "The number of inputs must align with the number of data_keys, "
                 f"Got {len(args)} and {len(data_keys)}."
             )
 
-        args = self._arguments_preproc(*args, data_keys=data_keys)
+        args = self._arguments_preproc(*args, data_keys=_data_keys)
 
         if params is None:
             if self._params is None:
@@ -197,7 +200,7 @@ class AugmentationSequential(ImageSequential):
                 )
             params = self._params
 
-        outputs: List[AugmentationSequentialInput] = [None] * len(data_keys)  # type: ignore
+        outputs: List[torch.Tensor] = [None] * len(data_keys)  # type: ignore
         for idx, (arg, dcate) in enumerate(zip(args, data_keys)):
             if dcate == DataKey.INPUT and isinstance(arg, (tuple, list)):
                 input, _ = arg  # ignore the transformation matrix whilst inverse

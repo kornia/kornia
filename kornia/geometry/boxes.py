@@ -207,6 +207,11 @@ class Boxes:
         if not (3 <= boxes.ndim <= 4 and boxes.shape[-2:] == (4, 2)):
             raise ValueError(f"Boxes shape must be (N, 4, 2) or (B, N, 4, 2). Got {boxes.shape}.")
 
+        self._is_batched = True
+        if boxes.ndim == 3:
+            self._is_batched = False
+            boxes = boxes.unsqueeze(0)
+
         self._data = boxes
         self._mode = mode
 
@@ -316,7 +321,7 @@ class Boxes:
             >>> boxes = Boxes.from_tensor(boxes_xyxy)
             >>> assert (boxes_xyxy == boxes.to_tensor(mode='xyxy')).all()
         """
-        batched_boxes = self._data if self._is_batched else self._data.unsqueeze(0)
+        batched_boxes = self._data
 
         boxes: Union[torch.Tensor, List[torch.Tensor]]
 
@@ -339,7 +344,7 @@ class Boxes:
         else:
             raise ValueError(f"Unknown mode {mode}")
 
-        if mode in ("xyxy", "vertices_plus"):
+        if mode in ("xyxy", "vertices"):
             offset = torch.as_tensor([0, 0, 1, 1], device=boxes.device, dtype=boxes.dtype)
             boxes = boxes + offset
 
@@ -386,12 +391,9 @@ class Boxes:
                 "Boxes.to_tensor isn't differentiable. Please, create boxes from tensors with `requires_grad=False`."
             )
 
-        if self._is_batched:  # (B, N, 4, 2)
-            mask = torch.zeros(
-                (self._data.shape[0], self._data.shape[1], height, width), dtype=self.dtype, device=self.device
-            )
-        else:  # (N, 4, 2)
-            mask = torch.zeros((self._data.shape[0], height, width), dtype=self.dtype, device=self.device)
+        mask = torch.zeros(
+            (self._data.shape[0], self._data.shape[1], height, width), dtype=self.dtype, device=self.device
+        )
 
         # Boxes coordinates can be outside the image size after transforms. Clamp values to the image size
         clipped_boxes_xyxy = cast(torch.Tensor, self.to_tensor("xyxy", as_padded_sequence=True))
@@ -403,6 +405,9 @@ class Boxes:
         for mask_channel, box_xyxy in zip(mask.view(-1, height, width), clipped_boxes_xyxy.view(-1, 4).round().int()):
             # Mask channel dimensions: (height, width)
             mask_channel[box_xyxy[1] : box_xyxy[3], box_xyxy[0] : box_xyxy[2]] = 1
+
+        if not self._is_batched:
+            mask = mask.view(self._data.shape[0], height, width)
 
         return mask
 
@@ -431,10 +436,6 @@ class Boxes:
     def transform_boxes_(self, M: torch.Tensor) -> "Boxes":
         """Inplace version of :func:`Boxes.transform_boxes`"""
         return self.transform_boxes(M, inplace=True)
-
-    @property
-    def _is_batched(self) -> bool:
-        return self._data.ndim == 4
 
     @property
     def data(self) -> torch.Tensor:
@@ -479,7 +480,10 @@ class Boxes3D:
         ``width = xmax - xmin + 1``, ``height = ymax - ymin + 1`` and ``depth = zmax - zmin + 1``. Examples of
         `hexahedrons <https://en.wikipedia.org/wiki/Hexahedron>`_ are cubes and rhombohedrons.
     """
-    def __init__(self, boxes: torch.Tensor, raise_if_not_floating_point: bool = True):
+    def __init__(
+        self, boxes: torch.Tensor, raise_if_not_floating_point: bool = True,
+        mode: str = "xyzxyz_plus"
+    ) -> None:
         if not isinstance(boxes, torch.Tensor):
             raise TypeError(f"Input boxes is not a Tensor. Got: {type(boxes)}.")
 
@@ -497,7 +501,13 @@ class Boxes3D:
         if not (3 <= boxes.ndim <= 4 and boxes.shape[-2:] == (8, 3)):
             raise ValueError(f"3D bbox shape must be (N, 8, 3) or (B, N, 8, 3). Got {boxes.shape}.")
 
+        self._is_batched = True
+        if boxes.ndim == 3:
+            self._is_batched = False
+            boxes = boxes.unsqueeze(0)
+
         self._data = boxes
+        self._mode = mode
 
     def get_boxes_shape(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         r"""Compute boxes heights and widths.
@@ -594,7 +604,7 @@ class Boxes3D:
         hexahedrons = hexahedrons if batched else hexahedrons.squeeze(0)
         # Due to some torch.jit.script bug (at least <= 1.9), you need to pass all arguments to __init__ when
         # constructing the class from inside of a method.
-        return cls(hexahedrons, raise_if_not_floating_point=False)
+        return cls(hexahedrons, raise_if_not_floating_point=False, mode=mode)
 
     def to_tensor(self, mode: str = "xyzxyz") -> torch.Tensor:
         r"""Cast :class:`Boxes3D` to a tensor. ``mode`` controls which 3D boxes format should be use to represent boxes
@@ -638,7 +648,7 @@ class Boxes3D:
                                "This is a known bug. Help is needed to fix it. For more information, "
                                "see https://github.com/kornia/kornia/issues/1396.")
 
-        batched_boxes = self._data if self._is_batched else self._data.unsqueeze(0)
+        batched_boxes = self._data
 
         # Create boxes in xyzxyz_plus format.
         boxes = torch.stack([batched_boxes.amin(dim=-2), batched_boxes.amax(dim=-2)], dim=-2).view(
@@ -727,16 +737,11 @@ class Boxes3D:
                 "Boxes.to_tensor isn't differentiable. Please, create boxes from tensors with `requires_grad=False`."
             )
 
-        if self._is_batched:  # (B, N, 8, 3)
-            mask = torch.zeros(
-                (self._data.shape[0], self._data.shape[1], depth, height, width),
-                dtype=self._data.dtype,
-                device=self._data.device,
-            )
-        else:  # (N, 8, 3)
-            mask = torch.zeros(
-                (self._data.shape[0], depth, height, width), dtype=self._data.dtype, device=self._data.device
-            )
+        mask = torch.zeros(
+            (self._data.shape[0], self._data.shape[1], depth, height, width),
+            dtype=self._data.dtype,
+            device=self._data.device,
+        )
 
         # Boxes coordinates can be outside the image size after transforms. Clamp values to the image size
         clipped_boxes_xyzxyz = self.to_tensor("xyzxyz")
@@ -753,6 +758,9 @@ class Boxes3D:
             mask_channel[
                 box_xyzxyz[2] : box_xyzxyz[5], box_xyzxyz[1] : box_xyzxyz[4], box_xyzxyz[0] : box_xyzxyz[3]
             ] = 1
+
+        if not self._is_batched:
+            mask = mask.view(self._data.shape[0], depth, height, width)
 
         return mask
 
@@ -776,19 +784,19 @@ class Boxes3D:
             self._data = transformed_boxes
             return self
 
-        return Boxes3D(transformed_boxes, False)
+        return Boxes3D(transformed_boxes, False, "xyzxyz_plus")
 
     def transform_boxes_(self, M: torch.Tensor) -> "Boxes3D":
         """Inplace version of :func:`Boxes3D.transform_boxes`"""
         return self.transform_boxes(M, inplace=True)
 
     @property
-    def _is_batched(self) -> bool:
-        return self._data.ndim == 4
-
-    @property
     def data(self) -> torch.Tensor:
         return self._data
+
+    @property
+    def mode(self) -> str:
+        return self._mode
 
     @property
     def device(self) -> torch.device:
