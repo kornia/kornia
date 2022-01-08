@@ -321,12 +321,7 @@ class Boxes:
         batched_boxes = self._data if self._is_batched else self._data.unsqueeze(0)
 
         boxes: Union[torch.Tensor, List[torch.Tensor]]
-        try:
-            boxes = torch.stack([batched_boxes.amin(dim=-2), batched_boxes.amax(dim=-2)], dim=-2).view(
-                batched_boxes.shape[0], batched_boxes.shape[1], 4
-            )
-        except:
-            assert False, batched_boxes.shape
+
         # Create boxes in xyxy_plus format.
         boxes = torch.stack([batched_boxes.amin(dim=-2), batched_boxes.amax(dim=-2)], dim=-2).view(
             batched_boxes.shape[0], batched_boxes.shape[1], 4
