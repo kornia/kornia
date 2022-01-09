@@ -283,8 +283,10 @@ class BBoxApplyInverse(ApplyInverseImpl):
             input: (B, N, 4, 2)
             padding_size: (B, 4)
         """
-        assert len(input.shape) in (3, 4,), input.shape
-        assert len(padding_size.shape) == 2, padding_size.shape
+        if len(input.shape) not in (3, 4,):
+            raise AssertionError(input.shape)
+        if len(padding_size.shape) != 2:
+            raise AssertionError(padding_size.shape)
 
         _input = input.clone()
 
@@ -307,8 +309,10 @@ class BBoxApplyInverse(ApplyInverseImpl):
             input: (B, N, 4, 2)
             padding_size: (B, 4)
         """
-        assert len(input.shape) in (3, 4,), input.shape
-        assert len(padding_size.shape) == 2, padding_size.shape
+        if len(input.shape) not in (3, 4,):
+            raise AssertionError(input.shape)
+        if len(padding_size.shape) != 2:
+            raise AssertionError(padding_size.shape)
 
         _input = input.clone()
 
@@ -444,8 +448,10 @@ class KeypointsApplyInverse(BBoxApplyInverse):
     @classmethod
     def pad(cls, input: torch.Tensor, padding_size: torch.Tensor) -> torch.Tensor:
 
-        assert len(input.shape) in (2, 3,), input.shape
-        assert len(padding_size.shape) == 2, padding_size.shape
+        if len(input.shape) not in (2, 3,):
+            raise AssertionError(input.shape)
+        if len(padding_size.shape) != 2:
+            raise AssertionError(padding_size.shape)
 
         _input = input.clone()
 
@@ -464,8 +470,10 @@ class KeypointsApplyInverse(BBoxApplyInverse):
     @classmethod
     def unpad(cls, input: torch.Tensor, padding_size: torch.Tensor) -> torch.Tensor:
 
-        assert len(input.shape) in (2, 3,), input.shape
-        assert len(padding_size.shape) == 2, padding_size.shape
+        if len(input.shape) not in (2, 3,):
+            raise AssertionError(input.shape)
+        if len(padding_size.shape) != 2:
+            raise AssertionError(padding_size.shape)
 
         _input = input.clone()
 
