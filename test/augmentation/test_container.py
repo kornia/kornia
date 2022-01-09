@@ -300,8 +300,6 @@ class TestAugmentationSequential:
         assert_close(out_ver[1], expected_bbox_vertical_flip)
         assert_close(out_hor[1], expected_bbox_horizontal_flip)
 
-    # TODO: fix the bug in #1520 and remove skip
-    @pytest.mark.skip(reason="Padding is not well computed")
     def test_random_crops(self, device, dtype):
         input = torch.randn(3, 3, 3, 3, device=device, dtype=dtype)
         bbox = torch.tensor(
