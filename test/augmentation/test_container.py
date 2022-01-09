@@ -3,7 +3,7 @@ import torch
 
 import kornia
 import kornia.augmentation as K
-from kornia.augmentation.base import MixAugmentationBase
+from kornia.augmentation._2d.mix.base import MixAugmentationBase
 from kornia.constants import BorderType
 from kornia.geometry.bbox import bbox_to_mask
 from kornia.testing import assert_close
@@ -154,14 +154,12 @@ class TestVideoSequential:
 
 
 class TestSequential:
-
     @pytest.mark.parametrize('random_apply_weights', [None, [0.8, 0.9]])
     def test_exception(self, random_apply_weights, device, dtype):
         inp = torch.randn(1, 3, 30, 30, device=device, dtype=dtype)
         with pytest.raises(Exception):  # AssertError and NotImplementedError
             K.ImageSequential(
-                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
-                random_apply_weights=random_apply_weights
+                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), random_apply_weights=random_apply_weights
             ).inverse(inp)
 
     @pytest.mark.parametrize('same_on_batch', [True, False, None])
@@ -307,12 +305,12 @@ class TestAugmentationSequential:
     def test_random_crops(self, device, dtype):
         input = torch.randn(3, 3, 3, 3, device=device, dtype=dtype)
         bbox = torch.tensor(
-            [[[1.0, 1.0, 2.0, 2.0], [0.0, 0.0, 1.0, 2.0], [0.0, 0.0, 2.0, 1.0]]],
-            device=device, dtype=dtype).expand(3, -1, -1)
+            [[[1.0, 1.0, 2.0, 2.0], [0.0, 0.0, 1.0, 2.0], [0.0, 0.0, 2.0, 1.0]]], device=device, dtype=dtype
+        ).expand(3, -1, -1)
         points = torch.tensor([[[0.0, 0.0], [1.0, 1.0]]], device=device, dtype=dtype).expand(3, -1, -1)
         aug = K.AugmentationSequential(
             K.RandomCrop((3, 3), padding=1, cropping_mode='resample', fill=0),
-            data_keys=["input", "mask", "bbox", "keypoints"]
+            data_keys=["input", "mask", "bbox_xyxy", "keypoints"],
         )
 
         reproducibility_test((input, input, bbox, points), aug)
@@ -320,19 +318,27 @@ class TestAugmentationSequential:
         _params = aug.forward_parameters(input.shape)
         # specifying the crops allows us to compute by hand the expected outputs
         _params[0].data['src'] = torch.tensor(
-            [[[1., 2.], [3., 2.], [3., 4.], [1., 4.]],
-             [[1., 1.], [3., 1.], [3., 3.], [1., 3.]],
-             [[2., 0.], [4., 0.], [4., 2.], [2., 2.]]],
-            device=_params[0].data['src'].device, dtype=_params[0].data['src'].dtype)
+            [
+                [[1.0, 2.0], [3.0, 2.0], [3.0, 4.0], [1.0, 4.0]],
+                [[1.0, 1.0], [3.0, 1.0], [3.0, 3.0], [1.0, 3.0]],
+                [[2.0, 0.0], [4.0, 0.0], [4.0, 2.0], [2.0, 2.0]],
+            ],
+            device=_params[0].data['src'].device,
+            dtype=_params[0].data['src'].dtype,
+        )
 
         expected_out_bbox = torch.tensor(
-            [[[1., 0., 2., 1.], [0., -1., 1., 1.], [0., -1., 2., 0.]],
-             [[1., 1., 2., 2.], [0., 0., 1., 2.], [0., 0., 2., 1.]],
-             [[0., 2., 1., 3.], [-1., 1., 0., 3.], [-1., 1., 1., 2.]]], device=device, dtype=dtype)
+            [
+                [[1.0, 0.0, 2.0, 1.0], [0.0, -1.0, 1.0, 1.0], [0.0, -1.0, 2.0, 0.0]],
+                [[1.0, 1.0, 2.0, 2.0], [0.0, 0.0, 1.0, 2.0], [0.0, 0.0, 2.0, 1.0]],
+                [[0.0, 2.0, 1.0, 3.0], [-1.0, 1.0, 0.0, 3.0], [-1.0, 1.0, 1.0, 2.0]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
         expected_out_points = torch.tensor(
-            [[[0., -1.], [1., 0.]],
-             [[0., 0.], [1., 1.]],
-             [[-1., 1.], [0., 2.]]], device=device, dtype=dtype)
+            [[[0.0, -1.0], [1.0, 0.0]], [[0.0, 0.0], [1.0, 1.0]], [[-1.0, 1.0], [0.0, 2.0]]], device=device, dtype=dtype
+        )
 
         out = aug(input, input, bbox, points, params=_params)
         assert out[0].shape == (3, 3, 3, 3)
@@ -373,7 +379,7 @@ class TestAugmentationSequential:
             return_transform=return_transform,
         )
         out = aug(inp, mask, bbox, keypoints)
-        if return_transform and isinstance(out, (tuple, list)):
+        if return_transform and isinstance(out[0], (tuple, list)):
             assert out[0][0].shape == inp.shape
         else:
             assert out[0].shape == inp.shape
@@ -383,7 +389,10 @@ class TestAugmentationSequential:
         reproducibility_test((inp, mask, bbox, keypoints), aug)
 
         out_inv = aug.inverse(*out)
-        assert out_inv[0].shape == inp.shape
+        if return_transform and isinstance(out_inv[0], (tuple, list)):
+            assert out_inv[0][0].shape == inp.shape
+        else:
+            assert out_inv[0].shape == inp.shape
         assert out_inv[1].shape == mask.shape
         assert out_inv[2].shape == bbox.shape
         assert out_inv[3].shape == keypoints.shape
@@ -473,10 +482,11 @@ class TestAugmentationSequential:
         bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
         bbox_2 = [
             # torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype),
-            torch.tensor([
-                [[355, 10], [660, 10], [660, 250], [355, 250]],
-                [[355, 10], [660, 10], [660, 250], [355, 250]]
-            ], device=device, dtype=dtype)
+            torch.tensor(
+                [[[355, 10], [660, 10], [660, 250], [355, 250]], [[355, 10], [660, 10], [660, 250], [355, 250]]],
+                device=device,
+                dtype=dtype,
+            )
         ]
         bbox_wh = torch.tensor([[[30, 40, 100, 100]]], device=device, dtype=dtype)
         bbox_wh_2 = [

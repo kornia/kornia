@@ -1,5 +1,5 @@
 from enum import Enum, EnumMeta
-from typing import cast, TypeVar, Union
+from typing import TypeVar, Union, cast
 
 import torch
 

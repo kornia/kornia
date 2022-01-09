@@ -1,4 +1,4 @@
-from typing import cast, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, cast
 
 import torch
 
@@ -206,6 +206,8 @@ class Boxes:
 
         if not (3 <= boxes.ndim <= 4 and boxes.shape[-2:] == (4, 2)):
             raise ValueError(f"Boxes shape must be (N, 4, 2) or (B, N, 4, 2). Got {boxes.shape}.")
+
+        self._is_batched = False if boxes.ndim == 3 else True
 
         self._data = boxes
         self._mode = mode
@@ -433,10 +435,6 @@ class Boxes:
         return self.transform_boxes(M, inplace=True)
 
     @property
-    def _is_batched(self) -> bool:
-        return self._data.ndim == 4
-
-    @property
     def data(self) -> torch.Tensor:
         return self._data
 
@@ -479,7 +477,10 @@ class Boxes3D:
         ``width = xmax - xmin + 1``, ``height = ymax - ymin + 1`` and ``depth = zmax - zmin + 1``. Examples of
         `hexahedrons <https://en.wikipedia.org/wiki/Hexahedron>`_ are cubes and rhombohedrons.
     """
-    def __init__(self, boxes: torch.Tensor, raise_if_not_floating_point: bool = True):
+    def __init__(
+        self, boxes: torch.Tensor, raise_if_not_floating_point: bool = True,
+        mode: str = "xyzxyz_plus"
+    ) -> None:
         if not isinstance(boxes, torch.Tensor):
             raise TypeError(f"Input boxes is not a Tensor. Got: {type(boxes)}.")
 
@@ -497,7 +498,10 @@ class Boxes3D:
         if not (3 <= boxes.ndim <= 4 and boxes.shape[-2:] == (8, 3)):
             raise ValueError(f"3D bbox shape must be (N, 8, 3) or (B, N, 8, 3). Got {boxes.shape}.")
 
+        self._is_batched = False if boxes.ndim == 3 else True
+
         self._data = boxes
+        self._mode = mode
 
     def get_boxes_shape(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         r"""Compute boxes heights and widths.
@@ -594,7 +598,7 @@ class Boxes3D:
         hexahedrons = hexahedrons if batched else hexahedrons.squeeze(0)
         # Due to some torch.jit.script bug (at least <= 1.9), you need to pass all arguments to __init__ when
         # constructing the class from inside of a method.
-        return cls(hexahedrons, raise_if_not_floating_point=False)
+        return cls(hexahedrons, raise_if_not_floating_point=False, mode=mode)
 
     def to_tensor(self, mode: str = "xyzxyz") -> torch.Tensor:
         r"""Cast :class:`Boxes3D` to a tensor. ``mode`` controls which 3D boxes format should be use to represent boxes
@@ -776,19 +780,19 @@ class Boxes3D:
             self._data = transformed_boxes
             return self
 
-        return Boxes3D(transformed_boxes, False)
+        return Boxes3D(transformed_boxes, False, "xyzxyz_plus")
 
     def transform_boxes_(self, M: torch.Tensor) -> "Boxes3D":
         """Inplace version of :func:`Boxes3D.transform_boxes`"""
         return self.transform_boxes(M, inplace=True)
 
     @property
-    def _is_batched(self) -> bool:
-        return self._data.ndim == 4
-
-    @property
     def data(self) -> torch.Tensor:
         return self._data
+
+    @property
+    def mode(self) -> str:
+        return self._mode
 
     @property
     def device(self) -> torch.device:
