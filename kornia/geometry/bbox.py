@@ -436,13 +436,13 @@ def bbox_generator3d(
 def transform_bbox(
     trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = "xyxy", restore_coordinates: Optional[bool] = None
 ) -> torch.Tensor:
-    r"""Function that applies a transformation matrix to a box or batch of boxes. Boxes must
-    be a tensor of the shape (N, 4) or a batch of boxes (B, N, 4) and trans_mat must be a (3, 3)
-    transformation matrix or a batch of transformation matrices (B, 3, 3)
+    r"""Apply a transformation matrix to a box or batch of boxes.
 
     Args:
-        trans_mat: The transformation matrix to be applied
-        boxes: The boxes to be transformed
+        trans_mat: The transformation matrix to be applied with a shape of :math:`(3, 3)`
+            or batched as :math:`(B, 3, 3)`.
+        boxes: The boxes to be transformed with a common shape of :math:`(N, 4)` or batched as :math:`(B, N, 4)`, the
+            polygon shape of :math:`(B, N, 4, 2)` is also supported.
         mode: The format in which the boxes are provided. If set to 'xyxy' the boxes are assumed to be in the format
             ``xmin, ymin, xmax, ymax``. If set to 'xywh' the boxes are assumed to be in the format
             ``xmin, ymin, width, height``
@@ -459,8 +459,8 @@ def transform_bbox(
     if mode not in ("xyxy", "xywh"):
         raise ValueError(f"Mode must be one of 'xyxy', 'xywh'. Got {mode}")
 
-    # (B, 4, 2) shaped polygon boxes do not need to be restored.
-    if restore_coordinates is None and boxes.shape[-2:] != torch.Size([4, 2]):
+    # (B, N, 4, 2) shaped polygon boxes do not need to be restored.
+    if restore_coordinates is None and not (boxes.shape[-2:] == torch.Size([4, 2])):
         warnings.warn(
             "Previous behaviour produces incorrect box coordinates if a flip transformation performed on boxes."
             "The previous wrong behaviour has been corrected and will be removed in the future versions."
@@ -476,7 +476,7 @@ def transform_bbox(
     transformed_boxes: torch.Tensor = transform_points(trans_mat, boxes.view(boxes.shape[0], -1, 2))
     transformed_boxes = transformed_boxes.view_as(boxes)
 
-    if (restore_coordinates is None or restore_coordinates) and boxes.shape[-2:] != torch.Size([4, 2]):
+    if (restore_coordinates is None or restore_coordinates) and not (boxes.shape[-2:] == torch.Size([4, 2])):
         restored_boxes = transformed_boxes.clone()
         # In case the boxes are flipped, we ensure it is ordered like left-top -> right-bot points
         restored_boxes[..., 0] = torch.min(transformed_boxes[..., [0, 2]], dim=-1)[0]

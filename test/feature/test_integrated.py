@@ -9,14 +9,14 @@ import kornia
 import kornia.testing as utils  # test utils
 from kornia.feature import (
     DescriptorMatcher,
-    extract_patches_from_pyramid,
-    get_laf_descriptors,
     GFTTAffNetHardNet,
     LAFDescriptor,
     LocalFeature,
     ScaleSpaceDetector,
     SIFTDescriptor,
     SIFTFeature,
+    extract_patches_from_pyramid,
+    get_laf_descriptors,
 )
 from kornia.feature.integrated import LocalFeatureMatcher
 from kornia.geometry import RANSAC, resize, transform_points
