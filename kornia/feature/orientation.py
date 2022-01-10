@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from kornia.constants import pi
-from kornia.filters import get_gaussian_kernel2d, SpatialGradient
+from kornia.filters import SpatialGradient, get_gaussian_kernel2d
 from kornia.geometry import rad2deg
 
 from .laf import extract_patches_from_pyramid, get_laf_orientation, raise_error_if_laf_is_not_valid, set_laf_orientation

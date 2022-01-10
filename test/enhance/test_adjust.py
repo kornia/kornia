@@ -5,7 +5,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils
 from kornia.constants import pi
-from kornia.testing import assert_close, BaseTester, tensor_to_gradcheck_var
+from kornia.testing import BaseTester, assert_close, tensor_to_gradcheck_var
 
 
 class TestInvert:
