@@ -4,7 +4,8 @@ import torch
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.geometry import transform_points
-from kornia.geometry.transform import denormalize_homography, ImageRegistrator
+from kornia.geometry.conversions import denormalize_homography
+from kornia.geometry.transform import ImageRegistrator
 from kornia.testing import assert_close
 
 

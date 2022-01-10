@@ -1,7 +1,171 @@
 import pytest
 import torch
 
+from kornia.testing import assert_close
 from kornia.utils import draw_rectangle
+from kornia.utils.draw import draw_line
+
+
+class TestDrawLine:
+    def test_draw_line_vertical(self, dtype, device):
+        """Test drawing a vertical line."""
+        img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
+        img = draw_line(img, torch.tensor([6, 2]), torch.tensor([6, 0]), torch.tensor([255]))
+        img_mask = torch.tensor([[
+            [0., 0., 0., 0., 0., 0., 255., 0.],
+            [0., 0., 0., 0., 0., 0., 255., 0.],
+            [0., 0., 0., 0., 0., 0., 255., 0.],
+            [0., 0., 0., 0., 0., 0., 0., 0.],
+            [0., 0., 0., 0., 0., 0., 0., 0.],
+            [0., 0., 0., 0., 0., 0., 0., 0.],
+            [0., 0., 0., 0., 0., 0., 0., 0.],
+            [0., 0., 0., 0., 0., 0., 0., 0.],
+        ]], device=device, dtype=dtype)
+        assert_close(img, img_mask)
+
+    def test_draw_line_horizontal(self, dtype, device):
+        """Test drawing a horizontal line."""
+        img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
+        img = draw_line(img, torch.tensor([6, 4]), torch.tensor([0, 4]), torch.tensor([255]))
+        img_mask = torch.tensor([[
+            [0., 0., 0., 0., 0., 0., 0., 0.],
+            [0., 0., 0., 0., 0., 0., 0., 0.],
+            [0., 0., 0., 0., 0., 0., 0., 0.],
+            [0., 0., 0., 0., 0., 0., 0., 0.],
+            [255., 255., 255., 255., 255., 255., 255., 0.],
+            [0., 0., 0., 0., 0., 0., 0., 0.],
+            [0., 0., 0., 0., 0., 0., 0., 0.],
+            [0., 0., 0., 0., 0., 0., 0., 0.],
+        ]], device=device, dtype=dtype)
+        assert_close(img, img_mask)
+
+    def test_draw_line_m_lte_neg1(self, dtype, device):
+        """Test drawing a line with m <= -1."""
+        img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
+        img = draw_line(img, torch.tensor([0, 7]), torch.tensor([6, 0]), torch.tensor([255]))
+        img_mask = torch.tensor([[
+            [0., 0., 0., 0., 0., 0., 255., 0.],
+            [0., 0., 0., 0., 0., 255., 0., 0.],
+            [0., 0., 0., 0., 255., 0., 0., 0.],
+            [0., 0., 0., 255., 0., 0., 0., 0.],
+            [0., 0., 0., 255., 0., 0., 0., 0.],
+            [0., 0., 255., 0., 0., 0., 0., 0.],
+            [0., 255., 0., 0., 0., 0., 0., 0.],
+            [255., 0., 0., 0., 0., 0., 0., 0.],
+        ]], device=device, dtype=dtype)
+        assert_close(img, img_mask)
+
+    def test_draw_line_m_lt_0_gte_neg1(self, dtype, device):
+        """Test drawing a line with -1 < m < 0."""
+        img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
+        img = draw_line(img, torch.tensor([1, 5]), torch.tensor([7, 0]), torch.tensor([255]))
+        img_mask = torch.tensor([[
+            [0., 0., 0., 0., 0., 0., 0., 255.],
+            [0., 0., 0., 0., 0., 0., 255., 0.],
+            [0., 0., 0., 0., 0., 255., 0., 0.],
+            [0., 0., 0., 255., 255., 0., 0., 0.],
+            [0., 0., 255., 0., 0., 0., 0., 0.],
+            [0., 255., 0., 0., 0., 0., 0., 0.],
+            [0., 0., 0., 0., 0., 0., 0., 0.],
+            [0., 0., 0., 0., 0., 0., 0., 0.],
+        ]], device=device, dtype=dtype)
+        assert_close(img, img_mask)
+
+    def test_draw_line_m_gt_0_lt_1(self, dtype, device):
+        """Test drawing a line with 0 < m < 1."""
+        img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
+        img = draw_line(img, torch.tensor([0, 0]), torch.tensor([6, 2]), torch.tensor([255]))
+        img_mask = torch.tensor([[
+            [255., 255., 0., 0., 0., 0., 0., 0.],
+            [0., 0., 255., 255., 255., 0., 0., 0.],
+            [0., 0., 0., 0., 0., 255., 255., 0.],
+            [0., 0., 0., 0., 0., 0., 0., 0.],
+            [0., 0., 0., 0., 0., 0., 0., 0.],
+            [0., 0., 0., 0., 0., 0., 0., 0.],
+            [0., 0., 0., 0., 0., 0., 0., 0.],
+            [0., 0., 0., 0., 0., 0., 0., 0.],
+        ]], device=device, dtype=dtype)
+        assert_close(img, img_mask)
+
+    def test_draw_line_m_gte_1(self, dtype, device):
+        """Test drawing a line with m >= 1."""
+        img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
+        img = draw_line(img, torch.tensor([3, 7]), torch.tensor([1, 4]), torch.tensor([255]))
+        img_mask = torch.tensor([[
+            [0., 0., 0., 0., 0., 0., 0., 0.],
+            [0., 0., 0., 0., 0., 0., 0., 0.],
+            [0., 0., 0., 0., 0., 0., 0., 0.],
+            [0., 0., 0., 0., 0., 0., 0., 0.],
+            [0., 255., 0., 0., 0., 0., 0., 0.],
+            [0., 0., 255., 0., 0., 0., 0., 0.],
+            [0., 0., 255., 0., 0., 0., 0., 0.],
+            [0., 0., 0., 255., 0., 0., 0., 0.],
+        ]], device=device, dtype=dtype)
+        assert_close(img, img_mask)
+
+    @pytest.mark.parametrize('p1',
+                             [
+                                 torch.tensor([-1, 0]),
+                                 torch.tensor([0, -1]),
+                                 torch.tensor([8, 0]),
+                                 torch.tensor([0, 8]),
+                             ])
+    def test_p1_out_of_bounds(self, p1, dtype, device):
+        """Tests that an exception is raised if p1 is out of bounds."""
+        img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
+        with pytest.raises(ValueError) as excinfo:
+            draw_line(img, p1, torch.tensor([0, 0]), torch.tensor([255]))
+
+        assert 'p1 is out of bounds.' == str(excinfo.value)
+
+    @pytest.mark.parametrize('p2',
+                             [
+                                 torch.tensor([-1, 0]),
+                                 torch.tensor([0, -1]),
+                                 torch.tensor([8, 0]),
+                                 torch.tensor([0, 8]),
+                             ])
+    def test_p2_out_of_bounds(self, p2, dtype, device):
+        """Tests that an exception is raised if p2 is out of bounds."""
+        img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
+        with pytest.raises(ValueError) as excinfo:
+            draw_line(img, torch.tensor([0, 0]), p2, torch.tensor([255]))
+
+        assert 'p2 is out of bounds.' == str(excinfo.value)
+
+    @pytest.mark.parametrize('img_size', [(200, 100), (32, 3, 20, 20)])
+    def test_image_size(self, img_size, dtype, device):
+        img = torch.zeros(*img_size, dtype=dtype, device=device)
+        with pytest.raises(ValueError) as excinfo:
+            draw_line(img, torch.tensor([0, 0]), torch.tensor([1, 1]), torch.tensor([255]))
+
+        assert 'image must have 3 dimensions (C,H,W).' == str(excinfo.value)
+
+    @pytest.mark.parametrize('img_size,color',
+                             [
+                                 ((1, 8, 8), torch.tensor([23, 53])),
+                                 ((3, 8, 8), torch.tensor([255]))
+                             ])
+    def test_color_image_channel_size(self, img_size, color, dtype, device):
+        img = torch.zeros(*img_size, dtype=dtype, device=device)
+        with pytest.raises(ValueError) as excinfo:
+            draw_line(img, torch.tensor([0, 0]), torch.tensor([1, 1]), color)
+
+        assert 'color must have the same number of channels as the image.' == str(excinfo.value)
+
+    @pytest.mark.parametrize('p1,p2',
+                             [
+                                 ((0, 1), (1, 5, 2)),
+                                 ((0, 1, 2), (1, 5)),
+                                 (torch.tensor([0, 1]), torch.tensor([0, 2, 3])),
+                                 (torch.tensor([0, 1, 5]), torch.tensor([0, 2])),
+                             ])
+    def test_point_size(self, p1, p2, dtype, device):
+        img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
+        with pytest.raises(ValueError) as excinfo:
+            draw_line(img, p1, p2, torch.tensor([255]))
+
+        assert 'p1 and p2 must have length 2.' == str(excinfo.value)
 
 
 class TestDrawRectangle:
@@ -65,8 +229,8 @@ class TestDrawRectangle:
                         random_w_rectangle[
                             b,
                             :,
-                            points_list[b][n][1] : points_list[b][n][3] + 1,
-                            points_list[b][n][0] : points_list[b][n][2] + 1,
+                            points_list[b][n][1]: points_list[b][n][3] + 1,
+                            points_list[b][n][0]: points_list[b][n][2] + 1,
                         ].sum()
                         == (points_list[b][n][3] - points_list[b][n][1] + 1)
                         * (points_list[b][n][2] - points_list[b][n][0] + 1)
@@ -75,25 +239,25 @@ class TestDrawRectangle:
                 else:
                     assert (
                         random_w_rectangle[
-                            b, :, points_list[b][n][1] : points_list[b][n][3] + 1, points_list[b][n][0]
+                            b, :, points_list[b][n][1]: points_list[b][n][3] + 1, points_list[b][n][0]
                         ].sum()
                         == (points_list[b][n][3] - points_list[b][n][1] + 1) * 3
                     )
                     assert (
                         random_w_rectangle[
-                            b, :, points_list[b][n][1] : points_list[b][n][3] + 1, points_list[b][n][2]
+                            b, :, points_list[b][n][1]: points_list[b][n][3] + 1, points_list[b][n][2]
                         ].sum()
                         == (points_list[b][n][3] - points_list[b][n][1] + 1) * 3
                     )
                     assert (
                         random_w_rectangle[
-                            b, :, points_list[b][n][1], points_list[b][n][0] : points_list[b][n][2] + 1
+                            b, :, points_list[b][n][1], points_list[b][n][0]: points_list[b][n][2] + 1
                         ].sum()
                         == (points_list[b][n][2] - points_list[b][n][0] + 1) * 3
                     )
                     assert (
                         random_w_rectangle[
-                            b, :, points_list[b][n][1], points_list[b][n][0] : points_list[b][n][2] + 1
+                            b, :, points_list[b][n][1], points_list[b][n][0]: points_list[b][n][2] + 1
                         ].sum()
                         == (points_list[b][n][2] - points_list[b][n][0] + 1) * 3
                     )

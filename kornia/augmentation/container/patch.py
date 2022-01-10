@@ -4,11 +4,11 @@ from typing import Iterator, List, NamedTuple, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
-from kornia.augmentation.base import _AugmentationBase, MixAugmentationBase, TensorWithTransformMat
+from kornia.augmentation import MixAugmentationBase
+from kornia.augmentation.base import TensorWithTransformMat, _AugmentationBase
 from kornia.augmentation.container.base import SequentialBase
+from kornia.augmentation.container.image import ImageSequential, ParamItem
 from kornia.contrib.extract_patches import extract_tensor_patches
-
-from .image import ImageSequential, ParamItem
 
 __all__ = ["PatchSequential"]
 
@@ -86,6 +86,27 @@ class PatchSequential(ImageSequential):
         >>> out1 = seq(input, params=seq._params)
         >>> torch.equal(out, out1)
         True
+
+    Perform ``OneOf`` transformation with ``random_apply=1`` and ``random_apply_weights`` in ``PatchSequential``.
+
+        >>> import kornia
+        >>> input = torch.randn(2, 3, 224, 224)
+        >>> seq = PatchSequential(
+        ...     ImageSequential(
+        ...         K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
+        ...         K.RandomPerspective(0.2, p=0.5),
+        ...         K.RandomSolarize(0.1, 0.1, p=0.5),
+        ...     ),
+        ...     K.RandomAffine(360, p=1.0),
+        ...     K.RandomSolarize(0.1, 0.1, p=0.1),
+        ...     grid_size=(2,2),
+        ...     patchwise_apply=False,
+        ...     random_apply=1,
+        ...     random_apply_weights=[0.5, 0.3, 0.8]
+        ... )
+        >>> out = seq(input)
+        >>> out.shape
+        torch.Size([2, 3, 224, 224])
     """
 
     def __init__(
@@ -97,6 +118,7 @@ class PatchSequential(ImageSequential):
         keepdim: Optional[bool] = None,
         patchwise_apply: bool = True,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
+        random_apply_weights: Optional[List[float]] = None,
     ) -> None:
         _random_apply: Optional[Union[int, Tuple[int, int]]]
 
@@ -116,7 +138,12 @@ class PatchSequential(ImageSequential):
         else:
             _random_apply = random_apply
         super().__init__(
-            *args, same_on_batch=same_on_batch, return_transform=False, keepdim=keepdim, random_apply=_random_apply
+            *args,
+            same_on_batch=same_on_batch,
+            return_transform=False,
+            keepdim=keepdim,
+            random_apply=_random_apply,
+            random_apply_weights=random_apply_weights,
         )
         if padding not in ("same", "valid"):
             raise ValueError(f"`padding` must be either `same` or `valid`. Got {padding}.")
@@ -138,7 +165,7 @@ class PatchSequential(ImageSequential):
         if padding == "valid":
             ph, pw = input.size(-2) // grid_size[0], input.size(-1) // grid_size[1]
             return (-pw // 2, pw // 2 - pw, -ph // 2, ph // 2 - ph)
-        if padding == 'same':
+        if padding == "same":
             ph = input.size(-2) - input.size(-2) // grid_size[0] * grid_size[0]
             pw = input.size(-1) - input.size(-1) // grid_size[1] * grid_size[1]
             return (pw // 2, pw - pw // 2, ph // 2, ph - ph // 2)
@@ -359,11 +386,7 @@ class PatchSequential(ImageSequential):
             _input = _input.reshape(in_shape)
         return _input, label
 
-    def inverse(  # type: ignore
-        self,
-        input: torch.Tensor,
-        params: List[ParamItem],
-    ) -> torch.Tensor:
+    def inverse(self, input: torch.Tensor, params: List[ParamItem]) -> torch.Tensor:  # type: ignore
         """Inverse transformation.
 
         Used to inverse a tensor according to the performed transformation by a forward pass, or with respect to

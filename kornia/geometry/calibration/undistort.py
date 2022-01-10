@@ -117,13 +117,13 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     Example:
         >>> img = torch.rand(1, 3, 5, 5)
         >>> K = torch.eye(3)[None]
-        >>> dist_coeff = torch.rand(4)
+        >>> dist_coeff = torch.rand(1, 4)
         >>> out = undistort_image(img, K, dist_coeff)
         >>> out.shape
         torch.Size([1, 3, 5, 5])
 
     """
-    if len(image.shape) < 2:
+    if len(image.shape) < 3:
         raise ValueError(f"Image shape is invalid. Got: {image.shape}.")
 
     if K.shape[-2:] != (3, 3):
@@ -135,7 +135,17 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     if not image.is_floating_point():
         raise ValueError(f'Invalid input image data type. Input should be float. Got {image.dtype}.')
 
-    B, _, rows, cols = image.shape
+    if image.shape[:-3] != K.shape[:-2] or image.shape[:-3] != dist.shape[:-1]:
+        # Input with image shape (1, C, H, W), K shape (3, 3), dist shape (4)
+        # allowed to avoid a breaking change.
+        if not all((image.shape[:-3] == (1,), K.shape[:-2] == (), dist.shape[:-1] == ())):
+            raise ValueError(
+                f'Input shape is invalid. Input batch dimensions should match. '
+                f'Got {image.shape[:-3]}, {K.shape[:-2]}, {dist.shape[:-1]}.'
+            )
+
+    channels, rows, cols = image.shape[-3:]
+    B = image.numel() // (channels * rows * cols)
 
     # Create point coordinates for each pixel of the image
     xy_grid: torch.Tensor = create_meshgrid(rows, cols, False, image.device, image.dtype)
@@ -147,6 +157,6 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     mapy: torch.Tensor = ptsd[..., 1].reshape(B, rows, cols)  # B x rows x cols, float
 
     # Remap image to undistort
-    out = remap(image, mapx, mapy, align_corners=True)
+    out = remap(image.reshape(B, channels, rows, cols), mapx, mapy, align_corners=True)
 
-    return out
+    return out.view_as(image)

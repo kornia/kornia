@@ -17,7 +17,6 @@ from kornia.augmentation import (
     RandomVerticalFlip3D,
 )
 from kornia.testing import assert_close
-from kornia.utils._compat import torch_version_geq
 
 
 class TestRandomHorizontalFlip3D:
@@ -965,8 +964,8 @@ class TestRandomEqualize3D:
 
 class TestRandomAffine3D:
     def test_batch_random_affine_3d(self, device, dtype):
-        # TODO(jian): crashes with pytorch 1.10, cuda and fp64
-        if torch_version_geq(1, 10) and "cuda" in str(device) and dtype == torch.float64:
+        # TODO(jian): cuda and fp64
+        if "cuda" in str(device) and dtype == torch.float64:
             pytest.skip("AssertionError: assert tensor(False, device='cuda:0')")
 
         f = RandomAffine3D((0, 0, 0), p=1.0, return_transform=True)  # No rotation

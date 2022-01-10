@@ -171,6 +171,23 @@ class TestWarpAffine:
         img_b = utils.tensor_to_gradcheck_var(img_b)  # to var
         assert gradcheck(kornia.geometry.warp_affine, (img_b, aff_ab, (height, width)), raise_exception=True)
 
+    def test_fill_padding_translation(self, device, dtype):
+        offset = 1.0
+        h, w = 3, 4
+        aff_ab = torch.eye(2, 3, device=device, dtype=dtype)[None]
+        aff_ab[..., -1] += offset
+
+        img_b = torch.arange(float(3 * h * w), device=device, dtype=dtype).view(1, 3, h, w)
+
+        # normally fill_value will also be converted to the right device and type in warp_affine
+        fill_value = torch.tensor([0.5, 0.2, 0.1], device=device, dtype=dtype)
+
+        img_a = kornia.geometry.warp_affine(img_b, aff_ab, (h, w), padding_mode="fill", fill_value=fill_value)
+        top_row_mean = img_a[..., :1, :].mean(dim=[0, 2, 3])
+        first_col_mean = img_a[..., :1].mean(dim=[0, 2, 3])
+        assert_close(top_row_mean, fill_value)
+        assert_close(first_col_mean, fill_value)
+
 
 class TestWarpPerspective:
     def test_smoke(self, device, dtype):
@@ -222,6 +239,21 @@ class TestWarpPerspective:
 
         # Same as opencv: cv2.warpPerspective(kornia.tensor_to_image(img_b), homo_ab[0].numpy(), (w, h))
         img_a = kornia.geometry.warp_perspective(img_b, homo_ab, (h, w))
+        assert_close(img_a, expected, atol=1e-4, rtol=1e-4)
+
+    def test_translation_normalized(self, device, dtype):
+        offset = 1.0
+        h, w = 3, 4
+
+        img_b = torch.arange(float(h * w), device=device, dtype=dtype).view(1, 1, h, w)
+        homo_ab = kornia.eye_like(3, img_b)
+        homo_ab[..., :2, -1] += offset
+
+        expected = torch.zeros_like(img_b)
+        expected[..., 1:, 1:] = img_b[..., :2, :3]
+
+        # Same as opencv: cv2.warpPerspective(kornia.tensor_to_image(img_b), homo_ab[0].numpy(), (w, h))
+        img_a = kornia.geometry.transform.homography_warp(img_b, homo_ab, (h, w), normalized_homography=False)
         assert_close(img_a, expected, atol=1e-4, rtol=1e-4)
 
     def test_rotation_inverse(self, device, dtype):
@@ -358,6 +390,23 @@ class TestWarpPerspective:
         # TODO(dmytro/edgar): firgure out why gradient don't propagate for the tranaform
         H_ab = utils.tensor_to_gradcheck_var(H_ab, requires_grad=False)  # to var
         assert gradcheck(kornia.geometry.warp_perspective, (img_b, H_ab, (height, width)), raise_exception=True)
+
+    def test_fill_padding_translation(self, device, dtype):
+        offset = 1.0
+        h, w = 3, 4
+
+        img_b = torch.arange(float(3 * h * w), device=device, dtype=dtype).view(1, 3, h, w)
+        homo_ab = kornia.eye_like(3, img_b)
+        homo_ab[..., :2, -1] += offset
+
+        # normally fill_value will also be converted to the right device and type in warp_perspective
+        fill_value = torch.tensor([0.5, 0.2, 0.1], device=device, dtype=dtype)
+
+        img_a = kornia.geometry.warp_perspective(img_b, homo_ab, (h, w), padding_mode="fill", fill_value=fill_value)
+        top_row_mean = img_a[..., :1, :].mean(dim=[0, 2, 3])
+        first_col_mean = img_a[..., :1].mean(dim=[0, 2, 3])
+        assert_close(top_row_mean, fill_value)
+        assert_close(first_col_mean, fill_value)
 
 
 class TestRemap:

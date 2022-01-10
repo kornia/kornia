@@ -10,9 +10,42 @@ from kornia.geometry.homography import (
     find_homography_dlt,
     find_homography_dlt_iterated,
     oneway_transfer_error,
+    sample_is_valid_for_homography,
     symmetric_transfer_error,
 )
 from kornia.testing import assert_close
+
+
+class TestSampleValidation:
+    def test_good(self, device, dtype):
+        pts1 = torch.tensor([[0.0, 0.0],
+                             [0.0, 1.0],
+                             [1.0, 1.0],
+                             [1.0, 0.0]], device=device, dtype=dtype)[None]
+        mask = sample_is_valid_for_homography(pts1, pts1)
+        expected = torch.tensor([True], device=device, dtype=torch.bool)
+        assert torch.equal(mask, expected)
+
+    def test_bad(self, device, dtype):
+        pts1 = torch.tensor([[0.0, 0.0],
+                             [1.0, 0.0],
+                             [0.0, 1.0],
+                             [1.0, 1.0]], device=device, dtype=dtype)[None]
+
+        pts2 = torch.tensor([[0.0, 0.0],
+                             [0.0, 1.0],
+                             [1.0, 0.0],
+                             [1.0, 1.0]], device=device, dtype=dtype)[None]
+        mask = sample_is_valid_for_homography(pts1, pts2)
+        expected = torch.tensor([False], device=device, dtype=torch.bool)
+        assert torch.equal(mask, expected)
+
+    def test_batch(self, device, dtype):
+        batch_size = 5
+        pts1 = torch.rand(batch_size, 4, 2, device=device, dtype=dtype)
+        pts2 = torch.rand(batch_size, 4, 2, device=device, dtype=dtype)
+        mask = sample_is_valid_for_homography(pts1, pts2)
+        assert (mask.shape == torch.Size([batch_size]))
 
 
 class TestOneWayError:
@@ -80,6 +113,14 @@ class TestFindHomographyDLT:
         points1 = torch.rand(1, 4, 2, device=device, dtype=dtype)
         points2 = torch.rand(1, 4, 2, device=device, dtype=dtype)
         weights = torch.ones(1, 4, device=device, dtype=dtype)
+        H = find_homography_dlt(points1, points2, weights)
+        assert H.shape == (1, 3, 3)
+
+    def test_nocrash(self, device, dtype):
+        points1 = torch.rand(1, 4, 2, device=device, dtype=dtype)
+        points2 = torch.rand(1, 4, 2, device=device, dtype=dtype)
+        weights = torch.ones(1, 4, device=device, dtype=dtype)
+        points1[0, 0, 0] = float('nan')
         H = find_homography_dlt(points1, points2, weights)
         assert H.shape == (1, 3, 3)
 

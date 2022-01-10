@@ -6,7 +6,7 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia
-from kornia.testing import assert_close, BaseTester
+from kornia.testing import BaseTester, assert_close
 from packaging import version
 
 

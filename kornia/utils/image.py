@@ -1,5 +1,5 @@
 from functools import wraps
-from typing import Callable, List, TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, List
 
 import torch
 import torch.nn as nn

@@ -54,19 +54,21 @@ Join the community
    :hidden:
 
    applications/intro
+   applications/face_detection
    applications/image_augmentations
    applications/image_classification
    applications/image_matching
    applications/image_stitching
    applications/image_registration
    applications/semantic_segmentation
-   applications/video_deblur
 
 .. toctree::
    :caption: KORNIA MODELS
    :hidden:
 
+   models/yunet
    models/vit
+   models/vit_mobile
    models/loftr
    models/defmo
    models/hardnet

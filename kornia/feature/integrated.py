@@ -62,10 +62,12 @@ class LAFDescriptor(nn.Module):
     """
 
     def __init__(self,
-                 patch_descriptor_module: nn.Module = HardNet(True),
+                 patch_descriptor_module: Optional[nn.Module] = None,
                  patch_size: int = 32,
                  grayscale_descriptor: bool = True) -> None:
         super().__init__()
+        if patch_descriptor_module is None:
+            patch_descriptor_module = HardNet(True)
         self.descriptor = patch_descriptor_module
         self.patch_size = patch_size
         self.grayscale_descriptor = grayscale_descriptor
@@ -165,7 +167,7 @@ class GFTTAffNetHardNet(LocalFeature):
                                       ori_module=PassLAF() if upright else LAFOrienter(19),
                                       aff_module=LAFAffNetShapeEstimator(True).eval(),
                                       mr_size=6.0).to(device)
-        descriptor = LAFDescriptor(HardNet(True).eval(),
+        descriptor = LAFDescriptor(None,
                                    patch_size=32,
                                    grayscale_descriptor=True).to(device)
         super().__init__(detector, descriptor)

@@ -1,14 +1,15 @@
-from typing import cast, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, cast
 
 import torch
 import torch.nn as nn
 
 import kornia
-from kornia.augmentation.base import _AugmentationBase, MixAugmentationBase, TensorWithTransformMat
+from kornia.augmentation import RandomCrop
+from kornia.augmentation._2d.mix.base import MixAugmentationBase
+from kornia.augmentation.base import TensorWithTransformMat, _AugmentationBase
 from kornia.augmentation.container.base import SequentialBase
+from kornia.augmentation.container.image import ImageSequential, ParamItem
 from kornia.augmentation.container.utils import InputApplyInverse, MaskApplyInverse
-
-from .image import ImageSequential, ParamItem
 
 __all__ = ["VideoSequential"]
 
@@ -74,6 +75,23 @@ class VideoSequential(ImageSequential):
         >>> out2, lab2 = aug_list(input, label, params=aug_list._params)
         >>> torch.equal(output, out2)
         True
+
+    Perform ``OneOf`` transformation with ``random_apply=1`` and ``random_apply_weights`` in ``VideoSequential``.
+
+        >>> import kornia
+        >>> input, label = torch.randn(2, 3, 1, 5, 6).repeat(1, 1, 4, 1, 1), torch.tensor([0, 1])
+        >>> aug_list = VideoSequential(
+        ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...     kornia.augmentation.RandomAffine(360, p=1.0),
+        ...     kornia.augmentation.RandomMixUp(p=1.0),
+        ... data_format="BCTHW",
+        ... same_on_frame=False,
+        ... random_apply=1,
+        ... random_apply_weights=[0.5, 0.3, 0.8]
+        ... )
+        >>> out= aug_list(input, label)
+        >>> out[0].shape
+        torch.Size([2, 3, 4, 5, 6])
     """
 
     def __init__(
@@ -82,8 +100,16 @@ class VideoSequential(ImageSequential):
         data_format: str = "BTCHW",
         same_on_frame: bool = True,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
+        random_apply_weights: Optional[List[float]] = None,
     ) -> None:
-        super().__init__(*args, same_on_batch=None, return_transform=None, keepdim=None, random_apply=random_apply)
+        super().__init__(
+            *args,
+            same_on_batch=None,
+            return_transform=None,
+            keepdim=None,
+            random_apply=random_apply,
+            random_apply_weights=random_apply_weights,
+        )
         self.same_on_frame = same_on_frame
         self.data_format = data_format.upper()
         if self.data_format not in ["BCTHW", "BTCHW"]:
@@ -96,7 +122,7 @@ class VideoSequential(ImageSequential):
 
     def __infer_channel_exclusive_batch_shape__(self, batch_shape: torch.Size, chennel_index: int) -> torch.Size:
         # Fix mypy complains: error: Incompatible return value type (got "Tuple[int, ...]", expected "Size")
-        return cast(torch.Size, batch_shape[:chennel_index] + batch_shape[chennel_index + 1:])
+        return cast(torch.Size, batch_shape[:chennel_index] + batch_shape[chennel_index + 1 :])
 
     def __repeat_param_across_channels__(self, param: torch.Tensor, frame_num: int) -> torch.Tensor:
         """Repeat parameters across channels.
@@ -159,7 +185,13 @@ class VideoSequential(ImageSequential):
 
         params = []
         for name, module in named_modules:
-            if isinstance(module, (SequentialBase,)):
+            if isinstance(module, RandomCrop):
+                mod_param = module.forward_parameters_precrop(batch_shape)
+                if self.same_on_frame:
+                    mod_param["src"] = mod_param["src"].repeat(frame_num, 1, 1)
+                    mod_param["dst"] = mod_param["dst"].repeat(frame_num, 1, 1)
+                param = ParamItem(name, mod_param)
+            elif isinstance(module, (SequentialBase,)):
                 seq_param = module.forward_parameters(batch_shape)
                 if self.same_on_frame:
                     raise ValueError("Sequential is currently unsupported for ``same_on_frame``.")
