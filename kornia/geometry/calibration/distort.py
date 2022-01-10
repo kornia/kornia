@@ -1,3 +1,5 @@
+from typing import Optional
+
 import torch
 
 
@@ -54,7 +56,8 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
     return tilt
 
 
-def distort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) -> torch.Tensor:
+def distort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor, new_K: Optional[torch.Tensor] = None
+                   ) -> torch.Tensor:
     r"""Distortion of a set of 2D points based on the lens distortion model.
 
     Radial :math:`(k_1, k_2, k_3, k_4, k_4, k_6)`,
@@ -67,6 +70,8 @@ def distort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
         dist: Distortion coefficients
             :math:`(k_1,k_2,p_1,p_2[,k_3[,k_4,k_5,k_6[,s_1,s_2,s_3,s_4[,\tau_x,\tau_y]]]])`. This is
             a vector with 4, 5, 8, 12 or 14 elements with shape :math:`(*, n)`.
+        new_K: Intrinsic camera matrix of the distorted image. By default, it is the same as K but you may additionally
+            scale and shift the result by using a different matrix. Shape: :math:`(*, 3, 3)`. Default: None.
 
     Returns:
         Undistorted 2D points with shape :math:`(*, N, 2)`.
@@ -84,6 +89,11 @@ def distort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     if K.shape[-2:] != (3, 3):
         raise ValueError(f'K matrix shape is invalid. Got {K.shape}.')
 
+    if new_K is None:
+        new_K = K
+    elif new_K.shape[-2:] != (3, 3):
+        raise ValueError(f'new_K matrix shape is invalid. Got {new_K.shape}.')
+
     if dist.shape[-1] not in [4, 5, 8, 12, 14]:
         raise ValueError(f'Invalid number of distortion coefficients. Got {dist.shape[-1]}')
 
@@ -92,13 +102,14 @@ def distort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
         dist = torch.nn.functional.pad(dist, [0, 14 - dist.shape[-1]])
 
     # Convert 2D points from pixels to normalized camera coordinates
-    cx: torch.Tensor = K[..., 0:1, 2]  # princial point in x (Bx1)
-    cy: torch.Tensor = K[..., 1:2, 2]  # princial point in y (Bx1)
-    fx: torch.Tensor = K[..., 0:1, 0]  # focal in x (Bx1)
-    fy: torch.Tensor = K[..., 1:2, 1]  # focal in y (Bx1)
+    new_cx: torch.Tensor = new_K[..., 0:1, 2]  # princial point in x (Bx1)
+    new_cy: torch.Tensor = new_K[..., 1:2, 2]  # princial point in y (Bx1)
+    new_fx: torch.Tensor = new_K[..., 0:1, 0]  # focal in x (Bx1)
+    new_fy: torch.Tensor = new_K[..., 1:2, 1]  # focal in y (Bx1)
+
     # This is equivalent to K^-1 [u,v,1]^T
-    x: torch.Tensor = (points[..., 0] - cx) / fx  # (BxN - Bx1)/Bx1 -> BxN or (N,)
-    y: torch.Tensor = (points[..., 1] - cy) / fy  # (BxN - Bx1)/Bx1 -> BxN or (N,)
+    x: torch.Tensor = (points[..., 0] - new_cx) / new_fx  # (BxN - Bx1)/Bx1 -> BxN or (N,)
+    y: torch.Tensor = (points[..., 1] - new_cy) / new_fy  # (BxN - Bx1)/Bx1 -> BxN or (N,)
 
     # Distort points
     r2 = x * x + y * y
@@ -131,6 +142,11 @@ def distort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
         yd = points_untilt[..., 1] / points_untilt[..., 2]
 
     # Convert points from normalized camera coordinates to pixel coordinates
+    cx: torch.Tensor = K[..., 0:1, 2]  # princial point in x (Bx1)
+    cy: torch.Tensor = K[..., 1:2, 2]  # princial point in y (Bx1)
+    fx: torch.Tensor = K[..., 0:1, 0]  # focal in x (Bx1)
+    fy: torch.Tensor = K[..., 1:2, 1]  # focal in y (Bx1)
+
     x = fx * xd + cx
     y = fy * yd + cy
 
