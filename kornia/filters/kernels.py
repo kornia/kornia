@@ -653,7 +653,7 @@ def get_hanning_kernel1d(kernel_size: int, device=torch.device('cpu'), dtype=tor
 
     Examples:
         >>> get_hanning_kernel1d(4)
-        tensor([ 0.0000, 0.7500, 0.7500, 0.0000])
+        tensor([0.0000, 0.7500, 0.7500, 0.0000])
     """
     if not isinstance(kernel_size, int) or kernel_size <= 2:
         raise TypeError(f"ksize must be an positive integer > 2. Got {kernel_size}")
