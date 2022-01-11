@@ -1,4 +1,5 @@
 from typing import List, Union
+
 from torch import Tensor
 
 
@@ -14,8 +15,7 @@ class TensorBase(Tensor):
         pass
 
     def transform(self, mat: Tensor):
-        """Apply a transformation matrix.
-        """
+        """Apply a transformation matrix."""
         raise NotImplementedError
 
     def from_tensor(self, tensor: Union[Tensor, List[Tensor]], validate: bool = True):

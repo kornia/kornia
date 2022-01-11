@@ -1,4 +1,5 @@
 from torch import Tensor
+
 from .tensor_base import TensorBase
 
 
@@ -6,7 +7,7 @@ class Polygon(TensorBase):  # B, N, M, 2, quadrilateral when m=4, keypoint when 
 
     def transform(self, mat: Tensor) -> "Polygon":
         """Apply a transformation matrix.
-        
+
         To transform any (B, N, M, 2) data.
         """
         raise NotImplementedError
@@ -19,5 +20,4 @@ class Polygon(TensorBase):  # B, N, M, 2, quadrilateral when m=4, keypoint when 
         raise NotImplementedError
 
     def validate(self) -> None:
-        """Validate data.
-        """
+        """Validate data."""
