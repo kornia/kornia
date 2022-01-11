@@ -51,7 +51,9 @@ class TestImageHistogram2d:
         op = TestImageHistogram2d.fcn
         op_script = torch.jit.script(op)
 
-        assert_close(op(*inputs), op_script(*inputs))
+        out, out_script = op(*inputs), op_script(*inputs)
+        assert_close(out[0], out_script[0])
+        assert_close(out[1], out_script[1])
 
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     @pytest.mark.parametrize("size", [(1, 1), (3, 1, 1), (8, 3, 1, 1)])
