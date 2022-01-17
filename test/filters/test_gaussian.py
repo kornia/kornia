@@ -102,8 +102,14 @@ class TestGaussianBlur2d:
         new_params = [(1, 5), (0.2, 2.4)]
         op = kornia.filters.gaussian_blur2d
         op_module = kornia.filters.GaussianBlur2d(*orig_params)
+        
+        assert op_module.kernel_size == orig_params[0]
+        assert op_module.sigma == orig_params[1]
+
         op_module.kernel_size = new_params[0]
         op_module.sigma = new_params[1]
+        assert op_module.kernel_size == new_params[0]
+        assert op_module.sigma == new_params[1]
 
         img = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
         assert_close(op(img, *new_params), op_module(img))
@@ -113,10 +119,12 @@ class TestGaussianBlur2d:
         params = [(3, 3), (1.5, 1.5)]
         op = kornia.filters.gaussian_blur2d
         op_module = kornia.filters.GaussianBlur2d(*params, separable=True)
+        assert op_module.separable
 
         assert list(op_module.kernel_x.shape) == [3]
         assert list(op_module.kernel_x.shape) == [3]
         op_module.separable = False
+        assert not op_module.separable
         assert not getattr(op_module, "kernel_x", None)
 
         img = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
