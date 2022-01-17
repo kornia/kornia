@@ -102,7 +102,7 @@ class TestGaussianBlur2d:
         new_params = [(1, 5), (0.2, 2.4)]
         op = kornia.filters.gaussian_blur2d
         op_module = kornia.filters.GaussianBlur2d(*orig_params)
-        
+
         assert op_module.kernel_size == orig_params[0]
         assert op_module.sigma == orig_params[1]
 
