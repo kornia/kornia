@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from kornia.filters.sobel import spatial_gradient
 from kornia.utils import create_meshgrid
 
-from .camera import cam2pixel, PinholeCamera, pixel2cam, project_points, unproject_points
+from .camera import PinholeCamera, cam2pixel, pixel2cam, project_points, unproject_points
 from .conversions import normalize_pixel_coordinates
 from .linalg import compose_transformations, convert_points_to_homogeneous, inverse_transformation, transform_points
 

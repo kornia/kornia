@@ -1,23 +1,19 @@
+import warnings
 from abc import ABCMeta, abstractmethod
 from functools import partial
-from typing import Callable, cast, Dict, Iterator, List, Optional, Tuple, Type, Union
+from typing import Callable, Dict, Iterator, List, Optional, Tuple, Type, Union, cast
 
 import torch
 import torch.nn as nn
 
 import kornia  # lazy loading for circular dependencies
-from kornia.augmentation.base import (
-    _AugmentationBase,
-    GeometricAugmentationBase2D,
-    MixAugmentationBase,
-    TensorWithTransformMat,
-)
+from kornia.augmentation import GeometricAugmentationBase2D, MixAugmentationBase, RandomCrop
+from kornia.augmentation.base import TensorWithTransformMat, _AugmentationBase
+from kornia.augmentation.container.base import ParamItem
 from kornia.constants import DataKey
 from kornia.geometry.bbox import transform_bbox
 from kornia.geometry.linalg import transform_points
 from kornia.utils.helpers import _torch_inverse_cast
-
-from .base import ParamItem
 
 
 def _get_geometric_only_param(
@@ -38,11 +34,7 @@ class ApplyInverseInterface(metaclass=ABCMeta):
     @classmethod
     @abstractmethod
     def apply_trans(
-        cls,
-        input: torch.Tensor,
-        label: Optional[torch.Tensor],
-        module: nn.Module,
-        param: ParamItem,
+        cls, input: torch.Tensor, label: Optional[torch.Tensor], module: nn.Module, param: ParamItem
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """Apply a transformation with respect to the parameters.
 
@@ -57,12 +49,7 @@ class ApplyInverseInterface(metaclass=ABCMeta):
 
     @classmethod
     @abstractmethod
-    def inverse(
-        cls,
-        input: torch.Tensor,
-        module: nn.Module,
-        param: Optional[ParamItem] = None
-    ) -> torch.Tensor:
+    def inverse(cls, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None) -> torch.Tensor:
         """Inverse a transformation with respect to the parameters.
 
         Args:
@@ -105,9 +92,7 @@ class ApplyInverseImpl(ApplyInverseInterface):
         return input, label
 
     @classmethod
-    def inverse(
-        cls, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None
-    ) -> torch.Tensor:
+    def inverse(cls, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None) -> torch.Tensor:
         """Inverse a transformation with respect to the parameters.
 
         Args:
@@ -128,10 +113,10 @@ class ApplyInverseImpl(ApplyInverseInterface):
         cls, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None
     ) -> Optional[torch.Tensor]:
 
-        if isinstance(module, (
-            GeometricAugmentationBase2D,
-            kornia.augmentation.container.ImageSequential,
-        )) and param is None:
+        if (
+            isinstance(module, (GeometricAugmentationBase2D, kornia.augmentation.container.ImageSequential))
+            and param is None
+        ):
             raise ValueError(f"Parameters of transformation matrix for {module} has not been computed.")
 
         if isinstance(module, GeometricAugmentationBase2D):
@@ -154,11 +139,7 @@ class InputApplyInverse(ApplyInverseImpl):
 
     @classmethod
     def apply_trans(  # type: ignore
-        cls,
-        input: TensorWithTransformMat,
-        label: Optional[torch.Tensor],
-        module: nn.Module,
-        param: ParamItem,
+        cls, input: TensorWithTransformMat, label: Optional[torch.Tensor], module: nn.Module, param: ParamItem
     ) -> Tuple[TensorWithTransformMat, Optional[torch.Tensor]]:
         """Apply a transformation with respect to the parameters.
 
@@ -217,6 +198,7 @@ class MaskApplyInverse(ApplyInverseImpl):
     @classmethod
     def make_input_only_sequential(cls, module: "kornia.augmentation.container.ImageSequential") -> Callable:
         """Disable all other additional inputs (e.g. ) for ImageSequential."""
+
         def f(*args, **kwargs):
             if_return_trans = module.return_transform
             if_return_label = module.return_label
@@ -226,6 +208,7 @@ class MaskApplyInverse(ApplyInverseImpl):
             module.return_transform = if_return_trans
             module.return_label = if_return_label
             return out
+
         return f
 
     @classmethod
@@ -261,9 +244,7 @@ class MaskApplyInverse(ApplyInverseImpl):
         return input, label
 
     @classmethod
-    def inverse(
-        cls, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None
-    ) -> torch.Tensor:
+    def inverse(cls, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None) -> torch.Tensor:
         """Inverse a transformation with respect to the parameters.
 
         Args:
@@ -288,24 +269,120 @@ class BBoxApplyInverse(ApplyInverseImpl):
     This is for transform boxes in the format (B, N, 4, 2).
     """
 
+    @classmethod
+    def _get_padding_size(cls, module: nn.Module, param: Optional[ParamItem]) -> Optional[torch.Tensor]:
+        if isinstance(module, RandomCrop):
+            _param = cast(Dict[str, torch.Tensor], param.data)  # type: ignore
+            return _param.get("padding_size")
+        return None
+
+    @classmethod
+    def pad(cls, input: torch.Tensor, padding_size: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            input: (B, N, 4, 2)
+            padding_size: (B, 4)
+        """
+        if len(input.shape) not in (3, 4,):
+            raise AssertionError(input.shape)
+        if len(padding_size.shape) != 2:
+            raise AssertionError(padding_size.shape)
+
+        _input = input.clone()
+
+        if input.dim() == 3:
+            # B,4,2 to B,1,4,2
+            _input = _input[:, None]
+
+        _input[..., 0] += padding_size[..., None, :1]  # left padding
+        _input[..., 1] += padding_size[..., None, 2:3]  # top padding
+
+        if input.dim() == 3:
+            _input = _input[:, 0]  # squeeze back
+
+        return _input
+
+    @classmethod
+    def unpad(cls, input: torch.Tensor, padding_size: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            input: (B, N, 4, 2)
+            padding_size: (B, 4)
+        """
+        if len(input.shape) not in (3, 4,):
+            raise AssertionError(input.shape)
+        if len(padding_size.shape) != 2:
+            raise AssertionError(padding_size.shape)
+
+        _input = input.clone()
+
+        if input.dim() == 3:
+            # B,4,2 to B,1,4,2
+            _input = _input[:, None]
+
+        _input[..., 0] -= padding_size[..., None, :1]  # left padding
+        _input[..., 1] -= padding_size[..., None, 2:3]  # top padding
+
+        if input.dim() == 3:
+            _input = _input[:, 0]  # squeeze back
+
+        return _input
+
     apply_func = partial(transform_bbox, mode="xyxy", restore_coordinates=True)
 
+    @classmethod
+    def apply_trans(
+        cls, input: torch.Tensor, label: Optional[torch.Tensor], module: nn.Module, param: ParamItem
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        """Apply a transformation with respect to the parameters.
 
-class BBoxXYXYApplyInverse(ApplyInverseImpl):
+        Args:
+            input: the input tensor, (B, N, 4, 2) or (B, 4, 2).
+            label: the optional label tensor.
+            module: any torch Module but only kornia augmentation modules will count
+                to apply transformations.
+            param: the corresponding parameters to the module.
+        """
+        _input = input.clone()
+
+        padding_size = cls._get_padding_size(module, param)
+        if padding_size is not None:
+            _input = cls.pad(_input, padding_size)
+
+        _input, label = super().apply_trans(_input, label, module, param)
+
+        # TODO: Filter/crop boxes outside crop (with negative or larger than crop size coords)?
+
+        return _input, label
+
+    @classmethod
+    def inverse(cls, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None) -> torch.Tensor:
+        """Inverse a transformation with respect to the parameters.
+
+        Args:
+            input: the input tensor.
+            module: any torch Module but only kornia augmentation modules will count
+                to apply transformations.
+            param: the corresponding parameters to the module.
+        """
+        _input = input.clone()
+
+        _input = super().inverse(_input, module, param)
+
+        padding_size = cls._get_padding_size(module, param)
+        if padding_size is not None:
+            _input = cls.unpad(_input, padding_size)
+
+        return _input
+
+
+class BBoxXYXYApplyInverse(BBoxApplyInverse):
     """Apply and inverse transformations for bounding box tensors.
 
     This is for transform boxes in the format [xmin, ymin, xmax, ymax].
     """
 
     apply_func = partial(transform_bbox, mode="xyxy", restore_coordinates=True)
-
-    @classmethod
-    def _get_padding_size(cls, module, param):
-        if isinstance(module, GeometricAugmentationBase2D):  # TODO: Or only RandomCrop?
-            _param = cast(Dict[str, torch.Tensor], param.data)  # type: ignore
-            return _param.get("padding_size")
-        else:
-            return None
 
     @classmethod
     def pad(cls, input, padding_size):
@@ -325,46 +402,13 @@ class BBoxXYXYApplyInverse(ApplyInverseImpl):
     def apply_trans(
         cls, input: torch.Tensor, label: Optional[torch.Tensor], module: nn.Module, param: ParamItem
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-        """Apply a transformation with respect to the parameters.
-
-        Args:
-            input: the input tensor.
-            label: the optional label tensor.
-            module: any torch Module but only kornia augmentation modules will count
-                to apply transformations.
-            param: the corresponding parameters to the module.
-        """
-        _input = input.clone()
-
-        padding_size = cls._get_padding_size(module, param)
-        if padding_size is not None:
-            _input = cls.pad(_input, padding_size)
-
-        _input, label = super().apply_trans(_input, label, module, param)
-
-        # TODO: Filter/crop boxes outside crop (with negative or larger than crop size coords)?
-
-        return _input, label
+        warnings.warn("BBoxXYXYApplyInverse is no longer maintained. Please use BBoxApplyInverse instead.")
+        return super().apply_trans(input, label=label, module=module, param=param)
 
     @classmethod
-    def inverse(
-        cls, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None
-    ) -> torch.Tensor:
-        """Inverse a transformation with respect to the parameters.
-
-        Args:
-            input: the input tensor.
-            module: any torch Module but only kornia augmentation modules will count
-                to apply transformations.
-            param: the corresponding parameters to the module.
-        """
-        inverse = super().inverse(input, module, param)
-
-        padding_size = cls._get_padding_size(module, param)
-        if padding_size is not None:
-            inverse = cls.unpad(inverse, padding_size)
-
-        return inverse
+    def inverse(cls, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None) -> torch.Tensor:
+        warnings.warn("BBoxXYXYApplyInverse is no longer maintained. Please use BBoxApplyInverse instead.")
+        return super().inverse(input, module=module, param=param)
 
 
 class BBoxXYWHApplyInverse(BBoxXYXYApplyInverse):
@@ -392,11 +436,59 @@ class BBoxXYWHApplyInverse(BBoxXYXYApplyInverse):
         return input
 
 
-class KeypointsApplyInverse(BBoxXYWHApplyInverse):
-    """Apply and inverse transformations for keypoints tensors."""
+class KeypointsApplyInverse(BBoxApplyInverse):
+    """Apply and inverse transformations for keypoints tensors.
+
+    This is for transform keypoints in the format (B, N, 2).
+    """
 
     # Hot fix for the typing mismatching
     apply_func = partial(transform_points)
+
+    @classmethod
+    def pad(cls, input: torch.Tensor, padding_size: torch.Tensor) -> torch.Tensor:
+
+        if len(input.shape) not in (2, 3,):
+            raise AssertionError(input.shape)
+        if len(padding_size.shape) != 2:
+            raise AssertionError(padding_size.shape)
+
+        _input = input.clone()
+
+        if input.dim() == 2:
+            # B,2 to B,1,2
+            _input = _input[:, None]
+
+        _input[..., 0] += padding_size[..., :1]  # left padding
+        _input[..., 1] += padding_size[..., 2:3]  # top padding
+
+        if input.dim() == 2:
+            _input = _input[:, 0]  # squeeze back
+
+        return _input
+
+    @classmethod
+    def unpad(cls, input: torch.Tensor, padding_size: torch.Tensor) -> torch.Tensor:
+
+        if len(input.shape) not in (2, 3,):
+            raise AssertionError(input.shape)
+        if len(padding_size.shape) != 2:
+            raise AssertionError(padding_size.shape)
+
+        _input = input.clone()
+
+        if input.dim() == 2:
+            # B,2 to B,1,2
+            _input = _input[:, None]
+
+        # unpad only xy, not wh
+        _input[..., 0] -= padding_size[..., :1]  # left padding
+        _input[..., 1] -= padding_size[..., 2:3]  # top padding
+
+        if input.dim() == 2:
+            _input = _input[:, 0]  # squeeze back
+
+        return _input
 
 
 class ApplyInverse:
@@ -406,7 +498,7 @@ class ApplyInverse:
     def _get_func_by_key(cls, dcate: Union[str, int, DataKey]) -> Type[ApplyInverseInterface]:
         if DataKey.get(dcate) == DataKey.INPUT:
             return InputApplyInverse
-        if DataKey.get(dcate) in [DataKey.MASK]:
+        if DataKey.get(dcate) == DataKey.MASK:
             return MaskApplyInverse
         if DataKey.get(dcate) in [DataKey.BBOX, DataKey.BBOX_XYXY, DataKey.BBOX_XYWH]:
             # We are converting to (B, 4, 2) internally for all formats.

@@ -5,17 +5,15 @@ import torch
 import torch.nn as nn
 
 import kornia
-from kornia.augmentation import RandomCrop
-from kornia.augmentation.base import (
-    _AugmentationBase,
+from kornia.augmentation import (
     GeometricAugmentationBase2D,
     IntensityAugmentationBase2D,
     MixAugmentationBase,
-    TensorWithTransformMat,
+    RandomCrop,
 )
-
-from .base import ParamItem, SequentialBase
-from .utils import ApplyInverseInterface, InputApplyInverse
+from kornia.augmentation.base import TensorWithTransformMat, _AugmentationBase
+from kornia.augmentation.container.base import ParamItem, SequentialBase
+from kornia.augmentation.container.utils import ApplyInverseInterface, InputApplyInverse
 
 __all__ = ["ImageSequential"]
 
@@ -97,7 +95,7 @@ class ImageSequential(SequentialBase):
         keepdim: Optional[bool] = None,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
         random_apply_weights: Optional[List[float]] = None,
-        if_unsupported_ops: str = "raise"
+        if_unsupported_ops: str = "raise",
     ) -> None:
         super().__init__(*args, same_on_batch=same_on_batch, return_transform=return_transform, keepdim=keepdim)
 
@@ -246,9 +244,7 @@ class ImageSequential(SequentialBase):
             # Implicitly indicating the label cannot be optional since there is a mix aug
         return output
 
-    def get_transformation_matrix(
-        self, input: torch.Tensor, params: Optional[List[ParamItem]] = None,
-    ) -> torch.Tensor:
+    def get_transformation_matrix(self, input: torch.Tensor, params: Optional[List[ParamItem]] = None) -> torch.Tensor:
         """Compute the transformation matrix according to the provided parameters."""
         if params is None:
             raise NotImplementedError("requires params to be provided.")
@@ -289,11 +285,7 @@ class ImageSequential(SequentialBase):
                 return False
         return True
 
-    def inverse(
-        self,
-        input: torch.Tensor,
-        params: Optional[List[ParamItem]] = None,
-    ) -> torch.Tensor:
+    def inverse(self, input: torch.Tensor, params: Optional[List[ParamItem]] = None) -> torch.Tensor:
         """Inverse transformation.
 
         Used to inverse a tensor according to the performed transformation by a forward pass, or with respect to

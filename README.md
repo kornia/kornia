@@ -135,3 +135,9 @@ We appreciate all contributions. If you are planning to contribute back bug-fixe
 - **GitHub Issues:** bug reports, feature requests, install issues, RFCs, thoughts, etc. [OPEN](https://github.com/kornia/kornia/issues/new/choose)
 - **Slack:** Join our workspace to keep in touch with our core contributors and be part of our community. [JOIN HERE](https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-CnydWe5fmvkcktIeRFGCEQ)
 - For general information, please visit our website at www.kornia.org
+
+<a href="https://github.com/Kornia/kornia/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=Kornia/kornia" width="75%" height="75%" />
+</a>
+
+Made with [contrib.rocks](https://contrib.rocks).

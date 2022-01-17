@@ -1,4 +1,10 @@
 from .adjust import (
+    AdjustBrightness,
+    AdjustContrast,
+    AdjustGamma,
+    AdjustHue,
+    AdjustSaturation,
+    Invert,
     adjust_brightness,
     adjust_contrast,
     adjust_gamma,
@@ -6,24 +12,18 @@ from .adjust import (
     adjust_hue_raw,
     adjust_saturation,
     adjust_saturation_raw,
-    AdjustBrightness,
-    AdjustContrast,
-    AdjustGamma,
-    AdjustHue,
-    AdjustSaturation,
     equalize,
     equalize3d,
     invert,
-    Invert,
     posterize,
     sharpness,
     solarize,
 )
-from .core import add_weighted, AddWeighted
+from .core import AddWeighted, add_weighted
 from .equalization import equalize_clahe
 from .histogram import histogram, histogram2d, image_histogram2d
-from .normalize import denormalize, Denormalize, normalize, Normalize, normalize_min_max
-from .zca import linear_transform, zca_mean, zca_whiten, ZCAWhitening
+from .normalize import Denormalize, Normalize, denormalize, normalize, normalize_min_max
+from .zca import ZCAWhitening, linear_transform, zca_mean, zca_whiten
 
 __all__ = [
     "adjust_brightness",

@@ -1,23 +1,24 @@
 import warnings
 from itertools import zip_longest
-from typing import Any, cast, List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union, cast
 
 import torch
 
-from kornia.augmentation.base import _AugmentationBase, GeometricAugmentationBase2D, IntensityAugmentationBase2D
+from kornia.augmentation import GeometricAugmentationBase2D, IntensityAugmentationBase2D
+from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.container.base import SequentialBase
+from kornia.augmentation.container.image import ImageSequential, ParamItem
+from kornia.augmentation.container.patch import PatchSequential
+from kornia.augmentation.container.utils import ApplyInverse
+from kornia.augmentation.container.video import VideoSequential
 from kornia.constants import DataKey
 from kornia.geometry.boxes import Boxes
-
-from .base import SequentialBase
-from .image import ImageSequential, ParamItem
-from .patch import PatchSequential
-from .utils import ApplyInverse
-from .video import VideoSequential
 
 __all__ = ["AugmentationSequential"]
 
 AugmentationSequentialInput = Union[
-    torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor, torch.Tensor], Tuple[List[torch.Tensor], torch.Tensor]]
+    torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor, torch.Tensor], Tuple[List[torch.Tensor], torch.Tensor]
+]
 
 
 class AugmentationSequential(ImageSequential):
@@ -180,11 +181,17 @@ class AugmentationSequential(ImageSequential):
         """
         if data_keys is None:
             data_keys = cast(List[Union[str, int, DataKey]], self.data_keys)
+
+        _data_keys: List[DataKey] = [DataKey.get(inp) for inp in data_keys]
+
         if len(args) != len(data_keys):
             raise AssertionError(
                 "The number of inputs must align with the number of data_keys, "
                 f"Got {len(args)} and {len(data_keys)}."
             )
+
+        args = self._arguments_preproc(*args, data_keys=_data_keys)
+
         if params is None:
             if self._params is None:
                 raise ValueError(
@@ -193,10 +200,15 @@ class AugmentationSequential(ImageSequential):
                 )
             params = self._params
 
-        outputs = []
-        for input, dcate in zip(args, data_keys):
-            if dcate == DataKey.INPUT and isinstance(input, (tuple, list)):
-                input, _ = input  # ignore the transformation matrix whilst inverse
+        outputs: List[torch.Tensor] = [None] * len(data_keys)  # type: ignore
+        for idx, (arg, dcate) in enumerate(zip(args, data_keys)):
+            if dcate == DataKey.INPUT and isinstance(arg, (tuple, list)):
+                input, _ = arg  # ignore the transformation matrix whilst inverse
+            # Using tensors straight-away
+            if isinstance(arg, (Boxes,)):
+                input = arg.data  # all boxes are in (B, N, 4, 2) format now.
+            else:
+                input = arg
             for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
                 if isinstance(module, (_AugmentationBase, ImageSequential)):
                     param = params[name] if name in params else param
@@ -219,7 +231,11 @@ class AugmentationSequential(ImageSequential):
                     raise ValueError(f"Unsupported Sequential {module}.")
                 else:
                     raise NotImplementedError(f"data_key {dcate} is not implemented for {module}.")
-            outputs.append(input)
+            if isinstance(arg, (Boxes,)):
+                arg._data = input
+                outputs[idx] = arg.to_tensor()
+            else:
+                outputs[idx] = input
 
         if len(outputs) == 1 and isinstance(outputs, (tuple, list)):
             return outputs[0]
@@ -281,10 +297,12 @@ class AugmentationSequential(ImageSequential):
         Tuple[List[AugmentationSequentialInput], Optional[torch.Tensor]],
     ]:
         """Compute multiple tensors simultaneously according to ``self.data_keys``."""
+        _data_keys: List[DataKey]
         if data_keys is None:
             _data_keys = self.data_keys
         else:
-            _data_keys = list(DataKey.get(inp) for inp in data_keys)
+            _data_keys = [DataKey.get(inp) for inp in data_keys]
+            self.data_keys = _data_keys
         self._validate_args_datakeys(*args, data_keys=_data_keys)
 
         args = self._arguments_preproc(*args, data_keys=_data_keys)
@@ -298,7 +316,7 @@ class AugmentationSequential(ImageSequential):
                     inp = _input[0]
                 else:
                     inp = _input
-                if isinstance(inp, (tuple, list,)):
+                if isinstance(inp, (tuple, list)):
                     raise ValueError(f"`INPUT` should be a tensor but `{type(inp)}` received.")
                 # A video input shall be BCDHW while an image input shall be BCHW
                 if self.contains_video_sequential:
@@ -347,7 +365,7 @@ class AugmentationSequential(ImageSequential):
                     input = input.view(batch_size, -1, *input.shape[1:])
                 elif isinstance(module, PatchSequential):
                     raise NotImplementedError("Geometric involved PatchSequential is not supported.")
-                elif isinstance(module, (GeometricAugmentationBase2D, ImageSequential,)) and dcate in DataKey:
+                elif isinstance(module, (GeometricAugmentationBase2D, ImageSequential)) and dcate in DataKey:
                     input, label = ApplyInverse.apply_by_key(input, label, module, param, dcate)
                 elif isinstance(module, (SequentialBase,)):
                     raise ValueError(f"Unsupported Sequential {module}.")
