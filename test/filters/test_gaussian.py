@@ -115,7 +115,7 @@ class TestGaussianBlur2d:
         assert_close(op(img, *new_params), op_module(img))
 
     def test_module_change_separable(self, device, dtype):
-        """Module should clear out unsused kernel when switching separable to non separable."""
+        """Module should clear out unused kernel when switching separable to non separable."""
         params = [(3, 3), (1.5, 1.5)]
         op = kornia.filters.gaussian_blur2d
         op_module = kornia.filters.GaussianBlur2d(*params, separable=True)
