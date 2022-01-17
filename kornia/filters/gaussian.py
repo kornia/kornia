@@ -100,6 +100,7 @@ class GaussianBlur2d(nn.Module):
     @property
     def kernel_size(self):
         self._kernel_size
+ 
     @kernel_size.setter
     def kernel_size(self, value:Tuple[int,int]):
         self._kernel_size = value
@@ -108,6 +109,7 @@ class GaussianBlur2d(nn.Module):
     @property
     def sigma(self):
         self._sigma
+ 
     @sigma.setter
     def sigma(self, value:Tuple[float,float]):
         self._sigma = value
@@ -116,6 +118,7 @@ class GaussianBlur2d(nn.Module):
     @property
     def separable(self):
         self._separable
+ 
     @separable.setter
     def separable(self, value:bool):
         self._separable = value
@@ -161,6 +164,5 @@ class GaussianBlur2d(nn.Module):
 
         if self._separable:
             out = filter2d_separable(input, self.kernel_x[None], self.kernel_y[None], self.border_type)
-        else:
             out = filter2d(input, self.kernel[None], self.border_type)
         return out
