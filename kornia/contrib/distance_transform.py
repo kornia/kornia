@@ -54,9 +54,10 @@ def distance_transform(
 
     # It is possible to avoid cloning the image if boundary = image, but this would require modifying the image tensor.
     boundary = image.clone()
+    kernel_padding: int = math.floor(kernel_size / 2)
 
     for i in range(n_iters):
-        cdt = F.conv2d(boundary, kernel, padding='same')
+        cdt = F.conv2d(boundary, kernel, padding=(kernel_padding, kernel_padding))
         cdt = -h * torch.log(cdt)
 
         # We are calculating log(0) above.
