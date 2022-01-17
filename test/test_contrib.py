@@ -387,11 +387,11 @@ class TestConvDistanceTransform:
 
     def test_module(self, device, dtype):
         B, C, H, W = 1, 1, 99, 100
-        input = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        input1 = torch.rand(B, C, H, W, device=device, dtype=dtype)
         distance_transformer = kornia.contrib.DistanceTransform().to(device, dtype)
 
-        output1 = distance_transformer(input)
-        output2 = kornia.contrib.distance_transform(input)
+        output1 = distance_transformer(input1)
+        output2 = kornia.contrib.distance_transform(input1)
         tol_val: float = utils._get_precision(device, dtype)
         assert_close(output1, output2, rtol=tol_val, atol=tol_val)
 
