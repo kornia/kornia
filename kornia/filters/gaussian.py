@@ -132,7 +132,8 @@ class GaussianBlur2d(nn.Module):
         """
         if clear_buffers:
             existing_buffers = [x[0] for x in self.named_buffers()]
-            [delattr(self, x) for x in existing_buffers]
+            for x in existing_buffers:
+                delattr(self, x)
 
         if self._separable:
             kernel_x: torch.Tensor = get_gaussian_kernel1d(self._kernel_size[1], self._sigma[1])
