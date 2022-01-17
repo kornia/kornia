@@ -163,6 +163,5 @@ class GaussianBlur2d(nn.Module):
     def forward(self, input: torch.Tensor) -> torch.Tensor:
 
         if self._separable:
-            out = filter2d_separable(input, self.kernel_x[None], self.kernel_y[None], self.border_type)
-            out = filter2d(input, self.kernel[None], self.border_type)
-        return out
+            return filter2d_separable(input, self.kernel_x[None], self.kernel_y[None], self.border_type)
+        return filter2d(input, self.kernel[None], self.border_type)
