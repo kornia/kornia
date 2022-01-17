@@ -2,8 +2,8 @@ import math
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
+from kornia.filters import filter2d
 from kornia.utils import create_meshgrid
 
 
@@ -48,16 +48,15 @@ def distance_transform(
 
     grid -= math.floor(kernel_size / 2)
     kernel = torch.hypot(grid[0, :, :, 0], grid[0, :, :, 1])
-    kernel = torch.exp(kernel / -h).unsqueeze(0).unsqueeze(0)
+    kernel = torch.exp(kernel / -h).unsqueeze(0)
 
     out = torch.zeros_like(image)
 
     # It is possible to avoid cloning the image if boundary = image, but this would require modifying the image tensor.
     boundary = image.clone()
-    kernel_padding: int = math.floor(kernel_size / 2)
 
     for i in range(n_iters):
-        cdt = F.conv2d(boundary, kernel, padding=(kernel_padding, kernel_padding))
+        cdt = filter2d(boundary, kernel, border_type='replicate')
         cdt = -h * torch.log(cdt)
 
         # We are calculating log(0) above.
