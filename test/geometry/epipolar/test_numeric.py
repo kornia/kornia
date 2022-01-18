@@ -20,6 +20,32 @@ class TestSkewSymmetric:
         cross_product_matrix = epi.cross_product_matrix(vec)
         assert cross_product_matrix.shape == (B, 3, 3)
 
+    @pytest.mark.parametrize("shapes", [(1, 1), (1, 5), (2, 1), (2, 5), (4, 1), (4, 5)])
+    def test_shapes(self, shapes, device, dtype):
+        for shape in shapes:
+            input_shape = shape + (3, )
+            output_shape = shape + (3, 3)
+            t = torch.rand(*input_shape, device=device, dtype=dtype)
+            cross_product_matrix = epi.cross_product_matrix(t)
+            assert cross_product_matrix.shape == output_shape
+
+    @pytest.mark.parametrize("shapes", [(1, 1), (1, 5), (2, 1), (2, 5), (4, 1), (4, 5)])
+    def test_funcional_shapes(self, shapes, device, dtype):
+        for shape in shapes:
+            input_shape = shape + (3, )
+            t = torch.rand(*input_shape, device=device, dtype=dtype)
+
+            # Feed batches
+            cross_product_matrices = []
+            for i in range(t.shape[1]):
+                cross_product_matrices.append(epi.cross_product_matrix(t[:, i, ...]))
+            cross_product_matrix_v1 = torch.stack(cross_product_matrices, dim=1)
+
+            # Feed one-shot
+            cross_product_matrix_v2 = epi.cross_product_matrix(t)
+
+            assert_close(cross_product_matrix_v1, cross_product_matrix_v2)
+
     def test_mean_std(self, device, dtype):
         vec = torch.tensor([[1.0, 2.0, 3.0]], device=device, dtype=dtype)
         cross_product_matrix = epi.cross_product_matrix(vec)
