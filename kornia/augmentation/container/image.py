@@ -218,6 +218,9 @@ class ImageSequential(SequentialBase):
             if isinstance(module, RandomCrop):
                 mod_param = module.forward_parameters_precrop(batch_shape)
                 param = ParamItem(name, mod_param)
+                cropped_batch_shape = list(batch_shape)
+                cropped_batch_shape[-2:] = module.flags['size']
+                batch_shape = torch.Size(cropped_batch_shape)
             elif isinstance(module, (_AugmentationBase, MixAugmentationBase)):
                 mod_param = module.forward_parameters(batch_shape)
                 param = ParamItem(name, mod_param)

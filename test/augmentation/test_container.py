@@ -300,6 +300,56 @@ class TestAugmentationSequential:
         assert_close(out_ver[1], expected_bbox_vertical_flip)
         assert_close(out_hor[1], expected_bbox_horizontal_flip)
 
+    def test_random_crops_and_flips(self, device, dtype):
+        width, height = 100, 100
+        crop_width, crop_height = 3, 3
+        input = torch.randn(3, 3, width, height, device=device, dtype=dtype)
+        bbox = torch.tensor(
+            [[[1.0, 1.0, 2.0, 2.0], [0.0, 0.0, 1.0, 2.0], [0.0, 0.0, 2.0, 1.0]]], device=device, dtype=dtype
+        ).expand(3, -1, -1)
+        aug = K.AugmentationSequential(
+            K.RandomCrop((crop_width, crop_height), padding=1, cropping_mode='resample', fill=0),
+            K.RandomHorizontalFlip(p=1.0),
+            data_keys=["input", "bbox_xyxy"],
+        )
+
+        reproducibility_test((input, bbox), aug)
+
+        _params = aug.forward_parameters(input.shape)
+        # specifying the crop locations allows us to compute by hand the expected outputs
+        crop_locations = torch.tensor(
+            [[1.0, 2.0], [1.0, 1.0], [2.0, 0.0]],
+            device=_params[0].data['src'].device, dtype=_params[0].data['src'].dtype,
+        )
+        crops = crop_locations.expand(4, -1, -1).permute(1, 0, 2).clone()
+        crops[:, 1:3, 0] += crop_width - 1
+        crops[:, 2:4, 1] += crop_height - 1
+        _params[0].data['src'] = crops
+
+        # expected output bboxes after crop for specified crop locations and crop size (3,3)
+        expected_out_bbox = torch.tensor(
+            [
+                [[1.0, 0.0, 2.0, 1.0], [0.0, -1.0, 1.0, 1.0], [0.0, -1.0, 2.0, 0.0]],
+                [[1.0, 1.0, 2.0, 2.0], [0.0, 0.0, 1.0, 2.0], [0.0, 0.0, 2.0, 1.0]],
+                [[0.0, 2.0, 1.0, 3.0], [-1.0, 1.0, 0.0, 3.0], [-1.0, 1.0, 1.0, 2.0]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        # horizontally flip boxes based on crop width
+        xmins = expected_out_bbox[..., 0].clone()
+        xmaxs = expected_out_bbox[..., 2].clone()
+        expected_out_bbox[..., 0] = crop_width - xmaxs
+        expected_out_bbox[..., 2] = crop_width - xmins
+
+        out = aug(input, bbox, params=_params)
+        assert out[1].shape == bbox.shape
+        assert_close(out[1], expected_out_bbox, atol=1e-4, rtol=1e-4)
+
+        out_inv = aug.inverse(*out)
+        assert out_inv[1].shape == bbox.shape
+        assert_close(out_inv[1], bbox, atol=1e-4, rtol=1e-4)
+
     def test_random_crops(self, device, dtype):
         input = torch.randn(3, 3, 3, 3, device=device, dtype=dtype)
         bbox = torch.tensor(
