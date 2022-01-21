@@ -45,13 +45,12 @@ def histogram_matching(source: torch.Tensor, template: torch.Tensor) -> torch.Te
 
 
 def interp(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor) -> torch.Tensor:
-    """One-dimensional linear interpolation for monotonically increasing sample
-    points.
+    """One-dimensional linear interpolation for monotonically increasing sample points.
 
     Returns the one-dimensional piecewise linear interpolant to a function with
     given discrete data points :math:`(xp, fp)`, evaluated at :math:`x`.
-    
-    This is confirmed to be a correct implementation. 
+
+    This is confirmed to be a correct implementation.
     See https://github.com/pytorch/pytorch/issues/1552#issuecomment-979998307
 
     Args:
