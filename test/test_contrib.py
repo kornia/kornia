@@ -427,9 +427,9 @@ class TestConvDistanceTransform:
             [1.0000000000, 0.0000000000, 1.0000000000, 2.0000000000],
             [1.4142135382, 1.0000000000, 1.4142135382, 2.2360680103],
             [2.2360680103, 2.0000000000, 2.2360680103, 2.8284270763]
-        ]]]).to(input1)
+        ]]], device=device, dtype=dtype)
         output1 = kornia.contrib.distance_transform(input1, kernel_size, h)
-        assert (expected_output1 == output1).all()
+        assert_close(expected_output1, output1)
 
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 1, 1, 32, 32
