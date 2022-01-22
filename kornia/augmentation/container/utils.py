@@ -84,6 +84,8 @@ class ApplyInverseImpl(ApplyInverseInterface):
         to_apply = None
         if isinstance(module, _AugmentationBase):
             to_apply = param.data['batch_prob']  # type: ignore
+        if isinstance(module, kornia.augmentation.container.ImageSequential):
+            to_apply = torch.ones(input.shape[0], device=input.device, dtype=input.dtype).bool()
 
         # If any inputs need to be transformed.
         if mat is not None and to_apply is not None and to_apply.sum() != 0:
@@ -136,6 +138,7 @@ class ApplyInverseImpl(ApplyInverseInterface):
 
 class InputApplyInverse(ApplyInverseImpl):
     """Apply and inverse transformations for (image) input tensors."""
+    data_key = DataKey.INPUT
 
     @classmethod
     def apply_trans(  # type: ignore
@@ -159,7 +162,10 @@ class InputApplyInverse(ApplyInverseImpl):
             temp2 = module.return_label
             module.apply_inverse_func = InputApplyInverse
             module.return_label = True
-            input, label = module(input, label=label, params=param.data)
+            if isinstance(module, kornia.augmentation.container.AugmentationSequential):
+                input, label = module(input, label=label, params=param.data, data_keys=[cls.data_key])
+            else:
+                input, label = module(input, label=label, params=param.data)
             module.apply_inverse_func = temp
             module.return_label = temp2
         else:
@@ -194,6 +200,7 @@ class InputApplyInverse(ApplyInverseImpl):
 
 class MaskApplyInverse(ApplyInverseImpl):
     """Apply and inverse transformations for mask tensors."""
+    data_key = DataKey.MASK
 
     @classmethod
     def make_input_only_sequential(cls, module: "kornia.augmentation.container.ImageSequential") -> Callable:
