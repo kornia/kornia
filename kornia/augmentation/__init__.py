@@ -1,3 +1,4 @@
+from kornia.augmentation import container
 from kornia.augmentation._2d import (
     CenterCrop,
     ColorJitter,
@@ -46,7 +47,6 @@ from kornia.augmentation._3d import (
     RandomVerticalFlip3D,
 )
 from kornia.augmentation._3d.base import AugmentationBase3D
-from kornia.augmentation import container
 from kornia.augmentation.container import AugmentationSequential, ImageSequential, PatchSequential, VideoSequential
 
 __all__ = [
