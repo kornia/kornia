@@ -1,8 +1,7 @@
-from typing import Any, Callable, Dict, List, Optional
-
 import inspect
 import re
 import sys
+from typing import Any, Callable, Dict, List, Optional
 
 
 class Registry:
