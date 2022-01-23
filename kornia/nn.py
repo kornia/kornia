@@ -19,7 +19,9 @@ def _register():
     _nn.register_modules_from_namespace(
         "kornia.augmentation", allowed_classes=[_torch.nn.Module], exclude_patterns=[".*Base.?D"])
     _nn.register_modules_from_namespace("kornia.color", allowed_classes=[_torch.nn.Module])
-    _nn.register_modules_from_namespace("kornia.enhance", allowed_classes=[_torch.nn.Module])
+    # Skip Normalize and Denormalize as the conflicts with augmentations
+    _nn.register_modules_from_namespace(
+        "kornia.enhance", allowed_classes=[_torch.nn.Module], exclude_patterns=[".*ormalize"])
     _nn.register_modules_from_namespace("kornia.filters", allowed_classes=[_torch.nn.Module])
     # Make every valid function accessible
     for k, v in _nn._module_dict.items():

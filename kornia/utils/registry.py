@@ -1,7 +1,8 @@
+from typing import Any, Callable, Dict, List, Optional
+
 import inspect
 import re
 import sys
-from typing import Any, List, Optional
 
 
 class Registry:
@@ -15,14 +16,14 @@ class Registry:
 
     def __init__(self, name: str) -> None:
         self._name = name
-        self._module_dict = dict()
-        self._children = dict()  # TODO: enable sub-namespaces.
+        self._module_dict: Dict[str, object] = dict()
+        # self._children = dict()  # TODO: enable sub-namespaces.
 
     def __len__(self) -> int:
         return len(self._module_dict)
 
-    def __contains__(self, key) -> bool:
-        return self.get(key) is not None
+    def __contains__(self, key: str) -> bool:
+        return self._module_dict.get(key) is not None
 
     def __repr__(self) -> str:
         format_str = self.__class__.__name__ + f'(name={self._name}, items={self._module_dict})'
@@ -41,12 +42,15 @@ class Registry:
         if module_name is None:
             module_name = module_class.__name__
 
+        if not force and module_name in self._module_dict:
+            raise RuntimeError(f"Module `{module_name}` existed. Found {self._module_dict.get(module_name)}.")
+
         self._module_dict[module_name] = module_class
         setattr(self, module_name, module_class)
 
     def register_module(
-        self, name: Optional[str] = None, force: Optional[bool] = False, module: Any = None
-    ) -> None:
+        self, name: Optional[str] = None, force: bool = False, module: Any = None
+    ) -> Callable:
         """Register a module.
 
         A record will be added to `self._module_dict` and as a class attribute,
@@ -75,7 +79,7 @@ class Registry:
             return module
 
         # use it as a decorator: @x.register_module()
-        def _register(cls):
+        def _register(cls: Any) -> Any:
             self._register_module(
                 module_class=cls, module_name=name, force=force)
             return cls
@@ -93,18 +97,18 @@ class Registry:
             allowed_classes: restrict  are allowed. Default: None.
             exclude_patterns: regex patterns for class names to exclude particular modules.
         """
-        def _predicate(module: Any):
+        def _predicate(module: Any) -> bool:
             if allowed_classes is not None:
                 return inspect.isclass(module) and issubclass(module, tuple(allowed_classes))
             return inspect.isclass(module)
 
         pattern = [re.compile(p) for p in exclude_patterns]
 
-        def _pattern_matching(name):
+        def _pattern_matching(name: str) -> bool:
             for p in pattern:
                 if p.match(name) is not None:
                     return True
             return False
 
         classes = inspect.getmembers(sys.modules[namespace], _predicate)
-        list(self.register_module(name=n, module=cls) for n, cls in classes if not _pattern_matching(n))
+        [self.register_module(name=n, module=cls) for n, cls in classes if not _pattern_matching(n)]
