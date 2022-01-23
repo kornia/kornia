@@ -88,6 +88,9 @@ class ObjectDetectionTrainer(Trainer):
 
     def compute_loss(self, *args: torch.Tensor) -> torch.Tensor:
         if self.loss_computed_by_model:
+            # Note: in case of dict losses obtained
+            if isinstance(args[0], dict):
+                return torch.stack([v for _, v in args[0].items()]).mean()
             return torch.stack(list(args[0])).sum()
         if self.criterion is None:
             raise RuntimeError("`criterion` should not be None if `loss_computed_by_model` is False.")
