@@ -1,4 +1,3 @@
-from kornia.augmentation import container
 from kornia.augmentation._2d import (
     CenterCrop,
     ColorJitter,
