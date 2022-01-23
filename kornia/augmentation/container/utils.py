@@ -17,7 +17,7 @@ from kornia.utils.helpers import _torch_inverse_cast
 
 
 def _get_geometric_only_param(
-    module: "kornia.augmentation.container.ImageSequential", param: List[ParamItem]
+    module: "kornia.augmentation.ImageSequential", param: List[ParamItem]
 ) -> List[ParamItem]:
     named_modules: Iterator[Tuple[str, nn.Module]] = module.get_forward_sequence(param)
 
@@ -84,6 +84,8 @@ class ApplyInverseImpl(ApplyInverseInterface):
         to_apply = None
         if isinstance(module, _AugmentationBase):
             to_apply = param.data['batch_prob']  # type: ignore
+        if isinstance(module, kornia.augmentation.ImageSequential):
+            to_apply = torch.ones(input.shape[0], device=input.device, dtype=input.dtype).bool()
 
         # If any inputs need to be transformed.
         if mat is not None and to_apply is not None and to_apply.sum() != 0:
@@ -114,7 +116,7 @@ class ApplyInverseImpl(ApplyInverseInterface):
     ) -> Optional[torch.Tensor]:
 
         if (
-            isinstance(module, (GeometricAugmentationBase2D, kornia.augmentation.container.ImageSequential))
+            isinstance(module, (GeometricAugmentationBase2D, kornia.augmentation.ImageSequential))
             and param is None
         ):
             raise ValueError(f"Parameters of transformation matrix for {module} has not been computed.")
@@ -122,7 +124,7 @@ class ApplyInverseImpl(ApplyInverseInterface):
         if isinstance(module, GeometricAugmentationBase2D):
             _param = cast(Dict[str, torch.Tensor], param.data)  # type: ignore
             mat = module.get_transformation_matrix(input, _param)
-        elif isinstance(module, kornia.augmentation.container.ImageSequential) and not module.is_intensity_only():
+        elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
             _param = cast(List[ParamItem], param.data)  # type: ignore
             mat = module.get_transformation_matrix(input, _param)  # type: ignore
         else:
@@ -136,6 +138,7 @@ class ApplyInverseImpl(ApplyInverseInterface):
 
 class InputApplyInverse(ApplyInverseImpl):
     """Apply and inverse transformations for (image) input tensors."""
+    data_key = DataKey.INPUT
 
     @classmethod
     def apply_trans(  # type: ignore
@@ -154,12 +157,15 @@ class InputApplyInverse(ApplyInverseImpl):
             input, label = module(input, label=label, params=param.data)
         elif isinstance(module, (_AugmentationBase,)):
             input = module(input, params=param.data)
-        elif isinstance(module, kornia.augmentation.container.ImageSequential):
+        elif isinstance(module, kornia.augmentation.ImageSequential):
             temp = module.apply_inverse_func
             temp2 = module.return_label
             module.apply_inverse_func = InputApplyInverse
             module.return_label = True
-            input, label = module(input, label=label, params=param.data)
+            if isinstance(module, kornia.augmentation.AugmentationSequential):
+                input, label = module(input, label=label, params=param.data, data_keys=[cls.data_key])
+            else:
+                input, label = module(input, label=label, params=param.data)
             module.apply_inverse_func = temp
             module.return_label = temp2
         else:
@@ -184,7 +190,7 @@ class InputApplyInverse(ApplyInverseImpl):
         """
         if isinstance(module, GeometricAugmentationBase2D):
             input = module.inverse(input, params=None if param is None else cast(Dict, param.data))
-        elif isinstance(module, kornia.augmentation.container.ImageSequential):
+        elif isinstance(module, kornia.augmentation.ImageSequential):
             temp = module.apply_inverse_func
             module.apply_inverse_func = InputApplyInverse
             input = module.inverse(input, params=None if param is None else cast(List, param.data))
@@ -194,9 +200,10 @@ class InputApplyInverse(ApplyInverseImpl):
 
 class MaskApplyInverse(ApplyInverseImpl):
     """Apply and inverse transformations for mask tensors."""
+    data_key = DataKey.MASK
 
     @classmethod
-    def make_input_only_sequential(cls, module: "kornia.augmentation.container.ImageSequential") -> Callable:
+    def make_input_only_sequential(cls, module: "kornia.augmentation.ImageSequential") -> Callable:
         """Disable all other additional inputs (e.g. ) for ImageSequential."""
 
         def f(*args, **kwargs):
@@ -232,7 +239,7 @@ class MaskApplyInverse(ApplyInverseImpl):
         if isinstance(module, GeometricAugmentationBase2D):
             _param = cast(Dict[str, torch.Tensor], _param)
             input = module(input, params=_param, return_transform=False)
-        elif isinstance(module, kornia.augmentation.container.ImageSequential) and not module.is_intensity_only():
+        elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
             _param = cast(List[ParamItem], _param)
             temp = module.apply_inverse_func
             module.apply_inverse_func = MaskApplyInverse
@@ -255,7 +262,7 @@ class MaskApplyInverse(ApplyInverseImpl):
         """
         if isinstance(module, GeometricAugmentationBase2D):
             input = module.inverse(input, params=None if param is None else cast(Dict, param.data))
-        elif isinstance(module, kornia.augmentation.container.ImageSequential):
+        elif isinstance(module, kornia.augmentation.ImageSequential):
             temp = module.apply_inverse_func
             module.apply_inverse_func = MaskApplyInverse
             input = module.inverse(input, params=None if param is None else cast(List, param.data))
