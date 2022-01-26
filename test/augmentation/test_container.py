@@ -350,6 +350,18 @@ class TestAugmentationSequential:
         assert out_inv[1].shape == bbox.shape
         assert_close(out_inv[1], bbox, atol=1e-4, rtol=1e-4)
 
+    def test_random_erasing(self, device, dtype):
+        fill_value = 0.5
+        input = torch.randn(3, 3, 100, 100, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(
+            K.RandomErasing(p=1., value=fill_value), data_keys=["input", "mask"],
+        )
+
+        reproducibility_test((input, input), aug)
+
+        out = aug(input, input)
+        assert torch.all(out[1][out[0] == fill_value] == 0.)
+
     def test_random_crops(self, device, dtype):
         input = torch.randn(3, 3, 3, 3, device=device, dtype=dtype)
         bbox = torch.tensor(
