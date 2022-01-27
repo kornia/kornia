@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - fix catch type for torch.svd error (#1431)
 - Fix for nested AugmentationSequential containers (#1467)
 - Use common bbox format xywh (#1472)
+- Fix motion blur kernel size bug for larger random generator ranges (#1540)
 
 ### :exclamation: Changes
 - Add padding_mode for RandomElasticTransform augmentation (#1439)
