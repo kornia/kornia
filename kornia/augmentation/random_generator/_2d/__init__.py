@@ -10,3 +10,4 @@ from kornia.augmentation.random_generator._2d.plain_uniform import *
 from kornia.augmentation.random_generator._2d.posterize import *
 from kornia.augmentation.random_generator._2d.probability import *
 from kornia.augmentation.random_generator._2d.rectangle_earase import *
+from kornia.augmentation.random_generator._2d.resize import *

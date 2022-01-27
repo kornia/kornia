@@ -28,6 +28,7 @@ from kornia.augmentation._2d import (
     RandomSolarize,
     RandomThinPlateSpline,
     RandomVerticalFlip,
+    Resize,
 )
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
