@@ -21,12 +21,13 @@ class TestRandomMotionBlur:
         )
         assert str(f) == repr
 
+    @pytest.mark.parametrize("kernel_size", [(3, 5), (7, 21)])
     @pytest.mark.parametrize("same_on_batch", [True, False])
     @pytest.mark.parametrize("return_transform", [True, False])
     @pytest.mark.parametrize("p", [0.0, 1.0])
-    def test_random_motion_blur(self, same_on_batch, return_transform, p, device, dtype):
+    def test_random_motion_blur(self, kernel_size, same_on_batch, return_transform, p, device, dtype):
         f = RandomMotionBlur(
-            kernel_size=(3, 5),
+            kernel_size=kernel_size,
             angle=(10, 30),
             direction=0.5,
             same_on_batch=same_on_batch,
