@@ -19,6 +19,10 @@ class Resize(GeometricAugmentationBase2D):
         Which side to resize, if size is only of type int.
     resample : Union[str, int, Resample], optional
         Resampling mode.
+    cropping_mode: The used algorithm to crop. ``slice`` will use advanced slicing to extract the tensor based
+                    on the sampled indices. ``resample`` will use `warp_affine` using the affine transformation
+                    to extract and resize at once. Use `slice` for efficiency, or `resample` for proper
+                    differentiability.
     """
 
     def __init__(
