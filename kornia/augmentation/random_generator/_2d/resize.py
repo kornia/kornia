@@ -32,8 +32,8 @@ class ResizeGenerator(RandomGeneratorBase):
         super().__init__()
         self.resize_to = resize_to
         self.side = side
-        self.device = None
-        self.dtype = None
+        self.device: torch.device = None
+        self.dtype: torch.dtype = None
 
     def __repr__(self) -> str:
         repr = f"resize_to={self.resize_to}"
