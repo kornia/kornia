@@ -292,6 +292,7 @@ class BBoxApplyInverse(ApplyInverseImpl):
         """
         if len(input.shape) not in (3, 4,):
             raise AssertionError(input.shape)
+
         if len(padding_size.shape) != 2:
             raise AssertionError(padding_size.shape)
 
@@ -318,6 +319,7 @@ class BBoxApplyInverse(ApplyInverseImpl):
         """
         if len(input.shape) not in (3, 4,):
             raise AssertionError(input.shape)
+
         if len(padding_size.shape) != 2:
             raise AssertionError(padding_size.shape)
 
@@ -354,7 +356,7 @@ class BBoxApplyInverse(ApplyInverseImpl):
 
         padding_size = cls._get_padding_size(module, param)
         if padding_size is not None:
-            _input = cls.pad(_input, padding_size)
+            _input = cls.pad(_input, padding_size.to(_input))
 
         _input, label = super().apply_trans(_input, label, module, param)
 
@@ -378,7 +380,7 @@ class BBoxApplyInverse(ApplyInverseImpl):
 
         padding_size = cls._get_padding_size(module, param)
         if padding_size is not None:
-            _input = cls.unpad(_input, padding_size)
+            _input = cls.unpad(_input, padding_size.to(input))
 
         return _input
 
@@ -393,16 +395,18 @@ class BBoxXYXYApplyInverse(BBoxApplyInverse):
 
     @classmethod
     def pad(cls, input, padding_size):
-        for i in range(len(padding_size)):
-            input[i, :, 0::2] += padding_size[i][0]  # left padding
-            input[i, :, 1::2] += padding_size[i][2]  # top padding
+        _padding_size = padding_size.to(input)
+        for i in range(len(_padding_size)):
+            input[i, :, 0::2] += _padding_size[i][0]  # left padding
+            input[i, :, 1::2] += _padding_size[i][2]  # top padding
         return input
 
     @classmethod
     def unpad(cls, input, padding_size):
-        for i in range(len(padding_size)):
-            input[i, :, 0::2] -= padding_size[i][0]  # left padding
-            input[i, :, 1::2] -= padding_size[i][2]  # top padding
+        _padding_size = padding_size.to(input)
+        for i in range(len(_padding_size)):
+            input[i, :, 0::2] -= _padding_size[i][0]  # left padding
+            input[i, :, 1::2] -= _padding_size[i][2]  # top padding
         return input
 
     @classmethod
@@ -428,18 +432,20 @@ class BBoxXYWHApplyInverse(BBoxXYXYApplyInverse):
 
     @classmethod
     def pad(cls, input, padding_size):
+        _padding_size = padding_size.to(input)
         # pad only xy, not wh
-        for i in range(len(padding_size)):
-            input[i, :, 0] += padding_size[i][0]  # left padding
-            input[i, :, 1] += padding_size[i][2]  # top padding
+        for i in range(len(_padding_size)):
+            input[i, :, 0] += _padding_size[i][0]  # left padding
+            input[i, :, 1] += _padding_size[i][2]  # top padding
         return input
 
     @classmethod
     def unpad(cls, input, padding_size):
+        _padding_size = padding_size.to(input)
         # unpad only xy, not wh
-        for i in range(len(padding_size)):
-            input[i, :, 0] -= padding_size[i][0]  # left padding
-            input[i, :, 1] -= padding_size[i][2]  # top padding
+        for i in range(len(_padding_size)):
+            input[i, :, 0] -= _padding_size[i][0]  # left padding
+            input[i, :, 1] -= _padding_size[i][2]  # top padding
         return input
 
 
@@ -457,6 +463,7 @@ class KeypointsApplyInverse(BBoxApplyInverse):
 
         if len(input.shape) not in (2, 3,):
             raise AssertionError(input.shape)
+
         if len(padding_size.shape) != 2:
             raise AssertionError(padding_size.shape)
 
