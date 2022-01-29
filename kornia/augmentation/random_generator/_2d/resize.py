@@ -12,11 +12,11 @@ class ResizeGenerator(RandomGeneratorBase):
     r"""Get parameters for ```resize``` transformation for resize transform.
 
     Args:
-        resize_to (tuple): Desired output size of the crop, like (h, w).
-        side (str): Which side to resize if `resize_to` is only of type int.
+        resize_to: Desired output size of the crop, like (h, w).
+        side: Which side to resize if `resize_to` is only of type int.
 
     Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+        parameters to be passed for transformation.
             - src (torch.Tensor): cropping bounding boxes with a shape of (B, 4, 2).
             - dst (torch.Tensor): output bounding boxes with a shape (B, 4, 2).
             - input_size (torch.Tensor): (h, w) from batch input.
@@ -32,6 +32,8 @@ class ResizeGenerator(RandomGeneratorBase):
         super().__init__()
         self.resize_to = resize_to
         self.side = side
+        self.device = None
+        self.dtype = None
 
     def __repr__(self) -> str:
         repr = f"resize_to={self.resize_to}"
