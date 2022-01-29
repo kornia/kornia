@@ -2,6 +2,7 @@ from kornia.augmentation._2d import (
     CenterCrop,
     ColorJitter,
     Denormalize,
+    LongestMaxSize,
     Normalize,
     PadTo,
     RandomAffine,
@@ -29,6 +30,7 @@ from kornia.augmentation._2d import (
     RandomThinPlateSpline,
     RandomVerticalFlip,
     Resize,
+    SmallestMaxSize,
 )
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
@@ -58,6 +60,7 @@ __all__ = [
     "ColorJitter",
     "Normalize",
     "Denormalize",
+    "LongestMaxSize",
     "PadTo",
     "RandomAffine",
     "RandomBoxBlur",
@@ -83,6 +86,8 @@ __all__ = [
     "RandomThinPlateSpline",
     "RandomMixUp",
     "RandomCutMix",
+    "Resize",
+    "SmallestMaxSize",
     "AugmentationBase3D",
     "CenterCrop3D",
     "RandomAffine3D",
