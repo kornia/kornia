@@ -25,6 +25,7 @@ from kornia.augmentation import (
     RandomGrayscale,
     RandomHorizontalFlip,
     RandomInvert,
+    RandomPosterize,
     RandomResizedCrop,
     RandomRotation,
     RandomThinPlateSpline,
@@ -2780,3 +2781,10 @@ class TestPadTo:
         out = aug(img)
         assert out.shape == (1, 1, 4, 5)
         assert (aug.inverse(out) == img).all()
+
+class TestRandomPosterize:
+    def test_smoke(self, device, dtype):
+        img = torch.rand(1, 1, 4, 5, device=device, dtype=dtype)
+        aug = RandomPosterize(bits=6, p=1.0).to(device)
+        out = aug(img)
+        assert out.shape == (1, 1, 4, 5)
