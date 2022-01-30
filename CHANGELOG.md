@@ -5,20 +5,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ****
-## :rocket: [0.X.X] - 2022-XX-XX
+## :rocket: [0.6.3] - 2022-01-30
 ### :new:  New Features
-- Devcontainer (#1515)
-- Resize augmentation (#1545)
+- Update CI to pytorch 1.10.1 (#1518)
+- Added Hanning kernel, prepare for KCF tracking (#1519)
+- Add distance transform implementation (#1490)
+- Add Resize augmentation module (#1545)
 
 ### :lady_beetle:  Bug fixes
-
+- Precompute padding parameters when RandomCrop aug in container (#1494)
+- Padding error with RandomCrop #1520
+- Fix correct shape after cropping when forwarding parameters (#1533)
+- Fixed #1534 nested augmentation sequential bug (#1536)
+- Fixes to device in augmentations (#1546)
+- Bugfix for larger MotionBlur kernel size ranges (#1543)
 
 ### :exclamation: Changes
 - Restructure augmentation package (#1515)
 
 ### :zap:  Improvements
-
-
+- Add missing keepdims with fixed type (#1488)
+- Allow to pass a second K to distort and undistort points (#1506)
+- Augmentation Sequential with a list of bboxes as a batch (#1497)
+- Adde Devcontainer for development (#1515)
+- Improve the histogram_matching function (#1532)
 
 ## :rocket: [0.6.2] - 2021-12-03
 ### :new:  New Features
