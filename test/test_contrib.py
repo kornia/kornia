@@ -371,6 +371,72 @@ class TestImageStitcher:
             stitcher(input1, input2)
 
 
+class TestConvDistanceTransform:
+    @pytest.mark.parametrize("kernel_size", [3, 5, 7])
+    def test_smoke(self, kernel_size, device, dtype):
+        input1 = torch.rand(1, 3, 100, 100, device=device, dtype=dtype)
+        input2 = torch.rand(1, 1, 100, 100, device=device, dtype=dtype)
+        distance_transformer = kornia.contrib.DistanceTransform(kernel_size)
+
+        output1 = distance_transformer(input1)
+        output2 = kornia.contrib.distance_transform(input2, kernel_size)
+
+        assert isinstance(output1, torch.Tensor)
+        assert isinstance(output2, torch.Tensor)
+        assert output1.shape == input1.shape
+
+    def test_module(self, device, dtype):
+        B, C, H, W = 1, 1, 99, 100
+        input1 = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        distance_transformer = kornia.contrib.DistanceTransform().to(device, dtype)
+
+        output1 = distance_transformer(input1)
+        output2 = kornia.contrib.distance_transform(input1)
+        tol_val: float = utils._get_precision(device, dtype)
+        assert_close(output1, output2, rtol=tol_val, atol=tol_val)
+
+    def test_exception(self, device, dtype):
+        B, C, H, W = 1, 1, 224, 224
+        input1 = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        input2 = torch.rand(C, H, W, device=device, dtype=dtype)
+
+        # Non-odd kernel size
+        with pytest.raises(ValueError):
+            ConvDT = kornia.contrib.DistanceTransform(6)
+            ConvDT.forward(input1)
+
+        with pytest.raises(ValueError):
+            kornia.contrib.distance_transform(input1, 4)
+
+        # Invalid input dimensions
+        with pytest.raises(ValueError):
+            kornia.contrib.distance_transform(input2)
+
+        # Invalid input type
+        with pytest.raises(TypeError):
+            kornia.contrib.distance_transform(None)
+
+    def test_value(self, device, dtype):
+        B, C, H, W = 1, 1, 4, 4
+        kernel_size = 7
+        h = 0.35
+        input1 = torch.zeros(B, C, H, W, device=device, dtype=dtype)
+        input1[:, :, 1, 1] = 1.0
+        expected_output1 = torch.tensor([[[
+            [1.4142135382, 1.0000000000, 1.4142135382, 2.2360680103],
+            [1.0000000000, 0.0000000000, 1.0000000000, 2.0000000000],
+            [1.4142135382, 1.0000000000, 1.4142135382, 2.2360680103],
+            [2.2360680103, 2.0000000000, 2.2360680103, 2.8284270763]
+        ]]], device=device, dtype=dtype)
+        output1 = kornia.contrib.distance_transform(input1, kernel_size, h)
+        assert_close(expected_output1, output1)
+
+    def test_gradcheck(self, device, dtype):
+        B, C, H, W = 1, 1, 32, 32
+        input1 = torch.ones(B, C, H, W, device=device, dtype=dtype, requires_grad=True)
+        assert gradcheck(kornia.contrib.distance_transform, (input1), raise_exception=True)
+
+
 class TestHistMatch:
     def test_interp(self, device, dtype):
         xp = torch.tensor([1, 2, 3], device=device, dtype=dtype)

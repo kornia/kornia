@@ -11,6 +11,7 @@ from kornia.augmentation import (
     CenterCrop,
     ColorJitter,
     Denormalize,
+    LongestMaxSize,
     Normalize,
     PadTo,
     RandomBoxBlur,
@@ -25,10 +26,13 @@ from kornia.augmentation import (
     RandomGrayscale,
     RandomHorizontalFlip,
     RandomInvert,
+    RandomPosterize,
     RandomResizedCrop,
     RandomRotation,
     RandomThinPlateSpline,
     RandomVerticalFlip,
+    Resize,
+    SmallestMaxSize,
 )
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import Resample, pi
@@ -2780,3 +2784,35 @@ class TestPadTo:
         out = aug(img)
         assert out.shape == (1, 1, 4, 5)
         assert (aug.inverse(out) == img).all()
+
+
+class TestResize:
+    def test_smoke(self, device, dtype):
+        img = torch.rand(1, 1, 4, 6, device=device, dtype=dtype)
+        aug = Resize(size=(4, 5))
+        out = aug(img)
+        assert out.shape == (1, 1, 4, 5)
+
+
+class TestSmallestMaxSize:
+    def test_smoke(self, device, dtype):
+        img = torch.rand(1, 1, 4, 6, device=device, dtype=dtype)
+        aug = SmallestMaxSize(max_size=2)
+        out = aug(img)
+        assert out.shape == (1, 1, 2, 3)
+
+
+class TestLongestMaxSize:
+    def test_smoke(self, device, dtype):
+        img = torch.rand(1, 1, 4, 6, device=device, dtype=dtype)
+        aug = LongestMaxSize(max_size=3)
+        out = aug(img)
+        assert out.shape == (1, 1, 2, 3)
+
+
+class TestRandomPosterize:
+    def test_smoke(self, device, dtype):
+        img = torch.rand(1, 1, 4, 5, device=device, dtype=dtype)
+        aug = RandomPosterize(bits=6, p=1.0).to(device)
+        out = aug(img)
+        assert out.shape == (1, 1, 4, 5)
