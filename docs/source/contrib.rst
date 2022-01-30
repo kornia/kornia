@@ -48,7 +48,7 @@ Lambda
 .. autoclass:: Lambda
 
 Distance Transform
-------
+------------------
 
 .. autofunction:: distance_transform
 
