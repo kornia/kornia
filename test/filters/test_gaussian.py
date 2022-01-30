@@ -96,6 +96,14 @@ class TestGaussianBlur2d:
         img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
         assert_close(op(img, *params), op_module(img))
 
+    def test_module_jit(self, device, dtype):
+        params = [(3, 3), (1.5, 1.5)]
+        op_module = kornia.filters.GaussianBlur2d(*params)
+        op_script = torch.jit.script(op_module)
+
+        img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
+        assert_close(op_module(img), op_script(img))
+
     def test_module_change_param(self, device, dtype):
         """Module should reflect changes to properties."""
         orig_params = [(3, 3), (1.5, 1.5)]
