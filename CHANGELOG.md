@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## :rocket: [0.X.X] - 2022-XX-XX
 ### :new:  New Features
 - Devcontainer (#1515)
+- Resize augmentation (#1545)
 
 ### :lady_beetle:  Bug fixes
 
