@@ -42,13 +42,14 @@ class MS_SSIM_L1Loss(nn.Module):
         >>> input1 = torch.rand(1, 3, 5, 5)
         >>> input2 = torch.rand(1, 3, 5, 5)
         >>> criterion = kornia.losses.MS_SSIM_L1Loss()
-        >>> loss = criterion(input1.cuda(0), input2.cuda(0))
+        >>> loss = criterion(input1.cuda(0), input2.cuda(0)) # GPU
+        >>> loss = criterion(input1, input2, gpu_idx=-1) # CPU
     """
 
     def __init__(self,
                  sigmas: list = [0.5, 1.0, 2.0, 4.0, 8.0],
                  data_range: float = 1.0,
-                 K: tuple[float, float] = (0.01, 0.03),
+                 K: list = [0.01, 0.03],
                  alpha: float = 0.025,
                  compensation: float = 200.0) -> None:
         super().__init__()
@@ -69,7 +70,7 @@ class MS_SSIM_L1Loss(nn.Module):
             g_masks[3 * idx + 1, 0, :, :] = self._fspecial_gauss_2d(filter_size, sigma)
             g_masks[3 * idx + 2, 0, :, :] = self._fspecial_gauss_2d(filter_size, sigma)
 
-        self.g_masks = g_masks.cuda(0)
+        self.g_masks = g_masks
 
     def _fspecial_gauss_1d(self, size, sigma):
         """Create 1-D gauss kernel
@@ -96,16 +97,21 @@ class MS_SSIM_L1Loss(nn.Module):
         gaussian_vec = self._fspecial_gauss_1d(size, sigma)
         return torch.outer(gaussian_vec, gaussian_vec)
 
-    def forward(self, yhat: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    def forward(self, yhat: torch.Tensor, y: torch.Tensor, gpu_idx: int = 0) -> torch.Tensor:
         """Compute MS-SSIM_L1 loss.
 
         Args:
             yhat: the predicted image with shape :math:`(B, C, H, W)`.
             y: the target image with a shape of :math:`(B, C, H, W)`.
+            gpu_idx: use -1 for CPU.
 
         Returns:
             Estimated MS-SSIM_L1 loss.
         """
+
+        if gpu_idx >= 0:
+            self.g_masks = self.g_masks.cuda(gpu_idx)
+
         b, c, h, w = yhat.shape
         mux = F.conv2d(yhat, self.g_masks, groups=3, padding=self.pad)
         muy = F.conv2d(y, self.g_masks, groups=3, padding=self.pad)
