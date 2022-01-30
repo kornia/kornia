@@ -43,7 +43,8 @@ class Resize(GeometricAugmentationBase2D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         B, C, _, _ = input.shape
-        out = torch.empty(B, C, *params["resize_to"], device=input.device, dtype=input.dtype)
+        out_size = tuple(params["resize_to"].tolist())
+        out = torch.empty(B, C, *out_size, device=input.device, dtype=input.dtype)
         for i in range(B):
             x1 = int(params["src"][i, 0, 0])
             x2 = int(params["src"][i, 1, 0]) + 1
@@ -51,7 +52,7 @@ class Resize(GeometricAugmentationBase2D):
             y2 = int(params["src"][i, 3, 1]) + 1
             out[i] = resize(
                 input[i : i + 1, :, y1:y2, x1:x2],
-                params["resize_to"],
+                out_size,
                 interpolation=(self.flags["resample"].name).lower(),
                 align_corners=self.flags["align_corners"],
             )

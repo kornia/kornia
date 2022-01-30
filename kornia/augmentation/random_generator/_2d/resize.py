@@ -1,4 +1,4 @@
-from typing import Dict, Tuple, Union
+from typing import Dict, Optional, Tuple, Union
 
 import torch
 
@@ -32,8 +32,8 @@ class ResizeGenerator(RandomGeneratorBase):
         super().__init__()
         self.resize_to = resize_to
         self.side = side
-        self.device: torch.device = None
-        self.dtype: torch.dtype = None
+        self.device: Optional[torch.device] = None
+        self.dtype: Optional[torch.dtype] = None
 
     def __repr__(self) -> str:
         repr = f"resize_to={self.resize_to}"
@@ -44,7 +44,7 @@ class ResizeGenerator(RandomGeneratorBase):
         self.dtype = dtype
         pass
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device = self.device
@@ -87,4 +87,4 @@ class ResizeGenerator(RandomGeneratorBase):
 
         _input_size = torch.tensor(input_size, device=_device, dtype=torch.long).expand(batch_size, -1)
 
-        return dict(src=src, dst=dst, input_size=_input_size, resize_to=tuple(self.resize_to))
+        return dict(src=src, dst=dst, input_size=_input_size, resize_to=torch.as_tensor(self.resize_to))
