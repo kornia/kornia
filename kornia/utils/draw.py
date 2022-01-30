@@ -5,12 +5,7 @@ import torch
 # TODO: implement width of the line
 
 
-def _draw_pixel(
-    image: torch.Tensor,
-    x: int,
-    y: int,
-    color: torch.Tensor,
-) -> None:
+def _draw_pixel(image: torch.Tensor, x: int, y: int, color: torch.Tensor) -> None:
     r"""Draws a pixel into an image.
 
     Args:
@@ -25,12 +20,7 @@ def _draw_pixel(
     image[:, y, x] = color
 
 
-def draw_line(
-    image: torch.Tensor,
-    p1: torch.Tensor,
-    p2: torch.Tensor,
-    color: torch.Tensor,
-) -> torch.Tensor:
+def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: torch.Tensor) -> torch.Tensor:
     r"""Draw a single line into an image.
 
     Args:
@@ -43,16 +33,16 @@ def draw_line(
         the image with containing the line.
 
     Examples:
-    >>> image = torch.zeros(1, 8, 8)
-    >>> draw_line(image, torch.tensor([6, 4]), torch.tensor([1, 4]), torch.tensor([255]))
-    tensor([[[  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.],
-             [  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.],
-             [  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.],
-             [  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.],
-             [  0., 255., 255., 255., 255., 255., 255.,   0.],
-             [  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.],
-             [  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.],
-             [  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.]]])
+        >>> image = torch.zeros(1, 8, 8)
+        >>> draw_line(image, torch.tensor([6, 4]), torch.tensor([1, 4]), torch.tensor([255]))
+        tensor([[[  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.],
+                 [  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.],
+                 [  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.],
+                 [  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.],
+                 [  0., 255., 255., 255., 255., 255., 255.,   0.],
+                 [  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.],
+                 [  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.],
+                 [  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.]]])
     """
 
     if (len(p1) != 2) or (len(p2) != 2):
@@ -61,7 +51,7 @@ def draw_line(
     if len(image.size()) != 3:
         raise ValueError("image must have 3 dimensions (C,H,W).")
 
-    if (color.size(0) != image.size(0)):
+    if color.size(0) != image.size(0):
         raise ValueError("color must have the same number of channels as the image.")
 
     if (p1[0] >= image.size(2)) or (p1[1] >= image.size(1) or (p1[0] < 0) or (p1[1] < 0)):
@@ -84,14 +74,14 @@ def draw_line(
     C = x2 * y1 - x1 * y2
 
     # make sure A is positive to utilize the functiom properly
-    if (A < 0):
+    if A < 0:
         A = -A
         B = -B
         C = -C
 
     # calculate the slope of the line
     # check for division by zero
-    if (B != 0):
+    if B != 0:
         m = -A / B
 
     # make sure you start drawing in the right direction
@@ -104,10 +94,10 @@ def draw_line(
 
     # vertical line
     if B == 0:
-        image[:, y1:y2 + 1, x1] = color
+        image[:, y1 : y2 + 1, x1] = color
     # horizontal line
     elif A == 0:
-        image[:, y1, x1:x2 + 1] = color
+        image[:, y1, x1 : x2 + 1] = color
     # slope between 0 and 1
     elif 0 < m < 1:
         for i in range(x1, x2 + 1):
@@ -137,10 +127,7 @@ def draw_line(
 
 
 def draw_rectangle(
-    image: torch.Tensor,
-    rectangle: torch.Tensor,
-    color: Optional[torch.Tensor] = None,
-    fill: Optional[bool] = None,
+    image: torch.Tensor, rectangle: torch.Tensor, color: Optional[torch.Tensor] = None, fill: Optional[bool] = None
 ) -> torch.Tensor:
     r"""Draw N rectangles on a batch of image tensors.
 
@@ -197,20 +184,20 @@ def draw_rectangle(
                 image[
                     b,
                     :,
-                    int(rectangle[b, n, 1]): int(rectangle[b, n, 3] + 1),
-                    int(rectangle[b, n, 0]): int(rectangle[b, n, 2] + 1),
+                    int(rectangle[b, n, 1]) : int(rectangle[b, n, 3] + 1),
+                    int(rectangle[b, n, 0]) : int(rectangle[b, n, 2] + 1),
                 ] = color[b, n, :, None, None]
             else:
-                image[b, :, int(rectangle[b, n, 1]): int(rectangle[b, n, 3] + 1), rectangle[b, n, 0]] = color[
+                image[b, :, int(rectangle[b, n, 1]) : int(rectangle[b, n, 3] + 1), rectangle[b, n, 0]] = color[
                     b, n, :, None
                 ]
-                image[b, :, int(rectangle[b, n, 1]): int(rectangle[b, n, 3] + 1), rectangle[b, n, 2]] = color[
+                image[b, :, int(rectangle[b, n, 1]) : int(rectangle[b, n, 3] + 1), rectangle[b, n, 2]] = color[
                     b, n, :, None
                 ]
-                image[b, :, rectangle[b, n, 1], int(rectangle[b, n, 0]): int(rectangle[b, n, 2] + 1)] = color[
+                image[b, :, rectangle[b, n, 1], int(rectangle[b, n, 0]) : int(rectangle[b, n, 2] + 1)] = color[
                     b, n, :, None
                 ]
-                image[b, :, rectangle[b, n, 3], int(rectangle[b, n, 0]): int(rectangle[b, n, 2] + 1)] = color[
+                image[b, :, rectangle[b, n, 3], int(rectangle[b, n, 0]) : int(rectangle[b, n, 2] + 1)] = color[
                     b, n, :, None
                 ]
 
