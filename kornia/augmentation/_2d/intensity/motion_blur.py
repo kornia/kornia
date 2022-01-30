@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple, Union, cast
+from typing import Dict, List, Optional, Tuple, Union, cast
 
 import torch
 
@@ -83,14 +83,14 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        kernel_size: int = cast(int, params["ksize_factor"].unique().item())
-        angle = params["angle_factor"]
-        direction = params["direction_factor"]
+        # sample a kernel size
+        kernel_size_list: List[int] = params["ksize_factor"].tolist()
+        idx: int = cast(int, torch.randint(len(kernel_size_list), (1,)).item())
         return motion_blur(
             input,
-            kernel_size,
-            angle,
-            direction,
+            kernel_size=kernel_size_list[idx],
+            angle=params["angle_factor"],
+            direction=params["direction_factor"],
             border_type=self.flags["border_type"].name.lower(),
             mode=self.flags["resample"].name.lower(),
         )
