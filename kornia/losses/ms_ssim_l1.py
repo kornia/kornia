@@ -30,10 +30,13 @@ class MS_SSIM_L1Loss(nn.Module):
         K: k values.
         alpha : specifies the alpha value
         compensation: specifies the scaling coefficient.
-        gpu_idx: specifies the GPU index.
 
     Returns:
         The computed loss.
+
+    Shape:
+        - Input: :math:`(N, C, H, W)` or :math:`(C, H, W)`.
+        - Output: :math:`(N,)` or scalar.
 
     Examples:
         >>> input1 = torch.rand(1, 3, 5, 5)
@@ -45,10 +48,9 @@ class MS_SSIM_L1Loss(nn.Module):
     def __init__(self,
                  sigmas: list = [0.5, 1.0, 2.0, 4.0, 8.0],
                  data_range: float = 1.0,
-                 K: tuple = (0.01, 0.03),
+                 K: tuple[float, float] = (0.01, 0.03),
                  alpha: float = 0.025,
-                 compensation: float = 200.0,
-                 gpu_idx: int = 0) -> None:
+                 compensation: float = 200.0) -> None:
         super().__init__()
         self.DR = data_range
         self.C1 = (K[0] * data_range) ** 2
