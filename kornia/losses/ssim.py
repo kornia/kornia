@@ -92,12 +92,7 @@ class SSIMLoss(nn.Module):
     """
 
     def __init__(
-        self,
-        window_size: int,
-        max_val: float = 1.0,
-        eps: float = 1e-12,
-        reduction: str = 'mean',
-        padding: str = 'same',
+        self, window_size: int, max_val: float = 1.0, eps: float = 1e-12, reduction: str = 'mean', padding: str = 'same'
     ) -> None:
         super().__init__()
         self.window_size: int = window_size
@@ -107,4 +102,4 @@ class SSIMLoss(nn.Module):
         self.padding: str = padding
 
     def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> torch.Tensor:
-        return ssim_loss(img1, img2, self.window_size, self.max_val, self.eps, self.reduction, self.same)
+        return ssim_loss(img1, img2, self.window_size, self.max_val, self.eps, self.reduction, self.padding)
