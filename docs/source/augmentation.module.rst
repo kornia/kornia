@@ -61,3 +61,10 @@ Normalization operations are shape-agnostic for both 2D and 3D tensors.
 
 .. autoclass:: Denormalize
 .. autoclass:: Normalize
+
+Image Resize
+============
+
+.. autoclass:: Resize
+.. autoclass:: LongestMaxSize
+.. autoclass:: SmallestMaxSize
