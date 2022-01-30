@@ -442,7 +442,7 @@ class TestHistMatch:
         xp = torch.tensor([1, 2, 3], device=device, dtype=dtype)
         fp = torch.tensor([4, 2, 0], device=device, dtype=dtype)
         x = torch.tensor([4, 5, 6], device=device, dtype=dtype)
-        x_hat_expected = torch.tensor([-2., -4., -6.], device=device, dtype=dtype)
+        x_hat_expected = torch.tensor([-2.0, -4.0, -6.0], device=device, dtype=dtype)
         x_hat = kornia.contrib.interp(x, xp, fp)
         assert (x_hat_expected == x_hat).all()
 
@@ -452,12 +452,18 @@ class TestHistMatch:
         src = torch.randn(1, 4, 4).to(device=device, dtype=dtype)
         dst = torch.randn(1, 16, 16).to(device=device, dtype=dtype)
         out = kornia.contrib.histogram_matching(src, dst)
-        exp = torch.tensor([[
-            [0.9356, 0.8270, 1.3687, 0.5640],
-            [0.6273, 0.9119, 0.4965, 0.4020],
-            [0.4353, 0.1475, 0.3384, 0.2580],
-            [0.0606, 0.7531, 0.2139, 0.6932]
-        ]], device=device, dtype=dtype)
+        exp = torch.tensor(
+            [
+                [
+                    [1.5902, 0.9295, 2.9409, 0.1211],
+                    [0.2472, 1.2137, -0.1098, -0.4272],
+                    [-0.2644, -1.1983, -0.6065, -0.8091],
+                    [-1.4999, 0.6370, -0.9800, 0.4474],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
         assert exp.shape == out.shape
         assert_close(out, exp, rtol=1e-4, atol=1e-4)
 
@@ -466,7 +472,7 @@ class TestHistMatch:
         B, C, H, W = 1, 3, 32, 32
         src = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         dst = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.contrib.histogram_matching, (src, dst,), raise_exception=True)
+        assert gradcheck(kornia.contrib.histogram_matching, (src, dst), raise_exception=True)
 
 
 class TestFaceDetection:
@@ -486,26 +492,28 @@ class TestFaceDetection:
         assert op_jit is not None
 
     def test_results(self, device, dtype):
-        data = torch.tensor([
-            0., 0., 100., 200., 10., 10., 20., 10., 10., 50., 100., 50., 150., 10., 0.99,
-        ], device=device, dtype=dtype)
+        data = torch.tensor(
+            [0.0, 0.0, 100.0, 200.0, 10.0, 10.0, 20.0, 10.0, 10.0, 50.0, 100.0, 50.0, 150.0, 10.0, 0.99],
+            device=device,
+            dtype=dtype,
+        )
         res = kornia.contrib.FaceDetectorResult(data)
-        assert res.xmin == 0.
-        assert res.ymin == 0.
-        assert res.xmax == 100.
-        assert res.ymax == 200.
+        assert res.xmin == 0.0
+        assert res.ymin == 0.0
+        assert res.xmax == 100.0
+        assert res.ymax == 200.0
         assert res.score == 0.99
-        assert res.width == 100.
-        assert res.height == 200.
-        assert res.top_left.tolist() == [0., 0.]
-        assert res.top_right.tolist() == [100., 0.]
-        assert res.bottom_right.tolist() == [100., 200.]
-        assert res.bottom_left.tolist() == [0., 200.]
-        assert res.get_keypoint(FaceKeypoint.EYE_LEFT).tolist() == [10., 10.]
-        assert res.get_keypoint(FaceKeypoint.EYE_RIGHT).tolist() == [20., 10.]
-        assert res.get_keypoint(FaceKeypoint.NOSE).tolist() == [10., 50.]
-        assert res.get_keypoint(FaceKeypoint.MOUTH_LEFT).tolist() == [100., 50.]
-        assert res.get_keypoint(FaceKeypoint.MOUTH_RIGHT).tolist() == [150., 10.]
+        assert res.width == 100.0
+        assert res.height == 200.0
+        assert res.top_left.tolist() == [0.0, 0.0]
+        assert res.top_right.tolist() == [100.0, 0.0]
+        assert res.bottom_right.tolist() == [100.0, 200.0]
+        assert res.bottom_left.tolist() == [0.0, 200.0]
+        assert res.get_keypoint(FaceKeypoint.EYE_LEFT).tolist() == [10.0, 10.0]
+        assert res.get_keypoint(FaceKeypoint.EYE_RIGHT).tolist() == [20.0, 10.0]
+        assert res.get_keypoint(FaceKeypoint.NOSE).tolist() == [10.0, 50.0]
+        assert res.get_keypoint(FaceKeypoint.MOUTH_LEFT).tolist() == [100.0, 50.0]
+        assert res.get_keypoint(FaceKeypoint.MOUTH_RIGHT).tolist() == [150.0, 10.0]
 
     def test_results_raise(self, device, dtype):
         data = torch.zeros(14, device=device, dtype=dtype)
