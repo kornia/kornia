@@ -5,15 +5,15 @@ import torch.nn.functional as F
 # Based on:
 # https://github.com/psyrocloud/MS-SSIM_L1_LOSS
 
+
 class MS_SSIM_L1Loss(nn.Module):
     r"""Creates a criterion that computes MS-SSIM + L1 loss.
 
     According to [1], we compute the MS-SSIM + L1 loss as follows:
 
     .. math::
-    
-        \text{loss}(x, y) = \alpha \cdot \mathcal{L_{MS-SSIM}}(x,y) + (1 - \alpha) \cdot G_\alpha \cdot \mathcal{L_1}(x,y) 
-        
+        \text{loss}(x, y) = \alpha \cdot \mathcal{L_{MS-SSIM}}(x,y)+(1 - \alpha) \cdot G_\alpha \cdot \mathcal{L_1}(x,y)
+
     Where:
         - :math:`\alpha` is the weight parameter.
         - :math:`x` and :math:`y` are the reconstructed and true reference images.
@@ -23,7 +23,7 @@ class MS_SSIM_L1Loss(nn.Module):
 
     Reference:
         [1]: https://research.nvidia.com/sites/default/files/pubs/2017-03_Loss-Functions-for/NN_ImgProc.pdf#page11
-    
+
     Args:
         sigmas: gaussian sigma values.
         data_range: the range of the images.
@@ -41,7 +41,7 @@ class MS_SSIM_L1Loss(nn.Module):
         >>> criterion = kornia.losses.MS_SSIM_L1Loss()
         >>> loss = criterion(input1.cuda(0), input2.cuda(0))
     """
-    
+
     def __init__(self,
                  sigmas: list = [0.5, 1.0, 2.0, 4.0, 8.0],
                  data_range: float = 1.0,
@@ -55,18 +55,18 @@ class MS_SSIM_L1Loss(nn.Module):
         self.C2 = (K[1] * data_range) ** 2
         self.pad = int(2 * sigmas[-1])
         self.alpha = alpha
-        self.compensation=compensation
-        
+        self.compensation = compensation
+
         # Set filter size
         filter_size = int(4 * sigmas[-1] + 1)
-        g_masks = torch.zeros((3*len(sigmas), 1, filter_size, filter_size))
-        
+        g_masks = torch.zeros((3 * len(sigmas), 1, filter_size, filter_size))
+
         # Compute mask at different scales
         for idx, sigma in enumerate(sigmas):
-            g_masks[3*idx+0, 0, :, :] = self._fspecial_gauss_2d(filter_size, sigma)
-            g_masks[3*idx+1, 0, :, :] = self._fspecial_gauss_2d(filter_size, sigma)
-            g_masks[3*idx+2, 0, :, :] = self._fspecial_gauss_2d(filter_size, sigma)
-            
+            g_masks[3 * idx + 0, 0, :, :] = self._fspecial_gauss_2d(filter_size, sigma)
+            g_masks[3 * idx + 1, 0, :, :] = self._fspecial_gauss_2d(filter_size, sigma)
+            g_masks[3 * idx + 2, 0, :, :] = self._fspecial_gauss_2d(filter_size, sigma)
+
         self.g_masks = g_masks.cuda(0)
 
     def _fspecial_gauss_1d(self, size, sigma):
@@ -113,23 +113,23 @@ class MS_SSIM_L1Loss(nn.Module):
         sigmax2 = F.conv2d(yhat * yhat, self.g_masks, groups=3, padding=self.pad) - mux2
         sigmay2 = F.conv2d(y * y, self.g_masks, groups=3, padding=self.pad) - muy2
         sigmaxy = F.conv2d(yhat * y, self.g_masks, groups=3, padding=self.pad) - muxy
-        l  = (2 * muxy    + self.C1) / (mux2    + muy2    + self.C1)
+        lc = (2 * muxy + self.C1) / (mux2 + muy2 + self.C1)
         cs = (2 * sigmaxy + self.C2) / (sigmax2 + sigmay2 + self.C2)
-        lM = l[:, -1, :, :] * l[:, -2, :, :] * l[:, -3, :, :]
+        lM = lc[:, -1, :, :] * lc[:, -2, :, :] * lc[:, -3, :, :]
         PIcs = cs.prod(dim=1)
-    
+
         # Compute MS-SSIM loss
-        loss_ms_ssim = 1 - lM*PIcs 
+        loss_ms_ssim = 1 - lM * PIcs
 
         # Compute L1 loss
         loss_l1 = F.l1_loss(yhat, y, reduction='none')
-        
+
         # Compute average l1 loss in 3 channels
         gaussian_l1 = F.conv2d(loss_l1, self.g_masks.narrow(dim=0, start=-3, length=3),
                                groups=3, padding=self.pad).mean(1)
-        
+
         # Compute MS-SSIM + L1 loss
         loss = self.alpha * loss_ms_ssim + (1 - self.alpha) * gaussian_l1 / self.DR
-        loss = self.compensation*loss
+        loss = self.compensation * loss
 
         return loss.mean()
