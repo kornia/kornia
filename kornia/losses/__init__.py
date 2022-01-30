@@ -7,6 +7,7 @@ from .psnr import PSNRLoss, psnr_loss
 from .ssim import SSIMLoss, ssim_loss
 from .total_variation import TotalVariation, total_variation
 from .tversky import TverskyLoss, tversky_loss
+from .ms_ssim_l1 import MS_SSIM_L1Loss
 
 __all__ = [
     "inverse_depth_smoothness_loss",
@@ -28,5 +29,7 @@ __all__ = [
     "total_variation",
     "TotalVariation",
     "tversky_loss",
-    "TverskyLoss"
+    "TverskyLoss",
+    "ms_ssim_l1_loss",
+    "MS_SSIM_L1Loss"
 ]
