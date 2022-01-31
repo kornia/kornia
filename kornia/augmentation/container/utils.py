@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 
 import kornia  # lazy loading for circular dependencies
-from kornia.augmentation import GeometricAugmentationBase2D, MixAugmentationBase, RandomCrop
+from kornia.augmentation import GeometricAugmentationBase2D, MixAugmentationBase, RandomCrop, RandomErasing
 from kornia.augmentation.base import TensorWithTransformMat, _AugmentationBase
 from kornia.augmentation.container.base import ParamItem
 from kornia.constants import DataKey
@@ -236,8 +236,11 @@ class MaskApplyInverse(ApplyInverseImpl):
         else:
             _param = None  # type: ignore
 
-        if isinstance(module, GeometricAugmentationBase2D):
-            _param = cast(Dict[str, torch.Tensor], _param)
+        if isinstance(module, (GeometricAugmentationBase2D, RandomErasing)):
+            _param = cast(Dict[str, torch.Tensor], _param).copy()
+            # TODO: Parametrize value to pad with across the board for different keys
+            if 'values' in _param:
+                _param['values'] = torch.zeros_like(_param['values'])  # Always pad with zeros
             input = module(input, params=_param, return_transform=False)
         elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
             _param = cast(List[ParamItem], _param)

@@ -2,8 +2,8 @@ from kornia.augmentation._2d.intensity.box_blur import RandomBoxBlur
 from kornia.augmentation._2d.intensity.channel_shuffle import RandomChannelShuffle
 from kornia.augmentation._2d.intensity.color_jitter import ColorJitter
 from kornia.augmentation._2d.intensity.denormalize import Denormalize
-from kornia.augmentation._2d.intensity.earasing import RandomErasing
 from kornia.augmentation._2d.intensity.equalize import RandomEqualize
+from kornia.augmentation._2d.intensity.erasing import RandomErasing
 from kornia.augmentation._2d.intensity.gaussian_blur import RandomGaussianBlur
 from kornia.augmentation._2d.intensity.gaussian_noise import RandomGaussianNoise
 from kornia.augmentation._2d.intensity.grayscale import RandomGrayscale
