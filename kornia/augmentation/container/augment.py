@@ -4,7 +4,7 @@ from typing import Any, List, Optional, Tuple, Union, cast
 
 import torch
 
-from kornia.augmentation import GeometricAugmentationBase2D, IntensityAugmentationBase2D
+from kornia.augmentation import GeometricAugmentationBase2D, IntensityAugmentationBase2D, RandomErasing
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import SequentialBase
 from kornia.augmentation.container.image import ImageSequential, ParamItem
@@ -205,7 +205,7 @@ class AugmentationSequential(ImageSequential):
             if dcate == DataKey.INPUT and isinstance(arg, (tuple, list)):
                 input, _ = arg  # ignore the transformation matrix whilst inverse
             # Using tensors straight-away
-            if isinstance(arg, (Boxes,)):
+            elif isinstance(arg, (Boxes,)):
                 input = arg.data  # all boxes are in (B, N, 4, 2) format now.
             else:
                 input = arg
@@ -214,7 +214,8 @@ class AugmentationSequential(ImageSequential):
                     param = params[name] if name in params else param
                 else:
                     param = None
-                if isinstance(module, IntensityAugmentationBase2D) and dcate in DataKey:
+                if isinstance(module, IntensityAugmentationBase2D) and dcate in DataKey \
+                        and not isinstance(module, RandomErasing):
                     pass  # Do nothing
                 elif isinstance(module, ImageSequential) and module.is_intensity_only() and dcate in DataKey:
                     pass  # Do nothing
@@ -225,7 +226,8 @@ class AugmentationSequential(ImageSequential):
                     input = input.view(batch_size, -1, *input.shape[1:])
                 elif isinstance(module, PatchSequential):
                     raise NotImplementedError("Geometric involved PatchSequential is not supported.")
-                elif isinstance(module, (GeometricAugmentationBase2D, ImageSequential)) and dcate in DataKey:
+                elif isinstance(module, (GeometricAugmentationBase2D, ImageSequential, RandomErasing)) \
+                        and dcate in DataKey:
                     input = ApplyInverse.inverse_by_key(input, module, param, dcate)
                 elif isinstance(module, (SequentialBase,)):
                     raise ValueError(f"Unsupported Sequential {module}.")
@@ -354,7 +356,8 @@ class AugmentationSequential(ImageSequential):
                 module = self.get_submodule(param.name)
                 if dcate == DataKey.INPUT:
                     input, label = self.apply_to_input(input, label, module=module, param=param)
-                elif isinstance(module, IntensityAugmentationBase2D) and dcate in DataKey:
+                elif isinstance(module, IntensityAugmentationBase2D) and dcate in DataKey \
+                        and not isinstance(module, RandomErasing):
                     pass  # Do nothing
                 elif isinstance(module, ImageSequential) and module.is_intensity_only() and dcate in DataKey:
                     pass  # Do nothing
@@ -365,7 +368,8 @@ class AugmentationSequential(ImageSequential):
                     input = input.view(batch_size, -1, *input.shape[1:])
                 elif isinstance(module, PatchSequential):
                     raise NotImplementedError("Geometric involved PatchSequential is not supported.")
-                elif isinstance(module, (GeometricAugmentationBase2D, ImageSequential)) and dcate in DataKey:
+                elif isinstance(module, (GeometricAugmentationBase2D, ImageSequential, RandomErasing)) \
+                        and dcate in DataKey:
                     input, label = ApplyInverse.apply_by_key(input, label, module, param, dcate)
                 elif isinstance(module, (SequentialBase,)):
                     raise ValueError(f"Unsupported Sequential {module}.")
