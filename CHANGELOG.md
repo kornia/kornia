@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed #1534 nested augmentation sequential bug (#1536)
 - Fixes to device in augmentations (#1546)
 - Bugfix for larger MotionBlur kernel size ranges (#1543)
+- Fix RandomErasing applied to mask keys (#1541)
 
 ### :exclamation: Changes
 - Restructure augmentation package (#1515)
