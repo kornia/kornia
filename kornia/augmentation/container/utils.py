@@ -237,7 +237,7 @@ class MaskApplyInverse(ApplyInverseImpl):
             _param = None  # type: ignore
 
         if isinstance(module, (GeometricAugmentationBase2D, RandomErasing)):
-            _param = cast(Dict[str, torch.Tensor], _param.copy())
+            _param = cast(Dict[str, torch.Tensor], _param).copy()
             # TODO: Parametrize value to pad with across the board for different keys
             if 'values' in _param:
                 _param['values'] = torch.zeros_like(_param['values'])  # Always pad with zeros
