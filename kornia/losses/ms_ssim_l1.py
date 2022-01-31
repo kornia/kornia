@@ -42,8 +42,7 @@ class MS_SSIM_L1Loss(nn.Module):
         >>> input1 = torch.rand(1, 3, 5, 5)
         >>> input2 = torch.rand(1, 3, 5, 5)
         >>> criterion = kornia.losses.MS_SSIM_L1Loss()
-        >>> loss = criterion(input1.cuda(0), input2.cuda(0)) # GPU
-        >>> loss = criterion(input1, input2, gpu_idx=-1) # CPU
+        >>> loss = criterion(input1.cuda(0), input2.cuda(0))
     """
 
     def __init__(self,
@@ -97,21 +96,18 @@ class MS_SSIM_L1Loss(nn.Module):
         gaussian_vec = self._fspecial_gauss_1d(size, sigma)
         return torch.outer(gaussian_vec, gaussian_vec)
 
-    def forward(self, yhat: torch.Tensor, y: torch.Tensor, gpu_idx: int = 0) -> torch.Tensor:
+    def forward(self, yhat: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         """Compute MS-SSIM_L1 loss.
 
         Args:
             yhat: the predicted image with shape :math:`(B, C, H, W)`.
             y: the target image with a shape of :math:`(B, C, H, W)`.
-            gpu_idx: use -1 for CPU.
 
         Returns:
             Estimated MS-SSIM_L1 loss.
         """
 
-        if gpu_idx >= 0:
-            self.g_masks = self.g_masks.cuda(gpu_idx)
-
+        self.g_masks = self.g_masks.to(yhat)
         b, c, h, w = yhat.shape
         mux = F.conv2d(yhat, self.g_masks, groups=3, padding=self.pad)
         muy = F.conv2d(y, self.g_masks, groups=3, padding=self.pad)
