@@ -35,7 +35,7 @@ class MS_SSIM_L1Loss(nn.Module):
         The computed loss.
 
     Shape:
-        - Input: :math:`(N, C, H, W)` or :math:`(C, H, W)`.
+        - Input: :math:`(N, C, H, W)`.
         - Output: :math:`(N,)` or scalar.
 
     Examples:
