@@ -106,6 +106,17 @@ class MS_SSIM_L1Loss(nn.Module):
         Returns:
             Estimated MS-SSIM_L1 loss.
         """
+        if not isinstance(yhat, torch.Tensor):
+            raise TypeError(f"Input type is not a torch.Tensor. Got {type(yhat)}")
+
+        if not isinstance(y, torch.Tensor):
+            raise TypeError(f"Output type is not a torch.Tensor. Got {type(y)}")
+
+        if not len(yhat.shape) == len(y.shape):
+            raise ValueError(f"Input shapes should be same. Got {type(yhat)} and {type(y)}.")
+
+        if not yhat.device == y.device:
+            raise ValueError(f"input and target must be in the same device. Got: {yhat.device} and {y.device}")
 
         self.g_masks = self.g_masks.to(yhat)
         b, c, h, w = yhat.shape
