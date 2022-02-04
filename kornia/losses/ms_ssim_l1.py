@@ -85,7 +85,7 @@ class MS_SSIM_L1Loss(nn.Module):
         g /= g.sum()
         return g.reshape(-1)
 
-    def _fspecial_gauss_2d(self, size, sigma):
+    def _fspecial_gauss_2d(self, size: int, sigma: float, device: torch.device = None, dtype: torch.dtype = None) -> torch.Tensor:
         """Create 2-D gauss kernel
         Args:
             size (int): the size of gauss kernel
