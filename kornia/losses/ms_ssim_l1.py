@@ -93,7 +93,7 @@ class MS_SSIM_L1Loss(nn.Module):
         Returns:
             torch.Tensor: 2D kernel (size x size)
         """
-        gaussian_vec = self._fspecial_gauss_1d(size, sigma)
+        gaussian_vec = self._fspecial_gauss_1d(size, sigma, device, dtype)
         return torch.outer(gaussian_vec, gaussian_vec)
 
     def forward(self, yhat: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
