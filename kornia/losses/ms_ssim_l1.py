@@ -42,7 +42,7 @@ class MS_SSIM_L1Loss(nn.Module):
         >>> input1 = torch.rand(1, 3, 5, 5)
         >>> input2 = torch.rand(1, 3, 5, 5)
         >>> criterion = kornia.losses.MS_SSIM_L1Loss()
-        >>> loss = criterion(input1.cuda(0), input2.cuda(0))
+        >>> loss = criterion(input1, input2)
     """
 
     def __init__(self,
