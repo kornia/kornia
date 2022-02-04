@@ -79,7 +79,7 @@ class MS_SSIM_L1Loss(nn.Module):
         Returns:
             torch.Tensor: 1D kernel (size)
         """
-        coords = torch.arange(size).to(dtype=torch.float)
+        coords = torch.arange(size, device=device, dtype=dtype)
         coords -= size // 2
         g = torch.exp(-(coords ** 2) / (2 * sigma ** 2))
         g /= g.sum()
