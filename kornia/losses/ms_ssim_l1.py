@@ -69,7 +69,7 @@ class MS_SSIM_L1Loss(nn.Module):
             g_masks[3 * idx + 1, 0, :, :] = self._fspecial_gauss_2d(filter_size, sigma)
             g_masks[3 * idx + 2, 0, :, :] = self._fspecial_gauss_2d(filter_size, sigma)
 
-        self.g_masks = g_masks
+        self.register_buffer('g_masks', g_masks)
 
     def _fspecial_gauss_1d(self, size, sigma):
         """Create 1-D gauss kernel
