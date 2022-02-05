@@ -175,8 +175,7 @@ def combine_tensor_patches(
             "Please feel free to drop a PR to Kornia Github."
         )
 
-    new_window_size = (orig_size[0] // window_size[0], orig_size[1] // window_size[1])
-    window_size = new_window_size
+    window_size = (orig_size[0] // window_size[0], orig_size[1] // window_size[1])
 
     if unpadding is not None:
         window_size = (
