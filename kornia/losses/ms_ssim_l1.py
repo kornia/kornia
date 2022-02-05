@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import cast, Optional
 
 import torch
 import torch.nn as nn
@@ -124,7 +124,7 @@ class MS_SSIM_L1Loss(nn.Module):
         if not yhat.device == y.device:
             raise ValueError(f"input and target must be in the same device. Got: {yhat.device} and {y.device}")
 
-        self.g_masks = self.g_masks.to(yhat)
+        self.g_masks = cast(torch.Tensor, self.g_masks)
         b, c, h, w = yhat.shape
         mux = F.conv2d(yhat, self.g_masks, groups=3, padding=self.pad)
         muy = F.conv2d(y, self.g_masks, groups=3, padding=self.pad)

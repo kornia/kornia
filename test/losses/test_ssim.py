@@ -120,7 +120,7 @@ class TestMSSSIML1Loss:
 
         args = (img1, img2)
 
-        op = kornia.losses.MS_SSIM_L1Loss
+        op = kornia.losses.MS_SSIM_L1Loss()
         op_script = torch.jit.script(op)
 
         assert_close(op(*args), op_script(*args))
