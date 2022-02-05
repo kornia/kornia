@@ -107,7 +107,8 @@ class CombineTensorPatches(nn.Module):
 
     Args:
         patches: patched tensor.
-        window_size: the size of the sliding window and the output patch size.
+        orig_size: the size of the original tensor and the output patch size.
+        window_size: the size of the sliding window used.
         unpadding: remove the padding added to both side of the input.
 
     Shape:
@@ -116,7 +117,7 @@ class CombineTensorPatches(nn.Module):
 
     Example:
         >>> out = extract_tensor_patches(torch.arange(16).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2))
-        >>> combine_tensor_patches(out, window_size=(2, 2), stride=(2, 2))
+        >>> combine_tensor_patches(out, orig_size=(4, 4), window_size=(2, 2), stride=(2, 2))
         tensor([[[[ 0,  1,  2,  3],
                   [ 4,  5,  6,  7],
                   [ 8,  9, 10, 11],
@@ -125,20 +126,25 @@ class CombineTensorPatches(nn.Module):
 
     def __init__(
         self,
+        orig_size: Union[int, Tuple[int, int]],
         window_size: Union[int, Tuple[int, int]],
         unpadding: Union[int, Tuple[int, int]] = 0,
     ) -> None:
         super().__init__()
+        self.orig_size: Tuple[int, int] = _pair(orig_size)
         self.window_size: Tuple[int, int] = _pair(window_size)
         pad: Tuple[int, int] = _pair(unpadding)
         self.unpadding: Tuple[int, int, int, int] = (pad[0], pad[0], pad[1], pad[1])
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return combine_tensor_patches(input, self.window_size, stride=self.window_size, unpadding=self.unpadding)
+        return combine_tensor_patches(
+            input, self.orig_size, self.window_size, stride=self.window_size, unpadding=self.unpadding
+        )
 
 
 def combine_tensor_patches(
     patches: torch.Tensor,
+    orig_size: Tuple[int, int] = (16, 16),
     window_size: Tuple[int, int] = (4, 4),
     stride: Tuple[int, int] = (4, 4),
     unpadding: Optional[Tuple[int, int, int, int]] = None,
@@ -147,7 +153,8 @@ def combine_tensor_patches(
 
     Args:
         patches: patched tensor with shape :math:`(B, N, C, H_{out}, W_{out})`.
-        window_size: the size of the sliding window and the output patch size.
+        orig_size: the size of the original tensor and the output patch size.
+        window_size: the size of the sliding window used.
         stride: stride of the sliding window.
         unpadding: remove the padding added to both side of the input.
 
@@ -156,7 +163,7 @@ def combine_tensor_patches(
 
     Example:
         >>> out = extract_tensor_patches(torch.arange(16).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2))
-        >>> combine_tensor_patches(out, window_size=(2, 2), stride=(2, 2))
+        >>> combine_tensor_patches(out, orig_size=(4, 4), window_size=(2, 2), stride=(2, 2))
         tensor([[[[ 0,  1,  2,  3],
                   [ 4,  5,  6,  7],
                   [ 8,  9, 10, 11],
@@ -167,17 +174,21 @@ def combine_tensor_patches(
             f"Only stride == window_size is supported. Got {stride} and {window_size}."
             "Please feel free to drop a PR to Kornia Github."
         )
+
+    new_window_size = (orig_size[0] // window_size[0], orig_size[1] // window_size[1])
+    window_size = new_window_size
+
     if unpadding is not None:
         window_size = (
             window_size[0] + (unpadding[0] + unpadding[1]) // window_size[0],
-            window_size[1] + (unpadding[2] + unpadding[3]) // window_size[1]
+            window_size[1] + (unpadding[2] + unpadding[3]) // window_size[1],
         )
     patches_tensor = patches.view(-1, window_size[0], window_size[1], *patches.shape[-3:])
     restored_tensor = torch.cat(torch.chunk(patches_tensor, window_size[0], dim=1), -2).squeeze(1)
     restored_tensor = torch.cat(torch.chunk(restored_tensor, window_size[1], dim=1), -1).squeeze(1)
 
     if unpadding is not None:
-        restored_tensor = torch.nn.functional.pad(restored_tensor, [-i for i in unpadding])
+        restored_tensor = F.pad(restored_tensor, [-i for i in unpadding])
     return restored_tensor
 
 
