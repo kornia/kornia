@@ -71,7 +71,9 @@ class MS_SSIM_L1Loss(nn.Module):
 
         self.register_buffer('g_masks', g_masks)
 
-    def _fspecial_gauss_1d(self, size: int, sigma: float, device: torch.device = None, dtype: torch.dtype = None) -> torch.Tensor:
+    def _fspecial_gauss_1d(
+        self, size: int, sigma: float, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None
+    ) -> torch.Tensor:
         """Create 1-D gauss kernel
         Args:
             size (int): the size of gauss kernel
@@ -85,7 +87,9 @@ class MS_SSIM_L1Loss(nn.Module):
         g /= g.sum()
         return g.reshape(-1)
 
-    def _fspecial_gauss_2d(self, size: int, sigma: float, device: torch.device = None, dtype: torch.dtype = None) -> torch.Tensor:
+    def _fspecial_gauss_2d(
+        self, size: int, sigma: float, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None
+    ) -> torch.Tensor:
         """Create 2-D gauss kernel
         Args:
             size (int): the size of gauss kernel

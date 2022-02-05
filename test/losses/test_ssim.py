@@ -114,7 +114,7 @@ class TestMSSSIML1Loss:
 
         assert gradcheck(loss, (img1, img2), raise_exception=True, nondet_tol=1e-8)
 
-    def test_jit(self, msl1, device, dtype):
+    def test_jit(self, device, dtype):
         img1 = torch.rand(1, 3, 10, 10, device=device, dtype=dtype)
         img2 = torch.rand(1, 3, 10, 10, device=device, dtype=dtype)
 
