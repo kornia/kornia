@@ -154,7 +154,7 @@ class MS_SSIMLoss(nn.Module):
         loss_l1 = F.l1_loss(img1, img2, reduction='none')
 
         # Compute average l1 loss in 3 channels
-        gaussian_l1 = F.conv2d(loss_l1, g_masks.narrow(dim=0, start=-CH, length=CH), groups=CH, padding=self.pad).mean(
+        gaussian_l1 = F.conv2d(loss_l1, g_masks[-CH:], groups=CH, padding=self.pad).mean(
             1
         )
 
