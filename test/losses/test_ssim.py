@@ -71,46 +71,40 @@ class TestSSIMLoss:
         assert gradcheck(kornia.losses.ssim_loss, (img1, img2, window_size), raise_exception=True, nondet_tol=1e-8)
 
 
-class TestMSSSIML1Loss:
-    def test_msssiml1_equal_none(self, device, dtype):
+class TestMS_SSIMLoss:
+    def test_msssim_equal_none(self, device, dtype):
         # input data
         img1 = torch.rand(1, 3, 10, 16, device=device, dtype=dtype)
         img2 = torch.rand(1, 3, 10, 16, device=device, dtype=dtype)
 
-        msssiml1 = kornia.losses.MS_SSIM_L1Loss()
-        msssiml11 = msssiml1(img1, img1)
-        msssiml12 = msssiml1(img2, img2)
+        msssim = kornia.losses.MS_SSIMLoss().to(device, dtype)
+        msssim1 = msssim(img1, img1)
+        msssim2 = msssim(img2, img2)
 
-        tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
-        assert_close(msssiml11.item(), 0.0, rtol=tol_val, atol=tol_val)
-        assert_close(msssiml12.item(), 0.0, rtol=tol_val, atol=tol_val)
+        assert_close(msssim1.item(), 0.0)
+        assert_close(msssim2.item(), 0.0)
 
-    def test_msssiml1(self, device, dtype, batch_shape):
-        if device.type == 'xla':
-            pytest.skip("test highly unstable with tpu")
-
-        # input data
+    # TODO: implement for single channel image
+    @pytest.mark.parametrize("batch_shape", [(2, 1, 2, 3), (1, 3, 10, 16)])
+    def test_msssim(self, device, dtype, batch_shape):
         img = torch.rand(batch_shape, device=device, dtype=dtype)
 
-        msssiml1 = kornia.losses.MS_SSIM_L1Loss()
+        msssiml1 = kornia.losses.MS_SSIMLoss().to(device, dtype)
         loss = msssiml1(img, img)
 
-        tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
-        assert_close(loss.item(), 0.0, rtol=tol_val, atol=tol_val)
+        assert_close(loss.item(), 0.0)
 
-    @pytest.mark.parametrize(
-        "msl1", [kornia.losses.MS_SSIM_L1Loss]
-    )
-    def test_gradcheck(self, msl1, device, dtype):
+    def test_gradcheck(self, device):
         # input data
-        img1 = torch.rand(1, 3, 10, 10, device=device, dtype=dtype)
-        img2 = torch.rand(1, 3, 10, 10, device=device, dtype=dtype)
+        dtype = torch.float64
+        img1 = torch.rand(1, 1, 5, 5, device=device, dtype=dtype)
+        img2 = torch.rand(1, 1, 5, 5, device=device, dtype=dtype)
 
         # evaluate function gradient
         img1 = utils.tensor_to_gradcheck_var(img1)  # to var
         img2 = utils.tensor_to_gradcheck_var(img2)  # to var
 
-        loss = msl1()
+        loss = kornia.losses.MS_SSIMLoss().to(device, dtype)
 
         assert gradcheck(loss, (img1, img2), raise_exception=True, nondet_tol=1e-8)
 
@@ -120,7 +114,7 @@ class TestMSSSIML1Loss:
 
         args = (img1, img2)
 
-        op = kornia.losses.MS_SSIM_L1Loss()
+        op = kornia.losses.MS_SSIMLoss().to(device, dtype)
         op_script = torch.jit.script(op)
 
         assert_close(op(*args), op_script(*args))
