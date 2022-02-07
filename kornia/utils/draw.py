@@ -60,8 +60,11 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
     if (p2[0] >= image.size(2)) or (p2[1] >= image.size(1) or (p2[0] < 0) or (p2[1] < 0)):
         raise ValueError("p2 is out of bounds.")
 
-    # make move arguments to same device and dtype as the input image
-    p1, p2, color = p1.to(image), p2.to(image), color.to(image)
+    # move p1 and p2 to the same device as the input image
+    # move color to the same device and dtype as the input image
+    p1 = p1.to(image.device).to(torch.int64)
+    p2 = p2.to(image.device).to(torch.int64)
+    color = color.to(image)
 
     # assign points
     x1, y1 = p1
