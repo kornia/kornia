@@ -39,6 +39,14 @@ class TestDrawLine:
         ]], device=device, dtype=dtype)
         assert_close(img, img_mask)
 
+    def test_draw_line_with_big_coordinates(self, dtype, device):
+        """Test drawing a line with big coordinates."""
+        img = torch.zeros(1, 500, 500, dtype=dtype, device=device)
+        img = draw_line(img, torch.tensor([200, 200]), torch.tensor([400, 200]), torch.tensor([255]))
+        img_mask = torch.zeros(1, 500, 500, dtype=dtype, device=device)
+        img_mask[:, 200, 200:401] = 255
+        assert_close(img, img_mask)
+
     def test_draw_line_m_lte_neg1(self, dtype, device):
         """Test drawing a line with m <= -1."""
         img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
