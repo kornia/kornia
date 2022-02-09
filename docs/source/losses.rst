@@ -38,6 +38,7 @@ Module
 .. autoclass:: TverskyLoss
 .. autoclass:: FocalLoss
 .. autoclass:: SSIMLoss
+.. autoclass:: MS_SSIMLoss
 .. autoclass:: InverseDepthSmoothnessLoss
 .. autoclass:: TotalVariation
 .. autoclass:: PSNRLoss
