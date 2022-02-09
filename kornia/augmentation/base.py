@@ -258,4 +258,5 @@ class _AugmentationBase(_BasicAugmentationBase):
 
         self._params = params
         output = self.apply_func(in_tensor, in_transform, self._params, return_transform)
+
         return _transform_output_shape(output, ori_shape) if self.keepdim else output

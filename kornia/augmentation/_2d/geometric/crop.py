@@ -6,7 +6,7 @@ from torch.nn.functional import pad
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.augmentation.base import TensorWithTransformMat
-from kornia.augmentation.utils import _transform_input
+from kornia.augmentation.utils import _transform_input, _transform_output_shape
 from kornia.constants import Resample
 from kornia.geometry.transform import crop_by_transform_mat, get_perspective_transform
 
@@ -164,13 +164,17 @@ class RandomCrop(GeometricAugmentationBase2D):
             )
         if self.flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
             B, C, _, _ = input.shape
+            x1 = params["src"][:, 0, 0].long().cpu().numpy()
+            x2 = params["src"][:, 1, 0].long().cpu().numpy() + 1
+            y1 = params["src"][:, 0, 1].long().cpu().numpy()
+            y2 = params["src"][:, 3, 1].long().cpu().numpy() + 1
+
+            if self.same_on_batch:
+                return input[..., y1[0]:y2[0], x1[0]:x2[0]]
+
             out = torch.empty(B, C, *self.flags["size"], device=input.device, dtype=input.dtype)
             for i in range(B):
-                x1 = int(params["src"][i, 0, 0])
-                x2 = int(params["src"][i, 1, 0]) + 1
-                y1 = int(params["src"][i, 0, 1])
-                y2 = int(params["src"][i, 3, 1]) + 1
-                out[i] = input[i : i + 1, :, y1:y2, x1:x2]
+                out[i] = input[i : i + 1, :, y1[i]:y2[i], x1[i]:x2[i]]
             return out
         raise NotImplementedError(f"Not supported type: {self.flags['cropping_mode']}.")
 
@@ -234,14 +238,18 @@ class RandomCrop(GeometricAugmentationBase2D):
             input_pad = None
 
         if isinstance(input, (tuple, list)):
+            ori_shape = input[0].shape
             input_temp = _transform_input(input[0])
             input_pad = self.compute_padding(input[0].shape) if input_pad is None else input_pad
             _input = (self.precrop_padding(input_temp, input_pad), input[1])
+            _input = _transform_output_shape(_input, ori_shape) if self.keepdim else _input
         else:
             input = cast(torch.Tensor, input)  # TODO: weird that cast is not working under this context.
+            ori_shape = input.shape
             input_temp = _transform_input(input)
             input_pad = self.compute_padding(input_temp.shape) if input_pad is None else input_pad
             _input = self.precrop_padding(input_temp, input_pad)  # type: ignore
+            _input = _transform_output_shape(_input, ori_shape) if self.keepdim else _input
         out = super().forward(_input, params, return_transform)
 
         # Update the actual input size for inverse
