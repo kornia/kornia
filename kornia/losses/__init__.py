@@ -3,6 +3,7 @@ from .dice import DiceLoss, dice_loss
 from .divergence import js_div_loss_2d, kl_div_loss_2d
 from .focal import BinaryFocalLossWithLogits, FocalLoss, binary_focal_loss_with_logits, focal_loss
 from .hausdorff import HausdorffERLoss, HausdorffERLoss3D
+from .ms_ssim import MS_SSIMLoss
 from .psnr import PSNRLoss, psnr_loss
 from .ssim import SSIMLoss, ssim_loss
 from .total_variation import TotalVariation, total_variation
@@ -28,5 +29,6 @@ __all__ = [
     "total_variation",
     "TotalVariation",
     "tversky_loss",
-    "TverskyLoss"
+    "TverskyLoss",
+    "MS_SSIMLoss",
 ]
