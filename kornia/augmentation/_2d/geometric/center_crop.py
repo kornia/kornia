@@ -110,10 +110,10 @@ class CenterCrop(GeometricAugmentationBase2D):
         if self.flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
             # TODO: implement as separated function `crop_and_resize_iterative`
             B, C, _, _ = input.shape
-            x1 = params["src"][:, 0, 0].long().cpu().numpy()
-            x2 = params["src"][:, 1, 0].long().cpu().numpy() + 1
-            y1 = params["src"][:, 0, 1].long().cpu().numpy()
-            y2 = params["src"][:, 3, 1].long().cpu().numpy() + 1
+            x1 = params["src"].to(device="cpu", dtype=torch.long)[:, 0, 0].numpy()
+            x2 = params["src"].to(device="cpu", dtype=torch.long)[:, 1, 0].numpy() + 1
+            y1 = params["src"].to(device="cpu", dtype=torch.long)[:, 0, 1].numpy()
+            y2 = params["src"].to(device="cpu", dtype=torch.long)[:, 3, 1].numpy() + 1
 
             if self.same_on_batch:
                 return input[..., y1[0]:y2[0], x1[0]:x2[0]]
