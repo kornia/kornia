@@ -82,7 +82,7 @@ Module
 .. autoclass:: CornerGFTT
 .. autoclass:: CornerHarris
 .. autoclass:: BlobDoG
-.. autoclass:: FRN
+.. autoclass:: FilterResponseNorm2d
 .. autoclass:: TLU
 
 
