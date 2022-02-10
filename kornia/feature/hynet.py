@@ -6,22 +6,21 @@ import torch.nn as nn
 urls: Dict[str, str] = {}
 urls[
     "liberty"
-] = "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_LIB.pth"  # noqa pylint: disable
+] = "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_LIB.pth"  # pylint: disable
 urls[
     "notredame"
-] = "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_ND.pth"  # noqa pylint: disable
+] = "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_ND.pth"  # pylint: disable
 urls[
     "yosemite"
-] = "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_YOS.pth"  # noqa pylint: disable
+] = "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_YOS.pth"  # pylint: disable
 
 
 class FilterResponseNorm2d(nn.Module):
-    """Feature Response Normalization layer from
-    'Filter Response Normalization Layer: Eliminating Batch Dependence in the Training of Deep Neural Networks',
-    see  See :cite:`FRN2019` for more details.
+    """Feature Response Normalization layer from 'Filter Response Normalization Layer: Eliminating Batch Dependence
+    in the Training of Deep Neural Networks', see  See :cite:`FRN2019` for more details.
 
     .. math::
-        y =  \gamma \times \frac{x}{\sqrt{\mathrm{E}[x^2]} + |\epsilon|} + \beta
+        y =  \\gamma \times \frac{x}{\\sqrt{\\mathrm{E}[x^2]} + |\\epsilon|} + \beta
 
     Args:
         num_features: number of channels
@@ -37,7 +36,7 @@ class FilterResponseNorm2d(nn.Module):
     Shape:
         - Input: :math:`(B, num_features, H, W)`
         - Output: :math:`(B, num_features, H, W)`
-        """
+    """
     def __init__(self,
                  num_features: int,
                  eps: float = 1e-6,
@@ -45,7 +44,7 @@ class FilterResponseNorm2d(nn.Module):
                  is_scale: bool = True,
                  is_eps_leanable: bool = False):
 
-        super(FilterResponseNorm2d, self).__init__()
+        super().__init__()
 
         self.num_features = num_features
         self.init_eps = eps
@@ -86,12 +85,11 @@ class FilterResponseNorm2d(nn.Module):
 
 
 class TLU(nn.Module):
-    """TLU layer from
-    'Filter Response Normalization Layer: Eliminating Batch Dependence in the Training of Deep Neural Networks,
-    see  See :cite:`FRN2019` for more details. :math:`\tau` is learnable per channel.
+    """TLU layer from 'Filter Response Normalization Layer: Eliminating Batch Dependence in the Training of Deep
+    Neural Networks, see  See :cite:`FRN2019` for more details. :math:`\tau` is learnable per channel.
 
     .. math::
-        y =  \max(x, \tau)
+        y =  \\max(x, \tau)
 
     Args:
         num_features: number of channels
@@ -102,10 +100,10 @@ class TLU(nn.Module):
     Shape:
         - Input: :math:`(B, num_features, H, W)`
         - Output: :math:`(B, num_features, H, W)`
-        """
+    """
     def __init__(self, num_features: int):
         """max(y, tau) = max(y - tau, 0) + tau = ReLU(y - tau) + tau"""
-        super(TLU, self).__init__()
+        super().__init__()
         self.num_features = num_features
         self.tau = nn.parameter.Parameter(torch.Tensor(1, num_features, 1, 1), requires_grad=True)
         self.reset_parameters()
@@ -156,7 +154,7 @@ class HyNet(nn.Module):
                  dim_desc: int = 128,
                  drop_rate: float = 0.3,
                  eps_l2_norm: float = 1e-10):
-        super(HyNet, self).__init__()
+        super().__init__()
         self.eps_l2_norm = eps_l2_norm
         self.dim_desc = dim_desc
         self.drop_rate = drop_rate
