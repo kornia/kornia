@@ -164,7 +164,7 @@ class RandomCrop(GeometricAugmentationBase2D):
             )
         if self.flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
             B, C, _, _ = input.shape
-            src = torch.as_tensor(params["src"], device="cpu", dtype=torch.long).numpy()
+            src = torch.as_tensor(params["src"], device=torch.device("cpu"), dtype=torch.long).numpy()
             x1 = src[:, 0, 0]
             x2 = src[:, 1, 0] + 1
             y1 = src[:, 0, 1]
@@ -243,14 +243,14 @@ class RandomCrop(GeometricAugmentationBase2D):
             input_temp = _transform_input(input[0])
             input_pad = self.compute_padding(input[0].shape) if input_pad is None else input_pad
             _input = (self.precrop_padding(input_temp, input_pad), input[1])
-            _input = _transform_output_shape(_input, ori_shape) if self.keepdim else _input
+            _input = _transform_output_shape(_input, ori_shape) if self.keepdim else _input  # type:ignore
         else:
             input = cast(torch.Tensor, input)  # TODO: weird that cast is not working under this context.
             ori_shape = input.shape
             input_temp = _transform_input(input)
             input_pad = self.compute_padding(input_temp.shape) if input_pad is None else input_pad
             _input = self.precrop_padding(input_temp, input_pad)  # type: ignore
-            _input = _transform_output_shape(_input, ori_shape) if self.keepdim else _input
+            _input = _transform_output_shape(_input, ori_shape) if self.keepdim else _input  # type:ignore
         out = super().forward(_input, params, return_transform)
 
         # Update the actual input size for inverse

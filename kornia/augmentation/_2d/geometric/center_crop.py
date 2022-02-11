@@ -110,7 +110,7 @@ class CenterCrop(GeometricAugmentationBase2D):
         if self.flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
             # TODO: implement as separated function `crop_and_resize_iterative`
             B, C, _, _ = input.shape
-            src = torch.as_tensor(params["src"], device="cpu", dtype=torch.long).numpy()
+            src = torch.as_tensor(params["src"], device=torch.device("cpu"), dtype=torch.long).numpy()
             x1 = src[:, 0, 0]
             x2 = src[:, 1, 0] + 1
             y1 = src[:, 0, 1]
