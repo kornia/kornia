@@ -1,6 +1,7 @@
 from .affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
 from .defmo import DeFMO
 from .hardnet import HardNet, HardNet8
+from .hynet import TLU, FilterResponseNorm2d, HyNet
 from .integrated import (
     GFTTAffNetHardNet,
     LAFDescriptor,
@@ -86,6 +87,9 @@ __all__ = [
     "MKDDescriptor",
     "HardNet",
     "HardNet8",
+    "HyNet",
+    "TLU",
+    "FilterResponseNorm2d",
     "DeFMO",
     "TFeat",
     "OriNet",

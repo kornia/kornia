@@ -19,6 +19,7 @@ Descriptors
 .. autoclass:: MKDDescriptor
 .. autoclass:: HardNet
 .. autoclass:: HardNet8
+.. autoclass:: HyNet
 .. autoclass:: TFeat
 .. autoclass:: SOSNet
 .. autoclass:: LAFDescriptor
@@ -81,6 +82,8 @@ Module
 .. autoclass:: CornerGFTT
 .. autoclass:: CornerHarris
 .. autoclass:: BlobDoG
+.. autoclass:: FilterResponseNorm2d
+.. autoclass:: TLU
 
 
 .. autoclass:: ScaleSpaceDetector
