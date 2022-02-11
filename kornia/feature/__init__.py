@@ -1,8 +1,11 @@
 from .affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
 from .defmo import DeFMO
 from .hardnet import HardNet, HardNet8
+from .keynet import KeyNet, KeyNetDetector
 from .integrated import (
     GFTTAffNetHardNet,
+    KeyNetHardNet,
+    KeyNetAffNetHardNet,
     LAFDescriptor,
     LocalFeature,
     LocalFeatureMatcher,
@@ -61,6 +64,7 @@ __all__ = [
     "GFTTAffNetHardNet",
     "LocalFeatureMatcher",
     "SOSNet",
+    "KeyNet",
     "harris_response",
     "gftt_response",
     "hessian_response",
@@ -109,6 +113,10 @@ __all__ = [
     "LocalFeature",
     "SIFTFeature",
     "GFTTAffNetHardNet",
+    "KeyNet",
+    "KeyNetDetector",
+    "KeyNetHardNet",
+    "KeyNetAffNetHardNet",
     "LAFDescriptor",
     "DescriptorMatcher",
     "LoFTR",

@@ -46,6 +46,12 @@ Matching
 .. autoclass:: GFTTAffNetHardNet
    :members: forward
 
+.. autoclass:: KeyNetAffNetHardNet
+  :members: forward
+
+.. autoclass:: KeyNetHardNet
+  :members: forward
+
 .. autoclass:: LocalFeatureMatcher
    :members: forward
 
@@ -81,9 +87,13 @@ Module
 .. autoclass:: CornerGFTT
 .. autoclass:: CornerHarris
 .. autoclass:: BlobDoG
+.. autoclass:: KeyNet
 
 
 .. autoclass:: ScaleSpaceDetector
+   :members: forward
+
+.. autoclass:: KeyNetDetector
    :members: forward
 
 .. autoclass:: PassLAF
