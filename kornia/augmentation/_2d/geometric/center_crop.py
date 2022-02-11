@@ -110,14 +110,18 @@ class CenterCrop(GeometricAugmentationBase2D):
         if self.flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
             # TODO: implement as separated function `crop_and_resize_iterative`
             B, C, _, _ = input.shape
-            H, W = self.size
-            out = torch.empty(B, C, H, W, device=input.device, dtype=input.dtype)
+            src = torch.as_tensor(params["src"], device=torch.device("cpu"), dtype=torch.long).numpy()
+            x1 = src[:, 0, 0]
+            x2 = src[:, 1, 0] + 1
+            y1 = src[:, 0, 1]
+            y2 = src[:, 3, 1] + 1
+
+            if self.same_on_batch:
+                return input[..., y1[0]:y2[0], x1[0]:x2[0]]
+
+            out = torch.empty(B, C, *self.flags["size"], device=input.device, dtype=input.dtype)
             for i in range(B):
-                x1 = int(params["src"][i, 0, 0])
-                x2 = int(params["src"][i, 1, 0]) + 1
-                y1 = int(params["src"][i, 0, 1])
-                y2 = int(params["src"][i, 3, 1]) + 1
-                out[i] = input[i : i + 1, :, y1:y2, x1:x2]
+                out[i] = input[i : i + 1, :, y1[i]:y2[i], x1[i]:x2[i]]
             return out
         raise NotImplementedError(f"Not supported type: {self.flags['cropping_mode']}.")
 
