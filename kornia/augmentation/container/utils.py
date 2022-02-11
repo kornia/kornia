@@ -79,11 +79,11 @@ class ApplyInverseImpl(ApplyInverseInterface):
                 to apply transformations.
             param: the corresponding parameters to the module.
         """
-
+        mat: Optional[torch.Tensor]
         if hasattr(module, "_transform_matrix") and module._transform_matrix is not None:
-            mat = module._transform_matrix
+            mat = cast(torch.Tensor, module._transform_matrix)
         else:
-            mat: Optional[torch.Tensor] = cls._get_transformation(input, module, param)
+            mat = cls._get_transformation(input, module, param)
         to_apply = None
         if isinstance(module, _AugmentationBase):
             to_apply = param.data['batch_prob']  # type: ignore
@@ -106,10 +106,11 @@ class ApplyInverseImpl(ApplyInverseInterface):
                 to apply transformations.
             param: the corresponding parameters to the module.
         """
+        mat: Optional[torch.Tensor]
         if hasattr(module, "_transform_matrix") and module._transform_matrix is not None:
-            mat = module._transform_matrix
+            mat = cast(torch.Tensor, module._transform_matrix)
         else:
-            mat: Optional[torch.Tensor] = cls._get_transformation(input, module, param)
+            mat = cls._get_transformation(input, module, param)
 
         if mat is not None:
             transform: torch.Tensor = cls._get_inverse_transformation(mat)
