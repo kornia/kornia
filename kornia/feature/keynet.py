@@ -1,13 +1,16 @@
 import math
+from typing import Dict, List, Optional, Tuple
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from kornia.filters import spatial_gradient
-from kornia.geometry.transform import pyrdown
 from kornia.geometry.subpix import NonMaximaSuppression2d
-from .orientation import PassLAF
+from kornia.geometry.transform import pyrdown
+
 from .laf import laf_from_center_scale_ori
-from typing import Dict, List, Tuple, Optional
+from .orientation import PassLAF
 
 keynet_config = {
 
@@ -31,10 +34,12 @@ urls["keynet"] = "https://github.com/axelBarroso/Key.Net-Pytorch/raw/main/model/
 
 
 class feature_extractor(nn.Module):
-    '''Helper class for KeyNet. It loads both, the handcrafted and learnable blocks
-    '''
+    """Helper class for KeyNet.
+
+    It loads both, the handcrafted and learnable blocks
+    """
     def __init__(self):
-        super(feature_extractor, self).__init__()
+        super().__init__()
 
         self.hc_block = handcrafted_block()
         self.lb_block = learnable_block()
@@ -46,10 +51,9 @@ class feature_extractor(nn.Module):
 
 
 class handcrafted_block(nn.Module):
-    '''Helper class for KeyNet, it defines the handcrafted filters within the Key.Net handcrafted block
-    '''
+    """Helper class for KeyNet, it defines the handcrafted filters within the Key.Net handcrafted block."""
     def __init__(self):
-        super(handcrafted_block, self).__init__()
+        super().__init__()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
 
@@ -77,11 +81,13 @@ class handcrafted_block(nn.Module):
 
 
 class learnable_block(nn.Module):
-    '''Helper class for KeyNet. It defines the learnable blocks within the Key.Net
-    '''
+    """Helper class for KeyNet.
+
+    It defines the learnable blocks within the Key.Net
+    """
 
     def __init__(self, in_channels: int = 10):
-        super(learnable_block, self).__init__()
+        super().__init__()
 
         self.conv0 = conv_blck(in_channels)
         self.conv1 = conv_blck()
@@ -98,8 +104,10 @@ def conv_blck(in_channels: int = 8,
               stride: int = 1,
               padding: int = 2,
               dilation: int = 1):
-    '''Helper function for KeyNet. Default learnable convolutional block for KeyNet.
-    '''
+    """Helper function for KeyNet.
+
+    Default learnable convolutional block for KeyNet.
+    """
     return nn.Sequential(nn.Conv2d(in_channels, out_channels, kernel_size,
                                    stride, padding, dilation),
                          nn.BatchNorm2d(out_channels),
@@ -107,10 +115,9 @@ def conv_blck(in_channels: int = 8,
 
 
 class KeyNet(nn.Module):
-    '''
-    Key.Net model definition -- local feature detector (response function).
-    This is based on the original code from paper "Key.Net: Keypoint Detection by Handcrafted and Learned CNN Filters".
-    See :cite:`KeyNet2019` for more details.
+    """Key.Net model definition -- local feature detector (response function). This is based on the original code
+    from paper "Key.Net: Keypoint Detection by Handcrafted and Learned CNN Filters". See :cite:`KeyNet2019` for
+    more details.
 
     Args:
         pretrained: Download and set pretrained weights to the model.
@@ -122,12 +129,11 @@ class KeyNet(nn.Module):
     Shape:
         - Input: :math:`(B, 1, H, W)`
         - Output: :math:`(B, 1, H, W)`
-
-    '''
+    """
     def __init__(self,
                  pretrained: bool = False,
                  keynet_conf: Dict = keynet_config['KeyNet_default_config']):
-        super(KeyNet, self).__init__()
+        super().__init__()
 
         num_filters = keynet_conf['num_filters']
         self.num_levels: int = keynet_conf['num_levels']
@@ -181,7 +187,7 @@ class KeyNetDetector(nn.Module):
                  keynet_conf: Dict = keynet_config['KeyNet_default_config'],
                  ori_module: nn.Module = PassLAF(),
                  aff_module: nn.Module = PassLAF()):
-        super(KeyNetDetector, self).__init__()
+        super().__init__()
         self.model = KeyNet(pretrained, keynet_conf)
         # Load extraction configuration
         self.num_pyramid_levels: int = keynet_conf['pyramid_levels']
@@ -195,9 +201,7 @@ class KeyNetDetector(nn.Module):
         self.aff = aff_module
 
     def remove_borders(self, score_map, borders: int = 15):
-        '''
-        It removes the borders of the image to avoid detections on the corners
-        '''
+        """It removes the borders of the image to avoid detections on the corners."""
         shape = score_map.shape
         mask = torch.ones_like(score_map)
 

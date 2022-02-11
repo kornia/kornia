@@ -9,12 +9,12 @@ from kornia.geometry.transform import ScalePyramid
 
 from .affine_shape import LAFAffNetShapeEstimator
 from .hardnet import HardNet
+from .keynet import KeyNetDetector
 from .laf import extract_patches_from_pyramid, get_laf_center, raise_error_if_laf_is_not_valid
-from .orientation import LAFOrienter, PassLAF, OriNet
+from .orientation import LAFOrienter, OriNet, PassLAF
 from .responses import BlobDoG, CornerGFTT
 from .scale_space_detector import ScaleSpaceDetector
 from .siftdesc import SIFTDescriptor
-from .keynet import KeyNetDetector
 
 
 def get_laf_descriptors(img: torch.Tensor,

@@ -1,17 +1,17 @@
 from .affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
 from .defmo import DeFMO
 from .hardnet import HardNet, HardNet8
-from .keynet import KeyNet, KeyNetDetector
 from .integrated import (
     GFTTAffNetHardNet,
-    KeyNetHardNet,
     KeyNetAffNetHardNet,
+    KeyNetHardNet,
     LAFDescriptor,
     LocalFeature,
     LocalFeatureMatcher,
     SIFTFeature,
     get_laf_descriptors,
 )
+from .keynet import KeyNet, KeyNetDetector
 from .laf import (
     denormalize_laf,
     ellipse_to_laf,
