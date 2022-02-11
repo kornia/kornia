@@ -52,8 +52,8 @@ class FilterResponseNorm2d(nn.Module):
         self.is_bias = is_bias
         self.is_scale = is_scale
 
-        self.weight = nn.parameter.Parameter(torch.tensor(1, num_features, 1, 1), requires_grad=True)
-        self.bias = nn.parameter.Parameter(torch.tensor(1, num_features, 1, 1), requires_grad=True)
+        self.weight = nn.parameter.Parameter(torch.ones(1, num_features, 1, 1), requires_grad=True)
+        self.bias = nn.parameter.Parameter(torch.zeros(1, num_features, 1, 1), requires_grad=True)
         if is_eps_leanable:
             self.eps = nn.parameter.Parameter(torch.tensor(1), requires_grad=True)
         else:
@@ -105,7 +105,7 @@ class TLU(nn.Module):
         """max(y, tau) = max(y - tau, 0) + tau = ReLU(y - tau) + tau"""
         super().__init__()
         self.num_features = num_features
-        self.tau = nn.parameter.Parameter(torch.tensor(1, num_features, 1, 1), requires_grad=True)
+        self.tau = nn.parameter.Parameter(-torch.ones(1, num_features, 1, 1), requires_grad=True)
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -212,8 +212,13 @@ class HyNet(nn.Module):
         return
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        for layer in [self.layer1, self.layer2, self.layer3, self.layer4, self.layer5, self.layer6, self.layer7]:
-            x = layer(x)
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+        x = self.layer5(x)
+        x = self.layer6(x)
+        x = self.layer7(x)
         x = self.desc_norm(x + self.eps_l2_norm)
         x = x.view(x.size(0), -1)
         return x
