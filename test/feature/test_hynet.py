@@ -32,5 +32,5 @@ class TestHyNet:
         B, C, H, W = 2, 1, 32, 32
         patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
         model = HyNet().to(patches.device, patches.dtype).eval()
-        model_jit = torch.jit.script(HyNet().to(patches.device, patches.dtype).eval())
+        model_jit = torch.jit.script(model)
         assert_close(model(patches), model_jit(patches))

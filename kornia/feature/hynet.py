@@ -52,12 +52,12 @@ class FilterResponseNorm2d(nn.Module):
         self.is_bias = is_bias
         self.is_scale = is_scale
 
-        self.weight = nn.parameter.Parameter(torch.Tensor(1, num_features, 1, 1), requires_grad=True)
-        self.bias = nn.parameter.Parameter(torch.Tensor(1, num_features, 1, 1), requires_grad=True)
+        self.weight = nn.parameter.Parameter(torch.tensor(1, num_features, 1, 1), requires_grad=True)
+        self.bias = nn.parameter.Parameter(torch.tensor(1, num_features, 1, 1), requires_grad=True)
         if is_eps_leanable:
-            self.eps = nn.parameter.Parameter(torch.Tensor(1), requires_grad=True)
+            self.eps = nn.parameter.Parameter(torch.tensor(1), requires_grad=True)
         else:
-            self.register_buffer('eps', torch.Tensor([eps]))
+            self.register_buffer('eps', torch.tensor([eps]))
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -105,7 +105,7 @@ class TLU(nn.Module):
         """max(y, tau) = max(y - tau, 0) + tau = ReLU(y - tau) + tau"""
         super().__init__()
         self.num_features = num_features
-        self.tau = nn.parameter.Parameter(torch.Tensor(1, num_features, 1, 1), requires_grad=True)
+        self.tau = nn.parameter.Parameter(torch.tensor(1, num_features, 1, 1), requires_grad=True)
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -135,7 +135,7 @@ class HyNet(nn.Module):
         eps_l2_norm: to avoid div by zero
 
     Returns:
-        torch.Tensor: HyNet descriptor of the patches.
+        HyNet descriptor of the patches.
 
     Shape:
         - Input: :math:`(B, 1, 32, 32)`
