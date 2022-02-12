@@ -1,7 +1,7 @@
-from torch.distributions.distribution import Distribution
 from typing import Dict, List, Optional, Tuple, Union, cast
 
 import torch
+from torch.distributions.distribution import Distribution
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
