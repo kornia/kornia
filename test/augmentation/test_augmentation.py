@@ -1483,6 +1483,18 @@ class TestColorJitter:
         assert_close(f(input)[0], expected, atol=1e-4, rtol=1e-5)
         assert_close(f(input)[1], expected_transform, atol=1e-4, rtol=1e-5)
 
+    def test_modified_sampler(self, device, dtype):
+        torch.manual_seed(42)
+        f = ColorJitter()
+        f.brightness_sampler = torch.distributions.Normal(5.0, 1.0, validate_args=False)
+
+        samples = f.brightness_sampler.sample(sample_shape=(10000, ))
+        loc = torch.mean(samples)
+        scale = torch.std(samples)
+
+        assert_close(loc, torch.tensor(5.0), atol=1e-2, rtol=1e-2)
+        assert_close(scale, torch.tensor(1.0), atol=1e-2, rtol=1e-2)
+
     def test_gradcheck(self, device, dtype):
         input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var

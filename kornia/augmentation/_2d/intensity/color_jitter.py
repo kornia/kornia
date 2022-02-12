@@ -1,3 +1,4 @@
+from torch.distributions.distribution import Distribution
 from typing import Dict, List, Optional, Tuple, Union, cast
 
 import torch
@@ -57,6 +58,12 @@ class ColorJitter(IntensityAugmentationBase2D):
         >>> aug = ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
+    To change the distribution from which values are samples, you may access the samplers of each
+    attribute and modify it with any Distribution sampler from torch.distributions:
+        >>> input = torch.randn(1, 3, 32, 32)
+        >>> aug = ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.)
+        >>> aug.brightness_sampler = torch.distributions.Normal(0.0, 1.0, validate_args=False)
     """
 
     def __init__(
@@ -78,6 +85,38 @@ class ColorJitter(IntensityAugmentationBase2D):
         self._param_generator = cast(
             rg.ColorJitterGenerator, rg.ColorJitterGenerator(brightness, contrast, saturation, hue)
         )
+
+    @property
+    def brightness_sampler(self) -> Distribution:
+        return self._param_generator.brightness_sampler
+
+    @brightness_sampler.setter
+    def brightness_sampler(self, brightness_sampler: Distribution):
+        self._param_generator.brightness_sampler = brightness_sampler
+
+    @property
+    def contrast_sampler(self) -> Distribution:
+        return self._param_generator.contrast_sampler
+
+    @contrast_sampler.setter
+    def contrast_sampler(self, contrast_sampler: Distribution):
+        self._param_generator.contrast_sampler = contrast_sampler
+
+    @property
+    def saturation_sampler(self) -> Distribution:
+        return self._param_generator.saturation_sampler
+
+    @saturation_sampler.setter
+    def saturation_sampler(self, saturation_sampler: Distribution):
+        self._param_generator.saturation_sampler = saturation_sampler
+
+    @property
+    def hue_sampler(self) -> Distribution:
+        return self._param_generator.hue_sampler
+
+    @hue_sampler.setter
+    def hue_sampler(self, hue_sampler: Distribution):
+        self._param_generator.hue_sampler = hue_sampler
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
