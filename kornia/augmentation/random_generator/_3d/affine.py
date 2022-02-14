@@ -181,9 +181,9 @@ class AffineGenerator3D(RandomGeneratorBase):
             # translations should be in x,y,z
             translations = torch.stack(
                 [
-                    (_adapted_rsampling((batch_size,), self.yaw_sampler, same_on_batch) - 0.5) * max_dx * 2,
-                    (_adapted_rsampling((batch_size,), self.pitch_sampler, same_on_batch) - 0.5) * max_dy * 2,
-                    (_adapted_rsampling((batch_size,), self.roll_sampler, same_on_batch) - 0.5) * max_dz * 2,
+                     _adapted_uniform((batch_size,), -max_dx, max_dx, same_on_batch),
+                     _adapted_uniform((batch_size,), -max_dy, max_dy, same_on_batch),
+                     _adapted_uniform((batch_size,), -max_dz, max_dz, same_on_batch),
                 ],
                 dim=1,
             )
