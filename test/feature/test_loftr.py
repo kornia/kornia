@@ -44,6 +44,15 @@ class TestLoFTR:
         assert_close(out['keypoints0'], data_dev["loftr_outdoor_tentatives0"])
         assert_close(out['keypoints1'], data_dev["loftr_outdoor_tentatives1"])
 
+    def test_mask(self, device):
+        patches = torch.rand(1, 1, 32, 32, device=device)
+        mask = torch.rand(1, 32, 32, device=device)
+        loftr = LoFTR().to(patches.device, patches.dtype)
+        input = {"image0": patches, "image1": patches, "mask0": mask, "mask1": mask}
+        with torch.no_grad():
+            out = loftr(input)
+        assert out is not None
+
     @pytest.mark.skip("Takes too long time (but works)")
     def test_gradcheck(self, device):
         patches = torch.rand(1, 1, 32, 32, device=device)

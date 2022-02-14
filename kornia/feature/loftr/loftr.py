@@ -8,6 +8,7 @@ from .loftr_module import FinePreprocess, LocalFeatureTransformer
 from .utils.coarse_matching import CoarseMatching
 from .utils.fine_matching import FineMatching
 from .utils.position_encoding import PositionEncodingSine
+from kornia.geometry import resize
 
 urls: Dict[str, str] = {}
 urls["outdoor"] = "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_outdoor.ckpt"
@@ -148,7 +149,9 @@ class LoFTR(nn.Module):
 
         mask_c0 = mask_c1 = None  # mask is useful in training
         if 'mask0' in data:
-            mask_c0, mask_c1 = data['mask0'].flatten(-2), data['mask1'].flatten(-2)
+            mask_c0 = resize(data['mask0'], data['hw0_c'], interpolation='nearest').flatten(-2)
+        if 'mask1' in data:
+            mask_c1 = resize(data['mask1'], data['hw1_c'], interpolation='nearest').flatten(-2)
         feat_c0, feat_c1 = self.loftr_coarse(feat_c0, feat_c1, mask_c0, mask_c1)
 
         # 3. match coarse-level
