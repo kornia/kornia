@@ -3,12 +3,13 @@ from typing import Dict, Optional
 import torch
 import torch.nn as nn
 
+from kornia.geometry import resize
+
 from .backbone import build_backbone
 from .loftr_module import FinePreprocess, LocalFeatureTransformer
 from .utils.coarse_matching import CoarseMatching
 from .utils.fine_matching import FineMatching
 from .utils.position_encoding import PositionEncodingSine
-from kornia.geometry import resize
 
 urls: Dict[str, str] = {}
 urls["outdoor"] = "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_outdoor.ckpt"
