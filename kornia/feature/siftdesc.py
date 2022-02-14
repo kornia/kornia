@@ -62,7 +62,7 @@ class SIFTDescriptor(nn.Module):
         patch_size: Input patch size in pixels.
         num_ang_bins: Number of angular bins.
         num_spatial_bins: Number of spatial bins.
-        clipval:
+        clipval: clipping value to reduce single-bin dominance
         rootsift: if ``True``, RootSIFT (Arandjelović et. al, 2012) is computed.
 
     Returns:
@@ -183,24 +183,39 @@ class SIFTDescriptor(nn.Module):
         return ang_bins
 
 
+def sift_describe(input: torch.Tensor,
+                  patch_size: int = 41,
+                  num_ang_bins: int = 8,
+                  num_spatial_bins: int = 4,
+                  rootsift: bool = True,
+                  clipval: float = 0.2,
+                  ) -> torch.Tensor:
+    r"""Computes the sift descriptor.
+    See :class:`~kornia.feature.SIFTDescriptor` for details.
+    """
+    return SIFTDescriptor(patch_size, num_ang_bins, num_spatial_bins, rootsift, clipval)(input)
+
+
 class DenseSIFTDescriptor(nn.Module):
     """
     Module, which computes SIFT descriptor densely over the image
 
     Args:
-        num_ang_bins: (int) Number of angular bins. (8 is default)
-        num_spatial_bins: (int) Number of spatial bins per descriptor (4 is default)
-        spatial_bin_size: (int) Size of a spatial bin in pixels (4 is default)
-        clipval: (float) default 0.2
-        stride: (int) default 1
+        num_ang_bins: Number of angular bins. (8 is default)
+        num_spatial_bins: Number of spatial bins per descriptor (4 is default).
+    You might want to set odd number and relevant padding to keep feature map size
+        spatial_bin_size: Size of a spatial bin in pixels (4 is default)
+        clipval: clipping value to reduce single-bin dominance
         rootsift: (bool) if True, RootSIFT (Arandjelović et. al, 2012) is computed
+        stride: default 1
+        padding: default 0
 
     Returns:
         torch.Tensor: DenseSIFT descriptor of the image
 
     Shape:
         - Input: (B, 1, H, W)
-        - Output: (B, num_ang_bins * num_spatial_bins ** 2, H/stride, W/stride)
+        - Output: (B, num_ang_bins * num_spatial_bins ** 2, (H+padding)/stride, (W+padding)/stride)
 
     Examples::
         >>> input =  torch.rand(2, 1, 200, 300)
@@ -222,9 +237,9 @@ class DenseSIFTDescriptor(nn.Module):
                  num_spatial_bins: int = 4,
                  spatial_bin_size: int = 4,
                  rootsift: bool = True,
-                 stride: int = 1,
                  clipval: float = 0.2,
-                 pad: int = 1,
+                 stride: int = 1,
+                 padding: int = 1,
                  ) -> None:
         super(DenseSIFTDescriptor, self).__init__()
         self.eps = 1e-10
@@ -234,15 +249,17 @@ class DenseSIFTDescriptor(nn.Module):
         self.clipval = clipval
         self.rootsift = rootsift
         self.stride = stride
-        self.pad = pad
+        self.pad = padding
         nw = get_sift_pooling_kernel(ksize=self.spatial_bin_size).float()
         self.bin_pooling_kernel = nn.Conv2d(1, 1, kernel_size=(nw.size(0), nw.size(1)),
-                                            stride=(1, 1), bias=False)
+                                            stride=(1, 1),
+                                            bias=False,
+                                            padding=(nw.size(0) // 2, nw.size(1) // 2))
         self.bin_pooling_kernel.weight.data.copy_(nw.reshape(1, 1, nw.size(0), nw.size(1)))  # noqa
         self.PoolingConv = nn.Conv2d(num_ang_bins,
                                      num_ang_bins * num_spatial_bins**2,
                                      kernel_size=(num_spatial_bins, num_spatial_bins),
-                                     stride=(self.stride, self.stride), bias=None, padding=(self.pad, self.pad))
+                                     stride=(self.stride, self.stride), bias=False, padding=(self.pad, self.pad))
         self.PoolingConv.weight.data.copy_(_get_reshape_kernel(num_ang_bins,
                                                                num_spatial_bins,
                                                                num_spatial_bins).float())
@@ -278,7 +295,7 @@ class DenseSIFTDescriptor(nn.Module):
         ang_bins = []
         for i in range(0, self.num_ang_bins):
             out = self.bin_pooling_kernel((bo0_big == i).to(input.dtype) * wo0_big +  # noqa
-                          (bo1_big == i).to(input.dtype) * wo1_big)
+                                          (bo1_big == i).to(input.dtype) * wo1_big)
             ang_bins.append(out)
         ang_bins = torch.cat(ang_bins, dim=1)
         out_no_norm = self.PoolingConv(ang_bins)
@@ -287,16 +304,3 @@ class DenseSIFTDescriptor(nn.Module):
         if self.rootsift:
             out = torch.sqrt(F.normalize(out, p=1) + self.eps)
         return out
-
-
-def sift_describe(input: torch.Tensor,
-                  patch_size: int = 41,
-                  num_ang_bins: int = 8,
-                  num_spatial_bins: int = 4,
-                  rootsift: bool = True,
-                  clipval: float = 0.2,
-                  ) -> torch.Tensor:
-    r"""Computes the sift descriptor.
-    See :class:`~kornia.feature.SIFTDescriptor` for details.
-    """
-    return SIFTDescriptor(patch_size, num_ang_bins, num_spatial_bins, rootsift, clipval)(input)

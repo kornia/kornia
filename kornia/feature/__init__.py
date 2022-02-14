@@ -45,7 +45,7 @@ from .responses import (
     hessian_response,
 )
 from .scale_space_detector import PassLAF, ScaleSpaceDetector
-from .siftdesc import SIFTDescriptor
+from .siftdesc import SIFTDescriptor, DenseSIFTDescriptor
 from .sosnet import SOSNet
 from .tfeat import TFeat
 
