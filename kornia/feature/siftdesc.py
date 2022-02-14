@@ -10,7 +10,7 @@ from kornia.geometry.conversions import pi
 
 
 def _get_reshape_kernel(kd: int, ky: int, kx: int) -> torch.Tensor:
-    """Utility function, which returns neigh2channels conv kernel"""
+    """Utility function, which returns neigh2channels conv kernel."""
     numel: int = kd * ky * kx
     weight = torch.eye(numel)
     return weight.view(numel, kd, ky, kx)
@@ -184,8 +184,7 @@ class SIFTDescriptor(nn.Module):
 
 
 class DenseSIFTDescriptor(nn.Module):
-    """
-    Module, which computes SIFT descriptor densely over the image
+    """Module, which computes SIFT descriptor densely over the image.
 
     Args:
         num_ang_bins: (int) Number of angular bins. (8 is default)
@@ -226,7 +225,7 @@ class DenseSIFTDescriptor(nn.Module):
                  clipval: float = 0.2,
                  pad: int = 1,
                  ) -> None:
-        super(DenseSIFTDescriptor, self).__init__()
+        super().__init__()
         self.eps = 1e-10
         self.num_ang_bins = num_ang_bins
         self.num_spatial_bins = num_spatial_bins
@@ -238,7 +237,7 @@ class DenseSIFTDescriptor(nn.Module):
         nw = get_sift_pooling_kernel(ksize=self.spatial_bin_size).float()
         self.bin_pooling_kernel = nn.Conv2d(1, 1, kernel_size=(nw.size(0), nw.size(1)),
                                             stride=(1, 1), bias=False)
-        self.bin_pooling_kernel.weight.data.copy_(nw.reshape(1, 1, nw.size(0), nw.size(1)))  # noqa
+        self.bin_pooling_kernel.weight.data.copy_(nw.reshape(1, 1, nw.size(0), nw.size(1)))
         self.PoolingConv = nn.Conv2d(num_ang_bins,
                                      num_ang_bins * num_spatial_bins**2,
                                      kernel_size=(num_spatial_bins, num_spatial_bins),
