@@ -1,6 +1,6 @@
 import logging
-import pytest
 
+import pytest
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -39,24 +39,20 @@ class TestIntegrationFocalLoss:
         for i in range(1, self.num_classes):
             target[..., i:-i, i:-i] = i
 
-        m = nn.Sequential(
-            nn.Conv2d(1, self.num_classes, kernel_size=3, padding=1),
-            nn.ReLU(True),
-        ).to(device)
+        m = nn.Sequential(nn.Conv2d(1, self.num_classes, kernel_size=3, padding=1), nn.ReLU(True)).to(device)
         m.apply(self.init_weights)
 
         optimizer = optim.Adam(m.parameters(), lr=self.lr)
 
-        criterion = kornia.losses.FocalLoss(
-            alpha=self.alpha, gamma=self.gamma, reduction='mean')
+        criterion = kornia.losses.FocalLoss(alpha=self.alpha, gamma=self.gamma, reduction='mean')
         # NOTE: uncomment to compare against vanilla cross entropy
         # criterion = nn.CrossEntropyLoss()
 
-        for iter_id in range(self.num_iterations):
+        for _ in range(self.num_iterations):
             sample = self.generate_sample(target).to(device)
             output = m(sample)
             loss = criterion(output, target.to(device))
-            logger.debug("Loss: {}".format(loss.item()))
+            logger.debug(f"Loss: {loss.item()}")
 
             optimizer.zero_grad()
             loss.backward()
@@ -64,7 +60,7 @@ class TestIntegrationFocalLoss:
 
         sample = self.generate_sample(target).to(device)
         output_argmax = torch.argmax(m(sample), dim=1)
-        logger.debug("Output argmax: \n{}".format(output_argmax))
+        logger.debug(f"Output argmax: \n{output_argmax}")
 
         # TODO(edgar): replace by IoU or find a more stable solution
         #              for this test. The issue is that depending on

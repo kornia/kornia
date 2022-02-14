@@ -9,9 +9,9 @@ Everyone is welcomed to get involved with the project. There are different ways 
 
    - Please, don't use GitHub issues for Q&A.
    - In case you are a developer and want to learn more about the PyTorch ecosystem, we suggest you to join the PyTorch slack. You can apply using this form: `https://bit.ly/ptslack <https://bit.ly/ptslack>`_
-   
 
-2. Report bugs through `GitHub issues <https://github.com/arraiyopensource/kornia/issues>`_:
+
+2. Report bugs through `GitHub issues <https://github.com/kornia/kornia/issues>`_:
 
    - Do a quick search first to see whether others reported a similar issue.
    - In case you find an unreported bug, please open a new ticket.
@@ -55,7 +55,7 @@ In order to start to develop, please follow the steps below:
 
 .. code:: bash
 
-    git clone https://github.com/arraiyopensource/kornia.git
+    git clone https://github.com/kornia/kornia.git
     cd kornia
 
 3. Create a new branch with a meaningful name reflecting your contribution. See an example:
@@ -158,12 +158,12 @@ This section provides general guidance for developing code for the project. The 
 - Format your code:
 
   - We follow `PEP8 style guide <https://www.python.org/dev/peps/pep-0008>`_.
-  - Use ``autopep`` to autoformat: https://pypi.org/project/autopep8/#id3 .
-    For doing so, just run the following from the repository root
+  - Use ``pre-commit`` to autoformat each commit before push: https://pre-commit.com/.
+    For doing so, just install it for this repository:
 
   .. code:: bash
 
-    make autopep8
+    pre-commit install
 
 - Changes to PEP8:
 
@@ -186,7 +186,7 @@ Pull Request
 ============
 
 Once you finish implementing a feature or bug-fix, please send a Pull Request to
-https://github.com/arraiyopensource/kornia through the website.
+https://github.com/kornia/kornia through the website.
 
 If you are not familiar with creating a Pull Request, here are some guides:
 

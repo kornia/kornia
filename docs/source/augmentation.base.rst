@@ -1,26 +1,12 @@
 Base Classes
 ============
 
-.. currentmodule:: kornia.augmentation.base
+.. currentmodule:: kornia.augmentation
 
+This is the base class for creating a new transform using `kornia.augmentation`.
+The user only needs to override: `generate_parameters`, `apply_transform` and optionally, `compute_transformation`.
 
-This is the base class for creating a new transform. The user only needs to override: `generate_parameters`, `apply_transform` and optionally, `compute_transformation`.
-
-
-.. autoclass:: AugmentationBase2D
-
-   .. automethod:: generate_parameters
-   .. automethod:: compute_transformation
-   .. automethod:: apply_transform
-
-.. autoclass:: AugmentationBase3D
-
-   .. automethod:: generate_parameters
-   .. automethod:: compute_transformation
-   .. automethod:: apply_transform
-
-
-Create your own transformation:
+Create your own transformations with the following snippet:
 
 .. code-block:: python
 
@@ -36,9 +22,9 @@ Create your own transformation:
       def generate_parameters(self, input_shape: torch.Size):
          # generate the random parameters for your use case.
          angles_rad torch.Tensor = torch.rand(input_shape[0]) * K.pi
-	 angles_deg = kornia.rad2deg(angles_rad) 
+	 angles_deg = kornia.rad2deg(angles_rad)
 	 return dict(angles=angles_deg)
-      
+
       def compute_transformation(self, input, params):
 
     	 B, _, H, W = input.shape
@@ -59,3 +45,15 @@ Create your own transformation:
          # apply transformation and return
 	 output = K.warp_affine(input, transform, (H, W))
          return (output, transform)
+
+.. autoclass:: AugmentationBase2D
+
+   .. automethod:: generate_parameters
+   .. automethod:: compute_transformation
+   .. automethod:: apply_transform
+
+.. autoclass:: AugmentationBase3D
+
+   .. automethod:: generate_parameters
+   .. automethod:: compute_transformation
+   .. automethod:: apply_transform

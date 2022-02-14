@@ -1,120 +1,244 @@
 import pytest
+import torch
+from torch.autograd import gradcheck
 
 import kornia
 import kornia.testing as utils  # test utils
-
-import torch
-from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from kornia.testing import assert_close
 
 
 class TestFilter2D:
-    def test_smoke(self, device, dtype):
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    def test_smoke(self, padding, device, dtype):
         kernel = torch.rand(1, 3, 3, device=device, dtype=dtype)
+        _, height, width = kernel.shape
         input = torch.ones(1, 1, 7, 8, device=device, dtype=dtype)
-        assert kornia.filter2D(input, kernel).shape == input.shape
+        b, c, h, w = input.shape
+        if padding == 'same':
+            out = kornia.filters.filter2d(input, kernel, padding=padding)
+            assert out.shape == (b, c, h, w)
+        else:
+            out = kornia.filters.filter2d(input, kernel, padding=padding)
+            assert out.shape == (b, c, h - height + 1, w - width + 1)
 
     @pytest.mark.parametrize("batch_size", [2, 3, 6, 8])
-    def test_batch(self, batch_size, device, dtype):
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    def test_batch(self, batch_size, padding, device, dtype):
         B: int = batch_size
         kernel = torch.rand(1, 3, 3, device=device, dtype=dtype)
+        _, height, width = kernel.shape
         input = torch.ones(B, 3, 7, 8, device=device, dtype=dtype)
-        assert kornia.filter2D(input, kernel).shape == input.shape
+        b, c, h, w = input.shape
+        if padding == 'same':
+            out = kornia.filters.filter2d(input, kernel, padding=padding)
+            assert out.shape == (b, c, h, w)
+        else:
+            out = kornia.filters.filter2d(input, kernel, padding=padding)
+            assert out.shape == (b, c, h - height + 1, w - width + 1)
 
-    def test_mean_filter(self, device, dtype):
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    def test_mean_filter(self, padding, device, dtype):
         kernel = torch.ones(1, 3, 3, device=device, dtype=dtype)
-        input = torch.tensor([[[
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 5., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]], device=device, dtype=dtype)
-        expected = torch.tensor([[[
-            [0., 0., 0., 0., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]], device=device, dtype=dtype)
+        input = torch.tensor(
+            [
+                [
+                    [
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 5.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        expected_same = torch.tensor(
+            [
+                [
+                    [
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 5.0, 5.0, 5.0, 0.0],
+                        [0.0, 5.0, 5.0, 5.0, 0.0],
+                        [0.0, 5.0, 5.0, 5.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
-        actual = kornia.filter2D(input, kernel)
-        assert_allclose(actual, expected)
+        expected_valid = torch.tensor(
+            [[[[5.0, 5.0, 5.0], [5.0, 5.0, 5.0], [5.0, 5.0, 5.0]]]], device=device, dtype=dtype
+        )
 
-    def test_mean_filter_2batch_2ch(self, device, dtype):
+        actual = kornia.filters.filter2d(input, kernel, padding=padding)
+        if padding == 'same':
+            assert_close(actual, expected_same)
+        else:
+            assert_close(actual, expected_valid)
+
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    def test_mean_filter_2batch_2ch(self, padding, device, dtype):
         kernel = torch.ones(1, 3, 3, device=device, dtype=dtype)
-        input = torch.tensor([[[
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 5., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]], device=device, dtype=dtype).expand(2, 2, -1, -1)
+        input = torch.tensor(
+            [
+                [
+                    [
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 5.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        ).expand(2, 2, -1, -1)
 
-        expected = torch.tensor([[[
-            [0., 0., 0., 0., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]], device=device, dtype=dtype).expand(2, 2, -1, -1)
+        expected_same = torch.tensor(
+            [
+                [
+                    [
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 5.0, 5.0, 5.0, 0.0],
+                        [0.0, 5.0, 5.0, 5.0, 0.0],
+                        [0.0, 5.0, 5.0, 5.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        ).expand(2, 2, -1, -1)
 
-        actual = kornia.filter2D(input, kernel)
-        assert_allclose(actual, expected)
+        expected_valid = torch.tensor(
+            [[[[5.0, 5.0, 5.0], [5.0, 5.0, 5.0], [5.0, 5.0, 5.0]]]], device=device, dtype=dtype
+        ).expand(2, 2, -1, -1)
 
-    def test_normalized_mean_filter(self, device, dtype):
+        actual = kornia.filters.filter2d(input, kernel, padding=padding)
+        if padding == 'same':
+            assert_close(actual, expected_same)
+        else:
+            assert_close(actual, expected_valid)
+
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    def test_normalized_mean_filter(self, padding, device, dtype):
         kernel = torch.ones(1, 3, 3).to(device)
-        input = torch.tensor([[[
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 5., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]], device=device, dtype=dtype).expand(2, 2, -1, -1)
+        input = torch.tensor(
+            [
+                [
+                    [
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 5.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        ).expand(2, 2, -1, -1)
 
-        nv: float = 5. / 9  # normalization value
-        expected = torch.tensor([[[
-            [0., 0., 0., 0., 0.],
-            [0., nv, nv, nv, 0.],
-            [0., nv, nv, nv, 0.],
-            [0., nv, nv, nv, 0.],
-            [0., 0., 0., 0., 0.],
-        ]]], device=device, dtype=dtype).expand(2, 2, -1, -1)
+        nv: float = 5.0 / 9  # normalization value
+        expected_same = torch.tensor(
+            [
+                [
+                    [
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, nv, nv, nv, 0.0],
+                        [0.0, nv, nv, nv, 0.0],
+                        [0.0, nv, nv, nv, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        ).expand(2, 2, -1, -1)
 
-        actual = kornia.filter2D(input, kernel, normalized=True)
+        expected_valid = torch.tensor(
+            [[[[nv, nv, nv], [nv, nv, nv], [nv, nv, nv]]]], device=device, dtype=dtype
+        ).expand(2, 2, -1, -1)
+
+        actual = kornia.filters.filter2d(input, kernel, normalized=True, padding=padding)
 
         tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
-        assert_allclose(actual, expected, rtol=tol_val, atol=tol_val)
+        if padding == 'same':
+            assert_close(actual, expected_same, rtol=tol_val, atol=tol_val)
+        else:
+            assert_close(actual, expected_valid, rtol=tol_val, atol=tol_val)
 
-    def test_even_sized_filter(self, device, dtype):
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    def test_even_sized_filter(self, padding, device, dtype):
         kernel = torch.ones(1, 2, 2, device=device, dtype=dtype)
-        input = torch.tensor([[[
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 5., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]], device=device, dtype=dtype)
+        input = torch.tensor(
+            [
+                [
+                    [
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 5.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
-        expected = torch.tensor([[[
-            [0., 0., 0., 0., 0.],
-            [0., 5., 5., 0., 0.],
-            [0., 5., 5., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]], device=device, dtype=dtype)
+        expected_same = torch.tensor(
+            [
+                [
+                    [
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 5.0, 5.0, 0.0, 0.0],
+                        [0.0, 5.0, 5.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
-        actual = kornia.filter2D(input, kernel)
-        assert_allclose(actual, expected)
+        expected_valid = torch.tensor(
+            [[[[0.0, 0.0, 0.0, 0.0], [0.0, 5.0, 5.0, 0.0], [0.0, 5.0, 5.0, 0.0], [0.0, 0.0, 0.0, 0.0]]]],
+            device=device,
+            dtype=dtype,
+        )
 
-    def test_noncontiguous(self, device, dtype):
+        actual = kornia.filters.filter2d(input, kernel, padding=padding)
+        if padding == 'same':
+            assert_close(actual, expected_same)
+        else:
+            assert_close(actual, expected_valid)
+
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    def test_noncontiguous(self, padding, device, dtype):
         batch_size = 3
         inp = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
         kernel = torch.ones(1, 2, 2, device=device, dtype=dtype)
 
-        actual = kornia.filter2D(inp, kernel)
-        expected = actual
-        assert_allclose(actual, actual)
+        actual = kornia.filters.filter2d(inp, kernel, padding=padding)
+        assert_close(actual, actual)
+
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    def test_separable(self, padding, device, dtype):
+        batch_size = 3
+        inp = torch.rand(3, 9, 9, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
+        kernel_x = torch.ones(1, 3, device=device, dtype=dtype)
+        kernel_y = torch.ones(1, 3, device=device, dtype=dtype)
+        kernel = kernel_y.t() @ kernel_x
+        out = kornia.filters.filter2d(inp, kernel[None], padding=padding)
+        out_sep = kornia.filters.filter2d_separable(inp, kernel_x, kernel_y, padding=padding)
+        assert_close(out, out_sep)
 
     def test_gradcheck(self, device):
         kernel = torch.rand(1, 3, 3, device=device)
@@ -123,229 +247,324 @@ class TestFilter2D:
         # evaluate function gradient
         input = utils.tensor_to_gradcheck_var(input)  # to var
         kernel = utils.tensor_to_gradcheck_var(kernel)  # to var
-        assert gradcheck(kornia.filter2D, (input, kernel),
-                         raise_exception=True)
+        assert gradcheck(kornia.filters.filter2d, (input, kernel), raise_exception=True)
 
-    def test_jit(self, device, dtype):
-        op = kornia.filter2D
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    def test_jit(self, padding, device, dtype):
+        op = kornia.filters.filter2d
         op_script = torch.jit.script(op)
 
         kernel = torch.rand(1, 3, 3, device=device, dtype=dtype)
         input = torch.ones(1, 1, 7, 8, device=device, dtype=dtype)
-        expected = op(input, kernel)
-        actual = op_script(input, kernel)
-        assert_allclose(actual, expected)
+        expected = op(input, kernel, padding=padding)
+        actual = op_script(input, kernel, padding=padding)
+        assert_close(actual, expected)
 
 
 class TestFilter3D:
     def test_smoke(self, device, dtype):
         kernel = torch.rand(1, 3, 3, 3).to(device)
         input = torch.ones(1, 1, 6, 7, 8).to(device)
-        assert kornia.filter3D(input, kernel).shape == input.shape
+        assert kornia.filters.filter3d(input, kernel).shape == input.shape
 
     @pytest.mark.parametrize("batch_size", [2, 3, 6, 8])
     def test_batch(self, batch_size, device, dtype):
         B: int = batch_size
         kernel = torch.rand(1, 3, 3, 3, device=device, dtype=dtype)
         input = torch.ones(B, 3, 6, 7, 8, device=device, dtype=dtype)
-        assert kornia.filter3D(input, kernel).shape == input.shape
+        assert kornia.filters.filter3d(input, kernel).shape == input.shape
 
     def test_mean_filter(self, device, dtype):
         kernel = torch.ones(1, 3, 3, 3, device=device, dtype=dtype)
-        input = torch.tensor([[[[
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 5., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]]], device=device, dtype=dtype)
+        input = torch.tensor(
+            [
+                [
+                    [
+                        [
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                        ],
+                        [
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 5.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                        ],
+                        [
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                        ],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
-        expected = torch.tensor([[[[
-            [0., 0., 0., 0., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]]], device=device, dtype=dtype)
+        expected = torch.tensor(
+            [
+                [
+                    [
+                        [
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 5.0, 5.0, 5.0, 0.0],
+                            [0.0, 5.0, 5.0, 5.0, 0.0],
+                            [0.0, 5.0, 5.0, 5.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                        ],
+                        [
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 5.0, 5.0, 5.0, 0.0],
+                            [0.0, 5.0, 5.0, 5.0, 0.0],
+                            [0.0, 5.0, 5.0, 5.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                        ],
+                        [
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 5.0, 5.0, 5.0, 0.0],
+                            [0.0, 5.0, 5.0, 5.0, 0.0],
+                            [0.0, 5.0, 5.0, 5.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                        ],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
-        actual = kornia.filter3D(input, kernel)
-        assert_allclose(actual, expected)
+        actual = kornia.filters.filter3d(input, kernel)
+        assert_close(actual, expected)
 
     def test_mean_filter_2batch_2ch(self, device, dtype):
         kernel = torch.ones(1, 3, 3, 3, device=device, dtype=dtype)
-        input = torch.tensor([[[[
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 5., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]]], device=device, dtype=dtype)
+        input = torch.tensor(
+            [
+                [
+                    [
+                        [
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                        ],
+                        [
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 5.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                        ],
+                        [
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                        ],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
         input = input.expand(2, 2, -1, -1, -1)
 
-        expected = torch.tensor([[[[
-            [0., 0., 0., 0., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]]], device=device, dtype=dtype)
+        expected = torch.tensor(
+            [
+                [
+                    [
+                        [
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 5.0, 5.0, 5.0, 0.0],
+                            [0.0, 5.0, 5.0, 5.0, 0.0],
+                            [0.0, 5.0, 5.0, 5.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                        ],
+                        [
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 5.0, 5.0, 5.0, 0.0],
+                            [0.0, 5.0, 5.0, 5.0, 0.0],
+                            [0.0, 5.0, 5.0, 5.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                        ],
+                        [
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 5.0, 5.0, 5.0, 0.0],
+                            [0.0, 5.0, 5.0, 5.0, 0.0],
+                            [0.0, 5.0, 5.0, 5.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                        ],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
         expected = expected.expand(2, 2, -1, -1, -1)
 
-        actual = kornia.filter3D(input, kernel)
-        assert_allclose(actual, expected)
+        actual = kornia.filters.filter3d(input, kernel)
+        assert_close(actual, expected)
 
     def test_normalized_mean_filter(self, device, dtype):
         kernel = torch.ones(1, 3, 3, 3, device=device, dtype=dtype)
-        input = torch.tensor([[[[
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 5., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]]], device=device, dtype=dtype)
+        input = torch.tensor(
+            [
+                [
+                    [
+                        [
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                        ],
+                        [
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 5.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                        ],
+                        [
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                        ],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
         input = input.expand(2, 2, -1, -1, -1)
 
-        nv = 5. / 27  # normalization value
-        expected = torch.tensor([[[[
-            [0., 0., 0., 0., 0.],
-            [0., nv, nv, nv, 0.],
-            [0., nv, nv, nv, 0.],
-            [0., nv, nv, nv, 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., nv, nv, nv, 0.],
-            [0., nv, nv, nv, 0.],
-            [0., nv, nv, nv, 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., nv, nv, nv, 0.],
-            [0., nv, nv, nv, 0.],
-            [0., nv, nv, nv, 0.],
-            [0., 0., 0., 0., 0.],
-        ]]]], device=device, dtype=dtype)
+        nv = 5.0 / 27  # normalization value
+        expected = torch.tensor(
+            [
+                [
+                    [
+                        [
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, nv, nv, nv, 0.0],
+                            [0.0, nv, nv, nv, 0.0],
+                            [0.0, nv, nv, nv, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                        ],
+                        [
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, nv, nv, nv, 0.0],
+                            [0.0, nv, nv, nv, 0.0],
+                            [0.0, nv, nv, nv, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                        ],
+                        [
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, nv, nv, nv, 0.0],
+                            [0.0, nv, nv, nv, 0.0],
+                            [0.0, nv, nv, nv, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                        ],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
         expected = expected.expand(2, 2, -1, -1, -1)
 
-        actual = kornia.filter3D(input, kernel, normalized=True)
+        actual = kornia.filters.filter3d(input, kernel, normalized=True)
 
         tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
-        assert_allclose(actual, expected, rtol=tol_val, atol=tol_val)
+        assert_close(actual, expected, rtol=tol_val, atol=tol_val)
 
     def test_even_sized_filter(self, device, dtype):
         kernel = torch.ones(1, 2, 2, 2, device=device, dtype=dtype)
-        input = torch.tensor([[[[
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 5., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]]], device=device, dtype=dtype)
+        input = torch.tensor(
+            [
+                [
+                    [
+                        [
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                        ],
+                        [
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 5.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                        ],
+                        [
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                        ],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
-        expected = torch.tensor([[[[
-            [0., 0., 0., 0., 0.],
-            [0., 5., 5., 0., 0.],
-            [0., 5., 5., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., 5., 5., 0., 0.],
-            [0., 5., 5., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]]], device=device, dtype=dtype)
+        expected = torch.tensor(
+            [
+                [
+                    [
+                        [
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 5.0, 5.0, 0.0, 0.0],
+                            [0.0, 5.0, 5.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                        ],
+                        [
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 5.0, 5.0, 0.0, 0.0],
+                            [0.0, 5.0, 5.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                        ],
+                        [
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                        ],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
-        actual = kornia.filter3D(input, kernel)
-        assert_allclose(actual, expected)
+        actual = kornia.filters.filter3d(input, kernel)
+        assert_close(actual, expected)
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
-        inp = torch.rand(3, 5, 5, 5, device=device, dtype=dtype).expand(
-            batch_size, -1, -1, -1, -1)
+        inp = torch.rand(3, 5, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1, -1)
         kernel = torch.ones(1, 2, 2, 2, device=device, dtype=dtype)
 
-        actual = kornia.filter3D(inp, kernel)
+        actual = kornia.filters.filter3d(inp, kernel)
         expected = actual
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_gradcheck(self, device):
         kernel = torch.rand(1, 3, 3, 3, device=device)
@@ -354,15 +573,14 @@ class TestFilter3D:
         # evaluate function gradient
         input = utils.tensor_to_gradcheck_var(input)  # to var
         kernel = utils.tensor_to_gradcheck_var(kernel)  # to var
-        assert gradcheck(kornia.filter3D, (input, kernel),
-                         raise_exception=True)
+        assert gradcheck(kornia.filters.filter3d, (input, kernel), raise_exception=True)
 
     def test_jit(self, device, dtype):
-        op = kornia.filter3D
+        op = kornia.filters.filter3d
         op_script = torch.jit.script(op)
 
         kernel = torch.rand(1, 1, 3, 3, device=device, dtype=dtype)
         input = torch.ones(1, 1, 2, 7, 8, device=device, dtype=dtype)
         expected = op(input, kernel)
         actual = op_script(input, kernel)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)

@@ -30,16 +30,19 @@ test-slow: FORCE
 	pytest -v --device all --dtype all -m "(jit or grad or nn)"
 
 lint: FORCE
-	pytest -v --flake8 -m flake8
+	pytest -v --cache-clear --flake8 kornia/ examples/ test/ -m flake8
 
 mypy: FORCE
-	pytest -v --mypy -m mypy test/
+	pytest -v --cache-clear --mypy kornia/ -m mypy
 
 autopep8: FORCE
 	autopep8 --in-place --aggressive --recursive kornia/ test/ examples/
 
+yapf: FORCE
+	yapf --in-place --parallel --recursive kornia/ test/ examples/
+
 doctest:
-	pytest -v --doctest-modules kornia
+	pytest -v --doctest-modules kornia/
 
 docstyle: FORCE
 	pydocstyle kornia/
@@ -49,7 +52,7 @@ build-docs: FORCE
 
 install: FORCE
 	python setup.py install
-	
+
 install-dev: FORCE
 	python setup.py develop
 

@@ -1,13 +1,11 @@
 import logging
-import pytest
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
-from torch.testing import assert_allclose
 
 import kornia
+from kornia.testing import assert_close
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +20,8 @@ class TestIntegrationSoftArgmax2d:
     width = 320
 
     def generate_sample(self, base_target, std_val=1.0):
-        """Generates a random sample around the given point.
+        """Generate a random sample around the given point.
+
         The standard deviation is in pixel.
         """
         noise = std_val * torch.rand_like(base_target)
@@ -44,22 +43,21 @@ class TestIntegrationSoftArgmax2d:
         criterion = nn.MSELoss()
 
         # spatial soft-argmax2d module
-        soft_argmax2d = kornia.geometry.SpatialSoftArgmax2d(
-            normalized_coordinates=False)
+        soft_argmax2d = kornia.geometry.SpatialSoftArgmax2d(normalized_coordinates=False)
 
         # NOTE: check where this comes from
         temperature = (self.height * self.width) ** (0.5)
 
-        for iter_id in range(self.num_iterations):
+        for _ in range(self.num_iterations):
             x = params
             sample = self.generate_sample(target).to(device)
             pred = soft_argmax2d(temperature * x)
             loss = criterion(pred, sample)
-            logger.debug("Loss: {0:.3f} Pred: {1}".format(loss.item(), pred))
+            logger.debug(f"Loss: {loss.item():.3f} Pred: {pred}")
 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
-        assert_allclose(pred[..., 0], target[..., 0], rtol=1e-2, atol=1e-2)
-        assert_allclose(pred[..., 1], target[..., 1], rtol=1e-2, atol=1e-2)
+        assert_close(pred[..., 0], target[..., 0], rtol=1e-2, atol=1e-2)
+        assert_close(pred[..., 1], target[..., 1], rtol=1e-2, atol=1e-2)

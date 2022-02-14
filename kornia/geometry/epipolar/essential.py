@@ -1,11 +1,22 @@
 """Module containing functionalities for the Essential matrix."""
-from typing import Tuple, Optional
+from typing import Optional, Tuple
 
 import torch
 
-from kornia.geometry.epipolar import numeric
-from kornia.geometry.epipolar import projection
-from kornia.geometry.epipolar import triangulation
+from kornia.utils import eye_like, vec_like
+
+from .numeric import cross_product_matrix
+from .projection import depth_from_point, projection_from_KRt
+from .triangulation import triangulate_points
+
+__all__ = [
+    "essential_from_fundamental",
+    "decompose_essential_matrix",
+    "essential_from_Rt",
+    "motion_from_essential",
+    "motion_from_essential_choose_solution",
+    "relative_camera_motion",
+]
 
 
 def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.Tensor) -> torch.Tensor:
@@ -14,18 +25,22 @@ def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.
     Uses the method from Hartley/Zisserman 9.6 pag 257 (formula 9.12).
 
     Args:
-        F_mat (torch.Tensor): The fundamental matrix with shape of :math:`(*, 3, 3)`.
-        K1 (torch.Tensor): The camera matrix from first camera with shape :math:`(*, 3, 3)`.
-        K2 (torch.Tensor): The camera matrix from second camera with shape :math:`(*, 3, 3)`.
+        F_mat: The fundamental matrix with shape of :math:`(*, 3, 3)`.
+        K1: The camera matrix from first camera with shape :math:`(*, 3, 3)`.
+        K2: The camera matrix from second camera with shape :math:`(*, 3, 3)`.
 
     Returns:
-        torch.Tensor: The essential matrix with shape :math:`(*, 3, 3)`.
+        The essential matrix with shape :math:`(*, 3, 3)`.
 
     """
-    assert len(F_mat.shape) >= 2 and F_mat.shape[-2:] == (3, 3), F_mat.shape
-    assert len(K1.shape) >= 2 and K1.shape[-2:] == (3, 3), K1.shape
-    assert len(K2.shape) >= 2 and K2.shape[-2:] == (3, 3), K2.shape
-    assert len(F_mat.shape[:-2]) == len(K1.shape[:-2]) == len(K2.shape[:-2])
+    if not (len(F_mat.shape) >= 2 and F_mat.shape[-2:] == (3, 3)):
+        raise AssertionError(F_mat.shape)
+    if not (len(K1.shape) >= 2 and K1.shape[-2:] == (3, 3)):
+        raise AssertionError(K1.shape)
+    if not (len(K2.shape) >= 2 and K2.shape[-2:] == (3, 3)):
+        raise AssertionError(K2.shape)
+    if not len(F_mat.shape[:-2]) == len(K1.shape[:-2]) == len(K2.shape[:-2]):
+        raise AssertionError
 
     return K2.transpose(-2, -1) @ F_mat @ K1
 
@@ -37,31 +52,31 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
     and give the possible solutions: :math:`R1, R2, t`.
 
     Args:
-       E_mat (torch.Tensor): The essential matrix in the form of :math:`(*, 3, 3)`.
+       E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
 
     Returns:
-       Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: A tuple containing the first and
-       second possible rotation matrices and the translation vector. The shape of the tensors
-       with be same input :math:`[(*, 3, 3), (*, 3, 3), (*, 3, 1)]`.
+       A tuple containing the first and second possible rotation matrices and the translation vector.
+       The shape of the tensors with be same input :math:`[(*, 3, 3), (*, 3, 3), (*, 3, 1)]`.
 
     """
-    assert len(E_mat.shape) >= 2 and E_mat.shape[-2:], E_mat.shape
+    if not (len(E_mat.shape) >= 2 and E_mat.shape[-2:]):
+        raise AssertionError(E_mat.shape)
 
     # decompose matrix by its singular values
-    U, S, V = torch.svd(E_mat)
+    U, _, V = torch.svd(E_mat)
     Vt = V.transpose(-2, -1)
 
     mask = torch.ones_like(E_mat)
-    mask[..., -1:] *= -1.   # fill last column with negative values
+    mask[..., -1:] *= -1.0  # fill last column with negative values
 
     maskt = mask.transpose(-2, -1)
 
     # avoid singularities
-    U = torch.where((torch.det(U) < 0.)[..., None, None], U * mask, U)
-    Vt = torch.where((torch.det(Vt) < 0.)[..., None, None], Vt * maskt, Vt)
+    U = torch.where((torch.det(U) < 0.0)[..., None, None], U * mask, U)
+    Vt = torch.where((torch.det(Vt) < 0.0)[..., None, None], Vt * maskt, Vt)
 
-    W = numeric.cross_product_matrix(torch.tensor([[0., 0., 1.]]).type_as(E_mat))
-    W[..., 2, 2] += 1.
+    W = cross_product_matrix(torch.tensor([[0.0, 0.0, 1.0]]).type_as(E_mat))
+    W[..., 2, 2] += 1.0
 
     # reconstruct rotations and retrieve translation vector
     U_W_Vt = U @ W @ Vt
@@ -80,44 +95,49 @@ def essential_from_Rt(R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: 
     Reference: Hartley/Zisserman 9.6 pag 257 (formula 9.12)
 
     Args:
-        R1 (torch.Tensor): The first camera rotation matrix with shape :math:`(*, 3, 3)`.
-        t1 (torch.Tensor): The first camera translation vector with shape :math:`(*, 3, 1)`.
-        R2 (torch.Tensor): The second camera rotation matrix with shape :math:`(*, 3, 3)`.
-        t2 (torch.Tensor): The second camera translation vector with shape :math:`(*, 3, 1)`.
+        R1: The first camera rotation matrix with shape :math:`(*, 3, 3)`.
+        t1: The first camera translation vector with shape :math:`(*, 3, 1)`.
+        R2: The second camera rotation matrix with shape :math:`(*, 3, 3)`.
+        t2: The second camera translation vector with shape :math:`(*, 3, 1)`.
 
     Returns:
-        torch.Tensor: The Essential matrix with the shape :math:`(*, 3, 3)`.
+        The Essential matrix with the shape :math:`(*, 3, 3)`.
 
     """
-    assert len(R1.shape) >= 2 and R1.shape[-2:] == (3, 3), R1.shape
-    assert len(t1.shape) >= 2 and t1.shape[-2:] == (3, 1), t1.shape
-    assert len(R2.shape) >= 2 and R2.shape[-2:] == (3, 3), R2.shape
-    assert len(t2.shape) >= 2 and t2.shape[-2:] == (3, 1), t2.shape
+    if not (len(R1.shape) >= 2 and R1.shape[-2:] == (3, 3)):
+        raise AssertionError(R1.shape)
+    if not (len(t1.shape) >= 2 and t1.shape[-2:] == (3, 1)):
+        raise AssertionError(t1.shape)
+    if not (len(R2.shape) >= 2 and R2.shape[-2:] == (3, 3)):
+        raise AssertionError(R2.shape)
+    if not (len(t2.shape) >= 2 and t2.shape[-2:] == (3, 1)):
+        raise AssertionError(t2.shape)
 
     # first compute the camera relative motion
     R, t = relative_camera_motion(R1, t1, R2, t2)
 
     # get the cross product from relative translation vector
-    Tx = numeric.cross_product_matrix(t[..., 0])
+    Tx = cross_product_matrix(t[..., 0])
 
-    return (Tx @ R)
+    return Tx @ R
 
 
 def motion_from_essential(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Get Motion (R's and t's ) from Essential matrix.
 
     Computes and return four possible poses exist for the decomposition of the Essential
-    matrix. The posible solutions are :math:`[R1,t], [R1,−t], [R2,t], [R2,−t]`.
+    matrix. The possible solutions are :math:`[R1,t], [R1,−t], [R2,t], [R2,−t]`.
 
     Args:
-        E_mat (torch.Tensor): The essential matrix in the form of :math:`(*, 3, 3)`.
+        E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor]: The rotation and translation containing the four
-        possible combination for the retrieved motion. The tuple is as following :math:`[(*, 4, 3, 3), (*, 4, 3, 1)]`.
+        The rotation and translation containing the four possible combination for the retrieved motion.
+        The tuple is as following :math:`[(*, 4, 3, 3), (*, 4, 3, 1)]`.
 
     """
-    assert len(E_mat.shape) >= 2 and E_mat.shape[-2:], E_mat.shape
+    if not (len(E_mat.shape) >= 2 and E_mat.shape[-2:] == (3, 3)):
+        raise AssertionError(E_mat.shape)
 
     # decompose the essential matrix by its possible poses
     R1, R2, t = decompose_essential_matrix(E_mat)
@@ -145,63 +165,84 @@ def motion_from_essential_choose_solution(
     :py:meth:`~kornia.geometry.epipolar.triangulate_points`.
 
     Args:
-        E_mat (torch.Tensor): The essential matrix in the form of :math:`(*, 3, 3)`.
-        K1 (torch.Tensor): The camera matrix from first camera with shape :math:`(*, 3, 3)`.
-        K2 (torch.Tensor): The camera matrix from second camera with shape :math:`(*, 3, 3)`.
-        x1 (torch.Tensor): The set of points seen from the first camera frame in the camera plane
+        E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
+        K1: The camera matrix from first camera with shape :math:`(*, 3, 3)`.
+        K2: The camera matrix from second camera with shape :math:`(*, 3, 3)`.
+        x1: The set of points seen from the first camera frame in the camera plane
           coordinates with shape :math:`(*, N, 2)`.
-        x2 (torch.Tensor): The set of points seen from the first camera frame in the camera plane
+        x2: The set of points seen from the first camera frame in the camera plane
           coordinates with shape :math:`(*, N, 2)`.
-        mask (torch.Tensor): A boolean mask which can be used to exclude some points from choosing
+        mask: A boolean mask which can be used to exclude some points from choosing
           the best solution. This is useful for using this function with sets of points of
           different cardinality (for instance after filtering with RANSAC) while keeping batch
           semantics. Mask is of shape :math:`(*, N)`.
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: The rotation and translation plus the
-        3d triangulated points. The tuple is as following :math:`[(*, 3, 3), (*, 3, 1), (*, N, 3)]`.
+        The rotation and translation plus the 3d triangulated points.
+        The tuple is as following :math:`[(*, 3, 3), (*, 3, 1), (*, N, 3)]`.
 
     """
-    assert len(E_mat.shape) >= 2 and E_mat.shape[-2:], E_mat.shape
-    assert len(K1.shape) >= 2 and K1.shape[-2:] == (3, 3), K1.shape
-    assert len(K2.shape) >= 2 and K2.shape[-2:] == (3, 3), K2.shape
-    assert len(x1.shape) >= 2 and x1.shape[-1] == 2, x1.shape
-    assert len(x2.shape) >= 2 and x2.shape[-1] == 2, x2.shape
-    assert len(E_mat.shape[:-2]) == len(K1.shape[:-2]) == len(K2.shape[:-2])
+    if not (len(E_mat.shape) >= 2 and E_mat.shape[-2:] == (3, 3)):
+        raise AssertionError(E_mat.shape)
+    if not (len(K1.shape) >= 2 and K1.shape[-2:] == (3, 3)):
+        raise AssertionError(K1.shape)
+    if not (len(K2.shape) >= 2 and K2.shape[-2:] == (3, 3)):
+        raise AssertionError(K2.shape)
+    if not (len(x1.shape) >= 2 and x1.shape[-1] == 2):
+        raise AssertionError(x1.shape)
+    if not (len(x2.shape) >= 2 and x2.shape[-1] == 2):
+        raise AssertionError(x2.shape)
+    if not len(E_mat.shape[:-2]) == len(K1.shape[:-2]) == len(K2.shape[:-2]):
+        raise AssertionError
     if mask is not None:
-        assert len(mask.shape) >= 2, mask.shape
-        assert mask.shape == x1.shape[:-1], mask.shape
+        if len(mask.shape) < 1:
+            raise AssertionError(mask.shape)
+        if mask.shape != x1.shape[:-1]:
+            raise AssertionError(mask.shape)
+
+    unbatched = len(E_mat.shape) == 2
+
+    if unbatched:
+        # add a leading batch dimension. We will remove it at the end, before
+        # returning the results
+        E_mat = E_mat[None]
+        K1 = K1[None]
+        K2 = K2[None]
+        x1 = x1[None]
+        x2 = x2[None]
+        if mask is not None:
+            mask = mask[None]
 
     # compute four possible pose solutions
     Rs, ts = motion_from_essential(E_mat)
 
     # set reference view pose and compute projection matrix
-    R1 = numeric.eye_like(3, E_mat)  # Bx3x3
-    t1 = numeric.vec_like(3, E_mat)  # Bx3x1
+    R1 = eye_like(3, E_mat)  # Bx3x3
+    t1 = vec_like(3, E_mat)  # Bx3x1
 
     # compute the projection matrices for first camera
     R1 = R1[:, None].expand(-1, 4, -1, -1)
     t1 = t1[:, None].expand(-1, 4, -1, -1)
     K1 = K1[:, None].expand(-1, 4, -1, -1)
-    P1 = projection.projection_from_KRt(K1, R1, t1)  # 1x4x4x4
+    P1 = projection_from_KRt(K1, R1, t1)  # 1x4x4x4
 
     # compute the projection matrices for second camera
     R2 = Rs
     t2 = ts
     K2 = K2[:, None].expand(-1, 4, -1, -1)
-    P2 = projection.projection_from_KRt(K2, R2, t2)  # Bx4x4x4
+    P2 = projection_from_KRt(K2, R2, t2)  # Bx4x4x4
 
     # triangulate the points
     x1 = x1[:, None].expand(-1, 4, -1, -1)
     x2 = x2[:, None].expand(-1, 4, -1, -1)
-    X = triangulation.triangulate_points(P1, P2, x1, x2)  # Bx4xNx3
+    X = triangulate_points(P1, P2, x1, x2)  # Bx4xNx3
 
     # project points and compute their depth values
-    d1 = projection.depth(R1, t1, X)
-    d2 = projection.depth(R2, t2, X)
+    d1 = depth_from_point(R1, t1, X)
+    d2 = depth_from_point(R2, t2, X)
 
-    # verify the point values that have a postive depth value
-    depth_mask = ((d1 > 0.) & (d2 > 0.))
+    # verify the point values that have a positive depth value
+    depth_mask = (d1 > 0.0) & (d2 > 0.0)
     if mask is not None:
         depth_mask &= mask.unsqueeze(1)
 
@@ -212,33 +253,42 @@ def motion_from_essential_choose_solution(
     t_out = ts[:, mask_indices][:, 0, 0]
     points3d_out = X[:, mask_indices][:, 0, 0]
 
+    if unbatched:
+        R_out = R_out[0]
+        t_out = t_out[0]
+        points3d_out = points3d_out[0]
+
     return R_out, t_out, points3d_out
 
 
 def relative_camera_motion(
     R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: torch.Tensor
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    r"""Computes the relative camera motion between two cameras.
+    r"""Compute the relative camera motion between two cameras.
 
     Given the motion parameters of two cameras, computes the motion parameters of the second
     one assuming the first one to be at the origin. If :math:`T1` and :math:`T2` are the camera motions,
     the computed relative motion is :math:`T = T_{2}T^{−1}_{1}`.
 
     Args:
-        R1 (torch.Tensor): The first camera rotation matrix with shape :math:`(*, 3, 3)`.
-        t1 (torch.Tensor): The first camera translation vector with shape :math:`(*, 3, 1)`.
-        R2 (torch.Tensor): The second camera rotation matrix with shape :math:`(*, 3, 3)`.
-        t2 (torch.Tensor): The second camera translation vector with shape :math:`(*, 3, 1)`.
+        R1: The first camera rotation matrix with shape :math:`(*, 3, 3)`.
+        t1: The first camera translation vector with shape :math:`(*, 3, 1)`.
+        R2: The second camera rotation matrix with shape :math:`(*, 3, 3)`.
+        t2: The second camera translation vector with shape :math:`(*, 3, 1)`.
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor]: A tuple with the relative rotation matrix and
+        A tuple with the relative rotation matrix and
         translation vector with the shape of :math:`[(*, 3, 3), (*, 3, 1)]`.
 
     """
-    assert len(R1.shape) >= 2 and R1.shape[-2:] == (3, 3), R1.shape
-    assert len(t1.shape) >= 2 and t1.shape[-2:] == (3, 1), t1.shape
-    assert len(R2.shape) >= 2 and R2.shape[-2:] == (3, 3), R2.shape
-    assert len(t2.shape) >= 2 and t2.shape[-2:] == (3, 1), t2.shape
+    if not (len(R1.shape) >= 2 and R1.shape[-2:] == (3, 3)):
+        raise AssertionError(R1.shape)
+    if not (len(t1.shape) >= 2 and t1.shape[-2:] == (3, 1)):
+        raise AssertionError(t1.shape)
+    if not (len(R2.shape) >= 2 and R2.shape[-2:] == (3, 3)):
+        raise AssertionError(R2.shape)
+    if not (len(t2.shape) >= 2 and t2.shape[-2:] == (3, 1)):
+        raise AssertionError(t2.shape)
 
     # compute first the relative rotation
     R = R2 @ R1.transpose(-2, -1)

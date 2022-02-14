@@ -1,35 +1,29 @@
-from typing import Iterable, Optional, Union
-import warnings
+from typing import Iterable, Optional
 
 import torch
-import torch.nn as nn
 
-from kornia.geometry.linalg import transform_points
-from kornia.geometry.linalg import inverse_transformation
+from kornia.geometry.linalg import inverse_transformation, transform_points
 
 
 class PinholeCamera:
     r"""Class that represents a Pinhole Camera model.
 
     Args:
-        intrinsics (torch.Tensor): tensor with shape :math:`(B, 4, 4)`
+        intrinsics: tensor with shape :math:`(B, 4, 4)`
           containing the full 4x4 camera calibration matrix.
-        extrinsics (torch.Tensor): tensor with shape :math:`(B, 4, 4)`
+        extrinsics: tensor with shape :math:`(B, 4, 4)`
           containing the full 4x4 rotation-translation matrix.
-        height (torch.Tensor): tensor with shape :math:`(B)` containing the
-          image height.
-        width (torch.Tensor): tensor with shape :math:`(B)` containing the image
-          width.
+        height: tensor with shape :math:`(B)` containing the image height.
+        width: tensor with shape :math:`(B)` containing the image width.
 
     .. note::
         We assume that the class attributes are in batch form in order to take
         advantage of PyTorch parallelism to boost computing performance.
     """
 
-    def __init__(self, intrinsics: torch.Tensor,
-                 extrinsics: torch.Tensor,
-                 height: torch.Tensor,
-                 width: torch.Tensor) -> None:
+    def __init__(
+        self, intrinsics: torch.Tensor, extrinsics: torch.Tensor, height: torch.Tensor, width: torch.Tensor
+    ) -> None:
         # verify batch size and shapes
         self._check_valid([intrinsics, extrinsics, height, width])
         self._check_valid_params(intrinsics, "intrinsics")
@@ -49,22 +43,20 @@ class PinholeCamera:
         return True
 
     @staticmethod
-    def _check_valid_params(
-            data: torch.Tensor,
-            data_name: str) -> bool:
-        if len(data.shape) not in (3, 4,) and data.shape[-2:] != (4, 4):  # Shouldn't this be an OR logic than AND?
-            raise ValueError("Argument {0} shape must be in the following shape"
-                             " Bx4x4 or BxNx4x4. Got {1}".format(data_name,
-                                                                 data.shape))
+    def _check_valid_params(data: torch.Tensor, data_name: str) -> bool:
+        if len(data.shape) not in (3, 4) and data.shape[-2:] != (4, 4):  # Shouldn't this be an OR logic than AND?
+            raise ValueError(
+                "Argument {} shape must be in the following shape"
+                " Bx4x4 or BxNx4x4. Got {}".format(data_name, data.shape)
+            )
         return True
 
     @staticmethod
-    def _check_valid_shape(
-            data: torch.Tensor,
-            data_name: str) -> bool:
+    def _check_valid_shape(data: torch.Tensor, data_name: str) -> bool:
         if not len(data.shape) == 1:
-            raise ValueError("Argument {0} shape must be in the following shape"
-                             " B. Got {1}".format(data_name, data.shape))
+            raise ValueError(
+                "Argument {} shape must be in the following shape" " B. Got {}".format(data_name, data.shape)
+            )
         return True
 
     @property
@@ -72,9 +64,10 @@ class PinholeCamera:
         r"""The full 4x4 intrinsics matrix.
 
         Returns:
-            torch.Tensor: tensor of shape :math:`(B, 4, 4)`
+            tensor of shape :math:`(B, 4, 4)`.
         """
-        assert self._check_valid_params(self._intrinsics, "intrinsics")
+        if not self._check_valid_params(self._intrinsics, "intrinsics"):
+            raise AssertionError
         return self._intrinsics
 
     @property
@@ -82,87 +75,84 @@ class PinholeCamera:
         r"""The full 4x4 extrinsics matrix.
 
         Returns:
-            torch.Tensor: tensor of shape :math:`(B, 4, 4)`
+            tensor of shape :math:`(B, 4, 4)`.
         """
-        assert self._check_valid_params(self._extrinsics, "extrinsics")
+        if not self._check_valid_params(self._extrinsics, "extrinsics"):
+            raise AssertionError
         return self._extrinsics
 
     @property
     def batch_size(self) -> int:
-        r"""Returns the batch size of the storage.
+        r"""Return the batch size of the storage.
 
         Returns:
-            int: scalar with the batch size
+            scalar with the batch size.
         """
         return self.intrinsics.shape[0]
 
     @property
     def fx(self) -> torch.Tensor:
-        r"""Returns the focal lenght in the x-direction.
+        r"""Return the focal length in the x-direction.
 
         Returns:
-            torch.Tensor: tensor of shape :math:`(B)`
+            tensor of shape :math:`(B)`.
         """
         return self.intrinsics[..., 0, 0]
 
     @property
     def fy(self) -> torch.Tensor:
-        r"""Returns the focal length in the y-direction.
+        r"""Return the focal length in the y-direction.
 
         Returns:
-            torch.Tensor: tensor of shape :math:`(B)`
+            tensor of shape :math:`(B)`.
         """
         return self.intrinsics[..., 1, 1]
 
     @property
     def cx(self) -> torch.Tensor:
-        r"""Returns the x-coordinate of the principal point.
+        r"""Return the x-coordinate of the principal point.
 
         Returns:
-            torch.Tensor: tensor of shape :math:`(B)`
+            tensor of shape :math:`(B)`.
         """
         return self.intrinsics[..., 0, 2]
 
     @property
     def cy(self) -> torch.Tensor:
-        r"""Returns the y-coordinate of the principal point.
+        r"""Return the y-coordinate of the principal point.
 
         Returns:
-            torch.Tensor: tensor of shape :math:`(B)`
+            tensor of shape :math:`(B)`.
         """
         return self.intrinsics[..., 1, 2]
 
     @property
     def tx(self) -> torch.Tensor:
-        r"""Returns the x-coordinate of the translation vector.
+        r"""Return the x-coordinate of the translation vector.
 
         Returns:
-            torch.Tensor: tensor of shape :math:`(B)`
+            tensor of shape :math:`(B)`.
         """
         return self.extrinsics[..., 0, -1]
 
     @tx.setter
     def tx(self, value) -> 'PinholeCamera':
-        r"""Set the x-coordinate of the translation vector with the given
-        value.
-        """
+        r"""Set the x-coordinate of the translation vector with the given value."""
         self.extrinsics[..., 0, -1] = value
         return self
 
     @property
     def ty(self) -> torch.Tensor:
-        r"""Returns the y-coordinate of the translation vector.
+        r"""Return the y-coordinate of the translation vector.
 
         Returns:
-            torch.Tensor: tensor of shape :math:`(B)`
+            tensor of shape :math:`(B)`.
         """
         return self.extrinsics[..., 1, -1]
 
     @ty.setter
     def ty(self, value) -> 'PinholeCamera':
-        r"""Set the y-coordinate of the translation vector with the given
-        value.
-        """
+        r"""Set the y-coordinate of the translation vector with the given value."""
         self.extrinsics[..., 1, -1] = value
         return self
 
@@ -171,56 +161,54 @@ class PinholeCamera:
         r"""Returns the z-coordinate of the translation vector.
 
         Returns:
-            torch.Tensor: tensor of shape :math:`(B)`
+            tensor of shape :math:`(B)`.
         """
         return self.extrinsics[..., 2, -1]
 
     @tz.setter
     def tz(self, value) -> 'PinholeCamera':
-        r"""Set the y-coordinate of the translation vector with the given
-        value.
-        """
+        r"""Set the y-coordinate of the translation vector with the given value."""
         self.extrinsics[..., 2, -1] = value
         return self
 
     @property
     def rt_matrix(self) -> torch.Tensor:
-        r"""Returns the 3x4 rotation-translation matrix.
+        r"""Return the 3x4 rotation-translation matrix.
 
         Returns:
-            torch.Tensor: tensor of shape :math:`(B, 3, 4)`
+            tensor of shape :math:`(B, 3, 4)`.
         """
         return self.extrinsics[..., :3, :4]
 
     @property
     def camera_matrix(self) -> torch.Tensor:
-        r"""Returns the 3x3 camera matrix containing the intrinsics.
+        r"""Return the 3x3 camera matrix containing the intrinsics.
 
         Returns:
-            torch.Tensor: tensor of shape :math:`(B, 3, 3)`
+            tensor of shape :math:`(B, 3, 3)`.
         """
         return self.intrinsics[..., :3, :3]
 
     @property
     def rotation_matrix(self) -> torch.Tensor:
-        r"""Returns the 3x3 rotation matrix from the extrinsics.
+        r"""Return the 3x3 rotation matrix from the extrinsics.
 
         Returns:
-            torch.Tensor: tensor of shape :math:`(B, 3, 3)`
+            tensor of shape :math:`(B, 3, 3)`.
         """
         return self.extrinsics[..., :3, :3]
 
     @property
     def translation_vector(self) -> torch.Tensor:
-        r"""Returns the translation vector from the extrinsics.
+        r"""Return the translation vector from the extrinsics.
 
         Returns:
-            torch.Tensor: tensor of shape :math:`(B, 3, 1)`
+            tensor of shape :math:`(B, 3, 1)`.
         """
         return self.extrinsics[..., :3, -1:]
 
     def clone(self) -> 'PinholeCamera':
-        r"""Returns a deep copy of the current object instance."""
+        r"""Return a deep copy of the current object instance."""
         height: torch.Tensor = self.height.clone()
         width: torch.Tensor = self.width.clone()
         intrinsics: torch.Tensor = self.intrinsics.clone()
@@ -228,23 +216,23 @@ class PinholeCamera:
         return PinholeCamera(intrinsics, extrinsics, height, width)
 
     def intrinsics_inverse(self) -> torch.Tensor:
-        r"""Returns the inverse of the 4x4 instrisics matrix.
+        r"""Return the inverse of the 4x4 instrisics matrix.
 
         Returns:
-            torch.Tensor: tensor of shape :math:`(B, 4, 4)`
+            tensor of shape :math:`(B, 4, 4)`.
         """
         return self.intrinsics.inverse()
 
     def scale(self, scale_factor) -> 'PinholeCamera':
-        r"""Scales the pinhole model.
+        r"""Scale the pinhole model.
 
         Args:
-            scale_factor (torch.Tensor): a tensor with the scale factor. It has
+            scale_factor: a tensor with the scale factor. It has
               to be broadcastable with class members. The expected shape is
               :math:`(B)` or :math:`(1)`.
 
         Returns:
-            PinholeCamera: the camera model with scaled parameters.
+            the camera model with scaled parameters.
         """
         # scale the intrinsic parameters
         intrinsics: torch.Tensor = self.intrinsics.clone()
@@ -258,15 +246,15 @@ class PinholeCamera:
         return PinholeCamera(intrinsics, self.extrinsics, height, width)
 
     def scale_(self, scale_factor) -> 'PinholeCamera':
-        r"""Scales the pinhole model in-place.
+        r"""Scale the pinhole model in-place.
 
         Args:
-            scale_factor (torch.Tensor): a tensor with the scale factor. It has
+            scale_factor: a tensor with the scale factor. It has
               to be broadcastable with class members. The expected shape is
               :math:`(B)` or :math:`(1)`.
 
         Returns:
-            PinholeCamera: the camera model with scaled parameters.
+            the camera model with scaled parameters.
         """
         # scale the intrinsic parameters
         self.intrinsics[..., 0, 0] *= scale_factor
@@ -281,19 +269,20 @@ class PinholeCamera:
     # NOTE: just for test. Decide if we keep it.
     @classmethod
     def from_parameters(
-            self,
-            fx,
-            fy,
-            cx,
-            cy,
-            height,
-            width,
-            tx,
-            ty,
-            tz,
-            batch_size=1,
-            device: Optional[torch.device] = None,
-            dtype: Optional[torch.dtype] = None):
+        self,
+        fx,
+        fy,
+        cx,
+        cy,
+        height,
+        width,
+        tx,
+        ty,
+        tz,
+        batch_size=1,
+        device: Optional[torch.device] = None,
+        dtype: Optional[torch.dtype] = None,
+    ):
         # create the camera matrix
         intrinsics = torch.zeros(batch_size, 4, 4, device=device, dtype=dtype)
         intrinsics[..., 0, 0] += fx
@@ -328,26 +317,21 @@ class PinholeCamerasList(PinholeCamera):
         size and :math:`N` is the numbers of cameras (in this case two).
 
     Args:
-        pinholes_list (Iterable[PinholeCamera]): a python tuple or list
-          containg a set of `PinholeCamera` instances.
+        pinholes_list: a python tuple or list containing a set of `PinholeCamera` instances.
     """
 
     def __init__(self, pinholes_list: Iterable[PinholeCamera]) -> None:
         self._initialize_parameters(pinholes_list)
 
-    def _initialize_parameters(
-            self,
-            pinholes: Iterable[PinholeCamera]) -> 'PinholeCamerasList':
-        r"""Initialises the class attributes given a cameras list."""
-        if not isinstance(pinholes, (list, tuple,)):
-            raise TypeError("pinhole must of type list or tuple. Got {}"
-                            .format(type(pinholes)))
+    def _initialize_parameters(self, pinholes: Iterable[PinholeCamera]) -> 'PinholeCamerasList':
+        r"""Initialise the class attributes given a cameras list."""
+        if not isinstance(pinholes, (list, tuple)):
+            raise TypeError(f"pinhole must of type list or tuple. Got {type(pinholes)}")
         height, width = [], []
         intrinsics, extrinsics = [], []
         for pinhole in pinholes:
             if not isinstance(pinhole, PinholeCamera):
-                raise TypeError("Argument pinhole must be from type "
-                                "PinholeCamera. Got {}".format(type(pinhole)))
+                raise TypeError("Argument pinhole must be from type " "PinholeCamera. Got {}".format(type(pinhole)))
             height.append(pinhole.height)
             width.append(pinhole.width)
             intrinsics.append(pinhole.intrinsics)
@@ -361,14 +345,14 @@ class PinholeCamerasList(PinholeCamera):
 
     @property
     def num_cameras(self) -> int:
-        r"""Returns the number of pinholes cameras per batch."""
+        r"""Return the number of pinholes cameras per batch."""
         num_cameras: int = -1
         if self.intrinsics is not None:
             num_cameras = int(self.intrinsics.shape[1])
         return num_cameras
 
     def get_pinhole(self, idx: int) -> PinholeCamera:
-        r"""Returns a PinholeCamera object with parameters such as Bx4x4."""
+        r"""Return a PinholeCamera object with parameters such as Bx4x4."""
         height: torch.Tensor = self.height[..., idx]
         width: torch.Tensor = self.width[..., idx]
         intrinsics: torch.Tensor = self.intrinsics[:, idx]
@@ -376,7 +360,7 @@ class PinholeCamerasList(PinholeCamera):
         return PinholeCamera(intrinsics, extrinsics, height, width)
 
 
-def pinhole_matrix(pinholes, eps=1e-6):
+def pinhole_matrix(pinholes: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
     r"""Function that returns the pinhole matrix from a pinhole model
 
     .. note::
@@ -384,10 +368,10 @@ def pinhole_matrix(pinholes, eps=1e-6):
         :attr:`kornia.PinholeCamera.camera_matrix`.
 
     Args:
-        pinholes (Tensor): tensor of pinhole models.
+        pinholes: tensor of pinhole models.
 
     Returns:
-        Tensor: tensor of pinhole matrices.
+        tensor of pinhole matrices.
 
     Shape:
         - Input: :math:`(N, 12)`
@@ -405,7 +389,8 @@ def pinhole_matrix(pinholes, eps=1e-6):
     # warnings.warn("pinhole_matrix will be deprecated in version 0.2, "
     #              "use PinholeCamera.camera_matrix instead",
     #              PendingDeprecationWarning)
-    assert len(pinholes.shape) == 2 and pinholes.shape[1] == 12, pinholes.shape
+    if not (len(pinholes.shape) == 2 and pinholes.shape[1] == 12):
+        raise AssertionError(pinholes.shape)
     # unpack pinhole values
     fx, fy, cx, cy = torch.chunk(pinholes[..., :4], 4, dim=1)  # Nx1
     # create output container
@@ -419,18 +404,18 @@ def pinhole_matrix(pinholes, eps=1e-6):
     return k
 
 
-def inverse_pinhole_matrix(pinhole, eps=1e-6):
-    r"""Returns the inverted pinhole matrix from a pinhole model
+def inverse_pinhole_matrix(pinhole: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
+    r"""Return the inverted pinhole matrix from a pinhole model
 
     .. note::
         This method is going to be deprecated in version 0.2 in favour of
         :attr:`kornia.PinholeCamera.intrinsics_inverse()`.
 
     Args:
-        pinholes (Tensor): tensor with pinhole models.
+        pinholes: tensor with pinhole models.
 
     Returns:
-        Tensor: tensor of inverted pinhole matrices.
+        tensor of inverted pinhole matrices.
 
     Shape:
         - Input: :math:`(N, 12)`
@@ -448,33 +433,34 @@ def inverse_pinhole_matrix(pinhole, eps=1e-6):
     # warnings.warn("inverse_pinhole_matrix will be deprecated in version 0.2, "
     #              "use PinholeCamera.intrinsics_inverse() instead",
     #              PendingDeprecationWarning)
-    assert len(pinhole.shape) == 2 and pinhole.shape[1] == 12, pinhole.shape
+    if not (len(pinhole.shape) == 2 and pinhole.shape[1] == 12):
+        raise AssertionError(pinhole.shape)
     # unpack pinhole values
     fx, fy, cx, cy = torch.chunk(pinhole[..., :4], 4, dim=1)  # Nx1
     # create output container
     k = torch.eye(4, device=pinhole.device, dtype=pinhole.dtype)
     k = k.view(1, 4, 4).repeat(pinhole.shape[0], 1, 1)  # Nx4x4
     # fill output with inverse values
-    k[..., 0, 0:1] = 1. / (fx + eps)
-    k[..., 1, 1:2] = 1. / (fy + eps)
-    k[..., 0, 2:3] = -1. * cx / (fx + eps)
-    k[..., 1, 2:3] = -1. * cy / (fy + eps)
+    k[..., 0, 0:1] = 1.0 / (fx + eps)
+    k[..., 1, 1:2] = 1.0 / (fy + eps)
+    k[..., 0, 2:3] = -1.0 * cx / (fx + eps)
+    k[..., 1, 2:3] = -1.0 * cy / (fy + eps)
     return k
 
 
-def scale_pinhole(pinholes, scale):
-    r"""Scales the pinhole matrix for each pinhole model.
+def scale_pinhole(pinholes: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
+    r"""Scale the pinhole matrix for each pinhole model.
 
     .. note::
         This method is going to be deprecated in version 0.2 in favour of
         :attr:`kornia.PinholeCamera.scale()`.
 
     Args:
-        pinholes (Tensor): tensor with the pinhole model.
-        scale (Tensor): tensor of scales.
+        pinholes: tensor with the pinhole model.
+        scale: tensor of scales.
 
     Returns:
-        Tensor: tensor of scaled pinholes.
+        tensor of scaled pinholes.
 
     Shape:
         - Input: :math:`(N, 12)` and :math:`(N, 1)`
@@ -491,31 +477,37 @@ def scale_pinhole(pinholes, scale):
     # warnings.warn("scale_pinhole will be deprecated in version 0.2, "
     #              "use PinholeCamera.scale() instead",
     #              PendingDeprecationWarning)
-    assert len(pinholes.shape) == 2 and pinholes.shape[1] == 12, pinholes.shape
-    assert len(scale.shape) == 1, scale.shape
+    if not (len(pinholes.shape) == 2 and pinholes.shape[1] == 12):
+        raise AssertionError(pinholes.shape)
+    if len(scale.shape) != 1:
+        raise AssertionError(scale.shape)
     pinholes_scaled = pinholes.clone()
     pinholes_scaled[..., :6] = pinholes[..., :6] * scale.unsqueeze(-1)
     return pinholes_scaled
 
 
-def get_optical_pose_base(pinholes):
-    """Get extrinsic transformation matrices for pinholes
+def get_optical_pose_base(pinholes: torch.Tensor) -> torch.Tensor:
+    """Compute extrinsic transformation matrices for pinholes.
 
     Args:
-        pinholes (Tensor): tensor of form [fx fy cx cy h w rx ry rz tx ty tz]
+        pinholes: tensor of form [fx fy cx cy h w rx ry rz tx ty tz]
                            of size (N, 12).
 
     Returns:
-        Tensor: tensor of extrinsic transformation matrices of size (N, 4, 4).
-
+        tensor of extrinsic transformation matrices of size (N, 4, 4).
     """
-    assert len(pinholes.shape) == 2 and pinholes.shape[1] == 12, pinholes.shape
-    optical_pose_parent = pinholes[..., 6:]
+    if not (len(pinholes.shape) == 2 and pinholes.shape[1] == 12):
+        raise AssertionError(pinholes.shape)
     # TODO: where is rtvec_to_pose?
-    return rtvec_to_pose(optical_pose_parent)
+    raise NotImplementedError
+    # TODO: We have rtvec_to_pose in torchgeometry
+    # https://github.com/whh14/torchgeometry/blob/master/torchgeometry/conversions.py#L240
+    # But it relies on angle_axis_to_rotation_matrix
+    # And since then, it was changed from returning Nx4x4 matrix to Nx3x3
+    # return rtvec_to_pose(optical_pose_parent)   type: ignore
 
 
-def homography_i_H_ref(pinhole_i, pinhole_ref):
+def homography_i_H_ref(pinhole_i: torch.Tensor, pinhole_ref: torch.Tensor) -> torch.Tensor:
     r"""Homography from reference to ith pinhole
 
     .. note::
@@ -536,12 +528,11 @@ def homography_i_H_ref(pinhole_i, pinhole_ref):
         H_{ref}^{i} = K_{i} * T_{ref}^{i} * K_{ref}^{-1}
 
     Args:
-        pinhole_i (Tensor): tensor with pinhole model for ith frame.
-        pinhole_ref (Tensor): tensor with pinhole model for reference frame.
+        pinhole_i: tensor with pinhole model for ith frame.
+        pinhole_ref: tensor with pinhole model for reference frame.
 
     Returns:
-        Tensor: tensors that convert depth points (u, v, d) from
-        pinhole_ref to pinhole_i.
+        tensors that convert depth points (u, v, d) from pinhole_ref to pinhole_i.
 
     Shape:
         - Input: :math:`(N, 12)` and :math:`(N, 12)`
@@ -553,77 +544,65 @@ def homography_i_H_ref(pinhole_i, pinhole_ref):
         homography_i_H_ref(pinhole_i, pinhole_ref)  # Nx4x4
     """
     # TODO: Add doctest once having `rtvec_to_pose`.
-    assert len(
-        pinhole_i.shape) == 2 and pinhole_i.shape[1] == 12, pinhole.shape
-    assert pinhole_i.shape == pinhole_ref.shape, pinhole_ref.shape
+    if not (len(pinhole_i.shape) == 2 and pinhole_i.shape[1] == 12):
+        raise AssertionError(pinhole_i.shape)
+    if pinhole_i.shape != pinhole_ref.shape:
+        raise AssertionError(pinhole_ref.shape)
     i_pose_base = get_optical_pose_base(pinhole_i)
     ref_pose_base = get_optical_pose_base(pinhole_ref)
-    i_pose_ref = torch.matmul(i_pose_base,
-                              inverse_transformation(ref_pose_base))
-    return torch.matmul(
-        pinhole_matrix(pinhole_i),
-        torch.matmul(i_pose_ref, inverse_pinhole_matrix(pinhole_ref)))
+    i_pose_ref = torch.matmul(i_pose_base, inverse_transformation(ref_pose_base))
+    return torch.matmul(pinhole_matrix(pinhole_i), torch.matmul(i_pose_ref, inverse_pinhole_matrix(pinhole_ref)))
+
 
 # based on:
 # https://github.com/ClementPinard/SfmLearner-Pytorch/blob/master/inverse_warp.py#L26
 
 
-def pixel2cam(depth: torch.Tensor, intrinsics_inv: torch.Tensor,
-              pixel_coords: torch.Tensor) -> torch.Tensor:
+def pixel2cam(depth: torch.Tensor, intrinsics_inv: torch.Tensor, pixel_coords: torch.Tensor) -> torch.Tensor:
     r"""Transform coordinates in the pixel frame to the camera frame.
 
     Args:
-        depth (torch.Tensor): the source depth maps. Shape must be Bx1xHxW.
-        intrinsics_inv (torch.Tensor): the inverse intrinsics camera matrix.
-          Shape must be Bx4x4.
-        pixel_coords (torch.Tensor): the grid with the homogeneous camera
-          coordinates. Shape must be BxHxWx3.
+        depth: the source depth maps. Shape must be Bx1xHxW.
+        intrinsics_inv: the inverse intrinsics camera matrix. Shape must be Bx4x4.
+        pixel_coords: the grid with (u, v, 1) pixel coordinates. Shape must be BxHxWx3.
 
     Returns:
-        torch.Tensor: array of (u, v, 1) cam coordinates with shape BxHxWx3.
+        tensor of shape BxHxWx3 with (x, y, z) cam coordinates.
     """
     if not len(depth.shape) == 4 and depth.shape[1] == 1:
-        raise ValueError("Input depth has to be in the shape of "
-                         "Bx1xHxW. Got {}".format(depth.shape))
+        raise ValueError("Input depth has to be in the shape of " "Bx1xHxW. Got {}".format(depth.shape))
     if not len(intrinsics_inv.shape) == 3:
-        raise ValueError("Input intrinsics_inv has to be in the shape of "
-                         "Bx4x4. Got {}".format(intrinsics_inv.shape))
+        raise ValueError("Input intrinsics_inv has to be in the shape of " "Bx4x4. Got {}".format(intrinsics_inv.shape))
     if not len(pixel_coords.shape) == 4 and pixel_coords.shape[3] == 3:
-        raise ValueError("Input pixel_coords has to be in the shape of "
-                         "BxHxWx3. Got {}".format(intrinsics_inv.shape))
-    cam_coords: torch.Tensor = transform_points(
-        intrinsics_inv[:, None], pixel_coords)
+        raise ValueError("Input pixel_coords has to be in the shape of " "BxHxWx3. Got {}".format(intrinsics_inv.shape))
+    cam_coords: torch.Tensor = transform_points(intrinsics_inv[:, None], pixel_coords)
     return cam_coords * depth.permute(0, 2, 3, 1)
 
 
 # based on
 # https://github.com/ClementPinard/SfmLearner-Pytorch/blob/master/inverse_warp.py#L43
 
-def cam2pixel(
-        cam_coords_src: torch.Tensor,
-        dst_proj_src: torch.Tensor,
-        eps: Optional[float] = 1e-6) -> torch.Tensor:
+
+def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     r"""Transform coordinates in the camera frame to the pixel frame.
 
     Args:
-        cam_coords (torch.Tensor): pixel coordinates defined in the first
-          camera coordinates system. Shape must be BxHxWx3.
-        dst_proj_src (torch.Tensor): the projection matrix between the
+        cam_coords: (x, y, z) coordinates defined in the first camera coordinates system. Shape must be BxHxWx3.
+        dst_proj_src: the projection matrix between the
           reference and the non reference camera frame. Shape must be Bx4x4.
+        eps: small value to avoid division by zero error.
 
     Returns:
-        torch.Tensor: array of [-1, 1] coordinates of shape BxHxWx2.
+        tensor of shape BxHxWx2 with (u, v) pixel coordinates.
     """
     if not len(cam_coords_src.shape) == 4 and cam_coords_src.shape[3] == 3:
-        raise ValueError("Input cam_coords_src has to be in the shape of "
-                         "BxHxWx3. Got {}".format(cam_coords_src.shape))
+        raise ValueError(
+            "Input cam_coords_src has to be in the shape of " "BxHxWx3. Got {}".format(cam_coords_src.shape)
+        )
     if not len(dst_proj_src.shape) == 3 and dst_proj_src.shape[-2:] == (4, 4):
-        raise ValueError("Input dst_proj_src has to be in the shape of "
-                         "Bx4x4. Got {}".format(dst_proj_src.shape))
-    b, h, w, _ = cam_coords_src.shape
+        raise ValueError("Input dst_proj_src has to be in the shape of " "Bx4x4. Got {}".format(dst_proj_src.shape))
     # apply projection matrix to points
-    point_coords: torch.Tensor = transform_points(
-        dst_proj_src[:, None], cam_coords_src)
+    point_coords: torch.Tensor = transform_points(dst_proj_src[:, None], cam_coords_src)
     x_coord: torch.Tensor = point_coords[..., 0]
     y_coord: torch.Tensor = point_coords[..., 1]
     z_coord: torch.Tensor = point_coords[..., 2]
@@ -634,14 +613,12 @@ def cam2pixel(
 
     # stack and return the coordinates, that's the actual flow
     pixel_coords_dst: torch.Tensor = torch.stack([u_coord, v_coord], dim=-1)
-    return pixel_coords_dst  # (B*N)xHxWx2
+    return pixel_coords_dst  # BxHxWx2
 
 
 # layer api
-
-
 '''class PinholeMatrix(nn.Module):
-    r"""Creates an object that returns the pinhole matrix from a pinhole model
+    r"""Create an object that returns the pinhole matrix from a pinhole model
 
     Args:
         pinholes (Tensor): tensor of pinhole models.
@@ -667,7 +644,7 @@ def cam2pixel(
 
 
 class InversePinholeMatrix(nn.Module):
-    r"""Returns and object that inverts a pinhole matrix from a pinhole model
+    r"""Return and object that inverts a pinhole matrix from a pinhole model
 
     Args:
         pinholes (Tensor): tensor with pinhole models.

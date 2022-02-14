@@ -5,7 +5,7 @@
 # the repo. Unless a later match takes precedence,
 # @global-owner1 and @global-owner2 will be requested for
 # review when someone opens a pull request.
-* @edgarriba @ducha-aiki @shijianjian @lferraz @anguelos
+* @edgarriba @ducha-aiki @shijianjian @lferraz
 
 # CI/CD and configs
 /.github/       @edgarriba @shijianjian
@@ -17,15 +17,15 @@
 /docs/source/conf.py        @edgarriba @shijianjian
 
 # Packages
-/kornia/augmentation    @shijianjian @anguelos
+/kornia/augmentation    @shijianjian @edgarriba
 /kornia/color           @cceyda @edgarriba
 /kornia/contrib         @shijianjian @duch-aiki
 /kornia/enhance         @lferraz @edgarriba
 /kornia/feature         @ducha-aiki @edgarriba
 /kornia/filters         @edgarriba @ducha-aiki @lferraz
-/kornia/geometry        @edgarriba @ducha-aiki @shijianjian
+/kornia/geometry        @edgarriba @ducha-aiki @shijianjian @dkoguciuk @justanhduc
 /kornia/losses          @edgarriba @ducha-aiki
-/kornia/morphology      @Juclique @edgarriba @ducha-aiki
+/kornia/morphology      @Manza12 @ducha-aiki
 /kornia/utils           @edgarriba @shijianjian @ducha-aiki
 
 /.github/CODEOWNERS     @edgarriba

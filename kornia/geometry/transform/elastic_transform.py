@@ -1,43 +1,48 @@
-from typing import Tuple, Optional
+from typing import Tuple
 
 import torch
 import torch.nn.functional as F
 
-import kornia
-from kornia.filters.kernels import get_gaussian_kernel2d
-
+from kornia.filters import filter2d, get_gaussian_kernel2d
+from kornia.utils import create_meshgrid
 
 __all__ = ["elastic_transform2d"]
 
 
-def elastic_transform2d(image: torch.Tensor,
-                        noise: torch.Tensor,
-                        kernel_size: Tuple[int, int] = (3, 3),
-                        sigma: Tuple[float, float] = (4., 4.),
-                        alpha: Tuple[float, float] = (32., 32.),
-                        align_corners: bool = False,
-                        mode: str = 'bilinear') -> torch.Tensor:
-    r"""Applies elastic transform of images as described in :cite:`Simard2003BestPF`.
+def elastic_transform2d(
+    image: torch.Tensor,
+    noise: torch.Tensor,
+    kernel_size: Tuple[int, int] = (63, 63),
+    sigma: Tuple[float, float] = (32.0, 32.0),
+    alpha: Tuple[float, float] = (1.0, 1.0),
+    align_corners: bool = False,
+    mode: str = 'bilinear',
+    padding_mode: str = 'zeros'
+) -> torch.Tensor:
+    r"""Apply elastic transform of images as described in :cite:`Simard2003BestPF`.
+
+    .. image:: _static/img/elastic_transform2d.png
 
     Args:
-        image (torch.Tensor): Input image to be transformed with shape :math:`(B, C, H, W)`.
-        noise (torch.Tensor): Noise image used to spatially transform the input image. Same
+        image: Input image to be transformed with shape :math:`(B, C, H, W)`.
+        noise: Noise image used to spatially transform the input image. Same
           resolution as the input image with shape :math:`(B, 2, H, W)`. The coordinates order
           it is expected to be in x-y.
-        kernel_size (Tuple[int, int]): the size of the Gaussian kernel. Default: (3, 3).
-        sigma (Tuple[float, float]): The standard deviation of the Gaussian in the y and x directions,
-          respecitvely. Larger sigma results in smaller pixel displacements. Default: (4, 4).
-        alpha (Tuple[float, float]): The scaling factor that controls the intensity of the deformation
-          in the y and x directions, respectively. Default: 32.
-        align_corners (bool): Interpolation flag used by `grid_sample`. Default: False.
-        mode (str): Interpolation mode used by `grid_sample`. Either 'bilinear' or 'nearest'. Default: 'bilinear'.
+        kernel_size: the size of the Gaussian kernel.
+        sigma: The standard deviation of the Gaussian in the y and x directions,
+          respectively. Larger sigma results in smaller pixel displacements.
+        alpha : The scaling factor that controls the intensity of the deformation
+          in the y and x directions, respectively.
+        align_corners: Interpolation flag used by ```grid_sample```.
+        mode: Interpolation mode used by ```grid_sample```. Either ``'bilinear'`` or ``'nearest'``.
+        padding_mode: The padding used by ```grid_sample```. Either ``'zeros'``, ``'border'`` or ``'refection'``.
 
     .. note:
-        `sigma` and `alpha` can also be a `torch.Tensor`. However, you could not torchscript
+        ```sigma``` and ```alpha``` can also be a ``torch.Tensor``. However, you could not torchscript
          this function with tensor until PyTorch 1.8 is released.
 
     Returns:
-        torch.Tensor: the elastically transformed input image with shape :math:`(B,C,H,W)`.
+        the elastically transformed input image with shape :math:`(B,C,H,W)`.
 
     Example:
         >>> image = torch.rand(1, 3, 5, 5)
@@ -77,16 +82,16 @@ def elastic_transform2d(image: torch.Tensor,
     disp_x: torch.Tensor = noise[:, :1]
     disp_y: torch.Tensor = noise[:, 1:]
 
-    disp_x = kornia.filters.filter2D(disp_x, kernel=kernel_y, border_type='constant') * alpha[0]
-    disp_y = kornia.filters.filter2D(disp_y, kernel=kernel_x, border_type='constant') * alpha[1]
+    disp_x = filter2d(disp_x, kernel=kernel_y, border_type='constant') * alpha[0]
+    disp_y = filter2d(disp_y, kernel=kernel_x, border_type='constant') * alpha[1]
 
     # stack and normalize displacement
     disp = torch.cat([disp_x, disp_y], dim=1).permute(0, 2, 3, 1)
 
     # Warp image based on displacement matrix
-    b, c, h, w = image.shape
-    grid = kornia.utils.create_meshgrid(h, w, device=image.device).to(image.dtype)
-    warped = F.grid_sample(
-        image, (grid + disp).clamp(-1, 1), align_corners=align_corners, mode=mode)
+    _, _, h, w = image.shape
+    grid = create_meshgrid(h, w, device=image.device).to(image.dtype)
+    warped = F.grid_sample(image, (grid + disp).clamp(-1, 1), align_corners=align_corners, mode=mode,
+                           padding_mode=padding_mode)
 
     return warped

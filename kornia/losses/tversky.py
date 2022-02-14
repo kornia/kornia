@@ -1,5 +1,3 @@
-from typing import Optional
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -10,10 +8,9 @@ from kornia.utils.one_hot import one_hot
 # https://github.com/kevinzakka/pytorch-goodies/blob/master/losses.py
 
 
-def tversky_loss(input: torch.Tensor,
-                 target: torch.Tensor,
-                 alpha: float, beta: float,
-                 eps: float = 1e-8) -> torch.Tensor:
+def tversky_loss(
+    input: torch.Tensor, target: torch.Tensor, alpha: float, beta: float, eps: float = 1e-8
+) -> torch.Tensor:
     r"""Criterion that computes Tversky Coefficient loss.
 
     According to :cite:`salehi2017tversky`, we compute the Tversky Coefficient as follows:
@@ -35,15 +32,15 @@ def tversky_loss(input: torch.Tensor,
        - :math:`\alpha + \beta = 1` => F beta coeff
 
     Args:
-        input (torch.Tensor): logits tensor with shape :math:`(N, C, H, W)` where C = number of classes.
-        target (torch.Tensor): labels tensor with shape :math:`(N, H, W)` where each value
+        input: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes.
+        target: labels tensor with shape :math:`(N, H, W)` where each value
           is :math:`0 ≤ targets[i] ≤ C−1`.
-        alpha (float): the first coefficient in the denominator.
-        beta (float): the second coefficient in the denominator.
-        eps (float, optional): scalar for numerical stability. Default: 1e-8.
+        alpha: the first coefficient in the denominator.
+        beta: the second coefficient in the denominator.
+        eps: scalar for numerical stability.
 
     Return:
-        torch.Tensor: the computed loss.
+        the computed loss.
 
     Example:
         >>> N = 5  # num_classes
@@ -53,41 +50,34 @@ def tversky_loss(input: torch.Tensor,
         >>> output.backward()
     """
     if not isinstance(input, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}"
-                        .format(type(input)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if not len(input.shape) == 4:
-        raise ValueError("Invalid input shape, we expect BxNxHxW. Got: {}"
-                         .format(input.shape))
+        raise ValueError(f"Invalid input shape, we expect BxNxHxW. Got: {input.shape}")
 
     if not input.shape[-2:] == target.shape[-2:]:
-        raise ValueError("input and target shapes must be the same. Got: {} and {}"
-                         .format(input.shape, input.shape))
+        raise ValueError(f"input and target shapes must be the same. Got: {input.shape} and {input.shape}")
 
     if not input.device == target.device:
-        raise ValueError(
-            "input and target must be in the same device. Got: {} and {}" .format(
-                input.device, target.device))
+        raise ValueError(f"input and target must be in the same device. Got: {input.device} and {target.device}")
 
     # compute softmax over the classes axis
     input_soft: torch.Tensor = F.softmax(input, dim=1)
 
     # create the labels one hot tensor
-    target_one_hot: torch.Tensor = one_hot(
-        target, num_classes=input.shape[1],
-        device=input.device, dtype=input.dtype)
+    target_one_hot: torch.Tensor = one_hot(target, num_classes=input.shape[1], device=input.device, dtype=input.dtype)
 
     # compute the actual dice score
     dims = (1, 2, 3)
     intersection = torch.sum(input_soft * target_one_hot, dims)
-    fps = torch.sum(input_soft * (-target_one_hot + 1.), dims)
-    fns = torch.sum((-input_soft + 1.) * target_one_hot, dims)
+    fps = torch.sum(input_soft * (-target_one_hot + 1.0), dims)
+    fns = torch.sum((-input_soft + 1.0) * target_one_hot, dims)
 
     numerator = intersection
     denominator = intersection + alpha * fps + beta * fns
     tversky_loss = numerator / (denominator + eps)
 
-    return torch.mean(-tversky_loss + 1.)
+    return torch.mean(-tversky_loss + 1.0)
 
 
 class TverskyLoss(nn.Module):
@@ -112,9 +102,9 @@ class TverskyLoss(nn.Module):
        - :math:`\alpha + \beta = 1` => F beta coeff
 
     Args:
-        alpha (float): the first coefficient in the denominator.
-        beta (float): the second coefficient in the denominator.
-        eps (float, optional): scalar for numerical stability. Default: 1e-8.
+        alpha: the first coefficient in the denominator.
+        beta: the second coefficient in the denominator.
+        eps: scalar for numerical stability.
 
     Shape:
         - Input: :math:`(N, C, H, W)` where C = number of classes.
@@ -131,7 +121,7 @@ class TverskyLoss(nn.Module):
     """
 
     def __init__(self, alpha: float, beta: float, eps: float = 1e-8) -> None:
-        super(TverskyLoss, self).__init__()
+        super().__init__()
         self.alpha: float = alpha
         self.beta: float = beta
         self.eps: float = eps

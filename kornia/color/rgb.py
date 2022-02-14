@@ -7,23 +7,23 @@ import torch.nn as nn
 def rgb_to_bgr(image: torch.Tensor) -> torch.Tensor:
     r"""Convert a RGB image to BGR.
 
+    .. image:: _static/img/rgb_to_bgr.png
+
     Args:
-        image (torch.Tensor): RGB Image to be converted to BGRof of shape :math:`(*,3,H,W)`.
+        image: RGB Image to be converted to BGRof of shape :math:`(*,3,H,W)`.
 
     Returns:
-        torch.Tensor: BGR version of the image with shape of shape :math:`(*,3,H,W)`.
+        BGR version of the image with shape of shape :math:`(*,3,H,W)`.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = rgb_to_bgr(input) # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(image)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError("Input size must have a shape of (*, 3, H, W).Got {}"
-                         .format(image.shape))
+        raise ValueError(f"Input size must have a shape of (*, 3, H, W).Got {image.shape}")
 
     return bgr_to_rgb(image)
 
@@ -32,22 +32,20 @@ def bgr_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Convert a BGR image to RGB.
 
     Args:
-        image (torch.Tensor): BGR Image to be converted to BGR of shape :math:`(*,3,H,W)`.
+        image: BGR Image to be converted to BGR of shape :math:`(*,3,H,W)`.
 
     Returns:
-        torch.Tensor: RGB version of the image with shape of shape :math:`(*,3,H,W)`.
+        RGB version of the image with shape of shape :math:`(*,3,H,W)`.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = bgr_to_rgb(input) # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(image)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError("Input size must have a shape of (*, 3, H, W).Got {}"
-                         .format(image.shape))
+        raise ValueError(f"Input size must have a shape of (*, 3, H, W).Got {image.shape}")
 
     # flip image channels
     out: torch.Tensor = image.flip(-3)
@@ -58,12 +56,12 @@ def rgb_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> t
     r"""Convert an image from RGB to RGBA.
 
     Args:
-        image (torch.Tensor): RGB Image to be converted to RGBA of shape :math:`(*,3,H,W)`.
+        image: RGB Image to be converted to RGBA of shape :math:`(*,3,H,W)`.
         alpha_val (float, torch.Tensor): A float number for the alpha value or a tensor
           of shape :math:`(*,1,H,W)`.
 
     Returns:
-        torch.Tensor: RGBA version of the image with shape :math:`(*,4,H,W)`.
+        RGBA version of the image with shape :math:`(*,4,H,W)`.
 
     .. note:: The current functionality is NOT supported by Torchscript.
 
@@ -95,12 +93,12 @@ def bgr_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> t
     r"""Convert an image from BGR to RGBA.
 
     Args:
-        image (torch.Tensor): BGR Image to be converted to RGBA of shape :math:`(*,3,H,W)`.
-        alpha_val (float, torch.Tensor): A float number for the alpha value or a tensor
+        image: BGR Image to be converted to RGBA of shape :math:`(*,3,H,W)`.
+        alpha_val: A float number for the alpha value or a tensor
           of shape :math:`(*,1,H,W)`.
 
     Returns:
-        torch.Tensor: RGBA version of the image with shape :math:`(*,4,H,W)`.
+        RGBA version of the image with shape :math:`(*,4,H,W)`.
 
     .. note:: The current functionality is NOT supported by Torchscript.
 
@@ -126,10 +124,10 @@ def rgba_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an image from RGBA to RGB.
 
     Args:
-        image (torch.Tensor): RGBA Image to be converted to RGB of shape :math:`(*,4,H,W)`.
+        image: RGBA Image to be converted to RGB of shape :math:`(*,4,H,W)`.
 
     Returns:
-        torch.Tensor: RGB version of the image with shape :math:`(*,3,H,W)`.
+        RGB version of the image with shape :math:`(*,3,H,W)`.
 
     Example:
         >>> input = torch.rand(2, 4, 4, 5)
@@ -145,22 +143,22 @@ def rgba_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r, g, b, a = torch.chunk(image, image.shape[-3], dim=-3)
 
     # compute new channels
-    a_one = torch.tensor(1.) - a
+    a_one = torch.tensor(1.0) - a
     r_new: torch.Tensor = a_one * r + a * r
     g_new: torch.Tensor = a_one * g + a * g
     b_new: torch.Tensor = a_one * b + a * b
 
-    return torch.cat([r, g, b], dim=-3)
+    return torch.cat([r_new, g_new, b_new], dim=-3)
 
 
 def rgba_to_bgr(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an image from RGBA to BGR.
 
     Args:
-        image (torch.Tensor): RGBA Image to be converted to BGR of shape :math:`(*,4,H,W)`.
+        image: RGBA Image to be converted to BGR of shape :math:`(*,4,H,W)`.
 
     Returns:
-        torch.Tensor: RGB version of the image with shape :math:`(*,3,H,W)`.
+        RGB version of the image with shape :math:`(*,3,H,W)`.
 
     Example:
         >>> input = torch.rand(2, 4, 4, 5)
@@ -180,11 +178,13 @@ def rgba_to_bgr(image: torch.Tensor) -> torch.Tensor:
 def rgb_to_linear_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an sRGB image to linear RGB. Used in colorspace conversions.
 
+    .. image:: _static/img/rgb_to_linear_rgb.png
+
     Args:
-        image (torch.Tensor): sRGB Image to be converted to linear RGB of shape :math:`(*,3,H,W)`.
+        image: sRGB Image to be converted to linear RGB of shape :math:`(*,3,H,W)`.
 
     Returns:
-        torch.Tensor: linear RGB version of the image with shape of :math:`(*,3,H,W)`.
+        linear RGB version of the image with shape of :math:`(*,3,H,W)`.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -192,15 +192,12 @@ def rgb_to_linear_rgb(image: torch.Tensor) -> torch.Tensor:
     """
 
     if not isinstance(image, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(image)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError("Input size must have a shape of (*, 3, H, W).Got {}"
-                         .format(image.shape))
+        raise ValueError(f"Input size must have a shape of (*, 3, H, W).Got {image.shape}")
 
-    lin_rgb: torch.Tensor = torch.where(image > 0.04045, torch.pow(
-        ((image + 0.055) / 1.055), 2.4), image / 12.92)
+    lin_rgb: torch.Tensor = torch.where(image > 0.04045, torch.pow(((image + 0.055) / 1.055), 2.4), image / 12.92)
 
     return lin_rgb
 
@@ -209,10 +206,10 @@ def linear_rgb_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Convert a linear RGB image to sRGB. Used in colorspace conversions.
 
     Args:
-        image (torch.Tensor): linear RGB Image to be converted to sRGB of shape :math:`(*,3,H,W)`.
+        image: linear RGB Image to be converted to sRGB of shape :math:`(*,3,H,W)`.
 
     Returns:
-        torch.Tensor: sRGB version of the image with shape of shape :math:`(*,3,H,W)`.
+        sRGB version of the image with shape of shape :math:`(*,3,H,W)`.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -220,24 +217,15 @@ def linear_rgb_to_rgb(image: torch.Tensor) -> torch.Tensor:
     """
 
     if not isinstance(image, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(image)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError("Input size must have a shape of (*, 3, H, W).Got {}"
-                         .format(image.shape))
+        raise ValueError(f"Input size must have a shape of (*, 3, H, W).Got {image.shape}")
 
     threshold = 0.0031308
     rgb: torch.Tensor = torch.where(
-        image > threshold,
-        1.055 *
-        torch.pow(
-            image.clamp(min=threshold),
-            1 /
-            2.4) -
-        0.055,
-        12.92 *
-        image)
+        image > threshold, 1.055 * torch.pow(image.clamp(min=threshold), 1 / 2.4) - 0.055, 12.92 * image
+    )
 
     return rgb
 
@@ -248,7 +236,7 @@ class BgrToRgb(nn.Module):
     The image data is assumed to be in the range of (0, 1).
 
     Returns:
-        torch.Tensor: RGB version of the image.
+        RGB version of the image.
 
     Shape:
         - image: :math:`(*, 3, H, W)`
@@ -260,9 +248,6 @@ class BgrToRgb(nn.Module):
         >>> output = rgb(input)  # 2x3x4x5
     """
 
-    def __init__(self) -> None:
-        super(BgrToRgb, self).__init__()
-
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return bgr_to_rgb(image)
 
@@ -273,7 +258,7 @@ class RgbToBgr(nn.Module):
     The image data is assumed to be in the range of (0, 1).
 
     Returns:
-        torch.Tensor: BGR version of the image.
+        BGR version of the image.
 
     Shape:
         - image: :math:`(*, 3, H, W)`
@@ -285,9 +270,6 @@ class RgbToBgr(nn.Module):
         >>> output = bgr(input)  # 2x3x4x5
     """
 
-    def __init__(self) -> None:
-        super(RgbToBgr, self).__init__()
-
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgb_to_bgr(image)
 
@@ -298,7 +280,7 @@ class RgbToRgba(nn.Module):
     Add an alpha channel to existing RGB image.
 
     Args:
-        alpha_val (float, torch.Tensor): A float number for the alpha value or a tensor
+        alpha_val: A float number for the alpha value or a tensor
           of shape :math:`(*,1,H,W)`.
 
     Returns:
@@ -317,7 +299,7 @@ class RgbToRgba(nn.Module):
     """
 
     def __init__(self, alpha_val: Union[float, torch.Tensor]) -> None:
-        super(RgbToRgba, self).__init__()
+        super().__init__()
         self.alpha_val = alpha_val
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
@@ -330,11 +312,11 @@ class BgrToRgba(nn.Module):
     Add an alpha channel to existing RGB image.
 
     Args:
-        alpha_val (float, torch.Tensor): A float number for the alpha value or a tensor
+        alpha_val: A float number for the alpha value or a tensor
           of shape :math:`(*,1,H,W)`.
 
     Returns:
-        torch.Tensor: RGBA version of the image with shape :math:`(*,4,H,W)`.
+        RGBA version of the image with shape :math:`(*,4,H,W)`.
 
     Shape:
         - image: :math:`(*, 3, H, W)`
@@ -349,7 +331,7 @@ class BgrToRgba(nn.Module):
     """
 
     def __init__(self, alpha_val: Union[float, torch.Tensor]) -> None:
-        super(BgrToRgba, self).__init__()
+        super().__init__()
         self.alpha_val = alpha_val
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
@@ -362,7 +344,7 @@ class RgbaToRgb(nn.Module):
     Remove an alpha channel from RGB image.
 
     Returns:
-        torch.Tensor: RGB version of the image.
+        RGB version of the image.
 
     Shape:
         - image: :math:`(*, 4, H, W)`
@@ -374,9 +356,6 @@ class RgbaToRgb(nn.Module):
         >>> output = rgba(input)  # 2x3x4x5
     """
 
-    def __init__(self) -> None:
-        super(RgbaToRgb, self).__init__()
-
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgba_to_rgb(image)
 
@@ -387,7 +366,7 @@ class RgbaToBgr(nn.Module):
     Remove an alpha channel from BGR image.
 
     Returns:
-        torch.Tensor: BGR version of the image.
+        BGR version of the image.
 
     Shape:
         - image: :math:`(*, 4, H, W)`
@@ -398,9 +377,6 @@ class RgbaToBgr(nn.Module):
         >>> rgba = RgbaToBgr()
         >>> output = rgba(input)  # 2x3x4x5
     """
-
-    def __init__(self) -> None:
-        super(RgbaToBgr, self).__init__()
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgba_to_bgr(image)
@@ -413,7 +389,7 @@ class RgbToLinearRgb(nn.Module):
     The image data is assumed to be in the range of :math:`[0, 1]`
 
     Returns:
-        torch.Tensor: Linear RGB version of the image.
+        Linear RGB version of the image.
 
     Shape:
         - image: :math:`(*, 3, H, W)`
@@ -432,9 +408,6 @@ class RgbToLinearRgb(nn.Module):
         [3] https://en.wikipedia.org/wiki/SRGB
     """
 
-    def __init__(self) -> None:
-        super(RgbToLinearRgb, self).__init__()
-
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgb_to_linear_rgb(image)
 
@@ -445,7 +418,7 @@ class LinearRgbToRgb(nn.Module):
     Applies gamma correction to linear RGB values, at the end of colorspace conversions, to get sRGB.
 
     Returns:
-        torch.Tensor: sRGB version of the image.
+        sRGB version of the image.
 
     Shape:
         - image: :math:`(*, 3, H, W)`
@@ -463,9 +436,6 @@ class LinearRgbToRgb(nn.Module):
 
         [3] https://en.wikipedia.org/wiki/SRGB
     """
-
-    def __init__(self) -> None:
-        super(LinearRgbToRgb, self).__init__()
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return linear_rgb_to_rgb(image)

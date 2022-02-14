@@ -8,3 +8,4 @@ kornia.geometry.camera
 
    geometry.camera.pinhole
    geometry.camera.perspective
+   geometry.camera.stereo

@@ -1,28 +1,27 @@
-from typing import Tuple, List, Optional
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.geometry import angle_to_rotation_matrix
-from kornia.feature.responses import BlobHessian
-from kornia.geometry import ConvSoftArgmax3d
-from kornia.feature.orientation import PassLAF
-from kornia.feature.laf import (
-    denormalize_laf, scale_laf,
-    normalize_laf, laf_is_inside_image)
+from kornia.geometry.subpix import ConvSoftArgmax3d
 from kornia.geometry.transform import ScalePyramid
+
+from .laf import denormalize_laf, laf_is_inside_image, normalize_laf
+from .orientation import PassLAF
+from .responses import BlobHessian
 
 
 def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor, num_levels: int) -> torch.Tensor:
-    """Auxiliary function for ScaleSpaceDetector. Converts scale level index from ConvSoftArgmax3d
-    to the actual scale, using the sigmas from the ScalePyramid output
+    r"""Auxiliary function for ScaleSpaceDetector. Converts scale level index from ConvSoftArgmax3d
+    to the actual scale, using the sigmas from the ScalePyramid output.
+
     Args:
-        max_coords: (torch.Tensor): tensor [BxNx3].
-        sigmas: (torch.Tensor): tensor [BxNxD], D >= 1
+        max_coords: tensor [BxNx3].
+        sigmas: tensor [BxNxD], D >= 1
 
     Returns:
-        torch.Tensor:  tensor [BxNx3].
+        tensor [BxNx3].
     """
     # depth (scale) in coord_max is represented as (float) index, not the scale yet.
     # we will interpolate the scale using pytorch.grid_sample function
@@ -31,62 +30,63 @@ def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor, num_le
 
     # Reshape for grid shape
     B, N, _ = max_coords.shape
-    L: int = sigmas.size(1)
     scale_coords = max_coords[:, :, 0].contiguous().view(-1, 1, 1, 1)
     # Replace the scale_x_y
-    out = torch.cat([sigmas[0, 0] * torch.pow(2.0, scale_coords / float(num_levels)).view(B, N, 1),
-                     max_coords[:, :, 1:]], dim=2)
+    out = torch.cat(
+        [sigmas[0, 0] * torch.pow(2.0, scale_coords / float(num_levels)).view(B, N, 1), max_coords[:, :, 1:]], dim=2
+    )
     return out
 
 
 def _create_octave_mask(mask: torch.Tensor, octave_shape: List[int]) -> torch.Tensor:
-    """Downsamples a mask based on the given octave shape."""
+    r"""Downsample a mask based on the given octave shape."""
     mask_shape = octave_shape[-2:]
     mask_octave = F.interpolate(mask, mask_shape, mode='bilinear', align_corners=False)  # type: ignore
     return mask_octave.unsqueeze(1)
 
 
 class ScaleSpaceDetector(nn.Module):
-    """Module for differentiable local feature detection, as close as possible to classical
-     local feature detectors like Harris, Hessian-Affine or SIFT (DoG).
-     It has 5 modules inside: scale pyramid generator, response ("cornerness") function,
-     soft nms function, affine shape estimator and patch orientation estimator.
-     Each of those modules could be replaced with learned custom one, as long, as
-     they respect output shape.
+    r"""Module for differentiable local feature detection, as close as possible to classical
+    local feature detectors like Harris, Hessian-Affine or SIFT (DoG).
+
+    It has 5 modules inside: scale pyramid generator, response ("cornerness") function,
+    soft nms function, affine shape estimator and patch orientation estimator.
+    Each of those modules could be replaced with learned custom one, as long, as
+    they respect output shape.
 
     Args:
-        num_features: (int) Number of features to detect. default = 500. In order to keep everything batchable,
-                      output would always have num_features output, even for completely homogeneous images.
-        mr_size: (float), default 6.0. Multiplier for local feature scale compared to the detection scale.
-                    6.0 is matching OpenCV 12.0 convention for SIFT.
-        scale_pyr_module: (nn.Module), which generates scale pyramid.
-                         See :class:`~kornia.geometry.ScalePyramid` for details. Default is ScalePyramid(3, 1.6, 10)
-        resp_module: (nn.Module), which calculates 'cornerness' of the pixel. Default is BlobHessian().
-        nms_module: (nn.Module), which outputs per-patch coordinates of the response maxima.
-                    See :class:`~kornia.geometry.ConvSoftArgmax3d` for details.
-        ori_module: (nn.Module) for local feature orientation estimation.  Default is :class:`~kornia.feature.PassLAF`,
-                    which does nothing. See :class:`~kornia.feature.LAFOrienter` for details.
-        aff_module:  (nn.Module) for local feature affine shape estimation. Default is :class:`~kornia.feature.PassLAF`,
-                    which does nothing. See :class:`~kornia.feature.LAFAffineShapeEstimator` for details.
-        minima_are_also_good:  (bool) if True, then both response function minima and maxima are detected
-                                Useful for symmetric response functions like DoG or Hessian. Default is False
+        num_features: Number of features to detect. In order to keep everything batchable,
+          output would always have num_features output, even for completely homogeneous images.
+        mr_size: multiplier for local feature scale compared to the detection scale.
+          6.0 is matching OpenCV 12.0 convention for SIFT.
+        scale_pyr_module: generates scale pyramid. See :class:`~kornia.geometry.ScalePyramid` for details.
+          Default: ScalePyramid(3, 1.6, 10).
+        resp_module: calculates ``'cornerness'`` of the pixel.
+        nms_module: outputs per-patch coordinates of the response maxima.
+          See :class:`~kornia.geometry.ConvSoftArgmax3d` for details.
+        ori_module: for local feature orientation estimation. Default:class:`~kornia.feature.PassLAF`,
+           which does nothing. See :class:`~kornia.feature.LAFOrienter` for details.
+        aff_module: for local feature affine shape estimation. Default: :class:`~kornia.feature.PassLAF`,
+            which does nothing. See :class:`~kornia.feature.LAFAffineShapeEstimator` for details.
+        minima_are_also_good: if True, then both response function minima and maxima are detected
+            Useful for symmetric response functions like DoG or Hessian. Default is False
     """
 
-    def __init__(self,
-                 num_features: int = 500,
-                 mr_size: float = 6.0,
-                 scale_pyr_module: nn.Module = ScalePyramid(3, 1.6, 15),
-                 resp_module: nn.Module = BlobHessian(),
-                 nms_module: nn.Module = ConvSoftArgmax3d((3, 3, 3),
-                                                          (1, 1, 1),
-                                                          (1, 1, 1),
-                                                          normalized_coordinates=False,
-                                                          output_value=True),
-                 ori_module: nn.Module = PassLAF(),
-                 aff_module: nn.Module = PassLAF(),
-                 minima_are_also_good: bool = False,
-                 scale_space_response=False):
-        super(ScaleSpaceDetector, self).__init__()
+    def __init__(
+        self,
+        num_features: int = 500,
+        mr_size: float = 6.0,
+        scale_pyr_module: nn.Module = ScalePyramid(3, 1.6, 15),
+        resp_module: nn.Module = BlobHessian(),
+        nms_module: nn.Module = ConvSoftArgmax3d(
+            (3, 3, 3), (1, 1, 1), (1, 1, 1), normalized_coordinates=False, output_value=True
+        ),
+        ori_module: nn.Module = PassLAF(),
+        aff_module: nn.Module = PassLAF(),
+        minima_are_also_good: bool = False,
+        scale_space_response=False,
+    ):
+        super().__init__()
         self.mr_size = mr_size
         self.num_features = num_features
         self.scale_pyr = scale_pyr_module
@@ -98,36 +98,51 @@ class ScaleSpaceDetector(nn.Module):
         # scale_space_response should be True if the response function works on scale space
         # like Difference-of-Gaussians
         self.scale_space_response = scale_space_response
-        return
 
     def __repr__(self):
-        return self.__class__.__name__ + '('\
-            'num_features=' + str(self.num_features) + ', ' + \
-            'mr_size=' + str(self.mr_size) + ', ' + \
-            'scale_pyr=' + self.scale_pyr.__repr__() + ', ' + \
-            'resp=' + self.resp.__repr__() + ', ' + \
-            'nms=' + self.nms.__repr__() + ', ' + \
-            'ori=' + self.ori.__repr__() + ', ' + \
-            'aff=' + self.aff.__repr__() + ')'
+        return (
+            self.__class__.__name__ + '('
+            'num_features='
+            + str(self.num_features)
+            + ', '
+            + 'mr_size='
+            + str(self.mr_size)
+            + ', '
+            + 'scale_pyr='
+            + self.scale_pyr.__repr__()
+            + ', '
+            + 'resp='
+            + self.resp.__repr__()
+            + ', '
+            + 'nms='
+            + self.nms.__repr__()
+            + ', '
+            + 'ori='
+            + self.ori.__repr__()
+            + ', '
+            + 'aff='
+            + self.aff.__repr__()
+            + ')'
+        )
 
-    def detect(self, img: torch.Tensor, num_feats: int,
-               mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+    def detect(
+        self, img: torch.Tensor, num_feats: int, mask: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         dev: torch.device = img.device
         dtype: torch.dtype = img.dtype
-        sp, sigmas, pix_dists = self.scale_pyr(img)
-        all_responses = []
-        all_lafs = []
+        sp, sigmas, _ = self.scale_pyr(img)
+        all_responses: List[torch.Tensor] = []
+        all_lafs: List[torch.Tensor] = []
         for oct_idx, octave in enumerate(sp):
             sigmas_oct = sigmas[oct_idx]
-            pix_dists_oct = pix_dists[oct_idx]
-
             B, CH, L, H, W = octave.size()
             # Run response function
             if self.scale_space_response:
                 oct_resp = self.resp(octave, sigmas_oct.view(-1))
             else:
-                oct_resp = self.resp(octave.permute(0, 2, 1, 3, 4).reshape(B * L, CH, H, W),
-                                     sigmas_oct.view(-1)).view(B, L, CH, H, W)
+                oct_resp = self.resp(octave.permute(0, 2, 1, 3, 4).reshape(B * L, CH, H, W), sigmas_oct.view(-1)).view(
+                    B, L, CH, H, W
+                )
                 # We want nms for scale responses, so reorder to (B, CH, L, H, W)
                 oct_resp = oct_resp.permute(0, 2, 1, 3, 4)
                 # 3rd extra level is required for DoG only
@@ -159,14 +174,19 @@ class ScaleSpaceDetector(nn.Module):
             B, N = resp_flat_best.size()
 
             # Converts scale level index from ConvSoftArgmax3d to the actual scale, using the sigmas
-            max_coords_best = _scale_index_to_scale(max_coords_best,
-                                                    sigmas_oct,
-                                                    self.scale_pyr.n_levels)  # type: ignore
+            max_coords_best = _scale_index_to_scale(
+                max_coords_best, sigmas_oct, self.scale_pyr.n_levels  # type: ignore
+            )
 
             # Create local affine frames (LAFs)
             rotmat = torch.eye(2, dtype=dtype, device=dev).view(1, 1, 2, 2)
-            current_lafs = torch.cat([self.mr_size * max_coords_best[:, :, 0].view(B, N, 1, 1) * rotmat,
-                                      max_coords_best[:, :, 1:3].view(B, N, 2, 1)], dim=3)
+            current_lafs = torch.cat(
+                [
+                    self.mr_size * max_coords_best[:, :, 0].view(B, N, 1, 1) * rotmat,
+                    max_coords_best[:, :, 1:3].view(B, N, 2, 1),
+                ],
+                dim=3,
+            )
 
             # Zero response lafs, which touch the boundary
             good_mask = laf_is_inside_image(current_lafs, octave[:, 0])
@@ -185,19 +205,21 @@ class ScaleSpaceDetector(nn.Module):
         lafs = torch.gather(lafs, 1, idxs.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, 2, 3))
         return responses, denormalize_laf(lafs, img)
 
-    def forward(self, img: torch.Tensor,  # type: ignore
-                mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore
+    def forward(  # type: ignore
+        self, img: torch.Tensor, mask: Optional[torch.Tensor] = None  # type: ignore
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Three stage local feature detection. First the location and scale of interest points are determined by
         detect function. Then affine shape and orientation.
 
         Args:
-            img (torch.Tensor): image to extract features with shape [BxCxHxW]
-            mask (torch.Tensor, optional): a mask with weights where to apply the
-            response function. The shape must be the same as the input image.
+            img: image to extract features with shape [BxCxHxW]
+            mask: a mask with weights where to apply the response function. The shape must be the same as
+              the input image.
 
         Returns:
-            lafs (torch.Tensor): shape [BxNx2x3]. Detected local affine frames.
-            responses (torch.Tensor): shape [BxNx1]. Response function values for corresponding lafs"""
+            lafs: shape [BxNx2x3]. Detected local affine frames.
+            responses: shape [BxNx1]. Response function values for corresponding lafs
+        """
         responses, lafs = self.detect(img, self.num_features, mask)
         lafs = self.aff(lafs, img)
         lafs = self.ori(lafs, img)

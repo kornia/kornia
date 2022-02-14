@@ -4,12 +4,9 @@ import torch
 import torch.nn as nn
 
 from kornia.utils import create_meshgrid
+from kornia.utils.helpers import _torch_solve_cast
 
-__all__ = [
-    "get_tps_transform",
-    "warp_points_tps",
-    "warp_image_tps"
-]
+__all__ = ["get_tps_transform", "warp_points_tps", "warp_image_tps"]
 
 # utilities for computing thin plate spline transforms
 
@@ -41,13 +38,13 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> Tup
     tensor of target :math:`(x, y)` points :math:`(B, N, 2)`.
 
     Args:
-        points_src (torch.Tensor): batch of source points :math:`(B, N, 2)` as :math:`(x, y)` coordinate vectors.
-        points_dst (torch.Tensor): batch of target points :math:`(B, N, 2)` as :math:`(x, y)` coordinate vectors.
+        points_src: batch of source points :math:`(B, N, 2)` as :math:`(x, y)` coordinate vectors.
+        points_dst: batch of target points :math:`(B, N, 2)` as :math:`(x, y)` coordinate vectors.
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor]: :math:`(B, N, 2)` tensor of kernel weights and :math:`(B, 3, 2)`
+        :math:`(B, N, 2)` tensor of kernel weights and :math:`(B, 3, 2)`
             tensor of affine weights. The last dimension contains the x-transform and y-transform weights
-            as seperate columns.
+            as separate columns.
 
     Example:
         >>> points_src = torch.rand(1, 5, 2)
@@ -55,7 +52,7 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> Tup
         >>> kernel_weights, affine_weights = get_tps_transform(points_src, points_dst)
 
     .. note::
-        This function is often used in conjuntion with :func:`warp_points_tps`, :func:`warp_image_tps`.
+        This function is often used in conjunction with :func:`warp_points_tps`, :func:`warp_image_tps`.
     """
     if not isinstance(points_src, torch.Tensor):
         raise TypeError(f"Input points_src is not torch.Tensor. Got {type(points_src)}")
@@ -86,15 +83,16 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> Tup
     l_matrix: torch.Tensor = torch.cat((k_matrix, p_matrix), -1)
     l_matrix = torch.cat((l_matrix, p_matrix_t), 1)
 
-    weights, _ = torch.solve(dest_with_zeros, l_matrix)
+    weights, _ = _torch_solve_cast(dest_with_zeros, l_matrix)
     kernel_weights: torch.Tensor = weights[:, :-3]
     affine_weights: torch.Tensor = weights[:, -3:]
 
     return (kernel_weights, affine_weights)
 
 
-def warp_points_tps(points_src: torch.Tensor, kernel_centers: torch.Tensor,
-                    kernel_weights: torch.Tensor, affine_weights: torch.Tensor) -> torch.Tensor:
+def warp_points_tps(
+    points_src: torch.Tensor, kernel_centers: torch.Tensor, kernel_weights: torch.Tensor, affine_weights: torch.Tensor
+) -> torch.Tensor:
     r"""Warp a tensor of coordinate points using the thin plate spline defined by kernel points, kernel weights,
     and affine weights.
 
@@ -104,13 +102,13 @@ def warp_points_tps(points_src: torch.Tensor, kernel_centers: torch.Tensor,
     weights for the x-transform and tensor[..., 1] the weights for the y-transform.
 
     Args:
-        points_src (torch.Tensor): tensor of source points :math:`(B, N, 2)`.
-        kernel_centers (torch.Tensor): tensor of kernel center points :math:`(B, K, 2)`.
-        kernel_weights (torch.Tensor): tensor of kernl weights :math:`(B, K, 2)`.
-        affine_weights (torch.Tensor): tensor of affine weights :math:`(B, 3, 2)`.
+        points_src: tensor of source points :math:`(B, N, 2)`.
+        kernel_centers: tensor of kernel center points :math:`(B, K, 2)`.
+        kernel_weights: tensor of kernl weights :math:`(B, K, 2)`.
+        affine_weights: tensor of affine weights :math:`(B, 3, 2)`.
 
     Returns:
-        torch.Tensor: The :math:`(B, N, 2)` tensor of warped source points, from applying the TPS transform.
+        The :math:`(B, N, 2)` tensor of warped source points, from applying the TPS transform.
 
     Example:
         >>> points_src = torch.rand(1, 5, 2)
@@ -120,7 +118,7 @@ def warp_points_tps(points_src: torch.Tensor, kernel_centers: torch.Tensor,
         >>> warped_correct = torch.allclose(warped, points_dst)
 
     .. note::
-        This function is often used in conjuntion with :func:`get_tps_transform`.
+        This function is often used in conjunction with :func:`get_tps_transform`.
     """
     if not isinstance(points_src, torch.Tensor):
         raise TypeError(f"Input points_src is not torch.Tensor. Got {type(points_src)}")
@@ -152,19 +150,24 @@ def warp_points_tps(points_src: torch.Tensor, kernel_centers: torch.Tensor,
 
     # broadcast the kernel distance matrix against the x and y weights to compute the x and y
     # transforms simultaneously
-    warped: torch.Tensor = (
-        k_matrix[..., None].mul(kernel_weights[:, None]).sum(-2) +
-        points_src[..., None].mul(affine_weights[:, None, 1:]).sum(-2) +
-        affine_weights[:, None, 0]
-    )
+    k_mul_kernel = k_matrix[..., None].mul(kernel_weights[:, None]).sum(-2)
+    points_mul_affine = points_src[..., None].mul(affine_weights[:, None, 1:]).sum(-2)
+    warped: torch.Tensor = k_mul_kernel + points_mul_affine + affine_weights[:, None, 0]
 
     return warped
 
 
-def warp_image_tps(image: torch.Tensor, kernel_centers: torch.Tensor, kernel_weights: torch.Tensor,
-                   affine_weights: torch.Tensor, align_corners: bool = False) -> torch.Tensor:
+def warp_image_tps(
+    image: torch.Tensor,
+    kernel_centers: torch.Tensor,
+    kernel_weights: torch.Tensor,
+    affine_weights: torch.Tensor,
+    align_corners: bool = False,
+) -> torch.Tensor:
     r"""Warp an image tensor according to the thin plate spline transform defined by kernel centers,
     kernel weights, and affine weights.
+
+    .. image:: _static/img/warp_image_tps.png
 
     The transform is applied to each pixel coordinate in the output image to obtain a point in the input
     image for interpolation of the output pixel. So the TPS parameters should correspond to a warp from
@@ -174,14 +177,14 @@ def warp_image_tps(image: torch.Tensor, kernel_centers: torch.Tensor, kernel_wei
     are the same as in `warp_points_tps`.
 
     Args:
-        image (torch.Tensor): input image tensor :math:`(B, C, H, W)`.
-        kernel_centers (torch.Tensor): kernel center points :math:`(B, K, 2)`.
-        kernel_weights (torch.Tensor): tensor of kernl weights :math:`(B, K, 2)`.
-        affine_weights (torch.Tensor): tensor of affine weights :math:`(B, 3, 2)`.
-        align_corners (bool): interpolation flag used by `grid_sample`. Default: False.
+        image: input image tensor :math:`(B, C, H, W)`.
+        kernel_centers: kernel center points :math:`(B, K, 2)`.
+        kernel_weights: tensor of kernl weights :math:`(B, K, 2)`.
+        affine_weights: tensor of affine weights :math:`(B, 3, 2)`.
+        align_corners: interpolation flag used by `grid_sample`.
 
     Returns:
-        torch.Tensor: warped image tensor :math:`(B, C, H, W)`.
+        warped image tensor :math:`(B, C, H, W)`.
 
     Example:
         >>> points_src = torch.rand(1, 5, 2)
@@ -192,7 +195,7 @@ def warp_image_tps(image: torch.Tensor, kernel_centers: torch.Tensor, kernel_wei
         >>> warped_image = warp_image_tps(image, points_src, kernel_weights, affine_weights)
 
     .. note::
-        This function is often used in conjuntion with :func:`get_tps_transform`.
+        This function is often used in conjunction with :func:`get_tps_transform`.
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input image is not torch.Tensor. Got {type(image)}")

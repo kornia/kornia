@@ -1,11 +1,17 @@
+import importlib.util
 import os
 import sys
 
-import torch
-import kornia
+# readthedocs generated the whole documentation in an isolated environment
+# by cloning the git repo. Thus, any on-the-fly operation will not effect
+# on the resulting documentation. We therefore need to import and run the
+# corresponding code here.
+spec = importlib.util.spec_from_file_location("generate_example_images", "../generate_example_images.py")
+generate_example_images = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(generate_example_images)
 
-import sphinx_gallery
-import sphinx_rtd_theme
+# Pre-generate the example images
+generate_example_images.main()
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
@@ -28,21 +34,24 @@ extensions = [
     'sphinx.ext.autosummary',
     'sphinx.ext.doctest',
     'sphinx.ext.intersphinx',
-    'sphinx.ext.todo',
-    'sphinx.ext.coverage',
     'sphinx.ext.mathjax',
     'sphinx.ext.napoleon',
+    'sphinx_autodoc_typehints',
+    'sphinx_autodoc_defaultargs',
+    'sphinx_copybutton',
     'sphinx.ext.viewcode',
     'sphinx.ext.githubpages',
-    'nbsphinx',
     'sphinxcontrib.bibtex',
-    'sphinx_gallery.gen_gallery',
+    'sphinxcontrib.youtube',
+    'sphinx_design',
 ]
 
-napoleon_use_ivar = True
+# substitutes the default values
+docstring_default_arg_substitution = 'Default: '
+autodoc_preserve_defaults = True
 
-googleanalytics_id = 'UA-90545585-1'
-googleanalytics_enabled = True
+bibtex_bibfiles = ['references.bib']
+napoleon_use_ivar = True
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -57,9 +66,9 @@ source_suffix = ['.rst', '.ipynb']
 master_doc = 'index'
 
 # General information about the project.
-project = u'Kornia'
-author = u'%s developers' % project
-copyright = u'2019, %s' % author
+project = 'Kornia'
+author = f'{project} developers'
+copyright = f'2019, {author}'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -70,7 +79,8 @@ version = ''
 
 if 'READTHEDOCS' not in os.environ:
     # if developing locally, use pyro.__version__ as version
-    from kornia import __version__  # noqaE402
+    from kornia import __version__
+
     version = __version__
 
 # release = 'master'
@@ -89,52 +99,65 @@ language = None
 exclude_patterns = ['_build', '.ipynb_checkpoints']
 
 # The name of the Pygments (syntax highlighting) style to use.
-pygments_style = 'sphinx'
+pygments_style = 'friendly'
+pygments_dark_style = "monokai"
 
-# If true, `todo` and `todoList` produce output, else they produce nothing.
-todo_include_todos = True
-
-# do not prepend module name to functions
-add_module_names = False
-
-# -- Options for HTML output ----------------------------------------------
-
-# The theme to use for HTML and HTML Help pages.  See the documentation for
-# a list of builtin themes.
-#
-html_theme = 'sphinx_rtd_theme'
-html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
+html_theme = 'furo'
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
 #
+# TODO(jian): make to work with https://docs.kornia.org
+html_baseurl = 'https://kornia.readthedocs.io'
+
+# Changing sidebar title to Kornia
+html_title = "Kornia"
+
 html_theme_options = {
-    'collapse_navigation': False,
-    'display_version': True,
-    'logo_only': True,
+    'light_logo': 'img/kornia_logo_only_light.svg',
+    'dark_logo': 'img/kornia_logo_only_dark.svg',
+    "sidebar_hide_name": True,
+    "navigation_with_keys": True,
+    "light_css_variables": {
+        "color-sidebar-background": "#3980F5",
+        "color-sidebar-background-border": "#3980F5",
+        "color-sidebar-caption-text": "white",
+        "color-sidebar-link-text--top-level": "white",
+        "color-sidebar-link-text": "white",
+        "sidebar-caption-font-size": "normal",
+        "color-sidebar-item-background--hover": " #5dade2",
+    },
+    "dark_css_variables": {
+        "color-sidebar-background": "#1a1c1e",
+        "color-sidebar-background-border": "#1a1c1e",
+        "color-sidebar-caption-text": "white",
+        "color-sidebar-link-text--top-level": "white",
+    },
+
+    # "announcement": """
+    #     <a style=\"text-decoration: none; color: white;\"
+    #        href=\"https://github.com/kornia/kornia\">
+    #        <img src=\"https://github.com/kornia/data/raw/main/GitHub-Mark-Light-32px.png\" width=20 height=20/>
+    #        Star Kornia on GitHub
+    #     </a>
+    # """,
 }
 
-html_logo = '_static/img/kornia_logo.svg'
-html_favicon = '_static/img/kornia_logo_mini.png'
+# html_logo = '_static/img/kornia_logo.svg'
+# html_logo = '_static/img/kornia_logo_only.png'
+html_favicon = '_static/img/kornia_logo_favicon.png'
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
-
-# html_style_path = 'css/pytorch_theme.css'
-html_context = {
-    'css_files': [
-        'https://fonts.googleapis.com/css?family=Lato',
-        '_static/css/pytorch_theme.css'
-    ],
-}
-
-# -- Options for HTMLHelp output ------------------------------------------
+html_extra_path = ['_extra']
 
 # Output file base name for HTML help builder.
 htmlhelp_basename = 'Kornia'
+html_css_files = ['css/main.css']
+html_js_files = ['js/custom.js']
 
 
 # -- Options for LaTeX output ---------------------------------------------
@@ -143,15 +166,12 @@ latex_elements = {
     # The paper size ('letterpaper' or 'a4paper').
     #
     # 'papersize': 'letterpaper',
-
     # The font size ('10pt', '11pt' or '12pt').
     #
     # 'pointsize': '10pt',
-
     # Additional stuff for the LaTeX preamble.
     #
     # 'preamble': '',
-
     # Latex figure (float) alignment
     #
     # 'figure_align': 'htbp',
@@ -160,19 +180,14 @@ latex_elements = {
 # Grouping the document tree into LaTeX files. List of tuples
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
-latex_documents = [
-    (master_doc, 'kornia.tex', u'Kornia', 'manual'),
-]
+latex_documents = [(master_doc, 'kornia.tex', 'Kornia', 'manual')]
 
 
 # -- Options for manual page output ---------------------------------------
 
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
-man_pages = [
-    (master_doc, 'Kornia', u'Kornia Documentation',
-     [author], 1)
-]
+man_pages = [(master_doc, 'Kornia', 'Kornia Documentation', [author], 1)]
 
 
 # -- Options for Texinfo output -------------------------------------------
@@ -181,9 +196,15 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    (master_doc, 'kornia', 'Kornia Documentation',
-     author, 'Kornia', 'Differentiable Computer Vision in Pytorch.',
-     'Miscellaneous'),
+    (
+        master_doc,
+        'kornia',
+        'Kornia Documentation',
+        author,
+        'Kornia',
+        'Differentiable Computer Vision in Pytorch.',
+        'Miscellaneous',
+    )
 ]
 
 
@@ -193,70 +214,3 @@ intersphinx_mapping = {
     'numpy': ('http://numpy.org/doc/stable/', None),
     'torch': ('http://pytorch.org/docs/stable/', None),
 }
-
-examples_dir = os.path.join(current_path, "tutorials")
-sphinx_gallery_conf = {
-    'doc_module': 'kornia',
-    'examples_dirs': [examples_dir],   # path to your example scripts
-    'gallery_dirs': ['tutorials'],  # path where to save gallery generated output
-    'filename_pattern': './',
-}
-
-
-# -- A patch that prevents Sphinx from cross-referencing ivar tags -------
-# See http://stackoverflow.com/a/41184353/3343043
-
-from docutils import nodes
-from sphinx.util.docfields import TypedField
-from sphinx import addnodes
-
-
-def patched_make_field(self, types, domain, items, **kw):
-    # `kw` catches `env=None` needed for newer sphinx while maintaining
-    #  backwards compatibility when passed along further down!
-
-    # type: (List, unicode, Tuple) -> nodes.field
-    def handle_item(fieldarg, content):
-        par = nodes.paragraph()
-        par += addnodes.literal_strong('', fieldarg)  # Patch: this line added
-        # par.extend(self.make_xrefs(self.rolename, domain, fieldarg,
-        #                           addnodes.literal_strong))
-        if fieldarg in types:
-            par += nodes.Text(' (')
-            # NOTE: using .pop() here to prevent a single type node to be
-            # inserted twice into the doctree, which leads to
-            # inconsistencies later when references are resolved
-            fieldtype = types.pop(fieldarg)
-            if len(fieldtype) == 1 and isinstance(fieldtype[0], nodes.Text):
-                typename = u''.join(n.astext() for n in fieldtype)
-                typename = typename.replace('int', 'python:int')
-                typename = typename.replace('long', 'python:long')
-                typename = typename.replace('float', 'python:float')
-                typename = typename.replace('type', 'python:type')
-                par.extend(self.make_xrefs(self.typerolename, domain, typename,
-                                           addnodes.literal_emphasis, **kw))
-            else:
-                par += fieldtype
-            par += nodes.Text(')')
-        par += nodes.Text(' -- ')
-        par += content
-        return par
-
-    fieldname = nodes.field_name('', self.label)
-    if len(items) == 1 and self.can_collapse:
-        fieldarg, content = items[0]
-        bodynode = handle_item(fieldarg, content)
-    else:
-        bodynode = self.list_type()
-        for fieldarg, content in items:
-            bodynode += nodes.list_item('', handle_item(fieldarg, content))
-    fieldbody = nodes.field_body('', bodynode)
-    return nodes.field('', fieldname, fieldbody)
-
-
-TypedField.make_field = patched_make_field
-
-
-# @jpchen's hack to get rtd builder to install latest pytorch
-if 'READTHEDOCS' in os.environ:
-    os.system('pip install https://download.pytorch.org/whl/cpu/torch-1.1.0-cp27-cp27mu-linux_x86_64.whl')

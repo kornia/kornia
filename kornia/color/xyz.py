@@ -3,25 +3,25 @@ import torch.nn as nn
 
 
 def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
-    r"""Converts a RGB image to XYZ.
+    r"""Convert a RGB image to XYZ.
+
+    .. image:: _static/img/rgb_to_xyz.png
 
     Args:
-        image (torch.Tensor): RGB Image to be converted to XYZ with shape :math:`(*, 3, H, W)`.
+        image: RGB Image to be converted to XYZ with shape :math:`(*, 3, H, W)`.
 
     Returns:
-        torch.Tensor: XYZ version of the image with shape :math:`(*, 3, H, W)`.
+         XYZ version of the image with shape :math:`(*, 3, H, W)`.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = rgb_to_xyz(input)  # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(image)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
-                         .format(image.shape))
+        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
     r: torch.Tensor = image[..., 0, :, :]
     g: torch.Tensor = image[..., 1, :, :]
@@ -37,25 +37,23 @@ def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
 
 
 def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
-    r"""Converts a XYZ image to RGB.
+    r"""Convert a XYZ image to RGB.
 
     Args:
-        image (torch.Tensor): XYZ Image to be converted to RGB with shape :math:`(*, 3, H, W)`.
+        image: XYZ Image to be converted to RGB with shape :math:`(*, 3, H, W)`.
 
     Returns:
-        torch.Tensor: RGB version of the image with shape :math:`(*, 3, H, W)`.
+        RGB version of the image with shape :math:`(*, 3, H, W)`.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = xyz_to_rgb(input)  # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(image)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
-                         .format(image.shape))
+        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
     x: torch.Tensor = image[..., 0, :, :]
     y: torch.Tensor = image[..., 1, :, :]
@@ -71,12 +69,12 @@ def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
 
 class RgbToXyz(nn.Module):
-    r"""Converts an image from RGB to XYZ.
+    r"""Convert an image from RGB to XYZ.
 
     The image data is assumed to be in the range of (0, 1).
 
     Returns:
-        torch.Tensor: XYZ version of the image.
+        XYZ version of the image.
 
     Shape:
         - image: :math:`(*, 3, H, W)`
@@ -91,9 +89,6 @@ class RgbToXyz(nn.Module):
         [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
     """
 
-    def __init__(self) -> None:
-        super(RgbToXyz, self).__init__()
-
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgb_to_xyz(image)
 
@@ -102,7 +97,7 @@ class XyzToRgb(nn.Module):
     r"""Converts an image from XYZ to RGB.
 
     Returns:
-        torch.Tensor: RGB version of the image.
+        RGB version of the image.
 
     Shape:
         - image: :math:`(*, 3, H, W)`
@@ -116,9 +111,6 @@ class XyzToRgb(nn.Module):
     Reference:
         [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
     """
-
-    def __init__(self) -> None:
-        super(XyzToRgb, self).__init__()
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return xyz_to_rgb(image)

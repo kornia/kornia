@@ -6,14 +6,18 @@ def total_variation(img: torch.Tensor) -> torch.Tensor:
     r"""Function that computes Total Variation according to [1].
 
     Args:
-        img (torch.Tensor): the input image with shape :math:`(N, C, H, W)` or :math:`(C, H, W)`.
+        img: the input image with shape :math:`(N, C, H, W)` or :math:`(C, H, W)`.
 
     Return:
-        torch.Tensor: a scalar with the computer loss.
+         a scalar with the computer loss.
 
     Examples:
         >>> total_variation(torch.ones(3, 4, 4))
         tensor(0.)
+
+    .. note::
+       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
+       total_variation_denoising.html>`__.
 
     Reference:
         [1] https://en.wikipedia.org/wiki/Total_variation
@@ -22,9 +26,7 @@ def total_variation(img: torch.Tensor) -> torch.Tensor:
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(img)}")
 
     if len(img.shape) < 3 or len(img.shape) > 4:
-        raise ValueError(
-            f"Expected input tensor to be of ndim 3 or 4, but got {len(img.shape)}."
-        )
+        raise ValueError(f"Expected input tensor to be of ndim 3 or 4, but got {len(img.shape)}.")
 
     pixel_dif1 = img[..., 1:, :] - img[..., :-1, :]
     pixel_dif2 = img[..., :, 1:] - img[..., :, :-1]
@@ -37,7 +39,7 @@ def total_variation(img: torch.Tensor) -> torch.Tensor:
 
 
 class TotalVariation(nn.Module):
-    r"""Computes the Total Variation according to [1].
+    r"""Compute the Total Variation according to [1].
 
     Shape:
         - Input: :math:`(N, C, H, W)` or :math:`(C, H, W)`.
@@ -53,9 +55,6 @@ class TotalVariation(nn.Module):
     Reference:
         [1] https://en.wikipedia.org/wiki/Total_variation
     """
-
-    def __init__(self) -> None:
-        super(TotalVariation, self).__init__()
 
     def forward(self, img) -> torch.Tensor:
         return total_variation(img)

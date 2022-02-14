@@ -1,7 +1,7 @@
 Warp Image by Depth
 ===================
 
-This example shows how to use the `DepthWarper` in order to warp an image from a reference camera to a destination 
+This example shows how to use the `DepthWarper` in order to warp an image from a reference camera to a destination
 by the depth using the epipolar geometry constraints assumig a pinhole camera model.
 
 Downloading the data
@@ -12,7 +12,7 @@ You can download the data by running:  ``./download_data.sh``
 Usage
 =====
 
-1. From root, run the docker developement or build first if needed: ``//kornia/dev_en.sh``
+1. From root, run the docker development or build first if needed: ``//kornia/dev_en.sh``
 2. Browse to ``cd /code/kornia/examples/depth_warper``
 3. Install the dependencies by running: ``./install_dependencies.sh``
 4. Now you can run the example followingthe instructions below:

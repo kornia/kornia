@@ -3,14 +3,6 @@ kornia.feature
 
 .. currentmodule:: kornia.feature
 
-Non Maxima Suppression
-----------------------
-
-.. autofunction:: non_maxima_suppression2d
-.. autofunction:: non_maxima_suppression3d
-.. autofunction:: nms2d
-.. autofunction:: nms3d
-
 Detectors
 ---------
 
@@ -28,17 +20,39 @@ Descriptors
 .. autoclass:: MKDDescriptor
 .. autoclass:: HardNet
 .. autoclass:: HardNet8
+.. autoclass:: HyNet
 .. autoclass:: TFeat
 .. autoclass:: SOSNet
+.. autoclass:: LAFDescriptor
+   :members: forward
 
+.. autofunction:: get_laf_descriptors
 
 Matching
------------
+--------
 
 .. autofunction:: match_nn
 .. autofunction:: match_mnn
 .. autofunction:: match_snn
 .. autofunction:: match_smnn
+
+.. autoclass:: DescriptorMatcher
+   :members: forward
+
+.. autoclass:: LocalFeature
+   :members: forward
+
+.. autoclass:: SIFTFeature
+   :members: forward
+
+.. autoclass:: GFTTAffNetHardNet
+   :members: forward
+
+.. autoclass:: LocalFeatureMatcher
+   :members: forward
+
+.. autoclass:: LoFTR
+   :members: forward
 
 
 Local Affine Frames (LAF)
@@ -60,34 +74,42 @@ Local Affine Frames (LAF)
 .. autofunction:: laf_to_three_points
 .. autofunction:: laf_from_three_points
 .. autofunction:: raise_error_if_laf_is_not_valid
-
+.. autofunction:: perspective_transform_lafs
 
 Module
 ------
 
-.. autoclass:: NonMaximaSuppression2d
-.. autoclass:: NonMaximaSuppression3d
 .. autoclass:: BlobHessian
 .. autoclass:: CornerGFTT
 .. autoclass:: CornerHarris
 .. autoclass:: BlobDoG
+.. autoclass:: FilterResponseNorm2d
+.. autoclass:: TLU
 
 
 .. autoclass:: ScaleSpaceDetector
    :members: forward
+
 .. autoclass:: PassLAF
    :members: forward
+
 .. autoclass:: PatchAffineShapeEstimator
    :members: forward
+
 .. autoclass:: LAFAffineShapeEstimator
    :members: forward
+
 .. autoclass:: LAFOrienter
    :members: forward
+
 .. autoclass:: PatchDominantGradientOrientation
    :members: forward
+
 .. autoclass:: OriNet
    :members: forward
+
 .. autoclass:: LAFAffNetShapeEstimator
    :members: forward
 
-
+.. autoclass:: DeFMO
+   :members: forward

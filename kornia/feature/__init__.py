@@ -1,59 +1,71 @@
-from .responses import (CornerHarris,
-                        CornerGFTT,
-                        BlobHessian,
-                        BlobDoG,
-                        harris_response,
-                        gftt_response,
-                        hessian_response,
-                        dog_response)
-from .nms import (NonMaximaSuppression2d,
-                  nms2d,
-                  NonMaximaSuppression3d,
-                  nms3d)
-
-# Backward compatibility
-from .nms import nms2d as non_maxima_suppression2d
-from .nms import nms3d as non_maxima_suppression3d
-
-from .laf import (extract_patches_from_pyramid,
-                  extract_patches_simple,
-                  normalize_laf,
-                  denormalize_laf,
-                  laf_to_boundary_points,
-                  ellipse_to_laf,
-                  make_upright,
-                  scale_laf,
-                  get_laf_scale,
-                  get_laf_center,
-                  get_laf_orientation,
-                  set_laf_orientation,
-                  raise_error_if_laf_is_not_valid,
-                  laf_from_center_scale_ori,
-                  laf_is_inside_image,
-                  laf_to_three_points,
-                  laf_from_three_points)
-from .siftdesc import SIFTDescriptor, DenseSIFTDescriptor
-from .mkd import MKDDescriptor
+from .affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
+from .defmo import DeFMO
 from .hardnet import HardNet, HardNet8
-from .tfeat import TFeat
+from .hynet import TLU, FilterResponseNorm2d, HyNet
+from .integrated import (
+    GFTTAffNetHardNet,
+    LAFDescriptor,
+    LocalFeature,
+    LocalFeatureMatcher,
+    SIFTFeature,
+    get_laf_descriptors,
+)
+from .laf import (
+    denormalize_laf,
+    ellipse_to_laf,
+    extract_patches_from_pyramid,
+    extract_patches_simple,
+    get_laf_center,
+    get_laf_orientation,
+    get_laf_scale,
+    laf_from_center_scale_ori,
+    laf_from_three_points,
+    laf_is_inside_image,
+    laf_to_boundary_points,
+    laf_to_three_points,
+    make_upright,
+    normalize_laf,
+    perspective_transform_lafs,
+    raise_error_if_laf_is_not_valid,
+    scale_laf,
+    set_laf_orientation,
+)
+from .loftr import LoFTR
+from .matching import DescriptorMatcher, match_mnn, match_nn, match_smnn, match_snn
+from .mkd import MKDDescriptor
+from .orientation import LAFOrienter, OriNet, PatchDominantGradientOrientation
+from .responses import (
+    BlobDoG,
+    BlobHessian,
+    CornerGFTT,
+    CornerHarris,
+    dog_response,
+    gftt_response,
+    harris_response,
+    hessian_response,
+)
+from .scale_space_detector import PassLAF, ScaleSpaceDetector
+from .siftdesc import SIFTDescriptor
 from .sosnet import SOSNet
-from .scale_space_detector import ScaleSpaceDetector, PassLAF
-from .affine_shape import LAFAffineShapeEstimator, PatchAffineShapeEstimator, LAFAffNetShapeEstimator
-from .orientation import LAFOrienter, PatchDominantGradientOrientation, OriNet
-from .matching import match_nn, match_mnn, match_snn, match_smnn
-
+from .tfeat import TFeat
 
 __all__ = [
-    "nms2d",
-    "nms3d",
-    "non_maxima_suppression2d",
-    "non_maxima_suppression3d",
+    "match_nn",
+    "match_mnn",
+    "match_snn",
+    "match_smnn",
+    "DescriptorMatcher",
+    "get_laf_descriptors",
+    "LAFDescriptor",
+    "LocalFeature",
+    "SIFTFeature",
+    "GFTTAffNetHardNet",
+    "LocalFeatureMatcher",
+    "SOSNet",
     "harris_response",
     "gftt_response",
     "hessian_response",
     "dog_response",
-    "NonMaximaSuppression2d",
-    "NonMaximaSuppression3d",
     "CornerHarris",
     "CornerGFTT",
     "BlobHessian",
@@ -69,12 +81,17 @@ __all__ = [
     "get_laf_center",
     "get_laf_orientation",
     "set_laf_orientation",
+    "get_laf_descriptors",
     "scale_laf",
     "SIFTDescriptor",
     "DenseSIFTDescriptor",
     "MKDDescriptor",
     "HardNet",
     "HardNet8",
+    "HyNet",
+    "TLU",
+    "FilterResponseNorm2d",
+    "DeFMO",
     "TFeat",
     "OriNet",
     "LAFAffNetShapeEstimator",
@@ -93,4 +110,12 @@ __all__ = [
     "match_mnn",
     "match_snn",
     "match_smnn",
+    "LocalFeatureMatcher",
+    "LocalFeature",
+    "SIFTFeature",
+    "GFTTAffNetHardNet",
+    "LAFDescriptor",
+    "DescriptorMatcher",
+    "LoFTR",
+    "perspective_transform_lafs",
 ]

@@ -1,13 +1,10 @@
-from typing import Tuple
-
 import pytest
+import torch
+from torch.autograd import gradcheck
 
 import kornia
 import kornia.testing as utils  # test utils
-
-import torch
-from torch.testing import assert_allclose
-from torch.autograd import gradcheck
+from kornia.testing import assert_close
 
 
 class TestMaxBlurPool:
@@ -29,15 +26,13 @@ class TestMaxBlurPool:
 
         kernel_size = 3
         actual = kornia.filters.max_blur_pool2d(inp, kernel_size)
-        expected = actual
-        assert_allclose(actual, actual)
+        assert_close(actual, actual)
 
     def test_gradcheck(self, device, dtype):
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.filters.max_blur_pool2d, (img, 3,),
-                         raise_exception=True)
+        assert gradcheck(kornia.filters.max_blur_pool2d, (img, 3), raise_exception=True)
 
     def test_jit(self, device, dtype):
         op = kornia.filters.max_blur_pool2d
@@ -47,7 +42,7 @@ class TestMaxBlurPool:
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
         actual = op_script(img, kernel_size)
         expected = op(img, kernel_size)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_module(self, device, dtype):
         op = kornia.filters.max_blur_pool2d
@@ -57,7 +52,7 @@ class TestMaxBlurPool:
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
         actual = op_module(kernel_size)(img)
         expected = op(img, kernel_size)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
 
 class TestBlurPool:
@@ -81,15 +76,13 @@ class TestBlurPool:
 
         kernel_size = 3
         actual = kornia.filters.blur_pool2d(inp, kernel_size)
-        expected = actual
-        assert_allclose(actual, actual)
+        assert_close(actual, actual)
 
     def test_gradcheck(self, device, dtype):
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.filters.blur_pool2d, (img, 3,),
-                         raise_exception=True)
+        assert gradcheck(kornia.filters.blur_pool2d, (img, 3), raise_exception=True)
 
     def test_jit(self, device, dtype):
         op = kornia.filters.blur_pool2d
@@ -99,7 +92,7 @@ class TestBlurPool:
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
         actual = op_script(img, kernel_size)
         expected = op(img, kernel_size)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_module(self, device, dtype):
         op = kornia.filters.blur_pool2d
@@ -109,4 +102,4 @@ class TestBlurPool:
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
         actual = op_module(kernel_size)(img)
         expected = op(img, kernel_size)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)

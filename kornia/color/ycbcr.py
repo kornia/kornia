@@ -5,23 +5,23 @@ import torch.nn as nn
 def rgb_to_ycbcr(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an RGB image to YCbCr.
 
+    .. image:: _static/img/rgb_to_ycbcr.png
+
     Args:
-        image (torch.Tensor): RGB Image to be converted to YCbCr with shape :math:`(*, 3, H, W)`.
+        image: RGB Image to be converted to YCbCr with shape :math:`(*, 3, H, W)`.
 
     Returns:
-        torch.Tensor: YCbCr version of the image with shape :math:`(*, 3, H, W)`.
+        YCbCr version of the image with shape :math:`(*, 3, H, W)`.
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = rgb_to_ycbcr(input)  # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(image)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
-                         .format(image.shape))
+        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
     r: torch.Tensor = image[..., 0, :, :]
     g: torch.Tensor = image[..., 1, :, :]
@@ -40,22 +40,20 @@ def ycbcr_to_rgb(image: torch.Tensor) -> torch.Tensor:
     The image data is assumed to be in the range of (0, 1).
 
     Args:
-        image (torch.Tensor): YCbCr Image to be converted to RGB with shape :math:`(*, 3, H, W)`.
+        image: YCbCr Image to be converted to RGB with shape :math:`(*, 3, H, W)`.
 
     Returns:
-        torch.Tensor: RGB version of the image with shape :math:`(*, 3, H, W)`.
+        RGB version of the image with shape :math:`(*, 3, H, W)`.
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = ycbcr_to_rgb(input)  # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(image)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
-                         .format(image.shape))
+        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
     y: torch.Tensor = image[..., 0, :, :]
     cb: torch.Tensor = image[..., 1, :, :]
@@ -77,7 +75,7 @@ class RgbToYcbcr(nn.Module):
     The image data is assumed to be in the range of (0, 1).
 
     Returns:
-        torch.Tensor: YCbCr version of the image.
+        YCbCr version of the image.
 
     Shape:
         - image: :math:`(*, 3, H, W)`
@@ -89,9 +87,6 @@ class RgbToYcbcr(nn.Module):
         >>> output = ycbcr(input)  # 2x3x4x5
     """
 
-    def __init__(self) -> None:
-        super(RgbToYcbcr, self).__init__()
-
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgb_to_ycbcr(image)
 
@@ -102,7 +97,7 @@ class YcbcrToRgb(nn.Module):
     The image data is assumed to be in the range of (0, 1).
 
     Returns:
-        torch.Tensor: RGB version of the image.
+        RGB version of the image.
 
     Shape:
         - image: :math:`(*, 3, H, W)`
@@ -113,9 +108,6 @@ class YcbcrToRgb(nn.Module):
         >>> rgb = YcbcrToRgb()
         >>> output = rgb(input)  # 2x3x4x5
     """
-
-    def __init__(self) -> None:
-        super(YcbcrToRgb, self).__init__()
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return ycbcr_to_rgb(image)

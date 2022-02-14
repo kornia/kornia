@@ -13,4 +13,4 @@ wget http://files.is.tue.mpg.de/jwulff/sintel/${DEPTH_FILE_NAME} -P ${DATA_DIR}
 # unzip to dir
 unzip ${DATA_DIR}/${IMAGES_FILE_NAME} -d ${DATA_DIR}
 unzip ${DATA_DIR}/${DEPTH_FILE_NAME} -d ${DATA_DIR}
-echo "## Succeded to download files to $DATA_DIR"
+echo "## Succeeded to download files to $DATA_DIR"

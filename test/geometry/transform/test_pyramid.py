@@ -1,11 +1,10 @@
 import pytest
-
-import kornia as kornia
-import kornia.testing as utils  # test utils
-
 import torch
-from torch.testing import assert_allclose
 from torch.autograd import gradcheck
+
+import kornia
+import kornia.testing as utils  # test utils
+from kornia.testing import assert_close
 
 
 class TestPyrUp:
@@ -20,22 +19,15 @@ class TestPyrUp:
         assert pyr(inp).shape == (2, 2, 8, 8)
 
     def test_gradcheck(self, device, dtype):
-        batch_size, channels, height, width = 1, 2, 5, 4
-        # TODO: cuda test is not working
-        img = torch.rand(batch_size, channels, height, width)
+        img = torch.rand(1, 2, 5, 4, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.geometry.pyrup, (img,), raise_exception=True)
 
-    @pytest.mark.skip("")
-    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
-        @torch.jit.script
-        def op_script(input):
-            return kornia.geometry.pyrup(input)
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
-        actual = op_script(img)
-        expected = kornia.geometry.pyrup(img)
-        assert_allclose(actual, expected)
+        op = kornia.geometry.pyrup
+        op_jit = torch.jit.script(op)
+        assert_close(op(img), op_jit(img))
 
 
 class TestPyrDown:
@@ -53,25 +45,19 @@ class TestPyrDown:
         inp = torch.zeros(1, 1, 6, 6, device=device, dtype=dtype)
         inp[:, :, 2:4, 2:4] = 1.0
         pyr_out = kornia.geometry.PyrDown()(inp).squeeze()
-        assert torch.allclose(pyr_out, pyr_out.flip(0))
-        assert torch.allclose(pyr_out, pyr_out.flip(1))
+        assert_close(pyr_out, pyr_out.flip(0))
+        assert_close(pyr_out, pyr_out.flip(1))
 
     def test_gradcheck(self, device, dtype):
-        batch_size, channels, height, width = 1, 2, 5, 4
-        img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
+        img = torch.rand(1, 2, 5, 4, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.geometry.pyrdown, (img,), raise_exception=True)
 
-    @pytest.mark.skip("")
-    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
-        @torch.jit.script
-        def op_script(input):
-            return kornia.geometry.pyrdown(input)
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
-        actual = op_script(img)
-        expected = kornia.geometry.pyrdown(img)
-        assert_allclose(actual, expected)
+        op = kornia.geometry.pyrdown
+        op_jit = torch.jit.script(op)
+        assert_close(op(img), op_jit(img))
 
 
 class TestScalePyramid:
@@ -87,63 +73,60 @@ class TestScalePyramid:
     def test_shape_batch(self, device, dtype):
         inp = torch.zeros(3, 2, 31, 31, device=device, dtype=dtype)
         SP = kornia.geometry.ScalePyramid(n_levels=1)
-        sp, sigmas, pd = SP(inp)
+        sp, _, _ = SP(inp)
         assert sp[0].shape == (3, 2, 3 + 1, 31, 31)
 
     def test_shape_batch_double(self, device, dtype):
         inp = torch.zeros(3, 2, 31, 31, device=device, dtype=dtype)
         SP = kornia.geometry.ScalePyramid(n_levels=1, double_image=True)
-        sp, sigmas, pd = SP(inp)
+        sp, _, _ = SP(inp)
         assert sp[0].shape == (3, 2, 1 + 3, 62, 62)
 
     def test_n_levels_shape(self, device, dtype):
         inp = torch.zeros(1, 1, 32, 32, device=device, dtype=dtype)
         SP = kornia.geometry.ScalePyramid(n_levels=3)
-        sp, sigmas, pd = SP(inp)
+        sp, _, _ = SP(inp)
         assert sp[0].shape == (1, 1, 3 + 3, 32, 32)
 
     def test_blur_order(self, device, dtype):
         inp = torch.rand(1, 1, 31, 31, device=device, dtype=dtype)
         SP = kornia.geometry.ScalePyramid(n_levels=3)
-        sp, sigmas, pd = SP(inp)
-        for i, pyr_level in enumerate(sp):
-            for ii, img in enumerate(pyr_level):
+        sp, _, _ = SP(inp)
+        for _, pyr_level in enumerate(sp):
+            for _, img in enumerate(pyr_level):
                 img = img.squeeze().view(3, -1)
                 max_per_blur_level_val, _ = img.max(dim=1)
                 assert torch.argmax(max_per_blur_level_val).item() == 0
-        return
 
     def test_symmetry_preserving(self, device, dtype):
         PS = 16
         R = 2
         inp = torch.zeros(1, 1, PS, PS, device=device, dtype=dtype)
-        inp[..., PS // 2 - R:PS // 2 + R, PS // 2 - R:PS // 2 + R] = 1.0
+        inp[..., PS // 2 - R : PS // 2 + R, PS // 2 - R : PS // 2 + R] = 1.0
         SP = kornia.geometry.ScalePyramid(n_levels=3)
-        sp, sigmas, pd = SP(inp)
-        for i, pyr_level in enumerate(sp):
-            for ii, img in enumerate(pyr_level):
+        sp, _, _ = SP(inp)
+        for _, pyr_level in enumerate(sp):
+            for _, img in enumerate(pyr_level):
                 img = img.squeeze()
-                assert torch.allclose(img, img.flip(1), atol=1e-5, rtol=1e-3)
-                assert torch.allclose(img, img.flip(2), atol=1e-5, rtol=1e-3)
-        return
+                assert_close(img, img.flip(1))
+                assert_close(img, img.flip(2))
 
     def test_gradcheck(self, device, dtype):
-        batch_size, channels, height, width = 1, 2, 7, 9
-        # TODO: cuda test is not working
-        img = torch.rand(batch_size, channels, height, width)
+        img = torch.rand(1, 2, 7, 9, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
         from kornia.geometry import ScalePyramid as SP
 
         def sp_tuple(img):
-            sp, sigmas, pd = SP()(img)
+            sp, _, _ = SP()(img)
             return tuple(sp)
-        assert gradcheck(sp_tuple, (img,), raise_exception=True)
+
+        assert gradcheck(sp_tuple, (img,), raise_exception=True, nondet_tol=1e-4)
 
 
 class TestBuildPyramid:
     def test_smoke(self, device, dtype):
         input = torch.ones(1, 2, 4, 5, device=device, dtype=dtype)
-        pyramid = kornia.build_pyramid(input, max_level=1)
+        pyramid = kornia.geometry.transform.build_pyramid(input, max_level=1)
         assert len(pyramid) == 1
         assert pyramid[0].shape == (1, 2, 4, 5)
 
@@ -153,7 +136,7 @@ class TestBuildPyramid:
     def test_num_levels(self, batch_size, channels, max_level, device, dtype):
         height, width = 16, 20
         input = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
-        pyramid = kornia.build_pyramid(input, max_level)
+        pyramid = kornia.geometry.transform.build_pyramid(input, max_level)
         assert len(pyramid) == max_level
         for i in range(1, max_level):
             img = pyramid[i]
@@ -166,4 +149,4 @@ class TestBuildPyramid:
         batch_size, channels, height, width = 1, 2, 7, 9
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.build_pyramid, (img, max_level,), raise_exception=True)
+        assert gradcheck(kornia.geometry.transform.build_pyramid, (img, max_level), raise_exception=True)

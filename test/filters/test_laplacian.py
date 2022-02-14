@@ -1,23 +1,22 @@
 import pytest
+import torch
+from torch.autograd import gradcheck
 
 import kornia
 import kornia.testing as utils  # test utils
-
-import torch
-from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from kornia.testing import assert_close
 
 
 @pytest.mark.parametrize("window_size", [5])
 def test_get_laplacian_kernel(window_size):
-    kernel = kornia.get_laplacian_kernel1d(window_size)
+    kernel = kornia.filters.get_laplacian_kernel1d(window_size)
     assert kernel.shape == (window_size,)
     assert kernel.sum().item() == pytest.approx(0.0)
 
 
 @pytest.mark.parametrize("window_size", [7])
 def test_get_laplacian_kernel2d(window_size):
-    kernel = kornia.get_laplacian_kernel2d(window_size)
+    kernel = kornia.filters.get_laplacian_kernel2d(window_size)
     assert kernel.shape == (window_size, window_size)
     assert kernel.sum().item() == pytest.approx(0.0)
     expected = torch.tensor(
@@ -31,7 +30,7 @@ def test_get_laplacian_kernel2d(window_size):
             [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
         ]
     )
-    assert_allclose(expected, kernel)
+    assert_close(expected, kernel)
 
 
 class TestLaplacian:
@@ -49,7 +48,7 @@ class TestLaplacian:
 
         kernel_size = 3
         actual = kornia.filters.laplacian(input, kernel_size)
-        assert_allclose(actual, actual)
+        assert_close(actual, actual)
 
     def test_gradcheck(self, device, dtype):
         # test parameters
@@ -59,8 +58,7 @@ class TestLaplacian:
         # evaluate function gradient
         input = torch.rand(batch_shape, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)
-        assert gradcheck(
-            kornia.laplacian, (input, kernel_size), raise_exception=True)
+        assert gradcheck(kornia.filters.laplacian, (input, kernel_size), raise_exception=True)
 
     def test_jit(self, device, dtype):
         op = kornia.filters.laplacian
@@ -68,7 +66,7 @@ class TestLaplacian:
         params = [3]
 
         img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
-        assert_allclose(op(img, *params), op_script(img, *params))
+        assert_close(op(img, *params), op_script(img, *params))
 
     def test_module(self, device, dtype):
         params = [3]
@@ -76,4 +74,4 @@ class TestLaplacian:
         op_module = kornia.filters.Laplacian(*params)
 
         img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
-        assert_allclose(op(img, *params), op_module(img))
+        assert_close(op(img, *params), op_module(img))

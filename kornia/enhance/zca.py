@@ -1,23 +1,17 @@
-from typing import Tuple, Optional, Union, List
-from functools import reduce
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn as nn
 
+from kornia.utils.helpers import _torch_svd_cast
 
-__all__ = [
-    "zca_mean",
-    "zca_whiten",
-    "linear_transform",
-    "ZCAWhitening",
-]
+__all__ = ["zca_mean", "zca_whiten", "linear_transform", "ZCAWhitening"]
 
 
 class ZCAWhitening(nn.Module):
-    r"""
+    r"""Compute the ZCA whitening matrix transform and the mean vector and applies the transform to the data.
 
-    Computes the ZCA whitening matrix transform and the mean vector and applies the transform
-    to the data. The data tensor is flattened, and the mean :math:`\mathbf{\mu}`
+    The data tensor is flattened, and the mean :math:`\mathbf{\mu}`
     and covariance matrix :math:`\mathbf{\Sigma}` are computed from
     the flattened data :math:`\mathbf{X} \in \mathbb{R}^{N \times D}`, where
     :math:`N` is the sample size and :math:`D` is flattened dimensionality
@@ -33,16 +27,19 @@ class ZCAWhitening(nn.Module):
 
     args:
 
-        dim (int): Determines the dimension that represents the samples axis. Default = 0
-        eps (float) : a small number used for numerical stability. Default=1e-6
-        unbiased (bool): Whether to use the biased estimate of the covariance matrix. Default=False
-        compute_inv (bool): Compute the inverse transform matrix. Default=False
-        detach_transforms (bool): Detaches gradient from the ZCA fitting. Default=True
+        dim: Determines the dimension that represents the samples axis.
+        eps: a small number used for numerical stability.
+        unbiased: Whether to use the biased estimate of the covariance matrix.
+        compute_inv: Compute the inverse transform matrix.
+        detach_transforms: Detaches gradient from the ZCA fitting.
 
     shape:
         - x: :math:`(D_0,...,D_{\text{dim}},...,D_N)` is a batch of N-D tensors.
         - x_whiten: :math:`(D_0,...,D_{\text{dim}},...,D_N)` same shape as input.
 
+    .. note::
+       See a working example `here <https://colab.sandbox.google.com/github/kornia/tutorials/
+       blob/master/source/zca_whitening.ipynb>`__.
 
     Examples:
         >>> x = torch.tensor([[0,1],[1,0],[-1,0],[0,-1]], dtype = torch.float32)
@@ -66,11 +63,16 @@ class ZCAWhitening(nn.Module):
         [1] `Stanford PCA & ZCA whitening tutorial <http://ufldl.stanford.edu/tutorial/unsupervised/PCAWhitening/>`_
     """
 
-    def __init__(self, dim: int = 0, eps: float = 1e-6,
-                 unbiased: bool = True, detach_transforms: bool = True,
-                 compute_inv: bool = False) -> None:
+    def __init__(
+        self,
+        dim: int = 0,
+        eps: float = 1e-6,
+        unbiased: bool = True,
+        detach_transforms: bool = True,
+        compute_inv: bool = False,
+    ) -> None:
 
-        super(ZCAWhitening, self).__init__()
+        super().__init__()
 
         self.dim = dim
         self.eps = eps
@@ -81,16 +83,14 @@ class ZCAWhitening(nn.Module):
         self.fitted = False
 
     def fit(self, x: torch.Tensor):
-        r"""
+        r"""Fit ZCA whitening matrices to the data.
 
-        Fits ZCA whitening matrices to the data.
+        Args:
 
-        args:
-
-            x (torch.Tensor): Input data
+            x: Input data.
 
         returns:
-            ZCAWhiten: returns a fitted ZCAWhiten object instance.
+            Returns a fitted ZCAWhiten object instance.
         """
 
         T, mean, T_inv = zca_mean(x, self.dim, self.unbiased, self.eps, self.compute_inv)
@@ -98,7 +98,7 @@ class ZCAWhitening(nn.Module):
         self.mean_vector: torch.Tensor = mean
         self.transform_matrix: torch.Tensor = T
         if T_inv is None:
-            self.transform_inv: Optional[torch.Tensor] = torch.empty([0, ])
+            self.transform_inv: Optional[torch.Tensor] = torch.empty([0])
         else:
             self.transform_inv = T_inv
 
@@ -112,18 +112,14 @@ class ZCAWhitening(nn.Module):
         return self
 
     def forward(self, x: torch.Tensor, include_fit: bool = False) -> torch.Tensor:
-        r"""
+        r"""Apply the whitening transform to the data.
 
-        Applies the whitening transform to the data
+        Args:
+            x: Input data.
+            include_fit: Indicates whether to fit the data as part of the forward pass.
 
-        args:
-
-            x (torch.Tensor): Input data
-            include_fit (bool): Indicates whether to fit the data as part of the forward pass
-
-        returns:
-
-            torch.Tensor : The transformed data
+        Returns:
+            The transformed data.
 
         """
 
@@ -138,15 +134,13 @@ class ZCAWhitening(nn.Module):
         return x_whiten
 
     def inverse_transform(self, x: torch.Tensor) -> torch.Tensor:
-        r"""
+        r"""Apply the inverse transform to the whitened data.
 
-        Applies the inverse transform to the whitened data.
+        Args:
+            x: Whitened data.
 
-        args:
-            x (torch.Tensor): Whitened data
-
-        returns:
-            torch.Tensor: original data
+        Returns:
+            Original data.
         """
 
         if not self.fitted:
@@ -162,34 +156,34 @@ class ZCAWhitening(nn.Module):
         return y
 
 
-def zca_mean(inp: torch.Tensor, dim: int = 0,
-             unbiased: bool = True, eps: float = 1e-6,
-             return_inverse: bool = False) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
-    r"""
+def zca_mean(
+    inp: torch.Tensor, dim: int = 0, unbiased: bool = True, eps: float = 1e-6, return_inverse: bool = False
+) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+    r"""Compute the ZCA whitening matrix and mean vector.
 
-    Computes the ZCA whitening matrix and mean vector. The output can be used with
-    :py:meth:`~kornia.color.linear_transform`
-
+    The output can be used with :py:meth:`~kornia.color.linear_transform`.
     See :class:`~kornia.color.ZCAWhitening` for details.
 
+    Args:
+        inp: input data tensor.
+        dim: Specifies the dimension that serves as the samples dimension.
+        unbiased: Whether to use the unbiased estimate of the covariance matrix.
+        eps: a small number used for numerical stability.
+        return_inverse: Whether to return the inverse ZCA transform.
 
-    args:
-        inp (torch.Tensor) : input data tensor
-        dim (int): Specifies the dimension that serves as the samples dimension. Default = 0
-        unbiased (bool): Whether to use the unbiased estimate of the covariance matrix. Default = True
-        eps (float) : a small number used for numerical stability. Default = 0
-        return_inverse (bool): Whether to return the inverse ZCA transform.
-
-    shapes:
+    Shapes:
         - inp: :math:`(D_0,...,D_{\text{dim}},...,D_N)` is a batch of N-D tensors.
         - transform_matrix: :math:`(\Pi_{d=0,d\neq \text{dim}}^N D_d, \Pi_{d=0,d\neq \text{dim}}^N D_d)`
         - mean_vector: :math:`(1, \Pi_{d=0,d\neq \text{dim}}^N D_d)`
         - inv_transform: same shape as the transform matrix
 
-    returns:
-        Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    Returns:
         A tuple containing the ZCA matrix and the mean vector. If return_inverse is set to True,
         then it returns the inverse ZCA matrix, otherwise it returns None.
+
+    .. note::
+       See a working example `here <https://colab.sandbox.google.com/github/kornia/tutorials/
+       blob/master/source/zca_whitening.ipynb>`__.
 
     Examples:
         >>> x = torch.tensor([[0,1],[1,0],[-1,0],[0,-1]], dtype = torch.float32)
@@ -201,8 +195,7 @@ def zca_mean(inp: torch.Tensor, dim: int = 0,
     """
 
     if not isinstance(inp, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(inp)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(inp)}")
 
     if not isinstance(eps, float):
         raise TypeError(f"eps type is not a float. Got{type(eps)}")
@@ -211,16 +204,19 @@ def zca_mean(inp: torch.Tensor, dim: int = 0,
         raise TypeError(f"unbiased type is not bool. Got{type(unbiased)}")
 
     if not isinstance(dim, int):
-        raise TypeError("Argument 'dim' must be of type int. Got {}".format(type(dim)))
+        raise TypeError(f"Argument 'dim' must be of type int. Got {type(dim)}")
 
     if not isinstance(return_inverse, bool):
-        raise TypeError("Argument return_inverse must be of type bool {}".format(type(return_inverse)))
+        raise TypeError(f"Argument return_inverse must be of type bool {type(return_inverse)}")
 
     inp_size = inp.size()
 
     if dim >= len(inp_size) or dim < -len(inp_size):
-        raise IndexError("Dimension out of range (expected to be in range of [{},{}], but got {}"
-                         .format(-len(inp_size), len(inp_size) - 1, dim))
+        raise IndexError(
+            "Dimension out of range (expected to be in range of [{},{}], but got {}".format(
+                -len(inp_size), len(inp_size) - 1, dim
+            )
+        )
 
     if dim < 0:
         dim = len(inp_size) + dim
@@ -248,7 +244,7 @@ def zca_mean(inp: torch.Tensor, dim: int = 0,
     else:
         cov = cov / float(N)
 
-    U, S, _ = torch.svd(cov)
+    U, S, _ = _torch_svd_cast(cov)
 
     S = S.reshape(-1, 1)
     S_inv_root: torch.Tensor = torch.rsqrt(S + eps)
@@ -261,23 +257,23 @@ def zca_mean(inp: torch.Tensor, dim: int = 0,
     return T, mean, T_inv
 
 
-def zca_whiten(inp: torch.Tensor, dim: int = 0,
-               unbiased: bool = True, eps: float = 1e-6) -> torch.Tensor:
-    r"""
-
-    Applies ZCA whitening transform.
+def zca_whiten(inp: torch.Tensor, dim: int = 0, unbiased: bool = True, eps: float = 1e-6) -> torch.Tensor:
+    r"""Apply ZCA whitening transform.
 
     See :class:`~kornia.color.ZCAWhitening` for details.
 
-    args:
-        inp (torch.Tensor) : input data tensor
-        dim (int): Specifies the dimension that serves as the samples dimension. Default = 0
-        unbiased (bool): Whether to use the unbiased estimate of the covariance matrix. Default = True
-        eps (float) : a small number used for numerical stability. Default = 0
+    Args:
+        inp: input data tensor.
+        dim: Specifies the dimension that serves as the samples dimension.
+        unbiased: Whether to use the unbiased estimate of the covariance matrix.
+        eps: a small number used for numerical stability.
 
+    Returns:
+        Whiten Input data.
 
-    returns:
-        torch.Tensor : Whiten Input data
+    .. note::
+       See a working example `here <https://colab.sandbox.google.com/github/kornia/tutorials/
+       blob/master/source/zca_whitening.ipynb>`__.
 
     Examples:
         >>> x = torch.tensor([[0,1],[1,0],[-1,0]], dtype = torch.float32)
@@ -288,8 +284,7 @@ def zca_whiten(inp: torch.Tensor, dim: int = 0,
     """
 
     if not isinstance(inp, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(inp)))
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(inp)}")
 
     if not isinstance(eps, float):
         raise TypeError(f"eps type is not a float. Got{type(eps)}")
@@ -298,7 +293,7 @@ def zca_whiten(inp: torch.Tensor, dim: int = 0,
         raise TypeError(f"unbiased type is not bool. Got{type(unbiased)}")
 
     if not isinstance(dim, int):
-        raise TypeError("Argument 'dim' must be of type int. Got {}".format(type(dim)))
+        raise TypeError(f"Argument 'dim' must be of type int. Got {type(dim)}")
 
     transform, mean, _ = zca_mean(inp, dim, unbiased, eps, False)
 
@@ -307,8 +302,9 @@ def zca_whiten(inp: torch.Tensor, dim: int = 0,
     return inp_whiten
 
 
-def linear_transform(inp: torch.Tensor, transform_matrix: torch.Tensor,
-                     mean_vector: torch.Tensor, dim: int = 0) -> torch.Tensor:
+def linear_transform(
+    inp: torch.Tensor, transform_matrix: torch.Tensor, mean_vector: torch.Tensor, dim: int = 0
+) -> torch.Tensor:
     r"""
 
     Given a transformation matrix and a mean vector, this function will flatten
@@ -320,19 +316,19 @@ def linear_transform(inp: torch.Tensor, transform_matrix: torch.Tensor,
 
         \mathbf{X}_{T} = (\mathbf{X - \mu})(T)
 
-    args:
-        inp (torch.Tensor): Input data :math:`X`
-        transform_matrix (torch.Tensor): Transform matrix :math:`T`
-        mean_vector (torch.Tensor): mean vector :math:`\mu`
-        dim (int): Batch dimension. Default = 0
+    Args:
+        inp: Input data :math:`X`.
+        transform_matrix: Transform matrix :math:`T`.
+        mean_vector: mean vector :math:`\mu`.
+        dim: Batch dimension.
 
-    shapes:
+    Shapes:
         - inp: :math:`(D_0,...,D_{\text{dim}},...,D_N)` is a batch of N-D tensors.
         - transform_matrix: :math:`(\Pi_{d=0,d\neq \text{dim}}^N D_d, \Pi_{d=0,d\neq \text{dim}}^N D_d)`
         - mean_vector: :math:`(1, \Pi_{d=0,d\neq \text{dim}}^N D_d)`
 
-    returns:
-        torch.Tensor : Transformed data
+    Returns:
+        Transformed data.
 
     Example:
         >>> # Example where dim = 3
@@ -342,6 +338,7 @@ def linear_transform(inp: torch.Tensor, transform_matrix: torch.Tensor,
         >>> out = linear_transform(inp, transform_mat, mean, 3)
         >>> print(out.shape, out.unique())  # Should a be (10,3,4,5) tensor of -120s
         torch.Size([10, 3, 4, 5]) tensor([-120.])
+
         >>> # Example where dim = 0
         >>> inp = torch.ones((10,2))
         >>> transform_mat = torch.ones((2,2))
@@ -354,8 +351,11 @@ def linear_transform(inp: torch.Tensor, transform_matrix: torch.Tensor,
     inp_size = inp.size()
 
     if dim >= len(inp_size) or dim < -len(inp_size):
-        raise IndexError("Dimension out of range (expected to be in range of [{},{}], but got {}"
-                         .format(-len(inp_size), len(inp_size) - 1, dim))
+        raise IndexError(
+            "Dimension out of range (expected to be in range of [{},{}], but got {}".format(
+                -len(inp_size), len(inp_size) - 1, dim
+            )
+        )
 
     if dim < 0:
         dim = len(inp_size) + dim
@@ -368,14 +368,13 @@ def linear_transform(inp: torch.Tensor, transform_matrix: torch.Tensor,
     new_order: List[int] = perm.tolist()
     inv_order: List[int] = perm_inv.tolist()
 
-    N = inp_size[dim]
     feature_sizes = torch.tensor(inp_size[0:dim] + inp_size[dim + 1::])
     num_features: int = int(torch.prod(feature_sizes).item())
 
     inp_permute = inp.permute(new_order)
     inp_flat = inp_permute.reshape((-1, num_features))
 
-    inp_center = (inp_flat - mean_vector)
+    inp_center = inp_flat - mean_vector
     inp_transformed = inp_center.mm(transform_matrix)
 
     inp_transformed = inp_transformed.reshape(inp_permute.size())

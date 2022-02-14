@@ -1,2 +1,2 @@
-from .random_generator import *
-from .random_generator3d import *
+from kornia.augmentation.random_generator._2d import *
+from kornia.augmentation.random_generator._3d import *
