@@ -234,7 +234,8 @@ class ScalePyramid(nn.Module):
         return pyr, sigmas, pixel_dists
 
 
-def pyrdown(input: torch.Tensor, border_type: str = 'reflect', align_corners: bool = False, factor: float = 2.0) -> torch.Tensor:
+def pyrdown(input: torch.Tensor, border_type: str = 'reflect',
+            align_corners: bool = False, factor: float = 2.0) -> torch.Tensor:
     r"""Blur a tensor and downsamples it.
 
     .. image:: _static/img/pyrdown.png
