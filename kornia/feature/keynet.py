@@ -235,7 +235,7 @@ class KeyNetDetector(nn.Module):
         self, img: torch.Tensor, mask: Optional[torch.Tensor] = None  # type: ignore
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         # Compute points per level
-        num_features_per_level = []
+        num_features_per_level: List[float] = []
         tmp = 0.0
         factor_points = (self.scale_factor_levels ** 2)
         levels = self.num_pyramid_levels + self.num_upscale_levels + 1
@@ -250,7 +250,6 @@ class KeyNetDetector(nn.Module):
         cur_img = img.clone()
         all_responses: List[torch.Tensor] = []
         all_lafs: List[torch.Tensor] = []
-
         # Extract features from the upper levels
         for idx_level in range(self.num_upscale_levels):
             nf = num_features_per_level[len(num_features_per_level) - self.num_pyramid_levels - 1 - (idx_level + 1)]
@@ -278,8 +277,8 @@ class KeyNetDetector(nn.Module):
 
             num_points_level = int(num_features_per_level[idx_level])
             if idx_level > 0 or (self.num_upscale_levels > 0):
-                nf = [num_features_per_level[a] for a in range(0, idx_level + 1 + self.num_upscale_levels)]
-                res_points = torch.tensor(nf).sum().item()
+                nf2 = [num_features_per_level[a] for a in range(0, idx_level + 1 + self.num_upscale_levels)]
+                res_points = torch.tensor(nf2).sum().item()
                 num_points_level = int(res_points)
 
             cur_scores, cur_lafs = self.detect_features_on_single_level(cur_img, num_points_level, factor)
