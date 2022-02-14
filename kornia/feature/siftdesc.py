@@ -10,7 +10,7 @@ from kornia.geometry.conversions import pi
 
 
 def _get_reshape_kernel(kd: int, ky: int, kx: int) -> torch.Tensor:
-    """Utility function, which returns neigh2channels conv kernel"""
+    """Utility function, which returns neigh2channels conv kernel."""
     numel: int = kd * ky * kx
     weight = torch.eye(numel)
     return weight.view(numel, kd, ky, kx)
@@ -197,8 +197,7 @@ def sift_describe(input: torch.Tensor,
 
 
 class DenseSIFTDescriptor(nn.Module):
-    """
-    Module, which computes SIFT descriptor densely over the image
+    """Module, which computes SIFT descriptor densely over the image.
 
     Args:
         num_ang_bins: Number of angular bins. (8 is default)
@@ -241,7 +240,7 @@ class DenseSIFTDescriptor(nn.Module):
                  stride: int = 1,
                  padding: int = 1,
                  ) -> None:
-        super(DenseSIFTDescriptor, self).__init__()
+        super().__init__()
         self.eps = 1e-10
         self.num_ang_bins = num_ang_bins
         self.num_spatial_bins = num_spatial_bins
