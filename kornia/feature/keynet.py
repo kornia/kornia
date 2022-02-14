@@ -298,13 +298,14 @@ class KeyNetDetector(nn.Module):
         detect function. Then affine shape and orientation.
 
         Args:
-            img: image to extract features with shape [BxCxHxW]
+            img: image to extract features with shape [1xCxHxW]. KeyNetDetector does not support batch processing,
+        because the number of detections is different on each image.
             mask: a mask with weights where to apply the response function. The shape must be the same as
               the input image.
 
         Returns:
-            lafs: shape [BxNx2x3]. Detected local affine frames.
-            responses: shape [BxNx1]. Response function values for corresponding lafs
+            lafs: shape [1xNx2x3]. Detected local affine frames.
+            responses: shape [1xNx1]. Response function values for corresponding lafs
         """
         if img.shape[0] != 1:
             raise ValueError("KeyNet supports only single-image input")
