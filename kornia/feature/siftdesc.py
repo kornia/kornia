@@ -254,7 +254,7 @@ class DenseSIFTDescriptor(nn.Module):
                                             stride=(1, 1),
                                             bias=False,
                                             padding=(nw.size(0) // 2, nw.size(1) // 2))
-        self.bin_pooling_kernel.weight.data.copy_(nw.reshape(1, 1, nw.size(0), nw.size(1)))  # noqa
+        self.bin_pooling_kernel.weight.data.copy_(nw.reshape(1, 1, nw.size(0), nw.size(1)))
         self.PoolingConv = nn.Conv2d(num_ang_bins,
                                      num_ang_bins * num_spatial_bins**2,
                                      kernel_size=(num_spatial_bins, num_spatial_bins),
