@@ -4,12 +4,15 @@ from .hardnet import HardNet, HardNet8
 from .hynet import TLU, FilterResponseNorm2d, HyNet
 from .integrated import (
     GFTTAffNetHardNet,
+    KeyNetAffNetHardNet,
+    KeyNetHardNet,
     LAFDescriptor,
     LocalFeature,
     LocalFeatureMatcher,
     SIFTFeature,
     get_laf_descriptors,
 )
+from .keynet import KeyNet, KeyNetDetector
 from .laf import (
     denormalize_laf,
     ellipse_to_laf,
@@ -62,6 +65,7 @@ __all__ = [
     "GFTTAffNetHardNet",
     "LocalFeatureMatcher",
     "SOSNet",
+    "KeyNet",
     "harris_response",
     "gftt_response",
     "hessian_response",
@@ -114,6 +118,10 @@ __all__ = [
     "LocalFeature",
     "SIFTFeature",
     "GFTTAffNetHardNet",
+    "KeyNet",
+    "KeyNetDetector",
+    "KeyNetHardNet",
+    "KeyNetAffNetHardNet",
     "LAFDescriptor",
     "DescriptorMatcher",
     "LoFTR",

@@ -9,8 +9,9 @@ from kornia.geometry.transform import ScalePyramid
 
 from .affine_shape import LAFAffNetShapeEstimator
 from .hardnet import HardNet
+from .keynet import KeyNetDetector
 from .laf import extract_patches_from_pyramid, get_laf_center, raise_error_if_laf_is_not_valid
-from .orientation import LAFOrienter, PassLAF
+from .orientation import LAFOrienter, OriNet, PassLAF
 from .responses import BlobDoG, CornerGFTT
 from .scale_space_detector import ScaleSpaceDetector
 from .siftdesc import SIFTDescriptor
@@ -102,7 +103,7 @@ class LocalFeature(nn.Module):
         descriptor: the descriptor module.
     """
     def __init__(self,
-                 detector: ScaleSpaceDetector,
+                 detector: nn.Module,
                  descriptor: LAFDescriptor) -> None:
         super().__init__()
         self.detector = detector
@@ -167,6 +168,37 @@ class GFTTAffNetHardNet(LocalFeature):
                                       ori_module=PassLAF() if upright else LAFOrienter(19),
                                       aff_module=LAFAffNetShapeEstimator(True).eval(),
                                       mr_size=6.0).to(device)
+        descriptor = LAFDescriptor(None,
+                                   patch_size=32,
+                                   grayscale_descriptor=True).to(device)
+        super().__init__(detector, descriptor)
+
+
+class KeyNetHardNet(LocalFeature):
+    """Convenience module, which implements KeyNet detector + HardNet descriptor."""
+    def __init__(self,
+                 num_features: int = 8000,
+                 upright: bool = False,
+                 device: torch.device = torch.device('cpu')):
+        ori_module = PassLAF() if upright else LAFOrienter(angle_detector=OriNet(True))
+        detector = KeyNetDetector(True,
+                                  ori_module=ori_module).to(device)
+        descriptor = LAFDescriptor(None,
+                                   patch_size=32,
+                                   grayscale_descriptor=True).to(device)
+        super().__init__(detector, descriptor)
+
+
+class KeyNetAffNetHardNet(LocalFeature):
+    """Convenience module, which implements KeyNet detector + AffNet + HardNet descriptor."""
+    def __init__(self,
+                 num_features: int = 8000,
+                 upright: bool = False,
+                 device: torch.device = torch.device('cpu')):
+        ori_module = PassLAF() if upright else LAFOrienter(angle_detector=OriNet(True))
+        detector = KeyNetDetector(True,
+                                  ori_module=ori_module,
+                                  aff_module=LAFAffNetShapeEstimator(True).eval()).to(device)
         descriptor = LAFDescriptor(None,
                                    patch_size=32,
                                    grayscale_descriptor=True).to(device)

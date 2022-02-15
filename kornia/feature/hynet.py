@@ -16,11 +16,12 @@ urls[
 
 
 class FilterResponseNorm2d(nn.Module):
-    """Feature Response Normalization layer from 'Filter Response Normalization Layer: Eliminating Batch Dependence
-    in the Training of Deep Neural Networks', see  See :cite:`FRN2019` for more details.
+    r"""Feature Response Normalization layer from 'Filter Response Normalization Layer: Eliminating Batch Dependence
+    in the Training of Deep Neural Networks', see :cite:`FRN2019` for more details.
 
     .. math::
-        y =  \\gamma \times \frac{x}{\\sqrt{\\mathrm{E}[x^2]} + |\\epsilon|} + \beta
+        y =  \gamma \times \frac{x}{\sqrt{\mathrm{E}[x^2]} + |\epsilon|} + \beta
+
 
     Args:
         num_features: number of channels
@@ -34,8 +35,8 @@ class FilterResponseNorm2d(nn.Module):
         torch.Tensor: Normalized features
 
     Shape:
-        - Input: :math:`(B, num_features, H, W)`
-        - Output: :math:`(B, num_features, H, W)`
+        - Input: :math:`(B, \text{num_features}, H, W)`
+        - Output: :math:`(B, \text{num_features}, H, W)`
     """
     def __init__(self,
                  num_features: int,
@@ -85,11 +86,11 @@ class FilterResponseNorm2d(nn.Module):
 
 
 class TLU(nn.Module):
-    """TLU layer from 'Filter Response Normalization Layer: Eliminating Batch Dependence in the Training of Deep
-    Neural Networks, see  See :cite:`FRN2019` for more details. :math:`\tau` is learnable per channel.
+    r"""TLU layer from 'Filter Response Normalization Layer: Eliminating Batch Dependence in the Training of Deep
+    Neural Networks, see :cite:`FRN2019` for more details. :math:`{\tau}` is learnable per channel.
 
     .. math::
-        y =  \\max(x, \tau)
+        y = \max(x, {\tau})
 
     Args:
         num_features: number of channels
@@ -98,8 +99,8 @@ class TLU(nn.Module):
         torch.Tensor
 
     Shape:
-        - Input: :math:`(B, num_features, H, W)`
-        - Output: :math:`(B, num_features, H, W)`
+        - Input: :math:`(B, \text{num_features}, H, W)`
+        - Output: :math:`(B, \text{num_features}, H, W)`
     """
     def __init__(self, num_features: int):
         """max(y, tau) = max(y - tau, 0) + tau = ReLU(y - tau) + tau"""
