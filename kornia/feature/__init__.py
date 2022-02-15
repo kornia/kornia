@@ -45,7 +45,7 @@ from .responses import (
     hessian_response,
 )
 from .scale_space_detector import PassLAF, ScaleSpaceDetector
-from .siftdesc import SIFTDescriptor
+from .siftdesc import DenseSIFTDescriptor, SIFTDescriptor
 from .sosnet import SOSNet
 from .tfeat import TFeat
 
@@ -84,6 +84,7 @@ __all__ = [
     "get_laf_descriptors",
     "scale_laf",
     "SIFTDescriptor",
+    "DenseSIFTDescriptor",
     "MKDDescriptor",
     "HardNet",
     "HardNet8",

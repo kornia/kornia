@@ -15,6 +15,7 @@ Detectors
 Descriptors
 -----------
 
+.. autoclass:: DenseSIFTDescriptor
 .. autoclass:: SIFTDescriptor
 .. autoclass:: MKDDescriptor
 .. autoclass:: HardNet
