@@ -162,8 +162,11 @@ class TestSIFTFeature:
 class TestKeyNetHardNetFeature:
     # The real test is in TestLocalFeatureMatcher
     def test_smoke(self, device, dtype):
-        sift = KeyNetHardNet()
-        assert sift is not None
+        sift = KeyNetHardNet(2).to(device, dtype)
+        B, C, H, W = 1, 1, 32, 32
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        out = sift(img)
+        assert out is not None
 
     @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device):

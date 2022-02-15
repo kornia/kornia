@@ -43,7 +43,7 @@ class PyrDown(nn.Module):
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``.
         align_corners: interpolation flag.
-        factor: downsampling factor
+        factor: the downsampling factor
 
     Return:
         the downsampled tensor.
@@ -246,7 +246,7 @@ def pyrdown(input: torch.Tensor, border_type: str = 'reflect',
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``.
         align_corners: interpolation flag.
-        factor: downsampling factor
+        factor: the downsampling factor
 
     Return:
         the downsampled tensor.

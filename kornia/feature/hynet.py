@@ -20,7 +20,8 @@ class FilterResponseNorm2d(nn.Module):
     in the Training of Deep Neural Networks', see  See :cite:`FRN2019` for more details.
 
     .. math::
-        y =  \\gamma \times \frac{x}{\\sqrt{\\mathrm{E}[x^2]} + |\\epsilon|} + \beta
+        y =  \\gamma \\times \\frac{x}{\\sqrt{\\mathrm{E}[x^2]} + |\\epsilon|} + \\beta
+
 
     Args:
         num_features: number of channels
@@ -89,7 +90,7 @@ class TLU(nn.Module):
     Neural Networks, see  See :cite:`FRN2019` for more details. :math:`\tau` is learnable per channel.
 
     .. math::
-        y =  \\max(x, \tau)
+        y =  \\max(x, \\tau)
 
     Args:
         num_features: number of channels

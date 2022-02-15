@@ -8,15 +8,15 @@ from kornia.testing import assert_close
 
 
 class TestKeyNet:
-    def test_shape(self, device):
-        inp = torch.rand(1, 1, 16, 16, device=device)
-        keynet = KeyNet().to(device)
+    def test_shape(self, device, dtype):
+        inp = torch.rand(1, 1, 16, 16, device=device, dtype=dtype)
+        keynet = KeyNet().to(device, dtype)
         out = keynet(inp)
         assert out.shape == inp.shape
 
-    def test_shape_batch(self, device):
-        inp = torch.ones(16, 1, 16, 16, device=device)
-        keynet = KeyNet().to(device)
+    def test_shape_batch(self, device, dtype):
+        inp = torch.ones(16, 1, 16, 16, device=device, dtype=dtype)
+        keynet = KeyNet().to(device, dtype)
         out = keynet(inp)
         assert out.shape == inp.shape
 
