@@ -170,7 +170,7 @@ class KeyNet(nn.Module):
 
 
 class KeyNetDetector(nn.Module):
-    """ Multi-scale feature detector based on KeyNet.
+    """Multi-scale feature detector based on KeyNet.
 
     This is based on the original code from paper
     "Key.Net: Keypoint Detection by Handcrafted and Learned CNN Filters".
