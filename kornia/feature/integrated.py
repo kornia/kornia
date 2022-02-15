@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Tuple
 import math
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from kornia.color import rgb_to_grayscale
 from kornia.geometry.subpix import ConvQuadInterp3d
@@ -352,7 +353,8 @@ class MultiScaleDenseLocalFeature(nn.Module):
                  coef_stride: int,
                  coef_pad: int,
                  max_levels: int,
-                 count_levels_from_the_end: bool = False) -> None:
+                 count_levels_from_the_end: bool = False,
+                 normalize_descriptors: bool = True) -> None:
         super().__init__()
         self.descriptor = descriptor
         self.receptive_field = receptive_field
@@ -360,6 +362,7 @@ class MultiScaleDenseLocalFeature(nn.Module):
         self.coef_pad = coef_pad
         self.max_levels = max_levels
         self.count_levels_from_the_end = count_levels_from_the_end
+        self.normalize_descriptors = normalize_descriptors
 
     def forward(self,
                 img: torch.Tensor,
@@ -404,6 +407,8 @@ class MultiScaleDenseLocalFeature(nn.Module):
             xy_conv = torch.cat([xx[None, None], yy[None, None]], dim=1)
             xy_reshape = xy_conv.view(B1, 2, -1).permute(0, 2, 1)
             desc_reshape = desc_cur.view(B1, Cd1, -1).permute(0, 2, 1)
+            if self.normalize_descriptors:
+                desc_reshape = F.normalize(desc_reshape, dim=2, p=2)
             N = xy_reshape.size(1)
             resps = scale_lev * torch.ones(B1, N, device=img.device, dtype=img.dtype)
             lafs = laf_from_center_scale_ori(xy_reshape,

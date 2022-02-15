@@ -10,6 +10,8 @@ import kornia.testing as utils  # test utils
 from kornia.feature import (
     DescriptorMatcher,
     GFTTAffNetHardNet,
+    MultiScaleDenseLocalFeature,
+    DenseHardNet,
     KeyNetHardNet,
     LAFDescriptor,
     LocalFeature,
@@ -142,6 +144,26 @@ class TestLocalFeature:
         img = utils.tensor_to_gradcheck_var(img)  # to var
         local_feature = LocalFeature(ScaleSpaceDetector(2), LAFDescriptor(SIFTDescriptor(PS), PS)).to(device, img.dtype)
         assert gradcheck(local_feature, img, eps=1e-4, atol=1e-4, raise_exception=True)
+
+
+class TestMultiScaleDenseLocalFeature:
+    def test_laf(self, device, dtype):
+        desc = DenseHardNet()
+        receptive_field = 51,
+        coef_stride = 4
+        coef_pad = 14
+        max_level = 1
+        local_feature = MultiScaleDenseLocalFeature(desc,
+                                                    receptive_field,
+                                                    coef_stride,
+                                                    coef_pad,
+                                                    max_level).to(device, dtype)
+        assert local_feature is not None
+        B, C, H, W = 1, 1, 32, 32
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        lafs, resps, descs = local_feature(img)
+        exp_laf = torch.tensor([[[[51., 0., 14.], [-0., 51., 14.]]]]).to(device, dtype)
+        assert_close(lafs, exp_laf)
 
 
 class TestSIFTFeature:
