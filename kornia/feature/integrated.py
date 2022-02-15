@@ -1,16 +1,18 @@
 from typing import Dict, List, Optional, Tuple
 
+import math
 import torch
 import torch.nn as nn
 
 from kornia.color import rgb_to_grayscale
 from kornia.geometry.subpix import ConvQuadInterp3d
-from kornia.geometry.transform import ScalePyramid
+from kornia.geometry.transform import ScalePyramid, build_pyramid
 
 from .affine_shape import LAFAffNetShapeEstimator
 from .hardnet import HardNet
 from .keynet import KeyNetDetector
 from .laf import extract_patches_from_pyramid, get_laf_center, raise_error_if_laf_is_not_valid
+from .laf import laf_from_center_scale_ori
 from .orientation import LAFOrienter, OriNet, PassLAF
 from .responses import BlobDoG, CornerGFTT
 from .scale_space_detector import ScaleSpaceDetector
@@ -324,3 +326,95 @@ class LocalFeatureMatcher(nn.Module):
             'confidence': torch.cat(out_confidence, dim=0).view(-1),
             'batch_indexes': torch.cat(out_batch_indexes, dim=0).view(-1)
         }
+
+
+class MultiScaleDenseLocalFeature(nn.Module):
+    r"""Module, which outputs dense descriptor and the local affine frames (LAFs),
+    calculated using user-provided constants. If the feature map spatial size :math:`(Hf, Wf)`
+
+    .. math::
+        x =  \text{torch.arange(Wf)} \times \text{coef_stride} + \text{coef_pad}
+        y =  \text{torch.arange(Hf)} \times \text{coef_stride} + \text{coef_pad}
+        \text{scale} =  \text{receptive_field}
+
+    Args:
+        descriptor: the descriptor module.
+        receptive_field: LAF scale
+        coef_stride: see above
+        coef_pad: see above
+        max_levels: number of the pyramid scales to run the descriptor on
+        count_levels_from_the_end: extract from the higher lever of the scale pyramid
+
+    """
+    def __init__(self,
+                 descriptor: nn.Module,
+                 receptive_field: int,
+                 coef_stride: int,
+                 coef_pad: int,
+                 max_levels: int,
+                 count_levels_from_the_end: bool = False) -> None:
+        super().__init__()
+        self.descriptor = descriptor
+        self.receptive_field = receptive_field
+        self.coef_stride = coef_stride
+        self.coef_pad = coef_pad
+        self.max_levels = max_levels
+        self.count_levels_from_the_end = count_levels_from_the_end
+
+    def forward(self,
+                img: torch.Tensor,
+                mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor,
+                                                              torch.Tensor,
+                                                              torch.Tensor]:  # type: ignore
+        """
+        Args:
+            img: image to extract features with shape :math:`(B,C,H,W)`.
+            mask: not used yet, only for the API compatability reasons
+
+        Returns:
+            - Detected local affine frames with shape :math:`(B,N,2,3)`.
+            - Constant function values for corresponding lafs with shape :math:`(B,N,1)`.
+            - Local descriptors of shape :math:`(B,N,D)` where :math:`D` is descriptor size.
+        """
+
+        B, C, H, W = img.size()
+        max_level = math.floor(math.log2(min(img.size(2), img.size(3)) / 32))
+        pyr = build_pyramid(img, max_level=max_level)
+        all_lafs = []
+        all_resps = []
+        all_descs = []
+        all_dense = []
+        if self.count_levels_from_the_end:
+            pyr = pyr[::-1]
+        for scale_lev, pyr_level in enumerate(pyr):
+            if scale_lev >= self.max_levels:
+                break
+            if self.count_levels_from_the_end:
+                scale_lev = len(pyr) - scale_lev - 1
+            sc = self.receptive_field * (2 ** scale_lev)
+            B1, C1, H1, W1 = pyr_level.size()
+            desc_cur = self.descriptor(pyr_level)
+            all_dense.append(desc_cur)
+            coef_h = float(H) / float(H1)
+            coef_w = float(W) / float(W1)
+            Bd1, Cd1, Hd1, Wd1 = desc_cur.size()
+            x = coef_w * (torch.arange(Wd1, device=img.device, dtype=img.dtype) * self.coef_stride + self.coef_pad)
+            y = coef_h * (torch.arange(Hd1, device=img.device, dtype=img.dtype) * self.coef_stride + self.coef_pad)
+            yy, xx = torch.meshgrid(y, x)
+            xy_conv = torch.cat([xx[None, None], yy[None, None]], dim=1)
+            xy_reshape = xy_conv.view(B1, 2, -1).permute(0, 2, 1)
+            desc_reshape = desc_cur.view(B1, Cd1, -1).permute(0, 2, 1)
+            N = xy_reshape.size(1)
+            resps = scale_lev * torch.ones(B1, N, device=img.device, dtype=img.dtype)
+            lafs = laf_from_center_scale_ori(xy_reshape,
+                                             sc * torch.ones(B1, N, 1, 1,
+                                                             device=img.device,
+                                                             dtype=img.dtype),
+                                             torch.zeros(B1, N, 1,
+                                                         device=img.device,
+                                                         dtype=img.dtype))
+            all_lafs.append(lafs)
+            all_resps.append(resps)
+            all_descs.append(desc_reshape)
+
+        return torch.cat(all_lafs, dim=1), torch.cat(all_resps, dim=1), torch.cat(all_descs, dim=1)

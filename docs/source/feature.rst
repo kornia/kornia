@@ -19,6 +19,7 @@ Descriptors
 .. autoclass:: SIFTDescriptor
 .. autoclass:: MKDDescriptor
 .. autoclass:: HardNet
+.. autoclass:: DenseHardNet
 .. autoclass:: HardNet8
 .. autoclass:: HyNet
 .. autoclass:: TFeat
@@ -40,6 +41,9 @@ Matching
    :members: forward
 
 .. autoclass:: LocalFeature
+   :members: forward
+
+.. autoclass:: MultiScaleDenseLocalFeature
    :members: forward
 
 .. autoclass:: SIFTFeature

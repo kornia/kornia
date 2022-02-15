@@ -172,3 +172,16 @@ class HardNet8(nn.Module):
         x_prePCA = F.normalize(x_features.view(x_features.size(0), -1))
         pca = torch.mm(x_prePCA - mean, components)
         return F.normalize(pca, dim=1)
+
+
+class DenseHardNet(HardNet):
+    """Version of the HardNet to performs dense descriptor extraction
+    """
+    def forward(self, x):
+        b, ch, h, w = x.shape
+        x_ = x
+        if ch > 1:
+            x_ = x.mean(dim=1, keepdim=True)
+        x_norm: torch.Tensor = self._normalize_input(x_)
+        x_features: torch.Tensor = self.features(x_norm)
+        return F.normalize(x_features, dim=1)
