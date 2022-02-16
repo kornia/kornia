@@ -68,7 +68,7 @@ def distance_transform(
 
         offset: int = i * kernel_size // 2
         out += (offset + cdt) * mask
-        boundary[mask == 1] = 1
+        boundary = torch.where(mask == 1, torch.ones_like(boundary), boundary)
 
     return out
 
