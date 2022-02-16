@@ -436,6 +436,21 @@ class TestConvDistanceTransform:
         input1 = torch.ones(B, C, H, W, device=device, dtype=dtype, requires_grad=True)
         assert gradcheck(kornia.contrib.distance_transform, (input1), raise_exception=True)
 
+    def test_loss_grad(self, device, dtype):
+        B, C, H, W = 1, 1, 32, 32
+        input1 = torch.rand(B, C, H, W, device=device, dtype=dtype, requires_grad=True)
+        input2 = torch.rand(B, C, H, W, device=device, dtype=dtype, requires_grad=True)
+        tiny_module = nn.Conv2d(1, 1, (3, 3), (1, 1), (1, 1))
+        input1 = kornia.contrib.distance_transform(tiny_module(input1))
+        input2 = kornia.contrib.distance_transform(input2)
+        loss = torch.nn.functional.mse_loss(input1, input2)
+        try:
+            loss.backward()
+        except RuntimeError as e:
+            print('Grad check failed for kornia.contrib.distance_transform when calculating regression loss.')
+            raise e
+
+
 
 class TestHistMatch:
     def test_interp(self, device, dtype):
