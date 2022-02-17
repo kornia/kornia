@@ -107,7 +107,7 @@ class CombineTensorPatches(nn.Module):
 
     Args:
         patches: patched tensor.
-        orig_size: the size of the original tensor and the output patch size.
+        original_size: the size of the original tensor and the output patch size.
         window_size: the size of the sliding window used.
         unpadding: remove the padding added to both side of the input.
 
@@ -117,7 +117,7 @@ class CombineTensorPatches(nn.Module):
 
     Example:
         >>> out = extract_tensor_patches(torch.arange(16).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2))
-        >>> combine_tensor_patches(out, orig_size=(4, 4), window_size=(2, 2), stride=(2, 2))
+        >>> combine_tensor_patches(out, original_size=(4, 4), window_size=(2, 2), stride=(2, 2))
         tensor([[[[ 0,  1,  2,  3],
                   [ 4,  5,  6,  7],
                   [ 8,  9, 10, 11],
@@ -126,12 +126,12 @@ class CombineTensorPatches(nn.Module):
 
     def __init__(
         self,
-        orig_size: Union[int, Tuple[int, int]],
+        original_size: Union[int, Tuple[int, int]],
         window_size: Union[int, Tuple[int, int]],
         unpadding: Union[int, Tuple[int, int]] = 0,
     ) -> None:
         super().__init__()
-        self.orig_size: Tuple[int, int] = _pair(orig_size)
+        self.orig_size: Tuple[int, int] = _pair(original_size)
         self.window_size: Tuple[int, int] = _pair(window_size)
         pad: Tuple[int, int] = _pair(unpadding)
         self.unpadding: Tuple[int, int, int, int] = (pad[0], pad[0], pad[1], pad[1])
@@ -144,7 +144,7 @@ class CombineTensorPatches(nn.Module):
 
 def combine_tensor_patches(
     patches: torch.Tensor,
-    orig_size: Tuple[int, int] = (16, 16),
+    original_size: Tuple[int, int] = (16, 16),
     window_size: Tuple[int, int] = (4, 4),
     stride: Tuple[int, int] = (4, 4),
     unpadding: Optional[Tuple[int, int, int, int]] = None,
@@ -153,7 +153,7 @@ def combine_tensor_patches(
 
     Args:
         patches: patched tensor with shape :math:`(B, N, C, H_{out}, W_{out})`.
-        orig_size: the size of the original tensor and the output patch size.
+        original_size: the size of the original tensor and the output patch size.
         window_size: the size of the sliding window used.
         stride: stride of the sliding window.
         unpadding: remove the padding added to both side of the input.
@@ -163,7 +163,7 @@ def combine_tensor_patches(
 
     Example:
         >>> out = extract_tensor_patches(torch.arange(16).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2))
-        >>> combine_tensor_patches(out, orig_size=(4, 4), window_size=(2, 2), stride=(2, 2))
+        >>> combine_tensor_patches(out, original_size=(4, 4), window_size=(2, 2), stride=(2, 2))
         tensor([[[[ 0,  1,  2,  3],
                   [ 4,  5,  6,  7],
                   [ 8,  9, 10, 11],
@@ -175,7 +175,7 @@ def combine_tensor_patches(
             "Please feel free to drop a PR to Kornia Github."
         )
 
-    window_size = (orig_size[0] // window_size[0], orig_size[1] // window_size[1])
+    window_size = (original_size[0] // window_size[0], original_size[1] // window_size[1])
 
     if unpadding is not None:
         window_size = (
