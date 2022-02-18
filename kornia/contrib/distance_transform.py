@@ -54,6 +54,7 @@ def distance_transform(
 
     # It is possible to avoid cloning the image if boundary = image, but this would require modifying the image tensor.
     boundary = image.clone()
+    signal_ones = torch.ones_like(boundary)
 
     for i in range(n_iters):
         cdt = filter2d(boundary, kernel, border_type='replicate')
@@ -68,7 +69,7 @@ def distance_transform(
 
         offset: int = i * kernel_size // 2
         out += (offset + cdt) * mask
-        boundary[mask == 1] = 1
+        boundary = torch.where(mask == 1, signal_ones, boundary)
 
     return out
 
