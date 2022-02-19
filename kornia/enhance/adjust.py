@@ -3,22 +3,22 @@ from typing import Optional, Union
 
 import torch
 import torch.nn as nn
+from torch import Tensor
 
+from kornia.color.gray import rgb_to_grayscale
 from kornia.color.hsv import hsv_to_rgb, rgb_to_hsv
 from kornia.utils.helpers import _torch_histc_cast
 from kornia.utils.image import perform_keep_shape_image, perform_keep_shape_video
 
 
-def adjust_saturation_raw(input: torch.Tensor, saturation_factor: Union[float, torch.Tensor]) -> torch.Tensor:
+def adjust_saturation_raw(input: Tensor, saturation_factor: Union[float, Tensor]) -> Tensor:
     r"""Adjust color saturation of an image. Expecting input to be in hsv format already."""
 
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+    if not isinstance(input, Tensor):
+        raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
 
-    if not isinstance(saturation_factor, (float, torch.Tensor)):
-        raise TypeError(
-            f"The saturation_factor should be a float number or torch.Tensor." f"Got {type(saturation_factor)}"
-        )
+    if not isinstance(saturation_factor, (float, Tensor)):
+        raise TypeError(f"The saturation_factor should be a float number or Tensor." f"Got {type(saturation_factor)}")
 
     if isinstance(saturation_factor, float):
         saturation_factor = torch.as_tensor(saturation_factor)
@@ -36,15 +36,15 @@ def adjust_saturation_raw(input: torch.Tensor, saturation_factor: Union[float, t
     h, s, v = torch.chunk(input, chunks=3, dim=-3)
 
     # transform the hue value and appl module
-    s_out: torch.Tensor = torch.clamp(s * saturation_factor, min=0, max=1)
+    s_out: Tensor = torch.clamp(s * saturation_factor, min=0, max=1)
 
     # pack back back the corrected hue
-    out: torch.Tensor = torch.cat([h, s_out, v], dim=-3)
+    out: Tensor = torch.cat([h, s_out, v], dim=-3)
 
     return out
 
 
-def adjust_saturation(input: torch.Tensor, saturation_factor: Union[float, torch.Tensor]) -> torch.Tensor:
+def adjust_saturation(input: Tensor, saturation_factor: Union[float, Tensor]) -> Tensor:
     r"""Adjust color saturation of an image.
 
     .. image:: _static/img/adjust_saturation.png
@@ -69,32 +69,32 @@ def adjust_saturation(input: torch.Tensor, saturation_factor: Union[float, torch
         torch.Size([1, 3, 3, 3])
 
         >>> x = torch.ones(2, 3, 3, 3)
-        >>> y = torch.tensor([1., 2.])
+        >>> y = Tensor([1., 2.])
         >>> adjust_saturation(x, y).shape
         torch.Size([2, 3, 3, 3])
     """
 
     # convert the rgb image to hsv
-    x_hsv: torch.Tensor = rgb_to_hsv(input)
+    x_hsv: Tensor = rgb_to_hsv(input)
 
     # perform the conversion
-    x_adjusted: torch.Tensor = adjust_saturation_raw(x_hsv, saturation_factor)
+    x_adjusted: Tensor = adjust_saturation_raw(x_hsv, saturation_factor)
 
     # convert back to rgb
-    out: torch.Tensor = hsv_to_rgb(x_adjusted)
+    out: Tensor = hsv_to_rgb(x_adjusted)
 
     return out
 
 
-def adjust_hue_raw(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) -> torch.Tensor:
+def adjust_hue_raw(input: Tensor, hue_factor: Union[float, Tensor]) -> Tensor:
     r"""Adjust hue of an image. Expecting input to be in hsv format already."""
 
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+    if not isinstance(input, Tensor):
+        raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
 
-    if not isinstance(hue_factor, (float, torch.Tensor)):
+    if not isinstance(hue_factor, (float, Tensor)):
         raise TypeError(
-            f"The hue_factor should be a float number or torch.Tensor in the range between"
+            f"The hue_factor should be a float number or Tensor in the range between"
             f" [-PI, PI]. Got {type(hue_factor)}"
         )
 
@@ -115,15 +115,15 @@ def adjust_hue_raw(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) 
 
     # transform the hue value and appl module
     divisor: float = 2 * pi
-    h_out: torch.Tensor = torch.fmod(h + hue_factor, divisor)
+    h_out: Tensor = torch.fmod(h + hue_factor, divisor)
 
     # pack back back the corrected hue
-    out: torch.Tensor = torch.cat([h_out, s, v], dim=-3)
+    out: Tensor = torch.cat([h_out, s, v], dim=-3)
 
     return out
 
 
-def adjust_hue(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) -> torch.Tensor:
+def adjust_hue(input: Tensor, hue_factor: Union[float, Tensor]) -> Tensor:
     r"""Adjust hue of an image.
 
     .. image:: _static/img/adjust_hue.png
@@ -156,20 +156,18 @@ def adjust_hue(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) -> t
     """
 
     # convert the rgb image to hsv
-    x_hsv: torch.Tensor = rgb_to_hsv(input)
+    x_hsv: Tensor = rgb_to_hsv(input)
 
     # perform the conversion
-    x_adjusted: torch.Tensor = adjust_hue_raw(x_hsv, hue_factor)
+    x_adjusted: Tensor = adjust_hue_raw(x_hsv, hue_factor)
 
     # convert back to rgb
-    out: torch.Tensor = hsv_to_rgb(x_adjusted)
+    out: Tensor = hsv_to_rgb(x_adjusted)
 
     return out
 
 
-def adjust_gamma(
-    input: torch.Tensor, gamma: Union[float, torch.Tensor], gain: Union[float, torch.Tensor] = 1.0
-) -> torch.Tensor:
+def adjust_gamma(input: Tensor, gamma: Union[float, Tensor], gain: Union[float, Tensor] = 1.0) -> Tensor:
     r"""Perform gamma correction on an image.
 
     .. image:: _static/img/adjust_contrast.png
@@ -203,20 +201,20 @@ def adjust_gamma(
         torch.Size([2, 5, 3, 3])
     """
 
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+    if not isinstance(input, Tensor):
+        raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
 
-    if not isinstance(gamma, (float, torch.Tensor)):
-        raise TypeError(f"The gamma should be a positive float or torch.Tensor. Got {type(gamma)}")
+    if not isinstance(gamma, (float, Tensor)):
+        raise TypeError(f"The gamma should be a positive float or Tensor. Got {type(gamma)}")
 
-    if not isinstance(gain, (float, torch.Tensor)):
-        raise TypeError(f"The gain should be a positive float or torch.Tensor. Got {type(gain)}")
+    if not isinstance(gain, (float, Tensor)):
+        raise TypeError(f"The gain should be a positive float or Tensor. Got {type(gain)}")
 
     if isinstance(gamma, float):
-        gamma = torch.tensor([gamma])
+        gamma = Tensor([gamma])
 
     if isinstance(gain, float):
-        gain = torch.tensor([gain])
+        gain = Tensor([gain])
 
     gamma = gamma.to(input.device).to(input.dtype)
     gain = gain.to(input.device).to(input.dtype)
@@ -234,15 +232,15 @@ def adjust_gamma(
         gain = torch.unsqueeze(gain, dim=-1)
 
     # Apply the gamma correction
-    x_adjust: torch.Tensor = gain * torch.pow(input, gamma)
+    x_adjust: Tensor = gain * torch.pow(input, gamma)
 
     # Truncate between pixel values
-    out: torch.Tensor = torch.clamp(x_adjust, 0.0, 1.0)
+    out: Tensor = torch.clamp(x_adjust, 0.0, 1.0)
 
     return out
 
 
-def adjust_contrast(input: torch.Tensor, contrast_factor: Union[float, torch.Tensor]) -> torch.Tensor:
+def adjust_contrast(input: Tensor, contrast_factor: Union[float, Tensor]) -> Tensor:
     r"""Adjust Contrast of an image.
 
     .. image:: _static/img/adjust_contrast.png
@@ -271,19 +269,19 @@ def adjust_contrast(input: torch.Tensor, contrast_factor: Union[float, torch.Ten
                   [0.5000, 0.5000]]]])
 
         >>> x = torch.ones(2, 5, 3, 3)
-        >>> y = torch.tensor([0.65, 0.50])
+        >>> y = Tensor([0.65, 0.50])
         >>> adjust_contrast(x, y).shape
         torch.Size([2, 5, 3, 3])
     """
 
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+    if not isinstance(input, Tensor):
+        raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
 
-    if not isinstance(contrast_factor, (float, torch.Tensor)):
-        raise TypeError(f"The factor should be either a float or torch.Tensor. " f"Got {type(contrast_factor)}")
+    if not isinstance(contrast_factor, (float, Tensor)):
+        raise TypeError(f"The factor should be either a float or Tensor. " f"Got {type(contrast_factor)}")
 
     if isinstance(contrast_factor, float):
-        contrast_factor = torch.tensor([contrast_factor])
+        contrast_factor = Tensor([contrast_factor])
 
     contrast_factor = contrast_factor.to(input.device).to(input.dtype)
 
@@ -294,30 +292,31 @@ def adjust_contrast(input: torch.Tensor, contrast_factor: Union[float, torch.Ten
         contrast_factor = torch.unsqueeze(contrast_factor, dim=-1)
 
     # Apply contrast factor to each channel
-    x_adjust: torch.Tensor = input * contrast_factor
+    x_adjust: Tensor = input * contrast_factor
 
     # Truncate between pixel values
-    out: torch.Tensor = torch.clamp(x_adjust, 0.0, 1.0)
+    out: Tensor = torch.clamp(x_adjust, 0.0, 1.0)
 
     return out
 
 
-def adjust_brightness(input: torch.Tensor, brightness_factor: Union[float, torch.Tensor]) -> torch.Tensor:
-    r"""Adjust Brightness of an image.
+def adjust_brightness(input: Tensor, factor: Union[float, Tensor]) -> Tensor:
+    r"""Adjust Brightness of a 2 dimensional tensor image.
 
     .. image:: _static/img/adjust_brightness.png
 
-    This implementation aligns OpenCV, not PIL. Hence, the output differs from TorchVision.
+    This implementation follows Szeliski's book convention, where brightness is defined as
+    an additive operation. Beware that other frameworks might use different conventions.
     The input image is expected to be in the range of [0, 1].
 
     Args:
-        input: image to be adjusted in the shape of :math:`(*, H, W)`.
-        brightness_factor: Brightness adjust factor per element
-            in the batch. 0 does not modify the input image while any other number modify the
-            brightness.
+        input: Tensor image to be adjusted in the shape of :math:`(*, H, W)`.
+        factor: Brightness adjust factor per element in the batch. It's recommended to
+            bound the factor by [0, 1]. 0 does not modify the input image while any other
+            number modify the brightness.
 
     Return:
-        Adjusted image in the shape of :math:`(*, H, W)`.
+        Adjusted tensor in the shape of :math:`(*, H, W)`.
 
     .. note::
        See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
@@ -335,49 +334,62 @@ def adjust_brightness(input: torch.Tensor, brightness_factor: Union[float, torch
         torch.Size([2, 5, 3, 3])
     """
 
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+    if not isinstance(input, Tensor):
+        raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
 
-    if not isinstance(brightness_factor, (float, torch.Tensor)):
-        raise TypeError(f"The factor should be either a float or torch.Tensor. " f"Got {type(brightness_factor)}")
+    if not isinstance(factor, (float, Tensor)):
+        raise TypeError(f"The factor should be either a float or Tensor. " f"Got {type(factor)}")
 
-    if isinstance(brightness_factor, float):
-        brightness_factor = torch.tensor([brightness_factor])
+    # convert factor to a tensor
+    if isinstance(factor, float):
+        # TODO: figure out how to create later a tensor without importing torch
+        factor = torch.as_tensor(factor, device=input.device, dtype=input.dtype)
+    elif isinstance(factor, Tensor):
+        factor = factor.to(input.device, input.dtype)
 
-    brightness_factor = brightness_factor.to(input.device).to(input.dtype)
+    # make factor broadcastable
+    # TODO: find a more clean way to do this op without loops
+    for _ in range(len(input.shape) - len(factor.shape)):
+        factor = factor.unsqueeze_(dim=-1)
 
-    for _ in range(len(input.shape) - len(brightness_factor.shape)):
-        brightness_factor = torch.unsqueeze(brightness_factor, dim=-1)
+    # computer mean to balance and avoid overfloating
+    # NOTE: in case of receiving a RGB we convert to grayscale first
+    # to have compatibility with other vision frameworks.
+    if input.shape[-3] == 3:
+        x_gray = rgb_to_grayscale(input)
+        x_mean = x_gray.mean((-2, -1), keepdim=True)
+    else:
+        x_mean = input.mean()
 
     # Apply brightness factor to each channel
-    x_adjust: torch.Tensor = input + brightness_factor
+    # x_adjust: Tensor = input + factor
+    # x_adjust: Tensor = (1.0 - factor) * x_mean + factor * input
+    x_adjust: Tensor = (1.0 - factor) * input + factor * x_mean
 
     # Truncate between pixel values
-    out: torch.Tensor = torch.clamp(x_adjust, 0.0, 1.0)
-
-    return out
+    return x_adjust.clamp_(min=0.0, max=1.0)
 
 
-def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5) -> torch.Tensor:
+def _solarize(input: Tensor, thresholds: Union[float, Tensor] = 0.5) -> Tensor:
     r"""For each pixel in the image, select the pixel if the value is less than the threshold.
     Otherwise, subtract 1.0 from the pixel.
 
     Args:
-        input (torch.Tensor): image or batched images to solarize.
-        thresholds (float or torch.Tensor): solarize thresholds.
+        input (Tensor): image or batched images to solarize.
+        thresholds (float or Tensor): solarize thresholds.
             If int or one element tensor, input will be solarized across the whole batch.
             If 1-d tensor, input will be solarized element-wise, len(thresholds) == len(input).
 
     Returns:
-        torch.Tensor: Solarized images.
+        Tensor: Solarized images.
     """
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+    if not isinstance(input, Tensor):
+        raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
 
-    if not isinstance(thresholds, (float, torch.Tensor)):
-        raise TypeError(f"The factor should be either a float or torch.Tensor. " f"Got {type(thresholds)}")
+    if not isinstance(thresholds, (float, Tensor)):
+        raise TypeError(f"The factor should be either a float or Tensor. " f"Got {type(thresholds)}")
 
-    if isinstance(thresholds, torch.Tensor) and len(thresholds.shape) != 0:
+    if isinstance(thresholds, Tensor) and len(thresholds.shape) != 0:
         if not (input.size(0) == len(thresholds) and len(thresholds.shape) == 1):
             raise AssertionError(f"thresholds must be a 1-d vector of shape ({input.size(0)},). Got {thresholds}")
         # TODO: I am not happy about this line, but no easy to do batch-wise operation
@@ -388,10 +400,8 @@ def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5)
 
 
 def solarize(
-    input: torch.Tensor,
-    thresholds: Union[float, torch.Tensor] = 0.5,
-    additions: Optional[Union[float, torch.Tensor]] = None,
-) -> torch.Tensor:
+    input: Tensor, thresholds: Union[float, Tensor] = 0.5, additions: Optional[Union[float, Tensor]] = None
+) -> Tensor:
     r"""For each pixel in the image less than threshold.
 
     .. image:: _static/img/solarize.png
@@ -419,31 +429,31 @@ def solarize(
         torch.Size([1, 4, 3, 3])
 
         >>> x = torch.rand(2, 4, 3, 3)
-        >>> thresholds = torch.tensor([0.8, 0.5])
-        >>> additions = torch.tensor([-0.25, 0.25])
+        >>> thresholds = Tensor([0.8, 0.5])
+        >>> additions = Tensor([-0.25, 0.25])
         >>> solarize(x, thresholds, additions).shape
         torch.Size([2, 4, 3, 3])
     """
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+    if not isinstance(input, Tensor):
+        raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
 
-    if not isinstance(thresholds, (float, torch.Tensor)):
-        raise TypeError(f"The factor should be either a float or torch.Tensor. " f"Got {type(thresholds)}")
+    if not isinstance(thresholds, (float, Tensor)):
+        raise TypeError(f"The factor should be either a float or Tensor. " f"Got {type(thresholds)}")
 
     if isinstance(thresholds, float):
-        thresholds = torch.tensor(thresholds)
+        thresholds = torch.as_tensor(thresholds)
 
     if additions is not None:
-        if not isinstance(additions, (float, torch.Tensor)):
-            raise TypeError(f"The factor should be either a float or torch.Tensor. " f"Got {type(additions)}")
+        if not isinstance(additions, (float, Tensor)):
+            raise TypeError(f"The factor should be either a float or Tensor. " f"Got {type(additions)}")
 
         if isinstance(additions, float):
-            additions = torch.tensor(additions)
+            additions = torch.as_tensor(additions)
 
         if not torch.all((additions < 0.5) * (additions > -0.5)):
             raise AssertionError(f"The value of 'addition' is between -0.5 and 0.5. Got {additions}.")
 
-        if isinstance(additions, torch.Tensor) and len(additions.shape) != 0:
+        if isinstance(additions, Tensor) and len(additions.shape) != 0:
             if not (input.size(0) == len(additions) and len(additions.shape) == 1):
                 raise AssertionError(f"additions must be a 1-d vector of shape ({input.size(0)},). Got {additions}")
             # TODO: I am not happy about this line, but no easy to do batch-wise operation
@@ -456,7 +466,7 @@ def solarize(
 
 
 @perform_keep_shape_image
-def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tensor:
+def posterize(input: Tensor, bits: Union[int, Tensor]) -> Tensor:
     r"""Reduce the number of bits for each color channel.
 
     .. image:: _static/img/posterize.png
@@ -479,18 +489,18 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
         >>> torch.testing.assert_allclose(x, out)
 
         >>> x = torch.rand(2, 6, 3, 3)
-        >>> bits = torch.tensor([4, 2])
+        >>> bits = Tensor([4, 2])
         >>> posterize(x, bits).shape
         torch.Size([2, 6, 3, 3])
     """
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+    if not isinstance(input, Tensor):
+        raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
 
-    if not isinstance(bits, (int, torch.Tensor)):
-        raise TypeError(f"bits type is not an int or torch.Tensor. Got {type(bits)}")
+    if not isinstance(bits, (int, Tensor)):
+        raise TypeError(f"bits type is not an int or Tensor. Got {type(bits)}")
 
     if isinstance(bits, int):
-        bits = torch.tensor(bits)
+        bits = torch.as_tensor(bits)
 
     # TODO: find a better way to check boundaries on tensors
     # if not torch.all((bits >= 0) * (bits <= 8)) and bits.dtype == torch.int:
@@ -502,13 +512,13 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
     # Ref: https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L222
     # Potential approach: implementing kornia.LUT with floating points
     # https://github.com/albumentations-team/albumentations/blob/master/albumentations/augmentations/functional.py#L472
-    def _left_shift(input: torch.Tensor, shift: torch.Tensor):
+    def _left_shift(input: Tensor, shift: Tensor):
         return ((input * 255).to(torch.uint8) * (2 ** shift)).to(input.dtype) / 255.0
 
-    def _right_shift(input: torch.Tensor, shift: torch.Tensor):
+    def _right_shift(input: Tensor, shift: Tensor):
         return (input * 255).to(torch.uint8) / (2 ** shift).to(input.dtype) / 255.0
 
-    def _posterize_one(input: torch.Tensor, bits: torch.Tensor):
+    def _posterize_one(input: Tensor, bits: Tensor):
         # Single bits value condition
         if bits == 0:
             return torch.zeros_like(input)
@@ -536,7 +546,7 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
             "Batch and channel must be equal between bits and input. "
             f"Got {bits.shape}, {input.shape[:len(bits.shape)]}."
         )
-    _input = input.view(-1, *input.shape[len(bits.shape):])
+    _input = input.view(-1, *input.shape[len(bits.shape) :])
     _bits = bits.flatten()
     for i in range(input.shape[0]):
         res.append(_posterize_one(_input[i], _bits[i]))
@@ -544,7 +554,7 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
 
 
 @perform_keep_shape_image
-def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
+def sharpness(input: Tensor, factor: Union[float, Tensor]) -> Tensor:
     r"""Apply sharpness to the input tensor.
 
     .. image:: _static/img/sharpness.png
@@ -566,8 +576,8 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
         >>> sharpness(x, 0.5).shape
         torch.Size([1, 1, 5, 5])
     """
-    if not isinstance(factor, torch.Tensor):
-        factor = torch.tensor(factor, device=input.device, dtype=input.dtype)
+    if not isinstance(factor, Tensor):
+        factor = torch.as_tensor(factor, device=input.device, dtype=input.dtype)
 
     if len(factor.size()) != 0 and factor.shape != torch.Size([input.size(0)]):
         raise AssertionError(
@@ -576,7 +586,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
         )
 
     kernel = (
-        torch.tensor([[1, 1, 1], [1, 5, 1], [1, 1, 1]], dtype=input.dtype, device=input.device)
+        torch.as_tensor([[1, 1, 1], [1, 5, 1], [1, 1, 1]], dtype=input.dtype, device=input.device)
         .view(1, 1, 3, 3)
         .repeat(input.size(1), 1, 1, 1)
         / 13
@@ -598,7 +608,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
     return torch.stack([_blend_one(result[i], input[i], factor[i]) for i in range(len(factor))])
 
 
-def _blend_one(input1: torch.Tensor, input2: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
+def _blend_one(input1: Tensor, input2: Tensor, factor: Tensor) -> Tensor:
     r"""Blend two images into one.
 
     Args:
@@ -609,12 +619,12 @@ def _blend_one(input1: torch.Tensor, input2: torch.Tensor, factor: torch.Tensor)
     Returns:
         : image tensor with the batch in the zero position.
     """
-    if not isinstance(input1, torch.Tensor):
+    if not isinstance(input1, Tensor):
         raise AssertionError(f"`input1` must be a tensor. Got {input1}.")
-    if not isinstance(input2, torch.Tensor):
+    if not isinstance(input2, Tensor):
         raise AssertionError(f"`input1` must be a tensor. Got {input2}.")
 
-    if isinstance(factor, torch.Tensor) and len(factor.size()) != 0:
+    if isinstance(factor, Tensor) and len(factor.size()) != 0:
         raise AssertionError(f"Factor shall be a float or single element tensor. Got {factor}.")
     if factor == 0.0:
         return input1
@@ -640,7 +650,7 @@ def _build_lut(histo, step):
 
 
 # Code taken from: https://github.com/pytorch/vision/pull/796
-def _scale_channel(im: torch.Tensor) -> torch.Tensor:
+def _scale_channel(im: Tensor) -> Tensor:
     r"""Scale the data in the channel to implement equalize.
 
     Args:
@@ -652,17 +662,17 @@ def _scale_channel(im: torch.Tensor) -> torch.Tensor:
     min_ = im.min()
     max_ = im.max()
 
-    if min_.item() < 0.0 and not torch.isclose(min_, torch.tensor(0.0, dtype=min_.dtype)):
+    if min_.item() < 0.0 and not torch.isclose(min_, torch.as_tensor(0.0, dtype=min_.dtype)):
         raise ValueError(f"Values in the input tensor must greater or equal to 0.0. Found {min_.item()}.")
 
-    if max_.item() > 1.0 and not torch.isclose(max_, torch.tensor(1.0, dtype=max_.dtype)):
+    if max_.item() > 1.0 and not torch.isclose(max_, torch.as_tensor(1.0, dtype=max_.dtype)):
         raise ValueError(f"Values in the input tensor must lower or equal to 1.0. Found {max_.item()}.")
 
     ndims = len(im.shape)
     if ndims not in (2, 3):
         raise TypeError(f"Input tensor must have 2 or 3 dimensions. Found {ndims}.")
 
-    im = im * 255.
+    im = im * 255.0
     # Compute the histogram of the image channel.
     histo = _torch_histc_cast(im, bins=256, min=0, max=255)
     # For the purposes of computing the step, filter out the nonzeros.
@@ -682,7 +692,7 @@ def _scale_channel(im: torch.Tensor) -> torch.Tensor:
 
 
 @perform_keep_shape_image
-def equalize(input: torch.Tensor) -> torch.Tensor:
+def equalize(input: Tensor) -> Tensor:
     r"""Apply equalize on the input tensor.
 
     .. image:: _static/img/equalize.png
@@ -711,7 +721,7 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
 
 
 @perform_keep_shape_video
-def equalize3d(input: torch.Tensor) -> torch.Tensor:
+def equalize3d(input: Tensor) -> Tensor:
     r"""Equalize the values for a 3D volumetric tensor.
 
     Implements Equalize function for a sequence of images using PyTorch ops based on uint8 format:
@@ -733,7 +743,7 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
     return torch.stack(res)
 
 
-def invert(input: torch.Tensor, max_val: torch.Tensor = torch.tensor(1.0)) -> torch.Tensor:
+def invert(input: Tensor, max_val: Tensor = torch.tensor(1.0)) -> Tensor:
     r"""Invert the values of an input tensor by its maximum value.
 
     .. image:: _static/img/invert.png
@@ -749,17 +759,17 @@ def invert(input: torch.Tensor, max_val: torch.Tensor = torch.tensor(1.0)) -> to
         torch.Size([1, 2, 4, 4])
 
         >>> img = 255. * torch.rand(1, 2, 3, 4, 4)
-        >>> invert(img, torch.tensor(255.)).shape
+        >>> invert(img, Tensor(255.)).shape
         torch.Size([1, 2, 3, 4, 4])
 
         >>> img = torch.rand(1, 3, 4, 4)
-        >>> invert(img, torch.tensor([[[[1.]]]])).shape
+        >>> invert(img, Tensor([[[[1.]]]])).shape
         torch.Size([1, 3, 4, 4])
     """
-    if not isinstance(input, torch.Tensor):
-        raise AssertionError(f"Input is not a torch.Tensor. Got: {type(input)}")
-    if not isinstance(max_val, torch.Tensor):
-        raise AssertionError(f"max_val is not a torch.Tensor. Got: {type(max_val)}")
+    if not isinstance(input, Tensor):
+        raise AssertionError(f"Input is not a Tensor. Got: {type(input)}")
+    if not isinstance(max_val, Tensor):
+        raise AssertionError(f"max_val is not a Tensor. Got: {type(max_val)}")
     return max_val.to(input.dtype) - input
 
 
@@ -798,11 +808,11 @@ class AdjustSaturation(nn.Module):
         tensor(0.)
     """
 
-    def __init__(self, saturation_factor: Union[float, torch.Tensor]) -> None:
+    def __init__(self, saturation_factor: Union[float, Tensor]) -> None:
         super().__init__()
-        self.saturation_factor: Union[float, torch.Tensor] = saturation_factor
+        self.saturation_factor: Union[float, Tensor] = saturation_factor
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: Tensor) -> Tensor:
         return adjust_saturation(input, self.saturation_factor)
 
 
@@ -842,11 +852,11 @@ class AdjustHue(nn.Module):
         torch.Size([2, 3, 3, 3])
     """
 
-    def __init__(self, hue_factor: Union[float, torch.Tensor]) -> None:
+    def __init__(self, hue_factor: Union[float, Tensor]) -> None:
         super().__init__()
-        self.hue_factor: Union[float, torch.Tensor] = hue_factor
+        self.hue_factor: Union[float, Tensor] = hue_factor
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: Tensor) -> Tensor:
         return adjust_hue(input, self.hue_factor)
 
 
@@ -879,12 +889,12 @@ class AdjustGamma(nn.Module):
         torch.Size([2, 5, 3, 3])
     """
 
-    def __init__(self, gamma: Union[float, torch.Tensor], gain: Union[float, torch.Tensor] = 1.0) -> None:
+    def __init__(self, gamma: Union[float, Tensor], gain: Union[float, Tensor] = 1.0) -> None:
         super().__init__()
-        self.gamma: Union[float, torch.Tensor] = gamma
-        self.gain: Union[float, torch.Tensor] = gain
+        self.gamma: Union[float, Tensor] = gamma
+        self.gain: Union[float, Tensor] = gain
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: Tensor) -> Tensor:
         return adjust_gamma(input, self.gamma, self.gain)
 
 
@@ -917,11 +927,11 @@ class AdjustContrast(nn.Module):
         torch.Size([2, 5, 3, 3])
     """
 
-    def __init__(self, contrast_factor: Union[float, torch.Tensor]) -> None:
+    def __init__(self, contrast_factor: Union[float, Tensor]) -> None:
         super().__init__()
-        self.contrast_factor: Union[float, torch.Tensor] = contrast_factor
+        self.contrast_factor: Union[float, Tensor] = contrast_factor
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: Tensor) -> Tensor:
         return adjust_contrast(input, self.contrast_factor)
 
 
@@ -953,11 +963,11 @@ class AdjustBrightness(nn.Module):
         torch.Size([2, 5, 3, 3])
     """
 
-    def __init__(self, brightness_factor: Union[float, torch.Tensor]) -> None:
+    def __init__(self, brightness_factor: Union[float, Tensor]) -> None:
         super().__init__()
-        self.brightness_factor: Union[float, torch.Tensor] = brightness_factor
+        self.brightness_factor: Union[float, Tensor] = brightness_factor
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: Tensor) -> Tensor:
         return adjust_brightness(input, self.brightness_factor)
 
 
@@ -975,20 +985,20 @@ class Invert(nn.Module):
         torch.Size([1, 2, 4, 4])
 
         >>> img = 255. * torch.rand(1, 2, 3, 4, 4)
-        >>> Invert(torch.tensor(255.))(img).shape
+        >>> Invert(Tensor(255.))(img).shape
         torch.Size([1, 2, 3, 4, 4])
 
         >>> img = torch.rand(1, 3, 4, 4)
-        >>> Invert(torch.tensor([[[[1.]]]]))(img).shape
+        >>> Invert(Tensor([[[[1.]]]]))(img).shape
         torch.Size([1, 3, 4, 4])
     """
 
-    def __init__(self, max_val: torch.Tensor = torch.tensor(1.0)) -> None:
+    def __init__(self, max_val: Tensor = torch.tensor(1.0)) -> None:
         super().__init__()
         if not isinstance(max_val, nn.Parameter):
             self.register_buffer("max_val", max_val)
         else:
             self.max_val = max_val
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: Tensor) -> Tensor:
         return invert(input, self.max_val)
