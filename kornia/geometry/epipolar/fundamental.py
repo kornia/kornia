@@ -135,9 +135,9 @@ def compute_correspond_epilines(points: torch.Tensor, F_mat: torch.Tensor) -> to
         :math:`ax + by + c = 0` and encoding the vectors as :math:`(a, b, c)`.
 
     """
-    if not (len(points.shape) == 3 and points.shape[2] == 2):
+    if not (len(points.shape) >= 2 and points.shape[-1] == 2):
         raise AssertionError(points.shape)
-    if not (len(F_mat.shape) == 3 and F_mat.shape[-2:] == (3, 3)):
+    if not (len(F_mat.shape) >= 2 and F_mat.shape[-2:] == (3, 3)):
         raise AssertionError(F_mat.shape)
 
     points_h: torch.Tensor = convert_points_to_homogeneous(points)
