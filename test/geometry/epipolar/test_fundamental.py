@@ -192,7 +192,7 @@ class TestComputeCorrespondEpilimes:
         "batch_size, num_frames, num_points",
         [(1, 1, 1), (1, 1, 2), (1, 2, 1), (1, 2, 2), (2, 1, 1), (2, 1, 2), (2, 2, 1), (2, 2, 2)],
     )
-    def test_shape(self, batch_size, num_frames, num_points, device, dtype):
+    def test_volumetric(self, batch_size, num_frames, num_points, device, dtype):
         B, T, N = batch_size, num_frames, num_points
         point = torch.rand(B, T, N, 2, device=device, dtype=dtype)
         F_mat = torch.rand(B, T, 3, 3, device=device, dtype=dtype)
