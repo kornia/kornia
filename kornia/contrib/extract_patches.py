@@ -175,13 +175,15 @@ def combine_tensor_patches(
             "Please feel free to drop a PR to Kornia Github."
         )
 
-    window_size = (original_size[0] // window_size[0], original_size[1] // window_size[1])
+    if original_size[0] % 2 != 0 or original_size[1] % 2 != 0:
+        raise NotImplementedError(f"Original image size must be divisible by 2. Got {original_size}")
 
     if unpadding is not None:
         window_size = (
-            window_size[0] + (unpadding[0] + unpadding[1]) // window_size[0],
-            window_size[1] + (unpadding[2] + unpadding[3]) // window_size[1],
+            (original_size[0] + (unpadding[0] + unpadding[1])) // window_size[0],
+            (original_size[1] + (unpadding[2] + unpadding[3])) // window_size[1],
         )
+
     patches_tensor = patches.view(-1, window_size[0], window_size[1], *patches.shape[-3:])
     restored_tensor = torch.cat(torch.chunk(patches_tensor, window_size[0], dim=1), -2).squeeze(1)
     restored_tensor = torch.cat(torch.chunk(restored_tensor, window_size[1], dim=1), -1).squeeze(1)
