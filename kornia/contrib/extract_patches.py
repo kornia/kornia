@@ -179,6 +179,12 @@ def combine_tensor_patches(
         raise NotImplementedError(f"Original image size must be divisible by 2. Got {original_size}")
 
     if unpadding is not None:
+        hpad_check = (original_size[0] + unpadding[0] + unpadding[1]) % window_size[0] == 0
+        wpad_check = (original_size[1] + unpadding[2] + unpadding[3]) % window_size[1] == 0
+
+        if not hpad_check or not wpad_check:
+            raise NotImplementedError("Insufficient padding")
+
         window_size = (
             (original_size[0] + (unpadding[0] + unpadding[1])) // window_size[0],
             (original_size[1] + (unpadding[2] + unpadding[3])) // window_size[1],
