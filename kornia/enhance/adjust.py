@@ -69,7 +69,7 @@ def adjust_saturation(input: Tensor, saturation_factor: Union[float, Tensor]) ->
         torch.Size([1, 3, 3, 3])
 
         >>> x = torch.ones(2, 3, 3, 3)
-        >>> y = Tensor([1., 2.])
+        >>> y = torch.tensor([1., 2.])
         >>> adjust_saturation(x, y).shape
         torch.Size([2, 3, 3, 3])
     """
@@ -240,17 +240,18 @@ def adjust_gamma(input: Tensor, gamma: Union[float, Tensor], gain: Union[float, 
     return out
 
 
-def adjust_contrast(input: Tensor, contrast_factor: Union[float, Tensor]) -> Tensor:
-    r"""Adjust Contrast of an image.
+def adjust_contrast(input: Tensor, factor: Union[float, Tensor]) -> Tensor:
+    r"""Adjust Contrast of a 2 dimensional tensor image.
 
     .. image:: _static/img/adjust_contrast.png
 
-    This implementation aligns OpenCV, not PIL. Hence, the output differs from TorchVision.
+    This implementation follows Szeliski's book convention, where contrastt is defined as
+    an multiplicative operation. Beware that other frameworks might use different conventions.
     The input image is expected to be in the range of [0, 1].
 
     Args:
         input: Image to be adjusted in the shape of :math:`(*, H, W)`.
-        contrast_factor: Contrast adjust factor per element
+        factor: Contrast adjust factor per element
             in the batch. 0 generates a completely black image, 1 does not modify
             the input image while any other non-negative number modify the
             brightness by this factor.
@@ -269,7 +270,7 @@ def adjust_contrast(input: Tensor, contrast_factor: Union[float, Tensor]) -> Ten
                   [0.5000, 0.5000]]]])
 
         >>> x = torch.ones(2, 5, 3, 3)
-        >>> y = Tensor([0.65, 0.50])
+        >>> y = torch.tensor([0.65, 0.50])
         >>> adjust_contrast(x, y).shape
         torch.Size([2, 5, 3, 3])
     """
@@ -277,27 +278,28 @@ def adjust_contrast(input: Tensor, contrast_factor: Union[float, Tensor]) -> Ten
     if not isinstance(input, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
 
-    if not isinstance(contrast_factor, (float, Tensor)):
-        raise TypeError(f"The factor should be either a float or Tensor. " f"Got {type(contrast_factor)}")
+    if not isinstance(factor, (float, Tensor)):
+        raise TypeError(f"The factor should be either a float or Tensor. " f"Got {type(factor)}")
 
-    if isinstance(contrast_factor, float):
-        contrast_factor = Tensor([contrast_factor])
+    if isinstance(factor, float):
+        # TODO: figure out how to create later a tensor without importing torch
+        factor = torch.as_tensor(factor, device=input.device, dtype=input.dtype)
+    elif isinstance(factor, Tensor):
+        factor = factor.to(input.device, input.dtype)
 
-    contrast_factor = contrast_factor.to(input.device).to(input.dtype)
+    # make factor broadcastable
+    # TODO: find a more clean way to do this op without loops
+    for _ in range(len(input.shape) - len(factor.shape)):
+        factor = factor.unsqueeze_(dim=-1)
 
-    if (contrast_factor < 0).any():
-        raise ValueError(f"Contrast factor must be non-negative. Got {contrast_factor}")
-
-    for _ in range(len(input.shape) - len(contrast_factor.shape)):
-        contrast_factor = torch.unsqueeze(contrast_factor, dim=-1)
+    if (factor < 0).any():
+        raise ValueError(f"Contrast factor must be non-negative. Got {factor}")
 
     # Apply contrast factor to each channel
-    x_adjust: Tensor = input * contrast_factor
+    x_adjust: Tensor = input * factor
 
     # Truncate between pixel values
-    out: Tensor = torch.clamp(x_adjust, 0.0, 1.0)
-
-    return out
+    return x_adjust.clamp_(min=0.0, max=1.0)
 
 
 def adjust_brightness(input: Tensor, factor: Union[float, Tensor]) -> Tensor:
@@ -429,8 +431,8 @@ def solarize(
         torch.Size([1, 4, 3, 3])
 
         >>> x = torch.rand(2, 4, 3, 3)
-        >>> thresholds = Tensor([0.8, 0.5])
-        >>> additions = Tensor([-0.25, 0.25])
+        >>> thresholds = torch.tensor([0.8, 0.5])
+        >>> additions = torch.tensor([-0.25, 0.25])
         >>> solarize(x, thresholds, additions).shape
         torch.Size([2, 4, 3, 3])
     """
@@ -489,7 +491,7 @@ def posterize(input: Tensor, bits: Union[int, Tensor]) -> Tensor:
         >>> torch.testing.assert_allclose(x, out)
 
         >>> x = torch.rand(2, 6, 3, 3)
-        >>> bits = Tensor([4, 2])
+        >>> bits = torch.tensor([4, 2])
         >>> posterize(x, bits).shape
         torch.Size([2, 6, 3, 3])
     """
@@ -759,11 +761,11 @@ def invert(input: Tensor, max_val: Tensor = torch.tensor(1.0)) -> Tensor:
         torch.Size([1, 2, 4, 4])
 
         >>> img = 255. * torch.rand(1, 2, 3, 4, 4)
-        >>> invert(img, Tensor(255.)).shape
+        >>> invert(img, torch.as_tensor(255.).shape
         torch.Size([1, 2, 3, 4, 4])
 
         >>> img = torch.rand(1, 3, 4, 4)
-        >>> invert(img, Tensor([[[[1.]]]])).shape
+        >>> invert(img, torch.as_tensor([[[[1.]]]])).shape
         torch.Size([1, 3, 4, 4])
     """
     if not isinstance(input, Tensor):
@@ -985,11 +987,11 @@ class Invert(nn.Module):
         torch.Size([1, 2, 4, 4])
 
         >>> img = 255. * torch.rand(1, 2, 3, 4, 4)
-        >>> Invert(Tensor(255.))(img).shape
+        >>> Invert(torch.as_tensor(255.))(img).shape
         torch.Size([1, 2, 3, 4, 4])
 
         >>> img = torch.rand(1, 3, 4, 4)
-        >>> Invert(Tensor([[[[1.]]]]))(img).shape
+        >>> Invert(torch.as_tensor([[[[1.]]]]))(img).shape
         torch.Size([1, 3, 4, 4])
     """
 
