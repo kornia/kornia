@@ -173,7 +173,7 @@ class TestFindFundamental:
         assert gradcheck(epi.find_fundamental, (points1, points2, weights), raise_exception=True)
 
 
-class TestComputeCorrespondEpilimes:
+class TestComputeCorrespondEpilines:
     def test_smoke(self, device, dtype):
         point = torch.rand(1, 1, 2, device=device, dtype=dtype)
         F_mat = torch.rand(1, 3, 3, device=device, dtype=dtype)
