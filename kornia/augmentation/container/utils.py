@@ -207,12 +207,9 @@ class MaskApplyInverse(ApplyInverseImpl):
         """Disable all other additional inputs (e.g. ) for ImageSequential."""
 
         def f(*args, **kwargs):
-            if_return_trans = module.return_transform
             if_return_label = module.return_label
-            module.return_transform = False
             module.return_label = False
             out = module(*args, **kwargs)
-            module.return_transform = if_return_trans
             module.return_label = if_return_label
             return out
 
@@ -241,7 +238,7 @@ class MaskApplyInverse(ApplyInverseImpl):
             # TODO: Parametrize value to pad with across the board for different keys
             if 'values' in _param:
                 _param['values'] = torch.zeros_like(_param['values'])  # Always pad with zeros
-            input = module(input, params=_param, return_transform=False)
+            input = module(input, params=_param)
         elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
             _param = cast(List[ParamItem], _param)
             temp = module.apply_inverse_func

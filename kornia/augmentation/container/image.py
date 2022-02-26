@@ -247,7 +247,7 @@ class ImageSequential(SequentialBase):
 
     def get_transformation_matrix(
         self, input: torch.Tensor, params: Optional[List[ParamItem]] = None, recompute: bool = False
-    ) -> torch.Tensor:
+    ) -> Optional[torch.Tensor]:
         """Compute the transformation matrix according to the provided parameters.
 
             args:
@@ -260,20 +260,24 @@ class ImageSequential(SequentialBase):
             raise NotImplementedError("requires params to be provided.")
         named_modules: Iterator[Tuple[str, nn.Module]] = self.get_forward_sequence(params)
 
-        # Define as 1x3x3 for broadcasting
-        res_mat: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype)[None]
+        # Define as 1 for broadcasting
+        res_mat: Optional[torch.Tensor] = None
         for (_, module), param in zip(named_modules, params if params is not None else []):
-            if isinstance(module, (_AugmentationBase, MixAugmentationBase)):
+            if isinstance(module, (_AugmentationBase,)) and not isinstance(module, (MixAugmentationBase,)):
                 to_apply = param.data['batch_prob']  # type: ignore
                 ori_shape = input.shape
-                input = module.transform_tensor(input)
+                try:
+                    input = module.transform_tensor(input)
+                except ValueError:
+                    # Ignore error for 5-dim video
+                    pass
                 # Standardize shape
                 if recompute:
                     mat: torch.Tensor = kornia.eye_like(3, input)
                     mat[to_apply] = module.compute_transformation(input[to_apply], param.data)  # type: ignore
                 else:
                     mat = torch.as_tensor(module._transform_matrix, device=input.device, dtype=input.dtype)
-                res_mat = mat @ res_mat
+                res_mat = mat if res_mat is None else mat @ res_mat
                 input = module.transform_output_tensor(input, ori_shape)
                 if module.keepdim and ori_shape != input.shape:
                     res_mat = res_mat.squeeze()
@@ -283,7 +287,7 @@ class ImageSequential(SequentialBase):
                     mat = torch.as_tensor(module._transform_matrix, device=input.device, dtype=input.dtype)
                 else:
                     mat = module.get_transformation_matrix(input, param.data)  # type: ignore
-                res_mat = mat @ res_mat
+                res_mat = mat if res_mat is None else mat @ res_mat
         return res_mat
 
     def is_intensity_only(self, strict: bool = True) -> bool:

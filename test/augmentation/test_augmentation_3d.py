@@ -819,10 +819,9 @@ class TestCenterCrop3D:
     def test_transform(self, device, dtype):
         inp = torch.rand(1, 2, 5, 4, 8, device=device, dtype=dtype)
         aug = CenterCrop3D(2,)
-        out = CenterCrop3D(2,)(inp)
-        assert len(out) == 2
+        out = aug(inp)
         assert out.shape == (1, 2, 2, 2, 2)
-        assert aug._transform_matrix == (1, 4, 4)
+        assert aug._transform_matrix.shape == (1, 4, 4)
 
     def test_no_transform_tuple(self, device, dtype):
         inp = torch.rand(1, 2, 5, 4, 8, device=device, dtype=dtype)

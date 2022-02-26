@@ -142,7 +142,6 @@ class RandomCrop3D(AugmentationBase3D):
         self,
         input: torch.Tensor,
         params: Optional[Dict[str, torch.Tensor]] = None,
-        return_transform: Optional[bool] = None,
     ) -> torch.Tensor:
         input = self.precrop_padding(input)
-        return super().forward(input, params, return_transform)  # type:ignore
+        return super().forward(input, params)  # type:ignore

@@ -4,7 +4,12 @@ from typing import Any, List, Optional, Tuple, Union, cast
 
 import torch
 
-from kornia.augmentation import GeometricAugmentationBase2D, IntensityAugmentationBase2D, RandomErasing
+from kornia.augmentation import (
+    AugmentationBase3D,
+    GeometricAugmentationBase2D,
+    IntensityAugmentationBase2D,
+    RandomErasing
+)
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import SequentialBase
 from kornia.augmentation.container.image import ImageSequential, ParamItem
@@ -156,12 +161,19 @@ class AugmentationSequential(ImageSequential):
             raise NotImplementedError(f"The first input must be {DataKey.INPUT}.")
 
         self.contains_video_sequential: bool = False
+        self.contains_3d_augmentation: bool = False
         for arg in args:
             if isinstance(arg, PatchSequential) and not arg.is_intensity_only():
                 warnings.warn("Geometric transformation detected in PatchSeqeuntial, which would break bbox, mask.")
             if isinstance(arg, VideoSequential):
                 self.contains_video_sequential = True
-        self._transform_matrix: torch.Tensor
+            if isinstance(arg, AugmentationBase3D):
+                self.contains_3d_augmentation = True
+        self._transform_matrix: Optional[torch.Tensor] = None
+
+    @property
+    def transform_matrix(self,) -> Optional[torch.Tensor]:
+        return self._transform_matrix
 
     def inverse(  # type: ignore
         self,
@@ -308,15 +320,11 @@ class AugmentationSequential(ImageSequential):
             # image data must exist if params is not provided.
             if DataKey.INPUT in _data_keys:
                 _input = args[_data_keys.index(DataKey.INPUT)]
-                # If (input, mat) received.
-                if isinstance(_input, (tuple,)):
-                    inp = _input[0]
-                else:
-                    inp = _input
+                inp = _input
                 if isinstance(inp, (tuple, list)):
                     raise ValueError(f"`INPUT` should be a tensor but `{type(inp)}` received.")
                 # A video input shall be BCDHW while an image input shall be BCHW
-                if self.contains_video_sequential:
+                if self.contains_video_sequential or self.contains_3d_augmentation:
                     _, out_shape = self.autofill_dim(inp, dim_range=(3, 5))
                 else:
                     _, out_shape = self.autofill_dim(inp, dim_range=(2, 4))

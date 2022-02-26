@@ -180,12 +180,9 @@ class TestSequential:
                 c += 1
         assert c < 2
         aug.same_on_batch = True
-        aug.return_transform = True
         aug.keepdim = True
         for m in aug.children():
             assert m.same_on_batch is True, m.same_on_batch
-            if not isinstance(m, (MixAugmentationBase,)):
-                assert m.return_transform is True, m.return_transform
             assert m.keepdim is True, m.keepdim
 
     @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
@@ -283,11 +280,11 @@ class TestAugmentationSequential:
             K.RandomHorizontalFlip(p=1.0), data_keys=["input", "bbox"], same_on_batch=False
         )
 
-        aug_ver(inp.clone(), bbox.clone())
-        aug_hor(inp.clone(), bbox.clone())
+        out_ver = aug_ver(inp.clone(), bbox.clone())
+        out_hor = aug_hor(inp.clone(), bbox.clone())
 
-        assert_close(aug_ver._transform_matrix, expected_bbox_vertical_flip)
-        assert_close(aug_hor._transform_matrix, expected_bbox_horizontal_flip)
+        assert_close(out_ver[1], expected_bbox_vertical_flip)
+        assert_close(out_hor[1], expected_bbox_horizontal_flip)
 
     def test_random_crops_and_flips(self, device, dtype):
         width, height = 100, 100
@@ -475,7 +472,7 @@ class TestAugmentationSequential:
         assert out_inv[3].shape == keypoints.shape
 
         aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0))
-        assert aug(inp, data_keys=['input'])[0].shape == inp.shape
+        assert aug(inp, data_keys=['input']).shape == inp.shape
         aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0))
         assert aug(inp, data_keys=['input']).shape == inp.shape
         assert aug(mask, data_keys=['mask'], params=aug._params).shape == mask.shape
@@ -506,7 +503,7 @@ class TestAugmentationSequential:
             random_apply=random_apply,
         )
         out = aug(inp, mask, bbox, keypoints)
-        assert out[0][0].shape == inp.shape
+        assert out[0].shape == inp.shape
         assert out[1].shape == mask.shape
         assert out[2].shape == bbox.shape
         assert out[3].shape == keypoints.shape

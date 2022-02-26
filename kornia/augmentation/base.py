@@ -177,11 +177,16 @@ class _AugmentationBase(_BasicAugmentationBase):
         self.p = p
         self.p_batch = p_batch
         self.return_transform = return_transform
+        self._transform_matrix: torch.Tensor
         if return_transform is not None:
             raise ValueError(
                 "`return_transform` is deprecated. Please access the transformation matrix with "
-                "`._transform_matrix`. For chained matrices, please use `AugmentationSequential`.",
+                "`.transform_matrix`. For chained matrices, please use `AugmentationSequential`.",
             )
+
+    @property
+    def transform_matrix(self,) -> torch.Tensor:
+        return self._transform_matrix
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
