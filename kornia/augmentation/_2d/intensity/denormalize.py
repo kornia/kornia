@@ -17,6 +17,10 @@ class Denormalize(IntensityAugmentationBase2D):
     Args:
         mean: Mean for each channel.
         std: Standard deviations for each channel.
+        same_on_batch: apply the same transformation across the batch.
+        p: probability of applying the transformation.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+                 to the batch form (False).
 
     Return:
         Denormalised tensor with same size as input :math:`(*, C, H, W)`.
@@ -37,9 +41,9 @@ class Denormalize(IntensityAugmentationBase2D):
         self,
         mean: Union[torch.Tensor, Tuple[float], List[float], float],
         std: Union[torch.Tensor, Tuple[float], List[float], float],
-        return_transform: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
+        return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=True, keepdim=keepdim)
         if isinstance(mean, float):

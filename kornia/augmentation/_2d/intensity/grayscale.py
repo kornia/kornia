@@ -13,9 +13,6 @@ class RandomGrayscale(IntensityAugmentationBase2D):
 
     Args:
         p: probability of the image to be transformed to grayscale.
-        return_transform: if ``True`` return the matrix describing the transformation applied to each
-                          input tensor. If ``False`` and the input is a tuple the applied transformation
-                          won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False).
@@ -52,7 +49,11 @@ class RandomGrayscale(IntensityAugmentationBase2D):
     """
 
     def __init__(
-        self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.1, keepdim: bool = False
+        self,
+        same_on_batch: bool = False,
+        p: float = 0.1,
+        keepdim: bool = False,
+        return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
 

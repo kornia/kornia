@@ -58,11 +58,11 @@ class RandomPerspective(GeometricAugmentationBase2D):
         self,
         distortion_scale: Union[torch.Tensor, float] = 0.5,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False,
         same_on_batch: bool = False,
         align_corners: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
+        return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator = cast(rg.PerspectiveGenerator, rg.PerspectiveGenerator(distortion_scale))

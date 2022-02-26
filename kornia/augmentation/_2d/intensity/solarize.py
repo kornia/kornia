@@ -21,8 +21,6 @@ class RandomSolarize(IntensityAugmentationBase2D):
             If float x, addition will be generated from (-x, x).
             If tuple (x, y), addition will be generated from (x, y).
         same_on_batch: apply the same transformation across the batch.
-        return_transform: if ``True`` return the matrix describing the transformation applied to each
-            input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 
@@ -56,9 +54,9 @@ class RandomSolarize(IntensityAugmentationBase2D):
         thresholds: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.1,
         additions: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.1,
         same_on_batch: bool = False,
-        return_transform: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
+        return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator = cast(

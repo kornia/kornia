@@ -23,6 +23,7 @@ class RandomErasing(IntensityAugmentationBase2D):
         p: probability that the random erasing operation will be performed.
         scale: range of proportion of erased area against input image.
         ratio: range of aspect ratio of erased area.
+        value: the value to fill the erased area.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False).
@@ -58,10 +59,10 @@ class RandomErasing(IntensityAugmentationBase2D):
         scale: Union[torch.Tensor, Tuple[float, float]] = (0.02, 0.33),
         ratio: Union[torch.Tensor, Tuple[float, float]] = (0.3, 3.3),
         value: float = 0.0,
-        return_transform: bool = False,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
+        return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self.scale = scale

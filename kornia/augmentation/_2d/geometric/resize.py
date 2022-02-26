@@ -23,9 +23,9 @@ class Resize(GeometricAugmentationBase2D):
         size: Union[int, Tuple[int, int]],
         side: str = "short",
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False,
         align_corners: bool = True,
         p: float = 1.0,
+        return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=True, p_batch=p, keepdim=False)
         self._param_generator = cast(rg.ResizeGenerator, rg.ResizeGenerator(resize_to=size, side=side))
@@ -84,9 +84,9 @@ class LongestMaxSize(Resize):
         self,
         max_size: int,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False,
         align_corners: bool = True,
         p: float = 1.0,
+        return_transform: Optional[bool] = None,
     ) -> None:
         # TODO: Support max_size list input to randomly select from
         super().__init__(
@@ -110,9 +110,9 @@ class SmallestMaxSize(Resize):
         self,
         max_size: int,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False,
         align_corners: bool = True,
         p: float = 1.0,
+        return_transform: Optional[bool] = None,
     ) -> None:
         # TODO: Support max_size list input to randomly select from
         super().__init__(

@@ -17,9 +17,6 @@ class Normalize(IntensityAugmentationBase2D):
     Args:
         mean: Mean for each channel.
         std: Standard deviations for each channel.
-        return_transform: if ``True`` return the matrix describing the transformation applied to each
-                          input tensor. If ``False`` and the input is a tuple the applied transformation
-                          won't be concatenated.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
@@ -43,9 +40,9 @@ class Normalize(IntensityAugmentationBase2D):
         self,
         mean: Union[torch.Tensor, Tuple[float], List[float], float],
         std: Union[torch.Tensor, Tuple[float], List[float], float],
-        return_transform: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
+        return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=True, keepdim=keepdim)
         if isinstance(mean, float):

@@ -14,8 +14,7 @@ class RandomPerspective3D(AugmentationBase3D):
     Args:
         p: probability of the image being perspectively transformed.
         distortion_scale: it controls the degree of distortion and ranges from 0 to 1.
-        resample:
-        return_transform: if ``True`` return the matrix describing the transformation applied to each.
+        resample: resample mode from "nearest" (0) or "bilinear" (1).
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -68,11 +67,11 @@ class RandomPerspective3D(AugmentationBase3D):
         self,
         distortion_scale: Union[torch.Tensor, float] = 0.5,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False,
         same_on_batch: bool = False,
         align_corners: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
+        return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self.flags = dict(resample=Resample.get(resample), align_corners=align_corners)

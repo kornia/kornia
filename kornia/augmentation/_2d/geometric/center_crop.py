@@ -67,10 +67,10 @@ class CenterCrop(GeometricAugmentationBase2D):
         size: Union[int, Tuple[int, int]],
         align_corners: bool = True,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
         cropping_mode: str = "slice",
+        return_transform: Optional[bool] = None,
     ) -> None:
         # same_on_batch is always True for CenterCrop
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.

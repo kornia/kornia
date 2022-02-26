@@ -1,7 +1,7 @@
 import torch
 
 import kornia
-from kornia.augmentation.base import TensorWithTransformMat, _AugmentationBase
+from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import _transform_input, _validate_input_dtype
 
 
@@ -16,14 +16,12 @@ class AugmentationBase2D(_AugmentationBase):
           element-wise for a batch.
         p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
           probabilities batch-wise.
-        return_transform: if ``True`` return the matrix describing the geometric transformation applied to each
-          input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it to the batch
           form ``False``.
     """
 
-    def __check_batching__(self, input: TensorWithTransformMat):
+    def __check_batching__(self, input: torch.Tensor):
         if isinstance(input, tuple):
             inp, mat = input
             if len(inp.shape) == 4:

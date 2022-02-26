@@ -50,10 +50,10 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
         align_corners: bool = False,
         mode: str = "bilinear",
         padding_mode: str = "zeros",
-        return_transform: bool = False,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
+        return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim

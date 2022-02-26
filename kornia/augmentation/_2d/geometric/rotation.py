@@ -70,11 +70,11 @@ class RandomRotation(GeometricAugmentationBase2D):
         self,
         degrees: Union[torch.Tensor, float, Tuple[float, float], List[float]],
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False,
         same_on_batch: bool = False,
         align_corners: bool = True,
         p: float = 0.5,
         keepdim: bool = False,
+        return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator = cast(

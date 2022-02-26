@@ -39,7 +39,7 @@ class RandomAffine3D(AugmentationBase3D):
             will be applied.
             If shear is a tuple of 6 tuples, a shear to the i-th facet in the range (-shear[i, 0], shear[i, 1])
             will be applied.
-        resample:
+        resample: resample mode from "nearest" (0) or "bilinear" (1).
         return_transform: if ``True`` return the matrix describing the transformation
             applied to each.
         same_on_batch: apply the same transformation across the batch.
@@ -113,11 +113,11 @@ class RandomAffine3D(AugmentationBase3D):
             ],
         ] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False,
         same_on_batch: bool = False,
         align_corners: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
+        return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self.degrees = degrees

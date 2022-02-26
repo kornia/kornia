@@ -44,10 +44,10 @@ class RandomFisheye(GeometricAugmentationBase2D):
         center_x: torch.Tensor,
         center_y: torch.Tensor,
         gamma: torch.Tensor,
-        return_transform: bool = False,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
+        return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim

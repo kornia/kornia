@@ -5,7 +5,6 @@ from torch.nn.functional import pad
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
-from kornia.augmentation.base import TensorWithTransformMat
 from kornia.augmentation.utils import _transform_input, _transform_output_shape
 from kornia.constants import Resample
 from kornia.geometry.transform import crop_by_transform_mat, get_perspective_transform
@@ -82,12 +81,12 @@ class RandomCrop(GeometricAugmentationBase2D):
         fill: int = 0,
         padding_mode: str = "constant",
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False,
         same_on_batch: bool = False,
         align_corners: bool = True,
         p: float = 1.0,
         keepdim: bool = False,
         cropping_mode: str = "slice",
+        return_transform: Optional[bool] = None,
     ) -> None:
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
         super().__init__(
@@ -199,7 +198,7 @@ class RandomCrop(GeometricAugmentationBase2D):
 
     def inverse(
         self,
-        input: TensorWithTransformMat,
+        input: torch.Tensor,
         params: Optional[Dict[str, torch.Tensor]] = None,
         size: Optional[Tuple[int, int]] = None,
         **kwargs,
@@ -228,10 +227,9 @@ class RandomCrop(GeometricAugmentationBase2D):
 
     def forward(
         self,
-        input: TensorWithTransformMat,
+        input: torch.Tensor,
         params: Optional[Dict[str, torch.Tensor]] = None,
-        return_transform: Optional[bool] = None,
-    ) -> TensorWithTransformMat:
+    ) -> torch.Tensor:
         padding_size = params.get("padding_size") if params else None
         if padding_size is not None:
             input_pad = padding_size.unique(dim=0).cpu().squeeze().numpy().tolist()
@@ -251,7 +249,7 @@ class RandomCrop(GeometricAugmentationBase2D):
             input_pad = self.compute_padding(input_temp.shape) if input_pad is None else input_pad
             _input = self.precrop_padding(input_temp, input_pad)  # type: ignore
             _input = _transform_output_shape(_input, ori_shape) if self.keepdim else _input  # type:ignore
-        out = super().forward(_input, params, return_transform)
+        out = super().forward(_input, params)  # type:ignore
 
         # Update the actual input size for inverse
         if "padding_size" not in self._params:

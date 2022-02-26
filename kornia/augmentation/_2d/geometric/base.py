@@ -4,7 +4,6 @@ from typing import Dict, Optional, Tuple, cast
 import torch
 
 from kornia.augmentation._2d.base import AugmentationBase2D
-from kornia.augmentation.base import TensorWithTransformMat
 from kornia.augmentation.utils import _transform_output_shape
 from kornia.utils.helpers import _torch_inverse_cast
 
@@ -56,18 +55,15 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
 
     def inverse(
         self,
-        input: TensorWithTransformMat,
+        input: torch.Tensor,
         params: Optional[Dict[str, torch.Tensor]] = None,
         size: Optional[Tuple[int, int]] = None,
         **kwargs,
     ) -> torch.Tensor:
-        if isinstance(input, (list, tuple)):
-            input, transform = input
-        else:
-            transform = self.get_transformation_matrix(input, params)
         if params is not None:
             transform = self.identity_matrix(input)
             transform[params['batch_prob']] = self.compute_transformation(input[params['batch_prob']], params)
+        transform = self.get_transformation_matrix(input, params)
 
         ori_shape = input.shape
         in_tensor = self.transform_tensor(input)

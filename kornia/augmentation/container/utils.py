@@ -8,7 +8,7 @@ import torch.nn as nn
 
 import kornia  # lazy loading for circular dependencies
 from kornia.augmentation import GeometricAugmentationBase2D, MixAugmentationBase, RandomCrop, RandomErasing
-from kornia.augmentation.base import TensorWithTransformMat, _AugmentationBase
+from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import ParamItem
 from kornia.constants import DataKey
 from kornia.geometry.bbox import transform_bbox
@@ -142,8 +142,8 @@ class InputApplyInverse(ApplyInverseImpl):
 
     @classmethod
     def apply_trans(  # type: ignore
-        cls, input: TensorWithTransformMat, label: Optional[torch.Tensor], module: nn.Module, param: ParamItem
-    ) -> Tuple[TensorWithTransformMat, Optional[torch.Tensor]]:
+        cls, input: torch.Tensor, label: Optional[torch.Tensor], module: nn.Module, param: ParamItem
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """Apply a transformation with respect to the parameters.
 
         Args:
@@ -527,12 +527,12 @@ class ApplyInverse:
     @classmethod
     def apply_by_key(
         cls,
-        input: TensorWithTransformMat,
+        input: torch.Tensor,
         label: Optional[torch.Tensor],
         module: nn.Module,
         param: ParamItem,
         dcate: Union[str, int, DataKey] = DataKey.INPUT,
-    ) -> Tuple[TensorWithTransformMat, Optional[torch.Tensor]]:
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """Apply a transformation with respect to the parameters.
 
         Args:

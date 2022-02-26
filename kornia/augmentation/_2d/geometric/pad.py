@@ -51,8 +51,8 @@ class PadTo(GeometricAugmentationBase2D):
         size: Tuple[int, int],
         pad_mode: str = "constant",
         pad_value: Union[int, float] = 0,
-        return_transform: bool = False,
         keepdim: bool = False,
+        return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(p=1.0, return_transform=return_transform, same_on_batch=True, p_batch=1.0, keepdim=keepdim)
         self.flags = dict(size=size, pad_mode=pad_mode, pad_value=pad_value)
