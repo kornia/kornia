@@ -7,6 +7,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.augmentation import (
+    AugmentationSequential,
     CenterCrop,
     ColorJitter,
     Denormalize,
@@ -32,7 +33,6 @@ from kornia.augmentation import (
     RandomVerticalFlip,
     Resize,
     SmallestMaxSize,
-    AugmentationSequential,
 )
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import Resample, pi

@@ -3,7 +3,6 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia
-from kornia.augmentation.container.augment import AugmentationSequential
 import kornia.testing as utils  # test utils
 from kornia.augmentation import (
     CenterCrop3D,
@@ -16,6 +15,7 @@ from kornia.augmentation import (
     RandomRotation3D,
     RandomVerticalFlip3D,
 )
+from kornia.augmentation.container.augment import AugmentationSequential
 from kornia.testing import assert_close
 
 

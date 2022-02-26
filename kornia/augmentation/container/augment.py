@@ -8,7 +8,7 @@ from kornia.augmentation import (
     AugmentationBase3D,
     GeometricAugmentationBase2D,
     IntensityAugmentationBase2D,
-    RandomErasing
+    RandomErasing,
 )
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import SequentialBase
