@@ -250,7 +250,7 @@ class ImageSequential(SequentialBase):
     ) -> Optional[torch.Tensor]:
         """Compute the transformation matrix according to the provided parameters.
 
-        args:
+        Args:
             input: the input tensor.
             params: params for the sequence.
             recompute: if to recompute the transformation matrix according to the params.

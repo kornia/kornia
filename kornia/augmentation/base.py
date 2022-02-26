@@ -71,9 +71,9 @@ class _BasicAugmentationBase(nn.Module):
         """Standardize input tensors."""
         raise NotImplementedError
 
-    def transform_output_tensor(self, output: torch.Tensor, ori_shape: Tuple) -> torch.Tensor:
+    def transform_output_tensor(self, output: torch.Tensor, original_shape: Tuple) -> torch.Tensor:
         """Standardize output tensors."""
-        return _transform_output_shape(output, ori_shape) if self.keepdim else output
+        return _transform_output_shape(output, original_shape) if self.keepdim else output
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         if self._param_generator is not None:
