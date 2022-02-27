@@ -55,14 +55,17 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
         size: Optional[Tuple[int, int]] = None,
         **kwargs,
     ) -> Tensor:
-        if params is not None:
-            transform = self.identity_matrix(input)
-            transform[params['batch_prob']] = self.compute_transformation(input[params['batch_prob']], params)
-        transform = self.get_transformation_matrix(input, params)
-
         ori_shape = input.shape
         in_tensor = self.transform_tensor(input)
         batch_shape = input.shape
+
+        if params is not None:
+            transform = self.identity_matrix(in_tensor)
+            transform[params['batch_prob']] = self.compute_transformation(in_tensor[params['batch_prob']], params)
+
+        # Avoid recompute.
+        transform = self.get_transformation_matrix(in_tensor, params)
+
         if params is None:
             params = self._params
         if size is None and "forward_input_shape" in params:
@@ -72,7 +75,7 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
         if 'batch_prob' not in params:
             params['batch_prob'] = as_tensor([True] * batch_shape[0])
             warnings.warn("`batch_prob` is not found in params. Will assume applying on all data.")
-        output = input.clone()
+        output = in_tensor.clone()
         to_apply = params['batch_prob']
         # if no augmentation needed
         if to_apply.any() is False:

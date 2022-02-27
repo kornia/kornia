@@ -302,7 +302,7 @@ def crop_by_indices(
             No effect for upscaling.
     """
     B, C, _, _ = input.shape
-    src = torch.as_tensor(src_box, device=input.device, dtype=torch.long).numpy()
+    src = torch.as_tensor(src_box, device=input.device, dtype=torch.long)
     x1 = src[:, 0, 0]
     x2 = src[:, 1, 0] + 1
     y1 = src[:, 0, 1]
@@ -327,8 +327,12 @@ def crop_by_indices(
         h, w = infer_bbox_shape(src)
         size = h.unique(sorted=False), w.unique(sorted=False)
     out = torch.empty(B, C, *size, device=input.device, dtype=input.dtype)
-    for i in range(B):
-        if size is not None and out.shape[-2:] != size:
+    # Find out the cropped shapes that need to be resized.
+    shape_list = torch.stack([y2 - y1, x2 - x1], dim=-1)
+    _size = torch.as_tensor(size, device=shape_list.device, dtype=shape_list.dtype)
+    same_sized = (shape_list == _size).all(-1)
+    for i, same in enumerate(same_sized):
+        if not same:
             out[i] = resize(
                 input[i:i + 1, :, y1[i]:y2[i], x1[i]:x2[i]],
                 size,

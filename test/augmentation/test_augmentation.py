@@ -405,7 +405,7 @@ class TestCenterCropAlternative(CommonTests):
         expected_transformation = torch.tensor(
             [[[1.0, 0.0, -1.0], [0.0, 1.0, -1.0], [0.0, 0.0, 1.0]]], device=self.device, dtype=self.dtype
         ).repeat(2, 1, 1)
-        parameters = {"size": (2, 2), "align_corners": True, "resample": 0}
+        parameters = {"size": (2, 2), "align_corners": True, "resample": 0, "cropping_mode": "resample"}
         self._test_random_p_1_implementation(
             input_tensor=input_tensor,
             expected_output=expected_output,
