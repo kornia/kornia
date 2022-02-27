@@ -1,6 +1,6 @@
 from typing import Dict, Optional, Tuple, Union, cast
 
-from torch import Tensor, Size
+from torch import Size, Tensor
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.base import AugmentationBase3D

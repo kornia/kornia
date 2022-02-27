@@ -4,8 +4,8 @@ import torch
 
 from kornia.geometry.bbox import infer_bbox_shape, validate_bbox
 
-from .imgwarp import get_perspective_transform, warp_affine
 from .affwarp import resize
+from .imgwarp import get_perspective_transform, warp_affine
 
 __all__ = [
     "crop_and_resize",
