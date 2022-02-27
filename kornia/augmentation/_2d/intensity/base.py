@@ -1,6 +1,6 @@
 from typing import Dict
 
-import torch
+from torch import Tensor
 
 from kornia.augmentation._2d.base import AugmentationBase2D
 
@@ -21,5 +21,5 @@ class IntensityAugmentationBase2D(AugmentationBase2D):
           to the batch form ``False``.
     """
 
-    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
         return self.identity_matrix(input)

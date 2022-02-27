@@ -261,6 +261,16 @@ class TestAugmentationSequential:
         assert out_inv[2].shape == bbox.shape
         assert out_inv[3].shape == points.shape
 
+    def test_3d_augmentations(self, device, dtype):
+        input = torch.randn(2, 2, 3, 5, 6, device=device, dtype=dtype)
+        aug_list = K.AugmentationSequential(
+            K.RandomAffine3D(360., p=1.),
+            K.RandomHorizontalFlip3D(p=1.),
+            data_keys=["input"],
+        )
+        out = aug_list(input)
+        assert out.shape == input.shape
+
     def test_random_flips(self, device, dtype):
         inp = torch.randn(1, 3, 510, 1020, device=device, dtype=dtype)
         bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)

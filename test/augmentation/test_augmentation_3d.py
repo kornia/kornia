@@ -64,9 +64,9 @@ class TestRandomHorizontalFlip3D:
         identity = identity.to(device)
 
         assert (f(input) == expected).all()
-        assert (f._transform_matrix == expected_transform).all()
+        assert (f.transform_matrix == expected_transform).all()
         assert (f1(input) == input).all()
-        assert (f1._transform_matrix == identity).all()
+        assert (f1.transform_matrix == identity).all()
 
     def test_batch_random_hflip(self, device):
 
@@ -94,7 +94,7 @@ class TestRandomHorizontalFlip3D:
         identity = identity.repeat(5, 1, 1)  # 5 x 4 x 4
 
         assert (f(input) == expected).all()
-        assert (f._transform_matrix == expected_transform).all()
+        assert (f.transform_matrix == expected_transform).all()
 
     def test_same_on_batch(self, device):
         f = RandomHorizontalFlip3D(p=0.5, same_on_batch=True)
@@ -120,7 +120,7 @@ class TestRandomHorizontalFlip3D:
         expected_transform_1 = expected_transform_1.to(device)
 
         assert (f(input) == input).all()
-        assert (f._transform_matrix == expected_transform_1).all()
+        assert (f.transform_matrix == expected_transform_1).all()
 
     def test_gradcheck(self, device):
         input = torch.rand((1, 3, 3)).to(device)  # 3 x 3
@@ -182,9 +182,9 @@ class TestRandomVerticalFlip3D:
         )  # 1 x 4 x 4
 
         assert_close(f(input), expected)
-        assert_close(f._transform_matrix, expected_transform)
+        assert_close(f.transform_matrix, expected_transform)
         assert_close(f1(input), input)
-        assert_close(f1._transform_matrix, identity)
+        assert_close(f1.transform_matrix, identity)
 
     def test_batch_random_vflip(self, device):
 
@@ -213,9 +213,9 @@ class TestRandomVerticalFlip3D:
         identity = identity.repeat(5, 1, 1)  # 5 x 4 x 4
 
         assert_close(f(input), expected)
-        assert_close(f._transform_matrix, expected_transform)
+        assert_close(f.transform_matrix, expected_transform)
         assert_close(f1(input), input)
-        assert_close(f1._transform_matrix, identity)
+        assert_close(f1.transform_matrix, identity)
 
     def test_same_on_batch(self, device):
         f = RandomVerticalFlip3D(p=0.5, same_on_batch=True)
@@ -240,7 +240,7 @@ class TestRandomVerticalFlip3D:
         expected_transform_1 = expected_transform @ expected_transform
 
         assert_close(f(input), input)
-        assert_close(f._transform_matrix, expected_transform_1)
+        assert_close(f.transform_matrix, expected_transform_1)
 
     def test_gradcheck(self, device):
         input = torch.rand((1, 3, 3)).to(device)  # 4 x 4
@@ -302,9 +302,9 @@ class TestRandomDepthicalFlip3D:
         )  # 4 x 4
 
         assert_close(f(input), expected)
-        assert_close(f._transform_matrix, expected_transform)
+        assert_close(f.transform_matrix, expected_transform)
         assert_close(f1(input), input)
-        assert_close(f1._transform_matrix, identity)
+        assert_close(f1.transform_matrix, identity)
 
     def test_batch_random_dflip(self, device):
 
@@ -344,9 +344,9 @@ class TestRandomDepthicalFlip3D:
         identity = identity.repeat(5, 1, 1)  # 5 x 4 x 4
 
         assert_close(f(input), expected)
-        assert_close(f._transform_matrix, expected_transform)
+        assert_close(f.transform_matrix, expected_transform)
         assert_close(f1(input), input)
-        assert_close(f1._transform_matrix, identity)
+        assert_close(f1.transform_matrix, identity)
 
     def test_same_on_batch(self, device):
         f = RandomDepthicalFlip3D(p=0.5, same_on_batch=True)
@@ -380,7 +380,7 @@ class TestRandomDepthicalFlip3D:
         expected_transform_1 = expected_transform @ expected_transform
 
         assert_close(f(input), input)
-        assert_close(f._transform_matrix, expected_transform_1)
+        assert_close(f.transform_matrix, expected_transform_1)
 
     def test_gradcheck(self, device):
         input = torch.rand((1, 3, 3)).to(device)  # 4 x 4
@@ -465,7 +465,7 @@ class TestRandomRotation3D:
 
         out = f(input)
         assert_close(out, expected, rtol=1e-6, atol=1e-4)
-        assert_close(f._transform_matrix, expected_transform, rtol=1e-6, atol=1e-4)
+        assert_close(f.transform_matrix, expected_transform, rtol=1e-6, atol=1e-4)
 
     def test_batch_random_rotation(self, device, dtype):
 
@@ -559,7 +559,7 @@ class TestRandomRotation3D:
 
         out = f(input)
         assert_close(out, expected, rtol=1e-6, atol=1e-4)
-        assert_close(f._transform_matrix, expected_transform, rtol=1e-6, atol=1e-4)
+        assert_close(f.transform_matrix, expected_transform, rtol=1e-6, atol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
         f = RandomRotation3D(degrees=40, same_on_batch=True)
@@ -629,7 +629,7 @@ class TestRandomRotation3D:
 
         out = f(input)
         assert_close(out, expected, rtol=1e-6, atol=1e-4)
-        assert_close(f._transform_matrix, expected_transform, rtol=1e-6, atol=1e-4)
+        assert_close(f.transform_matrix, expected_transform, rtol=1e-6, atol=1e-4)
 
     def test_gradcheck(self, device):
 
@@ -821,7 +821,7 @@ class TestCenterCrop3D:
         aug = CenterCrop3D(2,)
         out = aug(inp)
         assert out.shape == (1, 2, 2, 2, 2)
-        assert aug._transform_matrix.shape == (1, 4, 4)
+        assert aug.transform_matrix.shape == (1, 4, 4)
 
     def test_no_transform_tuple(self, device, dtype):
         inp = torch.rand(1, 2, 5, 4, 8, device=device, dtype=dtype)
@@ -861,9 +861,9 @@ class TestRandomEqualize3D:
         identity = kornia.eye_like(4, expected)
 
         assert_close(f(inputs3d), expected, rtol=1e-4, atol=1e-4)
-        assert_close(f._transform_matrix, identity, rtol=1e-4, atol=1e-4)
+        assert_close(f.transform_matrix, identity, rtol=1e-4, atol=1e-4)
         assert_close(f1(inputs3d), inputs3d, rtol=1e-4, atol=1e-4)
-        assert_close(f1._transform_matrix, identity, rtol=1e-4, atol=1e-4)
+        assert_close(f1.transform_matrix, identity, rtol=1e-4, atol=1e-4)
 
     def test_batch_random_equalize(self, device, dtype):
         f = RandomEqualize3D(p=1.0)
@@ -879,9 +879,9 @@ class TestRandomEqualize3D:
         identity = kornia.eye_like(4, expected)  # 2 x 4 x 4
 
         assert_close(f(inputs3d), expected, rtol=1e-4, atol=1e-4)
-        assert_close(f._transform_matrix, identity, rtol=1e-4, atol=1e-4)
+        assert_close(f.transform_matrix, identity, rtol=1e-4, atol=1e-4)
         assert_close(f1(inputs3d), inputs3d, rtol=1e-4, atol=1e-4)
-        assert_close(f1._transform_matrix, identity, rtol=1e-4, atol=1e-4)
+        assert_close(f1.transform_matrix, identity, rtol=1e-4, atol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
         f = RandomEqualize3D(p=0.5, same_on_batch=True)
@@ -936,4 +936,4 @@ class TestRandomAffine3D:
         expected_transform = expected_transform.repeat(5, 1, 1)  # 5 x 4 x 4
 
         assert (f(tensor) == expected).all()
-        assert (f._transform_matrix == expected_transform).all()
+        assert (f.transform_matrix == expected_transform).all()

@@ -1,6 +1,6 @@
 from typing import Dict, Optional, Tuple, Union, cast
 
-import torch
+from torch import Tensor
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
@@ -48,7 +48,7 @@ class RandomPosterize(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        bits: Union[int, Tuple[int, int], torch.Tensor] = 3,
+        bits: Union[int, Tuple[int, int], Tensor] = 3,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
@@ -59,6 +59,6 @@ class RandomPosterize(IntensityAugmentationBase2D):
         self._param_generator = cast(rg.PosterizeGenerator, rg.PosterizeGenerator(bits))
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+    ) -> Tensor:
         return posterize(input, params["bits_factor"].to(input.device))

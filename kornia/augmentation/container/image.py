@@ -52,7 +52,6 @@ class ImageSequential(SequentialBase):
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
         ...     kornia.enhance.Invert(),
         ...     kornia.augmentation.RandomMixUp(p=1.0),
-        ...     return_transform=True,
         ...     same_on_batch=True,
         ...     random_apply=10,
         ... )
@@ -60,8 +59,8 @@ class ImageSequential(SequentialBase):
         >>> lab
         tensor([[0.0000, 1.0000, 0.1214],
                 [1.0000, 0.0000, 0.1214]])
-        >>> out[0].shape, out[1].shape
-        (torch.Size([2, 3, 5, 6]), torch.Size([2, 3, 3]))
+        >>> out.shape
+        torch.Size([2, 3, 5, 6])
 
         Reproduce with provided params.
         >>> out2, lab2 = aug_list(input, label=label, params=aug_list._params)
@@ -95,6 +94,11 @@ class ImageSequential(SequentialBase):
         random_apply_weights: Optional[List[float]] = None,
         if_unsupported_ops: str = "raise",
     ) -> None:
+        if return_transform is not None:
+            raise ValueError(
+                "`return_transform` is deprecated. Please access"
+                " `.transform_matrix` in `AugmentationSequential` instead."
+            )
         super().__init__(*args, same_on_batch=same_on_batch, return_transform=return_transform, keepdim=keepdim)
 
         self.random_apply: Union[Tuple[int, int], bool] = self._read_random_apply(random_apply, len(args))

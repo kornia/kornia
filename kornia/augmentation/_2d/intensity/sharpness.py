@@ -1,6 +1,6 @@
 from typing import Dict, Optional, Tuple, Union, cast
 
-import torch
+from torch import Tensor
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
@@ -46,7 +46,7 @@ class RandomSharpness(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        sharpness: Union[torch.Tensor, float, Tuple[float, float], torch.Tensor] = 0.5,
+        sharpness: Union[Tensor, float, Tuple[float, float], Tensor] = 0.5,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
@@ -58,7 +58,7 @@ class RandomSharpness(IntensityAugmentationBase2D):
         )
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+    ) -> Tensor:
         factor = params["sharpness"]
         return sharpness(input, factor)

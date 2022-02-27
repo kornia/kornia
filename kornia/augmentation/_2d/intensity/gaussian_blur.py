@@ -1,6 +1,6 @@
 from typing import Dict, Optional, Tuple
 
-import torch
+from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.constants import BorderType
@@ -63,8 +63,8 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         self.flags = dict(kernel_size=kernel_size, sigma=sigma, border_type=BorderType.get(border_type))
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+    ) -> Tensor:
         return gaussian_blur2d(
             input, self.flags["kernel_size"], self.flags["sigma"], self.flags["border_type"].name.lower()
         )

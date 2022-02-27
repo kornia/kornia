@@ -1,6 +1,7 @@
 from typing import Dict, Optional
 
 import torch
+from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 
@@ -45,11 +46,11 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
         )
         self.flags = dict(mean=mean, std=std)
 
-    def generate_parameters(self, shape: torch.Size) -> Dict[str, torch.Tensor]:
+    def generate_parameters(self, shape: torch.Size) -> Dict[str, Tensor]:
         noise = torch.randn(shape)
         return dict(noise=noise)
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+    ) -> Tensor:
         return input + params["noise"].to(input.device) * self.flags["std"] + self.flags["mean"]

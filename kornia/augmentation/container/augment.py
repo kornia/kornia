@@ -68,7 +68,6 @@ class AugmentationSequential(ImageSequential):
         ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
         ...     data_keys=["input", "mask", "bbox", "keypoints"],
-        ...     return_transform=False,
         ...     same_on_batch=False,
         ...     random_apply=10,
         ... )
@@ -167,6 +166,7 @@ class AugmentationSequential(ImageSequential):
                 warnings.warn("Geometric transformation detected in PatchSeqeuntial, which would break bbox, mask.")
             if isinstance(arg, VideoSequential):
                 self.contains_video_sequential = True
+            # NOTE: only for images are supported for 3D.
             if isinstance(arg, AugmentationBase3D):
                 self.contains_3d_augmentation = True
         self._transform_matrix: Optional[torch.Tensor] = None

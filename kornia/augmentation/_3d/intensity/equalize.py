@@ -1,6 +1,6 @@
 from typing import Dict, Optional
 
-import torch
+from torch import Tensor
 
 from kornia.augmentation._3d.base import AugmentationBase3D
 from kornia.enhance import equalize3d
@@ -25,6 +25,7 @@ class RandomEqualize3D(AugmentationBase3D):
         applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
+        >>> import torch
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 3, 3, 3)
         >>> aug = RandomEqualize3D(p=1.0)
@@ -57,10 +58,10 @@ class RandomEqualize3D(AugmentationBase3D):
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
 
-    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
         return self.identity_matrix(input)
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+    ) -> Tensor:
         return equalize3d(input)

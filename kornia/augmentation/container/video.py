@@ -105,7 +105,6 @@ class VideoSequential(ImageSequential):
         super().__init__(
             *args,
             same_on_batch=None,
-            return_transform=None,
             keepdim=None,
             random_apply=random_apply,
             random_apply_weights=random_apply_weights,

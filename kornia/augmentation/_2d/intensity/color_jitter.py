@@ -1,6 +1,6 @@
 from typing import Dict, List, Optional, Tuple, Union, cast
 
-import torch
+from torch import Tensor
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
@@ -58,10 +58,10 @@ class ColorJitter(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        brightness: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.0,
-        contrast: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.0,
-        saturation: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.0,
-        hue: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.0,
+        brightness: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
+        contrast: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
+        saturation: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
+        hue: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
         same_on_batch: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
@@ -77,8 +77,8 @@ class ColorJitter(IntensityAugmentationBase2D):
         )
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+    ) -> Tensor:
         transforms = [
             lambda img: adjust_brightness(img, params["brightness_factor"] - 1),
             lambda img: adjust_contrast(img, params["contrast_factor"]),

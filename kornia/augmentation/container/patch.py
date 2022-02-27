@@ -140,7 +140,6 @@ class PatchSequential(ImageSequential):
         super().__init__(
             *args,
             same_on_batch=same_on_batch,
-            return_transform=False,
             keepdim=keepdim,
             random_apply=_random_apply,
             random_apply_weights=random_apply_weights,

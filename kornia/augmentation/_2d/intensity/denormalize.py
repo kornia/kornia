@@ -1,6 +1,7 @@
 from typing import Dict, List, Optional, Tuple, Union
 
 import torch
+from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.enhance import denormalize
@@ -39,8 +40,8 @@ class Denormalize(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        mean: Union[torch.Tensor, Tuple[float], List[float], float],
-        std: Union[torch.Tensor, Tuple[float], List[float], float],
+        mean: Union[Tensor, Tuple[float], List[float], float],
+        std: Union[Tensor, Tuple[float], List[float], float],
         p: float = 1.0,
         keepdim: bool = False,
         return_transform: Optional[bool] = None,
@@ -61,6 +62,6 @@ class Denormalize(IntensityAugmentationBase2D):
         self.flags = dict(mean=mean, std=std)
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+    ) -> Tensor:
         return denormalize(input, self.flags["mean"], self.flags["std"])

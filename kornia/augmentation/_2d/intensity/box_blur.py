@@ -1,6 +1,6 @@
 from typing import Dict, Optional, Tuple
 
-import torch
+from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.filters import box_blur
@@ -51,10 +51,10 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
         )
         self.flags = dict(kernel_size=kernel_size, border_type=border_type, normalized=normalized)
 
-    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
         return self.identity_matrix(input)
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+    ) -> Tensor:
         return box_blur(input, self.flags["kernel_size"], self.flags["border_type"], self.flags["normalized"])

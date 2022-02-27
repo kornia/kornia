@@ -1,6 +1,6 @@
 from typing import Dict, Optional, Union, cast
 
-import torch
+from torch import Tensor
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.base import AugmentationBase3D
@@ -30,6 +30,7 @@ class RandomPerspective3D(AugmentationBase3D):
         applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
+        >>> import torch
         >>> rng = torch.manual_seed(0)
         >>> inputs= torch.tensor([[[
         ...    [[1., 0., 0.],
@@ -65,7 +66,7 @@ class RandomPerspective3D(AugmentationBase3D):
 
     def __init__(
         self,
-        distortion_scale: Union[torch.Tensor, float] = 0.5,
+        distortion_scale: Union[Tensor, float] = 0.5,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         same_on_batch: bool = False,
         align_corners: bool = False,
@@ -77,13 +78,13 @@ class RandomPerspective3D(AugmentationBase3D):
         self.flags = dict(resample=Resample.get(resample), align_corners=align_corners)
         self._param_generator = cast(rg.PerspectiveGenerator3D, rg.PerspectiveGenerator3D(distortion_scale))
 
-    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
         return get_perspective_transform3d(params["start_points"], params["end_points"]).to(input)
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        transform = cast(torch.Tensor, transform)
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        transform = cast(Tensor, transform)
         return warp_perspective3d(
             input,
             transform,

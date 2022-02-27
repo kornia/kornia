@@ -1,6 +1,7 @@
 from typing import Dict, Optional, Union
 
 import torch
+from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.enhance import invert
@@ -41,7 +42,7 @@ class RandomInvert(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        max_val: Union[float, torch.Tensor] = torch.tensor(1.0),
+        max_val: Union[float, Tensor] = torch.tensor(1.0),
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
@@ -53,6 +54,6 @@ class RandomInvert(IntensityAugmentationBase2D):
         self.flags = dict(max_val=max_val)
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+    ) -> Tensor:
         return invert(input, torch.as_tensor(self.flags["max_val"], device=input.device, dtype=input.dtype))

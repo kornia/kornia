@@ -164,7 +164,7 @@ class CommonTests(BaseTester):
 
         output = augmentation(test_input, params=generated_params)
         assert output.shape[0] == batch_shape[0]
-        assert augmentation._transform_matrix.shape == expected_transformation_shape
+        assert augmentation.transform_matrix.shape == expected_transformation_shape
 
     def _test_cardinality_implementation(self, input_shape, expected_output_shape, params):
 
@@ -196,7 +196,7 @@ class CommonTests(BaseTester):
         assert output.shape == expected_output.shape
         assert_close(output, expected_output.to(device=self.device, dtype=self.dtype), atol=1e-4, rtol=1e-4)
         if expected_transformation is not None:
-            transform = augmentation._transform_matrix
+            transform = augmentation.transform_matrix
             assert_close(transform, expected_transformation, atol=1e-4, rtol=1e-4)
 
     def _test_module_implementation(self, params):
@@ -208,13 +208,13 @@ class CommonTests(BaseTester):
 
         torch.manual_seed(42)
         out1 = augmentation(input_tensor)
-        transform1 = augmentation._transform_matrix
+        transform1 = augmentation.transform_matrix
         out2 = augmentation(out1)
-        transform = augmentation._transform_matrix @ transform1
+        transform = augmentation.transform_matrix @ transform1
 
         torch.manual_seed(42)
         out_sequence = augmentation_sequence(input_tensor)
-        transform_sequence = augmentation_sequence._transform_matrix
+        transform_sequence = augmentation_sequence.transform_matrix
 
         assert out1.shape == out_sequence.shape
         assert transform.shape == transform_sequence.shape
@@ -229,7 +229,7 @@ class CommonTests(BaseTester):
 
         augmentation = self._create_augmentation_from_params(**params, p=1.0)
         output = augmentation(input_tensor)
-        transform = augmentation._transform_matrix
+        transform = augmentation.transform_matrix
 
         if (transform == kornia.eye_like(3, transform)).all():
             pytest.skip("Test not relevant for intensity augmentations.")
@@ -698,9 +698,9 @@ class TestRandomHorizontalFlip:
         )  # 3 x 3
 
         assert (f(input) == expected).all()
-        assert (f._transform_matrix == expected_transform).all()
+        assert (f.transform_matrix == expected_transform).all()
         assert (f1(input) == input).all()
-        assert (f1._transform_matrix == identity).all()
+        assert (f1.transform_matrix == identity).all()
         assert (f.inverse(expected) == input).all()
         assert (f1.inverse(expected) == expected).all()
 
@@ -731,9 +731,9 @@ class TestRandomHorizontalFlip:
         identity = identity.repeat(5, 1, 1)  # 5 x 3 x 3
 
         assert (f(input) == expected).all()
-        assert (f._transform_matrix == expected_transform).all()
+        assert (f.transform_matrix == expected_transform).all()
         assert (f1(input) == input).all()
-        assert (f1._transform_matrix == identity).all()
+        assert (f1.transform_matrix == identity).all()
         assert (f.inverse(expected) == input).all()
         assert (f1.inverse(expected) == expected).all()
 
@@ -762,7 +762,7 @@ class TestRandomHorizontalFlip:
 
         out = f(input)
         assert (out == input).all()
-        assert (f._transform_matrix == expected_transform_1).all()
+        assert (f.transform_matrix == expected_transform_1).all()
         assert (f.inverse(out) == input).all()
 
     def test_random_hflip_coord_check(self, device, dtype):
@@ -790,7 +790,7 @@ class TestRandomHorizontalFlip:
         )  # 1 x 1 x 3 x 4
 
         output = f(input)
-        transform = f._transform_matrix
+        transform = f.transform_matrix
         result_coordinates = transform @ input_coordinates
         # NOTE: without rounding it might produce unexpected results
         input_coordinates = input_coordinates.round().long()
@@ -852,9 +852,9 @@ class TestRandomVerticalFlip:
         )  # 3 x 3
 
         assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
-        assert_close(f._transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
+        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
         assert_close(f1(input), input, atol=1e-4, rtol=1e-4)
-        assert_close(f1._transform_matrix, identity, atol=1e-4, rtol=1e-4)
+        assert_close(f1.transform_matrix, identity, atol=1e-4, rtol=1e-4)
 
         assert_close(f.inverse(expected), input, atol=1e-4, rtol=1e-4)
         assert_close(f1.inverse(input), input, atol=1e-4, rtol=1e-4)
@@ -885,7 +885,7 @@ class TestRandomVerticalFlip:
         identity = identity.repeat(5, 1, 1)  # 5 x 3 x 3
 
         assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
-        assert_close(f._transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
+        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
         assert_close(f.inverse(expected), input, atol=1e-4, rtol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
@@ -912,7 +912,7 @@ class TestRandomVerticalFlip:
         expected_transform_1 = expected_transform @ expected_transform
 
         assert_close(f(input), input, atol=1e-4, rtol=1e-4)
-        assert_close(f._transform_matrix, expected_transform_1, atol=1e-4, rtol=1e-4)
+        assert_close(f.transform_matrix, expected_transform_1, atol=1e-4, rtol=1e-4)
 
     def test_random_vflip_coord_check(self, device, dtype):
 
@@ -939,7 +939,7 @@ class TestRandomVerticalFlip:
         )  # 1 x 1 x 3 x 4
 
         output = f(input)
-        transform = f._transform_matrix
+        transform = f.transform_matrix
         result_coordinates = transform @ input_coordinates
         # NOTE: without rounding it might produce unexpected results
         input_coordinates = input_coordinates.round().long()
@@ -988,7 +988,7 @@ class TestColorJitter:
         expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
 
         assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
-        assert_close(f._transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
+        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
 
     def test_color_jitter_batch(self, device, dtype):
         f = ColorJitter()
@@ -999,7 +999,7 @@ class TestColorJitter:
         expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).expand((2, 3, 3))  # 2 x 3 x 3
 
         assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
-        assert_close(f._transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
+        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
         f = ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.1, same_on_batch=True)
@@ -1267,7 +1267,7 @@ class TestColorJitter:
         expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
 
         assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
-        assert_close(f._transform_matrix, expected_transform, atol=1e-4, rtol=1e-5)
+        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-5)
 
     def test_color_jitter_batch_sequential(self, device, dtype):
         f = AugmentationSequential(ColorJitter(), ColorJitter())
@@ -1279,7 +1279,7 @@ class TestColorJitter:
 
         assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
         assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
-        assert_close(f._transform_matrix, expected_transform, atol=1e-4, rtol=1e-5)
+        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-5)
 
     def test_gradcheck(self, device, dtype):
         input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
@@ -1346,7 +1346,7 @@ class TestRandomGrayscale:
 
         expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
         f(input)
-        assert_close(f._transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
+        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
         f = RandomGrayscale(p=0.5, same_on_batch=True)
@@ -1564,7 +1564,7 @@ class TestRandomGrayscale:
         expected_transform = expected_transform.to(device)
 
         assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
-        assert_close(f._transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
+        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         input = torch.rand((3, 5, 5), device=device, dtype=dtype)  # 3 x 3
@@ -1588,11 +1588,11 @@ class TestCenterCrop:
         aug = CenterCrop(2)
         out = aug(inp)
         assert out.shape == (1, 2, 2, 2)
-        assert aug._transform_matrix.shape == (1, 3, 3)
+        assert aug.transform_matrix.shape == (1, 3, 3)
         aug = CenterCrop(2, cropping_mode="resample")
         out = aug(inp)
         assert out.shape == (1, 2, 2, 2)
-        assert aug._transform_matrix.shape == (1, 3, 3)
+        assert aug.transform_matrix.shape == (1, 3, 3)
         assert aug.inverse(out).shape == (1, 2, 5, 4)
 
     def test_no_transform_tuple(self, device, dtype):
@@ -1671,7 +1671,7 @@ class TestRandomRotation:
 
         out = f(input)
         assert_close(out, expected, rtol=1e-6, atol=1e-4)
-        assert_close(f._transform_matrix, expected_transform, rtol=1e-6, atol=1e-4)
+        assert_close(f.transform_matrix, expected_transform, rtol=1e-6, atol=1e-4)
 
     def test_batch_random_rotation(self, device, dtype):
 
@@ -1721,7 +1721,7 @@ class TestRandomRotation:
 
         out = f(input)
         assert_close(out, expected, rtol=1e-4, atol=1e-4)
-        assert_close(f._transform_matrix, expected_transform, rtol=1e-4, atol=1e-4)
+        assert_close(f.transform_matrix, expected_transform, rtol=1e-4, atol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
         f = RandomRotation(degrees=40, same_on_batch=True)
@@ -1767,7 +1767,7 @@ class TestRandomRotation:
 
         out = f(input)
         assert_close(out, expected, rtol=1e-4, atol=1e-4)
-        assert_close(f._transform_matrix, expected_transform, rtol=1e-4, atol=1e-4)
+        assert_close(f.transform_matrix, expected_transform, rtol=1e-4, atol=1e-4)
 
     def test_gradcheck(self, device, dtype):
 
@@ -2221,9 +2221,9 @@ class TestRandomEqualize:
         identity = kornia.eye_like(3, expected)  # 3 x 3
 
         assert_close(f(inputs), expected, rtol=1e-4, atol=1e-4)
-        assert_close(f._transform_matrix, identity, rtol=1e-4, atol=1e-4)
+        assert_close(f.transform_matrix, identity, rtol=1e-4, atol=1e-4)
         assert_close(f1(inputs), inputs, rtol=1e-4, atol=1e-4)
-        assert_close(f1._transform_matrix, identity, rtol=1e-4, atol=1e-4)
+        assert_close(f1.transform_matrix, identity, rtol=1e-4, atol=1e-4)
 
     def test_batch_random_equalize(self, device, dtype):
         f = RandomEqualize(p=1.0)
@@ -2262,9 +2262,9 @@ class TestRandomEqualize:
         identity = kornia.eye_like(3, expected)  # 2 x 3 x 3
 
         assert_close(f(inputs), expected, rtol=1e-4, atol=1e-4)
-        assert_close(f._transform_matrix, identity, rtol=1e-4, atol=1e-4)
+        assert_close(f.transform_matrix, identity, rtol=1e-4, atol=1e-4)
         assert_close(f1(inputs), inputs, rtol=1e-4, atol=1e-4)
-        assert_close(f1._transform_matrix, identity, rtol=1e-4, atol=1e-4)
+        assert_close(f1.transform_matrix, identity, rtol=1e-4, atol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
         f = RandomEqualize(p=0.5, same_on_batch=True)
@@ -2378,9 +2378,9 @@ class TestNormalize:
         identity = kornia.eye_like(3, expected)
 
         assert_close(f(inputs), expected, rtol=1e-4, atol=1e-4)
-        assert_close(f._transform_matrix, identity, rtol=1e-4, atol=1e-4)
+        assert_close(f.transform_matrix, identity, rtol=1e-4, atol=1e-4)
         assert_close(f1(inputs), inputs, rtol=1e-4, atol=1e-4)
-        assert_close(f1._transform_matrix, identity, rtol=1e-4, atol=1e-4)
+        assert_close(f1.transform_matrix, identity, rtol=1e-4, atol=1e-4)
 
     def test_batch_random_normalize(self, device, dtype):
         f = Normalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=1.0)
@@ -2393,9 +2393,9 @@ class TestNormalize:
         identity = kornia.eye_like(3, expected)
 
         assert_close(f(inputs), expected, rtol=1e-4, atol=1e-4)
-        assert_close(f._transform_matrix, identity, rtol=1e-4, atol=1e-4)
+        assert_close(f.transform_matrix, identity, rtol=1e-4, atol=1e-4)
         assert_close(f1(inputs), inputs, rtol=1e-4, atol=1e-4)
-        assert_close(f1._transform_matrix, identity, rtol=1e-4, atol=1e-4)
+        assert_close(f1.transform_matrix, identity, rtol=1e-4, atol=1e-4)
 
     def test_gradcheck(self, device, dtype):
 
@@ -2431,9 +2431,9 @@ class TestDenormalize:
         identity = kornia.eye_like(3, expected)
 
         assert_close(f(inputs), expected, rtol=1e-4, atol=1e-4)
-        assert_close(f._transform_matrix, identity, rtol=1e-4, atol=1e-4)
+        assert_close(f.transform_matrix, identity, rtol=1e-4, atol=1e-4)
         assert_close(f1(inputs), inputs, rtol=1e-4, atol=1e-4)
-        assert_close(f1._transform_matrix, identity, rtol=1e-4, atol=1e-4)
+        assert_close(f1.transform_matrix, identity, rtol=1e-4, atol=1e-4)
 
     def test_batch_random_denormalize(self, device, dtype):
         f = Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=1.0)
@@ -2446,9 +2446,9 @@ class TestDenormalize:
         identity = kornia.eye_like(3, expected)
 
         assert_close(f(inputs), expected, rtol=1e-4, atol=1e-4)
-        assert_close(f._transform_matrix, identity, rtol=1e-4, atol=1e-4)
+        assert_close(f.transform_matrix, identity, rtol=1e-4, atol=1e-4)
         assert_close(f1(inputs), inputs, rtol=1e-4, atol=1e-4)
-        assert_close(f1._transform_matrix, identity, rtol=1e-4, atol=1e-4)
+        assert_close(f1.transform_matrix, identity, rtol=1e-4, atol=1e-4)
 
     def test_gradcheck(self, device, dtype):
 

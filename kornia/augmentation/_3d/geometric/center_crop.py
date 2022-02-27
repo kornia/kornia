@@ -1,6 +1,6 @@
 from typing import Dict, Optional, Tuple, Union, cast
 
-import torch
+from torch import Tensor, Size
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.base import AugmentationBase3D
@@ -33,6 +33,7 @@ class CenterCrop3D(AugmentationBase3D):
         applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
+        >>> import torch
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.randn(1, 1, 2, 4, 6)
         >>> inputs
@@ -80,20 +81,20 @@ class CenterCrop3D(AugmentationBase3D):
             raise Exception(f"Invalid size type. Expected (int, tuple(int, int int). Got: {size}.")
         self.flags = dict(size=size, align_corners=align_corners, resample=Resample.get(resample))
 
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+    def generate_parameters(self, batch_shape: Size) -> Dict[str, Tensor]:
         return rg.center_crop_generator3d(
             batch_shape[0], batch_shape[-3], batch_shape[-2], batch_shape[-1], self.flags["size"], device=self.device
         )
 
-    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        transform: torch.Tensor = get_perspective_transform3d(params["src"].to(input), params["dst"].to(input))
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
+        transform: Tensor = get_perspective_transform3d(params["src"].to(input), params["dst"].to(input))
         transform = transform.expand(input.shape[0], -1, -1)
         return transform
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        transform = cast(torch.Tensor, transform)
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        transform = cast(Tensor, transform)
         return crop_by_transform_mat3d(
             input,
             transform,

@@ -1,6 +1,6 @@
 from typing import Dict, List, Optional, Tuple, Union, cast
 
-import torch
+from torch import Tensor
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
@@ -51,8 +51,8 @@ class RandomSolarize(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        thresholds: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.1,
-        additions: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.1,
+        thresholds: Union[Tensor, float, Tuple[float, float], List[float]] = 0.1,
+        additions: Union[Tensor, float, Tuple[float, float], List[float]] = 0.1,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
@@ -67,10 +67,10 @@ class RandomSolarize(IntensityAugmentationBase2D):
         )
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+    ) -> Tensor:
         thresholds = params["thresholds"]
-        additions: Optional[torch.Tensor]
+        additions: Optional[Tensor]
         if "additions" in params:
             additions = params["additions"]
         else:

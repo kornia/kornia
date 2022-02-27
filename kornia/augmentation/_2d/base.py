@@ -1,4 +1,4 @@
-import torch
+from torch import Tensor, float16, float32, float64
 
 import kornia
 from kornia.augmentation.base import _AugmentationBase
@@ -21,7 +21,7 @@ class AugmentationBase2D(_AugmentationBase):
           form ``False``.
     """
 
-    def __check_batching__(self, input: torch.Tensor):
+    def __check_batching__(self, input: Tensor):
         if isinstance(input, tuple):
             inp, mat = input
             if len(inp.shape) == 4:
@@ -37,11 +37,11 @@ class AugmentationBase2D(_AugmentationBase):
             else:
                 raise ValueError(f'Unrecognized output shape. Expected 2, 3, or 4, got {len(inp.shape)}')
 
-    def transform_tensor(self, input: torch.Tensor) -> torch.Tensor:
+    def transform_tensor(self, input: Tensor) -> Tensor:
         """Convert any incoming (H, W), (C, H, W) and (B, C, H, W) into (B, C, H, W)."""
-        _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+        _validate_input_dtype(input, accepted_dtypes=[float16, float32, float64])
         return _transform_input(input)
 
-    def identity_matrix(self, input) -> torch.Tensor:
+    def identity_matrix(self, input) -> Tensor:
         """Return 3x3 identity matrix."""
         return kornia.eye_like(3, input)

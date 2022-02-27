@@ -1,6 +1,6 @@
 from typing import Dict, Optional, Tuple, Union, cast
 
-import torch
+from torch import Tensor
 from torch.nn.functional import pad
 
 from kornia.augmentation import random_generator as rg
@@ -48,6 +48,7 @@ class RandomCrop3D(AugmentationBase3D):
         applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
+        >>> import torch
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.randn(1, 1, 3, 3, 3)
         >>> aug = RandomCrop3D((2, 2, 2), p=1.)
@@ -94,7 +95,7 @@ class RandomCrop3D(AugmentationBase3D):
         )
         self._param_generator = cast(rg.CropGenerator3D, rg.CropGenerator3D(size, None))
 
-    def precrop_padding(self, input: torch.Tensor) -> torch.Tensor:
+    def precrop_padding(self, input: Tensor) -> Tensor:
         padding = self.flags["padding"]
         if padding is not None:
             if isinstance(padding, int):
@@ -121,15 +122,15 @@ class RandomCrop3D(AugmentationBase3D):
 
         return input
 
-    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        transform: torch.Tensor = get_perspective_transform3d(params["src"].to(input), params["dst"].to(input))
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
+        transform: Tensor = get_perspective_transform3d(params["src"].to(input), params["dst"].to(input))
         transform = transform.expand(input.shape[0], -1, -1)
         return transform
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        transform = cast(torch.Tensor, transform)
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        transform = cast(Tensor, transform)
         return crop_by_transform_mat3d(
             input,
             transform,
@@ -140,8 +141,8 @@ class RandomCrop3D(AugmentationBase3D):
 
     def forward(  # type: ignore
         self,
-        input: torch.Tensor,
-        params: Optional[Dict[str, torch.Tensor]] = None,
-    ) -> torch.Tensor:
+        input: Tensor,
+        params: Optional[Dict[str, Tensor]] = None,
+    ) -> Tensor:
         input = self.precrop_padding(input)
         return super().forward(input, params)  # type:ignore

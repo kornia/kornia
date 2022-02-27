@@ -1,7 +1,8 @@
 from typing import Dict, Optional, Tuple, Union, cast
 
-import torch
+from torch import Tensor
 
+import kornia
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.base import AugmentationBase3D
 from kornia.constants import Resample
@@ -43,10 +44,11 @@ class RandomRotation3D(AugmentationBase3D):
         applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
+        >>> import torch
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 3, 3, 3)
-        >>> aug = RandomRotation3D((15., 20., 20.), p=1.0, return_transform=True)
-        >>> aug(input)
+        >>> aug = RandomRotation3D((15., 20., 20.), p=1.0)
+        >>> aug(input), aug.transform_matrix
         (tensor([[[[[0.3819, 0.4886, 0.2111],
                    [0.1196, 0.3833, 0.4722],
                    [0.3432, 0.5951, 0.4223]],
@@ -72,7 +74,7 @@ class RandomRotation3D(AugmentationBase3D):
     def __init__(
         self,
         degrees: Union[
-            torch.Tensor,
+            Tensor,
             float,
             Tuple[float, float, float],
             Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]],
@@ -88,16 +90,16 @@ class RandomRotation3D(AugmentationBase3D):
         self.flags = dict(resample=Resample.get(resample), align_corners=align_corners)
         self._param_generator = cast(rg.RotationGenerator3D, rg.RotationGenerator3D(degrees))
 
-    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        yaw: torch.Tensor = params["yaw"].to(input)
-        pitch: torch.Tensor = params["pitch"].to(input)
-        roll: torch.Tensor = params["roll"].to(input)
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
+        yaw: Tensor = params["yaw"].to(input)
+        pitch: Tensor = params["pitch"].to(input)
+        roll: Tensor = params["roll"].to(input)
 
-        center: torch.Tensor = _compute_tensor_center3d(input)
-        rotation_mat: torch.Tensor = _compute_rotation_matrix3d(yaw, pitch, roll, center.expand(yaw.shape[0], -1))
+        center: Tensor = _compute_tensor_center3d(input)
+        rotation_mat: Tensor = _compute_rotation_matrix3d(yaw, pitch, roll, center.expand(yaw.shape[0], -1))
 
         # rotation_mat is B x 3 x 4 and we need a B x 4 x 4 matrix
-        trans_mat: torch.Tensor = torch.eye(4, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
+        trans_mat: Tensor = kornia.eye_like(4, input)
         trans_mat[:, 0] = rotation_mat[:, 0]
         trans_mat[:, 1] = rotation_mat[:, 1]
         trans_mat[:, 2] = rotation_mat[:, 2]
@@ -105,9 +107,9 @@ class RandomRotation3D(AugmentationBase3D):
         return trans_mat
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        transform = cast(torch.Tensor, transform)
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        transform = cast(Tensor, transform)
         return affine3d(
             input, transform[..., :3, :4], self.flags["resample"].name.lower(), "zeros", self.flags["align_corners"]
         )
