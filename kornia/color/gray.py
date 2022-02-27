@@ -1,7 +1,10 @@
+from typing import cast
+
 import torch
 import torch.nn as nn
 
 from kornia.color.rgb import bgr_to_rgb
+from kornia.core.image import Image, ImageColor, Tensor
 
 
 def grayscale_to_rgb(image: torch.Tensor) -> torch.Tensor:
@@ -36,9 +39,7 @@ def grayscale_to_rgb(image: torch.Tensor) -> torch.Tensor:
     return rgb
 
 
-def rgb_to_grayscale(
-    image: torch.Tensor, rgb_weights: torch.Tensor = torch.tensor([0.299, 0.587, 0.114])
-) -> torch.Tensor:
+def rgb_to_grayscale(image: Image, rgb_weights: Tensor = torch.tensor([0.299, 0.587, 0.114])) -> Image:
     r"""Convert a RGB image to grayscale version of image.
 
     .. image:: _static/img/rgb_to_grayscale.png
@@ -60,21 +61,21 @@ def rgb_to_grayscale(
         >>> input = torch.rand(2, 3, 4, 5)
         >>> gray = rgb_to_grayscale(input) # 2x1x4x5
     """
-    if not isinstance(image, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
+    if not isinstance(image, (Image, Tensor)):
+        raise TypeError(f"Input type is not a Image or Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    if not isinstance(rgb_weights, torch.Tensor):
+    if not isinstance(rgb_weights, Tensor):
         raise TypeError(f"rgb_weights is not a torch.Tensor. Got {type(rgb_weights)}")
 
     if rgb_weights.shape[-1] != 3:
         raise ValueError(f"rgb_weights must have a shape of (*, 3). Got {rgb_weights.shape}")
 
-    r: torch.Tensor = image[..., 0:1, :, :]
-    g: torch.Tensor = image[..., 1:2, :, :]
-    b: torch.Tensor = image[..., 2:3, :, :]
+    r: Tensor = image[..., 0:1, :, :]
+    g: Tensor = image[..., 1:2, :, :]
+    b: Tensor = image[..., 2:3, :, :]
 
     if not torch.is_floating_point(image) and (image.dtype != rgb_weights.dtype):
         raise TypeError(
@@ -82,7 +83,14 @@ def rgb_to_grayscale(
         )
 
     w_r, w_g, w_b = rgb_weights.to(image).unbind()
-    return w_r * r + w_g * g + w_b * b
+
+    output = w_r * r + w_g * g + w_b * b
+
+    if isinstance(output, Image):
+        output.color = ImageColor.GRAY
+        output.is_normalized = image.is_normalized
+
+    return cast(Image, output)
 
 
 def bgr_to_grayscale(image: torch.Tensor) -> torch.Tensor:

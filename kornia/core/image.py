@@ -1,9 +1,7 @@
 from enum import Enum
-from typing import List, Tuple, Union
+from typing import Callable, List, Tuple, Union
 
-from kornia.color import bgr_to_grayscale, bgr_to_rgb, rgb_to_bgr, rgb_to_grayscale
 from kornia.core import Tensor
-from kornia.geometry.transform import hflip, vflip
 from kornia.utils import image_to_tensor, tensor_to_image
 
 
@@ -15,6 +13,7 @@ class ImageColor(Enum):
 
 class Image(Tensor):
     _color = ImageColor.RGB
+    _is_normalized = False
 
     @staticmethod
     def __new__(cls, data, color, *args, **kwargs):
@@ -23,9 +22,37 @@ class Image(Tensor):
     def __init__(self, data: Tensor, color: ImageColor) -> None:
         self._color = color
 
+        # TODO: need to propagate metadata
+        self._is_normalized: bool = False
+        self._mean: Union[float, Tensor] = 0.0  # or tensor
+        self._std: Union[float, Tensor] = 255.0  # or tensor
+
+    @property
+    def is_normalized(self) -> bool:
+        return self._is_normalized
+
+    @is_normalized.setter
+    def is_normalized(self, x: bool) -> None:
+        self._is_normalized = x
+
+    def get_mean(self) -> Union[float, Tensor]:
+        return self._mean
+
+    def set_mean(self, x: Union[float, Tensor]) -> None:
+        if not isinstance(x, (float, Tensor)):
+            raise TypeError(f"Unsupported type {type(x)}.")
+        self._mean = x
+
+    def get_std(self) -> Union[float, Tensor]:
+        return self._std
+
+    def set_std(self, x: Union[float, Tensor]) -> None:
+        if not isinstance(x, (float, Tensor)):
+            raise TypeError(f"Unsupported type {type(x)}.")
+        self._std = x
+
     @property
     def valid(self) -> bool:
-        # TODO: find a better way to do this
         return self.data.data_ptr is not None
 
     @property
@@ -41,7 +68,7 @@ class Image(Tensor):
         return self.data.shape[-2]
 
     @property
-    def resolution(self) -> Tuple[int, ...]:
+    def resolution(self) -> Tuple[int, int]:
         return tuple(self.data.shape[-2:])
 
     @property
@@ -52,20 +79,21 @@ class Image(Tensor):
     def color(self) -> ImageColor:
         return self._color
 
+    @color.setter
+    def color(self, x: ImageColor) -> None:
+        self._color = x
+
     @classmethod
     def from_tensor(cls, data: Tensor, color: ImageColor) -> 'Image':
         return cls(data, color)
 
-    # TODO: possibly call torch.as_tensor
     @classmethod
     def from_numpy(cls, data, color: ImageColor = ImageColor.RGB) -> 'Image':
-        data_t: Tensor = image_to_tensor(data)
-        return cls(data_t, color)
+        return cls(image_to_tensor(data), color)
 
     def to_numpy(self):
         return tensor_to_image(self.data, keepdim=True)
 
-    # TODO: possibly call torch.as_tensor
     @classmethod
     def from_list(cls, data: List[List[Union[float, int]]], color: ImageColor) -> 'Image':
         return cls(Tensor(data), color)
@@ -74,63 +102,25 @@ class Image(Tensor):
     def from_file(cls, file_path: str) -> 'Image':
         raise NotImplementedError("not implemented yet.")
 
-    # TODO: implement with another logic
-    def _to_grayscale(self, data: Tensor) -> Tensor:
-        if self.color == ImageColor.GRAY:
-            out = data
-        elif self.color == ImageColor.RGB:
-            out = rgb_to_grayscale(data)
-        elif self.color == ImageColor.BGR:
-            out = bgr_to_grayscale(data)
-        else:
-            raise NotImplementedError(f"Unsupported color: {self.color}.")
-        return out
+    def apply(self, handle: Callable, *args, **kwargs) -> 'Image':
+        return handle(self, *args, **kwargs)
 
-    def grayscale(self) -> 'Image':
-        gray = self._to_grayscale(self.data)
-        return Image(gray, ImageColor.GRAY)
+    def normalize(self) -> 'Image':
+        if self._is_normalized:
+            return self
+        data_norm = (self.data.float() - self._mean) / self._std
+        img_new = Image(data_norm, self.color)
+        img_new._is_normalized = True
+        return img_new
 
-    def grayscale_(self) -> 'Image':
-        self.data = self._to_grayscale(self.data)
-        self._color = ImageColor.GRAY
-        return self
+    def denormalize(self) -> 'Image':
+        import pdb
 
-    def _convert(self, color: ImageColor) -> Tuple[Tensor, ImageColor]:
-        if color == ImageColor.RGB:
-            if self.color == ImageColor.BGR:
-                data_out = bgr_to_rgb(self.data)
-                color_out = ImageColor.RGB
-        elif color == ImageColor.BGR:
-            if self.color == ImageColor.RGB:
-                data_out = rgb_to_bgr(self.data)
-                color_out = ImageColor.BGR
-        elif color == ImageColor.GRAY:
-            if self.color == ImageColor.BGR:
-                data_out = bgr_to_grayscale(self.data)
-                color_out = ImageColor.GRAY
-            elif self.color == ImageColor.RGB:
-                data_out = rgb_to_grayscale(self.data)
-                color_out = ImageColor.GRAY
-        else:
-            raise NotImplementedError(f"Unsupported color: {self.color}.")
-        return data_out, color_out
+        pdb.set_trace()
+        if not self._is_normalized:
+            return self
 
-    def convert(self, color: ImageColor) -> 'Image':
-        data, color = self._convert(color)
-        return Image(data, color)
-
-    def convert_(self, color: ImageColor) -> 'Image':
-        self.data, self._color = self._convert(color)
-        return self
-
-    def hflip(self) -> 'Image':
-        data = hflip(self.data)
-        return Image(data, self.color)
-
-    def vflip(self) -> 'Image':
-        data = vflip(self.data)
-        return Image(data, self.color)
-
-    # TODO: add the methods we need
-    # - lab, hsv, ...
-    # - erode, dilate, ...
+        data_norm = (self.data * self._std) + self._mean
+        img_new = Image(data_norm, self.color)
+        img_new._is_normalized = False
+        return img_new

@@ -53,9 +53,17 @@ class TestImage:
         assert not img.is_batch
 
     def test_grayscale(self):
-        data = torch.rand(3, 4, 5)
+        data = torch.randint(9, 255, (3, 4, 5), dtype=torch.uint8)
         img = Image.from_tensor(data, color=ImageColor.RGB)
-        img_gray = img.grayscale()
+
+        import pdb
+
+        pdb.set_trace()
+        img_norm = img.normalize()
+        assert img_norm.mean().item() < 1.0
+        assert img_norm.is_normalized
+
+        img_gray = img_norm.apply(rgb_to_grayscale)
         assert isinstance(img, Image)
         assert isinstance(img_gray, Image)
         assert img_gray.channels == 1
@@ -63,13 +71,8 @@ class TestImage:
         assert img_gray.width == 5
         assert img_gray.color == ImageColor.GRAY
         assert not img.is_batch
-        assert_close(img_gray, rgb_to_grayscale(img))
-        # inplace
-        img = img.grayscale_()
-        assert isinstance(img, Image)
-        assert img.channels == 1
-        assert img.height == 4
-        assert img.width == 5
-        assert img.color == ImageColor.GRAY
-        assert not img.is_batch
-        assert_close(img_gray, img)
+        assert_close(img_gray, rgb_to_grayscale(img_norm))
+
+        img_denorm = img_gray.denormalize()
+        assert img_denorm.mean().item() > 128.0
+        assert not img_denorm.is_normalized
