@@ -44,6 +44,19 @@ class TestRandomPerspective:
         assert out_perspective[1].shape == (1, 3, 3)
         assert aug.inverse(out_perspective).shape == x_data.shape
 
+    def test_smoke_transform_area_preserving(self, device):
+        x_data = torch.rand(1, 2, 4, 5).to(device)
+
+        aug = kornia.augmentation.RandomPerspective(0.5, p=0.5, return_transform=True, area_preserving=True)
+
+        out_perspective = aug(x_data)
+
+        assert isinstance(out_perspective, tuple)
+        assert len(out_perspective) == 2
+        assert out_perspective[0].shape == x_data.shape
+        assert out_perspective[1].shape == (1, 3, 3)
+        assert aug.inverse(out_perspective).shape == x_data.shape
+
     def test_no_transform_module(self, device):
         x_data = torch.rand(1, 2, 8, 9).to(device)
         aug = kornia.augmentation.RandomPerspective()

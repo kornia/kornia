@@ -23,7 +23,7 @@ class RandomPerspective(GeometricAugmentationBase2D):
         align_corners: interpolation flag.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
-
+        area_preserving: if ``True``, applies random offsets which preserve image area on average.
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
@@ -63,9 +63,13 @@ class RandomPerspective(GeometricAugmentationBase2D):
         align_corners: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
+        area_preserving: bool = False,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator = cast(rg.PerspectiveGenerator, rg.PerspectiveGenerator(distortion_scale))
+        self._param_generator = cast(
+            rg.PerspectiveGenerator,
+            rg.PerspectiveGenerator(distortion_scale, area_preserving=area_preserving)
+        )
         self.flags: Dict[str, Any] = dict(align_corners=align_corners, resample=Resample.get(resample))
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
