@@ -112,6 +112,7 @@ class ApplyInverseImpl(ApplyInverseInterface):
             mat = cast(torch.Tensor, module._transform_matrix)
         else:
             mat = cls._get_transformation(input, module, param)
+        mat = torch.as_tensor(mat, device=input.device, dtype=input.dtype)
 
         if mat is not None:
             transform: torch.Tensor = cls._get_inverse_transformation(mat)
