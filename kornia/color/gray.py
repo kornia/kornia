@@ -39,7 +39,7 @@ def grayscale_to_rgb(image: torch.Tensor) -> torch.Tensor:
     return rgb
 
 
-def rgb_to_grayscale(image: Image, rgb_weights: Tensor = torch.tensor([0.299, 0.587, 0.114])) -> Image:
+def rgb_to_grayscale(image: Image, rgb_weights: Tensor = Tensor([0.299, 0.587, 0.114])) -> Image:
     r"""Convert a RGB image to grayscale version of image.
 
     .. image:: _static/img/rgb_to_grayscale.png
@@ -73,22 +73,26 @@ def rgb_to_grayscale(image: Image, rgb_weights: Tensor = torch.tensor([0.299, 0.
     if rgb_weights.shape[-1] != 3:
         raise ValueError(f"rgb_weights must have a shape of (*, 3). Got {rgb_weights.shape}")
 
-    r: Tensor = image[..., 0:1, :, :]
-    g: Tensor = image[..., 1:2, :, :]
-    b: Tensor = image[..., 2:3, :, :]
-
-    if not torch.is_floating_point(image) and (image.dtype != rgb_weights.dtype):
+    if not image.is_floating_point and (image.dtype != rgb_weights.dtype):
         raise TypeError(
             f"Input image and rgb_weights should be of same dtype. Got {image.dtype} and {rgb_weights.dtype}"
         )
 
+    if isinstance(image, Image) and image.color is not ImageColor.RGB:
+        raise ValueError(f"Cannot convert to grayscale: {image.color}.")
+
+    # the rgb channels
+    r = image[..., 0:1, :, :]
+    g = image[..., 1:2, :, :]
+    b = image[..., 2:3, :, :]
+
+    # the weights to apply to each channel
     w_r, w_g, w_b = rgb_weights.to(image).unbind()
 
     output = w_r * r + w_g * g + w_b * b
 
     if isinstance(output, Image):
         output.color = ImageColor.GRAY
-        output.is_normalized = image.is_normalized
 
     return cast(Image, output)
 

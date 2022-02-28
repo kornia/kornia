@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Callable, List, Tuple, Union
+from typing import Any, Callable, Dict, List, Tuple, Union
 
 from kornia.core import Tensor
 from kornia.utils import image_to_tensor, tensor_to_image
@@ -12,44 +12,44 @@ class ImageColor(Enum):
 
 
 class Image(Tensor):
-    _color = ImageColor.RGB
-    _is_normalized = False
+    # defaults
+    _meta: Dict[str, Any] = {}
+    _meta['color'] = ImageColor.RGB
+    _meta['is_normalized'] = False
+    _meta['mean'] = 0.0
+    _meta['std'] = 255.0
 
     @staticmethod
-    def __new__(cls, data, color, *args, **kwargs):
-        return Tensor._make_subclass(cls, data)
+    def __new__(cls, data: Tensor, color: ImageColor, is_normalized: bool, *args, **kwargs):
+        return Tensor._make_subclass(cls, data, *args, **kwargs)
 
-    def __init__(self, data: Tensor, color: ImageColor) -> None:
-        self._color = color
-
-        # TODO: need to propagate metadata
-        self._is_normalized: bool = False
-        self._mean: Union[float, Tensor] = 0.0  # or tensor
-        self._std: Union[float, Tensor] = 255.0  # or tensor
+    def __init__(self, data: Tensor, color: ImageColor, is_normalized: bool) -> None:
+        self._meta['color'] = color
+        self._meta['is_normalized'] = is_normalized
 
     @property
     def is_normalized(self) -> bool:
-        return self._is_normalized
+        return self._meta['is_normalized']
 
     @is_normalized.setter
     def is_normalized(self, x: bool) -> None:
-        self._is_normalized = x
+        self._meta['is_normalized'] = x
 
     def get_mean(self) -> Union[float, Tensor]:
-        return self._mean
+        return self._meta['mean']
 
     def set_mean(self, x: Union[float, Tensor]) -> None:
         if not isinstance(x, (float, Tensor)):
             raise TypeError(f"Unsupported type {type(x)}.")
-        self._mean = x
+        self._meta['mean'] = x
 
     def get_std(self) -> Union[float, Tensor]:
-        return self._std
+        return self._meta['std']
 
     def set_std(self, x: Union[float, Tensor]) -> None:
         if not isinstance(x, (float, Tensor)):
             raise TypeError(f"Unsupported type {type(x)}.")
-        self._std = x
+        self._meta['std'] = x
 
     @property
     def valid(self) -> bool:
@@ -69,7 +69,7 @@ class Image(Tensor):
 
     @property
     def resolution(self) -> Tuple[int, int]:
-        return tuple(self.data.shape[-2:])
+        return (self.height, self.width)
 
     @property
     def width(self) -> int:
@@ -77,26 +77,26 @@ class Image(Tensor):
 
     @property
     def color(self) -> ImageColor:
-        return self._color
+        return self._meta['color']
 
     @color.setter
     def color(self, x: ImageColor) -> None:
-        self._color = x
+        self._meta['color'] = x
 
     @classmethod
-    def from_tensor(cls, data: Tensor, color: ImageColor) -> 'Image':
-        return cls(data, color)
+    def from_tensor(cls, data: Tensor, color: ImageColor, is_normalized: bool) -> 'Image':
+        return cls(data, color, is_normalized)
 
     @classmethod
-    def from_numpy(cls, data, color: ImageColor = ImageColor.RGB) -> 'Image':
-        return cls(image_to_tensor(data), color)
+    def from_numpy(cls, data, color: ImageColor, is_normalized: bool) -> 'Image':
+        return cls(image_to_tensor(data), color, is_normalized)
 
     def to_numpy(self):
         return tensor_to_image(self.data, keepdim=True)
 
     @classmethod
-    def from_list(cls, data: List[List[Union[float, int]]], color: ImageColor) -> 'Image':
-        return cls(Tensor(data), color)
+    def from_list(cls, data: List[List[Union[float, int]]], color: ImageColor, is_normalized: bool) -> 'Image':
+        return cls(Tensor(data), color, is_normalized)
 
     @classmethod
     def from_file(cls, file_path: str) -> 'Image':
@@ -106,21 +106,13 @@ class Image(Tensor):
         return handle(self, *args, **kwargs)
 
     def normalize(self) -> 'Image':
-        if self._is_normalized:
+        if self.is_normalized:
             return self
-        data_norm = (self.data.float() - self._mean) / self._std
-        img_new = Image(data_norm, self.color)
-        img_new._is_normalized = True
-        return img_new
+        data_norm = (self.data.float() - self.get_mean()) / self.get_std()
+        return Image(data_norm, self.color, is_normalized=True)
 
     def denormalize(self) -> 'Image':
-        import pdb
-
-        pdb.set_trace()
-        if not self._is_normalized:
+        if not self.is_normalized:
             return self
-
-        data_norm = (self.data * self._std) + self._mean
-        img_new = Image(data_norm, self.color)
-        img_new._is_normalized = False
-        return img_new
+        data_denorm = (self.data * self.get_std()) + self.get_mean()
+        return Image(data_denorm, self.color, is_normalized=False)
