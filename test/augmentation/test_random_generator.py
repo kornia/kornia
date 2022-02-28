@@ -294,7 +294,6 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
                 dtype=dtype,
             ),
         )
-        print(res['end_points'])
         assert res.keys() == expected.keys()
         assert_close(res['start_points'], expected['start_points'])
         assert_close(res['end_points'], expected['end_points'])
