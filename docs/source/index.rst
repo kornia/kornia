@@ -83,6 +83,7 @@ Join the community
    augmentation
    color
    contrib
+   core
    enhance
    feature
    filters
