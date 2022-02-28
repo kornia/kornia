@@ -312,7 +312,7 @@ def crop_by_indices(
         len(x1.unique(sorted=False)) == len(x2.unique(sorted=False)) == len(
             y1.unique(sorted=False)) == len(y2.unique(sorted=False)) == 1
     ):
-        out = input[..., y1[0]:y2[0], x1[0]:x2[0]]
+        out = input[..., y1[0]:y2[0], x1[0]:x2[0]]  # type:ignore
         if size is not None and out.shape[-2:] != size:
             return resize(
                 out,
@@ -334,7 +334,7 @@ def crop_by_indices(
     for i, same in enumerate(same_sized):
         if not same:
             out[i] = resize(
-                input[i:i + 1, :, y1[i]:y2[i], x1[i]:x2[i]],
+                input[i:i + 1, :, y1[i]:y2[i], x1[i]:x2[i]],  # type:ignore
                 size,
                 interpolation=interpolation,
                 align_corners=align_corners,
@@ -342,5 +342,5 @@ def crop_by_indices(
                 antialias=antialias
             )
         else:
-            out[i] = input[i:i + 1, :, y1[i]:y2[i], x1[i]:x2[i]]
+            out[i] = input[i:i + 1, :, y1[i]:y2[i], x1[i]:x2[i]]  # type:ignore
     return out

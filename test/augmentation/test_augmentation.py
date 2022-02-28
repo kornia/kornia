@@ -1949,12 +1949,13 @@ class TestRandomCrop:
     def test_padding_no_forward(self, device, dtype):
         torch.manual_seed(0)
         inp = torch.tensor([[[[3.0, 4.0, 5.0], [6.0, 7.0, 8.0]]]], device=device, dtype=dtype)
-        trans = torch.tensor([[[1.0, 2.0, 3.0], [3.0, 4.0, 5.0], [6.0, 7.0, 8.0]]], device=device, dtype=dtype)
+        trans = torch.eye(3, device=device, dtype=dtype)[None]
         # Not return transform
-        rc = RandomCrop(size=(2, 3), padding=(0, 1, 2, 3), fill=9, align_corners=True, p=0.0)
+        rc = RandomCrop(size=(2, 3), padding=(0, 1, 2, 3), fill=9, align_corners=True, p=0., cropping_mode="resample")
 
         out = rc(inp)
         assert_close(out, inp, atol=1e-4, rtol=1e-4)
+        assert_close(rc.transform_matrix, trans, atol=1e-4, rtol=1e-4)
 
     def test_pad_if_needed(self, device, dtype):
         torch.manual_seed(0)
