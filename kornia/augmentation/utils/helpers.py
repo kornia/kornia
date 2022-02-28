@@ -1,5 +1,5 @@
 from functools import wraps
-from typing import Callable, List, Optional, Tuple, Union, cast
+from typing import Callable, List, Tuple, Union, cast
 
 import torch
 from torch.distributions import Beta, Uniform
@@ -132,8 +132,8 @@ def _validate_input_dtype(input: torch.Tensor, accepted_dtypes: List) -> None:
 
 
 def _transform_output_shape(
-    output: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]], shape: Tuple
-) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    output: torch.Tensor, shape: Tuple
+) -> torch.Tensor:
     r"""Collapse the broadcasted batch dimensions an input tensor to be the specified shape.
     Args:
         input: torch.Tensor
@@ -142,28 +142,15 @@ def _transform_output_shape(
     Returns:
         torch.Tensor
     """
-    is_tuple = isinstance(output, tuple)
     out_tensor: torch.Tensor
-    trans_matrix: Optional[torch.Tensor]
-    if is_tuple:
-        out_tensor, trans_matrix = cast(Tuple[torch.Tensor, torch.Tensor], output)
-    else:
-        out_tensor = cast(torch.Tensor, output)
-        trans_matrix = None
-
-    if trans_matrix is not None:
-        if len(out_tensor.shape) > len(shape) and trans_matrix.shape[0] != 1:
-            raise AssertionError(
-                f'Dimension 0 of transformation matrix is ' f'expected to be 1, got {trans_matrix.shape[0]}'
-            )
-        trans_matrix = trans_matrix.squeeze(0)
+    out_tensor = cast(torch.Tensor, output)
 
     for dim in range(len(out_tensor.shape) - len(shape)):
         if out_tensor.shape[0] != 1:
             raise AssertionError(f'Dimension {dim} of input is ' f'expected to be 1, got {out_tensor.shape[0]}')
         out_tensor = out_tensor.squeeze(0)
 
-    return (out_tensor, trans_matrix) if is_tuple else out_tensor  # type: ignore
+    return out_tensor  # type: ignore
 
 
 def _validate_shape(shape: Union[Tuple, torch.Size], required_shapes: Tuple[str, ...] = ("BCHW",)) -> None:

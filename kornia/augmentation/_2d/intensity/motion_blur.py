@@ -1,6 +1,7 @@
 from typing import Dict, List, Optional, Tuple, Union, cast
 
 import torch
+from torch import Tensor
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
@@ -67,22 +68,22 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
     def __init__(
         self,
         kernel_size: Union[int, Tuple[int, int]],
-        angle: Union[torch.Tensor, float, Tuple[float, float]],
-        direction: Union[torch.Tensor, float, Tuple[float, float]],
+        angle: Union[Tensor, float, Tuple[float, float]],
+        direction: Union[Tensor, float, Tuple[float, float]],
         border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
         resample: Union[str, int, Resample] = Resample.NEAREST.name,
-        return_transform: bool = False,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
+        return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator = rg.MotionBlurGenerator(kernel_size, angle, direction)
         self.flags = dict(border_type=BorderType.get(border_type), resample=Resample.get(resample))
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+    ) -> Tensor:
         # sample a kernel size
         kernel_size_list: List[int] = params["ksize_factor"].tolist()
         idx: int = cast(int, torch.randint(len(kernel_size_list), (1,)).item())
