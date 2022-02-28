@@ -53,6 +53,7 @@ class SamplePadding(ConstantBase, Enum, metaclass=EnumMetaFlags):
     REFLECTION = 2
 
 
+# TODO: (low-priority) add INPUT3D, MASK3D, BBOX3D, etc.
 class DataKey(ConstantBase, Enum, metaclass=EnumMetaFlags):
     INPUT = 0
     MASK = 1

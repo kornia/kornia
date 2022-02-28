@@ -1,6 +1,7 @@
 from typing import Dict, Optional, Tuple, Union, cast
 
 import torch
+from torch import Tensor
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
@@ -20,10 +21,11 @@ class RandomErasing(IntensityAugmentationBase2D):
     between [ratio[0], ratio[1])
 
     Args:
-        p: probability that the random erasing operation will be performed.
         scale: range of proportion of erased area against input image.
         ratio: range of aspect ratio of erased area.
+        value: the value to fill the erased area.
         same_on_batch: apply the same transformation across the batch.
+        p: probability that the random erasing operation will be performed.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False).
 
@@ -55,13 +57,13 @@ class RandomErasing(IntensityAugmentationBase2D):
     # Note: Extra params, inplace=False in Torchvision.
     def __init__(
         self,
-        scale: Union[torch.Tensor, Tuple[float, float]] = (0.02, 0.33),
-        ratio: Union[torch.Tensor, Tuple[float, float]] = (0.3, 3.3),
+        scale: Union[Tensor, Tuple[float, float]] = (0.02, 0.33),
+        ratio: Union[Tensor, Tuple[float, float]] = (0.3, 3.3),
         value: float = 0.0,
-        return_transform: bool = False,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
+        return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self.scale = scale
@@ -70,8 +72,8 @@ class RandomErasing(IntensityAugmentationBase2D):
         self._param_generator = cast(rg.RectangleEraseGenerator, rg.RectangleEraseGenerator(scale, ratio, float(value)))
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+    ) -> Tensor:
         _, c, h, w = input.size()
         values = params["values"].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).repeat(1, *input.shape[1:]).to(input)
 

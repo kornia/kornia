@@ -1,6 +1,7 @@
 from typing import Dict, Optional, Tuple
 
 import torch
+from torch import Tensor
 
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.geometry.transform import elastic_transform2d
@@ -20,16 +21,16 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
         align_corners: Interpolation flag used by `grid_sample`.
         mode: Interpolation mode used by `grid_sample`. Either 'bilinear' or 'nearest'.
         padding_mode: The padding used by ```grid_sample```. Either 'zeros', 'border' or 'refection'.
-
-        return_transform: if ``True`` return the matrix describing the transformation applied to each
-            input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+            to the batch form (False).
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.elastic_transform2d`.
 
     Examples:
+        >>> import torch
         >>> img = torch.ones(1, 1, 2, 2)
         >>> out = RandomElasticTransform()(img)
         >>> out.shape
@@ -50,10 +51,10 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
         align_corners: bool = False,
         mode: str = "bilinear",
         padding_mode: str = "zeros",
-        return_transform: bool = False,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
+        return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
@@ -67,7 +68,7 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
             padding_mode=padding_mode,
         )
 
-    def generate_parameters(self, shape: torch.Size) -> Dict[str, torch.Tensor]:
+    def generate_parameters(self, shape: torch.Size) -> Dict[str, Tensor]:
         B, _, H, W = shape
         if self.same_on_batch:
             noise = torch.rand(1, 2, H, W, device=self.device, dtype=self.dtype).repeat(B, 1, 1, 1)
@@ -76,12 +77,12 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
         return dict(noise=noise * 2 - 1)
 
     # TODO: It is incorrect to return identity
-    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
         return self.identity_matrix(input)
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+    ) -> Tensor:
         return elastic_transform2d(
             input,
             params["noise"].to(input),

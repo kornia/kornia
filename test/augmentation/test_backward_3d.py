@@ -44,10 +44,9 @@ class TestRandomAffine3DBackward:
     )
     @pytest.mark.parametrize("resample", ['bilinear'])  # TODO: Ignore nearest for now.
     @pytest.mark.parametrize("align_corners", [True, False])
-    @pytest.mark.parametrize("return_transform", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_param(
-        self, degrees, translate, scale, shear, resample, align_corners, return_transform, same_on_batch, device, dtype
+        self, degrees, translate, scale, shear, resample, align_corners, same_on_batch, device, dtype
     ):
 
         _degrees = (
@@ -80,15 +79,11 @@ class TestRandomAffine3DBackward:
             _shear,
             resample,
             align_corners=align_corners,
-            return_transform=return_transform,
             same_on_batch=same_on_batch,
             p=1.0,
         )
 
-        if return_transform:
-            output, _ = aug(input)
-        else:
-            output = aug(input)
+        output = aug(input)
 
         if len(list(aug.parameters())) != 0:
             mse = nn.MSELoss()
@@ -163,9 +158,8 @@ class TestRandomRotation3DBackward:
     )
     @pytest.mark.parametrize("resample", ['bilinear'])  # TODO: Ignore nearest for now.
     @pytest.mark.parametrize("align_corners", [True, False])
-    @pytest.mark.parametrize("return_transform", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False])
-    def test_param(self, degrees, resample, align_corners, return_transform, same_on_batch, device, dtype):
+    def test_param(self, degrees, resample, align_corners, same_on_batch, device, dtype):
 
         _degrees = (
             degrees
@@ -179,15 +173,11 @@ class TestRandomRotation3DBackward:
             _degrees,
             resample,
             align_corners=align_corners,
-            return_transform=return_transform,
             same_on_batch=same_on_batch,
             p=1.0,
         )
 
-        if return_transform:
-            output, _ = aug(input)
-        else:
-            output = aug(input)
+        output = aug(input)
 
         if len(list(aug.parameters())) != 0:
             mse = nn.MSELoss()
@@ -214,9 +204,8 @@ class TestRandomPerspective3DBackward:
     @pytest.mark.parametrize("distortion_scale", [0.5, torch.tensor(0.5)])
     @pytest.mark.parametrize("resample", ['bilinear'])  # TODO: Ignore nearest for now.
     @pytest.mark.parametrize("align_corners", [True, False])
-    @pytest.mark.parametrize("return_transform", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False])
-    def test_param(self, distortion_scale, resample, align_corners, return_transform, same_on_batch, device, dtype):
+    def test_param(self, distortion_scale, resample, align_corners, same_on_batch, device, dtype):
 
         _distortion_scale = (
             distortion_scale
@@ -229,16 +218,12 @@ class TestRandomPerspective3DBackward:
         aug = RandomPerspective3D(
             _distortion_scale,
             resample=resample,
-            return_transform=return_transform,
             same_on_batch=same_on_batch,
             align_corners=align_corners,
             p=1.0,
         )
 
-        if return_transform:
-            output, _ = aug(input)
-        else:
-            output = aug(input)
+        output = aug(input)
 
         if len(list(aug.parameters())) != 0:
             mse = nn.MSELoss()
@@ -271,9 +256,8 @@ class TestRandomMotionBlur3DBackward:
     # 'reflect' is not implemented by torch.
     @pytest.mark.parametrize("border_type", ['constant', 'replicate', 'circular'])
     @pytest.mark.parametrize("resample", ['bilinear'])  # TODO: Ignore nearest for now.
-    @pytest.mark.parametrize("return_transform", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False])
-    def test_param(self, angle, direction, border_type, resample, return_transform, same_on_batch, device, dtype):
+    def test_param(self, angle, direction, border_type, resample, same_on_batch, device, dtype):
 
         _angle = (
             angle
@@ -289,13 +273,10 @@ class TestRandomMotionBlur3DBackward:
         torch.manual_seed(0)
         input = torch.randint(255, (2, 3, 10, 10, 10), device=device, dtype=dtype) / 255.0
         aug = RandomMotionBlur3D(
-            (3, 3), _angle, _direction, border_type, resample, return_transform, same_on_batch, p=1.0
+            (3, 3), _angle, _direction, border_type, resample, same_on_batch, p=1.0
         )
 
-        if return_transform:
-            output, _ = aug(input)
-        else:
-            output = aug(input)
+        output = aug(input)
 
         if len(list(aug.parameters())) != 0:
             mse = nn.MSELoss()

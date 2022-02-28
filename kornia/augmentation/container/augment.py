@@ -2,9 +2,14 @@ import warnings
 from itertools import zip_longest
 from typing import Any, List, Optional, Tuple, Union, cast
 
-import torch
+from torch import Tensor
 
-from kornia.augmentation import GeometricAugmentationBase2D, IntensityAugmentationBase2D, RandomErasing
+from kornia.augmentation import (
+    AugmentationBase3D,
+    GeometricAugmentationBase2D,
+    IntensityAugmentationBase2D,
+    RandomErasing,
+)
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import SequentialBase
 from kornia.augmentation.container.image import ImageSequential, ParamItem
@@ -15,10 +20,6 @@ from kornia.constants import DataKey
 from kornia.geometry.boxes import Boxes
 
 __all__ = ["AugmentationSequential"]
-
-AugmentationSequentialInput = Union[
-    torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor, torch.Tensor], Tuple[List[torch.Tensor], torch.Tensor]
-]
 
 
 class AugmentationSequential(ImageSequential):
@@ -35,8 +36,6 @@ class AugmentationSequential(ImageSequential):
             Accepts "input", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints".
         same_on_batch: apply the same transformation across the batch.
             If None, it will not overwrite the function-wise settings.
-        return_transform: if ``True`` return the matrix describing the transformation
-            applied to each. If None, it will not overwrite the function-wise settings.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False). If None, it will not overwrite the function-wise settings.
         random_apply: randomly select a sublist (order agnostic) of args to
@@ -69,7 +68,6 @@ class AugmentationSequential(ImageSequential):
         ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
         ...     data_keys=["input", "mask", "bbox", "keypoints"],
-        ...     return_transform=False,
         ...     same_on_batch=False,
         ...     random_apply=10,
         ... )
@@ -162,18 +160,27 @@ class AugmentationSequential(ImageSequential):
             raise NotImplementedError(f"The first input must be {DataKey.INPUT}.")
 
         self.contains_video_sequential: bool = False
+        self.contains_3d_augmentation: bool = False
         for arg in args:
             if isinstance(arg, PatchSequential) and not arg.is_intensity_only():
                 warnings.warn("Geometric transformation detected in PatchSeqeuntial, which would break bbox, mask.")
             if isinstance(arg, VideoSequential):
                 self.contains_video_sequential = True
+            # NOTE: only for images are supported for 3D.
+            if isinstance(arg, AugmentationBase3D):
+                self.contains_3d_augmentation = True
+        self._transform_matrix: Optional[Tensor] = None
+
+    @property
+    def transform_matrix(self,) -> Optional[Tensor]:
+        return self._transform_matrix
 
     def inverse(  # type: ignore
         self,
-        *args: torch.Tensor,
+        *args: Tensor,
         params: Optional[List[ParamItem]] = None,
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
-    ) -> Union[torch.Tensor, List[torch.Tensor]]:
+    ) -> Union[Tensor, List[Tensor]]:
         """Reverse the transformation applied.
 
         Number of input tensors must align with the number of``data_keys``. If ``data_keys`` is not set, use
@@ -200,7 +207,7 @@ class AugmentationSequential(ImageSequential):
                 )
             params = self._params
 
-        outputs: List[torch.Tensor] = [None] * len(data_keys)  # type: ignore
+        outputs: List[Tensor] = [None] * len(data_keys)  # type: ignore
         for idx, (arg, dcate) in enumerate(zip(args, data_keys)):
             if dcate == DataKey.INPUT and isinstance(arg, (tuple, list)):
                 input, _ = arg  # ignore the transformation matrix whilst inverse
@@ -245,12 +252,12 @@ class AugmentationSequential(ImageSequential):
         return outputs
 
     def __packup_output__(  # type: ignore
-        self, output: List[AugmentationSequentialInput], label: Optional[torch.Tensor] = None
+        self, output: List[Tensor], label: Optional[Tensor] = None
     ) -> Union[
-        AugmentationSequentialInput,
-        Tuple[AugmentationSequentialInput, Optional[torch.Tensor]],
-        List[AugmentationSequentialInput],
-        Tuple[List[AugmentationSequentialInput], Optional[torch.Tensor]],
+        Tensor,
+        Tuple[Tensor, Optional[Tensor]],
+        List[Tensor],
+        Tuple[List[Tensor], Optional[Tensor]],
     ]:
         if len(output) == 1 and isinstance(output, (tuple, list)) and self.return_label:
             return output[0], label
@@ -260,14 +267,14 @@ class AugmentationSequential(ImageSequential):
             return output, label
         return output
 
-    def _validate_args_datakeys(self, *args: AugmentationSequentialInput, data_keys: List[DataKey]):
+    def _validate_args_datakeys(self, *args: Tensor, data_keys: List[DataKey]):
         if len(args) != len(data_keys):
             raise AssertionError(
                 f"The number of inputs must align with the number of data_keys. Got {len(args)} and {len(data_keys)}."
             )
         # TODO: validate args batching, and its consistency
 
-    def _arguments_preproc(self, *args: AugmentationSequentialInput, data_keys: List[DataKey]):
+    def _arguments_preproc(self, *args: Tensor, data_keys: List[DataKey]):
         inp: List[Any] = []
         for arg, dcate in zip(args, data_keys):
             if DataKey.get(dcate) in [DataKey.INPUT, DataKey.MASK, DataKey.KEYPOINTS]:
@@ -288,15 +295,15 @@ class AugmentationSequential(ImageSequential):
 
     def forward(  # type: ignore
         self,
-        *args: AugmentationSequentialInput,
-        label: Optional[torch.Tensor] = None,
+        *args: Tensor,
+        label: Optional[Tensor] = None,
         params: Optional[List[ParamItem]] = None,
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
     ) -> Union[
-        AugmentationSequentialInput,
-        Tuple[AugmentationSequentialInput, Optional[torch.Tensor]],
-        List[AugmentationSequentialInput],
-        Tuple[List[AugmentationSequentialInput], Optional[torch.Tensor]],
+        Tensor,
+        Tuple[Tensor, Optional[Tensor]],
+        List[Tensor],
+        Tuple[List[Tensor], Optional[Tensor]],
     ]:
         """Compute multiple tensors simultaneously according to ``self.data_keys``."""
         _data_keys: List[DataKey]
@@ -313,15 +320,11 @@ class AugmentationSequential(ImageSequential):
             # image data must exist if params is not provided.
             if DataKey.INPUT in _data_keys:
                 _input = args[_data_keys.index(DataKey.INPUT)]
-                # If (input, mat) received.
-                if isinstance(_input, (tuple,)):
-                    inp = _input[0]
-                else:
-                    inp = _input
+                inp = _input
                 if isinstance(inp, (tuple, list)):
                     raise ValueError(f"`INPUT` should be a tensor but `{type(inp)}` received.")
                 # A video input shall be BCDHW while an image input shall be BCHW
-                if self.contains_video_sequential:
+                if self.contains_video_sequential or self.contains_3d_augmentation:
                     _, out_shape = self.autofill_dim(inp, dim_range=(3, 5))
                 else:
                     _, out_shape = self.autofill_dim(inp, dim_range=(2, 4))
@@ -329,16 +332,17 @@ class AugmentationSequential(ImageSequential):
             else:
                 raise ValueError("`params` must be provided whilst INPUT is not in data_keys.")
 
-        outputs: List[AugmentationSequentialInput] = [None] * len(_data_keys)  # type: ignore
+        outputs: List[Tensor] = [None] * len(_data_keys)  # type: ignore
         # Forward the first image data to freeze the parameters.
         if DataKey.INPUT in _data_keys:
             idx = _data_keys.index(DataKey.INPUT)
             _inp = args[idx]
             _out = super().forward(_inp, label, params=params)  # type: ignore
+            self._transform_matrix = self.get_transformation_matrix(_inp, params=params)
             if self.return_label:
-                _input, label = cast(Tuple[AugmentationSequentialInput, torch.Tensor], _out)
+                _input, label = cast(Tuple[Tensor, Tensor], _out)
             else:
-                _input = cast(AugmentationSequentialInput, _out)
+                _input = cast(Tensor, _out)
             outputs[idx] = _input
 
         self.return_label = self.return_label or label is not None or self.contains_label_operations(params)
