@@ -4,7 +4,6 @@ from typing import Dict, Optional, Tuple, cast
 from torch import Tensor, as_tensor
 
 from kornia.augmentation._2d.base import AugmentationBase2D
-from kornia.augmentation.utils import _transform_output_shape
 from kornia.utils.helpers import _torch_inverse_cast
 
 
@@ -40,12 +39,12 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
     ) -> Tensor:
         if params is not None:
             transform = self.compute_transformation(input[params['batch_prob']], params)
-        elif not hasattr(self, "_transform_matrix"):
+        elif self.transform_matrix is None:
             params = self.forward_parameters(input.shape)
             transform = self.identity_matrix(input)
             transform[params['batch_prob']] = self.compute_transformation(input[params['batch_prob']], params)
         else:
-            transform = self._transform_matrix
+            transform = self.transform_matrix
         return as_tensor(transform, device=input.device, dtype=input.dtype)
 
     def inverse(
@@ -55,19 +54,18 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
         size: Optional[Tuple[int, int]] = None,
         **kwargs,
     ) -> Tensor:
-        ori_shape = input.shape
+        input_shape = input.shape
         in_tensor = self.transform_tensor(input)
         batch_shape = input.shape
 
         if params is not None:
             transform = self.identity_matrix(in_tensor)
             transform[params['batch_prob']] = self.compute_transformation(in_tensor[params['batch_prob']], params)
-
-        # Avoid recompute.
-        transform = self.get_transformation_matrix(in_tensor, params)
-
-        if params is None:
+        else:
+            # Avoid recompute.
+            transform = self.get_transformation_matrix(in_tensor, params)
             params = self._params
+
         if size is None and "forward_input_shape" in params:
             # Majorly for cropping functions
             size = params['forward_input_shape'].numpy().tolist()
@@ -78,7 +76,7 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
         output = in_tensor.clone()
         to_apply = params['batch_prob']
         # if no augmentation needed
-        if to_apply.any() is False:
+        if not to_apply.any():
             output = in_tensor
         # if all data needs to be augmented
         elif to_apply.all():
@@ -87,4 +85,4 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
         else:
             transform[to_apply] = self.compute_inverse_transformation(transform[to_apply])
             output[to_apply] = self.inverse_transform(in_tensor[to_apply], transform[to_apply], size, **kwargs)
-        return cast(Tensor, _transform_output_shape(output, ori_shape)) if self.keepdim else output
+        return cast(Tensor, self.transform_output_tensor(output, input_shape)) if self.keepdim else output

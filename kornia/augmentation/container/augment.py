@@ -2,7 +2,7 @@ import warnings
 from itertools import zip_longest
 from typing import Any, List, Optional, Tuple, Union, cast
 
-import torch
+from torch import Tensor
 
 from kornia.augmentation import (
     AugmentationBase3D,
@@ -169,18 +169,18 @@ class AugmentationSequential(ImageSequential):
             # NOTE: only for images are supported for 3D.
             if isinstance(arg, AugmentationBase3D):
                 self.contains_3d_augmentation = True
-        self._transform_matrix: Optional[torch.Tensor] = None
+        self._transform_matrix: Optional[Tensor] = None
 
     @property
-    def transform_matrix(self,) -> Optional[torch.Tensor]:
+    def transform_matrix(self,) -> Optional[Tensor]:
         return self._transform_matrix
 
     def inverse(  # type: ignore
         self,
-        *args: torch.Tensor,
+        *args: Tensor,
         params: Optional[List[ParamItem]] = None,
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
-    ) -> Union[torch.Tensor, List[torch.Tensor]]:
+    ) -> Union[Tensor, List[Tensor]]:
         """Reverse the transformation applied.
 
         Number of input tensors must align with the number of``data_keys``. If ``data_keys`` is not set, use
@@ -207,7 +207,7 @@ class AugmentationSequential(ImageSequential):
                 )
             params = self._params
 
-        outputs: List[torch.Tensor] = [None] * len(data_keys)  # type: ignore
+        outputs: List[Tensor] = [None] * len(data_keys)  # type: ignore
         for idx, (arg, dcate) in enumerate(zip(args, data_keys)):
             if dcate == DataKey.INPUT and isinstance(arg, (tuple, list)):
                 input, _ = arg  # ignore the transformation matrix whilst inverse
@@ -252,12 +252,12 @@ class AugmentationSequential(ImageSequential):
         return outputs
 
     def __packup_output__(  # type: ignore
-        self, output: List[torch.Tensor], label: Optional[torch.Tensor] = None
+        self, output: List[Tensor], label: Optional[Tensor] = None
     ) -> Union[
-        torch.Tensor,
-        Tuple[torch.Tensor, Optional[torch.Tensor]],
-        List[torch.Tensor],
-        Tuple[List[torch.Tensor], Optional[torch.Tensor]],
+        Tensor,
+        Tuple[Tensor, Optional[Tensor]],
+        List[Tensor],
+        Tuple[List[Tensor], Optional[Tensor]],
     ]:
         if len(output) == 1 and isinstance(output, (tuple, list)) and self.return_label:
             return output[0], label
@@ -267,14 +267,14 @@ class AugmentationSequential(ImageSequential):
             return output, label
         return output
 
-    def _validate_args_datakeys(self, *args: torch.Tensor, data_keys: List[DataKey]):
+    def _validate_args_datakeys(self, *args: Tensor, data_keys: List[DataKey]):
         if len(args) != len(data_keys):
             raise AssertionError(
                 f"The number of inputs must align with the number of data_keys. Got {len(args)} and {len(data_keys)}."
             )
         # TODO: validate args batching, and its consistency
 
-    def _arguments_preproc(self, *args: torch.Tensor, data_keys: List[DataKey]):
+    def _arguments_preproc(self, *args: Tensor, data_keys: List[DataKey]):
         inp: List[Any] = []
         for arg, dcate in zip(args, data_keys):
             if DataKey.get(dcate) in [DataKey.INPUT, DataKey.MASK, DataKey.KEYPOINTS]:
@@ -295,15 +295,15 @@ class AugmentationSequential(ImageSequential):
 
     def forward(  # type: ignore
         self,
-        *args: torch.Tensor,
-        label: Optional[torch.Tensor] = None,
+        *args: Tensor,
+        label: Optional[Tensor] = None,
         params: Optional[List[ParamItem]] = None,
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
     ) -> Union[
-        torch.Tensor,
-        Tuple[torch.Tensor, Optional[torch.Tensor]],
-        List[torch.Tensor],
-        Tuple[List[torch.Tensor], Optional[torch.Tensor]],
+        Tensor,
+        Tuple[Tensor, Optional[Tensor]],
+        List[Tensor],
+        Tuple[List[Tensor], Optional[Tensor]],
     ]:
         """Compute multiple tensors simultaneously according to ``self.data_keys``."""
         _data_keys: List[DataKey]
@@ -332,7 +332,7 @@ class AugmentationSequential(ImageSequential):
             else:
                 raise ValueError("`params` must be provided whilst INPUT is not in data_keys.")
 
-        outputs: List[torch.Tensor] = [None] * len(_data_keys)  # type: ignore
+        outputs: List[Tensor] = [None] * len(_data_keys)  # type: ignore
         # Forward the first image data to freeze the parameters.
         if DataKey.INPUT in _data_keys:
             idx = _data_keys.index(DataKey.INPUT)
@@ -340,9 +340,9 @@ class AugmentationSequential(ImageSequential):
             _out = super().forward(_inp, label, params=params)  # type: ignore
             self._transform_matrix = self.get_transformation_matrix(_inp, params=params)
             if self.return_label:
-                _input, label = cast(Tuple[torch.Tensor, torch.Tensor], _out)
+                _input, label = cast(Tuple[Tensor, Tensor], _out)
             else:
-                _input = cast(torch.Tensor, _out)
+                _input = cast(Tensor, _out)
             outputs[idx] = _input
 
         self.return_label = self.return_label or label is not None or self.contains_label_operations(params)
