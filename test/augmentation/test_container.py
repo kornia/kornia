@@ -363,6 +363,7 @@ class TestAugmentationSequential:
         assert torch.all(out[1][out[0] == fill_value] == 0.)
 
     def test_random_crops(self, device, dtype):
+        torch.manual_seed(233)
         input = torch.randn(3, 3, 3, 3, device=device, dtype=dtype)
         bbox = torch.tensor(
             [[[1.0, 1.0, 2.0, 2.0], [0.0, 0.0, 1.0, 2.0], [0.0, 0.0, 2.0, 1.0]]], device=device, dtype=dtype
@@ -370,6 +371,7 @@ class TestAugmentationSequential:
         points = torch.tensor([[[0.0, 0.0], [1.0, 1.0]]], device=device, dtype=dtype).expand(3, -1, -1)
         aug = K.AugmentationSequential(
             K.RandomCrop((3, 3), padding=1, cropping_mode='resample', fill=0),
+            K.RandomAffine((360., 360.), p=1.),
             data_keys=["input", "mask", "bbox_xyxy", "keypoints"],
         )
 
