@@ -28,9 +28,11 @@ class Registry:
         format_str = self.__class__.__name__ + f'(name={self._name}, items={self._module_dict})'
         return format_str
 
-    def list_modules(self, query: str) -> List[str]:
-        # Search for any modules by a regex string.
-        raise NotImplementedError
+    def list_modules(self, query: Optional[str] = None) -> List[str]:
+        if query is not None:
+            # Search for any modules by a regex string.
+            raise NotImplementedError("Please contribute to Kornia if you are interested in this features.")
+        return list(self._module_dict.keys())
 
     def _register_module(
         self, module_class: Any, module_name: Optional[str] = None, force: Optional[bool] = False
