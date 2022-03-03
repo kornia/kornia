@@ -131,14 +131,14 @@ class CombineTensorPatches(nn.Module):
         unpadding: Union[int, Tuple[int, int]] = 0,
     ) -> None:
         super().__init__()
-        self.orig_size: Tuple[int, int] = _pair(original_size)
+        self.original_size: Tuple[int, int] = _pair(original_size)
         self.window_size: Tuple[int, int] = _pair(window_size)
         pad: Tuple[int, int] = _pair(unpadding)
         self.unpadding: Tuple[int, int, int, int] = (pad[0], pad[0], pad[1], pad[1])
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         return combine_tensor_patches(
-            input, self.orig_size, self.window_size, stride=self.window_size, unpadding=self.unpadding
+            input, self.original_size, self.window_size, stride=self.window_size, unpadding=self.unpadding
         )
 
 
