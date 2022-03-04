@@ -90,14 +90,14 @@ class CombineTensorPatches(nn.Module):
         defined in the function signature.
         left-right and top-bottom order.
 
+    * :attr:`original_size` is the size of the original image prior to
+      extracting tensor patches and defines the shape of the output patch.
     * :attr:`window_size` is the size of the sliding window and controls the
       shape of the output tensor and defines the shape of the output patch.
-    * :attr:`stride` controls the stride to apply to the sliding window and
-      regulates the overlapping between the extracted patches.
-    * :attr:`padding` controls the amount of implicit zeros-paddings on both
-      sizes at each dimension.
+    * :attr:`unpadding` is the amount of padding to be removed. This value
+      must be the same as padding used while extracting tensor patches.
 
-    The parameters :attr:`window_size`, :attr:`stride` and :attr:`padding` can
+    The parameters :attr:`original_size`, :attr:`window_size`, and :attr:`unpadding` can
     be either:
 
         - a single ``int`` -- in which case the same value is used for the
@@ -122,6 +122,10 @@ class CombineTensorPatches(nn.Module):
                   [ 4,  5,  6,  7],
                   [ 8,  9, 10, 11],
                   [12, 13, 14, 15]]]])
+
+    .. note::
+        This function is supposed to be used in conjunction with :class:`ExtractTensorPatches`.
+
     """
 
     def __init__(
@@ -168,6 +172,9 @@ def combine_tensor_patches(
                   [ 4,  5,  6,  7],
                   [ 8,  9, 10, 11],
                   [12, 13, 14, 15]]]])
+
+    .. note::
+        This function is supposed to be used in conjunction with :func:`extract_tensor_patches`.
     """
     if stride[0] != window_size[0] or stride[1] != window_size[1]:
         raise NotImplementedError(
