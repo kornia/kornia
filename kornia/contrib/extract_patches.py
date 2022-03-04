@@ -92,8 +92,8 @@ class CombineTensorPatches(nn.Module):
 
     * :attr:`original_size` is the size of the original image prior to
       extracting tensor patches and defines the shape of the output patch.
-    * :attr:`window_size` is the size of the sliding window and controls the
-      shape of the output tensor and defines the shape of the output patch.
+    * :attr:`window_size` is the size of the sliding window used while
+      extracting tensor patches.
     * :attr:`unpadding` is the amount of padding to be removed. This value
       must be the same as padding used while extracting tensor patches.
 
@@ -158,7 +158,7 @@ def combine_tensor_patches(
     Args:
         patches: patched tensor with shape :math:`(B, N, C, H_{out}, W_{out})`.
         original_size: the size of the original tensor and the output patch size.
-        window_size: the size of the sliding window used.
+        window_size: the size of the sliding window used while extracting patches.
         stride: stride of the sliding window.
         unpadding: remove the padding added to both side of the input.
 
