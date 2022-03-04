@@ -37,7 +37,7 @@ class TestVideoSequential:
     @pytest.mark.parametrize('shape', [(3, 4), (2, 3, 4), (2, 3, 5, 6), (2, 3, 4, 5, 6, 7)])
     @pytest.mark.parametrize('data_format', ["BCTHW", "BTCHW"])
     def test_exception(self, shape, data_format, device, dtype):
-        aug_list = K.VideoSequential(K.ColorJitter(0.1, 0.1, 0.1, 0.1), data_format=data_format, same_on_frame=True)
+        aug_list = K.VideoSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1), data_format=data_format, same_on_frame=True)
         with pytest.raises(AssertionError):
             img = torch.randn(*shape, device=device, dtype=dtype)
             aug_list(img)
@@ -47,7 +47,7 @@ class TestVideoSequential:
         [
             K.RandomAffine(360, p=1.0),
             K.CenterCrop((3, 3), p=1.0),
-            K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+            K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
             K.RandomCrop((5, 5), p=1.0),
             K.RandomErasing(p=1.0),
             K.RandomGrayscale(p=1.0),
@@ -75,13 +75,13 @@ class TestVideoSequential:
     @pytest.mark.parametrize(
         'augmentations',
         [
-            [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)],
-            [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0)],
+            [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)],
+            [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0)],
             [K.RandomAffine(360, p=1.0), kornia.color.BgrToRgb()],
-            [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.0), K.RandomAffine(360, p=0.0)],
-            [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.0)],
+            [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=0.0), K.RandomAffine(360, p=0.0)],
+            [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=0.0)],
             [K.RandomAffine(360, p=0.0)],
-            [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0), K.RandomMixUp(p=1.0)],
+            [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0), K.RandomMixUp(p=1.0)],
         ],
     )
     @pytest.mark.parametrize('data_format', ["BCTHW", "BTCHW"])
@@ -114,7 +114,7 @@ class TestVideoSequential:
         [
             [K.RandomAffine(360, p=1.0)],
             [K.RandomCrop((2, 2), padding=2)],
-            [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0)],
+            [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0)],
             [K.RandomAffine(360, p=0.0), K.ImageSequential(K.RandomAffine(360, p=0.0))],
         ],
     )
@@ -148,7 +148,7 @@ class TestVideoSequential:
     def test_jit(self, device, dtype):
         B, C, D, H, W = 2, 3, 5, 4, 4
         img = torch.ones(B, C, D, H, W, device=device, dtype=dtype)
-        op = K.VideoSequential(K.ColorJitter(0.1, 0.1, 0.1, 0.1), same_on_frame=True)
+        op = K.VideoSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1), same_on_frame=True)
         op_jit = torch.jit.script(op)
         assert_close(op(img), op_jit(img))
 
@@ -159,7 +159,7 @@ class TestSequential:
         inp = torch.randn(1, 3, 30, 30, device=device, dtype=dtype)
         with pytest.raises(Exception):  # AssertError and NotImplementedError
             K.ImageSequential(
-                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), random_apply_weights=random_apply_weights
+                K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), random_apply_weights=random_apply_weights
             ).inverse(inp)
 
     @pytest.mark.parametrize('same_on_batch', [True, False, None])
@@ -167,7 +167,7 @@ class TestSequential:
     @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 20, True, False])
     def test_construction(self, same_on_batch, keepdim, random_apply):
         aug = K.ImageSequential(
-            K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+            K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
             K.RandomAffine(360, p=1.0),
             K.RandomMixUp(p=1.0),
             same_on_batch=same_on_batch,
@@ -189,10 +189,10 @@ class TestSequential:
     def test_forward(self, random_apply, device, dtype):
         inp = torch.randn(1, 3, 30, 30, device=device, dtype=dtype)
         aug = K.ImageSequential(
-            K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+            K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
             kornia.filters.MedianBlur((3, 3)),
-            K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
-            K.ImageSequential(K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0)),
+            K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
+            K.ImageSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0)),
             K.ImageSequential(K.RandomAffine(360, p=1.0)),
             K.RandomAffine(360, p=1.0),
             K.RandomMixUp(p=1.0),
@@ -210,7 +210,7 @@ class TestAugmentationSequential:
     @pytest.mark.parametrize(
         'data_keys', ["input", ["mask", "input"], ["input", "bbox_yxyx"], [0, 10], [BorderType.REFLECT]]
     )
-    @pytest.mark.parametrize("augmentation_list", [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0)])
+    @pytest.mark.parametrize("augmentation_list", [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0)])
     def test_exception(self, augmentation_list, data_keys, device, dtype):
         with pytest.raises(Exception):  # AssertError and NotImplementedError
             K.AugmentationSequential(augmentation_list, data_keys=data_keys)
@@ -222,9 +222,9 @@ class TestAugmentationSequential:
         inp = torch.as_tensor(inp, device=device, dtype=dtype)
         aug = K.AugmentationSequential(
             K.ImageSequential(
-                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)
+                K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)
             ),
-            K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+            K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
             K.RandomAffine(360, p=1.0),
             K.RandomMixUp(p=1.0),
             data_keys=["input"],
@@ -245,7 +245,7 @@ class TestAugmentationSequential:
         points = torch.tensor([[[1.0, 1.0]]], device=device, dtype=dtype).expand(2, -1, -1)[None]
         aug_list = K.AugmentationSequential(
             K.VideoSequential(
-                kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), kornia.augmentation.RandomAffine(360, p=1.0)
+                kornia.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), kornia.augmentation.RandomAffine(360, p=1.0)
             ),
             data_keys=["input", "mask", "bbox", "keypoints"],
         )
@@ -424,14 +424,14 @@ class TestAugmentationSequential:
         )[:, None].float()
         aug = K.AugmentationSequential(
             K.ImageSequential(
-                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)
+                K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)
             ),
             K.AugmentationSequential(
-                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0),
+                K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0),
                 K.RandomAffine(360, p=1.0),
                 data_keys=["input", "mask", "bbox", "keypoints"]
             ),
-            K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+            K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
             K.RandomAffine(360, p=1.0),
             data_keys=["input", "mask", "bbox", "keypoints"],
             random_apply=random_apply,
@@ -460,10 +460,10 @@ class TestAugmentationSequential:
 
         aug = K.AugmentationSequential(
             K.ImageSequential(
-                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)
+                K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)
             ),
             K.AugmentationSequential(
-                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)
+                K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)
             ),
             K.RandomAffine(360, p=1.0),
             K.RandomCrop(crop_size, padding=1, cropping_mode='resample', fill=0),
@@ -504,12 +504,12 @@ class TestAugmentationSequential:
         )[:, None].float()
         aug = K.AugmentationSequential(
             K.ImageSequential(
-                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)
+                K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)
             ),
             K.AugmentationSequential(
-                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)
+                K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)
             ),
-            K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+            K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
             K.RandomAffine(360, p=1.0),
             data_keys=["input", "mask", "bbox", "keypoints"],
             random_apply=random_apply,
@@ -553,12 +553,12 @@ class TestAugmentationSequential:
         )[:, None].float()
         aug = K.AugmentationSequential(
             K.ImageSequential(
-                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)
+                K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)
             ),
             K.AugmentationSequential(
-                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)
+                K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)
             ),
-            K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+            K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
             K.RandomAffine(360, p=1.0),
             data_keys=["input", "mask", "bbox", "keypoints", "bbox", "BBOX_XYWH", "BBOX_XYWH"],
             random_apply=random_apply,
@@ -580,7 +580,7 @@ class TestAugmentationSequential:
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = K.AugmentationSequential(
-            K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0), same_on_batch=True
+            K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0), same_on_batch=True
         )
         op_jit = torch.jit.script(op)
         assert_close(op(img), op_jit(img))
@@ -599,17 +599,17 @@ class TestPatchSequential:
         with pytest.raises(Exception):  # AssertError and NotImplementedError
             K.PatchSequential(
                 K.ImageSequential(
-                    K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
+                    K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=0.5),
                     K.RandomPerspective(0.2, p=0.5),
                     K.RandomSolarize(0.1, 0.1, p=0.5),
                 ),
-                K.ColorJitter(0.1, 0.1, 0.1, 0.1),
+                K.ColorJiggle(0.1, 0.1, 0.1, 0.1),
                 K.ImageSequential(
-                    K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
+                    K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=0.5),
                     K.RandomPerspective(0.2, p=0.5),
                     K.RandomSolarize(0.1, 0.1, p=0.5),
                 ),
-                K.ColorJitter(0.1, 0.1, 0.1, 0.1),
+                K.ColorJiggle(0.1, 0.1, 0.1, 0.1),
                 **error_param,
             )
 
@@ -624,9 +624,9 @@ class TestPatchSequential:
         try:  # skip wrong param settings.
             seq = K.PatchSequential(
                 K.color.RgbToBgr(),
-                K.ColorJitter(0.1, 0.1, 0.1, 0.1),
+                K.ColorJiggle(0.1, 0.1, 0.1, 0.1),
                 K.ImageSequential(
-                    K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
+                    K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=0.5),
                     K.RandomPerspective(0.2, p=0.5),
                     K.RandomSolarize(0.1, 0.1, p=0.5),
                 ),
@@ -653,26 +653,26 @@ class TestPatchSequential:
     def test_intensity_only(self):
         seq = K.PatchSequential(
             K.ImageSequential(
-                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
+                K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=0.5),
                 K.RandomPerspective(0.2, p=0.5),
                 K.RandomSolarize(0.1, 0.1, p=0.5),
             ),
-            K.ColorJitter(0.1, 0.1, 0.1, 0.1),
+            K.ColorJiggle(0.1, 0.1, 0.1, 0.1),
             K.ImageSequential(
-                K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
+                K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=0.5),
                 K.RandomPerspective(0.2, p=0.5),
                 K.RandomSolarize(0.1, 0.1, p=0.5),
             ),
-            K.ColorJitter(0.1, 0.1, 0.1, 0.1),
+            K.ColorJiggle(0.1, 0.1, 0.1, 0.1),
             grid_size=(2, 2),
         )
         assert not seq.is_intensity_only()
 
         seq = K.PatchSequential(
-            K.ImageSequential(K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5)),
-            K.ColorJitter(0.1, 0.1, 0.1, 0.1),
-            K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
-            K.ColorJitter(0.1, 0.1, 0.1, 0.1),
+            K.ImageSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=0.5)),
+            K.ColorJiggle(0.1, 0.1, 0.1, 0.1),
+            K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=0.5),
+            K.ColorJiggle(0.1, 0.1, 0.1, 0.1),
             grid_size=(2, 2),
         )
         assert seq.is_intensity_only()

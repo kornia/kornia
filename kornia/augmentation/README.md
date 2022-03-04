@@ -29,7 +29,7 @@
 
 |  |     2D      |      3D      |
 | ------------ | ----------- | ------------ |
-| ColorJitter | ✅ | ❌ |
+| ColorJiggle | ✅ | ❌ |
 | RandomGrayscale | ✅ | ❌ |
 | RandomSolarize | ✅ | ❌ |
 | RandomPosterize | ✅ | ❌ |

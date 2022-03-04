@@ -47,7 +47,7 @@ class ImageSequential(SequentialBase):
         >>> input, label = torch.randn(2, 3, 5, 6), torch.tensor([0, 1])
         >>> aug_list = ImageSequential(
         ...     kornia.color.BgrToRgb(),
-        ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...     kornia.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...     kornia.filters.MedianBlur((3, 3)),
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
         ...     kornia.enhance.Invert(),
@@ -73,7 +73,7 @@ class ImageSequential(SequentialBase):
         >>> input = torch.randn(2, 3, 5, 6)
         >>> aug_list = ImageSequential(
         ...     kornia.color.BgrToRgb(),
-        ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...     kornia.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...     kornia.filters.MedianBlur((3, 3)),
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
         ...     random_apply=1,
