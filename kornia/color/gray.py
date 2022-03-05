@@ -1,10 +1,10 @@
-from typing import cast
+from typing import Union
 
 import torch
 import torch.nn as nn
 
 from kornia.color.rgb import bgr_to_rgb
-from kornia.core.image import Image, ImageColor, Tensor
+from kornia.core import Image, ImageColor, Tensor
 
 
 def grayscale_to_rgb(image: torch.Tensor) -> torch.Tensor:
@@ -39,7 +39,9 @@ def grayscale_to_rgb(image: torch.Tensor) -> torch.Tensor:
     return rgb
 
 
-def rgb_to_grayscale(image: Image, rgb_weights: Tensor = Tensor([0.299, 0.587, 0.114])) -> Image:
+def rgb_to_grayscale(
+    image: Union[Image, Tensor], rgb_weights: Tensor = Tensor([0.299, 0.587, 0.114])
+) -> Union[Image, Tensor]:
     r"""Convert a RGB image to grayscale version of image.
 
     .. image:: _static/img/rgb_to_grayscale.png
@@ -94,7 +96,7 @@ def rgb_to_grayscale(image: Image, rgb_weights: Tensor = Tensor([0.299, 0.587, 0
     if isinstance(output, Image):
         output.color = ImageColor.GRAY
 
-    return cast(Image, output)
+    return output
 
 
 def bgr_to_grayscale(image: torch.Tensor) -> torch.Tensor:
