@@ -1,13 +1,8 @@
-from typing import Union
-
-import torch
-import torch.nn as nn
-
 from kornia.color.rgb import bgr_to_rgb
-from kornia.core import Image, ImageColor, Tensor
+from kornia.core import Image, ImageColor, Tensor, concatenate, nn
 
 
-def grayscale_to_rgb(image: torch.Tensor) -> torch.Tensor:
+def grayscale_to_rgb(image: Image) -> Image:
     r"""Convert a grayscale image to RGB version of image.
 
     .. image:: _static/img/grayscale_to_rgb.png
@@ -15,33 +10,34 @@ def grayscale_to_rgb(image: torch.Tensor) -> torch.Tensor:
     The image data is assumed to be in the range of (0, 1).
 
     Args:
-        image: grayscale image to be converted to RGB with shape :math:`(*,1,H,W)`.
+        image: grayscale image tensor to be converted to RGB with shape :math:`(*,1,H,W)`.
 
     Returns:
         RGB version of the image with shape :math:`(*,3,H,W)`.
 
     Example:
+        >>> import torch
         >>> input = torch.randn(2, 1, 4, 5)
         >>> gray = grayscale_to_rgb(input) # 2x3x4x5
     """
-    if not isinstance(image, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. " f"Got {type(image)}")
+    if not isinstance(image, (Image, Tensor)):
+        raise TypeError(f"Input type is not an image or tensor. " f"Got {type(image)}")
 
-    if image.dim() < 3 or image.size(-3) != 1:
+    if len(image.shape) < 3 or image.shape[-3] != 1:
         raise ValueError(f"Input size must have a shape of (*, 1, H, W). " f"Got {image.shape}.")
 
-    rgb: torch.Tensor = torch.cat([image, image, image], dim=-3)
+    if isinstance(image, Image) and image.color is not ImageColor.GRAY:
+        raise ValueError(f"Cannot convert to RGB: {image.color}.")
 
-    # TODO: we should find a better way to raise this kind of warnings
-    # if not torch.is_floating_point(image):
-    #     warnings.warn(f"Input image is not of float dtype. Got {image.dtype}")
+    rgb = concatenate([image, image, image], dim=-3)
+
+    if isinstance(rgb, Image):
+        rgb.color = ImageColor.RGB
 
     return rgb
 
 
-def rgb_to_grayscale(
-    image: Union[Image, Tensor], rgb_weights: Tensor = Tensor([0.299, 0.587, 0.114])
-) -> Union[Image, Tensor]:
+def rgb_to_grayscale(image: Image, rgb_weights: Tensor = Tensor([0.299, 0.587, 0.114])) -> Image:
     r"""Convert a RGB image to grayscale version of image.
 
     .. image:: _static/img/rgb_to_grayscale.png
@@ -60,6 +56,7 @@ def rgb_to_grayscale(
        color_conversions.html>`__.
 
     Example:
+        >>> import torch
         >>> input = torch.rand(2, 3, 4, 5)
         >>> gray = rgb_to_grayscale(input) # 2x1x4x5
     """
@@ -74,11 +71,6 @@ def rgb_to_grayscale(
 
     if rgb_weights.shape[-1] != 3:
         raise ValueError(f"rgb_weights must have a shape of (*, 3). Got {rgb_weights.shape}")
-
-    if not image.is_floating_point and (image.dtype != rgb_weights.dtype):
-        raise TypeError(
-            f"Input image and rgb_weights should be of same dtype. Got {image.dtype} and {rgb_weights.dtype}"
-        )
 
     if isinstance(image, Image) and image.color is not ImageColor.RGB:
         raise ValueError(f"Cannot convert to grayscale: {image.color}.")
@@ -99,7 +91,7 @@ def rgb_to_grayscale(
     return output
 
 
-def bgr_to_grayscale(image: torch.Tensor) -> torch.Tensor:
+def bgr_to_grayscale(image: Image) -> Image:
     r"""Convert a BGR image to grayscale.
 
     The image data is assumed to be in the range of (0, 1). First flips to RGB, then converts.
@@ -111,17 +103,26 @@ def bgr_to_grayscale(image: torch.Tensor) -> torch.Tensor:
         grayscale version of the image with shape :math:`(*,1,H,W)`.
 
     Example:
+        >>> import torch
         >>> input = torch.rand(2, 3, 4, 5)
         >>> gray = bgr_to_grayscale(input) # 2x1x4x5
     """
-    if not isinstance(image, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
+    if not isinstance(image, (Image, Tensor)):
+        raise TypeError(f"Input type is not an image or tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
+    if isinstance(image, Image) and image.color is not ImageColor.BGR:
+        raise ValueError(f"Cannot convert to grayscale: {image.color}.")
+
     image_rgb = bgr_to_rgb(image)
-    return rgb_to_grayscale(image_rgb)
+    image_bgr = rgb_to_grayscale(image_rgb)
+
+    if isinstance(image_bgr, Image):
+        image_bgr.color = ImageColor.BGR
+
+    return image_bgr
 
 
 class GrayscaleToRgb(nn.Module):
@@ -137,12 +138,13 @@ class GrayscaleToRgb(nn.Module):
         https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
 
     Example:
+        >>> import torch
         >>> input = torch.rand(2, 1, 4, 5)
         >>> rgb = GrayscaleToRgb()
         >>> output = rgb(input)  # 2x3x4x5
     """
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, image: Image) -> Image:  # type: ignore
         return grayscale_to_rgb(image)
 
 
@@ -159,16 +161,17 @@ class RgbToGrayscale(nn.Module):
         https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
 
     Example:
+        >>> import torch
         >>> input = torch.rand(2, 3, 4, 5)
         >>> gray = RgbToGrayscale()
         >>> output = gray(input)  # 2x1x4x5
     """
 
-    def __init__(self, rgb_weights: torch.Tensor = torch.tensor([0.299, 0.587, 0.114])) -> None:
+    def __init__(self, rgb_weights: Tensor = Tensor([0.299, 0.587, 0.114])) -> None:
         super().__init__()
         self.rgb_weights = rgb_weights
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, image: Image) -> Image:
         return rgb_to_grayscale(image, rgb_weights=self.rgb_weights)
 
 
@@ -185,10 +188,11 @@ class BgrToGrayscale(nn.Module):
         https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
 
     Example:
+        >>> import torch
         >>> input = torch.rand(2, 3, 4, 5)
         >>> gray = BgrToGrayscale()
         >>> output = gray(input)  # 2x1x4x5
     """
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, image: Image) -> Image:
         return bgr_to_grayscale(image)

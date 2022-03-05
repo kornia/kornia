@@ -2,3 +2,7 @@
 import torch
 
 Tensor = torch.Tensor
+
+concatenate = torch.cat
+
+nn = torch.nn

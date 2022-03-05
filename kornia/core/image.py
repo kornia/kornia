@@ -10,6 +10,7 @@ class ImageColor(Enum):
     GRAY = 0
     RGB = 1
     BGR = 2
+    NONE = 4
 
 
 class Image(Tensor):
