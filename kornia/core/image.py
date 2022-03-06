@@ -145,10 +145,10 @@ class Image(Tensor):
         """Setter for the color space representation of the image."""
         self._meta['color'] = x
 
-    def _get_mean(self) -> List[float]:
+    def _mean(self) -> List[float]:
         return self._meta['mean']
 
-    def _get_std(self) -> List[float]:
+    def _std(self) -> List[float]:
         return self._meta['std']
 
     @classmethod
@@ -264,7 +264,7 @@ class Image(Tensor):
         if not self.is_floating_point():
             raise TypeError("Image must be in floating point.")
 
-        if self._get_mean() is None or self._get_std() is None:
+        if self._mean() is None or self._std() is None:
             return self
 
         def _make_tensor(data):
@@ -273,8 +273,8 @@ class Image(Tensor):
             return data[None] if self.is_batch else data
 
         # convert to tensor the mean and std
-        mean = _make_tensor(self._get_mean())
-        std = _make_tensor(self._get_std())
+        mean = _make_tensor(self._mean())
+        std = _make_tensor(self._std())
 
         data_denorm = (self.data * std) + mean
-        return Image(data_denorm, self.color, self._get_mean(), self._get_std())
+        return Image(data_denorm, self.color, self._mean(), self._std())

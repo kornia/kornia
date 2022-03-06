@@ -127,10 +127,6 @@ class TestRgbToGrayscale(BaseTester):
             img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_grayscale(img)
 
-        with pytest.raises(TypeError):
-            img = torch.ones(1, 3, 1, 1, device=device, dtype=torch.uint8)
-            assert kornia.color.rgb_to_grayscale(img)
-
         with pytest.raises(ValueError):
             img = torch.ones(3, 1, 1, device=device, dtype=dtype)
             rgb_weights = torch.tensor([0.2, 0.8])

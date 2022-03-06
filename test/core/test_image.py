@@ -20,8 +20,8 @@ class TestImage:
         assert not img.is_batch
         assert img.resolution == (4, 5)
         assert img.shape == (3, 4, 5)
-        assert img._get_mean() is None
-        assert img._get_std() is None
+        assert img._mean() is None
+        assert img._std() is None
         assert img.device == device
         assert img.dtype == torch.uint8
 
@@ -36,8 +36,8 @@ class TestImage:
         assert img.is_batch
         assert img.resolution == (4, 5)
         assert img.shape == (2, 1, 4, 5)
-        assert img._get_mean() is None
-        assert img._get_std() is None
+        assert img._mean() is None
+        assert img._std() is None
         assert img.device == device
         assert img.dtype == dtype
 

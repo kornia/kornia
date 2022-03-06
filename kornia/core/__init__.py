@@ -1,6 +1,6 @@
 from typing import Union
 
-from ._backend import Tensor, concatenate, nn
+from ._backend import Module, Tensor, concatenate
 from .image import Image, ImageColor
 
-__all__ = ["Tensor", "Image", "ImageColor"]
+__all__ = ["Module", "Image", "ImageColor", "Tensor"]
