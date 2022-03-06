@@ -90,14 +90,14 @@ class CombineTensorPatches(nn.Module):
         defined in the function signature.
         left-right and top-bottom order.
 
-    * :attr:`window_size` is the size of the sliding window and controls the
-      shape of the output tensor and defines the shape of the output patch.
-    * :attr:`stride` controls the stride to apply to the sliding window and
-      regulates the overlapping between the extracted patches.
-    * :attr:`padding` controls the amount of implicit zeros-paddings on both
-      sizes at each dimension.
+    * :attr:`original_size` is the size of the original image prior to
+      extracting tensor patches and defines the shape of the output patch.
+    * :attr:`window_size` is the size of the sliding window used while
+      extracting tensor patches.
+    * :attr:`unpadding` is the amount of padding to be removed. This value
+      must be the same as padding used while extracting tensor patches.
 
-    The parameters :attr:`window_size`, :attr:`stride` and :attr:`padding` can
+    The parameters :attr:`original_size`, :attr:`window_size`, and :attr:`unpadding` can
     be either:
 
         - a single ``int`` -- in which case the same value is used for the
@@ -107,7 +107,8 @@ class CombineTensorPatches(nn.Module):
 
     Args:
         patches: patched tensor.
-        window_size: the size of the sliding window and the output patch size.
+        original_size: the size of the original tensor and the output patch size.
+        window_size: the size of the sliding window used.
         unpadding: remove the padding added to both side of the input.
 
     Shape:
@@ -116,29 +117,38 @@ class CombineTensorPatches(nn.Module):
 
     Example:
         >>> out = extract_tensor_patches(torch.arange(16).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2))
-        >>> combine_tensor_patches(out, window_size=(2, 2), stride=(2, 2))
+        >>> combine_tensor_patches(out, original_size=(4, 4), window_size=(2, 2), stride=(2, 2))
         tensor([[[[ 0,  1,  2,  3],
                   [ 4,  5,  6,  7],
                   [ 8,  9, 10, 11],
                   [12, 13, 14, 15]]]])
+
+    .. note::
+        This function is supposed to be used in conjunction with :class:`ExtractTensorPatches`.
+
     """
 
     def __init__(
         self,
+        original_size: Union[int, Tuple[int, int]],
         window_size: Union[int, Tuple[int, int]],
         unpadding: Union[int, Tuple[int, int]] = 0,
     ) -> None:
         super().__init__()
+        self.original_size: Tuple[int, int] = _pair(original_size)
         self.window_size: Tuple[int, int] = _pair(window_size)
         pad: Tuple[int, int] = _pair(unpadding)
         self.unpadding: Tuple[int, int, int, int] = (pad[0], pad[0], pad[1], pad[1])
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return combine_tensor_patches(input, self.window_size, stride=self.window_size, unpadding=self.unpadding)
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        return combine_tensor_patches(
+            input, self.original_size, self.window_size, stride=self.window_size, unpadding=self.unpadding
+        )
 
 
 def combine_tensor_patches(
     patches: torch.Tensor,
+    original_size: Tuple[int, int] = (16, 16),
     window_size: Tuple[int, int] = (4, 4),
     stride: Tuple[int, int] = (4, 4),
     unpadding: Optional[Tuple[int, int, int, int]] = None,
@@ -147,7 +157,8 @@ def combine_tensor_patches(
 
     Args:
         patches: patched tensor with shape :math:`(B, N, C, H_{out}, W_{out})`.
-        window_size: the size of the sliding window and the output patch size.
+        original_size: the size of the original tensor and the output patch size.
+        window_size: the size of the sliding window used while extracting patches.
         stride: stride of the sliding window.
         unpadding: remove the padding added to both side of the input.
 
@@ -156,28 +167,42 @@ def combine_tensor_patches(
 
     Example:
         >>> out = extract_tensor_patches(torch.arange(16).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2))
-        >>> combine_tensor_patches(out, window_size=(2, 2), stride=(2, 2))
+        >>> combine_tensor_patches(out, original_size=(4, 4), window_size=(2, 2), stride=(2, 2))
         tensor([[[[ 0,  1,  2,  3],
                   [ 4,  5,  6,  7],
                   [ 8,  9, 10, 11],
                   [12, 13, 14, 15]]]])
+
+    .. note::
+        This function is supposed to be used in conjunction with :func:`extract_tensor_patches`.
     """
     if stride[0] != window_size[0] or stride[1] != window_size[1]:
         raise NotImplementedError(
             f"Only stride == window_size is supported. Got {stride} and {window_size}."
             "Please feel free to drop a PR to Kornia Github."
         )
+
+    if original_size[0] % 2 != 0 or original_size[1] % 2 != 0:
+        raise NotImplementedError(f"Original image size must be divisible by 2. Got {original_size}")
+
     if unpadding is not None:
+        hpad_check = (original_size[0] + unpadding[0] + unpadding[1]) % window_size[0] == 0
+        wpad_check = (original_size[1] + unpadding[2] + unpadding[3]) % window_size[1] == 0
+
+        if not hpad_check or not wpad_check:
+            raise NotImplementedError("Insufficient padding")
+
         window_size = (
-            window_size[0] + (unpadding[0] + unpadding[1]) // window_size[0],
-            window_size[1] + (unpadding[2] + unpadding[3]) // window_size[1]
+            (original_size[0] + (unpadding[0] + unpadding[1])) // window_size[0],
+            (original_size[1] + (unpadding[2] + unpadding[3])) // window_size[1],
         )
+
     patches_tensor = patches.view(-1, window_size[0], window_size[1], *patches.shape[-3:])
     restored_tensor = torch.cat(torch.chunk(patches_tensor, window_size[0], dim=1), -2).squeeze(1)
     restored_tensor = torch.cat(torch.chunk(restored_tensor, window_size[1], dim=1), -1).squeeze(1)
 
     if unpadding is not None:
-        restored_tensor = torch.nn.functional.pad(restored_tensor, [-i for i in unpadding])
+        restored_tensor = F.pad(restored_tensor, [-i for i in unpadding])
     return restored_tensor
 
 
@@ -225,7 +250,7 @@ def extract_tensor_patches(
     if not torch.is_tensor(input):
         raise TypeError(f"Input input type is not a torch.Tensor. Got {type(input)}")
 
-    if not len(input.shape) == 4:
+    if len(input.shape) != 4:
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
 
     if padding:
