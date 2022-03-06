@@ -1,3 +1,5 @@
+import onnx
+import onnxruntime
 import pytest
 import torch
 from torch.autograd import gradcheck
@@ -81,13 +83,12 @@ class TestGrayscaleToRgb(BaseTester):
         img_rgb = kornia.color.grayscale_to_rgb(data)
         assert_close(img_rgb, expected)
 
-    @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 1, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.grayscale_to_rgb, (img,), raise_exception=True)
 
-    @pytest.mark.jit
+    # TODO: this test fails
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -95,13 +96,40 @@ class TestGrayscaleToRgb(BaseTester):
         op_jit = torch.jit.script(op)
         assert_close(op(img), op_jit(img))
 
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         B, C, H, W = 2, 1, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         gray_ops = kornia.color.GrayscaleToRgb().to(device, dtype)
         gray_fcn = kornia.color.grayscale_to_rgb
         assert_close(gray_ops(img), gray_fcn(img))
+
+    def test_onnx(self, device, dtype):
+        B, C, H, W = 2, 1, 4, 4
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        ops = kornia.color.GrayscaleToRgb().to(device, dtype)
+
+        onnx_name = "GrayscaleToRgb.onnx"
+        torch.onnx.export(
+            ops,
+            img,
+            onnx_name,
+            verbose=False,
+            input_names=["input"],
+            output_names=["output"],
+            opset_version=13,
+            dynamic_axes={'input': {0: 'batch_size'}, 'output': {0: 'batch_size'}},  # variable length axes
+        )
+        onnx_model = onnx.load(onnx_name)
+        sess_options = onnxruntime.SessionOptions()
+        session = onnxruntime.InferenceSession(onnx_model.SerializeToString(), sess_options)
+
+        # TODO: figure out this
+        # img_np = np._from_dlpack(img.__dlpack__())
+        img_np = img.numpy()
+        inputs = {session.get_inputs()[0].name: img_np}
+        ort_outputs = session.run(None, inputs)
+        error = ((img_np - ort_outputs[0]) ** 2).sum()
+        assert error == 0.0
 
 
 class TestRgbToGrayscale(BaseTester):
@@ -188,13 +216,11 @@ class TestRgbToGrayscale(BaseTester):
         assert img_gray.device == device
         assert img_gray.dtype == dtype
 
-    @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_grayscale, (img,), raise_exception=True)
 
-    @pytest.mark.jit
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -202,7 +228,6 @@ class TestRgbToGrayscale(BaseTester):
         op_jit = torch.jit.script(op)
         assert_close(op(img), op_jit(img))
 
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -281,13 +306,11 @@ class TestBgrToGrayscale(BaseTester):
         img_gray = kornia.color.bgr_to_grayscale(data)
         assert_close(img_gray, expected)
 
-    @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.bgr_to_grayscale, (img,), raise_exception=True)
 
-    @pytest.mark.jit
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -295,7 +318,6 @@ class TestBgrToGrayscale(BaseTester):
         op_jit = torch.jit.script(op)
         assert_close(op(img), op_jit(img))
 
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)

@@ -1,5 +1,3 @@
-from typing import Union
-
 from ._backend import Module, Tensor, concatenate
 from .image import Image, ImageColor
 
