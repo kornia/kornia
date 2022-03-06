@@ -49,7 +49,7 @@ repos:
         args: [--py36-plus]
 
   - repo: https://github.com/PyCQA/bandit
-    rev: 1.7.2
+    rev: 1.7.3
     hooks:
       - id: bandit
         name: bandit excluding the test directory
