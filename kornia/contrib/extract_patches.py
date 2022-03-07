@@ -180,7 +180,7 @@ def combine_tensor_patches(
     """
 
     if len(patches.shape) != 5:
-        raise ValueError(f"Invalid input shape, we expect BxPxCxHxW. Got: {patches.shape}")
+        raise ValueError(f"Invalid input shape, we expect BxNxCxHxW. Got: {patches.shape}")
 
     original_size = _pair(original_size)
     window_size = _pair(window_size)
