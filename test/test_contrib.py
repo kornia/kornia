@@ -294,6 +294,24 @@ class TestCombineTensorPatches:
                 patches, original_size=(8, 8), window_size=(4, 4), stride=(4, 4), unpadding=(1, 1, 1, 1)
             )
 
+    def test_pad_triple_error(self, device, dtype):
+        patches = kornia.contrib.extract_tensor_patches(
+            torch.arange(36, device=device, dtype=dtype).view(1, 1, 6, 6), window_size=(4, 4), stride=(4, 4), padding=1
+        )
+        with pytest.raises(NotImplementedError):
+            kornia.contrib.combine_tensor_patches(
+                patches, original_size=(6, 6), window_size=(4, 4), stride=(4, 4), unpadding=(1, 1, 1)
+            )
+
+    def test_pad_quadruple(self, device, dtype):
+        img = torch.arange(36, device=device, dtype=dtype).view(1, 1, 6, 6)
+        patches = kornia.contrib.extract_tensor_patches(img, window_size=(4, 4), stride=(4, 4), padding=1)
+
+        merged = kornia.contrib.combine_tensor_patches(
+            patches, original_size=(6, 6), window_size=(4, 4), stride=(4, 4), unpadding=(1, 1, 1, 1)
+        )
+        assert merged.shape == (1, 1, 6, 6)
+
     def test_rectangle_array(self, device, dtype):
         img = torch.arange(24, device=device, dtype=dtype).view(1, 1, 4, 6)
         patches = kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(2, 2), padding=1)

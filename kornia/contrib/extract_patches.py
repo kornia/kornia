@@ -5,6 +5,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.modules.utils import _pair
 
+PadType = Union[Tuple[int, int], Tuple[int, int, int, int]]
+
 
 class ExtractTensorPatches(nn.Module):
     r"""Module that extract patches from tensors and stack them.
@@ -150,7 +152,7 @@ def combine_tensor_patches(
     original_size: Union[int, Tuple[int, int]],
     window_size: Union[int, Tuple[int, int]],
     stride: Union[int, Tuple[int, int]],
-    unpadding: Union[int, Tuple[int, int], Tuple[int, int, int, int]] = 0,
+    unpadding: Union[int, PadType] = 0,
 ) -> torch.Tensor:
     r"""Restore input from patches.
 
@@ -184,11 +186,6 @@ def combine_tensor_patches(
     original_size = cast(Tuple[int, int], _pair(original_size))
     window_size = cast(Tuple[int, int], _pair(window_size))
     stride = cast(Tuple[int, int], _pair(stride))
-    unpadding = cast(Tuple[int, int], _pair(unpadding))
-
-    pad_vert = _pair(unpadding[0])
-    pad_horz = _pair(unpadding[1])
-    unpadding = cast(Tuple[int, int, int, int], pad_horz + pad_vert)
 
     if stride[0] != window_size[0] or stride[1] != window_size[1]:
         raise NotImplementedError(
@@ -199,7 +196,19 @@ def combine_tensor_patches(
     if original_size[0] % 2 != 0 or original_size[1] % 2 != 0:
         raise NotImplementedError(f"Original image size must be divisible by 2. Got {original_size}")
 
-    if unpadding is not None:
+    if unpadding:
+        unpadding = cast(PadType, _pair(unpadding))
+
+        if len(unpadding) not in [2, 4]:
+            raise NotImplementedError("Unpadding must be either an int, tuple of two ints or tuple of four ints")
+
+        if len(unpadding) == 2:
+            pad_vert = _pair(unpadding[0])
+            pad_horz = _pair(unpadding[1])
+            unpadding = cast(Tuple[int, int, int, int], pad_horz + pad_vert)
+        else:
+            unpadding = cast(Tuple[int, int, int, int], unpadding)
+
         hpad_check = (original_size[0] + unpadding[2] + unpadding[3]) % window_size[0] == 0
         wpad_check = (original_size[1] + unpadding[0] + unpadding[1]) % window_size[1] == 0
 
@@ -215,7 +224,8 @@ def combine_tensor_patches(
     restored_tensor = torch.cat(torch.chunk(patches_tensor, window_size[0], dim=1), -2).squeeze(1)
     restored_tensor = torch.cat(torch.chunk(restored_tensor, window_size[1], dim=1), -1).squeeze(1)
 
-    if unpadding is not None:
+    if unpadding:
+        unpadding = cast(Tuple[int, int, int, int], unpadding)
         restored_tensor = F.pad(restored_tensor, [-i for i in unpadding])
     return restored_tensor
 
@@ -235,7 +245,7 @@ def extract_tensor_patches(
     input: torch.Tensor,
     window_size: Union[int, Tuple[int, int]],
     stride: Union[int, Tuple[int, int]] = 1,
-    padding: Union[int, Tuple[int, int]] = 0,
+    padding: Union[int, PadType] = 0,
 ) -> torch.Tensor:
     r"""Function that extract patches from tensors and stack them.
 
@@ -268,7 +278,17 @@ def extract_tensor_patches(
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
 
     if padding:
-        pad_vert, pad_horz = _pair(padding)
-        input = F.pad(input, [pad_horz, pad_horz, pad_vert, pad_vert])
+        padding = cast(PadType, _pair(padding))
+
+        if len(padding) not in [2, 4]:
+            raise NotImplementedError("Padding must be either an int, tuple of two ints or tuple of four ints")
+
+        if len(padding) == 2:
+            pad_vert = _pair(padding[0])
+            pad_horz = _pair(padding[1])
+            padding = cast(Tuple[int, int, int, int], pad_horz + pad_vert)
+        else:
+            padding = cast(Tuple[int, int, int, int], padding)
+        input = F.pad(input, padding)
 
     return _extract_tensor_patchesnd(input, _pair(window_size), _pair(stride))
