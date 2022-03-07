@@ -42,10 +42,10 @@ class TestRandomPerspective:
         assert aug.transform_matrix.shape == torch.Size([1, 3, 3])
         assert aug.inverse(out_perspective).shape == x_data.shape
 
-    def test_smoke_transform_area_preserving(self, device):
+    def test_smoke_transform_sampling_method(self, device):
         x_data = torch.rand(1, 2, 4, 5).to(device)
 
-        aug = kornia.augmentation.RandomPerspective(0.5, p=0.5, area_preserving=True)
+        aug = kornia.augmentation.RandomPerspective(0.5, p=0.5, sampling_method="warpc")
 
         out_perspective = aug(x_data)
 

@@ -22,7 +22,10 @@ class RandomPerspective(GeometricAugmentationBase2D):
         align_corners: interpolation flag.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
-        area_preserving: if to apply random offsets which preserve image area on average.
+        sampling_method: ``'basic'`` | ``'warpc'``. Default: ``'basic'``
+            If ``'basic'``, samples by translating the image corners randomly inwards.
+            If ``'warpc'``, samples by randomly translating the image corners in any direction.
+            Preserves area on average. See https://arxiv.org/abs/2104.03308 for further details.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -62,13 +65,13 @@ class RandomPerspective(GeometricAugmentationBase2D):
         align_corners: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        area_preserving: bool = False,
+        sampling_method: str = "basic",
         return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator = cast(
             rg.PerspectiveGenerator,
-            rg.PerspectiveGenerator(distortion_scale, area_preserving=area_preserving)
+            rg.PerspectiveGenerator(distortion_scale, sampling_method=sampling_method)
         )
         self.flags: Dict[str, Any] = dict(align_corners=align_corners, resample=Resample.get(resample))
 

@@ -269,10 +269,10 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
         assert_close(res['start_points'], expected['start_points'])
         assert_close(res['end_points'], expected['end_points'])
 
-    def test_area_preserving(self, device, dtype):
+    def test_sampling_method(self, device, dtype):
         torch.manual_seed(42)
         batch_size = 2
-        res = PerspectiveGenerator(torch.tensor(0.5, device=device, dtype=dtype), area_preserving=True)(
+        res = PerspectiveGenerator(torch.tensor(0.5, device=device, dtype=dtype), sampling_method="warpc")(
             torch.Size([batch_size, 1, 200, 200])
         )
 
