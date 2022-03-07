@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, cast
 
 import torch
 import torch.nn as nn
@@ -137,8 +137,7 @@ class CombineTensorPatches(nn.Module):
         super().__init__()
         self.original_size: Tuple[int, int] = _pair(original_size)
         self.window_size: Tuple[int, int] = _pair(window_size)
-        pad: Tuple[int, int] = _pair(unpadding)
-        self.unpadding: Tuple[int, int, int, int] = (pad[0], pad[0], pad[1], pad[1])
+        self.unpadding: Tuple[int, int] = _pair(unpadding)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return combine_tensor_patches(
@@ -182,13 +181,14 @@ def combine_tensor_patches(
     if len(patches.shape) != 5:
         raise ValueError(f"Invalid input shape, we expect BxNxCxHxW. Got: {patches.shape}")
 
-    original_size = _pair(original_size)
-    window_size = _pair(window_size)
-    stride = _pair(stride)
-    unpadding = _pair(unpadding)
+    original_size = cast(Tuple[int, int], _pair(original_size))
+    window_size = cast(Tuple[int, int], _pair(window_size))
+    stride = cast(Tuple[int, int], _pair(stride))
+    unpadding = cast(Tuple[int, int], _pair(unpadding))
 
-    if len(unpadding) == 2:
-        unpadding = _pair(unpadding[0]) + _pair(unpadding[1])
+    pad_vert = _pair(unpadding[0])
+    pad_horz = _pair(unpadding[1])
+    unpadding = cast(Tuple[int, int, int, int], pad_horz + pad_vert)
 
     if stride[0] != window_size[0] or stride[1] != window_size[1]:
         raise NotImplementedError(
@@ -200,15 +200,15 @@ def combine_tensor_patches(
         raise NotImplementedError(f"Original image size must be divisible by 2. Got {original_size}")
 
     if unpadding is not None:
-        hpad_check = (original_size[0] + unpadding[0] + unpadding[1]) % window_size[0] == 0
-        wpad_check = (original_size[1] + unpadding[2] + unpadding[3]) % window_size[1] == 0
+        hpad_check = (original_size[0] + unpadding[2] + unpadding[3]) % window_size[0] == 0
+        wpad_check = (original_size[1] + unpadding[0] + unpadding[1]) % window_size[1] == 0
 
         if not hpad_check or not wpad_check:
             raise NotImplementedError("Insufficient padding")
 
         window_size = (
-            (original_size[0] + (unpadding[0] + unpadding[1])) // window_size[0],
-            (original_size[1] + (unpadding[2] + unpadding[3])) // window_size[1],
+            (original_size[0] + (unpadding[2] + unpadding[3])) // window_size[0],
+            (original_size[1] + (unpadding[0] + unpadding[1])) // window_size[1],
         )
 
     patches_tensor = patches.view(-1, window_size[0], window_size[1], *patches.shape[-3:])
