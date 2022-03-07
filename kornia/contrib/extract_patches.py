@@ -148,12 +148,14 @@ class CombineTensorPatches(nn.Module):
 
 def combine_tensor_patches(
     patches: torch.Tensor,
-    original_size: Tuple[int, int] = (16, 16),
-    window_size: Tuple[int, int] = (4, 4),
-    stride: Tuple[int, int] = (4, 4),
-    unpadding: Optional[Tuple[int, int, int, int]] = None,
+    original_size: Union[int, Tuple[int, int]],
+    window_size: Union[int, Tuple[int, int]],
+    stride: Union[int, Tuple[int, int]],
+    unpadding: Union[int, Tuple[int, int]] = 0,
 ) -> torch.Tensor:
     r"""Restore input from patches.
+
+    See :class:`~kornia.contrib.CombineTensorPatches` for details.
 
     Args:
         patches: patched tensor with shape :math:`(B, N, C, H_{out}, W_{out})`.
@@ -176,6 +178,18 @@ def combine_tensor_patches(
     .. note::
         This function is supposed to be used in conjunction with :func:`extract_tensor_patches`.
     """
+
+    if len(patches.shape) != 5:
+        raise ValueError(f"Invalid input shape, we expect BxPxCxHxW. Got: {patches.shape}")
+
+    original_size = _pair(original_size)
+    window_size = _pair(window_size)
+    stride = _pair(stride)
+    unpadding = _pair(unpadding)
+
+    if len(unpadding) == 2:
+        unpadding = _pair(unpadding[0]) + _pair(unpadding[1])
+
     if stride[0] != window_size[0] or stride[1] != window_size[1]:
         raise NotImplementedError(
             f"Only stride == window_size is supported. Got {stride} and {window_size}."
