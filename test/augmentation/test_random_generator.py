@@ -272,7 +272,7 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
     def test_sampling_method(self, device, dtype):
         torch.manual_seed(42)
         batch_size = 2
-        res = PerspectiveGenerator(torch.tensor(0.5, device=device, dtype=dtype), sampling_method="warpc")(
+        res = PerspectiveGenerator(torch.tensor(0.5, device=device, dtype=dtype), sampling_method="area_preserving")(
             torch.Size([batch_size, 1, 200, 200])
         )
 

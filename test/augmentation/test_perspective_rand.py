@@ -45,7 +45,7 @@ class TestRandomPerspective:
     def test_smoke_transform_sampling_method(self, device):
         x_data = torch.rand(1, 2, 4, 5).to(device)
 
-        aug = kornia.augmentation.RandomPerspective(0.5, p=0.5, sampling_method="warpc")
+        aug = kornia.augmentation.RandomPerspective(0.5, p=0.5, sampling_method="area_preserving")
 
         out_perspective = aug(x_data)
 

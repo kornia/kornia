@@ -13,9 +13,9 @@ class PerspectiveGenerator(RandomGeneratorBase):
 
     Args:
         distortion_scale: the degree of distortion, ranged from 0 to 1.
-        sampling_method: ``'basic'`` | ``'warpc'``. Default: ``'basic'``
+        sampling_method: ``'basic'`` | ``'area_preserving'``. Default: ``'basic'``
             If ``'basic'``, samples by translating the image corners randomly inwards.
-            If ``'warpc'``, samples by randomly translating the image corners in any direction.
+            If ``'area_preserving'``, samples by randomly translating the image corners in any direction.
             Preserves area on average. See https://arxiv.org/abs/2104.03308 for further details.
 
     Returns:
@@ -31,7 +31,7 @@ class PerspectiveGenerator(RandomGeneratorBase):
 
     def __init__(self, distortion_scale: Union[torch.Tensor, float] = 0.5, sampling_method: str = "basic") -> None:
         super().__init__()
-        if sampling_method not in ("basic", "warpc"):
+        if sampling_method not in ("basic", "area_preserving"):
             raise NotImplementedError(f"Sampling method {self.sampling_method} not yet implemented.")
         self.distortion_scale = distortion_scale
         self.sampling_method = sampling_method
@@ -77,7 +77,7 @@ class PerspectiveGenerator(RandomGeneratorBase):
         if self.sampling_method == "basic":
             pts_norm = torch.tensor([[[1, 1], [-1, 1], [-1, -1], [1, -1]]], device=_device, dtype=_dtype)
             offset = factor * rand_val * pts_norm
-        elif self.sampling_method == "warpc":
+        elif self.sampling_method == "area_preserving":
             offset = 2 * factor * (rand_val - 0.5)
 
         end_points = start_points + offset

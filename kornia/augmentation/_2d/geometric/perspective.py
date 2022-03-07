@@ -22,9 +22,9 @@ class RandomPerspective(GeometricAugmentationBase2D):
         align_corners: interpolation flag.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
-        sampling_method: ``'basic'`` | ``'warpc'``. Default: ``'basic'``
+        sampling_method: ``'basic'`` | ``'area_preserving'``. Default: ``'basic'``
             If ``'basic'``, samples by translating the image corners randomly inwards.
-            If ``'warpc'``, samples by randomly translating the image corners in any direction.
+            If ``'area_preserving'``, samples by randomly translating the image corners in any direction.
             Preserves area on average. See https://arxiv.org/abs/2104.03308 for further details.
 
     Shape:
