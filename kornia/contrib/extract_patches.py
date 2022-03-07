@@ -200,7 +200,7 @@ def combine_tensor_patches(
         unpadding = cast(PadType, _pair(unpadding))
 
         if len(unpadding) not in [2, 4]:
-            raise NotImplementedError("Unpadding must be either an int, tuple of two ints or tuple of four ints")
+            raise AssertionError("Unpadding must be either an int, tuple of two ints or tuple of four ints")
 
         if len(unpadding) == 2:
             pad_vert = _pair(unpadding[0])
@@ -281,7 +281,7 @@ def extract_tensor_patches(
         padding = cast(PadType, _pair(padding))
 
         if len(padding) not in [2, 4]:
-            raise NotImplementedError("Padding must be either an int, tuple of two ints or tuple of four ints")
+            raise AssertionError("Padding must be either an int, tuple of two ints or tuple of four ints")
 
         if len(padding) == 2:
             pad_vert = _pair(padding[0])

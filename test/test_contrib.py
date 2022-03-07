@@ -298,7 +298,7 @@ class TestCombineTensorPatches:
         patches = kornia.contrib.extract_tensor_patches(
             torch.arange(36, device=device, dtype=dtype).view(1, 1, 6, 6), window_size=(4, 4), stride=(4, 4), padding=1
         )
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(AssertionError):
             kornia.contrib.combine_tensor_patches(
                 patches, original_size=(6, 6), window_size=(4, 4), stride=(4, 4), unpadding=(1, 1, 1)
             )
