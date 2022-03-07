@@ -151,7 +151,7 @@ def combine_tensor_patches(
     original_size: Union[int, Tuple[int, int]],
     window_size: Union[int, Tuple[int, int]],
     stride: Union[int, Tuple[int, int]],
-    unpadding: Union[int, Tuple[int, int]] = 0,
+    unpadding: Union[int, Tuple[int, int], Tuple[int, int, int, int]] = 0,
 ) -> torch.Tensor:
     r"""Restore input from patches.
 
