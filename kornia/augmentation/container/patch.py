@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 
 from kornia.augmentation import MixAugmentationBase
-from kornia.augmentation.base import TensorWithTransformMat, _AugmentationBase
+from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import SequentialBase
 from kornia.augmentation.container.image import ImageSequential, ParamItem
 from kornia.contrib.extract_patches import extract_tensor_patches
@@ -140,7 +140,6 @@ class PatchSequential(ImageSequential):
         super().__init__(
             *args,
             same_on_batch=same_on_batch,
-            return_transform=False,
             keepdim=keepdim,
             random_apply=_random_apply,
             random_apply_weights=random_apply_weights,
@@ -307,15 +306,11 @@ class PatchSequential(ImageSequential):
                         yield ParamItem(s[0], None), i
 
     def apply_by_param(
-        self, input: TensorWithTransformMat, label: Optional[torch.Tensor], params: PatchParamItem
-    ) -> Tuple[TensorWithTransformMat, Optional[torch.Tensor], PatchParamItem]:
-        _input: TensorWithTransformMat
-        if isinstance(input, (tuple,)):
-            in_shape = input[0].shape
-            _input = (input[0][params.indices], input[1][params.indices])
-        else:
-            in_shape = input.shape
-            _input = input[params.indices]
+        self, input: torch.Tensor, label: Optional[torch.Tensor], params: PatchParamItem
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], PatchParamItem]:
+        _input: torch.Tensor
+        in_shape = input.shape
+        _input = input[params.indices]
 
         _label: Optional[torch.Tensor]
         if label is not None:
@@ -368,8 +363,8 @@ class PatchSequential(ImageSequential):
 
     def forward_by_params(
         self, input: torch.Tensor, label: Optional[torch.Tensor], params: List[PatchParamItem]
-    ) -> Union[TensorWithTransformMat, Tuple[TensorWithTransformMat, Optional[torch.Tensor]]]:
-        _input: TensorWithTransformMat
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, Optional[torch.Tensor]]]:
+        _input: torch.Tensor
         in_shape = input.shape
         _input = input.reshape(-1, *in_shape[-3:])
 
@@ -380,10 +375,7 @@ class PatchSequential(ImageSequential):
         for patch_param in params:
             _input, label, out_param = self.apply_by_param(_input, label, params=patch_param)
             self.update_params(out_param)
-        if isinstance(_input, (tuple,)):
-            _input = (_input[0].reshape(in_shape), _input[1])
-        else:
-            _input = _input.reshape(in_shape)
+        _input = _input.reshape(in_shape)
         return _input, label
 
     def inverse(self, input: torch.Tensor, params: List[ParamItem]) -> torch.Tensor:  # type: ignore
@@ -399,12 +391,12 @@ class PatchSequential(ImageSequential):
 
     def forward(  # type: ignore
         self, input: torch.Tensor, label: Optional[torch.Tensor] = None, params: Optional[List[PatchParamItem]] = None
-    ) -> Union[TensorWithTransformMat, Tuple[TensorWithTransformMat, torch.Tensor]]:
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """Input transformation will be returned if input is a tuple."""
         # BCHW -> B(patch)CHW
         if isinstance(input, (tuple,)):
             raise ValueError("tuple input is not currently supported.")
-        _input: TensorWithTransformMat
+        _input: torch.Tensor
 
         pad = self.compute_padding(input, self.padding)
         input = self.extract_patches(input, self.grid_size, pad)
@@ -414,10 +406,7 @@ class PatchSequential(ImageSequential):
 
         _input, label = self.forward_by_params(input, label, params)
 
-        if isinstance(_input, (tuple,)):
-            _input = (self.restore_from_patches(_input[0], self.grid_size, pad=pad), _input[1])
-        else:
-            _input = self.restore_from_patches(_input, self.grid_size, pad=pad)
+        _input = self.restore_from_patches(_input, self.grid_size, pad=pad)
 
         self.return_label = label is not None or self.contains_label_operations(params)
 

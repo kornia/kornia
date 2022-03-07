@@ -266,7 +266,7 @@ class TestExtractTensorPatches:
 class TestCombineTensorPatches:
     def test_smoke(self, device, dtype):
         img = torch.arange(16, device=device, dtype=dtype).view(1, 1, 4, 4)
-        m = kornia.contrib.CombineTensorPatches((2, 2))
+        m = kornia.contrib.CombineTensorPatches((4, 4), (2, 2))
         patches = kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(2, 2))
         assert m(patches).shape == (1, 1, 4, 4)
         assert (img == m(patches)).all()
@@ -276,13 +276,43 @@ class TestCombineTensorPatches:
             torch.arange(16, device=device, dtype=dtype).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2), padding=1
         )
         with pytest.raises(NotImplementedError):
-            kornia.contrib.combine_tensor_patches(patches, window_size=(2, 2), stride=(3, 2))
+            kornia.contrib.combine_tensor_patches(patches, original_size=(4, 4), window_size=(2, 2), stride=(3, 2))
+
+    def test_rect_odd_dim(self, device, dtype):
+        patches = kornia.contrib.extract_tensor_patches(
+            torch.arange(12, device=device, dtype=dtype).view(1, 1, 4, 3), window_size=(2, 2), stride=(2, 2), padding=1
+        )
+        with pytest.raises(NotImplementedError):
+            kornia.contrib.combine_tensor_patches(patches, original_size=(4, 3), window_size=(2, 2), stride=(2, 2))
+
+    def test_pad_error(self, device, dtype):
+        patches = kornia.contrib.extract_tensor_patches(
+            torch.arange(64, device=device, dtype=dtype).view(1, 1, 8, 8), window_size=(4, 4), stride=(4, 4), padding=1
+        )
+        with pytest.raises(NotImplementedError):
+            kornia.contrib.combine_tensor_patches(
+                patches, original_size=(8, 8), window_size=(4, 4), stride=(4, 4), unpadding=(1, 1, 1, 1)
+            )
+
+    def test_rectangle_array(self, device, dtype):
+        img = torch.arange(24, device=device, dtype=dtype).view(1, 1, 4, 6)
+        patches = kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(2, 2), padding=1)
+        m = kornia.contrib.CombineTensorPatches((4, 6), (2, 2), unpadding=1)
+        assert m(patches).shape == (1, 1, 4, 6)
+        assert (img == m(patches)).all()
 
     def test_padding1(self, device, dtype):
         img = torch.arange(16, device=device, dtype=dtype).view(1, 1, 4, 4)
         patches = kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(2, 2), padding=1)
-        m = kornia.contrib.CombineTensorPatches((2, 2), unpadding=1)
+        m = kornia.contrib.CombineTensorPatches((4, 4), (2, 2), unpadding=1)
         assert m(patches).shape == (1, 1, 4, 4)
+        assert (img == m(patches)).all()
+
+    def test_padding2(self, device, dtype):
+        img = torch.arange(64, device=device, dtype=dtype).view(1, 1, 8, 8)
+        patches = kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(2, 2), padding=1)
+        m = kornia.contrib.CombineTensorPatches((8, 8), (2, 2), unpadding=1)
+        assert m(patches).shape == (1, 1, 8, 8)
         assert (img == m(patches)).all()
 
     def test_gradcheck(self, device, dtype):
@@ -290,7 +320,7 @@ class TestCombineTensorPatches:
             torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2)
         )
         img = utils.tensor_to_gradcheck_var(patches)  # to var
-        assert gradcheck(kornia.contrib.combine_tensor_patches, (img, (2, 2), (2, 2)), raise_exception=True)
+        assert gradcheck(kornia.contrib.combine_tensor_patches, (img, (4, 4), (2, 2), (2, 2)), raise_exception=True)
 
 
 class TestLambdaModule:
@@ -422,12 +452,20 @@ class TestConvDistanceTransform:
         h = 0.35
         input1 = torch.zeros(B, C, H, W, device=device, dtype=dtype)
         input1[:, :, 1, 1] = 1.0
-        expected_output1 = torch.tensor([[[
-            [1.4142135382, 1.0000000000, 1.4142135382, 2.2360680103],
-            [1.0000000000, 0.0000000000, 1.0000000000, 2.0000000000],
-            [1.4142135382, 1.0000000000, 1.4142135382, 2.2360680103],
-            [2.2360680103, 2.0000000000, 2.2360680103, 2.8284270763]
-        ]]], device=device, dtype=dtype)
+        expected_output1 = torch.tensor(
+            [
+                [
+                    [
+                        [1.4142135382, 1.0000000000, 1.4142135382, 2.2360680103],
+                        [1.0000000000, 0.0000000000, 1.0000000000, 2.0000000000],
+                        [1.4142135382, 1.0000000000, 1.4142135382, 2.2360680103],
+                        [2.2360680103, 2.0000000000, 2.2360680103, 2.8284270763],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
         output1 = kornia.contrib.distance_transform(input1, kernel_size, h)
         assert_close(expected_output1, output1)
 
