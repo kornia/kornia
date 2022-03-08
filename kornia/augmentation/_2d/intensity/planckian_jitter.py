@@ -1,6 +1,5 @@
 from typing import Dict, Optional
 
-import numpy as np
 import torch
 from torch import Tensor
 
@@ -11,7 +10,7 @@ class PlanckianJitterSampler:
 
     def __init__(self, mode):
         if mode == 'blackbody':
-            self.pl = np.array(
+            self.pl = torch.Tensor(
                 [
                     [0.6743, 0.4029, 0.0013],
                     [0.6281, 0.4241, 0.1665],
@@ -41,7 +40,7 @@ class PlanckianJitterSampler:
                 ]
             )
         elif mode == "CIED":
-            self.pl = np.array(
+            self.pl = torch.Tensor(
                 [
                     [0.5829, 0.4421, 0.2288],
                     [0.5510, 0.4514, 0.2948],
