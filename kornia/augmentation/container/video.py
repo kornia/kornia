@@ -8,7 +8,7 @@ from kornia.augmentation import RandomCrop
 from kornia.augmentation._2d.mix.base import MixAugmentationBase
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import SequentialBase
-from kornia.augmentation.container.image import ImageSequential, ParamItem
+from kornia.augmentation.container.image import ImageSequential, ParamItem, _get_new_batch_shape
 from kornia.augmentation.container.utils import InputApplyInverse, MaskApplyInverse
 
 __all__ = ["VideoSequential"]
@@ -200,11 +200,13 @@ class VideoSequential(ImageSequential):
                 if self.same_on_frame:
                     for k, v in mod_param.items():
                         # TODO: revise colorjitter order param in the future to align the standard.
-                        if not (k == "order" and isinstance(module, kornia.augmentation.ColorJitter)):
+                        if not (k == "order" and isinstance(module, kornia.augmentation.ColorJitter)) \
+                                and not (k == 'output_size'):
                             mod_param.update({k: self.__repeat_param_across_channels__(v, frame_num)})
                 param = ParamItem(name, mod_param)
             else:
                 param = ParamItem(name, None)
+            batch_shape = _get_new_batch_shape(param, batch_shape)
             params.append(param)
         return params
 

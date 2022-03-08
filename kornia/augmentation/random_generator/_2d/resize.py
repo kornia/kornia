@@ -87,4 +87,4 @@ class ResizeGenerator(RandomGeneratorBase):
 
         _input_size = torch.tensor(input_size, device=_device, dtype=torch.long).expand(batch_size, -1)
 
-        return dict(src=src, dst=dst, input_size=_input_size, resize_to=torch.as_tensor(self.resize_to))
+        return dict(src=src, dst=dst, input_size=_input_size, output_size=torch.as_tensor(self.resize_to))

@@ -220,9 +220,6 @@ class ImageSequential(SequentialBase):
             if isinstance(module, RandomCrop):
                 mod_param = module.forward_parameters_precrop(batch_shape)
                 param = ParamItem(name, mod_param)
-                cropped_batch_shape = list(batch_shape)
-                cropped_batch_shape[-2:] = module.flags['size']
-                batch_shape = torch.Size(cropped_batch_shape)
             elif isinstance(module, (_AugmentationBase, MixAugmentationBase)):
                 mod_param = module.forward_parameters(batch_shape)
                 param = ParamItem(name, mod_param)
@@ -231,6 +228,7 @@ class ImageSequential(SequentialBase):
                 param = ParamItem(name, mod_param)
             else:
                 param = ParamItem(name, None)
+            batch_shape = _get_new_batch_shape(param, batch_shape)
             params.append(param)
         return params
 
@@ -373,3 +371,16 @@ class ImageSequential(SequentialBase):
                 param = ParamItem(param.name, None)
             self.update_params(param)
         return self.__packup_output__(input, label)
+
+
+def _get_new_batch_shape(param, batch_shape):
+    if param.data is None:
+        return batch_shape
+    if isinstance(param.data, list):
+        for p in param.data:
+            batch_shape = _get_new_batch_shape(p, batch_shape)
+    elif 'output_size' in param.data:
+        new_batch_shape = list(batch_shape)
+        new_batch_shape[-2:] = param.data['output_size']
+        batch_shape = torch.Size(new_batch_shape)
+    return batch_shape
