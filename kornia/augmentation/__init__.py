@@ -5,6 +5,7 @@ from kornia.augmentation._2d import (
     LongestMaxSize,
     Normalize,
     PadTo,
+    PlanckianJitter,
     RandomAffine,
     RandomBoxBlur,
     RandomChannelShuffle,
@@ -31,7 +32,6 @@ from kornia.augmentation._2d import (
     RandomVerticalFlip,
     Resize,
     SmallestMaxSize,
-    PlanckianJitter
 )
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
