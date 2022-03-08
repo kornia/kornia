@@ -77,6 +77,31 @@ class PlanckianJitterSampler:
 
 
 class PlanckianJitter(IntensityAugmentationBase2D):
+    r"""Apply planckian jitter transformation to input tensor
+    This is physics based color augmentation, that creates realistic
+    variations in chromaticity, this can simulate the illumination
+    changes in the scene
+
+    Args:
+        mode: 'blackbody' or 'CIED'.
+        same_on_batch: apply the same transformation across the batch.
+        p: probability that the random erasing operation will be performed.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+                                to the batch form (False).
+    Shape:
+    - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+    - Output: :math:`(B, C, H, W)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1]
+
+    Examples:
+        >>> rng = torch.manual_seed(0)
+        >>> input = torch.randn(1, 3, 32, 32)
+        >>> aug = PlanckianJitter(mode='CIED', p=1.0)
+        >>> aug(input)
+    """
+
     def __init__(self,
                  mode: str = "blackbody",
                  same_on_batch: bool = False,
@@ -88,23 +113,21 @@ class PlanckianJitter(IntensityAugmentationBase2D):
         self.idx = None
 
     def generate_parameters(self, shape: torch.Size) -> Dict[str, Tensor]:
-        # https://github.com/TheZino/PlanckianJitter/blob/main/planckianTransforms.py#L84
         pl = self.sampler.pl
         if self.idx is not None:
             idx = self.idx
         else:
             idx = torch.randint(0, pl.shape[0], (1,)).item()
 
-        return dict(idx=idx, batch_prob=1)
+        return dict(idx=idx)
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
     ) -> Tensor:
-        pl = self.sampler.pl
-        # https://github.com/TheZino/PlanckianJitter/blob/main/planckianTransforms.py#L87-L89
         idx = params['idx']
-        input[:, 0, ...] = input[:, 0, ...] * (pl[idx, 0] / pl[idx, 1])
-        input[:, 2, ...] = input[:, 2, ...] * (pl[idx, 2] / pl[idx, 1])
+        curr_pl = self.sampler[idx]
+        input[:, 0, ...] = input[:, 0, ...] * (curr_pl[0] / curr_pl[1])
+        input[:, 2, ...] = input[:, 2, ...] * (curr_pl[2] / curr_pl[1])
         input[input > 1] = 1
 
         return input
