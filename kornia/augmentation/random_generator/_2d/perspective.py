@@ -32,7 +32,7 @@ class PerspectiveGenerator(RandomGeneratorBase):
     def __init__(self, distortion_scale: Union[torch.Tensor, float] = 0.5, sampling_method: str = "basic") -> None:
         super().__init__()
         if sampling_method not in ("basic", "area_preserving"):
-            raise NotImplementedError(f"Sampling method {self.sampling_method} not yet implemented.")
+            raise NotImplementedError(f"Sampling method {sampling_method} not yet implemented.")
         self.distortion_scale = distortion_scale
         self.sampling_method = sampling_method
 

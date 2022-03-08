@@ -298,6 +298,15 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
         assert_close(res['start_points'], expected['start_points'])
         assert_close(res['end_points'], expected['end_points'])
 
+    def test_not_implemented_sampling_method(self, device, dtype):
+        batch_size = 2
+        with pytest.raises(NotImplementedError):
+            PerspectiveGenerator(
+                torch.tensor(0.5, device=device, dtype=dtype),
+                sampling_method="non_existing_method")(
+                torch.Size([batch_size, 1, 200, 200])
+            )
+
 
 class TestRandomAffineGen(RandomGeneratorBaseTests):
     @pytest.mark.parametrize('batch_size', [0, 1, 4])
