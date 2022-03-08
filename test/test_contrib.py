@@ -279,11 +279,13 @@ class TestCombineTensorPatches:
             kornia.contrib.combine_tensor_patches(patches, original_size=(4, 4), window_size=(2, 2), stride=(3, 2))
 
     def test_rect_odd_dim(self, device, dtype):
-        patches = kornia.contrib.extract_tensor_patches(
-            torch.arange(12, device=device, dtype=dtype).view(1, 1, 4, 3), window_size=(2, 2), stride=(2, 2), padding=1
+        img = torch.arange(12, device=device, dtype=dtype).view(1, 1, 4, 3)
+        patches = kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(2, 2), padding=(0, 0, 0, 1))
+        m = kornia.contrib.combine_tensor_patches(
+            patches, original_size=(4, 3), window_size=(2, 2), stride=(2, 2), unpadding=(0, 0, 0, 1)
         )
-        with pytest.raises(NotImplementedError):
-            kornia.contrib.combine_tensor_patches(patches, original_size=(4, 3), window_size=(2, 2), stride=(2, 2))
+        assert m.shape == (1, 1, 4, 3)
+        assert (img == m).all()
 
     def test_pad_error(self, device, dtype):
         patches = kornia.contrib.extract_tensor_patches(
