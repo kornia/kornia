@@ -124,6 +124,8 @@ class PlanckianJitter(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
     ) -> Tensor:
+
+        assert input.shape[1] > 2, 'input image should be color image'
         idx = params['idx']
         curr_pl = self.sampler[idx]
         input[:, 0, ...] = input[:, 0, ...] * (curr_pl[0] / curr_pl[1])
