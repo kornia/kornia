@@ -479,7 +479,7 @@ def extract_patches_from_pyramid(
     cur_pyr_level = 0
     out = torch.zeros(B, N, ch, PS, PS, dtype=nlaf.dtype, device=nlaf.device)
 
-    
+
     while min(cur_img.size(2), cur_img.size(3)) >= PS:
         _, ch, h, w = cur_img.size()
         # for loop temporarily, to be refactored
