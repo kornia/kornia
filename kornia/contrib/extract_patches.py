@@ -39,8 +39,8 @@ class ExtractTensorPatches(nn.Module):
           the height dimension, and the second `int` for the width dimension.
 
     :attr:`padding` can also be a ``tuple`` of four ints -- in which case, the
-    first two ints are for the height dimensions while the last two ints are
-    for the width dimension.
+    first two ints are for the height dimension while the last two ints are for
+    the width dimension.
 
     Args:
         window_size: the size of the sliding window and the output patch size.
@@ -112,8 +112,8 @@ class CombineTensorPatches(nn.Module):
           the height dimension, and the second `int` for the width dimension.
 
     :attr:`unpadding` can also be a ``tuple`` of four ints -- in which case, the
-    first two ints are for the height dimensions while the last two ints are
-    for the width dimension.
+    first two ints are for the height dimension while the last two ints are for
+    the width dimension.
 
     Args:
         patches: patched tensor.
