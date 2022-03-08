@@ -94,7 +94,7 @@ def harris_response(
     if sigmas is not None:
         scores = scores * sigmas.pow(4).view(-1, 1, 1, 1)
 
-    return scores
+    return scores.type_as(input)
 
 
 def gftt_response(
@@ -172,7 +172,7 @@ def gftt_response(
     if sigmas is not None:
         scores = scores * sigmas.pow(4).view(-1, 1, 1, 1)
 
-    return scores
+    return scores.type_as(input)
 
 
 def hessian_response(
@@ -252,7 +252,7 @@ def hessian_response(
     if sigmas is not None:
         scores = scores * sigmas.pow(4).view(-1, 1, 1, 1)
 
-    return scores
+    return scores.type_as(input)
 
 
 def dog_response(input: torch.Tensor) -> torch.Tensor:
@@ -325,7 +325,7 @@ class CornerGFTT(nn.Module):
         return
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ + 'grads_mode=' + self.grads_mode + ')'
+        return self.__class__.__name__ + '(grads_mode=' + self.grads_mode + ')'
 
     def forward(self, input: torch.Tensor, sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:  # type: ignore
         return gftt_response(input, self.grads_mode, sigmas)

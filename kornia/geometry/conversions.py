@@ -159,7 +159,7 @@ def convert_points_from_homogeneous(points: torch.Tensor, eps: float = 1e-8) -> 
     # follow the convention of opencv:
     # https://github.com/opencv/opencv/pull/14411/files
     mask: torch.Tensor = torch.abs(z_vec) > eps
-    scale = torch.where(mask, 1.0 / (z_vec + eps), torch.ones_like(z_vec))
+    scale = torch.where(mask, torch.ones_like(z_vec) / (z_vec + eps), torch.ones_like(z_vec))
 
     return scale * points[..., :-1]
 

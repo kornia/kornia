@@ -196,7 +196,7 @@ def make_upright(laf: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
     scale = det
     # The function is equivalent to doing 2x2 SVD and resetting rotation
     # matrix to an identity: U, S, V = svd(LAF); LAF_upright = U * S.
-    b2a2 = torch.sqrt(laf[..., 0:1, 1:2] ** 2 + laf[..., 0:1, 0:1] ** 2) + eps
+    b2a2 = (torch.sqrt(laf[..., 0:1, 1:2] ** 2 + laf[..., 0:1, 0:1] ** 2) + eps).type_as(laf)
     laf1_ell = torch.cat([(b2a2 / det).contiguous(), torch.zeros_like(det)], dim=3)
     laf2_ell = torch.cat(  # type: ignore
         [
@@ -477,12 +477,15 @@ def extract_patches_from_pyramid(
     pyr_idx = (scale.log2() + half).relu().long()
     cur_img = img
     cur_pyr_level = 0
-    out = torch.zeros(B, N, ch, PS, PS).to(nlaf.dtype).to(nlaf.device)
+    out = torch.zeros(B, N, ch, PS, PS, dtype=nlaf.dtype, device=nlaf.device)
+
+    
     while min(cur_img.size(2), cur_img.size(3)) >= PS:
         _, ch, h, w = cur_img.size()
         # for loop temporarily, to be refactored
         for i in range(B):
             scale_mask = (pyr_idx[i] == cur_pyr_level).squeeze()
+
             if (scale_mask.float().sum()) == 0:
                 continue
             scale_mask = (scale_mask > 0).view(-1)
@@ -493,6 +496,7 @@ def extract_patches_from_pyramid(
                 padding_mode="border",
                 align_corners=False,
             )
+
             out[i].masked_scatter_(scale_mask.view(-1, 1, 1, 1), patches)
         cur_img = pyrdown(cur_img)
         cur_pyr_level += 1

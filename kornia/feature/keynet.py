@@ -68,13 +68,14 @@ class _HandcraftedBlock(nn.Module):
         sobel_dy = self.spatial_gradient(dy)
         dyy = sobel_dy[:, :, 1, :, :]
 
+        # type_as for enabling use of autocast 16 bit
         hc_feats = torch.cat([dx,
                               dy,
-                              dx ** 2.,
-                              dy ** 2.,
+                              (dx ** 2.).type_as(x),
+                              (dy ** 2.).type_as(x),
                               dx * dy,
                               dxy,
-                              dxy ** 2.,
+                              (dxy ** 2.).type_as(x),
                               dxx,
                               dyy,
                               dxx * dyy], dim=1)

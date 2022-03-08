@@ -215,6 +215,7 @@ class LAFAffNetShapeEstimator(nn.Module):
             raise ValueError(f"Batch size of laf and img should be the same. Got {img.size(0)}, {laf.size(0)}")
         B, N = laf.shape[:2]
         PS: int = self.patch_size
+
         patches: torch.Tensor = extract_patches_from_pyramid(img, make_upright(laf), PS, True).view(-1, 1, PS, PS)
         xy = self.features(self._normalize_input(patches)).view(-1, 3)
         a1 = torch.cat([1.0 + xy[:, 0].reshape(-1, 1, 1), 0 * xy[:, 0].reshape(-1, 1, 1)], dim=2)
