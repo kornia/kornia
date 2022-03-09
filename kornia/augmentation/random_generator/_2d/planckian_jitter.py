@@ -16,6 +16,7 @@ class PlanckianJitterGenerator(RandomGeneratorBase):
     def __init__(self, domain: List[int]) -> None:
         super().__init__()
         self.domain = domain
+        self.pl_idx_dist = None
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
 
