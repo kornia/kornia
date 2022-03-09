@@ -30,13 +30,13 @@ class ResizeGenerator(RandomGeneratorBase):
 
     def __init__(self, resize_to: Union[int, Tuple[int, int]], side: str = "short") -> None:
         super().__init__()
-        self.resize_to = resize_to
+        self.output_size = resize_to
         self.side = side
         self.device: Optional[torch.device] = None
         self.dtype: Optional[torch.dtype] = None
 
     def __repr__(self) -> str:
-        repr = f"resize_to={self.resize_to}"
+        repr = f"output_size={self.output_size}"
         return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
@@ -65,26 +65,27 @@ class ResizeGenerator(RandomGeneratorBase):
             torch.tensor(input_size[0], device=_device, dtype=_dtype),
         ).repeat(batch_size, 1, 1)
 
-        if isinstance(self.resize_to, int):
+        if isinstance(self.output_size, int):
             aspect_ratio = w / h
-            self.resize_to = _side_to_image_size(self.resize_to, aspect_ratio, self.side)
+            self.output_size = _side_to_image_size(self.output_size, aspect_ratio, self.side)
 
         if not (
-            len(self.resize_to) == 2
-            and isinstance(self.resize_to[0], (int,))
-            and isinstance(self.resize_to[1], (int,))
-            and self.resize_to[0] > 0
-            and self.resize_to[1] > 0
+            len(self.output_size) == 2
+            and isinstance(self.output_size[0], (int,))
+            and isinstance(self.output_size[1], (int,))
+            and self.output_size[0] > 0
+            and self.output_size[1] > 0
         ):
-            raise AssertionError(f"`resize_to` must be a tuple of 2 positive integers. Got {self.resize_to}.")
+            raise AssertionError(f"`resize_to` must be a tuple of 2 positive integers. Got {self.output_size}.")
 
         dst = bbox_generator(
             torch.tensor(0, device=_device, dtype=_dtype),
             torch.tensor(0, device=_device, dtype=_dtype),
-            torch.tensor(self.resize_to[1], device=_device, dtype=_dtype),
-            torch.tensor(self.resize_to[0], device=_device, dtype=_dtype),
+            torch.tensor(self.output_size[1], device=_device, dtype=_dtype),
+            torch.tensor(self.output_size[0], device=_device, dtype=_dtype),
         ).repeat(batch_size, 1, 1)
 
         _input_size = torch.tensor(input_size, device=_device, dtype=torch.long).expand(batch_size, -1)
+        _output_size = torch.tensor(self.output_size, device=_device, dtype=torch.long).expand(batch_size, -1)
 
-        return dict(src=src, dst=dst, input_size=_input_size, output_size=torch.as_tensor(self.resize_to))
+        return dict(src=src, dst=dst, input_size=_input_size, output_size=_output_size)

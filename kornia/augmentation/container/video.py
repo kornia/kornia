@@ -200,13 +200,12 @@ class VideoSequential(ImageSequential):
                 if self.same_on_frame:
                     for k, v in mod_param.items():
                         # TODO: revise colorjitter order param in the future to align the standard.
-                        if not (k == "order" and isinstance(module, kornia.augmentation.ColorJitter)) \
-                                and not (k == 'output_size'):
+                        if not (k == "order" and isinstance(module, kornia.augmentation.ColorJitter)):
                             mod_param.update({k: self.__repeat_param_across_channels__(v, frame_num)})
                 param = ParamItem(name, mod_param)
             else:
                 param = ParamItem(name, None)
-            batch_shape: Size = _get_new_batch_shape(param, batch_shape)
+            batch_shape: torch.Size = _get_new_batch_shape(param, batch_shape)
             params.append(param)
         return params
 

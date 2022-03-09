@@ -48,7 +48,7 @@ class Resize(GeometricAugmentationBase2D):
         self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
     ) -> Tensor:
         B, C, _, _ = input.shape
-        out_size = tuple(params["output_size"].tolist())
+        out_size = tuple(params["output_size"][0].tolist())
         out = torch.empty(B, C, *out_size, device=input.device, dtype=input.dtype)
         for i in range(B):
             x1 = int(params["src"][i, 0, 0])
