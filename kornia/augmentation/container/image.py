@@ -220,7 +220,7 @@ class ImageSequential(SequentialBase):
             if isinstance(module, RandomCrop):
                 mod_param = module.forward_parameters_precrop(batch_shape)
                 param = ParamItem(name, mod_param)
-            elif isinstance(module, (_AugmentationBase, MixAugmentationBase)):
+            elif isinstance(module, (_AugmentationBase, MixAugmentationBase, ImageSequential,)):
                 mod_param = module.forward_parameters(batch_shape)
                 param = ParamItem(name, mod_param)
             elif isinstance(module, ImageSequential):
@@ -373,7 +373,7 @@ class ImageSequential(SequentialBase):
         return self.__packup_output__(input, label)
 
 
-def _get_new_batch_shape(param, batch_shape):
+def _get_new_batch_shape(param, batch_shape: Size) -> Size:
     if param.data is None:
         return batch_shape
     if isinstance(param.data, list):
