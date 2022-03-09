@@ -225,7 +225,7 @@ class ImageSequential(SequentialBase):
                 param = ParamItem(name, mod_param)
             else:
                 param = ParamItem(name, None)
-            batch_shape: torch.Size = _get_new_batch_shape(param, batch_shape)
+            batch_shape = _get_new_batch_shape(param, batch_shape)
             params.append(param)
         return params
 
