@@ -1,5 +1,6 @@
 from kornia.augmentation.random_generator._2d.affine import *
 from kornia.augmentation.random_generator._2d.color_jitter import *
+from kornia.augmentation.random_generator._2d.planckian_jitter import *
 from kornia.augmentation.random_generator._2d.crop import *
 from kornia.augmentation.random_generator._2d.cutmix import *
 from kornia.augmentation.random_generator._2d.func import *
