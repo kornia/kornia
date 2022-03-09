@@ -1,18 +1,11 @@
-from functools import partial
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 import torch
 from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
-from kornia.augmentation.utils import (
-    _adapted_rsampling,
-    _adapted_uniform,
-    _common_param_check,
-    _joint_range_check,
-    _range_bound,
-)
-from kornia.utils.helpers import _deprecated, _extract_device_dtype
+from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check, _range_bound
+from kornia.utils.helpers import _extract_device_dtype
 
 
 class PlanckianJitterGenerator(RandomGeneratorBase):
