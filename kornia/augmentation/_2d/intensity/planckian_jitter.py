@@ -112,7 +112,7 @@ class PlanckianJitter(IntensityAugmentationBase2D):
         input[:, 0, ...] = input[:, 0, ...] * mult_ch_zero.unsqueeze(-1).unsqueeze(-1)
         input[:, 2, ...] = input[:, 2, ...] * mult_ch_two.unsqueeze(-1).unsqueeze(-1)
 
-        clamp_val = torch.Tensor([1.0])
+        clamp_val = torch.ones_like(input)
         output = torch.where(input > 1, clamp_val, input)
 
         return output
