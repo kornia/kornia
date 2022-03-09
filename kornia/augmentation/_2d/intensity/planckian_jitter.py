@@ -69,7 +69,9 @@ class PlanckianJitter(IntensityAugmentationBase2D):
     r"""Apply planckian jitter transformation to input tensor
     This is physics based color augmentation, that creates realistic
     variations in chromaticity, this can simulate the illumination
-    changes in the scene. This is based on https://arxiv.org/pdf/2202.07993.pdf
+    changes in the scene. 
+
+    See :cite:`zini2022planckian` for more details.
 
     Args:
         mode: 'blackbody' or 'CIED'.
