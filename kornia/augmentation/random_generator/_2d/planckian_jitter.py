@@ -32,8 +32,6 @@ class PlanckianJitterGenerator(RandomGeneratorBase):
 
         _joint_range_check(idx_range, 'idx_range', (0, 25))
         self.pl_idx_dist = Uniform(idx_range[0], idx_range[1], validate_args=False)
-        self.randperm = partial(torch.randperm, device=device,
-                                dtype=dtype)
 
     def forward(self, batch_shape: torch.Size, same_on_batch: bool =
                 False) -> Dict[str, torch.Tensor]:
