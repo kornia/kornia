@@ -57,7 +57,7 @@ _planckian_coeffs = {'blackbody': torch.Tensor([[0.6743, 0.4029, 0.0013],
                                            [0.3217, 0.4719, 0.6882]])
                      }
 
-_planckian_coeffs_multplr = {
+_planckian_coeffs_ratio = {
     'blackbody': torch.stack((_planckian_coeffs['blackbody'][:, 0] / _planckian_coeffs['blackbody'][:, 1],
                               _planckian_coeffs['blackbody'][:, 2] / _planckian_coeffs['blackbody'][:, 1]), 1),
     'CIED': torch.stack((_planckian_coeffs['CIED'][:, 0] / _planckian_coeffs['CIED'][:, 1],
@@ -111,9 +111,9 @@ class PlanckianJitter(IntensityAugmentationBase2D):
         self.idx = select_from
         if select_from:
             self.register_buffer('pl',
-                                 _planckian_coeffs_multplr[mode][select_from])
+                                 _planckian_coeffs_ratio[mode][select_from])
         else:
-            self.register_buffer('pl', _planckian_coeffs_multplr[mode])
+            self.register_buffer('pl', _planckian_coeffs_ratio[mode])
         self._param_generator = cast(rg.PlanckianJitterGenerator,
                                      rg.PlanckianJitterGenerator([0, self.pl.shape[0]]))
 
