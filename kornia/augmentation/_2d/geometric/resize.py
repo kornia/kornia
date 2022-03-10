@@ -37,7 +37,7 @@ class Resize(GeometricAugmentationBase2D):
         self.flags = dict(size=size, side=side, resample=Resample.get(resample), align_corners=align_corners)
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
-        if params["resize_to"] == input.shape[-2:]:
+        if params["output_size"] == input.shape[-2:]:
             return eye_like(3, input)
 
         transform: Tensor = get_perspective_transform(params["src"], params["dst"])
@@ -48,7 +48,7 @@ class Resize(GeometricAugmentationBase2D):
         self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
     ) -> Tensor:
         B, C, _, _ = input.shape
-        out_size = tuple(params["resize_to"].tolist())
+        out_size = tuple(params["output_size"][0].tolist())
         out = torch.empty(B, C, *out_size, device=input.device, dtype=input.dtype)
         for i in range(B):
             x1 = int(params["src"][i, 0, 0])
