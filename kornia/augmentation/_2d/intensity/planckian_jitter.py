@@ -67,6 +67,7 @@ _planckian_coeffs_ratio = {
 
 class PlanckianJitter(IntensityAugmentationBase2D):
     r"""Apply planckian jitter transformation to input tensor.
+
     This is physics based color augmentation, that creates realistic
     variations in chromaticity, this can simulate the illumination
     changes in the scene.
