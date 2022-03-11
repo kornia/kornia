@@ -66,7 +66,7 @@ _planckian_coeffs_ratio = {
 
 
 class PlanckianJitter(IntensityAugmentationBase2D):
-    r"""Apply planckian jitter transformation to input tensor
+    r"""Apply planckian jitter transformation to input tensor.
     This is physics based color augmentation, that creates realistic
     variations in chromaticity, this can simulate the illumination
     changes in the scene.
@@ -77,7 +77,7 @@ class PlanckianJitter(IntensityAugmentationBase2D):
         mode: 'blackbody' or 'CIED'.
         select_from: choose a list of jitters to apply from. For
         `blackbody` choose in the range [0, 24], and for `CIED` choose
-        in the range [0, 22]
+        in the range [0, 22].
         same_on_batch: apply the same transformation across the batch.
         p: probability that the random erasing operation will be performed.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -87,7 +87,7 @@ class PlanckianJitter(IntensityAugmentationBase2D):
     - Output: :math:`(B, C, H, W)`
 
     Note:
-        Input tensor must be float and normalized into [0, 1]
+        Input tensor must be float and normalized into [0, 1].
 
     Examples:
     To apply planckian jitter based on mode
@@ -156,7 +156,6 @@ class PlanckianJitter(IntensityAugmentationBase2D):
     ) -> Tensor:
 
         list_idx = params['idx'].tolist()
-        __import__('pdb').set_trace()
 
         mult_ch_zero = self.pl[list_idx][:, 0]
         mult_ch_two = self.pl[list_idx][:, 1]
