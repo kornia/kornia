@@ -190,9 +190,9 @@ class TestConfusionMatrix:
 
 class TestPsnr:
     def test_metric(self, device, dtype):
-        input = torch.ones(1, device=device, dtype=dtype)
+        sample = torch.ones(1, device=device, dtype=dtype)
         expected = torch.tensor(20.0, device=device, dtype=dtype)
-        actual = kornia.metrics.psnr(input, 1.2 * input, 2.0)
+        actual = kornia.metrics.psnr(sample, 1.2 * sample, 2.0)
         assert_close(actual, expected)
 
 
