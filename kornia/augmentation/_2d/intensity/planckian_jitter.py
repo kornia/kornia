@@ -142,7 +142,6 @@ class PlanckianJitter(IntensityAugmentationBase2D):
         if isinstance(select_from, int):
             select_from = [select_from]
 
-        self.idx = select_from
         if select_from is not None:
             self.register_buffer('pl',
                                  _planckian_coeffs_ratio[mode][select_from])

@@ -31,7 +31,6 @@ class PlanckianJitterGenerator(RandomGeneratorBase):
                 False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
-        _device, _dtype = _extract_device_dtype([self.pl_idx_dist])
         pl_idx = _adapted_rsampling((batch_size,),
                                     self.pl_idx_dist,
                                     same_on_batch)
