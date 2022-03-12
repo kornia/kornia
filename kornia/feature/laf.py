@@ -473,8 +473,7 @@ def extract_patches_from_pyramid(
     B, N, _, _ = laf.size()
     _, ch, h, w = img.size()
     scale = 2.0 * get_laf_scale(denormalize_laf(nlaf, img)) / float(PS)
-    half: float = 0.5
-    pyr_idx = (scale.log2() + half).relu().long()
+    pyr_idx = scale.log2().relu().long()
     cur_img = img
     cur_pyr_level = 0
     out = torch.zeros(B, N, ch, PS, PS).to(nlaf.dtype).to(nlaf.device)
