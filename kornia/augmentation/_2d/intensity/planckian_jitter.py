@@ -132,7 +132,7 @@ class PlanckianJitter(IntensityAugmentationBase2D):
 
     def __init__(self,
                  mode: str = "blackbody",
-                 select_from: Optional[Union[Tensor, int, List[int]]] = None,
+                 select_from: Optional[Union[int, List[int]]] = None,
                  same_on_batch: bool = False,
                  p: float = 0.5,
                  keepdim: bool = False,
