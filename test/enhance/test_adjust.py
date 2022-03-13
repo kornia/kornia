@@ -410,48 +410,13 @@ class TestAdjustBrightness:
         f = kornia.enhance.AdjustBrightness(0.0)
         assert_close(f(data), data)
 
-    def test_factor_one_rgb(self, device, dtype):
+    def test_factor_saturat(self, device, dtype):
         # prepare input data
-        data = torch.tensor(
-            [[[1.0, 1.0], [1.0, 1.0]], [[0.5, 0.5], [0.5, 0.5]], [[0.25, 0.25], [0.25, 0.25]]],
-            device=device,
-            dtype=dtype,
-        )  # 3x2x2
+        data = 0.5 * torch.zeros(1, 4, 3, 2, device=device, dtype=dtype)
+        ones = torch.ones_like(data)
 
-        expected = torch.tensor(
-            [
-                [[0.6210, 0.6210], [0.6210, 0.6210]],
-                [[0.6210, 0.6210], [0.6210, 0.6210]],
-                [[0.6210, 0.6210], [0.6210, 0.6210]],
-            ],
-            device=device,
-            dtype=dtype,
-        )  # 3x2x2
-
-        f = kornia.enhance.AdjustBrightness(1.0)
-        assert_close(f(data), expected)
-
-    def test_factor_one_nchannels(self, device, dtype):
-        # prepare input data
-        data = torch.tensor(
-            [
-                [[1.0, 1.0], [1.0, 1.0]],
-                [[0.5, 0.5], [0.5, 0.5]],
-                [[0.25, 0.25], [0.25, 0.25]],
-                [[0.25, 0.25], [0.25, 0.25]],
-            ],
-            device=device,
-            dtype=dtype,
-        )  # 3x2x2
-
-        expected = torch.tensor(
-            [[[0.5, 0.5], [0.5, 0.5]], [[0.5, 0.5], [0.5, 0.5]], [[0.5, 0.5], [0.5, 0.5]], [[0.5, 0.5], [0.5, 0.5]]],
-            device=device,
-            dtype=dtype,
-        )  # 3x2x2
-
-        f = kornia.enhance.AdjustBrightness(1.0)
-        assert_close(f(data), expected)
+        f = kornia.enhance.AdjustBrightness(0.6)
+        assert_close(f(data), ones)
 
     @pytest.mark.parametrize("channels", [1, 4, 5])
     def test_factor_tensor(self, device, dtype, channels):

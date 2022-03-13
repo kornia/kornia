@@ -5,7 +5,6 @@ import torch
 from torch import Tensor
 from torch.nn import Module, Parameter
 
-from kornia.color.gray import rgb_to_grayscale
 from kornia.color.hsv import hsv_to_rgb, rgb_to_hsv
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_IS_TYPE
 from kornia.utils.helpers import _torch_histc_cast
@@ -241,13 +240,13 @@ def adjust_gamma(input: Tensor, gamma: Union[float, Tensor], gain: Union[float, 
     return out
 
 
-def adjust_contrast(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
+def adjust_contrast(image: Tensor, factor: Union[float, Tensor], clip_output: bool = True) -> Tensor:
     r"""Adjust the contrast of an image tensor.
 
     .. image:: _static/img/adjust_contrast.png
 
     This implementation follows Szeliski's book convention, where contrast is defined as
-    a multiplicative operation directly to raw pixel values. Beware that other frameworks
+    a `multiplicative` operation directly to raw pixel values. Beware that other frameworks
     might use different conventions which can be difficult to reproduce exact results.
 
     The input image and factor is expected to be in the range of [0, 1].
@@ -263,6 +262,7 @@ def adjust_contrast(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
             in the batch. 0 generates a completely black image, 1 does not modify
             the input image while any other non-negative number modify the
             brightness by this factor.
+            clip_output: whether to clip the output image with range of [0, 1].
 
     Return:
         Adjusted image in the shape of :math:`(*, H, W)`.
@@ -302,20 +302,33 @@ def adjust_contrast(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
     img_adjust: Tensor = image * factor
 
     # Truncate between pixel values
-    return img_adjust.clamp(min=0.0, max=1.0)
+    if clip_output:
+        img_adjust = img_adjust.clamp(min=0.0, max=1.0)
+
+    return img_adjust
 
 
-def adjust_brightness(input: Tensor, factor: Union[float, Tensor]) -> Tensor:
-    r"""Adjust Brightness of a 2 dimensional tensor image.
+def adjust_brightness(image: Tensor, factor: Union[float, Tensor], clip_output=True) -> Tensor:
+    r"""Adjust the brightness of an image tensor.
 
     .. image:: _static/img/adjust_brightness.png
 
     This implementation follows Szeliski's book convention, where brightness is defined as
-    an additive operation. Beware that other frameworks might use different conventions.
-    The input image is expected to be in the range of [0, 1].
+    an `additive` operation directly to raw pixel and shift its values according the applied
+    factor and range of the image values. Beware that other framework might use different
+    conventions which can be difficult to reproduce exact results.
+
+    The input image and factor is expected to be in the range of [0, 1].
+
+    .. tip::
+        By applying a large factor might prouce clipping or loss of image detail. We recommenda to
+        apply small factors to avoid the mentioned issues. Ideally one must implement the adjustment
+        of image intensity with other techniques suchs as :func:`kornia.enhance.adjust_gamma`. More
+        details in the following link:
+        https://scikit-image.org/docs/dev/auto_examples/color_exposure/plot_log_gamma.html#sphx-glr-auto-examples-color-exposure-plot-log-gamma-py
 
     Args:
-        input: Tensor image to be adjusted in the shape of :math:`(*, H, W)`.
+        image: Image to be adjusted in the shape of :math:`(*, H, W)`.
         factor: Brightness adjust factor per element in the batch. It's recommended to
             bound the factor by [0, 1]. 0 does not modify the input image while any other
             number modify the brightness.
@@ -338,41 +351,28 @@ def adjust_brightness(input: Tensor, factor: Union[float, Tensor]) -> Tensor:
         >>> adjust_brightness(x, y).shape
         torch.Size([2, 5, 3, 3])
     """
-
-    if not isinstance(input, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
-
-    if not isinstance(factor, (float, Tensor)):
-        raise TypeError(f"The factor should be either a float or Tensor. " f"Got {type(factor)}")
+    KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
+    KORNIA_CHECK_IS_TYPE(factor, (float, Tensor), "Factor should be float or Tensor.")
 
     # convert factor to a tensor
     if isinstance(factor, float):
         # TODO: figure out how to create later a tensor without importing torch
-        factor = torch.as_tensor(factor, device=input.device, dtype=input.dtype)
+        factor = torch.as_tensor(factor, device=image.device, dtype=image.dtype)
     elif isinstance(factor, Tensor):
-        factor = factor.to(input.device, input.dtype)
+        factor = factor.to(image.device, image.dtype)
 
     # make factor broadcastable
-    # TODO: find a more clean way to do this op without loops
-    for _ in range(len(input.shape) - len(factor.shape)):
-        factor = factor.unsqueeze_(dim=-1)
+    while len(factor.shape) != len(image.shape):
+        factor = factor[..., None]
 
-    # computer mean to balance and avoid overfloating
-    # NOTE: in case of receiving a RGB we convert to grayscale first
-    # to have compatibility with other vision frameworks.
-    if input.shape[-3] == 3:
-        x_gray = rgb_to_grayscale(input)
-        x_mean = x_gray.mean((-2, -1), keepdim=True)
-    else:
-        x_mean = input.mean()
+    # shift pixel values
+    img_adjust: Tensor = image + factor
 
-    # Apply brightness factor to each channel
-    # x_adjust: Tensor = input + factor
-    # x_adjust: Tensor = (1.0 - factor) * x_mean + factor * input
-    x_adjust: Tensor = (1.0 - factor) * input + factor * x_mean
+    # truncate between pixel values
+    if clip_output:
+        img_adjust = img_adjust.clamp(min=0.0, max=1.0)
 
-    # Truncate between pixel values
-    return x_adjust.clamp_(min=0.0, max=1.0)
+    return img_adjust
 
 
 def _solarize(input: Tensor, thresholds: Union[float, Tensor] = 0.5) -> Tensor:
