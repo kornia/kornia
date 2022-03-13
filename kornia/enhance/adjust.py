@@ -5,7 +5,7 @@ import torch
 from torch import Tensor
 from torch.nn import Module, Parameter
 
-from kornia.color.hsv import hsv_to_rgb, rgb_to_hsv
+from kornia.color import hsv_to_rgb, rgb_to_grayscale, rgb_to_hsv
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_IS_TYPE
 from kornia.utils.helpers import _torch_histc_cast
 from kornia.utils.image import perform_keep_shape_image, perform_keep_shape_video
@@ -306,6 +306,59 @@ def adjust_contrast(image: Tensor, factor: Union[float, Tensor], clip_output: bo
         img_adjust = img_adjust.clamp(min=0.0, max=1.0)
 
     return img_adjust
+
+
+def adjust_contrast_with_mean_subtraction(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
+    r"""Adjust the contrast of an image tensor by subtracting the mean over channels.
+
+    .. note::
+        this is just a convenience function to have compatibility with Pil. For exact
+        definition of image contrast adjustmen consider using :func:`kornia.enhance.adjust_gamma`.
+
+    Args:
+        image: Image to be adjusted in the shape of :math:`(*, H, W)`.
+        factor: Contrast adjust factor per element
+            in the batch. 0 generates a completely black image, 1 does not modify
+            the input image while any other non-negative number modify the
+            brightness by this factor.
+
+    Return:
+        Adjusted image in the shape of :math:`(*, H, W)`.
+
+    Example:
+        >>> import torch
+        >>> x = torch.ones(1, 1, 2, 2)
+        >>> adjust_contrast_with_mean_subtraction(x, 0.5)
+        tensor([[[[0.5000, 0.5000],
+                  [0.5000, 0.5000]]]])
+
+        >>> x = torch.ones(2, 5, 3, 3)
+        >>> y = torch.tensor([0.65, 0.50])
+        >>> adjust_contrast_with_mean_subtraction(x, y).shape
+        torch.Size([2, 5, 3, 3])
+    """
+    KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
+    KORNIA_CHECK_IS_TYPE(factor, (float, Tensor), "Factor should be float or Tensor.")
+
+    if isinstance(factor, float):
+        # TODO: figure out how to create later a tensor without importing torch
+        factor = torch.as_tensor(factor, device=image.device, dtype=image.dtype)
+    elif isinstance(factor, Tensor):
+        factor = factor.to(image.device, image.dtype)
+
+    # make factor broadcastable
+    while len(factor.shape) != len(image.shape):
+        factor = factor[..., None]
+
+    KORNIA_CHECK((factor >= 0).any(), f"Contrast factor must be positive. Got {factor}")
+
+    if image.shape[-3] == 3:
+        img_mean = rgb_to_grayscale(image).mean((-2, -1), True)
+    else:
+        img_mean = image.mean()
+
+    # Apply contrast factor subtracting the mean
+    return image * factor + img_mean * (1 - factor)
 
 
 def adjust_brightness(image: Tensor, factor: Union[float, Tensor], clip_output=True) -> Tensor:

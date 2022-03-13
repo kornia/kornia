@@ -391,6 +391,66 @@ class TestAdjustContrast:
         img = tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.enhance.adjust_contrast, (img, 2.0), raise_exception=True)
 
+    def test_factor_one_rgb(self, device, dtype):
+        # prepare input data
+        data = torch.tensor(
+            [[[1.0, 1.0], [1.0, 1.0]], [[0.5, 0.5], [0.5, 0.5]], [[0.25, 0.25], [0.25, 0.25]]],
+            device=device,
+            dtype=dtype,
+        )  # 3x2x2
+
+        expected = torch.tensor(
+            [[[1.0, 1.0], [1.0, 1.0]], [[0.5, 0.5], [0.5, 0.5]], [[0.25, 0.25], [0.25, 0.25]]],
+            device=device,
+            dtype=dtype,
+        )  # 3x2x2
+
+        f = kornia.enhance.adjust_contrast_with_mean_subtraction
+        assert_close(f(data, 1.0), expected)
+
+    def test_factor_zero_rgb(self, device, dtype):
+        # prepare input data
+        data = torch.tensor(
+            [[[1.0, 1.0], [1.0, 1.0]], [[0.5, 0.5], [0.5, 0.5]], [[0.25, 0.25], [0.25, 0.25]]],
+            device=device,
+            dtype=dtype,
+        )  # 3x2x2
+
+        expected = torch.tensor(
+            [
+                [[0.6210, 0.6210], [0.6210, 0.6210]],
+                [[0.6210, 0.6210], [0.6210, 0.6210]],
+                [[0.6210, 0.6210], [0.6210, 0.6210]],
+            ],
+            device=device,
+            dtype=dtype,
+        )  # 3x2x2
+
+        f = kornia.enhance.adjust_contrast_with_mean_subtraction
+        assert_close(f(data, 0.0), expected)
+
+    def test_factor_zero_nchannels(self, device, dtype):
+        # prepare input data
+        data = torch.tensor(
+            [
+                [[1.0, 1.0], [1.0, 1.0]],
+                [[0.5, 0.5], [0.5, 0.5]],
+                [[0.25, 0.25], [0.25, 0.25]],
+                [[0.25, 0.25], [0.25, 0.25]],
+            ],
+            device=device,
+            dtype=dtype,
+        )  # 3x2x2
+
+        expected = torch.tensor(
+            [[[0.5, 0.5], [0.5, 0.5]], [[0.5, 0.5], [0.5, 0.5]], [[0.5, 0.5], [0.5, 0.5]], [[0.5, 0.5], [0.5, 0.5]]],
+            device=device,
+            dtype=dtype,
+        )  # 3x2x2
+
+        f = kornia.enhance.adjust_contrast_with_mean_subtraction
+        assert_close(f(data, 0.0), expected)
+
 
 class TestAdjustBrightness:
     @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 3, 3), (4, 3, 3, 1, 1)])
@@ -412,7 +472,7 @@ class TestAdjustBrightness:
 
     def test_factor_saturat(self, device, dtype):
         # prepare input data
-        data = 0.5 * torch.zeros(1, 4, 3, 2, device=device, dtype=dtype)
+        data = 0.5 * torch.ones(1, 4, 3, 2, device=device, dtype=dtype)
         ones = torch.ones_like(data)
 
         f = kornia.enhance.AdjustBrightness(0.6)
