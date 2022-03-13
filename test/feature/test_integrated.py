@@ -50,21 +50,19 @@ class TestGetLAFDescriptors:
         B, C, H, W = 1, 1, 32, 32
         PS = 16
         img = torch.rand(B, C, H, W, device=device)
-        centers = torch.tensor([[H / 3.0, W / 3.0], [2.0 * H / 3.0, W / 2.0]], device=device, dtype=dtype).view(
+        centers = torch.tensor([[H / 2.0, W / 2.0], [2.0 * H / 3.0, W / 2.0]], device=device, dtype=dtype).view(
             1, 2, 2
         )
-        scales = torch.tensor([(H + W) / 4.0, (H + W) / 8.0], device=device, dtype=dtype).view(1, 2, 1, 1)
+        scales = torch.tensor([(H + W) / 5.0, (H + W) / 6.0], device=device, dtype=dtype).view(1, 2, 1, 1)
         ori = torch.tensor([0.0, 30.0], device=device, dtype=dtype).view(1, 2, 1)
         lafs = kornia.feature.laf_from_center_scale_ori(centers, scales, ori)
         img = utils.tensor_to_gradcheck_var(img)  # to var
         lafs = utils.tensor_to_gradcheck_var(lafs)  # to var
-
         class _MeanPatch(nn.Module):
             def forward(self, inputs):
                 return inputs.mean(dim=(2, 3))
 
         desc = _MeanPatch()
-        img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(get_laf_descriptors, (img, lafs, desc, PS, True),
                          eps=1e-3, atol=1e-3, raise_exception=True, nondet_tol=1e-3)
 
@@ -89,13 +87,15 @@ class TestLAFDescriptor:
         descs_reference = sift(patches.view(B1 * N1, CH1, H1, W1)).view(B1, N1, -1)
         assert_close(descs_test, descs_reference)
 
-    def test_gradcheck(self, device, dtype=torch.float64):
+    def test_gradcheck(self, device):
         B, C, H, W = 1, 1, 32, 32
         PS = 16
         img = torch.rand(B, C, H, W, device=device)
-        centers = torch.tensor([[H / 3.0, W / 3.0], [2.0 * H / 3.0, W / 2.0]], device=device, dtype=dtype).view(1, 2, 2)
-        scales = torch.tensor([(H + W) / 4.0, (H + W) / 8.0], device=device, dtype=dtype).view(1, 2, 1, 1)
-        ori = torch.tensor([0.0, 30.0], device=device, dtype=dtype).view(1, 2, 1)
+        centers = torch.tensor([[H / 2.0, W / 2.0], [2.0 * H / 3.0, W / 2.0]], device=device).view(
+            1, 2, 2
+        )
+        scales = torch.tensor([(H + W) / 5.0, (H + W) / 6.0], device=device).view(1, 2, 1, 1)
+        ori = torch.tensor([0.0, 30.0], device=device).view(1, 2, 1)
         lafs = kornia.feature.laf_from_center_scale_ori(centers, scales, ori)
         img = utils.tensor_to_gradcheck_var(img)  # to var
         lafs = utils.tensor_to_gradcheck_var(lafs)  # to var
@@ -103,9 +103,7 @@ class TestLAFDescriptor:
         class _MeanPatch(nn.Module):
             def forward(self, inputs):
                 return inputs.mean(dim=(2, 3))
-
         lafdesc = LAFDescriptor(_MeanPatch(), PS)
-        img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(lafdesc, (img, lafs), eps=1e-3, atol=1e-3, raise_exception=True, nondet_tol=1e-3)
 
 
