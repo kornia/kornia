@@ -67,12 +67,30 @@ class TestLAFAffineShapeEstimator:
         sift.__repr__()
 
     def test_toy(self, device):
-        aff = LAFAffineShapeEstimator(32).to(device)
+        aff = LAFAffineShapeEstimator(32, preserve_orientation=False).to(device)
         inp = torch.zeros(1, 1, 32, 32, device=device)
         inp[:, :, 15:-15, 9:-9] = 1
         laf = torch.tensor([[[[20.0, 0.0, 16.0], [0.0, 20.0, 16.0]]]], device=device)
         new_laf = aff(laf, inp)
         expected = torch.tensor([[[[36.643, 0.0, 16.0], [0.0, 10.916, 16.0]]]], device=device)
+        assert_close(new_laf, expected, atol=1e-4, rtol=1e-4)
+
+    def test_toy_preserve(self, device):
+        aff = LAFAffineShapeEstimator(32, preserve_orientation=True).to(device)
+        inp = torch.zeros(1, 1, 32, 32, device=device)
+        inp[:, :, 15:-15, 9:-9] = 1
+        laf = torch.tensor([[[[0.0, 20.0, 16.0], [-20.0, 0.0, 16.0]]]], device=device)
+        new_laf = aff(laf, inp)
+        expected = torch.tensor([[[[0.0, 36.643, 16.0], [-10.916, 0, 16.0]]]], device=device)
+        assert_close(new_laf, expected, atol=1e-4, rtol=1e-4)
+
+    def test_toy_not_preserve(self, device):
+        aff = LAFAffineShapeEstimator(32, preserve_orientation=False).to(device)
+        inp = torch.zeros(1, 1, 32, 32, device=device)
+        inp[:, :, 15:-15, 9:-9] = 1
+        laf = torch.tensor([[[[0.0, 20.0, 16.0], [-20.0, 0.0, 16.0]]]], device=device)
+        new_laf = aff(laf, inp)
+        expected = torch.tensor([[[[36.643, 0, 16.0], [0, 10.916, 16.0]]]], device=device)
         assert_close(new_laf, expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
