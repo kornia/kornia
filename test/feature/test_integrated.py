@@ -58,6 +58,7 @@ class TestGetLAFDescriptors:
         lafs = kornia.feature.laf_from_center_scale_ori(centers, scales, ori)
         img = utils.tensor_to_gradcheck_var(img)  # to var
         lafs = utils.tensor_to_gradcheck_var(lafs)  # to var
+
         class _MeanPatch(nn.Module):
             def forward(self, inputs):
                 return inputs.mean(dim=(2, 3))
