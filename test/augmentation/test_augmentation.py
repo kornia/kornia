@@ -2626,6 +2626,40 @@ class TestPlanckianJitter:
                             device=device,
                             dtype=dtype)
 
+    def _get_expected_output_same_on_batch(self, device, dtype):
+        return torch.tensor([[[[0.3736, 0.5783, 0.0666, 0.0994],
+                               [0.2314, 0.4774, 0.3690, 0.6749],
+                               [0.3430, 0.4760, 0.2627, 0.3024],
+                               [0.0168, 0.1272, 0.2213, 0.3904]],
+
+                              [[0.6977, 0.8000, 0.1610, 0.2823],
+                               [0.6816, 0.9152, 0.3971, 0.8742],
+                               [0.4194, 0.5529, 0.9527, 0.0362],
+                               [0.1852, 0.3734, 0.3051, 0.9320]],
+
+                              [[0.2621, 0.4020, 0.2245, 0.0472],
+                               [0.3101, 1.0000, 1.0000, 1.0000],
+                               [0.7842, 0.3631, 0.8711, 0.0495],
+                               [0.2067, 0.3609, 1.0000, 1.0000]]],
+
+
+                             [[[0.3736, 0.5783, 0.0666, 0.0994],
+                               [0.2314, 0.4774, 0.3690, 0.6749],
+                                 [0.3430, 0.4760, 0.2627, 0.3024],
+                                 [0.0168, 0.1272, 0.2213, 0.3904]],
+
+                              [[0.6977, 0.8000, 0.1610, 0.2823],
+                                 [0.6816, 0.9152, 0.3971, 0.8742],
+                                 [0.4194, 0.5529, 0.9527, 0.0362],
+                                 [0.1852, 0.3734, 0.3051, 0.9320]],
+
+                              [[0.2621, 0.4020, 0.2245, 0.0472],
+                                 [0.3101, 1.0000, 1.0000, 1.0000],
+                                 [0.7842, 0.3631, 0.8711, 0.0495],
+                                 [0.2067, 0.3609, 1.0000, 1.0000]]]],
+                            device=device,
+                            dtype=dtype)
+
     def _get_input(self, device, dtype):
         return torch.tensor([[[[0.4963, 0.7682, 0.0885, 0.1320],
                                [0.3074, 0.6341, 0.4901, 0.8964],
@@ -2659,10 +2693,18 @@ class TestPlanckianJitter:
 
     def test_planckian_jitter_batch(self, device, dtype):
         torch.manual_seed(0)
-        input = self._get_input(device, dtype)
-        input = input.repeat(2, 1, 1, 1)
+        input = self._get_input(device, dtype).repeat(2, 1, 1, 1)
 
         select_from = torch.LongTensor([1, 2, 24])
         f = PlanckianJitter(select_from=select_from)
         expected = self._get_expected_output_batch(device, dtype)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
+
+    def test_planckian_jitter_same_on_batch(self, device, dtype):
+        torch.manual_seed(0)
+        input = self._get_input(device, dtype).repeat(2, 1, 1, 1)
+
+        select_from = torch.LongTensor([1, 2, 24, 3, 4, 5])
+        f = PlanckianJitter(select_from=select_from, same_on_batch=True, p=1.0)
+        expected = self._get_expected_output_same_on_batch(device, dtype)
         assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
