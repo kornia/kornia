@@ -89,7 +89,7 @@ class TestRandomPerspective:
 
     def test_transform_module_should_return_expected_transform(self, device, dtype):
         torch.manual_seed(0)
-        x_data = torch.rand(1, 2, 4, 5, dtype=dtype).to(device)
+        x_data = torch.rand(1, 2, 4, 5).to(device).type(dtype)
 
         expected_output = torch.tensor(
             [
