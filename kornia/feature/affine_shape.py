@@ -11,12 +11,12 @@ from kornia.filters.sobel import SpatialGradient
 from .laf import (
     ellipse_to_laf,
     extract_patches_from_pyramid,
+    get_laf_orientation,
     get_laf_scale,
     make_upright,
     raise_error_if_laf_is_not_valid,
     scale_laf,
     set_laf_orientation,
-    get_laf_orientation,
 )
 
 urls: Dict[str, str] = {}
@@ -97,7 +97,6 @@ class LAFAffineShapeEstimator(nn.Module):
         patch_size: the input image patch size.
         affine_shape_detector: Patch affine shape estimator, :class:`~kornia.feature.PatchAffineShapeEstimator`.
         preserve_orientation: if True, the original orientation is preserved
-
     """  # pylint: disable
 
     def __init__(self,
@@ -173,7 +172,6 @@ class LAFAffNetShapeEstimator(nn.Module):
 
     Args:
         pretrained: Download and set pretrained weights to the model.
-
     """
 
     def __init__(self, pretrained: bool = False, preserve_orientation: bool = True):
