@@ -2,11 +2,12 @@ from math import pi
 from typing import Optional, Union
 
 import torch
-import torch.nn as nn
 from torch import Tensor
+from torch.nn import Module, Parameter
 
 from kornia.color.gray import rgb_to_grayscale
 from kornia.color.hsv import hsv_to_rgb, rgb_to_hsv
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_IS_TYPE
 from kornia.utils.helpers import _torch_histc_cast
 from kornia.utils.image import perform_keep_shape_image, perform_keep_shape_video
 
@@ -240,17 +241,24 @@ def adjust_gamma(input: Tensor, gamma: Union[float, Tensor], gain: Union[float, 
     return out
 
 
-def adjust_contrast(input: Tensor, factor: Union[float, Tensor]) -> Tensor:
-    r"""Adjust Contrast of a 2 dimensional tensor image.
+def adjust_contrast(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
+    r"""Adjust the contrast of an image tensor.
 
     .. image:: _static/img/adjust_contrast.png
 
-    This implementation follows Szeliski's book convention, where contrastt is defined as
-    an multiplicative operation. Beware that other frameworks might use different conventions.
-    The input image is expected to be in the range of [0, 1].
+    This implementation follows Szeliski's book convention, where contrast is defined as
+    a multiplicative operation directly to raw pixel values. Beware that other frameworks
+    might use different conventions which can be difficult to reproduce exact results.
+
+    The input image and factor is expected to be in the range of [0, 1].
+
+    .. tip::
+        This is not the preferred way to adjust the contrast of an image. Ideally one must
+        implement :func:`kornia.enhance.adjust_gamma`. More details in the following link:
+        https://scikit-image.org/docs/dev/auto_examples/color_exposure/plot_log_gamma.html#sphx-glr-auto-examples-color-exposure-plot-log-gamma-py
 
     Args:
-        input: Image to be adjusted in the shape of :math:`(*, H, W)`.
+        image: Image to be adjusted in the shape of :math:`(*, H, W)`.
         factor: Contrast adjust factor per element
             in the batch. 0 generates a completely black image, 1 does not modify
             the input image while any other non-negative number modify the
@@ -264,6 +272,7 @@ def adjust_contrast(input: Tensor, factor: Union[float, Tensor]) -> Tensor:
        image_enhancement.html>`__.
 
     Example:
+        >>> import torch
         >>> x = torch.ones(1, 1, 2, 2)
         >>> adjust_contrast(x, 0.5)
         tensor([[[[0.5000, 0.5000],
@@ -274,32 +283,26 @@ def adjust_contrast(input: Tensor, factor: Union[float, Tensor]) -> Tensor:
         >>> adjust_contrast(x, y).shape
         torch.Size([2, 5, 3, 3])
     """
-
-    if not isinstance(input, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
-
-    if not isinstance(factor, (float, Tensor)):
-        raise TypeError(f"The factor should be either a float or Tensor. " f"Got {type(factor)}")
+    KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
+    KORNIA_CHECK_IS_TYPE(factor, (float, Tensor), "Factor should be float or Tensor.")
 
     if isinstance(factor, float):
         # TODO: figure out how to create later a tensor without importing torch
-        factor = torch.as_tensor(factor, device=input.device, dtype=input.dtype)
+        factor = torch.as_tensor(factor, device=image.device, dtype=image.dtype)
     elif isinstance(factor, Tensor):
-        factor = factor.to(input.device, input.dtype)
+        factor = factor.to(image.device, image.dtype)
 
     # make factor broadcastable
-    # TODO: find a more clean way to do this op without loops
-    for _ in range(len(input.shape) - len(factor.shape)):
-        factor = factor.unsqueeze_(dim=-1)
+    while len(factor.shape) != len(image.shape):
+        factor = factor[..., None]
 
-    if (factor < 0).any():
-        raise ValueError(f"Contrast factor must be non-negative. Got {factor}")
+    KORNIA_CHECK((factor >= 0).any(), f"Contrast factor must be positive. Got {factor}")
 
     # Apply contrast factor to each channel
-    x_adjust: Tensor = input * factor
+    img_adjust: Tensor = image * factor
 
     # Truncate between pixel values
-    return x_adjust.clamp_(min=0.0, max=1.0)
+    return img_adjust.clamp(min=0.0, max=1.0)
 
 
 def adjust_brightness(input: Tensor, factor: Union[float, Tensor]) -> Tensor:
@@ -377,13 +380,13 @@ def _solarize(input: Tensor, thresholds: Union[float, Tensor] = 0.5) -> Tensor:
     Otherwise, subtract 1.0 from the pixel.
 
     Args:
-        input (Tensor): image or batched images to solarize.
-        thresholds (float or Tensor): solarize thresholds.
+        input: image or batched images to solarize.
+        thresholds: solarize thresholds.
             If int or one element tensor, input will be solarized across the whole batch.
             If 1-d tensor, input will be solarized element-wise, len(thresholds) == len(input).
 
     Returns:
-        Tensor: Solarized images.
+        Solarized images.
     """
     if not isinstance(input, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
@@ -515,10 +518,10 @@ def posterize(input: Tensor, bits: Union[int, Tensor]) -> Tensor:
     # Potential approach: implementing kornia.LUT with floating points
     # https://github.com/albumentations-team/albumentations/blob/master/albumentations/augmentations/functional.py#L472
     def _left_shift(input: Tensor, shift: Tensor):
-        return ((input * 255).to(torch.uint8) * (2 ** shift)).to(input.dtype) / 255.0
+        return ((input * 255).to(torch.uint8) * (2**shift)).to(input.dtype) / 255.0
 
     def _right_shift(input: Tensor, shift: Tensor):
-        return (input * 255).to(torch.uint8) / (2 ** shift).to(input.dtype) / 255.0
+        return (input * 255).to(torch.uint8) / (2**shift).to(input.dtype) / 255.0
 
     def _posterize_one(input: Tensor, bits: Tensor):
         # Single bits value condition
@@ -775,7 +778,7 @@ def invert(input: Tensor, max_val: Tensor = torch.tensor(1.0)) -> Tensor:
     return max_val.to(input.dtype) - input
 
 
-class AdjustSaturation(nn.Module):
+class AdjustSaturation(Module):
     r"""Adjust color saturation of an image.
 
     The input image is expected to be an RGB image in the range of [0, 1].
@@ -818,7 +821,7 @@ class AdjustSaturation(nn.Module):
         return adjust_saturation(input, self.saturation_factor)
 
 
-class AdjustHue(nn.Module):
+class AdjustHue(Module):
     r"""Adjust hue of an image.
 
     The input image is expected to be an RGB image in the range of [0, 1].
@@ -862,7 +865,7 @@ class AdjustHue(nn.Module):
         return adjust_hue(input, self.hue_factor)
 
 
-class AdjustGamma(nn.Module):
+class AdjustGamma(Module):
     r"""Perform gamma correction on an image.
 
     The input image is expected to be in the range of [0, 1].
@@ -900,7 +903,7 @@ class AdjustGamma(nn.Module):
         return adjust_gamma(input, self.gamma, self.gain)
 
 
-class AdjustContrast(nn.Module):
+class AdjustContrast(Module):
     r"""Adjust Contrast of an image.
 
     This implementation aligns OpenCV, not PIL. Hence, the output differs from TorchVision.
@@ -937,7 +940,7 @@ class AdjustContrast(nn.Module):
         return adjust_contrast(input, self.contrast_factor)
 
 
-class AdjustBrightness(nn.Module):
+class AdjustBrightness(Module):
     r"""Adjust Brightness of an image.
 
     This implementation aligns OpenCV, not PIL. Hence, the output differs from TorchVision.
@@ -973,7 +976,7 @@ class AdjustBrightness(nn.Module):
         return adjust_brightness(input, self.brightness_factor)
 
 
-class Invert(nn.Module):
+class Invert(Module):
     r"""Invert the values of an input tensor by its maximum value.
 
     Args:
@@ -997,7 +1000,7 @@ class Invert(nn.Module):
 
     def __init__(self, max_val: Tensor = torch.tensor(1.0)) -> None:
         super().__init__()
-        if not isinstance(max_val, nn.Parameter):
+        if not isinstance(max_val, Parameter):
             self.register_buffer("max_val", max_val)
         else:
             self.max_val = max_val

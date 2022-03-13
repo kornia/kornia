@@ -4,9 +4,10 @@ import importlib
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from itertools import product
-from typing import Any, Optional
+from typing import Any, Optional, TypeVar
 
 import torch
+from torch import Tensor
 
 __all__ = ['tensor_to_gradcheck_var', 'create_eye_batch', 'xla_is_available', 'assert_close']
 
@@ -50,7 +51,7 @@ def dict_to(data: dict, device: torch.device, dtype: torch.dtype) -> dict:
 
 def compute_patch_error(x, y, h, w):
     """Compute the absolute error between patches."""
-    return torch.abs(x - y)[..., h // 4: -h // 4, w // 4: -w // 4].mean()
+    return torch.abs(x - y)[..., h // 4 : -h // 4, w // 4 : -w // 4].mean()
 
 
 def check_is_tensor(obj):
@@ -179,3 +180,26 @@ except ImportError:
             return _assert_allclose(actual, expected, rtol=rtol, atol=atol, **kwargs)
         except ValueError as error:
             raise UsageError(str(error)) from error
+
+
+# Logger api
+
+T = TypeVar('T')
+
+
+def KORNIA_CHECK(condition, msg: Optional[str] = None):
+    if not condition:
+        raise Exception(f"{condition} not true.\n{msg}")
+
+
+def KORNIA_CHECK_IS_TYPE(x: Any, type: T, msg: Optional[str] = None):
+    if not isinstance(type, list):
+        type = [type]
+
+    for t in type:
+        if not isinstance(x, t):
+            raise TypeError(f"Wrong type. Got: {type(x)}.\n{msg}")
+
+
+def KORNIA_CHECK_IS_TENSOR(x: Any, msg: Optional[str] = None):
+    KORNIA_CHECK_IS_TYPE(x, Tensor, msg)
