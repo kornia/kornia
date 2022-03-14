@@ -27,7 +27,7 @@ jobs:
     - name: Deploy to Netlify
       uses: nwtgck/actions-netlify@v1.2
       with:
-        publish-dir: './docs/_build/html'
+        publish-dir: './docs/build/html'
         github-token: ${{ secrets.GITHUB_TOKEN }}
         enable-commit-comment: false
         alias: kornia
