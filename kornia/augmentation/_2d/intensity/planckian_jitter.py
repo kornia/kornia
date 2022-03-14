@@ -76,9 +76,7 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
 
     Args:
         mode: 'blackbody' or 'CIED'.
-        select_from: choose a list of jitters to apply from. For
-        `blackbody` choose in the range [0, 24], and for `CIED` choose
-        in the range [0, 22].
+        select_from: choose a list of jitters to apply from. For `blackbody`: range 0-24 and for `CIED` range 0-22.
         same_on_batch: apply the same transformation across the batch.
         p: probability that the random erasing operation will be performed.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
