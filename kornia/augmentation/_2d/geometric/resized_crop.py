@@ -97,23 +97,30 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
     ) -> Tensor:
+        interpolation = (self.flags["resample"].name).lower()
+        if "resample" in params:  # if params define the interpolation mode, overwrite it
+            interpolation = (params["resample"].name).lower()
+        align_corners = self.flags["align_corners"]
+        if "align_corners" in params:
+            align_corners = params["align_corners"]
+
         if self.flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
             transform = cast(Tensor, transform)
             return crop_by_transform_mat(
                 input,
                 transform,
                 self.flags["size"],
-                mode=self.flags["resample"].name.lower(),
+                mode=interpolation,
                 padding_mode="zeros",
-                align_corners=self.flags["align_corners"],
+                align_corners=align_corners,
             )
         if self.flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
             return crop_by_indices(
                 input,
                 params["src"],
                 self.flags["size"],
-                interpolation=(self.flags["resample"].name).lower(),
-                align_corners=self.flags["align_corners"]
+                interpolation=interpolation,
+                align_corners=align_corners
             )
         raise NotImplementedError(f"Not supported type: {self.flags['cropping_mode']}.")
 
@@ -129,7 +136,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
                 f"`inverse` is only applicable for resample cropping mode. Got {self.flags['cropping_mode']}."
             )
         size = cast(Tuple[int, int], size)
-        mode = self.flags["resample"].name.lower() if "mode" not in kwargs else kwargs["mode"]
+        mode = self.flags["resample"].name.lower() if "resample" not in kwargs else kwargs["resample"]
         align_corners = self.flags["align_corners"] if "align_corners" not in kwargs else kwargs["align_corners"]
         padding_mode = "zeros" if "padding_mode" not in kwargs else kwargs["padding_mode"]
         transform = cast(Tensor, transform)

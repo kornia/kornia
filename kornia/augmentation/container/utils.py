@@ -10,7 +10,7 @@ import kornia  # lazy loading for circular dependencies
 from kornia.augmentation import GeometricAugmentationBase2D, MixAugmentationBase, RandomCrop, RandomErasing
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import ParamItem
-from kornia.constants import DataKey
+from kornia.constants import DataKey, Resample
 from kornia.geometry.bbox import transform_bbox
 from kornia.geometry.linalg import transform_points
 from kornia.utils.helpers import _torch_inverse_cast
@@ -247,6 +247,11 @@ class MaskApplyInverse(ApplyInverseImpl):
             # TODO: Parametrize value to pad with across the board for different keys
             if 'values' in _param:
                 _param['values'] = torch.zeros_like(_param['values'])  # Always pad with zeros
+
+            if 'resample' in module.flags:
+                _param['resample'] = Resample.NEAREST
+                _param['align_corners'] = None
+
             input = module(input, params=_param)
         elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
             _param = cast(List[ParamItem], _param)
@@ -269,12 +274,20 @@ class MaskApplyInverse(ApplyInverseImpl):
                 to apply transformations.
             param: the corresponding parameters to the module.
         """
+        extra_args = {}
+        if 'resample' in module.flags:
+            param.data['resample'] = Resample.NEAREST
+            extra_args['resample'] = Resample.NEAREST.name.lower()
+        if 'align_corners' in module.flags:
+            param.data['align_corners'] = None
+            extra_args['align_corners'] = None
+
         if isinstance(module, GeometricAugmentationBase2D):
-            input = module.inverse(input, params=None if param is None else cast(Dict, param.data))
+            input = module.inverse(input, params=None if param is None else cast(Dict, param.data), **extra_args)
         elif isinstance(module, kornia.augmentation.ImageSequential):
             temp = module.apply_inverse_func
             module.apply_inverse_func = MaskApplyInverse
-            input = module.inverse(input, params=None if param is None else cast(List, param.data))
+            input = module.inverse(input, params=None if param is None else cast(List, param.data), **extra_args)
             module.apply_inverse_func = temp
         return input
 

@@ -103,13 +103,21 @@ class CenterCrop(GeometricAugmentationBase2D):
     ) -> Tensor:
         if self.flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
             transform = cast(Tensor, transform)
+
+            interpolation = (self.flags["resample"].name).lower()
+            if "resample" in params:  # if params define the interpolation mode, overwrite it
+                interpolation = (params["resample"].name).lower()
+            align_corners = self.flags["align_corners"]
+            if "align_corners" in params:
+                align_corners = params["align_corners"]
+
             return crop_by_transform_mat(
                 input,
                 transform[:, :2, :],
                 self.size,
-                self.flags["resample"].name.lower(),
+                interpolation,
                 "zeros",
-                self.flags["align_corners"],
+                align_corners,
             )
         if self.flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
             return crop_by_indices(input, params["src"], self.flags["size"])
@@ -128,7 +136,7 @@ class CenterCrop(GeometricAugmentationBase2D):
             )
         if size is None:
             size = self.size
-        mode = self.flags["resample"].name.lower() if "mode" not in kwargs else kwargs["mode"]
+        mode = self.flags["resample"].name.lower() if "resample" not in kwargs else kwargs["resample"]
         align_corners = self.flags["align_corners"] if "align_corners" not in kwargs else kwargs["align_corners"]
         padding_mode = "zeros" if "padding_mode" not in kwargs else kwargs["padding_mode"]
         transform = cast(Tensor, transform)

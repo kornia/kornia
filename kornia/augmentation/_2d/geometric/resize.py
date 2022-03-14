@@ -50,6 +50,14 @@ class Resize(GeometricAugmentationBase2D):
         B, C, _, _ = input.shape
         out_size = tuple(params["output_size"][0].tolist())
         out = torch.empty(B, C, *out_size, device=input.device, dtype=input.dtype)
+
+        interpolation = (self.flags["resample"].name).lower()
+        if "resample" in params:  # if params define the interpolation mode, overwrite it
+            interpolation = (params["resample"].name).lower()
+        align_corners = self.flags["align_corners"]
+        if "align_corners" in params:
+            align_corners = params["align_corners"]
+
         for i in range(B):
             x1 = int(params["src"][i, 0, 0])
             x2 = int(params["src"][i, 1, 0]) + 1
@@ -58,8 +66,8 @@ class Resize(GeometricAugmentationBase2D):
             out[i] = resize(
                 input[i : i + 1, :, y1:y2, x1:x2],
                 out_size,
-                interpolation=(self.flags["resample"].name).lower(),
-                align_corners=self.flags["align_corners"],
+                interpolation=interpolation,
+                align_corners=align_corners,
             )
         return out
 
@@ -71,7 +79,7 @@ class Resize(GeometricAugmentationBase2D):
         **kwargs,
     ) -> Tensor:
         size = cast(Tuple[int, int], size)
-        mode = self.flags["resample"].name.lower() if "mode" not in kwargs else kwargs["mode"]
+        mode = self.flags["resample"].name.lower() if "resample" not in kwargs else kwargs["resample"]
         align_corners = self.flags["align_corners"] if "align_corners" not in kwargs else kwargs["align_corners"]
         padding_mode = "zeros" if "padding_mode" not in kwargs else kwargs["padding_mode"]
         transform = cast(Tensor, transform)

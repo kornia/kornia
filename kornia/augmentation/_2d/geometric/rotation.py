@@ -98,8 +98,16 @@ class RandomRotation(GeometricAugmentationBase2D):
         self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
     ) -> Tensor:
         transform = cast(Tensor, transform)
+
+        interpolation = (self.flags["resample"].name).lower()
+        if "resample" in params:  # if params define the interpolation mode, overwrite it
+            interpolation = (params["resample"].name).lower()
+        align_corners = self.flags["align_corners"]
+        if "align_corners" in params:
+            align_corners = params["align_corners"]
+
         return affine(
-            input, transform[..., :2, :3], self.flags["resample"].name.lower(), "zeros", self.flags["align_corners"]
+            input, transform[..., :2, :3], interpolation, "zeros", align_corners
         )
 
     def inverse_transform(

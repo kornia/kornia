@@ -111,12 +111,20 @@ class RandomAffine(GeometricAugmentationBase2D):
     ) -> Tensor:
         _, _, height, width = input.shape
         transform = cast(Tensor, transform)
+
+        interpolation = (self.flags["resample"].name).lower()
+        if "resample" in params:  # if params define the interpolation mode, overwrite it
+            interpolation = (params["resample"].name).lower()
+        align_corners = self.flags["align_corners"]
+        if "align_corners" in params:
+            align_corners = params["align_corners"]
+
         return warp_affine(
             input,
             transform[:, :2, :],
             (height, width),
-            self.flags["resample"].name.lower(),
-            align_corners=self.flags["align_corners"],
+            interpolation,
+            align_corners=align_corners,
             padding_mode=self.flags["padding_mode"].name.lower(),
         )
 
