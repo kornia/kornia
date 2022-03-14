@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - master
-  pull_request:
-  schedule:
-    - cron: "0 4 * * *"
 
 jobs:
   build-docs:
@@ -26,3 +23,14 @@ jobs:
     - name: Build Documentation
       shell: bash -l {0}
       run: make build-docs
+
+    - name: Deploy to Netlify
+      uses: nwtgck/actions-netlify@v1.2
+      with:
+        publish-dir: './docs/_build/html'
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        enable-commit-comment: false
+        alias: kornia
+      env:
+        NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+        NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}

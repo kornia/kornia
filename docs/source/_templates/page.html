@@ -2,7 +2,7 @@
 {% block scripts %}
     {{ super() }}
     <!-- DocsQA integration start -->
-    <script src="https://cdn.jsdelivr.net/npm/qabot@0.4"></script>
+    <script src="https://jina-docqa-ui.netlify.app/dist/qabot.js"></script>
     <script>
       // This prevents the global search interfere with qa-bot internal text input.
       document.addEventListener('DOMContentLoaded', () => {
