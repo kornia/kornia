@@ -68,6 +68,8 @@ _planckian_coeffs_ratio = {
 class RandomPlanckianJitter(IntensityAugmentationBase2D):
     r"""Apply planckian jitter transformation to input tensor.
 
+    .. image:: _static/img/RandomPlanckianJitter.png
+
     This is physics based color augmentation, that creates realistic
     variations in chromaticity, this can simulate the illumination
     changes in the scene.
@@ -157,10 +159,11 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
 
         mult_ch_zero = self.pl[list_idx][:, 0]
         mult_ch_two = self.pl[list_idx][:, 1]
-        input[..., 0, :, :] = input[..., 0, :, :] * mult_ch_zero.unsqueeze(-1).unsqueeze(-1)
-        input[..., 2, :, :] = input[..., 2, :, :] * mult_ch_two.unsqueeze(-1).unsqueeze(-1)
+        output = input.clone().detach()
+        output[..., 0, :, :] = input[..., 0, :, :] * mult_ch_zero.unsqueeze(-1).unsqueeze(-1)
+        output[..., 2, :, :] = input[..., 2, :, :] * mult_ch_two.unsqueeze(-1).unsqueeze(-1)
 
         ones = torch.ones_like(input)
-        output = torch.where(input > 1, ones, input)
+        output = torch.where(output > 1, ones, output)
 
         return output
