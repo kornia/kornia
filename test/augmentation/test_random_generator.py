@@ -410,6 +410,7 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
                 dtype=dtype,
             ),
             input_size=torch.tensor([[100, 100], [100, 100]], device=device, dtype=torch.long),
+            output_size=torch.tensor([[200, 200], [200, 200]], device=device, dtype=torch.long)
         )
         assert res.keys() == expected.keys()
         assert_close(res['src'], expected['src'])
@@ -432,6 +433,7 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
                 dtype=dtype,
             ),
             input_size=torch.tensor([[100, 100], [100, 100]], device=device, dtype=torch.long),
+            output_size=torch.tensor([[200, 200], [200, 200]], device=device, dtype=torch.long)
         )
         assert res.keys() == expected.keys()
         assert_close(res['src'], expected['src'])
@@ -500,6 +502,7 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
                 device=device,
                 dtype=torch.int64,
             ),
+            output_size=torch.tensor([[100, 100], [100, 100]], device=device, dtype=torch.long)
         )
         assert res.keys() == expected.keys()
         assert_close(res['src'], expected['src'])
@@ -535,6 +538,7 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
                 device=device,
                 dtype=torch.int64,
             ),
+            output_size=torch.tensor([[100, 100], [100, 100]], device=device, dtype=torch.long)
         )
         assert res.keys() == expected.keys()
         assert_close(res['src'], expected['src'])
@@ -671,6 +675,7 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
                 dtype=torch.long,
             ),
             input_size=torch.tensor([[200, 200], [200, 200]], device=device, dtype=torch.long),
+            output_size=torch.tensor([[120, 150], [120, 150]], device=device, dtype=torch.long)
         )
         assert res.keys() == expected.keys()
         assert_close(res['src'].to(device=device), expected['src'])

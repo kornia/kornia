@@ -279,11 +279,13 @@ class TestCombineTensorPatches:
             kornia.contrib.combine_tensor_patches(patches, original_size=(4, 4), window_size=(2, 2), stride=(3, 2))
 
     def test_rect_odd_dim(self, device, dtype):
-        patches = kornia.contrib.extract_tensor_patches(
-            torch.arange(12, device=device, dtype=dtype).view(1, 1, 4, 3), window_size=(2, 2), stride=(2, 2), padding=1
+        img = torch.arange(12, device=device, dtype=dtype).view(1, 1, 4, 3)
+        patches = kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(2, 2), padding=(0, 0, 0, 1))
+        m = kornia.contrib.combine_tensor_patches(
+            patches, original_size=(4, 3), window_size=(2, 2), stride=(2, 2), unpadding=(0, 0, 0, 1)
         )
-        with pytest.raises(NotImplementedError):
-            kornia.contrib.combine_tensor_patches(patches, original_size=(4, 3), window_size=(2, 2), stride=(2, 2))
+        assert m.shape == (1, 1, 4, 3)
+        assert (img == m).all()
 
     def test_pad_error(self, device, dtype):
         patches = kornia.contrib.extract_tensor_patches(
@@ -385,8 +387,8 @@ class TestImageStitcher:
     @pytest.mark.parametrize("estimator", ['ransac', 'vanilla'])
     def test_smoke(self, estimator, device, dtype):
         B, C, H, W = 1, 3, 224, 224
-        input1 = torch.rand(B, C, H, W, device=device, dtype=dtype)
-        input2 = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        sample1 = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        sample2 = torch.rand(B, C, H, W, device=device, dtype=dtype)
         return_value = {
             "keypoints0": torch.rand((15, 2), device=device, dtype=dtype),
             "keypoints1": torch.rand((15, 2), device=device, dtype=dtype),
@@ -400,14 +402,14 @@ class TestImageStitcher:
             # To avoid that, we mock as below
             matcher = kornia.feature.LoFTR(None)
             stitcher = kornia.contrib.ImageStitcher(matcher, estimator=estimator).to(device=device, dtype=dtype)
-            out = stitcher(input1, input2)
+            out = stitcher(sample1, sample2)
             assert out.shape[:-1] == torch.Size([1, 3, 224])
             assert out.shape[-1] <= 448
 
     def test_exception(self, device, dtype):
         B, C, H, W = 1, 3, 224, 224
-        input1 = torch.rand(B, C, H, W, device=device, dtype=dtype)
-        input2 = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        sample1 = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        sample2 = torch.rand(B, C, H, W, device=device, dtype=dtype)
         # NOTE: This will need to download the pretrained weights.
         matcher = kornia.feature.LoFTR(None)
 
@@ -416,49 +418,49 @@ class TestImageStitcher:
 
         stitcher = kornia.contrib.ImageStitcher(matcher).to(device=device, dtype=dtype)
         with pytest.raises(RuntimeError):
-            stitcher(input1, input2)
+            stitcher(sample1, sample2)
 
 
 class TestConvDistanceTransform:
     @pytest.mark.parametrize("kernel_size", [3, 5, 7])
     def test_smoke(self, kernel_size, device, dtype):
-        input1 = torch.rand(1, 3, 100, 100, device=device, dtype=dtype)
-        input2 = torch.rand(1, 1, 100, 100, device=device, dtype=dtype)
+        sample1 = torch.rand(1, 3, 100, 100, device=device, dtype=dtype)
+        sample2 = torch.rand(1, 1, 100, 100, device=device, dtype=dtype)
         distance_transformer = kornia.contrib.DistanceTransform(kernel_size)
 
-        output1 = distance_transformer(input1)
-        output2 = kornia.contrib.distance_transform(input2, kernel_size)
+        output1 = distance_transformer(sample1)
+        output2 = kornia.contrib.distance_transform(sample2, kernel_size)
 
         assert isinstance(output1, torch.Tensor)
         assert isinstance(output2, torch.Tensor)
-        assert output1.shape == input1.shape
+        assert output1.shape == sample1.shape
 
     def test_module(self, device, dtype):
         B, C, H, W = 1, 1, 99, 100
-        input1 = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        sample1 = torch.rand(B, C, H, W, device=device, dtype=dtype)
         distance_transformer = kornia.contrib.DistanceTransform().to(device, dtype)
 
-        output1 = distance_transformer(input1)
-        output2 = kornia.contrib.distance_transform(input1)
+        output1 = distance_transformer(sample1)
+        output2 = kornia.contrib.distance_transform(sample1)
         tol_val: float = utils._get_precision(device, dtype)
         assert_close(output1, output2, rtol=tol_val, atol=tol_val)
 
     def test_exception(self, device, dtype):
         B, C, H, W = 1, 1, 224, 224
-        input1 = torch.rand(B, C, H, W, device=device, dtype=dtype)
-        input2 = torch.rand(C, H, W, device=device, dtype=dtype)
+        sample1 = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        sample2 = torch.rand(C, H, W, device=device, dtype=dtype)
 
         # Non-odd kernel size
         with pytest.raises(ValueError):
             ConvDT = kornia.contrib.DistanceTransform(6)
-            ConvDT.forward(input1)
+            ConvDT.forward(sample1)
 
         with pytest.raises(ValueError):
-            kornia.contrib.distance_transform(input1, 4)
+            kornia.contrib.distance_transform(sample1, 4)
 
         # Invalid input dimensions
         with pytest.raises(ValueError):
-            kornia.contrib.distance_transform(input2)
+            kornia.contrib.distance_transform(sample2)
 
         # Invalid input type
         with pytest.raises(TypeError):
@@ -468,8 +470,8 @@ class TestConvDistanceTransform:
         B, C, H, W = 1, 1, 4, 4
         kernel_size = 7
         h = 0.35
-        input1 = torch.zeros(B, C, H, W, device=device, dtype=dtype)
-        input1[:, :, 1, 1] = 1.0
+        sample1 = torch.zeros(B, C, H, W, device=device, dtype=dtype)
+        sample1[:, :, 1, 1] = 1.0
         expected_output1 = torch.tensor(
             [
                 [
@@ -484,22 +486,22 @@ class TestConvDistanceTransform:
             device=device,
             dtype=dtype,
         )
-        output1 = kornia.contrib.distance_transform(input1, kernel_size, h)
+        output1 = kornia.contrib.distance_transform(sample1, kernel_size, h)
         assert_close(expected_output1, output1)
 
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 1, 1, 32, 32
-        input1 = torch.ones(B, C, H, W, device=device, dtype=dtype, requires_grad=True)
-        assert gradcheck(kornia.contrib.distance_transform, (input1), raise_exception=True)
+        sample1 = torch.ones(B, C, H, W, device=device, dtype=dtype, requires_grad=True)
+        assert gradcheck(kornia.contrib.distance_transform, (sample1), raise_exception=True)
 
     def test_loss_grad(self, device, dtype):
         B, C, H, W = 1, 1, 32, 32
-        input1 = torch.rand(B, C, H, W, device=device, dtype=dtype, requires_grad=True)
-        input2 = torch.rand(B, C, H, W, device=device, dtype=dtype, requires_grad=True)
+        sample1 = torch.rand(B, C, H, W, device=device, dtype=dtype, requires_grad=True)
+        sample2 = torch.rand(B, C, H, W, device=device, dtype=dtype, requires_grad=True)
         tiny_module = torch.nn.Conv2d(1, 1, (3, 3), (1, 1), (1, 1)).to(device=device, dtype=dtype)
-        input1 = kornia.contrib.distance_transform(tiny_module(input1))
-        input2 = kornia.contrib.distance_transform(input2)
-        loss = torch.nn.functional.mse_loss(input1, input2)
+        sample1 = kornia.contrib.distance_transform(tiny_module(sample1))
+        sample2 = kornia.contrib.distance_transform(sample2)
+        loss = torch.nn.functional.mse_loss(sample1, sample2)
         loss.backward()
 
 

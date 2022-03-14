@@ -38,6 +38,10 @@ class ExtractTensorPatches(nn.Module):
         - a ``tuple`` of two ints -- in which case, the first `int` is used for
           the height dimension, and the second `int` for the width dimension.
 
+    :attr:`padding` can also be a ``tuple`` of four ints -- in which case, the
+    first two ints are for the height dimension while the last two ints are for
+    the width dimension.
+
     Args:
         window_size: the size of the sliding window and the output patch size.
         stride: stride of the sliding window.
@@ -106,6 +110,10 @@ class CombineTensorPatches(nn.Module):
           height and width dimension.
         - a ``tuple`` of two ints -- in which case, the first `int` is used for
           the height dimension, and the second `int` for the width dimension.
+
+    :attr:`unpadding` can also be a ``tuple`` of four ints -- in which case, the
+    first two ints are for the height dimension while the last two ints are for
+    the width dimension.
 
     Args:
         patches: patched tensor.
@@ -193,9 +201,6 @@ def combine_tensor_patches(
             "Please feel free to drop a PR to Kornia Github."
         )
 
-    if original_size[0] % 2 != 0 or original_size[1] % 2 != 0:
-        raise NotImplementedError(f"Original image size must be divisible by 2. Got {original_size}")
-
     if unpadding:
         unpadding = cast(PadType, _pair(unpadding))
 
@@ -205,9 +210,10 @@ def combine_tensor_patches(
         if len(unpadding) == 2:
             pad_vert = _pair(unpadding[0])
             pad_horz = _pair(unpadding[1])
-            unpadding = cast(Tuple[int, int, int, int], pad_horz + pad_vert)
         else:
-            unpadding = cast(Tuple[int, int, int, int], unpadding)
+            pad_vert = unpadding[:2]
+            pad_horz = unpadding[2:]
+        unpadding = cast(Tuple[int, int, int, int], pad_horz + pad_vert)
 
         hpad_check = (original_size[0] + unpadding[2] + unpadding[3]) % window_size[0] == 0
         wpad_check = (original_size[1] + unpadding[0] + unpadding[1]) % window_size[1] == 0
@@ -286,9 +292,10 @@ def extract_tensor_patches(
         if len(padding) == 2:
             pad_vert = _pair(padding[0])
             pad_horz = _pair(padding[1])
-            padding = cast(Tuple[int, int, int, int], pad_horz + pad_vert)
         else:
-            padding = cast(Tuple[int, int, int, int], padding)
+            pad_vert = padding[:2]
+            pad_horz = padding[2:]
+        padding = cast(Tuple[int, int, int, int], pad_horz + pad_vert)
         input = F.pad(input, padding)
 
     return _extract_tensor_patchesnd(input, _pair(window_size), _pair(stride))
