@@ -14,7 +14,6 @@ from kornia.augmentation import (
     LongestMaxSize,
     Normalize,
     PadTo,
-    PlanckianJitter,
     RandomBoxBlur,
     RandomChannelShuffle,
     RandomCrop,
@@ -27,6 +26,7 @@ from kornia.augmentation import (
     RandomGrayscale,
     RandomHorizontalFlip,
     RandomInvert,
+    RandomPlanckianJitter,
     RandomPosterize,
     RandomResizedCrop,
     RandomRotation,
@@ -2679,14 +2679,14 @@ class TestPlanckianJitter:
 
     def test_planckian_jitter_blackbody(self, device, dtype):
         torch.manual_seed(0)
-        f = PlanckianJitter(select_from=1).to(device, dtype)
+        f = RandomPlanckianJitter(select_from=1).to(device, dtype)
         input = self._get_input(device, dtype)
         expected = self._get_expected_output_blackbody(device, dtype)
         assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
 
     def test_planckian_jitter_cied(self, device, dtype):
         torch.manual_seed(0)
-        f = PlanckianJitter(mode='CIED', select_from=1).to(device, dtype)
+        f = RandomPlanckianJitter(mode='CIED', select_from=1).to(device, dtype)
         input = self._get_input(device, dtype)
         expected = self._get_expected_output_cied(device, dtype)
         assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
@@ -2696,7 +2696,7 @@ class TestPlanckianJitter:
         input = self._get_input(device, dtype).repeat(2, 1, 1, 1)
 
         select_from = [1, 2, 24]
-        f = PlanckianJitter(select_from=select_from).to(device, dtype)
+        f = RandomPlanckianJitter(select_from=select_from).to(device, dtype)
         expected = self._get_expected_output_batch(device, dtype)
         assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
 
@@ -2705,7 +2705,7 @@ class TestPlanckianJitter:
         input = self._get_input(device, dtype).repeat(2, 1, 1, 1)
 
         select_from = [1, 2, 24, 3, 4, 5]
-        f = PlanckianJitter(select_from=select_from, same_on_batch=True,
-                            p=1.0).to(device, dtype)
+        f = RandomPlanckianJitter(select_from=select_from, same_on_batch=True,
+                                  p=1.0).to(device, dtype)
         expected = self._get_expected_output_same_on_batch(device, dtype)
         assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
