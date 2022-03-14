@@ -96,7 +96,7 @@ class LAFAffineShapeEstimator(nn.Module):
     Args:
         patch_size: the input image patch size.
         affine_shape_detector: Patch affine shape estimator, :class:`~kornia.feature.PatchAffineShapeEstimator`.
-        preserve_orientation: if True, the original orientation is preserved
+        preserve_orientation: if True, the original orientation is preserved.
     """  # pylint: disable
 
     def __init__(self,
@@ -108,7 +108,7 @@ class LAFAffineShapeEstimator(nn.Module):
         self.affine_shape_detector = affine_shape_detector or PatchAffineShapeEstimator(self.patch_size)
         self.preserve_orientation = preserve_orientation
         if preserve_orientation:
-            warnings.warn("`LAFAffineShapeEstimator` default behavoir is changed"
+            warnings.warn("`LAFAffineShapeEstimator` default behaviour is changed"
                           "and now it does preserve original LAF orientation"
                           "Make sure your code accounts for this",
                           DeprecationWarning,
@@ -209,7 +209,7 @@ class LAFAffNetShapeEstimator(nn.Module):
             self.load_state_dict(pretrained_dict['state_dict'], strict=False)
         self.preserve_orientation = preserve_orientation
         if preserve_orientation:
-            warnings.warn("`LAFAffNetShapeEstimator` default behavoir is changed"
+            warnings.warn("`LAFAffNetShapeEstimator` default behaviour is changed"
                           "and now it does preserve original LAF orientation"
                           "Make sure your code accounts for this",
                           DeprecationWarning,
