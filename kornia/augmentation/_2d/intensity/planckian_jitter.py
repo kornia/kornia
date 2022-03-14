@@ -94,7 +94,7 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
     To apply planckian jitter based on mode
         >>> rng = torch.manual_seed(0)
         >>> input = torch.randn(1, 3, 2, 2)
-        >>> aug = PlanckianJitter(mode='CIED')
+        >>> aug = RandomPlanckianJitter(mode='CIED')
         >>> aug(input)
         tensor([[[[ 1.0000, -0.2389],
                   [-1.7740,  0.4628]],
@@ -108,7 +108,7 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
     To apply planckian jitter on image(s) from list of interested jitters
         >>> rng = torch.manual_seed(0)
         >>> input = torch.randn(2, 3, 2, 2)
-        >>> aug = PlanckianJitter(mode='blackbody', select_from=[23, 24, 1, 2])
+        >>> aug = RandomPlanckianJitter(mode='blackbody', select_from=[23, 24, 1, 2])
         >>> aug(input)
         tensor([[[[-1.1258, -1.1524],
                   [-0.2506, -0.4339]],
