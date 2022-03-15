@@ -1,6 +1,6 @@
 from typing import Dict, Optional, cast
 
-import torch
+from torch import Tensor
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
@@ -17,13 +17,12 @@ class RandomFisheye(GeometricAugmentationBase2D):
         center_x: Ranges to sample respect to x-coordinate center with shape (2,).
         center_y: Ranges to sample respect to y-coordinate center with shape (2,).
         gamma: Ranges to sample for the gamma values respect to optical center with shape (2,).
-        return_transform: if ``True`` return the matrix describing the transformation applied to each
-            input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
     Examples:
+        >>> import torch
         >>> img = torch.ones(1, 1, 2, 2)
         >>> center_x = torch.tensor([-.3, .3])
         >>> center_y = torch.tensor([-.3, .3])
@@ -41,13 +40,13 @@ class RandomFisheye(GeometricAugmentationBase2D):
 
     def __init__(
         self,
-        center_x: torch.Tensor,
-        center_y: torch.Tensor,
-        gamma: torch.Tensor,
-        return_transform: bool = False,
+        center_x: Tensor,
+        center_y: Tensor,
+        gamma: Tensor,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
+        return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
@@ -64,20 +63,20 @@ class RandomFisheye(GeometricAugmentationBase2D):
             ),
         )
 
-    def _check_tensor(self, data: torch.Tensor) -> None:
-        if not isinstance(data, torch.Tensor):
-            raise TypeError(f"Invalid input type. Expected torch.Tensor - got: {type(data)}")
+    def _check_tensor(self, data: Tensor) -> None:
+        if not isinstance(data, Tensor):
+            raise TypeError(f"Invalid input type. Expected Tensor - got: {type(data)}")
 
         if len(data.shape) != 1 and data.shape[0] != 2:
             raise ValueError(f"Tensor must be of shape (2,). Got: {data.shape}.")
 
     # TODO: It is incorrect to return identity
-    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
         return self.identity_matrix(input)
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+    ) -> Tensor:
         # create the initial sampling fields
         B, _, H, W = input.shape
         grid = create_meshgrid(H, W, normalized_coordinates=True)

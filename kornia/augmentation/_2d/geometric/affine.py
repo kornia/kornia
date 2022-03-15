@@ -1,6 +1,7 @@
 from typing import Dict, Optional, Tuple, Union, cast
 
 import torch
+from torch import Tensor
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
@@ -17,7 +18,6 @@ class RandomAffine(GeometricAugmentationBase2D):
     The transformation is computed so that the image center is kept invariant.
 
     Args:
-        p: probability of applying the transformation.
         degrees: Range of degrees to select from.
             If degrees is a number instead of sequence like (min, max), the range of degrees
             will be (-degrees, +degrees). Set to 0 to deactivate rotations.
@@ -36,9 +36,9 @@ class RandomAffine(GeometricAugmentationBase2D):
             will be applied. Will not apply shear by default.
         resample: resample mode from "nearest" (0) or "bilinear" (1).
         padding_mode: padding mode from "zeros" (0), "border" (1) or "refection" (2).
-        return_transform: if ``True`` return the matrix describing the transformation applied to each.
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
+        p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it to the batch form (False).
 
     Shape:
@@ -49,11 +49,12 @@ class RandomAffine(GeometricAugmentationBase2D):
         This function internally uses :func:`kornia.geometry.transform.warp_affine`.
 
     Examples:
+        >>> import torch
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 3, 3)
-        >>> aug = RandomAffine((-15., 20.), return_transform=True, p=1.)
+        >>> aug = RandomAffine((-15., 20.), p=1.)
         >>> out = aug(input)
-        >>> out
+        >>> out, aug.transform_matrix
         (tensor([[[[0.3961, 0.7310, 0.1574],
                   [0.1781, 0.3074, 0.5648],
                   [0.4804, 0.8379, 0.4234]]]]), tensor([[[ 0.9923, -0.1241,  0.1319],
@@ -77,17 +78,17 @@ class RandomAffine(GeometricAugmentationBase2D):
 
     def __init__(
         self,
-        degrees: Union[torch.Tensor, float, Tuple[float, float]],
-        translate: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
-        scale: Optional[Union[torch.Tensor, Tuple[float, float], Tuple[float, float, float, float]]] = None,
-        shear: Optional[Union[torch.Tensor, float, Tuple[float, float]]] = None,
+        degrees: Union[Tensor, float, Tuple[float, float]],
+        translate: Optional[Union[Tensor, Tuple[float, float]]] = None,
+        scale: Optional[Union[Tensor, Tuple[float, float], Tuple[float, float, float, float]]] = None,
+        shear: Optional[Union[Tensor, float, Tuple[float, float]]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False,
         same_on_batch: bool = False,
         align_corners: bool = False,
         padding_mode: Union[str, int, SamplePadding] = SamplePadding.ZEROS.name,
         p: float = 0.5,
         keepdim: bool = False,
+        return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator = cast(rg.AffineGenerator, rg.AffineGenerator(degrees, translate, scale, shear))
@@ -95,7 +96,7 @@ class RandomAffine(GeometricAugmentationBase2D):
             resample=Resample.get(resample), padding_mode=SamplePadding.get(padding_mode), align_corners=align_corners
         )
 
-    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
         return get_affine_matrix2d(
             torch.as_tensor(params["translations"], device=input.device, dtype=input.dtype),
             torch.as_tensor(params["center"], device=input.device, dtype=input.dtype),
@@ -106,10 +107,10 @@ class RandomAffine(GeometricAugmentationBase2D):
         )
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+    ) -> Tensor:
         _, _, height, width = input.shape
-        transform = cast(torch.Tensor, transform)
+        transform = cast(Tensor, transform)
         return warp_affine(
             input,
             transform[:, :2, :],
@@ -121,11 +122,11 @@ class RandomAffine(GeometricAugmentationBase2D):
 
     def inverse_transform(
         self,
-        input: torch.Tensor,
-        transform: Optional[torch.Tensor] = None,
+        input: Tensor,
+        transform: Optional[Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
         **kwargs,
-    ) -> torch.Tensor:
+    ) -> Tensor:
         return self.apply_transform(
             input, params=self._params, transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype)
         )

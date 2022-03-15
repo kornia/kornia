@@ -71,6 +71,7 @@ def main():
         "RandomInvert": ((), 1, 2020),
         "RandomMotionBlur": ((7, 35.0, 0.5), 2, 2020),
         "RandomPerspective": ((0.2,), 2, 2020),
+        "RandomPlanckianJitter": ((), 2, 2022),
         "RandomPosterize": (((1, 4),), 2, 2016),
         "RandomResizedCrop": ((img1.shape[-2:], (1.0, 2.0), (1.0, 2.0)), 2, 2020),
         "RandomRotation": ((45.0,), 2, 2019),

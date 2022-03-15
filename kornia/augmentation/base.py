@@ -1,14 +1,15 @@
 from enum import Enum
-from typing import Any, Dict, Optional, Tuple, Union, cast
+from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
+from torch import Tensor
 from torch.distributions import Bernoulli
 
 from kornia.augmentation.random_generator import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_sampling, _transform_output_shape
 
-TensorWithTransformMat = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
+TensorWithTransformMat = Union[Tensor, Tuple[Tensor, Tensor]]
 
 
 class _BasicAugmentationBase(nn.Module):
@@ -40,7 +41,7 @@ class _BasicAugmentationBase(nn.Module):
         self.p_batch = p_batch
         self.same_on_batch = same_on_batch
         self.keepdim = keepdim
-        self._params: Dict[str, torch.Tensor] = {}
+        self._params: Dict[str, Tensor] = {}
         if p != 0.0 or p != 1.0:
             self._p_gen = Bernoulli(self.p)
         if p_batch != 0.0 or p_batch != 1.0:
@@ -60,23 +61,27 @@ class _BasicAugmentationBase(nn.Module):
                 txt += f", {k}={v}"
         return f"{self.__class__.__name__}({txt})"
 
-    def __unpack_input__(self, input: torch.Tensor) -> torch.Tensor:
+    def __unpack_input__(self, input: Tensor) -> Tensor:
         return input
 
-    def __check_batching__(self, input: TensorWithTransformMat):
+    def __check_batching__(self, input: Tensor):
         """Check if a transformation matrix is returned, it has to be in the same batching mode as output."""
         raise NotImplementedError
 
-    def transform_tensor(self, input: torch.Tensor) -> torch.Tensor:
+    def transform_tensor(self, input: Tensor) -> Tensor:
         """Standardize input tensors."""
         raise NotImplementedError
 
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+    def transform_output_tensor(self, output: Tensor, output_shape: Tuple) -> Tensor:
+        """Standardize output tensors."""
+        return _transform_output_shape(output, output_shape) if self.keepdim else output
+
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, Tensor]:
         if self._param_generator is not None:
             return self._param_generator(batch_shape, self.same_on_batch)
         return {}
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
         raise NotImplementedError
 
     def set_rng_device_and_dtype(self, device: torch.device, dtype: torch.dtype) -> None:
@@ -92,8 +97,8 @@ class _BasicAugmentationBase(nn.Module):
 
     def __batch_prob_generator__(
         self, batch_shape: torch.Size, p: float, p_batch: float, same_on_batch: bool
-    ) -> torch.Tensor:
-        batch_prob: torch.Tensor
+    ) -> Tensor:
+        batch_prob: Tensor
         if p_batch == 1:
             batch_prob = torch.tensor([True])
         elif p_batch == 0:
@@ -102,7 +107,7 @@ class _BasicAugmentationBase(nn.Module):
             batch_prob = _adapted_sampling((1,), self._p_batch_gen, same_on_batch).bool()
 
         if batch_prob.sum().item() == 1:
-            elem_prob: torch.Tensor
+            elem_prob: Tensor
             if p == 1:
                 elem_prob = torch.tensor([True] * batch_shape[0])
             elif p == 0:
@@ -114,7 +119,7 @@ class _BasicAugmentationBase(nn.Module):
             batch_prob = batch_prob.repeat(batch_shape[0])
         return batch_prob
 
-    def forward_parameters(self, batch_shape) -> Dict[str, torch.Tensor]:
+    def forward_parameters(self, batch_shape) -> Dict[str, Tensor]:
         to_apply = self.__batch_prob_generator__(batch_shape, self.p, self.p_batch, self.same_on_batch)
         _params = self.generate_parameters(torch.Size((int(to_apply.sum().item()), *batch_shape[1:])))
         if _params is None:
@@ -126,16 +131,16 @@ class _BasicAugmentationBase(nn.Module):
         _params.update({'forward_input_shape': input_size})
         return _params
 
-    def apply_func(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> TensorWithTransformMat:
+    def apply_func(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
         input = self.transform_tensor(input)
         return self.apply_transform(input, params)
 
     def forward(  # type: ignore
-        self, input: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None  # type: ignore
-    ) -> TensorWithTransformMat:
+        self, input: Tensor, params: Optional[Dict[str, Tensor]] = None  # type: ignore
+    ) -> Tensor:
         in_tensor = self.__unpack_input__(input)
         self.__check_batching__(input)
-        ori_shape = in_tensor.shape
+        input_shape = in_tensor.shape
         in_tensor = self.transform_tensor(in_tensor)
         batch_shape = in_tensor.shape
         if params is None:
@@ -143,7 +148,7 @@ class _BasicAugmentationBase(nn.Module):
         self._params = params
 
         output = self.apply_func(input, self._params)
-        return _transform_output_shape(output, ori_shape) if self.keepdim else output
+        return self.transform_output_tensor(output, input_shape)
 
 
 class _AugmentationBase(_BasicAugmentationBase):
@@ -156,8 +161,6 @@ class _AugmentationBase(_BasicAugmentationBase):
           element-wise for a batch.
         p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
           probabilities batch-wise.
-        return_transform: if ``True`` return the matrix describing the geometric transformation applied to each
-          input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
@@ -165,7 +168,7 @@ class _AugmentationBase(_BasicAugmentationBase):
 
     def __init__(
         self,
-        return_transform: bool = None,
+        return_transform: Optional[bool] = None,
         same_on_batch: bool = False,
         p: float = 0.5,
         p_batch: float = 1.0,
@@ -175,38 +178,36 @@ class _AugmentationBase(_BasicAugmentationBase):
         self.p = p
         self.p_batch = p_batch
         self.return_transform = return_transform
+        self._transform_matrix: Tensor
+        if return_transform is not None:
+            raise ValueError(
+                "`return_transform` is deprecated. Please access the transformation matrix with "
+                "`.transform_matrix`. For chained matrices, please use `AugmentationSequential`.",
+            )
+
+    @property
+    def transform_matrix(self,) -> Tensor:
+        return self._transform_matrix
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ + f"({super().__repr__()}, return_transform={self.return_transform})"
+        return self.__class__.__name__ + f"({super().__repr__()})"
 
-    def identity_matrix(self, input: torch.Tensor) -> torch.Tensor:
+    def identity_matrix(self, input: Tensor) -> Tensor:
         raise NotImplementedError
 
-    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
         raise NotImplementedError
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+    ) -> Tensor:
         raise NotImplementedError
-
-    def __unpack_input__(  # type: ignore
-        self, input: TensorWithTransformMat
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-        if isinstance(input, tuple):
-            in_tensor = input[0]
-            in_transformation = input[1]
-            return in_tensor, in_transformation
-        in_tensor = input
-        return in_tensor, None
 
     def apply_func(  # type: ignore
         self,
-        in_tensor: torch.Tensor,
-        in_transform: Optional[torch.Tensor],  # type: ignore
-        params: Dict[str, torch.Tensor],
-        return_transform: bool = False,
-    ) -> TensorWithTransformMat:
+        in_tensor: Tensor,
+        params: Dict[str, Tensor],
+    ) -> Tensor:
         to_apply = params['batch_prob']
 
         # if no augmentation needed
@@ -225,30 +226,19 @@ class _AugmentationBase(_BasicAugmentationBase):
 
         self._transform_matrix = trans_matrix
 
-        if return_transform:
-            out_transformation = trans_matrix if in_transform is None else trans_matrix @ in_transform
-            return output, out_transformation
-
-        if in_transform is not None:
-            return output, in_transform
-
         return output
 
     def forward(  # type: ignore
         self,
-        input: TensorWithTransformMat,
-        params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
-        return_transform: Optional[bool] = None,
-    ) -> TensorWithTransformMat:
-        in_tensor, in_transform = self.__unpack_input__(input)
+        input: Tensor,
+        params: Optional[Dict[str, Tensor]] = None,  # type: ignore
+    ) -> Tensor:
+        in_tensor = self.__unpack_input__(input)
         self.__check_batching__(input)
-        ori_shape = in_tensor.shape
+        input_shape = in_tensor.shape
         in_tensor = self.transform_tensor(in_tensor)
         batch_shape = in_tensor.shape
 
-        if return_transform is None:
-            return_transform = self.return_transform
-        return_transform = cast(bool, return_transform)
         if params is None:
             params = self.forward_parameters(batch_shape)
         if 'batch_prob' not in params:
@@ -257,6 +247,6 @@ class _AugmentationBase(_BasicAugmentationBase):
             # warnings.warn("`batch_prob` is not found in params. Will assume applying on all data.")
 
         self._params = params
-        output = self.apply_func(in_tensor, in_transform, self._params, return_transform)
+        output = self.apply_func(in_tensor, self._params)
 
-        return _transform_output_shape(output, ori_shape) if self.keepdim else output
+        return _transform_output_shape(output, input_shape) if self.keepdim else output

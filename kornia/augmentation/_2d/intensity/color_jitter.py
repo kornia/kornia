@@ -1,6 +1,6 @@
 from typing import Dict, List, Optional, Tuple, Union, cast
 
-import torch
+from torch import Tensor
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
@@ -19,9 +19,6 @@ class ColorJitter(IntensityAugmentationBase2D):
         contrast: The contrast factor to apply.
         saturation: The saturation factor to apply.
         hue: The hue factor to apply.
-        return_transform: if ``True`` return the matrix describing the transformation applied to each
-                          input tensor. If ``False`` and the input is a tuple the applied transformation
-                          won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
@@ -61,14 +58,14 @@ class ColorJitter(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        brightness: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.0,
-        contrast: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.0,
-        saturation: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.0,
-        hue: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.0,
-        return_transform: bool = False,
+        brightness: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
+        contrast: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
+        saturation: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
+        hue: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
         same_on_batch: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
+        return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self.brightness = brightness
@@ -80,8 +77,8 @@ class ColorJitter(IntensityAugmentationBase2D):
         )
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+    ) -> Tensor:
         transforms = [
             lambda img: adjust_brightness(img, params["brightness_factor"] - 1),
             lambda img: adjust_contrast(img, params["contrast_factor"]),

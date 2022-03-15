@@ -97,10 +97,10 @@ class TestAugmentationBase2D:
     def test_forward(self, device, dtype):
         torch.manual_seed(42)
         input = torch.rand((2, 3, 4, 5), device=device, dtype=dtype)
-        input_transform = torch.rand((2, 3, 3), device=device, dtype=dtype)
+        # input_transform = torch.rand((2, 3, 3), device=device, dtype=dtype)
         expected_output = torch.rand((2, 3, 4, 5), device=device, dtype=dtype)
         expected_transform = torch.rand((2, 3, 3), device=device, dtype=dtype)
-        augmentation = AugmentationBase2D(return_transform=False, p=1.0)
+        augmentation = AugmentationBase2D(p=1.0)
 
         with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform, patch.object(
             augmentation, "generate_parameters", autospec=True
@@ -122,9 +122,8 @@ class TestAugmentationBase2D:
 
             # Calling the augmentation with a tensor and set return_transform shall
             # return the expected tensor and transformation.
-            output, transformation = augmentation(input, return_transform=True)
+            output = augmentation(input)
             assert output is expected_output
-            assert_close(transformation, expected_transform)
 
             # Calling the augmentation with a tensor and params shall return the expected tensor using the given params.
             params = {'params': {}, 'flags': {'bar': 1}}
@@ -140,11 +139,9 @@ class TestAugmentationBase2D:
             # Calling the augmentation with a tensor,a transformation and set
             # return_transform shall return the expected tensor and the proper
             # transformation matrix.
-            expected_final_transformation = expected_transform @ input_transform
-            output, transformation = augmentation((input, input_transform), return_transform=True)
-            assert output is expected_output
-            assert torch.allclose(expected_final_transformation, transformation)
-            assert transformation.shape[0] == input.shape[0]
+            # expected_final_transformation = expected_transform @ input_transform
+            # output = augmentation((input, input_transform))
+            # assert output is expected_output
 
     def test_gradcheck(self, device, dtype):
         torch.manual_seed(42)
@@ -161,7 +158,7 @@ class TestAugmentationBase2D:
 
         input_param = {'batch_prob': torch.tensor([True]), 'params': {'x': input_transform}, 'flags': {}}
 
-        augmentation = AugmentationBase2D(return_transform=True, p=1.0)
+        augmentation = AugmentationBase2D(p=1.0)
 
         with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform, patch.object(
             augmentation, "compute_transformation", autospec=True
