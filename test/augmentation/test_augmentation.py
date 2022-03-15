@@ -26,6 +26,7 @@ from kornia.augmentation import (
     RandomGrayscale,
     RandomHorizontalFlip,
     RandomInvert,
+    RandomPlanckianJitter,
     RandomPosterize,
     RandomResizedCrop,
     RandomRotation,
@@ -2551,3 +2552,160 @@ class TestRandomPosterize:
         aug = RandomPosterize(bits=6, p=1.0).to(device)
         out = aug(img)
         assert out.shape == (1, 1, 4, 5)
+
+
+class TestPlanckianJitter:
+
+    def _get_expected_output_blackbody(self, device, dtype):
+        return torch.tensor([[[[0.7350, 1.0000, 0.1311, 0.1955],
+                               [0.4553, 0.9391, 0.7258, 1.0000],
+                               [0.6748, 0.9364, 0.5167, 0.5949],
+                               [0.0330, 0.2501, 0.4353, 0.7679]],
+
+                              [[0.6977, 0.8000, 0.1610, 0.2823],
+                               [0.6816, 0.9152, 0.3971, 0.8742],
+                               [0.4194, 0.5529, 0.9527, 0.0362],
+                               [0.1852, 0.3734, 0.3051, 0.9320]],
+
+                              [[0.0691, 0.1059, 0.0592, 0.0124],
+                               [0.0817, 0.3650, 0.2839, 0.2914],
+                               [0.2066, 0.0957, 0.2295, 0.0130],
+                               [0.0545, 0.0951, 0.3202, 0.3114]]]],
+                            device=device,
+                            dtype=dtype)
+
+    def _get_expected_output_cied(self, device, dtype):
+        return torch.tensor([[[[0.6058, 0.9377, 0.1080, 0.1611],
+                               [0.3752, 0.7740, 0.5982, 1.0000],
+                               [0.5561, 0.7718, 0.4259, 0.4903],
+                               [0.0272, 0.2062, 0.3587, 0.6329]],
+
+                              [[0.6977, 0.8000, 0.1610, 0.2823],
+                               [0.6816, 0.9152, 0.3971, 0.8742],
+                               [0.4194, 0.5529, 0.9527, 0.0362],
+                               [0.1852, 0.3734, 0.3051, 0.9320]],
+
+                              [[0.1149, 0.1762, 0.0984, 0.0207],
+                               [0.1359, 0.6072, 0.4722, 0.4848],
+                               [0.3437, 0.1592, 0.3818, 0.0217],
+                               [0.0906, 0.1582, 0.5326, 0.5180]]]],
+                            device=device,
+                            dtype=dtype)
+
+    def _get_expected_output_batch(self, device, dtype):
+        return torch.tensor([[[[0.7350, 1.0000, 0.1311, 0.1955],
+                               [0.4553, 0.9391, 0.7258, 1.0000],
+                               [0.6748, 0.9364, 0.5167, 0.5949],
+                               [0.0330, 0.2501, 0.4353, 0.7679]],
+
+                              [[0.6977, 0.8000, 0.1610, 0.2823],
+                               [0.6816, 0.9152, 0.3971, 0.8742],
+                               [0.4194, 0.5529, 0.9527, 0.0362],
+                               [0.1852, 0.3734, 0.3051, 0.9320]],
+
+                              [[0.0691, 0.1059, 0.0592, 0.0124],
+                               [0.0817, 0.3650, 0.2839, 0.2914],
+                               [0.2066, 0.0957, 0.2295, 0.0130],
+                               [0.0545, 0.0951, 0.3202, 0.3114]]],
+
+
+                             [[[0.4963, 0.7682, 0.0885, 0.1320],
+                               [0.3074, 0.6341, 0.4901, 0.8964],
+                               [0.4556, 0.6323, 0.3489, 0.4017],
+                               [0.0223, 0.1689, 0.2939, 0.5185]],
+
+                              [[0.6977, 0.8000, 0.1610, 0.2823],
+                               [0.6816, 0.9152, 0.3971, 0.8742],
+                               [0.4194, 0.5529, 0.9527, 0.0362],
+                               [0.1852, 0.3734, 0.3051, 0.9320]],
+
+                              [[0.1759, 0.2698, 0.1507, 0.0317],
+                               [0.2081, 0.9298, 0.7231, 0.7423],
+                               [0.5263, 0.2437, 0.5846, 0.0332],
+                               [0.1387, 0.2422, 0.8155, 0.7932]]]],
+                            device=device,
+                            dtype=dtype)
+
+    def _get_expected_output_same_on_batch(self, device, dtype):
+        return torch.tensor([[[[0.3736, 0.5783, 0.0666, 0.0994],
+                               [0.2314, 0.4774, 0.3690, 0.6749],
+                               [0.3430, 0.4760, 0.2627, 0.3024],
+                               [0.0168, 0.1272, 0.2213, 0.3904]],
+
+                              [[0.6977, 0.8000, 0.1610, 0.2823],
+                               [0.6816, 0.9152, 0.3971, 0.8742],
+                               [0.4194, 0.5529, 0.9527, 0.0362],
+                               [0.1852, 0.3734, 0.3051, 0.9320]],
+
+                              [[0.2621, 0.4020, 0.2245, 0.0472],
+                               [0.3101, 1.0000, 1.0000, 1.0000],
+                               [0.7842, 0.3631, 0.8711, 0.0495],
+                               [0.2067, 0.3609, 1.0000, 1.0000]]],
+
+
+                             [[[0.3736, 0.5783, 0.0666, 0.0994],
+                               [0.2314, 0.4774, 0.3690, 0.6749],
+                                 [0.3430, 0.4760, 0.2627, 0.3024],
+                                 [0.0168, 0.1272, 0.2213, 0.3904]],
+
+                              [[0.6977, 0.8000, 0.1610, 0.2823],
+                                 [0.6816, 0.9152, 0.3971, 0.8742],
+                                 [0.4194, 0.5529, 0.9527, 0.0362],
+                                 [0.1852, 0.3734, 0.3051, 0.9320]],
+
+                              [[0.2621, 0.4020, 0.2245, 0.0472],
+                                 [0.3101, 1.0000, 1.0000, 1.0000],
+                                 [0.7842, 0.3631, 0.8711, 0.0495],
+                                 [0.2067, 0.3609, 1.0000, 1.0000]]]],
+                            device=device,
+                            dtype=dtype)
+
+    def _get_input(self, device, dtype):
+        return torch.tensor([[[[0.4963, 0.7682, 0.0885, 0.1320],
+                               [0.3074, 0.6341, 0.4901, 0.8964],
+                               [0.4556, 0.6323, 0.3489, 0.4017],
+                               [0.0223, 0.1689, 0.2939, 0.5185]],
+
+                              [[0.6977, 0.8000, 0.1610, 0.2823],
+                               [0.6816, 0.9152, 0.3971, 0.8742],
+                               [0.4194, 0.5529, 0.9527, 0.0362],
+                               [0.1852, 0.3734, 0.3051, 0.9320]],
+
+                              [[0.1759, 0.2698, 0.1507, 0.0317],
+                               [0.2081, 0.9298, 0.7231, 0.7423],
+                               [0.5263, 0.2437, 0.5846, 0.0332],
+                               [0.1387, 0.2422, 0.8155, 0.7932]]]],
+                            device=device, dtype=dtype)
+
+    def test_planckian_jitter_blackbody(self, device, dtype):
+        torch.manual_seed(0)
+        f = RandomPlanckianJitter(select_from=1).to(device, dtype)
+        input = self._get_input(device, dtype)
+        expected = self._get_expected_output_blackbody(device, dtype)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
+
+    def test_planckian_jitter_cied(self, device, dtype):
+        torch.manual_seed(0)
+        f = RandomPlanckianJitter(mode='CIED', select_from=1).to(device, dtype)
+        input = self._get_input(device, dtype)
+        expected = self._get_expected_output_cied(device, dtype)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
+
+    def test_planckian_jitter_batch(self, device, dtype):
+        torch.manual_seed(0)
+        input = self._get_input(device, dtype).repeat(2, 1, 1, 1)
+
+        select_from = [1, 2, 24]
+        f = RandomPlanckianJitter(select_from=select_from).to(device, dtype)
+        expected = self._get_expected_output_batch(device, dtype)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
+
+    def test_planckian_jitter_same_on_batch(self, device, dtype):
+        torch.manual_seed(0)
+        input = self._get_input(device, dtype).repeat(2, 1, 1, 1)
+
+        select_from = [1, 2, 24, 3, 4, 5]
+        f = RandomPlanckianJitter(select_from=select_from, same_on_batch=True,
+                                  p=1.0).to(device, dtype)
+        expected = self._get_expected_output_same_on_batch(device, dtype)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
