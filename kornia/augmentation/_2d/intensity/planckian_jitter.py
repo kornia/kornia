@@ -58,10 +58,10 @@ _planckian_coeffs = {'blackbody': Tensor([[0.6743, 0.4029, 0.0013],
                      }
 
 _planckian_coeffs_ratio = {
-    'blackbody': torch.stack((_planckian_coeffs['blackbody'][:, 0] / _planckian_coeffs['blackbody'][:, 1],
-                              _planckian_coeffs['blackbody'][:, 2] / _planckian_coeffs['blackbody'][:, 1]), 1),
-    'CIED': torch.stack((_planckian_coeffs['CIED'][:, 0] / _planckian_coeffs['CIED'][:, 1],
-                         _planckian_coeffs['CIED'][:, 2] / _planckian_coeffs['CIED'][:, 1]), 1)
+    'blackbody': stack((_planckian_coeffs['blackbody'][:, 0] / _planckian_coeffs['blackbody'][:, 1],
+                        _planckian_coeffs['blackbody'][:, 2] / _planckian_coeffs['blackbody'][:, 1]), 1),
+    'CIED': stack((_planckian_coeffs['CIED'][:, 0] / _planckian_coeffs['CIED'][:, 1],
+                   _planckian_coeffs['CIED'][:, 2] / _planckian_coeffs['CIED'][:, 1]), 1)
 }
 
 
@@ -166,7 +166,4 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
 
         output = stack([r, g, b], -3)
 
-        ones = torch.ones_like(input)
-        output = torch.where(output > 1, ones, output)
-
-        return output
+        return output.clamp(max=1.)
