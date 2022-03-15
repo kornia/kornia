@@ -148,7 +148,8 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
             self.register_buffer('pl', _planckian_coeffs_ratio[mode])
 
         self._param_generator = cast(rg.PlanckianJitterGenerator,
-                                     rg.PlanckianJitterGenerator([0, self.pl.shape[0]]))
+                                     rg.PlanckianJitterGenerator([0,
+                                                                  float(self.pl.shape[0])]))
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None

@@ -9,19 +9,18 @@ from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _
 
 class PlanckianJitterGenerator(RandomGeneratorBase):
 
-    r"""Generate random color jitter parameters for a batch of images
+    r"""Generate random planckian jitter parameters for a batch of images
     """
 
-    def __init__(self, domain: List[int]) -> None:
+    def __init__(self, domain: List[float]) -> None:
         super().__init__()
         self.domain = domain
-        self.pl_idx_dist = None
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
 
-        idx_range: torch.Tensor = _range_bound(self.domain,
-                                               'idx_range',
-                                               device=device, dtype=dtype)
+        idx_range = _range_bound(self.domain,
+                                 'idx_range',
+                                 device=device, dtype=dtype)
 
         _joint_range_check(idx_range, 'idx_range', (0, self.domain[1]))
         self.pl_idx_dist = Uniform(idx_range[0], idx_range[1], validate_args=False)
