@@ -57,7 +57,7 @@ def create_meshgrid(
         xs = (xs / (width - 1) - 0.5) * 2
         ys = (ys / (height - 1) - 0.5) * 2
     # generate grid by stacking coordinates
-    base_grid: torch.Tensor = torch.stack(torch.meshgrid([xs, ys]), dim=-1)  # WxHx2
+    base_grid: torch.Tensor = torch.stack(torch.meshgrid([xs, ys], indexing="ij"), dim=-1)  # WxHx2
     return base_grid.permute(1, 0, 2).unsqueeze(0)  # 1xHxWx2
 
 
