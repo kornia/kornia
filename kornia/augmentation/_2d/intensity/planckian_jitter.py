@@ -1,6 +1,5 @@
 from typing import Dict, List, Optional, Union, cast
 
-import torch
 from torch import Tensor, stack
 
 from kornia.augmentation import random_generator as rg
