@@ -13,6 +13,10 @@ class PerspectiveGenerator(RandomGeneratorBase):
 
     Args:
         distortion_scale: the degree of distortion, ranged from 0 to 1.
+        sampling_method: ``'basic'`` | ``'area_preserving'``. Default: ``'basic'``
+            If ``'basic'``, samples by translating the image corners randomly inwards.
+            If ``'area_preserving'``, samples by randomly translating the image corners in any direction.
+            Preserves area on average. See https://arxiv.org/abs/2104.03308 for further details.
 
     Returns:
         A dict of parameters to be passed for transformation.
@@ -25,9 +29,12 @@ class PerspectiveGenerator(RandomGeneratorBase):
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
     """
 
-    def __init__(self, distortion_scale: Union[torch.Tensor, float] = 0.5) -> None:
+    def __init__(self, distortion_scale: Union[torch.Tensor, float] = 0.5, sampling_method: str = "basic") -> None:
         super().__init__()
+        if sampling_method not in ("basic", "area_preserving"):
+            raise NotImplementedError(f"Sampling method {sampling_method} not yet implemented.")
         self.distortion_scale = distortion_scale
+        self.sampling_method = sampling_method
 
     def __repr__(self) -> str:
         repr = f"distortion_scale={self.distortion_scale}"
@@ -67,10 +74,13 @@ class PerspectiveGenerator(RandomGeneratorBase):
         rand_val: torch.Tensor = _adapted_rsampling(start_points.shape, self.rand_val_sampler, same_on_batch).to(
             device=_device, dtype=_dtype
         )
+        if self.sampling_method == "basic":
+            pts_norm = torch.tensor([[[1, 1], [-1, 1], [-1, -1], [1, -1]]], device=_device, dtype=_dtype)
+            offset = factor * rand_val * pts_norm
+        elif self.sampling_method == "area_preserving":
+            offset = 2 * factor * (rand_val - 0.5)
 
-        pts_norm = torch.tensor([[[1, 1], [-1, 1], [-1, -1], [1, -1]]], device=_device, dtype=_dtype)
-
-        end_points = start_points + factor * rand_val * pts_norm
+        end_points = start_points + offset
 
         return dict(start_points=start_points, end_points=end_points)
 
