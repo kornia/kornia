@@ -269,6 +269,44 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
         assert_close(res['start_points'], expected['start_points'])
         assert_close(res['end_points'], expected['end_points'])
 
+    def test_sampling_method(self, device, dtype):
+        torch.manual_seed(42)
+        batch_size = 2
+        res = PerspectiveGenerator(torch.tensor(0.5, device=device, dtype=dtype), sampling_method="area_preserving")(
+            torch.Size([batch_size, 1, 200, 200])
+        )
+
+        expected = dict(
+            start_points=torch.tensor(
+                [
+                    [[0.0, 0.0], [199.0, 0.0], [199.0, 199.0], [0.0, 199.0]],
+                    [[0.0, 0.0], [199.0, 0.0], [199.0, 199.0], [0.0, 199.0]],
+                ],
+                device=device,
+                dtype=dtype,
+            ),
+            end_points=torch.tensor(
+                [
+                    [[38.2269, 41.5004], [187.2864, 45.9306], [188.0448, 209.0895], [-24.3428, 228.3641]],
+                    [[44.0771, -36.6814], [242.4598, 9.3580], [235.9404, 205.7715], [24.1094, 191.9404]],
+                ],
+                device=device,
+                dtype=dtype,
+            ),
+        )
+        assert res.keys() == expected.keys()
+        assert_close(res['start_points'], expected['start_points'])
+        assert_close(res['end_points'], expected['end_points'])
+
+    def test_not_implemented_sampling_method(self, device, dtype):
+        batch_size = 2
+        with pytest.raises(NotImplementedError):
+            PerspectiveGenerator(
+                torch.tensor(0.5, device=device, dtype=dtype),
+                sampling_method="non_existing_method")(
+                torch.Size([batch_size, 1, 200, 200])
+            )
+
 
 class TestRandomAffineGen(RandomGeneratorBaseTests):
     @pytest.mark.parametrize('batch_size', [0, 1, 4])
@@ -410,6 +448,7 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
                 dtype=dtype,
             ),
             input_size=torch.tensor([[100, 100], [100, 100]], device=device, dtype=torch.long),
+            output_size=torch.tensor([[200, 200], [200, 200]], device=device, dtype=torch.long)
         )
         assert res.keys() == expected.keys()
         assert_close(res['src'], expected['src'])
@@ -432,6 +471,7 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
                 dtype=dtype,
             ),
             input_size=torch.tensor([[100, 100], [100, 100]], device=device, dtype=torch.long),
+            output_size=torch.tensor([[200, 200], [200, 200]], device=device, dtype=torch.long)
         )
         assert res.keys() == expected.keys()
         assert_close(res['src'], expected['src'])
@@ -500,6 +540,7 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
                 device=device,
                 dtype=torch.int64,
             ),
+            output_size=torch.tensor([[100, 100], [100, 100]], device=device, dtype=torch.long)
         )
         assert res.keys() == expected.keys()
         assert_close(res['src'], expected['src'])
@@ -535,6 +576,7 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
                 device=device,
                 dtype=torch.int64,
             ),
+            output_size=torch.tensor([[100, 100], [100, 100]], device=device, dtype=torch.long)
         )
         assert res.keys() == expected.keys()
         assert_close(res['src'], expected['src'])
@@ -671,6 +713,7 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
                 dtype=torch.long,
             ),
             input_size=torch.tensor([[200, 200], [200, 200]], device=device, dtype=torch.long),
+            output_size=torch.tensor([[120, 150], [120, 150]], device=device, dtype=torch.long)
         )
         assert res.keys() == expected.keys()
         assert_close(res['src'].to(device=device), expected['src'])

@@ -6,9 +6,9 @@ import torch.nn as nn
 import kornia
 from kornia.augmentation import RandomCrop
 from kornia.augmentation._2d.mix.base import MixAugmentationBase
-from kornia.augmentation.base import TensorWithTransformMat, _AugmentationBase
+from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import SequentialBase
-from kornia.augmentation.container.image import ImageSequential, ParamItem
+from kornia.augmentation.container.image import ImageSequential, ParamItem, _get_new_batch_shape
 from kornia.augmentation.container.utils import InputApplyInverse, MaskApplyInverse
 
 __all__ = ["VideoSequential"]
@@ -105,7 +105,6 @@ class VideoSequential(ImageSequential):
         super().__init__(
             *args,
             same_on_batch=None,
-            return_transform=None,
             keepdim=None,
             random_apply=random_apply,
             random_apply_weights=random_apply_weights,
@@ -206,6 +205,7 @@ class VideoSequential(ImageSequential):
                 param = ParamItem(name, mod_param)
             else:
                 param = ParamItem(name, None)
+            batch_shape = _get_new_batch_shape(param, batch_shape)
             params.append(param)
         return params
 
@@ -232,7 +232,7 @@ class VideoSequential(ImageSequential):
 
     def forward(  # type: ignore
         self, input: torch.Tensor, label: Optional[torch.Tensor] = None, params: Optional[List[ParamItem]] = None
-    ) -> Union[TensorWithTransformMat, Tuple[TensorWithTransformMat, torch.Tensor]]:
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """Define the video computation performed."""
         if len(input.shape) != 5:
             raise AssertionError(f"Input must be a 5-dim tensor. Got {input.shape}.")
@@ -252,9 +252,9 @@ class VideoSequential(ImageSequential):
 
         out = super().forward(input, label, params)  # type: ignore
         if self.return_label:
-            output, label = cast(Tuple[TensorWithTransformMat, torch.Tensor], out)
+            output, label = cast(Tuple[torch.Tensor, torch.Tensor], out)
         else:
-            output = cast(TensorWithTransformMat, out)
+            output = cast(torch.Tensor, out)
 
         if isinstance(output, (tuple, list)):
             if self.apply_inverse_func in (InputApplyInverse, MaskApplyInverse):

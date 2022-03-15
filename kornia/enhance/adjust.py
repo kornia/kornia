@@ -6,7 +6,7 @@ from torch import Tensor
 from torch.nn import Module, Parameter
 
 from kornia.color import hsv_to_rgb, rgb_to_grayscale, rgb_to_hsv
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_IS_TYPE
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 from kornia.utils.helpers import _torch_histc_cast
 from kornia.utils.image import perform_keep_shape_image, perform_keep_shape_video
 
@@ -284,7 +284,7 @@ def adjust_contrast(image: Tensor, factor: Union[float, Tensor], clip_output: bo
         torch.Size([2, 5, 3, 3])
     """
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
-    KORNIA_CHECK_IS_TYPE(factor, (float, Tensor), "Factor should be float or Tensor.")
+    KORNIA_CHECK(isinstance(factor, (float, Tensor)), "Factor should be float or Tensor.")
 
     if isinstance(factor, float):
         # TODO: figure out how to create later a tensor without importing torch
@@ -338,7 +338,7 @@ def adjust_contrast_with_mean_subtraction(image: Tensor, factor: Union[float, Te
         torch.Size([2, 5, 3, 3])
     """
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
-    KORNIA_CHECK_IS_TYPE(factor, (float, Tensor), "Factor should be float or Tensor.")
+    KORNIA_CHECK(isinstance(factor, (float, Tensor)), "Factor should be float or Tensor.")
 
     if isinstance(factor, float):
         # TODO: figure out how to create later a tensor without importing torch
@@ -405,7 +405,7 @@ def adjust_brightness(image: Tensor, factor: Union[float, Tensor], clip_output=T
         torch.Size([2, 5, 3, 3])
     """
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
-    KORNIA_CHECK_IS_TYPE(factor, (float, Tensor), "Factor should be float or Tensor.")
+    KORNIA_CHECK(isinstance(factor, (float, Tensor)), "Factor should be float or Tensor.")
 
     # convert factor to a tensor
     if isinstance(factor, float):

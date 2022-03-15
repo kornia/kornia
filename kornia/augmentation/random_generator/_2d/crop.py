@@ -101,6 +101,7 @@ class CropGenerator(RandomGeneratorBase):
                 size[:, 1],
                 size[:, 0],
             )
+            _output_size = size.to(dtype=torch.long)
         else:
             if not (
                 len(self.resize_to) == 2
@@ -122,10 +123,11 @@ class CropGenerator(RandomGeneratorBase):
                 device=_device,
                 dtype=_dtype,
             ).repeat(batch_size, 1, 1)
+            _output_size = torch.tensor(self.resize_to, device=_device, dtype=torch.long).expand(batch_size, -1)
 
         _input_size = torch.tensor(input_size, device=_device, dtype=torch.long).expand(batch_size, -1)
 
-        return dict(src=crop_src, dst=crop_dst, input_size=_input_size)
+        return dict(src=crop_src, dst=crop_dst, input_size=_input_size, output_size=_output_size)
 
 
 class ResizedCropGenerator(CropGenerator):
@@ -515,5 +517,6 @@ def center_crop_generator(
     ).expand(batch_size, -1, -1)
 
     _input_size = torch.tensor((height, width), device=device, dtype=torch.long).expand(batch_size, -1)
+    _output_size = torch.tensor(size, device=device, dtype=torch.long).expand(batch_size, -1)
 
-    return dict(src=points_src, dst=points_dst, input_size=_input_size)
+    return dict(src=points_src, dst=points_dst, input_size=_input_size, output_size=_output_size)

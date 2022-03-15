@@ -1,6 +1,6 @@
 from typing import Dict, Optional
 
-import torch
+from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.enhance import equalize
@@ -14,9 +14,6 @@ class RandomEqualize(IntensityAugmentationBase2D):
     Args:
         p: Probability to equalize an image.
         same_on_batch: apply the same transformation across the batch.
-        return_transform: if ``True`` return the matrix describing the transformation applied to each
-                          input tensor. If ``False`` and the input is a tuple the applied transformation
-                          won't be concatenated.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 
@@ -46,11 +43,15 @@ class RandomEqualize(IntensityAugmentationBase2D):
     """
 
     def __init__(
-        self, same_on_batch: bool = False, return_transform: bool = False, p: float = 0.5, keepdim: bool = False
+        self,
+        same_on_batch: bool = False,
+        p: float = 0.5,
+        keepdim: bool = False,
+        return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+    ) -> Tensor:
         return equalize(input)

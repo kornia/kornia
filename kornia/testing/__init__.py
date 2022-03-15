@@ -4,7 +4,7 @@ import importlib
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from itertools import product
-from typing import Any, Iterable, Optional, Type, TypeVar, Union, cast
+from typing import Any, Iterable, Optional, Tuple, Type, TypeVar, Union, cast
 
 import torch
 from torch import Tensor
@@ -184,22 +184,12 @@ except ImportError:
 
 # Logger api
 
-T = TypeVar('T')
-
 
 def KORNIA_CHECK(condition, msg: Optional[str] = None):
     if not condition:
         raise Exception(f"{condition} not true.\n{msg}")
 
 
-def KORNIA_CHECK_IS_TYPE(x: Any, type: Union[Type[T], Iterable[Type[T]]], msg: Optional[str] = None):
-    if not isinstance(type, list):
-        type = cast(Iterable[Type[T]], [type])
-
-    for t in type:
-        if not isinstance(x, t):
-            raise TypeError(f"Wrong type. Got: {type}.\n{msg}")
-
-
-def KORNIA_CHECK_IS_TENSOR(x: Any, msg: Optional[str] = None):
-    KORNIA_CHECK_IS_TYPE(x, Tensor, msg)
+def KORNIA_CHECK_IS_TENSOR(x, msg: Optional[str] = None):
+    if not isinstance(x, Tensor):
+        raise TypeError(f"Not a Tensor type. Got: {type(x)}.\n{msg}")

@@ -1,6 +1,6 @@
 from typing import Dict, Optional, Tuple, Union, cast
 
-import torch
+from torch import Size, Tensor
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.base import AugmentationBase3D
@@ -16,7 +16,7 @@ class CenterCrop3D(AugmentationBase3D):
         size (Tuple[int, int, int] or int): Desired output size (out_d, out_h, out_w) of the crop.
             If integer, out_d = out_h = out_w = size.
             If Tuple[int, int, int], out_d = size[0], out_h = size[1], out_w = size[2].
-        resample:
+        resample: resample mode from "nearest" (0) or "bilinear" (1).
         return_transform: if ``True`` return the matrix describing the transformation applied to each
           input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         align_corners: interpolation flag.
@@ -33,6 +33,7 @@ class CenterCrop3D(AugmentationBase3D):
         applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
+        >>> import torch
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.randn(1, 1, 2, 4, 6)
         >>> inputs
@@ -65,9 +66,9 @@ class CenterCrop3D(AugmentationBase3D):
         size: Union[int, Tuple[int, int, int]],
         align_corners: bool = True,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
+        return_transform: Optional[bool] = None,
     ) -> None:
         # same_on_batch is always True for CenterCrop
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
@@ -80,20 +81,20 @@ class CenterCrop3D(AugmentationBase3D):
             raise Exception(f"Invalid size type. Expected (int, tuple(int, int int). Got: {size}.")
         self.flags = dict(size=size, align_corners=align_corners, resample=Resample.get(resample))
 
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+    def generate_parameters(self, batch_shape: Size) -> Dict[str, Tensor]:
         return rg.center_crop_generator3d(
             batch_shape[0], batch_shape[-3], batch_shape[-2], batch_shape[-1], self.flags["size"], device=self.device
         )
 
-    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        transform: torch.Tensor = get_perspective_transform3d(params["src"].to(input), params["dst"].to(input))
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
+        transform: Tensor = get_perspective_transform3d(params["src"].to(input), params["dst"].to(input))
         transform = transform.expand(input.shape[0], -1, -1)
         return transform
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        transform = cast(torch.Tensor, transform)
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        transform = cast(Tensor, transform)
         return crop_by_transform_mat3d(
             input,
             transform,

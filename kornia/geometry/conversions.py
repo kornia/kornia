@@ -168,10 +168,10 @@ def convert_points_to_homogeneous(points: torch.Tensor) -> torch.Tensor:
     r"""Function that converts points from Euclidean to homogeneous space.
 
     Args:
-        points: the points to be transformed with shape :math:`(B, N, D)`.
+        points: the points to be transformed with shape :math:`(*, N, D)`.
 
     Returns:
-        the points in homogeneous coordinates :math:`(B, N, D+1)`.
+        the points in homogeneous coordinates :math:`(*, N, D+1)`.
 
     Examples:
         >>> input = torch.tensor([[0., 0.]])

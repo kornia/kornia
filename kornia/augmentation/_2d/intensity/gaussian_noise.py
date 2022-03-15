@@ -1,6 +1,7 @@
 from typing import Dict, Optional
 
 import torch
+from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 
@@ -13,8 +14,6 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
     Args:
         mean: The mean of the gaussian distribution.
         std: The standard deviation of the gaussian distribution.
-        return_transform: if ``True`` return the matrix describing the transformation applied to each
-            input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -37,21 +36,21 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
         self,
         mean: float = 0.0,
         std: float = 1.0,
-        return_transform: bool = False,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
+        return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
         )
         self.flags = dict(mean=mean, std=std)
 
-    def generate_parameters(self, shape: torch.Size) -> Dict[str, torch.Tensor]:
+    def generate_parameters(self, shape: torch.Size) -> Dict[str, Tensor]:
         noise = torch.randn(shape)
         return dict(noise=noise)
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+    ) -> Tensor:
         return input + params["noise"].to(input.device) * self.flags["std"] + self.flags["mean"]
