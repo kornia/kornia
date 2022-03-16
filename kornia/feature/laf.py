@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from kornia.geometry.conversions import angle_to_rotation_matrix, convert_points_from_homogeneous, rad2deg
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform import pyrdown
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
+from kornia.testing import KORNIA_CHECK_IS_TENSOR
 
 
 def raise_error_if_laf_is_not_valid(laf: torch.Tensor) -> None:
