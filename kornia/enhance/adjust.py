@@ -329,8 +329,8 @@ def adjust_contrast_with_mean_subtraction(image: Tensor, factor: Union[float, Te
         >>> import torch
         >>> x = torch.ones(1, 1, 2, 2)
         >>> adjust_contrast_with_mean_subtraction(x, 0.5)
-        tensor([[[[0.5000, 0.5000],
-                  [0.5000, 0.5000]]]])
+        tensor([[[[1., 1.],
+                  [1., 1.]]]])
 
         >>> x = torch.ones(2, 5, 3, 3)
         >>> y = torch.tensor([0.65, 0.50])
@@ -358,7 +358,7 @@ def adjust_contrast_with_mean_subtraction(image: Tensor, factor: Union[float, Te
         img_mean = image.mean()
 
     # Apply contrast factor subtracting the mean
-    return image * factor + img_mean * (1 - factor)
+    return image * factor + img_mean * (1. - factor)
 
 
 def adjust_brightness(image: Tensor, factor: Union[float, Tensor], clip_output=True) -> Tensor:
@@ -801,13 +801,13 @@ def equalize3d(input: Tensor) -> Tensor:
     return torch.stack(res)
 
 
-def invert(input: Tensor, max_val: Tensor = torch.tensor(1.0)) -> Tensor:
-    r"""Invert the values of an input tensor by its maximum value.
+def invert(image: Tensor, max_val: Tensor = Tensor([1.0])) -> Tensor:
+    r"""Invert the values of an input image tensor by its maximum value.
 
     .. image:: _static/img/invert.png
 
     Args:
-        input: The input tensor to invert with an arbitatry shape.
+        image: The input tensor to invert with an arbitatry shape.
         max_val: The expected maximum value in the input tensor. The shape has to
           according to the input tensor shape, or at least has to work with broadcasting.
 
@@ -817,18 +817,20 @@ def invert(input: Tensor, max_val: Tensor = torch.tensor(1.0)) -> Tensor:
         torch.Size([1, 2, 4, 4])
 
         >>> img = 255. * torch.rand(1, 2, 3, 4, 4)
-        >>> invert(img, torch.as_tensor(255.).shape
+        >>> invert(img, torch.as_tensor(255.)).shape
         torch.Size([1, 2, 3, 4, 4])
 
         >>> img = torch.rand(1, 3, 4, 4)
         >>> invert(img, torch.as_tensor([[[[1.]]]])).shape
         torch.Size([1, 3, 4, 4])
     """
-    if not isinstance(input, Tensor):
+    if not isinstance(image, Tensor):
         raise AssertionError(f"Input is not a Tensor. Got: {type(input)}")
+
     if not isinstance(max_val, Tensor):
         raise AssertionError(f"max_val is not a Tensor. Got: {type(max_val)}")
-    return max_val.to(input.dtype) - input
+
+    return max_val.to(image) - image
 
 
 class AdjustSaturation(Module):
