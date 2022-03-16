@@ -7,6 +7,7 @@ import torch.nn.functional as F
 from kornia.geometry.conversions import angle_to_rotation_matrix, convert_points_from_homogeneous, rad2deg
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform import pyrdown
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 
 
 def raise_error_if_laf_is_not_valid(laf: torch.Tensor) -> None:
@@ -128,19 +129,7 @@ def laf_from_center_scale_ori(xy: torch.Tensor,
     Returns:
         tensor BxNx2x3.
     """
-    names = ['xy', 'scale', 'ori']
-    xy_req_shape = ("B", "N", 1, 1)
-    if not isinstance(xy, torch.Tensor):
-        raise TypeError(f"xy type is not a torch.Tensor. Got {type(xy)}")
-    if len(xy.shape) != len(xy_req_shape):  # type: ignore  # because it does not like len(tensor.shape)
-        raise TypeError("xy shape should be must be [{}]. " "Got {}".format(str(xy_req_shape), xy.size()))
-    for i, dim in enumerate(xy_req_shape):  # type: ignore # because it wants typing for dim
-        if dim is not int:
-            continue
-        if xy.size(i) != dim:
-            raise TypeError(
-                "{} shape should be must be [{}]. " "Got {}".format(xy, str(xy_req_shape), xy.size())
-            )
+    KORNIA_CHECK_IS_TENSOR(xy, "Expected shape (B, N, 2)")
     device = xy.device
     dtype = xy.dtype
     B, N = xy.shape[:2]
@@ -148,18 +137,8 @@ def laf_from_center_scale_ori(xy: torch.Tensor,
         scale = torch.ones(B, N, 1, 1, device=device, dtype=dtype)
     if ori is None:
         ori = torch.zeros(B, N, 1, device=device, dtype=dtype)
-    for var_name, var, req_shape in zip(names[1:], [scale, ori], [("B", "N", 1, 1), ("B", "N", 1)]):
-        if not isinstance(var, torch.Tensor):
-            raise TypeError(f"{var_name} type is not a torch.Tensor. Got {type(var)}")
-        if len(var.shape) != len(req_shape):  # type: ignore  # because it does not like len(tensor.shape)
-            raise TypeError("{} shape should be must be [{}]. " "Got {}".format(var_name, str(req_shape), var.size()))
-        for i, dim in enumerate(req_shape):  # type: ignore # because it wants typing for dim
-            if dim is not int:
-                continue
-            if var.size(i) != dim:
-                raise TypeError(
-                    "{} shape should be must be [{}]. " "Got {}".format(var_name, str(req_shape), var.size())
-                )
+    KORNIA_CHECK_IS_TENSOR(scale, "Expected shape (B, N, 1, 1)")
+    KORNIA_CHECK_IS_TENSOR(ori, "Expected shape (B, N, 1)")
     unscaled_laf: torch.Tensor = torch.cat([angle_to_rotation_matrix(ori.squeeze(-1)), xy.unsqueeze(-1)], dim=-1)
     laf: torch.Tensor = scale_laf(unscaled_laf, scale)
     return laf
