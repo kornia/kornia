@@ -4,7 +4,7 @@ import importlib
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from itertools import product
-from typing import Any, Optional
+from typing import Any, Iterable, Optional, Tuple, Type, TypeVar, Union, cast
 
 import torch
 from torch import Tensor
@@ -183,6 +183,11 @@ except ImportError:
 
 
 # Logger api
+
+
+def KORNIA_CHECK(condition, msg: Optional[str] = None):
+    if not condition:
+        raise Exception(f"{condition} not true.\n{msg}")
 
 
 def KORNIA_CHECK_IS_TENSOR(x, msg: Optional[str] = None):

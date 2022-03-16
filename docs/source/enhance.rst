@@ -11,6 +11,7 @@ Adjustment
 .. autofunction:: add_weighted
 .. autofunction:: adjust_brightness
 .. autofunction:: adjust_contrast
+.. autofunction:: adjust_contrast_with_mean_subtraction
 .. autofunction:: adjust_gamma
 .. autofunction:: adjust_hue
 .. autofunction:: adjust_saturation
