@@ -1,5 +1,5 @@
 import math
-from typing import Union, Optional
+from typing import Optional, Union
 
 import torch
 import torch.nn.functional as F
