@@ -3,6 +3,8 @@ from typing import Dict
 import torch
 import torch.nn as nn
 
+from kornia.testing import KORNIA_CHECK_SHAPE
+
 urls: Dict[str, str] = {}
 urls[
     "liberty"
@@ -59,6 +61,7 @@ class TFeat(nn.Module):
         self.eval()
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         x = self.features(input)
         x = x.view(x.size(0), -1)
         x = self.descr(x)

@@ -84,7 +84,7 @@ class TestRandomPerspective:
         assert out_perspective.shape == x_data.shape
         assert aug.transform_matrix.shape == (1, 3, 3)
         assert_close(out_perspective, x_data)
-        assert_close(aug.transform_matrix, torch.eye(3, device=device)[None])
+        assert_close(aug.transform_matrix, torch.eye(3, device=device, dtype=dtype)[None])
         assert aug.inverse(out_perspective).shape == x_data.shape
 
     def test_transform_module_should_return_expected_transform(self, device, dtype):

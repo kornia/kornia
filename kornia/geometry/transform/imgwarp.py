@@ -2,6 +2,8 @@ from typing import List, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
+from torch import Tensor, stack
+from torch.nn.functional import grid_sample
 
 from kornia.geometry.conversions import (
     angle_axis_to_rotation_matrix,
@@ -14,6 +16,7 @@ from kornia.geometry.conversions import (
     normalize_pixel_coordinates,
 )
 from kornia.geometry.linalg import transform_points
+from kornia.testing import KORNIA_CHECK_IS_TENSOR
 from kornia.utils import create_meshgrid, create_meshgrid3d, eye_like
 from kornia.utils.helpers import _torch_inverse_cast, _torch_solve_cast
 
@@ -205,11 +208,7 @@ def warp_affine(
 
 
 def _fill_and_warp(
-    src: torch.Tensor,
-    grid: torch.Tensor,
-    mode: str,
-    align_corners: bool,
-    fill_value: torch.Tensor,
+    src: torch.Tensor, grid: torch.Tensor, mode: str, align_corners: bool, fill_value: torch.Tensor
 ) -> torch.Tensor:
     r"""Warp a mask of ones, then multiple with fill_value and add to default warp.
 
@@ -479,15 +478,15 @@ def get_rotation_matrix2d(center: torch.Tensor, angle: torch.Tensor, scale: torc
 
 
 def remap(
-    tensor: torch.Tensor,
-    map_x: torch.Tensor,
-    map_y: torch.Tensor,
+    image: Tensor,
+    map_x: Tensor,
+    map_y: Tensor,
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
     align_corners: Optional[bool] = None,
     normalized_coordinates: bool = False,
-) -> torch.Tensor:
-    r"""Apply a generic geometrical transformation to a tensor.
+) -> Tensor:
+    r"""Apply a generic geometrical transformation to an image tensor.
 
     .. image:: _static/img/remap.png
 
@@ -497,8 +496,8 @@ def remap(
         \text{dst}(x, y) = \text{src}(map_x(x, y), map_y(x, y))
 
     Args:
-        tensor: the tensor to remap with shape (B, D, H, W).
-          Where D is the number of channels.
+        image: the tensor to remap with shape (B, C, H, W).
+          Where C is the number of channels.
         map_x: the flow in the x-direction in pixel coordinates.
           The tensor must be in the shape of (B, H, W).
         map_y: the flow in the y-direction in pixel coordinates.
@@ -509,12 +508,13 @@ def remap(
           ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: mode for grid_generation.
         normalized_coordinates: whether the input coordinates are
-           normalised in the range of [-1, 1].
+           normalized in the range of [-1, 1].
 
     Returns:
         the warped tensor with same shape as the input grid maps.
 
     Example:
+        >>> import torch
         >>> from kornia.utils import create_meshgrid
         >>> grid = create_meshgrid(2, 2, False)  # 1x2x2x2
         >>> grid += 1  # apply offset in both directions
@@ -526,35 +526,25 @@ def remap(
     .. note::
         This function is often used in conjunction with :func:`kornia.utils.create_meshgrid`.
     """
-    if not isinstance(tensor, torch.Tensor):
-        raise TypeError(f"Input tensor type is not a torch.Tensor. Got {type(tensor)}")
+    KORNIA_CHECK_IS_TENSOR(image, "Expected shape BxCxHxW")
+    KORNIA_CHECK_IS_TENSOR(map_x, "Expected shape BxHxW")
+    KORNIA_CHECK_IS_TENSOR(map_y, "Expected shape BxHxW")
 
-    if not isinstance(map_x, torch.Tensor):
-        raise TypeError(f"Input map_x type is not a torch.Tensor. Got {type(map_x)}")
-
-    if not isinstance(map_y, torch.Tensor):
-        raise TypeError(f"Input map_y type is not a torch.Tensor. Got {type(map_y)}")
-
-    if not tensor.shape[-2:] == map_x.shape[-2:] == map_y.shape[-2:]:
-        raise ValueError("Inputs last two dimensions must match.")
-
-    batch_size, _, height, width = tensor.shape
+    batch_size, _, height, width = image.shape
 
     # grid_sample need the grid between -1/1
-    map_xy: torch.Tensor = torch.stack([map_x, map_y], dim=-1)
+    map_xy: Tensor = stack([map_x, map_y], -1)
 
     # normalize coordinates if not already normalized
     if not normalized_coordinates:
         map_xy = normalize_pixel_coordinates(map_xy, height, width)
 
     # simulate broadcasting since grid_sample does not support it
-    map_xy_norm: torch.Tensor = map_xy.expand(batch_size, -1, -1, -1)
+    map_xy = map_xy.expand(batch_size, -1, -1, -1)
 
-    # warp ans return
-    tensor_warped: torch.Tensor = F.grid_sample(
-        tensor, map_xy_norm, mode=mode, padding_mode=padding_mode, align_corners=align_corners
-    )
-    return tensor_warped
+    # warp the image tensor and return
+    warped = grid_sample(image, map_xy, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
+    return warped
 
 
 def invert_affine_transform(matrix: torch.Tensor) -> torch.Tensor:
@@ -673,15 +663,7 @@ def get_shear_matrix2d(center: torch.Tensor, sx: Optional[torch.Tensor] = None, 
     sy_tan = torch.tan(sy)  # type: ignore
     ones = torch.ones_like(sx)  # type: ignore
     shear_mat = torch.stack(
-        [
-            ones,
-            -sx_tan,
-            sx_tan * y,  # type: ignore
-            -sy_tan,
-            ones + sx_tan * sy_tan,
-            sy_tan * (sx_tan * y + x),
-        ],
-        dim=-1,
+        [ones, -sx_tan, sx_tan * y, -sy_tan, ones + sx_tan * sy_tan, sy_tan * (sx_tan * y + x)], dim=-1  # type: ignore
     ).view(-1, 2, 3)
 
     shear_mat = convert_affinematrix_to_homography(shear_mat)
@@ -1288,8 +1270,9 @@ def homography_warp(
         )
     if normalized_homography:
         height, width = dsize
-        grid = create_meshgrid(height, width, normalized_coordinates=normalized_coordinates,
-                               device=patch_src.device, dtype=patch_src.dtype)
+        grid = create_meshgrid(
+            height, width, normalized_coordinates=normalized_coordinates, device=patch_src.device, dtype=patch_src.dtype
+        )
         warped_grid = warp_grid(grid, src_homo_dst)
 
         return F.grid_sample(patch_src, warped_grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
