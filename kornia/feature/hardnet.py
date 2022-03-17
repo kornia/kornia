@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from kornia.testing import KORNIA_CHECK_SHAPE
+
 urls: Dict[str, str] = {}
 urls["hardnet++"] = "https://github.com/DagnyT/hardnet/raw/master/pretrained/pretrained_all_datasets/HardNet++.pth"
 urls[
@@ -79,6 +81,7 @@ class HardNet(nn.Module):
         return (x - mp.detach()) / (sp.detach() + eps)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         x_norm: torch.Tensor = self._normalize_input(input)
         x_features: torch.Tensor = self.features(x_norm)
         x_out = x_features.view(x_features.size(0), -1)
@@ -165,6 +168,7 @@ class HardNet8(nn.Module):
         return (x - mp.detach()) / (sp.detach() + eps)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         x_norm: torch.Tensor = self._normalize_input(input)
         x_features: torch.Tensor = self.features(x_norm)
         mean: torch.Tensor = torch.jit.annotate(torch.Tensor, self.mean)

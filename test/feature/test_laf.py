@@ -468,6 +468,12 @@ class TestGetCreateLAF:
         laf = kornia.feature.laf_from_center_scale_ori(xy, scale, ori)
         assert_close(laf, expected)
 
+    def test_laf_def(self, device):
+        xy = torch.ones(1, 1, 2, device=device)
+        expected = torch.tensor([[[[1, 0, 1], [0, 1, 1]]]], device=device).float()
+        laf = kornia.feature.laf_from_center_scale_ori(xy)
+        assert_close(laf, expected)
+
     def test_cross_consistency(self, device):
         batch_size, channels = 3, 2
         xy = torch.rand(batch_size, channels, 2, device=device)

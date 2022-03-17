@@ -3,6 +3,8 @@ from typing import Dict
 import torch
 import torch.nn as nn
 
+from kornia.testing import KORNIA_CHECK_SHAPE
+
 urls: Dict[str, str] = {}
 urls["lib"] = "https://github.com/yuruntian/SOSNet/raw/master/sosnet-weights/sosnet_32x32_liberty.pth"
 urls["hp_a"] = "https://github.com/yuruntian/SOSNet/raw/master/sosnet-weights/sosnet_32x32_hpatches_a.pth"
@@ -63,6 +65,7 @@ class SOSNet(nn.Module):
         return
 
     def forward(self, input: torch.Tensor, eps: float = 1e-10) -> torch.Tensor:
+        KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         descr = self.desc_norm(self.layers(input) + eps)
         descr = descr.view(descr.size(0), -1)
         return descr

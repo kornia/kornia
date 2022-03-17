@@ -7,6 +7,7 @@ import torch.nn.functional as F
 
 from kornia.filters import get_gaussian_kernel2d, spatial_gradient
 from kornia.geometry.conversions import pi
+from kornia.testing import KORNIA_CHECK_SHAPE
 
 
 def _get_reshape_kernel(kd: int, ky: int, kx: int) -> torch.Tensor:
@@ -140,16 +141,8 @@ class SIFTDescriptor(nn.Module):
         return self.gk.detach()
 
     def forward(self, input):
-        if not isinstance(input, torch.Tensor):
-            raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
-        if not len(input.shape) == 4:
-            raise ValueError(f"Invalid input shape, we expect Bx1xHxW. Got: {input.shape}")
-        B, CH, W, H = input.size()
-        if (W != self.patch_size) or (H != self.patch_size) or (CH != 1):
-            raise TypeError(
-                "input shape should be must be [Bx1x{}x{}]. "
-                "Got {}".format(self.patch_size, self.patch_size, input.size())
-            )
+        KORNIA_CHECK_SHAPE(input, ["B", "1", f"{self.patch_size}", f"{self.patch_size}"])
+        B: int = input.shape[0]
         self.pk = self.pk.to(input.dtype).to(input.device)
 
         grads: torch.Tensor = spatial_gradient(input, 'diff')
@@ -268,12 +261,8 @@ class DenseSIFTDescriptor(nn.Module):
         return self.bin_pooling_kernel.weight.detach()
 
     def forward(self, input):
-        if not isinstance(input, torch.Tensor):
-            raise TypeError("Input type is not a torch.Tensor. Got {}"
-                            .format(type(input)))
-        if not len(input.shape) == 4:
-            raise ValueError("Invalid input shape, we expect Bx1xHxW. Got: {}"
-                             .format(input.shape))
+        KORNIA_CHECK_SHAPE(input, ["B", "1", "H", "W"])
+
         B, CH, W, H = input.size()
         self.bin_pooling_kernel = self.bin_pooling_kernel.to(input.dtype).to(input.device)
         self.PoolingConv = self.PoolingConv.to(input.dtype).to(input.device)

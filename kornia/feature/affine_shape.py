@@ -1,4 +1,5 @@
 import math
+import warnings
 from typing import Dict, Optional
 
 import torch
@@ -6,14 +7,17 @@ import torch.nn as nn
 
 from kornia.filters.kernels import get_gaussian_kernel2d
 from kornia.filters.sobel import SpatialGradient
+from kornia.testing import KORNIA_CHECK_SHAPE
 
 from .laf import (
     ellipse_to_laf,
     extract_patches_from_pyramid,
+    get_laf_orientation,
     get_laf_scale,
     make_upright,
     raise_error_if_laf_is_not_valid,
     scale_laf,
+    set_laf_orientation,
 )
 
 urls: Dict[str, str] = {}
@@ -46,16 +50,7 @@ class PatchAffineShapeEstimator(nn.Module):
             patch: (torch.Tensor) shape [Bx1xHxW]
         Returns:
             torch.Tensor: ellipse_shape shape [Bx1x3]"""
-        if not isinstance(patch, torch.Tensor):
-            raise TypeError(f"Input type is not a torch.Tensor. Got {type(patch)}")
-        if not len(patch.shape) == 4:
-            raise ValueError(f"Invalid input shape, we expect Bx1xHxW. Got: {patch.shape}")
-        _, CH, W, H = patch.size()
-        if (W != self.patch_size) or (H != self.patch_size) or (CH != 1):
-            raise TypeError(
-                "input shape should be must be [Bx1x{}x{}]. "
-                "Got {}".format(self.patch_size, self.patch_size, patch.size())
-            )
+        KORNIA_CHECK_SHAPE(patch, ["B", "1", "H", "W"])
         self.weighting = self.weighting.to(patch.dtype).to(patch.device)
         grads: torch.Tensor = self.gradient(patch) * self.weighting
         # unpack the edges
@@ -87,17 +82,29 @@ class LAFAffineShapeEstimator(nn.Module):
     Then runs :class:`~kornia.feature.PatchAffineShapeEstimator` on patches to estimate LAFs shape.
 
     Then original LAF shape is replaced with estimated one. The original LAF orientation is not preserved,
-    so it is recommended to first run LAFAffineShapeEstimator and then LAFOrienter.
+    so it is recommended to first run LAFAffineShapeEstimator and then LAFOrienter,
+
 
     Args:
         patch_size: the input image patch size.
         affine_shape_detector: Patch affine shape estimator, :class:`~kornia.feature.PatchAffineShapeEstimator`.
+        preserve_orientation: if True, the original orientation is preserved.
     """  # pylint: disable
 
-    def __init__(self, patch_size: int = 32, affine_shape_detector: Optional[nn.Module] = None) -> None:
+    def __init__(self,
+                 patch_size: int = 32,
+                 affine_shape_detector: Optional[nn.Module] = None,
+                 preserve_orientation: bool = True) -> None:
         super().__init__()
         self.patch_size = patch_size
         self.affine_shape_detector = affine_shape_detector or PatchAffineShapeEstimator(self.patch_size)
+        self.preserve_orientation = preserve_orientation
+        if preserve_orientation:
+            warnings.warn("`LAFAffineShapeEstimator` default behaviour is changed"
+                          "and now it does preserve original LAF orientation"
+                          "Make sure your code accounts for this",
+                          DeprecationWarning,
+                          stacklevel=2)
 
     def __repr__(self):
         return (
@@ -107,6 +114,9 @@ class LAFAffineShapeEstimator(nn.Module):
             + ', '
             + 'affine_shape_detector='
             + str(self.affine_shape_detector)
+            + ', '
+            + 'preserve_orientation='
+            + str(self.preserve_orientation)
             + ')'
         )
 
@@ -119,22 +129,20 @@ class LAFAffineShapeEstimator(nn.Module):
         Returns:
             torch.Tensor: laf_out shape [BxNx2x3]"""
         raise_error_if_laf_is_not_valid(laf)
-        img_message: str = f"Invalid img shape, we expect BxCxHxW. Got: {img.shape}"
-        if not isinstance(img, torch.Tensor):
-            raise TypeError(f"img type is not a torch.Tensor. Got {type(img)}")
-        if len(img.shape) != 4:
-            raise ValueError(img_message)
-        if laf.size(0) != img.size(0):
-            raise ValueError(f"Batch size of laf and img should be the same. Got {img.size(0)}, {laf.size(0)}")
+        KORNIA_CHECK_SHAPE(img, ["B", "1", "H", "W"])
         B, N = laf.shape[:2]
         PS: int = self.patch_size
         patches: torch.Tensor = extract_patches_from_pyramid(img, make_upright(laf), PS, True).view(-1, 1, PS, PS)
         ellipse_shape: torch.Tensor = self.affine_shape_detector(patches)
         ellipses = torch.cat([laf.view(-1, 2, 3)[..., 2].unsqueeze(1), ellipse_shape], dim=2).view(B, N, 5)
         scale_orig = get_laf_scale(laf)
+        if self.preserve_orientation:
+            ori_orig = get_laf_orientation(laf)
         laf_out = ellipse_to_laf(ellipses)
         ellipse_scale = get_laf_scale(laf_out)
         laf_out = scale_laf(laf_out, scale_orig / ellipse_scale)
+        if self.preserve_orientation:
+            laf_out = set_laf_orientation(laf_out, ori_orig)
         return laf_out
 
 
@@ -152,7 +160,7 @@ class LAFAffNetShapeEstimator(nn.Module):
         pretrained: Download and set pretrained weights to the model.
     """
 
-    def __init__(self, pretrained: bool = False):
+    def __init__(self, pretrained: bool = False, preserve_orientation: bool = True):
         super().__init__()
         self.features = nn.Sequential(
             nn.Conv2d(1, 16, kernel_size=3, padding=1, bias=False),
@@ -185,6 +193,13 @@ class LAFAffNetShapeEstimator(nn.Module):
                 urls['affnet'], map_location=lambda storage, loc: storage
             )
             self.load_state_dict(pretrained_dict['state_dict'], strict=False)
+        self.preserve_orientation = preserve_orientation
+        if preserve_orientation:
+            warnings.warn("`LAFAffNetShapeEstimator` default behaviour is changed"
+                          "and now it does preserve original LAF orientation"
+                          "Make sure your code accounts for this",
+                          DeprecationWarning,
+                          stacklevel=2)
         self.eval()
 
     @staticmethod
@@ -206,13 +221,7 @@ class LAFAffNetShapeEstimator(nn.Module):
             laf_out shape [BxNx2x3]
         """
         raise_error_if_laf_is_not_valid(laf)
-        img_message: str = f"Invalid img shape, we expect BxCxHxW. Got: {img.shape}"
-        if not torch.is_tensor(img):
-            raise TypeError(f"img type is not a torch.Tensor. Got {type(img)}")
-        if len(img.shape) != 4:
-            raise ValueError(img_message)
-        if laf.size(0) != img.size(0):
-            raise ValueError(f"Batch size of laf and img should be the same. Got {img.size(0)}, {laf.size(0)}")
+        KORNIA_CHECK_SHAPE(img, ["B", "1", "H", "W"])
         B, N = laf.shape[:2]
         PS: int = self.patch_size
         patches: torch.Tensor = extract_patches_from_pyramid(img, make_upright(laf), PS, True).view(-1, 1, PS, PS)
@@ -222,6 +231,10 @@ class LAFAffNetShapeEstimator(nn.Module):
         new_laf_no_center = torch.cat([a1, a2], dim=1).reshape(B, N, 2, 2)
         new_laf = torch.cat([new_laf_no_center, laf[:, :, :, 2:3]], dim=3)
         scale_orig = get_laf_scale(laf)
+        if self.preserve_orientation:
+            ori_orig = get_laf_orientation(laf)
         ellipse_scale = get_laf_scale(new_laf)
         laf_out = scale_laf(make_upright(new_laf), scale_orig / ellipse_scale)
+        if self.preserve_orientation:
+            laf_out = set_laf_orientation(laf_out, ori_orig)
         return laf_out

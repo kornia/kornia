@@ -25,6 +25,7 @@ Set of operators to perform data augmentation on 2D image tensors.
 .. autoclass:: RandomMixUp
 .. autoclass:: RandomMotionBlur
 .. autoclass:: RandomPerspective
+.. autoclass:: RandomPlanckianJitter
 .. autoclass:: RandomPosterize
 .. autoclass:: RandomResizedCrop
 .. autoclass:: RandomRotation
