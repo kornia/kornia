@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from kornia.geometry.conversions import angle_to_rotation_matrix, convert_points_from_homogeneous, rad2deg
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform import pyrdown
-from kornia.testing import KORNIA_CHECK_IS_TENSOR
+from kornia.testing import KORNIA_CHECK_SHAPE
 
 
 def raise_error_if_laf_is_not_valid(laf: torch.Tensor) -> None:
@@ -16,14 +16,7 @@ def raise_error_if_laf_is_not_valid(laf: torch.Tensor) -> None:
     Args:
         laf: [BxNx2x3] shape.
     """
-    laf_message: str = f"Invalid laf shape, we expect BxNx2x3. Got: {laf.shape}"
-    if not isinstance(laf, torch.Tensor):
-        raise TypeError(f"Laf type is not a torch.Tensor. Got {type(laf)}")
-    if len(laf.shape) != 4:
-        raise ValueError(laf_message)
-    if laf.size(2) != 2 or laf.size(3) != 3:
-        raise ValueError(laf_message)
-    return
+    KORNIA_CHECK_SHAPE(laf, ["B", "N", "2", "3"])
 
 
 def get_laf_scale(LAF: torch.Tensor) -> torch.Tensor:
@@ -129,7 +122,7 @@ def laf_from_center_scale_ori(xy: torch.Tensor,
     Returns:
         tensor BxNx2x3.
     """
-    KORNIA_CHECK_IS_TENSOR(xy, "Expected shape (B, N, 2)")
+    KORNIA_CHECK_SHAPE(xy, ["B", "N", "2"])
     device = xy.device
     dtype = xy.dtype
     B, N = xy.shape[:2]
@@ -137,8 +130,8 @@ def laf_from_center_scale_ori(xy: torch.Tensor,
         scale = torch.ones(B, N, 1, 1, device=device, dtype=dtype)
     if ori is None:
         ori = torch.zeros(B, N, 1, device=device, dtype=dtype)
-    KORNIA_CHECK_IS_TENSOR(scale, "Expected shape (B, N, 1, 1)")
-    KORNIA_CHECK_IS_TENSOR(ori, "Expected shape (B, N, 1)")
+    KORNIA_CHECK_SHAPE(scale, ["B", "N", "1", "1"])
+    KORNIA_CHECK_SHAPE(ori, ["B", "N", "1"])
     unscaled_laf: torch.Tensor = torch.cat([angle_to_rotation_matrix(ori.squeeze(-1)), xy.unsqueeze(-1)], dim=-1)
     laf: torch.Tensor = scale_laf(unscaled_laf, scale)
     return laf
