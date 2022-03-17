@@ -205,3 +205,73 @@ def draw_rectangle(
                 ]
 
     return image
+
+
+def _get_convex_edges(polygon: torch.Tensor, h: int, w: int):
+    r"""Gets the left and right edges of a polygon for each y-coordinate y \in [0, h)
+    Args:
+        polygon: represents polygons to draw in BxNx2
+            N is the number of points
+            2 is (x, y).
+        h: bottom most coordinate (top coordinate is assumed to be 0)
+        w: right most coordinate (left coordinate is assumed to be 0)
+    Returns:
+        The left and right edges of the polygon of shape Bx2.
+    """
+
+    if not torch.allclose(polygon[..., -1, :], polygon[..., 0, :]):
+        polygon = torch.cat((polygon, polygon[..., :1, :]), dim=-2)
+    x_start = polygon[..., :-1, 0]
+    x_end = polygon[..., 1:, 0]
+    y_start = polygon[..., :-1, 1]
+    y_end = polygon[..., 1:, 1]
+    ys = torch.arange(h, device=polygon.device)
+    dx = torch.clamp((x_end - x_start) / (y_end - y_start), -w, w)
+    xs = (ys[..., :, None] - y_start[..., None, :]) * dx[..., None, :] + x_start[..., None, :]
+    valid_candidates = (y_start[..., None, :] <= ys[..., :, None]) & (ys[..., :, None] <= y_end[..., None, :])
+    valid_candidates |= (y_start[..., None, :] >= ys[..., :, None]) & (ys[..., :, None] >= y_end[..., None, :])
+    x_left_cand = xs.clone()
+    x_left_cand[~valid_candidates] = w
+    x_right_cand = xs.clone()
+    x_right_cand[~valid_candidates] = -1
+    x_left = x_left_cand.min(dim=-1).values
+    x_right = x_right_cand.max(dim=-1).values
+    return x_left, x_right
+
+
+def draw_convex_polygon(image: torch.Tensor, polygon: torch.Tensor, color: torch.Tensor):
+    r"""Draws convex polygons on a batch of image tensors.
+    Args:
+        image: is tensor of BxCxHxW.
+        polygon: represents polygons to draw in BxNx2
+            N is the number of points
+            2 is (x, y).
+        color: a Bx3 tensor.
+
+    Returns:
+        This operation modifies image inplace but also returns the drawn tensor for
+        convenience with same shape the of the input BxCxHxW.
+
+    Example:
+        >>> img = torch.rand(2, 3, 10, 12)
+        >>> poly = torch.tensor([[[0, 0, 4, 4]], [[4, 4, 10, 10]]])
+        >>> color = torch.tensor([[0.5,0.5,0.5],[0.5,0.5,0.5]])
+        >>> out = draw_rectangle(img, poly, color)
+    """
+    # TODO: implement optional linetypes for smooth edges
+    b_i, _, h_i, w_i, device_i = *image.shape, image.device
+    b_p, _, xy, device_p = *polygon.shape, polygon.device
+    b_c, _, device_c = *color.shape, color.device
+    if xy != 2:
+        raise AssertionError("Polygon vertices must be xy, i.e. 2-dimensional")
+    if not (b_i == b_p == b_c):
+        raise AssertionError("Image, polygon, and color must have same batch dimension")
+    if not (device_i == device_p == device_c):
+        raise AssertionError("Image, polygon, and color must have same device")
+
+    x_left, x_right = _get_convex_edges(polygon, h_i, w_i)
+    ws = torch.arange(w_i, device=x_left.device)[None, None, :]
+    fill_region = (ws >= x_left[..., :, None]) & (ws <= x_right[..., :, None])
+    fill_region = (ws >= x_left[..., :, None]) & (ws <= x_right[..., :, None])
+    image += fill_region[:, None] * color[..., None, None]
+    return image
