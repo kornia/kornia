@@ -3,6 +3,8 @@ from typing import Optional, Tuple
 import torch
 import torch.nn as nn
 
+from kornia.testing import KORNIA_CHECK_SHAPE
+
 
 def match_nn(
     desc1: torch.Tensor, desc2: torch.Tensor, dm: Optional[torch.Tensor] = None
@@ -21,10 +23,8 @@ def match_nn(
         - Descriptor distance of matching descriptors, shape of :math:`(B1, 1)`.
         - Long tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(B1, 2)`.
     """
-    if len(desc1.shape) != 2:
-        raise AssertionError
-    if len(desc2.shape) != 2:
-        raise AssertionError
+    KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
+    KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
 
     if dm is None:
         dm = torch.cdist(desc1, desc2)
@@ -56,10 +56,8 @@ def match_mnn(
         - Long tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(B3, 2)`,
           where 0 <= B3 <= min(B1, B2)
     """
-    if len(desc1.shape) != 2:
-        raise AssertionError
-    if len(desc2.shape) != 2:
-        raise AssertionError
+    KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
+    KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
 
     if dm is None:
         dm = torch.cdist(desc1, desc2)
@@ -104,10 +102,9 @@ def match_snn(
         - Long tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)`,
           where 0 <= B3 <= B1.
     """
-    if len(desc1.shape) != 2:
-        raise AssertionError
-    if len(desc2.shape) != 2:
-        raise AssertionError
+    KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
+    KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
+
     if desc2.shape[0] < 2:
         raise AssertionError
 
@@ -148,10 +145,9 @@ def match_smnn(
         - Long tensor indexes of matching descriptors in desc1 and desc2,
           shape of :math:`(B3, 2)` where 0 <= B3 <= B1.
     """
-    if len(desc1.shape) != 2:
-        raise AssertionError
-    if len(desc2.shape) != 2:
-        raise AssertionError
+    KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
+    KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
+
     if desc1.shape[0] < 2:
         raise AssertionError
     if desc2.shape[0] < 2:
