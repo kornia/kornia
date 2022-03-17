@@ -8,6 +8,55 @@ from torch.nn.modules.utils import _pair
 PadType = Union[Tuple[int, int], Tuple[int, int, int, int]]
 
 
+def compute_padding(
+    original_size: Union[int, Tuple[int, int]], window_size: Union[int, Tuple[int, int]]
+) -> Tuple[int, int, int, int]:
+    r"""Compute required padding to ensure chaining of :class:`~kornia.contrib.ExtractTensorPatches` and
+    :class:`~kornia.contrib.CombineTensorPatches` produces expected result.
+
+    Args:
+        original_size: the size of the original tensor.
+        window_size: the size of the sliding window used while extracting patches.
+
+    Return:
+        The required padding for `(top, bottom, left, right)` as a tuple of 4 ints.
+
+    Example:
+        >>> image = torch.arange(12).view(1, 1, 4, 3)
+        >>> padding = compute_padding((4,3), (3,3))
+        >>> out = extract_tensor_patches(image, window_size=(3, 3), stride=(3, 3), padding=padding)
+        >>> combine_tensor_patches(out, original_size=(4, 3), window_size=(3, 3), stride=(3, 3), unpadding=padding)
+        tensor([[[[ 0,  1,  2],
+                  [ 3,  4,  5],
+                  [ 6,  7,  8],
+                  [ 9, 10, 11]]]])
+
+    .. note::
+        This function is supposed to be used in conjunction with :func:`extract_tensor_patches`
+        and :func:`combine_tensor_patches`.
+    """
+    original_size = cast(Tuple[int, int], _pair(original_size))
+    window_size = cast(Tuple[int, int], _pair(window_size))
+
+    def paddim(dim1: int, dim2: int) -> Tuple[int, int]:
+        if dim1 % dim2 == 0:
+            p1 = 0
+            p2 = 0
+        else:
+            tmp = dim2 - (dim1 % dim2)
+            if tmp % 2 == 0:
+                p1 = p2 = tmp // 2
+            else:
+                p1 = tmp
+                p2 = 0
+        return p1, p2
+
+    padt, padb = paddim(original_size[0], window_size[0])
+    padl, padr = paddim(original_size[1], window_size[1])
+
+    return (padt, padb, padl, padr)
+
+
 class ExtractTensorPatches(nn.Module):
     r"""Module that extract patches from tensors and stack them.
 

@@ -145,6 +145,12 @@ class TestConnectedComponents:
         assert_close(op(img), op_jit(img))
 
 
+def test_compute_padding():
+    assert kornia.contrib.compute_padding((6, 6), (2, 2)) == (0, 0, 0, 0)
+    assert kornia.contrib.compute_padding((7, 7), (2, 2)) == (1, 0, 1, 0)
+    assert kornia.contrib.compute_padding((8, 7), (4, 4)) == (0, 0, 1, 0)
+
+
 class TestExtractTensorPatches:
     def test_smoke(self, device):
         img = torch.arange(16.0, device=device).view(1, 1, 4, 4)
@@ -333,6 +339,17 @@ class TestCombineTensorPatches:
         patches = kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(2, 2), padding=1)
         m = kornia.contrib.CombineTensorPatches((8, 8), (2, 2), unpadding=1)
         assert m(patches).shape == (1, 1, 8, 8)
+        assert (img == m(patches)).all()
+
+    def test_autopadding(self, device, dtype):
+        img = torch.arange(104, device=device, dtype=dtype).view(1, 1, 8, 13)
+        window_size = (3, 3)
+        padding = kornia.contrib.compute_padding((8, 13), (3, 3))
+        patches = kornia.contrib.extract_tensor_patches(
+            img, window_size=window_size, stride=window_size, padding=padding
+        )
+        m = kornia.contrib.CombineTensorPatches((8, 13), (3, 3), unpadding=padding)
+        assert m(patches).shape == (1, 1, 8, 13)
         assert (img == m(patches)).all()
 
     def test_gradcheck(self, device, dtype):
