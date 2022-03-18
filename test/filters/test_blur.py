@@ -1,6 +1,6 @@
+import pytest
 import torch
 from torch.autograd import gradcheck
-import pytest
 
 import kornia
 import kornia.testing as utils  # test utils
