@@ -50,6 +50,7 @@ Module
 
 .. autoclass:: BlurPool2D
 .. autoclass:: BoxBlur
+.. autoclass:: Filter2D
 .. autoclass:: MaxBlurPool2D
 .. autoclass:: MedianBlur
 .. autoclass:: GaussianBlur2d

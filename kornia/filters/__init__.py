@@ -1,7 +1,15 @@
 from .blur import BoxBlur, box_blur
 from .blur_pool import BlurPool2D, MaxBlurPool2D, blur_pool2d, max_blur_pool2d
 from .canny import Canny, canny
-from .filter import filter2d, filter2D, filter2d_separable, filter3d, filter3D
+from .filter import (
+    filter2d,
+    filter2D,
+    Filter2D,
+    filter2d_separable,
+    filter3d,
+    filter3D
+)
+
 from .gaussian import GaussianBlur2d, gaussian_blur2d
 from .kernels import (
     gaussian,
@@ -71,6 +79,7 @@ __all__ = [
     "Canny",
     "BoxBlur",
     "BlurPool2D",
+    "Filter2D",
     "MaxBlurPool2D",
     "MedianBlur",
     "MotionBlur",

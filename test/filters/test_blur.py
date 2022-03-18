@@ -1,5 +1,6 @@
 import torch
 from torch.autograd import gradcheck
+import pytest
 
 import kornia
 import kornia.testing as utils  # test utils
@@ -148,3 +149,10 @@ class TestBoxBlur:
         actual = op_module(kernel_size)(img)
         expected = op(img, kernel_size)
         assert_close(actual, expected)
+
+    @pytest.mark.onnx
+    def test_onnx_export(self, device, dtype):
+        kernel_size = (3, 3)
+        op_module = kornia.filters.BoxBlur(kernel_size)
+        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        torch.onnx.export(op_module, img, "temp.onnx", export_params=True)

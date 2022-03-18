@@ -1,6 +1,7 @@
 from typing import List
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
 from .__tmp__ import _deprecation_wrapper
@@ -280,6 +281,59 @@ def filter3d(
     output = F.conv3d(input_pad, tmp_kernel, groups=tmp_kernel.size(0), padding=0, stride=1)
 
     return output.view(b, c, d, h, w)
+
+
+class Filter2D(nn.Module):
+    r"""The module applies a given kernel to a tensor. The kernel is applied
+        independently at each depth channel of the tensor. Before applying the
+        kernel, the function applies padding according to the specified mode so
+        that the output remains in the same shape.
+
+        Args:
+            input: the input tensor with shape of
+              :math:`(B, C, H, W)`.
+            kernel: the kernel to be convolved with the input
+              tensor. The kernel shape must be :math:`(1, kH, kW)` or :math:`(B, kH, kW)`.
+            border_type: the padding mode to be applied before convolving.
+              The expected modes are: ``'constant'``, ``'reflect'``,
+              ``'replicate'`` or ``'circular'``.
+            normalized: If True, kernel will be L1 normalized.
+            padding: This defines the type of padding.
+              2 modes available ``'same'`` or ``'valid'``.
+
+        Return:
+            torch.Tensor: the convolved tensor of same size and numbers of channels
+            as the input with shape :math:`(B, C, H, W)`.
+    """
+
+    def __init__(self,
+                 kernel: torch.Tensor,
+                 border_type: str = 'reflect',
+                 normalized: bool = False,
+                 padding: str = 'same') -> None:
+        super().__init__()
+        self.register_buffer("kernel", kernel)
+        self.border_type: str = border_type
+        self.normalized: bool = normalized
+        self.padding: str = padding
+
+    def __repr__(self) -> str:
+        return (
+            self.__class__.__name__
+            + '(kernel='
+            + str(self.kernel)
+            + ', '
+            + 'normalized='
+            + str(self.normalized)
+            + ', '
+            + 'border_type='
+            + self.border_type
+            + ')'
+        )
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        #  reason for ignore type: error type "Union[Tensor, Module]"; expected "Tensor"  [arg-type]
+        return filter2d(input, self.kernel, self.border_type, self.normalized, self.padding)  # type: ignore
 
 
 # for backward compatibility.

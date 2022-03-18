@@ -260,6 +260,22 @@ class TestFilter2D:
         actual = op_script(input, kernel, padding=padding)
         assert_close(actual, expected)
 
+    def test_module(self, device, dtype):
+        op = kornia.filters.filter2d
+        op_module = kornia.filters.Filter2D
+        kernel = torch.rand(1, 3, 5, device=device, dtype=dtype)
+        img = torch.rand(2, 3, 7, 9, device=device, dtype=dtype)
+        actual = op_module(kernel)(img)
+        expected = op(img, kernel)
+        assert_close(actual, expected)
+
+    @pytest.mark.onnx
+    def test_onnx_export(self, device, dtype):
+        kernel = torch.rand(1, 3, 5, device=device, dtype=dtype)
+        op_module = kornia.filters.Filter2D(kernel)
+        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        torch.onnx.export(op_module, img, "temp.onnx", export_params=True)
+
 
 class TestFilter3D:
     def test_smoke(self, device, dtype):
