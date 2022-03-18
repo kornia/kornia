@@ -261,7 +261,7 @@ def _batch_polygons(polygons: List[Tensor]) -> Tensor:
     Returns:
         A fixed size tensor of shape (B, N, 2) where N = max_i(N_i)
     """
-    B, N = len(polygons), len(max(polygons, key=lambda p: len(p)))
+    B, N = len(polygons), len(max(polygons, key=len))
     batched_polygons = torch.zeros(B, N, 2, dtype=polygons[0].dtype, device=polygons[0].device)
     for b, p in enumerate(polygons):
         batched_polygons[b] = torch.cat((p, p[-1:].expand(N - len(p), 2))) if len(p) < N else p
