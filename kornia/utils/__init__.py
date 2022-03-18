@@ -1,4 +1,4 @@
-from .draw import draw_convex_polygon, draw_line, draw_rectangle
+from .draw import draw_convex_polygons, draw_line, draw_rectangle
 from .grid import create_meshgrid, create_meshgrid3d
 from .helpers import _extract_device_dtype, safe_inverse_with_mask, safe_solve_with_mask
 from .image import ImageToTensor, image_list_to_tensor, image_to_tensor, tensor_to_image
@@ -17,7 +17,7 @@ __all__ = [
     "image_list_to_tensor",
     "save_pointcloud_ply",
     "load_pointcloud_ply",
-    "draw_convex_polygon",
+    "draw_convex_polygons",
     "draw_rectangle",
     "draw_line",
     "_extract_device_dtype",
