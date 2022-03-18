@@ -11,8 +11,8 @@ PadType = Union[Tuple[int, int], Tuple[int, int, int, int]]
 def compute_padding(
     original_size: Union[int, Tuple[int, int]], window_size: Union[int, Tuple[int, int]]
 ) -> Tuple[int, int, int, int]:
-    r"""Compute required padding to ensure chaining of :class:`~kornia.contrib.ExtractTensorPatches` and
-    :class:`~kornia.contrib.CombineTensorPatches` produces expected result.
+    r"""Compute required padding to ensure chaining of :func:`extract_tensor_patches` and
+    :func:`combine_tensor_patches` produces expected result.
 
     Args:
         original_size: the size of the original tensor.
