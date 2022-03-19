@@ -8,6 +8,7 @@ Draw
 
 .. autofunction:: draw_line
 .. autofunction:: draw_rectangle
+.. autofunction:: draw_convex_polygons
 
 Image
 -----
