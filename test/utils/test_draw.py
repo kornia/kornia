@@ -251,7 +251,7 @@ class TestDrawRectangle:
                 points_list[b][n].append(int(torch.randint(points_list[b][n][-2] + 1, w, (1,))))
                 points_list[b][n].append(int(torch.randint(points_list[b][n][-2] + 1, h, (1,))))
 
-        points = torch.tensor(points_list).to(device)
+        points = torch.tensor(points_list, device=device)
 
         random_background = torch.rand(batch, 3, h, w, device=device)
         random_w_rectangle = random_background.clone()
@@ -347,7 +347,7 @@ class TestFillConvexPolygon:
         b, c, h, w = 1, 3, 500, 500
         n = 5000
         im = torch.zeros(b, c, h, w, device=device, dtype=dtype)
-        t = torch.linspace(0, 1, steps=n)[None].expand(b, n)
+        t = torch.linspace(0, 1, steps=n, device=device, dtype=dtype)[None].expand(b, n)
         color = torch.tensor([1, 1, 1], device=device, dtype=dtype)[None].expand(b, c)
         x = (2 * math.pi * t).cos()
         y = (2 * math.pi * t).sin()
@@ -364,7 +364,7 @@ class TestFillConvexPolygon:
         b, c, h, w = 1, 3, 500, 500
         n = 5000
         im = torch.zeros(b, c, h, w, device=device, dtype=dtype)
-        t = torch.linspace(0, 1, steps=n)[None].expand(b, n)
+        t = torch.linspace(0, 1, steps=n, device=device, dtype=dtype)[None].expand(b, n)
         color = torch.tensor([1, 1, 1], device=device, dtype=dtype)[None].expand(b, c)
         lam = 2
         x = lam * (2 * math.pi * t).cos()
@@ -388,19 +388,18 @@ class TestFillConvexPolygon:
         poly_im = draw_convex_polygons(im.clone(), pts, color)
         rect = torch.cat((pts[..., 0, :], pts[..., 2, :]), dim=-1)[:, None]
         rect_im = draw_rectangle(im.clone(), rect, color[:, None], fill=True)
-        assert torch.allclose(rect_im, poly_im)
+        assert_close(rect_im, poly_im)
 
     def test_batch(self, device, dtype):
         im = torch.rand(2, 3, 12, 16, dtype=dtype, device=device)
         pts = torch.tensor(
             [[[4, 4], [12, 4], [12, 8], [4, 8]], [[0, 0], [4, 0], [4, 4], [0, 4]]], dtype=dtype, device=device
         )
-        torch.tensor([[[0, 0, 4, 4]], [[4, 4, 10, 10]]])
-        color = torch.tensor([[0.5, 0.5, 0.5], [0.5, 0.5, 0.75]])
+        color = torch.tensor([[0.5, 0.5, 0.5], [0.5, 0.5, 0.75]], dtype=dtype, device=device)
         poly_im = draw_convex_polygons(im.clone(), pts, color)
         rect = torch.tensor([[[4, 4, 12, 8]], [[0, 0, 4, 4]]], dtype=dtype, device=device)
         rect_im = draw_rectangle(im.clone(), rect, color[:, None], fill=True)
-        assert torch.allclose(rect_im, poly_im)
+        assert_close(rect_im, poly_im)
 
     def test_batch_variable_size(self, device, dtype):
         im = torch.rand(2, 3, 12, 16, dtype=dtype, device=device)
@@ -408,11 +407,11 @@ class TestFillConvexPolygon:
             torch.tensor([[4, 4], [12, 4], [12, 8], [4, 8]], dtype=dtype, device=device),
             torch.tensor([[0, 0], [2, 0], [4, 0], [4, 4], [0, 4]], dtype=dtype, device=device),
         ]
-        color = torch.tensor([[0.5, 0.5, 0.5], [0.5, 0.5, 0.75]])
+        color = torch.tensor([[0.5, 0.5, 0.5], [0.5, 0.5, 0.75]], dtype=dtype, device=device)
         poly_im = draw_convex_polygons(im.clone(), pts, color)
         rect = torch.tensor([[[4, 4, 12, 8]], [[0, 0, 4, 4]]], dtype=dtype, device=device)
         rect_im = draw_rectangle(im.clone(), rect, color[:, None], fill=True)
-        assert torch.allclose(rect_im, poly_im)
+        assert_close(rect_im, poly_im)
 
     def test_batch_color_no_batch(self, device, dtype):
         im = torch.rand(2, 3, 12, 16, dtype=dtype, device=device)
@@ -420,11 +419,11 @@ class TestFillConvexPolygon:
             torch.tensor([[4, 4], [12, 4], [12, 8], [4, 8]], dtype=dtype, device=device),
             torch.tensor([[0, 0], [2, 0], [4, 0], [4, 4], [0, 4]], dtype=dtype, device=device),
         ]
-        color = torch.tensor([0.5, 0.5, 0.75])
+        color = torch.tensor([0.5, 0.5, 0.75], dtype=dtype, device=device)
         poly_im = draw_convex_polygons(im.clone(), pts, color)
         rect = torch.tensor([[[4, 4, 12, 8]], [[0, 0, 4, 4]]], dtype=dtype, device=device)
         rect_im = draw_rectangle(im.clone(), rect, color, fill=True)
-        assert torch.allclose(rect_im, poly_im)
+        assert_close(rect_im, poly_im)
 
     def test_out_of_bounds_rectangle(self, device, dtype):
         b, c, h, w = 1, 3, 500, 500
@@ -434,9 +433,9 @@ class TestFillConvexPolygon:
         poly_im = draw_convex_polygons(im.clone(), pts, color)
         rect = torch.cat((pts[..., 0, :], pts[..., 2, :]), dim=-1)[:, None]
         rect_im = draw_rectangle(im.clone(), rect, color[:, None], fill=True)
-        assert torch.allclose(rect_im, poly_im)
+        assert_close(rect_im, poly_im)
         pts = -150 + torch.tensor([[[50, 50], [200, 50], [200, 250], [50, 250]]], device=device, dtype=dtype)
         poly_im = draw_convex_polygons(im.clone(), pts, color)
         rect = torch.cat((pts[..., 0, :], pts[..., 2, :]), dim=-1)[:, None]
         rect_im = draw_rectangle(im.clone(), rect, color[:, None], fill=True)
-        assert torch.allclose(rect_im, poly_im)
+        assert_close(rect_im, poly_im)
