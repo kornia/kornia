@@ -14,7 +14,7 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor,
                      new_K: Optional[torch.Tensor] = None, num_iters: int = 5) -> torch.Tensor:
     r"""Compensate for lens distortion a set of 2D image points.
 
-    Radial :math:`(k_1, k_2, k_3, k_4, k_4, k_6)`,
+    Radial :math:`(k_1, k_2, k_3, k_4, k_5, k_6)`,
     tangential :math:`(p_1, p_2)`, thin prism :math:`(s_1, s_2, s_3, s_4)`, and tilt :math:`(\tau_x, \tau_y)`
     distortion models are considered in this function.
 
