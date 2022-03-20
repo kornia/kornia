@@ -1,8 +1,8 @@
+import warnings
 from copy import deepcopy
 from enum import Enum
 from sys import flags
 from typing import Any, Dict, Optional, Tuple, Union
-import warnings
 
 import torch
 import torch.nn as nn

@@ -233,7 +233,7 @@ class RandomCrop(GeometricAugmentationBase2D):
             input_pad = padding_size.unique(dim=0).cpu().squeeze().numpy().tolist()
         else:
             input_pad = None
-        
+
         flags = self._override_parameters(self.flags, kwargs, in_place=False)
 
         if isinstance(input, (tuple, list)):
