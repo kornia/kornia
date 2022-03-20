@@ -1,7 +1,4 @@
-import warnings
-from copy import deepcopy
 from enum import Enum
-from sys import flags
 from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
@@ -144,7 +141,7 @@ class _BasicAugmentationBase(nn.Module):
             if isinstance(v, Tensor):
                 out.update({k: v.clone()})
             else:
-                out.update({k: deepcopy(v)})
+                out.update({k: v})
         return param
 
     def _override_parameters(
