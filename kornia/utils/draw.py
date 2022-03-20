@@ -268,7 +268,7 @@ def _batch_polygons(polygons: List[Tensor]) -> Tensor:
     return batched_polygons
 
 
-def draw_convex_polygons(images: Tensor, polygons: Union[Tensor, List[Tensor]], colors: Tensor) -> Tensor:
+def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], colors: Tensor) -> Tensor:
     r"""Draws convex polygons on a batch of image tensors.
 
     Args:
@@ -290,7 +290,7 @@ def draw_convex_polygons(images: Tensor, polygons: Union[Tensor, List[Tensor]], 
         >>> img = torch.rand(1, 3, 12, 16)
         >>> poly = torch.tensor([[[4, 4], [12, 4], [12, 8], [4, 8]]])
         >>> color = torch.tensor([[0.5, 0.5, 0.5]])
-        >>> out = draw_convex_polygons(img, poly, color)
+        >>> out = draw_convex_polygon(img, poly, color)
     """
     # TODO: implement optional linetypes for smooth edges
     KORNIA_CHECK_SHAPE(images, ["B", "C", "H", "W"])
