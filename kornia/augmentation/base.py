@@ -1,5 +1,8 @@
+from copy import deepcopy
 from enum import Enum
+from sys import flags
 from typing import Any, Dict, Optional, Tuple, Union
+import warnings
 
 import torch
 import torch.nn as nn
@@ -81,7 +84,7 @@ class _BasicAugmentationBase(nn.Module):
             return self._param_generator(batch_shape, self.same_on_batch)
         return {}
 
-    def apply_transform(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         raise NotImplementedError
 
     def set_rng_device_and_dtype(self, device: torch.device, dtype: torch.dtype) -> None:
@@ -131,13 +134,59 @@ class _BasicAugmentationBase(nn.Module):
         _params.update({'forward_input_shape': input_size})
         return _params
 
-    def apply_func(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
-        input = self.transform_tensor(input)
-        return self.apply_transform(input, params)
+    def apply_func(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+        return self.apply_transform(input, params, flags)
+
+    def _deepcopy_param(self, param: Dict[str, Any]) -> Dict[str, Any]:
+        out = {}
+        for k, v in param.items():
+            # NOTE: Only Tensors created explicitly by the user (graph leaves) support the deepcopy protocol
+            if isinstance(v, Tensor):
+                out.update({k: v.clone()})
+            else:
+                out.update({k: deepcopy(v)})
+        return param
+
+    def _override_parameters(
+        self, params: Dict[str, Any], params_override: Optional[Dict[str, Any]] = None,
+        if_none_exist: str = 'ignore', in_place: bool = False
+    ) -> Dict[str, Any]:
+        """Override params dict w.r.t params_override.
+
+        Args:
+            params: source parameters.
+            params_override: key-values to override the source parameters.
+            if_none_exist: behaviour if the key in `params_override` does not exist in `params`.
+                'raise' | 'ignore'.
+            in_place: if to override in-place or not.
+        """
+
+        if params_override is None:
+            return params
+        out = params if in_place else self._deepcopy_param(params)
+        for k, v in params_override.items():
+            if k in params_override:
+                out[k] = v
+            else:
+                if if_none_exist == 'ignore':
+                    pass
+                elif if_none_exist == 'raise':
+                    raise RuntimeError(f"Param `{k}` not existed in `{params_override}`.")
+                else:
+                    raise ValueError(f"`{if_none_exist}` is not a valid option.")
+        return out
 
     def forward(  # type: ignore
-        self, input: Tensor, params: Optional[Dict[str, Tensor]] = None  # type: ignore
+        self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs
     ) -> Tensor:
+        """Perform forward operations.
+
+        Args:
+            input: the input tensor.
+            params: the corresponding parameters for an operation.
+                If None, a new parameter suite will be generated.
+            **kwargs: key-value pairs to override the parameters and flags.
+        """
         in_tensor = self.__unpack_input__(input)
         self.__check_batching__(input)
         input_shape = in_tensor.shape
@@ -145,10 +194,18 @@ class _BasicAugmentationBase(nn.Module):
         batch_shape = in_tensor.shape
         if params is None:
             params = self.forward_parameters(batch_shape)
-        self._params = params
+            params = self._override_parameters(params, kwargs, in_place=True)
+        else:
+            params = self._override_parameters(params, kwargs, in_place=False)
 
-        output = self.apply_func(input, self._params)
-        return self.transform_output_tensor(output, input_shape)
+        if 'batch_prob' not in params:
+            params['batch_prob'] = torch.tensor([True] * batch_shape[0])
+
+        self._params = params
+        _flags = self._override_parameters(self.flags, kwargs, in_place=False)
+
+        output = self.apply_func(in_tensor, self._params, _flags)
+        return self.transform_output_tensor(output, input_shape) if self.keepdim else output
 
 
 class _AugmentationBase(_BasicAugmentationBase):
@@ -195,11 +252,12 @@ class _AugmentationBase(_BasicAugmentationBase):
     def identity_matrix(self, input: Tensor) -> Tensor:
         raise NotImplementedError
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         raise NotImplementedError
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None,
+        flags: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         raise NotImplementedError
 
@@ -207,46 +265,57 @@ class _AugmentationBase(_BasicAugmentationBase):
         self,
         in_tensor: Tensor,
         params: Dict[str, Tensor],
+        flags: Optional[Dict[str, Any]] = None
     ) -> Tensor:
+        if flags is None:
+            flags = self.flags
         to_apply = params['batch_prob']
 
         # if no augmentation needed
-        if torch.sum(to_apply) == 0:
+        if not to_apply.any():
             output = in_tensor
             trans_matrix = self.identity_matrix(in_tensor)
         # if all data needs to be augmented
-        elif torch.sum(to_apply) == len(to_apply):
-            trans_matrix = self.compute_transformation(in_tensor, params)
-            output = self.apply_transform(in_tensor, params, trans_matrix)
+        elif to_apply.all():
+            trans_matrix = self.compute_transformation(in_tensor, params, flags)
+            output = self.apply_transform(in_tensor, params, trans_matrix, flags)
         else:
             output = in_tensor.clone()
             trans_matrix = self.identity_matrix(in_tensor)
-            trans_matrix[to_apply] = self.compute_transformation(in_tensor[to_apply], params)
-            output[to_apply] = self.apply_transform(in_tensor[to_apply], params, trans_matrix[to_apply])
+            trans_matrix[to_apply] = self.compute_transformation(in_tensor[to_apply], params, flags)
+            output[to_apply] = self.apply_transform(in_tensor[to_apply], params, trans_matrix[to_apply], flags)
 
         self._transform_matrix = trans_matrix
 
         return output
 
-    def forward(  # type: ignore
-        self,
-        input: Tensor,
-        params: Optional[Dict[str, Tensor]] = None,  # type: ignore
-    ) -> Tensor:
-        in_tensor = self.__unpack_input__(input)
-        self.__check_batching__(input)
-        input_shape = in_tensor.shape
-        in_tensor = self.transform_tensor(in_tensor)
-        batch_shape = in_tensor.shape
+    # def forward(  # type: ignore
+    #     self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs
+    # ) -> Tensor:
+    #     """Perform forward operations.
 
-        if params is None:
-            params = self.forward_parameters(batch_shape)
-        if 'batch_prob' not in params:
-            params['batch_prob'] = torch.tensor([True] * batch_shape[0])
-            # TODO(jian): we cannot throw a warning every time.
-            # warnings.warn("`batch_prob` is not found in params. Will assume applying on all data.")
+    #     Args:
+    #         input: the input tensor.
+    #         params: the corresponding parameters for an operation.
+    #             If None, a new parameter suite will be generated.
+    #         **kwargs: key-value pairs to override the parameters and flags.
+    #     """
+    #     in_tensor = self.__unpack_input__(input)
+    #     self.__check_batching__(input)
+    #     input_shape = in_tensor.shape
+    #     in_tensor = self.transform_tensor(in_tensor)
+    #     batch_shape = in_tensor.shape
+    #     if params is None:
+    #         params = self.forward_parameters(batch_shape)
+    #         params = self._override_parameters(params, kwargs, in_place=True)
+    #     else:
+    #         params = self._override_parameters(params, kwargs, in_place=False)
 
-        self._params = params
-        output = self.apply_func(in_tensor, self._params)
+    #     if 'batch_prob' not in params:
+    #         params['batch_prob'] = torch.tensor([True] * batch_shape[0])
 
-        return _transform_output_shape(output, input_shape) if self.keepdim else output
+    #     self._params = params
+    #     _flags = self._override_parameters(self.flags, kwargs, in_place=False)
+
+    #     output = self.apply_func(in_tensor, self._params, _flags)
+    #     return self.transform_output_tensor(output, input_shape) if self.keepdim else output

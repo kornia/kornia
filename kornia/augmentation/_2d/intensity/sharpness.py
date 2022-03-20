@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple, Union, cast
+from typing import Any, Dict, Optional, Tuple, Union, cast
 
 from torch import Tensor
 
@@ -58,7 +58,8 @@ class RandomSharpness(IntensityAugmentationBase2D):
         )
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None,
+        flags: Optional[Dict[str, Any]] = None,
     ) -> Tensor:
         factor = params["sharpness"]
         return sharpness(input, factor)

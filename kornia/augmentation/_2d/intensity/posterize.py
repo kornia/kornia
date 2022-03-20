@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple, Union, cast
+from typing import Any, Dict, Optional, Tuple, Union, cast
 
 from torch import Tensor
 
@@ -59,6 +59,7 @@ class RandomPosterize(IntensityAugmentationBase2D):
         self._param_generator = cast(rg.PosterizeGenerator, rg.PosterizeGenerator(bits))
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None,
+        flags: Optional[Dict[str, Any]] = None,
     ) -> Tensor:
         return posterize(input, params["bits_factor"].to(input.device))

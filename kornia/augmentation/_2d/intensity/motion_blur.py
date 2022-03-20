@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
 from torch import Tensor
@@ -82,7 +82,8 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         self.flags = dict(border_type=BorderType.get(border_type), resample=Resample.get(resample))
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None,
+        flags: Optional[Dict[str, Any]] = None,
     ) -> Tensor:
         # sample a kernel size
         kernel_size_list: List[int] = params["ksize_factor"].tolist()
@@ -92,6 +93,6 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
             kernel_size=kernel_size_list[idx],
             angle=params["angle_factor"],
             direction=params["direction_factor"],
-            border_type=self.flags["border_type"].name.lower(),
-            mode=self.flags["resample"].name.lower(),
+            border_type=flags["border_type"].name.lower(),
+            mode=flags["resample"].name.lower(),
         )

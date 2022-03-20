@@ -522,8 +522,6 @@ class TestAugmentationSequential:
 
         reproducibility_test((inp, mask, bbox, keypoints), aug)
 
-        # TODO(jian): we sometimes throw the following error
-        # AttributeError: 'tuple' object has no attribute 'shape'
         out_inv = aug.inverse(*out)
         assert out_inv[0].shape == inp.shape
         assert out_inv[1].shape == mask.shape

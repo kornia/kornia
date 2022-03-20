@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Union, cast
+from typing import Any, Dict, Optional, Union, cast
 
 from torch import Tensor
 
@@ -78,17 +78,18 @@ class RandomPerspective3D(AugmentationBase3D):
         self.flags = dict(resample=Resample.get(resample), align_corners=align_corners)
         self._param_generator = cast(rg.PerspectiveGenerator3D, rg.PerspectiveGenerator3D(distortion_scale))
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return get_perspective_transform3d(params["start_points"], params["end_points"]).to(input)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None,
+        flags: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         transform = cast(Tensor, transform)
         return warp_perspective3d(
             input,
             transform,
             (input.shape[-3], input.shape[-2], input.shape[-1]),
-            flags=self.flags["resample"].name.lower(),
-            align_corners=self.flags["align_corners"],
+            flags=flags["resample"].name.lower(),
+            align_corners=flags["align_corners"],
         )

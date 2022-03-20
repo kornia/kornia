@@ -273,7 +273,7 @@ class ImageSequential(SequentialBase):
                 # Standardize shape
                 if recompute:
                     mat: torch.Tensor = kornia.eye_like(3, input)
-                    mat[to_apply] = module.compute_transformation(input[to_apply], param.data)  # type: ignore
+                    mat[to_apply] = module.compute_transformation(input[to_apply], param.data, module.flags)  # type: ignore
                 else:
                     mat = torch.as_tensor(module._transform_matrix, device=input.device, dtype=input.dtype)
                 res_mat = mat if res_mat is None else mat @ res_mat

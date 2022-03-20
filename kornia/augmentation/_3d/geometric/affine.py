@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple, Union, cast
+from typing import Any, Dict, Optional, Tuple, Union, cast
 
 from torch import Tensor
 
@@ -129,7 +129,7 @@ class RandomAffine3D(AugmentationBase3D):
         self.flags = dict(resample=Resample.get(resample), align_corners=align_corners)
         self._param_generator = cast(rg.AffineGenerator3D, rg.AffineGenerator3D(degrees, translate, scale, shears))
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         transform: Tensor = get_affine_matrix3d(
             params["translations"],
             params["center"],
@@ -145,13 +145,14 @@ class RandomAffine3D(AugmentationBase3D):
         return transform
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None,
+        flags: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         transform = cast(Tensor, transform)
         return warp_affine3d(
             input,
             transform[:, :3, :],
             (input.shape[-3], input.shape[-2], input.shape[-1]),
-            self.flags["resample"].name.lower(),
-            align_corners=self.flags["align_corners"],
+            flags["resample"].name.lower(),
+            align_corners=flags["align_corners"],
         )

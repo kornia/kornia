@@ -143,14 +143,14 @@ class CommonTests(BaseTester):
         expected_transformation_shape = torch.Size((generated_params['batch_prob'].sum(), 3, 3))
         test_input = torch.ones(batch_shape, device=self.device, dtype=self.dtype)
         transformation = augmentation.compute_transformation(
-            test_input[generated_params['batch_prob']], generated_params
+            test_input[generated_params['batch_prob']], generated_params, augmentation.flags
         )
         assert transformation.shape == expected_transformation_shape
 
         # apply_transform can be called and returns the correct batch sized output
         if generated_params['batch_prob'].sum() != 0:
             output = augmentation.apply_transform(
-                test_input[generated_params['batch_prob']], generated_params, transformation
+                test_input[generated_params['batch_prob']], generated_params, transformation, augmentation.flags
             )
             assert output.shape[0] == generated_params['batch_prob'].sum()
         else:

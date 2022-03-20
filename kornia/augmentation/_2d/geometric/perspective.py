@@ -75,28 +75,22 @@ class RandomPerspective(GeometricAugmentationBase2D):
         )
         self.flags: Dict[str, Any] = dict(align_corners=align_corners, resample=Resample.get(resample))
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return get_perspective_transform(params["start_points"].to(input), params["end_points"].to(input))
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None,
+        flags: Optional[Dict[str, Any]] = None,
     ) -> Tensor:
         _, _, height, width = input.shape
         transform = cast(Tensor, transform)
-
-        interpolation = self.flags["resample"].name.lower()
-        if "resample" in params:  # if params define the interpolation mode, overwrite it
-            interpolation = params["resample"].name.lower()
-        align_corners = self.flags["align_corners"]
-        if "align_corners" in params:
-            align_corners = params["align_corners"]
 
         return warp_perspective(
             input,
             transform,
             (height, width),
-            mode=interpolation,
-            align_corners=align_corners,
+            mode=flags["resample"].name.lower(),
+            align_corners=flags["align_corners"],
         )
 
     def inverse_transform(
@@ -104,8 +98,9 @@ class RandomPerspective(GeometricAugmentationBase2D):
         input: Tensor,
         transform: Optional[Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
-        **kwargs,
+        flags: Optional[Dict[str, Any]] = None,
     ) -> Tensor:
         return self.apply_transform(
-            input, params=self._params, transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype)
+            input, params=self._params, transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype),
+            flags=flags
         )

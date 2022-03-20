@@ -80,8 +80,8 @@ class ApplyInverseImpl(ApplyInverseInterface):
             param: the corresponding parameters to the module.
         """
         mat: Optional[torch.Tensor]
-        if hasattr(module, "_transform_matrix") and module._transform_matrix is not None:
-            mat = cast(torch.Tensor, module._transform_matrix)
+        if hasattr(module, "transform_matrix") and module.transform_matrix is not None:
+            mat = cast(torch.Tensor, module.transform_matrix)
         else:
             mat = cls._get_transformation(input, module, param)
         mat = torch.as_tensor(mat, device=input.device, dtype=input.dtype)
@@ -108,8 +108,8 @@ class ApplyInverseImpl(ApplyInverseInterface):
             param: the corresponding parameters to the module.
         """
         mat: Optional[torch.Tensor]
-        if hasattr(module, "_transform_matrix") and module._transform_matrix is not None:
-            mat = cast(torch.Tensor, module._transform_matrix)
+        if hasattr(module, "transform_matrix") and module.transform_matrix is not None:
+            mat = cast(torch.Tensor, module.transform_matrix)
         else:
             mat = cls._get_transformation(input, module, param)
         mat = torch.as_tensor(mat, device=input.device, dtype=input.dtype)
@@ -132,7 +132,7 @@ class ApplyInverseImpl(ApplyInverseInterface):
 
         if isinstance(module, GeometricAugmentationBase2D):
             _param = cast(Dict[str, torch.Tensor], param.data)  # type: ignore
-            mat = module.get_transformation_matrix(input, _param)
+            mat = module.get_transformation_matrix(input, _param, flags=module.flags)
         elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
             _param = cast(List[ParamItem], param.data)  # type: ignore
             mat = module.get_transformation_matrix(input, _param)  # type: ignore
@@ -248,11 +248,12 @@ class MaskApplyInverse(ApplyInverseImpl):
             if 'values' in _param:
                 _param['values'] = torch.zeros_like(_param['values'])  # Always pad with zeros
 
-            if 'resample' in module.flags:
-                _param['resample'] = Resample.NEAREST
-                _param['align_corners'] = None
+            extra_args = dict(
+                resample=Resample.NEAREST,
+                align_corners=None
+            )
 
-            input = module(input, params=_param)
+            input = module(input, params=_param, **extra_args)
         elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
             _param = cast(List[ParamItem], _param)
             temp = module.apply_inverse_func
@@ -274,20 +275,17 @@ class MaskApplyInverse(ApplyInverseImpl):
                 to apply transformations.
             param: the corresponding parameters to the module.
         """
-        extra_args = {}
-        if 'resample' in module.flags:
-            param.data['resample'] = Resample.NEAREST
-            extra_args['resample'] = Resample.NEAREST.name.lower()
-        if 'align_corners' in module.flags:
-            param.data['align_corners'] = None
-            extra_args['align_corners'] = None
 
         if isinstance(module, GeometricAugmentationBase2D):
+            extra_args = dict(
+                resample=Resample.NEAREST,
+                align_corners=None
+            )
             input = module.inverse(input, params=None if param is None else cast(Dict, param.data), **extra_args)
         elif isinstance(module, kornia.augmentation.ImageSequential):
             temp = module.apply_inverse_func
             module.apply_inverse_func = MaskApplyInverse
-            input = module.inverse(input, params=None if param is None else cast(List, param.data), **extra_args)
+            input = module.inverse(input, params=None if param is None else cast(List, param.data))
             module.apply_inverse_func = temp
         return input
 

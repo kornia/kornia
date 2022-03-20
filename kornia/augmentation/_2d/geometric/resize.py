@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple, Union, cast
+from typing import Any, Dict, Optional, Tuple, Union, cast
 
 import torch
 from torch import Tensor
@@ -36,7 +36,7 @@ class Resize(GeometricAugmentationBase2D):
         self._param_generator = cast(rg.ResizeGenerator, rg.ResizeGenerator(resize_to=size, side=side))
         self.flags = dict(size=size, side=side, resample=Resample.get(resample), align_corners=align_corners)
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         if params["output_size"] == input.shape[-2:]:
             return eye_like(3, input)
 
@@ -45,18 +45,12 @@ class Resize(GeometricAugmentationBase2D):
         return transform
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None,
+        flags: Optional[Dict[str, Any]] = None,
     ) -> Tensor:
         B, C, _, _ = input.shape
         out_size = tuple(params["output_size"][0].tolist())
         out = torch.empty(B, C, *out_size, device=input.device, dtype=input.dtype)
-
-        interpolation = (self.flags["resample"].name).lower()
-        if "resample" in params:  # if params define the interpolation mode, overwrite it
-            interpolation = (params["resample"].name).lower()
-        align_corners = self.flags["align_corners"]
-        if "align_corners" in params:
-            align_corners = params["align_corners"]
 
         for i in range(B):
             x1 = int(params["src"][i, 0, 0])
@@ -66,8 +60,8 @@ class Resize(GeometricAugmentationBase2D):
             out[i] = resize(
                 input[i : i + 1, :, y1:y2, x1:x2],
                 out_size,
-                interpolation=interpolation,
-                align_corners=align_corners,
+                interpolation=flags["resample"].name.lower(),
+                align_corners=flags["align_corners"],
             )
         return out
 
@@ -76,14 +70,12 @@ class Resize(GeometricAugmentationBase2D):
         input: Tensor,
         transform: Optional[Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
-        **kwargs,
+        flags: Optional[Dict[str, Any]] = None,
     ) -> Tensor:
         size = cast(Tuple[int, int], size)
-        mode = self.flags["resample"].name.lower() if "resample" not in kwargs else kwargs["resample"]
-        align_corners = self.flags["align_corners"] if "align_corners" not in kwargs else kwargs["align_corners"]
-        padding_mode = "zeros" if "padding_mode" not in kwargs else kwargs["padding_mode"]
         transform = cast(Tensor, transform)
-        return crop_by_transform_mat(input, transform[:, :2, :], size, mode, padding_mode, align_corners)
+        return crop_by_transform_mat(
+            input, transform[:, :2, :], size, flags["resample"], flags["padding_mode"], flags["align_corners"])
 
 
 class LongestMaxSize(Resize):

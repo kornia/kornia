@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple, Union, cast
+from typing import Any, Dict, Optional, Tuple, Union, cast
 
 from torch import Tensor
 from torch.nn.functional import pad
@@ -95,8 +95,9 @@ class RandomCrop3D(AugmentationBase3D):
         )
         self._param_generator = cast(rg.CropGenerator3D, rg.CropGenerator3D(size, None))
 
-    def precrop_padding(self, input: Tensor) -> Tensor:
-        padding = self.flags["padding"]
+    def precrop_padding(self, input: Tensor, flags: Optional[Dict[str, Any]] = None) -> Tensor:
+        flags = self.flags if flags is None else flags
+        padding = flags["padding"]
         if padding is not None:
             if isinstance(padding, int):
                 padding = [padding, padding, padding, padding, padding, padding]
@@ -106,43 +107,46 @@ class RandomCrop3D(AugmentationBase3D):
                 padding = [padding[0], padding[1], padding[2], padding[3], padding[4], padding[5]]  # type: ignore
             else:
                 raise ValueError(f"`padding` must be an integer, 3-element-list or 6-element-list. Got {padding}.")
-            input = pad(input, padding, value=self.flags["fill"], mode=self.flags["padding_mode"])
+            input = pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
 
-        if self.flags["pad_if_needed"] and input.shape[-3] < self.flags["size"][0]:
-            padding = [0, 0, 0, 0, self.flags["size"][0] - input.shape[-3], self.flags["size"][0] - input.shape[-3]]
-            input = pad(input, padding, value=self.flags["fill"], mode=self.flags["padding_mode"])
+        if flags["pad_if_needed"] and input.shape[-3] < flags["size"][0]:
+            padding = [0, 0, 0, 0, flags["size"][0] - input.shape[-3], flags["size"][0] - input.shape[-3]]
+            input = pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
 
-        if self.flags["pad_if_needed"] and input.shape[-2] < self.flags["size"][1]:
-            padding = [0, 0, (self.flags["size"][1] - input.shape[-2]), self.flags["size"][1] - input.shape[-2], 0, 0]
-            input = pad(input, padding, value=self.flags["fill"], mode=self.flags["padding_mode"])
+        if flags["pad_if_needed"] and input.shape[-2] < flags["size"][1]:
+            padding = [0, 0, (flags["size"][1] - input.shape[-2]), flags["size"][1] - input.shape[-2], 0, 0]
+            input = pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
 
-        if self.flags["pad_if_needed"] and input.shape[-1] < self.flags["size"][2]:
-            padding = [self.flags["size"][2] - input.shape[-1], self.flags["size"][2] - input.shape[-1], 0, 0, 0, 0]
-            input = pad(input, padding, value=self.flags["fill"], mode=self.flags["padding_mode"])
+        if flags["pad_if_needed"] and input.shape[-1] < flags["size"][2]:
+            padding = [flags["size"][2] - input.shape[-1], flags["size"][2] - input.shape[-1], 0, 0, 0, 0]
+            input = pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
 
         return input
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         transform: Tensor = get_perspective_transform3d(params["src"].to(input), params["dst"].to(input))
         transform = transform.expand(input.shape[0], -1, -1)
         return transform
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None,
+        flags: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         transform = cast(Tensor, transform)
         return crop_by_transform_mat3d(
             input,
             transform,
-            self.flags["size"],
-            mode=self.flags["resample"].name.lower(),
-            align_corners=self.flags["align_corners"],
+            flags["size"],
+            mode=flags["resample"].name.lower(),
+            align_corners=flags["align_corners"],
         )
 
     def forward(  # type: ignore
         self,
         input: Tensor,
         params: Optional[Dict[str, Tensor]] = None,
+        **kwargs
     ) -> Tensor:
+        # TODO: need to align 2D implementations
         input = self.precrop_padding(input)
         return super().forward(input, params)  # type:ignore

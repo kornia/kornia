@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from torch import Tensor
 
@@ -51,10 +51,11 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
         )
         self.flags = dict(kernel_size=kernel_size, border_type=border_type, normalized=normalized)
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return self.identity_matrix(input)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None,
+        flags: Optional[Dict[str, Any]] = None,
     ) -> Tensor:
-        return box_blur(input, self.flags["kernel_size"], self.flags["border_type"], self.flags["normalized"])
+        return box_blur(input, flags["kernel_size"], flags["border_type"], flags["normalized"])

@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Any, Dict
 
 from torch import Tensor
 
@@ -21,5 +21,5 @@ class IntensityAugmentationBase2D(AugmentationBase2D):
           to the batch form ``False``.
     """
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return self.identity_matrix(input)

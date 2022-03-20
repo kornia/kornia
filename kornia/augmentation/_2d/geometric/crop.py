@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
 from torch import Tensor
@@ -103,96 +103,95 @@ class RandomCrop(GeometricAugmentationBase2D):
             cropping_mode=cropping_mode,
         )
 
-    def compute_padding(self, shape: torch.Size) -> List[int]:
+    def compute_padding(self, shape: torch.Size, flags: Optional[Dict[str, Any]] = None) -> List[int]:
+        flags = self.flags if flags is None else flags
         if len(shape) != 4:
             raise AssertionError(f"Expected BCHW. Got {shape}.")
         padding = [0, 0, 0, 0]
-        if self.flags["padding"] is not None:
-            if isinstance(self.flags["padding"], int):
-                padding = [self.flags["padding"]] * 4
-            elif isinstance(self.flags["padding"], tuple) and len(self.flags["padding"]) == 2:
+        if flags["padding"] is not None:
+            if isinstance(flags["padding"], int):
+                padding = [flags["padding"]] * 4
+            elif isinstance(flags["padding"], tuple) and len(flags["padding"]) == 2:
                 padding = [
-                    self.flags["padding"][1],
-                    self.flags["padding"][1],
-                    self.flags["padding"][0],
-                    self.flags["padding"][0],
+                    flags["padding"][1],
+                    flags["padding"][1],
+                    flags["padding"][0],
+                    flags["padding"][0],
                 ]
-            elif isinstance(self.flags["padding"], tuple) and len(self.flags["padding"]) == 4:
+            elif isinstance(flags["padding"], tuple) and len(flags["padding"]) == 4:
                 padding = [
-                    self.flags["padding"][3],
-                    self.flags["padding"][2],
-                    self.flags["padding"][1],
-                    self.flags["padding"][0],
+                    flags["padding"][3],
+                    flags["padding"][2],
+                    flags["padding"][1],
+                    flags["padding"][0],
                 ]
             else:
-                raise RuntimeError(f"Expect `padding` to be a scalar, or length 2/4 list. Got {self.flags['padding']}.")
+                raise RuntimeError(f"Expect `padding` to be a scalar, or length 2/4 list. Got {flags['padding']}.")
 
-        if self.flags["pad_if_needed"] and shape[-2] < self.flags["size"][0]:
-            padding = [0, 0, (self.flags["size"][0] - shape[-2]), self.flags["size"][0] - shape[-2]]
+        if flags["pad_if_needed"] and shape[-2] < flags["size"][0]:
+            padding = [0, 0, (flags["size"][0] - shape[-2]), flags["size"][0] - shape[-2]]
 
-        if self.flags["pad_if_needed"] and shape[-1] < self.flags["size"][1]:
-            padding = [self.flags["size"][1] - shape[-1], self.flags["size"][1] - shape[-1], 0, 0]
+        if flags["pad_if_needed"] and shape[-1] < flags["size"][1]:
+            padding = [flags["size"][1] - shape[-1], flags["size"][1] - shape[-1], 0, 0]
 
         return padding
 
-    def precrop_padding(self, input: Tensor, padding: List[int] = None) -> Tensor:
+    def precrop_padding(
+        self, input: Tensor, padding: List[int] = None, flags: Optional[Dict[str, Any]] = None
+    ) -> Tensor:
+        flags = self.flags if flags is None else flags
         if padding is None:
             padding = self.compute_padding(input.shape)
 
-        input = pad(input, padding, value=self.flags["fill"], mode=self.flags["padding_mode"])
+        input = pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
 
         return input
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
-        if self.flags["cropping_mode"] == "resample":
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+        if flags["cropping_mode"] == "resample":
             transform: Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
             return transform
-        if self.flags["cropping_mode"] == "slice":  # Skip the computation for slicing.
+        if flags["cropping_mode"] == "slice":  # Skip the computation for slicing.
             return self.identity_matrix(input)
-        raise NotImplementedError(f"Not supported type: {self.flags['cropping_mode']}.")
+        raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None,
+        flags: Optional[Dict[str, Any]] = None
     ) -> Tensor:
-        if self.flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
+        flags = self.flags if flags is None else flags
+        if flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
             transform = cast(Tensor, transform)
-
-            interpolation = self.flags["resample"].name.lower()
-            if "resample" in params:  # if params define the interpolation mode, overwrite it
-                interpolation = params["resample"].name.lower()
-            align_corners = self.flags["align_corners"]
-            if "align_corners" in params:
-                align_corners = params["align_corners"]
 
             return crop_by_transform_mat(
                 input,
                 transform,
-                self.flags["size"],
-                mode=interpolation,
+                flags["size"],
+                mode=flags["resample"].name.lower(),
                 padding_mode="zeros",
-                align_corners=align_corners,
+                align_corners=flags["align_corners"],
             )
-        if self.flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
-            return crop_by_indices(input, params["src"], self.flags["size"])
-        raise NotImplementedError(f"Not supported type: {self.flags['cropping_mode']}.")
+        if flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
+            return crop_by_indices(input, params["src"], flags["size"])
+        raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def inverse_transform(
         self,
         input: Tensor,
         transform: Optional[Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
-        **kwargs,
+        flags: Optional[Dict[str, Any]] = None
     ) -> Tensor:
-        if self.flags["cropping_mode"] != "resample":
+        if flags["cropping_mode"] != "resample":
             raise NotImplementedError(
-                f"`inverse` is only applicable for resample cropping mode. Got {self.flags['cropping_mode']}."
+                f"`inverse` is only applicable for resample cropping mode. Got {flags['cropping_mode']}."
             )
         size = cast(Tuple[int, int], size)
-        mode = self.flags["resample"].name.lower() if "resample" not in kwargs else kwargs["resample"]
-        align_corners = self.flags["align_corners"] if "align_corners" not in kwargs else kwargs["align_corners"]
-        padding_mode = "zeros" if "padding_mode" not in kwargs else kwargs["padding_mode"]
         transform = cast(Tensor, transform)
-        return crop_by_transform_mat(input, transform[:, :2, :], size, mode, padding_mode, align_corners)
+        return crop_by_transform_mat(
+            input, transform[:, :2, :], size, flags["resample"].name.lower(),
+            "zeros", flags["align_corners"]
+        )
 
     def inverse(
         self,
@@ -227,27 +226,30 @@ class RandomCrop(GeometricAugmentationBase2D):
         self,
         input: Tensor,
         params: Optional[Dict[str, Tensor]] = None,
+        **kwargs
     ) -> Tensor:
         padding_size = params.get("padding_size") if params else None
         if padding_size is not None:
             input_pad = padding_size.unique(dim=0).cpu().squeeze().numpy().tolist()
         else:
             input_pad = None
+        
+        flags = self._override_parameters(self.flags, kwargs, in_place=False)
 
         if isinstance(input, (tuple, list)):
             ori_shape = input[0].shape
             input_temp = _transform_input(input[0])
-            input_pad = self.compute_padding(input[0].shape) if input_pad is None else input_pad
-            _input = (self.precrop_padding(input_temp, input_pad), input[1])
+            input_pad = self.compute_padding(input[0].shape, flags) if input_pad is None else input_pad
+            _input = (self.precrop_padding(input_temp, input_pad, flags), input[1])
             _input = _transform_output_shape(_input, ori_shape) if self.keepdim else _input  # type:ignore
         else:
-            input = cast(Tensor, input)  # TODO: weird that cast is not working under this context.
+            input = cast(Tensor, input)
             ori_shape = input.shape
             input_temp = _transform_input(input)
-            input_pad = self.compute_padding(input_temp.shape) if input_pad is None else input_pad
-            _input = self.precrop_padding(input_temp, input_pad)  # type: ignore
+            input_pad = self.compute_padding(input_temp.shape, flags) if input_pad is None else input_pad
+            _input = self.precrop_padding(input_temp, input_pad, flags)  # type: ignore
             _input = _transform_output_shape(_input, ori_shape) if self.keepdim else _input  # type:ignore
-        out = super().forward(_input, params)  # type:ignore
+        out = super().forward(_input, params, **kwargs)  # type:ignore
 
         # Update the actual input size for inverse
         if "padding_size" not in self._params:
