@@ -7,10 +7,9 @@ from kornia.utils import image_to_tensor, tensor_to_image
 
 class ImageColor(Enum):
     r"""Enum that represents an image color space."""
-    GRAY = 0
-    RGB = 1
-    BGR = 2
-    NONE = 4
+    GRAY8 = 0
+    RGB8 = 1
+    BGR8 = 2
 
 
 class Image(Tensor):
@@ -87,7 +86,7 @@ class Image(Tensor):
     """
     # defaults
     _meta: Dict[str, Any] = {}
-    _meta['color'] = ImageColor.RGB
+    _meta['color'] = ImageColor.RGB8
     _meta['mean'] = None
     _meta['std'] = None
 

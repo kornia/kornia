@@ -5,6 +5,7 @@ from .extract_patches import CombineTensorPatches, ExtractTensorPatches, combine
 from .face_detection import *
 from .histogram_matching import histogram_matching, interp
 from .image_stitching import ImageStitcher
+from .io import read_image
 from .lambda_module import Lambda
 from .vit import VisionTransformer
 from .vit_mobile import MobileViT
@@ -24,4 +25,5 @@ __all__ = [
     "ImageStitcher",
     "distance_transform",
     "DistanceTransform",
+    "read_image",
 ]

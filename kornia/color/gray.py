@@ -1,10 +1,10 @@
 from typing import Optional
 
 from kornia.color.rgb import bgr_to_rgb
-from kornia.core import Image, ImageColor, Module, Tensor, concatenate
+from kornia.core import Module, Tensor, concatenate
 
 
-def grayscale_to_rgb(image: Image) -> Image:
+def grayscale_to_rgb(image: Tensor) -> Tensor:
     r"""Convert a grayscale image to RGB version of image.
 
     .. image:: _static/img/grayscale_to_rgb.png
@@ -22,24 +22,16 @@ def grayscale_to_rgb(image: Image) -> Image:
         >>> input = torch.randn(2, 1, 4, 5)
         >>> gray = grayscale_to_rgb(input) # 2x3x4x5
     """
-    if not isinstance(image, (Image, Tensor)):
+    if not isinstance(image, Tensor):
         raise TypeError(f"Input type is not an image or tensor. " f"Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 1:
         raise ValueError(f"Input size must have a shape of (*, 1, H, W). " f"Got {image.shape}.")
 
-    if isinstance(image, Image) and image.color is not ImageColor.GRAY:
-        raise ValueError(f"Cannot convert to RGB: {image.color}.")
-
-    rgb = concatenate([image, image, image], dim=-3)
-
-    if isinstance(rgb, Image):
-        rgb.color = ImageColor.RGB
-
-    return rgb  # type: ignore[return-value]
+    return concatenate([image, image, image], dim=-3)
 
 
-def rgb_to_grayscale(image: Image, rgb_weights: Optional[Tensor] = None) -> Image:
+def rgb_to_grayscale(image: Tensor, rgb_weights: Optional[Tensor] = None) -> Tensor:
     r"""Convert a RGB image to grayscale version of image.
 
     .. image:: _static/img/rgb_to_grayscale.png
@@ -62,14 +54,11 @@ def rgb_to_grayscale(image: Image, rgb_weights: Optional[Tensor] = None) -> Imag
         >>> input = torch.rand(2, 3, 4, 5)
         >>> gray = rgb_to_grayscale(input) # 2x1x4x5
     """
-    if not isinstance(image, (Image, Tensor)):
+    if not isinstance(image, Tensor):
         raise TypeError(f"Input type is not a Image or Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
-
-    if isinstance(image, Image) and image.color is not ImageColor.RGB:
-        raise ValueError(f"Cannot convert to grayscale: {image.color}.")
 
     if rgb_weights is None:
         rgb_weights = Tensor([0.299, 0.587, 0.114])
@@ -93,13 +82,10 @@ def rgb_to_grayscale(image: Image, rgb_weights: Optional[Tensor] = None) -> Imag
 
     output = w_r * r + w_g * g + w_b * b
 
-    if isinstance(output, Image):
-        output.color = ImageColor.GRAY
-
-    return output  # type: ignore[return-value]
+    return output
 
 
-def bgr_to_grayscale(image: Image) -> Image:
+def bgr_to_grayscale(image: Tensor) -> Tensor:
     r"""Convert a BGR image to grayscale.
 
     The image data is assumed to be in the range of (0, 1). First flips to RGB, then converts.
@@ -115,20 +101,14 @@ def bgr_to_grayscale(image: Image) -> Image:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> gray = bgr_to_grayscale(input) # 2x1x4x5
     """
-    if not isinstance(image, (Image, Tensor)):
+    if not isinstance(image, Tensor):
         raise TypeError(f"Input type is not an image or tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    if isinstance(image, Image) and image.color is not ImageColor.BGR:
-        raise ValueError(f"Cannot convert to grayscale: {image.color}.")
-
     image_rgb = bgr_to_rgb(image)
     image_bgr = rgb_to_grayscale(image_rgb)  # type: ignore[arg-type]
-
-    if isinstance(image_bgr, Image):
-        image_bgr.color = ImageColor.BGR
 
     return image_bgr
 
@@ -152,7 +132,7 @@ class GrayscaleToRgb(Module):
         >>> output = rgb(input)  # 2x3x4x5
     """
 
-    def forward(self, image: Image) -> Image:
+    def forward(self, image: Tensor) -> Tensor:
         return grayscale_to_rgb(image)
 
 
@@ -181,7 +161,7 @@ class RgbToGrayscale(Module):
             rgb_weights = Tensor([0.299, 0.587, 0.114])
         self.rgb_weights = rgb_weights
 
-    def forward(self, image: Image) -> Image:
+    def forward(self, image: Tensor) -> Tensor:
         return rgb_to_grayscale(image, rgb_weights=self.rgb_weights)
 
 
@@ -204,5 +184,5 @@ class BgrToGrayscale(Module):
         >>> output = gray(input)  # 2x1x4x5
     """
 
-    def forward(self, image: Image) -> Image:
+    def forward(self, image: Tensor) -> Tensor:
         return bgr_to_grayscale(image)

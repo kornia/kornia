@@ -11,12 +11,12 @@ from kornia.testing import assert_close
 class TestImage:
     def test_smoke(self, device):
         data = torch.randint(0, 255, (3, 4, 5), device=device, dtype=torch.uint8)
-        img = Image(data, ImageColor.RGB)
+        img = Image(data, ImageColor.RGB8)
         assert isinstance(img, Image)
         assert img.channels == 3
         assert img.height == 4
         assert img.width == 5
-        assert img.color == ImageColor.RGB
+        assert img.color == ImageColor.RGB8
         assert not img.is_batch
         assert img.resolution == (4, 5)
         assert img.shape == (3, 4, 5)
@@ -27,12 +27,12 @@ class TestImage:
 
     def test_batch(self, device, dtype):
         data = torch.randint(0, 255, (2, 1, 4, 5), device=device, dtype=dtype)
-        img = Image(data, ImageColor.GRAY)
+        img = Image(data, ImageColor.GRAY8)
         assert isinstance(img, Image)
         assert img.channels == 1
         assert img.height == 4
         assert img.width == 5
-        assert img.color == ImageColor.GRAY
+        assert img.color == ImageColor.GRAY8
         assert img.is_batch
         assert img.resolution == (4, 5)
         assert img.shape == (2, 1, 4, 5)
@@ -47,7 +47,7 @@ class TestImage:
         assert x1.channels == 1
         assert x1.height == 4
         assert x1.width == 5
-        assert x1.color == ImageColor.GRAY
+        assert x1.color == ImageColor.GRAY8
         assert not x1.is_batch
         assert x1.resolution == (4, 5)
         assert x1.shape == (1, 4, 5)
@@ -57,13 +57,13 @@ class TestImage:
     def test_numpy(self, device, dtype):
         # as it was from cv2.imread
         data = np.ones((4, 5, 3), dtype=np.uint8)
-        img = Image.from_numpy(data, color=ImageColor.BGR)
+        img = Image.from_numpy(data, color=ImageColor.BGR8)
         img = img.to(device, dtype)
         assert isinstance(img, Image)
         assert img.channels == 3
         assert img.height == 4
         assert img.width == 5
-        assert img.color == ImageColor.BGR
+        assert img.color == ImageColor.BGR8
         assert not img.is_batch
         assert img.resolution == (4, 5)
         assert img.shape == (3, 4, 5)
@@ -84,14 +84,14 @@ class TestImage:
 
     def test_dlpack(self, device, dtype):
         data = torch.rand((3, 4, 5), device=device, dtype=dtype)
-        color = ImageColor.RGB
+        color = ImageColor.RGB8
         img = Image(data, color)
         assert_close(data, Image.from_dlpack(img.to_dlpack(), color))
 
     def test_denormalize(self, device, dtype):
         # opencv case
         data = np.ones((4, 5, 3), dtype=np.uint8)
-        img = Image.from_numpy(data, ImageColor.BGR)
+        img = Image.from_numpy(data, ImageColor.BGR8)
 
         # type error: must be floating_point.
         # we assume that the user must convert to floating point
@@ -104,13 +104,13 @@ class TestImage:
 
         # data in floating point and ranges [0, 1]
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
-        img = Image(data, color=ImageColor.BGR, mean=[0, 0, 0], std=[255, 255, 255])
+        img = Image(data, color=ImageColor.BGR8, mean=[0, 0, 0], std=[255, 255, 255])
         assert img.mean().item() <= 1.0
         assert img.denormalize().mean().item() > 1.0
 
     def test_apply(self, device):
         data = torch.randint(0, 255, (3, 4, 5), device=device, dtype=torch.uint8)
-        img = Image(data, color=ImageColor.RGB)
+        img = Image(data, color=ImageColor.RGB8)
         assert isinstance(img, Image)
 
         # the user needs to normalize the image [0, 1] in floating point
@@ -120,7 +120,6 @@ class TestImage:
         assert img_gray.channels == 1
         assert img_gray.height == 4
         assert img_gray.width == 5
-        assert img_gray.color == ImageColor.GRAY
         assert img_gray.resolution == (4, 5)
 
         # apply a resize function
@@ -129,5 +128,4 @@ class TestImage:
         assert img_resize.channels == 1
         assert img_resize.height == 2
         assert img_resize.width == 3
-        assert img_resize.color == ImageColor.GRAY
         assert img_resize.resolution == (2, 3)
