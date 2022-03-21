@@ -39,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added default params for laf construction from xy and new tensor shape check (#1633)
 - Make nms2d jittable (#1637)
 - Add fn to automatically compute padding (#1634)
+- Add pillow_like option for ColorJitter to match torchvision. (#1611)
 
 ## :rocket: [0.6.3] - 2022-01-30
 ### :new:  New Features
