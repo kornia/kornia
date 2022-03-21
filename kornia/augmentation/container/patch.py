@@ -64,13 +64,13 @@ class PatchSequential(ImageSequential):
         >>> input = torch.randn(2, 3, 224, 224)
         >>> seq = PatchSequential(
         ...     ImageSequential(
-        ...         K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
+        ...         K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=0.5),
         ...         K.RandomPerspective(0.2, p=0.5),
         ...         K.RandomSolarize(0.1, 0.1, p=0.5),
         ...     ),
         ...     K.RandomAffine(360, p=1.0),
         ...     ImageSequential(
-        ...         K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
+        ...         K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=0.5),
         ...         K.RandomPerspective(0.2, p=0.5),
         ...         K.RandomSolarize(0.1, 0.1, p=0.5),
         ...     ),
@@ -93,7 +93,7 @@ class PatchSequential(ImageSequential):
         >>> input = torch.randn(2, 3, 224, 224)
         >>> seq = PatchSequential(
         ...     ImageSequential(
-        ...         K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
+        ...         K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=0.5),
         ...         K.RandomPerspective(0.2, p=0.5),
         ...         K.RandomSolarize(0.1, 0.1, p=0.5),
         ...     ),
@@ -180,7 +180,7 @@ class PatchSequential(ImageSequential):
 
         Example:
             >>> import kornia.augmentation as K
-            >>> pas = PatchSequential(K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), patchwise_apply=False)
+            >>> pas = PatchSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), patchwise_apply=False)
             >>> pas.extract_patches(torch.arange(16).view(1, 1, 4, 4), grid_size=(2, 2))
             tensor([[[[[ 0,  1],
                        [ 4,  5]]],
@@ -226,7 +226,7 @@ class PatchSequential(ImageSequential):
 
         Example:
             >>> import kornia.augmentation as K
-            >>> pas = PatchSequential(K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), patchwise_apply=False)
+            >>> pas = PatchSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), patchwise_apply=False)
             >>> out = pas.extract_patches(torch.arange(16).view(1, 1, 4, 4), grid_size=(2, 2))
             >>> pas.restore_from_patches(out, grid_size=(2, 2))
             tensor([[[[ 0,  1,  2,  3],

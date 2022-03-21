@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 
 from kornia.augmentation import (
+    ColorJiggle,
     ColorJitter,
     RandomAffine,
     RandomErasing,
@@ -14,13 +15,71 @@ from kornia.augmentation import (
 )
 
 
+class TestColorJiggleBackward:
+    @pytest.mark.parametrize("brightness", [0.8, torch.tensor(0.8), torch.tensor([0.8, 1.2])])
+    @pytest.mark.parametrize("contrast", [0.8, torch.tensor(0.8), torch.tensor([0.8, 1.2])])
+    @pytest.mark.parametrize("saturation", [0.8, torch.tensor(0.8), torch.tensor([0.8, 1.2])])
+    @pytest.mark.parametrize("hue", [0.1, torch.tensor(0.1), torch.tensor([-0.1, 0.1])])
+    @pytest.mark.parametrize("same_on_batch", [True, False])
+    def test_param(self, brightness, contrast, saturation, hue,
+                   same_on_batch, device, dtype):
+
+        _brightness = (
+            brightness
+            if isinstance(brightness, (int, float))
+            else nn.Parameter(brightness.clone().to(device=device, dtype=dtype))
+        )
+        _contrast = (
+            contrast
+            if isinstance(contrast, (int, float))
+            else nn.Parameter(contrast.clone().to(device=device, dtype=dtype))
+        )
+        _saturation = (
+            saturation
+            if isinstance(saturation, (int, float))
+            else nn.Parameter(saturation.clone().to(device=device, dtype=dtype))
+        )
+        _hue = hue if isinstance(hue, (int, float)) else nn.Parameter(hue.clone().to(device=device, dtype=dtype))
+
+        torch.manual_seed(0)
+        input = torch.randint(255, (2, 3, 10, 10), device=device, dtype=dtype) / 255.0
+        aug = ColorJiggle(_brightness, _contrast, _saturation, _hue, same_on_batch)
+
+        output = aug(input)
+
+        if len(list(aug.parameters())) != 0:
+            mse = nn.MSELoss()
+            opt = torch.optim.SGD(aug.parameters(), lr=10)
+            loss = mse(output, torch.ones_like(output) * 2)
+            loss.backward()
+            opt.step()
+
+        if not isinstance(brightness, (int, float)):
+            assert isinstance(aug.brightness, torch.Tensor)
+            # Assert if param not updated
+            assert (brightness.to(device=device, dtype=dtype) - aug.brightness.data).sum() != 0
+        if not isinstance(contrast, (int, float)):
+            assert isinstance(aug.contrast, torch.Tensor)
+            # Assert if param not updated
+            assert (contrast.to(device=device, dtype=dtype) - aug.contrast.data).sum() != 0
+        if not isinstance(saturation, (int, float)):
+            assert isinstance(aug.saturation, torch.Tensor)
+            # Assert if param not updated
+            assert (saturation.to(device=device, dtype=dtype) - aug.saturation.data).sum() != 0
+        if not isinstance(hue, (int, float)):
+            assert isinstance(aug.hue, torch.Tensor)
+            # Assert if param not updated
+            assert (hue.to(device=device, dtype=dtype) - aug.hue.data).sum() != 0
+
+
 class TestColorJitterBackward:
     @pytest.mark.parametrize("brightness", [0.8, torch.tensor(0.8), torch.tensor([0.8, 1.2])])
     @pytest.mark.parametrize("contrast", [0.8, torch.tensor(0.8), torch.tensor([0.8, 1.2])])
     @pytest.mark.parametrize("saturation", [0.8, torch.tensor(0.8), torch.tensor([0.8, 1.2])])
     @pytest.mark.parametrize("hue", [0.1, torch.tensor(0.1), torch.tensor([-0.1, 0.1])])
     @pytest.mark.parametrize("same_on_batch", [True, False])
-    def test_param(self, brightness, contrast, saturation, hue, same_on_batch, device, dtype):
+    def test_param(self, brightness, contrast, saturation, hue,
+                   same_on_batch, device, dtype):
 
         _brightness = (
             brightness

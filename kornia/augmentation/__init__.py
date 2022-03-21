@@ -1,5 +1,6 @@
 from kornia.augmentation._2d import (
     CenterCrop,
+    ColorJiggle,
     ColorJitter,
     Denormalize,
     LongestMaxSize,
@@ -58,6 +59,7 @@ __all__ = [
     "IntensityAugmentationBase2D",
     "MixAugmentationBase",
     "CenterCrop",
+    "ColorJiggle",
     "ColorJitter",
     "Normalize",
     "Denormalize",
