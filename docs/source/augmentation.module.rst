@@ -12,10 +12,8 @@ Intensity
 ~~~~~~~~~
 
 .. autoclass:: RandomPlanckianJitter
-.. autoclass:: CenterCrop
 .. autoclass:: ColorJiggle
 .. autoclass:: ColorJitter
-.. autoclass:: RandomAffine
 .. autoclass:: RandomBoxBlur
 .. autoclass:: RandomChannelShuffle
 .. autoclass:: RandomEqualize
