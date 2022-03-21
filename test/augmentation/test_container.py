@@ -441,13 +441,15 @@ class TestAugmentationSequential:
         assert out[1].shape == mask.shape
         assert out[2].shape == bbox.shape
         assert out[3].shape == keypoints.shape
-        reproducibility_test((inp, mask, bbox, keypoints), aug)
 
         out_inv = aug.inverse(*out)
         assert out_inv[0].shape == inp.shape
         assert out_inv[1].shape == mask.shape
         assert out_inv[2].shape == bbox.shape
         assert out_inv[3].shape == keypoints.shape
+
+        if random_apply is False:
+            reproducibility_test((inp, mask, bbox, keypoints), aug)
 
     def test_individual_forward_and_inverse(self, device, dtype):
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
@@ -570,7 +572,8 @@ class TestAugmentationSequential:
         assert out[2].shape == bbox.shape
         assert out[3].shape == keypoints.shape
 
-        reproducibility_test((inp, mask, bbox, keypoints, bbox_2, bbox_wh, bbox_wh_2), aug)
+        if random_apply is False:
+            reproducibility_test((inp, mask, bbox, keypoints, bbox_2, bbox_wh, bbox_wh_2), aug)
 
     @pytest.mark.jit
     @pytest.mark.skip(reason="turn off due to Union Type")

@@ -23,9 +23,9 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
     def inverse_transform(
         self,
         input: Tensor,
+        flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
-        flags: Optional[Dict[str, Any]] = None,
     ) -> Tensor:
         """By default, the exact transformation as ``apply_transform`` will be used."""
         raise NotImplementedError
@@ -39,12 +39,14 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
     ) -> Tensor:
         flags = self.flags if flags is None else flags
         if params is not None:
-            transform = self.compute_transformation(input[params['batch_prob']], params, flags)
+            transform = self.compute_transformation(
+                input[params['batch_prob']], params=params, flags=flags)
 
         elif self.transform_matrix is None:
             params = self.forward_parameters(input.shape)
             transform = self.identity_matrix(input)
-            transform[params['batch_prob']] = self.compute_transformation(input[params['batch_prob']], params, flags)
+            transform[params['batch_prob']] = self.compute_transformation(
+                input[params['batch_prob']], params=params, flags=flags)
         else:
             transform = self.transform_matrix
         return as_tensor(transform, device=input.device, dtype=input.dtype)
@@ -78,10 +80,11 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
 
         if params is not None:
             transform = self.identity_matrix(in_tensor)
-            transform[params['batch_prob']] = self.compute_transformation(in_tensor[params['batch_prob']], params, flags)
+            transform[params['batch_prob']] = self.compute_transformation(
+                in_tensor[params['batch_prob']], params=params, flags=flags)
         else:
             # Avoid recompute.
-            transform = self.get_transformation_matrix(in_tensor, params, flags)
+            transform = self.get_transformation_matrix(in_tensor, params=params, flags=flags)
             params = self._params
 
         if size is None and "forward_input_shape" in params:
@@ -99,8 +102,9 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
         # if all data needs to be augmented
         elif to_apply.all():
             transform = self.compute_inverse_transformation(transform)
-            output = self.inverse_transform(in_tensor, transform, size, flags)
+            output = self.inverse_transform(in_tensor, flags=flags, transform=transform, size=size)
         else:
             transform[to_apply] = self.compute_inverse_transformation(transform[to_apply])
-            output[to_apply] = self.inverse_transform(in_tensor[to_apply], transform[to_apply], size, flags)
+            output[to_apply] = self.inverse_transform(
+                in_tensor[to_apply], transform=transform[to_apply], size=size, flags=flags)
         return cast(Tensor, self.transform_output_tensor(output, input_shape)) if self.keepdim else output

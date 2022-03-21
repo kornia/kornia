@@ -54,7 +54,6 @@ class RandomInvert(IntensityAugmentationBase2D):
         self.flags = dict(max_val=max_val)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None,
-        flags: Optional[Dict[str, Any]] = None,
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         return invert(input, torch.as_tensor(flags["max_val"], device=input.device, dtype=input.dtype))

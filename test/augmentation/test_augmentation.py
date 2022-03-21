@@ -150,7 +150,7 @@ class CommonTests(BaseTester):
         # apply_transform can be called and returns the correct batch sized output
         if generated_params['batch_prob'].sum() != 0:
             output = augmentation.apply_transform(
-                test_input[generated_params['batch_prob']], generated_params, transformation, augmentation.flags
+                test_input[generated_params['batch_prob']], generated_params, augmentation.flags, transformation
             )
             assert output.shape[0] == generated_params['batch_prob'].sum()
         else:

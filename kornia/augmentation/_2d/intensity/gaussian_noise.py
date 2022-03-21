@@ -51,7 +51,6 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
         return dict(noise=noise)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None,
-        flags: Optional[Dict[str, Any]] = None,
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         return input + params["noise"].to(input.device) * flags["std"] + flags["mean"]

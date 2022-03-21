@@ -55,7 +55,6 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
         return self.identity_matrix(input)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None,
-        flags: Optional[Dict[str, Any]] = None,
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         return box_blur(input, flags["kernel_size"], flags["border_type"], flags["normalized"])

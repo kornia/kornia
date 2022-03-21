@@ -82,8 +82,7 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         self.flags = dict(border_type=BorderType.get(border_type), resample=Resample.get(resample))
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None,
-        flags: Optional[Dict[str, Any]] = None,
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         # sample a kernel size
         kernel_size_list: List[int] = params["ksize_factor"].tolist()

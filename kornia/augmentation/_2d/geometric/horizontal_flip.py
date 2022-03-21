@@ -62,17 +62,16 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
         return flip_mat.repeat(input.size(0), 1, 1)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None,
-        flags: Optional[Dict[str, Any]] = None,
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         return hflip(input)
 
     def inverse_transform(
         self,
         input: Tensor,
+        flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
-        flags: Optional[Dict[str, Any]] = None,
     ) -> Tensor:
         return self.apply_transform(
             input, params=self._params, transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype),

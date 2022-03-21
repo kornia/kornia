@@ -96,8 +96,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None,
-        flags: Optional[Dict[str, Any]] = None,
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         if flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
             transform = cast(Tensor, transform)
@@ -122,9 +121,9 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
     def inverse_transform(
         self,
         input: Tensor,
+        flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
-        flags: Optional[Dict[str, Any]] = None,
     ) -> Tensor:
         if flags["cropping_mode"] != "resample":
             raise NotImplementedError(

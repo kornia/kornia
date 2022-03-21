@@ -75,8 +75,7 @@ class RandomFisheye(GeometricAugmentationBase2D):
         return self.identity_matrix(input)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None,
-        flags: Optional[Dict[str, Any]] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         # create the initial sampling fields
         B, _, H, W = input.shape

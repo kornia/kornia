@@ -62,8 +62,7 @@ class PadTo(GeometricAugmentationBase2D):
         return self.identity_matrix(image)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None,
-        flags: Optional[Dict[str, Any]] = None,
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         _, _, height, width = input.shape
         height_pad: int = flags["size"][0] - height
@@ -75,9 +74,9 @@ class PadTo(GeometricAugmentationBase2D):
     def inverse_transform(
         self,
         input: Tensor,
+        flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
-        flags: Optional[Dict[str, Any]] = None,
     ) -> Tensor:
         size = cast(Tuple[int, int], size)
         return input[..., : size[0], : size[1]]

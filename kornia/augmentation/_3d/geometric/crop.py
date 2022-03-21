@@ -129,8 +129,7 @@ class RandomCrop3D(AugmentationBase3D):
         return transform
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None,
-        flags: Optional[Dict[str, Any]] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         transform = cast(Tensor, transform)
         return crop_by_transform_mat3d(

@@ -102,8 +102,7 @@ class RandomMotionBlur3D(AugmentationBase3D):
         return self.identity_matrix(input)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None,
-        flags: Optional[Dict[str, Any]] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         kernel_size: int = cast(int, params["ksize_factor"].unique().item())
         angle = params["angle_factor"]

@@ -45,8 +45,7 @@ class Resize(GeometricAugmentationBase2D):
         return transform
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None,
-        flags: Optional[Dict[str, Any]] = None,
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         B, C, _, _ = input.shape
         out_size = tuple(params["output_size"][0].tolist())
@@ -68,9 +67,9 @@ class Resize(GeometricAugmentationBase2D):
     def inverse_transform(
         self,
         input: Tensor,
+        flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
-        flags: Optional[Dict[str, Any]] = None,
     ) -> Tensor:
         size = cast(Tuple[int, int], size)
         transform = cast(Tensor, transform)
