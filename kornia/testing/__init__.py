@@ -213,3 +213,18 @@ def KORNIA_CHECK(condition, msg: Optional[str] = None):
 def KORNIA_CHECK_IS_TENSOR(x, msg: Optional[str] = None):
     if not isinstance(x, Tensor):
         raise TypeError(f"Not a Tensor type. Got: {type(x)}.\n{msg}")
+
+
+def KORNIA_CHECK_IS_COLOR(x: Tensor, msg: Optional[str] = None):
+    if len(x.shape) < 3 or x.shape[-3] != 3:
+        raise TypeError(f"Not a color tensor. Got: {type(x)}.\n{msg}")
+
+
+def KORNIA_CHECK_IS_GRAY(x: Tensor, msg: Optional[str] = None):
+    if len(x.shape) < 2 or (len(x.shape) >= 3 and x.shape[-3] != 1):
+        raise TypeError(f"Not a gray tensor. Got: {type(x)}.\n{msg}")
+
+
+def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: Tensor, msg: Optional[str] = None):
+    if len(x.shape) < 3 or x.shape[-3] not in [1, 3]:
+        raise TypeError(f"Not an color or gray tensor. Got: {type(x)}.\n{msg}")

@@ -55,7 +55,7 @@ def main():
     mod = importlib.import_module("kornia.augmentation")
     augmentations_list: dict = {
         "CenterCrop": ((184, 184), 1, 2018),
-        "ColorJitter": ((0.3, 0.3, 0.3, 0.3), 2, 2018),
+        "ColorJiggle": ((0.3, 0.3, 0.3, 0.3), 2, 2018),
         "RandomAffine": (((-15.0, 20.0), (0.1, 0.1), (0.7, 1.3), 20), 2, 2019),
         "RandomBoxBlur": (((7, 7),), 1, 2020),
         "RandomCrop": ((img1.shape[-2:], (50, 50)), 2, 2020),

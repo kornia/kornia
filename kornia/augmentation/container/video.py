@@ -43,7 +43,7 @@ class VideoSequential(ImageSequential):
 
         >>> input, label = torch.randn(2, 3, 1, 5, 6).repeat(1, 1, 4, 1, 1), torch.tensor([0, 1])
         >>> aug_list = VideoSequential(
-        ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...     kornia.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...     kornia.color.BgrToRgb(),
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
         ...     random_apply=10,
@@ -60,7 +60,7 @@ class VideoSequential(ImageSequential):
         If set `same_on_frame` to False:
 
         >>> aug_list = VideoSequential(
-        ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...     kornia.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
         ...     kornia.augmentation.RandomMixUp(p=1.0),
         ... data_format="BCTHW",
@@ -81,7 +81,7 @@ class VideoSequential(ImageSequential):
         >>> import kornia
         >>> input, label = torch.randn(2, 3, 1, 5, 6).repeat(1, 1, 4, 1, 1), torch.tensor([0, 1])
         >>> aug_list = VideoSequential(
-        ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...     kornia.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
         ...     kornia.augmentation.RandomMixUp(p=1.0),
         ... data_format="BCTHW",
@@ -199,8 +199,9 @@ class VideoSequential(ImageSequential):
                 mod_param = module.forward_parameters(batch_shape)
                 if self.same_on_frame:
                     for k, v in mod_param.items():
-                        # TODO: revise colorjitter order param in the future to align the standard.
-                        if not (k == "order" and isinstance(module, kornia.augmentation.ColorJitter)):
+                        # TODO: revise ColorJiggle and ColorJitter order param in the future to align the standard.
+                        if not (k == "order" and (isinstance(module, kornia.augmentation.ColorJiggle)
+                                                  or isinstance(module, kornia.augmentation.ColorJitter))):
                             mod_param.update({k: self.__repeat_param_across_channels__(v, frame_num)})
                 param = ParamItem(name, mod_param)
             else:

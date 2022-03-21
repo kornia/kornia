@@ -1,5 +1,6 @@
 from kornia.augmentation._2d.intensity.box_blur import RandomBoxBlur
 from kornia.augmentation._2d.intensity.channel_shuffle import RandomChannelShuffle
+from kornia.augmentation._2d.intensity.color_jiggle import ColorJiggle
 from kornia.augmentation._2d.intensity.color_jitter import ColorJitter
 from kornia.augmentation._2d.intensity.denormalize import Denormalize
 from kornia.augmentation._2d.intensity.equalize import RandomEqualize
