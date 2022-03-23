@@ -40,7 +40,9 @@ def sampson_epipolar_distance(
     # sam =  (x'^T F x) ** 2 / (  (((Fx)_1**2) + (Fx)_2**2)) +  (((F^Tx')_1**2) + (F^Tx')_2**2)) )
 
     # line1_in_2: torch.Tensor = (F @ pts1.transpose(dim0=-2, dim1=-1)).transpose(dim0=-2, dim1=-1)
-    # line2_in_1: torch.Tensor = (F.transpose(dim0=-2, dim1=-1) @ pts2.transpose(dim0=-2, dim1=-1)).transpose(dim0=-2, dim1=-1)
+    # line2_in_1: torch.Tensor = (F.transpose(dim0=-2, dim1=-1) @ pts2.transpose(dim0=-2, dim1=-1)).transpose(
+    #     dim0=-2, dim1=-1
+    # )
     # Instead we can just transpose F once and switch the order of multiplication
     F_t: torch.Tensor = Fm.transpose(dim0=-2, dim1=-1)
     line1_in_2: torch.Tensor = pts1 @ F_t
@@ -92,7 +94,9 @@ def symmetrical_epipolar_distance(
     # sed = (x'^T F x) ** 2 /  (((Fx)_1**2) + (Fx)_2**2)) +  1/ (((F^Tx')_1**2) + (F^Tx')_2**2))
 
     # line1_in_2: torch.Tensor = (F @ pts1.transpose(dim0=-2, dim1=-1)).transpose(dim0=-2, dim1=-1)
-    # line2_in_1: torch.Tensor = (F.transpose(dim0=-2, dim1=-1) @ pts2.transpose(dim0=-2, dim1=-1)).transpose(dim0=-2, dim1=-1)
+    # line2_in_1: torch.Tensor = (F.transpose(dim0=-2, dim1=-1) @ pts2.transpose(dim0=-2, dim1=-1)).transpose(
+    #     dim0=-2, dim1=-1
+    # )
 
     # Instead we can just transpose F once and switch the order of multiplication
     F_t: torch.Tensor = Fm.transpose(dim0=-2, dim1=-1)
