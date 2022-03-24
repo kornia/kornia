@@ -100,9 +100,9 @@ class LAFAffineShapeEstimator(nn.Module):
         self.affine_shape_detector = affine_shape_detector or PatchAffineShapeEstimator(self.patch_size)
         self.preserve_orientation = preserve_orientation
         if preserve_orientation:
-            warnings.warn("`LAFAffineShapeEstimator` default behaviour is changed"
-                          "and now it does preserve original LAF orientation"
-                          "Make sure your code accounts for this",
+            warnings.warn("`LAFAffineShapeEstimator` default behaviour is changed "
+                          "and now it does preserve original LAF orientation. "
+                          "Make sure your code accounts for this.",
                           DeprecationWarning,
                           stacklevel=2)
 
@@ -195,9 +195,9 @@ class LAFAffNetShapeEstimator(nn.Module):
             self.load_state_dict(pretrained_dict['state_dict'], strict=False)
         self.preserve_orientation = preserve_orientation
         if preserve_orientation:
-            warnings.warn("`LAFAffNetShapeEstimator` default behaviour is changed"
-                          "and now it does preserve original LAF orientation"
-                          "Make sure your code accounts for this",
+            warnings.warn("`LAFAffNetShapeEstimator` default behaviour is changed "
+                          "and now it does preserve original LAF orientation. "
+                          "Make sure your code accounts for this.",
                           DeprecationWarning,
                           stacklevel=2)
         self.eval()
