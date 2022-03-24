@@ -119,12 +119,12 @@ class ExtractTensorPatches(nn.Module):
         self,
         window_size: Union[int, Tuple[int, int]],
         stride: Optional[Union[int, Tuple[int, int]]] = 1,
-        padding: Optional[Union[int, Tuple[int, int]]] = 0,
+        padding: Optional[Union[int, PadType]] = 0,
     ) -> None:
         super().__init__()
         self.window_size: Tuple[int, int] = _pair(window_size)
         self.stride: Tuple[int, int] = _pair(stride)
-        self.padding: Tuple[int, int] = _pair(padding)
+        self.padding: PadType = _pair(padding)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return extract_tensor_patches(input, self.window_size, stride=self.stride, padding=self.padding)
@@ -191,12 +191,12 @@ class CombineTensorPatches(nn.Module):
         self,
         original_size: Union[int, Tuple[int, int]],
         window_size: Union[int, Tuple[int, int]],
-        unpadding: Union[int, Tuple[int, int]] = 0,
+        unpadding: Union[int, PadType] = 0,
     ) -> None:
         super().__init__()
         self.original_size: Tuple[int, int] = _pair(original_size)
         self.window_size: Tuple[int, int] = _pair(window_size)
-        self.unpadding: Tuple[int, int] = _pair(unpadding)
+        self.unpadding: PadType = _pair(unpadding)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return combine_tensor_patches(
