@@ -86,7 +86,7 @@ class TestImage:
         data = torch.rand((3, 4, 5), device=device, dtype=dtype)
         color = ImageColor.RGB8
         img = Image(data, color)
-        assert_close(data, Image.from_dlpack(img.to_dlpack(), color))
+        assert_close(data, Image.from_dlpack(img.to_dlpack(), color).data)
 
     def test_denormalize(self, device, dtype):
         # opencv case
@@ -112,8 +112,10 @@ class TestImage:
         data = torch.randint(0, 255, (3, 4, 5), device=device, dtype=torch.uint8)
         img = Image(data, color=ImageColor.RGB8)
         assert isinstance(img, Image)
-
         # the user needs to normalize the image [0, 1] in floating point
+        import pdb
+
+        pdb.set_trace()
         img_norm = img.float() / 255.0
         img_gray = img_norm.apply(rgb_to_grayscale)
         assert isinstance(img_gray, Image)

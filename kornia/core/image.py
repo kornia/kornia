@@ -1,6 +1,8 @@
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+import torch
+
 from kornia.core import Tensor
 from kornia.utils import image_to_tensor, tensor_to_image
 
@@ -12,7 +14,7 @@ class ImageColor(Enum):
     BGR8 = 2
 
 
-class Image(Tensor):
+class Image:
     r"""Class that holds an Image Tensor representation.
 
     The image tensor expects a data layout :math:`(B)(C, H, W)` and subclasses :class:`torch.Tensor`.
@@ -90,24 +92,44 @@ class Image(Tensor):
     _meta['mean'] = None
     _meta['std'] = None
 
-    @staticmethod
-    def __new__(
-        cls,
-        data: Tensor,
-        color: ImageColor,
-        mean: Optional[List[float]] = None,
-        std: Optional[List[float]] = None,
-        *args,
-        **kwargs
-    ):
-        return Tensor._make_subclass(cls, data, *args, **kwargs)
-
     def __init__(
         self, data: Tensor, color: ImageColor, mean: Optional[List[float]] = None, std: Optional[List[float]] = None
     ) -> None:
+        self._data = data
         self._meta['color'] = color
         self._meta['mean'] = mean
         self._meta['std'] = std
+
+    def __getattr__(self, name: str):
+        """Direct access to the backend methods."""
+        import pdb
+
+        pdb.set_trace()
+        if name in ['apply']:
+            return
+        return getattr(self.data, name)
+
+    def __getitem__(self, idx):
+        return Image(self.data[idx], self.color, self._mean(), self._std())
+
+    def __repr__(self) -> str:
+        return f"Image data: {self.data}\nMeta: {self._meta}"
+
+    def __len__(self) -> int:
+        return len(self.data)
+
+    def to(self, device=None, dtype=None) -> 'Image':
+        if device is not None and isinstance(device, torch.dtype):
+            dtype, device = device, None
+        return Image(self.data.to(device, dtype), self.color, self._mean(), self._std())
+
+    def clone(self) -> 'Image':
+        return Image(self.data.clone(), self.color, self._mean(), self._std())
+
+    @property
+    def data(self) -> Tensor:
+        """Return the underlying tensor data."""
+        return self._data
 
     @property
     def is_batch(self) -> bool:
@@ -201,7 +223,7 @@ class Image(Tensor):
         """Return a DLPack capsule from the image tensor."""
         from torch.utils.dlpack import to_dlpack
 
-        return to_dlpack(self)
+        return to_dlpack(self.data)
 
     @classmethod
     def from_file(cls, file_path: str) -> 'Image':
