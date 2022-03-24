@@ -1,13 +1,12 @@
 """Module including useful metrics for Structure from Motion."""
 
-import torch
-
 from kornia.geometry.conversions import convert_points_to_homogeneous
+from torch import Tensor
 
 
 def sampson_epipolar_distance(
-    pts1: torch.Tensor, pts2: torch.Tensor, Fm: torch.Tensor, squared: bool = True, eps: float = 1e-8
-) -> torch.Tensor:
+    pts1: Tensor, pts2: Tensor, Fm: Tensor, squared: bool = True, eps: float = 1e-8
+) -> Tensor:
     r"""Return Sampson distance for correspondences given the fundamental matrix.
 
     Args:
@@ -24,7 +23,7 @@ def sampson_epipolar_distance(
         the computed Sampson distance with shape :math:`(*, N)`.
 
     """
-    if not isinstance(Fm, torch.Tensor):
+    if not isinstance(Fm, Tensor):
         raise TypeError(f"Fm type is not a torch.Tensor. Got {type(Fm)}")
 
     if (len(Fm.shape) < 3) or not Fm.shape[-2:] == (3, 3):
@@ -39,29 +38,28 @@ def sampson_epipolar_distance(
     # From Hartley and Zisserman, Sampson error (11.9)
     # sam =  (x'^T F x) ** 2 / (  (((Fx)_1**2) + (Fx)_2**2)) +  (((F^Tx')_1**2) + (F^Tx')_2**2)) )
 
-    # line1_in_2: torch.Tensor = (F @ pts1.transpose(dim0=-2, dim1=-1)).transpose(dim0=-2, dim1=-1)
-    # line2_in_1: torch.Tensor = (F.transpose(dim0=-2, dim1=-1) @ pts2.transpose(dim0=-2, dim1=-1)).transpose(
-    #     dim0=-2, dim1=-1
-    # )
+    # line1_in_2 = (F @ pts1.transpose(dim0=-2, dim1=-1)).transpose(dim0=-2, dim1=-1)
+    # line2_in_1 = (F.transpose(dim0=-2, dim1=-1) @ pts2.transpose(dim0=-2, dim1=-1)).transpose(dim0=-2, dim1=-1)
+
     # Instead we can just transpose F once and switch the order of multiplication
-    F_t: torch.Tensor = Fm.transpose(dim0=-2, dim1=-1)
-    line1_in_2: torch.Tensor = pts1 @ F_t
-    line2_in_1: torch.Tensor = pts2 @ Fm
+    F_t: Tensor = Fm.transpose(dim0=-2, dim1=-1)
+    line1_in_2: Tensor = pts1 @ F_t
+    line2_in_1: Tensor = pts2 @ Fm
 
     # numerator = (x'^T F x) ** 2
-    numerator: torch.Tensor = (pts2 * line1_in_2).sum(dim=-1).pow(2)
+    numerator: Tensor = (pts2 * line1_in_2).sum(dim=-1).pow(2)
 
     # denominator = (((Fx)_1**2) + (Fx)_2**2)) +  (((F^Tx')_1**2) + (F^Tx')_2**2))
-    denominator: torch.Tensor = line1_in_2[..., :2].norm(2, dim=-1).pow(2) + line2_in_1[..., :2].norm(2, dim=-1).pow(2)
-    out: torch.Tensor = numerator / denominator
+    denominator: Tensor = line1_in_2[..., :2].norm(2, dim=-1).pow(2) + line2_in_1[..., :2].norm(2, dim=-1).pow(2)
+    out: Tensor = numerator / denominator
     if squared:
         return out
     return (out + eps).sqrt()
 
 
 def symmetrical_epipolar_distance(
-    pts1: torch.Tensor, pts2: torch.Tensor, Fm: torch.Tensor, squared: bool = True, eps: float = 1e-8
-) -> torch.Tensor:
+    pts1: Tensor, pts2: Tensor, Fm: Tensor, squared: bool = True, eps: float = 1e-8
+) -> Tensor:
     r"""Return symmetrical epipolar distance for correspondences given the fundamental matrix.
 
     Args:
@@ -78,7 +76,7 @@ def symmetrical_epipolar_distance(
         the computed Symmetrical distance with shape :math:`(*, N)`.
 
     """
-    if not isinstance(Fm, torch.Tensor):
+    if not isinstance(Fm, Tensor):
         raise TypeError(f"Fm type is not a torch.Tensor. Got {type(Fm)}")
 
     if (len(Fm.shape) < 3) or not Fm.shape[-2:] == (3, 3):
@@ -93,24 +91,22 @@ def symmetrical_epipolar_distance(
     # From Hartley and Zisserman, symmetric epipolar distance (11.10)
     # sed = (x'^T F x) ** 2 /  (((Fx)_1**2) + (Fx)_2**2)) +  1/ (((F^Tx')_1**2) + (F^Tx')_2**2))
 
-    # line1_in_2: torch.Tensor = (F @ pts1.transpose(dim0=-2, dim1=-1)).transpose(dim0=-2, dim1=-1)
-    # line2_in_1: torch.Tensor = (F.transpose(dim0=-2, dim1=-1) @ pts2.transpose(dim0=-2, dim1=-1)).transpose(
-    #     dim0=-2, dim1=-1
-    # )
+    # line1_in_2 = (F @ pts1.transpose(dim0=-2, dim1=-1)).transpose(dim0=-2, dim1=-1)
+    # line2_in_1 = (F.transpose(dim0=-2, dim1=-1) @ pts2.transpose(dim0=-2, dim1=-1)).transpose(dim0=-2, dim1=-1)
 
     # Instead we can just transpose F once and switch the order of multiplication
-    F_t: torch.Tensor = Fm.transpose(dim0=-2, dim1=-1)
-    line1_in_2: torch.Tensor = pts1 @ F_t
-    line2_in_1: torch.Tensor = pts2 @ Fm
+    F_t: Tensor = Fm.transpose(dim0=-2, dim1=-1)
+    line1_in_2: Tensor = pts1 @ F_t
+    line2_in_1: Tensor = pts2 @ Fm
 
     # numerator = (x'^T F x) ** 2
-    numerator: torch.Tensor = (pts2 * line1_in_2).sum(dim=-1).pow(2)
+    numerator: Tensor = (pts2 * line1_in_2).sum(dim=-1).pow(2)
 
     # denominator_inv =  1/ (((Fx)_1**2) + (Fx)_2**2)) +  1/ (((F^Tx')_1**2) + (F^Tx')_2**2))
-    denominator_inv: torch.Tensor = 1.0 / (line1_in_2[..., :2].norm(2, dim=-1).pow(2)) + 1.0 / (
+    denominator_inv: Tensor = 1.0 / (line1_in_2[..., :2].norm(2, dim=-1).pow(2)) + 1.0 / (
         line2_in_1[..., :2].norm(2, dim=-1).pow(2)
     )
-    out: torch.Tensor = numerator * denominator_inv
+    out: Tensor = numerator * denominator_inv
     if squared:
         return out
     return (out + eps).sqrt()
