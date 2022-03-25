@@ -221,6 +221,44 @@ class TestFilter2D:
             assert_close(actual, expected_valid)
 
     @pytest.mark.parametrize("padding", ["same", "valid"])
+    def test_mix_sized_filter_padding_same(self, padding, device, dtype):
+        kernel = torch.ones(1, 5, 6, device=device, dtype=dtype)
+        input = torch.tensor(
+            [
+                [
+                    [
+                        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        expected_same = torch.tensor(
+            [
+                [
+                    [
+                        [2.0, 2.0, 2.0, 2.0, 2.0, 0.0],
+                        [3.0, 3.0, 3.0, 3.0, 3.0, 0.0],
+                        [3.0, 3.0, 3.0, 3.0, 3.0, 0.0],
+                        [3.0, 3.0, 3.0, 3.0, 3.0, 0.0],
+                        [2.0, 2.0, 2.0, 2.0, 2.0, 0.0]
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        actual = kornia.filters.filter2d(input, kernel, padding='same', border_type='constant')
+        assert_close(actual, expected_same)
+
+    @pytest.mark.parametrize("padding", ["same", "valid"])
     def test_noncontiguous(self, padding, device, dtype):
         batch_size = 3
         inp = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
