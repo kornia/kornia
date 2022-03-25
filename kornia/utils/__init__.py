@@ -1,6 +1,6 @@
 from .draw import draw_convex_polygon, draw_line, draw_rectangle
 from .grid import create_meshgrid, create_meshgrid3d
-from .helpers import _extract_device_dtype, safe_inverse_with_mask, safe_solve_with_mask
+from .helpers import _extract_device_dtype, safe_inverse_with_mask, safe_solve_with_mask, get_cuda_device_if_available
 from .image import ImageToTensor, image_list_to_tensor, image_to_tensor, tensor_to_image
 from .memory import batched_forward
 from .misc import eye_like, vec_like
@@ -12,6 +12,7 @@ __all__ = [
     "one_hot",
     "create_meshgrid",
     "create_meshgrid3d",
+    "get_cuda_device_if_available",
     "tensor_to_image",
     "image_to_tensor",
     "image_list_to_tensor",
