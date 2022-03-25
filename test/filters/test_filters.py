@@ -223,7 +223,7 @@ class TestFilter2D:
     @pytest.mark.parametrize("padding", ["same", "valid"])
     def test_mix_sized_filter_padding_same(self, padding, device, dtype):
         kernel = torch.ones(1, 5, 6, device=device, dtype=dtype)
-        input = torch.tensor(
+        input_ = torch.tensor(
             [
                 [
                     [
@@ -255,7 +255,7 @@ class TestFilter2D:
             dtype=dtype,
         )
 
-        actual = kornia.filters.filter2d(input, kernel, padding='same', border_type='constant')
+        actual = kornia.filters.filter2d(input_, kernel, padding='same', border_type='constant')
         assert_close(actual, expected_same)
 
     @pytest.mark.parametrize("padding", ["same", "valid"])
