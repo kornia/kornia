@@ -38,4 +38,4 @@ Memory
 Device
 -------
 
-.. autofunction:: get_cuda_device_if_available 
+.. autofunction:: get_cuda_device_if_available

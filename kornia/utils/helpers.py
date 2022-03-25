@@ -7,9 +7,10 @@ import torch
 
 from kornia.utils._compat import solve, torch_version_geq
 
+
 def get_cuda_device_if_available(index: int = 0) -> torch.device:
-    """Tries to get cuda device, if fail, returns cpu
-    
+    """Tries to get cuda device, if fail, returns cpu.
+
     Args:
         index: cuda device index
 
