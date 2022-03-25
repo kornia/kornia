@@ -9,6 +9,7 @@ import kornia.testing as utils  # test utils
 from kornia.augmentation import (
     AugmentationSequential,
     CenterCrop,
+    ColorJiggle,
     ColorJitter,
     Denormalize,
     LongestMaxSize,
@@ -668,7 +669,7 @@ class TestRandomGrayscaleAlternative(CommonTests):
 class TestRandomHorizontalFlip:
 
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
-    # return values such a torch.Tensor variable.
+    # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self):
         f = RandomHorizontalFlip(p=0.5)
@@ -824,7 +825,7 @@ class TestRandomHorizontalFlip:
 class TestRandomVerticalFlip:
 
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
-    # return values such a torch.Tensor variable.
+    # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self):
         f = RandomVerticalFlip(p=0.5)
@@ -965,10 +966,312 @@ class TestRandomVerticalFlip:
         ).all()
 
 
+class TestColorJiggle:
+
+    # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
+    # return values such a Tensor variable.
+    @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
+    def test_smoke(self):
+        f = ColorJiggle(brightness=0.5, contrast=0.3, saturation=[0.2, 1.2], hue=0.1)
+        repr = (
+            "ColorJiggle(brightness=tensor([0.5000, 1.5000]), contrast=tensor([0.7000, 1.3000]), "
+            "saturation=tensor([0.2000, 1.2000]), hue=tensor([-0.1000,  0.1000]), "
+            "p=1.0, p_batch=1.0, same_on_batch=False)"
+        )
+        assert str(f) == repr
+
+    def test_color_jiggle(self, device, dtype):
+
+        f = ColorJiggle()
+
+        input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0)  # 3 x 5 x 5
+        expected = input
+
+        expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
+
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
+        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
+
+    def test_color_jiggle_batch(self, device, dtype):
+        f = ColorJiggle()
+
+        input = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)  # 2 x 3 x 5 x 5
+        expected = input
+
+        expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).expand((2, 3, 3))  # 2 x 3 x 3
+
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
+        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
+
+    def test_same_on_batch(self, device, dtype):
+        f = ColorJiggle(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.1, same_on_batch=True)
+        input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
+        res = f(input)
+        assert (res[0] == res[1]).all()
+
+    def _get_expected_brightness(self, device, dtype):
+        return torch.tensor(
+            [
+                [
+                    [[0.2529, 0.3529, 0.4529], [0.7529, 0.6529, 0.5529], [0.8529, 0.9529, 1.0000]],
+                    [[0.2529, 0.3529, 0.4529], [0.7529, 0.6529, 0.5529], [0.8529, 0.9529, 1.0000]],
+                    [[0.2529, 0.3529, 0.4529], [0.7529, 0.6529, 0.5529], [0.8529, 0.9529, 1.0000]],
+                ],
+                [
+                    [[0.2660, 0.3660, 0.4660], [0.7660, 0.6660, 0.5660], [0.8660, 0.9660, 1.0000]],
+                    [[0.2660, 0.3660, 0.4660], [0.7660, 0.6660, 0.5660], [0.8660, 0.9660, 1.0000]],
+                    [[0.2660, 0.3660, 0.4660], [0.7660, 0.6660, 0.5660], [0.8660, 0.9660, 1.0000]],
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+    def test_random_brightness(self, device, dtype):
+        torch.manual_seed(42)
+        f = ColorJiggle(brightness=0.2)
+
+        input = torch.tensor(
+            [[[[0.1, 0.2, 0.3], [0.6, 0.5, 0.4], [0.7, 0.8, 1.0]]]], device=device, dtype=dtype
+        )  # 1 x 1 x 3 x 3
+        input = input.repeat(2, 3, 1, 1)  # 2 x 3 x 3
+
+        expected = self._get_expected_brightness(device, dtype)
+
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+
+    def test_random_brightness_tuple(self, device, dtype):
+        torch.manual_seed(42)
+        f = ColorJiggle(brightness=(0.8, 1.2))
+
+        input = torch.tensor(
+            [[[[0.1, 0.2, 0.3], [0.6, 0.5, 0.4], [0.7, 0.8, 1.0]]]], device=device, dtype=dtype
+        )  # 1 x 1 x 3 x 3
+        input = input.repeat(2, 3, 1, 1)  # 2 x 3 x 3
+
+        expected = self._get_expected_brightness(device, dtype)
+
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+
+    def _get_expected_contrast(self, device, dtype):
+        return torch.tensor(
+            [
+                [
+                    [[0.0953, 0.1906, 0.2859], [0.5719, 0.4766, 0.3813], [0.6672, 0.7625, 0.9531]],
+                    [[0.0953, 0.1906, 0.2859], [0.5719, 0.4766, 0.3813], [0.6672, 0.7625, 0.9531]],
+                    [[0.0953, 0.1906, 0.2859], [0.5719, 0.4766, 0.3813], [0.6672, 0.7625, 0.9531]],
+                ],
+                [
+                    [[0.1184, 0.2367, 0.3551], [0.7102, 0.5919, 0.4735], [0.8286, 0.9470, 1.0000]],
+                    [[0.1184, 0.2367, 0.3551], [0.7102, 0.5919, 0.4735], [0.8286, 0.9470, 1.0000]],
+                    [[0.1184, 0.2367, 0.3551], [0.7102, 0.5919, 0.4735], [0.8286, 0.9470, 1.0000]],
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+    def test_random_contrast(self, device, dtype):
+        torch.manual_seed(42)
+        f = ColorJiggle(contrast=0.2)
+
+        input = torch.tensor(
+            [[[[0.1, 0.2, 0.3], [0.6, 0.5, 0.4], [0.7, 0.8, 1.0]]]], device=device, dtype=dtype
+        )  # 1 x 1 x 3 x 3
+        input = input.repeat(2, 3, 1, 1)  # 2 x 3 x 3
+
+        expected = self._get_expected_contrast(device, dtype)
+
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
+
+    def test_random_contrast_list(self, device, dtype):
+        torch.manual_seed(42)
+        f = ColorJiggle(contrast=[0.8, 1.2])
+
+        input = torch.tensor(
+            [[[[0.1, 0.2, 0.3], [0.6, 0.5, 0.4], [0.7, 0.8, 1.0]]]], device=device, dtype=dtype
+        )  # 1 x 1 x 3 x 3
+        input = input.repeat(2, 3, 1, 1)  # 2 x 3 x 3
+
+        expected = self._get_expected_contrast(device, dtype)
+
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
+
+    def _get_expected_saturation(self, device, dtype):
+        return torch.tensor(
+            [
+                [
+                    [[0.1876, 0.2584, 0.3389], [0.6292, 0.5000, 0.4000], [0.7097, 0.8000, 1.0000]],
+                    [[1.0000, 0.5292, 0.6097], [0.6292, 0.3195, 0.2195], [0.8000, 0.1682, 0.2779]],
+                    [[0.6389, 0.8000, 0.7000], [0.9000, 0.3195, 0.2195], [0.8000, 0.4389, 0.5487]],
+                ],
+                [
+                    [[0.0000, 0.1295, 0.2530], [0.5648, 0.5000, 0.4000], [0.6883, 0.8000, 1.0000]],
+                    [[1.0000, 0.4648, 0.5883], [0.5648, 0.2765, 0.1765], [0.8000, 0.0178, 0.1060]],
+                    [[0.5556, 0.8000, 0.7000], [0.9000, 0.2765, 0.1765], [0.8000, 0.3530, 0.4413]],
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+    def test_random_saturation(self, device, dtype):
+        torch.manual_seed(42)
+        f = ColorJiggle(saturation=0.2)
+
+        input = torch.tensor(
+            [
+                [
+                    [[0.1, 0.2, 0.3], [0.6, 0.5, 0.4], [0.7, 0.8, 1.0]],
+                    [[1.0, 0.5, 0.6], [0.6, 0.3, 0.2], [0.8, 0.1, 0.2]],
+                    [[0.6, 0.8, 0.7], [0.9, 0.3, 0.2], [0.8, 0.4, 0.5]],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )  # 1 x 1 x 3 x 3
+        input = input.repeat(2, 1, 1, 1)  # 2 x 3 x 3
+
+        expected = self._get_expected_saturation(device, dtype)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+
+    def test_random_saturation_tensor(self, device, dtype):
+        torch.manual_seed(42)
+        f = ColorJiggle(saturation=torch.tensor(0.2))
+
+        input = torch.tensor(
+            [
+                [
+                    [[0.1, 0.2, 0.3], [0.6, 0.5, 0.4], [0.7, 0.8, 1.0]],
+                    [[1.0, 0.5, 0.6], [0.6, 0.3, 0.2], [0.8, 0.1, 0.2]],
+                    [[0.6, 0.8, 0.7], [0.9, 0.3, 0.2], [0.8, 0.4, 0.5]],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )  # 1 x 1 x 3 x 3
+        input = input.repeat(2, 1, 1, 1)  # 2 x 3 x 3
+
+        expected = self._get_expected_saturation(device, dtype)
+
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+
+    def test_random_saturation_tuple(self, device, dtype):
+        torch.manual_seed(42)
+        f = ColorJiggle(saturation=(0.8, 1.2))
+
+        input = torch.tensor(
+            [
+                [
+                    [[0.1, 0.2, 0.3], [0.6, 0.5, 0.4], [0.7, 0.8, 1.0]],
+                    [[1.0, 0.5, 0.6], [0.6, 0.3, 0.2], [0.8, 0.1, 0.2]],
+                    [[0.6, 0.8, 0.7], [0.9, 0.3, 0.2], [0.8, 0.4, 0.5]],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )  # 1 x 1 x 3 x 3
+        input = input.repeat(2, 1, 1, 1)  # 2 x 3 x 3
+
+        expected = self._get_expected_saturation(device, dtype)
+
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+
+    def _get_expected_hue(self, device, dtype):
+        return torch.tensor(
+            [
+                [
+                    [[0.1000, 0.2000, 0.3000], [0.6000, 0.5000, 0.4000], [0.7000, 0.8000, 1.0000]],
+                    [[1.0000, 0.5251, 0.6167], [0.6126, 0.3000, 0.2000], [0.8000, 0.1000, 0.2000]],
+                    [[0.5623, 0.8000, 0.7000], [0.9000, 0.3084, 0.2084], [0.7958, 0.4293, 0.5335]],
+                ],
+                [
+                    [[0.1000, 0.2000, 0.3000], [0.6116, 0.5000, 0.4000], [0.7000, 0.8000, 1.0000]],
+                    [[1.0000, 0.4769, 0.5846], [0.6000, 0.3077, 0.2077], [0.7961, 0.1000, 0.2000]],
+                    [[0.6347, 0.8000, 0.7000], [0.9000, 0.3000, 0.2000], [0.8000, 0.3730, 0.4692]],
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+    def test_random_hue(self, device, dtype):
+        torch.manual_seed(42)
+        f = ColorJiggle(hue=0.1 / pi.item())
+
+        input = torch.tensor(
+            [
+                [
+                    [[0.1, 0.2, 0.3], [0.6, 0.5, 0.4], [0.7, 0.8, 1.0]],
+                    [[1.0, 0.5, 0.6], [0.6, 0.3, 0.2], [0.8, 0.1, 0.2]],
+                    [[0.6, 0.8, 0.7], [0.9, 0.3, 0.2], [0.8, 0.4, 0.5]],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )  # 1 x 1 x 3 x 3
+        input = input.repeat(2, 1, 1, 1)  # 2 x 3 x 3
+
+        expected = self._get_expected_hue(device, dtype)
+
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+
+    def test_random_hue_list(self, device, dtype):
+        torch.manual_seed(42)
+        f = ColorJiggle(hue=[-0.1 / pi, 0.1 / pi])
+
+        input = torch.tensor(
+            [
+                [
+                    [[0.1, 0.2, 0.3], [0.6, 0.5, 0.4], [0.7, 0.8, 1.0]],
+                    [[1.0, 0.5, 0.6], [0.6, 0.3, 0.2], [0.8, 0.1, 0.2]],
+                    [[0.6, 0.8, 0.7], [0.9, 0.3, 0.2], [0.8, 0.4, 0.5]],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )  # 1 x 1 x 3 x 3
+        input = input.repeat(2, 1, 1, 1)  # 2 x 3 x 3
+
+        expected = self._get_expected_hue(device, dtype)
+
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+
+    def test_sequential(self, device, dtype):
+
+        f = AugmentationSequential(ColorJiggle(), ColorJiggle())
+
+        input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0)  # 1 x 3 x 5 x 5
+
+        expected = input
+
+        expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
+
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
+        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-5)
+
+    def test_color_jitter_batch_sequential(self, device, dtype):
+        f = AugmentationSequential(ColorJiggle(), ColorJiggle())
+
+        input = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)  # 2 x 3 x 5 x 5
+        expected = input
+
+        expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).expand((2, 3, 3))  # 2 x 3 x 3
+
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
+        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-5)
+
+    def test_gradcheck(self, device, dtype):
+        input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
+        input = utils.tensor_to_gradcheck_var(input)  # to var
+        assert gradcheck(ColorJiggle(p=1.0), (input,), raise_exception=True)
+
+
 class TestColorJitter:
 
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
-    # return values such a torch.Tensor variable.
+    # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self):
         f = ColorJitter(brightness=0.5, contrast=0.3, saturation=[0.2, 1.2], hue=0.1)
@@ -1012,14 +1315,14 @@ class TestColorJitter:
         return torch.tensor(
             [
                 [
-                    [[0.2529, 0.3529, 0.4529], [0.7529, 0.6529, 0.5529], [0.8529, 0.9529, 1.0000]],
-                    [[0.2529, 0.3529, 0.4529], [0.7529, 0.6529, 0.5529], [0.8529, 0.9529, 1.0000]],
-                    [[0.2529, 0.3529, 0.4529], [0.7529, 0.6529, 0.5529], [0.8529, 0.9529, 1.0000]],
+                    [[0.1153, 0.2306, 0.3459], [0.6917, 0.5764, 0.4612], [0.8070, 0.9223, 1.0000]],
+                    [[0.1153, 0.2306, 0.3459], [0.6917, 0.5764, 0.4612], [0.8070, 0.9223, 1.0000]],
+                    [[0.1153, 0.2306, 0.3459], [0.6917, 0.5764, 0.4612], [0.8070, 0.9223, 1.0000]],
                 ],
                 [
-                    [[0.2660, 0.3660, 0.4660], [0.7660, 0.6660, 0.5660], [0.8660, 0.9660, 1.0000]],
-                    [[0.2660, 0.3660, 0.4660], [0.7660, 0.6660, 0.5660], [0.8660, 0.9660, 1.0000]],
-                    [[0.2660, 0.3660, 0.4660], [0.7660, 0.6660, 0.5660], [0.8660, 0.9660, 1.0000]],
+                    [[0.1166, 0.2332, 0.3498], [0.6996, 0.5830, 0.4664], [0.8162, 0.9328, 1.0000]],
+                    [[0.1166, 0.2332, 0.3498], [0.6996, 0.5830, 0.4664], [0.8162, 0.9328, 1.0000]],
+                    [[0.1166, 0.2332, 0.3498], [0.6996, 0.5830, 0.4664], [0.8162, 0.9328, 1.0000]],
                 ],
             ],
             device=device,
@@ -1056,14 +1359,14 @@ class TestColorJitter:
         return torch.tensor(
             [
                 [
-                    [[0.0953, 0.1906, 0.2859], [0.5719, 0.4766, 0.3813], [0.6672, 0.7625, 0.9531]],
-                    [[0.0953, 0.1906, 0.2859], [0.5719, 0.4766, 0.3813], [0.6672, 0.7625, 0.9531]],
-                    [[0.0953, 0.1906, 0.2859], [0.5719, 0.4766, 0.3813], [0.6672, 0.7625, 0.9531]],
+                    [[0.1193, 0.2146, 0.3099], [0.5958, 0.5005, 0.4052], [0.6911, 0.7865, 0.9771]],
+                    [[0.1193, 0.2146, 0.3099], [0.5958, 0.5005, 0.4052], [0.6911, 0.7865, 0.9771]],
+                    [[0.1193, 0.2146, 0.3099], [0.5958, 0.5005, 0.4052], [0.6911, 0.7865, 0.9771]],
                 ],
                 [
-                    [[0.1184, 0.2367, 0.3551], [0.7102, 0.5919, 0.4735], [0.8286, 0.9470, 1.0000]],
-                    [[0.1184, 0.2367, 0.3551], [0.7102, 0.5919, 0.4735], [0.8286, 0.9470, 1.0000]],
-                    [[0.1184, 0.2367, 0.3551], [0.7102, 0.5919, 0.4735], [0.8286, 0.9470, 1.0000]],
+                    [[0.0245, 0.1428, 0.2612], [0.6163, 0.4980, 0.3796], [0.7347, 0.8531, 1.0000]],
+                    [[0.0245, 0.1428, 0.2612], [0.6163, 0.4980, 0.3796], [0.7347, 0.8531, 1.0000]],
+                    [[0.0245, 0.1428, 0.2612], [0.6163, 0.4980, 0.3796], [0.7347, 0.8531, 1.0000]],
                 ],
             ],
             device=device,
@@ -1100,14 +1403,14 @@ class TestColorJitter:
         return torch.tensor(
             [
                 [
-                    [[0.1876, 0.2584, 0.3389], [0.6292, 0.5000, 0.4000], [0.7097, 0.8000, 1.0000]],
-                    [[1.0000, 0.5292, 0.6097], [0.6292, 0.3195, 0.2195], [0.8000, 0.1682, 0.2779]],
-                    [[0.6389, 0.8000, 0.7000], [0.9000, 0.3195, 0.2195], [0.8000, 0.4389, 0.5487]],
+                    [[0.1570, 0.2238, 0.3216], [0.6033, 0.4863, 0.3863], [0.7068, 0.7555, 0.9487]],
+                    [[0.9693, 0.4946, 0.5924], [0.6033, 0.3058, 0.2058], [0.7971, 0.1237, 0.2266]],
+                    [[0.6083, 0.7654, 0.6826], [0.8741, 0.3058, 0.2058], [0.7971, 0.3945, 0.4974]],
                 ],
                 [
-                    [[0.0000, 0.1295, 0.2530], [0.5648, 0.5000, 0.4000], [0.6883, 0.8000, 1.0000]],
-                    [[1.0000, 0.4648, 0.5883], [0.5648, 0.2765, 0.1765], [0.8000, 0.0178, 0.1060]],
-                    [[0.5556, 0.8000, 0.7000], [0.9000, 0.2765, 0.1765], [0.8000, 0.3530, 0.4413]],
+                    [[0.0312, 0.1713, 0.2740], [0.5960, 0.5165, 0.4165], [0.6918, 0.8536, 1.0000]],
+                    [[1.0000, 0.5065, 0.6092], [0.5960, 0.2930, 0.1930], [0.8035, 0.0714, 0.1679]],
+                    [[0.5900, 0.8418, 0.7210], [0.9312, 0.2930, 0.1930], [0.8035, 0.4066, 0.5031]],
                 ],
             ],
             device=device,
@@ -1196,7 +1499,7 @@ class TestColorJitter:
 
     def test_random_hue(self, device, dtype):
         torch.manual_seed(42)
-        f = ColorJitter(hue=0.1 / pi.item())
+        f = ColorJiggle(hue=0.1 / pi.item())
 
         input = torch.tensor(
             [
@@ -1217,28 +1520,7 @@ class TestColorJitter:
 
     def test_random_hue_list(self, device, dtype):
         torch.manual_seed(42)
-        f = ColorJitter(hue=[-0.1 / pi, 0.1 / pi])
-
-        input = torch.tensor(
-            [
-                [
-                    [[0.1, 0.2, 0.3], [0.6, 0.5, 0.4], [0.7, 0.8, 1.0]],
-                    [[1.0, 0.5, 0.6], [0.6, 0.3, 0.2], [0.8, 0.1, 0.2]],
-                    [[0.6, 0.8, 0.7], [0.9, 0.3, 0.2], [0.8, 0.4, 0.5]],
-                ]
-            ],
-            device=device,
-            dtype=dtype,
-        )  # 1 x 1 x 3 x 3
-        input = input.repeat(2, 1, 1, 1)  # 2 x 3 x 3
-
-        expected = self._get_expected_hue(device, dtype)
-
-        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
-
-    def test_random_hue_list_batch(self, device, dtype):
-        torch.manual_seed(42)
-        f = ColorJitter(hue=[-0.1 / pi.item(), 0.1 / pi.item()])
+        f = ColorJiggle(hue=[-0.1 / pi, 0.1 / pi])
 
         input = torch.tensor(
             [
@@ -1259,7 +1541,7 @@ class TestColorJitter:
 
     def test_sequential(self, device, dtype):
 
-        f = AugmentationSequential(ColorJitter(), ColorJitter())
+        f = AugmentationSequential(ColorJiggle(), ColorJiggle())
 
         input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0)  # 1 x 3 x 5 x 5
 
@@ -1332,7 +1614,7 @@ class TestRectangleRandomErasing:
 class TestRandomGrayscale:
 
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
-    # return values such a torch.Tensor variable.
+    # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self):
         f = RandomGrayscale()
@@ -1627,7 +1909,7 @@ class TestRandomRotation:
     torch.manual_seed(0)  # for random reproductibility
 
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
-    # return values such a torch.Tensor variable.
+    # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self):
         f = RandomRotation(degrees=45.5)
@@ -1781,7 +2063,7 @@ class TestRandomRotation:
 
 class TestRandomCrop:
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
-    # return values such a torch.Tensor variable.
+    # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self):
         f = RandomCrop(size=(2, 3), padding=(0, 1), fill=10, pad_if_needed=False, p=1.0)
@@ -2026,7 +2308,7 @@ class TestRandomCrop:
 
 class TestRandomResizedCrop:
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
-    # return values such a torch.Tensor variable.
+    # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self):
         f = RandomResizedCrop(size=(2, 3), scale=(1.0, 1.0), ratio=(1.0, 1.0))
@@ -2180,7 +2462,7 @@ class TestRandomResizedCrop:
 
 class TestRandomEqualize:
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
-    # return values such a torch.Tensor variable.
+    # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing precision.")
     def test_smoke(self, device, dtype):
         f = RandomEqualize(p=0.5)
@@ -2298,7 +2580,7 @@ class TestRandomEqualize:
 class TestGaussianBlur:
 
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
-    # return values such a torch.Tensor variable.
+    # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self):
         f = RandomGaussianBlur((3, 3), (0.1, 2.0), p=1.0)
@@ -2338,7 +2620,7 @@ class TestRandomGaussianNoise:
 
 class TestNormalize:
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
-    # return values such a torch.Tensor variable.
+    # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self, device, dtype):
         f = Normalize(mean=torch.tensor([1.0]), std=torch.tensor([1.0]))
@@ -2412,7 +2694,7 @@ class TestNormalize:
 
 class TestDenormalize:
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
-    # return values such a torch.Tensor variable.
+    # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self, device, dtype):
         f = Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([1.0]))

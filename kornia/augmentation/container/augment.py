@@ -65,7 +65,7 @@ class AugmentationSequential(ImageSequential):
         ... ]]).expand(2, -1, -1)
         >>> points = torch.tensor([[[1., 1.]]]).expand(2, -1, -1)
         >>> aug_list = AugmentationSequential(
-        ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...     kornia.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
         ...     data_keys=["input", "mask", "bbox", "keypoints"],
         ...     same_on_batch=False,
@@ -96,7 +96,7 @@ class AugmentationSequential(ImageSequential):
         >>> points = torch.tensor([[[1., 1.]]]).expand(2, -1, -1)[None]
         >>> aug_list = AugmentationSequential(
         ...     VideoSequential(
-        ...         kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...         kornia.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...         kornia.augmentation.RandomAffine(360, p=1.0),
         ...     ),
         ...     data_keys=["input", "mask", "bbox", "keypoints"]
@@ -121,7 +121,7 @@ class AugmentationSequential(ImageSequential):
         ...         kornia.augmentation.RandomAffine(360, p=1.0),
         ...     ),
         ...     VideoSequential(
-        ...         kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...         kornia.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...     ),
         ...     data_keys=["input", "mask", "bbox", "keypoints"],
         ...     random_apply=1,

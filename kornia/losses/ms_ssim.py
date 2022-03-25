@@ -32,6 +32,10 @@ class MS_SSIMLoss(nn.Module):
         K: k values.
         alpha : specifies the alpha value
         compensation: specifies the scaling coefficient.
+        reduction : Specifies the reduction to apply to the
+         output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
+         ``'mean'``: the sum of the output will be divided by the number of elements
+         in the output, ``'sum'``: the output will be summed.
 
     Returns:
         The computed loss.
@@ -39,7 +43,7 @@ class MS_SSIMLoss(nn.Module):
     Shape:
         - Input1: :math:`(N, C, H, W)`.
         - Input2: :math:`(N, C, H, W)`.
-        - Output: :math:`(N,)` or scalar.
+        - Output: :math:`(N, H, W)` or scalar if reduction is set to ``'mean'`` or ``'sum'``.
 
     Examples:
         >>> input1 = torch.rand(1, 3, 5, 5)
@@ -55,6 +59,7 @@ class MS_SSIMLoss(nn.Module):
         K: Tuple[float, float] = (0.01, 0.03),
         alpha: float = 0.025,
         compensation: float = 200.0,
+        reduction: str = 'mean',
     ) -> None:
         super().__init__()
         self.DR: float = data_range
@@ -63,6 +68,7 @@ class MS_SSIMLoss(nn.Module):
         self.pad = int(2 * sigmas[-1])
         self.alpha: float = alpha
         self.compensation: float = compensation
+        self.reduction: str = reduction
 
         # Set filter size
         filter_size = int(4 * sigmas[-1] + 1)
@@ -162,4 +168,12 @@ class MS_SSIMLoss(nn.Module):
         loss = self.alpha * loss_ms_ssim + (1 - self.alpha) * gaussian_l1 / self.DR
         loss = self.compensation * loss
 
-        return loss.mean()
+        if self.reduction == "mean":
+            loss = torch.mean(loss)
+        elif self.reduction == "sum":
+            loss = torch.sum(loss)
+        elif self.reduction == "none":
+            pass
+        else:
+            raise NotImplementedError(f"Invalid reduction mode: {self.reduction}")
+        return loss

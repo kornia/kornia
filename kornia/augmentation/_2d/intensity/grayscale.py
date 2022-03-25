@@ -13,6 +13,8 @@ class RandomGrayscale(IntensityAugmentationBase2D):
     .. image:: _static/img/RandomGrayscale.png
 
     Args:
+        rgb_weights: Weights that will be applied on each channel (RGB).
+            The sum of the weights should add up to one.
         p: probability of the image to be transformed to grayscale.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it

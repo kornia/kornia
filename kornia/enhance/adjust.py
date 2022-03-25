@@ -6,37 +6,32 @@ from torch import Tensor
 from torch.nn import Module, Parameter
 
 from kornia.color import hsv_to_rgb, rgb_to_grayscale, rgb_to_hsv
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_COLOR_OR_GRAY, KORNIA_CHECK_IS_TENSOR
 from kornia.utils.helpers import _torch_histc_cast
 from kornia.utils.image import perform_keep_shape_image, perform_keep_shape_video
 
 
-def adjust_saturation_raw(input: Tensor, saturation_factor: Union[float, Tensor]) -> Tensor:
-    r"""Adjust color saturation of an image. Expecting input to be in hsv format already."""
+def adjust_saturation_raw(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
+    r"""Adjust color saturation of an image. Expecting image to be in hsv format already."""
 
-    if not isinstance(input, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
+    KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
+    KORNIA_CHECK(isinstance(factor, (float, Tensor)), "Factor should be float or Tensor.")
 
-    if not isinstance(saturation_factor, (float, Tensor)):
-        raise TypeError(f"The saturation_factor should be a float number or Tensor." f"Got {type(saturation_factor)}")
+    if isinstance(factor, float):
+        # TODO: figure out how to create later a tensor without importing torch
+        factor = torch.as_tensor(factor, device=image.device, dtype=image.dtype)
+    elif isinstance(factor, Tensor):
+        factor = factor.to(image.device, image.dtype)
 
-    if isinstance(saturation_factor, float):
-        saturation_factor = torch.as_tensor(saturation_factor)
-
-    saturation_factor = saturation_factor.to(input.device).to(input.dtype)
-
-    # TODO: find a proper way to check bound values in batched tensors.
-    # if (saturation_factor < 0).any():
-    #     raise ValueError(f"Saturation factor must be non-negative. Got {saturation_factor}")
-
-    for _ in range(len(input.shape) - len(saturation_factor.shape)):
-        saturation_factor = torch.unsqueeze(saturation_factor, dim=-1)
+    # make factor broadcastable
+    while len(factor.shape) != len(image.shape):
+        factor = factor[..., None]
 
     # unpack the hsv values
-    h, s, v = torch.chunk(input, chunks=3, dim=-3)
+    h, s, v = torch.chunk(image, chunks=3, dim=-3)
 
     # transform the hue value and appl module
-    s_out: Tensor = torch.clamp(s * saturation_factor, min=0, max=1)
+    s_out: Tensor = torch.clamp(s * factor, min=0, max=1)
 
     # pack back back the corrected hue
     out: Tensor = torch.cat([h, s_out, v], dim=-3)
@@ -44,17 +39,75 @@ def adjust_saturation_raw(input: Tensor, saturation_factor: Union[float, Tensor]
     return out
 
 
-def adjust_saturation(input: Tensor, saturation_factor: Union[float, Tensor]) -> Tensor:
+def adjust_saturation_with_gray_subtraction(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
+    r"""Adjust color saturation of an image by blending the image with its grayscaled version.
+
+    The image is expected to be an RGB image or a gray image in the range of [0, 1].
+    If it is an RGB image, returns blending of the image with its grayscaled version.
+    If it is a gray image, returns the image.
+
+    .. note::
+        this is just a convenience function to have compatibility with Pil
+
+    Args:
+        image: Image/Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
+        factor: How much to adjust the saturation. 0 will give a black
+          and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
+
+    Return:
+        Adjusted image in the shape of :math:`(*, 3, H, W)`.
+
+    Example:
+        >>> x = torch.ones(1, 3, 3, 3)
+        >>> adjust_saturation_with_gray_subtraction(x, 2.).shape
+        torch.Size([1, 3, 3, 3])
+
+        >>> x = torch.ones(2, 3, 3, 3)
+        >>> y = torch.tensor([1., 2.])
+        >>> adjust_saturation_with_gray_subtraction(x, y).shape
+        torch.Size([2, 3, 3, 3])
+    """
+
+    KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
+    KORNIA_CHECK(isinstance(factor, (float, Tensor)), "Factor should be float or Tensor.")
+    KORNIA_CHECK_IS_COLOR_OR_GRAY(image, "Image should be an RGB or gray image")
+
+    if image.shape[-3] == 1:
+        return image
+
+    if isinstance(factor, float):
+        # TODO: figure out how to create later a tensor without importing torch
+        factor = torch.as_tensor(factor, device=image.device, dtype=image.dtype)
+    elif isinstance(factor, Tensor):
+        factor = factor.to(image.device, image.dtype)
+
+    # make factor broadcastable
+    while len(factor.shape) != len(image.shape):
+        factor = factor[..., None]
+
+    x_other: Tensor = rgb_to_grayscale(image)
+
+    # blend the image with the grayscaled image
+    x_adjusted: Tensor = (1 - factor) * x_other + factor * image
+
+    # clamp the output
+    out: Tensor = torch.clamp(x_adjusted, 0.0, 1.0)
+
+    return out
+
+
+def adjust_saturation(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
     r"""Adjust color saturation of an image.
 
     .. image:: _static/img/adjust_saturation.png
 
-    The input image is expected to be an RGB image in the range of [0, 1].
+    The image is expected to be an RGB image in the range of [0, 1].
 
     Args:
-        input: Image/Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
-        saturation_factor: How much to adjust the saturation. 0 will give a black
+        image: Image/Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
+        factor: How much to adjust the saturation. 0 will give a black
           and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
+        saturation_mode: The mode to adjust saturation.
 
     Return:
         Adjusted image in the shape of :math:`(*, 3, H, W)`.
@@ -75,10 +128,10 @@ def adjust_saturation(input: Tensor, saturation_factor: Union[float, Tensor]) ->
     """
 
     # convert the rgb image to hsv
-    x_hsv: Tensor = rgb_to_hsv(input)
+    x_hsv: Tensor = rgb_to_hsv(image)
 
     # perform the conversion
-    x_adjusted: Tensor = adjust_saturation_raw(x_hsv, saturation_factor)
+    x_adjusted: Tensor = adjust_saturation_raw(x_hsv, factor)
 
     # convert back to rgb
     out: Tensor = hsv_to_rgb(x_adjusted)
@@ -86,36 +139,29 @@ def adjust_saturation(input: Tensor, saturation_factor: Union[float, Tensor]) ->
     return out
 
 
-def adjust_hue_raw(input: Tensor, hue_factor: Union[float, Tensor]) -> Tensor:
-    r"""Adjust hue of an image. Expecting input to be in hsv format already."""
+def adjust_hue_raw(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
+    r"""Adjust hue of an image. Expecting image to be in hsv format already."""
 
-    if not isinstance(input, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
+    KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
+    KORNIA_CHECK(isinstance(factor, (float, Tensor)),
+                 f"The factor should be a float number or Tensor in the range between"
+                 f" [-PI, PI]. Got {type(factor)}")
 
-    if not isinstance(hue_factor, (float, Tensor)):
-        raise TypeError(
-            f"The hue_factor should be a float number or Tensor in the range between"
-            f" [-PI, PI]. Got {type(hue_factor)}"
-        )
+    if isinstance(factor, float):
+        factor = torch.as_tensor(factor)
 
-    if isinstance(hue_factor, float):
-        hue_factor = torch.as_tensor(hue_factor)
+    factor = factor.to(image.device, image.dtype)
 
-    hue_factor = hue_factor.to(input.device, input.dtype)
-
-    # TODO: find a proper way to check bound values in batched tensors.
-    # if ((hue_factor < -pi) | (hue_factor > pi)).any():
-    #     raise ValueError(f"Hue-factor must be in the range [-PI, PI]. Got {hue_factor}")
-
-    for _ in range(len(input.shape) - len(hue_factor.shape)):
-        hue_factor = torch.unsqueeze(hue_factor, dim=-1)
+    # make factor broadcastable
+    while len(factor.shape) != len(image.shape):
+        factor = factor[..., None]
 
     # unpack the hsv values
-    h, s, v = torch.chunk(input, chunks=3, dim=-3)
+    h, s, v = torch.chunk(image, chunks=3, dim=-3)
 
     # transform the hue value and appl module
     divisor: float = 2 * pi
-    h_out: Tensor = torch.fmod(h + hue_factor, divisor)
+    h_out: Tensor = torch.fmod(h + factor, divisor)
 
     # pack back back the corrected hue
     out: Tensor = torch.cat([h_out, s, v], dim=-3)
@@ -123,16 +169,16 @@ def adjust_hue_raw(input: Tensor, hue_factor: Union[float, Tensor]) -> Tensor:
     return out
 
 
-def adjust_hue(input: Tensor, hue_factor: Union[float, Tensor]) -> Tensor:
+def adjust_hue(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
     r"""Adjust hue of an image.
 
     .. image:: _static/img/adjust_hue.png
 
-    The input image is expected to be an RGB image in the range of [0, 1].
+    The image is expected to be an RGB image in the range of [0, 1].
 
     Args:
-        input: Image to be adjusted in the shape of :math:`(*, 3, H, W)`.
-        hue_factor: How much to shift the hue channel. Should be in [-PI, PI]. PI
+        image: Image to be adjusted in the shape of :math:`(*, 3, H, W)`.
+        factor: How much to shift the hue channel. Should be in [-PI, PI]. PI
           and -PI give complete reversal of hue channel in HSV space in positive and negative
           direction respectively. 0 means no shift. Therefore, both -PI and PI will give an
           image with complementary colors while 0 gives the original image.
@@ -156,10 +202,10 @@ def adjust_hue(input: Tensor, hue_factor: Union[float, Tensor]) -> Tensor:
     """
 
     # convert the rgb image to hsv
-    x_hsv: Tensor = rgb_to_hsv(input)
+    x_hsv: Tensor = rgb_to_hsv(image)
 
     # perform the conversion
-    x_adjusted: Tensor = adjust_hue_raw(x_hsv, hue_factor)
+    x_adjusted: Tensor = adjust_hue_raw(x_hsv, factor)
 
     # convert back to rgb
     out: Tensor = hsv_to_rgb(x_adjusted)
@@ -313,7 +359,7 @@ def adjust_contrast_with_mean_subtraction(image: Tensor, factor: Union[float, Te
 
     .. note::
         this is just a convenience function to have compatibility with Pil. For exact
-        definition of image contrast adjustmen consider using :func:`kornia.enhance.adjust_gamma`.
+        definition of image contrast adjustment consider using :func:`kornia.enhance.adjust_gamma`.
 
     Args:
         image: Image to be adjusted in the shape of :math:`(*, H, W)`.
@@ -329,8 +375,8 @@ def adjust_contrast_with_mean_subtraction(image: Tensor, factor: Union[float, Te
         >>> import torch
         >>> x = torch.ones(1, 1, 2, 2)
         >>> adjust_contrast_with_mean_subtraction(x, 0.5)
-        tensor([[[[0.5000, 0.5000],
-                  [0.5000, 0.5000]]]])
+        tensor([[[[1., 1.],
+                  [1., 1.]]]])
 
         >>> x = torch.ones(2, 5, 3, 3)
         >>> y = torch.tensor([0.65, 0.50])
@@ -358,7 +404,11 @@ def adjust_contrast_with_mean_subtraction(image: Tensor, factor: Union[float, Te
         img_mean = image.mean()
 
     # Apply contrast factor subtracting the mean
-    return image * factor + img_mean * (1 - factor)
+    img_adjust: Tensor = image * factor + img_mean * (1 - factor)
+
+    img_adjust = img_adjust.clamp(min=0.0, max=1.0)
+
+    return img_adjust
 
 
 def adjust_brightness(image: Tensor, factor: Union[float, Tensor], clip_output=True) -> Tensor:
@@ -420,6 +470,57 @@ def adjust_brightness(image: Tensor, factor: Union[float, Tensor], clip_output=T
 
     # shift pixel values
     img_adjust: Tensor = image + factor
+
+    # truncate between pixel values
+    if clip_output:
+        img_adjust = img_adjust.clamp(min=0.0, max=1.0)
+
+    return img_adjust
+
+
+def adjust_brightness_accumulative(image: Tensor, factor: Union[float, Tensor], clip_output=True) -> Tensor:
+    r"""Adjust the brightness accumulatively of an image tensor.
+
+    This implementation follows PIL convention.
+
+    The input image and factor is expected to be in the range of [0, 1].
+
+    Args:
+        image: Image to be adjusted in the shape of :math:`(*, H, W)`.
+        factor: Brightness adjust factor per element in the batch. It's recommended to
+            bound the factor by [0, 1]. 0 does not modify the input image while any other
+            number modify the brightness.
+
+    Return:
+        Adjusted tensor in the shape of :math:`(*, H, W)`.
+
+    Example:
+        >>> x = torch.ones(1, 1, 2, 2)
+        >>> adjust_brightness_accumulative(x, 1.)
+        tensor([[[[1., 1.],
+                  [1., 1.]]]])
+
+        >>> x = torch.ones(2, 5, 3, 3)
+        >>> y = torch.tensor([0.25, 0.50])
+        >>> adjust_brightness_accumulative(x, y).shape
+        torch.Size([2, 5, 3, 3])
+    """
+    KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
+    KORNIA_CHECK(isinstance(factor, (float, Tensor)), "Factor should be float or Tensor.")
+
+    # convert factor to a tensor
+    if isinstance(factor, float):
+        # TODO: figure out how to create later a tensor without importing torch
+        factor = torch.as_tensor(factor, device=image.device, dtype=image.dtype)
+    elif isinstance(factor, Tensor):
+        factor = factor.to(image.device, image.dtype)
+
+    # make factor broadcastable
+    while len(factor.shape) != len(image.shape):
+        factor = factor[..., None]
+
+    # shift pixel values
+    img_adjust: Tensor = image * factor
 
     # truncate between pixel values
     if clip_output:
@@ -801,13 +902,13 @@ def equalize3d(input: Tensor) -> Tensor:
     return torch.stack(res)
 
 
-def invert(input: Tensor, max_val: Tensor = torch.tensor(1.0)) -> Tensor:
-    r"""Invert the values of an input tensor by its maximum value.
+def invert(image: Tensor, max_val: Tensor = Tensor([1.0])) -> Tensor:
+    r"""Invert the values of an input image tensor by its maximum value.
 
     .. image:: _static/img/invert.png
 
     Args:
-        input: The input tensor to invert with an arbitatry shape.
+        image: The input tensor to invert with an arbitatry shape.
         max_val: The expected maximum value in the input tensor. The shape has to
           according to the input tensor shape, or at least has to work with broadcasting.
 
@@ -817,18 +918,20 @@ def invert(input: Tensor, max_val: Tensor = torch.tensor(1.0)) -> Tensor:
         torch.Size([1, 2, 4, 4])
 
         >>> img = 255. * torch.rand(1, 2, 3, 4, 4)
-        >>> invert(img, torch.as_tensor(255.).shape
+        >>> invert(img, torch.as_tensor(255.)).shape
         torch.Size([1, 2, 3, 4, 4])
 
         >>> img = torch.rand(1, 3, 4, 4)
         >>> invert(img, torch.as_tensor([[[[1.]]]])).shape
         torch.Size([1, 3, 4, 4])
     """
-    if not isinstance(input, Tensor):
+    if not isinstance(image, Tensor):
         raise AssertionError(f"Input is not a Tensor. Got: {type(input)}")
+
     if not isinstance(max_val, Tensor):
         raise AssertionError(f"max_val is not a Tensor. Got: {type(max_val)}")
-    return max_val.to(input.dtype) - input
+
+    return max_val.to(image) - image
 
 
 class AdjustSaturation(Module):
@@ -839,6 +942,7 @@ class AdjustSaturation(Module):
     Args:
         saturation_factor: How much to adjust the saturation. 0 will give a black
           and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
+        saturation_mode: The mode to adjust saturation.
 
     Shape:
         - Input: Image/Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
@@ -874,8 +978,58 @@ class AdjustSaturation(Module):
         return adjust_saturation(input, self.saturation_factor)
 
 
+class AdjustSaturationWithGraySubtraction(Module):
+    r"""Adjust color saturation of an image.
+
+    This implementation aligns PIL. Hence, the output is close to TorchVision.
+    The input image is expected to be in the range of [0, 1].
+
+    The input image is expected to be an RGB or gray image in the range of [0, 1].
+
+    Args:
+        saturation_factor: How much to adjust the saturation. 0 will give a black
+          and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
+        saturation_mode: The mode to adjust saturation.
+
+    Shape:
+        - Input: Image/Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
+        - Output: Adjusted image in the shape of :math:`(*, 3, H, W)`.
+
+    Example:
+        >>> x = torch.ones(1, 3, 3, 3)
+        >>> AdjustSaturationWithGraySubtraction(2.)(x)
+        tensor([[[[1., 1., 1.],
+                  [1., 1., 1.],
+                  [1., 1., 1.]],
+        <BLANKLINE>
+                 [[1., 1., 1.],
+                  [1., 1., 1.],
+                  [1., 1., 1.]],
+        <BLANKLINE>
+                 [[1., 1., 1.],
+                  [1., 1., 1.],
+                  [1., 1., 1.]]]])
+
+        >>> x = torch.ones(2, 3, 3, 3)
+        >>> y = torch.ones(2)
+        >>> out = AdjustSaturationWithGraySubtraction(y)(x)
+        >>> torch.nn.functional.mse_loss(x, out)
+        tensor(0.)
+    """
+
+    def __init__(self, saturation_factor: Union[float, Tensor]) -> None:
+        super().__init__()
+        self.saturation_factor: Union[float, Tensor] = saturation_factor
+
+    def forward(self, input: Tensor) -> Tensor:
+        return adjust_saturation_with_gray_subtraction(input, self.saturation_factor)
+
+
 class AdjustHue(Module):
     r"""Adjust hue of an image.
+
+    This implementation aligns PIL. Hence, the output is close to TorchVision.
+    The input image is expected to be in the range of [0, 1].
 
     The input image is expected to be an RGB image in the range of [0, 1].
 
@@ -985,12 +1139,56 @@ class AdjustContrast(Module):
         torch.Size([2, 5, 3, 3])
     """
 
-    def __init__(self, contrast_factor: Union[float, Tensor]) -> None:
+    def __init__(
+        self,
+        contrast_factor: Union[float, Tensor],
+    ) -> None:
         super().__init__()
         self.contrast_factor: Union[float, Tensor] = contrast_factor
 
     def forward(self, input: Tensor) -> Tensor:
         return adjust_contrast(input, self.contrast_factor)
+
+
+class AdjustContrastWithMeanSubtraction(Module):
+    r"""Adjust Contrast of an image.
+
+    This implementation aligns PIL. Hence, the output is close to TorchVision.
+    The input image is expected to be in the range of [0, 1].
+
+    Args:
+        contrast_factor: Contrast adjust factor per element
+          in the batch by subtracting its mean grayscaled version.
+          0 generates a completely black image, 1 does not modify
+          the input image while any other non-negative number modify the
+          brightness by this factor.
+
+    Shape:
+        - Input: Image/Input to be adjusted in the shape of :math:`(*, N)`.
+        - Output: Adjusted image in the shape of :math:`(*, N)`.
+
+    Example:
+        >>> x = torch.ones(1, 1, 3, 3)
+        >>> AdjustContrastWithMeanSubtraction(0.5)(x)
+        tensor([[[[1., 1., 1.],
+                  [1., 1., 1.],
+                  [1., 1., 1.]]]])
+
+        >>> x = torch.ones(2, 5, 3, 3)
+        >>> y = torch.ones(2)
+        >>> AdjustContrastWithMeanSubtraction(y)(x).shape
+        torch.Size([2, 5, 3, 3])
+    """
+
+    def __init__(
+        self,
+        contrast_factor: Union[float, Tensor],
+    ) -> None:
+        super().__init__()
+        self.contrast_factor: Union[float, Tensor] = contrast_factor
+
+    def forward(self, input: Tensor) -> Tensor:
+        return adjust_contrast_with_mean_subtraction(input, self.contrast_factor)
 
 
 class AdjustBrightness(Module):
@@ -1021,12 +1219,54 @@ class AdjustBrightness(Module):
         torch.Size([2, 5, 3, 3])
     """
 
-    def __init__(self, brightness_factor: Union[float, Tensor]) -> None:
+    def __init__(
+        self,
+        brightness_factor: Union[float, Tensor],
+    ) -> None:
         super().__init__()
         self.brightness_factor: Union[float, Tensor] = brightness_factor
 
     def forward(self, input: Tensor) -> Tensor:
         return adjust_brightness(input, self.brightness_factor)
+
+
+class AdjustBrightnessAccumulative(Module):
+    r"""Adjust Brightness of an image accumulatively.
+
+    This implementation aligns PIL. Hence, the output is close to TorchVision.
+    The input image is expected to be in the range of [0, 1].
+
+    Args:
+        brightness_factor: Brightness adjust factor per element
+          in the batch. 0 does not modify the input image while any other number modify the
+          brightness.
+
+    Shape:
+        - Input: Image/Input to be adjusted in the shape of :math:`(*, N)`.
+        - Output: Adjusted image in the shape of :math:`(*, N)`.
+
+    Example:
+        >>> x = torch.ones(1, 1, 3, 3)
+        >>> AdjustBrightnessAccumulative(1.)(x)
+        tensor([[[[1., 1., 1.],
+                  [1., 1., 1.],
+                  [1., 1., 1.]]]])
+
+        >>> x = torch.ones(2, 5, 3, 3)
+        >>> y = torch.ones(2)
+        >>> AdjustBrightnessAccumulative(y)(x).shape
+        torch.Size([2, 5, 3, 3])
+    """
+
+    def __init__(
+        self,
+        brightness_factor: Union[float, Tensor],
+    ) -> None:
+        super().__init__()
+        self.brightness_factor: Union[float, Tensor] = brightness_factor
+
+    def forward(self, input: Tensor) -> Tensor:
+        return adjust_brightness_accumulative(input, self.brightness_factor)
 
 
 class Invert(Module):

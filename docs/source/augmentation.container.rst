@@ -56,7 +56,7 @@ Currently, `VideoSequential` supports data format like :math:`(B, C, T, H, W)` a
 
    transform = K.VideoSequential(
       K.RandomAffine(360),
-      K.ColorJitter(0.2, 0.3, 0.2, 0.3),
+      K.ColorJiggle(0.2, 0.3, 0.2, 0.3),
       data_format="BCTHW",
       same_on_frame=True
    )
