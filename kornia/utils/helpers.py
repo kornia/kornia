@@ -7,6 +7,24 @@ import torch
 
 from kornia.utils._compat import solve, torch_version_geq
 
+def get_cuda_device_if_available(index: int = 0) -> torch.device:
+    """Tries to get cuda device, if fail, returns cpu
+    
+    Args:
+        index: cuda device index
+
+    Returns:
+        torch.device
+    """
+    try:
+        if torch.cuda.is_available():
+            dev = torch.device(f'cuda:{index}')
+        else:
+            dev = torch.device('cpu')
+    except:
+        dev = torch.device('cpu')
+    return dev
+
 
 def _deprecated(func: Callable = None, replace_with: Optional[str] = None):
     if func is None:
