@@ -413,7 +413,7 @@ def rotation_matrix_to_quaternion(
     trace: torch.Tensor = m00 + m11 + m22
 
     def trace_positive_cond():
-        sq = torch.sqrt(trace + 1.0) * 2.0  # sq = 4 * qw.
+        sq = torch.sqrt(trace + 1.0 + eps) * 2.0  # sq = 4 * qw.
         qw = 0.25 * sq
         qx = safe_zero_division(m21 - m12, sq)
         qy = safe_zero_division(m02 - m20, sq)
