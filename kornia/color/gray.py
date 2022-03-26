@@ -2,6 +2,7 @@ from typing import Optional
 
 from kornia.color.rgb import bgr_to_rgb
 from kornia.core import Module, Tensor, concatenate
+from kornia.core.image import Image, ImageColor
 
 
 def grayscale_to_rgb(image: Tensor) -> Tensor:
@@ -54,7 +55,7 @@ def rgb_to_grayscale(image: Tensor, rgb_weights: Optional[Tensor] = None) -> Ten
         >>> input = torch.rand(2, 3, 4, 5)
         >>> gray = rgb_to_grayscale(input) # 2x1x4x5
     """
-    if not isinstance(image, Tensor):
+    if not isinstance(image, (Tensor, Image)):
         raise TypeError(f"Input type is not a Image or Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
@@ -80,7 +81,10 @@ def rgb_to_grayscale(image: Tensor, rgb_weights: Optional[Tensor] = None) -> Ten
     w_g = rgb_weights[1:2]
     w_b = rgb_weights[2:3]
 
-    output = w_r * r + w_g * g + w_b * b
+    output = r * w_r + g * w_g + b * w_b
+
+    if hasattr(output, "color"):
+        output.color = ImageColor.GRAY32
 
     return output
 

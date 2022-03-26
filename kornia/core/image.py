@@ -10,8 +10,9 @@ from kornia.utils import image_to_tensor, tensor_to_image
 class ImageColor(Enum):
     r"""Enum that represents an image color space."""
     GRAY8 = 0
-    RGB8 = 1
-    BGR8 = 2
+    GRAY32 = 1
+    RGB8 = 2
+    BGR8 = 3
 
 
 class Image:
@@ -102,9 +103,6 @@ class Image:
 
     def __getattr__(self, name: str):
         """Direct access to the backend methods."""
-        import pdb
-
-        pdb.set_trace()
         if name in ['apply']:
             return
         return getattr(self.data, name)
@@ -117,6 +115,41 @@ class Image:
 
     def __len__(self) -> int:
         return len(self.data)
+
+    def __floordiv__(self, x):
+        if hasattr(x, 'data'):
+            x = x.data
+        return Image(self.data / x, self.color, self._mean(), self._std())
+
+    def __truediv__(self, x):
+        if hasattr(x, 'data'):
+            x = x.data
+        return Image(self.data // x, self.color, self._mean(), self._std())
+
+    def __mul__(self, x):
+        if hasattr(x, 'data'):
+            x = x.data
+        return Image(self.data * x, self.color, self._mean(), self._std())
+
+    def __add__(self, x):
+        if hasattr(x, 'data'):
+            x = x.data
+        return Image(self.data + x, self.color, self._mean(), self._std())
+
+    def __sub__(self, x):
+        if hasattr(x, 'data'):
+            x = x.data
+        return Image(self.data - x, self.color, self._mean(), self._std())
+
+    def __mod__(self, x):
+        if hasattr(x, 'data'):
+            x = x.data
+        return Image(self.data % x, self.color, self._mean(), self._std())
+
+    def __pow__(self, x):
+        if hasattr(x, 'data'):
+            x = x.data
+        return Image(self.data**x, self.color, self._mean(), self._std())
 
     def to(self, device=None, dtype=None) -> 'Image':
         if device is not None and isinstance(device, torch.dtype):
@@ -165,6 +198,10 @@ class Image:
     def color(self, x: ImageColor) -> None:
         """Setter for the color space representation of the image."""
         self._meta['color'] = x
+
+    # TODO: figure out a better way map this function
+    def float(self) -> 'Image':
+        return Image(self.data.float(), self.color, self._mean(), self._std())
 
     def _mean(self) -> List[float]:
         return self._meta['mean']

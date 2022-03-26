@@ -3,6 +3,7 @@ from typing import Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
+from kornia.core.image import Image
 from kornia.filters import gaussian_blur2d
 from kornia.utils import _extract_device_dtype
 from kornia.utils.image import perform_keep_shape_image
@@ -560,7 +561,10 @@ def resize(
         >>> print(out.shape)
         torch.Size([1, 3, 6, 8])
     """
-    if not isinstance(input, torch.Tensor):
+    import pdb
+
+    pdb.set_trace()
+    if not isinstance(input, (torch.Tensor, Image)):
         raise TypeError(f"Input tensor type is not a torch.Tensor. Got {type(input)}")
 
     if len(input.shape) < 2:
@@ -904,11 +908,7 @@ class Translate(nn.Module):
     """
 
     def __init__(
-        self,
-        translation: torch.Tensor,
-        mode: str = 'bilinear',
-        padding_mode: str = 'zeros',
-        align_corners: bool = True,
+        self, translation: torch.Tensor, mode: str = 'bilinear', padding_mode: str = 'zeros', align_corners: bool = True
     ) -> None:
         super().__init__()
         self.translation: torch.Tensor = translation

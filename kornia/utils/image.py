@@ -216,7 +216,9 @@ def perform_keep_shape_image(f: Callable) -> Callable:
 
     @wraps(f)
     def _wrapper(input: torch.Tensor, *args, **kwargs):
-        if not isinstance(input, torch.Tensor):
+        from kornia.core.image import Image
+
+        if not isinstance(input, (torch.Tensor, Image)):
             raise TypeError(f"Input input type is not a torch.Tensor. Got {type(input)}")
 
         if input.numel() == 0:
