@@ -69,13 +69,13 @@ class DistributionWithMapper(Distribution):
         self.dist = dist
         self.mapper = mapper
 
-    def rsample(self, sample_shape: torch.Size) -> torch.Tensor:
+    def rsample(self, sample_shape: torch.Size) -> torch.Tensor:  # type:ignore
         out = self.dist.rsample(sample_shape)
         if self.mapper is not None:
             out = self.mapper(out)
         return out
 
-    def sample(self, sample_shape: torch.Size) -> torch.Tensor:
+    def sample(self, sample_shape: torch.Size) -> torch.Tensor:  # type:ignore
         out = self.dist.sample(sample_shape)
         if self.mapper is not None:
             out = self.mapper(out)
