@@ -39,7 +39,7 @@ class STEFunction(Function):
     """
 
     @staticmethod
-    def forward(
+    def forward(  # type:ignore
         ctx, input: Tensor, output: Tensor,
         grad_fn: Optional[Callable] = None
     ) -> Tensor:
@@ -49,7 +49,7 @@ class STEFunction(Function):
         return output
 
     @staticmethod
-    def backward(ctx, grad_output: Tensor) -> Tuple[Tensor, Tensor, None]:
+    def backward(ctx, grad_output: Tensor) -> Tuple[Tensor, Tensor, None]:  # type:ignore
         if ctx.grad_fn is None:
             return grad_output.sum_to_size(ctx.in_shape), grad_output.sum_to_size(ctx.out_shape), None
         return (
