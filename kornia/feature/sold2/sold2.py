@@ -7,12 +7,13 @@ import torch.nn.functional as F
 
 from .backbones import SOLD2Net
 from .sold2_detector import line_map_to_segments, LineSegmentDetectionModule, super_nms
+from ...geometry.conversions import normalize_pixel_coordinates
 
 urls: Dict[str, str] = {}
 urls["wireframe"] = "https://www.polybox.ethz.ch/index.php/s/blOrW89gqSLoHOk/download"
 
 
-default_cfg = {
+default_cfg: Dict = {
     'backbone_cfg': {
         'input_channel': 1,
         'depth': 4,
@@ -81,7 +82,7 @@ class SOLD2(nn.Module):
         >>> matches = sold2.match(line_seg1, line_seg2, desc1[None], desc2[None])
     """
 
-    def __init__(self, pretrained: bool = True, config: Dict = None):
+    def __init__(self, pretrained: bool = True, config: Optional[Dict] = None):
         super().__init__()
         # Initialize some parameters
         self.config = default_cfg if config is None else config
@@ -108,15 +109,13 @@ class SOLD2(nn.Module):
     def forward(self, img: torch.Tensor) -> Dict:
         """
         Args:
-            img: batched images with shape :math:`(N, 1, H, W)`.
+            img: batched images with shape :math:`(B, 1, H, W)`.
 
-        :return:
-            - ``line_segments``: list of line segments in each of the N images :math:`List[(Nlines, 2, 2)]`.
-            - ``raw_junc_heatmap``: raw junction heatmap of shape :math:`(N, H, W)`.
-            - ``raw_line_heatmap``: raw line heatmap of shape :math:`(N, H, W)`.
-            - ``dense_desc``: the semi-dense descriptor map of shape :math:`(N, 128, H/4, W/4)`.
-
-        :rtype: dict
+        Return:
+            - ``line_segments``: list of N line segments in each of the B images :math:`List[(N, 2, 2)]`.
+            - ``raw_junc_heatmap``: raw junction heatmap of shape :math:`(B, H, W)`.
+            - ``raw_line_heatmap``: raw line heatmap of shape :math:`(B, H, W)`.
+            - ``dense_desc``: the semi-dense descriptor map of shape :math:`(B, 128, H/4, W/4)`.
         """
         if ((not len(img.shape) == 4) or (not isinstance(img, torch.Tensor))):
             raise ValueError("The input image should be a 4D torch tensor.")
@@ -156,8 +155,8 @@ class SOLD2(nn.Module):
 
         return outputs
 
-    def match(self, line_seg1: np.ndarray, line_seg2: np.ndarray,
-              desc1: torch.Tensor, desc2: torch.Tensor) -> np.ndarray:
+    def match(self, line_seg1: torch.Tensor, line_seg2: torch.Tensor,
+              desc1: torch.Tensor, desc2: torch.Tensor) -> torch.Tensor:
         """Find the best matches between two sets of line segments and their corresponding descriptors.
 
         Args:
@@ -169,7 +168,7 @@ class SOLD2(nn.Module):
         """
         return self.line_matcher(line_seg1, line_seg2, desc1, desc2)
 
-    def adapt_state_dict(self, state_dict):
+    def adapt_state_dict(self, state_dict: dict) -> Dict:
         del state_dict["w_junc"]
         del state_dict["w_heatmap"]
         del state_dict["w_desc"]
@@ -181,9 +180,10 @@ class SOLD2(nn.Module):
 
 
 class WunschLineMatcher:
-    """Class matching two sets of line segments with the Needleman-Wunsch algorithm."""
-    def __init__(self, cross_check=True, num_samples=10, min_dist_pts=8,
-                 top_k_candidates=10, grid_size=8, line_score=False):
+    """Class matching two sets of line segments with the Needleman-Wunsch algorithm.
+    TODO: move it later in kornia.feature.matching"""
+    def __init__(self, cross_check: bool = True, num_samples: int = 10, min_dist_pts: int = 8,
+                 top_k_candidates: int = 10, grid_size: int = 8, line_score: bool = False):
         self.cross_check = cross_check
         self.num_samples = num_samples
         self.min_dist_pts = min_dist_pts
@@ -191,7 +191,8 @@ class WunschLineMatcher:
         self.grid_size = grid_size
         self.line_score = line_score  # True to compute saliency on a line
 
-    def __call__(self, line_seg1, line_seg2, desc1, desc2):
+    def __call__(self, line_seg1: torch.Tensor, line_seg2: torch.Tensor,
+                 desc1: torch.Tensor, desc2: torch.Tensor) -> torch.Tensor:
         """Find the best matches between two sets of line segments and their corresponding descriptors."""
         img_size1 = (desc1.shape[2] * self.grid_size,
                      desc1.shape[3] * self.grid_size)
@@ -241,7 +242,7 @@ class WunschLineMatcher:
 
         return matches
 
-    def sample_line_points(self, line_seg):
+    def sample_line_points(self, line_seg: torch.Tensor) -> Tuple:
         """Regularly sample points along each line segments, with a minimal distance between each point.
 
         Pad the remaining points.
@@ -287,7 +288,7 @@ class WunschLineMatcher:
 
         return line_points, valid_points
 
-    def filter_and_match_lines(self, scores):
+    def filter_and_match_lines(self, scores: torch.Tensor) -> torch.Tensor:
         """Use the scores to keep the top k best lines, compute the Needleman- Wunsch algorithm on each candidate
         pairs, and keep the highest score.
 
@@ -327,7 +328,7 @@ class WunschLineMatcher:
         matches = topk_lines[np.arange(n_lines1), matches]
         return matches
 
-    def needleman_wunsch(self, scores):
+    def needleman_wunsch(self, scores: torch.Tensor) -> torch.Tensor:
         """Batched implementation of the Needleman-Wunsch algorithm.
 
         The cost of the InDel operation is set to 0 by subtracting the gap
@@ -357,12 +358,11 @@ def keypoints_to_grid(keypoints: torch.Tensor, img_size: tuple) -> torch.Tensor:
     """Convert a list of keypoints into a grid in [-1, 1]² that can be used in torch.nn.functional.interpolate.
 
     Args:
-        keypoints: a tensor [N, 2] or batched tensor [B, N, 2] of N keypoints (ij coordinates convention).
+        keypoints: a tensor [N, 2] of N keypoints (ij coordinates convention).
         img_size: the original image size (H, W)
     """
-    n_points = keypoints.size()[-2]
-    device = keypoints.device
-    grid_points = keypoints.float() * 2. / torch.tensor(
-        img_size, dtype=torch.float, device=device) - 1.
-    grid_points = grid_points[..., [1, 0]].view(-1, n_points, 1, 2)
+    n_points = len(keypoints)
+    grid_points = normalize_pixel_coordinates(
+        keypoints.float()[:, [1, 0]], img_size[0], img_size[1])
+    grid_points = grid_points.view(-1, n_points, 1, 2)
     return grid_points

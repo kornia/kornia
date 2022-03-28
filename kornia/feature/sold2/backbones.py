@@ -22,11 +22,11 @@ class HourglassBackbone(nn.Module):
     """
 
     def __init__(self,
-                 input_channel: Optional[int] = 1,
-                 depth: Optional[int] = 4,
-                 num_stacks: Optional[int] = 2,
-                 num_blocks: Optional[int] = 1,
-                 num_classes: Optional[int] = 5):
+                 input_channel: int = 1,
+                 depth: int = 4,
+                 num_stacks: int = 2,
+                 num_blocks: int = 1,
+                 num_classes: int = 5):
         super().__init__()
         self.head = MultitaskHead
         self.net = hg(**{
@@ -68,7 +68,7 @@ class Bottleneck2D(nn.Module):
                  inplanes: int,
                  planes: int,
                  stride: Union[int, Tuple[int, int]] = 1,
-                 downsample: Optional[torch.nn.Module] = None):
+                 downsample: torch.nn.Module = None):
         super().__init__()
 
         self.bn1 = nn.BatchNorm2d(inplanes)

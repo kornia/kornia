@@ -1,5 +1,5 @@
 import math
-from typing import Dict
+from typing import Dict, Tuple
 
 import numpy as np
 import torch
@@ -88,7 +88,7 @@ class SOLD2_detector(nn.Module):
         self.line_detector_cfg = self.config["line_detector_cfg"]
         self.line_detector = LineSegmentDetectionModule(**self.config["line_detector_cfg"])
 
-    def adapt_state_dict(self, state_dict):
+    def adapt_state_dict(self, state_dict: Dict) -> Dict:
         del state_dict["w_junc"]
         del state_dict["w_heatmap"]
         del state_dict["w_desc"]
@@ -101,14 +101,12 @@ class SOLD2_detector(nn.Module):
     def forward(self, img: torch.Tensor) -> Dict:
         """
         Args:
-            img: batched images with shape :math:`(N, 1, H, W)`.
+            img: batched images with shape :math:`(B, 1, H, W)`.
 
-        :return:
-            - ``line_segments``: list of line segments in each of the N images :math:`List[(Nlines, 2, 2)]`.
-            - ``raw_junc_heatmap``: raw junction heatmap of shape :math:`(N, H, W)`.
-            - ``raw_line_heatmap``: raw line heatmap of shape :math:`(N, H, W)`.
-
-        :rtype: dict
+        Return:
+            - ``line_segments``: list of N line segments in each of the B images :math:`List[(N, 2, 2)]`.
+            - ``raw_junc_heatmap``: raw junction heatmap of shape :math:`(B, H, W)`.
+            - ``raw_line_heatmap``: raw line heatmap of shape :math:`(B, H, W)`.
         """
         if ((not len(img.shape) == 4) or (not isinstance(img, torch.Tensor))):
             raise ValueError("The input image should be a 4D torch tensor.")
@@ -212,24 +210,9 @@ class LineSegmentDetectionModule:
         if self.use_junction_refinement and self.junction_refine_cfg is None:
             raise ValueError("[Error] Missing junction refinement config.")
 
-    def convert_inputs(self, inputs, device):
-        """Convert inputs to desired torch tensor."""
-        if isinstance(inputs, np.ndarray):
-            outputs = torch.tensor(inputs, dtype=torch.float32, device=device)
-        elif isinstance(inputs, torch.Tensor):
-            outputs = inputs.to(torch.float32).to(device)
-        else:
-            raise ValueError(
-                "[Error] Inputs must either be torch tensor or numpy ndarray.")
-
-        return outputs
-
-    def detect(self, junctions, heatmap, device=torch.device("cpu")):
+    def detect(self, junctions: torch.Tensor, heatmap: torch.Tensor,
+               device: torch.device = torch.device("cpu")) -> Tuple:
         """Main function performing line segment detection."""
-        # Convert inputs to torch tensor
-        junctions = self.convert_inputs(junctions, device=device)
-        heatmap = self.convert_inputs(heatmap, device=device)
-
         # Perform the heatmap refinement
         if self.use_heatmap_refinement:
             if self.heatmap_refine_cfg["mode"] == "global":
@@ -338,7 +321,7 @@ class LineSegmentDetectionModule:
         if self.inlier_thresh > 0.:
             inlier_ratio = torch.sum(
                 sampled_feat > self.detect_thresh,
-                dim=-1).to(torch.float32) / self.num_samples
+                dim=-1).to(heatmap.dtype) / self.num_samples
             detection_results_inlier = inlier_ratio >= self.inlier_thresh
             detection_results = detection_results * detection_results_inlier
 
@@ -356,7 +339,8 @@ class LineSegmentDetectionModule:
 
         return line_map_pred, junctions, heatmap
 
-    def refine_heatmap(self, heatmap, ratio=0.2, valid_thresh=1e-2):
+    def refine_heatmap(self, heatmap: torch.Tensor, ratio: float = 0.2,
+                       valid_thresh: float = 1e-2) -> torch.Tensor:
         """Global heatmap refinement method."""
         # Grab the top 10% values
         heatmap_values = heatmap[heatmap > valid_thresh]
@@ -366,8 +350,8 @@ class LineSegmentDetectionModule:
         heatmap = torch.clamp(heatmap / max20, min=0., max=1.)
         return heatmap
 
-    def refine_heatmap_local(self, heatmap, num_blocks=5, overlap_ratio=0.5,
-                             ratio=0.2, valid_thresh=2e-3):
+    def refine_heatmap_local(self, heatmap: torch.Tensor, num_blocks: int = 5, overlap_ratio: float = 0.5,
+                             ratio: float = 0.2, valid_thresh: float = 2e-3) -> torch.Tensor:
         """Local heatmap refinement method."""
         # Get the shape of the heatmap
         H, W = heatmap.shape
@@ -401,7 +385,7 @@ class LineSegmentDetectionModule:
 
         return heatmap_output
 
-    def candidate_suppression(self, junctions, candidate_map):
+    def candidate_suppression(self, junctions: torch.Tensor, candidate_map: torch.Tensor) -> torch.Tensor:
         """Suppress overlapping long lines in the candidate segments."""
         # Define the distance tolerance
         dist_tolerance = self.nms_dist_tolerance
@@ -455,8 +439,8 @@ class LineSegmentDetectionModule:
 
         return candidate_map
 
-    def refine_junction_perturb(self, junctions, line_map_pred,
-                                heatmap, H, W, device):
+    def refine_junction_perturb(self, junctions: torch.Tensor, line_map_pred: torch.Tensor,
+                                heatmap: torch.Tensor, H: int, W: int, device: torch.device) -> Tuple:
         """Refine the line endpoints in a similar way as in LSD."""
         # Get the config
         junction_refine_cfg = self.junction_refine_cfg
@@ -536,7 +520,7 @@ class LineSegmentDetectionModule:
 
         return junctions_new, line_map_new
 
-    def segments_to_line_map(self, junctions, segments):
+    def segments_to_line_map(self, junctions: torch.Tensor, segments: torch.Tensor) -> torch.Tensor:
         """Convert the list of segments to line map."""
         # Create empty line map
         device = junctions.device
@@ -562,7 +546,7 @@ class LineSegmentDetectionModule:
 
         return line_map
 
-    def detect_bilinear(self, heatmap, cand_h, cand_w):
+    def detect_bilinear(self, heatmap: torch.Tensor, cand_h: torch.Tensor, cand_w: torch.Tensor) -> torch.Tensor:
         """Detection by bilinear sampling."""
         # Get the floor and ceiling locations
         cand_h_floor = torch.floor(cand_h).to(torch.long)
@@ -581,8 +565,8 @@ class LineSegmentDetectionModule:
 
         return cand_samples_feat
 
-    def detect_local_max(self, heatmap, cand_h, cand_w, H, W,
-                         normalized_seg_length, device):
+    def detect_local_max(self, heatmap: torch.Tensor, cand_h: torch.Tensor, cand_w: torch.Tensor, H: int, W: int,
+                         normalized_seg_length: float, device: torch.device) -> torch.Tensor:
         """Detection by local maximum search."""
         # Compute the distance threshold
         dist_thresh = (0.5 * (2 ** 0.5)
@@ -641,7 +625,7 @@ class LineSegmentDetectionModule:
         return sampled_feat_lmax
 
 
-def line_map_to_segments(junctions: np.ndarray, line_map: np.ndarray) -> np.ndarray:
+def line_map_to_segments(junctions: torch.Tensor, line_map: torch.Tensor) -> torch.Tensor:
     """Convert a line map to a Nx2x2 array of segments."""
     line_map_tmp = line_map.copy()
 
@@ -667,8 +651,8 @@ def line_map_to_segments(junctions: np.ndarray, line_map: np.ndarray) -> np.ndar
     return output_segments
 
 
-def super_nms(prob_predictions: np.ndarray, dist_thresh: float,
-              prob_thresh: float = 0.01, top_k: int = 0) -> np.ndarray:
+def super_nms(prob_predictions: torch.Tensor, dist_thresh: float,
+              prob_thresh: float = 0.01, top_k: int = 0) -> torch.Tensor:
     """Non-maximum suppression adapted from SuperPoint."""
     # Iterate through batch dimension
     im_h = prob_predictions.shape[1]
@@ -701,7 +685,7 @@ def super_nms(prob_predictions: np.ndarray, dist_thresh: float,
     return np.stack(output_lst)
 
 
-def nms_fast(in_corners: np.ndarray, H: int, W: int, dist_thresh: float) -> np.ndarray:
+def nms_fast(in_corners: torch.Tensor, H: int, W: int, dist_thresh: float) -> torch.Tensor:
     """Run a faster approximate Non-Max-Suppression on numpy corners shaped: 3xN [x_i,y_i,conf_i]^T.
 
     Algo summary: Create a grid sized HxW. Assign each corner location a 1,
