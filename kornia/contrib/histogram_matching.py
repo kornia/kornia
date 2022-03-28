@@ -45,25 +45,23 @@ def histogram_matching(source: torch.Tensor, template: torch.Tensor) -> torch.Te
 
 
 def interp(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor) -> torch.Tensor:
-    """Interpolate ``x`` tensor according to ``xp`` and ``fp`` as in ``np.interp``.
+    """One-dimensional linear interpolation for monotonically increasing sample points.
 
-    This implementation cannot reproduce numpy results identically, but reasonable.
-    Code referred to `here <https://github.com/pytorch/pytorch/issues/1552#issuecomment-926972915>`_.
+    Returns the one-dimensional piecewise linear interpolant to a function with
+    given discrete data points :math:`(xp, fp)`, evaluated at :math:`x`.
+
+    This is confirmed to be a correct implementation.
+    See https://github.com/pytorch/pytorch/issues/1552#issuecomment-979998307
 
     Args:
-        x: the input tensor that needs to be interpolated.
-        xp: the x-coordinates of the referred data points.
-        fp: the y-coordinates of the referred data points, same length as ``xp``.
+        x: the :math:`x`-coordinates at which to evaluate the interpolated
+            values.
+        xp: the :math:`x`-coordinates of the data points, must be increasing.
+        fp: the :math:`y`-coordinates of the data points, same length as `xp`.
 
     Returns:
-        The interpolated values, same shape as ``x``.
+        the interpolated values, same size as `x`.
     """
-    if x.dim() != xp.dim() != fp.dim() != 1:
-        raise ValueError(
-            f"Required 1D vector across ``x``, ``xp``, ``fp``. Got {x.dim()}, {xp.dim()}, {fp.dim()}."
-        )
+    i = torch.clip(torch.searchsorted(xp, x, right=True), 1, len(xp) - 1)
 
-    slopes = (fp[1:] - fp[:-1]) / (xp[1:] - xp[:-1])
-    locs = torch.searchsorted(xp, x)
-    locs = locs.clip(1, len(xp) - 1) - 1
-    return slopes[locs] * (x - xp[locs]) + xp[locs]
+    return (fp[i - 1] * (xp[i] - x) + fp[i] * (x - xp[i - 1])) / (xp[i] - xp[i - 1])

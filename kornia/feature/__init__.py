@@ -1,14 +1,18 @@
 from .affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
 from .defmo import DeFMO
 from .hardnet import HardNet, HardNet8
+from .hynet import TLU, FilterResponseNorm2d, HyNet
 from .integrated import (
-    get_laf_descriptors,
     GFTTAffNetHardNet,
+    KeyNetAffNetHardNet,
+    KeyNetHardNet,
     LAFDescriptor,
     LocalFeature,
     LocalFeatureMatcher,
     SIFTFeature,
+    get_laf_descriptors,
 )
+from .keynet import KeyNet, KeyNetDetector
 from .laf import (
     denormalize_laf,
     ellipse_to_laf,
@@ -44,7 +48,7 @@ from .responses import (
     hessian_response,
 )
 from .scale_space_detector import PassLAF, ScaleSpaceDetector
-from .siftdesc import SIFTDescriptor
+from .siftdesc import DenseSIFTDescriptor, SIFTDescriptor
 from .sold2 import SOLD2, SOLD2_detector
 from .sosnet import SOSNet
 from .tfeat import TFeat
@@ -62,6 +66,7 @@ __all__ = [
     "GFTTAffNetHardNet",
     "LocalFeatureMatcher",
     "SOSNet",
+    "KeyNet",
     "harris_response",
     "gftt_response",
     "hessian_response",
@@ -84,9 +89,13 @@ __all__ = [
     "get_laf_descriptors",
     "scale_laf",
     "SIFTDescriptor",
+    "DenseSIFTDescriptor",
     "MKDDescriptor",
     "HardNet",
     "HardNet8",
+    "HyNet",
+    "TLU",
+    "FilterResponseNorm2d",
     "DeFMO",
     "TFeat",
     "OriNet",
@@ -110,6 +119,10 @@ __all__ = [
     "LocalFeature",
     "SIFTFeature",
     "GFTTAffNetHardNet",
+    "KeyNet",
+    "KeyNetDetector",
+    "KeyNetHardNet",
+    "KeyNetAffNetHardNet",
     "LAFDescriptor",
     "DescriptorMatcher",
     "LoFTR",

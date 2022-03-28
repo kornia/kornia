@@ -1,3 +1,5 @@
+from typing import Optional
+
 import torch
 
 from kornia.geometry.linalg import transform_points
@@ -8,10 +10,11 @@ from .distort import distort_points, tilt_projection
 
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/undistort.dispatch.cpp#L384
-def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) -> torch.Tensor:
+def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor,
+                     new_K: Optional[torch.Tensor] = None, num_iters: int = 5) -> torch.Tensor:
     r"""Compensate for lens distortion a set of 2D image points.
 
-    Radial :math:`(k_1, k_2, k_3, k_4, k_4, k_6)`,
+    Radial :math:`(k_1, k_2, k_3, k_4, k_5, k_6)`,
     tangential :math:`(p_1, p_2)`, thin prism :math:`(s_1, s_2, s_3, s_4)`, and tilt :math:`(\tau_x, \tau_y)`
     distortion models are considered in this function.
 
@@ -21,7 +24,9 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) 
         dist: Distortion coefficients
             :math:`(k_1,k_2,p_1,p_2[,k_3[,k_4,k_5,k_6[,s_1,s_2,s_3,s_4[,\tau_x,\tau_y]]]])`. This is
             a vector with 4, 5, 8, 12 or 14 elements with shape :math:`(*, n)`.
-
+        new_K: Intrinsic camera matrix of the distorted image. By default, it is the same as K but you may additionally
+            scale and shift the result by using a different matrix. Shape: :math:`(*, 3, 3)`. Default: None.
+        num_iters: Number of undistortion iterations. Default: 5.
     Returns:
         Undistorted 2D points with shape :math:`(*, N, 2)`.
 
@@ -35,12 +40,18 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) 
                  [ 0.0711,  0.1100],
                  [-0.0697,  0.0228],
                  [-0.1843, -0.1606]]])
+
     """
     if points.dim() < 2 and points.shape[-1] != 2:
         raise ValueError(f'points shape is invalid. Got {points.shape}.')
 
     if K.shape[-2:] != (3, 3):
         raise ValueError(f'K matrix shape is invalid. Got {K.shape}.')
+
+    if new_K is None:
+        new_K = K
+    elif new_K.shape[-2:] != (3, 3):
+        raise ValueError(f'new_K matrix shape is invalid. Got {new_K.shape}.')
 
     if dist.shape[-1] not in [4, 5, 8, 12, 14]:
         raise ValueError(f"Invalid number of distortion coefficients. Got {dist.shape[-1]}")
@@ -54,6 +65,7 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) 
     cy: torch.Tensor = K[..., 1:2, 2]  # princial point in y (Bx1)
     fx: torch.Tensor = K[..., 0:1, 0]  # focal in x (Bx1)
     fy: torch.Tensor = K[..., 1:2, 1]  # focal in y (Bx1)
+
     # This is equivalent to K^-1 [u,v,1]^T
     x: torch.Tensor = (points[..., 0] - cx) / fx  # (BxN - Bx1)/Bx1 -> BxN
     y: torch.Tensor = (points[..., 1] - cy) / fy  # (BxN - Bx1)/Bx1 -> BxN
@@ -67,7 +79,7 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) 
 
     # Iteratively undistort points
     x0, y0 = x, y
-    for _ in range(5):
+    for _ in range(num_iters):
         r2 = x * x + y * y
 
         inv_rad_poly = (1 + dist[..., 5:6] * r2 + dist[..., 6:7] * r2 * r2 + dist[..., 7:8] * r2 ** 3) / (
@@ -90,9 +102,12 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) 
         y = (y0 - deltaY) * inv_rad_poly
 
     # Convert points from normalized camera coordinates to pixel coordinates
-    x = fx * x + cx
-    y = fy * y + cy
-
+    new_cx: torch.Tensor = new_K[..., 0:1, 2]  # princial point in x (Bx1)
+    new_cy: torch.Tensor = new_K[..., 1:2, 2]  # princial point in y (Bx1)
+    new_fx: torch.Tensor = new_K[..., 0:1, 0]  # focal in x (Bx1)
+    new_fy: torch.Tensor = new_K[..., 1:2, 1]  # focal in y (Bx1)
+    x = new_fx * x + new_cx
+    y = new_fy * y + new_cy
     return torch.stack([x, y], -1)
 
 

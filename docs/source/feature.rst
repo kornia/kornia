@@ -17,10 +17,12 @@ Detectors
 Descriptors
 -----------
 
+.. autoclass:: DenseSIFTDescriptor
 .. autoclass:: SIFTDescriptor
 .. autoclass:: MKDDescriptor
 .. autoclass:: HardNet
 .. autoclass:: HardNet8
+.. autoclass:: HyNet
 .. autoclass:: TFeat
 .. autoclass:: SOSNet
 .. autoclass:: LAFDescriptor
@@ -50,6 +52,12 @@ Matching
 
 .. autoclass:: GFTTAffNetHardNet
    :members: forward
+
+.. autoclass:: KeyNetAffNetHardNet
+  :members: forward
+
+.. autoclass:: KeyNetHardNet
+  :members: forward
 
 .. autoclass:: LocalFeatureMatcher
    :members: forward
@@ -86,9 +94,15 @@ Module
 .. autoclass:: CornerGFTT
 .. autoclass:: CornerHarris
 .. autoclass:: BlobDoG
+.. autoclass:: KeyNet
+.. autoclass:: FilterResponseNorm2d
+.. autoclass:: TLU
 
 
 .. autoclass:: ScaleSpaceDetector
+   :members: forward
+
+.. autoclass:: KeyNetDetector
    :members: forward
 
 .. autoclass:: PassLAF

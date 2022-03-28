@@ -5,6 +5,68 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ****
+## :rocket: [0.6.4] - 2022-03-19
+### :new:  New Features
+- Adds MS-SSIMLoss reconstruction loss function (#1551)
+- Added HyNet descriptor (#1573)
+- Add KeyNet detector (#1574)
+- Add RandomPlanckianJitter in color augmentations (#1607)
+- Add Jina AI QAbot to Kornia documentation (#1628)
+- Add `draw_convex_polygon` (#1636)
+
+### :lady_beetle:  Bug fixes
+- RandomCrop fix and improvement (#1571)
+- Fix draw_line produce wrong output for coordinates larger than uint8
+- Fix mask bug for loftr (#1580)
+- Fix gradient bug for distance_transform (#1584)
+- Fix translation sampling in AffineGenerator3D (#1581)
+- Fix AugmentationSequential bbox keypoints transformation fix (#1570)
+- Fix CombineTensorPatches (#1558)
+- Fix overblur in AA (#1612)
+
+### :exclamation: Changes
+- Deprecated `return_transform`, enabled 3D augmentations in AugmentionSequential (#1590)
+
+### :zap:  Improvements
+- Making compute_correspond_epilines work with fundamental and point of volumetric tensor (#1585)
+- Update batch shape when augmentations change size of image (#1609)
+- Remap accepts arbitrary grid size (#1617)
+- Rename variables named 'input' to 'sample' (in tests). (#1614)
+- Remove half log2 in extract_patches (#1616)
+- Add orientation-preserving option for AffNet and make it default (#1620)
+- Add option for sampling_method in 2d perspective transform generation (#1591) (#1592)
+- Fix adjust brightness (#1586)
+- Added default params for laf construction from xy and new tensor shape check (#1633)
+- Make nms2d jittable (#1637)
+- Add fn to automatically compute padding (#1634)
+- Add pillow_like option for ColorJitter to match torchvision. (#1611)
+
+## :rocket: [0.6.3] - 2022-01-30
+### :new:  New Features
+- Update CI to pytorch 1.10.1 (#1518)
+- Added Hanning kernel, prepare for KCF tracking (#1519)
+- Add distance transform implementation (#1490)
+- Add Resize augmentation module (#1545)
+
+### :lady_beetle:  Bug fixes
+- Precompute padding parameters when RandomCrop aug in container (#1494)
+- Padding error with RandomCrop #1520
+- Fix correct shape after cropping when forwarding parameters (#1533)
+- Fixed #1534 nested augmentation sequential bug (#1536)
+- Fixes to device in augmentations (#1546)
+- Bugfix for larger MotionBlur kernel size ranges (#1543)
+- Fix RandomErasing applied to mask keys (#1541)
+
+### :exclamation: Changes
+- Restructure augmentation package (#1515)
+
+### :zap:  Improvements
+- Add missing keepdims with fixed type (#1488)
+- Allow to pass a second K to distort and undistort points (#1506)
+- Augmentation Sequential with a list of bboxes as a batch (#1497)
+- Adde Devcontainer for development (#1515)
+- Improve the histogram_matching function (#1532)
+
 ## :rocket: [0.6.2] - 2021-12-03
 ### :new:  New Features
 - Add face detection API (#1469)
@@ -20,6 +82,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - fix catch type for torch.svd error (#1431)
 - Fix for nested AugmentationSequential containers (#1467)
 - Use common bbox format xywh (#1472)
+- Fix motion blur kernel size bug for larger random generator ranges (#1540)
 
 ### :exclamation: Changes
 - Add padding_mode for RandomElasticTransform augmentation (#1439)

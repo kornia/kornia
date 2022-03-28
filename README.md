@@ -110,7 +110,8 @@ Run our Jupyter notebooks [tutorials](https://kornia-tutorials.readthedocs.io/en
 </div>
 
 :triangular_flag_on_post: **Updates**
-- :white_check_mark: Integrated to [Huggingface Spaces](https://huggingface.co/spaces) with [Gradio](https://github.com/gradio-app/gradio). See [Gradio Web Demo](https://huggingface.co/spaces/akhaliq/Kornia-LoFTR).
+- :white_check_mark: [Image Matching](https://kornia.readthedocs.io/en/latest/applications/image_matching.html) Integrated to [Huggingface Spaces](https://huggingface.co/spaces). See [Gradio Web Demo](https://huggingface.co/spaces/akhaliq/Kornia-LoFTR).
+- :white_check_mark: [Face Detection](https://kornia.readthedocs.io/en/latest/applications/face_detection.html) Integrated to [Huggingface Spaces](https://huggingface.co/spaces). See [Gradio Web Demo](https://huggingface.co/spaces/frapochetti/blurry-faces).
 
 ## Cite
 
@@ -135,3 +136,9 @@ We appreciate all contributions. If you are planning to contribute back bug-fixe
 - **GitHub Issues:** bug reports, feature requests, install issues, RFCs, thoughts, etc. [OPEN](https://github.com/kornia/kornia/issues/new/choose)
 - **Slack:** Join our workspace to keep in touch with our core contributors and be part of our community. [JOIN HERE](https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-CnydWe5fmvkcktIeRFGCEQ)
 - For general information, please visit our website at www.kornia.org
+
+<a href="https://github.com/Kornia/kornia/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=Kornia/kornia" width="75%" height="75%" />
+</a>
+
+Made with [contrib.rocks](https://contrib.rocks).

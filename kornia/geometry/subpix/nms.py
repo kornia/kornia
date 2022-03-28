@@ -30,7 +30,7 @@ class NonMaximaSuppression2d(nn.Module):
         super().__init__()
         self.kernel_size: Tuple[int, int] = kernel_size
         self.padding: Tuple[int, int, int, int] = self._compute_zero_padding2d(kernel_size)
-        self.kernel = _get_nms_kernel2d(*kernel_size)
+        self.register_buffer('kernel', _get_nms_kernel2d(*kernel_size))
 
     @staticmethod
     def _compute_zero_padding2d(kernel_size: Tuple[int, int]) -> Tuple[int, int, int, int]:
@@ -50,12 +50,14 @@ class NonMaximaSuppression2d(nn.Module):
             raise AssertionError(x.shape)
         B, CH, H, W = x.size()
         # find local maximum values
+        x_padded = F.pad(x, list(self.padding)[::-1], mode='replicate')
+        B, CH, HP, WP = x_padded.size()
+
         max_non_center = (
             F.conv2d(
-                F.pad(x, list(self.padding)[::-1], mode='replicate'),
-                self.kernel.repeat(CH, 1, 1, 1).to(x.device, x.dtype),
-                stride=1,
-                groups=CH,
+                x_padded.view(B * CH, 1, HP, WP),
+                self.kernel.to(x.device, x.dtype),  # type: ignore
+                stride=1
             )
             .view(B, CH, -1, H, W)
             .max(dim=2)[0]

@@ -17,9 +17,9 @@ from .fundamental import (
 )
 from .numeric import cross_product_matrix
 from .projection import (
+    KRt_from_projection,
     depth_from_point,
     intrinsics_like,
-    KRt_from_projection,
     projection_from_KRt,
     projections_from_fundamental,
     random_intrinsics,

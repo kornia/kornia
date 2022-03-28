@@ -13,20 +13,20 @@ def _compute_padding(kernel_size: List[int]) -> List[int]:
     # https://pytorch.org/docs/stable/nn.html#torch.nn.functional.pad
     if len(kernel_size) < 2:
         raise AssertionError(kernel_size)
-    computed = [k // 2 for k in kernel_size]
+    computed = [k - 1 for k in kernel_size]
 
     # for even kernels we need to do asymmetric padding :(
-
     out_padding = 2 * len(kernel_size) * [0]
 
     for i in range(len(kernel_size)):
         computed_tmp = computed[-(i + 1)]
-        if kernel_size[i] % 2 == 0:
-            padding = computed_tmp - 1
-        else:
-            padding = computed_tmp
-        out_padding[2 * i + 0] = padding
-        out_padding[2 * i + 1] = computed_tmp
+
+        pad_front = computed_tmp // 2
+        pad_rear = computed_tmp - pad_front
+
+        out_padding[2 * i + 0] = pad_front
+        out_padding[2 * i + 1] = pad_rear
+
     return out_padding
 
 
