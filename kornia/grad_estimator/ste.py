@@ -1,5 +1,6 @@
 from typing import Callable, Optional, Tuple
 
+import torch
 import torch.nn as nn
 from torch import Tensor
 from torch.autograd import Function
@@ -57,6 +58,13 @@ class STEFunction(Function):
             ctx.grad_fn(grad_output.sum_to_size(ctx.out_shape)),
             None
         )
+
+    # https://pytorch.org/docs/1.10.0/onnx.html#torch-autograd-functions
+    # @staticmethod
+    # def symbolic(g: torch._C.graph, input: torch._C.Value) -> torch._C.Value:
+    #     raise NotImplementedError(
+    #         "ONNX support is not implemented at the moment."
+    #         "Feel free to contribute to https://github.com/kornia/kornia.")
 
 
 class StraightThroughEstimator(nn.Module):
