@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .backbones import SOLD2Net
-from .sold2_detector import line_map_to_segments, LineSegmentDetectionModule, super_nms
+from .sold2_detector import LineSegmentDetectionModule, line_map_to_segments, super_nms
 
 urls: Dict[str, str] = {}
 urls["wireframe"] = "https://www.polybox.ethz.ch/index.php/s/blOrW89gqSLoHOk/download"
