@@ -48,43 +48,43 @@ class DistributionWithMapper(Distribution):
 
     Args:
         dist: the target distribution.
-        mapper: the function or module to adjust the output from distributions.
+        value_mapper: the function or module to adjust the output from distributions.
 
     Example:
         >>> from torch.distributions import Normal
         >>> import torch.nn as nn
         >>> # without mapper
-        >>> dist = DistributionWithMapper(Normal(0., 1.,), mapper=None)
+        >>> dist = DistributionWithMapper(Normal(0., 1.,), value_mapper=None)
         >>> _ = torch.manual_seed(0)
         >>> dist.rsample((8,))
         tensor([ 1.5410, -0.2934, -2.1788,  0.5684, -1.0845, -1.3986,  0.4033,  0.8380])
         >>> # with sigmoid mapper
-        >>> dist = DistributionWithMapper(Normal(0., 1.,), mapper=nn.Sigmoid())
+        >>> dist = DistributionWithMapper(Normal(0., 1.,), value_mapper=nn.Sigmoid())
         >>> _ = torch.manual_seed(0)
         >>> dist.rsample((8,))
         tensor([0.8236, 0.4272, 0.1017, 0.6384, 0.2527, 0.1980, 0.5995, 0.6980])
     """
 
-    def __init__(self, dist: Distribution, mapper: Optional[Callable] = None) -> None:
+    def __init__(self, dist: Distribution, value_mapper: Optional[Callable] = None) -> None:
         self.dist = dist
-        self.mapper = mapper
+        self.value_mapper = value_mapper
 
     def rsample(self, sample_shape: torch.Size) -> torch.Tensor:  # type:ignore
         out = self.dist.rsample(sample_shape)
-        if self.mapper is not None:
-            out = self.mapper(out)
+        if self.value_mapper is not None:
+            out = self.value_mapper(out)
         return out
 
     def sample(self, sample_shape: torch.Size) -> torch.Tensor:  # type:ignore
         out = self.dist.sample(sample_shape)
-        if self.mapper is not None:
-            out = self.mapper(out)
+        if self.value_mapper is not None:
+            out = self.value_mapper(out)
         return out
 
     def sample_n(self, n) -> torch.Tensor:
         out = self.dist.sample_n(n)
-        if self.mapper is not None:
-            out = self.mapper(out)
+        if self.value_mapper is not None:
+            out = self.value_mapper(out)
         return out
 
     def __getattr__(self, attr):

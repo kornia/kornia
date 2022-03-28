@@ -10,7 +10,7 @@ class TestDistMapper:
 
     def test_mapper(self,):
         _ = torch.manual_seed(0)
-        dist = DistributionWithMapper(Normal(0., 1.,), mapper=nn.Sigmoid())
+        dist = DistributionWithMapper(Normal(0., 1.,), value_mapper=nn.Sigmoid())
         out = dist.rsample((8,))
         exp = torch.tensor([
             0.8236, 0.4272, 0.1017, 0.6384, 0.2527, 0.1980, 0.5995, 0.6980
