@@ -5,9 +5,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .backbones import SOLD2Net
-from .sold2_detector import line_map_to_segments, LineSegmentDetectionModule, super_nms
 from ...geometry.conversions import normalize_pixel_coordinates
+from .backbones import SOLD2Net
+from .sold2_detector import LineSegmentDetectionModule, line_map_to_segments, super_nms
 
 urls: Dict[str, str] = {}
 urls["wireframe"] = "https://www.polybox.ethz.ch/index.php/s/blOrW89gqSLoHOk/download"
@@ -181,7 +181,9 @@ class SOLD2(nn.Module):
 
 class WunschLineMatcher:
     """Class matching two sets of line segments with the Needleman-Wunsch algorithm.
-    TODO: move it later in kornia.feature.matching"""
+
+    TODO: move it later in kornia.feature.matching
+    """
     def __init__(self, cross_check: bool = True, num_samples: int = 10, min_dist_pts: int = 8,
                  top_k_candidates: int = 10, grid_size: int = 8, line_score: bool = False):
         self.cross_check = cross_check
