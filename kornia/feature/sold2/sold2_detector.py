@@ -161,9 +161,9 @@ class LineSegmentDetectionModule:
         use_candidate_suppression: bool = False,
         nms_dist_tolerance: float = 3.,
         use_heatmap_refinement: bool = False,
-        heatmap_refine_cfg: Dict[str, Any] = {},
+        heatmap_refine_cfg = None,
         use_junction_refinement: bool = False,
-        junction_refine_cfg: Dict[str, Any] = {}
+        junction_refine_cfg = None,
     ):
         # Line detection parameters
         self.detect_thresh = detect_thresh
@@ -188,13 +188,13 @@ class LineSegmentDetectionModule:
         # Heatmap refinement configuration
         self.use_heatmap_refinement = use_heatmap_refinement
         self.heatmap_refine_cfg = heatmap_refine_cfg
-        if self.use_heatmap_refinement and len(self.heatmap_refine_cfg) == 0:
+        if self.use_heatmap_refinement and self.heatmap_refine_cfg is None:
             raise ValueError("[Error] Missing heatmap refinement config.")
 
         # Junction refinement configuration
         self.use_junction_refinement = use_junction_refinement
         self.junction_refine_cfg = junction_refine_cfg
-        if self.use_junction_refinement and len(self.junction_refine_cfg) == 0:
+        if self.use_junction_refinement and self.junction_refine_cfg is None:
             raise ValueError("[Error] Missing junction refinement config.")
 
     def detect(self, junctions: torch.Tensor, heatmap: torch.Tensor) -> Tuple:
@@ -480,7 +480,6 @@ class LineSegmentDetectionModule:
         # Get the indices of paired junctions
         idx_lines1, idx_junc1 = torch.where(torch.all(junctions[None] == segments[:, None, 0], dim=2))
         idx_lines2, idx_junc2 = torch.where(torch.all(junctions[None] == segments[:, None, 1], dim=2))
-        assert torch.all(idx_lines1 == idx_lines2), "Invalid correspondence between segments and junctions."
 
         # Assign the labels
         line_map[idx_junc1, idx_junc2] = 1
