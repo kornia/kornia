@@ -1,5 +1,5 @@
 import math
-from typing import Dict, OrderedDict, Tuple, Any
+from typing import Any, Dict, OrderedDict, Tuple
 
 import torch
 import torch.nn as nn
