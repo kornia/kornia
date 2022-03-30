@@ -1,6 +1,6 @@
 """Implements several backbone networks."""
 
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -358,7 +358,7 @@ class PixelShuffleDecoder(nn.Module):
 
         # Output layer
         out = self.conv_block_lst[-1](out)
-        heatmap = softmax(out, dim=1)[:, 1:, :, :]
+        heatmap = softmax(out, dim=1)[:, 1, :, :]
 
         return heatmap
 
