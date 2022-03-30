@@ -1,5 +1,5 @@
 import math
-from typing import Any, Dict, OrderedDict, Tuple
+from typing import Dict, OrderedDict, Tuple
 
 import torch
 import torch.nn as nn
@@ -161,9 +161,9 @@ class LineSegmentDetectionModule:
         use_candidate_suppression: bool = False,
         nms_dist_tolerance: float = 3.,
         use_heatmap_refinement: bool = False,
-        heatmap_refine_cfg = None,
+        heatmap_refine_cfg=None,
         use_junction_refinement: bool = False,
-        junction_refine_cfg = None,
+        junction_refine_cfg=None,
     ):
         # Line detection parameters
         self.detect_thresh = detect_thresh
@@ -478,8 +478,8 @@ class LineSegmentDetectionModule:
         line_map = torch.zeros([num_junctions, num_junctions], device=junctions.device)
 
         # Get the indices of paired junctions
-        idx_lines1, idx_junc1 = torch.where(torch.all(junctions[None] == segments[:, None, 0], dim=2))
-        idx_lines2, idx_junc2 = torch.where(torch.all(junctions[None] == segments[:, None, 1], dim=2))
+        _, idx_junc1 = torch.where(torch.all(junctions[None] == segments[:, None, 0], dim=2))
+        _, idx_junc2 = torch.where(torch.all(junctions[None] == segments[:, None, 1], dim=2))
 
         # Assign the labels
         line_map[idx_junc1, idx_junc2] = 1
