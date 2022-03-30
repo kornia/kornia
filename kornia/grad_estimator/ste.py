@@ -86,13 +86,27 @@ class StraightThroughEstimator(nn.Module):
         >>> input = torch.randn(1, 1, 4, 4, requires_grad = True)
         >>> estimator = StraightThroughEstimator(K.RandomPosterize(3, p=1.), grad_fn=F.hardtanh)
         >>> out = estimator(input)
-        >>> loss = out.mean()
-        >>> loss.backward()
+        >>> out.mean().backward()
         >>> input.grad
         tensor([[[[0.0625, 0.0625, 0.0625, 0.0625],
                   [0.0625, 0.0625, 0.0625, 0.0625],
                   [0.0625, 0.0625, 0.0625, 0.0625],
                   [0.0625, 0.0625, 0.0625, 0.0625]]]])
+
+        This can be used to chain up the gradients within a ``Sequential`` block.
+        >>> import kornia.augmentation as K
+        >>> input = torch.randn(1, 1, 4, 4, requires_grad = True)
+        >>> aug = K.ImageSequential(
+        ...     K.RandomAffine((77, 77)),
+        ...     StraightThroughEstimator(K.RandomPosterize(3, p=1.), grad_fn=None),
+        ...     K.RandomRotation((15, 15)),
+        ... )
+        >>> aug(input).mean().backward()
+        >>> input.grad
+        tensor([[[[0.0422, 0.0626, 0.0566, 0.0422],
+                  [0.0566, 0.0626, 0.0626, 0.0626],
+                  [0.0626, 0.0626, 0.0626, 0.0566],
+                  [0.0422, 0.0566, 0.0626, 0.0422]]]])
     """
 
     def __init__(self, target_fn: nn.Module, grad_fn: Optional[Callable] = None):
