@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple
+from typing import Dict, OrderedDict, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -153,7 +153,7 @@ class SOLD2(nn.Module):
         """
         return self.line_matcher(line_seg1, line_seg2, desc1, desc2)
 
-    def adapt_state_dict(self, state_dict: dict) -> Dict:
+    def adapt_state_dict(self, state_dict: OrderedDict[str, torch.Tensor]) -> OrderedDict[str, torch.Tensor]:
         del state_dict["w_junc"]
         del state_dict["w_heatmap"]
         del state_dict["w_desc"]
@@ -183,13 +183,12 @@ class WunschLineMatcher:
         """Find the best matches between two sets of line segments and their corresponding descriptors."""
         img_size1 = (desc1.shape[2] * self.grid_size, desc1.shape[3] * self.grid_size)
         img_size2 = (desc2.shape[2] * self.grid_size, desc2.shape[3] * self.grid_size)
-        device = desc1.device
 
         # Default case when an image has no lines
         if len(line_seg1) == 0:
-            return torch.empty(0, dtype=int)
+            return torch.empty(0, dtype=torch.int)
         if len(line_seg2) == 0:
-            return -torch.ones(len(line_seg1), dtype=int)
+            return -torch.ones(len(line_seg1), dtype=torch.int)
 
         # Sample points regularly along each line
         line_points1, valid_points1 = self.sample_line_points(line_seg1)
@@ -241,7 +240,7 @@ class WunschLineMatcher:
         num_samples_lst = torch.clamp(torch.div(line_lengths, self.min_dist_pts, rounding_mode='floor'),
                                       2, self.num_samples).int()
         line_points = torch.empty((num_lines, self.num_samples, 2), dtype=torch.float)
-        valid_points = torch.empty((num_lines, self.num_samples), dtype=bool)
+        valid_points = torch.empty((num_lines, self.num_samples), dtype=torch.bool)
         for n_samp in range(2, self.num_samples + 1):
             # Consider all lines where we can fit up to n_samp points
             cur_mask = num_samples_lst == n_samp
@@ -252,7 +251,7 @@ class WunschLineMatcher:
 
             # Pad
             cur_line_points = F.pad(cur_line_points, (0, 0, 0, self.num_samples - n_samp))
-            cur_valid_points = torch.ones(len(cur_line_seg), self.num_samples, dtype=bool)
+            cur_valid_points = torch.ones(len(cur_line_seg), self.num_samples, dtype=torch.bool)
             cur_valid_points[:, n_samp:] = False
 
             line_points[cur_mask] = cur_line_points

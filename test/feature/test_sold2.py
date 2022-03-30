@@ -14,8 +14,8 @@ class TestSOLD2_detector:
         sold2 = SOLD2_detector(pretrained=False).to(device)
         sold2.eval()
         out = sold2(inp)
-        assert out["raw_junc_heatmap"].shape == (batch_size, 128, 128)
-        assert out["raw_line_heatmap"].shape == (batch_size, 128, 128)
+        assert out["junction_heatmap"].shape == (batch_size, 128, 128)
+        assert out["line_heatmap"].shape == (batch_size, 128, 128)
 
     @pytest.mark.skip("Takes ages to run")
     def test_gradcheck(self, device):
@@ -24,7 +24,7 @@ class TestSOLD2_detector:
         sold2 = SOLD2_detector(pretrained=False).to(img.device, img.dtype)
 
         def proxy_forward(x):
-            return sold2.forward(x)["raw_junc_heatmap"]
+            return sold2.forward(x)["junction_heatmap"]
 
         assert gradcheck(proxy_forward, (img,), eps=1e-4, atol=1e-4, raise_exception=True)
 

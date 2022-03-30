@@ -1,5 +1,5 @@
 import math
-from typing import Dict, Tuple
+from typing import Dict, OrderedDict, Tuple, Any
 
 import torch
 import torch.nn as nn
@@ -88,7 +88,7 @@ class SOLD2_detector(nn.Module):
         self.line_detector_cfg = self.config["line_detector_cfg"]
         self.line_detector = LineSegmentDetectionModule(**self.config["line_detector_cfg"])
 
-    def adapt_state_dict(self, state_dict: Dict) -> Dict:
+    def adapt_state_dict(self, state_dict: OrderedDict[str, torch.Tensor]) -> OrderedDict[str, torch.Tensor]:
         del state_dict["w_junc"]
         del state_dict["w_heatmap"]
         del state_dict["w_desc"]
@@ -161,9 +161,9 @@ class LineSegmentDetectionModule:
         use_candidate_suppression: bool = False,
         nms_dist_tolerance: float = 3.,
         use_heatmap_refinement: bool = False,
-        heatmap_refine_cfg: bool = None,
+        heatmap_refine_cfg: Dict[str, Any] = {},
         use_junction_refinement: bool = False,
-        junction_refine_cfg: bool = None
+        junction_refine_cfg: Dict[str, Any] = {}
     ):
         # Line detection parameters
         self.detect_thresh = detect_thresh
@@ -188,13 +188,13 @@ class LineSegmentDetectionModule:
         # Heatmap refinement configuration
         self.use_heatmap_refinement = use_heatmap_refinement
         self.heatmap_refine_cfg = heatmap_refine_cfg
-        if self.use_heatmap_refinement and self.heatmap_refine_cfg is None:
+        if self.use_heatmap_refinement and len(self.heatmap_refine_cfg) == 0:
             raise ValueError("[Error] Missing heatmap refinement config.")
 
         # Junction refinement configuration
         self.use_junction_refinement = use_junction_refinement
         self.junction_refine_cfg = junction_refine_cfg
-        if self.use_junction_refinement and self.junction_refine_cfg is None:
+        if self.use_junction_refinement and len(self.junction_refine_cfg) == 0:
             raise ValueError("[Error] Missing junction refinement config.")
 
     def detect(self, junctions: torch.Tensor, heatmap: torch.Tensor) -> Tuple:
@@ -237,9 +237,9 @@ class LineSegmentDetectionModule:
             candidate_map = self.candidate_suppression(junctions, candidate_map)
 
         # Fetch the candidates
-        candidate_index_map = torch.where(candidate_map)
-        candidate_index_map = torch.cat([candidate_index_map[0][..., None],
-                                         candidate_index_map[1][..., None]], dim=-1)
+        candidate_indices = torch.where(candidate_map)
+        candidate_index_map = torch.cat([candidate_indices[0][..., None],
+                                         candidate_indices[1][..., None]], dim=-1)
 
         # Get the corresponding start and end junctions
         candidate_junc_start = junctions[candidate_index_map[:, 0]]
@@ -476,12 +476,12 @@ class LineSegmentDetectionModule:
         # Create empty line map
         num_junctions = len(junctions)
         line_map = torch.zeros([num_junctions, num_junctions], device=junctions.device)
-        
+
         # Get the indices of paired junctions
         idx_lines1, idx_junc1 = torch.where(torch.all(junctions[None] == segments[:, None, 0], dim=2))
         idx_lines2, idx_junc2 = torch.where(torch.all(junctions[None] == segments[:, None, 1], dim=2))
         assert torch.all(idx_lines1 == idx_lines2), "Invalid correspondence between segments and junctions."
-        
+
         # Assign the labels
         line_map[idx_junc1, idx_junc2] = 1
         line_map[idx_junc2, idx_junc1] = 1
@@ -508,7 +508,7 @@ class LineSegmentDetectionModule:
         return cand_samples_feat
 
     def detect_local_max(self, heatmap: torch.Tensor, cand_h: torch.Tensor, cand_w: torch.Tensor, H: int, W: int,
-                         normalized_seg_length: float, device: torch.device) -> torch.Tensor:
+                         normalized_seg_length: torch.Tensor, device: torch.device) -> torch.Tensor:
         """Detection by local maximum search."""
         # Compute the distance threshold
         dist_thresh = 0.5 * (2 ** 0.5) + self.lambda_radius * normalized_seg_length
