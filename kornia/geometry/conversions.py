@@ -92,7 +92,8 @@ def pol2cart(rho: torch.Tensor, phi: torch.Tensor) -> Tuple[torch.Tensor, torch.
         phi: Tensor of same arbitrary shape.
 
     Returns:
-        Tensor with same shape as input.
+        - x: Tensor with same shape as input.
+        - y: Tensor with same shape as input.
 
     Example:
         >>> rho = torch.rand(1, 3, 3)
@@ -111,12 +112,13 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> Tuple[tor
     """Function that converts cartesian coordinates to polar coordinates.
 
     Args:
-        rho: Tensor of arbitrary shape.
-        phi: Tensor of same arbitrary shape.
+        x: Tensor of arbitrary shape.
+        y: Tensor of same arbitrary shape.
         eps: To avoid division by zero.
 
     Returns:
-        Tensor with same shape as input.
+        - rho: Tensor with same shape as input.
+        - phi: Tensor with same shape as input.
 
     Example:
         >>> x = torch.rand(1, 3, 3)
