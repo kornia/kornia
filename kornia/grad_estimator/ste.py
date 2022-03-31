@@ -18,7 +18,7 @@ class STEFunction(Function):
     the output gradients can be mapped into [-1, 1] with ``F.hardtanh`` function.
 
     Args:
-        grad_fn: function to restrain the gradient recieved. If None, no mapping will performed.
+        grad_fn: function to restrain the gradient received. If None, no mapping will performed.
 
     Example:
         Let the gradients of ``torch.sign`` estimated from STE.
@@ -77,7 +77,7 @@ class StraightThroughEstimator(nn.Module):
 
     Args:
         target_fn: the target function to wrap with.
-        grad_fn: function to restrain the gradient recieved. If None, no mapping will performed.
+        grad_fn: function to restrain the gradient received. If None, no mapping will performed.
 
     Example:
         ``RandomPosterize`` is a non-differentiable operation. Let STE estimate the gradients.
