@@ -329,7 +329,7 @@ def keypoints_to_grid(keypoints: torch.Tensor, img_size: tuple) -> torch.Tensor:
     """
     n_points = len(keypoints)
     grid_points = normalize_pixel_coordinates(
-        keypoints.float()[:, [1, 0]], img_size[0], img_size[1])
+        keypoints[:, [1, 0]], img_size[0], img_size[1])
     grid_points = grid_points.view(-1, n_points, 1, 2)
     return grid_points
 
