@@ -3,7 +3,8 @@ from typing import Dict, OrderedDict, Tuple
 
 import torch
 import torch.nn as nn
-from torchvision.ops import nms
+
+from kornia.geometry.bbox import nms
 
 from .backbones import SOLD2Net
 

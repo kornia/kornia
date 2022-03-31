@@ -4,7 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ...geometry.conversions import normalize_pixel_coordinates
+from kornia.geometry.conversions import normalize_pixel_coordinates
+
 from .backbones import SOLD2Net
 from .sold2_detector import LineSegmentDetectionModule, line_map_to_segments, prob_to_junctions
 
