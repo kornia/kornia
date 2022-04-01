@@ -1,5 +1,6 @@
+from packaging import version
 import math
-from typing import Dict, OrderedDict, Tuple
+from typing import Dict, Tuple
 
 import torch
 import torch.nn as nn
@@ -89,7 +90,7 @@ class SOLD2_detector(nn.Module):
         self.line_detector_cfg = self.config["line_detector_cfg"]
         self.line_detector = LineSegmentDetectionModule(**self.config["line_detector_cfg"])
 
-    def adapt_state_dict(self, state_dict: OrderedDict[str, torch.Tensor]) -> OrderedDict[str, torch.Tensor]:
+    def adapt_state_dict(self, state_dict):
         del state_dict["w_junc"]
         del state_dict["w_heatmap"]
         del state_dict["w_desc"]
@@ -415,8 +416,12 @@ class LineSegmentDetectionModule:
         perturb_vec = torch.arange(start=-perturb_interval * side_perturbs,
                                    end=perturb_interval * (side_perturbs + 1),
                                    step=perturb_interval, device=device)
-        h1_grid, w1_grid, h2_grid, w2_grid = torch.meshgrid(
-            perturb_vec, perturb_vec, perturb_vec, perturb_vec, indexing='ij')
+        if version.parse(torch.__version__) < version.parse('1.10'):
+            h1_grid, w1_grid, h2_grid, w2_grid = torch.meshgrid(
+                perturb_vec, perturb_vec, perturb_vec, perturb_vec)
+        else:
+            h1_grid, w1_grid, h2_grid, w2_grid = torch.meshgrid(
+                perturb_vec, perturb_vec, perturb_vec, perturb_vec, indexing='ij')
         perturb_tensor = torch.cat([h1_grid[..., None], w1_grid[..., None],
                                     h2_grid[..., None], w2_grid[..., None]], dim=-1)
         perturb_tensor_flat = perturb_tensor.view(-1, 2, 2)
@@ -569,6 +574,8 @@ def prob_to_junctions(prob: torch.Tensor, dist: float, prob_thresh: float = 0.01
     """Extract junctions from a probability map, apply NMS, and extract the top k candidates."""
     # Extract the junctions
     junctions = torch.stack(torch.where(prob >= prob_thresh), dim=-1).float()
+    if len(junctions) == 0:
+        return junctions
 
     # Perform NMS
     boxes = torch.cat([junctions - dist / 2, junctions + dist / 2], dim=1)

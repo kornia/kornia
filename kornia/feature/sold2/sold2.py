@@ -1,4 +1,4 @@
-from typing import Dict, Optional, OrderedDict, Tuple
+from typing import Dict, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -154,7 +154,7 @@ class SOLD2(nn.Module):
         """
         return self.line_matcher(line_seg1, line_seg2, desc1, desc2)
 
-    def adapt_state_dict(self, state_dict: OrderedDict[str, torch.Tensor]) -> OrderedDict[str, torch.Tensor]:
+    def adapt_state_dict(self, state_dict):
         del state_dict["w_junc"]
         del state_dict["w_heatmap"]
         del state_dict["w_desc"]
