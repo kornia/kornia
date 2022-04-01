@@ -1,4 +1,3 @@
-from packaging import version
 import math
 from typing import Dict, Tuple
 
@@ -6,6 +5,7 @@ import torch
 import torch.nn as nn
 
 from kornia.geometry.bbox import nms
+from packaging import version
 
 from .backbones import SOLD2Net
 
