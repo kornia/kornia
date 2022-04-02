@@ -1,6 +1,7 @@
 import torch
 
 from kornia.testing import check_is_tensor
+from kornia.testing import KORNIA_CHECK_IS_TENSOR
 
 from .conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 
@@ -9,6 +10,7 @@ __all__ = [
     "relative_transformation",
     "inverse_transformation",
     "transform_points",
+    "points_lines_distances",
 ]
 
 
@@ -172,14 +174,10 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
     check_is_tensor(points_1)
     if not trans_01.shape[0] == points_1.shape[0] and trans_01.shape[0] != 1:
         raise ValueError(
-            "Input batch size must be the same for both tensors or 1."
-            f"Got {trans_01.shape} and {points_1.shape}"
+            "Input batch size must be the same for both tensors or 1." f"Got {trans_01.shape} and {points_1.shape}"
         )
     if not trans_01.shape[-1] == (points_1.shape[-1] + 1):
-        raise ValueError(
-            "Last input dimensions must differ by one unit"
-            f"Got{trans_01} and {points_1}"
-        )
+        raise ValueError("Last input dimensions must differ by one unit" f"Got{trans_01} and {points_1}")
 
     # We reshape to BxNxD in case we get more dimensions, e.g., MxBxNxD
     shape_inp = list(points_1.shape)
@@ -199,6 +197,32 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
     shape_inp[-1] = points_0.shape[-1]
     points_0 = points_0.reshape(shape_inp)
     return points_0
+
+
+def points_lines_distances(pts: torch.Tensor, lines: torch.Tensor):
+    r"""Return the distance from points to lines.
+
+    Args:
+       pts: (possibly homogeneous) points :math:`(*, N, 2 or 3)`.
+       lines: lines coefficients (a, b, c) :math:`(*, N, 3)`, where :math:`ax + by + c = 0`.
+
+    Returns:
+        the computed distance with shape :math:`(*, N)`.
+    """
+    KORNIA_CHECK_IS_TENSOR(pts)
+    KORNIA_CHECK_IS_TENSOR(lines)
+
+    if not pts.shape[-1] in (2, 3):
+        raise ValueError(f"pts must be a (*, 2 or 3) tensor. Got {pts.shape}")
+
+    if not lines.shape[-1] == 3:
+        raise ValueError(f"lines must be a (*, 3) tensor. Got {lines.shape}")
+
+    numerator = torch.abs(lines[..., 0] * pts[..., 0] + lines[..., 1] * pts[..., 1] + lines[..., 2])
+    denominator = torch.linalg.norm(lines[..., :2], dim=-1)
+
+    return numerator / denominator
+
 
 # TODO:
 # - project_points: from opencv

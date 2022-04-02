@@ -1,4 +1,9 @@
-from ._metrics import sampson_epipolar_distance, symmetrical_epipolar_distance
+from ._metrics import (
+    sampson_epipolar_distance,
+    symmetrical_epipolar_distance,
+    left_to_right_epipolar_distance,
+    right_to_left_epipolar_distance,
+)
 from .essential import (
     decompose_essential_matrix,
     essential_from_fundamental,
@@ -32,6 +37,8 @@ __all__ = [
     "cross_product_matrix",
     "sampson_epipolar_distance",
     "symmetrical_epipolar_distance",
+    "left_to_right_epipolar_distance",
+    "right_to_left_epipolar_distance",
     "essential_from_fundamental",
     "decompose_essential_matrix",
     "essential_from_Rt",
