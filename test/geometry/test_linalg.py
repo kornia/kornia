@@ -368,13 +368,21 @@ class TestPointsLinesDistances:
     def test_functional(self, device):
         pts = torch.tensor([1.0, 0], device=device, dtype=torch.float64).view(1, 1, 2).tile(1, 6, 1)
         lines = torch.tensor(
-            [[0.0, 1.0, 0.0], [0.0, 1.0, 1.0], [1.0, 0.0, 0.0], [1.0, 0.0, 1.0], [1.0, 1.0, 0.0], [1.0, 1.0, 1.0], ],
+            [[0.0, 1.0, 0.0], [0.0, 1.0, 1.0], [1.0, 0.0, 0.0], [1.0, 0.0, 1.0], [1.0, 1.0, 0.0], [1.0, 1.0, 1.0],],
             device=device,
             dtype=torch.float64,
         ).view(1, 6, 3)
         distances = kgl.points_lines_distances(pts, lines)
         distances_expected = torch.tensor(
-            [0.0, 1.0, 1.0, 2.0, torch.sqrt(torch.tensor(2)) / 2, torch.sqrt(torch.tensor(2))], device=device
+            [
+                0.0,
+                1.0,
+                1.0,
+                2.0,
+                torch.sqrt(torch.tensor(2, dtype=torch.float64)) / 2,
+                torch.sqrt(torch.tensor(2, dtype=torch.float64)),
+            ],
+            device=device,
         ).view(1, 6)
         assert_close(distances, distances_expected, rtol=1e-6, atol=1e-6)
 
