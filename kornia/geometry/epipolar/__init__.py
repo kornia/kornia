@@ -1,8 +1,8 @@
 from ._metrics import (
-    sampson_epipolar_distance,
-    symmetrical_epipolar_distance,
     left_to_right_epipolar_distance,
     right_to_left_epipolar_distance,
+    sampson_epipolar_distance,
+    symmetrical_epipolar_distance,
 )
 from .essential import (
     decompose_essential_matrix,

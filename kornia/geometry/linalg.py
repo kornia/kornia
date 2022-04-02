@@ -1,7 +1,6 @@
 import torch
 
-from kornia.testing import check_is_tensor
-from kornia.testing import KORNIA_CHECK_IS_TENSOR
+from kornia.testing import KORNIA_CHECK_IS_TENSOR, check_is_tensor
 
 from .conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 
