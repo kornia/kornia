@@ -141,9 +141,6 @@ def left_to_right_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
     if pts1.shape[-1] == 2:
         pts1 = convert_points_to_homogeneous(pts1)
 
-    if pts2.shape[-1] == 2:
-        pts2 = convert_points_to_homogeneous(pts2)
-
     F_t: Tensor = Fm.transpose(dim0=-2, dim1=-1)
     line1_in_2: Tensor = pts1 @ F_t
 
@@ -172,9 +169,6 @@ def right_to_left_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
 
     if (len(Fm.shape) < 3) or not Fm.shape[-2:] == (3, 3):
         raise ValueError(f"Fm must be a (*, 3, 3) tensor. Got {Fm.shape}")
-
-    if pts1.shape[-1] == 2:
-        pts1 = convert_points_to_homogeneous(pts1)
 
     if pts2.shape[-1] == 2:
         pts2 = convert_points_to_homogeneous(pts2)
