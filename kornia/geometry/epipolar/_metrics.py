@@ -122,7 +122,7 @@ def left_to_right_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
 
     Args:
        pts1: correspondences from the left images with shape
-         (*, N, 2 or 3). If they are not homogeneous, converted automatically.
+         :math:`(*, N, 2 or 3)`. If they are not homogeneous, converted automatically.
        pts2: correspondences from the right images with shape
          (*, N, 2 or 3). If they are not homogeneous, converted automatically.
        Fm: Fundamental matrices with shape :math:`(*, 3, 3)`. Called Fm to
