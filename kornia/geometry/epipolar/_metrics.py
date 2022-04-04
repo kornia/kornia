@@ -149,6 +149,7 @@ def left_to_right_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
 
 def right_to_left_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> Tensor:
     r"""Return one-sided epipolar distance for correspondences given the fundamental matrix.
+
     This method measures the distance from points in the left images to the epilines of the
     corresponding points in the right images as they reflect in the left images.
 
