@@ -3,7 +3,7 @@
 from torch import Tensor
 
 from kornia.geometry.conversions import convert_points_to_homogeneous
-from kornia.geometry.linalg import points_lines_distances
+from kornia.geometry.linalg import point_line_distance
 from kornia.testing import KORNIA_CHECK_IS_TENSOR
 
 
@@ -116,15 +116,17 @@ def symmetrical_epipolar_distance(
 
 
 def left_to_right_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> Tensor:
-    r"""Return one-sided epipolar distance for correspondences given the fundamental matrix.
-    This method measures the distance from points in the right images to the epilines of the
-    corresponding points in the left images as they reflect in the right images.
+    r"""Return one-sided epipolar distance for correspondences given the fundamental
+    matrix.
+
+    This method measures the distance from points in the right images to the epilines
+    of the corresponding points in the left images as they reflect in the right images.
 
     Args:
        pts1: correspondences from the left images with shape
          :math:`(*, N, 2 or 3)`. If they are not homogeneous, converted automatically.
        pts2: correspondences from the right images with shape
-         (*, N, 2 or 3). If they are not homogeneous, converted automatically.
+         :math:`(*, N, 2 or 3)`. If they are not homogeneous, converted automatically.
        Fm: Fundamental matrices with shape :math:`(*, 3, 3)`. Called Fm to
          avoid ambiguity with torch.nn.functional.
 
@@ -144,20 +146,21 @@ def left_to_right_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
     F_t: Tensor = Fm.transpose(dim0=-2, dim1=-1)
     line1_in_2: Tensor = pts1 @ F_t
 
-    return points_lines_distances(pts2, line1_in_2)
+    return point_line_distance(pts2, line1_in_2)
 
 
 def right_to_left_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> Tensor:
-    r"""Return one-sided epipolar distance for correspondences given the fundamental matrix.
+    r"""Return one-sided epipolar distance for correspondences given the fundamental
+    matrix.
 
-    This method measures the distance from points in the left images to the epilines of the
-    corresponding points in the right images as they reflect in the left images.
+    This method measures the distance from points in the left images to the epilines
+    of the corresponding points in the right images as they reflect in the left images.
 
     Args:
        pts1: correspondences from the left images with shape
-         (*, N, 2 or 3). If they are not homogeneous, converted automatically.
+         :math:`(*, N, 2 or 3)`. If they are not homogeneous, converted automatically.
        pts2: correspondences from the right images with shape
-         (*, N, 2 or 3). If they are not homogeneous, converted automatically.
+         :math:`(*, N, 2 or 3)`. If they are not homogeneous, converted automatically.
        Fm: Fundamental matrices with shape :math:`(*, 3, 3)`. Called Fm to
          avoid ambiguity with torch.nn.functional.
 
@@ -176,4 +179,4 @@ def right_to_left_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
 
     line2_in_1: Tensor = pts2 @ Fm
 
-    return points_lines_distances(pts1, line2_in_1)
+    return point_line_distance(pts1, line2_in_1)

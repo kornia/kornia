@@ -336,13 +336,13 @@ class TestPointsLinesDistances:
     def test_smoke(self, device, dtype):
         pts = torch.rand(1, 1, 2, device=device, dtype=dtype)
         lines = torch.rand(1, 1, 3, device=device, dtype=dtype)
-        distances = kgl.points_lines_distances(pts, lines)
+        distances = kgl.point_line_distance(pts, lines)
         assert distances.shape == (1, 1)
 
         # homogeneous
         pts = torch.rand(1, 1, 3, device=device, dtype=dtype)
         lines = torch.rand(1, 1, 3, device=device, dtype=dtype)
-        distances = kgl.points_lines_distances(pts, lines)
+        distances = kgl.point_line_distance(pts, lines)
         assert distances.shape == (1, 1)
 
     @pytest.mark.parametrize(
@@ -352,7 +352,7 @@ class TestPointsLinesDistances:
         B, N = batch_size, sample_size
         pts = torch.rand(B, N, 2, device=device, dtype=dtype)
         lines = torch.rand(B, N, 3, device=device, dtype=dtype)
-        distances = kgl.points_lines_distances(pts, lines)
+        distances = kgl.point_line_distance(pts, lines)
         assert distances.shape == (B, N)
 
     @pytest.mark.parametrize(
@@ -362,7 +362,7 @@ class TestPointsLinesDistances:
         B, T, N = batch_size, extra_dim_size, 3
         pts = torch.rand(B, T, N, 2, device=device, dtype=dtype)
         lines = torch.rand(B, T, N, 3, device=device, dtype=dtype)
-        distances = kgl.points_lines_distances(pts, lines)
+        distances = kgl.point_line_distance(pts, lines)
         assert distances.shape == (B, T, N)
 
     def test_functional(self, device):
@@ -372,7 +372,7 @@ class TestPointsLinesDistances:
             device=device,
             dtype=torch.float64,
         ).view(1, 6, 3)
-        distances = kgl.points_lines_distances(pts, lines)
+        distances = kgl.point_line_distance(pts, lines)
         distances_expected = torch.tensor(
             [
                 0.0,
@@ -389,4 +389,4 @@ class TestPointsLinesDistances:
     def test_gradcheck(self, device):
         pts = torch.rand(2, 3, 2, device=device, requires_grad=True, dtype=torch.float64)
         lines = torch.rand(2, 3, 3, device=device, requires_grad=True, dtype=torch.float64)
-        assert gradcheck(kgl.points_lines_distances, (pts, lines), raise_exception=True)
+        assert gradcheck(kgl.point_line_distance, (pts, lines), raise_exception=True)

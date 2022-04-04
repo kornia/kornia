@@ -1,15 +1,16 @@
 import torch
 
 from kornia.testing import KORNIA_CHECK_IS_TENSOR, check_is_tensor
-
 from .conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
+from torch import Tensor
+
 
 __all__ = [
     "compose_transformations",
     "relative_transformation",
     "inverse_transformation",
     "transform_points",
-    "points_lines_distances",
+    "point_line_distance",
 ]
 
 
@@ -198,29 +199,30 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
     return points_0
 
 
-def points_lines_distances(pts: torch.Tensor, lines: torch.Tensor):
+def point_line_distance(point: Tensor, line: Tensor, eps: float = 1e-8) -> Tensor:
     r"""Return the distance from points to lines.
 
     Args:
-       pts: (possibly homogeneous) points :math:`(*, N, 2 or 3)`.
-       lines: lines coefficients (a, b, c) :math:`(*, N, 3)`, where :math:`ax + by + c = 0`.
+       point: (possibly homogeneous) points :math:`(*, N, 2 or 3)`.
+       line: lines coefficients :math:`(a, b, c)` with shape :math:`(*, N, 3)`, where :math:`ax + by + c = 0`.
+       eps: Small constant for safe sqrt.
 
     Returns:
         the computed distance with shape :math:`(*, N)`.
     """
-    KORNIA_CHECK_IS_TENSOR(pts)
-    KORNIA_CHECK_IS_TENSOR(lines)
+    KORNIA_CHECK_IS_TENSOR(point)
+    KORNIA_CHECK_IS_TENSOR(line)
 
-    if not pts.shape[-1] in (2, 3):
-        raise ValueError(f"pts must be a (*, 2 or 3) tensor. Got {pts.shape}")
+    if not point.shape[-1] in (2, 3):
+        raise ValueError(f"pts must be a (*, 2 or 3) tensor. Got {point.shape}")
 
-    if not lines.shape[-1] == 3:
-        raise ValueError(f"lines must be a (*, 3) tensor. Got {lines.shape}")
+    if not line.shape[-1] == 3:
+        raise ValueError(f"lines must be a (*, 3) tensor. Got {line.shape}")
 
-    numerator = torch.abs(lines[..., 0] * pts[..., 0] + lines[..., 1] * pts[..., 1] + lines[..., 2])
-    denominator = torch.linalg.norm(lines[..., :2], dim=-1)
+    numerator = (line[..., 0] * point[..., 0] + line[..., 1] * point[..., 1] + line[..., 2]).abs()
+    denominator = line[..., :2].norm(-1)
 
-    return numerator / denominator
+    return numerator / (denominator + eps)
 
 
 # TODO:
