@@ -199,7 +199,7 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
     return points_0
 
 
-def point_line_distance(point: Tensor, line: Tensor, eps: float = 1e-8) -> Tensor:
+def point_line_distance(point: Tensor, line: Tensor, eps: float = 1e-9) -> Tensor:
     r"""Return the distance from points to lines.
 
     Args:
@@ -220,7 +220,7 @@ def point_line_distance(point: Tensor, line: Tensor, eps: float = 1e-8) -> Tenso
         raise ValueError(f"lines must be a (*, 3) tensor. Got {line.shape}")
 
     numerator = (line[..., 0] * point[..., 0] + line[..., 1] * point[..., 1] + line[..., 2]).abs()
-    denominator = line[..., :2].norm(-1)
+    denominator = line[..., :2].norm(dim=-1)
 
     return numerator / (denominator + eps)
 
