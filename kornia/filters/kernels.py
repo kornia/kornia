@@ -154,7 +154,7 @@ def get_sobel_kernel_3x3() -> torch.Tensor:
 
 def get_oflk_kernel_2x2() -> torch.Tensor:
     """Utility function that return kernel for the optical flow with Lucas-Kanade method of size 2x2."""
-    return torch.tensor([[-1.0, 1.0],[-1.0, 1.0]]) 
+    return torch.tensor([[-1.0, 1.0],[-1.0, 1.0]])
 
 
 def get_sobel_kernel_5x5_2nd_order() -> torch.Tensor:

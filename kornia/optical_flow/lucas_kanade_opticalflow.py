@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
+
 from kornia.filters import spatial_gradient
+
 
 def optical_flow_lk(image_prev: torch.Tensor, image_next: torch.Tensor, window_size: int) -> torch.Tensor:
 
@@ -75,7 +77,4 @@ class OpticalFlowLK(nn.Module):
 
     def forward(self, image_prev: torch.Tensor, image_next: torch.Tensor, window_size: int) -> torch.Tensor:
         return optical_flow_lk(image_prev, image_next, window_size)
-    
-
-
 
