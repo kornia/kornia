@@ -77,4 +77,3 @@ class OpticalFlowLK(nn.Module):
 
     def forward(self, image_prev: torch.Tensor, image_next: torch.Tensor, window_size: int) -> torch.Tensor:
         return optical_flow_lk(image_prev, image_next, window_size)
-
