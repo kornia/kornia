@@ -36,6 +36,11 @@ class TestPyrDown:
         pyr = kornia.geometry.PyrDown()
         assert pyr(inp).shape == (1, 2, 2, 2)
 
+    def test_shape_custom_factor(self, device, dtype):
+        inp = torch.zeros(1, 2, 9, 9, device=device, dtype=dtype)
+        pyr = kornia.geometry.PyrDown(factor=3.0)
+        assert pyr(inp).shape == (1, 2, 3, 3)
+
     def test_shape_batch(self, device, dtype):
         inp = torch.zeros(2, 2, 4, 4, device=device, dtype=dtype)
         pyr = kornia.geometry.PyrDown()

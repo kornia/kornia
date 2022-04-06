@@ -9,14 +9,15 @@ import kornia
 import kornia.testing as utils  # test utils
 from kornia.feature import (
     DescriptorMatcher,
-    extract_patches_from_pyramid,
-    get_laf_descriptors,
     GFTTAffNetHardNet,
+    KeyNetHardNet,
     LAFDescriptor,
     LocalFeature,
     ScaleSpaceDetector,
     SIFTDescriptor,
     SIFTFeature,
+    extract_patches_from_pyramid,
+    get_laf_descriptors,
 )
 from kornia.feature.integrated import LocalFeatureMatcher
 from kornia.geometry import RANSAC, resize, transform_points
@@ -49,10 +50,10 @@ class TestGetLAFDescriptors:
         B, C, H, W = 1, 1, 32, 32
         PS = 16
         img = torch.rand(B, C, H, W, device=device)
-        centers = torch.tensor([[H / 3.0, W / 3.0], [2.0 * H / 3.0, W / 2.0]], device=device, dtype=dtype).view(
+        centers = torch.tensor([[H / 2.0, W / 2.0], [2.0 * H / 3.0, W / 2.0]], device=device, dtype=dtype).view(
             1, 2, 2
         )
-        scales = torch.tensor([(H + W) / 4.0, (H + W) / 8.0], device=device, dtype=dtype).view(1, 2, 1, 1)
+        scales = torch.tensor([(H + W) / 5.0, (H + W) / 6.0], device=device, dtype=dtype).view(1, 2, 1, 1)
         ori = torch.tensor([0.0, 30.0], device=device, dtype=dtype).view(1, 2, 1)
         lafs = kornia.feature.laf_from_center_scale_ori(centers, scales, ori)
         img = utils.tensor_to_gradcheck_var(img)  # to var
@@ -63,7 +64,6 @@ class TestGetLAFDescriptors:
                 return inputs.mean(dim=(2, 3))
 
         desc = _MeanPatch()
-        img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(get_laf_descriptors, (img, lafs, desc, PS, True),
                          eps=1e-3, atol=1e-3, raise_exception=True, nondet_tol=1e-3)
 
@@ -88,13 +88,15 @@ class TestLAFDescriptor:
         descs_reference = sift(patches.view(B1 * N1, CH1, H1, W1)).view(B1, N1, -1)
         assert_close(descs_test, descs_reference)
 
-    def test_gradcheck(self, device, dtype=torch.float64):
+    def test_gradcheck(self, device):
         B, C, H, W = 1, 1, 32, 32
         PS = 16
         img = torch.rand(B, C, H, W, device=device)
-        centers = torch.tensor([[H / 3.0, W / 3.0], [2.0 * H / 3.0, W / 2.0]], device=device, dtype=dtype).view(1, 2, 2)
-        scales = torch.tensor([(H + W) / 4.0, (H + W) / 8.0], device=device, dtype=dtype).view(1, 2, 1, 1)
-        ori = torch.tensor([0.0, 30.0], device=device, dtype=dtype).view(1, 2, 1)
+        centers = torch.tensor([[H / 2.0, W / 2.0], [2.0 * H / 3.0, W / 2.0]], device=device).view(
+            1, 2, 2
+        )
+        scales = torch.tensor([(H + W) / 5.0, (H + W) / 6.0], device=device).view(1, 2, 1, 1)
+        ori = torch.tensor([0.0, 30.0], device=device).view(1, 2, 1)
         lafs = kornia.feature.laf_from_center_scale_ori(centers, scales, ori)
         img = utils.tensor_to_gradcheck_var(img)  # to var
         lafs = utils.tensor_to_gradcheck_var(lafs)  # to var
@@ -102,9 +104,7 @@ class TestLAFDescriptor:
         class _MeanPatch(nn.Module):
             def forward(self, inputs):
                 return inputs.mean(dim=(2, 3))
-
         lafdesc = LAFDescriptor(_MeanPatch(), PS)
-        img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(lafdesc, (img, lafs), eps=1e-3, atol=1e-3, raise_exception=True, nondet_tol=1e-3)
 
 
@@ -154,6 +154,24 @@ class TestSIFTFeature:
         B, C, H, W = 1, 1, 32, 32
         img = torch.rand(B, C, H, W, device=device)
         local_feature = SIFTFeature(2, True).to(device).to(device)
+        img = utils.tensor_to_gradcheck_var(img)  # to var
+        assert gradcheck(local_feature, img, eps=1e-4, atol=1e-4, raise_exception=True)
+
+
+class TestKeyNetHardNetFeature:
+    # The real test is in TestLocalFeatureMatcher
+    def test_smoke(self, device, dtype):
+        sift = KeyNetHardNet(2).to(device, dtype)
+        B, C, H, W = 1, 1, 32, 32
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        out = sift(img)
+        assert out is not None
+
+    @pytest.mark.skip("jacobian not well computed")
+    def test_gradcheck(self, device):
+        B, C, H, W = 1, 1, 32, 32
+        img = torch.rand(B, C, H, W, device=device)
+        local_feature = KeyNetHardNet(2, True).to(device).to(device)
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(local_feature, img, eps=1e-4, atol=1e-4, raise_exception=True)
 
@@ -248,6 +266,24 @@ class TestLocalFeatureMatcher:
         torch.random.manual_seed(0)
         # This is not unit test, but that is quite good integration test
         matcher = LocalFeatureMatcher(GFTTAffNetHardNet(2000), DescriptorMatcher('snn', 0.8)).to(device, dtype)
+        ransac = RANSAC('homography', 1.0, 2048, 10).to(device, dtype)
+        data_dev = utils.dict_to(data, device, dtype)
+        pts_src = data_dev['pts0']
+        pts_dst = data_dev['pts1']
+        with torch.no_grad():
+            out = matcher(data_dev)
+        homography, inliers = ransac(out['keypoints0'], out['keypoints1'])
+        assert inliers.sum().item() > 50  # we have enough inliers
+        # Reprojection error of 5px is OK
+        assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
+
+    @pytest.mark.skipif(sys.platform == "win32",
+                        reason="this test takes so much memory in the CI with Windows")
+    @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
+    def test_real_keynet(self, device, dtype, data):
+        torch.random.manual_seed(0)
+        # This is not unit test, but that is quite good integration test
+        matcher = LocalFeatureMatcher(KeyNetHardNet(500), DescriptorMatcher('snn', 0.9)).to(device, dtype)
         ransac = RANSAC('homography', 1.0, 2048, 10).to(device, dtype)
         data_dev = utils.dict_to(data, device, dtype)
         pts_src = data_dev['pts0']

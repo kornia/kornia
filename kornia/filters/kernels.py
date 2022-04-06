@@ -1,3 +1,4 @@
+import math
 from math import sqrt
 from typing import List, Optional, Tuple
 
@@ -630,3 +631,57 @@ def get_hysteresis_kernel(device=torch.device('cpu'), dtype=torch.float) -> torc
         dtype=dtype,
     )
     return kernel.unsqueeze(1)
+
+
+def get_hanning_kernel1d(kernel_size: int, device=torch.device('cpu'), dtype=torch.float) -> torch.Tensor:
+    r"""Returns Hanning (also known as Hann) kernel, used in signal processing and KCF tracker.
+
+    .. math::  w(n) = 0.5 - 0.5cos\\left(\\frac{2\\pi{n}}{M-1}\\right)
+               \\qquad 0 \\leq n \\leq M-1
+
+    See further in numpy docs https://numpy.org/doc/stable/reference/generated/numpy.hanning.html
+
+    Args:
+        kernel_size: The size the of the kernel. It should be positive.
+
+    Returns:
+        1D tensor with Hanning filter coefficients.
+            .. math::  w(n) = 0.5 - 0.5cos\\left(\\frac{2\\pi{n}}{M-1}\\right)
+
+    Shape:
+        - Output: math:`(\text{kernel_size})`
+
+    Examples:
+        >>> get_hanning_kernel1d(4)
+        tensor([0.0000, 0.7500, 0.7500, 0.0000])
+    """
+    if not isinstance(kernel_size, int) or kernel_size <= 2:
+        raise TypeError(f"ksize must be an positive integer > 2. Got {kernel_size}")
+
+    x: torch.Tensor = torch.arange(kernel_size, device=device, dtype=dtype)
+    x = 0.5 - 0.5 * torch.cos(2.0 * math.pi * x / float(kernel_size - 1))
+    return x
+
+
+def get_hanning_kernel2d(kernel_size: Tuple[int, int],
+                         device=torch.device('cpu'),
+                         dtype=torch.float) -> torch.Tensor:
+    r"""Returns 2d Hanning kernel, used in signal processing and KCF tracker.
+
+    Args:
+        kernel_size: The size of the kernel for the filter. It should be positive.
+
+    Returns:
+        2D tensor with Hanning filter coefficients.
+            .. math::  w(n) = 0.5 - 0.5cos\\left(\\frac{2\\pi{n}}{M-1}\\right)
+
+    Shape:
+        - Output: math:`(\text{kernel_size[0], kernel_size[1]})`
+
+    """
+    if kernel_size[0] <= 2 or kernel_size[1] <= 2:
+        raise TypeError(f"ksize must be an tuple of positive integers > 2. Got {kernel_size}")
+    ky: torch.Tensor = get_hanning_kernel1d(kernel_size[0], device, dtype)[None].T
+    kx: torch.Tensor = get_hanning_kernel1d(kernel_size[1], device, dtype)[None]
+    kernel2d = ky @ kx
+    return kernel2d

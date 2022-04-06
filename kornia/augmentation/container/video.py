@@ -1,14 +1,15 @@
-from typing import cast, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, cast
 
 import torch
 import torch.nn as nn
 
 import kornia
-from kornia.augmentation.base import _AugmentationBase, MixAugmentationBase, TensorWithTransformMat
+from kornia.augmentation import RandomCrop
+from kornia.augmentation._2d.mix.base import MixAugmentationBase
+from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import SequentialBase
+from kornia.augmentation.container.image import ImageSequential, ParamItem, _get_new_batch_shape
 from kornia.augmentation.container.utils import InputApplyInverse, MaskApplyInverse
-
-from .image import ImageSequential, ParamItem
 
 __all__ = ["VideoSequential"]
 
@@ -42,7 +43,7 @@ class VideoSequential(ImageSequential):
 
         >>> input, label = torch.randn(2, 3, 1, 5, 6).repeat(1, 1, 4, 1, 1), torch.tensor([0, 1])
         >>> aug_list = VideoSequential(
-        ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...     kornia.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...     kornia.color.BgrToRgb(),
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
         ...     random_apply=10,
@@ -59,7 +60,7 @@ class VideoSequential(ImageSequential):
         If set `same_on_frame` to False:
 
         >>> aug_list = VideoSequential(
-        ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...     kornia.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
         ...     kornia.augmentation.RandomMixUp(p=1.0),
         ... data_format="BCTHW",
@@ -80,7 +81,7 @@ class VideoSequential(ImageSequential):
         >>> import kornia
         >>> input, label = torch.randn(2, 3, 1, 5, 6).repeat(1, 1, 4, 1, 1), torch.tensor([0, 1])
         >>> aug_list = VideoSequential(
-        ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...     kornia.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
         ...     kornia.augmentation.RandomMixUp(p=1.0),
         ... data_format="BCTHW",
@@ -102,8 +103,11 @@ class VideoSequential(ImageSequential):
         random_apply_weights: Optional[List[float]] = None,
     ) -> None:
         super().__init__(
-            *args, same_on_batch=None, return_transform=None, keepdim=None, random_apply=random_apply,
-            random_apply_weights=random_apply_weights
+            *args,
+            same_on_batch=None,
+            keepdim=None,
+            random_apply=random_apply,
+            random_apply_weights=random_apply_weights,
         )
         self.same_on_frame = same_on_frame
         self.data_format = data_format.upper()
@@ -117,7 +121,7 @@ class VideoSequential(ImageSequential):
 
     def __infer_channel_exclusive_batch_shape__(self, batch_shape: torch.Size, chennel_index: int) -> torch.Size:
         # Fix mypy complains: error: Incompatible return value type (got "Tuple[int, ...]", expected "Size")
-        return cast(torch.Size, batch_shape[:chennel_index] + batch_shape[chennel_index + 1:])
+        return cast(torch.Size, batch_shape[:chennel_index] + batch_shape[chennel_index + 1 :])
 
     def __repeat_param_across_channels__(self, param: torch.Tensor, frame_num: int) -> torch.Tensor:
         """Repeat parameters across channels.
@@ -180,7 +184,13 @@ class VideoSequential(ImageSequential):
 
         params = []
         for name, module in named_modules:
-            if isinstance(module, (SequentialBase,)):
+            if isinstance(module, RandomCrop):
+                mod_param = module.forward_parameters_precrop(batch_shape)
+                if self.same_on_frame:
+                    mod_param["src"] = mod_param["src"].repeat(frame_num, 1, 1)
+                    mod_param["dst"] = mod_param["dst"].repeat(frame_num, 1, 1)
+                param = ParamItem(name, mod_param)
+            elif isinstance(module, (SequentialBase,)):
                 seq_param = module.forward_parameters(batch_shape)
                 if self.same_on_frame:
                     raise ValueError("Sequential is currently unsupported for ``same_on_frame``.")
@@ -189,12 +199,14 @@ class VideoSequential(ImageSequential):
                 mod_param = module.forward_parameters(batch_shape)
                 if self.same_on_frame:
                     for k, v in mod_param.items():
-                        # TODO: revise colorjitter order param in the future to align the standard.
-                        if not (k == "order" and isinstance(module, kornia.augmentation.ColorJitter)):
+                        # TODO: revise ColorJiggle and ColorJitter order param in the future to align the standard.
+                        if not (k == "order" and (isinstance(module, kornia.augmentation.ColorJiggle)
+                                                  or isinstance(module, kornia.augmentation.ColorJitter))):
                             mod_param.update({k: self.__repeat_param_across_channels__(v, frame_num)})
                 param = ParamItem(name, mod_param)
             else:
                 param = ParamItem(name, None)
+            batch_shape = _get_new_batch_shape(param, batch_shape)
             params.append(param)
         return params
 
@@ -221,7 +233,7 @@ class VideoSequential(ImageSequential):
 
     def forward(  # type: ignore
         self, input: torch.Tensor, label: Optional[torch.Tensor] = None, params: Optional[List[ParamItem]] = None
-    ) -> Union[TensorWithTransformMat, Tuple[TensorWithTransformMat, torch.Tensor]]:
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """Define the video computation performed."""
         if len(input.shape) != 5:
             raise AssertionError(f"Input must be a 5-dim tensor. Got {input.shape}.")
@@ -241,9 +253,9 @@ class VideoSequential(ImageSequential):
 
         out = super().forward(input, label, params)  # type: ignore
         if self.return_label:
-            output, label = cast(Tuple[TensorWithTransformMat, torch.Tensor], out)
+            output, label = cast(Tuple[torch.Tensor, torch.Tensor], out)
         else:
-            output = cast(TensorWithTransformMat, out)
+            output = cast(torch.Tensor, out)
 
         if isinstance(output, (tuple, list)):
             if self.apply_inverse_func in (InputApplyInverse, MaskApplyInverse):

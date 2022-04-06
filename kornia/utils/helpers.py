@@ -1,9 +1,51 @@
 import warnings
-from typing import Any, List, Optional, Tuple
+from functools import partial, wraps
+from inspect import isclass, isfunction
+from typing import Any, Callable, List, Optional, Tuple
 
 import torch
 
 from kornia.utils._compat import solve, torch_version_geq
+
+
+def get_cuda_device_if_available(index: int = 0) -> torch.device:
+    """Tries to get cuda device, if fail, returns cpu.
+
+    Args:
+        index: cuda device index
+
+    Returns:
+        torch.device
+    """
+    try:
+        if torch.cuda.is_available():
+            dev = torch.device(f'cuda:{index}')
+        else:
+            dev = torch.device('cpu')
+    except BaseException as e:  # noqa: F841
+        dev = torch.device('cpu')
+    return dev
+
+
+def _deprecated(func: Callable = None, replace_with: Optional[str] = None):
+    if func is None:
+        return partial(_deprecated, replace_with=replace_with)
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        name: str = ""
+        if isclass(func):
+            name = func.__class__.__name__
+        if isfunction(func):
+            name = func.__name__
+        if replace_with is not None:
+            warnings.warn(f"`{name}` is deprecated in favor of `{replace_with}`.", category=DeprecationWarning)
+        else:
+            warnings.warn(
+                f"`{name}` is deprecated and will be removed in the future versions.", category=DeprecationWarning)
+        return func(*args, **kwargs)
+
+    return wrapper
 
 
 def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.device, torch.dtype]:

@@ -4,9 +4,10 @@ import importlib
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from itertools import product
-from typing import Any, Optional
+from typing import Any, Iterable, List, Optional, Tuple, Type, TypeVar, Union, cast
 
 import torch
+from torch import Tensor
 
 __all__ = ['tensor_to_gradcheck_var', 'create_eye_batch', 'xla_is_available', 'assert_close']
 
@@ -50,7 +51,7 @@ def dict_to(data: dict, device: torch.device, dtype: torch.dtype) -> dict:
 
 def compute_patch_error(x, y, h, w):
     """Compute the absolute error between patches."""
-    return torch.abs(x - y)[..., h // 4: -h // 4, w // 4: -w // 4].mean()
+    return torch.abs(x - y)[..., h // 4 : -h // 4, w // 4 : -w // 4].mean()
 
 
 def check_is_tensor(obj):
@@ -179,3 +180,51 @@ except ImportError:
             return _assert_allclose(actual, expected, rtol=rtol, atol=atol, **kwargs)
         except ValueError as error:
             raise UsageError(str(error)) from error
+
+
+# Logger api
+def KORNIA_CHECK_SHAPE(x, shape: List[str]) -> None:
+    # Desired shape here is list and not tuple, because torch.jit
+    # does not like variable-length tuples
+    KORNIA_CHECK_IS_TENSOR(x)
+    if '*' == shape[0]:
+        start_idx: int = 1
+        x_shape_to_check = x.shape[-len(shape) - 1:]
+    else:
+        start_idx = 0
+        x_shape_to_check = x.shape
+
+    for i in range(start_idx, len(shape)):
+        # The voodoo below is because torchscript does not like
+        # that dim can be both int and str
+        dim_: str = shape[i]
+        if not dim_.isnumeric():
+            continue
+        dim = int(dim_)
+        if x_shape_to_check[i] != dim:
+            raise TypeError(f"{x} shape should be must be [{shape}]. Got {x.shape}")
+
+
+def KORNIA_CHECK(condition, msg: Optional[str] = None):
+    if not condition:
+        raise Exception(f"{condition} not true.\n{msg}")
+
+
+def KORNIA_CHECK_IS_TENSOR(x, msg: Optional[str] = None):
+    if not isinstance(x, Tensor):
+        raise TypeError(f"Not a Tensor type. Got: {type(x)}.\n{msg}")
+
+
+def KORNIA_CHECK_IS_COLOR(x: Tensor, msg: Optional[str] = None):
+    if len(x.shape) < 3 or x.shape[-3] != 3:
+        raise TypeError(f"Not a color tensor. Got: {type(x)}.\n{msg}")
+
+
+def KORNIA_CHECK_IS_GRAY(x: Tensor, msg: Optional[str] = None):
+    if len(x.shape) < 2 or (len(x.shape) >= 3 and x.shape[-3] != 1):
+        raise TypeError(f"Not a gray tensor. Got: {type(x)}.\n{msg}")
+
+
+def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: Tensor, msg: Optional[str] = None):
+    if len(x.shape) < 3 or x.shape[-3] not in [1, 3]:
+        raise TypeError(f"Not an color or gray tensor. Got: {type(x)}.\n{msg}")

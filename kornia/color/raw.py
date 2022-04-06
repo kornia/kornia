@@ -5,7 +5,7 @@ import torch.nn as nn
 
 
 class CFA(Enum):
-    r"""Defines the configuration of the color filter array.
+    r"""Define the configuration of the color filter array.
 
     So far only bayer images is supported and the enum sets the pixel order for bayer. Note that this can change due
     to things like rotations and cropping of images. Take care if including the translations in pipeline.

@@ -5,16 +5,15 @@ import torch
 import torch.nn as nn
 
 import kornia
-from kornia.augmentation.base import (
-    _AugmentationBase,
+from kornia.augmentation import (
     GeometricAugmentationBase2D,
     IntensityAugmentationBase2D,
     MixAugmentationBase,
-    TensorWithTransformMat,
+    RandomCrop,
 )
-
-from .base import ParamItem, SequentialBase
-from .utils import ApplyInverseInterface, InputApplyInverse
+from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.container.base import ParamItem, SequentialBase
+from kornia.augmentation.container.utils import ApplyInverseInterface, InputApplyInverse
 
 __all__ = ["ImageSequential"]
 
@@ -26,8 +25,6 @@ class ImageSequential(SequentialBase):
         *args : a list of kornia augmentation and image operation modules.
         same_on_batch: apply the same transformation across the batch.
             If None, it will not overwrite the function-wise settings.
-        return_transform: if ``True`` return the matrix describing the transformation
-            applied to each. If None, it will not overwrite the function-wise settings.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False). If None, it will not overwrite the function-wise settings.
         random_apply: randomly select a sublist (order agnostic) of args to
@@ -50,12 +47,11 @@ class ImageSequential(SequentialBase):
         >>> input, label = torch.randn(2, 3, 5, 6), torch.tensor([0, 1])
         >>> aug_list = ImageSequential(
         ...     kornia.color.BgrToRgb(),
-        ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...     kornia.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...     kornia.filters.MedianBlur((3, 3)),
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
         ...     kornia.enhance.Invert(),
         ...     kornia.augmentation.RandomMixUp(p=1.0),
-        ...     return_transform=True,
         ...     same_on_batch=True,
         ...     random_apply=10,
         ... )
@@ -63,8 +59,8 @@ class ImageSequential(SequentialBase):
         >>> lab
         tensor([[0.0000, 1.0000, 0.1214],
                 [1.0000, 0.0000, 0.1214]])
-        >>> out[0].shape, out[1].shape
-        (torch.Size([2, 3, 5, 6]), torch.Size([2, 3, 3]))
+        >>> out.shape
+        torch.Size([2, 3, 5, 6])
 
         Reproduce with provided params.
         >>> out2, lab2 = aug_list(input, label=label, params=aug_list._params)
@@ -77,7 +73,7 @@ class ImageSequential(SequentialBase):
         >>> input = torch.randn(2, 3, 5, 6)
         >>> aug_list = ImageSequential(
         ...     kornia.color.BgrToRgb(),
-        ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...     kornia.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...     kornia.filters.MedianBlur((3, 3)),
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
         ...     random_apply=1,
@@ -96,8 +92,13 @@ class ImageSequential(SequentialBase):
         keepdim: Optional[bool] = None,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
         random_apply_weights: Optional[List[float]] = None,
-        if_unsupported_ops: str = 'raise'
+        if_unsupported_ops: str = "raise",
     ) -> None:
+        if return_transform is not None:
+            raise ValueError(
+                "`return_transform` is deprecated. Please access"
+                " `.transform_matrix` in `AugmentationSequential` instead."
+            )
         super().__init__(*args, same_on_batch=same_on_batch, return_transform=return_transform, keepdim=keepdim)
 
         self.random_apply: Union[Tuple[int, int], bool] = self._read_random_apply(random_apply, len(args))
@@ -201,11 +202,11 @@ class ImageSequential(SequentialBase):
 
     def apply_to_input(
         self,
-        input: TensorWithTransformMat,
+        input: torch.Tensor,
         label: Optional[torch.Tensor],
         module: Optional[nn.Module],
         param: ParamItem,
-    ) -> Tuple[TensorWithTransformMat, Optional[torch.Tensor]]:
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         if module is None:
             module = self.get_submodule(param.name)
         return self.apply_inverse_func.apply_trans(input, label, module, param)  # type: ignore
@@ -216,14 +217,15 @@ class ImageSequential(SequentialBase):
         params: List[ParamItem] = []
         mod_param: Union[dict, list]
         for name, module in named_modules:
-            if isinstance(module, (_AugmentationBase, MixAugmentationBase)):
-                mod_param = module.forward_parameters(batch_shape)
+            if isinstance(module, RandomCrop):
+                mod_param = module.forward_parameters_precrop(batch_shape)
                 param = ParamItem(name, mod_param)
-            elif isinstance(module, ImageSequential):
+            elif isinstance(module, (_AugmentationBase, MixAugmentationBase, ImageSequential)):
                 mod_param = module.forward_parameters(batch_shape)
                 param = ParamItem(name, mod_param)
             else:
                 param = ParamItem(name, None)
+            batch_shape = _get_new_batch_shape(param, batch_shape)
             params.append(param)
         return params
 
@@ -235,29 +237,56 @@ class ImageSequential(SequentialBase):
         return False
 
     def __packup_output__(
-        self, output: TensorWithTransformMat, label: Optional[torch.Tensor] = None
-    ) -> Union[TensorWithTransformMat, Tuple[TensorWithTransformMat, torch.Tensor]]:
+        self, output: torch.Tensor, label: Optional[torch.Tensor] = None
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         if self.return_label:
             return output, label  # type: ignore
             # Implicitly indicating the label cannot be optional since there is a mix aug
         return output
 
     def get_transformation_matrix(
-        self, input: torch.Tensor, params: Optional[List[ParamItem]] = None,
-    ) -> torch.Tensor:
-        """Compute the transformation matrix according to the provided parameters."""
+        self, input: torch.Tensor, params: Optional[List[ParamItem]] = None, recompute: bool = False
+    ) -> Optional[torch.Tensor]:
+        """Compute the transformation matrix according to the provided parameters.
+
+        Args:
+            input: the input tensor.
+            params: params for the sequence.
+            recompute: if to recompute the transformation matrix according to the params.
+                default: False.
+        """
         if params is None:
             raise NotImplementedError("requires params to be provided.")
         named_modules: Iterator[Tuple[str, nn.Module]] = self.get_forward_sequence(params)
 
-        res_mat: torch.Tensor = kornia.eye_like(3, input)
-        for (_, module), param in zip(named_modules, params):
-            if isinstance(module, (_AugmentationBase, MixAugmentationBase)):
-                mat = module.compute_transformation(input, param.data)  # type: ignore
-                res_mat = mat @ res_mat
+        # Define as 1 for broadcasting
+        res_mat: Optional[torch.Tensor] = None
+        for (_, module), param in zip(named_modules, params if params is not None else []):
+            if isinstance(module, (_AugmentationBase,)) and not isinstance(module, (MixAugmentationBase,)):
+                to_apply = param.data['batch_prob']  # type: ignore
+                ori_shape = input.shape
+                try:
+                    input = module.transform_tensor(input)
+                except ValueError:
+                    # Ignore error for 5-dim video
+                    pass
+                # Standardize shape
+                if recompute:
+                    mat: torch.Tensor = kornia.eye_like(3, input)
+                    mat[to_apply] = module.compute_transformation(input[to_apply], param.data)  # type: ignore
+                else:
+                    mat = torch.as_tensor(module._transform_matrix, device=input.device, dtype=input.dtype)
+                res_mat = mat if res_mat is None else mat @ res_mat
+                input = module.transform_output_tensor(input, ori_shape)
+                if module.keepdim and ori_shape != input.shape:
+                    res_mat = res_mat.squeeze()
             elif isinstance(module, (ImageSequential,)):
-                mat = module.get_transformation_matrix(input, param.data)  # type: ignore
-                res_mat = mat @ res_mat
+                # If not augmentationSequential
+                if isinstance(module, (kornia.augmentation.AugmentationSequential,)) and not recompute:
+                    mat = torch.as_tensor(module._transform_matrix, device=input.device, dtype=input.dtype)
+                else:
+                    mat = module.get_transformation_matrix(input, param.data)  # type: ignore
+                res_mat = mat if res_mat is None else mat @ res_mat
         return res_mat
 
     def is_intensity_only(self, strict: bool = True) -> bool:
@@ -283,11 +312,7 @@ class ImageSequential(SequentialBase):
                 return False
         return True
 
-    def inverse(
-        self,
-        input: torch.Tensor,
-        params: Optional[List[ParamItem]] = None,
-    ) -> torch.Tensor:
+    def inverse(self, input: torch.Tensor, params: Optional[List[ParamItem]] = None) -> torch.Tensor:
         """Inverse transformation.
 
         Used to inverse a tensor according to the performed transformation by a forward pass, or with respect to
@@ -323,16 +348,13 @@ class ImageSequential(SequentialBase):
 
     def forward(  # type: ignore
         self,
-        input: TensorWithTransformMat,
+        input: torch.Tensor,
         label: Optional[torch.Tensor] = None,
         params: Optional[List[ParamItem]] = None,
-    ) -> Union[TensorWithTransformMat, Tuple[TensorWithTransformMat, torch.Tensor]]:
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         self.clear_state()
         if params is None:
-            if isinstance(input, (tuple, list)):
-                inp = input[0]
-            else:
-                inp = input
+            inp = input
             _, out_shape = self.autofill_dim(inp, dim_range=(2, 4))
             params = self.forward_parameters(out_shape)
         if self.return_label is None:
@@ -346,3 +368,25 @@ class ImageSequential(SequentialBase):
                 param = ParamItem(param.name, None)
             self.update_params(param)
         return self.__packup_output__(input, label)
+
+
+def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size) -> torch.Size:
+    """Get the new batch shape if the augmentation changes the image size.
+
+    Note:
+       Augmentations that change the image size must provide the parameter `output_size`.
+    """
+    if param.data is None:
+        return batch_shape
+    if isinstance(param.data, list):
+        for p in param.data:
+            batch_shape = _get_new_batch_shape(p, batch_shape)
+    elif 'output_size' in param.data:
+        if not param.data['batch_prob'][0]:
+            # Augmentations that change the image size must be applied equally to all elements in batch.
+            # If the augmentation is not applied, return the same batch shape.
+            return batch_shape
+        new_batch_shape = list(batch_shape)
+        new_batch_shape[-2:] = param.data['output_size'][0]
+        batch_shape = torch.Size(new_batch_shape)
+    return batch_shape

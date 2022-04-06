@@ -7,7 +7,7 @@ This is a toy example implementing a semantic segmentation application.
 
 .. code-block:: python
 
-  pip install -r requirements.tx
+  pip install -r requirements.txt
 
 2. Execute the script: The entry point to this example is the file
 

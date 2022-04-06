@@ -51,7 +51,7 @@ def my_app(config: Configuration) -> None:
         K.augmentation.RandomVerticalFlip(p=0.75),
         K.augmentation.RandomAffine(degrees=10.),
         K.augmentation.PatchSequential(
-            K.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.8),
+            K.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=0.8),
             grid_size=(2, 2),  # cifar-10 is 32x32 and vit is patch 16
             patchwise_apply=False,
         ),

@@ -1,4 +1,4 @@
-from typing import cast, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, cast
 
 import torch
 
@@ -32,7 +32,7 @@ def _range_bound(
         # Currently, single value factor will not out of scope as long as the user provided it.
         # Note: I personally think throw an error will be better than a coarse clamp.
         factor_bound = factor.repeat(2) * torch.tensor([-1.0, 1.0], device=factor.device, dtype=factor.dtype) + center
-        factor_bound = factor_bound.clamp(bounds[0], bounds[1])
+        factor_bound = factor_bound.clamp(bounds[0], bounds[1]).to(device=device, dtype=dtype)
     else:
         factor_bound = torch.as_tensor(factor, device=device, dtype=dtype)
 

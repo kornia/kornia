@@ -20,6 +20,21 @@ class TestSymmetricalEpipolarDistance:
         Fm = utils.create_random_fundamental_matrix(1).type_as(pts1)
         assert epi.symmetrical_epipolar_distance(pts1, pts2, Fm).shape == (5, 4)
 
+    def test_frames(self, device, dtype):
+        batch_size, num_frames, num_points = 5, 3, 4
+        pts1 = torch.rand(batch_size, num_frames, num_points, 3)
+        pts2 = torch.rand(batch_size, num_frames, num_points, 3)
+        Fm = torch.stack([utils.create_random_fundamental_matrix(1).type_as(pts1) for _ in range(num_frames)], dim=1)
+        dist_frame_by_frame = torch.stack(
+            [
+                epi.symmetrical_epipolar_distance(pts1[:, t, ...], pts2[:, t, ...], Fm[:, t, ...])
+                for t in range(num_frames)
+            ],
+            dim=1,
+        )
+        dist_all_frames = epi.symmetrical_epipolar_distance(pts1, pts2, Fm)
+        assert_close(dist_frame_by_frame, dist_all_frames, atol=1e-6, rtol=1e-6)
+
     def test_gradcheck(self, device):
         # generate input data
         batch_size, num_points, num_dims = 2, 3, 2
@@ -49,6 +64,18 @@ class TestSampsonEpipolarDistance:
         pts2 = torch.rand(batch_size, 4, 3, device=device, dtype=dtype)
         Fm = utils.create_random_fundamental_matrix(1).type_as(pts1)
         assert epi.sampson_epipolar_distance(pts1, pts2, Fm).shape == (5, 4)
+
+    def test_frames(self, device, dtype):
+        batch_size, num_frames, num_points = 5, 3, 4
+        pts1 = torch.rand(batch_size, num_frames, num_points, 3)
+        pts2 = torch.rand(batch_size, num_frames, num_points, 3)
+        Fm = torch.stack([utils.create_random_fundamental_matrix(1).type_as(pts1) for _ in range(num_frames)], dim=1)
+        dist_frame_by_frame = torch.stack(
+            [epi.sampson_epipolar_distance(pts1[:, t, ...], pts2[:, t, ...], Fm[:, t, ...]) for t in range(num_frames)],
+            dim=1,
+        )
+        dist_all_frames = epi.sampson_epipolar_distance(pts1, pts2, Fm)
+        assert_close(dist_frame_by_frame, dist_all_frames, atol=1e-6, rtol=1e-6)
 
     def test_shift(self, device, dtype):
         pts1 = torch.zeros(3, 2, device=device, dtype=dtype)[None]

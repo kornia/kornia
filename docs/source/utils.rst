@@ -8,6 +8,7 @@ Draw
 
 .. autofunction:: draw_line
 .. autofunction:: draw_rectangle
+.. autofunction:: draw_convex_polygon
 
 Image
 -----
@@ -33,3 +34,8 @@ Memory
 
 .. autofunction:: one_hot
 .. autofunction:: batched_forward
+
+Device
+-------
+
+.. autofunction:: get_cuda_device_if_available

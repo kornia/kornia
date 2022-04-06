@@ -1,8 +1,9 @@
 pytest==6.2.5
 pytest-flake8==1.0.7
+flake8==3.9.2  # flake8==4.0.1 is buggy
 pytest-cov==3.0.0
-pytest-mypy==0.8.1
-pytest-xdist==2.4.0
+pytest-mypy==0.9.1
+pytest-xdist==2.5.0
 autopep8
 pydocstyle
 pre-commit>=2.0

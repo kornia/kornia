@@ -1,3 +1,4 @@
+import pytest
 import torch
 
 import kornia
@@ -189,7 +190,35 @@ class TestConfusionMatrix:
 
 class TestPsnr:
     def test_metric(self, device, dtype):
-        input = torch.ones(1, device=device, dtype=dtype)
+        sample = torch.ones(1, device=device, dtype=dtype)
         expected = torch.tensor(20.0, device=device, dtype=dtype)
-        actual = kornia.metrics.psnr(input, 1.2 * input, 2.0)
+        actual = kornia.metrics.psnr(sample, 1.2 * sample, 2.0)
         assert_close(actual, expected)
+
+
+class TestMeanAveragePrecision:
+    def test_smoke(self, device, dtype):
+        boxes = torch.tensor([[100, 50, 150, 100.]], device=device, dtype=dtype)
+        labels = torch.tensor([1], device=device, dtype=torch.long)
+        scores = torch.tensor([.7], device=device, dtype=dtype)
+
+        gt_boxes = torch.tensor([[100, 50, 150, 100.]], device=device, dtype=dtype)
+        gt_labels = torch.tensor([1], device=device, dtype=torch.long)
+
+        mean_ap = kornia.metrics.mean_average_precision(
+            [boxes], [labels], [scores], [gt_boxes], [gt_labels], 2)
+
+        assert_close(mean_ap[0], torch.tensor(1., device=device, dtype=dtype))
+        assert_close(mean_ap[1][1], 1.0)
+
+    def test_raise(self, device, dtype):
+        boxes = torch.tensor([[100, 50, 150, 100.]], device=device, dtype=dtype)
+        labels = torch.tensor([1], device=device, dtype=torch.long)
+        scores = torch.tensor([.7], device=device, dtype=dtype)
+
+        gt_boxes = torch.tensor([[100, 50, 150, 100.]], device=device, dtype=dtype)
+        gt_labels = torch.tensor([1], device=device, dtype=torch.long)
+
+        with pytest.raises(AssertionError):
+            _ = kornia.metrics.mean_average_precision(
+                boxes[0], [labels], [scores], [gt_boxes], [gt_labels], 2)

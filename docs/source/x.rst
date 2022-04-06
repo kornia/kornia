@@ -13,6 +13,7 @@ Domain trainers
 
 .. autoclass:: ImageClassifierTrainer
 .. autoclass:: SemanticSegmentationTrainer
+.. autoclass:: ObjectDetectionTrainer
 
 
 Callbacks

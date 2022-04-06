@@ -413,9 +413,19 @@ class TestRemap:
     def test_smoke(self, device, dtype):
         height, width = 3, 4
         input = torch.ones(1, 1, height, width, device=device, dtype=dtype)
-        grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=False, device=device).to(dtype)
-        input_warped = kornia.geometry.remap(input, grid[..., 0], grid[..., 1], align_corners=True)
+        grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=False, device=device, dtype=dtype)
+        input_warped = kornia.geometry.remap(
+            input, grid[..., 0], grid[..., 1], normalized_coordinates=False, align_corners=True
+        )
         assert_close(input, input_warped, rtol=1e-4, atol=1e-4)
+
+    def test_different_size(self, device, dtype):
+        height, width = 3, 4
+        grid = kornia.utils.create_meshgrid(height, width, device=device, dtype=dtype)
+
+        img = torch.rand(1, 2, 6, 5, device=device, dtype=dtype)
+        img_warped = kornia.geometry.remap(img, grid[..., 0], grid[..., 1])
+        assert img_warped.shape == (1, 2, height, width)
 
     def test_shift(self, device, dtype):
         height, width = 3, 4
