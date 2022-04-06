@@ -13,7 +13,7 @@ def spatial_gradient(input: torch.Tensor, mode: str = 'sobel', order: int = 1, n
 
     Args:
         input: input image tensor with shape :math:`(B, C, H, W)`.
-        mode: derivatives modality, can be: `sobel` or `diff`.
+        mode: derivatives modality, can be: `sobel` or `diff` or 'oflk'.
         order: the order of the derivatives.
         normalized: whether the output is normalized.
 
@@ -37,13 +37,22 @@ def spatial_gradient(input: torch.Tensor, mode: str = 'sobel', order: int = 1, n
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
     # allocate kernel
     kernel: torch.Tensor = get_spatial_gradient_kernel2d(mode, order)
+ 
     if normalized:
         kernel = normalize_kernel2d(kernel)
+
 
     # prepare kernel
     b, c, h, w = input.shape
     tmp_kernel: torch.Tensor = kernel.to(input).detach()
+    if(mode == 'oflk'):
+        kernel = tmp_kernel
+        kernel = kernel.unsqueeze(1)
+        pad = nn.ZeroPad2d((1,0,1,0))
+        padded_inp = pad(input)
+        return F.conv2d(padded_inp, kernel)
     tmp_kernel = tmp_kernel.unsqueeze(1).unsqueeze(1)
+
 
     # convolve input tensor with sobel kernel
     kernel_flip: torch.Tensor = tmp_kernel.flip(-3)
@@ -52,7 +61,6 @@ def spatial_gradient(input: torch.Tensor, mode: str = 'sobel', order: int = 1, n
     spatial_pad = [kernel.size(1) // 2, kernel.size(1) // 2, kernel.size(2) // 2, kernel.size(2) // 2]
     out_channels: int = 3 if order == 2 else 2
     padded_inp: torch.Tensor = F.pad(input.reshape(b * c, 1, h, w), spatial_pad, 'replicate')[:, :, None]
-
     return F.conv3d(padded_inp, kernel_flip, padding=0).view(b, c, out_channels, h, w)
 
 

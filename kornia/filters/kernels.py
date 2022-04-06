@@ -152,6 +152,11 @@ def get_sobel_kernel_3x3() -> torch.Tensor:
     return torch.tensor([[-1.0, 0.0, 1.0], [-2.0, 0.0, 2.0], [-1.0, 0.0, 1.0]])
 
 
+def get_oflk_kernel_2x2() -> torch.Tensor:
+    """Utility function that return kernel for the optical flow with Lucas-Kanade method of size 2x2."""
+    return torch.tensor([[-1.0, 1.0],[-1.0, 1.0]]) 
+
+
 def get_sobel_kernel_5x5_2nd_order() -> torch.Tensor:
     """Utility function that returns a 2nd order sobel kernel of 5x5."""
     return torch.tensor(
@@ -261,6 +266,11 @@ def get_diff_kernel2d() -> torch.Tensor:
     kernel_y: torch.Tensor = kernel_x.transpose(0, 1)
     return torch.stack([kernel_x, kernel_y])
 
+def get_oflk_kernel2d() -> torch.Tensor:
+    kernel_x: torch.Tensor = get_oflk_kernel_2x2()
+    kernel_y: torch.Tensor = kernel_x.transpose(0, 1)
+    kernel_t: torch.Tensor = torch.tensor([[-1.0, -1.0], [-1.0, -1.0]])
+    return torch.stack([kernel_x, kernel_y, kernel_t, -kernel_t])
 
 def get_sobel_kernel2d_2nd_order() -> torch.Tensor:
     gxx: torch.Tensor = get_sobel_kernel_5x5_2nd_order()
@@ -278,11 +288,11 @@ def get_diff_kernel2d_2nd_order() -> torch.Tensor:
 
 def get_spatial_gradient_kernel2d(mode: str, order: int) -> torch.Tensor:
     r"""Function that returns kernel for 1st or 2nd order image gradients,
-    using one of the following operators: sobel, diff"""
-    if mode not in ['sobel', 'diff']:
+    using one of the following operators: sobel, diff, oflk"""
+    if mode not in ['sobel', 'diff', 'oflk']:
         raise TypeError(
             "mode should be either sobel\
-                         or diff. Got {}".format(
+                         or diff or oflk. Got {}".format(
                 mode
             )
         )
@@ -301,6 +311,8 @@ def get_spatial_gradient_kernel2d(mode: str, order: int) -> torch.Tensor:
         kernel = get_diff_kernel2d()
     elif mode == 'diff' and order == 2:
         kernel = get_diff_kernel2d_2nd_order()
+    elif mode == 'oflk' and order == 1:
+        kernel = get_oflk_kernel2d()
     else:
         raise NotImplementedError("")
     return kernel
