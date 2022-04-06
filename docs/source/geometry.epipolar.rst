@@ -33,6 +33,8 @@ Metrics
 
 .. autofunction:: sampson_epipolar_distance
 .. autofunction:: symmetrical_epipolar_distance
+.. autofunction:: left_to_right_epipolar_distance
+.. autofunction:: right_to_left_epipolar_distance
 
 Projection
 ----------
