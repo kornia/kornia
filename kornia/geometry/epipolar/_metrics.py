@@ -3,6 +3,8 @@
 from torch import Tensor
 
 from kornia.geometry.conversions import convert_points_to_homogeneous
+from kornia.geometry.linalg import point_line_distance
+from kornia.testing import KORNIA_CHECK_IS_TENSOR
 
 
 def sampson_epipolar_distance(
@@ -111,3 +113,70 @@ def symmetrical_epipolar_distance(
     if squared:
         return out
     return (out + eps).sqrt()
+
+
+def left_to_right_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> Tensor:
+    r"""Return one-sided epipolar distance for correspondences given the fundamental
+    matrix.
+
+    This method measures the distance from points in the right images to the epilines
+    of the corresponding points in the left images as they reflect in the right images.
+
+    Args:
+       pts1: correspondences from the left images with shape
+         :math:`(*, N, 2 or 3)`. If they are not homogeneous, converted automatically.
+       pts2: correspondences from the right images with shape
+         :math:`(*, N, 2 or 3)`. If they are not homogeneous, converted automatically.
+       Fm: Fundamental matrices with shape :math:`(*, 3, 3)`. Called Fm to
+         avoid ambiguity with torch.nn.functional.
+
+    Returns:
+        the computed Symmetrical distance with shape :math:`(*, N)`.
+    """
+    KORNIA_CHECK_IS_TENSOR(pts1)
+    KORNIA_CHECK_IS_TENSOR(pts2)
+    KORNIA_CHECK_IS_TENSOR(Fm)
+
+    if (len(Fm.shape) < 3) or not Fm.shape[-2:] == (3, 3):
+        raise ValueError(f"Fm must be a (*, 3, 3) tensor. Got {Fm.shape}")
+
+    if pts1.shape[-1] == 2:
+        pts1 = convert_points_to_homogeneous(pts1)
+
+    F_t: Tensor = Fm.transpose(dim0=-2, dim1=-1)
+    line1_in_2: Tensor = pts1 @ F_t
+
+    return point_line_distance(pts2, line1_in_2)
+
+
+def right_to_left_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> Tensor:
+    r"""Return one-sided epipolar distance for correspondences given the fundamental
+    matrix.
+
+    This method measures the distance from points in the left images to the epilines
+    of the corresponding points in the right images as they reflect in the left images.
+
+    Args:
+       pts1: correspondences from the left images with shape
+         :math:`(*, N, 2 or 3)`. If they are not homogeneous, converted automatically.
+       pts2: correspondences from the right images with shape
+         :math:`(*, N, 2 or 3)`. If they are not homogeneous, converted automatically.
+       Fm: Fundamental matrices with shape :math:`(*, 3, 3)`. Called Fm to
+         avoid ambiguity with torch.nn.functional.
+
+    Returns:
+        the computed Symmetrical distance with shape :math:`(*, N)`.
+    """
+    KORNIA_CHECK_IS_TENSOR(pts1)
+    KORNIA_CHECK_IS_TENSOR(pts2)
+    KORNIA_CHECK_IS_TENSOR(Fm)
+
+    if (len(Fm.shape) < 3) or not Fm.shape[-2:] == (3, 3):
+        raise ValueError(f"Fm must be a (*, 3, 3) tensor. Got {Fm.shape}")
+
+    if pts2.shape[-1] == 2:
+        pts2 = convert_points_to_homogeneous(pts2)
+
+    line2_in_1: Tensor = pts2 @ Fm
+
+    return point_line_distance(pts1, line2_in_1)
