@@ -100,10 +100,10 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
 
     # vertical line
     if B == 0:
-        image[:, y1 : y2 + 1, x1] = color
+        image[:, y1: y2 + 1, x1] = color
     # horizontal line
     elif A == 0:
-        image[:, y1, x1 : x2 + 1] = color
+        image[:, y1, x1: x2 + 1] = color
     # slope between 0 and 1
     elif 0 < m < 1:
         for i in range(x1, x2 + 1):
@@ -189,20 +189,20 @@ def draw_rectangle(
                 image[
                     b,
                     :,
-                    int(rectangle[b, n, 1]) : int(rectangle[b, n, 3] + 1),
-                    int(rectangle[b, n, 0]) : int(rectangle[b, n, 2] + 1),
+                    int(rectangle[b, n, 1]): int(rectangle[b, n, 3] + 1),
+                    int(rectangle[b, n, 0]): int(rectangle[b, n, 2] + 1),
                 ] = color[b, n, :, None, None]
             else:
-                image[b, :, int(rectangle[b, n, 1]) : int(rectangle[b, n, 3] + 1), rectangle[b, n, 0]] = color[
+                image[b, :, int(rectangle[b, n, 1]): int(rectangle[b, n, 3] + 1), rectangle[b, n, 0]] = color[
                     b, n, :, None
                 ]
-                image[b, :, int(rectangle[b, n, 1]) : int(rectangle[b, n, 3] + 1), rectangle[b, n, 2]] = color[
+                image[b, :, int(rectangle[b, n, 1]): int(rectangle[b, n, 3] + 1), rectangle[b, n, 2]] = color[
                     b, n, :, None
                 ]
-                image[b, :, rectangle[b, n, 1], int(rectangle[b, n, 0]) : int(rectangle[b, n, 2] + 1)] = color[
+                image[b, :, rectangle[b, n, 1], int(rectangle[b, n, 0]): int(rectangle[b, n, 2] + 1)] = color[
                     b, n, :, None
                 ]
-                image[b, :, rectangle[b, n, 3], int(rectangle[b, n, 0]) : int(rectangle[b, n, 2] + 1)] = color[
+                image[b, :, rectangle[b, n, 3], int(rectangle[b, n, 0]): int(rectangle[b, n, 2] + 1)] = color[
                     b, n, :, None
                 ]
 

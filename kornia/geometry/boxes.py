@@ -180,6 +180,7 @@ class Boxes:
         ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. Examples of
         `quadrilaterals <https://en.wikipedia.org/wiki/Quadrilateral>`_ are rectangles, rhombus and trapezoids.
     """
+
     def __init__(
         self, boxes: Union[torch.Tensor, List[torch.Tensor]], raise_if_not_floating_point: bool = True,
         mode: str = "vertices_plus"
@@ -404,7 +405,7 @@ class Boxes:
         # Cast boxes coordinates to be integer to use them as indexes. Use round to handle decimal values.
         for mask_channel, box_xyxy in zip(mask.view(-1, height, width), clipped_boxes_xyxy.view(-1, 4).round().int()):
             # Mask channel dimensions: (height, width)
-            mask_channel[box_xyxy[1] : box_xyxy[3], box_xyxy[0] : box_xyxy[2]] = 1
+            mask_channel[box_xyxy[1]: box_xyxy[3], box_xyxy[0]: box_xyxy[2]] = 1
 
         return mask
 
@@ -477,6 +478,7 @@ class Boxes3D:
         ``width = xmax - xmin + 1``, ``height = ymax - ymin + 1`` and ``depth = zmax - zmin + 1``. Examples of
         `hexahedrons <https://en.wikipedia.org/wiki/Hexahedron>`_ are cubes and rhombohedrons.
     """
+
     def __init__(
         self, boxes: torch.Tensor, raise_if_not_floating_point: bool = True,
         mode: str = "xyzxyz_plus"
@@ -755,7 +757,7 @@ class Boxes3D:
         ):
             # Mask channel dimensions: (depth, height, width)
             mask_channel[
-                box_xyzxyz[2] : box_xyzxyz[5], box_xyzxyz[1] : box_xyzxyz[4], box_xyzxyz[0] : box_xyzxyz[3]
+                box_xyzxyz[2]: box_xyzxyz[5], box_xyzxyz[1]: box_xyzxyz[4], box_xyzxyz[0]: box_xyzxyz[3]
             ] = 1
 
         return mask

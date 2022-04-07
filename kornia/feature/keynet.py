@@ -39,6 +39,7 @@ class _FeatureExtractor(nn.Module):
 
     It loads both, the handcrafted and learnable blocks
     """
+
     def __init__(self):
         super().__init__()
 
@@ -53,6 +54,7 @@ class _FeatureExtractor(nn.Module):
 
 class _HandcraftedBlock(nn.Module):
     """Helper class for KeyNet, it defines the handcrafted filters within the Key.Net handcrafted block."""
+
     def __init__(self):
         super().__init__()
         self.spatial_gradient = SpatialGradient('sobel', 1)
@@ -132,6 +134,7 @@ class KeyNet(nn.Module):
         - Input: :math:`(B, 1, H, W)`
         - Output: :math:`(B, 1, H, W)`
     """
+
     def __init__(self,
                  pretrained: bool = False,
                  keynet_conf: Dict = keynet_config['KeyNet_default_config']):
@@ -185,6 +188,7 @@ class KeyNetDetector(nn.Module):
         aff_module: for local feature affine shape estimation. Default: :class:`~kornia.feature.PassLAF`,
             which does nothing. See :class:`~kornia.feature.LAFAffineShapeEstimator` for details.
     """
+
     def __init__(self,
                  pretrained: bool = False,
                  num_features: int = 2048,

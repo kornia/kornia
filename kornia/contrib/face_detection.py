@@ -38,6 +38,7 @@ class FaceDetectorResult:
         data: the encoded results coming from the feature detector with shape :math:`(14,)`.
 
     """
+
     def __init__(self, data: torch.Tensor) -> None:
         if len(data) < 15:
             raise ValueError(f"Result must comes as vector of size(14). Got: {data.shape}.")
@@ -147,6 +148,7 @@ class FaceDetector(nn.Module):
         >>> detect = FaceDetector()
         >>> res = detect(img)
     """
+
     def __init__(self,
                  top_k: int = 5000,
                  confidence_threshold: float = 0.3,

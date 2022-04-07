@@ -82,6 +82,7 @@ class DistanceTransform(nn.Module):
         h: value that influence the approximation of the min function.
 
     """
+
     def __init__(
         self,
         kernel_size: int = 3,

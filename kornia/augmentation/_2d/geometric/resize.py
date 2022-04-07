@@ -56,7 +56,7 @@ class Resize(GeometricAugmentationBase2D):
             y1 = int(params["src"][i, 0, 1])
             y2 = int(params["src"][i, 3, 1]) + 1
             out[i] = resize(
-                input[i : i + 1, :, y1:y2, x1:x2],
+                input[i: i + 1, :, y1:y2, x1:x2],
                 out_size,
                 interpolation=(self.flags["resample"].name).lower(),
                 align_corners=self.flags["align_corners"],

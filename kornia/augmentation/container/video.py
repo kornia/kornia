@@ -121,7 +121,7 @@ class VideoSequential(ImageSequential):
 
     def __infer_channel_exclusive_batch_shape__(self, batch_shape: torch.Size, chennel_index: int) -> torch.Size:
         # Fix mypy complains: error: Incompatible return value type (got "Tuple[int, ...]", expected "Size")
-        return cast(torch.Size, batch_shape[:chennel_index] + batch_shape[chennel_index + 1 :])
+        return cast(torch.Size, batch_shape[:chennel_index] + batch_shape[chennel_index + 1:])
 
     def __repeat_param_across_channels__(self, param: torch.Tensor, frame_num: int) -> torch.Tensor:
         """Repeat parameters across channels.

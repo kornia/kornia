@@ -38,6 +38,7 @@ class FilterResponseNorm2d(nn.Module):
         - Input: :math:`(B, \text{num_features}, H, W)`
         - Output: :math:`(B, \text{num_features}, H, W)`
     """
+
     def __init__(self,
                  num_features: int,
                  eps: float = 1e-6,
@@ -102,6 +103,7 @@ class TLU(nn.Module):
         - Input: :math:`(B, \text{num_features}, H, W)`
         - Output: :math:`(B, \text{num_features}, H, W)`
     """
+
     def __init__(self, num_features: int):
         """max(y, tau) = max(y - tau, 0) + tau = ReLU(y - tau) + tau"""
         super().__init__()

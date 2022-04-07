@@ -154,7 +154,7 @@ def get_sobel_kernel_3x3() -> torch.Tensor:
 
 def get_oflk_kernel_2x2() -> torch.Tensor:
     """Utility function that return kernel for the optical flow with Lucas-Kanade method of size 2x2."""
-    return torch.tensor([[-1.0, 1.0],[-1.0, 1.0]])
+    return torch.tensor([[-1.0, 1.0], [-1.0, 1.0]])
 
 
 def get_sobel_kernel_5x5_2nd_order() -> torch.Tensor:
@@ -266,11 +266,13 @@ def get_diff_kernel2d() -> torch.Tensor:
     kernel_y: torch.Tensor = kernel_x.transpose(0, 1)
     return torch.stack([kernel_x, kernel_y])
 
+
 def get_oflk_kernel2d() -> torch.Tensor:
     kernel_x: torch.Tensor = get_oflk_kernel_2x2()
     kernel_y: torch.Tensor = kernel_x.transpose(0, 1)
     kernel_t: torch.Tensor = torch.tensor([[-1.0, -1.0], [-1.0, -1.0]])
     return torch.stack([kernel_x, kernel_y, kernel_t, -kernel_t])
+
 
 def get_sobel_kernel2d_2nd_order() -> torch.Tensor:
     gxx: torch.Tensor = get_sobel_kernel_5x5_2nd_order()

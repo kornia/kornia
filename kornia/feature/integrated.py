@@ -102,6 +102,7 @@ class LocalFeature(nn.Module):
         detector: the detection module.
         descriptor: the descriptor module.
     """
+
     def __init__(self,
                  detector: nn.Module,
                  descriptor: LAFDescriptor) -> None:
@@ -135,6 +136,7 @@ class SIFTFeature(LocalFeature):
 
     Still not as good as OpenCV/VLFeat because of https://github.com/kornia/kornia/pull/884, but we are working on it
     """
+
     def __init__(self,
                  num_features: int = 8000,
                  upright: bool = False,
@@ -157,6 +159,7 @@ class SIFTFeature(LocalFeature):
 
 class GFTTAffNetHardNet(LocalFeature):
     """Convenience module, which implements GFTT detector + AffNet-HardNet descriptor."""
+
     def __init__(self,
                  num_features: int = 8000,
                  upright: bool = False,
@@ -176,6 +179,7 @@ class GFTTAffNetHardNet(LocalFeature):
 
 class KeyNetHardNet(LocalFeature):
     """Convenience module, which implements KeyNet detector + HardNet descriptor."""
+
     def __init__(self,
                  num_features: int = 8000,
                  upright: bool = False,
@@ -191,6 +195,7 @@ class KeyNetHardNet(LocalFeature):
 
 class KeyNetAffNetHardNet(LocalFeature):
     """Convenience module, which implements KeyNet detector + AffNet + HardNet descriptor."""
+
     def __init__(self,
                  num_features: int = 8000,
                  upright: bool = False,

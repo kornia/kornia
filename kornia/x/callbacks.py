@@ -31,6 +31,7 @@ class EarlyStopping:
             callbacks={"terminate", early_stop}
         )
     """
+
     def __init__(self, monitor: str, min_delta: float = 0., patience: int = 8) -> None:
         self.monitor = monitor
         self.min_delta = min_delta
@@ -83,6 +84,7 @@ class ModelCheckpoint:
             callbacks={"checkpoint", model_checkpoint}
         )
     """
+
     def __init__(self, filepath: str, monitor: str) -> None:
         self.filepath = filepath
         self.monitor = monitor

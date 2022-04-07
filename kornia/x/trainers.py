@@ -59,6 +59,7 @@ class ObjectDetectionTrainer(Trainer):
         Learn how to use this class in the following
         `example <https://github.com/kornia/kornia/blob/master/examples/train/object_detection/>`__.
     """
+
     def __init__(
         self,
         model: nn.Module,

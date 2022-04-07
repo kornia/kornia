@@ -41,18 +41,16 @@ def spatial_gradient(input: torch.Tensor, mode: str = 'sobel', order: int = 1, n
     if normalized:
         kernel = normalize_kernel2d(kernel)
 
-
     # prepare kernel
     b, c, h, w = input.shape
     tmp_kernel: torch.Tensor = kernel.to(input).detach()
     if(mode == 'oflk'):
         kernel = tmp_kernel
         kernel = kernel.unsqueeze(1)
-        pad = nn.ZeroPad2d((1,0,1,0))
-        padded_inp = pad(input)
-        return F.conv2d(padded_inp, kernel)
+        pad = nn.ZeroPad2d((1, 0, 1, 0))
+        padded_input = pad(input)
+        return F.conv2d(padded_input, kernel)
     tmp_kernel = tmp_kernel.unsqueeze(1).unsqueeze(1)
-
 
     # convolve input tensor with sobel kernel
     kernel_flip: torch.Tensor = tmp_kernel.flip(-3)

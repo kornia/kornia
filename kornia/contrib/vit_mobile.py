@@ -11,6 +11,7 @@ class SiLU(nn.Module):
 
     Paper: https://arxiv.org/abs/1702.03118
     """
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return x * torch.sigmoid(x)
 

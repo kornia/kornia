@@ -705,7 +705,7 @@ def posterize(input: Tensor, bits: Union[int, Tensor]) -> Tensor:
             "Batch and channel must be equal between bits and input. "
             f"Got {bits.shape}, {input.shape[:len(bits.shape)]}."
         )
-    _input = input.view(-1, *input.shape[len(bits.shape) :])
+    _input = input.view(-1, *input.shape[len(bits.shape):])
     _bits = bits.flatten()
     for i in range(input.shape[0]):
         res.append(_posterize_one(_input[i], _bits[i]))

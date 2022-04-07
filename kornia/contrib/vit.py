@@ -123,6 +123,7 @@ class TransformerEncoder(nn.Module):
 
 class PatchEmbedding(nn.Module):
     """Compute the 2d image patch embedding ready to pass to transformer encoder."""
+
     def __init__(
         self,
         in_channels: int = 3,
@@ -190,6 +191,7 @@ class VisionTransformer(nn.Module):
         >>> vit(img).shape
         torch.Size([1, 197, 768])
     """
+
     def __init__(
         self,
         image_size: int = 224,
