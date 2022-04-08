@@ -33,7 +33,7 @@ def lovasz_hinge_loss(input: torch.Tensor, target: torch.Tensor) -> torch.Tensor
         [2] https://arxiv.org/pdf/1705.08790.pdf
 
     . note::
-        This loss function only binary labels. For multi-class labels please
+        This loss function only supports binary labels. For multi-class labels please
         use the Lovasz-Softmax loss.
 
     Args:
@@ -121,7 +121,7 @@ class LovaszHingeLoss(nn.Module):
         [2] https://arxiv.org/pdf/1705.08790.pdf
 
     . note::
-        This loss function only binary labels. For multi-class labels please
+        This loss function only supports binary labels. For multi-class labels please
         use the Lovasz-Softmax loss.
 
     Args:
