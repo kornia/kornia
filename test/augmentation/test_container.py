@@ -10,8 +10,7 @@ from kornia.testing import assert_close
 
 
 def reproducibility_test(input, seq):
-    """Any tests failed here indicate the output cannot be reproduced by the same params.
-    """
+    """Any tests failed here indicate the output cannot be reproduced by the same params."""
     if isinstance(input, (tuple, list)):
         output_1 = seq(*input)
         output_2 = seq(*input, params=seq._params)
