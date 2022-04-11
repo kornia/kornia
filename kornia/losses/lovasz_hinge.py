@@ -41,7 +41,7 @@ def lovasz_hinge_loss(input: torch.Tensor, target: torch.Tensor) -> torch.Tensor
         labels: labels tensor with shape :math:`(N, H, W)` with binary values.
 
     Return:
-        the computed loss.
+        a scalar with the computed loss.
 
     Example:
         >>> N = 1  # num_classes
@@ -132,7 +132,7 @@ class LovaszHingeLoss(nn.Module):
         labels: labels tensor with shape :math:`(N, H, W)` with binary values.
 
     Return:
-        the computed loss.
+        a scalar with the computed loss.
 
     Example:
         >>> N = 1  # num_classes
