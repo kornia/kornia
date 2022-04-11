@@ -1,6 +1,6 @@
 import warnings
 from itertools import zip_longest
-from typing import Any, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 from torch import Tensor
 
@@ -16,7 +16,7 @@ from kornia.augmentation.container.image import ImageSequential, ParamItem
 from kornia.augmentation.container.patch import PatchSequential
 from kornia.augmentation.container.utils import ApplyInverse
 from kornia.augmentation.container.video import VideoSequential
-from kornia.constants import DataKey
+from kornia.constants import DataKey, Resample
 from kornia.geometry.boxes import Boxes
 
 __all__ = ["AugmentationSequential"]
@@ -45,6 +45,8 @@ class AugmentationSequential(ImageSequential):
             If (a, b), x number of transformations (a <= x <= b) will be selected.
             If True, the whole list of args will be processed as a sequence in a random order.
             If False, the whole list of args will be processed as a sequence in original order.
+        extra_args: to control the behaviour for each datakeys. By default, masks are handled
+            by nearest interpolation strategies.
 
     .. note::
         Mix augmentations (e.g. RandomMixUp, RandomCutMix) can only be working with "input" data key.
@@ -141,6 +143,12 @@ class AugmentationSequential(ImageSequential):
         keepdim: Optional[bool] = None,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
         random_apply_weights: Optional[List[float]] = None,
+        extra_args: Dict[DataKey, Dict[str, Any]] = {
+            DataKey.MASK: dict(
+                resample=Resample.NEAREST,
+                align_corners=True
+            )
+        }
     ) -> None:
         super().__init__(
             *args,
@@ -170,6 +178,7 @@ class AugmentationSequential(ImageSequential):
             if isinstance(arg, AugmentationBase3D):
                 self.contains_3d_augmentation = True
         self._transform_matrix: Optional[Tensor] = None
+        self.extra_args = extra_args
 
     @property
     def transform_matrix(self,) -> Optional[Tensor]:
@@ -356,10 +365,16 @@ class AugmentationSequential(ImageSequential):
             else:
                 input = arg
 
+            if dcate in self.extra_args:
+                extra_args = self.extra_args[dcate]
+            else:
+                extra_args = {}
+
             for param in params:
                 module = self.get_submodule(param.name)
                 if dcate == DataKey.INPUT:
-                    input, label = self.apply_to_input(input, label, module=module, param=param)
+                    input, label = self.apply_to_input(
+                        input, label, module=module, param=param, extra_args=extra_args)
                 elif isinstance(module, IntensityAugmentationBase2D) and dcate in DataKey \
                         and not isinstance(module, RandomErasing):
                     pass  # Do nothing
@@ -368,13 +383,15 @@ class AugmentationSequential(ImageSequential):
                 elif isinstance(module, VideoSequential) and dcate not in [DataKey.INPUT, DataKey.MASK]:
                     batch_size: int = input.size(0)
                     input = input.view(-1, *input.shape[2:])
-                    input, label = ApplyInverse.apply_by_key(input, label, module, param, dcate)
+                    input, label = ApplyInverse.apply_by_key(
+                        input, label, module, param, dcate, extra_args=extra_args)
                     input = input.view(batch_size, -1, *input.shape[1:])
                 elif isinstance(module, PatchSequential):
                     raise NotImplementedError("Geometric involved PatchSequential is not supported.")
                 elif isinstance(module, (GeometricAugmentationBase2D, ImageSequential, RandomErasing)) \
                         and dcate in DataKey:
-                    input, label = ApplyInverse.apply_by_key(input, label, module, param, dcate)
+                    input, label = ApplyInverse.apply_by_key(
+                        input, label, module, param, dcate, extra_args=extra_args)
                 elif isinstance(module, (SequentialBase,)):
                     raise ValueError(f"Unsupported Sequential {module}.")
                 else:

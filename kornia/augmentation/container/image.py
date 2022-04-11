@@ -1,5 +1,5 @@
 from itertools import zip_longest
-from typing import Iterator, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Type, Union
 
 import torch
 import torch.nn as nn
@@ -206,10 +206,11 @@ class ImageSequential(SequentialBase):
         label: Optional[torch.Tensor],
         module: Optional[nn.Module],
         param: ParamItem,
+        extra_args: Dict[str, Any]
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         if module is None:
             module = self.get_submodule(param.name)
-        return self.apply_inverse_func.apply_trans(input, label, module, param)  # type: ignore
+        return self.apply_inverse_func.apply_trans(input, label, module, param, **extra_args)  # type: ignore
 
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
         named_modules: Iterator[Tuple[str, nn.Module]] = self.get_forward_sequence()
@@ -313,7 +314,10 @@ class ImageSequential(SequentialBase):
                 return False
         return True
 
-    def inverse(self, input: torch.Tensor, params: Optional[List[ParamItem]] = None) -> torch.Tensor:
+    def inverse(
+        self, input: torch.Tensor, params: Optional[List[ParamItem]] = None,
+        extra_args: Dict[str, Any] = {}
+    ) -> torch.Tensor:
         """Inverse transformation.
 
         Used to inverse a tensor according to the performed transformation by a forward pass, or with respect to
@@ -340,7 +344,7 @@ class ImageSequential(SequentialBase):
             elif isinstance(module, ImageSequential):
                 input = module.inverse(input, param.data)
             elif isinstance(module, (GeometricAugmentationBase2D,)):
-                input = self.apply_inverse_func.inverse(input, module, param)
+                input = self.apply_inverse_func.inverse(input, module, param, extra_args=extra_args)
             else:
                 pass
                 # raise NotImplementedError(f"`inverse` is not implemented for {module}.")
@@ -352,6 +356,7 @@ class ImageSequential(SequentialBase):
         input: torch.Tensor,
         label: Optional[torch.Tensor] = None,
         params: Optional[List[ParamItem]] = None,
+        extra_args: Dict[str, Any] = {}
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         self.clear_state()
         if params is None:
@@ -362,7 +367,7 @@ class ImageSequential(SequentialBase):
             self.return_label = label is not None or self.contains_label_operations(params)
         for param in params:
             module = self.get_submodule(param.name)
-            input, label = self.apply_to_input(input, label, module, param=param)  # type: ignore
+            input, label = self.apply_to_input(input, label, module, param=param, extra_args=extra_args)  # type: ignore
             if isinstance(module, (_AugmentationBase, MixAugmentationBase, SequentialBase)):
                 param = ParamItem(param.name, module._params)
             else:

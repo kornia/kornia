@@ -10,6 +10,8 @@ from kornia.testing import assert_close
 
 
 def reproducibility_test(input, seq):
+    """Any tests failed here indicate the output cannot be reproduced by the same params.
+    """
     if isinstance(input, (tuple, list)):
         output_1 = seq(*input)
         output_2 = seq(*input, params=seq._params)
@@ -369,6 +371,7 @@ class TestAugmentationSequential:
             K.RandomCrop((3, 3), padding=1, cropping_mode='resample', fill=0),
             K.RandomAffine((360., 360.), p=1.),
             data_keys=["input", "mask", "bbox_xyxy", "keypoints"],
+            extra_args={}
         )
 
         reproducibility_test((input, input, bbox, points), aug)
@@ -470,7 +473,9 @@ class TestAugmentationSequential:
             K.RandomAffine(360, p=1.0),
             K.RandomCrop(crop_size, padding=1, cropping_mode='resample', fill=0),
             data_keys=['input', 'mask', 'bbox', 'keypoints'],
+            extra_args={}
         )
+        # NOTE: Mask data with nearest not passing reproducibility check under float64.
         reproducibility_test((inp, mask, bbox, keypoints), aug)
 
         out = aug(inp, mask, bbox, keypoints)
