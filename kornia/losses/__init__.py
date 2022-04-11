@@ -8,6 +8,8 @@ from .psnr import PSNRLoss, psnr_loss
 from .ssim import SSIMLoss, ssim_loss
 from .total_variation import TotalVariation, total_variation
 from .tversky import TverskyLoss, tversky_loss
+from .lovasz_hinge import LovaszHingeLoss, lovasz_hinge_loss
+from .lovasz_softmax import LovaszSoftmaxLoss, lovasz_softmax_loss
 
 __all__ = [
     "inverse_depth_smoothness_loss",
@@ -31,4 +33,8 @@ __all__ = [
     "tversky_loss",
     "TverskyLoss",
     "MS_SSIMLoss",
+    "LovaszHingeLoss",
+    "lovasz_hinge_loss",
+    "LovaszSoftmaxLoss",
+    "lovasz_softmax_loss",
 ]
