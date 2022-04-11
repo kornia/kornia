@@ -78,12 +78,12 @@ def lovasz_hinge_loss(input: torch.Tensor, target: torch.Tensor) -> torch.Tensor
     # get shapes
     B, N = input_flatten.shape
 
-    # compute softmax over the classes axis
-    input_sigmoid: torch.Tensor = torch.sigmoid(input_flatten)
+    # compute probabilities
+    input_prob: torch.Tensor = torch.sigmoid(input_flatten)
 
     # compute actual loss
     signs = 2. * target_flatten - 1.
-    errors = 1. - input_sigmoid * signs
+    errors = 1. - input_prob * signs
     errors_sorted, permutation = torch.sort(errors, dim=1, descending=True)
     batch_index: torch.Tensor = torch.arange(B, device=input.device).repeat_interleave(N, dim=0)
     target_sorted: torch.Tensor = target_flatten[batch_index, permutation.view(-1)]
