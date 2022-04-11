@@ -75,7 +75,7 @@ def lovasz_softmax_loss(input: torch.Tensor, target: torch.Tensor) -> torch.Tens
 
     # flatten input [B, C, -1] and target [B, -1] and to float
     input_flatten: torch.Tensor = input.flatten(start_dim=2)
-    target_flatten: torch.Tensor = target.flatten(start_dim=1).type(input.dtype)
+    target_flatten: torch.Tensor = target.flatten(start_dim=1).float()
 
     # get shapes
     B, C, N = input_flatten.shape
@@ -87,7 +87,7 @@ def lovasz_softmax_loss(input: torch.Tensor, target: torch.Tensor) -> torch.Tens
     losses: List[torch.Tensor] = []
     batch_index: torch.Tensor = torch.arange(B, device=input.device).repeat_interleave(N, dim=0)
     for c in range(C):
-        foreground: torch.Tensor = (target_flatten == c).type(input.dtype)
+        foreground: torch.Tensor = (target_flatten == c).float()
         class_pred: torch.Tensor = input_soft[:, c]
         errors = (foreground - class_pred).abs()
         errors_sorted, permutation = torch.sort(errors, dim=1, descending=True)
