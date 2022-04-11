@@ -53,6 +53,9 @@ def lovasz_hinge_loss(input: torch.Tensor, target: torch.Tensor) -> torch.Tensor
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
+    if not isinstance(target, torch.Tensor):
+        raise TypeError(f"Target type is not a torch.Tensor. Got {type(target)}")
+
     if not len(input.shape) == 4:
         raise ValueError(f"Invalid input shape, we expect Bx1xHxW. Got: {input.shape}")
 
