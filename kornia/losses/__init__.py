@@ -3,13 +3,13 @@ from .dice import DiceLoss, dice_loss
 from .divergence import js_div_loss_2d, kl_div_loss_2d
 from .focal import BinaryFocalLossWithLogits, FocalLoss, binary_focal_loss_with_logits, focal_loss
 from .hausdorff import HausdorffERLoss, HausdorffERLoss3D
+from .lovasz_hinge import LovaszHingeLoss, lovasz_hinge_loss
+from .lovasz_softmax import LovaszSoftmaxLoss, lovasz_softmax_loss
 from .ms_ssim import MS_SSIMLoss
 from .psnr import PSNRLoss, psnr_loss
 from .ssim import SSIMLoss, ssim_loss
 from .total_variation import TotalVariation, total_variation
 from .tversky import TverskyLoss, tversky_loss
-from .lovasz_hinge import LovaszHingeLoss, lovasz_hinge_loss
-from .lovasz_softmax import LovaszSoftmaxLoss, lovasz_softmax_loss
 
 __all__ = [
     "inverse_depth_smoothness_loss",
