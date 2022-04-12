@@ -519,6 +519,7 @@ class TestAugmentationSequential:
             K.RandomAffine(360, p=1.0),
             data_keys=["input", "mask", "bbox", "keypoints"],
             random_apply=random_apply,
+            extra_args={}
         )
         out = aug(inp, mask, bbox, keypoints)
         assert out[0].shape == inp.shape
