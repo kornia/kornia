@@ -669,7 +669,7 @@ class TestLovaszSoftmaxLoss:
     def test_all_ones(self, device, dtype):
         num_classes = 2
         # make perfect prediction
-        # note that softmax(prediction[:, 1]) == 1. softmax(prediction[:, 1]) == 0.
+        # note that softmax(prediction[:, 1]) == 1. softmax(prediction[:, 0]) == 0.
         prediction = torch.zeros(2, num_classes, 1, 2, device=device, dtype=dtype)
         prediction[:, 1] = 100.
         labels = torch.ones(2, 1, 2, device=device, dtype=torch.int64)
