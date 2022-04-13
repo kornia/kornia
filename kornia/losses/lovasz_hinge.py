@@ -84,7 +84,7 @@ def lovasz_hinge_loss(input: Tensor, target: Tensor) -> Tensor:
     signs = 2. * target_flatten - 1.
     errors = 1. - input_prob * signs
     errors_sorted, permutation = errors.sort(dim=1, descending=True)
-    batch_index: Tensor = torch.arange(B, device=input.device).repeat_interleave(N, dim=0)
+    batch_index: Tensor = torch.arange(B, device=input.device).reshape(-1, 1).repeat(1, N).reshape(-1)
     target_sorted: Tensor = target_flatten[batch_index, permutation.view(-1)]
     target_sorted: Tensor = target_sorted.view(B, N)
     target_sorted_sum: Tensor = target_sorted.sum(1, keepdim=True)
