@@ -8,7 +8,7 @@ from kornia.testing import KORNIA_CHECK_SHAPE
 # https://github.com/bermanmaxim/LovaszSoftmax
 
 
-def lovasz_hinge_loss(input: Tensor, target: Tensor) -> Tensor:
+def lovasz_hinge_loss(pred: Tensor, target: Tensor) -> Tensor:
     r"""Criterion that computes a surrogate binary intersection-over-union (IoU) loss.
 
     According to [2], we compute the IoU as follows:
@@ -38,7 +38,7 @@ def lovasz_hinge_loss(input: Tensor, target: Tensor) -> Tensor:
         use the Lovasz-Softmax loss.
 
     Args:
-        input: logits tensor with shape :math:`(N, 1, H, W)`.
+        pred: logits tensor with shape :math:`(N, 1, H, W)`.
         labels: labels tensor with shape :math:`(N, H, W)` with binary values.
 
     Return:
@@ -46,36 +46,36 @@ def lovasz_hinge_loss(input: Tensor, target: Tensor) -> Tensor:
 
     Example:
         >>> N = 1  # num_classes
-        >>> input = torch.randn(1, N, 3, 5, requires_grad=True)
+        >>> pred = torch.randn(1, N, 3, 5, requires_grad=True)
         >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
-        >>> output = lovasz_hinge_loss(input, target)
+        >>> output = lovasz_hinge_loss(pred, target)
         >>> output.backward()
     """
-    KORNIA_CHECK_SHAPE(input, ["B", "1", "H", "W"])
+    KORNIA_CHECK_SHAPE(pred, ["B", "1", "H", "W"])
 
     KORNIA_CHECK_SHAPE(target, ["B", "H", "W"])
 
-    if not input.shape[1] == 1:
-        raise ValueError(f"Invalid input shape, we expect Bx1xHxW. Got: {input.shape}")
+    if not pred.shape[1] == 1:
+        raise ValueError(f"Invalid pred shape, we expect Bx1xHxW. Got: {pred.shape}")
 
-    if not input.shape[-2:] == target.shape[-2:]:
-        raise ValueError(f"input and target shapes must be the same. Got: {input.shape} and {target.shape}")
+    if not pred.shape[-2:] == target.shape[-2:]:
+        raise ValueError(f"pred and target shapes must be the same. Got: {pred.shape} and {target.shape}")
 
-    if not input.device == target.device:
-        raise ValueError(f"input and target must be in the same device. Got: {input.device} and {target.device}")
+    if not pred.device == target.device:
+        raise ValueError(f"pred and target must be in the same device. Got: {pred.device} and {target.device}")
 
-    # flatten input and target [B, -1] and to float
-    input_flatten: Tensor = input.reshape(input.shape[0], -1)
+    # flatten pred and target [B, -1] and to float
+    pred_flatten: Tensor = pred.reshape(pred.shape[0], -1)
     target_flatten: Tensor = target.reshape(target.shape[0], -1)
 
     # get shapes
-    B, N = input_flatten.shape
+    B, N = pred_flatten.shape
 
     # compute actual loss
     signs = 2. * target_flatten - 1.
-    errors = 1. - input_flatten * signs
+    errors = 1. - pred_flatten * signs
     errors_sorted, permutation = errors.sort(dim=1, descending=True)
-    batch_index: Tensor = torch.arange(B, device=input.device).reshape(-1, 1).repeat(1, N).reshape(-1)
+    batch_index: Tensor = torch.arange(B, device=pred.device).reshape(-1, 1).repeat(1, N).reshape(-1)
     target_sorted: Tensor = target_flatten[batch_index, permutation.view(-1)]
     target_sorted: Tensor = target_sorted.view(B, N)
     target_sorted_sum: Tensor = target_sorted.sum(1, keepdim=True)
@@ -118,7 +118,7 @@ class LovaszHingeLoss(nn.Module):
         use the Lovasz-Softmax loss.
 
     Args:
-        input: logits tensor with shape :math:`(N, 1, H, W)`.
+        pred: logits tensor with shape :math:`(N, 1, H, W)`.
         labels: labels tensor with shape :math:`(N, H, W)` with binary values.
 
     Return:
@@ -127,14 +127,14 @@ class LovaszHingeLoss(nn.Module):
     Example:
         >>> N = 1  # num_classes
         >>> criterion = LovaszHingeLoss()
-        >>> input = torch.randn(1, N, 3, 5, requires_grad=True)
+        >>> pred = torch.randn(1, N, 3, 5, requires_grad=True)
         >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
-        >>> output = criterion(input, target)
+        >>> output = criterion(pred, target)
         >>> output.backward()
     """
 
     def __init__(self) -> None:
-        super(LovaszHingeLoss).__init__()
+        super(LovaszHingeLoss, self).__init__()
 
-    def forward(self, input: Tensor, target: Tensor) -> Tensor:
-        return lovasz_hinge_loss(input=input, target=target)
+    def forward(self, pred: Tensor, target: Tensor) -> Tensor:
+        return lovasz_hinge_loss(pred=pred, target=target)

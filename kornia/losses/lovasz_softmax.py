@@ -10,7 +10,7 @@ from kornia.testing import KORNIA_CHECK_SHAPE
 # https://github.com/bermanmaxim/LovaszSoftmax
 
 
-def lovasz_softmax_loss(input: Tensor, target: Tensor) -> Tensor:
+def lovasz_softmax_loss(pred: Tensor, target: Tensor) -> Tensor:
     r"""Criterion that computes a surrogate multi-class intersection-over-union (IoU) loss.
 
     According to [1], we compute the IoU as follows:
@@ -39,7 +39,7 @@ def lovasz_softmax_loss(input: Tensor, target: Tensor) -> Tensor:
         labels please use the Lovasz-Hinge loss.
 
     Args:
-        input: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes > 1.
+        pred: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes > 1.
         labels: labels tensor with shape :math:`(N, H, W)` where each value
           is :math:`0 ≤ targets[i] ≤ C−1`.
 
@@ -48,40 +48,40 @@ def lovasz_softmax_loss(input: Tensor, target: Tensor) -> Tensor:
 
     Example:
         >>> N = 5  # num_classes
-        >>> input = torch.randn(1, N, 3, 5, requires_grad=True)
+        >>> pred = torch.randn(1, N, 3, 5, requires_grad=True)
         >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
-        >>> output = lovasz_softmax_loss(input, target)
+        >>> output = lovasz_softmax_loss(pred, target)
         >>> output.backward()
     """
-    KORNIA_CHECK_SHAPE(input, ["B", "N", "H", "W"])
+    KORNIA_CHECK_SHAPE(pred, ["B", "N", "H", "W"])
 
     KORNIA_CHECK_SHAPE(target, ["B", "H", "W"])
 
-    if not input.shape[1] > 1:
-        raise ValueError(f"Invalid input shape, we expect BxNxHxW, with N > 1. Got: {input.shape}")
+    if not pred.shape[1] > 1:
+        raise ValueError(f"Invalid pred shape, we expect BxNxHxW, with N > 1. Got: {pred.shape}")
 
-    if not input.shape[-2:] == target.shape[-2:]:
-        raise ValueError(f"input and target shapes must be the same. Got: {input.shape} and {target.shape}")
+    if not pred.shape[-2:] == target.shape[-2:]:
+        raise ValueError(f"pred and target shapes must be the same. Got: {pred.shape} and {target.shape}")
 
-    if not input.device == target.device:
-        raise ValueError(f"input and target must be in the same device. Got: {input.device} and {target.device}")
+    if not pred.device == target.device:
+        raise ValueError(f"pred and target must be in the same device. Got: {pred.device} and {target.device}")
 
-    # flatten input [B, C, -1] and target [B, -1] and to float
-    input_flatten: Tensor = input.reshape(input.shape[0], input.shape[1], -1)
+    # flatten pred [B, C, -1] and target [B, -1] and to float
+    pred_flatten: Tensor = pred.reshape(pred.shape[0], pred.shape[1], -1)
     target_flatten: Tensor = target.reshape(target.shape[0], -1).float()
 
     # get shapes
-    B, C, N = input_flatten.shape
+    B, C, N = pred_flatten.shape
 
     # compute softmax over the classes axis
-    input_soft: Tensor = input_flatten.softmax(1)
+    pred_soft: Tensor = pred_flatten.softmax(1)
 
     # compute actual loss
     losses: List[Tensor] = []
-    batch_index: Tensor = torch.arange(B, device=input.device).reshape(-1, 1).repeat(1, N).reshape(-1)
+    batch_index: Tensor = torch.arange(B, device=pred.device).reshape(-1, 1).repeat(1, N).reshape(-1)
     for c in range(C):
         foreground: Tensor = 1. * (target_flatten == c)
-        class_pred: Tensor = input_soft[:, c]
+        class_pred: Tensor = pred_soft[:, c]
         errors = (class_pred - foreground).abs()
         errors_sorted, permutation = torch.sort(errors, dim=1, descending=True)
         target_sorted: Tensor = target_flatten[batch_index, permutation.view(-1)]
@@ -127,7 +127,7 @@ class LovaszSoftmaxLoss(nn.Module):
         labels please use the Lovasz-Hinge loss.
 
     Args:
-        input: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes > 1.
+        pred: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes > 1.
         labels: labels tensor with shape :math:`(N, H, W)` where each value
           is :math:`0 ≤ targets[i] ≤ C−1`.
 
@@ -137,14 +137,14 @@ class LovaszSoftmaxLoss(nn.Module):
     Example:
         >>> N = 5  # num_classes
         >>> criterion = LovaszSoftmaxLoss()
-        >>> input = torch.randn(1, N, 3, 5, requires_grad=True)
+        >>> pred = torch.randn(1, N, 3, 5, requires_grad=True)
         >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
-        >>> output = criterion(input, target)
+        >>> output = criterion(pred, target)
         >>> output.backward()
     """
 
     def __init__(self) -> None:
-        super(LovaszSoftmaxLoss).__init__()
+        super(LovaszSoftmaxLoss, self).__init__()
 
-    def forward(self, input: Tensor, target: Tensor) -> Tensor:
-        return lovasz_softmax_loss(input=input, target=target)
+    def forward(self, pred: Tensor, target: Tensor) -> Tensor:
+        return lovasz_softmax_loss(pred=pred, target=target)
