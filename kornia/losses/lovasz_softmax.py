@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
+from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK
+
 # based on:
 # https://github.com/bermanmaxim/LovaszSoftmax
 
@@ -51,17 +53,9 @@ def lovasz_softmax_loss(input: Tensor, target: Tensor) -> Tensor:
         >>> output = lovasz_softmax_loss(input, target)
         >>> output.backward()
     """
-    if not isinstance(input, Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+    KORNIA_CHECK_SHAPE(input, ["B", "N", "H", "W"])
 
-    if not isinstance(target, Tensor):
-        raise TypeError(f"Target type is not a torch.Tensor. Got {type(target)}")
-
-    if not len(input.shape) == 4:
-        raise ValueError(f"Invalid input shape, we expect BxNxHxW. Got: {input.shape}")
-
-    if not len(target.shape) == 3:
-        raise ValueError(f"Invalid target shape, we expect BxHxW. Got: {target.shape}")
+    KORNIA_CHECK_SHAPE(target, ["B", "H", "W"])
 
     if not input.shape[1] > 1:
         raise ValueError(f"Invalid input shape, we expect BxNxHxW, with N > 1. Got: {input.shape}")
