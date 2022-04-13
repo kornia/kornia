@@ -88,7 +88,7 @@ def lovasz_hinge_loss(input: torch.Tensor, target: torch.Tensor) -> torch.Tensor
     target_sorted: torch.Tensor = target_flatten[batch_index, permutation.view(-1)]
     target_sorted: torch.Tensor = target_sorted.view(B, N)
     target_sorted_sum: torch.Tensor = target_sorted.sum(dim=1, keepdim=True)
-    intersection: torch.Tensor = target_sorted_sum - target_sorted.cumsum(dim=1)
+    intersection: torch.Tensor = target_sorted_sum - target_sorted.cumsum(1)
     union: torch.Tensor = target_sorted_sum + (1. - target_sorted).cumsum(dim=1)
     gradient: torch.Tensor = 1. - intersection / union
     if N > 1:
