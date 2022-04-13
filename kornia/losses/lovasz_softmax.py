@@ -80,7 +80,7 @@ def lovasz_softmax_loss(input: torch.Tensor, target: torch.Tensor) -> torch.Tens
     B, C, N = input_flatten.shape
 
     # compute softmax over the classes axis
-    input_soft: torch.Tensor = F.softmax(input_flatten, dim=1)
+    input_soft: torch.Tensor = input_flatten.softmax(1)
 
     # compute actual loss
     losses: List[torch.Tensor] = []
