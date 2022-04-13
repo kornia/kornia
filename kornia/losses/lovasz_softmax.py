@@ -144,7 +144,7 @@ class LovaszSoftmaxLoss(nn.Module):
     """
 
     def __init__(self) -> None:
-        super(LovaszSoftmaxLoss, self).__init__()
+        super().__init__()
 
     def forward(self, pred: Tensor, target: Tensor) -> Tensor:
         return lovasz_softmax_loss(pred=pred, target=target)
