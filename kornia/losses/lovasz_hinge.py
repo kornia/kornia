@@ -1,12 +1,13 @@
 import torch
 import torch.nn as nn
+from torch import Tensor
 
 
 # based on:
 # https://github.com/bermanmaxim/LovaszSoftmax
 
 
-def lovasz_hinge_loss(input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+def lovasz_hinge_loss(input: Tensor, target: Tensor) -> Tensor:
     r"""Criterion that computes a surrogate binary intersection-over-union (IoU) loss.
 
     According to [2], we compute the IoU as follows:
@@ -49,10 +50,10 @@ def lovasz_hinge_loss(input: torch.Tensor, target: torch.Tensor) -> torch.Tensor
         >>> output = lovasz_hinge_loss(input, target)
         >>> output.backward()
     """
-    if not isinstance(input, torch.Tensor):
+    if not isinstance(input, Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
-    if not isinstance(target, torch.Tensor):
+    if not isinstance(target, Tensor):
         raise TypeError(f"Target type is not a torch.Tensor. Got {type(target)}")
 
     if not len(input.shape) == 4:
@@ -71,29 +72,29 @@ def lovasz_hinge_loss(input: torch.Tensor, target: torch.Tensor) -> torch.Tensor
         raise ValueError(f"input and target must be in the same device. Got: {input.device} and {target.device}")
 
     # flatten input and target [B, -1] and to float
-    input_flatten: torch.Tensor = input.reshape(input.shape[0], -1)
-    target_flatten: torch.Tensor = target.reshape(target.shape[0], -1)
+    input_flatten: Tensor = input.reshape(input.shape[0], -1)
+    target_flatten: Tensor = target.reshape(target.shape[0], -1)
 
     # get shapes
     B, N = input_flatten.shape
 
     # compute probabilities
-    input_prob: torch.Tensor = torch.sigmoid(input_flatten)
+    input_prob: Tensor = torch.sigmoid(input_flatten)
 
     # compute actual loss
     signs = 2. * target_flatten - 1.
     errors = 1. - input_prob * signs
     errors_sorted, permutation = errors.sort(dim=1, descending=True)
-    batch_index: torch.Tensor = torch.arange(B, device=input.device).repeat_interleave(N, dim=0)
-    target_sorted: torch.Tensor = target_flatten[batch_index, permutation.view(-1)]
-    target_sorted: torch.Tensor = target_sorted.view(B, N)
-    target_sorted_sum: torch.Tensor = target_sorted.sum(dim=1, keepdim=True)
-    intersection: torch.Tensor = target_sorted_sum - target_sorted.cumsum(1)
-    union: torch.Tensor = target_sorted_sum + (1. - target_sorted).cumsum(dim=1)
-    gradient: torch.Tensor = 1. - intersection / union
+    batch_index: Tensor = torch.arange(B, device=input.device).repeat_interleave(N, dim=0)
+    target_sorted: Tensor = target_flatten[batch_index, permutation.view(-1)]
+    target_sorted: Tensor = target_sorted.view(B, N)
+    target_sorted_sum: Tensor = target_sorted.sum(dim=1, keepdim=True)
+    intersection: Tensor = target_sorted_sum - target_sorted.cumsum(1)
+    union: Tensor = target_sorted_sum + (1. - target_sorted).cumsum(dim=1)
+    gradient: Tensor = 1. - intersection / union
     if N > 1:
         gradient[..., 1:] = gradient[..., 1:] - gradient[..., :-1]
-    loss: torch.Tensor = (errors_sorted.relu() * gradient).sum(dim=1).mean()
+    loss: Tensor = (errors_sorted.relu() * gradient).sum(dim=1).mean()
     return loss
 
 
@@ -145,5 +146,5 @@ class LovaszHingeLoss(nn.Module):
     def __init__(self) -> None:
         super().__init__()
 
-    def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: Tensor, target: Tensor) -> Tensor:
         return lovasz_hinge_loss(input=input, target=target)
