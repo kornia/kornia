@@ -93,12 +93,12 @@ def lovasz_softmax_loss(input: Tensor, target: Tensor) -> Tensor:
         target_sorted: Tensor = target_flatten[batch_index, permutation.view(-1)]
         target_sorted: Tensor = target_sorted.view(B, N)
         target_sorted_sum: Tensor = target_sorted.sum(dim=1, keepdim=True)
-        intersection: Tensor = target_sorted_sum - target_sorted.cumsum(dim=1)
-        union: Tensor = target_sorted_sum + (1. - target_sorted).cumsum(dim=1)
+        intersection: Tensor = target_sorted_sum - target_sorted.cumsum(1)
+        union: Tensor = target_sorted_sum + (1. - target_sorted).cumsum(1)
         gradient: Tensor = 1. - intersection / union
         if N > 1:
             gradient[..., 1:] = gradient[..., 1:] - gradient[..., :-1]
-        loss: Tensor = (errors_sorted.relu() * gradient).sum(dim=1).mean()
+        loss: Tensor = (errors_sorted.relu() * gradient).sum(1).mean()
         losses.append(loss)
     final_loss: Tensor = torch.stack(losses, dim=0).mean()
     return final_loss
