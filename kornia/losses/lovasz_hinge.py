@@ -134,7 +134,7 @@ class LovaszHingeLoss(nn.Module):
     """
 
     def __init__(self) -> None:
-        super(LovaszHingeLoss, self).__init__()
+        super().__init__()
 
     def forward(self, pred: Tensor, target: Tensor) -> Tensor:
         return lovasz_hinge_loss(pred=pred, target=target)
