@@ -2,7 +2,6 @@ from typing import List
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 # based on:
 # https://github.com/bermanmaxim/LovaszSoftmax
@@ -98,7 +97,7 @@ def lovasz_softmax_loss(input: torch.Tensor, target: torch.Tensor) -> torch.Tens
         gradient: torch.Tensor = 1. - intersection / union
         if N > 1:
             gradient[..., 1:] = gradient[..., 1:] - gradient[..., :-1]
-        loss: torch.Tensor = (F.relu(errors_sorted) * gradient).sum(dim=1).mean()
+        loss: torch.Tensor = (errors_sorted.relu() * gradient).sum(dim=1).mean()
         losses.append(loss)
     final_loss: torch.Tensor = torch.stack(losses, dim=0).mean()
     return final_loss
