@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 
-
 # based on:
 # https://github.com/bermanmaxim/LovaszSoftmax
 
