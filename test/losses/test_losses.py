@@ -23,7 +23,8 @@ class TestBinaryFocalLossWithLogits:
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
         assert (
-                kornia.losses.binary_focal_loss_with_logits(logits, labels, alpha=0.5, gamma=2.0, reduction="sum").shape
+                kornia.losses.binary_focal_loss_with_logits(
+                    logits, labels, alpha=0.5, gamma=2.0, reduction="sum").shape
                 == ()
         )
 
@@ -32,8 +33,8 @@ class TestBinaryFocalLossWithLogits:
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
         assert (
-                kornia.losses.binary_focal_loss_with_logits(logits, labels, alpha=0.5, gamma=2.0,
-                                                            reduction="mean").shape
+                kornia.losses.binary_focal_loss_with_logits(
+                    logits, labels, alpha=0.5, gamma=2.0, reduction="mean").shape
                 == ()
         )
 
@@ -42,8 +43,8 @@ class TestBinaryFocalLossWithLogits:
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
         assert (
-                kornia.losses.binary_focal_loss_with_logits(logits, labels, alpha=0.5, gamma=2.0,
-                                                            reduction="mean").shape
+                kornia.losses.binary_focal_loss_with_logits(
+                    logits, labels, alpha=0.5, gamma=2.0, reduction="mean").shape
                 == ()
         )
 
