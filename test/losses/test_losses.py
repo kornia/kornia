@@ -22,31 +22,25 @@ class TestBinaryFocalLossWithLogits:
         logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
-        assert (
-                kornia.losses.binary_focal_loss_with_logits(
-                    logits, labels, alpha=0.5, gamma=2.0, reduction="sum").shape
-                == ()
-        )
+        assert (kornia.losses.binary_focal_loss_with_logits(
+            logits, labels, alpha=0.5, gamma=2.0, reduction="sum").shape
+            == ())
 
     def test_smoke_mean(self, device, dtype):
         logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
-        assert (
-                kornia.losses.binary_focal_loss_with_logits(
-                    logits, labels, alpha=0.5, gamma=2.0, reduction="mean").shape
-                == ()
-        )
+        assert (kornia.losses.binary_focal_loss_with_logits(
+            logits, labels, alpha=0.5, gamma=2.0, reduction="mean").shape
+        == ())
 
     def test_smoke_mean_flat(self, device, dtype):
         logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
-        assert (
-                kornia.losses.binary_focal_loss_with_logits(
-                    logits, labels, alpha=0.5, gamma=2.0, reduction="mean").shape
-                == ()
-        )
+        assert (kornia.losses.binary_focal_loss_with_logits(
+            logits, labels, alpha=0.5, gamma=2.0, reduction="mean").shape
+        == ())
 
     def test_jit(self, device, dtype):
         logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
