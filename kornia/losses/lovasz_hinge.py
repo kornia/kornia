@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 # based on:
 # https://github.com/bermanmaxim/LovaszSoftmax
