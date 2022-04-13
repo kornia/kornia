@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-
 # based on:
 # https://github.com/bermanmaxim/LovaszSoftmax
 
