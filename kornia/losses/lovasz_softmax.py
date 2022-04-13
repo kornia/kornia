@@ -86,7 +86,7 @@ def lovasz_softmax_loss(input: torch.Tensor, target: torch.Tensor) -> torch.Tens
     losses: List[torch.Tensor] = []
     batch_index: torch.Tensor = torch.arange(B, device=input.device).repeat_interleave(N, dim=0)
     for c in range(C):
-        foreground: torch.Tensor = (target_flatten == c).float()
+        foreground: torch.Tensor = (target_flatten == c)
         class_pred: torch.Tensor = input_soft[:, c]
         errors = (foreground - class_pred).abs()
         errors_sorted, permutation = torch.sort(errors, dim=1, descending=True)
