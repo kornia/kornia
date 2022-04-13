@@ -72,7 +72,7 @@ def lovasz_hinge_loss(input: torch.Tensor, target: torch.Tensor) -> torch.Tensor
 
     # flatten input and target [B, -1] and to float
     input_flatten: torch.Tensor = input.flatten(start_dim=1)
-    target_flatten: torch.Tensor = target.flatten(start_dim=1).float()
+    target_flatten: torch.Tensor = target.flatten(start_dim=1)
 
     # get shapes
     B, N = input_flatten.shape
