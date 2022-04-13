@@ -606,8 +606,7 @@ class TestLovaszHingeLoss:
 
     def test_perfect_prediction(self, device, dtype):
         num_classes = 1
-        # make perfect, note that sigmoid(prediction) == 1.
-        prediction = torch.ones(2, num_classes, 1, 2, device=device, dtype=dtype) * 100.
+        prediction = torch.ones(2, num_classes, 1, 2, device=device, dtype=dtype)
         labels = torch.ones(2, 1, 2, device=device, dtype=torch.int64)
 
         criterion = kornia.losses.LovaszHingeLoss()
