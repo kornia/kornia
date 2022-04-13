@@ -93,7 +93,7 @@ def lovasz_hinge_loss(input: torch.Tensor, target: torch.Tensor) -> torch.Tensor
     gradient: torch.Tensor = 1. - intersection / union
     if N > 1:
         gradient[..., 1:] = gradient[..., 1:] - gradient[..., :-1]
-    loss: torch.Tensor = (F.relu(errors_sorted) * gradient).sum(dim=1).mean()
+    loss: torch.Tensor = (errors_sorted.relu() * gradient).sum(dim=1).mean()
     return loss
 
 
