@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+
 # based on:
 # https://github.com/bermanmaxim/LovaszSoftmax
 
@@ -70,8 +71,8 @@ def lovasz_hinge_loss(input: torch.Tensor, target: torch.Tensor) -> torch.Tensor
         raise ValueError(f"input and target must be in the same device. Got: {input.device} and {target.device}")
 
     # flatten input and target [B, -1] and to float
-    input_flatten: torch.Tensor = input.flatten(start_dim=1)
-    target_flatten: torch.Tensor = target.flatten(start_dim=1)
+    input_flatten: torch.Tensor = input.reshape(input.shape[0], -1)
+    target_flatten: torch.Tensor = target.reshape(target.shape[0], -1)
 
     # get shapes
     B, N = input_flatten.shape
