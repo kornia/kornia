@@ -530,8 +530,7 @@ def adjust_brightness_accumulative(image: Tensor, factor: Union[float, Tensor], 
 
 
 def adjust_sigmoid(image: Tensor, cutoff: float = 0.5, gain: float = 10, inv: bool = False) -> Tensor:
-    """
-    Adjust the brightness accumulatively of an image tensor.
+    """Adjust the brightness accumulatively of an image tensor.
 
     Reference:
     [1]: Gustav J. Braun, "Image Lightness Rescaling Using Sigmoidal Contrast Enhancement Functions",
