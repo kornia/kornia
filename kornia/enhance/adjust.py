@@ -529,6 +529,35 @@ def adjust_brightness_accumulative(image: Tensor, factor: Union[float, Tensor], 
     return img_adjust
 
 
+def adjust_sigmoid(image: Tensor, cutoff: float = 0.5, gain: float = 10, inv: bool = False) -> Tensor:
+    """
+    Adjust the brightness accumulatively of an image tensor.
+
+    Reference:
+    [1]: Gustav J. Braun, "Image Lightness Rescaling Using Sigmoidal Contrast Enhancement Functions",
+        http://markfairchild.org/PDFs/PAP07.pdf
+
+    Args:
+        image: Image to be adjusted in the shape of :math:`(*, H, W)`.
+        cutoff: The cutoff of sigmoid function.
+        gain: The multiplier of sigmoid function.
+        inv: If is set to True the function will return the negative sigmoid correction.
+
+    Returns:
+         Adjusted tensor in the shape of :math:`(*, H, W)`.
+    """
+    KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
+
+    dtype = image.dtype
+    dtype_info = torch.iinfo(dtype)
+    scale = dtype_info.max - dtype_info.min
+    if inv:
+        img_adjust = (1 - 1 / (1 + torch.exp(gain * (cutoff - image / scale)))) * scale
+    else:
+        img_adjust = (1 / (1 + torch.exp(gain * (cutoff - image / scale)))) * scale
+    return img_adjust.type(dtype)
+
+
 def _solarize(input: Tensor, thresholds: Union[float, Tensor] = 0.5) -> Tensor:
     r"""For each pixel in the image, select the pixel if the value is less than the threshold.
     Otherwise, subtract 1.0 from the pixel.
