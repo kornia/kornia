@@ -636,6 +636,7 @@ class TestAdjustBrightness:
                          (img, 2.0),
                          raise_exception=True)
 
+
 class TestSigmoid:
     f = kornia.enhance.adjust_sigmoid
 
