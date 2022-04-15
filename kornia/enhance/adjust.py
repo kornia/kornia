@@ -544,14 +544,14 @@ def adjust_sigmoid(image: Tensor, cutoff: float = 0.5, gain: float = 10, inv: bo
         gain: The multiplier of sigmoid function.
         inv: If is set to True the function will return the negative sigmoid correction.
 
+    Returns:
+         Adjusted tensor in the shape of :math:`(*, H, W)`.
+
     Example:
         >>> x = torch.ones(1, 1, 2, 2)
         >>> adjust_sigmoid(x, gain=0)
         tensor([[[[0.5000, 0.5000],
                   [0.5000, 0.5000]]]])
-
-    Returns:
-         Adjusted tensor in the shape of :math:`(*, H, W)`.
     """
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
 
