@@ -530,7 +530,7 @@ def adjust_brightness_accumulative(image: Tensor, factor: Union[float, Tensor], 
 
 
 def adjust_sigmoid(image: Tensor, cutoff: float = 0.5, gain: float = 10, inv: bool = False) -> Tensor:
-    """Adjust the contrast of an image tensor or performs sigmoid correction on the input image tensor.
+    """Adjust sigmoid correction on the input image tensor.
 
     The input image is expected to be in the range of [0, 1].
 
@@ -542,7 +542,7 @@ def adjust_sigmoid(image: Tensor, cutoff: float = 0.5, gain: float = 10, inv: bo
         image: Image to be adjusted in the shape of :math:`(*, H, W)`.
         cutoff: The cutoff of sigmoid function.
         gain: The multiplier of sigmoid function.
-        inv: If is set to True the function will return the negative sigmoid correction.
+        inv: If is set to True the function will return the inverse sigmoid correction.
 
     Returns:
          Adjusted tensor in the shape of :math:`(*, H, W)`.
@@ -559,6 +559,43 @@ def adjust_sigmoid(image: Tensor, cutoff: float = 0.5, gain: float = 10, inv: bo
         img_adjust = (1 - 1 / (1 + torch.exp(gain * (cutoff - image))))
     else:
         img_adjust = (1 / (1 + torch.exp(gain * (cutoff - image))))
+    return img_adjust
+
+
+def adjust_log(image: Tensor, gain: float = 1, inv: bool = False, clip_output: bool = True) -> Tensor:
+    """Adjust log correction on the input image tensor.
+
+    The input image is expected to be in the range of [0, 1].
+
+    Reference:
+    [1]: http://www.ece.ucsb.edu/Faculty/Manjunath/courses/ece178W03/EnhancePart1.pdf
+
+    Args:
+        image: Image to be adjusted in the shape of :math:`(*, H, W)`.
+        gain: The multiplier of logarithmic function.
+        inv:  If is set to True the function will return the inverse logarithmic correction.
+        clip_output: Whether to clip the output image with range of [0, 1].
+
+    Returns:
+        Adjusted tensor in the shape of :math:`(*, H, W)`.
+
+    Example:
+        >>> x = torch.zeros(1, 1, 2, 2)
+        >>> adjust_log(x, inv=True)
+        tensor([[[[0., 0.],
+                  [0., 0.]]]])
+    """
+    KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
+
+    if inv:
+        img_adjust = (2 ** image - 1) * gain
+    else:
+        img_adjust = torch.log2(1 + image) * gain
+
+    # truncate between pixel values
+    if clip_output:
+        img_adjust = img_adjust.clamp(min=0.0, max=1.0)
+
     return img_adjust
 
 
@@ -1298,6 +1335,42 @@ class AdjustSigmoid(Module):
 
     def forward(self, image: Tensor) -> Tensor:
         return adjust_sigmoid(image, cutoff=self.cutoff, gain=self.gain, inv=self.inv)
+
+
+class AdjustLog(Module):
+    """Adjust log correction on the input image tensor.
+
+    The input image is expected to be in the range of [0, 1].
+
+    Reference:
+    [1]: http://www.ece.ucsb.edu/Faculty/Manjunath/courses/ece178W03/EnhancePart1.pdf
+
+    Args:
+        image: Image to be adjusted in the shape of :math:`(*, H, W)`.
+        gain: The multiplier of logarithmic function.
+        inv:  If is set to True the function will return the inverse logarithmic correction.
+        clip_output: Whether to clip the output image with range of [0, 1].
+
+    Example:
+        >>> x = torch.zeros(1, 1, 2, 2)
+        >>> AdjustLog(inv=True)(x)
+        tensor([[[[0., 0.],
+                  [0., 0.]]]])
+    """
+
+    def __init__(
+        self,
+        gain: float = 1,
+        inv: bool = False,
+        clip_output: bool = True,
+    ) -> None:
+        super().__init__()
+        self.gain: float = gain
+        self.inv: bool = inv
+        self.clip_output: bool = clip_output
+
+    def forward(self, image: Tensor) -> Tensor:
+        return adjust_log(image, gain=self.gain, inv=self.inv, clip_output=self.clip_output)
 
 
 class AdjustBrightnessAccumulative(Module):
