@@ -1296,8 +1296,8 @@ class AdjustSigmoid(Module):
         self.gain: float = gain
         self.inv: bool = inv
 
-    def forward(self, img: Tensor) -> Tensor:
-        return adjust_sigmoid(img, cutoff=self.cutoff, gain=self.gain, inv=self.inv)
+    def forward(self, image: Tensor) -> Tensor:
+        return adjust_sigmoid(image, cutoff=self.cutoff, gain=self.gain, inv=self.inv)
 
 
 class AdjustBrightnessAccumulative(Module):
