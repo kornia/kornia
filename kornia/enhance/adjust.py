@@ -531,7 +531,9 @@ def adjust_brightness_accumulative(image: Tensor, factor: Union[float, Tensor], 
 
 def adjust_sigmoid(image: Tensor, cutoff: float = 0.5, gain: float = 10, inv: bool = False) -> Tensor:
     """
-    Adjust the brightness accumulatively of an image tensor.
+    Adjust the contrast of an image tensor or performs sigmoid correction on the input image tensor.
+
+    The input image is expected to be in the range of [0, 1].
 
     Reference:
     [1]: Gustav J. Braun, "Image Lightness Rescaling Using Sigmoidal Contrast Enhancement Functions",
@@ -543,19 +545,22 @@ def adjust_sigmoid(image: Tensor, cutoff: float = 0.5, gain: float = 10, inv: bo
         gain: The multiplier of sigmoid function.
         inv: If is set to True the function will return the negative sigmoid correction.
 
+    Example:
+        >>> x = torch.ones(1, 1, 2, 2)
+        >>> adjust_sigmoid(x, gain=0)
+        tensor([[[[0.5000, 0.5000],
+                  [0.5000, 0.5000]]]])
+
     Returns:
          Adjusted tensor in the shape of :math:`(*, H, W)`.
     """
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
 
-    dtype = image.dtype
-    dtype_info = torch.iinfo(dtype)
-    scale = dtype_info.max - dtype_info.min
     if inv:
-        img_adjust = (1 - 1 / (1 + torch.exp(gain * (cutoff - image / scale)))) * scale
+        img_adjust = (1 - 1 / (1 + torch.exp(gain * (cutoff - image))))
     else:
-        img_adjust = (1 / (1 + torch.exp(gain * (cutoff - image / scale)))) * scale
-    return img_adjust.type(dtype)
+        img_adjust = (1 / (1 + torch.exp(gain * (cutoff - image))))
+    return img_adjust
 
 
 def _solarize(input: Tensor, thresholds: Union[float, Tensor] = 0.5) -> Tensor:
@@ -1257,6 +1262,43 @@ class AdjustBrightness(Module):
 
     def forward(self, input: Tensor) -> Tensor:
         return adjust_brightness(input, self.brightness_factor)
+
+
+class AdjustSigmoid(Module):
+    r"""Adjust the contrast of an image tensor or performs sigmoid correction on the input image tensor.
+
+    The input image is expected to be in the range of [0, 1].
+
+    Reference:
+    [1]: Gustav J. Braun, "Image Lightness Rescaling Using Sigmoidal Contrast Enhancement Functions",
+        http://markfairchild.org/PDFs/PAP07.pdf
+
+    Args:
+        image: Image to be adjusted in the shape of :math:`(*, H, W)`.
+        cutoff: The cutoff of sigmoid function.
+        gain: The multiplier of sigmoid function.
+        inv: If is set to True the function will return the negative sigmoid correction.
+
+    Example:
+        >>> x = torch.ones(1, 1, 2, 2)
+        >>> AdjustSigmoid(gain=0)(x)
+        tensor([[[[0.5000, 0.5000],
+                  [0.5000, 0.5000]]]])
+    """
+
+    def __init__(
+        self,
+        cutoff: float = 0.5,
+        gain: float = 10,
+        inv: bool = False,
+    ) -> None:
+        super().__init__()
+        self.cutoff = cutoff
+        self.gain = gain
+        self.inv = inv
+
+    def forward(self, input: Tensor) -> Tensor:
+        return adjust_sigmoid(input, cutoff=self.cutoff, gain=self.gain, inv=self.inv)
 
 
 class AdjustBrightnessAccumulative(Module):

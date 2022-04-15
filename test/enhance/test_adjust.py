@@ -636,6 +636,16 @@ class TestAdjustBrightness:
                          (img, 2.0),
                          raise_exception=True)
 
+class TestSigmoid:
+    f = kornia.enhance.adjust_sigmoid
+
+    @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 4, 4)])
+    def test_shape_sigmoid(self, shape, device):
+        inputs = torch.ones(*shape, device=device)
+        f = kornia.enhance.equalize
+
+        assert f(inputs).shape == torch.Size(shape)
+
 
 class TestEqualize:
     @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 4, 4), (3, 2, 3, 3, 4, 4)])
