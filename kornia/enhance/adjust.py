@@ -1263,43 +1263,6 @@ class AdjustBrightness(Module):
         return adjust_brightness(input, self.brightness_factor)
 
 
-class AdjustSigmoid(Module):
-    r"""Adjust the contrast of an image tensor or performs sigmoid correction on the input image tensor.
-
-    The input image is expected to be in the range of [0, 1].
-
-    Reference:
-    [1]: Gustav J. Braun, "Image Lightness Rescaling Using Sigmoidal Contrast Enhancement Functions",
-        http://markfairchild.org/PDFs/PAP07.pdf
-
-    Args:
-        image: Image to be adjusted in the shape of :math:`(*, H, W)`.
-        cutoff: The cutoff of sigmoid function.
-        gain: The multiplier of sigmoid function.
-        inv: If is set to True the function will return the negative sigmoid correction.
-
-    Example:
-        >>> x = torch.ones(1, 1, 2, 2)
-        >>> AdjustSigmoid(gain=0)(x)
-        tensor([[[[0.5000, 0.5000],
-                  [0.5000, 0.5000]]]])
-    """
-
-    def __init__(
-        self,
-        cutoff: float = 0.5,
-        gain: float = 10,
-        inv: bool = False,
-    ) -> None:
-        super().__init__()
-        self.cutoff: float = cutoff
-        self.gain: float = gain
-        self.inv: bool = inv
-
-    def forward(self, input: Tensor) -> Tensor:
-        return adjust_sigmoid(input, cutoff=self.cutoff, gain=self.gain, inv=self.inv)
-
-
 class AdjustBrightnessAccumulative(Module):
     r"""Adjust Brightness of an image accumulatively.
 
