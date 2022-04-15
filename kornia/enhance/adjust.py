@@ -530,8 +530,7 @@ def adjust_brightness_accumulative(image: Tensor, factor: Union[float, Tensor], 
 
 
 def adjust_sigmoid(image: Tensor, cutoff: float = 0.5, gain: float = 10, inv: bool = False) -> Tensor:
-    """
-    Adjust the contrast of an image tensor or performs sigmoid correction on the input image tensor.
+    """Adjust the contrast of an image tensor or performs sigmoid correction on the input image tensor.
 
     The input image is expected to be in the range of [0, 1].
 
