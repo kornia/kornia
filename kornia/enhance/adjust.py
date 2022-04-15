@@ -1293,9 +1293,9 @@ class AdjustSigmoid(Module):
         inv: bool = False,
     ) -> None:
         super().__init__()
-        self.cutoff = cutoff
-        self.gain = gain
-        self.inv = inv
+        self.cutoff: float = cutoff
+        self.gain: float = gain
+        self.inv: bool = inv
 
     def forward(self, input: Tensor) -> Tensor:
         return adjust_sigmoid(input, cutoff=self.cutoff, gain=self.gain, inv=self.inv)
