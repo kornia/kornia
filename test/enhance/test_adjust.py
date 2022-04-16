@@ -637,15 +637,69 @@ class TestAdjustBrightness:
                          raise_exception=True)
 
 
-class TestSigmoid:
-    f = kornia.enhance.adjust_sigmoid
-
+class TestAdjustSigmoid:
     @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 4, 4)])
     def test_shape_sigmoid(self, shape, device):
         inputs = torch.ones(*shape, device=device)
-        f = kornia.enhance.equalize
+        f = kornia.enhance.adjust_sigmoid
+        assert f(inputs).shape == torch.Size(shape)
+
+    def test_sigmoid(self, device, dtype):
+        data = torch.tensor(
+            [
+                [[[1.0, 1.0], [1.0, 1.0]], [[0.5, 0.5], [0.5, 0.5]], [[0.25, 0.25], [0.25, 0.25]]],
+                [[[0.0, 0.0], [0.0, 0.0]], [[0.3, 0.3], [0.3, 0.3]], [[0.6, 0.6], [0.6, 0.6]]],
+            ],
+            device=device,
+            dtype=dtype,
+        )  # 2x3x2x2
+
+        expected = torch.tensor(
+            [
+                [[[0.9933, 0.9933], [0.9933, 0.9933]], [[0.5, 0.5], [0.5, 0.5]],
+                 [[0.07585, 0.07585], [0.07585, 0.07585]]],
+                [[[0.00669, 0.00669], [0.00669, 0.00669]], [[0.1192, 0.1192], [0.1192, 0.1192]],
+                 [[0.7310, 0.7310], [0.7310, 0.7310]]],
+            ],
+            device=device,
+            dtype=dtype,
+        )  # 2x3x2x2
+
+        f = kornia.enhance.AdjustSigmoid()
+        assert_close(f(data), expected)
+
+
+class TestAdjustLog:
+    @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 4, 4)])
+    def test_shape_sigmoid(self, shape, device):
+        inputs = torch.ones(*shape, device=device)
+        f = kornia.enhance.adjust_log
 
         assert f(inputs).shape == torch.Size(shape)
+
+    def test_log(self, device, dtype):
+        data = torch.tensor(
+            [
+                [[[1.0, 1.0], [1.0, 1.0]], [[0.5, 0.5], [0.5, 0.5]], [[0.25, 0.25], [0.25, 0.25]]],
+                [[[0.0, 0.0], [0.0, 0.0]], [[0.3, 0.3], [0.3, 0.3]], [[0.6, 0.6], [0.6, 0.6]]],
+            ],
+            device=device,
+            dtype=dtype,
+        )  # 2x3x2x2
+
+        expected = torch.tensor(
+            [
+                [[[1, 1], [1, 1]], [[0.58496, 0.58496], [0.58496, 0.58496]],
+                 [[0.32192, 0.32192], [0.32192, 0.32192]]],
+                [[[0, 0], [0, 0]], [[0.37851, 0.37851], [0.37851, 0.37851]],
+                 [[0.67807, 0.67807], [0.67807, 0.67807]]],
+            ],
+            device=device,
+            dtype=dtype,
+        )  # 2x3x2x2
+
+        f = kornia.enhance.AdjustLog()
+        assert_close(f(data), expected)
 
 
 class TestEqualize:
