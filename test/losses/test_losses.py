@@ -22,28 +22,22 @@ class TestBinaryFocalLossWithLogits:
         logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
-        assert (
-            kornia.losses.binary_focal_loss_with_logits(logits, labels, alpha=0.5, gamma=2.0, reduction="sum").shape
-            == ()
-        )
+        assert (kornia.losses.binary_focal_loss_with_logits(
+            logits, labels, alpha=0.5, gamma=2.0, reduction="sum").shape == ())
 
     def test_smoke_mean(self, device, dtype):
         logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
-        assert (
-            kornia.losses.binary_focal_loss_with_logits(logits, labels, alpha=0.5, gamma=2.0, reduction="mean").shape
-            == ()
-        )
+        assert (kornia.losses.binary_focal_loss_with_logits(
+            logits, labels, alpha=0.5, gamma=2.0, reduction="mean").shape == ())
 
     def test_smoke_mean_flat(self, device, dtype):
         logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
-        assert (
-            kornia.losses.binary_focal_loss_with_logits(logits, labels, alpha=0.5, gamma=2.0, reduction="mean").shape
-            == ()
-        )
+        assert (kornia.losses.binary_focal_loss_with_logits(
+            logits, labels, alpha=0.5, gamma=2.0, reduction="mean").shape == ())
 
     def test_jit(self, device, dtype):
         logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
@@ -580,3 +574,130 @@ class TestPSNRLoss:
         input = utils.tensor_to_gradcheck_var(input)  # to var
         target = utils.tensor_to_gradcheck_var(target)  # to var
         assert gradcheck(kornia.losses.psnr_loss, (input, target, 1.0), raise_exception=True)
+
+
+class TestLovaszHingeLoss:
+
+    def test_smoke(self, device, dtype):
+        num_classes = 1
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
+        labels = torch.rand(2, 3, 2) * num_classes
+        labels = labels.to(device).long()
+
+        criterion = kornia.losses.LovaszHingeLoss()
+        assert criterion(logits, labels) is not None
+
+    def test_multi_class(self, device, dtype):
+        num_classes = 5
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
+        labels = torch.rand(2, 3, 2) * num_classes
+        labels = labels.to(device).long()
+
+        criterion = kornia.losses.LovaszHingeLoss()
+        with pytest.raises(Exception):
+            criterion(logits, labels)
+
+    def test_perfect_prediction(self, device, dtype):
+        num_classes = 1
+        prediction = torch.ones(2, num_classes, 1, 2, device=device, dtype=dtype)
+        labels = torch.ones(2, 1, 2, device=device, dtype=torch.int64)
+
+        criterion = kornia.losses.LovaszHingeLoss()
+        loss = criterion(prediction, labels)
+        assert_close(loss, torch.zeros_like(loss), rtol=1e-3, atol=1e-3)
+
+    def test_gradcheck(self, device, dtype):
+        num_classes = 1
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
+        labels = torch.rand(2, 3, 2) * num_classes
+        labels = labels.to(device).long()
+
+        logits = utils.tensor_to_gradcheck_var(logits)  # to var
+        assert gradcheck(kornia.losses.lovasz_hinge_loss, (logits, labels), raise_exception=True)
+
+    def test_jit(self, device, dtype):
+        num_classes = 1
+        logits = torch.rand(2, num_classes, 1, 2, device=device, dtype=dtype)
+        labels = torch.rand(2, 1, 2) * num_classes
+        labels = labels.to(device).long()
+
+        op = kornia.losses.lovasz_hinge_loss
+        op_script = torch.jit.script(op)
+
+        assert_close(op(logits, labels), op_script(logits, labels))
+
+    def test_module(self, device, dtype):
+        num_classes = 1
+        logits = torch.rand(2, num_classes, 1, 2, device=device, dtype=dtype)
+        labels = torch.rand(2, 1, 2) * num_classes
+        labels = labels.to(device).long()
+
+        op = kornia.losses.lovasz_hinge_loss
+        op_module = kornia.losses.LovaszHingeLoss()
+
+        assert_close(op(logits, labels), op_module(logits, labels))
+
+
+class TestLovaszSoftmaxLoss:
+    def test_smoke(self, device, dtype):
+        num_classes = 3
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
+        labels = torch.rand(2, 3, 2) * num_classes
+        labels = labels.to(device).long()
+
+        criterion = kornia.losses.LovaszSoftmaxLoss()
+        assert criterion(logits, labels) is not None
+
+    def test_binary(self, device, dtype):
+        num_classes = 1
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
+        labels = torch.rand(2, 3, 2) * num_classes
+        labels = labels.to(device).long()
+
+        criterion = kornia.losses.LovaszSoftmaxLoss()
+        with pytest.raises(Exception):
+            criterion(logits, labels)
+
+    def test_all_ones(self, device, dtype):
+        num_classes = 2
+        # make perfect prediction
+        # note that softmax(prediction[:, 1]) == 1. softmax(prediction[:, 0]) == 0.
+        prediction = torch.zeros(2, num_classes, 1, 2, device=device, dtype=dtype)
+        prediction[:, 1] = 100.
+        labels = torch.ones(2, 1, 2, device=device, dtype=torch.int64)
+
+        criterion = kornia.losses.LovaszSoftmaxLoss()
+        loss = criterion(prediction, labels)
+        print(loss)
+        assert_close(loss, torch.zeros_like(loss), rtol=1e-3, atol=1e-3)
+
+    def test_gradcheck(self, device, dtype):
+        num_classes = 4
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
+        labels = torch.rand(2, 3, 2) * num_classes
+        labels = labels.to(device).long()
+
+        logits = utils.tensor_to_gradcheck_var(logits)  # to var
+        assert gradcheck(kornia.losses.lovasz_softmax_loss, (logits, labels), raise_exception=True)
+
+    def test_jit(self, device, dtype):
+        num_classes = 6
+        logits = torch.rand(2, num_classes, 1, 2, device=device, dtype=dtype)
+        labels = torch.rand(2, 1, 2) * num_classes
+        labels = labels.to(device).long()
+
+        op = kornia.losses.lovasz_softmax_loss
+        op_script = torch.jit.script(op)
+
+        assert_close(op(logits, labels), op_script(logits, labels))
+
+    def test_module(self, device, dtype):
+        num_classes = 5
+        logits = torch.rand(2, num_classes, 1, 2, device=device, dtype=dtype)
+        labels = torch.rand(2, 1, 2) * num_classes
+        labels = labels.to(device).long()
+
+        op = kornia.losses.lovasz_softmax_loss
+        op_module = kornia.losses.LovaszSoftmaxLoss()
+
+        assert_close(op(logits, labels), op_module(logits, labels))
