@@ -182,6 +182,7 @@ class KeyNetHardNet(LocalFeature):
                  device: torch.device = torch.device('cpu')):
         ori_module = PassLAF() if upright else LAFOrienter(angle_detector=OriNet(True))
         detector = KeyNetDetector(True,
+                                  num_features=num_features,
                                   ori_module=ori_module).to(device)
         descriptor = LAFDescriptor(None,
                                    patch_size=32,
@@ -197,6 +198,7 @@ class KeyNetAffNetHardNet(LocalFeature):
                  device: torch.device = torch.device('cpu')):
         ori_module = PassLAF() if upright else LAFOrienter(angle_detector=OriNet(True))
         detector = KeyNetDetector(True,
+                                  num_features=num_features,
                                   ori_module=ori_module,
                                   aff_module=LAFAffNetShapeEstimator(True).eval()).to(device)
         descriptor = LAFDescriptor(None,
