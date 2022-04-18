@@ -556,9 +556,9 @@ def adjust_sigmoid(image: Tensor, cutoff: float = 0.5, gain: float = 10, inv: bo
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
 
     if inv:
-        img_adjust = (1 - 1 / (1 + torch.exp(gain * (cutoff - image))))
+        img_adjust = (1 - 1 / (1 + (gain * (cutoff - image)).exp()))
     else:
-        img_adjust = (1 / (1 + torch.exp(gain * (cutoff - image))))
+        img_adjust = (1 / (1 + (gain * (cutoff - image)).exp()))
     return img_adjust
 
 
@@ -590,7 +590,7 @@ def adjust_log(image: Tensor, gain: float = 1, inv: bool = False, clip_output: b
     if inv:
         img_adjust = (2 ** image - 1) * gain
     else:
-        img_adjust = torch.log2(1 + image) * gain
+        img_adjust = (1 + image).log2() * gain
 
     # truncate between pixel values
     if clip_output:

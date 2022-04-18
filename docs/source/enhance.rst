@@ -15,6 +15,8 @@ Adjustment
 .. autofunction:: adjust_gamma
 .. autofunction:: adjust_hue
 .. autofunction:: adjust_saturation
+.. autofunction:: adjust_sigmoid
+.. autofunction:: adjust_log
 .. autofunction:: invert
 .. autofunction:: posterize
 .. autofunction:: sharpness
@@ -55,6 +57,8 @@ Modules
 .. autoclass:: AdjustSaturation
 .. autoclass:: AdjustHue
 .. autoclass:: AdjustGamma
+.. autoclass:: AdjustSigmoid
+.. autoclass:: AdjustLog
 .. autoclass:: AddWeighted
 
 .. autoclass:: Invert

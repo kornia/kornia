@@ -656,10 +656,11 @@ class TestAdjustSigmoid:
 
         expected = torch.tensor(
             [
-                [[[0.9933, 0.9933], [0.9933, 0.9933]], [[0.5, 0.5], [0.5, 0.5]],
-                 [[0.07585, 0.07585], [0.07585, 0.07585]]],
-                [[[0.00669, 0.00669], [0.00669, 0.00669]], [[0.1192, 0.1192], [0.1192, 0.1192]],
-                 [[0.7310, 0.7310], [0.7310, 0.7310]]],
+                [[[0.99330715, 0.99330715], [0.99330715, 0.99330715]], [[0.5, 0.5], [0.5, 0.5]],
+                 [[0.07585818, 0.07585818], [0.07585818, 0.07585818]]],
+                [[[0.00669285, 0.00669285], [0.00669285, 0.00669285]],
+                 [[0.11920292, 0.11920292], [0.11920292, 0.11920292]],
+                 [[0.73105858, 0.73105858], [0.73105858, 0.73105858]]],
             ],
             device=device,
             dtype=dtype,
@@ -667,6 +668,21 @@ class TestAdjustSigmoid:
 
         f = kornia.enhance.AdjustSigmoid()
         assert_close(f(data), expected)
+
+    @pytest.mark.jit
+    def test_jit(self, device, dtype):
+        B, C, H, W = 2, 3, 4, 4
+        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        op = kornia.enhance.adjust_sigmoid
+        op_jit = torch.jit.script(op)
+        assert_close(op(img), op_jit(img))
+
+    @pytest.mark.grad
+    def test_gradcheck(self, device, dtype):
+        bs, channels, height, width = 1, 2, 3, 3
+        inputs = torch.ones(bs, channels, height, width, device=device, dtype=dtype)
+        inputs = tensor_to_gradcheck_var(inputs)
+        assert gradcheck(kornia.enhance.adjust_sigmoid, inputs, raise_exception=True)
 
 
 class TestAdjustLog:
@@ -689,10 +705,10 @@ class TestAdjustLog:
 
         expected = torch.tensor(
             [
-                [[[1, 1], [1, 1]], [[0.58496, 0.58496], [0.58496, 0.58496]],
-                 [[0.32192, 0.32192], [0.32192, 0.32192]]],
-                [[[0, 0], [0, 0]], [[0.37851, 0.37851], [0.37851, 0.37851]],
-                 [[0.67807, 0.67807], [0.67807, 0.67807]]],
+                [[[1, 1], [1, 1]], [[0.5849625, 0.5849625], [0.5849625, 0.5849625]],
+                 [[0.32192809, 0.32192809], [0.32192809, 0.32192809]]],
+                [[[0, 0], [0, 0]], [[0.37851162, 0.37851162], [0.37851162, 0.37851162]],
+                 [[0.67807191, 0.67807191], [0.67807191, 0.67807191]]],
             ],
             device=device,
             dtype=dtype,
@@ -700,6 +716,21 @@ class TestAdjustLog:
 
         f = kornia.enhance.AdjustLog()
         assert_close(f(data), expected)
+
+    @pytest.mark.jit
+    def test_jit(self, device, dtype):
+        B, C, H, W = 2, 3, 4, 4
+        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        op = kornia.enhance.adjust_log
+        op_jit = torch.jit.script(op)
+        assert_close(op(img), op_jit(img))
+
+    @pytest.mark.grad
+    def test_gradcheck(self, device, dtype):
+        bs, channels, height, width = 1, 2, 3, 3
+        inputs = torch.ones(bs, channels, height, width, device=device, dtype=dtype)
+        inputs = tensor_to_gradcheck_var(inputs)
+        assert gradcheck(kornia.enhance.adjust_log, (inputs, 0.1), raise_exception=True)
 
 
 class TestEqualize:
