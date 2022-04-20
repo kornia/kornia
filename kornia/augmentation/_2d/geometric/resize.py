@@ -18,6 +18,7 @@ class Resize(GeometricAugmentationBase2D):
         side: Which side to resize, if size is only of type int.
         resample: Resampling mode.
         align_corners: interpolation flag.
+        antialias: if True, then image will be filtered with Gaussian before downscaling. No effect for upscaling.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False).
     """
@@ -28,13 +29,20 @@ class Resize(GeometricAugmentationBase2D):
         side: str = "short",
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         align_corners: bool = True,
+        antialias: bool = False,
         p: float = 1.0,
         return_transform: Optional[bool] = None,
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=1., return_transform=return_transform, same_on_batch=True, p_batch=p, keepdim=keepdim)
         self._param_generator = cast(rg.ResizeGenerator, rg.ResizeGenerator(resize_to=size, side=side))
-        self.flags = dict(size=size, side=side, resample=Resample.get(resample), align_corners=align_corners)
+        self.flags = dict(
+            size=size,
+            side=side,
+            resample=Resample.get(resample),
+            align_corners=align_corners,
+            antialias=antialias
+        )
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
         if params["output_size"] == input.shape[-2:]:
@@ -60,6 +68,7 @@ class Resize(GeometricAugmentationBase2D):
                 out_size,
                 interpolation=(self.flags["resample"].name).lower(),
                 align_corners=self.flags["align_corners"],
+                antialias=self.flags["antialias"]
             )
         return out
 
