@@ -356,7 +356,7 @@ def equalize_clahe(input: torch.Tensor,
         raise TypeError("Input grid_size type is not valid, must be a Tuple[int, int].")
 
     if grid_size[0] <= 0 or grid_size[1] <= 0:
-        raise ValueError("Input grid_size elements must be positive. Got {grid_size}")
+        raise ValueError(f"Input grid_size elements must be positive. Got {grid_size}")
 
     imgs: torch.Tensor = input  # B x C x H x W
 
