@@ -39,7 +39,7 @@ else:
 
 
 if version.parse(torch_version()) > version.parse("1.9.1"):
-    from torch import torch_meshgrid  # type: ignore
+    from torch import meshgrid  # type: ignore
 else:
     from torch import meshgrid as _meshgrid
 
