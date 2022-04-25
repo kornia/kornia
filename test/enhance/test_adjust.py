@@ -637,6 +637,102 @@ class TestAdjustBrightness:
                          raise_exception=True)
 
 
+class TestAdjustSigmoid:
+    @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 4, 4)])
+    def test_shape_sigmoid(self, shape, device):
+        inputs = torch.ones(*shape, device=device)
+        f = kornia.enhance.adjust_sigmoid
+        assert f(inputs).shape == torch.Size(shape)
+
+    def test_sigmoid(self, device, dtype):
+        data = torch.tensor(
+            [
+                [[[1.0, 1.0], [1.0, 1.0]], [[0.5, 0.5], [0.5, 0.5]], [[0.25, 0.25], [0.25, 0.25]]],
+                [[[0.0, 0.0], [0.0, 0.0]], [[0.3, 0.3], [0.3, 0.3]], [[0.6, 0.6], [0.6, 0.6]]],
+            ],
+            device=device,
+            dtype=dtype,
+        )  # 2x3x2x2
+
+        expected = torch.tensor(
+            [
+                [[[0.99330715, 0.99330715], [0.99330715, 0.99330715]], [[0.5, 0.5], [0.5, 0.5]],
+                 [[0.07585818, 0.07585818], [0.07585818, 0.07585818]]],
+                [[[0.00669285, 0.00669285], [0.00669285, 0.00669285]],
+                 [[0.11920292, 0.11920292], [0.11920292, 0.11920292]],
+                 [[0.73105858, 0.73105858], [0.73105858, 0.73105858]]],
+            ],
+            device=device,
+            dtype=dtype,
+        )  # 2x3x2x2
+
+        f = kornia.enhance.AdjustSigmoid()
+        assert_close(f(data), expected)
+
+    @pytest.mark.jit
+    def test_jit(self, device, dtype):
+        B, C, H, W = 2, 3, 4, 4
+        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        op = kornia.enhance.adjust_sigmoid
+        op_jit = torch.jit.script(op)
+        assert_close(op(img), op_jit(img))
+
+    @pytest.mark.grad
+    def test_gradcheck(self, device, dtype):
+        bs, channels, height, width = 1, 2, 3, 3
+        inputs = torch.ones(bs, channels, height, width, device=device, dtype=dtype)
+        inputs = tensor_to_gradcheck_var(inputs)
+        assert gradcheck(kornia.enhance.adjust_sigmoid, inputs, raise_exception=True)
+
+
+class TestAdjustLog:
+    @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 4, 4)])
+    def test_shape_sigmoid(self, shape, device):
+        inputs = torch.ones(*shape, device=device)
+        f = kornia.enhance.adjust_log
+
+        assert f(inputs).shape == torch.Size(shape)
+
+    def test_log(self, device, dtype):
+        data = torch.tensor(
+            [
+                [[[1.0, 1.0], [1.0, 1.0]], [[0.5, 0.5], [0.5, 0.5]], [[0.25, 0.25], [0.25, 0.25]]],
+                [[[0.0, 0.0], [0.0, 0.0]], [[0.3, 0.3], [0.3, 0.3]], [[0.6, 0.6], [0.6, 0.6]]],
+            ],
+            device=device,
+            dtype=dtype,
+        )  # 2x3x2x2
+
+        expected = torch.tensor(
+            [
+                [[[1, 1], [1, 1]], [[0.5849625, 0.5849625], [0.5849625, 0.5849625]],
+                 [[0.32192809, 0.32192809], [0.32192809, 0.32192809]]],
+                [[[0, 0], [0, 0]], [[0.37851162, 0.37851162], [0.37851162, 0.37851162]],
+                 [[0.67807191, 0.67807191], [0.67807191, 0.67807191]]],
+            ],
+            device=device,
+            dtype=dtype,
+        )  # 2x3x2x2
+
+        f = kornia.enhance.AdjustLog()
+        assert_close(f(data), expected)
+
+    @pytest.mark.jit
+    def test_jit(self, device, dtype):
+        B, C, H, W = 2, 3, 4, 4
+        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        op = kornia.enhance.adjust_log
+        op_jit = torch.jit.script(op)
+        assert_close(op(img), op_jit(img))
+
+    @pytest.mark.grad
+    def test_gradcheck(self, device, dtype):
+        bs, channels, height, width = 1, 2, 3, 3
+        inputs = torch.ones(bs, channels, height, width, device=device, dtype=dtype)
+        inputs = tensor_to_gradcheck_var(inputs)
+        assert gradcheck(kornia.enhance.adjust_log, (inputs, 0.1), raise_exception=True)
+
+
 class TestEqualize:
     @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 4, 4), (3, 2, 3, 3, 4, 4)])
     def test_shape_equalize(self, shape, device, dtype):
