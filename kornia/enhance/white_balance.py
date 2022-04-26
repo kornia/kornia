@@ -1,4 +1,4 @@
-""" Module containing function for upgrade  of RGB image """
+"""Module containing function for upgrade  of RGB image."""
 
 import cv2
 import numpy as np
