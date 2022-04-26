@@ -42,7 +42,7 @@ Normalizations
 .. autofunction:: zca_mean
 .. autofunction:: zca_whiten
 .. autofunction:: linear_transform
-
+.. autofunction:: white_balance
 
 Modules
 -------

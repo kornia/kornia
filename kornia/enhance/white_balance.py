@@ -1,17 +1,17 @@
-""" Module containing function for upgrade white balance of RGB image """
+""" Module containing function for upgrade  of RGB image """
 
 import cv2
 import numpy as np
 
 
 def white_balance(img: np.ndarray) -> np.ndarray:
-    r"""Upgrade RGB image by using white balancing algorithm.
+    r"""Upgrade white balance of RGB image.
     More about algorithm : https://pippin.gimp.org/image-processing/chapter-automaticadjustments.html
 
     Args:
-        img: np.ndarray [3xHxW].
+        img: np.ndarray [HxWx3], where 3 - number of color canals
     Returns:
-        np.ndarray [3xHxW] : image with upgraded white balance.
+        np.ndarray [HxWx3] : same image with upgraded white balance.
     Examples:
         >>> import cv2
         >>> img_path = 'img.png'

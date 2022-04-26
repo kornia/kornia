@@ -34,6 +34,7 @@ from .equalization import equalize_clahe
 from .histogram import histogram, histogram2d, image_histogram2d
 from .normalize import Denormalize, Normalize, denormalize, normalize, normalize_min_max
 from .zca import ZCAWhitening, linear_transform, zca_mean, zca_whiten
+from .white_balance import white_balance
 
 __all__ = [
     "adjust_brightness",
@@ -80,4 +81,5 @@ __all__ = [
     "zca_whiten",
     "linear_transform",
     "ZCAWhitening",
+    "white_balance",
 ]
