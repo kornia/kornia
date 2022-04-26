@@ -3053,11 +3053,7 @@ class TestPlanckianJitter:
         select_from = [1, 2, 24, 3, 4, 5]
         f = RandomPlanckianJitter(select_from=select_from, same_on_batch=True, p=1.0).to(device, dtype)
         expected = self._get_expected_output_same_on_batch(device, dtype)
-<<<<<<< HEAD
         assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
-=======
-        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
->>>>>>> Added tests
 
 
 class TestRandomRGBShift:
