@@ -1,6 +1,7 @@
 import enum
 from typing import Dict, Optional, Tuple, Union, cast
 
+import random
 import torch
 from torch import Tensor
 
@@ -50,9 +51,9 @@ class RandomRGBShift(IntensityAugmentationBase2D):
         return shifted
 
     def generate_parameters(self) -> Dict[str, Tensor]:
-        r_shift = torch.rand(1)*(self.r_shift_limit[1]-self.r_shift_limit[0]) - self.r_shift_limit[0]
-        g_shift = torch.rand(1)*(self.g_shift_limit[1]-self.g_shift_limit[0]) - self.g_shift_limit[0]
-        b_shift = torch.rand(1)*(self.b_shift_limit[1]-self.b_shift_limit[0]) - self.b_shift_limit[0]
+        r_shift = random.uniform(self.r_shift_limit[0], self.r_shift_limit[1])
+        g_shift = random.uniform(self.g_shift_limit[0], self.g_shift_limit[1])
+        b_shift = random.uniform(self.b_shift_limit[0], self.b_shift_limit[1])
 
         return dict(r_shift=r_shift, g_shift=g_shift, b_shift=b_shift)
 
