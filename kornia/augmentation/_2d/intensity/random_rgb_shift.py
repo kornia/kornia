@@ -54,7 +54,7 @@ class RandomRGBShift(IntensityAugmentationBase2D):
     Randomly shift each channel of an image.
 
     Args:
-        r_shift_limit: maximum value up to which the shift value can be generated for red channel; 
+        r_shift_limit: maximum value up to which the shift value can be generated for red channel;
           should be in the interval of [0, 1]
         g_shift_limit: maximum value up to which the shift value can be generated for green channel;
           should be in the interval of [0, 1]
