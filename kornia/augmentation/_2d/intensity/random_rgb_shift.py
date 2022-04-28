@@ -139,7 +139,3 @@ class RandomRGBShift(IntensityAugmentationBase2D):
 
         return dict(r_shift=r_shift, g_shift=g_shift, b_shift=b_shift)
 
-
-if __name__ == "__main__":
-    import doctest
-    doctest.testmod()
