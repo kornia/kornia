@@ -7,35 +7,31 @@ from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.enhance import shift_rgb
 
 
-def generate_parameters(self) -> Dict[str, Tensor]:
-    r_shift = random.uniform(self.r_shift_limit[0], self.r_shift_limit[1])
-    g_shift = random.uniform(self.g_shift_limit[0], self.g_shift_limit[1])
-    b_shift = random.uniform(self.b_shift_limit[0], self.b_shift_limit[1])
+def shift_image(image, value):
+    """
+    Shift image by a certain value. Used for shifting a separate channel.
+    If a pixel value is greater than maximum value, the pixel is set to a maximum value.
 
-    return dict(r_shift=r_shift, g_shift=g_shift, b_shift=b_shift)
-
-def shift_image(img, value):
-    max_value = 255
-
-    lut = torch.arange(0, max_value + 1).type(torch.float64)
-    lut += value
-
-    lut = torch.clamp(lut, 0, max_value).type(img.dtype)
-    for i in range(max_value + 1):
-        indices = torch.where(img == i)
-        img[indices[0], indices[1], indices[2]] = lut[i]
-    return img
+    Note:
+        Since RandomRGBShift takes only images of [0, 1] interval, maximum value for
+        a pixel after shift is 1.
+    """
+    max_value = torch.ones(image.shape)
+    image = torch.min(max_value, image + value)
+    return image
 
 
-def shift_rgb_uint8(image, r_shift, g_shift, b_shift):
+def shift_rgb(image, r_shift, g_shift, b_shift):
+    """
+    Shift each image's channel by either r_shift for red, g_shift for green and b_shift for blue channels.
+    """
     if r_shift == g_shift == b_shift:
-        pass
+        return image + r_shift
 
     shifted = torch.empty_like(image)
     shifts = [r_shift, g_shift, b_shift]
     for i, shift in enumerate(shifts):
-        # shifted[..., i] = input[..., i] + shift
-        shifted[..., i] = shift_image(image[..., i], shift)
+        shifted[:, i, :, :] = shift_image(image[:, i, :, :], shift)
 
     return shifted
 
@@ -50,6 +46,20 @@ class RandomRGBShift(IntensityAugmentationBase2D):
           recommended interval - [0, 1], should always be positive
         b_shift_limit: maximum value up to which the shift value can be generated for blue channel;
           recommended interval - [0, 1], should always be positive
+        same_on_batch: apply the same transformation across the batch.
+        p: probability of applying the transformation.
+        keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
+          to the batch form ``False``.
+
+    Randomly shift each channel of an image.
+
+    Args:
+        r_shift_limit: maximum value up to which the shift value can be generated for red channel; 
+          should be in the interval of [0, 1]
+        g_shift_limit: maximum value up to which the shift value can be generated for green channel;
+          should be in the interval of [0, 1]
+        b_shift_limit: maximum value up to which the shift value can be generated for blue channel;
+          should be in the interval of [0, 1]
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
