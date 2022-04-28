@@ -1,5 +1,4 @@
-import enum
-from typing import Dict, Optional, Tuple, Union, cast
+from typing import Dict, Optional
 
 import random
 import torch
@@ -43,7 +42,7 @@ class RandomRGBShift(IntensityAugmentationBase2D):
     Randomly shift each channel of an image.
 
     Args:
-        r_shift_limit: maximum value up to which the shift value can be generated for red channel; 
+        r_shift_limit: maximum value up to which the shift value can be generated for red channel;
           should be in the interval of [0, 1]
         g_shift_limit: maximum value up to which the shift value can be generated for green channel;
           should be in the interval of [0, 1]
@@ -61,8 +60,7 @@ class RandomRGBShift(IntensityAugmentationBase2D):
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 3, 5, 5)
         >>> aug = RandomRGBShift(0, 0, 0)
-        >>> params = aug.generate_parameters()
-        >>> ((input == aug(input, params)).double()).all()
+        >>> ((input == aug(input)).double()).all()
         tensor(True)
 
         >>> random.seed(42)
@@ -87,10 +85,7 @@ class RandomRGBShift(IntensityAugmentationBase2D):
                   [0.4369, 0.5191, 0.6159, 0.8102, 0.9801],
                   [0.1147, 0.3168, 0.6965, 0.9143, 0.9351]]]])
         >>> aug = RandomRGBShift(p=1.)
-        >>> params = aug.generate_parameters()
-        >>> params
-        {'r_shift': 0.13942679845788375, 'g_shift': -0.47498924477733306, 'b_shift': -0.22497068163088074}
-        >>> aug(input, params)
+        >>> aug(input)
         tensor([[[[ 0.6357,  0.9076,  0.2279,  0.2715,  0.4468],
                   [ 0.7735,  0.6295,  1.0000,  0.5951,  0.7717],
                   [ 0.4883,  0.5411,  0.1618,  0.3083,  0.4333],
@@ -130,12 +125,9 @@ class RandomRGBShift(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
     ) -> Tensor:
-        return shift_rgb(input, params["r_shift"], params["g_shift"], params["b_shift"])
 
-    def generate_parameters(self) -> Dict[str, Tensor]:
         r_shift = random.uniform(self.r_shift_limit[0], self.r_shift_limit[1])
         g_shift = random.uniform(self.g_shift_limit[0], self.g_shift_limit[1])
         b_shift = random.uniform(self.b_shift_limit[0], self.b_shift_limit[1])
 
-        return dict(r_shift=r_shift, g_shift=g_shift, b_shift=b_shift)
-
+        return shift_rgb(input, r_shift, g_shift, b_shift)
