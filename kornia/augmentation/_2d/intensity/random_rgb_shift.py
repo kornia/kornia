@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 from typing import Any, Dict, Optional, cast
+=======
+from typing import Dict, Optional
+>>>>>>> Resolved some issues
 
 from torch import Tensor
 
@@ -54,7 +58,7 @@ class RandomRGBShift(IntensityAugmentationBase2D):
     Randomly shift each channel of an image.
 
     Args:
-        r_shift_limit: maximum value up to which the shift value can be generated for red channel; 
+        r_shift_limit: maximum value up to which the shift value can be generated for red channel;
           should be in the interval of [0, 1]
         g_shift_limit: maximum value up to which the shift value can be generated for green channel;
           should be in the interval of [0, 1]
@@ -73,7 +77,11 @@ class RandomRGBShift(IntensityAugmentationBase2D):
         >>> rng = torch.manual_seed(0)
         >>> inp = torch.rand(1, 3, 5, 5)
         >>> aug = RandomRGBShift(0, 0, 0)
+<<<<<<< HEAD
         >>> ((inp == aug(inp)).double()).all()
+=======
+        >>> ((input == aug(input)).double()).all()
+>>>>>>> Resolved some issues
         tensor(True)
 
         >>> rng = torch.manual_seed(0)
@@ -97,12 +105,21 @@ class RandomRGBShift(IntensityAugmentationBase2D):
                   [0.4369, 0.5191, 0.6159, 0.8102, 0.9801],
                   [0.1147, 0.3168, 0.6965, 0.9143, 0.9351]]]])
         >>> aug = RandomRGBShift(p=1.)
+<<<<<<< HEAD
         >>> aug(inp)
         tensor([[[[0.9374, 1.0000, 0.5297, 0.5732, 0.7486],
                   [1.0000, 0.9313, 1.0000, 0.8968, 1.0000],
                   [0.7901, 0.8429, 0.4635, 0.6100, 0.7351],
                   [0.9597, 1.0000, 1.0000, 0.6022, 0.7234],
                   [1.0000, 1.0000, 0.8383, 1.0000, 0.8606]],
+=======
+        >>> aug(input)
+        tensor([[[[ 0.6357,  0.9076,  0.2279,  0.2715,  0.4468],
+                  [ 0.7735,  0.6295,  1.0000,  0.5951,  0.7717],
+                  [ 0.4883,  0.5411,  0.1618,  0.3083,  0.4333],
+                  [ 0.6579,  0.8371,  0.9394,  0.3005,  0.4217],
+                  [ 0.8210,  1.0000,  0.5365,  1.0000,  0.5588]],
+>>>>>>> Resolved some issues
         <BLANKLINE>
                  [[0.6524, 1.0000, 0.1357, 0.2847, 0.4729],
                   [0.4046, 1.0000, 0.2754, 0.3693, 0.2502],
