@@ -7,6 +7,39 @@ from kornia.augmentation import random_generator as rg
 from kornia.enhance import shift_rgb
 
 
+def generate_parameters(self) -> Dict[str, Tensor]:
+    r_shift = random.uniform(self.r_shift_limit[0], self.r_shift_limit[1])
+    g_shift = random.uniform(self.g_shift_limit[0], self.g_shift_limit[1])
+    b_shift = random.uniform(self.b_shift_limit[0], self.b_shift_limit[1])
+
+    return dict(r_shift=r_shift, g_shift=g_shift, b_shift=b_shift)
+
+def shift_image(img, value):
+    max_value = 255
+
+    lut = torch.arange(0, max_value + 1).type(torch.float64)
+    lut += value
+
+    lut = torch.clamp(lut, 0, max_value).type(img.dtype)
+    for i in range(max_value + 1):
+        indices = torch.where(img == i)
+        img[indices[0], indices[1], indices[2]] = lut[i]
+    return img
+
+
+def shift_rgb_uint8(image, r_shift, g_shift, b_shift):
+    if r_shift == g_shift == b_shift:
+        pass
+
+    shifted = torch.empty_like(image)
+    shifts = [r_shift, g_shift, b_shift]
+    for i, shift in enumerate(shifts):
+        # shifted[..., i] = input[..., i] + shift
+        shifted[..., i] = shift_image(image[..., i], shift)
+
+    return shifted
+
+
 class RandomRGBShift(IntensityAugmentationBase2D):
     """Randomly shift each channel of an image.
 
