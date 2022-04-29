@@ -140,4 +140,13 @@ class RandomRGBShift(IntensityAugmentationBase2D):
     def apply_transform(
         self, inp: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
+<<<<<<< HEAD
         return shift_rgb(inp, params['r_shift'], params['g_shift'], params['b_shift'])
+=======
+
+        r_shift = random.uniform(self.r_shift_limit[0], self.r_shift_limit[1])
+        g_shift = random.uniform(self.g_shift_limit[0], self.g_shift_limit[1])
+        b_shift = random.uniform(self.b_shift_limit[0], self.b_shift_limit[1])
+
+        return shift_rgb(input, r_shift, g_shift, b_shift)
+>>>>>>> Small edit
