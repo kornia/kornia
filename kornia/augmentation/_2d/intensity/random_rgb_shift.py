@@ -6,34 +6,7 @@ from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation import random_generator as rg
 from kornia.enhance import shift_rgb
 
-
-def shift_image(image, value):
-    """
-    Shift image by a certain value. Used for shifting a separate channel.
-    If a pixel value is greater than maximum value, the pixel is set to a maximum value.
-
-    Note:
-        Since RandomRGBShift takes only images of [0, 1] interval, maximum value for
-        a pixel after shift is 1.
-    """
-    max_value = torch.ones(image.shape)
-    image = torch.min(max_value, image + value)
-    return image
-
-
-def shift_rgb(image, r_shift, g_shift, b_shift):
-    """
-    Shift each image's channel by either r_shift for red, g_shift for green and b_shift for blue channels.
-    """
-    if r_shift == g_shift == b_shift:
-        return image + r_shift
-
-    shifted = torch.empty_like(image)
-    shifts = [r_shift, g_shift, b_shift]
-    for i, shift in enumerate(shifts):
-        shifted[:, i, :, :] = shift_image(image[:, i, :, :], shift)
-
-    return shifted
+from kornia.enhance import shift_rgb
 
 
 class RandomRGBShift(IntensityAugmentationBase2D):
