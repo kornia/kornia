@@ -1,39 +1,11 @@
 from typing import Dict, Optional
 
 import random
-import torch
 from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 
-
-def shift_image(image, value):
-    """
-    Shift image by a certain value. Used for shifting a separate channel.
-    If a pixel value is greater than maximum value, the pixel is set to a maximum value.
-
-    Note:
-        Since RandomRGBShift takes only images of [0, 1] interval, maximum value for
-        a pixel after shift is 1.
-    """
-    max_value = torch.ones(image.shape)
-    image = torch.min(max_value, image + value)
-    return image
-
-
-def shift_rgb(image, r_shift, g_shift, b_shift):
-    """
-    Shift each image's channel by either r_shift for red, g_shift for green and b_shift for blue channels.
-    """
-    if r_shift == g_shift == b_shift:
-        return image + r_shift
-
-    shifted = torch.empty_like(image)
-    shifts = [r_shift, g_shift, b_shift]
-    for i, shift in enumerate(shifts):
-        shifted[:, i, :, :] = shift_image(image[:, i, :, :], shift)
-
-    return shifted
+from kornia.enhance import shift_rgb
 
 
 class RandomRGBShift(IntensityAugmentationBase2D):
@@ -86,25 +58,24 @@ class RandomRGBShift(IntensityAugmentationBase2D):
                   [0.1147, 0.3168, 0.6965, 0.9143, 0.9351]]]])
         >>> aug = RandomRGBShift(p=1.)
         >>> aug(input)
-        tensor([[[[ 0.6357,  0.9076,  0.2279,  0.2715,  0.4468],
-                  [ 0.7735,  0.6295,  1.0000,  0.5951,  0.7717],
-                  [ 0.4883,  0.5411,  0.1618,  0.3083,  0.4333],
-                  [ 0.6579,  0.8371,  0.9394,  0.3005,  0.4217],
-                  [ 0.8210,  1.0000,  0.5365,  1.0000,  0.5588]],
+        tensor([[[[0.6357, 0.9076, 0.2279, 0.2715, 0.4468],
+                  [0.7735, 0.6295, 1.0000, 0.5951, 0.7717],
+                  [0.4883, 0.5411, 0.1618, 0.3083, 0.4333],
+                  [0.6579, 0.8371, 0.9394, 0.3005, 0.4217],
+                  [0.8210, 1.0000, 0.5365, 1.0000, 0.5588]],
         <BLANKLINE>
-                 [[ 0.0779,  0.4777, -0.4388, -0.2898, -0.1016],
-                  [-0.1699,  0.4570, -0.2991, -0.2052, -0.3243],
-                  [-0.4433, -0.2669,  0.4548,  0.2481,  0.2673],
-                  [ 0.0513, -0.2313,  0.1096, -0.4418, -0.3363],
-                  [-0.2328,  0.3405,  0.3182, -0.1967,  0.0070]],
+                 [[0.0779, 0.4777, 0.0000, 0.0000, 0.0000],
+                  [0.0000, 0.4570, 0.0000, 0.0000, 0.0000],
+                  [0.0000, 0.0000, 0.4548, 0.2481, 0.2673],
+                  [0.0513, 0.0000, 0.1096, 0.0000, 0.0000],
+                  [0.0000, 0.3405, 0.3182, 0.0000, 0.0070]],
         <BLANKLINE>
-                 [[ 0.5948,  0.7721,  0.4735,  0.3426,  0.6103],
-                  [-0.0194,  0.3682, -0.1126, -0.0715,  0.0167],
-                  [ 0.5013,  0.4761, -0.0211,  0.4261,  0.5495],
-                  [ 0.2119,  0.2941,  0.3909,  0.5852,  0.7551],
-                  [-0.1103,  0.0918,  0.4715,  0.6893,  0.7101]]]])
+                 [[0.5948, 0.7721, 0.4735, 0.3426, 0.6103],
+                  [0.0000, 0.3682, 0.0000, 0.0000, 0.0167],
+                  [0.5013, 0.4761, 0.0000, 0.4261, 0.5495],
+                  [0.2119, 0.2941, 0.3909, 0.5852, 0.7551],
+                  [0.0000, 0.0918, 0.4715, 0.6893, 0.7101]]]])
     """
-    # Note: Extra params, inplace=False in Torchvision.
 
     def __init__(
         self,
