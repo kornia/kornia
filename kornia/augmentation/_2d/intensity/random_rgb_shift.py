@@ -1,7 +1,6 @@
 from typing import Dict, Optional
 
 import random
-import torch
 from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
@@ -30,6 +29,7 @@ class RandomRGBShift(IntensityAugmentationBase2D):
         Input tensor must be float and normalized into [0, 1].
 
     Examples:
+        >>> import torch
         >>> rng = torch.manual_seed(0)
         >>> inp = torch.rand(1, 3, 5, 5)
         >>> aug = RandomRGBShift(0, 0, 0)
@@ -103,8 +103,3 @@ class RandomRGBShift(IntensityAugmentationBase2D):
         b_shift = random.uniform(self.b_shift_limit[0], self.b_shift_limit[1])
 
         return shift_rgb(input, r_shift, g_shift, b_shift)
-
-
-if __name__ == "__main__":
-    import doctest
-    doctest.testmod()
