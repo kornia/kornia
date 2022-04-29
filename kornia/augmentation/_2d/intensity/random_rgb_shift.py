@@ -1,6 +1,7 @@
 from typing import Dict, Optional
 
 import random
+import torch
 from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
@@ -30,15 +31,15 @@ class RandomRGBShift(IntensityAugmentationBase2D):
 
     Examples:
         >>> rng = torch.manual_seed(0)
-        >>> input = torch.rand(1, 3, 5, 5)
+        >>> inp = torch.rand(1, 3, 5, 5)
         >>> aug = RandomRGBShift(0, 0, 0)
-        >>> ((input == aug(input)).double()).all()
+        >>> ((inp == aug(inp)).double()).all()
         tensor(True)
 
         >>> random.seed(42)
         >>> rng = torch.manual_seed(0)
-        >>> input = torch.rand(1, 3, 5, 5)
-        >>> input
+        >>> inp = torch.rand(1, 3, 5, 5)
+        >>> inp
         tensor([[[[0.4963, 0.7682, 0.0885, 0.1320, 0.3074],
                   [0.6341, 0.4901, 0.8964, 0.4556, 0.6323],
                   [0.3489, 0.4017, 0.0223, 0.1689, 0.2939],
@@ -57,7 +58,7 @@ class RandomRGBShift(IntensityAugmentationBase2D):
                   [0.4369, 0.5191, 0.6159, 0.8102, 0.9801],
                   [0.1147, 0.3168, 0.6965, 0.9143, 0.9351]]]])
         >>> aug = RandomRGBShift(p=1.)
-        >>> aug(input)
+        >>> aug(inp)
         tensor([[[[0.6357, 0.9076, 0.2279, 0.2715, 0.4468],
                   [0.7735, 0.6295, 1.0000, 0.5951, 0.7717],
                   [0.4883, 0.5411, 0.1618, 0.3083, 0.4333],
@@ -102,3 +103,8 @@ class RandomRGBShift(IntensityAugmentationBase2D):
         b_shift = random.uniform(self.b_shift_limit[0], self.b_shift_limit[1])
 
         return shift_rgb(input, r_shift, g_shift, b_shift)
+
+
+if __name__ == "__main__":
+    import doctest
+    doctest.testmod()
