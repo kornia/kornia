@@ -1,8 +1,4 @@
-<<<<<<< HEAD
 from typing import Any, Dict, Optional, cast
-=======
-from typing import Dict, Optional
->>>>>>> Resolved some issues
 
 from torch import Tensor
 
@@ -10,34 +6,7 @@ from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.enhance import shift_rgb
 
-
-def shift_image(image, value):
-    """
-    Shift image by a certain value. Used for shifting a separate channel.
-    If a pixel value is greater than maximum value, the pixel is set to a maximum value.
-
-    Note:
-        Since RandomRGBShift takes only images of [0, 1] interval, maximum value for
-        a pixel after shift is 1.
-    """
-    max_value = torch.ones(image.shape)
-    image = torch.min(max_value, image + value)
-    return image
-
-
-def shift_rgb(image, r_shift, g_shift, b_shift):
-    """
-    Shift each image's channel by either r_shift for red, g_shift for green and b_shift for blue channels.
-    """
-    if r_shift == g_shift == b_shift:
-        return image + r_shift
-
-    shifted = torch.empty_like(image)
-    shifts = [r_shift, g_shift, b_shift]
-    for i, shift in enumerate(shifts):
-        shifted[:, i, :, :] = shift_image(image[:, i, :, :], shift)
-
-    return shifted
+from kornia.enhance import shift_rgb
 
 
 class RandomRGBShift(IntensityAugmentationBase2D):
@@ -77,11 +46,7 @@ class RandomRGBShift(IntensityAugmentationBase2D):
         >>> rng = torch.manual_seed(0)
         >>> inp = torch.rand(1, 3, 5, 5)
         >>> aug = RandomRGBShift(0, 0, 0)
-<<<<<<< HEAD
         >>> ((inp == aug(inp)).double()).all()
-=======
-        >>> ((input == aug(input)).double()).all()
->>>>>>> Resolved some issues
         tensor(True)
 
         >>> rng = torch.manual_seed(0)
@@ -114,6 +79,7 @@ class RandomRGBShift(IntensityAugmentationBase2D):
                   [1.0000, 1.0000, 0.8383, 1.0000, 0.8606]],
 =======
         >>> aug(input)
+<<<<<<< HEAD
         tensor([[[[ 0.6357,  0.9076,  0.2279,  0.2715,  0.4468],
                   [ 0.7735,  0.6295,  1.0000,  0.5951,  0.7717],
                   [ 0.4883,  0.5411,  0.1618,  0.3083,  0.4333],
@@ -132,6 +98,25 @@ class RandomRGBShift(IntensityAugmentationBase2D):
                   [0.2914, 0.2663, 0.0000, 0.2163, 0.3397],
                   [0.0021, 0.0843, 0.1811, 0.3754, 0.5453],
                   [0.0000, 0.0000, 0.2617, 0.4795, 0.5003]]]])
+=======
+        tensor([[[[0.6357, 0.9076, 0.2279, 0.2715, 0.4468],
+                  [0.7735, 0.6295, 1.0000, 0.5951, 0.7717],
+                  [0.4883, 0.5411, 0.1618, 0.3083, 0.4333],
+                  [0.6579, 0.8371, 0.9394, 0.3005, 0.4217],
+                  [0.8210, 1.0000, 0.5365, 1.0000, 0.5588]],
+        <BLANKLINE>
+                 [[0.0779, 0.4777, 0.0000, 0.0000, 0.0000],
+                  [0.0000, 0.4570, 0.0000, 0.0000, 0.0000],
+                  [0.0000, 0.0000, 0.4548, 0.2481, 0.2673],
+                  [0.0513, 0.0000, 0.1096, 0.0000, 0.0000],
+                  [0.0000, 0.3405, 0.3182, 0.0000, 0.0070]],
+        <BLANKLINE>
+                 [[0.5948, 0.7721, 0.4735, 0.3426, 0.6103],
+                  [0.0000, 0.3682, 0.0000, 0.0000, 0.0167],
+                  [0.5013, 0.4761, 0.0000, 0.4261, 0.5495],
+                  [0.2119, 0.2941, 0.3909, 0.5852, 0.7551],
+                  [0.0000, 0.0918, 0.4715, 0.6893, 0.7101]]]])
+>>>>>>> Fixed small bug and added to kornia.enhance
     """
 
     def __init__(
