@@ -31,6 +31,7 @@ from kornia.augmentation._2d import (
     RandomResizedCrop,
     RandomRGBShift,
     RandomRotation,
+    RandomRGBShift,
     RandomSharpness,
     RandomSolarize,
     RandomThinPlateSpline,
