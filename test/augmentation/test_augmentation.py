@@ -30,6 +30,7 @@ from kornia.augmentation import (
     RandomPlanckianJitter,
     RandomPosterize,
     RandomResizedCrop,
+    RandomRGBShift,
     RandomRotation,
     RandomThinPlateSpline,
     RandomVerticalFlip,
@@ -2991,3 +2992,12 @@ class TestPlanckianJitter:
                                   p=1.0).to(device, dtype)
         expected = self._get_expected_output_same_on_batch(device, dtype)
         assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
+
+
+class TestRandomRGBShift:
+
+    def test_smoke(self, device, dtype):
+        img = torch.rand(1, 3, 4, 5, device=device, dtype=dtype)
+        aug = RandomRGBShift(p=1.0).to(device)
+        out = aug(img)
+        assert out.shape == (1, 3, 4, 5)
