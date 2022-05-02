@@ -1,10 +1,9 @@
-from typing import Dict, Optional
+from typing import Dict, Optional, cast
 
-import random
 from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-
+from kornia.augmentation import random_generator as rg
 from kornia.enhance import shift_rgb
 
 
@@ -15,11 +14,11 @@ class RandomRGBShift(IntensityAugmentationBase2D):
 
     Args:
         r_shift_limit: maximum value up to which the shift value can be generated for red channel;
-          should be in the interval of [0, 1]
+          recommended interval - [0, 1], should always be positive
         g_shift_limit: maximum value up to which the shift value can be generated for green channel;
-          should be in the interval of [0, 1]
+          recommended interval - [0, 1], should always be positive
         b_shift_limit: maximum value up to which the shift value can be generated for blue channel;
-          should be in the interval of [0, 1]
+          recommended interval - [0, 1], should always be positive
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
@@ -36,7 +35,6 @@ class RandomRGBShift(IntensityAugmentationBase2D):
         >>> ((inp == aug(inp)).double()).all()
         tensor(True)
 
-        >>> random.seed(42)
         >>> rng = torch.manual_seed(0)
         >>> inp = torch.rand(1, 3, 5, 5)
         >>> inp
@@ -59,23 +57,23 @@ class RandomRGBShift(IntensityAugmentationBase2D):
                   [0.1147, 0.3168, 0.6965, 0.9143, 0.9351]]]])
         >>> aug = RandomRGBShift(p=1.)
         >>> aug(inp)
-        tensor([[[[0.6357, 0.9076, 0.2279, 0.2715, 0.4468],
-                  [0.7735, 0.6295, 1.0000, 0.5951, 0.7717],
-                  [0.4883, 0.5411, 0.1618, 0.3083, 0.4333],
-                  [0.6579, 0.8371, 0.9394, 0.3005, 0.4217],
-                  [0.8210, 1.0000, 0.5365, 1.0000, 0.5588]],
+        tensor([[[[0.9374, 1.0000, 0.5297, 0.5732, 0.7486],
+                  [1.0000, 0.9313, 1.0000, 0.8968, 1.0000],
+                  [0.7901, 0.8429, 0.4635, 0.6100, 0.7351],
+                  [0.9597, 1.0000, 1.0000, 0.6022, 0.7234],
+                  [1.0000, 1.0000, 0.8383, 1.0000, 0.8606]],
         <BLANKLINE>
-                 [[0.0779, 0.4777, 0.0000, 0.0000, 0.0000],
-                  [0.0000, 0.4570, 0.0000, 0.0000, 0.0000],
-                  [0.0000, 0.0000, 0.4548, 0.2481, 0.2673],
-                  [0.0513, 0.0000, 0.1096, 0.0000, 0.0000],
-                  [0.0000, 0.3405, 0.3182, 0.0000, 0.0070]],
+                [[0.6524, 1.0000, 0.1357, 0.2847, 0.4729],
+                  [0.4046, 1.0000, 0.2754, 0.3693, 0.2502],
+                  [0.1312, 0.3076, 1.0000, 0.8226, 0.8418],
+                  [0.6258, 0.3432, 0.6841, 0.1327, 0.2382],
+                  [0.3417, 0.9150, 0.8927, 0.3778, 0.5815]],
         <BLANKLINE>
-                 [[0.5948, 0.7721, 0.4735, 0.3426, 0.6103],
-                  [0.0000, 0.3682, 0.0000, 0.0000, 0.0167],
-                  [0.5013, 0.4761, 0.0000, 0.4261, 0.5495],
-                  [0.2119, 0.2941, 0.3909, 0.5852, 0.7551],
-                  [0.0000, 0.0918, 0.4715, 0.6893, 0.7101]]]])
+                [[0.3850, 0.5623, 0.2636, 0.1328, 0.4005],
+                  [0.0000, 0.1584, 0.0000, 0.0000, 0.0000],
+                  [0.2914, 0.2663, 0.0000, 0.2163, 0.3397],
+                  [0.0021, 0.0843, 0.1811, 0.3754, 0.5453],
+                  [0.0000, 0.0000, 0.2617, 0.4795, 0.5003]]]])
     """
 
     def __init__(
@@ -89,17 +87,18 @@ class RandomRGBShift(IntensityAugmentationBase2D):
         return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-
+        self._param_generator = cast(
+            rg.PlainUniformGenerator,
+            rg.PlainUniformGenerator((r_shift_limit, "r_shift", 0, (-r_shift_limit, r_shift_limit)),
+                                     (g_shift_limit, "g_shift", 0, (-g_shift_limit, g_shift_limit)),
+                                     (b_shift_limit, "b_shift", 0, (-b_shift_limit, b_shift_limit)))
+        )
         self.r_shift_limit = (-r_shift_limit, r_shift_limit)
         self.g_shift_limit = (-g_shift_limit, g_shift_limit)
         self.b_shift_limit = (-b_shift_limit, b_shift_limit)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, inp: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
     ) -> Tensor:
-
-        r_shift = random.uniform(self.r_shift_limit[0], self.r_shift_limit[1])
-        g_shift = random.uniform(self.g_shift_limit[0], self.g_shift_limit[1])
-        b_shift = random.uniform(self.b_shift_limit[0], self.b_shift_limit[1])
-
-        return shift_rgb(input, r_shift, g_shift, b_shift)
+        print(params['r_shift'], params['g_shift'], params['b_shift'])
+        return shift_rgb(inp, params['r_shift'], params['g_shift'], params['b_shift'])
