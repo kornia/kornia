@@ -1,2 +1,2 @@
-accelerate==0.5.1
+accelerate==0.7.1
 dataclasses; python_version<"3.7"

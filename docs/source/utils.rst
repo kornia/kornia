@@ -34,3 +34,8 @@ Memory
 
 .. autofunction:: one_hot
 .. autofunction:: batched_forward
+
+Device
+-------
+
+.. autofunction:: get_cuda_device_if_available

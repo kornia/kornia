@@ -85,11 +85,12 @@ class TestMS_SSIMLoss:
         assert_close(msssim2.item(), 0.0)
 
     # TODO: implement for single channel image
+    @pytest.mark.parametrize("reduction_type", ["mean", "sum"])
     @pytest.mark.parametrize("batch_shape", [(2, 1, 2, 3), (1, 3, 10, 16)])
-    def test_msssim(self, device, dtype, batch_shape):
+    def test_msssim(self, device, dtype, batch_shape, reduction_type):
         img = torch.rand(batch_shape, device=device, dtype=dtype)
 
-        msssiml1 = kornia.losses.MS_SSIMLoss().to(device, dtype)
+        msssiml1 = kornia.losses.MS_SSIMLoss(reduction=reduction_type).to(device, dtype)
         loss = msssiml1(img, img)
 
         assert_close(loss.item(), 0.0)
