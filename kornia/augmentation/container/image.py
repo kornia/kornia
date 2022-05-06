@@ -1,5 +1,5 @@
 from itertools import zip_longest
-from typing import Any, cast, Dict, Iterator, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Type, Union, cast
 
 import torch
 import torch.nn as nn
