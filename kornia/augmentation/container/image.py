@@ -1,5 +1,5 @@
 from itertools import zip_longest
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Type, Union
+from typing import Any, cast, Dict, Iterator, List, Optional, Tuple, Type, Union
 
 import torch
 import torch.nn as nn
@@ -269,7 +269,8 @@ class ImageSequential(SequentialBase):
         res_mat: Optional[Tensor] = None
         for (_, module), param in zip(named_modules, params if params is not None else []):
             if isinstance(module, (_AugmentationBase,)) and not isinstance(module, (MixAugmentationBase,)):
-                to_apply = param.data['batch_prob']  # type: ignore
+                pdata = cast(Dict[str, Tensor], param.data)
+                to_apply = pdata['batch_prob']  # type: ignore
                 ori_shape = input.shape
                 try:
                     input = module.transform_tensor(input)
@@ -281,13 +282,13 @@ class ImageSequential(SequentialBase):
                     mat: Tensor = self.identity_matrix(input)
                     try:
                         mat[to_apply] = module.compute_transformation(
-                            input[to_apply], param.data, module.flags)  # type: ignore
+                            input[to_apply], pdata, module.flags)  # type: ignore
                     except:
                         xx = module.compute_transformation(
-                            input[to_apply], param.data, module.flags)
+                            input[to_apply], pdata, module.flags)
                         assert False, (mat[to_apply].shape, input[to_apply].shape, xx.shape)
                     mat[to_apply] = module.compute_transformation(
-                        input[to_apply], param.data, module.flags)  # type: ignore
+                        input[to_apply], pdata, module.flags)  # type: ignore
                 else:
                     mat = torch.as_tensor(module._transform_matrix, device=input.device, dtype=input.dtype)
                 res_mat = mat if res_mat is None else mat @ res_mat
