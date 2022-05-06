@@ -181,9 +181,9 @@ class InputApplyInverse(ApplyInverseImpl):
             module.apply_inverse_func = InputApplyInverse
             module.return_label = True
             if isinstance(module, kornia.augmentation.AugmentationSequential):
-                input, label = module(input, label=label, params=param.data, data_keys=[cls.data_key], extra_args=extra_args)
+                input, label = module(input, label=label, params=param.data, data_keys=[cls.data_key])
             else:
-                input, label = module(input, label=label, params=param.data, extra_args=extra_args)
+                input, label = module(input, label=label, params=param.data)
             module.apply_inverse_func = temp
             module.return_label = temp2
         else:
@@ -210,11 +210,13 @@ class InputApplyInverse(ApplyInverseImpl):
             param: the corresponding parameters to the module.
         """
         if isinstance(module, GeometricAugmentationBase2D):
-            input = module.inverse(input, params=None if param is None else cast(Dict, param.data), extra_args=extra_args)
+            input = module.inverse(
+                input, params=None if param is None else cast(Dict, param.data), extra_args=extra_args)
         elif isinstance(module, kornia.augmentation.ImageSequential):
             temp = module.apply_inverse_func
             module.apply_inverse_func = InputApplyInverse
-            input = module.inverse(input, params=None if param is None else cast(List, param.data), extra_args=extra_args)
+            input = module.inverse(
+                input, params=None if param is None else cast(List, param.data))
             module.apply_inverse_func = temp
         return input
 
@@ -267,7 +269,7 @@ class MaskApplyInverse(ApplyInverseImpl):
             temp = module.apply_inverse_func
             module.apply_inverse_func = MaskApplyInverse
             geo_param: List[ParamItem] = _get_geometric_only_param(module, _param)
-            input = cls.make_input_only_sequential(module)(input, label=None, params=geo_param, extra_args=extra_args)
+            input = cls.make_input_only_sequential(module)(input, label=None, params=geo_param)
             module.apply_inverse_func = temp
         else:
             pass  # No need to update anything
@@ -292,7 +294,8 @@ class MaskApplyInverse(ApplyInverseImpl):
         elif isinstance(module, kornia.augmentation.ImageSequential):
             temp = module.apply_inverse_func
             module.apply_inverse_func = MaskApplyInverse
-            input = module.inverse(input, params=None if param is None else cast(List, param.data), extra_args=extra_args)
+            input = module.inverse(
+                input, params=None if param is None else cast(List, param.data))
             module.apply_inverse_func = temp
         return input
 

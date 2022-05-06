@@ -18,6 +18,7 @@ from kornia.augmentation.container.utils import ApplyInverse
 from kornia.augmentation.container.video import VideoSequential
 from kornia.constants import DataKey, Resample
 from kornia.geometry.boxes import Boxes
+from kornia.utils import eye_like
 
 __all__ = ["AugmentationSequential"]
 
@@ -182,6 +183,13 @@ class AugmentationSequential(ImageSequential):
                 self.contains_3d_augmentation = True
         self._transform_matrix: Optional[Tensor] = None
         self.extra_args = extra_args
+
+    def identity_matrix(self, input: Tensor) -> Tensor:
+        """Return identity matrix."""
+        if self.contains_3d_augmentation:
+            return eye_like(4, input)
+        else:
+            return eye_like(3, input)
 
     @property
     def transform_matrix(self,) -> Optional[Tensor]:
@@ -387,10 +395,7 @@ class AugmentationSequential(ImageSequential):
 
             for param in params:
                 module = self.get_submodule(param.name)
-                if dcate == DataKey.INPUT:
-                    input, label = self.apply_to_input(
-                        input, label, module=module, param=param, extra_args=extra_args)
-                elif isinstance(module, IntensityAugmentationBase2D) and dcate in DataKey \
+                if isinstance(module, IntensityAugmentationBase2D) and dcate in DataKey \
                         and not isinstance(module, RandomErasing):
                     pass  # Do nothing
                 elif isinstance(module, ImageSequential) and module.is_intensity_only() and dcate in DataKey:

@@ -3,6 +3,7 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple, Type, Union
 
 import torch
 import torch.nn as nn
+from torch import Tensor
 
 import kornia
 from kornia.augmentation import (
@@ -202,12 +203,12 @@ class ImageSequential(SequentialBase):
 
     def apply_to_input(
         self,
-        input: torch.Tensor,
-        label: Optional[torch.Tensor],
+        input: Tensor,
+        label: Optional[Tensor],
         module: Optional[nn.Module],
         param: ParamItem,
         extra_args: Dict[str, Any]
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    ) -> Tuple[Tensor, Optional[Tensor]]:
         if module is None:
             module = self.get_submodule(param.name)
         return self.apply_inverse_func.apply_trans(input, label, module, param, extra_args)  # type: ignore
@@ -238,16 +239,20 @@ class ImageSequential(SequentialBase):
         return False
 
     def __packup_output__(
-        self, output: torch.Tensor, label: Optional[torch.Tensor] = None
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        self, output: Tensor, label: Optional[Tensor] = None
+    ) -> Union[Tensor, Tuple[Tensor, Tensor]]:
         if self.return_label:
             return output, label  # type: ignore
             # Implicitly indicating the label cannot be optional since there is a mix aug
         return output
 
+    def identity_matrix(self, input) -> Tensor:
+        """Return identity matrix."""
+        return kornia.eye_like(3, input)
+
     def get_transformation_matrix(
-        self, input: torch.Tensor, params: Optional[List[ParamItem]] = None, recompute: bool = False
-    ) -> Optional[torch.Tensor]:
+        self, input: Tensor, params: Optional[List[ParamItem]] = None, recompute: bool = False
+    ) -> Optional[Tensor]:
         """Compute the transformation matrix according to the provided parameters.
 
         Args:
@@ -261,7 +266,7 @@ class ImageSequential(SequentialBase):
         named_modules: Iterator[Tuple[str, nn.Module]] = self.get_forward_sequence(params)
 
         # Define as 1 for broadcasting
-        res_mat: Optional[torch.Tensor] = None
+        res_mat: Optional[Tensor] = None
         for (_, module), param in zip(named_modules, params if params is not None else []):
             if isinstance(module, (_AugmentationBase,)) and not isinstance(module, (MixAugmentationBase,)):
                 to_apply = param.data['batch_prob']  # type: ignore
@@ -273,7 +278,14 @@ class ImageSequential(SequentialBase):
                     pass
                 # Standardize shape
                 if recompute:
-                    mat: torch.Tensor = kornia.eye_like(3, input)
+                    mat: Tensor = self.identity_matrix(input)
+                    try:
+                        mat[to_apply] = module.compute_transformation(
+                            input[to_apply], param.data, module.flags)  # type: ignore
+                    except:
+                        xx = module.compute_transformation(
+                            input[to_apply], param.data, module.flags)
+                        assert False, (mat[to_apply].shape, input[to_apply].shape, xx.shape)
                     mat[to_apply] = module.compute_transformation(
                         input[to_apply], param.data, module.flags)  # type: ignore
                 else:
@@ -315,9 +327,9 @@ class ImageSequential(SequentialBase):
         return True
 
     def inverse(
-        self, input: torch.Tensor, params: Optional[List[ParamItem]] = None,
+        self, input: Tensor, params: Optional[List[ParamItem]] = None,
         extra_args: Dict[str, Any] = {}
-    ) -> torch.Tensor:
+    ) -> Tensor:
         """Inverse transformation.
 
         Used to inverse a tensor according to the performed transformation by a forward pass, or with respect to
@@ -353,11 +365,11 @@ class ImageSequential(SequentialBase):
 
     def forward(  # type: ignore
         self,
-        input: torch.Tensor,
-        label: Optional[torch.Tensor] = None,
+        input: Tensor,
+        label: Optional[Tensor] = None,
         params: Optional[List[ParamItem]] = None,
         extra_args: Dict[str, Any] = {}
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    ) -> Union[Tensor, Tuple[Tensor, Tensor]]:
         self.clear_state()
         if params is None:
             inp = input
