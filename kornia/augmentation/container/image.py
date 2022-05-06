@@ -64,8 +64,8 @@ class ImageSequential(SequentialBase):
 
         Reproduce with provided params.
         >>> out2, lab2 = aug_list(input, label=label, params=aug_list._params)
-        >>> torch.equal(out[0], out2[0]), torch.equal(out[1], out2[1]), torch.equal(lab[1], lab2[1])
-        (True, True, True)
+        >>> torch.equal(out, out2), torch.equal(lab, lab2)
+        (True, True)
 
     Perform ``OneOf`` transformation with ``random_apply=1`` and ``random_apply_weights`` in ``ImageSequential``.
 
@@ -210,7 +210,7 @@ class ImageSequential(SequentialBase):
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         if module is None:
             module = self.get_submodule(param.name)
-        return self.apply_inverse_func.apply_trans(input, label, module, param, **extra_args)  # type: ignore
+        return self.apply_inverse_func.apply_trans(input, label, module, param, extra_args)  # type: ignore
 
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
         named_modules: Iterator[Tuple[str, nn.Module]] = self.get_forward_sequence()

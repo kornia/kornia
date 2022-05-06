@@ -181,9 +181,9 @@ class InputApplyInverse(ApplyInverseImpl):
             module.apply_inverse_func = InputApplyInverse
             module.return_label = True
             if isinstance(module, kornia.augmentation.AugmentationSequential):
-                input, label = module(input, label=label, params=param.data, data_keys=[cls.data_key])
+                input, label = module(input, label=label, params=param.data, data_keys=[cls.data_key], extra_args=extra_args)
             else:
-                input, label = module(input, label=label, params=param.data)
+                input, label = module(input, label=label, params=param.data, extra_args=extra_args)
             module.apply_inverse_func = temp
             module.return_label = temp2
         else:
@@ -210,11 +210,11 @@ class InputApplyInverse(ApplyInverseImpl):
             param: the corresponding parameters to the module.
         """
         if isinstance(module, GeometricAugmentationBase2D):
-            input = module.inverse(input, params=None if param is None else cast(Dict, param.data))
+            input = module.inverse(input, params=None if param is None else cast(Dict, param.data), extra_args=extra_args)
         elif isinstance(module, kornia.augmentation.ImageSequential):
             temp = module.apply_inverse_func
             module.apply_inverse_func = InputApplyInverse
-            input = module.inverse(input, params=None if param is None else cast(List, param.data))
+            input = module.inverse(input, params=None if param is None else cast(List, param.data), extra_args=extra_args)
             module.apply_inverse_func = temp
         return input
 
@@ -267,7 +267,7 @@ class MaskApplyInverse(ApplyInverseImpl):
             temp = module.apply_inverse_func
             module.apply_inverse_func = MaskApplyInverse
             geo_param: List[ParamItem] = _get_geometric_only_param(module, _param)
-            input = cls.make_input_only_sequential(module)(input, label=None, params=geo_param)
+            input = cls.make_input_only_sequential(module)(input, label=None, params=geo_param, extra_args=extra_args)
             module.apply_inverse_func = temp
         else:
             pass  # No need to update anything
@@ -292,7 +292,7 @@ class MaskApplyInverse(ApplyInverseImpl):
         elif isinstance(module, kornia.augmentation.ImageSequential):
             temp = module.apply_inverse_func
             module.apply_inverse_func = MaskApplyInverse
-            input = module.inverse(input, params=None if param is None else cast(List, param.data))
+            input = module.inverse(input, params=None if param is None else cast(List, param.data), extra_args=extra_args)
             module.apply_inverse_func = temp
         return input
 
@@ -386,7 +386,7 @@ class BBoxApplyInverse(ApplyInverseImpl):
         if padding_size is not None:
             _input = cls.pad(_input, padding_size.to(_input))
 
-        _input, label = super().apply_trans(_input, label, module, param)
+        _input, label = super().apply_trans(_input, label, module, param, extra_args=extra_args)
 
         # TODO: Filter/crop boxes outside crop (with negative or larger than crop size coords)?
 
@@ -407,7 +407,7 @@ class BBoxApplyInverse(ApplyInverseImpl):
         """
         _input = input.clone()
 
-        _input = super().inverse(_input, module, param)
+        _input = super().inverse(_input, module, param, extra_args=extra_args)
 
         padding_size = cls._get_padding_size(module, param)
         if padding_size is not None:
@@ -446,7 +446,7 @@ class BBoxXYXYApplyInverse(BBoxApplyInverse):
         extra_args: Dict[str, Any] = {}
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         warnings.warn("BBoxXYXYApplyInverse is no longer maintained. Please use BBoxApplyInverse instead.")
-        return super().apply_trans(input, label=label, module=module, param=param)
+        return super().apply_trans(input, label=label, module=module, param=param, extra_args=extra_args)
 
     @classmethod
     def inverse(
@@ -454,7 +454,7 @@ class BBoxXYXYApplyInverse(BBoxApplyInverse):
         extra_args: Dict[str, Any] = {}
     ) -> torch.Tensor:
         warnings.warn("BBoxXYXYApplyInverse is no longer maintained. Please use BBoxApplyInverse instead.")
-        return super().inverse(input, module=module, param=param)
+        return super().inverse(input, module=module, param=param, extra_args=extra_args)
 
 
 class BBoxXYWHApplyInverse(BBoxXYXYApplyInverse):
@@ -591,6 +591,7 @@ class ApplyInverse:
         module: nn.Module,
         param: Optional[ParamItem] = None,
         dcate: Union[str, int, DataKey] = DataKey.INPUT,
+        extra_args: Dict[str, Any] = {}
     ) -> torch.Tensor:
         """Inverse a transformation with respect to the parameters.
 
@@ -603,4 +604,4 @@ class ApplyInverse:
                 By default, it is set to 'input'.
         """
         func: Type[ApplyInverseInterface] = cls._get_func_by_key(dcate)
-        return func.inverse(input, module, param)
+        return func.inverse(input, module, param, extra_args=extra_args)

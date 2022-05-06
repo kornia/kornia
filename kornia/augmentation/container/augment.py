@@ -59,6 +59,7 @@ class AugmentationSequential(ImageSequential):
     Examples:
         >>> import kornia
         >>> input = torch.randn(2, 3, 5, 6)
+        >>> mask = torch.ones(2, 3, 5, 6)
         >>> bbox = torch.tensor([[
         ...     [1., 1.],
         ...     [2., 1.],
@@ -73,11 +74,11 @@ class AugmentationSequential(ImageSequential):
         ...     same_on_batch=False,
         ...     random_apply=10,
         ... )
-        >>> out = aug_list(input, input, bbox, points)
+        >>> out = aug_list(input, mask, bbox, points)
         >>> [o.shape for o in out]
         [torch.Size([2, 3, 5, 6]), torch.Size([2, 3, 5, 6]), torch.Size([2, 4, 2]), torch.Size([2, 1, 2])]
         >>> # apply the exact augmentation again.
-        >>> out_rep = aug_list(input, input, bbox, points, params=aug_list._params)
+        >>> out_rep = aug_list(input, mask, bbox, points, params=aug_list._params)
         >>> [(o == o_rep).all() for o, o_rep in zip(out, out_rep)]
         [tensor(True), tensor(True), tensor(True), tensor(True)]
         >>> # inverse the augmentations
@@ -89,6 +90,7 @@ class AugmentationSequential(ImageSequential):
 
         >>> import kornia
         >>> input = torch.randn(2, 3, 5, 6)[None]
+        >>> mask = torch.ones(2, 3, 5, 6)[None]
         >>> bbox = torch.tensor([[
         ...     [1., 1.],
         ...     [2., 1.],
@@ -103,7 +105,7 @@ class AugmentationSequential(ImageSequential):
         ...     ),
         ...     data_keys=["input", "mask", "bbox", "keypoints"]
         ... )
-        >>> out = aug_list(input, input, bbox, points)
+        >>> out = aug_list(input, mask, bbox, points)
         >>> [o.shape for o in out]
         [torch.Size([1, 2, 3, 5, 6]), torch.Size([1, 2, 3, 5, 6]), torch.Size([1, 2, 4, 2]), torch.Size([1, 2, 1, 2])]
 
@@ -111,6 +113,7 @@ class AugmentationSequential(ImageSequential):
 
         >>> import kornia
         >>> input = torch.randn(2, 3, 5, 6)[None]
+        >>> mask = torch.ones(2, 3, 5, 6)[None]
         >>> bbox = torch.tensor([[
         ...     [1., 1.],
         ...     [2., 1.],
@@ -129,7 +132,7 @@ class AugmentationSequential(ImageSequential):
         ...     random_apply=1,
         ...     random_apply_weights=[0.5, 0.3]
         ... )
-        >>> out = aug_list(input, input, bbox, points)
+        >>> out = aug_list(input, mask, bbox, points)
         >>> [o.shape for o in out]
         [torch.Size([1, 2, 3, 5, 6]), torch.Size([1, 2, 3, 5, 6]), torch.Size([1, 2, 4, 2]), torch.Size([1, 2, 1, 2])]
     """
@@ -218,6 +221,12 @@ class AugmentationSequential(ImageSequential):
 
         outputs: List[Tensor] = [None] * len(data_keys)  # type: ignore
         for idx, (arg, dcate) in enumerate(zip(args, data_keys)):
+
+            if DataKey.INPUT in self.extra_args:
+                extra_args = self.extra_args[DataKey.INPUT]
+            else:
+                extra_args = {}
+
             if dcate == DataKey.INPUT and isinstance(arg, (tuple, list)):
                 input, _ = arg  # ignore the transformation matrix whilst inverse
             # Using tensors straight-away
@@ -238,13 +247,13 @@ class AugmentationSequential(ImageSequential):
                 elif isinstance(module, VideoSequential) and dcate not in [DataKey.INPUT, DataKey.MASK]:
                     batch_size: int = input.size(0)
                     input = input.view(-1, *input.shape[2:])
-                    input = ApplyInverse.inverse_by_key(input, module, param, dcate)
+                    input = ApplyInverse.inverse_by_key(input, module, param, dcate, extra_args=extra_args)
                     input = input.view(batch_size, -1, *input.shape[1:])
                 elif isinstance(module, PatchSequential):
                     raise NotImplementedError("Geometric involved PatchSequential is not supported.")
                 elif isinstance(module, (GeometricAugmentationBase2D, ImageSequential, RandomErasing)) \
                         and dcate in DataKey:
-                    input = ApplyInverse.inverse_by_key(input, module, param, dcate)
+                    input = ApplyInverse.inverse_by_key(input, module, param, dcate, extra_args=extra_args)
                 elif isinstance(module, (SequentialBase,)):
                     raise ValueError(f"Unsupported Sequential {module}.")
                 else:
@@ -346,8 +355,14 @@ class AugmentationSequential(ImageSequential):
         if DataKey.INPUT in _data_keys:
             idx = _data_keys.index(DataKey.INPUT)
             _inp = args[idx]
-            _out = super().forward(_inp, label, params=params)  # type: ignore
-            self._transform_matrix = self.get_transformation_matrix(_inp, params=params)
+
+            if DataKey.INPUT in self.extra_args:
+                extra_args = self.extra_args[DataKey.INPUT]
+            else:
+                extra_args = {}
+
+            _out = super().forward(_inp, label, params=params, extra_args=extra_args)  # type: ignore
+            self._transform_matrix = self.get_transformation_matrix(_inp, params=params, recompute=True)
             if self.return_label:
                 _input, label = cast(Tuple[Tensor, Tensor], _out)
             else:

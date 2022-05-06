@@ -2144,7 +2144,7 @@ class TestRandomCrop:
         )
         out = aug(inp)
         assert_close(out, expected, atol=1e-4, rtol=1e-4)
-        assert_close(aug.inverse(out), inversed, atol=1e-4, rtol=1e-4)
+        assert_close(aug.inverse(out, padding_mode="constant"), inversed, atol=1e-4, rtol=1e-4)
 
     def test_padding_batch_1(self, device, dtype):
         torch.manual_seed(42)

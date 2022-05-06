@@ -30,7 +30,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         fill: Pixel fill value for constant fill. Default is 0. If a tuple of
             length 3, it is used to fill R, G, B channels respectively.
             This value is only used when the padding_mode is constant.
-        padding_mode: Type of padding. Should be: constant, edge, reflect or symmetric.
+        padding_mode: Type of padding. Should be: constant, reflect, replicate.
         resample: the interpolation mode.
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
@@ -60,7 +60,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         >>> out
         tensor([[[[3., 4.],
                   [6., 7.]]]])
-        >>> aug.inverse(out, padding_mode="border")
+        >>> aug.inverse(out, padding_mode="replicate")
         tensor([[[[3., 4., 4.],
                   [3., 4., 4.],
                   [6., 7., 7.]]]])
@@ -161,13 +161,22 @@ class RandomCrop(GeometricAugmentationBase2D):
         flags = self.flags if flags is None else flags
         if flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
             transform = cast(Tensor, transform)
+            # Fit the arg to F.pad
+            if flags['padding_mode'] == "constant":
+                padding_mode = "zeros"
+            elif flags['padding_mode'] == "replicate":
+                padding_mode = "border"
+            elif flags['padding_mode'] == "reflect":
+                padding_mode = "reflection"
+            else:
+                padding_mode = flags['padding_mode']
 
             return crop_by_transform_mat(
                 input,
                 transform,
                 flags["size"],
                 mode=flags["resample"].name.lower(),
-                padding_mode="zeros",
+                padding_mode=padding_mode,
                 align_corners=flags["align_corners"],
             )
         if flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
@@ -187,9 +196,18 @@ class RandomCrop(GeometricAugmentationBase2D):
             )
         size = cast(Tuple[int, int], size)
         transform = cast(Tensor, transform)
+        # Fit the arg to F.pad
+        if flags['padding_mode'] == "constant":
+            padding_mode = "zeros"
+        elif flags['padding_mode'] == "replicate":
+            padding_mode = "border"
+        elif flags['padding_mode'] == "reflect":
+            padding_mode = "reflection"
+        else:
+            padding_mode = flags['padding_mode']
         return crop_by_transform_mat(
             input, transform[:, :2, :], size, flags["resample"].name.lower(),
-            "zeros", flags["align_corners"]
+            padding_mode=padding_mode, align_corners=flags["align_corners"]
         )
 
     def inverse(
