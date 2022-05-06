@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
 import torch.nn as nn
@@ -210,7 +210,10 @@ class VideoSequential(ImageSequential):
             params.append(param)
         return params
 
-    def inverse(self, input: torch.Tensor, params: Optional[List[ParamItem]] = None) -> torch.Tensor:
+    def inverse(
+        self, input: torch.Tensor, params: Optional[List[ParamItem]] = None,
+        extra_args: Dict[str, Any] = {}
+    ) -> torch.Tensor:
         """Inverse transformation.
 
         Used to inverse a tensor according to the performed transformation by a forward pass, or with respect to
@@ -223,7 +226,7 @@ class VideoSequential(ImageSequential):
             batch_size: int = input.size(0)
             input = input.view(-1, *input.shape[2:])
 
-        input = super().inverse(input, params)
+        input = super().inverse(input, params, extra_args=extra_args)
         if self.apply_inverse_func in (InputApplyInverse, MaskApplyInverse):
             input, _ = self._input_shape_convert_back(input, None, frame_num)
         else:
