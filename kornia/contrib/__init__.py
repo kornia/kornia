@@ -1,5 +1,6 @@
 from .classification import ClassificationHead
 from .connected_components import connected_components
+from .diamond_square import diamond_square
 from .distance_transform import DistanceTransform, distance_transform
 from .extract_patches import (
     CombineTensorPatches,
@@ -31,4 +32,5 @@ __all__ = [
     "ImageStitcher",
     "distance_transform",
     "DistanceTransform",
+    "diamond_square",
 ]
