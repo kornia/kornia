@@ -11,6 +11,6 @@ yapf
 isort
 numpy
 scipy
-kornia_rs==0.0.2
+kornia_rs==0.0.2; python_version>="3.7"
 -r ../docs/requirements.txt
 -r ./x.txt  # kornia[x]
