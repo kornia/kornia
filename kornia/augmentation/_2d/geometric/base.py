@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional, Tuple, cast
 from torch import Tensor, as_tensor
 
 from kornia.augmentation._2d.base import AugmentationBase2D
+from kornia.augmentation.utils import override_parameters
 from kornia.utils.helpers import _torch_inverse_cast
 
 
@@ -73,8 +74,8 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
 
         if len(kwargs.keys()) != 0:
             _src_params = self._params if params is None else params
-            params = self._override_parameters(_src_params, kwargs, in_place=False)
-            flags = self._override_parameters(self.flags, kwargs, in_place=False)
+            params = override_parameters(_src_params, kwargs, in_place=False)
+            flags = override_parameters(self.flags, kwargs, in_place=False)
         else:
             flags = self.flags
 

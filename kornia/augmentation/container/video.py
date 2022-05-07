@@ -235,7 +235,8 @@ class VideoSequential(ImageSequential):
         return input
 
     def forward(  # type: ignore
-        self, input: torch.Tensor, label: Optional[torch.Tensor] = None, params: Optional[List[ParamItem]] = None
+        self, input: torch.Tensor, label: Optional[torch.Tensor] = None, params: Optional[List[ParamItem]] = None,
+        extra_args: Dict[str, Any] = {}
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """Define the video computation performed."""
         if len(input.shape) != 5:
@@ -254,7 +255,7 @@ class VideoSequential(ImageSequential):
             batch_size: int = input.size(0)
             input = input.view(-1, *input.shape[2:])
 
-        out = super().forward(input, label, params)  # type: ignore
+        out = super().forward(input, label, params, extra_args=extra_args)  # type: ignore
         if self.return_label:
             output, label = cast(Tuple[torch.Tensor, torch.Tensor], out)
         else:

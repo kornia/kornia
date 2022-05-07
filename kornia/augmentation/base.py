@@ -7,7 +7,7 @@ from torch import Tensor
 from torch.distributions import Bernoulli
 
 from kornia.augmentation.random_generator import RandomGeneratorBase
-from kornia.augmentation.utils import _adapted_sampling, _transform_output_shape
+from kornia.augmentation.utils import _adapted_sampling, _transform_output_shape, override_parameters
 
 TensorWithTransformMat = Union[Tensor, Tuple[Tensor, Tensor]]
 
@@ -119,6 +119,23 @@ class _BasicAugmentationBase(nn.Module):
             batch_prob = batch_prob.repeat(batch_shape[0])
         return batch_prob
 
+    def _process_kwargs_to_params_and_flags(
+        self, params: Dict[str, Tensor], flags: Dict[str, Any], **kwargs
+    ) -> Tuple[Dict[str, Tensor], Dict[str, Any]]:
+
+        # NOTE: determine how to save self._params
+        save_kwargs = kwargs["save_kwargs"] if "save_kwargs" in kwargs else False
+
+        if save_kwargs:
+            params = override_parameters(params, kwargs, in_place=True)
+            self._params = params
+        else:
+            self._params = params
+            params = override_parameters(params, kwargs, in_place=False)
+
+        flags = override_parameters(self.flags, kwargs, in_place=False)
+        return params, flags
+
     def forward_parameters(self, batch_shape) -> Dict[str, Tensor]:
         to_apply = self.__batch_prob_generator__(batch_shape, self.p, self.p_batch, self.same_on_batch)
         _params = self.generate_parameters(torch.Size((int(to_apply.sum().item()), *batch_shape[1:])))
@@ -134,45 +151,6 @@ class _BasicAugmentationBase(nn.Module):
     def apply_func(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return self.apply_transform(input, params, flags)
 
-    def _deepcopy_param(self, param: Dict[str, Any]) -> Dict[str, Any]:
-        out = {}
-        for k, v in param.items():
-            # NOTE: Only Tensors created explicitly by the user (graph leaves) support the deepcopy protocol
-            if isinstance(v, Tensor):
-                out.update({k: v.clone()})
-            else:
-                out.update({k: v})
-        return param
-
-    def _override_parameters(
-        self, params: Dict[str, Any], params_override: Optional[Dict[str, Any]] = None,
-        if_none_exist: str = 'ignore', in_place: bool = False
-    ) -> Dict[str, Any]:
-        """Override params dict w.r.t params_override.
-
-        Args:
-            params: source parameters.
-            params_override: key-values to override the source parameters.
-            if_none_exist: behaviour if the key in `params_override` does not exist in `params`.
-                'raise' | 'ignore'.
-            in_place: if to override in-place or not.
-        """
-
-        if params_override is None:
-            return params
-        out = params if in_place else self._deepcopy_param(params)
-        for k, v in params_override.items():
-            if k in params_override:
-                out[k] = v
-            else:
-                if if_none_exist == 'ignore':
-                    pass
-                elif if_none_exist == 'raise':
-                    raise RuntimeError(f"Param `{k}` not existed in `{params_override}`.")
-                else:
-                    raise ValueError(f"`{if_none_exist}` is not a valid option.")
-        return out
-
     def forward(  # type: ignore
         self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs
     ) -> Tensor:
@@ -183,6 +161,11 @@ class _BasicAugmentationBase(nn.Module):
             params: the corresponding parameters for an operation.
                 If None, a new parameter suite will be generated.
             **kwargs: key-value pairs to override the parameters and flags.
+
+        Note:
+            By default, all the overwriting parameters in kwargs will not be recorded
+            as in ``self._params``. If you wish it to be recorded, you may pass
+            ``save_kwargs=True`` additionally.
         """
         in_tensor = self.__unpack_input__(input)
         self.__check_batching__(input)
@@ -191,17 +174,13 @@ class _BasicAugmentationBase(nn.Module):
         batch_shape = in_tensor.shape
         if params is None:
             params = self.forward_parameters(batch_shape)
-            params = self._override_parameters(params, kwargs, in_place=True)
-        else:
-            params = self._override_parameters(params, kwargs, in_place=False)
 
         if 'batch_prob' not in params:
             params['batch_prob'] = torch.tensor([True] * batch_shape[0])
 
-        self._params = params
-        _flags = self._override_parameters(self.flags, kwargs, in_place=False)
+        params, flags = self._process_kwargs_to_params_and_flags(params, self.flags, **kwargs)
 
-        output = self.apply_func(in_tensor, self._params, _flags)
+        output = self.apply_func(in_tensor, params, flags)
         return self.transform_output_tensor(output, input_shape) if self.keepdim else output
 
 

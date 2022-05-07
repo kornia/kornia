@@ -15,6 +15,7 @@ from kornia.augmentation import (
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import ParamItem, SequentialBase
 from kornia.augmentation.container.utils import ApplyInverseInterface, InputApplyInverse
+from kornia.augmentation.utils import override_parameters
 
 __all__ = ["ImageSequential"]
 
@@ -251,7 +252,8 @@ class ImageSequential(SequentialBase):
         return kornia.eye_like(3, input)
 
     def get_transformation_matrix(
-        self, input: Tensor, params: Optional[List[ParamItem]] = None, recompute: bool = False
+        self, input: Tensor, params: Optional[List[ParamItem]] = None, recompute: bool = False,
+        extra_args: Dict[str, Any] = {}
     ) -> Optional[Tensor]:
         """Compute the transformation matrix according to the provided parameters.
 
@@ -280,15 +282,9 @@ class ImageSequential(SequentialBase):
                 # Standardize shape
                 if recompute:
                     mat: Tensor = self.identity_matrix(input)
-                    try:
-                        mat[to_apply] = module.compute_transformation(
-                            input[to_apply], pdata, module.flags)  # type: ignore
-                    except:
-                        xx = module.compute_transformation(
-                            input[to_apply], pdata, module.flags)
-                        assert False, (mat[to_apply].shape, input[to_apply].shape, xx.shape)
+                    flags = override_parameters(module.flags, extra_args, in_place=False)
                     mat[to_apply] = module.compute_transformation(
-                        input[to_apply], pdata, module.flags)  # type: ignore
+                        input[to_apply], pdata, flags)  # type: ignore
                 else:
                     mat = torch.as_tensor(module._transform_matrix, device=input.device, dtype=input.dtype)
                 res_mat = mat if res_mat is None else mat @ res_mat
@@ -300,7 +296,8 @@ class ImageSequential(SequentialBase):
                 if isinstance(module, (kornia.augmentation.AugmentationSequential,)) and not recompute:
                     mat = torch.as_tensor(module._transform_matrix, device=input.device, dtype=input.dtype)
                 else:
-                    mat = module.get_transformation_matrix(input, param.data)  # type: ignore
+                    mat = module.get_transformation_matrix(
+                        input, param.data, recompute=recompute, extra_args=extra_args)  # type: ignore
                 res_mat = mat if res_mat is None else mat @ res_mat
         return res_mat
 
@@ -355,7 +352,7 @@ class ImageSequential(SequentialBase):
             elif isinstance(module, ImageSequential) and module.is_intensity_only():
                 pass  # Do nothing
             elif isinstance(module, ImageSequential):
-                input = module.inverse(input, param.data)
+                input = module.inverse(input, param.data, extra_args=extra_args)
             elif isinstance(module, (GeometricAugmentationBase2D,)):
                 input = self.apply_inverse_func.inverse(input, module, param, extra_args=extra_args)
             else:

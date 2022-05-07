@@ -1,3 +1,4 @@
+
 import warnings
 from abc import ABCMeta, abstractmethod
 from functools import partial
@@ -10,6 +11,7 @@ import kornia  # lazy loading for circular dependencies
 from kornia.augmentation import GeometricAugmentationBase2D, MixAugmentationBase, RandomCrop, RandomErasing
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import ParamItem
+from kornia.augmentation.utils import override_parameters
 from kornia.constants import DataKey
 from kornia.geometry.bbox import transform_bbox
 from kornia.geometry.linalg import transform_points
@@ -88,7 +90,7 @@ class ApplyInverseImpl(ApplyInverseInterface):
         if hasattr(module, "transform_matrix") and module.transform_matrix is not None:
             mat = cast(torch.Tensor, module.transform_matrix)
         else:
-            mat = cls._get_transformation(input, module, param)
+            mat = cls._get_transformation(input, module, param, extra_args=extra_args)
         mat = torch.as_tensor(mat, device=input.device, dtype=input.dtype)
         to_apply = None
         if isinstance(module, _AugmentationBase):
@@ -119,7 +121,7 @@ class ApplyInverseImpl(ApplyInverseInterface):
         if hasattr(module, "transform_matrix") and module.transform_matrix is not None:
             mat = cast(torch.Tensor, module.transform_matrix)
         else:
-            mat = cls._get_transformation(input, module, param)
+            mat = cls._get_transformation(input, module, param, extra_args=extra_args)
         mat = torch.as_tensor(mat, device=input.device, dtype=input.dtype)
 
         if mat is not None:
@@ -129,7 +131,8 @@ class ApplyInverseImpl(ApplyInverseInterface):
 
     @classmethod
     def _get_transformation(
-        cls, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None
+        cls, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None,
+        extra_args: Dict[str, Any] = {}
     ) -> Optional[torch.Tensor]:
 
         if (
@@ -140,10 +143,11 @@ class ApplyInverseImpl(ApplyInverseInterface):
 
         if isinstance(module, GeometricAugmentationBase2D):
             _param = cast(Dict[str, torch.Tensor], param.data)  # type: ignore
-            mat = module.get_transformation_matrix(input, _param, flags=module.flags)
+            mat = module.get_transformation_matrix(input, _param, flags=module.flags, extra_args=extra_args)
         elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
             _param = cast(List[ParamItem], param.data)  # type: ignore
-            mat = module.get_transformation_matrix(input, _param)  # type: ignore
+            mat = module.get_transformation_matrix(
+                input, _param, recompute=False, extra_args=extra_args)  # type: ignore
         else:
             return None  # No need to update anything
         return mat
@@ -174,7 +178,7 @@ class InputApplyInverse(ApplyInverseImpl):
         if isinstance(module, (MixAugmentationBase,)):
             input, label = module(input, label=label, params=param.data)
         elif isinstance(module, (_AugmentationBase,)):
-            input = module(input, params=param.data)
+            input = module(input, params=param.data, **extra_args)
         elif isinstance(module, kornia.augmentation.ImageSequential):
             temp = module.apply_inverse_func
             temp2 = module.return_label
@@ -183,7 +187,7 @@ class InputApplyInverse(ApplyInverseImpl):
             if isinstance(module, kornia.augmentation.AugmentationSequential):
                 input, label = module(input, label=label, params=param.data, data_keys=[cls.data_key])
             else:
-                input, label = module(input, label=label, params=param.data)
+                input, label = module(input, label=label, params=param.data, extra_args=extra_args)
             module.apply_inverse_func = temp
             module.return_label = temp2
         else:
@@ -215,8 +219,12 @@ class InputApplyInverse(ApplyInverseImpl):
         elif isinstance(module, kornia.augmentation.ImageSequential):
             temp = module.apply_inverse_func
             module.apply_inverse_func = InputApplyInverse
-            input = module.inverse(
-                input, params=None if param is None else cast(List, param.data))
+            if isinstance(module, kornia.augmentation.AugmentationSequential):
+                input = module.inverse(
+                    input, params=None if param is None else cast(List, param.data))
+            else:
+                input = module.inverse(
+                    input, params=None if param is None else cast(List, param.data), extra_args=extra_args)
             module.apply_inverse_func = temp
         return input
 
@@ -290,7 +298,8 @@ class MaskApplyInverse(ApplyInverseImpl):
         """
 
         if isinstance(module, GeometricAugmentationBase2D):
-            input = module.inverse(input, params=None if param is None else cast(Dict, param.data), **extra_args)
+            input = module.inverse(
+                input, params=None if param is None else cast(Dict, param.data), **extra_args)
         elif isinstance(module, kornia.augmentation.ImageSequential):
             temp = module.apply_inverse_func
             module.apply_inverse_func = MaskApplyInverse

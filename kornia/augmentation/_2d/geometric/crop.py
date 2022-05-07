@@ -6,7 +6,7 @@ from torch.nn.functional import pad
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
-from kornia.augmentation.utils import _transform_input, _transform_output_shape
+from kornia.augmentation.utils import _transform_input, _transform_output_shape, override_parameters
 from kornia.constants import Resample
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
 
@@ -251,7 +251,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         else:
             input_pad = None
 
-        flags = self._override_parameters(self.flags, kwargs, in_place=False)
+        flags = override_parameters(self.flags, kwargs, in_place=False)
 
         if isinstance(input, (tuple, list)):
             ori_shape = input[0].shape
@@ -266,6 +266,8 @@ class RandomCrop(GeometricAugmentationBase2D):
             input_pad = self.compute_padding(input_temp.shape, flags) if input_pad is None else input_pad
             _input = self.precrop_padding(input_temp, input_pad, flags)  # type: ignore
             _input = _transform_output_shape(_input, ori_shape) if self.keepdim else _input  # type:ignore
+        if params is not None:
+            params, flags = self._process_kwargs_to_params_and_flags(params, self.flags, **kwargs)
         out = super().forward(_input, params, **kwargs)  # type:ignore
 
         # Update the actual input size for inverse

@@ -259,6 +259,10 @@ class AugmentationSequential(ImageSequential):
                     input = input.view(batch_size, -1, *input.shape[1:])
                 elif isinstance(module, PatchSequential):
                     raise NotImplementedError("Geometric involved PatchSequential is not supported.")
+                elif isinstance(module, (AugmentationSequential)) \
+                        and dcate in DataKey:
+                    # AugmentationSequential shall not take the extra_args arguments.
+                    input = ApplyInverse.inverse_by_key(input, module, param, dcate)
                 elif isinstance(module, (GeometricAugmentationBase2D, ImageSequential, RandomErasing)) \
                         and dcate in DataKey:
                     input = ApplyInverse.inverse_by_key(input, module, param, dcate, extra_args=extra_args)
@@ -359,39 +363,34 @@ class AugmentationSequential(ImageSequential):
                 raise ValueError("`params` must be provided whilst INPUT is not in data_keys.")
 
         outputs: List[Tensor] = [None] * len(_data_keys)  # type: ignore
-        # Forward the first image data to freeze the parameters.
-        if DataKey.INPUT in _data_keys:
-            idx = _data_keys.index(DataKey.INPUT)
-            _inp = args[idx]
-
-            if DataKey.INPUT in self.extra_args:
-                extra_args = self.extra_args[DataKey.INPUT]
-            else:
-                extra_args = {}
-
-            _out = super().forward(_inp, label, params=params, extra_args=extra_args)  # type: ignore
-            self._transform_matrix = self.get_transformation_matrix(_inp, params=params, recompute=True)
-            if self.return_label:
-                _input, label = cast(Tuple[Tensor, Tensor], _out)
-            else:
-                _input = cast(Tensor, _out)
-            outputs[idx] = _input
 
         self.return_label = self.return_label or label is not None or self.contains_label_operations(params)
 
-        for idx, (arg, dcate, out) in enumerate(zip(args, _data_keys, outputs)):
-            if out is not None:
+        for idx, (arg, dcate) in enumerate(zip(args, _data_keys)):
+            # Forward the param to all input data keys
+            if dcate in self.extra_args:
+                extra_args = self.extra_args[dcate]
+            else:
+                extra_args = {}
+
+            if dcate == DataKey.INPUT:
+                _inp = args[idx]
+
+                _out = super().forward(_inp, label, params=params, extra_args=extra_args)  # type: ignore
+                self._transform_matrix = self.get_transformation_matrix(_inp, params=params)
+                if self.return_label:
+                    _input, label = cast(Tuple[Tensor, Tensor], _out)
+                else:
+                    _input = cast(Tensor, _out)
+                outputs[idx] = _input
+                # NOTE: Skip the rest here.
                 continue
+
             # Using tensors straight-away
             if isinstance(arg, (Boxes,)):
                 input = arg.data  # all boxes are in (B, N, 4, 2) format now.
             else:
                 input = arg
-
-            if dcate in self.extra_args:
-                extra_args = self.extra_args[dcate]
-            else:
-                extra_args = {}
 
             for param in params:
                 module = self.get_submodule(param.name)
