@@ -11,23 +11,26 @@ class TestRGBShift:
     def test_rgb_shift_no_shift(self, device, dtype):
         r_shift, g_shift, b_shift = 0, 0, 0
         image = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)
+        expected = image
         shifted = kornia.enhance.shift_rgb(image, r_shift, g_shift, b_shift)
 
-        assert (image == shifted).all()
+        utils.assert_close(shifted, expected)
 
     def test_rgb_shift_all_zeros(self, device, dtype):
         r_shift, g_shift, b_shift = -0.1, -0.1, -0.1
         image = torch.zeros(2, 3, 5, 5, device=device, dtype=dtype)
+        expected = image
         shifted = kornia.enhance.shift_rgb(image, r_shift, g_shift, b_shift)
 
-        assert (image == shifted).all()
+        utils.assert_close(shifted, expected)
 
     def test_rgb_shift_all_ones(self, device, dtype):
         r_shift, g_shift, b_shift = 1, 1, 1
         image = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)
+        expected = torch.ones(2, 3, 5, 5, device=device, dtype=dtype)
         shifted = kornia.enhance.shift_rgb(image, r_shift, g_shift, b_shift)
 
-        assert (torch.ones(2, 3, 5, 5, device=device, dtype=dtype) == shifted).all()
+        utils.assert_close(shifted, expected)
 
     def test_rgb_shift_invalid_parameter_shape(self, device, dtype):
         r_shift, g_shift, b_shift = 0.5, 0.5, 0.5
@@ -47,4 +50,9 @@ class TestRGBShift:
         shifted = kornia.enhance.shift_rgb(image, r_shift, g_shift, b_shift)
         expected = torch.tensor([[[[0.3, 0.1]], [[0.5, 0.7]], [[0.1, 0.4]]]], device=device, dtype=dtype)
 
-        return (shifted == expected).all()
+        utils.assert_close(shifted, expected)
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-qq"], plugins=[TestRGBShift()]))

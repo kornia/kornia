@@ -8,9 +8,7 @@ from kornia.enhance import shift_rgb
 
 
 class RandomRGBShift(IntensityAugmentationBase2D):
-    """
-
-    Randomly shift each channel of an image.
+    """Randomly shift each channel of an image.
 
     Args:
         r_shift_limit: maximum value up to which the shift value can be generated for red channel;
@@ -78,9 +76,9 @@ class RandomRGBShift(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        r_shift_limit: int = 0.5,
-        g_shift_limit: int = 0.5,
-        b_shift_limit: int = 0.5,
+        r_shift_limit: float = 0.5,
+        g_shift_limit: float = 0.5,
+        b_shift_limit: float = 0.5,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
