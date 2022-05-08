@@ -144,14 +144,14 @@ class CommonTests(BaseTester):
         expected_transformation_shape = torch.Size((generated_params['batch_prob'].sum(), 3, 3))
         test_input = torch.ones(batch_shape, device=self.device, dtype=self.dtype)
         transformation = augmentation.compute_transformation(
-            test_input[generated_params['batch_prob']], generated_params
+            test_input[generated_params['batch_prob']], generated_params, augmentation.flags
         )
         assert transformation.shape == expected_transformation_shape
 
         # apply_transform can be called and returns the correct batch sized output
         if generated_params['batch_prob'].sum() != 0:
             output = augmentation.apply_transform(
-                test_input[generated_params['batch_prob']], generated_params, transformation
+                test_input[generated_params['batch_prob']], generated_params, augmentation.flags, transformation
             )
             assert output.shape[0] == generated_params['batch_prob'].sum()
         else:
@@ -990,7 +990,7 @@ class TestColorJiggle:
 
         expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
 
-        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
         assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
 
     def test_color_jiggle_batch(self, device, dtype):
@@ -1001,7 +1001,7 @@ class TestColorJiggle:
 
         expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).expand((2, 3, 3))  # 2 x 3 x 3
 
-        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
         assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
@@ -1083,7 +1083,7 @@ class TestColorJiggle:
 
         expected = self._get_expected_contrast(device, dtype)
 
-        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
 
     def test_random_contrast_list(self, device, dtype):
         torch.manual_seed(42)
@@ -1096,7 +1096,7 @@ class TestColorJiggle:
 
         expected = self._get_expected_contrast(device, dtype)
 
-        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
 
     def _get_expected_saturation(self, device, dtype):
         return torch.tensor(
@@ -1248,8 +1248,8 @@ class TestColorJiggle:
 
         expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
 
-        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
-        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-5)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
 
     def test_color_jitter_batch_sequential(self, device, dtype):
         f = AugmentationSequential(ColorJiggle(), ColorJiggle())
@@ -1259,9 +1259,9 @@ class TestColorJiggle:
 
         expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).expand((2, 3, 3))  # 2 x 3 x 3
 
-        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
-        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
-        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-5)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
@@ -1292,7 +1292,7 @@ class TestColorJitter:
 
         expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
 
-        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
         assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
 
     def test_color_jitter_batch(self, device, dtype):
@@ -1303,7 +1303,7 @@ class TestColorJitter:
 
         expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).expand((2, 3, 3))  # 2 x 3 x 3
 
-        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
         assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
@@ -1385,7 +1385,7 @@ class TestColorJitter:
 
         expected = self._get_expected_contrast(device, dtype)
 
-        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
 
     def test_random_contrast_list(self, device, dtype):
         torch.manual_seed(42)
@@ -1398,7 +1398,7 @@ class TestColorJitter:
 
         expected = self._get_expected_contrast(device, dtype)
 
-        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
 
     def _get_expected_saturation(self, device, dtype):
         return torch.tensor(
@@ -1550,8 +1550,8 @@ class TestColorJitter:
 
         expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
 
-        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
-        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-5)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
 
     def test_color_jitter_batch_sequential(self, device, dtype):
         f = AugmentationSequential(ColorJitter(), ColorJitter())
@@ -1561,9 +1561,9 @@ class TestColorJitter:
 
         expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).expand((2, 3, 3))  # 2 x 3 x 3
 
-        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
-        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
-        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-5)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
@@ -2145,7 +2145,7 @@ class TestRandomCrop:
         )
         out = aug(inp)
         assert_close(out, expected, atol=1e-4, rtol=1e-4)
-        assert_close(aug.inverse(out), inversed, atol=1e-4, rtol=1e-4)
+        assert_close(aug.inverse(out, padding_mode="constant"), inversed, atol=1e-4, rtol=1e-4)
 
     def test_padding_batch_1(self, device, dtype):
         torch.manual_seed(42)
@@ -2965,14 +2965,14 @@ class TestPlanckianJitter:
         f = RandomPlanckianJitter(select_from=1).to(device, dtype)
         input = self._get_input(device, dtype)
         expected = self._get_expected_output_blackbody(device, dtype)
-        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
 
     def test_planckian_jitter_cied(self, device, dtype):
         torch.manual_seed(0)
         f = RandomPlanckianJitter(mode='CIED', select_from=1).to(device, dtype)
         input = self._get_input(device, dtype)
         expected = self._get_expected_output_cied(device, dtype)
-        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
 
     def test_planckian_jitter_batch(self, device, dtype):
         torch.manual_seed(0)
@@ -2981,7 +2981,7 @@ class TestPlanckianJitter:
         select_from = [1, 2, 24]
         f = RandomPlanckianJitter(select_from=select_from).to(device, dtype)
         expected = self._get_expected_output_batch(device, dtype)
-        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
 
     def test_planckian_jitter_same_on_batch(self, device, dtype):
         torch.manual_seed(0)
@@ -2991,13 +2991,4 @@ class TestPlanckianJitter:
         f = RandomPlanckianJitter(select_from=select_from, same_on_batch=True,
                                   p=1.0).to(device, dtype)
         expected = self._get_expected_output_same_on_batch(device, dtype)
-        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
-
-
-class TestRandomRGBShift:
-
-    def test_smoke(self, device, dtype):
-        img = torch.rand(1, 3, 4, 5, device=device, dtype=dtype)
-        aug = RandomRGBShift(p=1.0).to(device)
-        out = aug(img)
-        assert out.shape == (1, 3, 4, 5)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)

@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 from torch import Tensor
@@ -46,7 +46,7 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
         tensor(True)
     """
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         h: int = int(params["forward_input_shape"][-2])
         flip_mat: Tensor = torch.tensor(
             [[1, 0, 0], [0, -1, h - 1], [0, 0, 1]], device=input.device, dtype=input.dtype
@@ -55,17 +55,18 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
         return flip_mat.repeat(input.size(0), 1, 1)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         return vflip(input)
 
     def inverse_transform(
         self,
         input: Tensor,
+        flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
-        **kwargs,
     ) -> Tensor:
         return self.apply_transform(
-            input, params=self._params, transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype)
+            input, params=self._params, transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype),
+            flags=flags
         )
