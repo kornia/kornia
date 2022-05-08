@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 from torch import Tensor
 
@@ -77,7 +77,7 @@ class ColorJiggle(IntensityAugmentationBase2D):
         )
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
 
         transforms = [

@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple, cast
+from typing import Any, Dict, Optional, Tuple, cast
 
 from torch import Tensor
 
@@ -52,7 +52,9 @@ class RandomPlasmaBrightness(IntensityAugmentationBase2D):
             rg.PlainUniformGenerator((roughness, "roughness", None, None), (intensity, "intensity", None, None)),
         )
 
-    def apply_transform(self, image: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None) -> Tensor:
+    def apply_transform(
+        self, image: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
         B, C, H, W = image.shape
         roughness = params["roughness"].to(image)
         intensity = params["intensity"].to(image).view(-1, 1, 1, 1)
@@ -103,7 +105,9 @@ class RandomPlasmaContrast(IntensityAugmentationBase2D):
             rg.PlainUniformGenerator, rg.PlainUniformGenerator((roughness, "roughness", None, None))
         )
 
-    def apply_transform(self, image: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None) -> Tensor:
+    def apply_transform(
+        self, image: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
         B, C, H, W = image.shape
         roughness = params["roughness"].to(image)
         contrast_map = 4 * diamond_square((B, C, H, W), roughness, device=image.device, dtype=image.dtype)
@@ -161,7 +165,9 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
             ),
         )
 
-    def apply_transform(self, image: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None) -> Tensor:
+    def apply_transform(
+        self, image: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
         B, _, H, W = image.shape
         roughness = params["roughness"].to(image)
         shade_intensity = params["shade_intensity"].to(image).view(-1, 1, 1, 1)

@@ -10,6 +10,7 @@ from kornia.testing import assert_close
 
 
 def reproducibility_test(input, seq):
+    """Any tests failed here indicate the output cannot be reproduced by the same params."""
     if isinstance(input, (tuple, list)):
         output_1 = seq(*input)
         output_2 = seq(*input, params=seq._params)
@@ -369,6 +370,7 @@ class TestAugmentationSequential:
             K.RandomCrop((3, 3), padding=1, cropping_mode='resample', fill=0),
             K.RandomAffine((360., 360.), p=1.),
             data_keys=["input", "mask", "bbox_xyxy", "keypoints"],
+            extra_args={}
         )
 
         reproducibility_test((input, input, bbox, points), aug)
@@ -441,13 +443,15 @@ class TestAugmentationSequential:
         assert out[1].shape == mask.shape
         assert out[2].shape == bbox.shape
         assert out[3].shape == keypoints.shape
-        reproducibility_test((inp, mask, bbox, keypoints), aug)
 
         out_inv = aug.inverse(*out)
         assert out_inv[0].shape == inp.shape
         assert out_inv[1].shape == mask.shape
         assert out_inv[2].shape == bbox.shape
         assert out_inv[3].shape == keypoints.shape
+
+        if random_apply is False:
+            reproducibility_test((inp, mask, bbox, keypoints), aug)
 
     def test_individual_forward_and_inverse(self, device, dtype):
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
@@ -468,7 +472,9 @@ class TestAugmentationSequential:
             K.RandomAffine(360, p=1.0),
             K.RandomCrop(crop_size, padding=1, cropping_mode='resample', fill=0),
             data_keys=['input', 'mask', 'bbox', 'keypoints'],
+            extra_args={}
         )
+        # NOTE: Mask data with nearest not passing reproducibility check under float64.
         reproducibility_test((inp, mask, bbox, keypoints), aug)
 
         out = aug(inp, mask, bbox, keypoints)
@@ -513,6 +519,7 @@ class TestAugmentationSequential:
             K.RandomAffine(360, p=1.0),
             data_keys=["input", "mask", "bbox", "keypoints"],
             random_apply=random_apply,
+            extra_args={}
         )
         out = aug(inp, mask, bbox, keypoints)
         assert out[0].shape == inp.shape
@@ -522,8 +529,6 @@ class TestAugmentationSequential:
 
         reproducibility_test((inp, mask, bbox, keypoints), aug)
 
-        # TODO(jian): we sometimes throw the following error
-        # AttributeError: 'tuple' object has no attribute 'shape'
         out_inv = aug.inverse(*out)
         assert out_inv[0].shape == inp.shape
         assert out_inv[1].shape == mask.shape
@@ -572,7 +577,8 @@ class TestAugmentationSequential:
         assert out[2].shape == bbox.shape
         assert out[3].shape == keypoints.shape
 
-        reproducibility_test((inp, mask, bbox, keypoints, bbox_2, bbox_wh, bbox_wh_2), aug)
+        if random_apply is False:
+            reproducibility_test((inp, mask, bbox, keypoints, bbox_2, bbox_wh, bbox_wh_2), aug)
 
     @pytest.mark.jit
     @pytest.mark.skip(reason="turn off due to Union Type")

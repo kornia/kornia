@@ -7,7 +7,7 @@ from torch import Tensor
 from torch.distributions import Bernoulli
 
 from kornia.augmentation.random_generator import RandomGeneratorBase
-from kornia.augmentation.utils import _adapted_sampling, _transform_output_shape
+from kornia.augmentation.utils import _adapted_sampling, _transform_output_shape, override_parameters
 
 TensorWithTransformMat = Union[Tensor, Tuple[Tensor, Tensor]]
 
@@ -81,7 +81,7 @@ class _BasicAugmentationBase(nn.Module):
             return self._param_generator(batch_shape, self.same_on_batch)
         return {}
 
-    def apply_transform(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         raise NotImplementedError
 
     def set_rng_device_and_dtype(self, device: torch.device, dtype: torch.dtype) -> None:
@@ -119,6 +119,23 @@ class _BasicAugmentationBase(nn.Module):
             batch_prob = batch_prob.repeat(batch_shape[0])
         return batch_prob
 
+    def _process_kwargs_to_params_and_flags(
+        self, params: Dict[str, Tensor], flags: Dict[str, Any], **kwargs
+    ) -> Tuple[Dict[str, Tensor], Dict[str, Any]]:
+
+        # NOTE: determine how to save self._params
+        save_kwargs = kwargs["save_kwargs"] if "save_kwargs" in kwargs else False
+
+        if save_kwargs:
+            params = override_parameters(params, kwargs, in_place=True)
+            self._params = params
+        else:
+            self._params = params
+            params = override_parameters(params, kwargs, in_place=False)
+
+        flags = override_parameters(self.flags, kwargs, in_place=False)
+        return params, flags
+
     def forward_parameters(self, batch_shape) -> Dict[str, Tensor]:
         to_apply = self.__batch_prob_generator__(batch_shape, self.p, self.p_batch, self.same_on_batch)
         _params = self.generate_parameters(torch.Size((int(to_apply.sum().item()), *batch_shape[1:])))
@@ -131,13 +148,25 @@ class _BasicAugmentationBase(nn.Module):
         _params.update({'forward_input_shape': input_size})
         return _params
 
-    def apply_func(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
-        input = self.transform_tensor(input)
-        return self.apply_transform(input, params)
+    def apply_func(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+        return self.apply_transform(input, params, flags)
 
     def forward(  # type: ignore
-        self, input: Tensor, params: Optional[Dict[str, Tensor]] = None  # type: ignore
+        self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs
     ) -> Tensor:
+        """Perform forward operations.
+
+        Args:
+            input: the input tensor.
+            params: the corresponding parameters for an operation.
+                If None, a new parameter suite will be generated.
+            **kwargs: key-value pairs to override the parameters and flags.
+
+        Note:
+            By default, all the overwriting parameters in kwargs will not be recorded
+            as in ``self._params``. If you wish it to be recorded, you may pass
+            ``save_kwargs=True`` additionally.
+        """
         in_tensor = self.__unpack_input__(input)
         self.__check_batching__(input)
         input_shape = in_tensor.shape
@@ -145,10 +174,14 @@ class _BasicAugmentationBase(nn.Module):
         batch_shape = in_tensor.shape
         if params is None:
             params = self.forward_parameters(batch_shape)
-        self._params = params
 
-        output = self.apply_func(input, self._params)
-        return self.transform_output_tensor(output, input_shape)
+        if 'batch_prob' not in params:
+            params['batch_prob'] = torch.tensor([True] * batch_shape[0])
+
+        params, flags = self._process_kwargs_to_params_and_flags(params, self.flags, **kwargs)
+
+        output = self.apply_func(in_tensor, params, flags)
+        return self.transform_output_tensor(output, input_shape) if self.keepdim else output
 
 
 class _AugmentationBase(_BasicAugmentationBase):
@@ -195,11 +228,11 @@ class _AugmentationBase(_BasicAugmentationBase):
     def identity_matrix(self, input: Tensor) -> Tensor:
         raise NotImplementedError
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         raise NotImplementedError
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         raise NotImplementedError
 
@@ -207,46 +240,28 @@ class _AugmentationBase(_BasicAugmentationBase):
         self,
         in_tensor: Tensor,
         params: Dict[str, Tensor],
+        flags: Optional[Dict[str, Any]] = None
     ) -> Tensor:
+        if flags is None:
+            flags = self.flags
         to_apply = params['batch_prob']
 
         # if no augmentation needed
-        if torch.sum(to_apply) == 0:
+        if not to_apply.any():
             output = in_tensor
             trans_matrix = self.identity_matrix(in_tensor)
         # if all data needs to be augmented
-        elif torch.sum(to_apply) == len(to_apply):
-            trans_matrix = self.compute_transformation(in_tensor, params)
-            output = self.apply_transform(in_tensor, params, trans_matrix)
+        elif to_apply.all():
+            trans_matrix = self.compute_transformation(in_tensor, params=params, flags=flags)
+            output = self.apply_transform(in_tensor, params=params, flags=flags, transform=trans_matrix)
         else:
             output = in_tensor.clone()
             trans_matrix = self.identity_matrix(in_tensor)
-            trans_matrix[to_apply] = self.compute_transformation(in_tensor[to_apply], params)
-            output[to_apply] = self.apply_transform(in_tensor[to_apply], params, trans_matrix[to_apply])
+            trans_matrix[to_apply] = self.compute_transformation(
+                in_tensor[to_apply], params=params, flags=flags)
+            output[to_apply] = self.apply_transform(
+                in_tensor[to_apply], params=params, flags=flags, transform=trans_matrix[to_apply])
 
         self._transform_matrix = trans_matrix
 
         return output
-
-    def forward(  # type: ignore
-        self,
-        input: Tensor,
-        params: Optional[Dict[str, Tensor]] = None,  # type: ignore
-    ) -> Tensor:
-        in_tensor = self.__unpack_input__(input)
-        self.__check_batching__(input)
-        input_shape = in_tensor.shape
-        in_tensor = self.transform_tensor(in_tensor)
-        batch_shape = in_tensor.shape
-
-        if params is None:
-            params = self.forward_parameters(batch_shape)
-        if 'batch_prob' not in params:
-            params['batch_prob'] = torch.tensor([True] * batch_shape[0])
-            # TODO(jian): we cannot throw a warning every time.
-            # warnings.warn("`batch_prob` is not found in params. Will assume applying on all data.")
-
-        self._params = params
-        output = self.apply_func(in_tensor, self._params)
-
-        return _transform_output_shape(output, input_shape) if self.keepdim else output

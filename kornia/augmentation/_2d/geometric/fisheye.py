@@ -1,4 +1,4 @@
-from typing import Dict, Optional, cast
+from typing import Any, Dict, Optional, cast
 
 from torch import Tensor
 
@@ -72,10 +72,12 @@ class RandomFisheye(GeometricAugmentationBase2D):
             raise ValueError(f"Tensor must be of shape (2,). Got: {data.shape}.")
 
     # TODO: It is incorrect to return identity
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return self.identity_matrix(input)
 
-    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None) -> Tensor:
+    def apply_transform(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
         # create the initial sampling fields
         B, _, H, W = input.shape
         grid = create_meshgrid(H, W, normalized_coordinates=True)

@@ -319,7 +319,7 @@ class PatchSequential(ImageSequential):
             _label = label
 
         module = self.get_submodule(params.param.name)
-        output, out_label = self.apply_to_input(_input, _label, module, params.param)
+        output, out_label = self.apply_to_input(_input, _label, module, params.param, extra_args={})
 
         if isinstance(module, (_AugmentationBase, MixAugmentationBase, SequentialBase)):
             out_param = ParamItem(params.param.name, module._params)
