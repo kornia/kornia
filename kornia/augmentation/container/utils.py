@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Type, U
 
 import torch
 import torch.nn as nn
+from torch import Tensor
 
 import kornia  # lazy loading for circular dependencies
 from kornia.augmentation import GeometricAugmentationBase2D, MixAugmentationBase, RandomCrop, RandomErasing
@@ -35,9 +36,9 @@ class ApplyInverseInterface(metaclass=ABCMeta):
     @classmethod
     @abstractmethod
     def apply_trans(
-        cls, input: torch.Tensor, label: Optional[torch.Tensor], module: nn.Module, param: ParamItem,
+        cls, input: Tensor, label: Optional[Tensor], module: nn.Module, param: ParamItem,
         extra_args: Dict[str, Any] = {}
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    ) -> Tuple[Tensor, Optional[Tensor]]:
         """Apply a transformation with respect to the parameters.
 
         Args:
@@ -52,9 +53,9 @@ class ApplyInverseInterface(metaclass=ABCMeta):
     @classmethod
     @abstractmethod
     def inverse(
-        cls, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None,
+        cls, input: Tensor, module: nn.Module, param: Optional[ParamItem] = None,
         extra_args: Dict[str, Any] = {}
-    ) -> torch.Tensor:
+    ) -> Tensor:
         """Inverse a transformation with respect to the parameters.
 
         Args:
@@ -73,9 +74,9 @@ class ApplyInverseImpl(ApplyInverseInterface):
 
     @classmethod
     def apply_trans(
-        cls, input: torch.Tensor, label: Optional[torch.Tensor], module: nn.Module, param: ParamItem,
+        cls, input: Tensor, label: Optional[Tensor], module: nn.Module, param: ParamItem,
         extra_args: Dict[str, Any] = {}
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    ) -> Tuple[Tensor, Optional[Tensor]]:
         """Apply a transformation with respect to the parameters.
 
         Args:
@@ -85,9 +86,9 @@ class ApplyInverseImpl(ApplyInverseInterface):
                 to apply transformations.
             param: the corresponding parameters to the module.
         """
-        mat: Optional[torch.Tensor]
+        mat: Optional[Tensor]
         if hasattr(module, "transform_matrix") and module.transform_matrix is not None:
-            mat = cast(torch.Tensor, module.transform_matrix)
+            mat = cast(Tensor, module.transform_matrix)
         else:
             mat = cls._get_transformation(input, module, param, extra_args=extra_args)
         mat = torch.as_tensor(mat, device=input.device, dtype=input.dtype)
@@ -105,9 +106,9 @@ class ApplyInverseImpl(ApplyInverseInterface):
 
     @classmethod
     def inverse(
-        cls, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None,
+        cls, input: Tensor, module: nn.Module, param: Optional[ParamItem] = None,
         extra_args: Dict[str, Any] = {}
-    ) -> torch.Tensor:
+    ) -> Tensor:
         """Inverse a transformation with respect to the parameters.
 
         Args:
@@ -116,23 +117,23 @@ class ApplyInverseImpl(ApplyInverseInterface):
                 to apply transformations.
             param: the corresponding parameters to the module.
         """
-        mat: Optional[torch.Tensor]
+        mat: Optional[Tensor]
         if hasattr(module, "transform_matrix") and module.transform_matrix is not None:
-            mat = cast(torch.Tensor, module.transform_matrix)
+            mat = cast(Tensor, module.transform_matrix)
         else:
             mat = cls._get_transformation(input, module, param, extra_args=extra_args)
         mat = torch.as_tensor(mat, device=input.device, dtype=input.dtype)
 
         if mat is not None:
-            transform: torch.Tensor = cls._get_inverse_transformation(mat)
+            transform: Tensor = cls._get_inverse_transformation(mat)
             input = cls.apply_func(torch.as_tensor(transform, device=input.device, dtype=input.dtype), input)
         return input
 
     @classmethod
     def _get_transformation(
-        cls, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None,
+        cls, input: Tensor, module: nn.Module, param: Optional[ParamItem] = None,
         extra_args: Dict[str, Any] = {}
-    ) -> Optional[torch.Tensor]:
+    ) -> Optional[Tensor]:
 
         if (
             isinstance(module, (GeometricAugmentationBase2D, kornia.augmentation.ImageSequential))
@@ -140,9 +141,11 @@ class ApplyInverseImpl(ApplyInverseInterface):
         ):
             raise ValueError(f"Parameters of transformation matrix for {module} has not been computed.")
 
+        mat: Optional[Tensor] = None
         if isinstance(module, GeometricAugmentationBase2D):
-            _param = cast(Dict[str, torch.Tensor], param.data)  # type: ignore
-            mat = module.get_transformation_matrix(input, _param, flags=module.flags, extra_args=extra_args)
+            _param = cast(Dict[str, Tensor], param.data)  # type: ignore
+            flags = override_parameters(module.flags, extra_args)
+            mat = module.get_transformation_matrix(input, _param, flags=flags)
         elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
             _param = cast(List[ParamItem], param.data)  # type: ignore
             mat = module.get_transformation_matrix(
@@ -152,7 +155,7 @@ class ApplyInverseImpl(ApplyInverseInterface):
         return mat
 
     @classmethod
-    def _get_inverse_transformation(cls, transform: torch.Tensor) -> torch.Tensor:
+    def _get_inverse_transformation(cls, transform: Tensor) -> Tensor:
         return _torch_inverse_cast(transform)
 
 
@@ -162,9 +165,9 @@ class InputApplyInverse(ApplyInverseImpl):
 
     @classmethod
     def apply_trans(  # type: ignore
-        cls, input: torch.Tensor, label: Optional[torch.Tensor], module: nn.Module, param: ParamItem,
+        cls, input: Tensor, label: Optional[Tensor], module: nn.Module, param: ParamItem,
         extra_args: Dict[str, Any] = {}
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    ) -> Tuple[Tensor, Optional[Tensor]]:
         """Apply a transformation with respect to the parameters.
 
         Args:
@@ -201,9 +204,9 @@ class InputApplyInverse(ApplyInverseImpl):
 
     @classmethod
     def inverse(
-        cls, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None,
+        cls, input: Tensor, module: nn.Module, param: Optional[ParamItem] = None,
         extra_args: Dict[str, Any] = {}
-    ) -> torch.Tensor:
+    ) -> Tensor:
         """Inverse a transformation with respect to the parameters.
 
         Args:
@@ -219,8 +222,8 @@ class InputApplyInverse(ApplyInverseImpl):
             temp = module.apply_inverse_func
             module.apply_inverse_func = InputApplyInverse
             if isinstance(module, kornia.augmentation.AugmentationSequential):
-                input = module.inverse(
-                    input, params=None if param is None else cast(List, param.data))
+                input = cast(Tensor, module.inverse(
+                    input, params=None if param is None else cast(List, param.data)))
             else:
                 input = module.inverse(
                     input, params=None if param is None else cast(List, param.data), extra_args=extra_args)
@@ -247,9 +250,9 @@ class MaskApplyInverse(ApplyInverseImpl):
 
     @classmethod
     def apply_trans(
-        cls, input: torch.Tensor, label: Optional[torch.Tensor], module: nn.Module, param: Optional[ParamItem] = None,
+        cls, input: Tensor, label: Optional[Tensor], module: nn.Module, param: Optional[ParamItem] = None,
         extra_args: Dict[str, Any] = {}
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    ) -> Tuple[Tensor, Optional[Tensor]]:
         """Apply a transformation with respect to the parameters.
 
         Args:
@@ -265,7 +268,7 @@ class MaskApplyInverse(ApplyInverseImpl):
             _param = None  # type: ignore
 
         if isinstance(module, (GeometricAugmentationBase2D, RandomErasing)):
-            _param = cast(Dict[str, torch.Tensor], _param).copy()
+            _param = cast(Dict[str, Tensor], _param).copy()
             # TODO: Parametrize value to pad with across the board for different keys
             if 'values' in _param:
                 _param['values'] = torch.zeros_like(_param['values'])  # Always pad with zeros
@@ -284,9 +287,9 @@ class MaskApplyInverse(ApplyInverseImpl):
 
     @classmethod
     def inverse(
-        cls, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None,
+        cls, input: Tensor, module: nn.Module, param: Optional[ParamItem] = None,
         extra_args: Dict[str, Any] = {}
-    ) -> torch.Tensor:
+    ) -> Tensor:
         """Inverse a transformation with respect to the parameters.
 
         Args:
@@ -315,14 +318,14 @@ class BBoxApplyInverse(ApplyInverseImpl):
     """
 
     @classmethod
-    def _get_padding_size(cls, module: nn.Module, param: Optional[ParamItem]) -> Optional[torch.Tensor]:
+    def _get_padding_size(cls, module: nn.Module, param: Optional[ParamItem]) -> Optional[Tensor]:
         if isinstance(module, RandomCrop):
-            _param = cast(Dict[str, torch.Tensor], param.data)  # type: ignore
+            _param = cast(Dict[str, Tensor], param.data)  # type: ignore
             return _param.get("padding_size")
         return None
 
     @classmethod
-    def pad(cls, input: torch.Tensor, padding_size: torch.Tensor) -> torch.Tensor:
+    def pad(cls, input: Tensor, padding_size: Tensor) -> Tensor:
         """
         Args:
             input: (B, N, 4, 2)
@@ -349,7 +352,7 @@ class BBoxApplyInverse(ApplyInverseImpl):
         return _input
 
     @classmethod
-    def unpad(cls, input: torch.Tensor, padding_size: torch.Tensor) -> torch.Tensor:
+    def unpad(cls, input: Tensor, padding_size: Tensor) -> Tensor:
         """
         Args:
             input: (B, N, 4, 2)
@@ -379,9 +382,9 @@ class BBoxApplyInverse(ApplyInverseImpl):
 
     @classmethod
     def apply_trans(
-        cls, input: torch.Tensor, label: Optional[torch.Tensor], module: nn.Module, param: ParamItem,
+        cls, input: Tensor, label: Optional[Tensor], module: nn.Module, param: ParamItem,
         extra_args: Dict[str, Any] = {}
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    ) -> Tuple[Tensor, Optional[Tensor]]:
         """Apply a transformation with respect to the parameters.
 
         Args:
@@ -405,9 +408,9 @@ class BBoxApplyInverse(ApplyInverseImpl):
 
     @classmethod
     def inverse(
-        cls, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None,
+        cls, input: Tensor, module: nn.Module, param: Optional[ParamItem] = None,
         extra_args: Dict[str, Any] = {}
-    ) -> torch.Tensor:
+    ) -> Tensor:
         """Inverse a transformation with respect to the parameters.
 
         Args:
@@ -453,17 +456,17 @@ class BBoxXYXYApplyInverse(BBoxApplyInverse):
 
     @classmethod
     def apply_trans(
-        cls, input: torch.Tensor, label: Optional[torch.Tensor], module: nn.Module, param: ParamItem,
+        cls, input: Tensor, label: Optional[Tensor], module: nn.Module, param: ParamItem,
         extra_args: Dict[str, Any] = {}
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    ) -> Tuple[Tensor, Optional[Tensor]]:
         warnings.warn("BBoxXYXYApplyInverse is no longer maintained. Please use BBoxApplyInverse instead.")
         return super().apply_trans(input, label=label, module=module, param=param, extra_args=extra_args)
 
     @classmethod
     def inverse(
-        cls, input: torch.Tensor, module: nn.Module, param: Optional[ParamItem] = None,
+        cls, input: Tensor, module: nn.Module, param: Optional[ParamItem] = None,
         extra_args: Dict[str, Any] = {}
-    ) -> torch.Tensor:
+    ) -> Tensor:
         warnings.warn("BBoxXYXYApplyInverse is no longer maintained. Please use BBoxApplyInverse instead.")
         return super().inverse(input, module=module, param=param, extra_args=extra_args)
 
@@ -505,7 +508,7 @@ class KeypointsApplyInverse(BBoxApplyInverse):
     apply_func = partial(transform_points)
 
     @classmethod
-    def pad(cls, input: torch.Tensor, padding_size: torch.Tensor) -> torch.Tensor:
+    def pad(cls, input: Tensor, padding_size: Tensor) -> Tensor:
 
         if len(input.shape) not in (2, 3,):
             raise AssertionError(input.shape)
@@ -528,7 +531,7 @@ class KeypointsApplyInverse(BBoxApplyInverse):
         return _input
 
     @classmethod
-    def unpad(cls, input: torch.Tensor, padding_size: torch.Tensor) -> torch.Tensor:
+    def unpad(cls, input: Tensor, padding_size: Tensor) -> Tensor:
 
         if len(input.shape) not in (2, 3,):
             raise AssertionError(input.shape)
@@ -570,13 +573,13 @@ class ApplyInverse:
     @classmethod
     def apply_by_key(
         cls,
-        input: torch.Tensor,
-        label: Optional[torch.Tensor],
+        input: Tensor,
+        label: Optional[Tensor],
         module: nn.Module,
         param: ParamItem,
         dcate: Union[str, int, DataKey] = DataKey.INPUT,
         extra_args: Dict[str, Any] = {}
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    ) -> Tuple[Tensor, Optional[Tensor]]:
         """Apply a transformation with respect to the parameters.
 
         Args:
@@ -598,12 +601,12 @@ class ApplyInverse:
     @classmethod
     def inverse_by_key(
         cls,
-        input: torch.Tensor,
+        input: Tensor,
         module: nn.Module,
         param: Optional[ParamItem] = None,
         dcate: Union[str, int, DataKey] = DataKey.INPUT,
         extra_args: Dict[str, Any] = {}
-    ) -> torch.Tensor:
+    ) -> Tensor:
         """Inverse a transformation with respect to the parameters.
 
         Args:

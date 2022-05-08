@@ -298,6 +298,8 @@ class ImageSequential(SequentialBase):
                 else:
                     mat = module.get_transformation_matrix(
                         input, param.data, recompute=recompute, extra_args=extra_args)  # type: ignore
+                    if mat is None:
+                        mat = module.identity_matrix(input)
                 res_mat = mat if res_mat is None else mat @ res_mat
         return res_mat
 
