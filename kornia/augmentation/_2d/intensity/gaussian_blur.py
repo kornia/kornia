@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from torch import Tensor
 
@@ -63,8 +63,8 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         self.flags = dict(kernel_size=kernel_size, sigma=sigma, border_type=BorderType.get(border_type))
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         return gaussian_blur2d(
-            input, self.flags["kernel_size"], self.flags["sigma"], self.flags["border_type"].name.lower()
+            input, flags["kernel_size"], flags["sigma"], flags["border_type"].name.lower()
         )

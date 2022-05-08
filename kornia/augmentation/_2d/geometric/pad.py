@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple, Union, cast
+from typing import Any, Dict, Optional, Tuple, Union, cast
 
 import torch
 from torch import Tensor
@@ -58,25 +58,25 @@ class PadTo(GeometricAugmentationBase2D):
 
     # TODO: It is incorrect to return identity
     # TODO: Having a resampled version with ``warp_affine``
-    def compute_transformation(self, image: Tensor, params: Dict[str, Tensor]) -> Tensor:
+    def compute_transformation(self, image: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return self.identity_matrix(image)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         _, _, height, width = input.shape
-        height_pad: int = self.flags["size"][0] - height
-        width_pad: int = self.flags["size"][1] - width
+        height_pad: int = flags["size"][0] - height
+        width_pad: int = flags["size"][1] - width
         return torch.nn.functional.pad(
-            input, [0, width_pad, 0, height_pad], mode=self.flags["pad_mode"], value=self.flags["pad_value"]
+            input, [0, width_pad, 0, height_pad], mode=flags["pad_mode"], value=flags["pad_value"]
         )
 
     def inverse_transform(
         self,
         input: Tensor,
+        flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
-        **kwargs
     ) -> Tensor:
         size = cast(Tuple[int, int], size)
         return input[..., : size[0], : size[1]]

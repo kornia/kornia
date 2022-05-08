@@ -133,9 +133,11 @@ class SequentialBase(nn.Sequential):
         self.update_attribute(keepdim=keepdim)
 
     def clear_state(self) -> None:
+        """Reset self._params state to None."""
         self._params = None
 
     def update_params(self, param: Any) -> None:
+        """Update self._params state."""
         if self._params is None:
             self._params = [param]
         else:

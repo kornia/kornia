@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple, Union, cast
+from typing import Any, Dict, Optional, Tuple, Union, cast
 
 from torch import Tensor
 
@@ -82,55 +82,56 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         )
         self._param_generator = cast(rg.ResizedCropGenerator, rg.ResizedCropGenerator(size, scale, ratio))
         self.flags = dict(
-            size=size, resample=Resample.get(resample), align_corners=align_corners, cropping_mode=cropping_mode
+            size=size, resample=Resample.get(resample), align_corners=align_corners, cropping_mode=cropping_mode,
+            padding_mode="zeros"
         )
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
-        if self.flags["cropping_mode"] == "resample":
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+        if flags["cropping_mode"] == "resample":
             transform: Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
             transform = transform.expand(input.shape[0], -1, -1)
             return transform
-        if self.flags["cropping_mode"] == "slice":  # Skip the computation for slicing.
+        if flags["cropping_mode"] == "slice":  # Skip the computation for slicing.
             return self.identity_matrix(input)
-        raise NotImplementedError(f"Not supported type: {self.flags['cropping_mode']}.")
+        raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        if self.flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
+        if flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
             transform = cast(Tensor, transform)
             return crop_by_transform_mat(
                 input,
                 transform,
-                self.flags["size"],
-                mode=self.flags["resample"].name.lower(),
+                flags["size"],
+                mode=flags["resample"].name.lower(),
                 padding_mode="zeros",
-                align_corners=self.flags["align_corners"],
+                align_corners=flags["align_corners"],
             )
-        if self.flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
+        if flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
             return crop_by_indices(
                 input,
                 params["src"],
-                self.flags["size"],
-                interpolation=(self.flags["resample"].name).lower(),
-                align_corners=self.flags["align_corners"]
+                flags["size"],
+                interpolation=flags["resample"].name.lower(),
+                align_corners=flags["align_corners"]
             )
-        raise NotImplementedError(f"Not supported type: {self.flags['cropping_mode']}.")
+        raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def inverse_transform(
         self,
         input: Tensor,
+        flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
-        **kwargs,
     ) -> Tensor:
-        if self.flags["cropping_mode"] != "resample":
+        if flags["cropping_mode"] != "resample":
             raise NotImplementedError(
-                f"`inverse` is only applicable for resample cropping mode. Got {self.flags['cropping_mode']}."
+                f"`inverse` is only applicable for resample cropping mode. Got {flags['cropping_mode']}."
             )
         size = cast(Tuple[int, int], size)
-        mode = self.flags["resample"].name.lower() if "mode" not in kwargs else kwargs["mode"]
-        align_corners = self.flags["align_corners"] if "align_corners" not in kwargs else kwargs["align_corners"]
-        padding_mode = "zeros" if "padding_mode" not in kwargs else kwargs["padding_mode"]
         transform = cast(Tensor, transform)
-        return crop_by_transform_mat(input, transform[:, :2, :], size, mode, padding_mode, align_corners)
+        return crop_by_transform_mat(
+            input, transform[:, :2, :], size, flags["resample"].name.lower(),
+            flags["padding_mode"], flags["align_corners"]
+        )

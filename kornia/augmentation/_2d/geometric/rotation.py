@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
 from torch import Tensor
@@ -80,7 +80,7 @@ class RandomRotation(GeometricAugmentationBase2D):
         )
         self.flags = dict(resample=Resample.get(resample), align_corners=align_corners)
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         # TODO: Update to use `get_rotation_matrix2d`
         angles: Tensor = params["degrees"].to(input)
 
@@ -95,20 +95,22 @@ class RandomRotation(GeometricAugmentationBase2D):
         return trans_mat
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         transform = cast(Tensor, transform)
+
         return affine(
-            input, transform[..., :2, :3], self.flags["resample"].name.lower(), "zeros", self.flags["align_corners"]
+            input, transform[..., :2, :3], flags["resample"].name.lower(), "zeros", flags["align_corners"]
         )
 
     def inverse_transform(
         self,
         input: Tensor,
+        flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
-        **kwargs,
     ) -> Tensor:
         return self.apply_transform(
-            input, params=self._params, transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype)
+            input, params=self._params, transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype),
+            flags=flags
         )
