@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple, Union, cast
+from typing import Any, Dict, Optional, Tuple, Union, cast
 
 from torch import Tensor
 
@@ -90,7 +90,7 @@ class RandomRotation3D(AugmentationBase3D):
         self.flags = dict(resample=Resample.get(resample), align_corners=align_corners)
         self._param_generator = cast(rg.RotationGenerator3D, rg.RotationGenerator3D(degrees))
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         yaw: Tensor = params["yaw"].to(input)
         pitch: Tensor = params["pitch"].to(input)
         roll: Tensor = params["roll"].to(input)
@@ -107,9 +107,9 @@ class RandomRotation3D(AugmentationBase3D):
         return trans_mat
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         transform = cast(Tensor, transform)
         return affine3d(
-            input, transform[..., :3, :4], self.flags["resample"].name.lower(), "zeros", self.flags["align_corners"]
+            input, transform[..., :3, :4], flags["resample"].name.lower(), "zeros", flags["align_corners"]
         )

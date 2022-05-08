@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple, Union, cast
+from typing import Any, Dict, Optional, Tuple, Union, cast
 
 from torch import Tensor
 
@@ -98,11 +98,11 @@ class RandomMotionBlur3D(AugmentationBase3D):
         self.flags = dict(border_type=BorderType.get(border_type), resample=Resample.get(resample))
         self._param_generator = cast(rg.MotionBlurGenerator3D, rg.MotionBlurGenerator3D(kernel_size, angle, direction))
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return self.identity_matrix(input)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         kernel_size: int = cast(int, params["ksize_factor"].unique().item())
         angle = params["angle_factor"]
