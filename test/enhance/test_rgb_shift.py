@@ -51,8 +51,3 @@ class TestRGBShift:
         expected = torch.tensor([[[[0.3, 0.1]], [[0.5, 0.7]], [[0.1, 0.4]]]], device=device, dtype=dtype)
 
         utils.assert_close(shifted, expected)
-
-
-if __name__ == "__main__":
-    import sys
-    sys.exit(pytest.main(["-qq"], plugins=[TestRGBShift()]))
