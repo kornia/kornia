@@ -85,13 +85,14 @@ def _one_diamond_one_square(
 
     If this function is run in the usual sense, it is more efficient if it is run in a no_grad()
 
-    img: A 4D tensor where dimensions are Batch, Channel, Width, Height. Width and Height must both be 2^N+1 and
-        Batch and Channels should in the usual case be 1.
-    random_scale: A float  number in [0,1] controlling the randomness created pixels get. I the usual case, it is
-        halved at every applycation of this function.
-    random_fn: the random function to generate the image seed.
-    diamond_kernel: the 3x3 kernel to perform the diamond step.
-    square_kernel: the 3x3 kernel to perform the square step.
+    Args:
+        img: a 4D tensor where dimensions are Batch, Channel, Width, Height. Width and Height must both be 2^N+1 and
+            Batch and Channels should in the usual case be 1.
+        random_scale: a float  number in [0,1] controlling the randomness created pixels get. I the usual case, it is
+            halved at every applycation of this function.
+        random_fn: the random function to generate the image seed.
+        diamond_kernel: the 3x3 kernel to perform the diamond step.
+        square_kernel: the 3x3 kernel to perform the square step.
 
     Return:
         A tensor on the same device as img with the same channels as img and width, height of 2^(N+1)+1.
