@@ -15,20 +15,28 @@ from kornia.core import Tensor
 from kornia.testing import KORNIA_CHECK
 
 
-class ImageType(Enum):
+class ImageLoadType(Enum):
     r"""Enum to specify the desired image type"""
     UNCHANGED = 0
     GRAY8 = 1
     RGB8 = 2
     RGBA8 = 3
-    BGR8 = 4
-    GRAY32 = 5
-    RGB32 = 6
+    GRAY32 = 4
+    RGB32 = 5
 
 
 def load_image_to_tensor(path_file: str, device: str) -> Tensor:
+    # load the file and decodes using kornia_rs. Internally it uses a package that
+    # combines image-rs a self maintained version of the dlpack-rs. After the decoding,
+    # the obtained stream bits are encapusalted to a cv::Tensor data structure without
+    # memory ownership and passed as PyCapsule from rust to python.
     cv_tensor = kornia_rs.read_image_rs(path_file)
-    th_tensor = torch.utils.dlpack.from_dlpack(cv_tensor)  # HxWx3
+    # for convenience use the torch dlpack parser to get a zero copy torch.Tensor
+    # TODO: evaluate other potential API so that we can return in numpy, jax, mxnet since
+    # the kornia_rs cv::Tensor has this ability.
+    th_tensor = torch.utils.dlpack.from_dlpack(cv_tensor)  # type: ignore # HxWx3
+    # move the tensor to the desired device, move the data layout to CHW and clone
+    # to return an owned data tensor.
     return th_tensor.to(torch.device(device)).permute(2, 0, 1).clone()  # CxHxW
 
 
@@ -42,7 +50,7 @@ def to_uint8(image: Tensor) -> Tensor:
     return image.mul(255.0).byte()
 
 
-def load_image(path_file: str, desired_type: ImageType, device: str = "cpu") -> Tensor:
+def load_image(path_file: str, desired_type: ImageLoadType, device: str = "cpu") -> Tensor:
     """Read an image file and decode using the Kornia Rust backend.
 
     Args:
@@ -59,9 +67,9 @@ def load_image(path_file: str, desired_type: ImageType, device: str = "cpu") -> 
     KORNIA_CHECK(os.path.isfile(path_file), f"Invalid file: {path_file}")
     image: Tensor = load_image_to_tensor(path_file, device)  # CxHxW
 
-    if desired_type == ImageType.UNCHANGED:
+    if desired_type == ImageLoadType.UNCHANGED:
         return image
-    elif desired_type == ImageType.GRAY8:
+    elif desired_type == ImageLoadType.GRAY8:
         if image.shape[0] == 1 and image.dtype == torch.uint8:
             return image
         elif image.shape[0] == 3 and image.dtype == torch.uint8:
@@ -70,17 +78,17 @@ def load_image(path_file: str, desired_type: ImageType, device: str = "cpu") -> 
         elif image.shape[0] == 4 and image.dtype == torch.uint8:
             gray32 = rgb_to_grayscale(rgba_to_rgb(to_float32(image)))
             return to_uint8(gray32)
-    elif desired_type == ImageType.RGB8:
+    elif desired_type == ImageLoadType.RGB8:
         if image.shape[0] == 3 and image.dtype == torch.uint8:
             return image
         elif image.shape[0] == 1 and image.dtype == torch.uint8:
             rgb32 = grayscale_to_rgb(to_float32(image))
             return to_uint8(rgb32)
-    elif desired_type == ImageType.RGBA8:
+    elif desired_type == ImageLoadType.RGBA8:
         if image.shape[0] == 3 and image.dtype == torch.uint8:
             rgba32 = rgb_to_rgba(to_float32(image), 0.0)
             return to_uint8(rgba32)
-    elif desired_type == ImageType.GRAY32:
+    elif desired_type == ImageLoadType.GRAY32:
         if image.shape[0] == 1 and image.dtype == torch.uint8:
             return to_float32(image)
         elif image.shape[0] == 3 and image.dtype == torch.uint8:
@@ -89,7 +97,7 @@ def load_image(path_file: str, desired_type: ImageType, device: str = "cpu") -> 
         elif image.shape[0] == 4 and image.dtype == torch.uint8:
             gray32 = rgb_to_grayscale(rgba_to_rgb(to_float32(image)))
             return gray32
-    elif desired_type == ImageType.RGB32:
+    elif desired_type == ImageLoadType.RGB32:
         if image.shape[0] == 3 and image.dtype == torch.uint8:
             return to_float32(image)
         elif image.shape[0] == 1 and image.dtype == torch.uint8:

@@ -10,30 +10,35 @@ for Computer Vision in the `Rust <https://www.rust-lang.org/>`_ language. In add
 natively in Rust to reduce the memory footprint during the decoding and types conversion.
 
 .. tip::
-    You need to ``pip install kornia_rs`` to use this package.
+    You need to ``pip install kornia_rs`` to use this package. For now we only support Linux platforms.
+    Contact us or sponsor the project for more support (mac, win, rust, c++, video and camera). See:
+    `https://opencollective.com/kornia <https://opencollective.com/kornia>`_
+
+.. note::
+    The package needs at least PyTorch 1.10.0 installed.
 
 .. code-block:: python
 
     import kornia as K
     from kornia.core import Tensor
 
-    img: Tensor = K.io.load_image(file_path, ImageType.UNCHANGED, "cuda")
-    # it will load a 3xHxW / in the original format in "cuda"
+    img: Tensor = K.io.load_image(file_path, ImageType.UNCHANGED, device="cuda")
+    # will load CxHxW / in the original format in "cuda"
 
-    img: Tensor = K.io.load_image(file_path, ImageType.RGB8, "cpu")
-    # it will load a 3xHxW / in torch.uint in range [0,255] in "cpu"
+    img: Tensor = K.io.load_image(file_path, ImageType.RGB8, device="cpu")
+    # will load 3xHxW / in torch.uint in range [0,255] in "cpu"
 
-    img: Tensor = K.io.load_image(file_path, ImageType.GRAY8, "cuda")
-    # it will load a 1xHxW / in torch.uint8 in range [0,255] in "cuda"
+    img: Tensor = K.io.load_image(file_path, ImageType.GRAY8, device="cuda")
+    # will load 1xHxW / in torch.uint8 in range [0,255] in "cuda"
 
-    img: Tensor = K.io.load_image(file_path, ImageType.GRAY32, "cpu")
-    # it will load a 1xHxW / in torch.float32 in range [0,1] in "cpu"
+    img: Tensor = K.io.load_image(file_path, ImageType.GRAY32, device="cpu")
+    # will load 1xHxW / in torch.float32 in range [0,1] in "cpu"
 
-    img: Tensor = K.io.load_image(file_path, ImageType.RGB32, "cuda")
-    # it will load a 3xHxW / in torch.float32 in range [0,1] in "cuda"
+    img: Tensor = K.io.load_image(file_path, ImageType.RGB32, device="cuda")
+    # will load 3xHxW / in torch.float32 in range [0,1] in "cuda"
 
 .. autofunction:: load_image
 
-.. autoclass:: ImageType
+.. autoclass:: ImageLoadType
     :members:
     :undoc-members:

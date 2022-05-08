@@ -8,14 +8,26 @@ import pytest
 import torch
 
 from kornia.core import Tensor
-from kornia.io import ImageType, load_image
+from kornia.io import ImageLoadType, load_image
+from kornia.utils._compat import torch_version_geq
+
+try:
+    import kornia_rs
+except ImportError:
+    kornia_rs = None
+
+
+def available_package() -> bool:
+    return (
+        sys.version_info >= (3, 7, 0) and sys.platform == "linux" and torch_version_geq(1, 10) and kornia_rs is not None
+    )
 
 
 def create_random_img8(height: int, width: int, channels: int) -> np.ndarray:
     return (np.random.rand(height, width, channels) * 255).astype(np.uint8)
 
 
-@pytest.mark.skipif(sys.version_info < (3, 7, 0), reason="kornia_rs only supports python >=3.7")
+@pytest.mark.skipif(not available_package(), reason="kornia_rs only supports python >=3.7 and pt >= 1.10.0")
 class TestLoadImage:
     def test_smoke(self):
         height, width = 4, 5
@@ -27,7 +39,7 @@ class TestLoadImage:
             assert os.path.isfile(file_path)
 
             img_cv: np.ndarray = cv2.imread(file_path)
-            img_th: Tensor = load_image(file_path, ImageType.UNCHANGED)
+            img_th: Tensor = load_image(file_path, ImageLoadType.UNCHANGED)
 
             assert img_cv.shape[:2] == img_th.shape[1:]
             assert img_th.shape[1:] == (height, width)
@@ -42,7 +54,7 @@ class TestLoadImage:
             cv2.imwrite(file_path, img_np)
             assert os.path.isfile(file_path)
 
-            img_th: Tensor = load_image(file_path, ImageType.UNCHANGED, str(device))
+            img_th: Tensor = load_image(file_path, ImageLoadType.UNCHANGED, str(device))
             assert str(img_th.device) == str(device)
 
     @pytest.mark.parametrize("ext", ["png", "jpg"])
@@ -55,19 +67,19 @@ class TestLoadImage:
             cv2.imwrite(file_path, img_np)
             assert os.path.isfile(file_path)
 
-            img = load_image(file_path, ImageType.GRAY8)
+            img = load_image(file_path, ImageLoadType.GRAY8)
             assert img.shape[0] == 1 and img.dtype == torch.uint8
 
-            img = load_image(file_path, ImageType.GRAY32)
+            img = load_image(file_path, ImageLoadType.GRAY32)
             assert img.shape[0] == 1 and img.dtype == torch.float32
 
-            img = load_image(file_path, ImageType.RGB8)
+            img = load_image(file_path, ImageLoadType.RGB8)
             assert img.shape[0] == 3 and img.dtype == torch.uint8
 
-            img = load_image(file_path, ImageType.RGB32)
+            img = load_image(file_path, ImageLoadType.RGB32)
             assert img.shape[0] == 3 and img.dtype == torch.float32
 
-            img = load_image(file_path, ImageType.RGBA8)
+            img = load_image(file_path, ImageLoadType.RGBA8)
             assert img.shape[0] == 4 and img.dtype == torch.uint8
 
     @pytest.mark.parametrize("ext", ["png", "jpg"])
@@ -80,17 +92,17 @@ class TestLoadImage:
             cv2.imwrite(file_path, img_np)
             assert os.path.isfile(file_path)
 
-            img = load_image(file_path, ImageType.GRAY8)
+            img = load_image(file_path, ImageLoadType.GRAY8)
             assert img.shape[0] == 1 and img.dtype == torch.uint8
 
-            img = load_image(file_path, ImageType.GRAY32)
+            img = load_image(file_path, ImageLoadType.GRAY32)
             assert img.shape[0] == 1 and img.dtype == torch.float32
 
-            img = load_image(file_path, ImageType.RGB8)
+            img = load_image(file_path, ImageLoadType.RGB8)
             assert img.shape[0] == 3 and img.dtype == torch.uint8
 
-            img = load_image(file_path, ImageType.RGB32)
+            img = load_image(file_path, ImageLoadType.RGB32)
             assert img.shape[0] == 3 and img.dtype == torch.float32
 
-            img = load_image(file_path, ImageType.RGBA8)
+            img = load_image(file_path, ImageLoadType.RGBA8)
             assert img.shape[0] == 4 and img.dtype == torch.uint8

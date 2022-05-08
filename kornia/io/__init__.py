@@ -1,1 +1,1 @@
-from .io import ImageType, load_image
+from .io import ImageLoadType, load_image
