@@ -52,5 +52,6 @@ Distance Transform
 ------------------
 
 .. autofunction:: distance_transform
+.. autofunction:: diamond_square
 
 .. autoclass:: DistanceTransform
