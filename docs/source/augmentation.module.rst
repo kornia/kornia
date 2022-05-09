@@ -12,6 +12,9 @@ Intensity
 ~~~~~~~~~
 
 .. autoclass:: RandomPlanckianJitter
+.. autoclass:: RandomPlasmaShadow
+.. autoclass:: RandomPlasmaBrightness
+.. autoclass:: RandomPlasmaContrast
 .. autoclass:: ColorJiggle
 .. autoclass:: ColorJitter
 .. autoclass:: RandomBoxBlur

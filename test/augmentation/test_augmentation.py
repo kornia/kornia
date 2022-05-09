@@ -28,6 +28,9 @@ from kornia.augmentation import (
     RandomHorizontalFlip,
     RandomInvert,
     RandomPlanckianJitter,
+    RandomPlasmaBrightness,
+    RandomPlasmaContrast,
+    RandomPlasmaShadow,
     RandomPosterize,
     RandomResizedCrop,
     RandomRotation,
@@ -255,11 +258,7 @@ class CommonTests(BaseTester):
     def _test_gradcheck_implementation(self, params):
         input_tensor = torch.rand((3, 5, 5), device=self.device, dtype=self.dtype)  # 3 x 3
         input_tensor = utils.tensor_to_gradcheck_var(input_tensor)  # to var
-        assert gradcheck(
-            self._create_augmentation_from_params(**params, p=1.0),
-            (input_tensor,),
-            raise_exception=True,
-        )
+        assert gradcheck(self._create_augmentation_from_params(**params, p=1.0), (input_tensor,), raise_exception=True)
 
 
 class TestRandomEqualizeAlternative(CommonTests):
@@ -748,9 +747,7 @@ class TestRandomHorizontalFlip:
 
     def test_sequential(self, device, dtype):
 
-        f = AugmentationSequential(
-            RandomHorizontalFlip(p=1.0), RandomHorizontalFlip(p=1.0)
-        )
+        f = AugmentationSequential(RandomHorizontalFlip(p=1.0), RandomHorizontalFlip(p=1.0))
 
         input = torch.tensor(
             [[[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]]]], device=device, dtype=dtype
@@ -899,9 +896,7 @@ class TestRandomVerticalFlip:
 
     def test_sequential(self, device, dtype):
 
-        f = AugmentationSequential(
-            RandomVerticalFlip(p=1.0), RandomVerticalFlip(p=1.0)
-        )
+        f = AugmentationSequential(RandomVerticalFlip(p=1.0), RandomVerticalFlip(p=1.0))
 
         input = torch.tensor(
             [[[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]]]], device=device, dtype=dtype
@@ -1837,8 +1832,7 @@ class TestRandomGrayscale:
         assert_close(img_gray, expected, atol=1e-4, rtol=1e-4)
 
     def test_random_grayscale_sequential_batch(self, device, dtype):
-        f = AugmentationSequential(
-            RandomGrayscale(p=0.0), RandomGrayscale(p=0.0))
+        f = AugmentationSequential(RandomGrayscale(p=0.0), RandomGrayscale(p=0.0))
 
         input = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)  # 2 x 3 x 5 x 5
         expected = input
@@ -2016,10 +2010,7 @@ class TestRandomRotation:
 
         torch.manual_seed(0)  # for random reproductibility
 
-        f = AugmentationSequential(
-            RandomRotation(torch.tensor([-45.0, 90]), p=1.0),
-            RandomRotation(10.4, p=1.0),
-        )
+        f = AugmentationSequential(RandomRotation(torch.tensor([-45.0, 90]), p=1.0), RandomRotation(10.4, p=1.0))
 
         input = torch.tensor(
             [[1.0, 0.0, 0.0, 2.0], [0.0, 0.0, 0.0, 0.0], [0.0, 1.0, 2.0, 0.0], [0.0, 0.0, 1.0, 2.0]],
@@ -2234,7 +2225,7 @@ class TestRandomCrop:
         inp = torch.tensor([[[[3.0, 4.0, 5.0], [6.0, 7.0, 8.0]]]], device=device, dtype=dtype)
         trans = torch.eye(3, device=device, dtype=dtype)[None]
         # Not return transform
-        rc = RandomCrop(size=(2, 3), padding=(0, 1, 2, 3), fill=9, align_corners=True, p=0., cropping_mode="resample")
+        rc = RandomCrop(size=(2, 3), padding=(0, 1, 2, 3), fill=9, align_corners=True, p=0.0, cropping_mode="resample")
 
         out = rc(inp)
         assert_close(out, inp, atol=1e-4, rtol=1e-4)
@@ -2624,10 +2615,7 @@ class TestNormalize:
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self, device, dtype):
         f = Normalize(mean=torch.tensor([1.0]), std=torch.tensor([1.0]))
-        repr = (
-            "Normalize(mean=torch.tensor([1.]), std=torch.tensor([1.]), p=1., p_batch=1.0, "
-            "same_on_batch=False)"
-        )
+        repr = "Normalize(mean=torch.tensor([1.]), std=torch.tensor([1.]), p=1., p_batch=1.0, " "same_on_batch=False)"
         assert str(f) == repr
 
     @staticmethod
@@ -2698,10 +2686,7 @@ class TestDenormalize:
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self, device, dtype):
         f = Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([1.0]))
-        repr = (
-            "Denormalize(mean=torch.tensor([1.]), std=torch.tensor([1.]), p=1., p_batch=1.0, "
-            "same_on_batch=False)"
-        )
+        repr = "Denormalize(mean=torch.tensor([1.]), std=torch.tensor([1.]), p=1., p_batch=1.0, " "same_on_batch=False)"
         assert str(f) == repr
 
     def test_random_denormalize(self, device, dtype):
@@ -2836,128 +2821,206 @@ class TestRandomPosterize:
         assert out.shape == (1, 1, 4, 5)
 
 
+class TestRandomPlasma:
+    def test_plasma_shadow(self, device, dtype):
+        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        aug = RandomPlasmaShadow(p=1.0).to(device)
+        out = aug(img)
+        assert out.shape == (2, 3, 4, 5)
+
+    def test_plasma_brightness(self, device, dtype):
+        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        aug = RandomPlasmaBrightness(p=1.0).to(device)
+        out = aug(img)
+        assert out.shape == (2, 3, 4, 5)
+
+    def test_plasma_contrast(self, device, dtype):
+        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        aug = RandomPlasmaContrast(p=1.0).to(device)
+        out = aug(img)
+        assert out.shape == (2, 3, 4, 5)
+
+
 class TestPlanckianJitter:
-
     def _get_expected_output_blackbody(self, device, dtype):
-        return torch.tensor([[[[0.7350, 1.0000, 0.1311, 0.1955],
-                               [0.4553, 0.9391, 0.7258, 1.0000],
-                               [0.6748, 0.9364, 0.5167, 0.5949],
-                               [0.0330, 0.2501, 0.4353, 0.7679]],
-
-                              [[0.6977, 0.8000, 0.1610, 0.2823],
-                               [0.6816, 0.9152, 0.3971, 0.8742],
-                               [0.4194, 0.5529, 0.9527, 0.0362],
-                               [0.1852, 0.3734, 0.3051, 0.9320]],
-
-                              [[0.0691, 0.1059, 0.0592, 0.0124],
-                               [0.0817, 0.3650, 0.2839, 0.2914],
-                               [0.2066, 0.0957, 0.2295, 0.0130],
-                               [0.0545, 0.0951, 0.3202, 0.3114]]]],
-                            device=device,
-                            dtype=dtype)
+        return torch.tensor(
+            [
+                [
+                    [
+                        [0.7350, 1.0000, 0.1311, 0.1955],
+                        [0.4553, 0.9391, 0.7258, 1.0000],
+                        [0.6748, 0.9364, 0.5167, 0.5949],
+                        [0.0330, 0.2501, 0.4353, 0.7679],
+                    ],
+                    [
+                        [0.6977, 0.8000, 0.1610, 0.2823],
+                        [0.6816, 0.9152, 0.3971, 0.8742],
+                        [0.4194, 0.5529, 0.9527, 0.0362],
+                        [0.1852, 0.3734, 0.3051, 0.9320],
+                    ],
+                    [
+                        [0.0691, 0.1059, 0.0592, 0.0124],
+                        [0.0817, 0.3650, 0.2839, 0.2914],
+                        [0.2066, 0.0957, 0.2295, 0.0130],
+                        [0.0545, 0.0951, 0.3202, 0.3114],
+                    ],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
     def _get_expected_output_cied(self, device, dtype):
-        return torch.tensor([[[[0.6058, 0.9377, 0.1080, 0.1611],
-                               [0.3752, 0.7740, 0.5982, 1.0000],
-                               [0.5561, 0.7718, 0.4259, 0.4903],
-                               [0.0272, 0.2062, 0.3587, 0.6329]],
-
-                              [[0.6977, 0.8000, 0.1610, 0.2823],
-                               [0.6816, 0.9152, 0.3971, 0.8742],
-                               [0.4194, 0.5529, 0.9527, 0.0362],
-                               [0.1852, 0.3734, 0.3051, 0.9320]],
-
-                              [[0.1149, 0.1762, 0.0984, 0.0207],
-                               [0.1359, 0.6072, 0.4722, 0.4848],
-                               [0.3437, 0.1592, 0.3818, 0.0217],
-                               [0.0906, 0.1582, 0.5326, 0.5180]]]],
-                            device=device,
-                            dtype=dtype)
+        return torch.tensor(
+            [
+                [
+                    [
+                        [0.6058, 0.9377, 0.1080, 0.1611],
+                        [0.3752, 0.7740, 0.5982, 1.0000],
+                        [0.5561, 0.7718, 0.4259, 0.4903],
+                        [0.0272, 0.2062, 0.3587, 0.6329],
+                    ],
+                    [
+                        [0.6977, 0.8000, 0.1610, 0.2823],
+                        [0.6816, 0.9152, 0.3971, 0.8742],
+                        [0.4194, 0.5529, 0.9527, 0.0362],
+                        [0.1852, 0.3734, 0.3051, 0.9320],
+                    ],
+                    [
+                        [0.1149, 0.1762, 0.0984, 0.0207],
+                        [0.1359, 0.6072, 0.4722, 0.4848],
+                        [0.3437, 0.1592, 0.3818, 0.0217],
+                        [0.0906, 0.1582, 0.5326, 0.5180],
+                    ],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
     def _get_expected_output_batch(self, device, dtype):
-        return torch.tensor([[[[0.7350, 1.0000, 0.1311, 0.1955],
-                               [0.4553, 0.9391, 0.7258, 1.0000],
-                               [0.6748, 0.9364, 0.5167, 0.5949],
-                               [0.0330, 0.2501, 0.4353, 0.7679]],
-
-                              [[0.6977, 0.8000, 0.1610, 0.2823],
-                               [0.6816, 0.9152, 0.3971, 0.8742],
-                               [0.4194, 0.5529, 0.9527, 0.0362],
-                               [0.1852, 0.3734, 0.3051, 0.9320]],
-
-                              [[0.0691, 0.1059, 0.0592, 0.0124],
-                               [0.0817, 0.3650, 0.2839, 0.2914],
-                               [0.2066, 0.0957, 0.2295, 0.0130],
-                               [0.0545, 0.0951, 0.3202, 0.3114]]],
-
-
-                             [[[0.4963, 0.7682, 0.0885, 0.1320],
-                               [0.3074, 0.6341, 0.4901, 0.8964],
-                               [0.4556, 0.6323, 0.3489, 0.4017],
-                               [0.0223, 0.1689, 0.2939, 0.5185]],
-
-                              [[0.6977, 0.8000, 0.1610, 0.2823],
-                               [0.6816, 0.9152, 0.3971, 0.8742],
-                               [0.4194, 0.5529, 0.9527, 0.0362],
-                               [0.1852, 0.3734, 0.3051, 0.9320]],
-
-                              [[0.1759, 0.2698, 0.1507, 0.0317],
-                               [0.2081, 0.9298, 0.7231, 0.7423],
-                               [0.5263, 0.2437, 0.5846, 0.0332],
-                               [0.1387, 0.2422, 0.8155, 0.7932]]]],
-                            device=device,
-                            dtype=dtype)
+        return torch.tensor(
+            [
+                [
+                    [
+                        [0.7350, 1.0000, 0.1311, 0.1955],
+                        [0.4553, 0.9391, 0.7258, 1.0000],
+                        [0.6748, 0.9364, 0.5167, 0.5949],
+                        [0.0330, 0.2501, 0.4353, 0.7679],
+                    ],
+                    [
+                        [0.6977, 0.8000, 0.1610, 0.2823],
+                        [0.6816, 0.9152, 0.3971, 0.8742],
+                        [0.4194, 0.5529, 0.9527, 0.0362],
+                        [0.1852, 0.3734, 0.3051, 0.9320],
+                    ],
+                    [
+                        [0.0691, 0.1059, 0.0592, 0.0124],
+                        [0.0817, 0.3650, 0.2839, 0.2914],
+                        [0.2066, 0.0957, 0.2295, 0.0130],
+                        [0.0545, 0.0951, 0.3202, 0.3114],
+                    ],
+                ],
+                [
+                    [
+                        [0.4963, 0.7682, 0.0885, 0.1320],
+                        [0.3074, 0.6341, 0.4901, 0.8964],
+                        [0.4556, 0.6323, 0.3489, 0.4017],
+                        [0.0223, 0.1689, 0.2939, 0.5185],
+                    ],
+                    [
+                        [0.6977, 0.8000, 0.1610, 0.2823],
+                        [0.6816, 0.9152, 0.3971, 0.8742],
+                        [0.4194, 0.5529, 0.9527, 0.0362],
+                        [0.1852, 0.3734, 0.3051, 0.9320],
+                    ],
+                    [
+                        [0.1759, 0.2698, 0.1507, 0.0317],
+                        [0.2081, 0.9298, 0.7231, 0.7423],
+                        [0.5263, 0.2437, 0.5846, 0.0332],
+                        [0.1387, 0.2422, 0.8155, 0.7932],
+                    ],
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
     def _get_expected_output_same_on_batch(self, device, dtype):
-        return torch.tensor([[[[0.3736, 0.5783, 0.0666, 0.0994],
-                               [0.2314, 0.4774, 0.3690, 0.6749],
-                               [0.3430, 0.4760, 0.2627, 0.3024],
-                               [0.0168, 0.1272, 0.2213, 0.3904]],
-
-                              [[0.6977, 0.8000, 0.1610, 0.2823],
-                               [0.6816, 0.9152, 0.3971, 0.8742],
-                               [0.4194, 0.5529, 0.9527, 0.0362],
-                               [0.1852, 0.3734, 0.3051, 0.9320]],
-
-                              [[0.2621, 0.4020, 0.2245, 0.0472],
-                               [0.3101, 1.0000, 1.0000, 1.0000],
-                               [0.7842, 0.3631, 0.8711, 0.0495],
-                               [0.2067, 0.3609, 1.0000, 1.0000]]],
-
-
-                             [[[0.3736, 0.5783, 0.0666, 0.0994],
-                               [0.2314, 0.4774, 0.3690, 0.6749],
-                                 [0.3430, 0.4760, 0.2627, 0.3024],
-                                 [0.0168, 0.1272, 0.2213, 0.3904]],
-
-                              [[0.6977, 0.8000, 0.1610, 0.2823],
-                                 [0.6816, 0.9152, 0.3971, 0.8742],
-                                 [0.4194, 0.5529, 0.9527, 0.0362],
-                                 [0.1852, 0.3734, 0.3051, 0.9320]],
-
-                              [[0.2621, 0.4020, 0.2245, 0.0472],
-                                 [0.3101, 1.0000, 1.0000, 1.0000],
-                                 [0.7842, 0.3631, 0.8711, 0.0495],
-                                 [0.2067, 0.3609, 1.0000, 1.0000]]]],
-                            device=device,
-                            dtype=dtype)
+        return torch.tensor(
+            [
+                [
+                    [
+                        [0.3736, 0.5783, 0.0666, 0.0994],
+                        [0.2314, 0.4774, 0.3690, 0.6749],
+                        [0.3430, 0.4760, 0.2627, 0.3024],
+                        [0.0168, 0.1272, 0.2213, 0.3904],
+                    ],
+                    [
+                        [0.6977, 0.8000, 0.1610, 0.2823],
+                        [0.6816, 0.9152, 0.3971, 0.8742],
+                        [0.4194, 0.5529, 0.9527, 0.0362],
+                        [0.1852, 0.3734, 0.3051, 0.9320],
+                    ],
+                    [
+                        [0.2621, 0.4020, 0.2245, 0.0472],
+                        [0.3101, 1.0000, 1.0000, 1.0000],
+                        [0.7842, 0.3631, 0.8711, 0.0495],
+                        [0.2067, 0.3609, 1.0000, 1.0000],
+                    ],
+                ],
+                [
+                    [
+                        [0.3736, 0.5783, 0.0666, 0.0994],
+                        [0.2314, 0.4774, 0.3690, 0.6749],
+                        [0.3430, 0.4760, 0.2627, 0.3024],
+                        [0.0168, 0.1272, 0.2213, 0.3904],
+                    ],
+                    [
+                        [0.6977, 0.8000, 0.1610, 0.2823],
+                        [0.6816, 0.9152, 0.3971, 0.8742],
+                        [0.4194, 0.5529, 0.9527, 0.0362],
+                        [0.1852, 0.3734, 0.3051, 0.9320],
+                    ],
+                    [
+                        [0.2621, 0.4020, 0.2245, 0.0472],
+                        [0.3101, 1.0000, 1.0000, 1.0000],
+                        [0.7842, 0.3631, 0.8711, 0.0495],
+                        [0.2067, 0.3609, 1.0000, 1.0000],
+                    ],
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
     def _get_input(self, device, dtype):
-        return torch.tensor([[[[0.4963, 0.7682, 0.0885, 0.1320],
-                               [0.3074, 0.6341, 0.4901, 0.8964],
-                               [0.4556, 0.6323, 0.3489, 0.4017],
-                               [0.0223, 0.1689, 0.2939, 0.5185]],
-
-                              [[0.6977, 0.8000, 0.1610, 0.2823],
-                               [0.6816, 0.9152, 0.3971, 0.8742],
-                               [0.4194, 0.5529, 0.9527, 0.0362],
-                               [0.1852, 0.3734, 0.3051, 0.9320]],
-
-                              [[0.1759, 0.2698, 0.1507, 0.0317],
-                               [0.2081, 0.9298, 0.7231, 0.7423],
-                               [0.5263, 0.2437, 0.5846, 0.0332],
-                               [0.1387, 0.2422, 0.8155, 0.7932]]]],
-                            device=device, dtype=dtype)
+        return torch.tensor(
+            [
+                [
+                    [
+                        [0.4963, 0.7682, 0.0885, 0.1320],
+                        [0.3074, 0.6341, 0.4901, 0.8964],
+                        [0.4556, 0.6323, 0.3489, 0.4017],
+                        [0.0223, 0.1689, 0.2939, 0.5185],
+                    ],
+                    [
+                        [0.6977, 0.8000, 0.1610, 0.2823],
+                        [0.6816, 0.9152, 0.3971, 0.8742],
+                        [0.4194, 0.5529, 0.9527, 0.0362],
+                        [0.1852, 0.3734, 0.3051, 0.9320],
+                    ],
+                    [
+                        [0.1759, 0.2698, 0.1507, 0.0317],
+                        [0.2081, 0.9298, 0.7231, 0.7423],
+                        [0.5263, 0.2437, 0.5846, 0.0332],
+                        [0.1387, 0.2422, 0.8155, 0.7932],
+                    ],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
     def test_planckian_jitter_blackbody(self, device, dtype):
         torch.manual_seed(0)
@@ -2987,7 +3050,6 @@ class TestPlanckianJitter:
         input = self._get_input(device, dtype).repeat(2, 1, 1, 1)
 
         select_from = [1, 2, 24, 3, 4, 5]
-        f = RandomPlanckianJitter(select_from=select_from, same_on_batch=True,
-                                  p=1.0).to(device, dtype)
+        f = RandomPlanckianJitter(select_from=select_from, same_on_batch=True, p=1.0).to(device, dtype)
         expected = self._get_expected_output_same_on_batch(device, dtype)
         assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
