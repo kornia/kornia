@@ -146,10 +146,12 @@ def diamond_square(
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> Tensor:
-    """Generates Plasma Fractal Images.
+    """Generates Plasma Fractal Images using the diamond square algorithm.
+    
+    See: https://en.wikipedia.org/wiki/Diamond-square_algorithm
 
     Args:
-        outout_size: a tuple of integers with the BxCxHxW of the image to be generated.
+        output_size: a tuple of integers with the BxCxHxW of the image to be generated.
         roughness: the scale value to apply at each recursion step.
         random_scale: the initial value of the scale for recursion.
         random_fn: the callable function to use to sample a random tensor.
