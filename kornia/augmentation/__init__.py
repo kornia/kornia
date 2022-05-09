@@ -30,6 +30,7 @@ from kornia.augmentation._2d import (
     RandomPosterize,
     RandomResizedCrop,
     RandomRotation,
+    RandomRGBShift,
     RandomSharpness,
     RandomSolarize,
     RandomThinPlateSpline,
@@ -113,4 +114,5 @@ __all__ = [
     "ImageSequential",
     "PatchSequential",
     "VideoSequential",
+    "RandomRGBShift",
 ]
