@@ -61,13 +61,13 @@ class RandomRGBShift(IntensityAugmentationBase2D):
                   [0.9597, 1.0000, 1.0000, 0.6022, 0.7234],
                   [1.0000, 1.0000, 0.8383, 1.0000, 0.8606]],
         <BLANKLINE>
-                [[0.6524, 1.0000, 0.1357, 0.2847, 0.4729],
+                 [[0.6524, 1.0000, 0.1357, 0.2847, 0.4729],
                   [0.4046, 1.0000, 0.2754, 0.3693, 0.2502],
                   [0.1312, 0.3076, 1.0000, 0.8226, 0.8418],
                   [0.6258, 0.3432, 0.6841, 0.1327, 0.2382],
                   [0.3417, 0.9150, 0.8927, 0.3778, 0.5815]],
         <BLANKLINE>
-                [[0.3850, 0.5623, 0.2636, 0.1328, 0.4005],
+                 [[0.3850, 0.5623, 0.2636, 0.1328, 0.4005],
                   [0.0000, 0.1584, 0.0000, 0.0000, 0.0000],
                   [0.2914, 0.2663, 0.0000, 0.2163, 0.3397],
                   [0.0021, 0.0843, 0.1811, 0.3754, 0.5453],
@@ -98,5 +98,4 @@ class RandomRGBShift(IntensityAugmentationBase2D):
     def apply_transform(
         self, inp: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
     ) -> Tensor:
-        print(params['r_shift'], params['g_shift'], params['b_shift'])
         return shift_rgb(inp, params['r_shift'], params['g_shift'], params['b_shift'])

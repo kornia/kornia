@@ -35,7 +35,7 @@ class TestRGBShift:
     def test_rgb_shift_invalid_parameter_shape(self, device, dtype):
         r_shift, g_shift, b_shift = 0.5, 0.5, 0.5
         image = torch.randn(3, 3, device=device, dtype=dtype)
-        with pytest.raises(ValueError):
+        with pytest.raises(TypeError):
             kornia.enhance.shift_rgb(image, r_shift, g_shift, b_shift)
 
     def test_rgb_shift_gradcheck(self, device, dtype):

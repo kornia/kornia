@@ -22,6 +22,7 @@ Intensity
 .. autoclass:: RandomGaussianNoise
 .. autoclass:: RandomMotionBlur
 .. autoclass:: RandomPosterize
+.. autoclass:: RandomRGBShift
 .. autoclass:: RandomSharpness
 .. autoclass:: RandomSolarize
 
