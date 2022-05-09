@@ -87,6 +87,7 @@ Join the community
    feature
    filters
    geometry
+   io
    losses
    metrics
    morphology
