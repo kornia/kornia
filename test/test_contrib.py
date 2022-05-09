@@ -11,6 +11,18 @@ from kornia.testing import assert_close
 from packaging import version
 
 
+class TestDiamondSquare:
+    def test_smoke(self, device, dtype):
+        torch.manual_seed(0)
+        output_size = (1, 1, 3, 4)
+        roughness = 0.5
+        random_scale = 1.0
+        out = kornia.contrib.diamond_square(output_size, roughness, random_scale, device=device, dtype=dtype)
+        assert out.shape == output_size
+        assert out.device == device
+        assert out.dtype == dtype
+
+
 class TestVisionTransformer:
     @pytest.mark.parametrize("B", [1, 2])
     @pytest.mark.parametrize("H", [1, 3, 8])
@@ -18,7 +30,7 @@ class TestVisionTransformer:
     @pytest.mark.parametrize("image_size", [32, 224])
     def test_smoke(self, device, dtype, B, H, D, image_size):
         patch_size = 16
-        T = image_size ** 2 // patch_size ** 2 + 1  # tokens size
+        T = image_size**2 // patch_size**2 + 1  # tokens size
 
         img = torch.rand(B, 3, image_size, image_size, device=device, dtype=dtype)
         vit = kornia.contrib.VisionTransformer(image_size=image_size, num_heads=H, embed_dim=D).to(device, dtype)
