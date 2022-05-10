@@ -88,6 +88,7 @@ __all__ = [
     "RandomPlasmaContrast",
     "RandomResizedCrop",
     "RandomRotation",
+    "RandomRGBShift",
     "RandomSolarize",
     "RandomSharpness",
     "RandomPosterize",
