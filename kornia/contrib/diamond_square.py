@@ -147,7 +147,7 @@ def diamond_square(
     dtype: Optional[torch.dtype] = None,
 ) -> Tensor:
     """Generates Plasma Fractal Images using the diamond square algorithm.
-    
+
     See: https://en.wikipedia.org/wiki/Diamond-square_algorithm
 
     Args:
