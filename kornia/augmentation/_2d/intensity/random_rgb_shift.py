@@ -1,4 +1,4 @@
-from typing import Dict, Optional, cast
+from typing import Any, Dict, Optional, cast
 
 from torch import Tensor
 
@@ -91,11 +91,8 @@ class RandomRGBShift(IntensityAugmentationBase2D):
                                      (g_shift_limit, "g_shift", 0, (-g_shift_limit, g_shift_limit)),
                                      (b_shift_limit, "b_shift", 0, (-b_shift_limit, b_shift_limit)))
         )
-        self.r_shift_limit = (-r_shift_limit, r_shift_limit)
-        self.g_shift_limit = (-g_shift_limit, g_shift_limit)
-        self.b_shift_limit = (-b_shift_limit, b_shift_limit)
 
     def apply_transform(
-        self, inp: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        return shift_rgb(inp, params['r_shift'], params['g_shift'], params['b_shift'])
+        return shift_rgb(input, params['r_shift'], params['g_shift'], params['b_shift'])
