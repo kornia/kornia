@@ -14,6 +14,8 @@ from kornia.augmentation.utils.helpers import (
     _validate_input_dtype,
     _validate_input_shape,
     _validate_shape,
+    deepcopy_dict,
+    override_parameters,
 )
 from kornia.augmentation.utils.param_validation import (
     _common_param_check,
@@ -44,4 +46,6 @@ __all__ = [
     "_validate_input",
     "_validate_input3d",
     "_transform_output_shape",
+    "deepcopy_dict",
+    "override_parameters",
 ]
