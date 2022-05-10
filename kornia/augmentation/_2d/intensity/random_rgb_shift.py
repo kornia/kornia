@@ -1,9 +1,10 @@
+from pydoc import doc
 from typing import Any, Dict, Optional, cast
 
 from torch import Tensor
 
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation import random_generator as rg
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.enhance import shift_rgb
 
 from kornia.enhance import shift_rgb
