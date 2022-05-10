@@ -33,6 +33,7 @@ from .core import AddWeighted, add_weighted
 from .equalization import equalize_clahe
 from .histogram import histogram, histogram2d, image_histogram2d
 from .normalize import Denormalize, Normalize, denormalize, normalize, normalize_min_max
+from .shift_rgb import shift_rgb
 from .zca import ZCAWhitening, linear_transform, zca_mean, zca_whiten
 
 __all__ = [
@@ -53,6 +54,7 @@ __all__ = [
     "equalize3d",
     "posterize",
     "sharpness",
+    "shift_rgb",
     "invert",
     "AdjustBrightness",
     "AdjustBrightnessAccumulative",
