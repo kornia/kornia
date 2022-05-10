@@ -1,4 +1,3 @@
-from pydoc import doc
 from typing import Any, Dict, Optional, cast
 
 from torch import Tensor
@@ -94,6 +93,6 @@ class RandomRGBShift(IntensityAugmentationBase2D):
         )
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, inp: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        return shift_rgb(input, params['r_shift'], params['g_shift'], params['b_shift'])
+        return shift_rgb(inp, params['r_shift'], params['g_shift'], params['b_shift'])
