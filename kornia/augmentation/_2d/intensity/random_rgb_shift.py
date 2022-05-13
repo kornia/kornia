@@ -22,20 +22,6 @@ class RandomRGBShift(IntensityAugmentationBase2D):
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
 
-    Randomly shift each channel of an image.
-
-    Args:
-        r_shift_limit: maximum value up to which the shift value can be generated for red channel;
-          recommended interval - [0, 1], should always be positive
-        g_shift_limit: maximum value up to which the shift value can be generated for green channel;
-          recommended interval - [0, 1], should always be positive
-        b_shift_limit: maximum value up to which the shift value can be generated for blue channel;
-          recommended interval - [0, 1], should always be positive
-        same_on_batch: apply the same transformation across the batch.
-        p: probability of applying the transformation.
-        keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
-          to the batch form ``False``.
-
     Note:
         Input tensor must be float and normalized into [0, 1].
 
