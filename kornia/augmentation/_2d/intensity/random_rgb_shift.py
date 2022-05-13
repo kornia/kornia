@@ -6,8 +6,6 @@ from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.enhance import shift_rgb
 
-from kornia.enhance import shift_rgb
-
 
 class RandomRGBShift(IntensityAugmentationBase2D):
     """Randomly shift each channel of an image.
