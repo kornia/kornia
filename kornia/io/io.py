@@ -52,12 +52,10 @@ def to_uint8(image: Tensor) -> Tensor:
 
 def load_image(path_file: str, desired_type: ImageLoadType, device: str = "cpu") -> Tensor:
     """Read an image file and decode using the Kornia Rust backend.
-
     Args:
         path_file: Path to a valid image file.
         desired_type: the desired image type, defined by color space and dtype.
         device: the device where you want to get your image placed.
-
     Return:
         Image tensor with shape :math:`(3,H,W)`.
     """
@@ -73,8 +71,8 @@ def load_image(path_file: str, desired_type: ImageLoadType, device: str = "cpu")
         if image.shape[0] == 1 and image.dtype == torch.uint8:
             return image
         elif image.shape[0] == 3 and image.dtype == torch.uint8:
-            gray32 = rgb_to_grayscale(to_float32(image))
-            return to_uint8(gray32)
+            gray8 = rgb_to_grayscale(image)
+            return gray8
         elif image.shape[0] == 4 and image.dtype == torch.uint8:
             gray32 = rgb_to_grayscale(rgba_to_rgb(to_float32(image)))
             return to_uint8(gray32)
@@ -82,8 +80,8 @@ def load_image(path_file: str, desired_type: ImageLoadType, device: str = "cpu")
         if image.shape[0] == 3 and image.dtype == torch.uint8:
             return image
         elif image.shape[0] == 1 and image.dtype == torch.uint8:
-            rgb32 = grayscale_to_rgb(to_float32(image))
-            return to_uint8(rgb32)
+            rgb8 = grayscale_to_rgb(image)
+            return rgb8
     elif desired_type == ImageLoadType.RGBA8:
         if image.shape[0] == 3 and image.dtype == torch.uint8:
             rgba32 = rgb_to_rgba(to_float32(image), 0.0)
@@ -106,3 +104,4 @@ def load_image(path_file: str, desired_type: ImageLoadType, device: str = "cpu")
     else:
         raise NotImplementedError(f"Unknown type: {desired_type}")
     return Tensor([])
+
