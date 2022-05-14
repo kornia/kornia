@@ -124,6 +124,8 @@ def warp_perspective(
 
     if padding_mode == "fill":
         return _fill_and_warp(src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value)
+
+    grid = grid.to(src.device)
     return F.grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
 
 
@@ -204,6 +206,8 @@ def warp_affine(
 
     if padding_mode == "fill":
         return _fill_and_warp(src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value)
+
+    grid = grid.to(src.device)
     return F.grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
 
 
@@ -222,10 +226,12 @@ def _fill_and_warp(
     Returns:
         the warped and filled tensor with shape :math:`(B, 3, H, W)`.
     """
+    grid = grid.to(src.device)
     ones_mask = torch.ones_like(src)
     fill_value = fill_value.to(ones_mask)[None, :, None, None]  # cast and add dimensions for broadcasting
     inv_ones_mask = 1 - F.grid_sample(ones_mask, grid, align_corners=align_corners, mode=mode, padding_mode="zeros")
     inv_color_mask = inv_ones_mask * fill_value
+
     return F.grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode="zeros") + inv_color_mask
 
 
@@ -1274,7 +1280,7 @@ def homography_warp(
             height, width, normalized_coordinates=normalized_coordinates, device=patch_src.device, dtype=patch_src.dtype
         )
         warped_grid = warp_grid(grid, src_homo_dst)
-
+        warped_grid = warped_grid.to(patch_src.device)
         return F.grid_sample(patch_src, warped_grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
     return warp_perspective(
         patch_src, src_homo_dst, dsize, mode='bilinear', padding_mode=padding_mode, align_corners=True
@@ -1339,5 +1345,5 @@ def homography_warp3d(
         depth, height, width, normalized_coordinates=normalized_coordinates, device=patch_src.device
     )
     warped_grid = warp_grid3d(grid, src_homo_dst)
-
+    warped_grid = warped_grid.to(patch_src.device)
     return F.grid_sample(patch_src, warped_grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
