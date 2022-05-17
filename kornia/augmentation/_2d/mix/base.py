@@ -1,7 +1,7 @@
 from typing import Any, Dict, List, Optional, Tuple, Union
-from defusedxml import NotSupportedError
 
 import torch
+from defusedxml import NotSupportedError
 
 from kornia.augmentation.base import TensorWithTransformMat, _BasicAugmentationBase
 from kornia.augmentation.utils import _transform_input, _transform_output_shape, _validate_input_dtype
