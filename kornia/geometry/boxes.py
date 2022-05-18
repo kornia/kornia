@@ -2,8 +2,10 @@ from typing import List, Optional, Tuple, Union, cast
 
 import torch
 
+from kornia.core import Tensor
 from kornia.geometry.bbox import validate_bbox
 from kornia.geometry.linalg import transform_points
+from kornia.utils import eye_like
 
 __all__ = ["Boxes", "Boxes3D"]
 
@@ -231,6 +233,97 @@ class Boxes:
         widths, heights = boxes_xywh[..., 2], boxes_xywh[..., 3]
         return heights, widths
 
+    def merge(self, boxes: "Boxes", inplace: bool = False) -> "Boxes":
+        """Merges boxes.
+
+        Say, current instance holds :math:`(B, N, 4, 2)` and the incoming boxes holds :math:`(B, M, 4, 2)`,
+        the merge results in :math:`(B, N + M, 4, 2)`.
+
+        Args:
+            boxes: 2D boxes.
+            inplace: do transform in-place and return self.
+        """
+        data = torch.cat([self._data, boxes.data], dim=1)
+        if inplace:
+            self._data = data
+            return self
+        return Boxes(data, False)
+
+    def clamp(
+        self,
+        topleft: Optional[Union[Tensor, Tuple[int, int]]] = None,
+        botright: Optional[Union[Tensor, Tuple[int, int]]] = None,
+        inplace: bool = False
+    ) -> "Boxes":
+        """
+        """
+        if not (isinstance(topleft, Tensor) and isinstance(botright, Tensor)):
+            raise NotImplementedError
+        if inplace:
+            _data = self._data
+        else:
+            _data = self._data.clone()
+        topleft_x = topleft[:, None, :1].repeat(1, _data.size(1), 4)
+        _data[..., 0][_data[..., 0] < topleft_x] = topleft_x[_data[..., 0] < topleft_x]
+
+        topleft_y = topleft[:, None, 1:].repeat(1, _data.size(1), 4)
+        _data[..., 1][_data[..., 1] < topleft_y] = topleft_y[_data[..., 1] < topleft_y]
+
+        botright_x = botright[:, None, :1].repeat(1, _data.size(1), 4)
+        _data[..., 0][_data[..., 0] > botright_x] = botright_x[_data[..., 0] > botright_x]
+
+        botright_y = botright[:, None, 1:].repeat(1, _data.size(1), 4)
+        _data[..., 1][_data[..., 1] > botright_y] = botright_y[_data[..., 1] > botright_y]
+        if inplace:
+            return self
+        return Boxes(_data, False)
+
+    def trim(
+        self, correspondence_preserve: bool = False, inplace: bool = False
+    ) -> "Boxes":
+        """Trim out zero padded boxes.
+
+        Given box arrangements of shape :math:`(4, 4, Box)`:
+            -- Box -- Box -- Box  -- Box --
+            --  0  --  0  -- Box  -- Box --
+            --  0  -- Box --  0   --  0  --
+            --  0  --  0  --  0   --  0  --
+
+        Nothing will change if correspondence_preserve is True. Only pure zero layers will be
+        removed, resulting in shape :math:`(4, 3, Box)`:
+            -- Box -- Box -- Box  -- Box --
+            --  0  --  0  -- Box  -- Box --
+            --  0  -- Box --  0   --  0  --
+
+        Otherwise, you will get :math:`(4, 2, Box)`:
+            -- Box -- Box -- Box  -- Box --
+            --  0  -- Box -- Box  -- Box --
+        """
+        raise NotImplementedError
+
+    def filter_boxes_by_area(
+        self, min_area: Optional[float] = None, max_area: Optional[float] = None, inplace: bool = False
+    ) -> "Boxes":
+        area = self.compute_area()
+        if inplace:
+            _data = self._data
+        else:
+            _data = self._data.clone()
+        if min_area is not None:
+            _data[area < min_area] = 0.
+        if max_area is not None:
+            _data[area > max_area] = 0.
+        if inplace:
+            return self
+        return Boxes(_data, False)
+
+    def compute_area(self,) -> torch.Tensor:
+        """Returns :math:`(B, N)`.
+        """
+        w = self._data[:, :, 1, 0] - self._data[:, :, 0, 0]
+        h = self._data[:, :, 2, 1] - self._data[:, :, 0, 1]
+        return w * h
+
     @classmethod
     def from_tensor(
         cls, boxes: Union[torch.Tensor, List[torch.Tensor]], mode: str = "xyxy", validate_boxes: bool = True
@@ -437,6 +530,30 @@ class Boxes:
         """Inplace version of :func:`Boxes.transform_boxes`"""
         return self.transform_boxes(M, inplace=True)
 
+    def translate(
+        self,
+        size: Tensor,
+        method: str = "warp",
+        inplace: bool = False
+    ) -> None:
+        """Translates boxes by the provided size.
+
+        Args:
+            size: translate size for x, y direction, shape of :math:`(B, 2)`.
+            method: "warp" or "fast".
+            inplace: do transform in-place and return self.
+
+        Returns:
+            The transformed boxes.
+        """
+        if method == "fast":
+            raise NotImplementedError
+        elif method == "warp":
+            M = eye_like(3, size)
+            M[:, :2, 2] = size
+            return self.transform_boxes(M, inplace=inplace)
+        raise NotImplementedError
+
     @property
     def data(self) -> torch.Tensor:
         return self._data
@@ -462,6 +579,9 @@ class Boxes:
             raise ValueError("Boxes must be in floating point")
         self._data = self._data.to(device=device, dtype=dtype)
         return self
+
+    def clone(self,) -> "Boxes":
+        return Boxes(self._data.clone(), False)
 
 
 @torch.jit.script

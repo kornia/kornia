@@ -64,10 +64,6 @@ class _BasicAugmentationBase(nn.Module):
     def __unpack_input__(self, input: Tensor) -> Tensor:
         return input
 
-    def __check_batching__(self, input: Tensor):
-        """Check if a transformation matrix is returned, it has to be in the same batching mode as output."""
-        raise NotImplementedError
-
     def transform_tensor(self, input: Tensor) -> Tensor:
         """Standardize input tensors."""
         raise NotImplementedError
@@ -166,7 +162,6 @@ class _BasicAugmentationBase(nn.Module):
             ``save_kwargs=True`` additionally.
         """
         in_tensor = self.__unpack_input__(input)
-        self.__check_batching__(input)
         input_shape = in_tensor.shape
         in_tensor = self.transform_tensor(in_tensor)
         batch_shape = in_tensor.shape
