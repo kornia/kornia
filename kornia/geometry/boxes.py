@@ -255,8 +255,7 @@ class Boxes:
         botright: Optional[Union[Tensor, Tuple[int, int]]] = None,
         inplace: bool = False
     ) -> "Boxes":
-        """
-        """
+        """"""
         if not (isinstance(topleft, Tensor) and isinstance(botright, Tensor)):
             raise NotImplementedError
         if inplace:
@@ -318,8 +317,7 @@ class Boxes:
         return Boxes(_data, False)
 
     def compute_area(self,) -> torch.Tensor:
-        """Returns :math:`(B, N)`.
-        """
+        """Returns :math:`(B, N)`."""
         w = self._data[:, :, 1, 0] - self._data[:, :, 0, 0]
         h = self._data[:, :, 2, 1] - self._data[:, :, 0, 1]
         return w * h
