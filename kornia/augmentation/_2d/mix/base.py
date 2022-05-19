@@ -150,40 +150,29 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         # For the images where batch_prob == False.
         return input
 
-    def apply_func(  # type: ignore
-        self, in_tensor: Tensor, params: Dict[str, Tensor],
-        flags: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
-        if flags is None:
-            flags = self.flags
-        to_apply = params['batch_prob']
-
-        # if no augmentation needed
-        if torch.sum(to_apply) == 0:
-            output = in_tensor
-        # if all data needs to be augmented
-        elif torch.sum(to_apply) == len(to_apply):
-            output = self.apply_transform(in_tensor, params=params, flags=flags)
-        else:
-            output = self.apply_non_transform(in_tensor, params=params, flags=flags)
-            output[to_apply] = self.apply_transform(
-                in_tensor[to_apply], params=params, flags=flags)
-
-        return output
-
     def transform_input(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
+        to_apply = params['batch_prob']
         ori_shape = input.shape
         in_tensor = self.transform_tensor(input)
-        output = self.apply_func(in_tensor, params, flags)
+        output = in_tensor
+        if torch.sum(to_apply) != len(to_apply):
+            output = self.apply_non_transform(in_tensor, params=params, flags=flags)
+        if torch.sum(to_apply) != 0:
+            output[to_apply] = self.apply_transform(
+                in_tensor[to_apply], params=params, flags=flags)
         output = _transform_output_shape(output, ori_shape) if self.keepdim else output  # type: ignore
         return output
 
     def transform_mask(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
-        return self.apply_transform_mask(input, params, flags)
+        to_apply = params['batch_prob']
+        output = input
+        if torch.sum(to_apply) != 0:
+            output = self.apply_transform_mask(input, params, flags)
+        return output
 
     def transform_boxes(
         self, input: Union[Tensor, Boxes], params: Dict[str, Tensor], flags: Dict[str, Any]
@@ -193,7 +182,13 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             if not (len(input.shape) == 4 and input.shape[2:] == torch.Size([4, 2])):
                 raise RuntimeError(f"Only BxNx4x2 tensor is supported. Got {input.shape}.")
             input = Boxes(input, False, mode="vertices_plus")
-        return self.apply_transform_boxes(input, params, flags)
+        to_apply = params['batch_prob']
+        output = input
+        if torch.sum(to_apply) != len(to_apply):
+            output = self.apply_non_transform_boxes(input, params=params, flags=flags)
+        if torch.sum(to_apply) != 0:
+            output = self.apply_transform_boxes(output, params, flags)
+        return output
 
     def transform_keypoint(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
@@ -209,6 +204,11 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         raise NotImplementedError
+
+    def apply_non_transform_boxes(
+        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]
+    ) -> Tensor:
+        return input
 
     def apply_transform_boxes(
         self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]
@@ -243,24 +243,24 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         self._params = params
 
         outputs = []
-        for dcate, input in zip(data_keys, input):
+        for dcate, _input in zip(data_keys, input):
             if dcate == DataKey.INPUT:
-                output = self.transform_input(in_tensor, self._params, self.flags)
+                output = self.transform_input(_input, self._params, self.flags)
             elif dcate == DataKey.MASK:
-                output = self.apply_transform_mask(input, self._params, self.flags)
+                output = self.transform_mask(_input, self._params, self.flags)
             elif dcate == DataKey.BBOX:
-                box = Boxes.from_tensor(input, mode="vertices", validate_boxes=False)
-                output = self.apply_transform_boxes(box, self._params, self.flags)
+                box = Boxes.from_tensor(_input, mode="vertices", validate_boxes=False)
+                output = self.transform_boxes(box, self._params, self.flags)
             elif dcate == DataKey.BBOX_XYXY:
-                box = Boxes.from_tensor(input, mode="xyxy", validate_boxes=False)
-                output = self.apply_transform_boxes(box, self._params, self.flags)
+                box = Boxes.from_tensor(_input, mode="xyxy", validate_boxes=False)
+                output = self.transform_boxes(box, self._params, self.flags)
             elif dcate == DataKey.BBOX_XYWH:
-                box = Boxes.from_tensor(input, mode="xywh", validate_boxes=False)
-                output = self.apply_transform_boxes(input, self._params, self.flags)
+                box = Boxes.from_tensor(_input, mode="xywh", validate_boxes=False)
+                output = self.transform_boxes(box, self._params, self.flags)
             elif dcate == DataKey.KEYPOINTS:
-                output = self.apply_transform_keypoint(input, self._params, self.flags)
+                output = self.transform_keypoint(_input, self._params, self.flags)
             elif dcate == DataKey.TAG:
-                output = self.apply_transform_tag(input, self._params, self.flags)
+                output = self.transform_tag(_input, self._params, self.flags)
             else:
                 raise NotImplementedError
             outputs.append(output)

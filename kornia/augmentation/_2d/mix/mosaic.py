@@ -1,7 +1,7 @@
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
-from torch.nn.functional import interpolate
+from torch.nn.functional import pad
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
@@ -11,18 +11,40 @@ from kornia.geometry.boxes import Boxes
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
 from kornia.utils import eye_like
 
+__all__ = [
+    "RandomMosaic"
+]
+
 
 class RandomMosaic(MixAugmentationBaseV2):
-    r"""RandomMosaic.
+    r"""Mosaic augmentation.
+
+    Given a certain number of images, mosaic transform combines them into one output image.
+    The output image is composed of the parts from each sub-image.
+    
+    The mosaic transform steps are as follows:
+
+         1. Concate selected images into a super-image.
+         2. Crop out the outcome image according to the top-left corner and crop size.
 
     Args:
+        output_size: the output tensor width and height after mosaicing.
+        start_ratio_range: top-left (x, y) position for cropping the mosaic images.
+        mosaic_grid: the number of images and image arrangement. e.g. (2, 2) means
+            each output will mix 4 images in a 2x2 grid.
         min_bbox_size: minimum area of bounding boxes. Default to 0.
-        p: probability for applying an augmentation. This param controls if to apply the augmentation for the batch.
-        p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
-          probabilities batch-wise.
-        same_on_batch: apply the same transformation across the batch.
+        data_keys: the input type sequential for applying augmentations.
+            Accepts "input", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints".
+        p: probability of applying the transformation for the whole batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
-          to the batch form ``False``.
+            to the batch form ``False``.
+        padding_mode: Type of padding. Should be: constant, reflect, replicate.
+        resample: the interpolation mode.
+        align_corners: interpolation flag.
+        cropping_mode: The used algorithm to crop. ``slice`` will use advanced slicing to extract the tensor based
+            on the sampled indices. ``resample`` will use `warp_affine` using the affine transformation
+            to extract and resize at once. Use `slice` for efficiency, or `resample` for proper
+            differentiability.
 
     Examples:
         >>> mosaic = RandomMosaic()
@@ -33,8 +55,8 @@ class RandomMosaic(MixAugmentationBaseV2):
     def __init__(
         self,
         output_size: Optional[Tuple[int, int]] = None,
-        start_corner_range: Tuple[float, float] = (0.3, 0.7),
         mosaic_grid: Tuple[int, int] = (2, 2),
+        start_ratio_range: Tuple[float, float] = (0.3, 0.7),
         min_bbox_size: float = 0.,
         data_keys: List[Union[str, int, DataKey]] = [DataKey.INPUT],
         p: float = .7,
@@ -45,9 +67,9 @@ class RandomMosaic(MixAugmentationBaseV2):
         cropping_mode: str = "slice",
     ) -> None:
         super().__init__(p=p, p_batch=1., same_on_batch=False, keepdim=keepdim, data_keys=data_keys)
-        self.start_corner_range = start_corner_range
+        self.start_ratio_range = start_ratio_range
         self._param_generator = cast(
-            rg.MosaicGenerator, rg.MosaicGenerator(output_size, mosaic_grid, start_corner_range))
+            rg.MosaicGenerator, rg.MosaicGenerator(output_size, mosaic_grid, start_ratio_range))
         self.flags = dict(
             mosaic_grid=mosaic_grid,
             output_size=output_size,
@@ -68,24 +90,26 @@ class RandomMosaic(MixAugmentationBaseV2):
         self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Boxes:
         # Boxes is BxNx4x2 only.
-        batch_shapes = params["batch_shapes"]
-        offset = torch.zeros((input.data.shape[0], 2), device=batch_shapes.device, dtype=params["src"].dtype)  # Bx2
+        batch_shapes = torch.as_tensor(params["batch_shapes"], device=input.device)
+        offset = torch.zeros((len(params["batch_prob"]), 2), device=input.device, dtype=params["src"].dtype)  # Bx2
         # NOTE: not a pretty good line I think.
         offset_end = params["dst"][0, 2].repeat(input.data.shape[0], 1)
-        idx = torch.arange(0, input.data.shape[0], device=offset.device, dtype=torch.long)[params["batch_prob"]]
+        idx = torch.arange(0, input.data.shape[0], device=input.device, dtype=torch.long)[params["batch_prob"]]
 
         out_boxes: Optional[Boxes] = None
-        for i in range(flags['mosaic_grid'][1]):
-            for j in range(flags['mosaic_grid'][0]):
+        for i in range(flags['mosaic_grid'][0]):
+            for j in range(flags['mosaic_grid'][1]):
                 _offset = offset.clone()
                 _offset[idx, 0] = batch_shapes[:, -2] * i - params["src"][:, 0, 0]
                 _offset[idx, 1] = batch_shapes[:, -1] * j - params["src"][:, 0, 1]
                 _box = input.clone()
-                _box._data = _box._data[params["permutation"][:, i * flags['mosaic_grid'][1] + j]]
+                _idx = i * flags['mosaic_grid'][1] + j
+                _box._data[params["permutation"][:, 0]] = _box._data[params["permutation"][:, _idx]]
                 _box.translate(_offset, inplace=True)
                 # zero-out unrelated batch elements.
                 _box._data[~params["batch_prob"]] = 0
                 if out_boxes is None:
+                    _box._data[~params["batch_prob"]] = input._data[~params["batch_prob"]]
                     out_boxes = _box
                 out_boxes.merge(_box, inplace=True)
         out_boxes.clamp(offset, offset_end, inplace=True)
@@ -104,23 +128,15 @@ class RandomMosaic(MixAugmentationBaseV2):
 
     @torch.no_grad()
     def _compose_images(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        base = input[params["permutation"][:, 0]]
-        for i in range(1, flags['mosaic_grid'][0]):
-            base = torch.cat([
-                base,
-                input[params["permutation"][:, i]]
-            ], dim=-2)
-        if flags['mosaic_grid'][1] == 1:
-            # No need to concatenate later
-            return base
-
-        base_2 = input[params["permutation"][:, flags['mosaic_grid'][0]]]
-        for i in range(1, flags['mosaic_grid'][1]):
-            base_2 = torch.cat([
-                base_2,
-                input[params["permutation"][:, flags['mosaic_grid'][0] + i]]
-            ], dim=-2)
-        return torch.cat([base, base_2], dim=-1)
+        out = []
+        for i in range(flags['mosaic_grid'][0]):
+            out_row = []
+            for j in range(flags['mosaic_grid'][1]):
+                img_idx = flags['mosaic_grid'][1] * i + j
+                image = input[params["permutation"][:, img_idx]]
+                out_row.append(image)
+            out.append(torch.cat(out_row, dim=-2))
+        return torch.cat(out, dim=-1)
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         if flags["cropping_mode"] == "resample":
@@ -155,19 +171,24 @@ class RandomMosaic(MixAugmentationBaseV2):
                 align_corners=flags["align_corners"],
             )
         if flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
-            return crop_by_indices(input, params["src"], flags["output_size"])
+            return crop_by_indices(input, params["src"], flags["output_size"], shape_compensation="pad")
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def apply_non_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         if flags["output_size"] is not None:
-            return interpolate(
+            return pad(
                 input,
-                size=flags["output_size"],
-                mode=flags["resample"].name.lower(),
-                align_corners=flags["align_corners"]
+                [0, flags["output_size"][0] - input.shape[-2], 0, flags["output_size"][1] - input.shape[-1]]
             )
+            # NOTE: resize is not suitable for being consistent with bounding boxes.
+            # return resize(
+            #     input,
+            #     size=flags["output_size"],
+            #     interpolation=flags["resample"].name.lower(),
+            #     align_corners=flags["align_corners"]
+            # )
         return input
 
     def apply_transform(

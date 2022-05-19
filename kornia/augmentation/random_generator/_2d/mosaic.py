@@ -13,14 +13,17 @@ class MosaicGenerator(RandomGeneratorBase):
     r"""Generate mixup indexes and lambdas for a batch of inputs.
 
     Args:
-        lambda_val (torch.Tensor, optional): min-max strength for mixup images, ranged from [0., 1.].
-            If None, it will be set to tensor([0., 1.]), which means no restrictions.
+        output_size: the output tensor width and height after mosaicing.
+        mosaic_grid: the number of images and image arrangement. e.g. (2, 2) means
+            each output will mix 4 images in a 2x2 grid.
+        start_ratio_range: top-left (x, y) position for cropping the mosaic images.
 
     Returns:
         A dict of parameters to be passed for transformation.
             - mosiac_ids (Tensor): a shape of (B, N) tensor, where n is the number of mosaic images.
             - src (Tensor): cropping bounding boxes with a shape of (B, 4, 2).
             - dst (Tensor): output bounding boxes with a shape (B, 4, 2).
+            - batch_shapes (Tensor): image shapes in the batch with a shape of (B, 3).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -32,24 +35,24 @@ class MosaicGenerator(RandomGeneratorBase):
         self,
         output_size: Optional[Tuple[int, int]] = None,
         mosaic_grid: Tuple[int, int] = (2, 2),
-        start_corner_range: Tuple[float, float] = (0.3, 0.7),
+        start_ratio_range: Tuple[float, float] = (0.3, 0.7),
     ) -> None:
         super().__init__()
         self.output_size = output_size
         self.mosaic_grid = mosaic_grid
-        self.start_corner_range = start_corner_range
+        self.start_ratio_range = start_ratio_range
 
     def __repr__(self) -> str:
         repr = (
             f"output_size={self.output_size}, mosaic_grid={self.mosaic_grid}, "
-            f"start_corner_range={self.start_corner_range}"
+            f"start_ratio_range={self.start_ratio_range}"
         )
         return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        self.start_corner_range_sampler = Uniform(
-            torch.tensor(self.start_corner_range[0], device=device, dtype=dtype),
-            torch.tensor(self.start_corner_range[1], device=device, dtype=dtype),
+        self.start_ratio_range_sampler = Uniform(
+            torch.tensor(self.start_ratio_range[0], device=device, dtype=dtype),
+            torch.tensor(self.start_ratio_range[1], device=device, dtype=dtype),
             validate_args=False,
         )
 
@@ -67,7 +70,7 @@ class MosaicGenerator(RandomGeneratorBase):
             [torch.arange(0, batch_size, device=_device), rand_ids]).reshape(perm_times, batch_size).permute(1, 0)
 
         start_corner_factor = _adapted_rsampling(
-            (batch_size, 2), self.start_corner_range_sampler, same_on_batch=False).to(device=_device, dtype=_dtype)
+            (batch_size, 2), self.start_ratio_range_sampler, same_on_batch=False).to(device=_device, dtype=_dtype)
         start_corner_x = start_corner_factor[:, 0] * batch_shape[-2]
         start_corner_y = start_corner_factor[:, 1] * batch_shape[-1]
         crop_src = bbox_generator(
@@ -90,7 +93,11 @@ class MosaicGenerator(RandomGeneratorBase):
         ).repeat(batch_size, 1, 1)
         # NOTE: In case we support a list of tensor images later. For a better consistency.
         # B x 3
-        batch_shapes = torch.stack([torch.as_tensor(batch_shape[1:]) for _ in range(batch_size)])
+
+        if batch_size == 0:
+            batch_shapes = torch.zeros([0, 3], device=_device, dtype=torch.long),
+        else:
+            batch_shapes = torch.stack([torch.as_tensor(batch_shape[1:], device=_device) for _ in range(batch_size)])
         return dict(
             permutation=mosiac_ids.to(device=_device, dtype=torch.long),
             src=crop_src,

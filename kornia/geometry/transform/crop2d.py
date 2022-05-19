@@ -1,6 +1,7 @@
 from typing import Optional, Tuple
 
 import torch
+import torch.nn.functional as F
 
 from kornia.geometry.bbox import infer_bbox_shape, validate_bbox
 
@@ -279,6 +280,7 @@ def crop_by_indices(
     interpolation: str = 'bilinear',
     align_corners: Optional[bool] = None,
     antialias: bool = False,
+    shape_compensation: str = "resize",
 ) -> torch.Tensor:
     """Crop tensors with naive indices.
 
@@ -287,13 +289,16 @@ def crop_by_indices(
         src_box: a tensor with shape (B, 4, 2) containing the coordinates of the bounding boxes
             to be extracted. The tensor must have the shape of Bx4x2, where each box is defined in the clockwise
             order: top-left, top-right, bottom-right and bottom-left. The coordinates must be in x, y order.
-        size: output size. An auto resize will be performed if the cropped slice sizes are not exactly align `size`.
+        size: output size. An auto resize or pad will be performed according to ``shape_compensation``
+            if the cropped slice sizes are not exactly align `size`.
             If None, will auto-infer from src_box.
         interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
             'bicubic' | 'trilinear' | 'area'.
         align_corners: interpolation flag.
         antialias: if True, then image will be filtered with Gaussian before downscaling.
             No effect for upscaling.
+        shape_compensation: if the cropped slice sizes are not exactly align `size`, the image can either be padded
+            or resized.
     """
     B, C, _, _ = input.shape
     src = torch.as_tensor(src_box, device=input.device, dtype=torch.long)
@@ -323,15 +328,17 @@ def crop_by_indices(
     for i, _ in enumerate(out):
         _out = input[i:i + 1, :, y1[i]:y2[i], x1[i]:x2[i]]
         if _out.shape[-2:] != size:
-            out[i] = resize(
-                _out,  # type:ignore
-                size,
-                interpolation=interpolation,
-                align_corners=align_corners,
-                side="short",
-                antialias=antialias,
-            )
+            if shape_compensation == "resize":
+                out[i] = resize(
+                    _out,  # type:ignore
+                    size,
+                    interpolation=interpolation,
+                    align_corners=align_corners,
+                    side="short",
+                    antialias=antialias
+                )
+            else:
+                out[i] = F.pad(_out, [0, size[1] - _out.shape[-1], 0, size[0] - _out.shape[-2]])
         else:
-            out[i] = input[i : i + 1, :, y1[i] : y2[i], x1[i] : x2[i]]  # type:ignore
             out[i] = _out  # type:ignore
     return out
