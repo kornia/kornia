@@ -1,5 +1,4 @@
 import pytest
-
 import torch
 
 from kornia.augmentation import RandomCutMixV2, RandomMixUpV2, RandomMosaic

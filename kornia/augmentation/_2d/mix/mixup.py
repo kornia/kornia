@@ -4,8 +4,8 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.mix.base import MixAugmentationBase, MixAugmentationBaseV2
-from kornia.core import Tensor
 from kornia.constants import DataKey
+from kornia.core import Tensor
 
 
 class RandomMixUp(MixAugmentationBase):
