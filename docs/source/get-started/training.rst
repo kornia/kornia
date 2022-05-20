@@ -244,7 +244,7 @@ decouple the process of running your training scripts in a distributed environme
 .. note::
 
 	We haven't tested yet all the possibilities for distributed training.
-	Expect some adventures or `join us <https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-CnydWe5fmvkcktIeRFGCEQ>`_ and help to iterate :)
+	Expect some adventures or `join us <https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-2AQRi~X9Uu6PLMuUZdvfjA>`_ and help to iterate :)
 
 The below recipes are taken from the `accelerate` library in `here <https://github.com/huggingface/accelerate/tree/main/examples#simple-vision-example>`__:
 
