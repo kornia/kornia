@@ -47,9 +47,15 @@ class RandomMosaic(MixAugmentationBaseV2):
             differentiability.
 
     Examples:
-        >>> mosaic = RandomMosaic()
-        >>> input = torch.randn(8, 3, 16, 16)
-        >>> mosaic(input).shape
+        >>> mosaic = RandomMosaic((300, 300), data_keys=["input", "bbox_xyxy"])
+        >>> boxes = torch.tensor([[
+        ...     [70, 5, 150, 100],
+        ...     [60, 180, 175, 220],
+        ... ]]).repeat(8, 1, 1)
+        >>> input = torch.randn(8, 3, 224, 224)
+        >>> out = mosaic(input, boxes)
+        >>> out[0].shape, out[1].shape
+        (torch.Size([8, 3, 300, 300]), torch.Size([8, 8, 4]))
     """
 
     def __init__(
@@ -111,7 +117,8 @@ class RandomMosaic(MixAugmentationBaseV2):
                 if out_boxes is None:
                     _box._data[~params["batch_prob"]] = input._data[~params["batch_prob"]]
                     out_boxes = _box
-                out_boxes.merge(_box, inplace=True)
+                else:
+                    out_boxes.merge(_box, inplace=True)
         out_boxes.clamp(offset, offset_end, inplace=True)
         out_boxes.filter_boxes_by_area(flags["min_bbox_size"], inplace=True)
         return out_boxes
@@ -194,7 +201,7 @@ class RandomMosaic(MixAugmentationBaseV2):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
-        input = self._compose_images(input, params, flags=flags)
-        transform = self.compute_transformation(input, params, flags=flags)
-        input = self._crop_images(input, params, flags=flags, transform=transform)
-        return input
+        output = self._compose_images(input, params, flags=flags)
+        transform = self.compute_transformation(output, params, flags=flags)
+        output = self._crop_images(output, params, flags=flags, transform=transform)
+        return output

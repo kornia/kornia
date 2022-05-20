@@ -164,7 +164,7 @@ class RandomMixUpV2(MixAugmentationBaseV2):
         >>> label = torch.tensor([0, 1])
         >>> mixup = RandomMixUpV2(data_keys=["input", "class"])
         >>> mixup(input, label)
-        (tensor([[[[0.7576, 0.2793, 0.4031],
+        [tensor([[[[0.7576, 0.2793, 0.4031],
                   [0.7347, 0.0293, 0.7999],
                   [0.3971, 0.7544, 0.5695]]],
         <BLANKLINE>
@@ -172,7 +172,7 @@ class RandomMixUpV2(MixAugmentationBaseV2):
                 [[[0.4388, 0.6387, 0.5247],
                   [0.6826, 0.3051, 0.4635],
                   [0.4550, 0.5725, 0.4980]]]]), tensor([[0.0000, 0.0000, 0.1980],
-                [1.0000, 1.0000, 0.4162]]))
+                [1.0000, 1.0000, 0.4162]])]
     """
 
     def __init__(
@@ -202,9 +202,9 @@ class RandomMixUpV2(MixAugmentationBaseV2):
 
         out_labels = torch.stack(
             [
-                input.to(input.dtype),
-                labels_permute.to(input.dtype),
-                params["mixup_lambdas"].to(input.device, input.dtype),
+                input.to(params["mixup_lambdas"].dtype),
+                labels_permute.to(params["mixup_lambdas"].dtype),
+                params["mixup_lambdas"].to(input.device),
             ],
             dim=-1,
         ).to(input.device)

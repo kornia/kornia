@@ -1,4 +1,5 @@
 from typing import Any, Dict, List, Optional, Tuple, Union
+import warnings
 
 import torch
 
@@ -26,6 +27,7 @@ class MixAugmentationBase(_BasicAugmentationBase):
 
     def __init__(self, p: float, p_batch: float, same_on_batch: bool = False, keepdim: bool = False) -> None:
         super().__init__(p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=keepdim)
+        warnings.warn("`MixAugmentationBase` is deprecated. Please use `MixAugmentationBaseV2` instead.")
 
     def __check_batching__(self, input: TensorWithTransformMat):
         if isinstance(input, tuple):
@@ -142,6 +144,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         self, input: Tensor, params: Dict[str, Tensor],
         flags: Optional[Dict[str, Any]] = None
     ) -> Tensor:
+        # NOTE: apply_transform receives the whole tensor, but returns only altered elements.
         raise NotImplementedError
 
     def apply_non_transform(  # type: ignore
@@ -161,8 +164,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         if torch.sum(to_apply) != len(to_apply):
             output = self.apply_non_transform(in_tensor, params=params, flags=flags)
         if torch.sum(to_apply) != 0:
-            output[to_apply] = self.apply_transform(
-                in_tensor[to_apply], params=params, flags=flags)
+            output[to_apply] = self.apply_transform(in_tensor, params=params, flags=flags)
         output = _transform_output_shape(output, ori_shape) if self.keepdim else output  # type: ignore
         return output
 
@@ -179,7 +181,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
 
     def transform_boxes(
         self, input: Union[Tensor, Boxes], params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    ) -> Boxes:
         # input is BxNx4x2 or Boxes.
         if isinstance(input, Tensor):
             if not (len(input.shape) == 4 and input.shape[2:] == torch.Size([4, 2])):
@@ -227,12 +229,12 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
 
     def apply_non_transform_boxes(
         self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    ) -> Boxes:
         return input
 
     def apply_transform_boxes(
         self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    ) -> Boxes:
         raise NotImplementedError
 
     def apply_non_transform_keypoint(
@@ -260,14 +262,16 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         *input: Tensor,
         params: Optional[Dict[str, Tensor]] = None,
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
-    ) -> Tensor:
+    ) -> Union[Tensor, List[Tensor]]:
         if data_keys is None:
             data_keys = self.data_keys
+        else:
+            data_keys = [DataKey.get(inp) for inp in data_keys]
 
-        in_tensor_idx = data_keys.index(DataKey.INPUT)
-        in_tensor = input[in_tensor_idx]
-        in_tensor = self.transform_tensor(in_tensor)
         if params is None:
+            in_tensor_idx = data_keys.index(DataKey.INPUT)
+            in_tensor = input[in_tensor_idx]
+            in_tensor = self.transform_tensor(in_tensor)
             batch_shape = in_tensor.shape
             params = self.forward_parameters(batch_shape)
         self._params = params
@@ -280,13 +284,16 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
                 output = self.transform_mask(_input, self._params, self.flags)
             elif dcate == DataKey.BBOX:
                 box = Boxes.from_tensor(_input, mode="vertices", validate_boxes=False)
-                output = self.transform_boxes(box, self._params, self.flags)
+                box = self.transform_boxes(box, self._params, self.flags)
+                output = box.to_tensor("vertices")
             elif dcate == DataKey.BBOX_XYXY:
                 box = Boxes.from_tensor(_input, mode="xyxy", validate_boxes=False)
-                output = self.transform_boxes(box, self._params, self.flags)
+                box = self.transform_boxes(box, self._params, self.flags)
+                output = box.to_tensor("xyxy")
             elif dcate == DataKey.BBOX_XYWH:
                 box = Boxes.from_tensor(_input, mode="xywh", validate_boxes=False)
-                output = self.transform_boxes(box, self._params, self.flags)
+                box = self.transform_boxes(box, self._params, self.flags)
+                output = box.to_tensor("xywh")
             elif dcate == DataKey.KEYPOINTS:
                 output = self.transform_keypoint(_input, self._params, self.flags)
             elif dcate == DataKey.CLASS:

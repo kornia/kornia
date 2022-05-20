@@ -12,6 +12,7 @@ from kornia.augmentation import (
     MixAugmentationBase,
     RandomCrop,
 )
+from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import ParamItem, SequentialBase
 from kornia.augmentation.container.utils import ApplyInverseInterface, InputApplyInverse
@@ -223,7 +224,9 @@ class ImageSequential(SequentialBase):
             if isinstance(module, RandomCrop):
                 mod_param = module.forward_parameters_precrop(batch_shape)
                 param = ParamItem(name, mod_param)
-            elif isinstance(module, (_AugmentationBase, MixAugmentationBase, ImageSequential)):
+            elif isinstance(module, (
+                _AugmentationBase, MixAugmentationBase, MixAugmentationBaseV2, ImageSequential)
+            ):
                 mod_param = module.forward_parameters(batch_shape)
                 param = ParamItem(name, mod_param)
             else:
@@ -382,7 +385,7 @@ class ImageSequential(SequentialBase):
         for param in params:
             module = self.get_submodule(param.name)
             input, label = self.apply_to_input(input, label, module, param=param, extra_args=extra_args)  # type: ignore
-            if isinstance(module, (_AugmentationBase, MixAugmentationBase, SequentialBase)):
+            if isinstance(module, (_AugmentationBase, MixAugmentationBase, MixAugmentationBaseV2, SequentialBase)):
                 param = ParamItem(param.name, module._params)
             else:
                 param = ParamItem(param.name, None)

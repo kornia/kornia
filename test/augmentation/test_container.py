@@ -293,6 +293,22 @@ class TestAugmentationSequential:
         assert_close(out_ver[1], expected_bbox_vertical_flip)
         assert_close(out_hor[1], expected_bbox_horizontal_flip)
 
+    def test_with_mosaic(self, device, dtype):
+        width, height = 100, 100
+        crop_width, crop_height = 3, 3
+        input = torch.randn(3, 3, width, height, device=device, dtype=dtype)
+        bbox = torch.tensor(
+            [[[1.0, 1.0, 2.0, 2.0], [0.0, 0.0, 1.0, 2.0], [0.0, 0.0, 2.0, 1.0]]], device=device, dtype=dtype
+        ).expand(3, -1, -1)
+        aug = K.AugmentationSequential(
+            K.RandomCrop((crop_width, crop_height), padding=1, cropping_mode='resample', fill=0),
+            K.RandomHorizontalFlip(p=1.0),
+            K.RandomMosaic(p=1.),
+            data_keys=["input", "bbox_xyxy"],
+        )
+
+        reproducibility_test((input, bbox), aug)
+
     def test_random_crops_and_flips(self, device, dtype):
         width, height = 100, 100
         crop_width, crop_height = 3, 3

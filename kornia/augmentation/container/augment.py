@@ -405,7 +405,9 @@ class AugmentationSequential(ImageSequential):
                     input, label = ApplyInverse.apply_by_key(
                         input, label, module, param, dcate, extra_args=extra_args)
                 elif isinstance(module, MixAugmentationBaseV2):
-                    input = module(input, param=param, data_keys=[dcate])
+                    if dcate in [DataKey.BBOX_XYXY, DataKey.BBOX_XYWH]:
+                        dcate = DataKey.BBOX
+                    input = module(input, params=param.data, data_keys=[dcate])
                 elif isinstance(module, (SequentialBase,)):
                     raise ValueError(f"Unsupported Sequential {module}.")
                 else:
