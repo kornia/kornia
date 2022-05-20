@@ -23,6 +23,8 @@ def get_test_devices() -> Dict[str, torch.device]:
         import torch_xla.core.xla_model as xm
 
         devices["tpu"] = xm.xla_device()
+    if torch.backends.mps.is_available():
+        devices["mps"] = torch.device('mps')
     return devices
 
 
