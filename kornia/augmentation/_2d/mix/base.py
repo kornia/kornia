@@ -1,7 +1,6 @@
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
-from defusedxml import NotSupportedError
 
 from kornia.augmentation.base import TensorWithTransformMat, _BasicAugmentationBase
 from kornia.augmentation.utils import _transform_input, _transform_output_shape, _validate_input_dtype
@@ -123,6 +122,8 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
+        data_keys: the input type sequential for applying augmentations.
+            Accepts "input", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints".
     """
 
     def __init__(
@@ -170,6 +171,8 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
     ) -> Tensor:
         to_apply = params['batch_prob']
         output = input
+        if torch.sum(to_apply) != len(to_apply):
+            output = self.apply_non_transform_mask(input, params=params, flags=flags)
         if torch.sum(to_apply) != 0:
             output = self.apply_transform_mask(input, params, flags)
         return output
@@ -193,12 +196,29 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
     def transform_keypoint(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
-        return self.apply_transform_keypoint(input, params, flags)
+        to_apply = params['batch_prob']
+        output = input
+        if torch.sum(to_apply) != len(to_apply):
+            output = self.apply_non_transform_keypoint(input, params=params, flags=flags)
+        if torch.sum(to_apply) != 0:
+            output = self.apply_transform_keypoint(input, params, flags)
+        return output
 
-    def transform_tag(
+    def transform_class(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
-        return self.apply_transform_tag(input, params, flags)
+        to_apply = params['batch_prob']
+        output = input
+        if torch.sum(to_apply) != len(to_apply):
+            output = self.apply_non_transform_class(input, params=params, flags=flags)
+        if torch.sum(to_apply) != 0:
+            output = self.apply_transform_class(input, params, flags)
+        return output
+
+    def apply_non_transform_mask(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
+    ) -> Tensor:
+        raise NotImplementedError
 
     def apply_transform_mask(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
@@ -215,12 +235,22 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
     ) -> Tensor:
         raise NotImplementedError
 
+    def apply_non_transform_keypoint(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
+    ) -> Tensor:
+        return input
+
     def apply_transform_keypoint(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         raise NotImplementedError
 
-    def apply_transform_tag(
+    def apply_non_transform_class(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
+    ) -> Tensor:
+        return input
+
+    def apply_transform_class(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         raise NotImplementedError
@@ -259,8 +289,8 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
                 output = self.transform_boxes(box, self._params, self.flags)
             elif dcate == DataKey.KEYPOINTS:
                 output = self.transform_keypoint(_input, self._params, self.flags)
-            elif dcate == DataKey.TAG:
-                output = self.transform_tag(_input, self._params, self.flags)
+            elif dcate == DataKey.CLASS:
+                output = self.transform_class(_input, self._params, self.flags)
             else:
                 raise NotImplementedError
             outputs.append(output)

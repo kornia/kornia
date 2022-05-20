@@ -10,6 +10,7 @@ from kornia.augmentation import (
     IntensityAugmentationBase2D,
     RandomErasing,
 )
+from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import SequentialBase
 from kornia.augmentation.container.image import ImageSequential, ParamItem
@@ -399,11 +400,12 @@ class AugmentationSequential(ImageSequential):
                     input = input.view(batch_size, -1, *input.shape[1:])
                 elif isinstance(module, PatchSequential):
                     raise NotImplementedError("Geometric involved PatchSequential is not supported.")
-                elif (
-                    isinstance(module, (GeometricAugmentationBase2D, ImageSequential, RandomErasing))
-                    and dcate in DataKey
-                ):
-                    input, label = ApplyInverse.apply_by_key(input, label, module, param, dcate, extra_args=extra_args)
+                elif isinstance(module, (GeometricAugmentationBase2D, ImageSequential, RandomErasing)) \
+                        and dcate in DataKey:
+                    input, label = ApplyInverse.apply_by_key(
+                        input, label, module, param, dcate, extra_args=extra_args)
+                elif isinstance(module, MixAugmentationBaseV2):
+                    input = module(input, param=param, data_keys=[dcate])
                 elif isinstance(module, (SequentialBase,)):
                     raise ValueError(f"Unsupported Sequential {module}.")
                 else:

@@ -1,11 +1,13 @@
 import warnings
-from typing import Dict, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.mix.base import MixAugmentationBase, MixAugmentationBaseV2
 from kornia.augmentation.utils import _shape_validation
+from kornia.constants import DataKey
+from kornia.core import Tensor
 from kornia.geometry.bbox import bbox_to_mask, infer_bbox_shape
 
 
@@ -49,9 +51,9 @@ class RandomCutMix(MixAugmentationBase):
         p (float): probability for applying an augmentation to a batch. This param controls the augmentation
                    probabilities batch-wisely.
         num_mix (int): cut mix times. Default is 1.
-        beta (float or torch.Tensor, optional): hyperparameter for generating cut size from beta distribution.
+        beta (float or Tensor, optional): hyperparameter for generating cut size from beta distribution.
             Beta cannot be set to 0 after torch 1.8.0. If None, it will be set to 1.
-        cut_size ((float, float) or torch.Tensor, optional): controlling the minimum and maximum cut ratio from [0, 1].
+        cut_size ((float, float) or Tensor, optional): controlling the minimum and maximum cut ratio from [0, 1].
             If None, it will be set to [0, 1], which means no restriction.
         same_on_batch (bool): apply the same transformation across the batch.
             This flag will not maintain permutation order. Default: False.
@@ -63,7 +65,7 @@ class RandomCutMix(MixAugmentationBase):
         - Raw labels, shape of :math:`(B)`.
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor]:
+        Tuple[Tensor, Tensor]:
         - Adjusted image, shape of :math:`(B, C, H, W)`.
         - Raw labels, permuted labels and lambdas for each mix, shape of :math:`(B, num_mix, 3)`.
 
@@ -93,8 +95,8 @@ class RandomCutMix(MixAugmentationBase):
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_mix: int = 1,
-        cut_size: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
-        beta: Optional[Union[torch.Tensor, float]] = None,
+        cut_size: Optional[Union[Tensor, Tuple[float, float]]] = None,
+        beta: Optional[Union[Tensor, float]] = None,
         same_on_batch: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
@@ -109,8 +111,8 @@ class RandomCutMix(MixAugmentationBase):
         self._param_generator = cast(rg.CutmixGenerator, rg.CutmixGenerator(cut_size, beta, num_mix, p=p))
 
     def apply_transform(  # type: ignore
-        self, input: torch.Tensor, label: torch.Tensor, params: Dict[str, torch.Tensor]  # type: ignore
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        self, input: Tensor, label: Tensor, params: Dict[str, Tensor]  # type: ignore
+    ) -> Tuple[Tensor, Tensor]:
         height, width = input.size(2), input.size(3)
         num_mixes = params["mix_pairs"].size(0)
         batch_size = params["mix_pairs"].size(1)
@@ -170,7 +172,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         - Raw labels, shape of :math:`(B)`.
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor]:
+        Tuple[Tensor, Tensor]:
         - Adjusted image, shape of :math:`(B, C, H, W)`.
         - Raw labels, permuted labels and lambdas for each mix, shape of :math:`(B, num_mix, 3)`.
 
@@ -182,7 +184,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         >>> input = torch.rand(2, 1, 3, 3)
         >>> input[0] = torch.ones((1, 3, 3))
         >>> label = torch.tensor([0, 1])
-        >>> cutmix = RandomCutMix()
+        >>> cutmix = RandomCutMixV2(data_keys=["input", "class"])
         >>> cutmix(input, label)
         (tensor([[[[0.8879, 0.4510, 1.0000],
                   [0.1498, 0.4015, 1.0000],
@@ -197,33 +199,21 @@ class RandomCutMixV2(MixAugmentationBaseV2):
 
     def __init__(
         self,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
         num_mix: int = 1,
-        cut_size: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
-        beta: Optional[Union[torch.Tensor, float]] = None,
+        cut_size: Optional[Union[Tensor, Tuple[float, float]]] = None,
+        beta: Optional[Union[Tensor, float]] = None,
         same_on_batch: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
+        data_keys: List[Union[str, int, DataKey]] = [DataKey.INPUT],
     ) -> None:
-        super().__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        if height is not None or width is not None:
-            warnings.warn(
-                "height and width can be inferred automatically now. "
-                "The height and width arguments will be removed finally.",
-                category=DeprecationWarning,
-            )
+        super().__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim, data_keys=data_keys)
         self._param_generator = cast(rg.CutmixGenerator, rg.CutmixGenerator(cut_size, beta, num_mix, p=p))
 
-    def transform_labels(
-        self, label: torch.Tensor, params: Dict[str, torch.Tensor]
-    ) -> torch.Tensor:
+    def apply_transform_class(
+        self, label: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
+    ) -> Tensor:
         height, width = params["image_shape"]
-        num_mixes = params["mix_pairs"].size(0)
-        batch_size = params["mix_pairs"].size(1)
-
-        _shape_validation(params["mix_pairs"], [num_mixes, batch_size], "mix_pairs")
-        _shape_validation(params["crop_src"], [num_mixes, batch_size, 4, 2], "crop_src")
 
         out_labels = []
         for pair, crop in zip(params["mix_pairs"], params["crop_src"]):
@@ -236,15 +226,10 @@ class RandomCutMixV2(MixAugmentationBaseV2):
 
         return torch.stack(out_labels, dim=0)
 
-    def apply_transform(  # type: ignore
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor]  # type: ignore
-    ) -> torch.Tensor:
+    def apply_transform(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
+    ) -> Tensor:
         height, width = input.size(2), input.size(3)
-        num_mixes = params["mix_pairs"].size(0)
-        batch_size = params["mix_pairs"].size(1)
-
-        _shape_validation(params["mix_pairs"], [num_mixes, batch_size], "mix_pairs")
-        _shape_validation(params["crop_src"], [num_mixes, batch_size, 4, 2], "crop_src")
 
         out_inputs = input.clone()
         for pair, crop in zip(params["mix_pairs"], params["crop_src"]):

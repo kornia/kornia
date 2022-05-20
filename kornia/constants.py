@@ -61,4 +61,4 @@ class DataKey(ConstantBase, Enum, metaclass=EnumMetaFlags):
     BBOX_XYXY = 3
     BBOX_XYWH = 4
     KEYPOINTS = 5
-    TAG = 6
+    CLASS = 6

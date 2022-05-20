@@ -21,7 +21,7 @@ class RandomMosaic(MixAugmentationBaseV2):
 
     Given a certain number of images, mosaic transform combines them into one output image.
     The output image is composed of the parts from each sub-image.
-    
+
     The mosaic transform steps are as follows:
 
          1. Concate selected images into a super-image.
@@ -121,7 +121,7 @@ class RandomMosaic(MixAugmentationBaseV2):
     ) -> Tensor:
         raise NotImplementedError
 
-    def apply_transform_tag(
+    def apply_transform_class(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         raise RuntimeError(f"{__class__.__name__} does not support `TAG` types.")
