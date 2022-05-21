@@ -3,16 +3,18 @@ from typing import Dict
 import torch
 import torch.nn as nn
 
+from kornia.testing import KORNIA_CHECK_SHAPE
+
 urls: Dict[str, str] = {}
 urls[
     "liberty"
-] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-liberty.params"  # noqa pylint: disable
+] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-liberty.params"  # pylint: disable
 urls[
     "notredame"
-] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-notredame.params"  # noqa pylint: disable
+] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-notredame.params"  # pylint: disable
 urls[
     "yosemite"
-] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-yosemite.params"  # noqa pylint: disable
+] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-yosemite.params"  # pylint: disable
 
 
 class TFeat(nn.Module):
@@ -26,17 +28,18 @@ class TFeat(nn.Module):
         pretrained: Download and set pretrained weights to the model.
 
     Returns:
-        TFeat descriptor of the patches.
+        torch.Tensor: TFeat descriptor of the patches.
 
     Shape:
-        - Input: (B, 1, 32, 32)
-        - Output: (B, 128)
+        - Input: :math:`(B, 1, 32, 32)`
+        - Output: :math:`(B, 128)`
 
     Examples:
         >>> input = torch.rand(16, 1, 32, 32)
         >>> tfeat = TFeat()
         >>> descs = tfeat(input) # 16x128
     """
+    patch_size = 32
 
     def __init__(self, pretrained: bool = False) -> None:
         super().__init__()
@@ -55,8 +58,10 @@ class TFeat(nn.Module):
                 urls['liberty'], map_location=lambda storage, loc: storage
             )
             self.load_state_dict(pretrained_dict, strict=True)
+        self.eval()
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         x = self.features(input)
         x = x.view(x.size(0), -1)
         x = self.descr(x)

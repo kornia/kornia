@@ -10,7 +10,7 @@ def one_hot(
     dtype: Optional[torch.dtype] = None,
     eps: float = 1e-6,
 ) -> torch.Tensor:
-    r"""Converts an integer label x-D tensor to a one-hot (x+1)-D tensor.
+    r"""Convert an integer label x-D tensor to a one-hot (x+1)-D tensor.
 
     Args:
         labels: tensor with labels of shape :math:`(N, *)`, where N is batch size.

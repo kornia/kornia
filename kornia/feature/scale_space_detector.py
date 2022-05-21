@@ -4,11 +4,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.feature.laf import denormalize_laf, laf_is_inside_image, normalize_laf
-from kornia.feature.orientation import PassLAF
-from kornia.feature.responses import BlobHessian
-from kornia.geometry import ConvSoftArgmax3d
+from kornia.geometry.subpix import ConvSoftArgmax3d
 from kornia.geometry.transform import ScalePyramid
+
+from .laf import denormalize_laf, laf_is_inside_image, normalize_laf
+from .orientation import PassLAF
+from .responses import BlobHessian
 
 
 def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor, num_levels: int) -> torch.Tensor:
@@ -29,7 +30,6 @@ def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor, num_le
 
     # Reshape for grid shape
     B, N, _ = max_coords.shape
-    L: int = sigmas.size(1)
     scale_coords = max_coords[:, :, 0].contiguous().view(-1, 1, 1, 1)
     # Replace the scale_x_y
     out = torch.cat(
@@ -39,7 +39,7 @@ def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor, num_le
 
 
 def _create_octave_mask(mask: torch.Tensor, octave_shape: List[int]) -> torch.Tensor:
-    r"""Downsamples a mask based on the given octave shape."""
+    r"""Downsample a mask based on the given octave shape."""
     mask_shape = octave_shape[-2:]
     mask_octave = F.interpolate(mask, mask_shape, mode='bilinear', align_corners=False)  # type: ignore
     return mask_octave.unsqueeze(1)
@@ -130,13 +130,11 @@ class ScaleSpaceDetector(nn.Module):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         dev: torch.device = img.device
         dtype: torch.dtype = img.dtype
-        sp, sigmas, pix_dists = self.scale_pyr(img)
-        all_responses = []
-        all_lafs = []
+        sp, sigmas, _ = self.scale_pyr(img)
+        all_responses: List[torch.Tensor] = []
+        all_lafs: List[torch.Tensor] = []
         for oct_idx, octave in enumerate(sp):
             sigmas_oct = sigmas[oct_idx]
-            pix_dists_oct = pix_dists[oct_idx]
-
             B, CH, L, H, W = octave.size()
             # Run response function
             if self.scale_space_response:

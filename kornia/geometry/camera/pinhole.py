@@ -83,7 +83,7 @@ class PinholeCamera:
 
     @property
     def batch_size(self) -> int:
-        r"""Returns the batch size of the storage.
+        r"""Return the batch size of the storage.
 
         Returns:
             scalar with the batch size.
@@ -92,7 +92,7 @@ class PinholeCamera:
 
     @property
     def fx(self) -> torch.Tensor:
-        r"""Returns the focal length in the x-direction.
+        r"""Return the focal length in the x-direction.
 
         Returns:
             tensor of shape :math:`(B)`.
@@ -101,7 +101,7 @@ class PinholeCamera:
 
     @property
     def fy(self) -> torch.Tensor:
-        r"""Returns the focal length in the y-direction.
+        r"""Return the focal length in the y-direction.
 
         Returns:
             tensor of shape :math:`(B)`.
@@ -110,7 +110,7 @@ class PinholeCamera:
 
     @property
     def cx(self) -> torch.Tensor:
-        r"""Returns the x-coordinate of the principal point.
+        r"""Return the x-coordinate of the principal point.
 
         Returns:
             tensor of shape :math:`(B)`.
@@ -119,7 +119,7 @@ class PinholeCamera:
 
     @property
     def cy(self) -> torch.Tensor:
-        r"""Returns the y-coordinate of the principal point.
+        r"""Return the y-coordinate of the principal point.
 
         Returns:
             tensor of shape :math:`(B)`.
@@ -128,7 +128,7 @@ class PinholeCamera:
 
     @property
     def tx(self) -> torch.Tensor:
-        r"""Returns the x-coordinate of the translation vector.
+        r"""Return the x-coordinate of the translation vector.
 
         Returns:
             tensor of shape :math:`(B)`.
@@ -143,7 +143,7 @@ class PinholeCamera:
 
     @property
     def ty(self) -> torch.Tensor:
-        r"""Returns the y-coordinate of the translation vector.
+        r"""Return the y-coordinate of the translation vector.
 
         Returns:
             tensor of shape :math:`(B)`.
@@ -173,7 +173,7 @@ class PinholeCamera:
 
     @property
     def rt_matrix(self) -> torch.Tensor:
-        r"""Returns the 3x4 rotation-translation matrix.
+        r"""Return the 3x4 rotation-translation matrix.
 
         Returns:
             tensor of shape :math:`(B, 3, 4)`.
@@ -182,7 +182,7 @@ class PinholeCamera:
 
     @property
     def camera_matrix(self) -> torch.Tensor:
-        r"""Returns the 3x3 camera matrix containing the intrinsics.
+        r"""Return the 3x3 camera matrix containing the intrinsics.
 
         Returns:
             tensor of shape :math:`(B, 3, 3)`.
@@ -191,7 +191,7 @@ class PinholeCamera:
 
     @property
     def rotation_matrix(self) -> torch.Tensor:
-        r"""Returns the 3x3 rotation matrix from the extrinsics.
+        r"""Return the 3x3 rotation matrix from the extrinsics.
 
         Returns:
             tensor of shape :math:`(B, 3, 3)`.
@@ -200,7 +200,7 @@ class PinholeCamera:
 
     @property
     def translation_vector(self) -> torch.Tensor:
-        r"""Returns the translation vector from the extrinsics.
+        r"""Return the translation vector from the extrinsics.
 
         Returns:
             tensor of shape :math:`(B, 3, 1)`.
@@ -208,7 +208,7 @@ class PinholeCamera:
         return self.extrinsics[..., :3, -1:]
 
     def clone(self) -> 'PinholeCamera':
-        r"""Returns a deep copy of the current object instance."""
+        r"""Return a deep copy of the current object instance."""
         height: torch.Tensor = self.height.clone()
         width: torch.Tensor = self.width.clone()
         intrinsics: torch.Tensor = self.intrinsics.clone()
@@ -216,7 +216,7 @@ class PinholeCamera:
         return PinholeCamera(intrinsics, extrinsics, height, width)
 
     def intrinsics_inverse(self) -> torch.Tensor:
-        r"""Returns the inverse of the 4x4 instrisics matrix.
+        r"""Return the inverse of the 4x4 instrisics matrix.
 
         Returns:
             tensor of shape :math:`(B, 4, 4)`.
@@ -224,7 +224,7 @@ class PinholeCamera:
         return self.intrinsics.inverse()
 
     def scale(self, scale_factor) -> 'PinholeCamera':
-        r"""Scales the pinhole model.
+        r"""Scale the pinhole model.
 
         Args:
             scale_factor: a tensor with the scale factor. It has
@@ -246,7 +246,7 @@ class PinholeCamera:
         return PinholeCamera(intrinsics, self.extrinsics, height, width)
 
     def scale_(self, scale_factor) -> 'PinholeCamera':
-        r"""Scales the pinhole model in-place.
+        r"""Scale the pinhole model in-place.
 
         Args:
             scale_factor: a tensor with the scale factor. It has
@@ -324,7 +324,7 @@ class PinholeCamerasList(PinholeCamera):
         self._initialize_parameters(pinholes_list)
 
     def _initialize_parameters(self, pinholes: Iterable[PinholeCamera]) -> 'PinholeCamerasList':
-        r"""Initialises the class attributes given a cameras list."""
+        r"""Initialise the class attributes given a cameras list."""
         if not isinstance(pinholes, (list, tuple)):
             raise TypeError(f"pinhole must of type list or tuple. Got {type(pinholes)}")
         height, width = [], []
@@ -345,14 +345,14 @@ class PinholeCamerasList(PinholeCamera):
 
     @property
     def num_cameras(self) -> int:
-        r"""Returns the number of pinholes cameras per batch."""
+        r"""Return the number of pinholes cameras per batch."""
         num_cameras: int = -1
         if self.intrinsics is not None:
             num_cameras = int(self.intrinsics.shape[1])
         return num_cameras
 
     def get_pinhole(self, idx: int) -> PinholeCamera:
-        r"""Returns a PinholeCamera object with parameters such as Bx4x4."""
+        r"""Return a PinholeCamera object with parameters such as Bx4x4."""
         height: torch.Tensor = self.height[..., idx]
         width: torch.Tensor = self.width[..., idx]
         intrinsics: torch.Tensor = self.intrinsics[:, idx]
@@ -405,7 +405,7 @@ def pinhole_matrix(pinholes: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
 
 
 def inverse_pinhole_matrix(pinhole: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
-    r"""Returns the inverted pinhole matrix from a pinhole model
+    r"""Return the inverted pinhole matrix from a pinhole model
 
     .. note::
         This method is going to be deprecated in version 0.2 in favour of
@@ -449,7 +449,7 @@ def inverse_pinhole_matrix(pinhole: torch.Tensor, eps: float = 1e-6) -> torch.Te
 
 
 def scale_pinhole(pinholes: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
-    r"""Scales the pinhole matrix for each pinhole model.
+    r"""Scale the pinhole matrix for each pinhole model.
 
     .. note::
         This method is going to be deprecated in version 0.2 in favour of
@@ -487,7 +487,7 @@ def scale_pinhole(pinholes: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
 
 
 def get_optical_pose_base(pinholes: torch.Tensor) -> torch.Tensor:
-    """Get extrinsic transformation matrices for pinholes
+    """Compute extrinsic transformation matrices for pinholes.
 
     Args:
         pinholes: tensor of form [fx fy cx cy h w rx ry rz tx ty tz]
@@ -495,18 +495,16 @@ def get_optical_pose_base(pinholes: torch.Tensor) -> torch.Tensor:
 
     Returns:
         tensor of extrinsic transformation matrices of size (N, 4, 4).
-
     """
     if not (len(pinholes.shape) == 2 and pinholes.shape[1] == 12):
         raise AssertionError(pinholes.shape)
-    optical_pose_parent = pinholes[..., 6:]
     # TODO: where is rtvec_to_pose?
     raise NotImplementedError
     # TODO: We have rtvec_to_pose in torchgeometry
     # https://github.com/whh14/torchgeometry/blob/master/torchgeometry/conversions.py#L240
     # But it relies on angle_axis_to_rotation_matrix
     # And since then, it was changed from returning Nx4x4 matrix to Nx3x3
-    # return rtvec_to_pose(optical_pose_parent)  # noqa: F821 type: ignore
+    # return rtvec_to_pose(optical_pose_parent)   type: ignore
 
 
 def homography_i_H_ref(pinhole_i: torch.Tensor, pinhole_ref: torch.Tensor) -> torch.Tensor:
@@ -603,7 +601,6 @@ def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: flo
         )
     if not len(dst_proj_src.shape) == 3 and dst_proj_src.shape[-2:] == (4, 4):
         raise ValueError("Input dst_proj_src has to be in the shape of " "Bx4x4. Got {}".format(dst_proj_src.shape))
-    b, h, w, _ = cam_coords_src.shape
     # apply projection matrix to points
     point_coords: torch.Tensor = transform_points(dst_proj_src[:, None], cam_coords_src)
     x_coord: torch.Tensor = point_coords[..., 0]
@@ -621,7 +618,7 @@ def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: flo
 
 # layer api
 '''class PinholeMatrix(nn.Module):
-    r"""Creates an object that returns the pinhole matrix from a pinhole model
+    r"""Create an object that returns the pinhole matrix from a pinhole model
 
     Args:
         pinholes (Tensor): tensor of pinhole models.
@@ -647,7 +644,7 @@ def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: flo
 
 
 class InversePinholeMatrix(nn.Module):
-    r"""Returns and object that inverts a pinhole matrix from a pinhole model
+    r"""Return and object that inverts a pinhole matrix from a pinhole model
 
     Args:
         pinholes (Tensor): tensor with pinhole models.

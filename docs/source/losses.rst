@@ -6,12 +6,16 @@ kornia.losses
 Reconstruction
 --------------
 
-.. autofunction:: ssim
 .. autofunction:: ssim_loss
-.. autofunction:: psnr
 .. autofunction:: psnr_loss
 .. autofunction:: total_variation
 .. autofunction:: inverse_depth_smoothness_loss
+
+.. autoclass:: SSIMLoss
+.. autoclass:: MS_SSIMLoss
+.. autoclass:: TotalVariation
+.. autoclass:: PSNRLoss
+.. autoclass:: InverseDepthSmoothnessLoss
 
 Semantic Segmentation
 ---------------------
@@ -20,6 +24,15 @@ Semantic Segmentation
 .. autofunction:: focal_loss
 .. autofunction:: dice_loss
 .. autofunction:: tversky_loss
+.. autofunction:: lovasz_hinge_loss
+.. autofunction:: lovasz_softmax_loss
+
+.. autoclass:: BinaryFocalLossWithLogits
+.. autoclass:: DiceLoss
+.. autoclass:: TverskyLoss
+.. autoclass:: FocalLoss
+.. autoclass:: LovaszHingeLoss
+.. autoclass:: LovaszSoftmaxLoss
 
 Distributions
 -------------
@@ -27,15 +40,8 @@ Distributions
 .. autofunction:: js_div_loss_2d
 .. autofunction:: kl_div_loss_2d
 
-Module
-------
+Morphology
+----------
 
-.. autoclass:: DiceLoss
-.. autoclass:: TverskyLoss
-.. autoclass:: FocalLoss
-.. autoclass:: SSIM
-.. autoclass:: SSIMLoss
-.. autoclass:: InverseDepthSmoothnessLoss
-.. autoclass:: TotalVariation
-.. autoclass:: PSNRLoss
-.. autoclass:: BinaryFocalLossWithLogits
+.. autoclass:: HausdorffERLoss
+.. autoclass:: HausdorffERLoss3D

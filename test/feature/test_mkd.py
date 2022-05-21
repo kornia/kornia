@@ -1,8 +1,23 @@
+from math import pi
+
 import pytest
+import torch
 from torch.autograd import gradcheck
 
 import kornia.testing as utils  # test utils
-from kornia.feature.mkd import *
+from kornia.feature.mkd import (
+    COEFFS,
+    EmbedGradients,
+    ExplicitSpacialEncoding,
+    MKDDescriptor,
+    MKDGradients,
+    SimpleKD,
+    VonMisesKernel,
+    Whitening,
+    get_grid_dict,
+    get_kron_order,
+    spatial_kernel_embedding,
+)
 from kornia.testing import assert_close
 
 
@@ -131,12 +146,10 @@ class TestVonMisesKernel:
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 13, 13
         patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
-        model = (
-            VonMisesKernel(patch_size=13, coeffs=[0.38214156, 0.48090413]).to(patches.device, patches.dtype).eval()
-        )  # noqa
+        model = VonMisesKernel(patch_size=13, coeffs=[0.38214156, 0.48090413]).to(patches.device, patches.dtype).eval()
         model_jit = torch.jit.script(
             VonMisesKernel(patch_size=13, coeffs=[0.38214156, 0.48090413]).to(patches.device, patches.dtype).eval()
-        )  # noqa
+        )
         assert_close(model(patches), model_jit(patches))
 
 
@@ -189,7 +202,7 @@ class TestEmbedGradients:
         model = EmbedGradients(patch_size=W, relative=True).to(patches.device, patches.dtype).eval()
         model_jit = torch.jit.script(
             EmbedGradients(patch_size=W, relative=True).to(patches.device, patches.dtype).eval()
-        )  # noqa
+        )
         assert_close(model(patches), model_jit(patches))
 
 
@@ -263,7 +276,7 @@ class TestExplicitSpacialEncoding:
         )
         model_jit = torch.jit.script(
             ExplicitSpacialEncoding(kernel_type='cart', fmap_size=W, in_dims=2).to(patches.device, patches.dtype).eval()
-        )  # noqa
+        )
         assert_close(model(patches), model_jit(patches))
 
 
@@ -323,7 +336,7 @@ class TestWhitening:
         model = Whitening(xform='lw', whitening_model=None, in_dims=in_dims).to(patches.device, patches.dtype).eval()
         model_jit = torch.jit.script(
             Whitening(xform='lw', whitening_model=None, in_dims=in_dims).to(patches.device, patches.dtype).eval()
-        )  # noqa
+        )
         assert_close(model(patches), model_jit(patches))
 
 
@@ -401,7 +414,7 @@ class TestMKDDescriptor:
         model = MKDDescriptor(patch_size=ps, kernel_type=kt, whitening=wt).to(patches.device, patches.dtype).eval()
         model_jit = torch.jit.script(
             MKDDescriptor(patch_size=ps, kernel_type=kt, whitening=wt).to(patches.device, patches.dtype).eval()
-        )  # noqa
+        )
         assert_close(model(patches), model_jit(patches))
 
 
@@ -442,10 +455,8 @@ class TestSimpleKD:
     def test_jit(self, device, dtype):
         batch_size, channels, ps = 1, 1, 19
         patches = torch.rand(batch_size, channels, ps, ps).to(device)
-        model = (
-            SimpleKD(patch_size=ps, kernel_type='polar', whitening='lw').to(patches.device, patches.dtype).eval()
-        )  # noqa
+        model = SimpleKD(patch_size=ps, kernel_type='polar', whitening='lw').to(patches.device, patches.dtype).eval()
         model_jit = torch.jit.script(
             SimpleKD(patch_size=ps, kernel_type='polar', whitening='lw').to(patches.device, patches.dtype).eval()
-        )  # noqa
+        )
         assert_close(model(patches), model_jit(patches))

@@ -3,7 +3,7 @@ kornia.geometry.epipolar
 
 .. currentmodule:: kornia.geometry.epipolar
 
-Module to with useful functionalities for epipolar geometry used by Structure from Motion
+Module with useful functionalities for epipolar geometry used by Structure from Motion
 
 .. image:: data/epipolar_geometry.svg.png
 
@@ -33,6 +33,8 @@ Metrics
 
 .. autofunction:: sampson_epipolar_distance
 .. autofunction:: symmetrical_epipolar_distance
+.. autofunction:: left_to_right_epipolar_distance
+.. autofunction:: right_to_left_epipolar_distance
 
 Projection
 ----------
@@ -47,8 +49,6 @@ Numeric
 -------
 
 .. autofunction:: cross_product_matrix
-.. autofunction:: eye_like
-.. autofunction:: vec_like
 
 Triangulation
 -------------

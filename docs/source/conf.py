@@ -2,8 +2,6 @@ import importlib.util
 import os
 import sys
 
-import sphinx_rtd_theme
-
 # readthedocs generated the whole documentation in an isolated environment
 # by cloning the git repo. Thus, any on-the-fly operation will not effect
 # on the resulting documentation. We therefore need to import and run the
@@ -36,8 +34,6 @@ extensions = [
     'sphinx.ext.autosummary',
     'sphinx.ext.doctest',
     'sphinx.ext.intersphinx',
-    # 'sphinx.ext.todo',
-    # 'sphinx.ext.coverage',
     'sphinx.ext.mathjax',
     'sphinx.ext.napoleon',
     'sphinx_autodoc_typehints',
@@ -46,10 +42,13 @@ extensions = [
     'sphinx.ext.viewcode',
     'sphinx.ext.githubpages',
     'sphinxcontrib.bibtex',
+    'sphinxcontrib.youtube',
+    'sphinx_design',
 ]
 
 # substitutes the default values
 docstring_default_arg_substitution = 'Default: '
+autodoc_preserve_defaults = True
 
 bibtex_bibfiles = ['references.bib']
 napoleon_use_ivar = True
@@ -80,7 +79,7 @@ version = ''
 
 if 'READTHEDOCS' not in os.environ:
     # if developing locally, use pyro.__version__ as version
-    from kornia import __version__  # noqaE402
+    from kornia import __version__
 
     version = __version__
 
@@ -100,35 +99,54 @@ language = None
 exclude_patterns = ['_build', '.ipynb_checkpoints']
 
 # The name of the Pygments (syntax highlighting) style to use.
-pygments_style = 'sphinx'
+pygments_style = 'friendly'
+pygments_dark_style = "monokai"
 
-# If true, `todo` and `todoList` produce output, else they produce nothing.
-todo_include_todos = True
-
-# do not prepend module name to functions
-add_module_names = False
-
-# -- Options for HTML output ----------------------------------------------
-
-# The theme to use for HTML and HTML Help pages.  See the documentation for
-# a list of builtin themes.
-#
-html_theme = 'sphinx_rtd_theme'
-html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
+html_theme = 'furo'
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
 #
+# TODO(jian): make to work with https://docs.kornia.org
+html_baseurl = 'https://kornia.readthedocs.io'
+
+# Changing sidebar title to Kornia
+html_title = "Kornia"
+
 html_theme_options = {
-    'analytics_id': 'G-3LJY4GJLPR',
-    'collapse_navigation': False,
-    'display_version': True,
-    'logo_only': True,
+    'light_logo': 'img/kornia_logo_only_light.svg',
+    'dark_logo': 'img/kornia_logo_only_dark.svg',
+    "sidebar_hide_name": True,
+    "navigation_with_keys": True,
+    "light_css_variables": {
+        "color-sidebar-background": "#3980F5",
+        "color-sidebar-background-border": "#3980F5",
+        "color-sidebar-caption-text": "white",
+        "color-sidebar-link-text--top-level": "white",
+        "color-sidebar-link-text": "white",
+        "sidebar-caption-font-size": "normal",
+        "color-sidebar-item-background--hover": " #5dade2",
+    },
+    "dark_css_variables": {
+        "color-sidebar-background": "#1a1c1e",
+        "color-sidebar-background-border": "#1a1c1e",
+        "color-sidebar-caption-text": "white",
+        "color-sidebar-link-text--top-level": "white",
+    },
+
+    # "announcement": """
+    #     <a style=\"text-decoration: none; color: white;\"
+    #        href=\"https://github.com/kornia/kornia\">
+    #        <img src=\"https://github.com/kornia/data/raw/main/GitHub-Mark-Light-32px.png\" width=20 height=20/>
+    #        Star Kornia on GitHub
+    #     </a>
+    # """,
 }
 
-html_logo = '_static/img/kornia_logo.svg'
-html_favicon = '_static/img/kornia_logo_mini.png'
+# html_logo = '_static/img/kornia_logo.svg'
+# html_logo = '_static/img/kornia_logo_only.png'
+html_favicon = '_static/img/kornia_logo_favicon.png'
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
@@ -136,13 +154,10 @@ html_favicon = '_static/img/kornia_logo_mini.png'
 html_static_path = ['_static']
 html_extra_path = ['_extra']
 
-# html_style_path = 'css/pytorch_theme.css'
-html_context = {'css_files': ['https://fonts.googleapis.com/css?family=Lato', '_static/css/pytorch_theme.css']}
-
-# -- Options for HTMLHelp output ------------------------------------------
-
 # Output file base name for HTML help builder.
 htmlhelp_basename = 'Kornia'
+html_css_files = ['css/main.css']
+html_js_files = ['js/custom.js']
 
 
 # -- Options for LaTeX output ---------------------------------------------

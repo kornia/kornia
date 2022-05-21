@@ -5,14 +5,15 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia.testing as utils  # test utils
-from kornia.augmentation.base import _BasicAugmentationBase, AugmentationBase2D
+from kornia.augmentation._2d.base import AugmentationBase2D
+from kornia.augmentation.base import _BasicAugmentationBase
 from kornia.testing import assert_close
 
 
 class TestBasicAugmentationBase:
-    def test_smoke(self, device, dtype):
+    def test_smoke(self):
         base = _BasicAugmentationBase(p=0.5, p_batch=1.0, same_on_batch=True)
-        __repr__ = "p=0.5, p_batch=1.0, same_on_batch=True"
+        __repr__ = "_BasicAugmentationBase(p=0.5, p_batch=1.0, same_on_batch=True)"
         assert str(base) == __repr__
 
     def test_infer_input(self, device, dtype):
@@ -60,6 +61,8 @@ class TestBasicAugmentationBase:
         ) as generate_parameters, patch.object(
             augmentation, "transform_tensor", autospec=True
         ) as transform_tensor, patch.object(
+            augmentation, "transform_output_tensor", autospec=True
+        ) as transform_output_tensor, patch.object(
             augmentation, "__check_batching__", autospec=True
         ) as check_batching:
 
@@ -67,7 +70,8 @@ class TestBasicAugmentationBase:
                 'degrees': torch.arange(0, shape[0], device=device, dtype=dtype)
             }
             transform_tensor.side_effect = lambda x: x.unsqueeze(dim=0)
-            apply_transform.side_effect = lambda input, params: input[..., :2, :2]
+            transform_output_tensor.side_effect = lambda x, y: x.squeeze()
+            apply_transform.side_effect = lambda input, params, flags: input[..., :2, :2]
             check_batching.side_effect = lambda input: None
             output = augmentation(input)
             assert output.shape == expected_output.shape
@@ -96,10 +100,10 @@ class TestAugmentationBase2D:
     def test_forward(self, device, dtype):
         torch.manual_seed(42)
         input = torch.rand((2, 3, 4, 5), device=device, dtype=dtype)
-        input_transform = torch.rand((2, 3, 3), device=device, dtype=dtype)
+        # input_transform = torch.rand((2, 3, 3), device=device, dtype=dtype)
         expected_output = torch.rand((2, 3, 4, 5), device=device, dtype=dtype)
         expected_transform = torch.rand((2, 3, 3), device=device, dtype=dtype)
-        augmentation = AugmentationBase2D(return_transform=False, p=1.0)
+        augmentation = AugmentationBase2D(p=1.0)
 
         with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform, patch.object(
             augmentation, "generate_parameters", autospec=True
@@ -121,9 +125,8 @@ class TestAugmentationBase2D:
 
             # Calling the augmentation with a tensor and set return_transform shall
             # return the expected tensor and transformation.
-            output, transformation = augmentation(input, return_transform=True)
+            output = augmentation(input)
             assert output is expected_output
-            assert_close(transformation, expected_transform)
 
             # Calling the augmentation with a tensor and params shall return the expected tensor using the given params.
             params = {'params': {}, 'flags': {'bar': 1}}
@@ -139,11 +142,9 @@ class TestAugmentationBase2D:
             # Calling the augmentation with a tensor,a transformation and set
             # return_transform shall return the expected tensor and the proper
             # transformation matrix.
-            expected_final_transformation = expected_transform @ input_transform
-            output, transformation = augmentation((input, input_transform), return_transform=True)
-            assert output is expected_output
-            assert torch.allclose(expected_final_transformation, transformation)
-            assert transformation.shape[0] == input.shape[0]
+            # expected_final_transformation = expected_transform @ input_transform
+            # output = augmentation((input, input_transform))
+            # assert output is expected_output
 
     def test_gradcheck(self, device, dtype):
         torch.manual_seed(42)
@@ -158,13 +159,11 @@ class TestAugmentationBase2D:
         output = utils.tensor_to_gradcheck_var(output)  # to var
         other_transform = utils.tensor_to_gradcheck_var(other_transform)  # to var
 
-        input_param = {'batch_prob': torch.tensor([True]), 'params': {'x': input_transform}, 'flags': {}}
+        input_param = {'batch_prob': torch.tensor([True]), 'x': input_transform, 'y': {}}
 
-        augmentation = AugmentationBase2D(return_transform=True, p=1.0)
+        augmentation = AugmentationBase2D(p=1.0)
 
         with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform, patch.object(
-            augmentation, "generate_parameters", autospec=True
-        ) as generate_parameters, patch.object(
             augmentation, "compute_transformation", autospec=True
         ) as compute_transformation:
 

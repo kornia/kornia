@@ -29,7 +29,7 @@ def load_data(root_path, sequence_name, frame_id):
 
 
 def load_depth(file_name):
-    """Loads the depth using the sintel SDK and converts to torch.Tensor"""
+    """Load the depth using the sintel SDK and converts to torch.Tensor."""
     if not os.path.isfile(file_name):
         raise AssertionError(f"Invalid file {file_name}")
     import sintel_io
@@ -39,7 +39,7 @@ def load_depth(file_name):
 
 
 def load_camera_data(file_name):
-    """Loads the camera data using the sintel SDK and converts to torch.Tensor."""
+    """Load the camera data using the sintel SDK and converts to torch.Tensor."""
     if not os.path.isfile(file_name):
         raise AssertionError(f"Invalid file {file_name}")
     import sintel_io
@@ -49,7 +49,7 @@ def load_camera_data(file_name):
 
 
 def load_image(file_name):
-    """Loads the image with OpenCV and converts to torch.Tensor"""
+    """Load the image with OpenCV and converts to torch.Tensor."""
     if not os.path.isfile(file_name):
         raise AssertionError(f"Invalid file {file_name}")
 
@@ -62,7 +62,8 @@ def load_image(file_name):
 
 
 def clip_and_convert_tensor(tensor):
-    """convert the input torch.Tensor to OpenCV image,clip it to be between
+    """Convert the input torch.Tensor to OpenCV image,clip it to be between.
+
     [0, 255] and convert it to unit
     """
     img = tgm.utils.tensor_to_image(255.0 * tensor)  # convert tensor to numpy
@@ -133,7 +134,7 @@ def DepthRegressionApp():
 
     # load the data
     root_dir = os.path.join(root_path, 'training')
-    img_ref, depth_ref, cam_ref = load_data(root_dir, args.sequence_name, args.frame_ref_id)
+    img_ref, _, cam_ref = load_data(root_dir, args.sequence_name, args.frame_ref_id)
     img_i, _, cam_i = load_data(root_dir, args.sequence_name, args.frame_i_id)
 
     # instantiate the depth warper from `kornia`

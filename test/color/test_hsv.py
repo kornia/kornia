@@ -5,7 +5,7 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia
-from kornia.testing import assert_close, BaseTester
+from kornia.testing import BaseTester, assert_close
 
 
 class TestRgbToHsv(BaseTester):
@@ -92,19 +92,15 @@ class TestRgbToHsv(BaseTester):
         assert_close(kornia.color.rgb_to_hsv(data), expected)
 
     def test_nan_rgb_to_hsv(self, device, dtype):
-        data = torch.zeros(1, 5, 5, device=device, dtype=dtype)  # 3x5x5
-        data = data.repeat(3, 1, 1)  # 2x3x5x5
-
+        data = torch.zeros(3, 5, 5, device=device, dtype=dtype)  # 3x5x5
         expected = torch.zeros_like(data)  # 3x5x5
         assert_close(kornia.color.rgb_to_hsv(data), expected)
 
-    @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_hsv, (img,), raise_exception=True)
 
-    @pytest.mark.jit
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -112,7 +108,6 @@ class TestRgbToHsv(BaseTester):
         op_jit = torch.jit.script(op)
         assert_close(op(img), op_jit(img))
 
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)

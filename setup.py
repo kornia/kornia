@@ -1,126 +1,57 @@
 # Welcome to the Kornia setup.py.
 #
-import distutils.command.clean
-import glob
-import io
-import os
-import shutil
-import subprocess
+import re
 import sys
+
+# Make sure that kornia is running on Python 3.6.0 or later
+# (to avoid running into this bug: https://bugs.python.org/issue29246)
+
+if sys.version_info < (3, 6, 0):
+    raise RuntimeError("Kornia requires Python 3.6.0 or later.")
+
 
 from setuptools import find_packages, setup
 
-################
-# The variables below define the current version under
-# development and the current pytorch supported versions.
-# WARNING: Becareful and do not touch those variables,
-# unless you are a maintainer. Otherwise, could brake
-# the package backward compatibility.
 
-# NOTE(maintainers): modify this variable each time you do a release
-
-version = '0.5.8'  # this a tag for the current development version
+def find_version(file_path: str) -> str:
+    version_file = open(file_path).read()
+    version_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]", version_file, re.M)
+    if not version_match:
+        raise RuntimeError(f"Unable to find version string in {file_path}")
+    return version_match.group(1)
 
 
-# NOTE(maintainers): update this dictionary each time you do a release
-# When multiple pytorch versions are associated with a single version of kornia,
-# the oldest one is the requirement. The versions should be inequalities.
-# Once a pytorch version (in the future) breaks a kornia version, we could just
-# add a maximal version.
-kornia_pt_dependencies = {
-    '0.5.8': '>=1.6.0',
-    '0.5.7': '>=1.6.0',
-    '0.5.6': '>=1.6.0',
-    '0.5.5': '>=1.6.0',
-    '0.5.4': '>=1.6.0',
-    '0.5.3': '>=1.6.0',
-    '0.5.2': '>=1.6.0',
-    '0.5.1': '>=1.6.0',
-    '0.5.0': '>=1.6.0',
-    '0.4.2': '>=1.5.1',
-    '0.4.1': '>=1.6.0',
-    '0.4.0': '>=1.6.0,<1.7.0',
-    '0.3.2': '>=1.5.0,<1.6.0',
-    '0.3.1': '>=1.5.0',
-    '0.2.2': '>=1.4.0',
-    '0.1.4': '>=1.2.0',
-}
+VERSION = find_version("kornia/_version.py")
 
 
-# version can be overridden eg with KORNIA_BUILD_VERSION so we map each possible kornia version to the dictionary keys
-def dep_version(version):
-    compatible_versions = [v for v in kornia_pt_dependencies if v >= version]
-    compatible_versions += [sorted(kornia_pt_dependencies)[-1]]
-    return min(compatible_versions)
-
-
-#################################
-
-sha = 'Unknown'
-package_name = 'kornia'
-
-cwd = os.path.dirname(os.path.abspath(__file__))
-
-try:
-    sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=cwd).decode('ascii').strip()
-except Exception:
-    pass
-
-if os.getenv('KORNIA_BUILD_VERSION'):
-    version = os.getenv('KORNIA_BUILD_VERSION')
-elif os.getenv('KORNIA_RELEASE'):
-    pass
-elif sha != 'Unknown':
-    version += '+' + sha[:7]
-print(f"Building wheel {package_name}-{version}")
-
-
-def write_version_file():
-    version_path = os.path.join(cwd, 'kornia', 'version.py')
-    with open(version_path, 'w') as f:
-        f.write(f"__version__ = '{version}'\n")
-        f.write(f"git_version = {repr(sha)}\n")
-
-
-def read(*names, **kwargs):
-    with open(os.path.join(os.path.dirname(__file__), *names), encoding=kwargs.get("encoding", "utf8")) as fp:
-        return fp.read()
-
+# NOTE: kornia MUST only require PyTorch
+requirements = [
+    'torch>=1.8.1', 'packaging',
+]
 
 # open readme file and set long description
 with open("README.md", encoding="utf-8") as fh:
     long_description = fh.read()
 
 
-class clean(distutils.command.clean.clean):
-    def run(self):
-        with open('.gitignore') as f:
-            ignores = f.read()
-            for wildcard in filter(None, ignores.split('\n')):
-                for filename in glob.glob(wildcard):
-                    try:
-                        os.remove(filename)
-                    except OSError:
-                        shutil.rmtree(filename, ignore_errors=True)
-
-        # It's an old-style class in Python 2.7...
-        distutils.command.clean.clean.run(self)
-
-    # remove compiled and temporary files
-    subprocess.call(['rm -rf dist/ build/ kornia.egg*'], shell=True)
+def load_requirements(filename: str):
+    with open(filename) as f:
+        return [x.strip() for x in f.readlines() if "-r" != x[0:2]]
 
 
-requirements = ['torch' + kornia_pt_dependencies[dep_version(version)]]
+requirements_extras = {
+    "x": load_requirements("requirements/x.txt"),
+    "dev": load_requirements("requirements/dev.txt")
+}
+requirements_extras["all"] = requirements_extras["x"] + requirements_extras["dev"]
 
 
 if __name__ == '__main__':
-    write_version_file()
     setup(
-        # Metadata
-        name=package_name,
-        version=version,
+        name='kornia',
+        version=VERSION,
         author='Edgar Riba',
-        author_email='contact@kornia.org',
+        author_email='edgar@kornia.org',
         url='https://www.kornia.org',
         download_url='https://github.com/kornia/kornia',
         license='Apache License 2.0',
@@ -132,8 +63,10 @@ if __name__ == '__main__':
         tests_require=['pytest'],
         packages=find_packages(exclude=('docs', 'test', 'examples')),
         package_data={"kornia": ["py.typed"]},
+        data_files=[('', ['requirements/x.txt', 'requirements/dev.txt'])],
         zip_safe=True,
         install_requires=requirements,
+        extras_require=requirements_extras,
         keywords=['computer vision', 'deep learning', 'pytorch'],
         project_urls={
             "Bug Tracker": "https://github.com/kornia/kornia/issues",

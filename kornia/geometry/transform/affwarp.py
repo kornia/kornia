@@ -3,11 +3,11 @@ from typing import Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
-import kornia
-from kornia.geometry.transform.imgwarp import get_affine_matrix2d, get_rotation_matrix2d, warp_affine
-from kornia.geometry.transform.projwarp import get_projective_transform, warp_affine3d
+from kornia.filters import gaussian_blur2d
 from kornia.utils import _extract_device_dtype
 from kornia.utils.image import perform_keep_shape_image
+
+from .imgwarp import get_affine_matrix2d, get_projective_transform, get_rotation_matrix2d, warp_affine, warp_affine3d
 
 __all__ = [
     "affine",
@@ -32,7 +32,7 @@ __all__ = [
 
 
 def _compute_tensor_center(tensor: torch.Tensor) -> torch.Tensor:
-    """Computes the center of tensor plane for (H, W), (C, H, W) and (B, C, H, W)."""
+    """Compute the center of tensor plane for (H, W), (C, H, W) and (B, C, H, W)."""
     if not 2 <= len(tensor.shape) <= 4:
         raise AssertionError(f"Must be a 3D tensor as HW, CHW and BCHW. Got {tensor.shape}.")
     height, width = tensor.shape[-2:]
@@ -43,7 +43,7 @@ def _compute_tensor_center(tensor: torch.Tensor) -> torch.Tensor:
 
 
 def _compute_tensor_center3d(tensor: torch.Tensor) -> torch.Tensor:
-    """Computes the center of tensor plane for (D, H, W), (C, D, H, W) and (B, C, D, H, W)."""
+    """Compute the center of tensor plane for (D, H, W), (C, D, H, W) and (B, C, D, H, W)."""
     if not 3 <= len(tensor.shape) <= 5:
         raise AssertionError(f"Must be a 3D tensor as DHW, CDHW and BCDHW. Got {tensor.shape}.")
     depth, height, width = tensor.shape[-3:]
@@ -55,7 +55,7 @@ def _compute_tensor_center3d(tensor: torch.Tensor) -> torch.Tensor:
 
 
 def _compute_rotation_matrix(angle: torch.Tensor, center: torch.Tensor) -> torch.Tensor:
-    """Computes a pure affine rotation matrix."""
+    """Compute a pure affine rotation matrix."""
     scale: torch.Tensor = torch.ones_like(center)
     matrix: torch.Tensor = get_rotation_matrix2d(center, angle, scale)
     return matrix
@@ -64,7 +64,7 @@ def _compute_rotation_matrix(angle: torch.Tensor, center: torch.Tensor) -> torch
 def _compute_rotation_matrix3d(
     yaw: torch.Tensor, pitch: torch.Tensor, roll: torch.Tensor, center: torch.Tensor
 ) -> torch.Tensor:
-    """Computes a pure affine rotation matrix."""
+    """Compute a pure affine rotation matrix."""
     if len(yaw.shape) == len(pitch.shape) == len(roll.shape) == 0:
         yaw = yaw.unsqueeze(dim=0)
         pitch = pitch.unsqueeze(dim=0)
@@ -85,7 +85,7 @@ def _compute_rotation_matrix3d(
 
 
 def _compute_translation_matrix(translation: torch.Tensor) -> torch.Tensor:
-    """Computes affine matrix for translation."""
+    """Compute affine matrix for translation."""
     matrix: torch.Tensor = torch.eye(3, device=translation.device, dtype=translation.dtype)
     matrix = matrix.repeat(translation.shape[0], 1, 1)
 
@@ -96,14 +96,14 @@ def _compute_translation_matrix(translation: torch.Tensor) -> torch.Tensor:
 
 
 def _compute_scaling_matrix(scale: torch.Tensor, center: torch.Tensor) -> torch.Tensor:
-    """Computes affine matrix for scaling."""
+    """Compute affine matrix for scaling."""
     angle: torch.Tensor = torch.zeros(scale.shape[:1], device=scale.device, dtype=scale.dtype)
     matrix: torch.Tensor = get_rotation_matrix2d(center, angle, scale)
     return matrix
 
 
 def _compute_shear_matrix(shear: torch.Tensor) -> torch.Tensor:
-    """Computes affine matrix for shearing."""
+    """Compute affine matrix for shearing."""
     matrix: torch.Tensor = torch.eye(3, device=shear.device, dtype=shear.dtype)
     matrix = matrix.repeat(shear.shape[0], 1, 1)
 
@@ -122,7 +122,7 @@ def affine(
     matrix: torch.Tensor,
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
-    align_corners: Optional[bool] = None,
+    align_corners: bool = True,
 ) -> torch.Tensor:
     r"""Apply an affine transformation to the image.
 
@@ -229,7 +229,7 @@ def rotate(
     center: Union[None, torch.Tensor] = None,
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
-    align_corners: Optional[bool] = None,
+    align_corners: bool = True,
 ) -> torch.Tensor:
     r"""Rotate the tensor anti-clockwise about the center.
 
@@ -359,7 +359,7 @@ def translate(
     translation: torch.Tensor,
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
-    align_corners: Optional[bool] = None,
+    align_corners: bool = True,
 ) -> torch.Tensor:
     r"""Translate the tensor in pixel units.
 
@@ -408,7 +408,7 @@ def scale(
     center: Union[None, torch.Tensor] = None,
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
-    align_corners: Optional[bool] = None,
+    align_corners: bool = True,
 ) -> torch.Tensor:
     r"""Scale the tensor by a factor.
 
@@ -581,12 +581,14 @@ def resize(
 
     if antialias:
         # First, we have to determine sigma
-        sigmas = (max(factors[0], 1.0), max(factors[1], 1.0))
+        # Taken from skimage: https://github.com/scikit-image/scikit-image/blob/v0.19.2/skimage/transform/_warps.py#L171
+        sigmas = (max((factors[0] - 1.0) / 2.0, 0.001),
+                  max((factors[1] - 1.0) / 2.0, 0.001))
 
         # Now kernel size. Good results are for 3 sigma, but that is kind of slow. Pillow uses 1 sigma
         # https://github.com/python-pillow/Pillow/blob/master/src/libImaging/Resample.c#L206
         # But they do it in the 2 passes, which gives better results. Let's try 2 sigmas for now
-        ks = int(2.0 * 2 * sigmas[0]), int(2.0 * 2 * sigmas[1])
+        ks = int(max(2.0 * 2 * sigmas[0], 3)), int(max(2.0 * 2 * sigmas[1], 3))
 
         # Make sure it is odd
         if (ks[0] % 2) == 0:
@@ -595,7 +597,7 @@ def resize(
         if (ks[1] % 2) == 0:
             ks = ks[0], ks[1] + 1
 
-        input = kornia.filters.gaussian_blur2d(input, ks, sigmas)
+        input = gaussian_blur2d(input, ks, sigmas)
 
     output = torch.nn.functional.interpolate(input, size=size, mode=interpolation, align_corners=align_corners)
     return output
@@ -739,7 +741,7 @@ class Affine(nn.Module):
         center: Optional[torch.Tensor] = None,
         mode: str = 'bilinear',
         padding_mode: str = 'zeros',
-        align_corners: Optional[bool] = None,
+        align_corners: bool = True,
     ) -> None:
         batch_sizes = [arg.size()[0] for arg in (angle, translation, scale_factor, shear) if arg is not None]
         if not batch_sizes:
@@ -819,7 +821,7 @@ class Rescale(nn.Module):
         self,
         factor: Union[float, Tuple[float, float]],
         interpolation: str = "bilinear",
-        align_corners: Optional[bool] = None,
+        align_corners: bool = True,
         antialias: bool = False,
     ) -> None:
         super().__init__()
@@ -866,14 +868,14 @@ class Rotate(nn.Module):
         center: Union[None, torch.Tensor] = None,
         mode: str = 'bilinear',
         padding_mode: str = 'zeros',
-        align_corners: Optional[bool] = None,
+        align_corners: bool = True,
     ) -> None:
         super().__init__()
         self.angle: torch.Tensor = angle
         self.center: Union[None, torch.Tensor] = center
         self.mode: str = mode
         self.padding_mode: str = padding_mode
-        self.align_corners: Optional[bool] = align_corners
+        self.align_corners: bool = align_corners
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return rotate(input, self.angle, self.center, self.mode, self.padding_mode, self.align_corners)
@@ -908,13 +910,13 @@ class Translate(nn.Module):
         translation: torch.Tensor,
         mode: str = 'bilinear',
         padding_mode: str = 'zeros',
-        align_corners: Optional[bool] = None,
+        align_corners: bool = True,
     ) -> None:
         super().__init__()
         self.translation: torch.Tensor = translation
         self.mode: str = mode
         self.padding_mode: str = padding_mode
-        self.align_corners: Optional[bool] = align_corners
+        self.align_corners: bool = align_corners
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return translate(input, self.translation, self.mode, self.padding_mode, self.align_corners)
@@ -954,14 +956,14 @@ class Scale(nn.Module):
         center: Union[None, torch.Tensor] = None,
         mode: str = 'bilinear',
         padding_mode: str = 'zeros',
-        align_corners: Optional[bool] = None,
+        align_corners: bool = True,
     ) -> None:
         super().__init__()
         self.scale_factor: torch.Tensor = scale_factor
         self.center: Union[None, torch.Tensor] = center
         self.mode: str = mode
         self.padding_mode: str = padding_mode
-        self.align_corners: Optional[bool] = align_corners
+        self.align_corners: bool = align_corners
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return scale(input, self.scale_factor, self.center, self.mode, self.padding_mode, self.align_corners)
@@ -992,7 +994,7 @@ class Shear(nn.Module):
     """
 
     def __init__(
-        self, shear: torch.Tensor, mode: str = 'bilinear', padding_mode: str = 'zeros', align_corners: bool = False
+        self, shear: torch.Tensor, mode: str = 'bilinear', padding_mode: str = 'zeros', align_corners: bool = True
     ) -> None:
         super().__init__()
         self.shear: torch.Tensor = shear

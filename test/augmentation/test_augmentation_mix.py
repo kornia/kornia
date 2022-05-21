@@ -8,7 +8,7 @@ class TestRandomMixUp:
     def test_smoke(self, device, dtype):
         f = RandomMixUp()
         repr = "RandomMixUp(lambda_val=None, p=1.0, p_batch=1.0, same_on_batch=False)"
-        assert str(f) == repr
+        assert str(f) == repr, str(f)
 
     def test_random_mixup_p1(self, device, dtype):
         torch.manual_seed(0)
@@ -42,7 +42,8 @@ class TestRandomMixUp:
             [torch.ones(1, 3, 4, device=device, dtype=dtype), torch.zeros(1, 3, 4, device=device, dtype=dtype)]
         )
         label = torch.tensor([1, 0], device=device)
-        lam = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
+        # TODO(jian): where is it used ?
+        # lam = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
 
         expected = input.clone()
 
@@ -95,23 +96,23 @@ class TestRandomMixUp:
 
 
 class TestRandomCutMix:
-    def test_smoke(self, device, dtype):
-        f = RandomCutMix(width=3, height=3)
+    def test_smoke(self):
+        f = RandomCutMix()
         repr = (
-            "RandomCutMix(num_mix=1, beta=None, cut_size=None, height=3, width=3, p=1.0, "
-            "p_batch=1.0, same_on_batch=False)"
+            "RandomCutMix(cut_size=None, beta=None, num_mix=1, p=1.0, p_batch=1.0, same_on_batch=False)"
         )
         assert str(f) == repr
 
     def test_random_mixup_p1(self, device, dtype):
         torch.manual_seed(76)
-        f = RandomCutMix(width=4, height=3, p=1.0)
+        f = RandomCutMix(p=1.0)
 
         input = torch.stack(
             [torch.ones(1, 3, 4, device=device, dtype=dtype), torch.zeros(1, 3, 4, device=device, dtype=dtype)]
         )
         label = torch.tensor([1, 0], device=device)
-        lam = torch.tensor([0.1320, 0.3074], device=device, dtype=dtype)
+        # TODO(jian): where is it used ?
+        # lam = torch.tensor([0.1320, 0.3074], device=device, dtype=dtype)
 
         expected = torch.tensor(
             [
@@ -131,7 +132,7 @@ class TestRandomCutMix:
 
     def test_random_mixup_p0(self, device, dtype):
         torch.manual_seed(76)
-        f = RandomCutMix(p=0.0, width=4, height=3)
+        f = RandomCutMix(p=0.0)
 
         input = torch.stack(
             [torch.ones(1, 3, 4, device=device, dtype=dtype), torch.zeros(1, 3, 4, device=device, dtype=dtype)]
@@ -149,7 +150,7 @@ class TestRandomCutMix:
         torch.manual_seed(76)
         # beta 0 => resample 0.5 area
         # beta cannot be 0 after torch 1.8.0
-        f = RandomCutMix(beta=1e-7, width=4, height=3, p=1.0)
+        f = RandomCutMix(beta=1e-7, p=1.0)
 
         input = torch.stack(
             [torch.ones(1, 3, 4, device=device, dtype=dtype), torch.zeros(1, 3, 4, device=device, dtype=dtype)]
@@ -175,7 +176,7 @@ class TestRandomCutMix:
 
     def test_random_mixup_num2(self, device, dtype):
         torch.manual_seed(76)
-        f = RandomCutMix(width=4, height=3, num_mix=5, p=1.0)
+        f = RandomCutMix(num_mix=5, p=1.0)
 
         input = torch.stack(
             [torch.ones(1, 3, 4, device=device, dtype=dtype), torch.zeros(1, 3, 4, device=device, dtype=dtype)]
@@ -209,13 +210,14 @@ class TestRandomCutMix:
 
     def test_random_mixup_same_on_batch(self, device, dtype):
         torch.manual_seed(42)
-        f = RandomCutMix(same_on_batch=True, width=4, height=3, p=1.0)
+        f = RandomCutMix(same_on_batch=True, p=1.0)
 
         input = torch.stack(
             [torch.ones(1, 3, 4, device=device, dtype=dtype), torch.zeros(1, 3, 4, device=device, dtype=dtype)]
         )
         label = torch.tensor([1, 0], device=device)
-        lam = torch.tensor([0.0885, 0.0885], device=device, dtype=dtype)
+        # TODO(jian): where is it used ?
+        # lam = torch.tensor([0.0885, 0.0885], device=device, dtype=dtype)
 
         expected = torch.tensor(
             [

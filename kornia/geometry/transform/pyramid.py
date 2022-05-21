@@ -5,10 +5,16 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.filters.filter import filter2d
-from kornia.filters.gaussian import gaussian_blur2d
+from kornia.filters import filter2d, gaussian_blur2d
 
-__all__ = ["PyrDown", "PyrUp", "ScalePyramid", "pyrdown", "pyrup", "build_pyramid"]
+__all__ = [
+    "PyrDown",
+    "PyrUp",
+    "ScalePyramid",
+    "pyrdown",
+    "pyrup",
+    "build_pyramid"
+]
 
 
 def _get_pyramid_gaussian_kernel() -> torch.Tensor:
@@ -30,13 +36,14 @@ def _get_pyramid_gaussian_kernel() -> torch.Tensor:
 
 
 class PyrDown(nn.Module):
-    r"""Blurs a tensor and downsamples it.
+    r"""Blur a tensor and downsamples it.
 
     Args:
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``.
         align_corners: interpolation flag.
+        factor: the downsampling factor
 
     Return:
         the downsampled tensor.
@@ -50,17 +57,18 @@ class PyrDown(nn.Module):
         >>> output = PyrDown()(input)  # 1x2x2x2
     """
 
-    def __init__(self, border_type: str = 'reflect', align_corners: bool = False) -> None:
+    def __init__(self, border_type: str = 'reflect', align_corners: bool = False, factor: float = 2.0) -> None:
         super().__init__()
         self.border_type: str = border_type
         self.align_corners: bool = align_corners
+        self.factor: float = factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        return pyrdown(input, self.border_type, self.align_corners)
+        return pyrdown(input, self.border_type, self.align_corners, self.factor)
 
 
 class PyrUp(nn.Module):
-    r"""Upsamples a tensor and then blurs it.
+    r"""Upsample a tensor and then blurs it.
 
     Args:
         borde_type: the padding mode to be applied before convolving.
@@ -90,7 +98,7 @@ class PyrUp(nn.Module):
 
 
 class ScalePyramid(nn.Module):
-    r"""Creates an scale pyramid of image, usually used for local feature detection.
+    r"""Create an scale pyramid of image, usually used for local feature detection.
 
     Images are consequently smoothed with Gaussian blur and downscaled.
 
@@ -184,7 +192,7 @@ class ScalePyramid(nn.Module):
         return cur_level, cur_sigma, pixel_distance
 
     def forward(self, x: torch.Tensor) -> Tuple[List, List, List]:  # type: ignore
-        bs, ch, h, w = x.size()
+        bs, _, _, _ = x.size()
         cur_level, cur_sigma, pixel_distance = self.get_first_level(x)
 
         sigmas = [cur_sigma * torch.ones(bs, self.n_levels + self.extra_levels).to(x.device).to(x.dtype)]
@@ -226,8 +234,9 @@ class ScalePyramid(nn.Module):
         return pyr, sigmas, pixel_dists
 
 
-def pyrdown(input: torch.Tensor, border_type: str = 'reflect', align_corners: bool = False) -> torch.Tensor:
-    r"""Blurs a tensor and downsamples it.
+def pyrdown(input: torch.Tensor, border_type: str = 'reflect',
+            align_corners: bool = False, factor: float = 2.0) -> torch.Tensor:
+    r"""Blur a tensor and downsamples it.
 
     .. image:: _static/img/pyrdown.png
 
@@ -237,6 +246,7 @@ def pyrdown(input: torch.Tensor, border_type: str = 'reflect', align_corners: bo
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``.
         align_corners: interpolation flag.
+        factor: the downsampling factor
 
     Return:
         the downsampled tensor.
@@ -250,19 +260,23 @@ def pyrdown(input: torch.Tensor, border_type: str = 'reflect', align_corners: bo
     if not len(input.shape) == 4:
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
     kernel: torch.Tensor = _get_pyramid_gaussian_kernel()
-    b, c, height, width = input.shape
+    _, _, height, width = input.shape
     # blur image
     x_blur: torch.Tensor = filter2d(input, kernel, border_type)
 
+    # TODO: use kornia.geometry.resize/rescale
     # downsample.
     out: torch.Tensor = F.interpolate(
-        x_blur, size=(height // 2, width // 2), mode='bilinear', align_corners=align_corners
+        x_blur,
+        size=(int(float(height) / factor), int(float(width) // factor)),
+        mode='bilinear',
+        align_corners=align_corners
     )
     return out
 
 
 def pyrup(input: torch.Tensor, border_type: str = 'reflect', align_corners: bool = False) -> torch.Tensor:
-    r"""Upsamples a tensor and then blurs it.
+    r"""Upsample a tensor and then blurs it.
 
     .. image:: _static/img/pyrup.png
 
@@ -287,7 +301,8 @@ def pyrup(input: torch.Tensor, border_type: str = 'reflect', align_corners: bool
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
     kernel: torch.Tensor = _get_pyramid_gaussian_kernel()
     # upsample tensor
-    b, c, height, width = input.shape
+    _, _, height, width = input.shape
+    # TODO: use kornia.geometry.resize/rescale
     x_up: torch.Tensor = F.interpolate(
         input, size=(height * 2, width * 2), mode='bilinear', align_corners=align_corners
     )
@@ -300,7 +315,7 @@ def pyrup(input: torch.Tensor, border_type: str = 'reflect', align_corners: bool
 def build_pyramid(
     input: torch.Tensor, max_level: int, border_type: str = 'reflect', align_corners: bool = False
 ) -> List[torch.Tensor]:
-    r"""Constructs the Gaussian pyramid for an image.
+    r"""Construct the Gaussian pyramid for an image.
 
     .. image:: _static/img/build_pyramid.png
 

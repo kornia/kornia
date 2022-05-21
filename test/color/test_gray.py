@@ -11,12 +11,12 @@ class TestGrayscaleToRgb(BaseTester):
     def test_smoke(self, device, dtype):
         C, H, W = 1, 4, 5
         img = torch.rand(C, H, W, device=device, dtype=dtype)
-        assert isinstance(kornia.grayscale_to_rgb(img), torch.Tensor)
+        assert isinstance(kornia.color.grayscale_to_rgb(img), torch.Tensor)
 
     @pytest.mark.parametrize("batch_size, height, width", [(1, 3, 4), (2, 2, 4), (3, 4, 1)])
     def test_cardinality(self, device, dtype, batch_size, height, width):
         img = torch.ones(batch_size, 1, height, width, device=device, dtype=dtype)
-        assert kornia.grayscale_to_rgb(img).shape == (batch_size, 3, height, width)
+        assert kornia.color.grayscale_to_rgb(img).shape == (batch_size, 3, height, width)
 
     def test_exception(self, device, dtype):
         with pytest.raises(TypeError):
@@ -78,21 +78,21 @@ class TestGrayscaleToRgb(BaseTester):
             dtype=dtype,
         )
 
-        img_rgb = kornia.grayscale_to_rgb(data)
+        img_rgb = kornia.color.grayscale_to_rgb(data)
         assert_close(img_rgb, expected)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 1, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.grayscale_to_rgb, (img,), raise_exception=True)
+        assert gradcheck(kornia.color.grayscale_to_rgb, (img,), raise_exception=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
-        op = kornia.grayscale_to_rgb
-        op_jit = kornia.jit.grayscale_to_rgb
+        op = kornia.color.grayscale_to_rgb
+        op_jit = torch.jit.script(op)
         assert_close(op(img), op_jit(img))
 
     @pytest.mark.nn
@@ -108,12 +108,21 @@ class TestRgbToGrayscale(BaseTester):
     def test_smoke(self, device, dtype):
         C, H, W = 3, 4, 5
         img = torch.rand(C, H, W, device=device, dtype=dtype)
-        assert isinstance(kornia.rgb_to_grayscale(img), torch.Tensor)
+        out = kornia.color.rgb_to_grayscale(img)
+        assert out.device == img.device
+        assert out.dtype == img.dtype
+
+    def test_smoke_byte(self, device):
+        C, H, W = 3, 4, 5
+        img = torch.randint(0, 255, (C, H, W), device=device, dtype=torch.uint8)
+        out = kornia.color.rgb_to_grayscale(img)
+        assert out.device == img.device
+        assert out.dtype == img.dtype
 
     @pytest.mark.parametrize("batch_size, height, width", [(1, 3, 4), (2, 2, 4), (3, 4, 1)])
     def test_cardinality(self, device, dtype, batch_size, height, width):
         img = torch.ones(batch_size, 3, height, width, device=device, dtype=dtype)
-        assert kornia.rgb_to_grayscale(img).shape == (batch_size, 1, height, width)
+        assert kornia.color.rgb_to_grayscale(img).shape == (batch_size, 1, height, width)
 
     def test_exception(self, device, dtype):
         with pytest.raises(TypeError):
@@ -125,10 +134,6 @@ class TestRgbToGrayscale(BaseTester):
 
         with pytest.raises(ValueError):
             img = torch.ones(2, 1, 1, device=device, dtype=dtype)
-            assert kornia.color.rgb_to_grayscale(img)
-
-        with pytest.raises(TypeError):
-            img = torch.ones(1, 3, 1, 1, device=device, dtype=torch.uint8)
             assert kornia.color.rgb_to_grayscale(img)
 
         with pytest.raises(ValueError):
@@ -180,7 +185,7 @@ class TestRgbToGrayscale(BaseTester):
             dtype=dtype,
         )
 
-        img_gray = kornia.rgb_to_grayscale(data)
+        img_gray = kornia.color.rgb_to_grayscale(data)
         assert_close(img_gray, expected)
 
     def test_custom_rgb_weights(self, device, dtype):
@@ -188,7 +193,7 @@ class TestRgbToGrayscale(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
 
         rgb_weights = torch.tensor([0.5, 0.25, 0.25])
-        img_gray = kornia.rgb_to_grayscale(img, rgb_weights=rgb_weights)
+        img_gray = kornia.color.rgb_to_grayscale(img, rgb_weights=rgb_weights)
         assert img_gray.device == device
         assert img_gray.dtype == dtype
 
@@ -196,14 +201,14 @@ class TestRgbToGrayscale(BaseTester):
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.rgb_to_grayscale, (img,), raise_exception=True)
+        assert gradcheck(kornia.color.rgb_to_grayscale, (img,), raise_exception=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
-        op = kornia.rgb_to_grayscale
-        op_jit = kornia.jit.rgb_to_grayscale
+        op = kornia.color.rgb_to_grayscale
+        op_jit = torch.jit.script(op)
         assert_close(op(img), op_jit(img))
 
     @pytest.mark.nn
@@ -219,12 +224,12 @@ class TestBgrToGrayscale(BaseTester):
     def test_smoke(self, device, dtype):
         C, H, W = 3, 4, 5
         img = torch.rand(C, H, W, device=device, dtype=dtype)
-        assert kornia.bgr_to_grayscale(img) is not None
+        assert kornia.color.bgr_to_grayscale(img) is not None
 
     @pytest.mark.parametrize("batch_size, height, width", [(1, 3, 4), (2, 2, 4), (3, 4, 1)])
     def test_cardinality(self, device, dtype, batch_size, height, width):
         img = torch.ones(batch_size, 3, height, width, device=device, dtype=dtype)
-        assert kornia.bgr_to_grayscale(img).shape == (batch_size, 1, height, width)
+        assert kornia.color.bgr_to_grayscale(img).shape == (batch_size, 1, height, width)
 
     def test_exception(self, device, dtype):
         with pytest.raises(TypeError):
@@ -282,21 +287,21 @@ class TestBgrToGrayscale(BaseTester):
             dtype=dtype,
         )
 
-        img_gray = kornia.bgr_to_grayscale(data)
+        img_gray = kornia.color.bgr_to_grayscale(data)
         assert_close(img_gray, expected)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.bgr_to_grayscale, (img,), raise_exception=True)
+        assert gradcheck(kornia.color.bgr_to_grayscale, (img,), raise_exception=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
-        op = kornia.rgb_to_grayscale
-        op_jit = kornia.jit.bgr_to_grayscale
+        op = kornia.color.rgb_to_grayscale
+        op_jit = torch.jit.script(op)
         assert_close(op(img), op_jit(img))
 
     @pytest.mark.nn

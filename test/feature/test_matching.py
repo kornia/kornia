@@ -1,8 +1,9 @@
 import pytest
+import torch
 from torch.autograd import gradcheck
 
 import kornia.testing as utils  # test utils
-from kornia.feature.matching import *
+from kornia.feature.matching import DescriptorMatcher, match_mnn, match_nn, match_smnn, match_snn
 from kornia.testing import assert_close
 
 
@@ -25,6 +26,10 @@ class TestMatchNN:
         expected_idx = torch.tensor([[0, 4], [1, 3], [2, 2], [3, 1], [4, 0]], device=device)
         assert_close(dists, expected_dists)
         assert_close(idxs, expected_idx)
+
+        dists1, idxs1 = match_nn(desc1, desc2)
+        assert_close(dists1, expected_dists)
+        assert_close(idxs1, expected_idx)
 
     def test_gradcheck(self, device):
         desc1 = torch.rand(5, 8, device=device)
@@ -55,6 +60,10 @@ class TestMatchMNN:
         expected_idx = torch.tensor([[0, 4], [1, 3], [2, 2], [3, 1], [4, 0]], device=device)
         assert_close(dists, expected_dists)
         assert_close(idxs, expected_idx)
+        matcher = DescriptorMatcher('mnn').to(device)
+        dists1, idxs1 = matcher(desc1, desc2)
+        assert_close(dists1, expected_dists)
+        assert_close(idxs1, expected_idx)
 
     def test_gradcheck(self, device):
         desc1 = torch.rand(5, 8, device=device)
@@ -85,6 +94,10 @@ class TestMatchSNN:
         expected_idx = torch.tensor([[0, 4], [1, 3], [2, 2], [3, 1], [4, 0]], device=device)
         assert_close(dists, expected_dists)
         assert_close(idxs, expected_idx)
+        matcher = DescriptorMatcher('snn', 0.8).to(device)
+        dists1, idxs1 = matcher(desc1, desc2)
+        assert_close(dists1, expected_dists)
+        assert_close(idxs1, expected_idx)
 
     def test_matching2(self, device):
         desc1 = torch.tensor([[0, 0.0], [1, 1], [2, 2], [3, 3.0], [5, 5.0]], device=device)
@@ -95,6 +108,10 @@ class TestMatchSNN:
         expected_idx = torch.tensor([[0, 4], [1, 3], [3, 1], [4, 0]], device=device)
         assert_close(dists, expected_dists)
         assert_close(idxs, expected_idx)
+        matcher = DescriptorMatcher('snn', 0.1).to(device)
+        dists1, idxs1 = matcher(desc1, desc2)
+        assert_close(dists1, expected_dists)
+        assert_close(idxs1, expected_idx)
 
     def test_gradcheck(self, device):
         desc1 = torch.rand(5, 8, device=device)
@@ -126,6 +143,10 @@ class TestMatchSMNN:
         expected_idx = torch.tensor([[0, 4], [1, 3], [2, 2], [3, 1], [4, 0]], device=device)
         assert_close(dists, expected_dists)
         assert_close(idxs, expected_idx)
+        matcher = DescriptorMatcher('smnn', 0.8).to(device)
+        dists1, idxs1 = matcher(desc1, desc2)
+        assert_close(dists1, expected_dists)
+        assert_close(idxs1, expected_idx)
 
     def test_matching2(self, device):
         desc1 = torch.tensor([[0, 0.0], [1, 1], [2, 2], [3, 3.0], [5, 5.0]], device=device)
@@ -136,10 +157,26 @@ class TestMatchSMNN:
         expected_idx = torch.tensor([[0, 4], [1, 3], [3, 1], [4, 0]], device=device)
         assert_close(dists, expected_dists)
         assert_close(idxs, expected_idx)
+        matcher = DescriptorMatcher('smnn', 0.1).to(device)
+        dists1, idxs1 = matcher(desc1, desc2)
+        assert_close(dists1, expected_dists)
+        assert_close(idxs1, expected_idx)
 
     def test_gradcheck(self, device):
         desc1 = torch.rand(5, 8, device=device)
         desc2 = torch.rand(7, 8, device=device)
         desc1 = utils.tensor_to_gradcheck_var(desc1)  # to var
         desc2 = utils.tensor_to_gradcheck_var(desc2)  # to var
+        matcher = DescriptorMatcher('smnn', 0.8).to(device)
         assert gradcheck(match_smnn, (desc1, desc2, 0.8), raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(matcher, (desc1, desc2), raise_exception=True, nondet_tol=1e-4)
+
+    @pytest.mark.jit
+    @pytest.mark.parametrize("match_type", ["nn", "snn", "mnn", "smnn"])
+    def test_jit(self, match_type, device, dtype):
+        desc1 = torch.rand(5, 8, device=device, dtype=dtype)
+        desc2 = torch.rand(7, 8, device=device, dtype=dtype)
+        matcher = DescriptorMatcher(match_type, 0.8).to(device)
+        matcher_jit = torch.jit.script(DescriptorMatcher(match_type, 0.8).to(device))
+        assert_close(matcher(desc1, desc2)[0], matcher_jit(desc1, desc2)[0])
+        assert_close(matcher(desc1, desc2)[1], matcher_jit(desc1, desc2)[1])

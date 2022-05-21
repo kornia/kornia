@@ -12,7 +12,7 @@ class TestDepthTo3d:
         depth = torch.rand(1, 1, 3, 4, device=device, dtype=dtype)
         camera_matrix = torch.rand(1, 3, 3, device=device, dtype=dtype)
 
-        points3d = kornia.depth_to_3d(depth, camera_matrix)
+        points3d = kornia.geometry.depth.depth_to_3d(depth, camera_matrix)
         assert points3d.shape == (1, 3, 3, 4)
 
     @pytest.mark.parametrize("batch_size", [2, 4, 5])
@@ -20,7 +20,7 @@ class TestDepthTo3d:
         depth = torch.rand(batch_size, 1, 3, 4, device=device, dtype=dtype)
         camera_matrix = torch.rand(batch_size, 3, 3, device=device, dtype=dtype)
 
-        points3d = kornia.depth_to_3d(depth, camera_matrix)
+        points3d = kornia.geometry.depth.depth_to_3d(depth, camera_matrix)
         assert points3d.shape == (batch_size, 3, 3, 4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 4, 5])
@@ -28,7 +28,7 @@ class TestDepthTo3d:
         depth = torch.rand(batch_size, 1, 3, 4, device=device, dtype=dtype)
         camera_matrix = torch.rand(1, 3, 3, device=device, dtype=dtype)
 
-        points3d = kornia.depth_to_3d(depth, camera_matrix)
+        points3d = kornia.geometry.depth.depth_to_3d(depth, camera_matrix)
         assert points3d.shape == (batch_size, 3, 3, 4)
 
     def test_unproject_denormalized(self, device, dtype):
@@ -51,7 +51,7 @@ class TestDepthTo3d:
             dtype=dtype,
         )
 
-        points3d = kornia.depth_to_3d(depth, camera_matrix)  # default is normalize_points=False
+        points3d = kornia.geometry.depth.depth_to_3d(depth, camera_matrix)  # default is normalize_points=False
         assert_close(points3d, points3d_expected, atol=1e-4, rtol=1e-4)
 
     def test_unproject_normalized(self, device, dtype):
@@ -89,7 +89,7 @@ class TestDepthTo3d:
             dtype=dtype,
         )
 
-        points3d = kornia.depth_to_3d(depth, camera_matrix, normalize_points=True)
+        points3d = kornia.geometry.depth.depth_to_3d(depth, camera_matrix, normalize_points=True)
         assert_close(points3d, points3d_expected, atol=1e-4, rtol=1e-4)
 
     def test_unproject_and_project(self, device, dtype):
@@ -99,9 +99,9 @@ class TestDepthTo3d:
 
         camera_matrix = torch.tensor([[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
 
-        points3d = kornia.depth_to_3d(depth, camera_matrix)
-        points2d = kornia.project_points(points3d.permute(0, 2, 3, 1), camera_matrix[:, None, None])
-        points2d_expected = kornia.create_meshgrid(4, 3, False, device=device).to(dtype=dtype)
+        points3d = kornia.geometry.depth.depth_to_3d(depth, camera_matrix)
+        points2d = kornia.geometry.camera.project_points(points3d.permute(0, 2, 3, 1), camera_matrix[:, None, None])
+        points2d_expected = kornia.utils.create_meshgrid(4, 3, False, device=device).to(dtype=dtype)
         assert_close(points2d, points2d_expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
@@ -113,7 +113,7 @@ class TestDepthTo3d:
         camera_matrix = utils.tensor_to_gradcheck_var(camera_matrix)  # to var
 
         # evaluate function gradient
-        assert gradcheck(kornia.depth_to_3d, (depth, camera_matrix), raise_exception=True)
+        assert gradcheck(kornia.geometry.depth.depth_to_3d, (depth, camera_matrix), raise_exception=True)
 
 
 class TestDepthToNormals:
@@ -121,7 +121,7 @@ class TestDepthToNormals:
         depth = torch.rand(1, 1, 3, 4, device=device, dtype=dtype)
         camera_matrix = torch.rand(1, 3, 3, device=device, dtype=dtype)
 
-        points3d = kornia.depth_to_normals(depth, camera_matrix)
+        points3d = kornia.geometry.depth.depth_to_normals(depth, camera_matrix)
         assert points3d.shape == (1, 3, 3, 4)
 
     @pytest.mark.parametrize("batch_size", [2, 4, 5])
@@ -129,7 +129,7 @@ class TestDepthToNormals:
         depth = torch.rand(batch_size, 1, 3, 4, device=device, dtype=dtype)
         camera_matrix = torch.rand(batch_size, 3, 3, device=device, dtype=dtype)
 
-        points3d = kornia.depth_to_normals(depth, camera_matrix)
+        points3d = kornia.geometry.depth.depth_to_normals(depth, camera_matrix)
         assert points3d.shape == (batch_size, 3, 3, 4)
 
     @pytest.mark.parametrize("batch_size", [2, 4, 5])
@@ -137,7 +137,7 @@ class TestDepthToNormals:
         depth = torch.rand(batch_size, 1, 3, 4, device=device, dtype=dtype)
         camera_matrix = torch.rand(1, 3, 3, device=device, dtype=dtype)
 
-        points3d = kornia.depth_to_normals(depth, camera_matrix)
+        points3d = kornia.geometry.depth.depth_to_normals(depth, camera_matrix)
         assert points3d.shape == (batch_size, 3, 3, 4)
 
     def test_simple(self, device, dtype):
@@ -160,7 +160,7 @@ class TestDepthToNormals:
             dtype=dtype,
         )
 
-        normals = kornia.depth_to_normals(depth, camera_matrix)  # default is normalize_points=False
+        normals = kornia.geometry.depth.depth_to_normals(depth, camera_matrix)  # default is normalize_points=False
         assert_close(normals, normals_expected, rtol=1e-3, atol=1e-3)
 
     def test_simple_normalized(self, device, dtype):
@@ -198,7 +198,7 @@ class TestDepthToNormals:
             dtype=dtype,
         )
 
-        normals = kornia.depth_to_normals(depth, camera_matrix, normalize_points=True)
+        normals = kornia.geometry.depth.depth_to_normals(depth, camera_matrix, normalize_points=True)
         assert_close(normals, normals_expected, rtol=1e-3, atol=1e-3)
 
     def test_gradcheck(self, device, dtype):
@@ -210,7 +210,7 @@ class TestDepthToNormals:
         camera_matrix = utils.tensor_to_gradcheck_var(camera_matrix)  # to var
 
         # evaluate function gradient
-        assert gradcheck(kornia.depth_to_normals, (depth, camera_matrix), raise_exception=True)
+        assert gradcheck(kornia.geometry.depth.depth_to_normals, (depth, camera_matrix), raise_exception=True)
 
 
 class TestWarpFrameDepth:
@@ -220,7 +220,7 @@ class TestWarpFrameDepth:
         src_trans_dst = torch.rand(1, 4, 4, device=device, dtype=dtype)
         camera_matrix = torch.rand(1, 3, 3, device=device, dtype=dtype)
 
-        image_dst = kornia.warp_frame_depth(image_src, depth_dst, src_trans_dst, camera_matrix)
+        image_dst = kornia.geometry.depth.warp_frame_depth(image_src, depth_dst, src_trans_dst, camera_matrix)
         assert image_dst.shape == (1, 3, 3, 4)
 
     @pytest.mark.parametrize("batch_size", [2, 4, 5])
@@ -231,7 +231,7 @@ class TestWarpFrameDepth:
         src_trans_dst = torch.rand(batch_size, 4, 4, device=device, dtype=dtype)
         camera_matrix = torch.rand(batch_size, 3, 3, device=device, dtype=dtype)
 
-        image_dst = kornia.warp_frame_depth(image_src, depth_dst, src_trans_dst, camera_matrix)
+        image_dst = kornia.geometry.depth.warp_frame_depth(image_src, depth_dst, src_trans_dst, camera_matrix)
         assert image_dst.shape == (batch_size, num_features, 3, 4)
 
     def test_translation(self, device, dtype):
@@ -259,7 +259,7 @@ class TestWarpFrameDepth:
             [[[[2.0, 3.0, 0.0], [2.0, 3.0, 0.0], [2.0, 3.0, 0.0], [2.0, 3.0, 0.0]]]], device=device, dtype=dtype
         )
 
-        image_dst = kornia.warp_frame_depth(
+        image_dst = kornia.geometry.depth.warp_frame_depth(
             image_src, depth_dst, src_trans_dst, camera_matrix
         )  # default is normalize_points=False
         assert_close(image_dst, image_dst_expected, rtol=1e-3, atol=1e-3)
@@ -300,7 +300,9 @@ class TestWarpFrameDepth:
             dtype=dtype,
         )
 
-        image_dst = kornia.warp_frame_depth(image_src, depth_dst, src_trans_dst, camera_matrix, normalize_points=True)
+        image_dst = kornia.geometry.depth.warp_frame_depth(
+            image_src, depth_dst, src_trans_dst, camera_matrix, normalize_points=True
+        )
         assert_close(image_dst, image_dst_expected, rtol=1e-3, atol=1e-3)
 
     def test_gradcheck(self, device, dtype):
@@ -318,5 +320,7 @@ class TestWarpFrameDepth:
 
         # evaluate function gradient
         assert gradcheck(
-            kornia.warp_frame_depth, (image_src, depth_dst, src_trans_dst, camera_matrix), raise_exception=True
+            kornia.geometry.depth.warp_frame_depth,
+            (image_src, depth_dst, src_trans_dst, camera_matrix),
+            raise_exception=True,
         )

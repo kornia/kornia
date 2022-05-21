@@ -1,14 +1,14 @@
 import torch
 import torch.nn as nn
 
-import kornia
-from kornia.filters.kernels import get_laplacian_kernel2d, normalize_kernel2d
+from .filter import filter2d
+from .kernels import get_laplacian_kernel2d, normalize_kernel2d
 
 
 def laplacian(
     input: torch.Tensor, kernel_size: int, border_type: str = 'reflect', normalized: bool = True
 ) -> torch.Tensor:
-    r"""Creates an operator that returns a tensor using a Laplacian filter.
+    r"""Create an operator that returns a tensor using a Laplacian filter.
 
     .. image:: _static/img/laplacian.png
 
@@ -41,11 +41,11 @@ def laplacian(
     if normalized:
         kernel = normalize_kernel2d(kernel)
 
-    return kornia.filter2d(input, kernel, border_type)
+    return filter2d(input, kernel, border_type)
 
 
 class Laplacian(nn.Module):
-    r"""Creates an operator that returns a tensor using a Laplacian filter.
+    r"""Create an operator that returns a tensor using a Laplacian filter.
 
     The operator smooths the given tensor with a laplacian kernel by convolving
     it to each channel. It supports batched operation.

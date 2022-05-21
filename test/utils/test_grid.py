@@ -26,7 +26,6 @@ def test_normalize_pixel_grid(device, dtype):
         pytest.skip('"inverse_cuda" not implemented for "Half"')
 
     # generate input data
-    batch_size = 1
     height, width = 2, 4
 
     # create points grid
@@ -43,11 +42,13 @@ def test_normalize_pixel_grid(device, dtype):
     grid_pix = torch.unsqueeze(grid_pix, dim=0)
 
     # grid from pixel space to normalized
-    norm_trans_pix = kornia.normal_transform_pixel(height, width, device=device, dtype=dtype)  # 1x3x3
+    norm_trans_pix = kornia.geometry.conversions.normal_transform_pixel(
+        height, width, device=device, dtype=dtype
+    )  # 1x3x3
     pix_trans_norm = torch.inverse(norm_trans_pix)  # 1x3x3
     # transform grids
-    grid_pix_to_norm = kornia.transform_points(norm_trans_pix, grid_pix)
-    grid_norm_to_pix = kornia.transform_points(pix_trans_norm, grid_norm)
+    grid_pix_to_norm = kornia.geometry.linalg.transform_points(norm_trans_pix, grid_pix)
+    grid_norm_to_pix = kornia.geometry.linalg.transform_points(pix_trans_norm, grid_norm)
     assert_close(grid_pix, grid_norm_to_pix)
     assert_close(grid_norm, grid_pix_to_norm)
 

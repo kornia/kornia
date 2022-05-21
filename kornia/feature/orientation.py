@@ -6,21 +6,18 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from kornia.constants import pi
-from kornia.feature import (
-    extract_patches_from_pyramid,
-    get_laf_orientation,
-    raise_error_if_laf_is_not_valid,
-    set_laf_orientation,
-)
-from kornia.filters import get_gaussian_kernel2d, SpatialGradient
+from kornia.filters import SpatialGradient, get_gaussian_kernel2d
 from kornia.geometry import rad2deg
+from kornia.testing import KORNIA_CHECK_SHAPE
+
+from .laf import extract_patches_from_pyramid, get_laf_orientation, raise_error_if_laf_is_not_valid, set_laf_orientation
 
 urls: Dict[str, str] = {}
 urls["orinet"] = "https://github.com/ducha-aiki/affnet/raw/master/pretrained/OriNet.pth"
 
 
 class PassLAF(nn.Module):
-    """Dummy module to use instead of local feature orientation or affine shape estimator"""
+    """Dummy module to use instead of local feature orientation or affine shape estimator."""
 
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
         """
@@ -39,8 +36,8 @@ class PatchDominantGradientOrientation(nn.Module):
     Zero angle points towards right.
 
     Args:
-        patch_size:
-        num_angular_bins:
+        patch_size: size of the (square) input patch.
+        num_angular_bins: number of histogram bins.
         eps: for safe division, and arctan.
     """
 
@@ -72,14 +69,14 @@ class PatchDominantGradientOrientation(nn.Module):
 
     def forward(self, patch: torch.Tensor) -> torch.Tensor:
         """Args:
-            patch: (torch.Tensor) shape [Bx1xHxW]
+            patch: shape [Bx1xHxW]
         Returns:
             torch.Tensor: angle shape [B]"""
         if not isinstance(patch, torch.Tensor):
             raise TypeError(f"Input type is not a torch.Tensor. Got {type(patch)}")
         if not len(patch.shape) == 4:
             raise ValueError(f"Invalid input shape, we expect Bx1xHxW. Got: {patch.shape}")
-        B, CH, W, H = patch.size()
+        _, CH, W, H = patch.size()
         if (W != self.patch_size) or (H != self.patch_size) or (CH != 1):
             raise TypeError(
                 "input shape should be must be [Bx1x{}x{}]. "
@@ -172,10 +169,11 @@ class OriNet(nn.Module):
                 urls['orinet'], map_location=lambda storage, loc: storage
             )
             self.load_state_dict(pretrained_dict['state_dict'], strict=False)
+        self.eval()
 
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
-        "Utility function that normalizes the input by batch." ""
+        """Utility function that normalizes the input by batch.""" ""
         sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
         # WARNING: we need to .detach() input, otherwise the gradients produced by
         # the patches extractor with F.grid_sample are very noisy, making the detector
@@ -203,7 +201,7 @@ class LAFOrienter(nn.Module):
         num_angular_bins:
         angle_detector: Patch orientation estimator, e.g. :class:`~kornia.feature.PatchDominantGradientOrientation`
           or OriNet.
-    """  # noqa pylint: disable
+    """  # pylint: disable
 
     def __init__(self, patch_size: int = 32, num_angular_bins: int = 36, angle_detector: Optional[nn.Module] = None):
         super().__init__()
@@ -231,11 +229,7 @@ class LAFOrienter(nn.Module):
             laf_out, shape [BxNx2x3]
         """
         raise_error_if_laf_is_not_valid(laf)
-        img_message: str = f"Invalid img shape, we expect BxCxHxW. Got: {img.shape}"
-        if not isinstance(img, torch.Tensor):
-            raise TypeError(f"img type is not a torch.Tensor. Got {type(img)}")
-        if len(img.shape) != 4:
-            raise ValueError(img_message)
+        KORNIA_CHECK_SHAPE(img, ["B", "C", "H", "W"])
         if laf.size(0) != img.size(0):
             raise ValueError(f"Batch size of laf and img should be the same. Got {img.size(0)}, {laf.size(0)}")
         B, N = laf.shape[:2]

@@ -1,17 +1,20 @@
-from typing import Any, Dict, Optional, Tuple, Type, Union
+from typing import Any, Dict, Optional, Tuple, Type
 
 import pytest
 import torch
-import torch.nn as nn
 from torch.autograd import gradcheck
 
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.augmentation import (
+    AugmentationSequential,
     CenterCrop,
+    ColorJiggle,
     ColorJitter,
     Denormalize,
+    LongestMaxSize,
     Normalize,
+    PadTo,
     RandomBoxBlur,
     RandomChannelShuffle,
     RandomCrop,
@@ -24,14 +27,24 @@ from kornia.augmentation import (
     RandomGrayscale,
     RandomHorizontalFlip,
     RandomInvert,
+    RandomPlanckianJitter,
+    RandomPlasmaBrightness,
+    RandomPlasmaContrast,
+    RandomPlasmaShadow,
+    RandomPosterize,
     RandomResizedCrop,
+    RandomRGBShift,
     RandomRotation,
     RandomThinPlateSpline,
     RandomVerticalFlip,
+    Resize,
+    SmallestMaxSize,
 )
-from kornia.augmentation.base import AugmentationBase2D
-from kornia.constants import pi, Resample
-from kornia.testing import assert_close, BaseTester, default_with_one_parameter_changed
+from kornia.augmentation._2d.base import AugmentationBase2D
+from kornia.constants import Resample, pi
+from kornia.geometry import transform_points
+from kornia.testing import BaseTester, assert_close, default_with_one_parameter_changed
+from kornia.utils import create_meshgrid
 from kornia.utils.helpers import _torch_inverse_cast
 
 # TODO same_on_batch tests?
@@ -65,7 +78,6 @@ class CommonTests(BaseTester):
     def test_smoke(self, param_set):
         self._test_smoke_implementation(params=param_set)
         self._test_smoke_call_implementation(params=param_set)
-        self._test_smoke_return_transform_implementation(params=param_set)
 
     @pytest.mark.parametrize(
         "input_shape,expected_output_shape",
@@ -79,13 +91,7 @@ class CommonTests(BaseTester):
     def test_random_p_0(self):
         self._test_random_p_0_implementation(params=self._default_param_set)
 
-    def test_random_p_0_return_transform(self):
-        self._test_random_p_0_return_transform_implementation(params=self._default_param_set)
-
     def test_random_p_1(self):
-        raise NotImplementedError("Implement a stupid routine.")
-
-    def test_random_p_1_return_transform(self):
         raise NotImplementedError("Implement a stupid routine.")
 
     def test_inverse_coordinate_check(self):
@@ -127,76 +133,44 @@ class CommonTests(BaseTester):
         ), f"{self._augmentation_cls} is not a subclass of AugmentationBase2D"
 
         # Can be instatiated
-        augmentation = self._create_augmentation_from_params(**params, return_transform=False)
+        augmentation = self._create_augmentation_from_params(**params)
         assert issubclass(
             type(augmentation), AugmentationBase2D
         ), f"{type(augmentation)} is not a subclass of AugmentationBase2D"
 
         # generate_parameters can be called and returns the correct amount of parameters
         batch_shape = (4, 3, 5, 6)
-        generated_params = augmentation.generate_parameters(batch_shape)
+        generated_params = augmentation.forward_parameters(batch_shape)
         assert isinstance(generated_params, dict)
 
         # compute_transformation can be called and returns the correct shaped transformation matrix
-        expected_transformation_shape = torch.Size((batch_shape[0], 3, 3))
+        expected_transformation_shape = torch.Size((generated_params['batch_prob'].sum(), 3, 3))
         test_input = torch.ones(batch_shape, device=self.device, dtype=self.dtype)
-        transformation = augmentation.compute_transformation(test_input, generated_params)
+        transformation = augmentation.compute_transformation(
+            test_input[generated_params['batch_prob']], generated_params, augmentation.flags
+        )
         assert transformation.shape == expected_transformation_shape
 
         # apply_transform can be called and returns the correct batch sized output
-        output = augmentation.apply_transform(test_input, generated_params, transformation)
-        assert output.shape[0] == batch_shape[0]
+        if generated_params['batch_prob'].sum() != 0:
+            output = augmentation.apply_transform(
+                test_input[generated_params['batch_prob']], generated_params, augmentation.flags, transformation
+            )
+            assert output.shape[0] == generated_params['batch_prob'].sum()
+        else:
+            # Re-generate parameters if 0 batch size
+            self._test_smoke_implementation(params)
 
     def _test_smoke_call_implementation(self, params):
         batch_shape = (4, 3, 5, 6)
         expected_transformation_shape = torch.Size((batch_shape[0], 3, 3))
         test_input = torch.ones(batch_shape, device=self.device, dtype=self.dtype)
-        augmentation = self._create_augmentation_from_params(**params, return_transform=False)
-        generated_params = augmentation.generate_parameters(batch_shape)
-        test_transform = torch.rand(expected_transformation_shape, device=self.device, dtype=self.dtype)
+        augmentation = self._create_augmentation_from_params(**params)
+        generated_params = augmentation.forward_parameters(batch_shape)
 
         output = augmentation(test_input, params=generated_params)
         assert output.shape[0] == batch_shape[0]
-
-        output, transformation = augmentation(test_input, params=generated_params, return_transform=True)
-        assert output.shape[0] == batch_shape[0]
-        assert transformation.shape == expected_transformation_shape
-
-        output, final_transformation = augmentation(
-            (test_input, test_transform), params=generated_params, return_transform=True
-        )
-        assert output.shape[0] == batch_shape[0]
-        assert final_transformation.shape == expected_transformation_shape
-        assert_close(final_transformation, transformation @ test_transform, atol=1e-4, rtol=1e-4)
-
-        output, transformation = augmentation((test_input, test_transform), params=generated_params)
-        assert output.shape[0] == batch_shape[0]
-        assert transformation.shape == expected_transformation_shape
-        assert (transformation == test_transform).all()
-
-    def _test_smoke_return_transform_implementation(self, params):
-        batch_shape = (4, 3, 5, 6)
-        expected_transformation_shape = torch.Size((batch_shape[0], 3, 3))
-        test_input = torch.ones(batch_shape, device=self.device, dtype=self.dtype)
-        augmentation = self._create_augmentation_from_params(**params, return_transform=True)
-        generated_params = augmentation.generate_parameters(batch_shape)
-        test_transform = torch.rand(expected_transformation_shape, device=self.device, dtype=self.dtype)
-
-        output, transformation = augmentation(test_input, params=generated_params)
-        assert output.shape[0] == batch_shape[0]
-        assert transformation.shape == expected_transformation_shape
-
-        output, final_transformation = augmentation((test_input, test_transform), params=generated_params)
-        assert output.shape[0] == batch_shape[0]
-        assert final_transformation.shape == expected_transformation_shape
-        assert_close(final_transformation, transformation @ test_transform, atol=1e-4, rtol=1e-4)
-
-        output, final_transformation = augmentation(
-            (test_input, test_transform), params=generated_params, return_transform=True
-        )
-        assert output.shape[0] == batch_shape[0]
-        assert final_transformation.shape == expected_transformation_shape
-        assert_close(final_transformation, transformation @ test_transform, atol=1e-4, rtol=1e-4)
+        assert augmentation.transform_matrix.shape == expected_transformation_shape
 
     def _test_cardinality_implementation(self, input_shape, expected_output_shape, params):
 
@@ -215,59 +189,40 @@ class CommonTests(BaseTester):
         assert output.shape == expected_output_shape
 
     def _test_random_p_0_implementation(self, params):
-        augmentation = self._create_augmentation_from_params(**params, p=0.0, return_transform=False)
-        expected_output_shape = torch.Size((2, 3, 4, 5))
+        augmentation = self._create_augmentation_from_params(**params, p=0.0)
         test_input = torch.rand((2, 3, 4, 5), device=self.device, dtype=self.dtype)
         output = augmentation(test_input)
         assert (output == test_input).all()
 
-    def _test_random_p_0_return_transform_implementation(self, params):
-        augmentation = self._create_augmentation_from_params(**params, p=0.0, return_transform=True)
-        expected_output_shape = torch.Size((2, 3, 4, 5))
-        expected_transformation_shape = torch.Size((2, 3, 3))
-        test_input = torch.rand((2, 3, 4, 5), device=self.device, dtype=self.dtype)
-        output, transformation = augmentation(test_input)
-
-        assert (output == test_input).all()
-        assert transformation.shape == expected_transformation_shape
-        assert (transformation == kornia.eye_like(3, transformation)).all()
-
-    def _test_random_p_1_implementation(self, input_tensor, expected_output, params):
-        augmentation = self._create_augmentation_from_params(**params, p=1.0, return_transform=False)
+    def _test_random_p_1_implementation(self, input_tensor, expected_output, params, expected_transformation=None):
+        augmentation = self._create_augmentation_from_params(**params, p=1.0)
         output = augmentation(input_tensor.to(self.device).to(self.dtype))
 
         # Output should match
         assert output.shape == expected_output.shape
-        assert_close(output, expected_output.to(self.device).to(self.dtype), atol=1e-4, rtol=1e-4)
-
-    def _test_random_p_1_return_transform_implementation(
-        self, input_tensor, expected_output, expected_transformation, params
-    ):
-        augmentation = self._create_augmentation_from_params(**params, p=1.0, return_transform=True)
-        output, transformation = augmentation(input_tensor.to(self.device).to(self.dtype))
-        # Output should match
-        assert output.shape == expected_output.shape
-        assert_close(output, expected_output.to(self.device).to(self.dtype), atol=1e-4, rtol=1e-4)
-        # Transformation should match
-        assert transformation.shape == expected_transformation.shape
-        assert_close(transformation, expected_transformation.to(self.device).to(self.dtype), atol=1e-4, rtol=1e-4)
+        assert_close(output, expected_output.to(device=self.device, dtype=self.dtype), atol=1e-4, rtol=1e-4)
+        if expected_transformation is not None:
+            transform = augmentation.transform_matrix
+            assert_close(transform, expected_transformation, atol=1e-4, rtol=1e-4)
 
     def _test_module_implementation(self, params):
-        augmentation = self._create_augmentation_from_params(**params, p=0.5, return_transform=True)
+        augmentation = self._create_augmentation_from_params(**params, p=0.5)
 
-        augmentation_sequence = nn.Sequential(augmentation, augmentation)
+        augmentation_sequence = AugmentationSequential(augmentation, augmentation)
 
         input_tensor = torch.rand(3, 5, 5, device=self.device, dtype=self.dtype)  # 3 x 5 x 5
 
         torch.manual_seed(42)
-        out1, transform1 = augmentation(input_tensor)
-        out2, transform2 = augmentation(out1)
-        transform = transform2 @ transform1
+        out1 = augmentation(input_tensor)
+        transform1 = augmentation.transform_matrix
+        out2 = augmentation(out1)
+        transform = augmentation.transform_matrix @ transform1
 
         torch.manual_seed(42)
-        out_sequence, transform_sequence = augmentation_sequence(input_tensor)
+        out_sequence = augmentation_sequence(input_tensor)
+        transform_sequence = augmentation_sequence.transform_matrix
 
-        assert out2.shape == out_sequence.shape
+        assert out1.shape == out_sequence.shape
         assert transform.shape == transform_sequence.shape
         assert_close(out2, out_sequence, atol=1e-4, rtol=1e-4)
         assert_close(transform, transform_sequence, atol=1e-4, rtol=1e-4)
@@ -278,17 +233,18 @@ class CommonTests(BaseTester):
         input_tensor = torch.zeros((1, 3, 50, 100), device=self.device, dtype=self.dtype)
         input_tensor[:, :, 20:30, 40:60] = 1.0
 
-        augmentation = self._create_augmentation_from_params(**params, p=1.0, return_transform=True)
-        output, transform = augmentation(input_tensor)
+        augmentation = self._create_augmentation_from_params(**params, p=1.0)
+        output = augmentation(input_tensor)
+        transform = augmentation.transform_matrix
 
         if (transform == kornia.eye_like(3, transform)).all():
             pytest.skip("Test not relevant for intensity augmentations.")
 
-        indices = kornia.create_meshgrid(
+        indices = create_meshgrid(
             height=output.shape[-2], width=output.shape[-1], normalized_coordinates=False, device=self.device
         )
         output_indices = indices.reshape((1, -1, 2)).to(dtype=self.dtype)
-        input_indices = kornia.geometry.transform_points(_torch_inverse_cast(transform.to(self.dtype)), output_indices)
+        input_indices = transform_points(_torch_inverse_cast(transform.to(self.dtype)), output_indices)
 
         output_indices = output_indices.round().long().squeeze(0)
         input_indices = input_indices.round().long().squeeze(0)
@@ -303,11 +259,7 @@ class CommonTests(BaseTester):
     def _test_gradcheck_implementation(self, params):
         input_tensor = torch.rand((3, 5, 5), device=self.device, dtype=self.dtype)  # 3 x 3
         input_tensor = utils.tensor_to_gradcheck_var(input_tensor)  # to var
-        assert gradcheck(
-            self._create_augmentation_from_params(**params, p=1.0, return_transform=False),
-            (input_tensor,),
-            raise_exception=True,
-        )
+        assert gradcheck(self._create_augmentation_from_params(**params, p=1.0), (input_tensor,), raise_exception=True)
 
 
 class TestRandomEqualizeAlternative(CommonTests):
@@ -358,23 +310,6 @@ class TestRandomEqualizeAlternative(CommonTests):
             input_tensor=input_tensor, expected_output=expected_output, params=parameters
         )
 
-    def test_random_p_1_return_transform(self):
-        torch.manual_seed(42)
-
-        input_tensor = torch.rand(1, 1, 3, 4, device=self.device, dtype=self.dtype)
-
-        # Note: For small inputs it should return the input image
-        expected_output = input_tensor
-
-        expected_transformation = kornia.eye_like(3, input_tensor)
-        parameters = {}
-        self._test_random_p_1_return_transform_implementation(
-            input_tensor=input_tensor,
-            expected_output=expected_output,
-            expected_transformation=expected_transformation,
-            params=parameters,
-        )
-
     def test_batch(self):
         input_tensor = torch.arange(20.0, device=self.device, dtype=self.dtype) / 20
         input_tensor = input_tensor.repeat(2, 3, 20, 1)
@@ -409,7 +344,7 @@ class TestRandomEqualizeAlternative(CommonTests):
 
         expected_transformation = kornia.eye_like(3, input_tensor)
         parameters = {}
-        self._test_random_p_1_return_transform_implementation(
+        self._test_random_p_1_implementation(
             input_tensor=input_tensor,
             expected_output=expected_output,
             expected_transformation=expected_transformation,
@@ -464,24 +399,6 @@ class TestCenterCropAlternative(CommonTests):
             input_tensor=input_tensor, expected_output=expected_output, params=parameters
         )
 
-    def test_random_p_1_return_transform(self):
-        torch.manual_seed(42)
-
-        input_tensor = torch.tensor(
-            [[[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8], [0.9, 0.0, 0.1, 0.2]]], device=self.device, dtype=self.dtype
-        )
-        expected_output = torch.tensor([[[[0.2, 0.3], [0.6, 0.7], [0.0, 0.1]]]], device=self.device, dtype=self.dtype)
-        expected_transformation = torch.tensor(
-            [[[1.0, 0.0, -1.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=self.device, dtype=self.dtype
-        )
-        parameters = {"size": (3, 2), "align_corners": True, "resample": 0}
-        self._test_random_p_1_return_transform_implementation(
-            input_tensor=input_tensor,
-            expected_output=expected_output,
-            expected_transformation=expected_transformation,
-            params=parameters,
-        )
-
     def test_batch(self):
         torch.manual_seed(42)
 
@@ -490,8 +407,8 @@ class TestCenterCropAlternative(CommonTests):
         expected_transformation = torch.tensor(
             [[[1.0, 0.0, -1.0], [0.0, 1.0, -1.0], [0.0, 0.0, 1.0]]], device=self.device, dtype=self.dtype
         ).repeat(2, 1, 1)
-        parameters = {"size": (2, 2), "align_corners": True, "resample": 0}
-        self._test_random_p_1_return_transform_implementation(
+        parameters = {"size": (2, 2), "align_corners": True, "resample": 0, "cropping_mode": "resample"}
+        self._test_random_p_1_implementation(
             input_tensor=input_tensor,
             expected_output=expected_output,
             expected_transformation=expected_transformation,
@@ -541,26 +458,6 @@ class TestRandomHorizontalFlipAlternative(CommonTests):
             input_tensor=input_tensor, expected_output=expected_output, params=parameters
         )
 
-    def test_random_p_1_return_transform(self):
-        torch.manual_seed(42)
-
-        input_tensor = torch.tensor(
-            [[[0.1, 0.2, 0.3], [0.4, 0.5, 0.6], [0.7, 0.8, 0.9]]], device=self.device, dtype=self.dtype
-        )
-        expected_output = torch.tensor(
-            [[[[0.3, 0.2, 0.1], [0.6, 0.5, 0.4], [0.9, 0.8, 0.7]]]], device=self.device, dtype=self.dtype
-        )
-        expected_transformation = torch.tensor(
-            [[[-1.0, 0.0, 2.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=self.device, dtype=self.dtype
-        )
-        parameters = {}
-        self._test_random_p_1_return_transform_implementation(
-            input_tensor=input_tensor,
-            expected_output=expected_output,
-            expected_transformation=expected_transformation,
-            params=parameters,
-        )
-
     def test_batch(self):
         torch.manual_seed(12)
 
@@ -569,16 +466,12 @@ class TestRandomHorizontalFlipAlternative(CommonTests):
         ).repeat((2, 1, 1, 1))
         expected_output = torch.tensor(
             [[[[0.3, 0.2, 0.1], [0.6, 0.5, 0.4], [0.9, 0.8, 0.7]]]], device=self.device, dtype=self.dtype
-        ).repeat(
-            (2, 1, 1, 1)
-        )  # noqa: E501
+        ).repeat((2, 1, 1, 1))
         expected_transformation = torch.tensor(
             [[[-1.0, 0.0, 2.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=self.device, dtype=self.dtype
-        ).repeat(
-            (2, 1, 1)
-        )  # noqa: E501
+        ).repeat((2, 1, 1))
         parameters = {}
-        self._test_random_p_1_return_transform_implementation(
+        self._test_random_p_1_implementation(
             input_tensor=input_tensor,
             expected_output=expected_output,
             expected_transformation=expected_transformation,
@@ -614,26 +507,6 @@ class TestRandomVerticalFlipAlternative(CommonTests):
             input_tensor=input_tensor, expected_output=expected_output, params=parameters
         )
 
-    def test_random_p_1_return_transform(self):
-        torch.manual_seed(42)
-
-        input_tensor = torch.tensor(
-            [[[0.1, 0.2, 0.3], [0.4, 0.5, 0.6], [0.7, 0.8, 0.9]]], device=self.device, dtype=self.dtype
-        )
-        expected_output = torch.tensor(
-            [[[[0.7, 0.8, 0.9], [0.4, 0.5, 0.6], [0.1, 0.2, 0.3]]]], device=self.device, dtype=self.dtype
-        )
-        expected_transformation = torch.tensor(
-            [[[1.0, 0.0, 0.0], [0.0, -1.0, 2.0], [0.0, 0.0, 1.0]]], device=self.device, dtype=self.dtype
-        )
-        parameters = {}
-        self._test_random_p_1_return_transform_implementation(
-            input_tensor=input_tensor,
-            expected_output=expected_output,
-            expected_transformation=expected_transformation,
-            params=parameters,
-        )
-
     def test_batch(self):
         torch.manual_seed(12)
 
@@ -642,16 +515,12 @@ class TestRandomVerticalFlipAlternative(CommonTests):
         ).repeat((2, 1, 1, 1))
         expected_output = torch.tensor(
             [[[[0.7, 0.8, 0.9], [0.4, 0.5, 0.6], [0.1, 0.2, 0.3]]]], device=self.device, dtype=self.dtype
-        ).repeat(
-            (2, 1, 1, 1)
-        )  # noqa: E501
+        ).repeat((2, 1, 1, 1))
         expected_transformation = torch.tensor(
             [[[1.0, 0.0, 0.0], [0.0, -1.0, 2.0], [0.0, 0.0, 1.0]]], device=self.device, dtype=self.dtype
-        ).repeat(
-            (2, 1, 1)
-        )  # noqa: E501
+        ).repeat((2, 1, 1))
         parameters = {}
-        self._test_random_p_1_return_transform_implementation(
+        self._test_random_p_1_implementation(
             input_tensor=input_tensor,
             expected_output=expected_output,
             expected_transformation=expected_transformation,
@@ -693,26 +562,6 @@ class TestRandomRotationAlternative(CommonTests):
             input_tensor=input_tensor, expected_output=expected_output, params=parameters
         )
 
-    def test_random_p_1_return_transform(self):
-        torch.manual_seed(42)
-
-        input_tensor = torch.tensor(
-            [[[0.1, 0.2, 0.3], [0.4, 0.5, 0.6], [0.7, 0.8, 0.9]]], device=self.device, dtype=self.dtype
-        )
-        expected_output = torch.tensor(
-            [[[[0.7, 0.4, 0.1], [0.8, 0.5, 0.2], [0.9, 0.6, 0.3]]]], device=self.device, dtype=self.dtype
-        )
-        expected_transformation = torch.tensor(
-            [[[0.0, -1.0, 2.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]], device=self.device, dtype=self.dtype
-        )
-        parameters = {"degrees": (-90.0, -90.0), "align_corners": True}
-        self._test_random_p_1_return_transform_implementation(
-            input_tensor=input_tensor,
-            expected_output=expected_output,
-            expected_transformation=expected_transformation,
-            params=parameters,
-        )
-
     def test_batch(self):
         torch.manual_seed(12)
 
@@ -722,7 +571,7 @@ class TestRandomRotationAlternative(CommonTests):
         expected_output = input_tensor
         expected_transformation = kornia.eye_like(3, input_tensor)
         parameters = {"degrees": (-360.0, -360.0), "align_corners": True}
-        self._test_random_p_1_return_transform_implementation(
+        self._test_random_p_1_implementation(
             input_tensor=input_tensor,
             expected_output=expected_output,
             expected_transformation=expected_transformation,
@@ -786,27 +635,6 @@ class TestRandomGrayscaleAlternative(CommonTests):
             input_tensor=input_tensor, expected_output=expected_output, params=parameters
         )
 
-    def test_random_p_1_return_transform(self):
-        torch.manual_seed(42)
-
-        input_tensor = torch.tensor(
-            [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8], [0.9, 0.0, 0.1, 0.2]], device=self.device, dtype=self.dtype
-        ).repeat(1, 3, 1, 1)
-        expected_output = (
-            (input_tensor * torch.tensor([0.299, 0.587, 0.114], device=self.device, dtype=self.dtype).view(1, 3, 1, 1))
-            .sum(dim=1, keepdim=True)
-            .repeat(1, 3, 1, 1)
-        )
-
-        expected_transformation = kornia.eye_like(3, input_tensor)
-        parameters = {}
-        self._test_random_p_1_return_transform_implementation(
-            input_tensor=input_tensor,
-            expected_output=expected_output,
-            expected_transformation=expected_transformation,
-            params=parameters,
-        )
-
     def test_batch(self):
         torch.manual_seed(42)
 
@@ -821,7 +649,7 @@ class TestRandomGrayscaleAlternative(CommonTests):
 
         expected_transformation = kornia.eye_like(3, input_tensor)
         parameters = {}
-        self._test_random_p_1_return_transform_implementation(
+        self._test_random_p_1_implementation(
             input_tensor=input_tensor,
             expected_output=expected_output,
             expected_transformation=expected_transformation,
@@ -841,19 +669,17 @@ class TestRandomGrayscaleAlternative(CommonTests):
 class TestRandomHorizontalFlip:
 
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
-    # return values such a torch.Tensor variable.
+    # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self):
         f = RandomHorizontalFlip(p=0.5)
-        repr = "RandomHorizontalFlip(p=0.5, p_batch=1.0, same_on_batch=False, return_transform=False)"
+        repr = "RandomHorizontalFlip(p=0.5, p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
 
     def test_random_hflip(self, device, dtype):
 
-        f = RandomHorizontalFlip(p=1.0, return_transform=True)
-        f1 = RandomHorizontalFlip(p=0.0, return_transform=True)
-        f2 = RandomHorizontalFlip(p=1.0)
-        f3 = RandomHorizontalFlip(p=0.0)
+        f = RandomHorizontalFlip(p=1.0)
+        f1 = RandomHorizontalFlip(p=0.0)
 
         input = torch.tensor(
             [[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 2.0]], device=device, dtype=dtype
@@ -873,21 +699,17 @@ class TestRandomHorizontalFlip:
             [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype
         )  # 3 x 3
 
-        assert (f(input)[0] == expected).all()
-        assert (f(input)[1] == expected_transform).all()
-        assert (f1(input)[0] == input).all()
-        assert (f1(input)[1] == identity).all()
-        assert (f2(input) == expected).all()
-        assert (f3(input) == input).all()
+        assert (f(input) == expected).all()
+        assert (f.transform_matrix == expected_transform).all()
+        assert (f1(input) == input).all()
+        assert (f1.transform_matrix == identity).all()
         assert (f.inverse(expected) == input).all()
         assert (f1.inverse(expected) == expected).all()
-        assert (f2.inverse(expected) == input).all()
-        assert (f3.inverse(expected) == expected).all()
 
     def test_batch_random_hflip(self, device, dtype):
 
-        f = RandomHorizontalFlip(p=1.0, return_transform=True)
-        f1 = RandomHorizontalFlip(p=0.0, return_transform=True)
+        f = RandomHorizontalFlip(p=1.0)
+        f1 = RandomHorizontalFlip(p=0.0)
 
         input = torch.tensor(
             [[[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]]]], device=device, dtype=dtype
@@ -910,10 +732,10 @@ class TestRandomHorizontalFlip:
         expected_transform = expected_transform.repeat(5, 1, 1)  # 5 x 3 x 3
         identity = identity.repeat(5, 1, 1)  # 5 x 3 x 3
 
-        assert (f(input)[0] == expected).all()
-        assert (f(input)[1] == expected_transform).all()
-        assert (f1(input)[0] == input).all()
-        assert (f1(input)[1] == identity).all()
+        assert (f(input) == expected).all()
+        assert (f.transform_matrix == expected_transform).all()
+        assert (f1(input) == input).all()
+        assert (f1.transform_matrix == identity).all()
         assert (f.inverse(expected) == input).all()
         assert (f1.inverse(expected) == expected).all()
 
@@ -926,10 +748,7 @@ class TestRandomHorizontalFlip:
 
     def test_sequential(self, device, dtype):
 
-        f = nn.Sequential(
-            RandomHorizontalFlip(p=1.0, return_transform=True), RandomHorizontalFlip(p=1.0, return_transform=True)
-        )
-        f1 = nn.Sequential(RandomHorizontalFlip(p=1.0, return_transform=True), RandomHorizontalFlip(p=1.0))
+        f = AugmentationSequential(RandomHorizontalFlip(p=1.0), RandomHorizontalFlip(p=1.0))
 
         input = torch.tensor(
             [[[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]]]], device=device, dtype=dtype
@@ -941,15 +760,14 @@ class TestRandomHorizontalFlip:
 
         expected_transform_1 = expected_transform @ expected_transform
 
-        assert (f(input)[0] == input).all()
-        assert (f(input)[1] == expected_transform_1).all()
-        assert (f1(input)[0] == input).all()
-        assert (f1(input)[1] == expected_transform).all()
-        # TODO: Introduce Kornia.Sequential to do the inverse.
+        out = f(input)
+        assert (out == input).all()
+        assert (f.transform_matrix == expected_transform_1).all()
+        assert (f.inverse(out) == input).all()
 
     def test_random_hflip_coord_check(self, device, dtype):
 
-        f = RandomHorizontalFlip(p=1.0, return_transform=True)
+        f = RandomHorizontalFlip(p=1.0)
 
         input = torch.tensor(
             [[[[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0], [9.0, 10.0, 11.0, 12.0]]]], device=device, dtype=dtype
@@ -971,7 +789,8 @@ class TestRandomHorizontalFlip:
             [[[[4.0, 3.0, 2.0, 1.0], [8.0, 7.0, 6.0, 5.0], [12.0, 11.0, 10.0, 9.0]]]], device=device, dtype=dtype
         )  # 1 x 1 x 3 x 4
 
-        output, transform = f(input)
+        output = f(input)
+        transform = f.transform_matrix
         result_coordinates = transform @ input_coordinates
         # NOTE: without rounding it might produce unexpected results
         input_coordinates = input_coordinates.round().long()
@@ -1004,19 +823,17 @@ class TestRandomHorizontalFlip:
 class TestRandomVerticalFlip:
 
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
-    # return values such a torch.Tensor variable.
+    # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self):
         f = RandomVerticalFlip(p=0.5)
-        repr = "RandomVerticalFlip(p=0.5, p_batch=1.0, same_on_batch=False, return_transform=False)"
+        repr = "RandomVerticalFlip(p=0.5, p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
 
     def test_random_vflip(self, device, dtype):
 
-        f = RandomVerticalFlip(p=1.0, return_transform=True)
-        f1 = RandomVerticalFlip(p=0.0, return_transform=True)
-        f2 = RandomVerticalFlip(p=1.0)
-        f3 = RandomVerticalFlip(p=0.0)
+        f = RandomVerticalFlip(p=1.0)
+        f1 = RandomVerticalFlip(p=0.0)
 
         input = torch.tensor(
             [[[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]]]], device=device, dtype=dtype
@@ -1034,22 +851,17 @@ class TestRandomVerticalFlip:
             [[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
         )  # 3 x 3
 
-        assert_close(f(input)[0], expected, atol=1e-4, rtol=1e-4)
-        assert_close(f(input)[1], expected_transform, atol=1e-4, rtol=1e-4)
-        assert_close(f1(input)[0], input, atol=1e-4, rtol=1e-4)
-        assert_close(f1(input)[1], identity, atol=1e-4, rtol=1e-4)
-        assert_close(f2(input), expected, atol=1e-4, rtol=1e-4)
-        assert_close(f3(input), input, atol=1e-4, rtol=1e-4)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
+        assert_close(f1(input), input, atol=1e-4, rtol=1e-4)
+        assert_close(f1.transform_matrix, identity, atol=1e-4, rtol=1e-4)
 
         assert_close(f.inverse(expected), input, atol=1e-4, rtol=1e-4)
         assert_close(f1.inverse(input), input, atol=1e-4, rtol=1e-4)
-        assert_close(f2.inverse(expected), input, atol=1e-4, rtol=1e-4)
-        assert_close(f3.inverse(input), input, atol=1e-4, rtol=1e-4)
 
     def test_batch_random_vflip(self, device, dtype):
 
-        f = RandomVerticalFlip(p=1.0, return_transform=True)
-        f1 = RandomVerticalFlip(p=0.0, return_transform=True)
+        f = RandomVerticalFlip(p=1.0)
 
         input = torch.tensor(
             [[[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]]]], device=device, dtype=dtype
@@ -1072,12 +884,9 @@ class TestRandomVerticalFlip:
         expected_transform = expected_transform.repeat(5, 1, 1)  # 5 x 3 x 3
         identity = identity.repeat(5, 1, 1)  # 5 x 3 x 3
 
-        assert_close(f(input)[0], expected, atol=1e-4, rtol=1e-4)
-        assert_close(f(input)[1], expected_transform, atol=1e-4, rtol=1e-4)
-        assert_close(f1(input)[0], input, atol=1e-4, rtol=1e-4)
-        assert_close(f1(input)[1], identity, atol=1e-4, rtol=1e-4)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
         assert_close(f.inverse(expected), input, atol=1e-4, rtol=1e-4)
-        assert_close(f1.inverse(input), input, atol=1e-4, rtol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
         f = RandomVerticalFlip(p=0.5, same_on_batch=True)
@@ -1088,10 +897,7 @@ class TestRandomVerticalFlip:
 
     def test_sequential(self, device, dtype):
 
-        f = nn.Sequential(
-            RandomVerticalFlip(p=1.0, return_transform=True), RandomVerticalFlip(p=1.0, return_transform=True)
-        )
-        f1 = nn.Sequential(RandomVerticalFlip(p=1.0, return_transform=True), RandomVerticalFlip(p=1.0))
+        f = AugmentationSequential(RandomVerticalFlip(p=1.0), RandomVerticalFlip(p=1.0))
 
         input = torch.tensor(
             [[[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]]]], device=device, dtype=dtype
@@ -1103,14 +909,12 @@ class TestRandomVerticalFlip:
 
         expected_transform_1 = expected_transform @ expected_transform
 
-        assert_close(f(input)[0], input, atol=1e-4, rtol=1e-4)
-        assert_close(f(input)[1], expected_transform_1, atol=1e-4, rtol=1e-4)
-        assert_close(f1(input)[0], input, atol=1e-4, rtol=1e-4)
-        assert_close(f1(input)[1], expected_transform, atol=1e-4, rtol=1e-4)
+        assert_close(f(input), input, atol=1e-4, rtol=1e-4)
+        assert_close(f.transform_matrix, expected_transform_1, atol=1e-4, rtol=1e-4)
 
     def test_random_vflip_coord_check(self, device, dtype):
 
-        f = RandomVerticalFlip(p=1.0, return_transform=True)
+        f = RandomVerticalFlip(p=1.0)
 
         input = torch.tensor(
             [[[[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0], [9.0, 10.0, 11.0, 12.0]]]], device=device, dtype=dtype
@@ -1132,7 +936,8 @@ class TestRandomVerticalFlip:
             [[[[9.0, 10.0, 11.0, 12.0], [5.0, 6.0, 7.0, 8.0], [1.0, 2.0, 3.0, 4.0]]]], device=device, dtype=dtype
         )  # 1 x 1 x 3 x 4
 
-        output, transform = f(input)
+        output = f(input)
+        transform = f.transform_matrix
         result_coordinates = transform @ input_coordinates
         # NOTE: without rounding it might produce unexpected results
         input_coordinates = input_coordinates.round().long()
@@ -1157,49 +962,45 @@ class TestRandomVerticalFlip:
         ).all()
 
 
-class TestColorJitter:
+class TestColorJiggle:
 
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
-    # return values such a torch.Tensor variable.
+    # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self):
-        f = ColorJitter(brightness=0.5, contrast=0.3, saturation=[0.2, 1.2], hue=0.1)
+        f = ColorJiggle(brightness=0.5, contrast=0.3, saturation=[0.2, 1.2], hue=0.1)
         repr = (
-            "ColorJitter(brightness=tensor([0.5000, 1.5000]), contrast=tensor([0.7000, 1.3000]), "
+            "ColorJiggle(brightness=tensor([0.5000, 1.5000]), contrast=tensor([0.7000, 1.3000]), "
             "saturation=tensor([0.2000, 1.2000]), hue=tensor([-0.1000,  0.1000]), "
-            "p=1.0, p_batch=1.0, same_on_batch=False, return_transform=False)"
+            "p=1.0, p_batch=1.0, same_on_batch=False)"
         )
         assert str(f) == repr
 
-    def test_color_jitter(self, device, dtype):
+    def test_color_jiggle(self, device, dtype):
 
-        f = ColorJitter()
-        f1 = ColorJitter(return_transform=True)
+        f = ColorJiggle()
 
         input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0)  # 3 x 5 x 5
         expected = input
 
         expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
 
-        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
-        assert_close(f1(input)[0], expected, atol=1e-4, rtol=1e-5)
-        assert_close(f1(input)[1], expected_transform, atol=1e-4, rtol=1e-4)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
 
-    def test_color_jitter_batch(self, device, dtype):
-        f = ColorJitter()
-        f1 = ColorJitter(return_transform=True)
+    def test_color_jiggle_batch(self, device, dtype):
+        f = ColorJiggle()
 
         input = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)  # 2 x 3 x 5 x 5
         expected = input
 
         expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).expand((2, 3, 3))  # 2 x 3 x 3
 
-        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
-        assert_close(f1(input)[0], expected, atol=1e-4, rtol=1e-5)
-        assert_close(f1(input)[1], expected_transform, atol=1e-4, rtol=1e-4)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
-        f = ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.1, same_on_batch=True)
+        f = ColorJiggle(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.1, same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
         assert (res[0] == res[1]).all()
@@ -1216,6 +1017,308 @@ class TestColorJitter:
                     [[0.2660, 0.3660, 0.4660], [0.7660, 0.6660, 0.5660], [0.8660, 0.9660, 1.0000]],
                     [[0.2660, 0.3660, 0.4660], [0.7660, 0.6660, 0.5660], [0.8660, 0.9660, 1.0000]],
                     [[0.2660, 0.3660, 0.4660], [0.7660, 0.6660, 0.5660], [0.8660, 0.9660, 1.0000]],
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+    def test_random_brightness(self, device, dtype):
+        torch.manual_seed(42)
+        f = ColorJiggle(brightness=0.2)
+
+        input = torch.tensor(
+            [[[[0.1, 0.2, 0.3], [0.6, 0.5, 0.4], [0.7, 0.8, 1.0]]]], device=device, dtype=dtype
+        )  # 1 x 1 x 3 x 3
+        input = input.repeat(2, 3, 1, 1)  # 2 x 3 x 3
+
+        expected = self._get_expected_brightness(device, dtype)
+
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+
+    def test_random_brightness_tuple(self, device, dtype):
+        torch.manual_seed(42)
+        f = ColorJiggle(brightness=(0.8, 1.2))
+
+        input = torch.tensor(
+            [[[[0.1, 0.2, 0.3], [0.6, 0.5, 0.4], [0.7, 0.8, 1.0]]]], device=device, dtype=dtype
+        )  # 1 x 1 x 3 x 3
+        input = input.repeat(2, 3, 1, 1)  # 2 x 3 x 3
+
+        expected = self._get_expected_brightness(device, dtype)
+
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+
+    def _get_expected_contrast(self, device, dtype):
+        return torch.tensor(
+            [
+                [
+                    [[0.0953, 0.1906, 0.2859], [0.5719, 0.4766, 0.3813], [0.6672, 0.7625, 0.9531]],
+                    [[0.0953, 0.1906, 0.2859], [0.5719, 0.4766, 0.3813], [0.6672, 0.7625, 0.9531]],
+                    [[0.0953, 0.1906, 0.2859], [0.5719, 0.4766, 0.3813], [0.6672, 0.7625, 0.9531]],
+                ],
+                [
+                    [[0.1184, 0.2367, 0.3551], [0.7102, 0.5919, 0.4735], [0.8286, 0.9470, 1.0000]],
+                    [[0.1184, 0.2367, 0.3551], [0.7102, 0.5919, 0.4735], [0.8286, 0.9470, 1.0000]],
+                    [[0.1184, 0.2367, 0.3551], [0.7102, 0.5919, 0.4735], [0.8286, 0.9470, 1.0000]],
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+    def test_random_contrast(self, device, dtype):
+        torch.manual_seed(42)
+        f = ColorJiggle(contrast=0.2)
+
+        input = torch.tensor(
+            [[[[0.1, 0.2, 0.3], [0.6, 0.5, 0.4], [0.7, 0.8, 1.0]]]], device=device, dtype=dtype
+        )  # 1 x 1 x 3 x 3
+        input = input.repeat(2, 3, 1, 1)  # 2 x 3 x 3
+
+        expected = self._get_expected_contrast(device, dtype)
+
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+
+    def test_random_contrast_list(self, device, dtype):
+        torch.manual_seed(42)
+        f = ColorJiggle(contrast=[0.8, 1.2])
+
+        input = torch.tensor(
+            [[[[0.1, 0.2, 0.3], [0.6, 0.5, 0.4], [0.7, 0.8, 1.0]]]], device=device, dtype=dtype
+        )  # 1 x 1 x 3 x 3
+        input = input.repeat(2, 3, 1, 1)  # 2 x 3 x 3
+
+        expected = self._get_expected_contrast(device, dtype)
+
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+
+    def _get_expected_saturation(self, device, dtype):
+        return torch.tensor(
+            [
+                [
+                    [[0.1876, 0.2584, 0.3389], [0.6292, 0.5000, 0.4000], [0.7097, 0.8000, 1.0000]],
+                    [[1.0000, 0.5292, 0.6097], [0.6292, 0.3195, 0.2195], [0.8000, 0.1682, 0.2779]],
+                    [[0.6389, 0.8000, 0.7000], [0.9000, 0.3195, 0.2195], [0.8000, 0.4389, 0.5487]],
+                ],
+                [
+                    [[0.0000, 0.1295, 0.2530], [0.5648, 0.5000, 0.4000], [0.6883, 0.8000, 1.0000]],
+                    [[1.0000, 0.4648, 0.5883], [0.5648, 0.2765, 0.1765], [0.8000, 0.0178, 0.1060]],
+                    [[0.5556, 0.8000, 0.7000], [0.9000, 0.2765, 0.1765], [0.8000, 0.3530, 0.4413]],
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+    def test_random_saturation(self, device, dtype):
+        torch.manual_seed(42)
+        f = ColorJiggle(saturation=0.2)
+
+        input = torch.tensor(
+            [
+                [
+                    [[0.1, 0.2, 0.3], [0.6, 0.5, 0.4], [0.7, 0.8, 1.0]],
+                    [[1.0, 0.5, 0.6], [0.6, 0.3, 0.2], [0.8, 0.1, 0.2]],
+                    [[0.6, 0.8, 0.7], [0.9, 0.3, 0.2], [0.8, 0.4, 0.5]],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )  # 1 x 1 x 3 x 3
+        input = input.repeat(2, 1, 1, 1)  # 2 x 3 x 3
+
+        expected = self._get_expected_saturation(device, dtype)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+
+    def test_random_saturation_tensor(self, device, dtype):
+        torch.manual_seed(42)
+        f = ColorJiggle(saturation=torch.tensor(0.2))
+
+        input = torch.tensor(
+            [
+                [
+                    [[0.1, 0.2, 0.3], [0.6, 0.5, 0.4], [0.7, 0.8, 1.0]],
+                    [[1.0, 0.5, 0.6], [0.6, 0.3, 0.2], [0.8, 0.1, 0.2]],
+                    [[0.6, 0.8, 0.7], [0.9, 0.3, 0.2], [0.8, 0.4, 0.5]],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )  # 1 x 1 x 3 x 3
+        input = input.repeat(2, 1, 1, 1)  # 2 x 3 x 3
+
+        expected = self._get_expected_saturation(device, dtype)
+
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+
+    def test_random_saturation_tuple(self, device, dtype):
+        torch.manual_seed(42)
+        f = ColorJiggle(saturation=(0.8, 1.2))
+
+        input = torch.tensor(
+            [
+                [
+                    [[0.1, 0.2, 0.3], [0.6, 0.5, 0.4], [0.7, 0.8, 1.0]],
+                    [[1.0, 0.5, 0.6], [0.6, 0.3, 0.2], [0.8, 0.1, 0.2]],
+                    [[0.6, 0.8, 0.7], [0.9, 0.3, 0.2], [0.8, 0.4, 0.5]],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )  # 1 x 1 x 3 x 3
+        input = input.repeat(2, 1, 1, 1)  # 2 x 3 x 3
+
+        expected = self._get_expected_saturation(device, dtype)
+
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+
+    def _get_expected_hue(self, device, dtype):
+        return torch.tensor(
+            [
+                [
+                    [[0.1000, 0.2000, 0.3000], [0.6000, 0.5000, 0.4000], [0.7000, 0.8000, 1.0000]],
+                    [[1.0000, 0.5251, 0.6167], [0.6126, 0.3000, 0.2000], [0.8000, 0.1000, 0.2000]],
+                    [[0.5623, 0.8000, 0.7000], [0.9000, 0.3084, 0.2084], [0.7958, 0.4293, 0.5335]],
+                ],
+                [
+                    [[0.1000, 0.2000, 0.3000], [0.6116, 0.5000, 0.4000], [0.7000, 0.8000, 1.0000]],
+                    [[1.0000, 0.4769, 0.5846], [0.6000, 0.3077, 0.2077], [0.7961, 0.1000, 0.2000]],
+                    [[0.6347, 0.8000, 0.7000], [0.9000, 0.3000, 0.2000], [0.8000, 0.3730, 0.4692]],
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+    def test_random_hue(self, device, dtype):
+        torch.manual_seed(42)
+        f = ColorJiggle(hue=0.1 / pi.item())
+
+        input = torch.tensor(
+            [
+                [
+                    [[0.1, 0.2, 0.3], [0.6, 0.5, 0.4], [0.7, 0.8, 1.0]],
+                    [[1.0, 0.5, 0.6], [0.6, 0.3, 0.2], [0.8, 0.1, 0.2]],
+                    [[0.6, 0.8, 0.7], [0.9, 0.3, 0.2], [0.8, 0.4, 0.5]],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )  # 1 x 1 x 3 x 3
+        input = input.repeat(2, 1, 1, 1)  # 2 x 3 x 3
+
+        expected = self._get_expected_hue(device, dtype)
+
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+
+    def test_random_hue_list(self, device, dtype):
+        torch.manual_seed(42)
+        f = ColorJiggle(hue=[-0.1 / pi, 0.1 / pi])
+
+        input = torch.tensor(
+            [
+                [
+                    [[0.1, 0.2, 0.3], [0.6, 0.5, 0.4], [0.7, 0.8, 1.0]],
+                    [[1.0, 0.5, 0.6], [0.6, 0.3, 0.2], [0.8, 0.1, 0.2]],
+                    [[0.6, 0.8, 0.7], [0.9, 0.3, 0.2], [0.8, 0.4, 0.5]],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )  # 1 x 1 x 3 x 3
+        input = input.repeat(2, 1, 1, 1)  # 2 x 3 x 3
+
+        expected = self._get_expected_hue(device, dtype)
+
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+
+    def test_sequential(self, device, dtype):
+
+        f = AugmentationSequential(ColorJiggle(), ColorJiggle())
+
+        input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0)  # 1 x 3 x 5 x 5
+
+        expected = input
+
+        expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
+
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
+
+    def test_color_jitter_batch_sequential(self, device, dtype):
+        f = AugmentationSequential(ColorJiggle(), ColorJiggle())
+
+        input = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)  # 2 x 3 x 5 x 5
+        expected = input
+
+        expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).expand((2, 3, 3))  # 2 x 3 x 3
+
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
+
+    def test_gradcheck(self, device, dtype):
+        input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
+        input = utils.tensor_to_gradcheck_var(input)  # to var
+        assert gradcheck(ColorJiggle(p=1.0), (input,), raise_exception=True)
+
+
+class TestColorJitter:
+
+    # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
+    # return values such a Tensor variable.
+    @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
+    def test_smoke(self):
+        f = ColorJitter(brightness=0.5, contrast=0.3, saturation=[0.2, 1.2], hue=0.1)
+        repr = (
+            "ColorJitter(brightness=tensor([0.5000, 1.5000]), contrast=tensor([0.7000, 1.3000]), "
+            "saturation=tensor([0.2000, 1.2000]), hue=tensor([-0.1000,  0.1000]), "
+            "p=1.0, p_batch=1.0, same_on_batch=False)"
+        )
+        assert str(f) == repr
+
+    def test_color_jitter(self, device, dtype):
+
+        f = ColorJitter()
+
+        input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0)  # 3 x 5 x 5
+        expected = input
+
+        expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
+
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
+
+    def test_color_jitter_batch(self, device, dtype):
+        f = ColorJitter()
+
+        input = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)  # 2 x 3 x 5 x 5
+        expected = input
+
+        expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).expand((2, 3, 3))  # 2 x 3 x 3
+
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
+
+    def test_same_on_batch(self, device, dtype):
+        f = ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.1, same_on_batch=True)
+        input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
+        res = f(input)
+        assert (res[0] == res[1]).all()
+
+    def _get_expected_brightness(self, device, dtype):
+        return torch.tensor(
+            [
+                [
+                    [[0.1153, 0.2306, 0.3459], [0.6917, 0.5764, 0.4612], [0.8070, 0.9223, 1.0000]],
+                    [[0.1153, 0.2306, 0.3459], [0.6917, 0.5764, 0.4612], [0.8070, 0.9223, 1.0000]],
+                    [[0.1153, 0.2306, 0.3459], [0.6917, 0.5764, 0.4612], [0.8070, 0.9223, 1.0000]],
+                ],
+                [
+                    [[0.1166, 0.2332, 0.3498], [0.6996, 0.5830, 0.4664], [0.8162, 0.9328, 1.0000]],
+                    [[0.1166, 0.2332, 0.3498], [0.6996, 0.5830, 0.4664], [0.8162, 0.9328, 1.0000]],
+                    [[0.1166, 0.2332, 0.3498], [0.6996, 0.5830, 0.4664], [0.8162, 0.9328, 1.0000]],
                 ],
             ],
             device=device,
@@ -1252,14 +1355,14 @@ class TestColorJitter:
         return torch.tensor(
             [
                 [
-                    [[0.0953, 0.1906, 0.2859], [0.5719, 0.4766, 0.3813], [0.6672, 0.7625, 0.9531]],
-                    [[0.0953, 0.1906, 0.2859], [0.5719, 0.4766, 0.3813], [0.6672, 0.7625, 0.9531]],
-                    [[0.0953, 0.1906, 0.2859], [0.5719, 0.4766, 0.3813], [0.6672, 0.7625, 0.9531]],
+                    [[0.1193, 0.2146, 0.3099], [0.5958, 0.5005, 0.4052], [0.6911, 0.7865, 0.9771]],
+                    [[0.1193, 0.2146, 0.3099], [0.5958, 0.5005, 0.4052], [0.6911, 0.7865, 0.9771]],
+                    [[0.1193, 0.2146, 0.3099], [0.5958, 0.5005, 0.4052], [0.6911, 0.7865, 0.9771]],
                 ],
                 [
-                    [[0.1184, 0.2367, 0.3551], [0.7102, 0.5919, 0.4735], [0.8286, 0.9470, 1.0000]],
-                    [[0.1184, 0.2367, 0.3551], [0.7102, 0.5919, 0.4735], [0.8286, 0.9470, 1.0000]],
-                    [[0.1184, 0.2367, 0.3551], [0.7102, 0.5919, 0.4735], [0.8286, 0.9470, 1.0000]],
+                    [[0.0245, 0.1428, 0.2612], [0.6163, 0.4980, 0.3796], [0.7347, 0.8531, 1.0000]],
+                    [[0.0245, 0.1428, 0.2612], [0.6163, 0.4980, 0.3796], [0.7347, 0.8531, 1.0000]],
+                    [[0.0245, 0.1428, 0.2612], [0.6163, 0.4980, 0.3796], [0.7347, 0.8531, 1.0000]],
                 ],
             ],
             device=device,
@@ -1277,7 +1380,7 @@ class TestColorJitter:
 
         expected = self._get_expected_contrast(device, dtype)
 
-        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
 
     def test_random_contrast_list(self, device, dtype):
         torch.manual_seed(42)
@@ -1290,20 +1393,20 @@ class TestColorJitter:
 
         expected = self._get_expected_contrast(device, dtype)
 
-        assert_close(f(input), expected, atol=1e-4, rtol=1e-5)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
 
     def _get_expected_saturation(self, device, dtype):
         return torch.tensor(
             [
                 [
-                    [[0.1876, 0.2584, 0.3389], [0.6292, 0.5000, 0.4000], [0.7097, 0.8000, 1.0000]],
-                    [[1.0000, 0.5292, 0.6097], [0.6292, 0.3195, 0.2195], [0.8000, 0.1682, 0.2779]],
-                    [[0.6389, 0.8000, 0.7000], [0.9000, 0.3195, 0.2195], [0.8000, 0.4389, 0.5487]],
+                    [[0.1570, 0.2238, 0.3216], [0.6033, 0.4863, 0.3863], [0.7068, 0.7555, 0.9487]],
+                    [[0.9693, 0.4946, 0.5924], [0.6033, 0.3058, 0.2058], [0.7971, 0.1237, 0.2266]],
+                    [[0.6083, 0.7654, 0.6826], [0.8741, 0.3058, 0.2058], [0.7971, 0.3945, 0.4974]],
                 ],
                 [
-                    [[0.0000, 0.1295, 0.2530], [0.5648, 0.5000, 0.4000], [0.6883, 0.8000, 1.0000]],
-                    [[1.0000, 0.4648, 0.5883], [0.5648, 0.2765, 0.1765], [0.8000, 0.0178, 0.1060]],
-                    [[0.5556, 0.8000, 0.7000], [0.9000, 0.2765, 0.1765], [0.8000, 0.3530, 0.4413]],
+                    [[0.0312, 0.1713, 0.2740], [0.5960, 0.5165, 0.4165], [0.6918, 0.8536, 1.0000]],
+                    [[1.0000, 0.5065, 0.6092], [0.5960, 0.2930, 0.1930], [0.8035, 0.0714, 0.1679]],
+                    [[0.5900, 0.8418, 0.7210], [0.9312, 0.2930, 0.1930], [0.8035, 0.4066, 0.5031]],
                 ],
             ],
             device=device,
@@ -1392,7 +1495,7 @@ class TestColorJitter:
 
     def test_random_hue(self, device, dtype):
         torch.manual_seed(42)
-        f = ColorJitter(hue=0.1 / pi.item())
+        f = ColorJiggle(hue=0.1 / pi.item())
 
         input = torch.tensor(
             [
@@ -1413,28 +1516,7 @@ class TestColorJitter:
 
     def test_random_hue_list(self, device, dtype):
         torch.manual_seed(42)
-        f = ColorJitter(hue=[-0.1 / pi, 0.1 / pi])
-
-        input = torch.tensor(
-            [
-                [
-                    [[0.1, 0.2, 0.3], [0.6, 0.5, 0.4], [0.7, 0.8, 1.0]],
-                    [[1.0, 0.5, 0.6], [0.6, 0.3, 0.2], [0.8, 0.1, 0.2]],
-                    [[0.6, 0.8, 0.7], [0.9, 0.3, 0.2], [0.8, 0.4, 0.5]],
-                ]
-            ],
-            device=device,
-            dtype=dtype,
-        )  # 1 x 1 x 3 x 3
-        input = input.repeat(2, 1, 1, 1)  # 2 x 3 x 3
-
-        expected = self._get_expected_hue(device, dtype)
-
-        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
-
-    def test_random_hue_list_batch(self, device, dtype):
-        torch.manual_seed(42)
-        f = ColorJitter(hue=[-0.1 / pi.item(), 0.1 / pi.item()])
+        f = ColorJiggle(hue=[-0.1 / pi, 0.1 / pi])
 
         input = torch.tensor(
             [
@@ -1455,7 +1537,7 @@ class TestColorJitter:
 
     def test_sequential(self, device, dtype):
 
-        f = nn.Sequential(ColorJitter(return_transform=True), ColorJitter(return_transform=True))
+        f = AugmentationSequential(ColorJiggle(), ColorJiggle())
 
         input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0)  # 1 x 3 x 5 x 5
 
@@ -1463,25 +1545,25 @@ class TestColorJitter:
 
         expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
 
-        assert_close(f(input)[0], expected, atol=1e-4, rtol=1e-5)
-        assert_close(f(input)[1], expected_transform, atol=1e-4, rtol=1e-5)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
 
     def test_color_jitter_batch_sequential(self, device, dtype):
-        f = nn.Sequential(ColorJitter(return_transform=True), ColorJitter(return_transform=True))
+        f = AugmentationSequential(ColorJitter(), ColorJitter())
 
         input = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)  # 2 x 3 x 5 x 5
         expected = input
 
         expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).expand((2, 3, 3))  # 2 x 3 x 3
 
-        assert_close(f(input)[0], expected, atol=1e-4, rtol=1e-5)
-        assert_close(f(input)[0], expected, atol=1e-4, rtol=1e-5)
-        assert_close(f(input)[1], expected_transform, atol=1e-4, rtol=1e-5)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.augmentation.ColorJitter(p=1.0), (input,), raise_exception=True)
+        assert gradcheck(ColorJitter(p=1.0), (input,), raise_exception=True)
 
 
 class TestRectangleRandomErasing:
@@ -1524,38 +1606,26 @@ class TestRectangleRandomErasing:
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(rand_rec, (input, rect_params), raise_exception=True)
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self, device, dtype):
-        @torch.jit.script
-        def op_script(img):
-            return kornia.augmentation.random_rectangle_erase(img, (0.2, 0.4), (0.3, 0.5))
-
-        batch_size, channels, height, width = 2, 3, 64, 64
-        img = torch.ones(batch_size, channels, height, width)
-        expected = RandomErasing(1.0, (0.2, 0.4), (0.3, 0.5))(img)
-        actual = op_script(img)
-        assert_close(actual, expected, atol=1e-4, rtol=1e-4)
-
 
 class TestRandomGrayscale:
 
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
-    # return values such a torch.Tensor variable.
+    # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self):
         f = RandomGrayscale()
-        repr = "RandomGrayscale(p=0.1, p_batch=1.0, same_on_batch=False, return_transform=False)"
+        repr = "RandomGrayscale(p=0.1, p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
 
     def test_random_grayscale(self, device, dtype):
 
-        f = RandomGrayscale(return_transform=True)
+        f = RandomGrayscale()
 
         input = torch.rand(3, 5, 5, device=device, dtype=dtype)  # 3 x 5 x 5
 
         expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
-
-        assert_close(f(input)[1], expected_transform, atol=1e-4, rtol=1e-4)
+        f(input)
+        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
         f = RandomGrayscale(p=0.5, same_on_batch=True)
@@ -1625,7 +1695,7 @@ class TestRandomGrayscale:
             dtype=dtype,
         )
 
-        img_gray = kornia.augmentation.RandomGrayscale(p=1.0)(data)
+        img_gray = RandomGrayscale(p=1.0)(data)
         assert_close(img_gray, expected, atol=1e-4, rtol=1e-4)
 
     def test_opencv_false(self, device, dtype):
@@ -1661,7 +1731,7 @@ class TestRandomGrayscale:
 
         expected = data
 
-        img_gray = kornia.augmentation.RandomGrayscale(p=0.0)(data)
+        img_gray = RandomGrayscale(p=0.0)(data)
         assert_close(img_gray, expected, atol=1e-4, rtol=1e-4)
 
     def test_opencv_true_batch(self, device, dtype):
@@ -1724,7 +1794,7 @@ class TestRandomGrayscale:
         )
         expected = expected.unsqueeze(0).repeat(4, 1, 1, 1)
 
-        img_gray = kornia.augmentation.RandomGrayscale(p=1.0)(data)
+        img_gray = RandomGrayscale(p=1.0)(data)
         assert_close(img_gray, expected, atol=1e-4, rtol=1e-4)
 
     def test_opencv_false_batch(self, device, dtype):
@@ -1759,11 +1829,11 @@ class TestRandomGrayscale:
 
         expected = data
 
-        img_gray = kornia.augmentation.RandomGrayscale(p=0.0)(data)
+        img_gray = RandomGrayscale(p=0.0)(data)
         assert_close(img_gray, expected, atol=1e-4, rtol=1e-4)
 
     def test_random_grayscale_sequential_batch(self, device, dtype):
-        f = nn.Sequential(RandomGrayscale(p=0.0, return_transform=True), RandomGrayscale(p=0.0, return_transform=True))
+        f = AugmentationSequential(RandomGrayscale(p=0.0), RandomGrayscale(p=0.0))
 
         input = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)  # 2 x 3 x 5 x 5
         expected = input
@@ -1771,43 +1841,43 @@ class TestRandomGrayscale:
         expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).expand((2, 3, 3))  # 2 x 3 x 3
         expected_transform = expected_transform.to(device)
 
-        assert_close(f(input)[0], expected, atol=1e-4, rtol=1e-4)
-        assert_close(f(input)[1], expected_transform, atol=1e-4, rtol=1e-4)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+        assert_close(f.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         input = torch.rand((3, 5, 5), device=device, dtype=dtype)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.augmentation.RandomGrayscale(p=1.0), (input,), raise_exception=True)
-        assert gradcheck(kornia.augmentation.RandomGrayscale(p=0.0), (input,), raise_exception=True)
+        assert gradcheck(RandomGrayscale(p=1.0), (input,), raise_exception=True)
+        assert gradcheck(RandomGrayscale(p=0.0), (input,), raise_exception=True)
 
 
 class TestCenterCrop:
     def test_no_transform(self, device, dtype):
         inp = torch.rand(1, 2, 4, 4, device=device, dtype=dtype)
-        out = kornia.augmentation.CenterCrop(2)(inp)
+        out = CenterCrop(2)(inp)
         assert out.shape == (1, 2, 2, 2)
-        aug = kornia.augmentation.CenterCrop(2, cropping_mode="resample")
+        aug = CenterCrop(2, cropping_mode="resample")
         out = aug(inp)
         assert out.shape == (1, 2, 2, 2)
         assert aug.inverse(out).shape == (1, 2, 4, 4)
 
     def test_transform(self, device, dtype):
         inp = torch.rand(1, 2, 5, 4, device=device, dtype=dtype)
-        out = kornia.augmentation.CenterCrop(2, return_transform=True)(inp)
-        assert len(out) == 2
-        assert out[0].shape == (1, 2, 2, 2)
-        assert out[1].shape == (1, 3, 3)
-        aug = kornia.augmentation.CenterCrop(2, cropping_mode="resample", return_transform=True)
+        aug = CenterCrop(2)
         out = aug(inp)
-        assert out[0].shape == (1, 2, 2, 2)
-        assert out[1].shape == (1, 3, 3)
+        assert out.shape == (1, 2, 2, 2)
+        assert aug.transform_matrix.shape == (1, 3, 3)
+        aug = CenterCrop(2, cropping_mode="resample")
+        out = aug(inp)
+        assert out.shape == (1, 2, 2, 2)
+        assert aug.transform_matrix.shape == (1, 3, 3)
         assert aug.inverse(out).shape == (1, 2, 5, 4)
 
     def test_no_transform_tuple(self, device, dtype):
         inp = torch.rand(1, 2, 5, 4, device=device, dtype=dtype)
-        out = kornia.augmentation.CenterCrop((3, 4))(inp)
+        out = CenterCrop((3, 4))(inp)
         assert out.shape == (1, 2, 3, 4)
-        aug = kornia.augmentation.CenterCrop((3, 4), cropping_mode="resample")
+        aug = CenterCrop((3, 4), cropping_mode="resample")
         out = aug(inp)
         assert out.shape == (1, 2, 3, 4)
         assert aug.inverse(out).shape == (1, 2, 5, 4)
@@ -1826,7 +1896,7 @@ class TestCenterCrop:
     def test_gradcheck(self, device, dtype):
         input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.augmentation.CenterCrop(3), (input,), raise_exception=True)
+        assert gradcheck(CenterCrop(3), (input,), raise_exception=True)
 
 
 class TestRandomRotation:
@@ -1834,13 +1904,13 @@ class TestRandomRotation:
     torch.manual_seed(0)  # for random reproductibility
 
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
-    # return values such a torch.Tensor variable.
+    # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self):
         f = RandomRotation(degrees=45.5)
         repr = (
             "RandomRotation(degrees=tensor([-45.5000,  45.5000]), interpolation=BILINEAR, p=0.5, "
-            "p_batch=1.0, same_on_batch=False, return_transform=False)"
+            "p_batch=1.0, same_on_batch=False)"
         )
         assert str(f) == repr
 
@@ -1848,8 +1918,7 @@ class TestRandomRotation:
         # This is included in doctest
         torch.manual_seed(0)  # for random reproductibility
 
-        f = RandomRotation(degrees=45.0, return_transform=True, p=1.0)
-        f1 = RandomRotation(degrees=45.0, p=1.0)
+        f = RandomRotation(degrees=45.0, p=1.0)
 
         input = torch.tensor(
             [[1.0, 0.0, 0.0, 2.0], [0.0, 0.0, 0.0, 0.0], [0.0, 1.0, 2.0, 0.0], [0.0, 0.0, 1.0, 2.0]],
@@ -1878,31 +1947,15 @@ class TestRandomRotation:
             dtype=dtype,
         )  # 1 x 3 x 3
 
-        expected_2 = torch.tensor(
-            [
-                [
-                    [
-                        [0.1322, 0.0000, 0.7570, 0.2644],
-                        [0.3785, 0.0000, 0.4166, 0.0000],
-                        [0.0000, 0.6309, 1.5910, 1.2371],
-                        [0.0000, 0.1444, 0.3177, 0.6499],
-                    ]
-                ]
-            ],
-            device=device,
-            dtype=dtype,
-        )  # 1 x 4 x 4
-
-        out, mat = f(input)
+        out = f(input)
         assert_close(out, expected, rtol=1e-6, atol=1e-4)
-        assert_close(mat, expected_transform, rtol=1e-6, atol=1e-4)
-        assert_close(f1(input), expected_2, rtol=1e-6, atol=1e-4)
+        assert_close(f.transform_matrix, expected_transform, rtol=1e-6, atol=1e-4)
 
     def test_batch_random_rotation(self, device, dtype):
 
         torch.manual_seed(0)  # for random reproductibility
 
-        f = RandomRotation(degrees=45.0, return_transform=True, p=1.0)
+        f = RandomRotation(degrees=45.0, p=1.0)
 
         input = torch.tensor(
             [[[[1.0, 0.0, 0.0, 2.0], [0.0, 0.0, 0.0, 0.0], [0.0, 1.0, 2.0, 0.0], [0.0, 0.0, 1.0, 2.0]]]],
@@ -1944,9 +1997,9 @@ class TestRandomRotation:
 
         input = input.repeat(2, 1, 1, 1)  # 5 x 3 x 3 x 3
 
-        out, mat = f(input)
+        out = f(input)
         assert_close(out, expected, rtol=1e-4, atol=1e-4)
-        assert_close(mat, expected_transform, rtol=1e-4, atol=1e-4)
+        assert_close(f.transform_matrix, expected_transform, rtol=1e-4, atol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
         f = RandomRotation(degrees=40, same_on_batch=True)
@@ -1958,13 +2011,7 @@ class TestRandomRotation:
 
         torch.manual_seed(0)  # for random reproductibility
 
-        f = nn.Sequential(
-            RandomRotation(torch.tensor([-45.0, 90]), return_transform=True, p=1.0),
-            RandomRotation(10.4, return_transform=True, p=1.0),
-        )
-        f1 = nn.Sequential(
-            RandomRotation(torch.tensor([-45.0, 90]), return_transform=True, p=1.0), RandomRotation(10.4, p=1.0)
-        )
+        f = AugmentationSequential(RandomRotation(torch.tensor([-45.0, 90]), p=1.0), RandomRotation(10.4, p=1.0))
 
         input = torch.tensor(
             [[1.0, 0.0, 0.0, 2.0], [0.0, 0.0, 0.0, 0.0], [0.0, 1.0, 2.0, 0.0], [0.0, 0.0, 1.0, 2.0]],
@@ -1993,17 +2040,9 @@ class TestRandomRotation:
             dtype=dtype,
         )  # 1 x 3 x 3
 
-        expected_transform_2 = torch.tensor(
-            [[[0.8381, -0.5455, 1.0610], [0.5455, 0.8381, -0.5754], [0.0000, 0.0000, 1.0000]]],
-            device=device,
-            dtype=dtype,
-        )  # 1 x 3 x 3
-
-        out, mat = f(input)
-        _, mat_2 = f1(input)
+        out = f(input)
         assert_close(out, expected, rtol=1e-4, atol=1e-4)
-        assert_close(mat, expected_transform, rtol=1e-4, atol=1e-4)
-        assert_close(mat_2, expected_transform_2, rtol=1e-4, atol=1e-4)
+        assert_close(f.transform_matrix, expected_transform, rtol=1e-4, atol=1e-4)
 
     def test_gradcheck(self, device, dtype):
 
@@ -2016,13 +2055,13 @@ class TestRandomRotation:
 
 class TestRandomCrop:
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
-    # return values such a torch.Tensor variable.
+    # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self):
         f = RandomCrop(size=(2, 3), padding=(0, 1), fill=10, pad_if_needed=False, p=1.0)
         repr = (
             "RandomCrop(crop_size=(2, 3), padding=(0, 1), fill=10, pad_if_needed=False, padding_mode=constant, "
-            "resample=BILINEAR, p=1.0, p_batch=1.0, same_on_batch=False, return_transform=False)"
+            "resample=BILINEAR, p=1.0, p_batch=1.0, same_on_batch=False)"
         )
         assert str(f) == repr
 
@@ -2097,7 +2136,7 @@ class TestRandomCrop:
         )
         out = aug(inp)
         assert_close(out, expected, atol=1e-4, rtol=1e-4)
-        assert_close(aug.inverse(out), inversed, atol=1e-4, rtol=1e-4)
+        assert_close(aug.inverse(out, padding_mode="constant"), inversed, atol=1e-4, rtol=1e-4)
 
     def test_padding_batch_1(self, device, dtype):
         torch.manual_seed(42)
@@ -2185,25 +2224,13 @@ class TestRandomCrop:
     def test_padding_no_forward(self, device, dtype):
         torch.manual_seed(0)
         inp = torch.tensor([[[[3.0, 4.0, 5.0], [6.0, 7.0, 8.0]]]], device=device, dtype=dtype)
-        trans = torch.tensor([[[1.0, 2.0, 3.0], [3.0, 4.0, 5.0], [6.0, 7.0, 8.0]]], device=device, dtype=dtype)
+        trans = torch.eye(3, device=device, dtype=dtype)[None]
         # Not return transform
-        rc = RandomCrop(size=(2, 3), padding=(0, 1, 2, 3), fill=9, align_corners=True, p=0.0)
+        rc = RandomCrop(size=(2, 3), padding=(0, 1, 2, 3), fill=9, align_corners=True, p=0.0, cropping_mode="resample")
 
         out = rc(inp)
         assert_close(out, inp, atol=1e-4, rtol=1e-4)
-
-        out = rc((inp, trans))
-        assert_close(out[0], inp, atol=1e-4, rtol=1e-4)
-        assert_close(out[1], trans, atol=1e-4, rtol=1e-4)
-
-        # with return transform
-        rc = RandomCrop(size=(2, 3), padding=(0, 1, 2, 3), fill=9, align_corners=True, p=0.0, return_transform=True)
-        out = rc(inp)
-        assert_close(out[0], inp, atol=1e-4, rtol=1e-4)
-
-        out = rc((inp, trans))
-        assert_close(out[0], inp, atol=1e-4, rtol=1e-4)
-        assert_close(out[1], trans, atol=1e-4, rtol=1e-4)
+        assert_close(rc.transform_matrix, trans, atol=1e-4, rtol=1e-4)
 
     def test_pad_if_needed(self, device, dtype):
         torch.manual_seed(0)
@@ -2249,7 +2276,7 @@ class TestRandomCrop:
         img = torch.ones(1, 1, 5, 6, device=device, dtype=dtype)
 
         actual = op_script(img)
-        expected = kornia.center_crop3d(img)
+        expected = kornia.geometry.transform.center_crop3d(img)
         assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.skip("Need to fix Union type")
@@ -2273,13 +2300,13 @@ class TestRandomCrop:
 
 class TestRandomResizedCrop:
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
-    # return values such a torch.Tensor variable.
+    # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self):
         f = RandomResizedCrop(size=(2, 3), scale=(1.0, 1.0), ratio=(1.0, 1.0))
         repr = (
             "RandomResizedCrop(size=(2, 3), scale=tensor([1., 1.]), ratio=tensor([1., 1.]), "
-            "interpolation=BILINEAR, p=1.0, p_batch=1.0, same_on_batch=False, return_transform=False)"
+            "interpolation=BILINEAR, p=1.0, p_batch=1.0, same_on_batch=False)"
         )
         assert str(f) == repr
 
@@ -2427,18 +2454,16 @@ class TestRandomResizedCrop:
 
 class TestRandomEqualize:
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
-    # return values such a torch.Tensor variable.
+    # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing precision.")
     def test_smoke(self, device, dtype):
         f = RandomEqualize(p=0.5)
-        repr = "RandomEqualize(p=0.5, p_batch=1.0, same_on_batch=False, return_transform=False)"
+        repr = "RandomEqualize(p=0.5, p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
 
     def test_random_equalize(self, device, dtype):
-        f = RandomEqualize(p=1.0, return_transform=True)
-        f1 = RandomEqualize(p=0.0, return_transform=True)
-        f2 = RandomEqualize(p=1.0)
-        f3 = RandomEqualize(p=0.0)
+        f = RandomEqualize(p=1.0)
+        f1 = RandomEqualize(p=0.0)
 
         bs, channels, height, width = 1, 3, 20, 20
 
@@ -2471,18 +2496,14 @@ class TestRandomEqualize:
         expected = self.build_input(channels, height, width, bs=1, row=row_expected, device=device, dtype=dtype)
         identity = kornia.eye_like(3, expected)  # 3 x 3
 
-        assert_close(f(inputs)[0], expected, rtol=1e-4, atol=1e-4)
-        assert_close(f(inputs)[1], identity, rtol=1e-4, atol=1e-4)
-        assert_close(f1(inputs)[0], inputs, rtol=1e-4, atol=1e-4)
-        assert_close(f1(inputs)[1], identity, rtol=1e-4, atol=1e-4)
-        assert_close(f2(inputs), expected, rtol=1e-4, atol=1e-4)
-        assert_close(f3(inputs), inputs, rtol=1e-4, atol=1e-4)
+        assert_close(f(inputs), expected, rtol=1e-4, atol=1e-4)
+        assert_close(f.transform_matrix, identity, rtol=1e-4, atol=1e-4)
+        assert_close(f1(inputs), inputs, rtol=1e-4, atol=1e-4)
+        assert_close(f1.transform_matrix, identity, rtol=1e-4, atol=1e-4)
 
     def test_batch_random_equalize(self, device, dtype):
-        f = RandomEqualize(p=1.0, return_transform=True)
-        f1 = RandomEqualize(p=0.0, return_transform=True)
-        f2 = RandomEqualize(p=1.0)
-        f3 = RandomEqualize(p=0.0)
+        f = RandomEqualize(p=1.0)
+        f1 = RandomEqualize(p=0.0)
 
         bs, channels, height, width = 2, 3, 20, 20
 
@@ -2516,12 +2537,10 @@ class TestRandomEqualize:
 
         identity = kornia.eye_like(3, expected)  # 2 x 3 x 3
 
-        assert_close(f(inputs)[0], expected, rtol=1e-4, atol=1e-4)
-        assert_close(f(inputs)[1], identity, rtol=1e-4, atol=1e-4)
-        assert_close(f1(inputs)[0], inputs, rtol=1e-4, atol=1e-4)
-        assert_close(f1(inputs)[1], identity, rtol=1e-4, atol=1e-4)
-        assert_close(f2(inputs), expected, rtol=1e-4, atol=1e-4)
-        assert_close(f3(inputs), inputs, rtol=1e-4, atol=1e-4)
+        assert_close(f(inputs), expected, rtol=1e-4, atol=1e-4)
+        assert_close(f.transform_matrix, identity, rtol=1e-4, atol=1e-4)
+        assert_close(f1(inputs), inputs, rtol=1e-4, atol=1e-4)
+        assert_close(f1.transform_matrix, identity, rtol=1e-4, atol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
         f = RandomEqualize(p=0.5, same_on_batch=True)
@@ -2553,11 +2572,11 @@ class TestRandomEqualize:
 class TestGaussianBlur:
 
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
-    # return values such a torch.Tensor variable.
+    # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self):
         f = RandomGaussianBlur((3, 3), (0.1, 2.0), p=1.0)
-        repr = "RandomGaussianBlur(p=1.0, p_batch=1.0, same_on_batch=False, return_transform=False)"
+        repr = "RandomGaussianBlur(p=1.0, p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
 
 
@@ -2593,14 +2612,11 @@ class TestRandomGaussianNoise:
 
 class TestNormalize:
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
-    # return values such a torch.Tensor variable.
+    # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self, device, dtype):
         f = Normalize(mean=torch.tensor([1.0]), std=torch.tensor([1.0]))
-        repr = (
-            "Normalize(mean=torch.tensor([1.]), std=torch.tensor([1.]), p=1., p_batch=1.0, "
-            "same_on_batch=False, return_transform=False)"
-        )
+        repr = "Normalize(mean=torch.tensor([1.]), std=torch.tensor([1.]), p=1., p_batch=1.0, " "same_on_batch=False)"
         assert str(f) == repr
 
     @staticmethod
@@ -2611,24 +2627,22 @@ class TestNormalize:
         f = Normalize(mean=mean, std=std, p=1)
         data = torch.ones(2, 3, 256, 313)
         if isinstance(mean, float):
-            expected = (data - torch.tensor(mean)) / torch.tensor(std)
+            expected = (data - torch.as_tensor(mean)) / torch.as_tensor(std)
         else:
-            expected = (data - torch.tensor(mean[0])) / torch.tensor(std[0])
+            expected = (data - torch.as_tensor(mean[0])) / torch.as_tensor(std[0])
         assert_close(f(data), expected)
 
     @staticmethod
     @pytest.mark.parametrize("mean, std", [((1.0, 1.0, 1.0, 1.0), (0.5, 0.5, 0.5, 0.5)), ((1.0, 1.0), (0.5, 0.5))])
     def test_random_normalize_invalid_parameter_shape(mean, std):
-        f = Normalize(mean=mean, std=std, p=1.0, return_transform=True)
+        f = Normalize(mean=mean, std=std, p=1.0)
         inputs = torch.arange(0.0, 16.0, step=1).reshape(1, 4, 4).unsqueeze(0)
         with pytest.raises(ValueError):
             f(inputs)
 
     def test_random_normalize(self, device, dtype):
-        f = Normalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=1.0, return_transform=True)
-        f1 = Normalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=0.0, return_transform=True)
-        f2 = Normalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=1.0)
-        f3 = Normalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=0.0)
+        f = Normalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=1.0)
+        f1 = Normalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=0.0)
 
         inputs = torch.arange(0.0, 16.0, step=1, device=device, dtype=dtype).reshape(1, 4, 4).unsqueeze(0)
 
@@ -2636,18 +2650,14 @@ class TestNormalize:
 
         identity = kornia.eye_like(3, expected)
 
-        assert_close(f(inputs)[0], expected, rtol=1e-4, atol=1e-4)
-        assert_close(f(inputs)[1], identity, rtol=1e-4, atol=1e-4)
-        assert_close(f1(inputs)[0], inputs, rtol=1e-4, atol=1e-4)
-        assert_close(f1(inputs)[1], identity, rtol=1e-4, atol=1e-4)
-        assert_close(f2(inputs), expected, rtol=1e-4, atol=1e-4)
-        assert_close(f3(inputs), inputs, rtol=1e-4, atol=1e-4)
+        assert_close(f(inputs), expected, rtol=1e-4, atol=1e-4)
+        assert_close(f.transform_matrix, identity, rtol=1e-4, atol=1e-4)
+        assert_close(f1(inputs), inputs, rtol=1e-4, atol=1e-4)
+        assert_close(f1.transform_matrix, identity, rtol=1e-4, atol=1e-4)
 
     def test_batch_random_normalize(self, device, dtype):
-        f = Normalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=1.0, return_transform=True)
-        f1 = Normalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=0.0, return_transform=True)
-        f2 = Normalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=1.0)
-        f3 = Normalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=0.0)
+        f = Normalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=1.0)
+        f1 = Normalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=0.0)
 
         inputs = torch.arange(0.0, 16.0 * 2, step=1, device=device, dtype=dtype).reshape(2, 1, 4, 4)
 
@@ -2655,12 +2665,10 @@ class TestNormalize:
 
         identity = kornia.eye_like(3, expected)
 
-        assert_close(f(inputs)[0], expected, rtol=1e-4, atol=1e-4)
-        assert_close(f(inputs)[1], identity, rtol=1e-4, atol=1e-4)
-        assert_close(f1(inputs)[0], inputs, rtol=1e-4, atol=1e-4)
-        assert_close(f1(inputs)[1], identity, rtol=1e-4, atol=1e-4)
-        assert_close(f2(inputs), expected, rtol=1e-4, atol=1e-4)
-        assert_close(f3(inputs), inputs, rtol=1e-4, atol=1e-4)
+        assert_close(f(inputs), expected, rtol=1e-4, atol=1e-4)
+        assert_close(f.transform_matrix, identity, rtol=1e-4, atol=1e-4)
+        assert_close(f1(inputs), inputs, rtol=1e-4, atol=1e-4)
+        assert_close(f1.transform_matrix, identity, rtol=1e-4, atol=1e-4)
 
     def test_gradcheck(self, device, dtype):
 
@@ -2675,21 +2683,16 @@ class TestNormalize:
 
 class TestDenormalize:
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
-    # return values such a torch.Tensor variable.
+    # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self, device, dtype):
         f = Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([1.0]))
-        repr = (
-            "Denormalize(mean=torch.tensor([1.]), std=torch.tensor([1.]), p=1., p_batch=1.0, "
-            "same_on_batch=False, return_transform=False)"
-        )
+        repr = "Denormalize(mean=torch.tensor([1.]), std=torch.tensor([1.]), p=1., p_batch=1.0, " "same_on_batch=False)"
         assert str(f) == repr
 
     def test_random_denormalize(self, device, dtype):
-        f = Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=1.0, return_transform=True)
-        f1 = Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=0.0, return_transform=True)
-        f2 = Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=1.0)
-        f3 = Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=0.0)
+        f = Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=1.0)
+        f1 = Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=0.0)
 
         inputs = torch.arange(0.0, 16.0, step=1, device=device, dtype=dtype).reshape(1, 4, 4).unsqueeze(0)
 
@@ -2697,18 +2700,14 @@ class TestDenormalize:
 
         identity = kornia.eye_like(3, expected)
 
-        assert_close(f(inputs)[0], expected, rtol=1e-4, atol=1e-4)
-        assert_close(f(inputs)[1], identity, rtol=1e-4, atol=1e-4)
-        assert_close(f1(inputs)[0], inputs, rtol=1e-4, atol=1e-4)
-        assert_close(f1(inputs)[1], identity, rtol=1e-4, atol=1e-4)
-        assert_close(f2(inputs), expected, rtol=1e-4, atol=1e-4)
-        assert_close(f3(inputs), inputs, rtol=1e-4, atol=1e-4)
+        assert_close(f(inputs), expected, rtol=1e-4, atol=1e-4)
+        assert_close(f.transform_matrix, identity, rtol=1e-4, atol=1e-4)
+        assert_close(f1(inputs), inputs, rtol=1e-4, atol=1e-4)
+        assert_close(f1.transform_matrix, identity, rtol=1e-4, atol=1e-4)
 
     def test_batch_random_denormalize(self, device, dtype):
-        f = Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=1.0, return_transform=True)
-        f1 = Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=0.0, return_transform=True)
-        f2 = Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=1.0)
-        f3 = Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=0.0)
+        f = Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=1.0)
+        f1 = Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=0.0)
 
         inputs = torch.arange(0.0, 16.0 * 2, step=1, device=device, dtype=dtype).reshape(2, 1, 4, 4)
 
@@ -2716,12 +2715,10 @@ class TestDenormalize:
 
         identity = kornia.eye_like(3, expected)
 
-        assert_close(f(inputs)[0], expected, rtol=1e-4, atol=1e-4)
-        assert_close(f(inputs)[1], identity, rtol=1e-4, atol=1e-4)
-        assert_close(f1(inputs)[0], inputs, rtol=1e-4, atol=1e-4)
-        assert_close(f1(inputs)[1], identity, rtol=1e-4, atol=1e-4)
-        assert_close(f2(inputs), expected, rtol=1e-4, atol=1e-4)
-        assert_close(f3(inputs), inputs, rtol=1e-4, atol=1e-4)
+        assert_close(f(inputs), expected, rtol=1e-4, atol=1e-4)
+        assert_close(f.transform_matrix, identity, rtol=1e-4, atol=1e-4)
+        assert_close(f1(inputs), inputs, rtol=1e-4, atol=1e-4)
+        assert_close(f1.transform_matrix, identity, rtol=1e-4, atol=1e-4)
 
     def test_gradcheck(self, device, dtype):
 
@@ -2782,3 +2779,287 @@ class TestRandomBoxBlur:
         img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
         aug = RandomBoxBlur(p=1.0)
         assert img.shape == aug(img).shape
+
+
+class TestPadTo:
+    def test_smoke(self, device, dtype):
+        img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
+        aug = PadTo(size=(4, 5))
+        out = aug(img)
+        assert out.shape == (1, 1, 4, 5)
+        assert (aug.inverse(out) == img).all()
+
+
+class TestResize:
+    def test_smoke(self, device, dtype):
+        img = torch.rand(1, 1, 4, 6, device=device, dtype=dtype)
+        aug = Resize(size=(4, 5))
+        out = aug(img)
+        assert out.shape == (1, 1, 4, 5)
+
+
+class TestSmallestMaxSize:
+    def test_smoke(self, device, dtype):
+        img = torch.rand(1, 1, 4, 6, device=device, dtype=dtype)
+        aug = SmallestMaxSize(max_size=2)
+        out = aug(img)
+        assert out.shape == (1, 1, 2, 3)
+
+
+class TestLongestMaxSize:
+    def test_smoke(self, device, dtype):
+        img = torch.rand(1, 1, 4, 6, device=device, dtype=dtype)
+        aug = LongestMaxSize(max_size=3)
+        out = aug(img)
+        assert out.shape == (1, 1, 2, 3)
+
+
+class TestRandomPosterize:
+    def test_smoke(self, device, dtype):
+        img = torch.rand(1, 1, 4, 5, device=device, dtype=dtype)
+        aug = RandomPosterize(bits=6, p=1.0).to(device)
+        out = aug(img)
+        assert out.shape == (1, 1, 4, 5)
+
+
+class TestRandomPlasma:
+    def test_plasma_shadow(self, device, dtype):
+        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        aug = RandomPlasmaShadow(p=1.0).to(device)
+        out = aug(img)
+        assert out.shape == (2, 3, 4, 5)
+
+    def test_plasma_brightness(self, device, dtype):
+        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        aug = RandomPlasmaBrightness(p=1.0).to(device)
+        out = aug(img)
+        assert out.shape == (2, 3, 4, 5)
+
+    def test_plasma_contrast(self, device, dtype):
+        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        aug = RandomPlasmaContrast(p=1.0).to(device)
+        out = aug(img)
+        assert out.shape == (2, 3, 4, 5)
+
+
+class TestPlanckianJitter:
+    def _get_expected_output_blackbody(self, device, dtype):
+        return torch.tensor(
+            [
+                [
+                    [
+                        [0.7350, 1.0000, 0.1311, 0.1955],
+                        [0.4553, 0.9391, 0.7258, 1.0000],
+                        [0.6748, 0.9364, 0.5167, 0.5949],
+                        [0.0330, 0.2501, 0.4353, 0.7679],
+                    ],
+                    [
+                        [0.6977, 0.8000, 0.1610, 0.2823],
+                        [0.6816, 0.9152, 0.3971, 0.8742],
+                        [0.4194, 0.5529, 0.9527, 0.0362],
+                        [0.1852, 0.3734, 0.3051, 0.9320],
+                    ],
+                    [
+                        [0.0691, 0.1059, 0.0592, 0.0124],
+                        [0.0817, 0.3650, 0.2839, 0.2914],
+                        [0.2066, 0.0957, 0.2295, 0.0130],
+                        [0.0545, 0.0951, 0.3202, 0.3114],
+                    ],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+    def _get_expected_output_cied(self, device, dtype):
+        return torch.tensor(
+            [
+                [
+                    [
+                        [0.6058, 0.9377, 0.1080, 0.1611],
+                        [0.3752, 0.7740, 0.5982, 1.0000],
+                        [0.5561, 0.7718, 0.4259, 0.4903],
+                        [0.0272, 0.2062, 0.3587, 0.6329],
+                    ],
+                    [
+                        [0.6977, 0.8000, 0.1610, 0.2823],
+                        [0.6816, 0.9152, 0.3971, 0.8742],
+                        [0.4194, 0.5529, 0.9527, 0.0362],
+                        [0.1852, 0.3734, 0.3051, 0.9320],
+                    ],
+                    [
+                        [0.1149, 0.1762, 0.0984, 0.0207],
+                        [0.1359, 0.6072, 0.4722, 0.4848],
+                        [0.3437, 0.1592, 0.3818, 0.0217],
+                        [0.0906, 0.1582, 0.5326, 0.5180],
+                    ],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+    def _get_expected_output_batch(self, device, dtype):
+        return torch.tensor(
+            [
+                [
+                    [
+                        [0.7350, 1.0000, 0.1311, 0.1955],
+                        [0.4553, 0.9391, 0.7258, 1.0000],
+                        [0.6748, 0.9364, 0.5167, 0.5949],
+                        [0.0330, 0.2501, 0.4353, 0.7679],
+                    ],
+                    [
+                        [0.6977, 0.8000, 0.1610, 0.2823],
+                        [0.6816, 0.9152, 0.3971, 0.8742],
+                        [0.4194, 0.5529, 0.9527, 0.0362],
+                        [0.1852, 0.3734, 0.3051, 0.9320],
+                    ],
+                    [
+                        [0.0691, 0.1059, 0.0592, 0.0124],
+                        [0.0817, 0.3650, 0.2839, 0.2914],
+                        [0.2066, 0.0957, 0.2295, 0.0130],
+                        [0.0545, 0.0951, 0.3202, 0.3114],
+                    ],
+                ],
+                [
+                    [
+                        [0.4963, 0.7682, 0.0885, 0.1320],
+                        [0.3074, 0.6341, 0.4901, 0.8964],
+                        [0.4556, 0.6323, 0.3489, 0.4017],
+                        [0.0223, 0.1689, 0.2939, 0.5185],
+                    ],
+                    [
+                        [0.6977, 0.8000, 0.1610, 0.2823],
+                        [0.6816, 0.9152, 0.3971, 0.8742],
+                        [0.4194, 0.5529, 0.9527, 0.0362],
+                        [0.1852, 0.3734, 0.3051, 0.9320],
+                    ],
+                    [
+                        [0.1759, 0.2698, 0.1507, 0.0317],
+                        [0.2081, 0.9298, 0.7231, 0.7423],
+                        [0.5263, 0.2437, 0.5846, 0.0332],
+                        [0.1387, 0.2422, 0.8155, 0.7932],
+                    ],
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+    def _get_expected_output_same_on_batch(self, device, dtype):
+        return torch.tensor(
+            [
+                [
+                    [
+                        [0.3736, 0.5783, 0.0666, 0.0994],
+                        [0.2314, 0.4774, 0.3690, 0.6749],
+                        [0.3430, 0.4760, 0.2627, 0.3024],
+                        [0.0168, 0.1272, 0.2213, 0.3904],
+                    ],
+                    [
+                        [0.6977, 0.8000, 0.1610, 0.2823],
+                        [0.6816, 0.9152, 0.3971, 0.8742],
+                        [0.4194, 0.5529, 0.9527, 0.0362],
+                        [0.1852, 0.3734, 0.3051, 0.9320],
+                    ],
+                    [
+                        [0.2621, 0.4020, 0.2245, 0.0472],
+                        [0.3101, 1.0000, 1.0000, 1.0000],
+                        [0.7842, 0.3631, 0.8711, 0.0495],
+                        [0.2067, 0.3609, 1.0000, 1.0000],
+                    ],
+                ],
+                [
+                    [
+                        [0.3736, 0.5783, 0.0666, 0.0994],
+                        [0.2314, 0.4774, 0.3690, 0.6749],
+                        [0.3430, 0.4760, 0.2627, 0.3024],
+                        [0.0168, 0.1272, 0.2213, 0.3904],
+                    ],
+                    [
+                        [0.6977, 0.8000, 0.1610, 0.2823],
+                        [0.6816, 0.9152, 0.3971, 0.8742],
+                        [0.4194, 0.5529, 0.9527, 0.0362],
+                        [0.1852, 0.3734, 0.3051, 0.9320],
+                    ],
+                    [
+                        [0.2621, 0.4020, 0.2245, 0.0472],
+                        [0.3101, 1.0000, 1.0000, 1.0000],
+                        [0.7842, 0.3631, 0.8711, 0.0495],
+                        [0.2067, 0.3609, 1.0000, 1.0000],
+                    ],
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+    def _get_input(self, device, dtype):
+        return torch.tensor(
+            [
+                [
+                    [
+                        [0.4963, 0.7682, 0.0885, 0.1320],
+                        [0.3074, 0.6341, 0.4901, 0.8964],
+                        [0.4556, 0.6323, 0.3489, 0.4017],
+                        [0.0223, 0.1689, 0.2939, 0.5185],
+                    ],
+                    [
+                        [0.6977, 0.8000, 0.1610, 0.2823],
+                        [0.6816, 0.9152, 0.3971, 0.8742],
+                        [0.4194, 0.5529, 0.9527, 0.0362],
+                        [0.1852, 0.3734, 0.3051, 0.9320],
+                    ],
+                    [
+                        [0.1759, 0.2698, 0.1507, 0.0317],
+                        [0.2081, 0.9298, 0.7231, 0.7423],
+                        [0.5263, 0.2437, 0.5846, 0.0332],
+                        [0.1387, 0.2422, 0.8155, 0.7932],
+                    ],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+    def test_planckian_jitter_blackbody(self, device, dtype):
+        torch.manual_seed(0)
+        f = RandomPlanckianJitter(select_from=1).to(device, dtype)
+        input = self._get_input(device, dtype)
+        expected = self._get_expected_output_blackbody(device, dtype)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+
+    def test_planckian_jitter_cied(self, device, dtype):
+        torch.manual_seed(0)
+        f = RandomPlanckianJitter(mode='CIED', select_from=1).to(device, dtype)
+        input = self._get_input(device, dtype)
+        expected = self._get_expected_output_cied(device, dtype)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+
+    def test_planckian_jitter_batch(self, device, dtype):
+        torch.manual_seed(0)
+        input = self._get_input(device, dtype).repeat(2, 1, 1, 1)
+
+        select_from = [1, 2, 24]
+        f = RandomPlanckianJitter(select_from=select_from).to(device, dtype)
+        expected = self._get_expected_output_batch(device, dtype)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+
+    def test_planckian_jitter_same_on_batch(self, device, dtype):
+        torch.manual_seed(0)
+        input = self._get_input(device, dtype).repeat(2, 1, 1, 1)
+
+        select_from = [1, 2, 24, 3, 4, 5]
+        f = RandomPlanckianJitter(select_from=select_from, same_on_batch=True, p=1.0).to(device, dtype)
+        expected = self._get_expected_output_same_on_batch(device, dtype)
+        assert_close(f(input), expected, atol=1e-4, rtol=1e-4)
+
+
+class TestRandomRGBShift:
+
+    def test_smoke(self, device, dtype):
+        img = torch.rand(1, 3, 4, 5, device=device, dtype=dtype)
+        aug = RandomRGBShift(p=1.0).to(device)
+        out = aug(img)
+        assert out.shape == (1, 3, 4, 5)

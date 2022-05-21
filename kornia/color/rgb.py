@@ -1,4 +1,4 @@
-from typing import cast, Union
+from typing import Union, cast
 
 import torch
 import torch.nn as nn
@@ -14,10 +14,6 @@ def rgb_to_bgr(image: torch.Tensor) -> torch.Tensor:
 
     Returns:
         BGR version of the image with shape of shape :math:`(*,3,H,W)`.
-
-    .. note::
-       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
-       hello_world_tutorial.html>`__.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -40,10 +36,6 @@ def bgr_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     Returns:
         RGB version of the image with shape of shape :math:`(*,3,H,W)`.
-
-    .. note::
-       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
-       color_conversions.html>`__.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -156,7 +148,7 @@ def rgba_to_rgb(image: torch.Tensor) -> torch.Tensor:
     g_new: torch.Tensor = a_one * g + a * g
     b_new: torch.Tensor = a_one * b + a * b
 
-    return torch.cat([r, g, b], dim=-3)
+    return torch.cat([r_new, g_new, b_new], dim=-3)
 
 
 def rgba_to_bgr(image: torch.Tensor) -> torch.Tensor:

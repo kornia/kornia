@@ -21,8 +21,9 @@ jobs:
     - name: Install dependencies
       shell: bash -l {0}
       run: |
-        pip install -r requirements-dev.txt
-        python setup.py install
+        # NOTE: pytorch image does not include git
+        conda install -c anaconda git
+        pip install .[all]
     - name: Run Tests
       shell: bash -l {0}
       run: pytest -v --device cuda --dtype float32,float64 ./test

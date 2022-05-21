@@ -468,6 +468,12 @@ class TestGetCreateLAF:
         laf = kornia.feature.laf_from_center_scale_ori(xy, scale, ori)
         assert_close(laf, expected)
 
+    def test_laf_def(self, device):
+        xy = torch.ones(1, 1, 2, device=device)
+        expected = torch.tensor([[[[1, 0, 1], [0, 1, 1]]]], device=device).float()
+        laf = kornia.feature.laf_from_center_scale_ori(xy)
+        assert_close(laf, expected)
+
     def test_cross_consistency(self, device):
         batch_size, channels = 3, 2
         xy = torch.rand(batch_size, channels, 2, device=device)
@@ -569,3 +575,35 @@ class TestGetLAFFrom3pts:
         model = kornia.feature.laf_from_three_points
         model_jit = torch.jit.script(kornia.feature.laf_from_three_points)
         assert_close(model(inp), model_jit(inp))
+
+
+class TestTransformLAFs:
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
+    @pytest.mark.parametrize("num_points", [2, 3, 5])
+    def test_transform_points(self, batch_size, num_points, device, dtype):
+        # generate input data
+        eye_size = 3
+        lafs_src = torch.rand(batch_size, num_points, 2, 3, device=device, dtype=dtype)
+
+        dst_homo_src = utils.create_random_homography(batch_size, eye_size).to(device=device, dtype=dtype)
+
+        # transform the points from dst to ref
+        lafs_dst = kornia.feature.perspective_transform_lafs(dst_homo_src, lafs_src)
+
+        # transform the points from ref to dst
+        src_homo_dst = torch.inverse(dst_homo_src)
+        lafs_dst_to_src = kornia.feature.perspective_transform_lafs(src_homo_dst, lafs_dst)
+
+        # projected should be equal as initial
+        assert_close(lafs_src, lafs_dst_to_src)
+
+    def test_gradcheck(self, device, dtype):
+        # generate input data
+        batch_size, num_points = 2, 3
+        eye_size = 3
+        points_src = torch.rand(batch_size, num_points, 2, 3, device=device, dtype=dtype)
+        dst_homo_src = utils.create_random_homography(batch_size, eye_size).to(device=device, dtype=dtype)
+        # evaluate function gradient
+        points_src = utils.tensor_to_gradcheck_var(points_src)  # to var
+        dst_homo_src = utils.tensor_to_gradcheck_var(dst_homo_src)  # to var
+        assert gradcheck(kornia.feature.perspective_transform_lafs, (dst_homo_src, points_src), raise_exception=True)

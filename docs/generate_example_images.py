@@ -55,7 +55,7 @@ def main():
     mod = importlib.import_module("kornia.augmentation")
     augmentations_list: dict = {
         "CenterCrop": ((184, 184), 1, 2018),
-        "ColorJitter": ((0.3, 0.3, 0.3, 0.3), 2, 2018),
+        "ColorJiggle": ((0.3, 0.3, 0.3, 0.3), 2, 2018),
         "RandomAffine": (((-15.0, 20.0), (0.1, 0.1), (0.7, 1.3), 20), 2, 2019),
         "RandomBoxBlur": (((7, 7),), 1, 2020),
         "RandomCrop": ((img1.shape[-2:], (50, 50)), 2, 2020),
@@ -71,6 +71,10 @@ def main():
         "RandomInvert": ((), 1, 2020),
         "RandomMotionBlur": ((7, 35.0, 0.5), 2, 2020),
         "RandomPerspective": ((0.2,), 2, 2020),
+        "RandomPlanckianJitter": ((), 2, 2022),
+        "RandomPlasmaShadow": (((0.2, 0.5),), 2, 2022),
+        "RandomPlasmaBrightness": ((), 2, 2022),
+        "RandomPlasmaContrast": ((), 2, 2022),
         "RandomPosterize": (((1, 4),), 2, 2016),
         "RandomResizedCrop": ((img1.shape[-2:], (1.0, 2.0), (1.0, 2.0)), 2, 2020),
         "RandomRotation": ((45.0,), 2, 2019),
@@ -128,7 +132,7 @@ def main():
 
     mod = importlib.import_module("kornia.color")
     color_transforms_list: dict = {
-        "grayscale_to_rgb": ((), 1),
+        "grayscale_to_rgb": ((), 3),
         "rgb_to_bgr": ((), 1),
         "rgb_to_grayscale": ((), 1),
         "rgb_to_hsv": ((), 1),
@@ -146,7 +150,7 @@ def main():
         # import function and apply
         fn = getattr(mod, fn_name)
         if fn_name == "grayscale_to_rgb":
-            out = fn(K.rgb_to_grayscale(img2), *args)
+            out = fn(K.color.rgb_to_grayscale(img2), *args)
         else:
             out = fn(img2, *args)
         # perform normalization to visualize
@@ -162,7 +166,7 @@ def main():
         # save the output image
         if fn_name == "grayscale_to_rgb":
             out = torch.cat(
-                [K.rgb_to_grayscale(img2[0]).repeat(3, 1, 1), *(out[i] for i in range(out.size(0)))], dim=-1
+                [K.color.rgb_to_grayscale(img2[0]).repeat(3, 1, 1), *(out[i] for i in range(out.size(0)))], dim=-1
             )
         else:
             out = torch.cat([img2[0], *(out[i] for i in range(out.size(0)))], dim=-1)

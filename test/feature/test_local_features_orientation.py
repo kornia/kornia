@@ -1,9 +1,10 @@
 import pytest
+import torch
 from torch.autograd import gradcheck
 
-import kornia
 import kornia.testing as utils  # test utils
-from kornia.feature.orientation import *
+from kornia.feature.orientation import LAFOrienter, OriNet, PassLAF, PatchDominantGradientOrientation
+from kornia.geometry.conversions import rad2deg
 from kornia.testing import assert_close
 
 
@@ -64,7 +65,7 @@ class TestPatchDominantGradientOrientation:
         inp[:, :, :10, :] = 1
         ang = ori(inp)
         expected = torch.tensor([90.0], device=device)
-        assert_close(kornia.rad2deg(ang), expected)
+        assert_close(rad2deg(ang), expected)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 13, 13
@@ -112,7 +113,7 @@ class TestOriNet:
         ori = OriNet(True).to(device=device, dtype=inp.dtype).eval()
         ang = ori(inp)
         expected = torch.tensor([70.58], device=device)
-        assert_close(kornia.rad2deg(ang), expected, atol=1e-2, rtol=1e-3)
+        assert_close(rad2deg(ang), expected, atol=1e-2, rtol=1e-3)
 
     @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device):

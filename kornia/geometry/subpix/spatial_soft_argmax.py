@@ -4,10 +4,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import kornia
-from kornia.geometry import normalize_pixel_coordinates, normalize_pixel_coordinates3d
-from kornia.geometry.subpix import dsnt
+from kornia.filters.sobel import spatial_gradient3d
+from kornia.geometry.conversions import normalize_pixel_coordinates, normalize_pixel_coordinates3d
 from kornia.utils import create_meshgrid, create_meshgrid3d
+from kornia.utils._compat import torch_version_geq
+from kornia.utils.helpers import safe_solve_with_mask
+
+from .dsnt import spatial_expectation2d, spatial_softmax2d
+from .nms import nms3d
 
 
 def _get_window_grid_kernel2d(h: int, w: int, device: torch.device = torch.device('cpu')) -> torch.Tensor:
@@ -267,7 +271,7 @@ def conv_soft_argmax2d(
     eps: float = 1e-8,
     output_value: bool = False,
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-    r"""Computes the convolutional spatial Soft-Argmax 2D over the windows of a given heatmap.
+    r"""Compute the convolutional spatial Soft-Argmax 2D over the windows of a given heatmap.
 
     .. math::
         ij(X) = \frac{\sum{(i,j)} * exp(x / T)  \in X} {\sum{exp(x / T)  \in X}}
@@ -381,7 +385,7 @@ def conv_soft_argmax3d(
     output_value: bool = True,
     strict_maxima_bonus: float = 0.0,
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-    r"""Computes the convolutional spatial Soft-Argmax 3D over the windows of a given heatmap.
+    r"""Compute the convolutional spatial Soft-Argmax 3D over the windows of a given heatmap.
 
     .. math::
              ijk(X) = \frac{\sum{(i,j,k)} * exp(x / T)  \in X} {\sum{exp(x / T)  \in X}}
@@ -491,8 +495,8 @@ def conv_soft_argmax3d(
         in_levels: int = input.size(2)
         out_levels: int = x_softmaxpool.size(2)
         skip_levels: int = (in_levels - out_levels) // 2
-        strict_maxima: torch.Tensor = F.avg_pool3d(kornia.feature.nms3d(input, kernel_size), 1, stride, 0)
-        strict_maxima = strict_maxima[:, :, skip_levels : out_levels - skip_levels]
+        strict_maxima: torch.Tensor = F.avg_pool3d(nms3d(input, kernel_size), 1, stride, 0)
+        strict_maxima = strict_maxima[:, :, skip_levels: out_levels - skip_levels]
         x_softmaxpool *= 1.0 + strict_maxima_bonus * strict_maxima
     x_softmaxpool = x_softmaxpool.view(b, c, x_softmaxpool.size(2), x_softmaxpool.size(3), x_softmaxpool.size(4))
     return coords_max, x_softmaxpool
@@ -502,16 +506,14 @@ def spatial_soft_argmax2d(
     input: torch.Tensor,
     temperature: torch.Tensor = torch.tensor(1.0),
     normalized_coordinates: bool = True,
-    eps: float = 1e-8,
 ) -> torch.Tensor:
-    r"""Function that computes the Spatial Soft-Argmax 2D of a given input heatmap.
+    r"""Compute the Spatial Soft-Argmax 2D of a given input heatmap.
 
     Args:
         input: the given heatmap with shape :math:`(B, N, H, W)`.
         temperature: factor to apply to input.
         normalized_coordinates: whether to return the coordinates normalized in the range of :math:`[-1, 1]`.
             Otherwise, it will return the coordinates in the range of the input shape.
-        eps: small value to avoid zero division.
 
     Returns:
         the index of the maximum 2d coordinates of the give map :math:`(B, N, 2)`.
@@ -525,24 +527,23 @@ def spatial_soft_argmax2d(
         >>> spatial_soft_argmax2d(input, normalized_coordinates=False)
         tensor([[[1.0000, 1.0000]]])
     """
-    input_soft: torch.Tensor = dsnt.spatial_softmax2d(input, temperature)
-    output: torch.Tensor = dsnt.spatial_expectation2d(input_soft, normalized_coordinates)
+    input_soft: torch.Tensor = spatial_softmax2d(input, temperature)
+    output: torch.Tensor = spatial_expectation2d(input_soft, normalized_coordinates)
     return output
 
 
 class SpatialSoftArgmax2d(nn.Module):
-    r"""Module that computes the Spatial Soft-Argmax 2D of a given heatmap.
+    r"""Compute the Spatial Soft-Argmax 2D of a given heatmap.
 
     See :func:`~kornia.geometry.subpix.spatial_soft_argmax2d` for details.
     """
 
     def __init__(
-        self, temperature: torch.Tensor = torch.tensor(1.0), normalized_coordinates: bool = True, eps: float = 1e-8
+        self, temperature: torch.Tensor = torch.tensor(1.0), normalized_coordinates: bool = True
     ) -> None:
         super().__init__()
         self.temperature: torch.Tensor = temperature
         self.normalized_coordinates: bool = normalized_coordinates
-        self.eps: float = eps
 
     def __repr__(self) -> str:
         return (
@@ -552,20 +553,17 @@ class SpatialSoftArgmax2d(nn.Module):
             + ', '
             + 'normalized_coordinates='
             + str(self.normalized_coordinates)
-            + ', '
-            + 'eps='
-            + str(self.eps)
             + ')'
         )
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return spatial_soft_argmax2d(input, self.temperature, self.normalized_coordinates, self.eps)
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        return spatial_soft_argmax2d(input, self.temperature, self.normalized_coordinates)
 
 
 def conv_quad_interp3d(
     input: torch.Tensor, strict_maxima_bonus: float = 10.0, eps: float = 1e-7
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    r"""Function that computes the single iteration of quadratic interpolation of the extremum (max or min).
+    r"""Compute the single iteration of quadratic interpolation of the extremum (max or min).
 
     Args:
         input: the given heatmap with shape :math:`(N, C, D_{in}, H_{in}, W_{in})`.
@@ -602,15 +600,14 @@ def conv_quad_interp3d(
         raise ValueError(f"Invalid input shape, we expect BxCxDxHxW. Got: {input.shape}")
 
     B, CH, D, H, W = input.shape
-    dev: torch.device = input.device
     grid_global: torch.Tensor = create_meshgrid3d(D, H, W, False, device=input.device).permute(0, 4, 1, 2, 3)
     grid_global = grid_global.to(input.dtype)
 
     # to determine the location we are solving system of linear equations Ax = b, where b is 1st order gradient
     # and A is Hessian matrix
-    b: torch.Tensor = kornia.filters.spatial_gradient3d(input, order=1, mode='diff')  #
+    b: torch.Tensor = spatial_gradient3d(input, order=1, mode='diff')  #
     b = b.permute(0, 1, 3, 4, 5, 2).reshape(-1, 3, 1)
-    A: torch.Tensor = kornia.filters.spatial_gradient3d(input, order=2, mode='diff')
+    A: torch.Tensor = spatial_gradient3d(input, order=2, mode='diff')
     A = A.permute(0, 1, 3, 4, 5, 2).reshape(-1, 6)
     dxx = A[..., 0]
     dyy = A[..., 1]
@@ -620,14 +617,18 @@ def conv_quad_interp3d(
     dxs = 0.25 * A[..., 5]  # normalization to match OpenCV implementation
 
     Hes = torch.stack([dxx, dxy, dxs, dxy, dyy, dys, dxs, dys, dss], dim=-1).view(-1, 3, 3)
+    if not torch_version_geq(1, 10):
+        # The following is needed to avoid singular cases
+        Hes += torch.rand(Hes[0].size(), device=Hes.device).abs()[None] * eps
 
-    # The following is needed to avoid singular cases
-    Hes += torch.rand(Hes[0].size(), device=Hes.device).abs()[None] * eps
-
-    nms_mask: torch.Tensor = kornia.feature.nms3d(input, (3, 3, 3), True)
+    nms_mask: torch.Tensor = nms3d(input, (3, 3, 3), True)
     x_solved: torch.Tensor = torch.zeros_like(b)
-    x_solved_masked, _ = torch.solve(b[nms_mask.view(-1)], Hes[nms_mask.view(-1)])
-    x_solved.masked_scatter_(nms_mask.view(-1, 1, 1), x_solved_masked)
+    x_solved_masked, _, solved_correctly = safe_solve_with_mask(b[nms_mask.view(-1)], Hes[nms_mask.view(-1)])
+
+    #  Kill those points, where we cannot solve
+    new_nms_mask = nms_mask.masked_scatter(nms_mask, solved_correctly)
+
+    x_solved.masked_scatter_(new_nms_mask.view(-1, 1, 1), x_solved_masked[solved_correctly])
     dx: torch.Tensor = -x_solved
 
     # Ignore ones, which are far from window center
@@ -636,7 +637,7 @@ def conv_quad_interp3d(
     dy: torch.Tensor = 0.5 * torch.bmm(b.permute(0, 2, 1), dx)
     y_max = input + dy.view(B, CH, D, H, W)
     if strict_maxima_bonus > 0:
-        y_max += strict_maxima_bonus * nms_mask.to(input.dtype)
+        y_max += strict_maxima_bonus * new_nms_mask.to(input.dtype)
 
     dx_res: torch.Tensor = dx.flip(1).reshape(B, CH, D, H, W, 3).permute(0, 1, 5, 2, 3, 4)
     coords_max: torch.Tensor = grid_global.repeat(B, 1, 1, 1, 1).unsqueeze(1)
@@ -646,7 +647,7 @@ def conv_quad_interp3d(
 
 
 class ConvQuadInterp3d(nn.Module):
-    r"""Module that calculates soft argmax 3d per window
+    r"""Calculate soft argmax 3d per window
 
     See :func:`~kornia.geometry.subpix.conv_quad_interp3d` for details.
     """

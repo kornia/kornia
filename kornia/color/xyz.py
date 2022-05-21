@@ -3,7 +3,7 @@ import torch.nn as nn
 
 
 def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
-    r"""Converts a RGB image to XYZ.
+    r"""Convert a RGB image to XYZ.
 
     .. image:: _static/img/rgb_to_xyz.png
 
@@ -37,7 +37,7 @@ def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
 
 
 def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
-    r"""Converts a XYZ image to RGB.
+    r"""Convert a XYZ image to RGB.
 
     Args:
         image: XYZ Image to be converted to RGB with shape :math:`(*, 3, H, W)`.
@@ -69,7 +69,7 @@ def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
 
 class RgbToXyz(nn.Module):
-    r"""Converts an image from RGB to XYZ.
+    r"""Convert an image from RGB to XYZ.
 
     The image data is assumed to be in the range of (0, 1).
 

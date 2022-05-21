@@ -1,12 +1,16 @@
-from .augmentation import (
+from kornia.augmentation._2d import (
     CenterCrop,
+    ColorJiggle,
     ColorJitter,
     Denormalize,
+    LongestMaxSize,
     Normalize,
+    PadTo,
     RandomAffine,
     RandomBoxBlur,
     RandomChannelShuffle,
     RandomCrop,
+    RandomCutMix,
     RandomElasticTransform,
     RandomEqualize,
     RandomErasing,
@@ -16,17 +20,29 @@ from .augmentation import (
     RandomGrayscale,
     RandomHorizontalFlip,
     RandomInvert,
+    RandomMixUp,
     RandomMotionBlur,
     RandomPerspective,
+    RandomPlanckianJitter,
+    RandomPlasmaBrightness,
+    RandomPlasmaContrast,
+    RandomPlasmaShadow,
     RandomPosterize,
     RandomResizedCrop,
+    RandomRGBShift,
     RandomRotation,
     RandomSharpness,
     RandomSolarize,
     RandomThinPlateSpline,
     RandomVerticalFlip,
+    Resize,
+    SmallestMaxSize,
 )
-from .augmentation3d import (
+from kornia.augmentation._2d.base import AugmentationBase2D
+from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation._2d.mix.base import MixAugmentationBase
+from kornia.augmentation._3d import (
     CenterCrop3D,
     RandomAffine3D,
     RandomCrop3D,
@@ -38,16 +54,21 @@ from .augmentation3d import (
     RandomRotation3D,
     RandomVerticalFlip3D,
 )
-from .base import AugmentationBase2D, AugmentationBase3D
-from .container import AugmentationSequential, ImageSequential, PatchSequential, VideoSequential
-from .mix_augmentation import RandomCutMix, RandomMixUp
+from kornia.augmentation._3d.base import AugmentationBase3D
+from kornia.augmentation.container import AugmentationSequential, ImageSequential, PatchSequential, VideoSequential
 
 __all__ = [
     "AugmentationBase2D",
+    "GeometricAugmentationBase2D",
+    "IntensityAugmentationBase2D",
+    "MixAugmentationBase",
     "CenterCrop",
+    "ColorJiggle",
     "ColorJitter",
     "Normalize",
     "Denormalize",
+    "LongestMaxSize",
+    "PadTo",
     "RandomAffine",
     "RandomBoxBlur",
     "RandomCrop",
@@ -61,8 +82,13 @@ __all__ = [
     "RandomHorizontalFlip",
     "RandomVerticalFlip",
     "RandomPerspective",
+    "RandomPlanckianJitter",
+    "RandomPlasmaShadow",
+    "RandomPlasmaBrightness",
+    "RandomPlasmaContrast",
     "RandomResizedCrop",
     "RandomRotation",
+    "RandomRGBShift",
     "RandomSolarize",
     "RandomSharpness",
     "RandomPosterize",
@@ -72,6 +98,8 @@ __all__ = [
     "RandomThinPlateSpline",
     "RandomMixUp",
     "RandomCutMix",
+    "Resize",
+    "SmallestMaxSize",
     "AugmentationBase3D",
     "CenterCrop3D",
     "RandomAffine3D",
@@ -87,4 +115,5 @@ __all__ = [
     "ImageSequential",
     "PatchSequential",
     "VideoSequential",
+    "RandomRGBShift",
 ]

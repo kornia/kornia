@@ -49,29 +49,29 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     # s: torch.Tensor  # not supported by JIT
     # image_hls: torch.Tensor  # not supported by JIT
     if image.requires_grad:
-        l = maxc + minc
+        l_ = maxc + minc
         s = maxc - minc
         # weird behaviour with undefined vars in JIT...
         # scripting requires image_hls be defined even if it is not used :S
-        h = l  # assign to any tensor...
-        image_hls = l  # assign to any tensor...
+        h = l_  # assign to any tensor...
+        image_hls = l_  # assign to any tensor...
     else:
         # define the resulting image to avoid the torch.stack([h, l, s])
         # so, h, l and s require inplace operations
         # NOTE: stack() increases in a 10% the cost in colab
         image_hls = torch.empty_like(image)
         h = torch.select(image_hls, -3, 0)
-        l = torch.select(image_hls, -3, 1)
+        l_ = torch.select(image_hls, -3, 1)
         s = torch.select(image_hls, -3, 2)
-        torch.add(maxc, minc, out=l)  # l = max + min
+        torch.add(maxc, minc, out=l_)  # l = max + min
         torch.sub(maxc, minc, out=s)  # s = max - min
 
     # precompute image / (max - min)
     im: torch.Tensor = image / (s + eps).unsqueeze(-3)
 
     # epsilon cannot be inside the torch.where to avoid precision issues
-    s /= torch.where(l < 1.0, l, 2.0 - l) + eps  # saturation
-    l /= 2  # luminance
+    s /= torch.where(l_ < 1.0, l_, 2.0 - l_) + eps  # saturation
+    l_ /= 2  # luminance
 
     # note that r,g and b were previously div by (max - min)
     r: torch.Tensor = torch.select(im, -3, 0)
@@ -91,7 +91,7 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     h *= math.pi / 3.0  # hue [0, 2*pi]
 
     if image.requires_grad:
-        return torch.stack([h, l, s], dim=-3)
+        return torch.stack([h, l_, s], dim=-3)
     return image_hls
 
 

@@ -3,7 +3,6 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia
-import kornia.filters.kernels_geometry
 import kornia.testing as utils  # test utils
 from kornia.testing import assert_close
 
@@ -42,7 +41,6 @@ class TestMotionBlur:
         angle = 200.0
         direction = 0.3
         actual = kornia.filters.motion_blur(inp, kernel_size, angle, direction)
-        expected = actual
         assert_close(actual, actual)
 
     def test_gradcheck(self, device, dtype):
@@ -53,7 +51,9 @@ class TestMotionBlur:
 
         input = torch.rand(batch_shape, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)
-        assert gradcheck(kornia.motion_blur, (input, ksize, angle, direction, "replicate"), raise_exception=True)
+        assert gradcheck(
+            kornia.filters.motion_blur, (input, ksize, angle, direction, "replicate"), raise_exception=True
+        )
 
     @pytest.mark.skip("angle can be Union")
     def test_jit(self, device, dtype):

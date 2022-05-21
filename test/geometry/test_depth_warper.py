@@ -19,10 +19,10 @@ class TestDepthWarper:
         tx, ty, tz = 0, 0, 0
 
         # create pinhole cameras
-        pinhole_src = kornia.PinholeCamera.from_parameters(
+        pinhole_src = kornia.geometry.camera.PinholeCamera.from_parameters(
             fx, fy, cx, cy, height, width, tx, ty, tz, batch_size, device=device, dtype=dtype
         )
-        pinhole_dst = kornia.PinholeCamera.from_parameters(
+        pinhole_dst = kornia.geometry.camera.PinholeCamera.from_parameters(
             fx, fy, cx, cy, height, width, tx, ty, tz, batch_size, device=device, dtype=dtype
         )
         return pinhole_src, pinhole_dst
@@ -34,7 +34,7 @@ class TestDepthWarper:
         pinhole_dst.tx += 1.0  # apply offset to tx
 
         # create warper
-        warper = kornia.DepthWarper(pinhole_dst, height, width)
+        warper = kornia.geometry.depth.DepthWarper(pinhole_dst, height, width)
         assert warper._dst_proj_src is None
 
         # initialize projection matrices
@@ -59,7 +59,7 @@ class TestDepthWarper:
         depth_src = torch.ones(batch_size, 1, height, width, device=device, dtype=dtype)
 
         # create warper, initialize projection matrices and warp grid
-        warper = kornia.DepthWarper(pinhole_dst, height, width)
+        warper = kornia.geometry.depth.DepthWarper(pinhole_dst, height, width)
         warper.compute_projection_matrix(pinhole_src)
 
         grid_warped = warper.warp_grid(depth_src)
@@ -85,7 +85,7 @@ class TestDepthWarper:
         depth_src = torch.ones(batch_size, 1, height, width, device=device, dtype=dtype)
 
         # create warper, initialize projection matrices and warp grid
-        warper = kornia.DepthWarper(pinhole_dst, height, width)
+        warper = kornia.geometry.depth.DepthWarper(pinhole_dst, height, width)
         warper.compute_projection_matrix(pinhole_src)
 
         grid_warped = warper.warp_grid(depth_src)
@@ -111,7 +111,7 @@ class TestDepthWarper:
         depth_src = torch.ones(batch_size, 1, height, width, device=device, dtype=dtype)
 
         # create warper, initialize projection matrices and warp grid
-        warper = kornia.DepthWarper(pinhole_dst, height, width)
+        warper = kornia.geometry.depth.DepthWarper(pinhole_dst, height, width)
         warper.compute_projection_matrix(pinhole_src)
 
         # create patch to warp
@@ -133,7 +133,7 @@ class TestDepthWarper:
         pinhole_src, pinhole_dst = self._create_pinhole_pair(batch_size, device, dtype)
 
         # create warper, initialize projection matrices and warp grid
-        warper = kornia.DepthWarper(pinhole_dst, height, width)
+        warper = kornia.geometry.depth.DepthWarper(pinhole_dst, height, width)
         warper.compute_projection_matrix(pinhole_src)
 
         # test compute_projection
@@ -146,7 +146,7 @@ class TestDepthWarper:
         pinhole_src, pinhole_dst = self._create_pinhole_pair(batch_size, device, dtype)
 
         # create warper, initialize projection matrices and warp grid
-        warper = kornia.DepthWarper(pinhole_dst, height, width)
+        warper = kornia.geometry.depth.DepthWarper(pinhole_dst, height, width)
         warper.compute_projection_matrix(pinhole_src)
 
         # test compute_subpixel_step
@@ -169,7 +169,9 @@ class TestDepthWarper:
 
         # evaluate function gradient
         assert gradcheck(
-            kornia.depth_warp, (pinhole_dst, pinhole_src, depth_src, img_dst, height, width), raise_exception=True
+            kornia.geometry.depth.depth_warp,
+            (pinhole_dst, pinhole_src, depth_src, img_dst, height, width),
+            raise_exception=True,
         )
 
     # TODO(edgar): we should include a test showing some kind of occlusion

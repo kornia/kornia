@@ -15,7 +15,7 @@ https://github.com/scikit-image/scikit-image/blob/a48bf6774718c64dade4548153ae16
 
 
 def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
-    r"""Converts a RGB image to Luv.
+    r"""Convert a RGB image to Luv.
 
     .. image:: _static/img/rgb_to_luv.png
 
@@ -68,7 +68,7 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 
 
 def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
-    r"""Converts a Luv image to RGB.
+    r"""Convert a Luv image to RGB.
 
     Args:
         image: Luv image to be converted to RGB with shape :math:`(*, 3, H, W)`.
@@ -117,7 +117,7 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 
 
 class RgbToLuv(nn.Module):
-    r"""Converts an image from RGB to Luv.
+    r"""Convert an image from RGB to Luv.
 
     The image data is assumed to be in the range of :math:`[0, 1]`. Luv
     color is computed using the D65 illuminant and Observer 2.
@@ -147,7 +147,7 @@ class RgbToLuv(nn.Module):
 
 
 class LuvToRgb(nn.Module):
-    r"""Converts an image from Luv to RGB.
+    r"""Convert an image from Luv to RGB.
 
     Returns:
         RGB version of the image.

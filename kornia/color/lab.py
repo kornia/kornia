@@ -13,7 +13,7 @@ https://github.com/scikit-image/scikit-image/blob/a48bf6774718c64dade4548153ae16
 
 
 def rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
-    r"""Converts a RGB image to Lab.
+    r"""Convert a RGB image to Lab.
 
     .. image:: _static/img/rgb_to_lab.png
 
@@ -25,6 +25,7 @@ def rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
 
     Returns:
         Lab version of the image with shape :math:`(*, 3, H, W)`.
+        The L channel values are in the range 0..100. a and b are in the range -127..127.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -64,7 +65,7 @@ def rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
 
 
 def lab_to_rgb(image: torch.Tensor, clip: bool = True) -> torch.Tensor:
-    r"""Converts a Lab image to RGB.
+    r"""Convert a Lab image to RGB.
 
     Args:
         image: Lab image to be converted to RGB with shape :math:`(*, 3, H, W)`.
@@ -121,7 +122,7 @@ def lab_to_rgb(image: torch.Tensor, clip: bool = True) -> torch.Tensor:
 
 
 class RgbToLab(nn.Module):
-    r"""Converts an image from RGB to Lab.
+    r"""Convert an image from RGB to Lab.
 
     The image data is assumed to be in the range of :math:`[0, 1]`. Lab
     color is computed using the D65 illuminant and Observer 2.
@@ -151,7 +152,7 @@ class RgbToLab(nn.Module):
 
 
 class LabToRgb(nn.Module):
-    r"""Converts an image from Lab to RGB.
+    r"""Convert an image from Lab to RGB.
 
     Returns:
         RGB version of the image. Range may not be in :math:`[0, 1]`.

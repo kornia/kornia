@@ -1,5 +1,4 @@
 import os
-from typing import Optional
 
 import torch
 
@@ -31,6 +30,7 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
         for idx in range(num_points):
             xyz = xyz_vec[idx]
             if not bool(torch.isfinite(xyz).any()):
+                num_points -= 1
                 continue
             x: float = xyz[0].item()
             y: float = xyz[1].item()

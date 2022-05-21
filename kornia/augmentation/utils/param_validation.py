@@ -1,4 +1,4 @@
-from typing import cast, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, cast
 
 import torch
 
@@ -32,7 +32,7 @@ def _range_bound(
         # Currently, single value factor will not out of scope as long as the user provided it.
         # Note: I personally think throw an error will be better than a coarse clamp.
         factor_bound = factor.repeat(2) * torch.tensor([-1.0, 1.0], device=factor.device, dtype=factor.dtype) + center
-        factor_bound = factor_bound.clamp(bounds[0], bounds[1])
+        factor_bound = factor_bound.clamp(bounds[0], bounds[1]).to(device=device, dtype=dtype)
     else:
         factor_bound = torch.as_tensor(factor, device=device, dtype=dtype)
 
@@ -48,7 +48,7 @@ def _range_bound(
 
 
 def _joint_range_check(ranged_factor: torch.Tensor, name: str, bounds: Optional[Tuple[float, float]] = None) -> None:
-    """check if bounds[0] <= ranged_factor[0] <= ranged_factor[1] <= bounds[1]"""
+    """Check if bounds[0] <= ranged_factor[0] <= ranged_factor[1] <= bounds[1]"""
     if bounds is None:
         bounds = (float('-inf'), float('inf'))
     if ranged_factor.dim() == 1 and len(ranged_factor) == 2:
@@ -70,7 +70,7 @@ def _singular_range_check(
     skip_none: bool = False,
     mode: str = '2d',
 ) -> None:
-    """check if bounds[0] <= ranged_factor[0] <= bounds[1] and bounds[0] <= ranged_factor[1] <= bounds[1]"""
+    """Check if bounds[0] <= ranged_factor[0] <= bounds[1] and bounds[0] <= ranged_factor[1] <= bounds[1]"""
     if mode == '2d':
         dim_size = 2
     elif mode == '3d':
@@ -99,8 +99,7 @@ def _tuple_range_reader(
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> torch.Tensor:
-    """
-    Given target_size, it will generate the corresponding (target_size, 2) range tensor for element-wise params.
+    """Given target_size, it will generate the corresponding (target_size, 2) range tensor for element-wise params.
 
     Example:
     >>> degree = torch.tensor([0.2, 0.3])

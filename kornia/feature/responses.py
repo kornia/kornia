@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 
 from kornia.filters import gaussian_blur2d, spatial_gradient
+from kornia.testing import KORNIA_CHECK_SHAPE
 
 
 def harris_response(
@@ -12,7 +13,7 @@ def harris_response(
     grads_mode: str = 'sobel',
     sigmas: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    r"""Computes the Harris cornerness function.
+    r"""Compute the Harris cornerness function.
 
     Function does not do any normalization or nms. The response map is computed according the following formulation:
 
@@ -63,11 +64,7 @@ def harris_response(
                   [0.0012, 0.0039, 0.0020, 0.0000, 0.0020, 0.0039, 0.0012]]]])
     """
     # TODO: Recompute doctest
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
-
-    if not len(input.shape) == 4:
-        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
+    KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
 
     if sigmas is not None:
         if not isinstance(sigmas, torch.Tensor):
@@ -100,7 +97,7 @@ def harris_response(
 def gftt_response(
     input: torch.Tensor, grads_mode: str = 'sobel', sigmas: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
-    r"""Computes the Shi-Tomasi cornerness function.
+    r"""Compute the Shi-Tomasi cornerness function.
 
     Function does not do any normalization or nms. The response map is computed according the following formulation:
 
@@ -147,11 +144,7 @@ def gftt_response(
                   [0.0155, 0.0334, 0.0194, 0.0000, 0.0194, 0.0334, 0.0155]]]])
     """
     # TODO: Recompute doctest
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
-
-    if not len(input.shape) == 4:
-        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
+    KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
 
     gradients: torch.Tensor = spatial_gradient(input, grads_mode)
     dx: torch.Tensor = gradients[:, :, 0]
@@ -178,7 +171,7 @@ def gftt_response(
 def hessian_response(
     input: torch.Tensor, grads_mode: str = 'sobel', sigmas: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
-    r"""Computes the absolute of determinant of the Hessian matrix.
+    r"""Compute the absolute of determinant of the Hessian matrix.
 
     Function does not do any normalization or nms. The response map is computed according the following formulation:
 
@@ -229,11 +222,7 @@ def hessian_response(
                   [0.0155, 0.0334, 0.0194, 0.0000, 0.0194, 0.0334, 0.0155]]]])
     """
     # TODO: Recompute doctest
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
-
-    if not len(input.shape) == 4:
-        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
+    KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
 
     if sigmas is not None:
         if not isinstance(sigmas, torch.Tensor):
@@ -256,7 +245,7 @@ def hessian_response(
 
 
 def dog_response(input: torch.Tensor) -> torch.Tensor:
-    r"""Computes the Difference-of-Gaussian response.
+    r"""Compute the Difference-of-Gaussian response.
 
     Args:
         input: a given the gaussian 5d tensor :math:`(B, C, D, H, W)`.
@@ -265,11 +254,7 @@ def dog_response(input: torch.Tensor) -> torch.Tensor:
         the response map per channel with shape :math:`(B, C, D-1, H, W)`.
 
     """
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
-
-    if not len(input.shape) == 5:
-        raise ValueError(f"Invalid input shape, we expect BxCxDxHxW. Got: {input.shape}")
+    KORNIA_CHECK_SHAPE(input, ["B", "C", "L", "H", "W"])
 
     return input[:, :, 1:] - input[:, :, :-1]
 

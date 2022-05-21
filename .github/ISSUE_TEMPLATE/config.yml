@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: ❓ Ask a question
+    url: https://github.com/kornia/kornia/discussions
+    about: Please post questions related to the library in discussions.
+  - name: 💬 Slack
+    url: https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-2AQRi~X9Uu6PLMuUZdvfjA
+    about: Chat with our community
+  - name: LibreCV
+    url: https://librecv.org/
+    about: Interact with the Computer Vision community
+  - name: Twitter
+    url: https://twitter.com/kornia_foss
+    about: Interact with the rest of the world

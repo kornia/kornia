@@ -12,14 +12,14 @@ import kornia as dgm
 
 
 def load_homography(file_name):
-    """Loads an homography from text file."""
+    """Load a homography from text file."""
     if not os.path.isfile(file_name):
         raise AssertionError(f"Invalid file {file_name}")
     return torch.from_numpy(np.loadtxt(file_name)).float()
 
 
 def load_image(file_name):
-    """Loads the image with OpenCV and converts to torch.Tensor"""
+    """Load the image with OpenCV and converts to torch.Tensor."""
     if not os.path.isfile(file_name):
         raise AssertionError(f"Invalid file {file_name}")
 
@@ -83,7 +83,6 @@ def HomographyRegressionApp():
     # load the data
     img_src, _ = load_image(os.path.join(args.input_dir, 'img1.ppm'))
     img_dst, _ = load_image(os.path.join(args.input_dir, 'img2.ppm'))
-    dst_homo_src_gt = load_homography(os.path.join(args.input_dir, 'H1to2p'))
 
     # instantiate the homography warper from `kornia`
     height, width = img_src.shape[-2:]
@@ -110,7 +109,7 @@ def HomographyRegressionApp():
         # propagate the error just for a fixed window
         w_size = 100  # window size
         h_2, w_2 = height // 2, width // 2
-        loss = loss[..., h_2 - w_size : h_2 + w_size, w_2 - w_size : w_2 + w_size]
+        loss = loss[..., h_2 - w_size: h_2 + w_size, w_2 - w_size: w_2 + w_size]
         loss = torch.mean(loss)
 
         # compute gradient and update optimizer parameters

@@ -1,3 +1,4 @@
+import math
 from math import sqrt
 from typing import List, Optional, Tuple
 
@@ -5,7 +6,7 @@ import torch
 
 
 def normalize_kernel2d(input: torch.Tensor) -> torch.Tensor:
-    r"""Normalizes both derivative and smoothing kernel."""
+    r"""Normalize both derivative and smoothing kernel."""
     if len(input.size()) < 2:
         raise TypeError(f"input should be at least 2D tensor. Got {input.size()}")
     norm: torch.Tensor = input.abs().sum(dim=-1).sum(dim=-1)
@@ -136,7 +137,7 @@ def get_box_kernel2d(kernel_size: Tuple[int, int]) -> torch.Tensor:
 
 
 def get_binary_kernel2d(window_size: Tuple[int, int]) -> torch.Tensor:
-    r"""Creates a binary kernel to extract the patches. If the window size
+    r"""Create a binary kernel to extract the patches. If the window size
     is HxW will create a (H*W)xHxW kernel.
     """
     window_range: int = window_size[0] * window_size[1]
@@ -147,12 +148,12 @@ def get_binary_kernel2d(window_size: Tuple[int, int]) -> torch.Tensor:
 
 
 def get_sobel_kernel_3x3() -> torch.Tensor:
-    """Utility function that returns a sobel kernel of 3x3"""
+    """Utility function that returns a sobel kernel of 3x3."""
     return torch.tensor([[-1.0, 0.0, 1.0], [-2.0, 0.0, 2.0], [-1.0, 0.0, 1.0]])
 
 
 def get_sobel_kernel_5x5_2nd_order() -> torch.Tensor:
-    """Utility function that returns a 2nd order sobel kernel of 5x5"""
+    """Utility function that returns a 2nd order sobel kernel of 5x5."""
     return torch.tensor(
         [
             [-1.0, 0.0, 2.0, 0.0, -1.0],
@@ -165,7 +166,7 @@ def get_sobel_kernel_5x5_2nd_order() -> torch.Tensor:
 
 
 def _get_sobel_kernel_5x5_2nd_order_xy() -> torch.Tensor:
-    """Utility function that returns a 2nd order sobel kernel of 5x5"""
+    """Utility function that returns a 2nd order sobel kernel of 5x5."""
     return torch.tensor(
         [
             [-1.0, -2.0, 0.0, 2.0, 1.0],
@@ -178,12 +179,12 @@ def _get_sobel_kernel_5x5_2nd_order_xy() -> torch.Tensor:
 
 
 def get_diff_kernel_3x3() -> torch.Tensor:
-    """Utility function that returns a first order derivative kernel of 3x3"""
+    """Utility function that returns a first order derivative kernel of 3x3."""
     return torch.tensor([[-0.0, 0.0, 0.0], [-1.0, 0.0, 1.0], [-0.0, 0.0, 0.0]])
 
 
 def get_diff_kernel3d(device=torch.device('cpu'), dtype=torch.float) -> torch.Tensor:
-    """Utility function that returns a first order derivative kernel of 3x3x3"""
+    """Utility function that returns a first order derivative kernel of 3x3x3."""
     kernel: torch.Tensor = torch.tensor(
         [
             [
@@ -209,7 +210,7 @@ def get_diff_kernel3d(device=torch.device('cpu'), dtype=torch.float) -> torch.Te
 
 
 def get_diff_kernel3d_2nd_order(device=torch.device('cpu'), dtype=torch.float) -> torch.Tensor:
-    """Utility function that returns a first order derivative kernel of 3x3x3"""
+    """Utility function that returns a first order derivative kernel of 3x3x3."""
     kernel: torch.Tensor = torch.tensor(
         [
             [
@@ -595,7 +596,7 @@ def get_pascal_kernel_1d(kernel_size: int, norm: bool = False) -> torch.Tensor:
 
 
 def get_canny_nms_kernel(device=torch.device('cpu'), dtype=torch.float) -> torch.Tensor:
-    """Utility function that returns 3x3 kernels for the Canny Non-maximal suppression"""
+    """Utility function that returns 3x3 kernels for the Canny Non-maximal suppression."""
     kernel: torch.Tensor = torch.tensor(
         [
             [[0.0, 0.0, 0.0], [0.0, 1.0, -1.0], [0.0, 0.0, 0.0]],
@@ -614,7 +615,7 @@ def get_canny_nms_kernel(device=torch.device('cpu'), dtype=torch.float) -> torch
 
 
 def get_hysteresis_kernel(device=torch.device('cpu'), dtype=torch.float) -> torch.Tensor:
-    """Utility function that returns the 3x3 kernels for the Canny hysteresis"""
+    """Utility function that returns the 3x3 kernels for the Canny hysteresis."""
     kernel: torch.Tensor = torch.tensor(
         [
             [[0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 0.0, 0.0]],
@@ -630,3 +631,57 @@ def get_hysteresis_kernel(device=torch.device('cpu'), dtype=torch.float) -> torc
         dtype=dtype,
     )
     return kernel.unsqueeze(1)
+
+
+def get_hanning_kernel1d(kernel_size: int, device=torch.device('cpu'), dtype=torch.float) -> torch.Tensor:
+    r"""Returns Hanning (also known as Hann) kernel, used in signal processing and KCF tracker.
+
+    .. math::  w(n) = 0.5 - 0.5cos\\left(\\frac{2\\pi{n}}{M-1}\\right)
+               \\qquad 0 \\leq n \\leq M-1
+
+    See further in numpy docs https://numpy.org/doc/stable/reference/generated/numpy.hanning.html
+
+    Args:
+        kernel_size: The size the of the kernel. It should be positive.
+
+    Returns:
+        1D tensor with Hanning filter coefficients.
+            .. math::  w(n) = 0.5 - 0.5cos\\left(\\frac{2\\pi{n}}{M-1}\\right)
+
+    Shape:
+        - Output: math:`(\text{kernel_size})`
+
+    Examples:
+        >>> get_hanning_kernel1d(4)
+        tensor([0.0000, 0.7500, 0.7500, 0.0000])
+    """
+    if not isinstance(kernel_size, int) or kernel_size <= 2:
+        raise TypeError(f"ksize must be an positive integer > 2. Got {kernel_size}")
+
+    x: torch.Tensor = torch.arange(kernel_size, device=device, dtype=dtype)
+    x = 0.5 - 0.5 * torch.cos(2.0 * math.pi * x / float(kernel_size - 1))
+    return x
+
+
+def get_hanning_kernel2d(kernel_size: Tuple[int, int],
+                         device=torch.device('cpu'),
+                         dtype=torch.float) -> torch.Tensor:
+    r"""Returns 2d Hanning kernel, used in signal processing and KCF tracker.
+
+    Args:
+        kernel_size: The size of the kernel for the filter. It should be positive.
+
+    Returns:
+        2D tensor with Hanning filter coefficients.
+            .. math::  w(n) = 0.5 - 0.5cos\\left(\\frac{2\\pi{n}}{M-1}\\right)
+
+    Shape:
+        - Output: math:`(\text{kernel_size[0], kernel_size[1]})`
+
+    """
+    if kernel_size[0] <= 2 or kernel_size[1] <= 2:
+        raise TypeError(f"ksize must be an tuple of positive integers > 2. Got {kernel_size}")
+    ky: torch.Tensor = get_hanning_kernel1d(kernel_size[0], device, dtype)[None].T
+    kx: torch.Tensor = get_hanning_kernel1d(kernel_size[1], device, dtype)[None]
+    kernel2d = ky @ kx
+    return kernel2d

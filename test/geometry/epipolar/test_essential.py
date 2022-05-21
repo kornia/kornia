@@ -3,6 +3,7 @@ import test_common as utils
 import torch
 from torch.autograd import gradcheck
 
+import kornia
 import kornia.geometry.epipolar as epi
 from kornia.testing import assert_close
 
@@ -89,8 +90,8 @@ class TestRelativeCameraMotion:
 
         t1 = torch.tensor([[[10.0], [0.0], [0.0]]]).type_as(R1)
 
-        R2 = epi.eye_like(3, R1)
-        t2 = epi.vec_like(3, t1)
+        R2 = kornia.eye_like(3, R1)
+        t2 = kornia.vec_like(3, t1)
 
         R_expected = R1.clone()
         t_expected = -t1
@@ -104,8 +105,8 @@ class TestRelativeCameraMotion:
 
         R2 = torch.tensor([[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
 
-        t1 = epi.vec_like(3, R1)
-        t2 = epi.vec_like(3, R2)
+        t1 = kornia.vec_like(3, R1)
+        t2 = kornia.vec_like(3, R2)
 
         R_expected = R2.clone()
         t_expected = t1
@@ -315,7 +316,7 @@ class TestMotionFromEssentialChooseSolution:
         R, t = epi.relative_camera_motion(scene['R1'], scene['t1'], scene['R2'], scene['t2'])
         t = torch.nn.functional.normalize(t, dim=1)
 
-        R_hat, t_hat, X_hat = epi.motion_from_essential_choose_solution(
+        R_hat, t_hat, _ = epi.motion_from_essential_choose_solution(
             E_mat, scene['K1'], scene['K2'], scene['x1'], scene['x2']
         )
 

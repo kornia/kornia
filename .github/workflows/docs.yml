@@ -21,9 +21,8 @@ jobs:
     - name: Install dependencies
       shell: bash -l {0}
       run: |
-        conda install make -c conda-forge
         pip install -r docs/requirements.txt
-        make install
+        pip install .[all]
     - name: Build Documentation
       shell: bash -l {0}
       run: make build-docs

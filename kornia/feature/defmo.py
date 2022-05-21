@@ -13,12 +13,12 @@ urls["defmo_rendering"] = "http://ptak.felk.cvut.cz/personal/rozumden/defmo_save
 
 
 def conv1x1(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv2d:
-    """1x1 convolution"""
+    """1x1 convolution."""
     return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
 
 
 def conv3x3(in_planes: int, out_planes: int, stride: int = 1, groups: int = 1, dilation: int = 1) -> nn.Conv2d:
-    """3x3 convolution with padding"""
+    """3x3 convolution with padding."""
     return nn.Conv2d(
         in_planes,
         out_planes,
@@ -260,8 +260,7 @@ class RenderingDeFMO(nn.Module):
 
 
 class DeFMO(nn.Module):
-    """
-    Module that disentangle a fast-moving object from the background and performs deblurring.
+    """Module that disentangle a fast-moving object from the background and performs deblurring.
 
     This is based on the original code from paper "DeFMO: Deblurring and Shape Recovery
         of Fast Moving Objects". See :cite:`DeFMO2021` for more details.
@@ -296,6 +295,7 @@ class DeFMO(nn.Module):
                 urls['defmo_rendering'], map_location=lambda storage, loc: storage
             )
             self.rendering.load_state_dict(pretrained_dict_ren, strict=True)
+        self.eval()
 
     def forward(self, input_data: torch.Tensor) -> torch.Tensor:
         latent = self.encoder(input_data)

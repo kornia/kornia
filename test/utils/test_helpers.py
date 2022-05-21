@@ -3,7 +3,14 @@ import torch
 
 from kornia.testing import assert_close
 from kornia.utils import _extract_device_dtype
-from kornia.utils.helpers import _torch_histc_cast, _torch_inverse_cast, _torch_solve_cast, _torch_svd_cast
+from kornia.utils.helpers import (
+    _torch_histc_cast,
+    _torch_inverse_cast,
+    _torch_solve_cast,
+    _torch_svd_cast,
+    safe_inverse_with_mask,
+    safe_solve_with_mask,
+)
 
 
 @pytest.mark.parametrize(
@@ -38,11 +45,11 @@ from kornia.utils.helpers import _torch_histc_cast, _torch_inverse_cast, _torch_
     ],
 )
 def test_extract_device_dtype(tensor_list, out_device, out_dtype, will_throw_error):
+    # TODO: include the warning in another way - possibly loggers.
     # Add GPU tests when GPU testing available
-    if torch.cuda.is_available():
-        import warnings
-
-        warnings.warn("Add GPU tests.")
+    # if torch.cuda.is_available():
+    #     import warnings
+    #     warnings.warn("Add GPU tests.")
 
     if will_throw_error:
         with pytest.raises(ValueError):
@@ -100,8 +107,52 @@ class TestSolveCast:
         A = torch.randn(2, 3, 1, 4, 4, device=device, dtype=dtype)
         B = torch.randn(2, 3, 1, 4, 6, device=device, dtype=dtype)
 
-        X, LU = _torch_solve_cast(B, A)
+        X, _ = _torch_solve_cast(B, A)
         error = torch.dist(B, A.matmul(X))
 
         tol_val: float = 1e-1 if dtype == torch.float16 else 1e-4
         assert_close(error, torch.zeros_like(error), atol=tol_val, rtol=tol_val)
+
+
+class TestSolveWithMask:
+    def test_smoke(self, device, dtype):
+        A = torch.randn(2, 3, 1, 4, 4, device=device, dtype=dtype)
+        B = torch.randn(2, 3, 1, 4, 6, device=device, dtype=dtype)
+
+        X, _, mask = safe_solve_with_mask(B, A)
+        X2, _ = _torch_solve_cast(B, A)
+        tol_val: float = 1e-1 if dtype == torch.float16 else 1e-4
+        if mask.sum() > 0:
+            assert_close(X[mask], X2[mask], atol=tol_val, rtol=tol_val)
+
+    @pytest.mark.skipif(
+        (int(torch.__version__.split('.')[0]) == 1) and (int(torch.__version__.split('.')[1]) < 10),
+        reason='<1.10.0 not supporting',
+    )
+    def test_all_bad(self, device, dtype):
+        A = torch.ones(10, 3, 3, device=device, dtype=dtype)
+        B = torch.ones(3, 10, device=device, dtype=dtype)
+
+        X, _, mask = safe_solve_with_mask(B, A)
+        assert torch.equal(mask, torch.zeros_like(mask))
+
+
+class TestInverseWithMask:
+    def test_smoke(self, device, dtype):
+        x = torch.tensor([[4.0, 7.0], [2.0, 6.0]], device=device, dtype=dtype)
+
+        y_expected = torch.tensor([[0.6, -0.7], [-0.2, 0.4]], device=device, dtype=dtype)
+
+        y, mask = safe_inverse_with_mask(x)
+
+        assert_close(y, y_expected)
+        assert torch.equal(mask, torch.ones_like(mask))
+
+    @pytest.mark.skipif(
+        (int(torch.__version__.split('.')[0]) == 1) and (int(torch.__version__.split('.')[1]) < 9),
+        reason='<1.9.0 not supporting',
+    )
+    def test_all_bad(self, device, dtype):
+        A = torch.ones(10, 3, 3, device=device, dtype=dtype)
+        X, mask = safe_inverse_with_mask(A)
+        assert torch.equal(mask, torch.zeros_like(mask))

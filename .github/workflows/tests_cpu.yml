@@ -2,22 +2,22 @@ name: tests-cpu
 
 on:
   push:
-    branches:
-      - master
+    branches: [master]
   pull_request:
+    branches: [master]
+    types: [open, reopened, synchronize, review_requested, ready_for_review]
   schedule:
     - cron: "0 4 * * *"
 
 jobs:
-  tests-cpu-os-versions-fast:
+  tests-cpu:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: [3.6, 3.7, 3.8]
-        pytorch-version: [1.9.0]
-
+        python-version: [3.6, 3.8, 3.9]
+        pytorch-version: [1.8.1, 1.9.1, 1.10.1]
     steps:
     - uses: actions/checkout@v2
     - name: Setup conda dependencies
@@ -28,45 +28,16 @@ jobs:
     - name: Install dependencies
       shell: bash -l {0}
       run: |
-        conda install curl make -c conda-forge
+        conda install curl -c conda-forge
         conda install pytorch=${{ matrix.pytorch-version }} cpuonly -c pytorch
-        pip install -r requirements-dev.txt
-        make install
+        pip install .[all]
     - name: Run Tests
       shell: bash -l {0}
-      run: pytest -v --device cpu --dtype float32,float64 --cov=kornia --cov-report xml ./test
+      run: pytest -v --device cpu --dtype float32,float64 --cov=kornia --cov-report xml ./test --flake8 --mypy
     - name: Upload coverage
       uses: codecov/codecov-action@v1
       with:
-        file: ./coverage.xml
-
-  tests-cpu-version-fast:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest]
-        python-version: [3.7]
-        pytorch-version: [1.6.0, 1.7.0, 1.7.1, 1.8.0, 1.9.0]
-
-    steps:
-    - uses: actions/checkout@v2
-    - name: Setup conda dependencies
-      uses: conda-incubator/setup-miniconda@v2
-      with:
-        auto-update-conda: true
-        python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
-      shell: bash -l {0}
-      run: |
-        conda install curl make -c conda-forge
-        conda install pytorch=${{ matrix.pytorch-version }} cpuonly -c pytorch
-        pip install -r requirements-dev.txt
-        make install
-    - name: Run Tests
-      shell: bash -l {0}
-      run: pytest -v --device cpu --dtype float32,float64 --cov=kornia --cov-report xml ./test
-    - name: Upload coverage
-      uses: codecov/codecov-action@v1
-      with:
-        file: ./coverage.xml
+        token: ${{ secrets.CODECOV_TOKEN }}
+        file: coverage.xml
+        flags: cpu,pytest, torch${{ matrix.pytorch-version }}
+        name: cpu-coverage

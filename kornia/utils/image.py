@@ -1,5 +1,5 @@
 from functools import wraps
-from typing import Callable, TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, List
 
 import torch
 import torch.nn as nn
@@ -20,6 +20,19 @@ def image_to_tensor(image: "np.ndarray", keepdim: bool = True) -> torch.Tensor:
     Returns:
         tensor of the form :math:`(B, C, H, W)` if keepdim is ``False``,
             :math:`(C, H, W)` otherwise.
+
+    Example:
+        >>> img = np.ones((3, 3))
+        >>> image_to_tensor(img).shape
+        torch.Size([1, 3, 3])
+
+        >>> img = np.ones((4, 4, 1))
+        >>> image_to_tensor(img).shape
+        torch.Size([1, 4, 4])
+
+        >>> img = np.ones((4, 4, 3))
+        >>> image_to_tensor(img, keepdim=False).shape
+        torch.Size([1, 3, 4, 4])
     """
     if len(image.shape) > 4 or len(image.shape) < 2:
         raise ValueError("Input size must be a two, three or four dimensional array")
@@ -41,6 +54,33 @@ def image_to_tensor(image: "np.ndarray", keepdim: bool = True) -> torch.Tensor:
         raise ValueError(f"Cannot process image with shape {input_shape}")
 
     return tensor.unsqueeze(0) if not keepdim else tensor
+
+
+def image_list_to_tensor(images: List["np.ndarray"]) -> torch.Tensor:
+    """Converts a list of numpy images to a PyTorch 4d tensor image.
+
+    Args:
+        images: list of images, each of the form :math:`(H, W, C)`.
+        Image shapes must be consistent
+
+    Returns:
+        tensor of the form :math:`(B, C, H, W)`.
+
+    Example:
+        >>> imgs = [np.ones((4, 4, 1)), np.zeros((4, 4, 1))]
+        >>> image_list_to_tensor(imgs).shape
+        torch.Size([2, 1, 4, 4])
+    """
+    if not images:
+        raise ValueError("Input list of numpy images is empty")
+    if len(images[0].shape) != 3:
+        raise ValueError("Input images must be three dimensional arrays")
+
+    list_of_tensors: List[torch.Tensor] = []
+    for image in images:
+        list_of_tensors.append(image_to_tensor(image))
+    tensor: torch.Tensor = torch.stack(list_of_tensors)
+    return tensor
 
 
 def _to_bchw(tensor: torch.Tensor) -> torch.Tensor:
@@ -108,10 +148,17 @@ def tensor_to_image(tensor: torch.Tensor, keepdim: bool = False) -> "np.ndarray"
         keepdim: If ``False`` squeeze the input image to match the shape
             :math:`(H, W, C)` or :math:`(H, W)`.
 
-
     Returns:
         image of the form :math:`(H, W)`, :math:`(H, W, C)` or :math:`(B, H, W, C)`.
 
+    Example:
+        >>> img = torch.ones(1, 3, 3)
+        >>> tensor_to_image(img).shape
+        (3, 3)
+
+        >>> img = torch.ones(3, 4, 4)
+        >>> tensor_to_image(img).shape
+        (4, 4, 3)
     """
     if not isinstance(tensor, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
@@ -161,10 +208,10 @@ class ImageToTensor(nn.Module):
 
 
 def perform_keep_shape_image(f: Callable) -> Callable:
-    """
-    A decorator that enable `f` to be applied to an image of arbitrary leading dimensions `(*, C, H, W)`.
-    It works by first viewing the image as `(B, C, H, W)`, applying the function and re-viewing the
-    image as original shape.
+    """A decorator that enable `f` to be applied to an image of arbitrary leading dimensions `(*, C, H, W)`.
+
+    It works by first viewing the image as `(B, C, H, W)`, applying the function and re-viewing the image as original
+    shape.
     """
 
     @wraps(f)
@@ -193,10 +240,10 @@ def perform_keep_shape_image(f: Callable) -> Callable:
 
 
 def perform_keep_shape_video(f: Callable) -> Callable:
-    """
-    A decorator that enable `f` to be applied to an image of arbitrary leading dimensions `(*, C, D, H, W)`.
-    It works by first viewing the image as `(B, C, D, H, W)`, applying the function and re-viewing the
-    image as original shape.
+    """A decorator that enable `f` to be applied to an image of arbitrary leading dimensions `(*, C, D, H, W)`.
+
+    It works by first viewing the image as `(B, C, D, H, W)`, applying the function and re-viewing the image as original
+    shape.
     """
 
     @wraps(f)

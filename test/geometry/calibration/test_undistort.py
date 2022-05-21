@@ -2,11 +2,11 @@ import pytest
 import torch
 from torch.autograd import gradcheck
 
-from kornia.geometry.calibration.undistort import undistort_points
+from kornia.geometry.calibration.undistort import undistort_image, undistort_points
 from kornia.testing import assert_close
 
 
-class TestUndistortion:
+class TestUndistortPoints:
     def test_smoke(self, device, dtype):
         points = torch.rand(1, 2, device=device, dtype=dtype)
         K = torch.rand(3, 3, device=device, dtype=dtype)
@@ -14,10 +14,19 @@ class TestUndistortion:
         pointsu = undistort_points(points, K, distCoeff)
         assert points.shape == pointsu.shape
 
+        new_K = torch.rand(3, 3, device=device, dtype=dtype)
+        pointsu = undistort_points(points, K, distCoeff, new_K)
+        assert points.shape == pointsu.shape
+
+    def test_smoke_batch(self, device, dtype):
         points = torch.rand(1, 1, 2, device=device, dtype=dtype)
         K = torch.rand(1, 3, 3, device=device, dtype=dtype)
         distCoeff = torch.rand(1, 4, device=device, dtype=dtype)
         pointsu = undistort_points(points, K, distCoeff)
+        assert points.shape == pointsu.shape
+
+        new_K = torch.rand(1, 3, 3, device=device, dtype=dtype)
+        pointsu = undistort_points(points, K, distCoeff, new_K)
         assert points.shape == pointsu.shape
 
     @pytest.mark.parametrize(
@@ -31,7 +40,11 @@ class TestUndistortion:
         distCoeff = torch.rand(B, Ndist, device=device, dtype=dtype)
 
         pointsu = undistort_points(points, K, distCoeff)
-        assert points.shape == (B, N, 2)
+        assert pointsu.shape == (B, N, 2)
+
+        new_K = torch.rand(B, 3, 3, device=device, dtype=dtype)
+        pointsu = undistort_points(points, K, distCoeff, new_K)
+        assert pointsu.shape == (B, N, 2)
 
     def test_opencv_five_coeff(self, device, dtype):
         # Test using 5 distortion coefficients
@@ -55,6 +68,20 @@ class TestUndistortion:
             [[1030.5992, 790.65533], [1027.3059, 718.10020], [1024.0700, 645.90600]], device=device, dtype=dtype
         )
         ptsu = undistort_points(pts, K, dist)
+        assert_close(ptsu, ptsu_expected, rtol=1e-4, atol=1e-4)
+
+        new_K = K * 2
+        new_K[2, 2] = 1
+        # Expected output generated with OpenCV:
+        # import cv2
+        # ptsu_expected = cv2.undistortPoints(pts.numpy().reshape(-1,1,2), K.numpy(),
+        #                                    dist.numpy(), None, None, new_K.numpy()).reshape(-1,2)
+        print(ptsu_expected)
+        ptsu_expected = 2 * torch.tensor(
+            [[1030.5992, 790.65533], [1027.3059, 718.10020], [1024.0700, 645.90600]], device=device, dtype=dtype
+        )
+        print(ptsu_expected)
+        ptsu = undistort_points(pts, K, dist, new_K)
         assert_close(ptsu, ptsu_expected, rtol=1e-4, atol=1e-4)
 
     def test_opencv_all_coeff(self, device, dtype):
@@ -98,6 +125,20 @@ class TestUndistortion:
             [[1030.8245, 786.3807], [1027.5505, 715.0732], [1024.2753, 644.0319]], device=device, dtype=dtype
         )
         ptsu = undistort_points(pts, K, dist)
+        assert_close(ptsu, ptsu_expected, rtol=1e-4, atol=1e-4)
+
+        new_K = K * 2
+        new_K[2, 2] = 1
+        # Expected output generated with OpenCV:
+        # import cv2
+        # ptsu_expected = cv2.undistortPoints(pts.numpy().reshape(-1,1,2), K.numpy(),
+        #                                    dist.numpy(), None, None, new_K.numpy()).reshape(-1,2)
+        print(ptsu_expected)
+        ptsu_expected = 2 * torch.tensor(
+            [[1030.8245, 786.3807], [1027.5505, 715.0732], [1024.2753, 644.0319]], device=device, dtype=dtype
+        )
+        print(ptsu_expected)
+        ptsu = undistort_points(pts, K, dist, new_K)
         assert_close(ptsu, ptsu_expected, rtol=1e-4, atol=1e-4)
 
     def test_opencv_stereo(self, device, dtype):
@@ -188,6 +229,126 @@ class TestUndistortion:
     def test_gradcheck(self, device):
         points = torch.rand(1, 8, 2, device=device, dtype=torch.float64, requires_grad=True)
         K = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
+        new_K = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
         distCoeff = torch.rand(1, 4, device=device, dtype=torch.float64)
 
-        assert gradcheck(undistort_points, (points, K, distCoeff), raise_exception=True)
+        assert gradcheck(undistort_points, (points, K, distCoeff, new_K), raise_exception=True)
+
+    def test_jit(self, device, dtype):
+        points = torch.rand(1, 1, 2, device=device, dtype=dtype)
+        K = torch.rand(1, 3, 3, device=device, dtype=dtype)
+        new_K = torch.rand(1, 3, 3, device=device, dtype=dtype)
+        distCoeff = torch.rand(1, 4, device=device, dtype=dtype)
+        inputs = (points, K, distCoeff, new_K)
+
+        op = undistort_points
+        op_jit = torch.jit.script(op)
+        assert_close(op(*inputs), op_jit(*inputs))
+
+
+class TestUndistortImage:
+    def test_shape(self, device, dtype):
+        im = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
+        K = torch.rand(3, 3, device=device, dtype=dtype)
+        distCoeff = torch.rand(4, device=device, dtype=dtype)
+
+        imu = undistort_image(im, K, distCoeff)
+        assert imu.shape == (1, 3, 5, 5)
+
+    def test_shape_minimum_dims(self, device, dtype):
+        im = torch.rand(3, 5, 5, device=device, dtype=dtype)
+        K = torch.rand(3, 3, device=device, dtype=dtype)
+        distCoeff = torch.rand(4, device=device, dtype=dtype)
+
+        imu = undistort_image(im, K, distCoeff)
+        assert imu.shape == (3, 5, 5)
+
+    def test_shape_extra_dims(self, device, dtype):
+        im = torch.rand(1, 1, 3, 5, 5, device=device, dtype=dtype).tile(3, 2, 1, 1, 1)
+        K = torch.rand(1, 1, 3, 3, device=device, dtype=dtype).tile(3, 2, 1, 1)
+        distCoeff = torch.rand(1, 1, 4, device=device, dtype=dtype).tile(3, 2, 1)
+
+        imu = undistort_image(im, K, distCoeff)
+        assert imu.shape == (3, 2, 3, 5, 5)
+        torch.testing.assert_allclose(imu[0], imu[1])
+
+    def test_exception(self, device, dtype):
+        with pytest.raises(ValueError):
+            im = torch.rand(5, 5, device=device, dtype=dtype)
+            K = torch.rand(3, 3, device=device, dtype=dtype)
+            distCoeff = torch.rand(4, device=device, dtype=dtype)
+            undistort_image(im, K, distCoeff)
+
+        with pytest.raises(ValueError):
+            im = torch.rand(3, 5, 5, device=device, dtype=dtype)
+            K = torch.rand(4, 4, device=device, dtype=dtype)
+            distCoeff = torch.rand(4, device=device, dtype=dtype)
+            undistort_image(im, K, distCoeff)
+
+        with pytest.raises(ValueError):
+            im = torch.rand(3, 5, 5, device=device, dtype=dtype)
+            K = torch.rand(3, 3, device=device, dtype=dtype)
+            distCoeff = torch.rand(6, device=device, dtype=dtype)
+            undistort_image(im, K, distCoeff)
+
+        with pytest.raises(ValueError):
+            im = torch.randint(0, 256, (3, 5, 5), device=device, dtype=torch.uint8)
+            K = torch.rand(3, 3, device=device, dtype=dtype)
+            distCoeff = torch.rand(4, device=device, dtype=dtype)
+            undistort_image(im, K, distCoeff)
+
+        with pytest.raises(ValueError):
+            im = torch.rand(1, 1, 3, 5, 5, device=device, dtype=dtype)
+            K = torch.rand(1, 3, 3, device=device, dtype=dtype)
+            distCoeff = torch.rand(1, 4, device=device, dtype=dtype)
+            undistort_image(im, K, distCoeff)
+
+    def test_opencv(self, device, dtype):
+        im = torch.tensor(
+            [
+                [
+                    [
+                        [116, 75, 230, 5, 32],
+                        [9, 182, 97, 213, 3],
+                        [91, 10, 33, 141, 230],
+                        [229, 63, 221, 244, 61],
+                        [19, 137, 23, 59, 227],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        K = torch.tensor([[2, 0, 2], [0, 2, 2], [0, 0, 1]], device=device, dtype=dtype)
+
+        dist = torch.tensor([0.2290, 0.9565, 0.0083, 0.0475], device=device, dtype=dtype)
+
+        # Expected output generated with OpenCV:
+        # import cv2
+        # imu_expected = cv2.undistort(np.uint8(im[0,0].numpy()), K.numpy(), dist.numpy())
+        imu_expected = torch.tensor(
+            [[[[0, 0, 0, 0, 0], [0, 124, 112, 82, 0], [0, 13, 33, 158, 0], [0, 108, 197, 150, 0], [0, 0, 0, 0, 0]]]],
+            device=device,
+            dtype=dtype,
+        )
+
+        imu = undistort_image(im / 255.0, K, dist)
+        assert_close(imu, imu_expected / 255.0, rtol=1e-2, atol=1e-2)
+
+    def test_gradcheck(self, device):
+        im = torch.rand(1, 1, 15, 15, device=device, dtype=torch.float64, requires_grad=True)
+        K = torch.rand(3, 3, device=device, dtype=torch.float64)
+        distCoeff = torch.rand(4, device=device, dtype=torch.float64)
+
+        assert gradcheck(undistort_image, (im, K, distCoeff), raise_exception=True)
+
+    def test_jit(self, device, dtype):
+        im = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
+        K = torch.rand(3, 3, device=device, dtype=dtype)
+        distCoeff = torch.rand(4, device=device, dtype=dtype)
+        inputs = (im, K, distCoeff)
+
+        op = undistort_image
+        op_jit = torch.jit.script(op)
+        assert_close(op(*inputs), op_jit(*inputs))

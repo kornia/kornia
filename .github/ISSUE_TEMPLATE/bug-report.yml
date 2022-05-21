@@ -1,0 +1,68 @@
+name: 🐛 Bug report
+description: Create a report to help us improve
+labels: bug, help wanted
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report!
+
+  - type: textarea
+    id: describe-bug
+    attributes:
+      label: Describe the bug
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction-steps
+    attributes:
+      label: Reproduction steps
+      description: Steps to reproduce the behavior
+      value: |
+        1.
+        2.
+        3.
+        ...
+      render: bash
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected behavior
+      description: A clear and concise description of what you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Please copy and paste the output from our collection script
+      value: |
+        ```
+        wget https://raw.githubusercontent.com/pytorch/pytorch/master/torch/utils/collect_env.py
+        # For security purposes, please check the contents of collect_env.py before running it.
+        python collect_env.py
+        ```
+        - PyTorch Version (e.g., 1.0):
+        - OS (e.g., Linux):
+        - How you installed PyTorch (`conda`, `pip`, source):
+        - Build command you used (if compiling from source):
+        - Python version:
+        - CUDA/cuDNN version:
+        - GPU models and configuration:
+        - Any other relevant information:
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add any other context about the problem here.

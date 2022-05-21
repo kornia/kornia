@@ -10,9 +10,42 @@ from kornia.geometry.homography import (
     find_homography_dlt,
     find_homography_dlt_iterated,
     oneway_transfer_error,
+    sample_is_valid_for_homography,
     symmetric_transfer_error,
 )
 from kornia.testing import assert_close
+
+
+class TestSampleValidation:
+    def test_good(self, device, dtype):
+        pts1 = torch.tensor([[0.0, 0.0],
+                             [0.0, 1.0],
+                             [1.0, 1.0],
+                             [1.0, 0.0]], device=device, dtype=dtype)[None]
+        mask = sample_is_valid_for_homography(pts1, pts1)
+        expected = torch.tensor([True], device=device, dtype=torch.bool)
+        assert torch.equal(mask, expected)
+
+    def test_bad(self, device, dtype):
+        pts1 = torch.tensor([[0.0, 0.0],
+                             [1.0, 0.0],
+                             [0.0, 1.0],
+                             [1.0, 1.0]], device=device, dtype=dtype)[None]
+
+        pts2 = torch.tensor([[0.0, 0.0],
+                             [0.0, 1.0],
+                             [1.0, 0.0],
+                             [1.0, 1.0]], device=device, dtype=dtype)[None]
+        mask = sample_is_valid_for_homography(pts1, pts2)
+        expected = torch.tensor([False], device=device, dtype=torch.bool)
+        assert torch.equal(mask, expected)
+
+    def test_batch(self, device, dtype):
+        batch_size = 5
+        pts1 = torch.rand(batch_size, 4, 2, device=device, dtype=dtype)
+        pts2 = torch.rand(batch_size, 4, 2, device=device, dtype=dtype)
+        mask = sample_is_valid_for_homography(pts1, pts2)
+        assert (mask.shape == torch.Size([batch_size]))
 
 
 class TestOneWayError:
@@ -83,6 +116,14 @@ class TestFindHomographyDLT:
         H = find_homography_dlt(points1, points2, weights)
         assert H.shape == (1, 3, 3)
 
+    def test_nocrash(self, device, dtype):
+        points1 = torch.rand(1, 4, 2, device=device, dtype=dtype)
+        points2 = torch.rand(1, 4, 2, device=device, dtype=dtype)
+        weights = torch.ones(1, 4, device=device, dtype=dtype)
+        points1[0, 0, 0] = float('nan')
+        H = find_homography_dlt(points1, points2, weights)
+        assert H.shape == (1, 3, 3)
+
     @pytest.mark.parametrize("batch_size, num_points", [(1, 4), (2, 5), (3, 6)])
     def test_shape(self, batch_size, num_points, device, dtype):
         B, N = batch_size, num_points
@@ -119,13 +160,13 @@ class TestFindHomographyDLT:
         H = H * 0.3 * torch.rand_like(H)
         H = H / H[:, 2:3, 2:3]
 
-        points_dst = kornia.transform_points(H, points_src)
+        points_dst = kornia.geometry.transform_points(H, points_src)
         weights = torch.ones(batch_size, 10, device=device, dtype=dtype)
 
         # compute transform from source to target
         dst_homo_src = find_homography_dlt(points_src, points_dst, weights)
 
-        assert_close(kornia.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-3, atol=1e-4)
+        assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-3, atol=1e-4)
 
     @pytest.mark.grad
     @pytest.mark.skipif(torch.__version__ < '1.7', reason="pytorch bug of incopatible types: #33546 fixed in v1.7")
@@ -193,13 +234,13 @@ class TestFindHomographyDLTIter:
         H = H * 0.3 * torch.rand_like(H)
         H = H / H[:, 2:3, 2:3]
 
-        points_dst = kornia.transform_points(H, points_src)
+        points_dst = kornia.geometry.transform_points(H, points_src)
         weights = torch.ones(batch_size, 10, device=device, dtype=dtype)
 
         # compute transform from source to target
         dst_homo_src = find_homography_dlt_iterated(points_src, points_dst, weights, 10)
 
-        assert_close(kornia.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-3, atol=1e-4)
+        assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-3, atol=1e-4)
 
     @pytest.mark.grad
     @pytest.mark.skipif(torch.__version__ < '1.7', reason="pytorch bug of incopatible types: #33546 fixed in v1.7")
@@ -256,7 +297,7 @@ class TestFindHomographyDLTIter:
         H = H / H[:, 2:3, 2:3]
 
         points_src = 100.0 * torch.rand(batch_size, 20, 2, device=device, dtype=dtype)
-        points_dst = kornia.transform_points(H, points_src)
+        points_dst = kornia.geometry.transform_points(H, points_src)
 
         # making last point an outlier
         points_dst[:, -1, :] += 20
@@ -267,5 +308,5 @@ class TestFindHomographyDLTIter:
         dst_homo_src = find_homography_dlt_iterated(points_src, points_dst, weights, 0.5, 10)
 
         assert_close(
-            kornia.transform_points(dst_homo_src, points_src[:, :-1]), points_dst[:, :-1], rtol=1e-3, atol=1e-3
+            kornia.geometry.transform_points(dst_homo_src, points_src[:, :-1]), points_dst[:, :-1], rtol=1e-3, atol=1e-3
         )

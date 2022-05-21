@@ -38,16 +38,16 @@ or
     \end{bmatrix}
 
 where:
-    * :math:`M'` is a 3D point in space with coordinates :math:`[X,Y,Z]^T` expressed in a Euclidean coordinate system.
+    * :math:`M'` is a 3D point in space with coordinates :math:`[X,Y,Z]^T` expressed in an Euclidean coordinate frame known as the *world coordinate system*.
     * :math:`m'` is the projection of the 3D point :math:`M'` onto the *image plane* with coordinates :math:`[u,v]^T` expressed in pixel units.
-    * :math:`K` is the *camera calibration matrix*, also referred as the intrinsics parameters matrix.
+    * :math:`K` is the *camera calibration matrix*, also referred as the intrinsic matrix.
     * :math:`C` is the *principal point offset* with coordinates :math:`[u_0, v_0]^T` at the origin in the image plane.
     * :math:`fx, fy` are the focal lengths expressed in pixel units.
 
-The camera rotation and translation are expressed in terms of Euclidean coordinate frame, also known as the *world coordinates system*. This terms are usually expressed by the joint rotation-translation matrix :math:`[R|t]`, or also called as the extrinsics parameters matrix. It is used to describe the camera pose around a static scene and translates the coordinates of a 3D point :math:`(X,Y,Z)` to a coordinate system respect to the camera.
+The camera rotation and translation are expressed in terms of an Euclidean coordinate frame known as the *world coordinate system*. These terms are usually expressed by the joint rotation-translation matrix :math:`[R|t]` which is also known as the extrinsic matrix. It is used to describe the camera pose around a static scene and transforms the coordinates of a 3D point :math:`(X,Y,Z)` from the *world coordinate system* to the *camera coordinate system*.
 
-The :class:`PinholeCamera` expects the *intrinsics parameters matrix* and the *extrensics parameters matrix*
-to  be of shape `(B, 4, 4)` such that each *intrinsics parameters matrix* has the following format:
+The :class:`PinholeCamera` expects the *intrinsic matrices* and the *extrinsic matrices*
+to be of shape `(B, 4, 4)` such that each *intrinsic matrix* has the following format:
 
 .. math::
     \begin{bmatrix}
@@ -57,7 +57,7 @@ to  be of shape `(B, 4, 4)` such that each *intrinsics parameters matrix* has th
     0 & 0 & 0 & 1
     \end{bmatrix}
 
-And each *extrensics parameters matrix* has the following format:
+And each *extrinsic matrix* has the following format:
 
 .. math::
     \begin{bmatrix}

@@ -3,7 +3,20 @@ from typing import Optional, Tuple
 
 import torch
 
-from kornia.geometry.epipolar import numeric, projection, triangulation
+from kornia.utils import eye_like, vec_like
+
+from .numeric import cross_product_matrix
+from .projection import depth_from_point, projection_from_KRt
+from .triangulation import triangulate_points
+
+__all__ = [
+    "essential_from_fundamental",
+    "decompose_essential_matrix",
+    "essential_from_Rt",
+    "motion_from_essential",
+    "motion_from_essential_choose_solution",
+    "relative_camera_motion",
+]
 
 
 def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.Tensor) -> torch.Tensor:
@@ -50,7 +63,7 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
         raise AssertionError(E_mat.shape)
 
     # decompose matrix by its singular values
-    U, S, V = torch.svd(E_mat)
+    U, _, V = torch.svd(E_mat)
     Vt = V.transpose(-2, -1)
 
     mask = torch.ones_like(E_mat)
@@ -62,7 +75,7 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
     U = torch.where((torch.det(U) < 0.0)[..., None, None], U * mask, U)
     Vt = torch.where((torch.det(Vt) < 0.0)[..., None, None], Vt * maskt, Vt)
 
-    W = numeric.cross_product_matrix(torch.tensor([[0.0, 0.0, 1.0]]).type_as(E_mat))
+    W = cross_product_matrix(torch.tensor([[0.0, 0.0, 1.0]]).type_as(E_mat))
     W[..., 2, 2] += 1.0
 
     # reconstruct rotations and retrieve translation vector
@@ -104,7 +117,7 @@ def essential_from_Rt(R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: 
     R, t = relative_camera_motion(R1, t1, R2, t2)
 
     # get the cross product from relative translation vector
-    Tx = numeric.cross_product_matrix(t[..., 0])
+    Tx = cross_product_matrix(t[..., 0])
 
     return Tx @ R
 
@@ -123,7 +136,7 @@ def motion_from_essential(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tens
         The tuple is as following :math:`[(*, 4, 3, 3), (*, 4, 3, 1)]`.
 
     """
-    if not (len(E_mat.shape) >= 2 and E_mat.shape[-2:]):
+    if not (len(E_mat.shape) >= 2 and E_mat.shape[-2:] == (3, 3)):
         raise AssertionError(E_mat.shape)
 
     # decompose the essential matrix by its possible poses
@@ -169,7 +182,7 @@ def motion_from_essential_choose_solution(
         The tuple is as following :math:`[(*, 3, 3), (*, 3, 1), (*, N, 3)]`.
 
     """
-    if not (len(E_mat.shape) >= 2 and E_mat.shape[-2:]):
+    if not (len(E_mat.shape) >= 2 and E_mat.shape[-2:] == (3, 3)):
         raise AssertionError(E_mat.shape)
     if not (len(K1.shape) >= 2 and K1.shape[-2:] == (3, 3)):
         raise AssertionError(K1.shape)
@@ -204,29 +217,29 @@ def motion_from_essential_choose_solution(
     Rs, ts = motion_from_essential(E_mat)
 
     # set reference view pose and compute projection matrix
-    R1 = numeric.eye_like(3, E_mat)  # Bx3x3
-    t1 = numeric.vec_like(3, E_mat)  # Bx3x1
+    R1 = eye_like(3, E_mat)  # Bx3x3
+    t1 = vec_like(3, E_mat)  # Bx3x1
 
     # compute the projection matrices for first camera
     R1 = R1[:, None].expand(-1, 4, -1, -1)
     t1 = t1[:, None].expand(-1, 4, -1, -1)
     K1 = K1[:, None].expand(-1, 4, -1, -1)
-    P1 = projection.projection_from_KRt(K1, R1, t1)  # 1x4x4x4
+    P1 = projection_from_KRt(K1, R1, t1)  # 1x4x4x4
 
     # compute the projection matrices for second camera
     R2 = Rs
     t2 = ts
     K2 = K2[:, None].expand(-1, 4, -1, -1)
-    P2 = projection.projection_from_KRt(K2, R2, t2)  # Bx4x4x4
+    P2 = projection_from_KRt(K2, R2, t2)  # Bx4x4x4
 
     # triangulate the points
     x1 = x1[:, None].expand(-1, 4, -1, -1)
     x2 = x2[:, None].expand(-1, 4, -1, -1)
-    X = triangulation.triangulate_points(P1, P2, x1, x2)  # Bx4xNx3
+    X = triangulate_points(P1, P2, x1, x2)  # Bx4xNx3
 
     # project points and compute their depth values
-    d1 = projection.depth(R1, t1, X)
-    d2 = projection.depth(R2, t2, X)
+    d1 = depth_from_point(R1, t1, X)
+    d2 = depth_from_point(R2, t2, X)
 
     # verify the point values that have a positive depth value
     depth_mask = (d1 > 0.0) & (d2 > 0.0)
@@ -251,7 +264,7 @@ def motion_from_essential_choose_solution(
 def relative_camera_motion(
     R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: torch.Tensor
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    r"""Computes the relative camera motion between two cameras.
+    r"""Compute the relative camera motion between two cameras.
 
     Given the motion parameters of two cameras, computes the motion parameters of the second
     one assuming the first one to be at the origin. If :math:`T1` and :math:`T2` are the camera motions,

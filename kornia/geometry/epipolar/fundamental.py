@@ -4,7 +4,8 @@ from typing import Tuple
 
 import torch
 
-import kornia
+from kornia.geometry.conversions import convert_points_to_homogeneous
+from kornia.geometry.linalg import transform_points
 
 
 def normalize_points(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -33,7 +34,7 @@ def normalize_points(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Ten
 
     x_mean = torch.mean(points, dim=1, keepdim=True)  # Bx1x2
 
-    scale = (points - x_mean).norm(dim=-1).mean(dim=-1)  # B
+    scale = (points - x_mean).norm(dim=-1, p=2).mean(dim=-1)  # B
     scale = torch.sqrt(torch.tensor(2.0)) / (scale + eps)  # B
 
     ones, zeros = torch.ones_like(scale), torch.zeros_like(scale)
@@ -43,13 +44,13 @@ def normalize_points(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Ten
     )  # Bx9
 
     transform = transform.view(-1, 3, 3)  # Bx3x3
-    points_norm = kornia.transform_points(transform, points)  # BxNx2
+    points_norm = transform_points(transform, points)  # BxNx2
 
     return (points_norm, transform)
 
 
 def normalize_transformation(M: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
-    r"""Normalizes a given transformation matrix.
+    r"""Normalize a given transformation matrix.
 
     The function trakes the transformation matrix and normalize so that the value in
     the last row and column is one.
@@ -69,7 +70,7 @@ def normalize_transformation(M: torch.Tensor, eps: float = 1e-8) -> torch.Tensor
 
 
 def find_fundamental(points1: torch.Tensor, points2: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
-    r"""Computes the fundamental matrix using the DLT formulation.
+    r"""Compute the fundamental matrix using the DLT formulation.
 
     The linear system is solved by using the Weighted Least Squares Solution for the 8 Points algorithm.
 
@@ -111,7 +112,9 @@ def find_fundamental(points1: torch.Tensor, points2: torch.Tensor, weights: torc
 
     # reconstruct and force the matrix to have rank2
     U, S, V = torch.svd(F_mat)
-    rank_mask = torch.tensor([1.0, 1.0, 0]).to(F_mat.device)
+    rank_mask = torch.tensor([1.0, 1.0, 0.0],
+                             device=F_mat.device,
+                             dtype=F_mat.dtype)
 
     F_projected = U @ (torch.diag_embed(S * rank_mask) @ V.transpose(-2, -1))
     F_est = transform2.transpose(-2, -1) @ (F_projected @ transform1)
@@ -120,34 +123,35 @@ def find_fundamental(points1: torch.Tensor, points2: torch.Tensor, weights: torc
 
 
 def compute_correspond_epilines(points: torch.Tensor, F_mat: torch.Tensor) -> torch.Tensor:
-    r"""Computes the corresponding epipolar line for a given set of points.
+    r"""Compute the corresponding epipolar line for a given set of points.
 
     Args:
-        points: tensor containing the set of points to project in the shape of :math:`(B, N, 2)`.
-        F_mat: the fundamental to use for projection the points in the shape of :math:`(B, 3, 3)`.
+        points: tensor containing the set of points to project in the shape of :math:`(*, N, 2)`.
+        F_mat: the fundamental to use for projection the points in the shape of :math:`(*, 3, 3)`.
 
     Returns:
-        a tensor with shape :math:`(B, N, 3)` containing a vector of the epipolar
+        a tensor with shape :math:`(*, N, 3)` containing a vector of the epipolar
         lines corresponding to the points to the other image. Each line is described as
         :math:`ax + by + c = 0` and encoding the vectors as :math:`(a, b, c)`.
 
     """
-    if not (len(points.shape) == 3 and points.shape[2] == 2):
+    if not (len(points.shape) >= 2 and points.shape[-1] == 2):
         raise AssertionError(points.shape)
-    if not (len(F_mat.shape) == 3 and F_mat.shape[-2:] == (3, 3)):
+    if not (len(F_mat.shape) >= 2 and F_mat.shape[-2:] == (3, 3)):
         raise AssertionError(F_mat.shape)
 
-    points_h: torch.Tensor = kornia.convert_points_to_homogeneous(points)
+    points_h: torch.Tensor = convert_points_to_homogeneous(points)
 
     # project points and retrieve lines components
-    a, b, c = torch.chunk(F_mat @ points_h.permute(0, 2, 1), dim=1, chunks=3)
+    points_h = torch.transpose(points_h, dim0=-2, dim1=-1)
+    a, b, c = torch.chunk(F_mat @ points_h, dim=-2, chunks=3)
 
     # compute normal and compose equation line
     nu: torch.Tensor = a * a + b * b
     nu = torch.where(nu > 0.0, 1.0 / torch.sqrt(nu), torch.ones_like(nu))
 
-    line = torch.cat([a * nu, b * nu, c * nu], dim=1)  # Bx3xN
-    return line.permute(0, 2, 1)  # BxNx3
+    line = torch.cat([a * nu, b * nu, c * nu], dim=-2)  # *x3xN
+    return torch.transpose(line, dim0=-2, dim1=-1)  # *xNx3
 
 
 def fundamental_from_essential(E_mat: torch.Tensor, K1: torch.Tensor, K2: torch.Tensor) -> torch.Tensor:

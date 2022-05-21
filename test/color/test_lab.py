@@ -4,7 +4,7 @@ from torch.autograd import gradcheck
 
 import kornia
 import kornia.testing as utils
-from kornia.testing import assert_close, BaseTester
+from kornia.testing import BaseTester, assert_close
 
 
 class TestRgbToLab(BaseTester):
@@ -240,7 +240,7 @@ class TestLabToRgb(BaseTester):
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        img = kornia.rgb_to_lab(img)
+        img = kornia.color.rgb_to_lab(img)
         assert gradcheck(kornia.color.lab_to_rgb, (img,), raise_exception=True)
 
     @pytest.mark.jit

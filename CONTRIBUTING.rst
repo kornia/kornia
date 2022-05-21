@@ -11,7 +11,7 @@ Everyone is welcomed to get involved with the project. There are different ways 
    - In case you are a developer and want to learn more about the PyTorch ecosystem, we suggest you to join the PyTorch slack. You can apply using this form: `https://bit.ly/ptslack <https://bit.ly/ptslack>`_
 
 
-2. Report bugs through `GitHub issues <https://github.com/arraiyopensource/kornia/issues>`_:
+2. Report bugs through `GitHub issues <https://github.com/kornia/kornia/issues>`_:
 
    - Do a quick search first to see whether others reported a similar issue.
    - In case you find an unreported bug, please open a new ticket.
@@ -55,7 +55,7 @@ In order to start to develop, please follow the steps below:
 
 .. code:: bash
 
-    git clone https://github.com/arraiyopensource/kornia.git
+    git clone https://github.com/kornia/kornia.git
     cd kornia
 
 3. Create a new branch with a meaningful name reflecting your contribution. See an example:
@@ -186,7 +186,7 @@ Pull Request
 ============
 
 Once you finish implementing a feature or bug-fix, please send a Pull Request to
-https://github.com/arraiyopensource/kornia through the website.
+https://github.com/kornia/kornia through the website.
 
 If you are not familiar with creating a Pull Request, here are some guides:
 

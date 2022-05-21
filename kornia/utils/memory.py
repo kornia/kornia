@@ -1,7 +1,5 @@
 import torch
 
-import kornia
-
 
 def batched_forward(
     model: torch.nn.Module, data: torch.Tensor, device: torch.device, batch_size: int = 128, **kwargs

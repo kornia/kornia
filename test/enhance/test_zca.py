@@ -58,11 +58,7 @@ class TestZCA:
 
     @pytest.mark.parametrize("input_shape,eps", [((15, 2, 2, 2), 1e-6), ((10, 4), 0.1), ((20, 3, 2, 2), 1e-3)])
     def test_identity(self, input_shape, eps, device, dtype):
-        """
-
-        Assert that data can be recovered by the inverse transform
-
-        """
+        """Assert that data can be recovered by the inverse transform."""
 
         data = torch.randn(*input_shape, device=device, dtype=dtype)
 
@@ -76,11 +72,7 @@ class TestZCA:
         assert_close(data, data_hat, rtol=tol_val, atol=tol_val)
 
     def test_grad_zca_individual_transforms(self, device, dtype):
-        """
-
-        Checks if the gradients of the transforms are correct w.r.t to the input data
-
-        """
+        """Check if the gradients of the transforms are correct w.r.t to the input data."""
 
         data = torch.tensor([[2, 0], [0, 1], [-2, 0], [0, -1]], device=device, dtype=dtype)
 
@@ -158,7 +150,7 @@ class TestZCA:
 
         expected = torch.sqrt(unbiased_val * torch.abs(data)) * torch.sign(data)
 
-        actual = kornia.zca_whiten(data, unbiased=unbiased)
+        actual = kornia.enhance.zca_whiten(data, unbiased=unbiased)
 
         tol_val: float = utils._get_precision(device, dtype)
         assert_close(actual, expected, atol=tol_val, rtol=tol_val)

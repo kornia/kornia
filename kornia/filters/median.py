@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.filters.kernels import get_binary_kernel2d
+from .kernels import get_binary_kernel2d
 
 
 def _compute_zero_padding(kernel_size: Tuple[int, int]) -> Tuple[int, int]:
@@ -14,7 +14,7 @@ def _compute_zero_padding(kernel_size: Tuple[int, int]) -> Tuple[int, int]:
 
 
 def median_blur(input: torch.Tensor, kernel_size: Tuple[int, int]) -> torch.Tensor:
-    r"""Blurs an image using the median filter.
+    r"""Blur an image using the median filter.
 
     .. image:: _static/img/median_blur.png
 
@@ -58,7 +58,7 @@ def median_blur(input: torch.Tensor, kernel_size: Tuple[int, int]) -> torch.Tens
 
 
 class MedianBlur(nn.Module):
-    r"""Blurs an image using the median filter.
+    r"""Blur an image using the median filter.
 
     Args:
         kernel_size: the blurring kernel size.

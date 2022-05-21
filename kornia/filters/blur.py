@@ -3,14 +3,14 @@ from typing import Tuple
 import torch
 import torch.nn as nn
 
-import kornia
-from kornia.filters.kernels import get_box_kernel2d, normalize_kernel2d
+from .filter import filter2d
+from .kernels import get_box_kernel2d, normalize_kernel2d
 
 
 def box_blur(
     input: torch.Tensor, kernel_size: Tuple[int, int], border_type: str = 'reflect', normalized: bool = True
 ) -> torch.Tensor:
-    r"""Blurs an image using the box filter.
+    r"""Blur an image using the box filter.
 
     .. image:: _static/img/box_blur.png
 
@@ -48,11 +48,11 @@ def box_blur(
     kernel: torch.Tensor = get_box_kernel2d(kernel_size)
     if normalized:
         kernel = normalize_kernel2d(kernel)
-    return kornia.filter2d(input, kernel, border_type)
+    return filter2d(input, kernel, border_type)
 
 
 class BoxBlur(nn.Module):
-    r"""Blurs an image using the box filter.
+    r"""Blur an image using the box filter.
 
     The function smooths an image using the kernel:
 

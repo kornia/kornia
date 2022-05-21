@@ -20,7 +20,8 @@ class TestIntegrationSoftArgmax2d:
     width = 320
 
     def generate_sample(self, base_target, std_val=1.0):
-        """Generates a random sample around the given point.
+        """Generate a random sample around the given point.
+
         The standard deviation is in pixel.
         """
         noise = std_val * torch.rand_like(base_target)
@@ -47,7 +48,7 @@ class TestIntegrationSoftArgmax2d:
         # NOTE: check where this comes from
         temperature = (self.height * self.width) ** (0.5)
 
-        for iter_id in range(self.num_iterations):
+        for _ in range(self.num_iterations):
             x = params
             sample = self.generate_sample(target).to(device)
             pred = soft_argmax2d(temperature * x)

@@ -5,7 +5,8 @@ import torch
 from torch.autograd import gradcheck
 
 from kornia import enhance
-from kornia.testing import assert_close, BaseTester, tensor_to_gradcheck_var
+from kornia.geometry import rotate
+from kornia.testing import BaseTester, assert_close, tensor_to_gradcheck_var
 
 
 class TestEqualization(BaseTester):
@@ -68,15 +69,17 @@ class TestEqualization(BaseTester):
         with pytest.raises(TypeError):
             enhance.equalize_clahe([1, 2, 3])
 
-    @pytest.mark.xfail(
-        raises=RuntimeError,
-        reason="Sometimes generates the error: 'Numerical gradient for function expected to be zero'",
-    )
     def test_gradcheck(self, device, dtype):
-        bs, channels, height, width = 1, 1, 6, 6
+        torch.random.manual_seed(4)
+        bs, channels, height, width = 1, 1, 11, 11
         inputs = torch.rand(bs, channels, height, width, device=device, dtype=dtype)
         inputs = tensor_to_gradcheck_var(inputs)
-        assert gradcheck(enhance.equalize_clahe, (inputs, 40.0, (2, 2)), raise_exception=True)
+
+        def grad_rot(input, a, b, c):
+            rot = rotate(input, torch.tensor(30.0, dtype=input.dtype, device=device))
+            return enhance.equalize_clahe(rot, a, b, c)
+
+        assert gradcheck(grad_rot, (inputs, 40.0, (2, 2), True), nondet_tol=1e-4, raise_exception=True)
 
     @pytest.mark.skip(reason="args and kwargs in decorator")
     def test_jit(self, device, dtype):
@@ -186,40 +189,68 @@ class TestEqualization(BaseTester):
         clip_limit: float = 2.0
         grid_size: Tuple = (8, 8)
         res = enhance.equalize_clahe(img, clip_limit=clip_limit, grid_size=grid_size)
+        res_diff = enhance.equalize_clahe(img, clip_limit=clip_limit, grid_size=grid_size, slow_and_differentiable=True)
         # NOTE: for next versions we need to improve the computation of the LUT
         # and test with a better image
-        assert torch.allclose(
-            res[..., 0, :],
-            torch.tensor(
+        expected = torch.tensor(
+            [
                 [
                     [
-                        [
-                            0.1216,
-                            0.8745,
-                            0.9373,
-                            0.9163,
-                            0.8745,
-                            0.8745,
-                            0.9373,
-                            0.8745,
-                            0.8745,
-                            0.8118,
-                            0.9373,
-                            0.8745,
-                            0.8745,
-                            0.8118,
-                            0.8745,
-                            0.8745,
-                            0.8327,
-                            0.8118,
-                            0.8745,
-                            1.0000,
-                        ]
+                        0.1216,
+                        0.8745,
+                        0.9373,
+                        0.9163,
+                        0.8745,
+                        0.8745,
+                        0.9373,
+                        0.8745,
+                        0.8745,
+                        0.8118,
+                        0.9373,
+                        0.8745,
+                        0.8745,
+                        0.8118,
+                        0.8745,
+                        0.8745,
+                        0.8327,
+                        0.8118,
+                        0.8745,
+                        1.0000,
                     ]
-                ],
-                dtype=res.dtype,
-                device=res.device,
-            ),
-            atol=1e-04,
-            rtol=1e-04,
+                ]
+            ],
+            dtype=res.dtype,
+            device=res.device,
         )
+        exp_diff = torch.tensor(
+            [
+                [
+                    [
+                        0.1250,
+                        0.8752,
+                        0.9042,
+                        0.9167,
+                        0.8401,
+                        0.8852,
+                        0.9302,
+                        0.9120,
+                        0.8750,
+                        0.8370,
+                        0.9620,
+                        0.9077,
+                        0.8750,
+                        0.8754,
+                        0.9204,
+                        0.9167,
+                        0.8370,
+                        0.8806,
+                        0.9096,
+                        1.0000,
+                    ]
+                ]
+            ],
+            dtype=res.dtype,
+            device=res.device,
+        )
+        assert torch.allclose(res[..., 0, :], expected, atol=1e-04, rtol=1e-04)
+        assert torch.allclose(res_diff[..., 0, :], exp_diff, atol=1e-04, rtol=1e-04)

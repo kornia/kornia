@@ -3,6 +3,8 @@ from typing import Dict
 import torch
 import torch.nn as nn
 
+from kornia.testing import KORNIA_CHECK_SHAPE
+
 urls: Dict[str, str] = {}
 urls["lib"] = "https://github.com/yuruntian/SOSNet/raw/master/sosnet-weights/sosnet_32x32_liberty.pth"
 urls["hp_a"] = "https://github.com/yuruntian/SOSNet/raw/master/sosnet-weights/sosnet_32x32_hpatches_a.pth"
@@ -18,18 +20,18 @@ class SOSNet(nn.Module):
         pretrained: Download and set pretrained weights to the model.
 
     Shape:
-        - Input: (B, 1, 32, 32)
-        - Output: (B, 128)
+        - Input: :math:`(B, 1, 32, 32)`
+        - Output: :math:`(B, 128)`
 
     Examples:
         >>> input = torch.rand(8, 1, 32, 32)
         >>> sosnet = SOSNet()
         >>> descs = sosnet(input) # 8x128
     """
+    patch_size = 32
 
     def __init__(self, pretrained: bool = False) -> None:
         super().__init__()
-
         self.layers = nn.Sequential(
             nn.InstanceNorm2d(1, affine=False),
             nn.Conv2d(1, 32, kernel_size=3, padding=1, bias=False),
@@ -59,10 +61,11 @@ class SOSNet(nn.Module):
         if pretrained:
             pretrained_dict = torch.hub.load_state_dict_from_url(urls['lib'], map_location=lambda storage, loc: storage)
             self.load_state_dict(pretrained_dict, strict=True)
-
+        self.eval()
         return
 
     def forward(self, input: torch.Tensor, eps: float = 1e-10) -> torch.Tensor:
+        KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         descr = self.desc_norm(self.layers(input) + eps)
         descr = descr.view(descr.size(0), -1)
         return descr

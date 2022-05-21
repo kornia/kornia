@@ -3,13 +3,13 @@ from typing import Tuple
 import torch
 import torch.nn as nn
 
-from kornia.filters import gaussian_blur2d
+from .gaussian import gaussian_blur2d
 
 
 def unsharp_mask(
     input: torch.Tensor, kernel_size: Tuple[int, int], sigma: Tuple[float, float], border_type: str = 'reflect'
 ) -> torch.Tensor:
-    r"""Creates an operator that blurs a tensor using the existing Gaussian filter available with the Kornia library.
+    r"""Create an operator that sharpens a tensor by applying operation out = 2 * image - gaussian_blur2d(image).
 
     .. image:: _static/img/unsharp_mask.png
 
@@ -30,13 +30,13 @@ def unsharp_mask(
         >>> output.shape
         torch.Size([2, 4, 5, 5])
     """
-    data_blur: torch.Tensor = gaussian_blur2d(input, kernel_size, sigma)
+    data_blur: torch.Tensor = gaussian_blur2d(input, kernel_size, sigma, border_type)
     data_sharpened: torch.Tensor = input + (input - data_blur)
     return data_sharpened
 
 
 class UnsharpMask(nn.Module):
-    r"""Creates an operator that sharpens image using the existing Gaussian filter available with the Kornia library..
+    r"""Create an operator that sharpens image with: out = 2 * image - gaussian_blur2d(image).
 
     Args:
         kernel_size: the size of the kernel.

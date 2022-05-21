@@ -3,8 +3,8 @@ from typing import Tuple
 import torch
 import torch.nn.functional as F
 
-import kornia
-from kornia.filters.kernels import get_gaussian_kernel2d
+from kornia.filters import filter2d, get_gaussian_kernel2d
+from kornia.utils import create_meshgrid
 
 __all__ = ["elastic_transform2d"]
 
@@ -17,8 +17,9 @@ def elastic_transform2d(
     alpha: Tuple[float, float] = (1.0, 1.0),
     align_corners: bool = False,
     mode: str = 'bilinear',
+    padding_mode: str = 'zeros'
 ) -> torch.Tensor:
-    r"""Applies elastic transform of images as described in :cite:`Simard2003BestPF`.
+    r"""Apply elastic transform of images as described in :cite:`Simard2003BestPF`.
 
     .. image:: _static/img/elastic_transform2d.png
 
@@ -34,6 +35,7 @@ def elastic_transform2d(
           in the y and x directions, respectively.
         align_corners: Interpolation flag used by ```grid_sample```.
         mode: Interpolation mode used by ```grid_sample```. Either ``'bilinear'`` or ``'nearest'``.
+        padding_mode: The padding used by ```grid_sample```. Either ``'zeros'``, ``'border'`` or ``'refection'``.
 
     .. note:
         ```sigma``` and ```alpha``` can also be a ``torch.Tensor``. However, you could not torchscript
@@ -80,15 +82,16 @@ def elastic_transform2d(
     disp_x: torch.Tensor = noise[:, :1]
     disp_y: torch.Tensor = noise[:, 1:]
 
-    disp_x = kornia.filters.filter2d(disp_x, kernel=kernel_y, border_type='constant') * alpha[0]
-    disp_y = kornia.filters.filter2d(disp_y, kernel=kernel_x, border_type='constant') * alpha[1]
+    disp_x = filter2d(disp_x, kernel=kernel_y, border_type='constant') * alpha[0]
+    disp_y = filter2d(disp_y, kernel=kernel_x, border_type='constant') * alpha[1]
 
     # stack and normalize displacement
     disp = torch.cat([disp_x, disp_y], dim=1).permute(0, 2, 3, 1)
 
     # Warp image based on displacement matrix
-    b, c, h, w = image.shape
-    grid = kornia.utils.create_meshgrid(h, w, device=image.device).to(image.dtype)
-    warped = F.grid_sample(image, (grid + disp).clamp(-1, 1), align_corners=align_corners, mode=mode)
+    _, _, h, w = image.shape
+    grid = create_meshgrid(h, w, device=image.device).to(image.dtype)
+    warped = F.grid_sample(image, (grid + disp).clamp(-1, 1), align_corners=align_corners, mode=mode,
+                           padding_mode=padding_mode)
 
     return warped

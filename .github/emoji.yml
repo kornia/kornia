@@ -1,0 +1,19 @@
+# Configuration for action-emoji - https://github.com/tiena2cva/action-emoji
+
+# Include all emoji supported or not
+all: false
+
+# Choose what list of emoji you want to use. Support 4 list: people, nature, objects, places.
+# If "all" is true, all of list will be included
+lists:
+  - people
+  - nature
+  - objects
+  - places
+
+# User custom emoji list
+customs:
+  - atom
+  - suspect
+  - electron
+  - england

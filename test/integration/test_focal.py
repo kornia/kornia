@@ -48,7 +48,7 @@ class TestIntegrationFocalLoss:
         # NOTE: uncomment to compare against vanilla cross entropy
         # criterion = nn.CrossEntropyLoss()
 
-        for iter_id in range(self.num_iterations):
+        for _ in range(self.num_iterations):
             sample = self.generate_sample(target).to(device)
             output = m(sample)
             loss = criterion(output, target.to(device))

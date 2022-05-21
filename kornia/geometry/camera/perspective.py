@@ -5,7 +5,7 @@ from kornia.geometry.conversions import convert_points_from_homogeneous, convert
 
 
 def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch.Tensor:
-    r"""Projects a 3d point onto the 2d camera plane.
+    r"""Project a 3d point onto the 2d camera plane.
 
     Args:
         point3d: tensor containing the 3d points to be projected
@@ -15,6 +15,13 @@ def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch
 
     Returns:
         tensor of (u, v) cam coordinates with shape :math:`(*, 2)`.
+
+    Example:
+        >>> _ = torch.manual_seed(0)
+        >>> X = torch.rand(1, 3)
+        >>> K = torch.eye(3)[None]
+        >>> project_points(X, K)
+        tensor([[5.6088, 8.6827]])
     """
     if not isinstance(point_3d, torch.Tensor):
         raise TypeError(f"Input point_3d type is not a torch.Tensor. Got {type(point_3d)}")
@@ -56,7 +63,7 @@ def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch
 def unproject_points(
     point_2d: torch.Tensor, depth: torch.Tensor, camera_matrix: torch.Tensor, normalize: bool = False
 ) -> torch.Tensor:
-    r"""Unprojects a 2d point in 3d.
+    r"""Unproject a 2d point in 3d.
 
     Transform coordinates in the pixel frame to the camera frame.
 
@@ -73,6 +80,14 @@ def unproject_points(
 
     Returns:
         tensor of (x, y, z) world coordinates with shape :math:`(*, 3)`.
+
+    Example:
+        >>> _ = torch.manual_seed(0)
+        >>> x = torch.rand(1, 2)
+        >>> depth = torch.ones(1, 1)
+        >>> K = torch.eye(3)[None]
+        >>> unproject_points(x, depth, K)
+        tensor([[0.4963, 0.7682, 1.0000]])
     """
     if not isinstance(point_2d, torch.Tensor):
         raise TypeError(f"Input point_2d type is not a torch.Tensor. Got {type(point_2d)}")

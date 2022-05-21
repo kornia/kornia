@@ -3,7 +3,7 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia
-from kornia.testing import _get_precision, assert_close, BaseTester
+from kornia.testing import BaseTester, _get_precision, assert_close
 
 
 class TestRgbToLuv(BaseTester):
@@ -209,7 +209,7 @@ class TestLuvToRgb(BaseTester):
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        img = kornia.rgb_to_luv(img)
+        img = kornia.color.rgb_to_luv(img)
         assert gradcheck(kornia.color.luv_to_rgb, (img,), raise_exception=True)
 
     @pytest.mark.jit

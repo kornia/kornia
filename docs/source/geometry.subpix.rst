@@ -20,6 +20,12 @@ Spatial
 .. autofunction:: spatial_soft_argmax2d
 .. autofunction:: render_gaussian2d
 
+Non Maxima Suppression
+----------------------
+
+.. autofunction:: nms2d
+.. autofunction:: nms3d
+
 Module
 ------
 
@@ -27,3 +33,5 @@ Module
 .. autoclass:: ConvSoftArgmax2d
 .. autoclass:: ConvSoftArgmax3d
 .. autoclass:: ConvQuadInterp3d
+.. autoclass:: NonMaximaSuppression2d
+.. autoclass:: NonMaximaSuppression3d

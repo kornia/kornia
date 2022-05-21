@@ -29,6 +29,7 @@ Filtering API
 -------------
 
 .. autofunction:: filter2d
+.. autofunction:: filter2d_separable
 .. autofunction:: filter3d
 
 Kernels
@@ -38,6 +39,8 @@ Kernels
 .. autofunction:: get_gaussian_erf_kernel1d
 .. autofunction:: get_gaussian_discrete_kernel1d
 .. autofunction:: get_gaussian_kernel2d
+.. autofunction:: get_hanning_kernel1d
+.. autofunction:: get_hanning_kernel2d
 .. autofunction:: get_laplacian_kernel1d
 .. autofunction:: get_laplacian_kernel2d
 .. autofunction:: get_motion_kernel2d

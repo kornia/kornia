@@ -2,3 +2,18 @@
 line-length = 120
 skip-string-normalization = true
 skip-magic-trailing-comma = true
+
+[tool.isort]
+multi_line_output=3
+include_trailing_comma = true
+line_length = 120
+profile = "black"
+known_first_party = [
+    "examples",
+    "kornia",
+    "tests",
+]
+skip_glob = []
+skip = [
+    "kornia/__init__.py"
+]

@@ -1,6 +1,9 @@
 from typing import Optional, Tuple
 
 import torch
+import torch.nn as nn
+
+from kornia.testing import KORNIA_CHECK_SHAPE
 
 
 def match_nn(
@@ -20,10 +23,8 @@ def match_nn(
         - Descriptor distance of matching descriptors, shape of :math:`(B1, 1)`.
         - Long tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(B1, 2)`.
     """
-    if len(desc1.shape) != 2:
-        raise AssertionError
-    if len(desc2.shape) != 2:
-        raise AssertionError
+    KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
+    KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
 
     if dm is None:
         dm = torch.cdist(desc1, desc2)
@@ -55,10 +56,8 @@ def match_mnn(
         - Long tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(B3, 2)`,
           where 0 <= B3 <= min(B1, B2)
     """
-    if len(desc1.shape) != 2:
-        raise AssertionError
-    if len(desc2.shape) != 2:
-        raise AssertionError
+    KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
+    KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
 
     if dm is None:
         dm = torch.cdist(desc1, desc2)
@@ -103,10 +102,9 @@ def match_snn(
         - Long tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)`,
           where 0 <= B3 <= B1.
     """
-    if len(desc1.shape) != 2:
-        raise AssertionError
-    if len(desc2.shape) != 2:
-        raise AssertionError
+    KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
+    KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
+
     if desc2.shape[0] < 2:
         raise AssertionError
 
@@ -147,10 +145,9 @@ def match_smnn(
         - Long tensor indexes of matching descriptors in desc1 and desc2,
           shape of :math:`(B3, 2)` where 0 <= B3 <= B1.
     """
-    if len(desc1.shape) != 2:
-        raise AssertionError
-    if len(desc2.shape) != 2:
-        raise AssertionError
+    KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
+    KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
+
     if desc1.shape[0] < 2:
         raise AssertionError
     if desc2.shape[0] < 2:
@@ -167,7 +164,7 @@ def match_smnn(
 
     if len(dists2) > 0 and len(dists1) > 0:
         idx2 = idx2.flip(1)
-        idxs_dm = torch.cdist(idx1.float(), idx2.float(), p=1)
+        idxs_dm = torch.cdist(idx1.float(), idx2.float(), p=1.0)
         mutual_idxs1 = idxs_dm.min(dim=1)[0] < 1e-8
         mutual_idxs2 = idxs_dm.min(dim=0)[0] < 1e-8
         good_idxs1 = idx1[mutual_idxs1.view(-1)]
@@ -182,3 +179,47 @@ def match_smnn(
     else:
         matches_idxs, match_dists = torch.empty(0, 2, device=dm.device), torch.empty(0, 1, device=dm.device)
     return match_dists.view(-1, 1), matches_idxs.view(-1, 2)
+
+
+class DescriptorMatcher(nn.Module):
+    """Module version of matching functions.
+
+    See :func:`~kornia.feature.match_nn`, :func:`~kornia.feature.match_snn`,
+        :func:`~kornia.feature.match_mnn` or :func:`~kornia.feature.match_smnn` for more details.
+
+    Args:
+        match_mode: type of matching, can be `nn`, `snn`, `mnn`, `smnn`.
+        th: threshold on distance ratio, or other quality measure.
+    """
+    known_modes = ['nn', 'mnn', 'snn', 'smnn']
+
+    def __init__(self, match_mode: str = 'snn', th: float = 0.8) -> None:
+        super().__init__()
+        _match_mode: str = match_mode.lower()
+        if _match_mode not in self.known_modes:
+            raise NotImplementedError(f"{match_mode} is not supported. Try one of {self.known_modes}")
+        self.match_mode = _match_mode
+        self.th = th
+
+    def forward(self, desc1: torch.Tensor, desc2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Args:
+            desc1: Batch of descriptors of a shape :math:`(B1, D)`.
+            desc2: Batch of descriptors of a shape :math:`(B2, D)`.
+
+        Return:
+            - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
+            - Long tensor indexes of matching descriptors in desc1 and desc2,
+                shape of :math:`(B3, 2)` where :math:`0 <= B3 <= B1`.
+        """
+        if self.match_mode == 'nn':
+            out = match_nn(desc1, desc2)
+        elif self.match_mode == 'mnn':
+            out = match_mnn(desc1, desc2)
+        elif self.match_mode == 'snn':
+            out = match_snn(desc1, desc2, self.th)
+        elif self.match_mode == 'smnn':
+            out = match_smnn(desc1, desc2, self.th)
+        else:
+            raise NotImplementedError
+        return out
