@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import torch
 from torch import Tensor
@@ -38,17 +38,22 @@ else:
     from torch import qr as linalg_qr  # type: ignore # noqa: F401
 
 
+# TODO: remove after deprecating < 1.9.1
 if version.parse(torch_version()) > version.parse("1.9.1"):
-    from torch import meshgrid as torch_meshgrid  # type: ignore
+
+    if not TYPE_CHECKING:
+
+        def torch_meshgrid(tensors: List[Tensor], indexing: str):
+            return torch.meshgrid(tensors, indexing=indexing)
+
 else:
-    from torch import meshgrid as _meshgrid
 
     if TYPE_CHECKING:
-        # The JIT doesn't understand Union, so only add type annotation for mypy
-        def torch_meshgrid(*tensors: Union[Tensor, List[Tensor]]) -> Tuple[Tensor, ...]:
-            return _meshgrid(*tensors)
+
+        def torch_meshgrid(tensors: List[Tensor], indexing: Optional[str] = None) -> Tuple[Tensor, ...]:
+            return torch.meshgrid(tensors)
 
     else:
-        # NOTE: the typing below has been modified to make happy torchscript
-        def torch_meshgrid(tensors: List[Tensor], indexing: Optional[str] = None) -> List[Tensor]:
-            return _meshgrid(tensors)
+
+        def torch_meshgrid(tensors: List[Tensor], indexing: str):
+            return torch.meshgrid(tensors)
