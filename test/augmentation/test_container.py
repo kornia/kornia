@@ -3,7 +3,6 @@ import torch
 
 import kornia
 import kornia.augmentation as K
-from kornia.augmentation._2d.mix.base import MixAugmentationBase
 from kornia.constants import BorderType
 from kornia.geometry.bbox import bbox_to_mask
 from kornia.testing import assert_close
@@ -82,7 +81,7 @@ class TestVideoSequential:
             [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=0.0), K.RandomAffine(360, p=0.0)],
             [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=0.0)],
             [K.RandomAffine(360, p=0.0)],
-            [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0), K.RandomMixUp(p=1.0)],
+            [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0), K.RandomMixUpV2(p=1.0)],
         ],
     )
     @pytest.mark.parametrize('data_format', ["BCTHW", "BTCHW"])
@@ -170,16 +169,11 @@ class TestSequential:
         aug = K.ImageSequential(
             K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
             K.RandomAffine(360, p=1.0),
-            K.RandomMixUp(p=1.0),
+            K.RandomMixUpV2(p=1.0),
             same_on_batch=same_on_batch,
             keepdim=keepdim,
             random_apply=random_apply,
         )
-        c = 0
-        for a in aug.get_forward_sequence():
-            if isinstance(a, (MixAugmentationBase,)):
-                c += 1
-        assert c < 2
         aug.same_on_batch = True
         aug.keepdim = True
         for m in aug.children():
@@ -196,7 +190,7 @@ class TestSequential:
             K.ImageSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0)),
             K.ImageSequential(K.RandomAffine(360, p=1.0)),
             K.RandomAffine(360, p=1.0),
-            K.RandomMixUp(p=1.0),
+            K.RandomMixUpV2(p=1.0),
             random_apply=random_apply,
         )
         out = aug(inp)
@@ -225,7 +219,7 @@ class TestAugmentationSequential:
             K.ImageSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)),
             K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
             K.RandomAffine(360, p=1.0),
-            K.RandomMixUp(p=1.0),
+            K.RandomMixUpV2(p=1.0),
             data_keys=["input"],
             random_apply=random_apply,
             same_on_batch=same_on_batch,
@@ -634,7 +628,7 @@ class TestPatchSequential:
                     K.RandomPerspective(0.2, p=0.5),
                     K.RandomSolarize(0.1, 0.1, p=0.5),
                 ),
-                K.RandomMixUp(p=1.0),
+                K.RandomMixUpV2(p=1.0),
                 grid_size=(2, 2),
                 padding=padding,
                 patchwise_apply=patchwise_apply,

@@ -238,7 +238,7 @@ class ImageSequential(SequentialBase):
     def contains_label_operations(self, params: List[ParamItem]) -> bool:
         """Check if current sequential contains label-involved operations like MixUp."""
         for param in params:
-            if param.name.startswith("RandomMixUp") or param.name.startswith("RandomCutMix"):
+            if param.name.startswith("RandomMixUp_") or param.name.startswith("RandomCutMix_"):
                 return True
         return False
 

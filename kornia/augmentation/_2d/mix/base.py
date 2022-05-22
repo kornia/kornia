@@ -304,3 +304,12 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         if len(outputs) == 1:
             return outputs[0]
         return outputs
+
+    @torch.jit.ignore
+    def inverse(self, **kwargs):
+        raise RuntimeError(f"Inverse for {self.__class__.__name__} is not supported.")
+
+    @torch.jit.ignore
+    @property
+    def transform_matrix(self,):
+        raise RuntimeError(f"Transformation matrices for {self.__class__.__name__} is not supported.")

@@ -95,19 +95,21 @@ class RandomMosaic(MixAugmentationBaseV2):
     def apply_transform_boxes(
         self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Boxes:
+        src_box = torch.as_tensor(params["src"], device=input.device, dtype=input.dtype)
+        dst_box = torch.as_tensor(params["dst"], device=input.device, dtype=input.dtype)
         # Boxes is BxNx4x2 only.
-        batch_shapes = torch.as_tensor(params["batch_shapes"], device=input.device)
-        offset = torch.zeros((len(params["batch_prob"]), 2), device=input.device, dtype=params["src"].dtype)  # Bx2
+        batch_shapes = torch.as_tensor(params["batch_shapes"], device=input.device, dtype=input.dtype)
+        offset = torch.zeros((len(params["batch_prob"]), 2), device=input.device, dtype=input.dtype)  # Bx2
         # NOTE: not a pretty good line I think.
-        offset_end = params["dst"][0, 2].repeat(input.data.shape[0], 1)
+        offset_end = dst_box[0, 2].repeat(input.data.shape[0], 1)
         idx = torch.arange(0, input.data.shape[0], device=input.device, dtype=torch.long)[params["batch_prob"]]
 
         out_boxes: Optional[Boxes] = None
         for i in range(flags['mosaic_grid'][0]):
             for j in range(flags['mosaic_grid'][1]):
                 _offset = offset.clone()
-                _offset[idx, 0] = batch_shapes[:, -2] * i - params["src"][:, 0, 0]
-                _offset[idx, 1] = batch_shapes[:, -1] * j - params["src"][:, 0, 1]
+                _offset[idx, 0] = batch_shapes[:, -2] * i - src_box[:, 0, 0]
+                _offset[idx, 1] = batch_shapes[:, -1] * j - src_box[:, 0, 1]
                 _box = input.clone()
                 _idx = i * flags['mosaic_grid'][1] + j
                 _box._data[params["permutation"][:, 0]] = _box._data[params["permutation"][:, _idx]]
