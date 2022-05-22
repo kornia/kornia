@@ -181,7 +181,7 @@ class ImageSequential(SequentialBase):
         """
         indices = []
         for idx, (_, child) in enumerate(named_modules):
-            if isinstance(child, (MixAugmentationBase,)):
+            if isinstance(child, (MixAugmentationBase,)):  # NOTE: MixV2 will not be a special op in the future.
                 indices.append(idx)
         return indices
 
@@ -273,12 +273,12 @@ class ImageSequential(SequentialBase):
 
         # Define as 1 for broadcasting
         res_mat: Optional[Tensor] = None
-        params_list: List[ParamItem] = params if params is not None else []
-
-        for (_, module), param_item in zip(named_modules, params_list):
-            if isinstance(module, (_AugmentationBase,)) and not isinstance(module, (MixAugmentationBase,)):
-                param_data = cast(Dict[str, Tensor], param_item.data)
-                to_apply = param_data['batch_prob']  # type: ignore
+        for (_, module), param in zip(named_modules, params if params is not None else []):
+            if isinstance(module, (_AugmentationBase,)) and not isinstance(
+                module, (MixAugmentationBase, MixAugmentationBaseV2)
+            ):
+                pdata = cast(Dict[str, Tensor], param.data)
+                to_apply = pdata['batch_prob']  # type: ignore
                 ori_shape = input.shape
                 try:
                     input = module.transform_tensor(input)
