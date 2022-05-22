@@ -1,4 +1,7 @@
+from typing import TYPE_CHECKING, List, Optional, Tuple
+
 import torch
+from torch import Tensor
 
 from packaging import version
 
@@ -22,7 +25,7 @@ else:
     from torch import solve as _solve
 
     # NOTE: in previous versions `torch.solve` accepted arguments in another order.
-    def solve(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+    def solve(A: Tensor, B: Tensor) -> Tensor:
         return _solve(B, A).solution
 
 
@@ -33,3 +36,24 @@ if version.parse(torch_version()) > version.parse("1.7.1"):
     from torch.linalg import qr as linalg_qr  # type: ignore
 else:
     from torch import qr as linalg_qr  # type: ignore # noqa: F401
+
+
+# TODO: remove after deprecating < 1.9.1
+if version.parse(torch_version()) > version.parse("1.9.1"):
+
+    if not TYPE_CHECKING:
+
+        def torch_meshgrid(tensors: List[Tensor], indexing: str):
+            return torch.meshgrid(tensors, indexing=indexing)
+
+else:
+
+    if TYPE_CHECKING:
+
+        def torch_meshgrid(tensors: List[Tensor], indexing: Optional[str] = None) -> Tuple[Tensor, ...]:
+            return torch.meshgrid(tensors)
+
+    else:
+
+        def torch_meshgrid(tensors: List[Tensor], indexing: str):
+            return torch.meshgrid(tensors)
