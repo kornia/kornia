@@ -40,12 +40,12 @@ class RandomMixUp(MixAugmentationBase):
             return (1 - y[:, 2]) * pred.eq(y[:, 0]).float() + y[:, 2] * pred.eq(y[:, 1]).float()
 
     Args:
-        p (float): probability for applying an augmentation to a batch. This param controls the augmentation
+        p: probability for applying an augmentation to a batch. This param controls the augmentation
                    probabilities batch-wisely.
-        lambda_val (float or Tensor, optional): min-max value of mixup strength. Default is 0-1.
-        same_on_batch (bool): apply the same transformation across the batch.
+        lambda_val: min-max value of mixup strength. Default is 0-1.
+        same_on_batch: apply the same transformation across the batch.
             This flag will not maintain permutation order. Default: False.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False
 
     Inputs:
@@ -138,12 +138,12 @@ class RandomMixUpV2(MixAugmentationBaseV2):
             return (1 - y[:, 2]) * pred.eq(y[:, 0]).float() + y[:, 2] * pred.eq(y[:, 1]).float()
 
     Args:
-        p (float): probability for applying an augmentation to a batch. This param controls the augmentation
+        p: probability for applying an augmentation to a batch. This param controls the augmentation
                    probabilities batch-wisely.
-        lambda_val (float or Tensor, optional): min-max value of mixup strength. Default is 0-1.
-        same_on_batch (bool): apply the same transformation across the batch.
+        lambda_val: min-max value of mixup strength. Default is 0-1.
+        same_on_batch: apply the same transformation across the batch.
             This flag will not maintain permutation order. Default: False.
-        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False
 
     Inputs:
