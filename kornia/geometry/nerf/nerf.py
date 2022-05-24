@@ -7,12 +7,12 @@ class PositionalEncoder(nn.Module):
     Sine-cosine positional encoder for input points.
     """
 
-    def __init__(self, d_input: int, n_freqs: int, log_space: bool = False):
+    def __init__(self, n_dims: int, n_freqs: int, log_space: bool = False):
         super().__init__()
-        self._d_input = d_input
+        self._n_dims = n_dims
         self._n_freqs = n_freqs
         self._log_space = log_space
-        self._d_output = d_input * (1 + 2 * self._n_freqs)
+        self._n_dims_out = n_dims * (1 + 2 * n_freqs)
         self._embed_fns = [lambda x: x]
 
         # Define frequencies in either linear or log scale
@@ -30,6 +30,6 @@ class PositionalEncoder(nn.Module):
         r"""
         Apply positional encoding to input.
         """
-        if x.ndim < 2 or x.shape[1] != self._d_input:
+        if x.ndim < 2 or x.shape[1] != self._n_dims:
             raise RuntimeError('Invalid input geometry to encode')
         return torch.concat([fn(x) for fn in self._embed_fns], dim=-1)
