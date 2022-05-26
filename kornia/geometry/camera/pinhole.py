@@ -2,6 +2,7 @@ from typing import Iterable, Optional
 
 import torch
 
+from kornia.geometry.camera.perspective import project_points  # , unproject_points
 from kornia.geometry.linalg import inverse_transformation, transform_points
 
 
@@ -265,6 +266,12 @@ class PinholeCamera:
         self.height *= scale_factor
         self.width *= scale_factor
         return self
+
+    def project_points(self, point_3d: torch.Tensor) -> torch.Tensor:
+        R = self.rotation_matrix
+        t = self.translation_vector
+        point_3d_cam = torch.matmul(R, point_3d.view(3, 1)) + t
+        return project_points(point_3d_cam.view(point_3d_cam.shape[0], 3), self.camera_matrix)
 
     # NOTE: just for test. Decide if we keep it.
     @classmethod
