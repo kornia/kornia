@@ -5,6 +5,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.testing import assert_close
+from kornia.utils.helpers import _torch_inverse_cast
 
 
 @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -143,16 +144,17 @@ class TestWarpAffine:
         center = torch.tensor([[w - 1, h - 1]], device=device, dtype=dtype) / 2
         scale = torch.ones((1, 2), device=device, dtype=dtype)
         angle = 90.0 * torch.ones(1, device=device, dtype=dtype)
-        aff_ab = kornia.geometry.get_rotation_matrix2d(center, angle, scale)
+        aff_ab_2x3 = kornia.geometry.get_rotation_matrix2d(center, angle, scale)
         # Same as opencv: cv2.getRotationMatrix2D(((w-1)/2,(h-1)/2), 90., 1.)
 
         # warp the tensor
         # Same as opencv: cv2.warpAffine(kornia.tensor_to_image(img_b), aff_ab[0].numpy(), (w, h))
-        img_a = kornia.geometry.warp_affine(img_b, aff_ab, (h, w))
+        img_a = kornia.geometry.warp_affine(img_b, aff_ab_2x3, (h, w))
 
         # invert the transform
-        aff_ba = kornia.geometry.conversions.convert_affinematrix_to_homography(aff_ab).inverse()[..., :2, :]
-        img_b_hat = kornia.geometry.warp_affine(img_a, aff_ba, (h, w))
+        aff_ab_3x3 = kornia.geometry.conversions.convert_affinematrix_to_homography(aff_ab_2x3)
+        aff_ba_2x3 = _torch_inverse_cast(aff_ab_3x3)[..., :2, :]
+        img_b_hat = kornia.geometry.warp_affine(img_a, aff_ba_2x3, (h, w))
         assert_close(img_b_hat, img_b, atol=1e-3, rtol=1e-3)
 
     def test_jit(self, device, dtype):
@@ -274,7 +276,7 @@ class TestWarpPerspective:
         img_a = kornia.geometry.warp_perspective(img_b, H_ab, (h, w))
 
         # invert the transform
-        H_ba = torch.inverse(H_ab)
+        H_ba = _torch_inverse_cast(H_ab)
         img_b_hat = kornia.geometry.warp_perspective(img_a, H_ba, (h, w))
         assert_close(img_b_hat, img_b, rtol=1e-4, atol=1e-4)
 
