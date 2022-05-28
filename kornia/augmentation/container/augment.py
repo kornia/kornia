@@ -147,12 +147,7 @@ class AugmentationSequential(ImageSequential):
         keepdim: Optional[bool] = None,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
         random_apply_weights: Optional[List[float]] = None,
-        extra_args: Dict[DataKey, Dict[str, Any]] = {
-            DataKey.MASK: dict(
-                resample=Resample.NEAREST,
-                align_corners=True
-            )
-        }
+        extra_args: Dict[DataKey, Dict[str, Any]] = {DataKey.MASK: dict(resample=Resample.NEAREST, align_corners=True)},
     ) -> None:
         super().__init__(
             *args,
@@ -192,7 +187,7 @@ class AugmentationSequential(ImageSequential):
             return eye_like(3, input)
 
     @property
-    def transform_matrix(self,) -> Optional[Tensor]:
+    def transform_matrix(self) -> Optional[Tensor]:
         return self._transform_matrix
 
     def inverse(  # type: ignore
@@ -242,13 +237,18 @@ class AugmentationSequential(ImageSequential):
                 input = arg.data  # all boxes are in (B, N, 4, 2) format now.
             else:
                 input = arg
-            for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
+            for (_, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
                 if isinstance(module, (_AugmentationBase, ImageSequential)):
-                    param = params[name] if name in params else param
+                    # TODO(jian): verify what's happening here. Mypy was complaining,
+                    # param = params[name] if name in params else param
+                    pass
                 else:
                     param = None
-                if isinstance(module, IntensityAugmentationBase2D) and dcate in DataKey \
-                        and not isinstance(module, RandomErasing):
+                if (
+                    isinstance(module, IntensityAugmentationBase2D)
+                    and dcate in DataKey
+                    and not isinstance(module, RandomErasing)
+                ):
                     pass  # Do nothing
                 elif isinstance(module, ImageSequential) and module.is_intensity_only() and dcate in DataKey:
                     pass  # Do nothing
@@ -259,12 +259,13 @@ class AugmentationSequential(ImageSequential):
                     input = input.view(batch_size, -1, *input.shape[1:])
                 elif isinstance(module, PatchSequential):
                     raise NotImplementedError("Geometric involved PatchSequential is not supported.")
-                elif isinstance(module, (AugmentationSequential)) \
-                        and dcate in DataKey:
+                elif isinstance(module, (AugmentationSequential)) and dcate in DataKey:
                     # AugmentationSequential shall not take the extra_args arguments.
                     input = ApplyInverse.inverse_by_key(input, module, param, dcate)
-                elif isinstance(module, (GeometricAugmentationBase2D, ImageSequential, RandomErasing)) \
-                        and dcate in DataKey:
+                elif (
+                    isinstance(module, (GeometricAugmentationBase2D, ImageSequential, RandomErasing))
+                    and dcate in DataKey
+                ):
                     input = ApplyInverse.inverse_by_key(input, module, param, dcate, extra_args=extra_args)
                 elif isinstance(module, (SequentialBase,)):
                     raise ValueError(f"Unsupported Sequential {module}.")
@@ -283,12 +284,7 @@ class AugmentationSequential(ImageSequential):
 
     def __packup_output__(  # type: ignore
         self, output: List[Tensor], label: Optional[Tensor] = None
-    ) -> Union[
-        Tensor,
-        Tuple[Tensor, Optional[Tensor]],
-        List[Tensor],
-        Tuple[List[Tensor], Optional[Tensor]],
-    ]:
+    ) -> Union[Tensor, Tuple[Tensor, Optional[Tensor]], List[Tensor], Tuple[List[Tensor], Optional[Tensor]]]:
         if len(output) == 1 and isinstance(output, (tuple, list)) and self.return_label:
             return output[0], label
         if len(output) == 1 and isinstance(output, (tuple, list)):
@@ -329,12 +325,7 @@ class AugmentationSequential(ImageSequential):
         label: Optional[Tensor] = None,
         params: Optional[List[ParamItem]] = None,
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
-    ) -> Union[
-        Tensor,
-        Tuple[Tensor, Optional[Tensor]],
-        List[Tensor],
-        Tuple[List[Tensor], Optional[Tensor]],
-    ]:
+    ) -> Union[Tensor, Tuple[Tensor, Optional[Tensor]], List[Tensor], Tuple[List[Tensor], Optional[Tensor]]]:
         """Compute multiple tensors simultaneously according to ``self.data_keys``."""
         _data_keys: List[DataKey]
         if data_keys is None:
@@ -394,23 +385,26 @@ class AugmentationSequential(ImageSequential):
 
             for param in params:
                 module = self.get_submodule(param.name)
-                if isinstance(module, IntensityAugmentationBase2D) and dcate in DataKey \
-                        and not isinstance(module, RandomErasing):
+                if (
+                    isinstance(module, IntensityAugmentationBase2D)
+                    and dcate in DataKey
+                    and not isinstance(module, RandomErasing)
+                ):
                     pass  # Do nothing
                 elif isinstance(module, ImageSequential) and module.is_intensity_only() and dcate in DataKey:
                     pass  # Do nothing
                 elif isinstance(module, VideoSequential) and dcate not in [DataKey.INPUT, DataKey.MASK]:
                     batch_size: int = input.size(0)
                     input = input.view(-1, *input.shape[2:])
-                    input, label = ApplyInverse.apply_by_key(
-                        input, label, module, param, dcate, extra_args=extra_args)
+                    input, label = ApplyInverse.apply_by_key(input, label, module, param, dcate, extra_args=extra_args)
                     input = input.view(batch_size, -1, *input.shape[1:])
                 elif isinstance(module, PatchSequential):
                     raise NotImplementedError("Geometric involved PatchSequential is not supported.")
-                elif isinstance(module, (GeometricAugmentationBase2D, ImageSequential, RandomErasing)) \
-                        and dcate in DataKey:
-                    input, label = ApplyInverse.apply_by_key(
-                        input, label, module, param, dcate, extra_args=extra_args)
+                elif (
+                    isinstance(module, (GeometricAugmentationBase2D, ImageSequential, RandomErasing))
+                    and dcate in DataKey
+                ):
+                    input, label = ApplyInverse.apply_by_key(input, label, module, param, dcate, extra_args=extra_args)
                 elif isinstance(module, (SequentialBase,)):
                     raise ValueError(f"Unsupported Sequential {module}.")
                 else:

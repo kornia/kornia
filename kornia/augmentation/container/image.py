@@ -345,10 +345,11 @@ class ImageSequential(SequentialBase):
                 )
             params = self._params
 
-        for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
+        for (_, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             maybe_param: Optional[ParamItem] = None
             if isinstance(module, (_AugmentationBase, ImageSequential)):
-                maybe_param = params[name] if name in params else param
+                # maybe_param = params[name] if name in params else param
+                pass
             # else:
             #    param = None
 
