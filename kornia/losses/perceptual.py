@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Callable
 
 import torch
 import torch.nn as nn
@@ -9,7 +9,12 @@ from kornia.geometry.transform.imgwarp import get_perspective_transform, warp_pe
 
 class LossNetwork(nn.Module):
 
-    def __init__(self, model_name: str = 'resnet34', output_layer: int = 1, freeze: bool = True) -> None:
+    def __init__(
+        self,
+        model_name: str = 'resnet34',
+        output_layer: int = 1,
+        freeze: bool = True,
+    ) -> None:
         super().__init__()
         assert 'resnet' in model_name, 'Only ResNets are supported ATM'
 
@@ -59,7 +64,8 @@ def _image_shape_to_corners(image: torch.Tensor) -> torch.Tensor:
     """Convert image size to 4 corners representation in clockwise order.
 
     Args:
-        image: image tensor with shape :math:`(B, C, H, W)` where B = batch size, C = number of channels
+        image: image tensor with shape :math:`(B, C, H, W)` where B = batch size,
+            C = number of channels
 
     Return:
         the corners of the image.
@@ -68,8 +74,12 @@ def _image_shape_to_corners(image: torch.Tensor) -> torch.Tensor:
     batch_size = image.shape[0]
     image_width = image.shape[-2]
     image_height = image.shape[-1]
-    corners = torch.tensor([[0, 0], [image_width, 0], [image_width, image_height], [0, image_height]],
-                           device=image.device, dtype=image.dtype, requires_grad=False)
+    corners = torch.tensor(
+        [[0, 0], [image_width, 0], [image_width, image_height], [0, image_height]],
+        device=image.device,
+        dtype=image.dtype,
+        requires_grad=False,
+    )
     corners = corners.repeat(batch_size, 1, 1)
 
     return corners
@@ -99,8 +109,8 @@ def _four_point_to_homography(corners: torch.Tensor, deltas: torch.Tensor) -> to
         raise ValueError(f"Invalid input shape of deltas, we expect Bx4x2. Got: {deltas.shape}")
 
     if not corners.size(0) == deltas.size(0):
-        raise ValueError(f'Expected corners batch_size ({corners.size(0)}) to match deltas batch size '
-                         f'({deltas.size(0)}).')
+        raise ValueError(f'Expected corners batch_size ({corners.size(0)}) to match deltas batch '
+                         f'size ({deltas.size(0)}).')
 
     corners_hat = corners + deltas
     homography_inv = get_perspective_transform(corners, corners_hat)
@@ -112,7 +122,8 @@ def _warp(image: torch.Tensor, delta_hat: torch.Tensor) -> Tuple[torch.Tensor, t
     """Convert 4-point representation introduced in :cite:`detone2016deep` to homography.
 
     Args:
-        image: image tensor with shape :math:`(B, C, H, W)` where B = batch size, C = number of channels
+        image: image tensor with shape :math:`(B, C, H, W)` where B = batch size,
+            C = number of channels
         deltas: deltas tensor with shape :math:`(B, 4, 2)` where B = batch size
 
     Return:
@@ -132,32 +143,22 @@ def bihome_loss(
     triplet_mu: float,
     loss_network: nn.Module,
 ) -> torch.Tensor:
-    r"""iHomE loss implementation.
-
-    Based on: :cite:`koguciuk2021perceptual`, iHomE loss is computed as follows:
-
-    .. math::
-
-        \text{FL}(p_t) = -\alpha_t (1 - p_t)^{\gamma} \, \text{log}(p_t) @TODO: fix formula
-
-    Where:
-       - :math:`p_t` is the model's estimated probability for each class. @TODO: fix formula
+    r"""biHomE loss implementation. Based on: :cite:`koguciuk2021perceptual`.
 
     Args:
-        patch_1: image tensor with shape :math:`(B, C, H, W)` where B = batch size, C = number of classes
-        patch_2: image tensor with shape :math:`(B, C, H, W)` where B = batch size, C = number of classes
-        delta_hat: predicted corner differences per image with shape :math:`(B, 4, 2)` where B = batch size
-        loss_network: loss network used
+        patch_1: image tensor with shape :math:`(B, C, H, W)` where B = batch size,
+            C = number of classes
+        patch_2: image tensor with shape :math:`(B, C, H, W)` where B = batch size,
+            C = number of classes
+        delta_hat_12: predicted corner differences from image 1 to image 2 with shape
+            :math:`(B, 4, 2)`, where B = batch size.
+        delta_hat_21: predicted corner differences from image 2 to image 1 with shape
+            :math:`(B, 4, 2)`, where B = batch size.
+        triplet_mu: Homography matrix regularization weight.
+        loss_network: loss network used.
 
     Return:
         the computed loss.
-
-    Example: @TODO: fix example
-        >>> N = 5  # num_classes
-        >>> input = torch.randn(1, N, 3, 5, requires_grad=True)
-        >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
-        >>> output = focal_loss(input, target, alpha=0.5, gamma=2.0, reduction='mean')
-        >>> output.backward()
     """
     if not isinstance(patch_1, torch.Tensor):
         raise TypeError(f"patch_1 type is not a torch.Tensor. Got {type(patch_1)}")
@@ -247,48 +248,22 @@ def bihome_loss(
 
 
 class biHomELoss(nn.Module):
-    r"""Criterion that computes Focal loss. @TODO: fix description
-
-    According to :cite:`lin2018focal`, the Focal loss is computed as follows:
-
-    .. math::
-
-        \text{FL}(p_t) = -\alpha_t (1 - p_t)^{\gamma} \, \text{log}(p_t)
-
-    Where:
-       - :math:`p_t` is the model's estimated probability for each class.
-
+    r"""Criterion that computes biHomE perceptual loss. Based on: :cite:`koguciuk2021perceptual`.
+   
     Args:
-        alpha: Weighting factor :math:`\alpha \in [0, 1]`.
-        gamma: Focusing parameter :math:`\gamma >= 0`.
-        reduction: Specifies the reduction to apply to the
-          output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
-          will be applied, ``'mean'``: the sum of the output will be divided by
-          the number of elements in the output, ``'sum'``: the output will be
-          summed.
-        eps: Scalar to enforce numerical stabiliy.
-
-    Shape:
-        - Input: :math:`(N, C, *)` where C = number of classes.
-        - Target: :math:`(N, *)` where each value is
-          :math:`0 ≤ targets[i] ≤ C−1`.
-
-    Example:
-        >>> N = 5  # num_classes
-        >>> kwargs = {"alpha": 0.5, "gamma": 2.0, "reduction": 'mean'}
-        >>> criterion = FocalLoss(**kwargs)
-        >>> input = torch.randn(1, N, 3, 5, requires_grad=True)
-        >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
-        >>> output = criterion(input, target)
-        >>> output.backward()
+        loss_network_name: loss network name from torchvision models.
+        loss_network: the user can use its own Loss Network implementation instead of predefined
+            in torchvision.
+        triplet_mu: Homography matrix regularization weight.
     """
 
     def __init__(
         self,
         loss_network_name: str = 'resnet34',
-        loss_network=None,
+        loss_network: Callable = None,
         triplet_mu: float = 0.01,
     ) -> None:
+
         super().__init__()
 
         if loss_network is None and loss_network_name is None:
