@@ -1,4 +1,4 @@
-from typing import Tuple, Callable
+from typing import Callable, Tuple
 
 import torch
 import torch.nn as nn
@@ -144,7 +144,7 @@ def bihome_loss(
     loss_network: nn.Module,
 ) -> torch.Tensor:
     r"""biHomE loss implementation.
-    
+
     Based on: :cite:`koguciuk2021perceptual` and https://github.com/NeurAI-Lab/biHomE.
 
     Args:
@@ -251,9 +251,9 @@ def bihome_loss(
 
 class biHomELoss(nn.Module):
     r"""Criterion that computes biHomE perceptual loss.
-    
+
     Based on: :cite:`koguciuk2021perceptual` and https://github.com/NeurAI-Lab/biHomE.
-   
+
     Args:
         loss_network_name: loss network name from torchvision models.
         loss_network: the user can use its own Loss Network implementation instead of predefined
