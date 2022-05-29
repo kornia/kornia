@@ -143,7 +143,9 @@ def bihome_loss(
     triplet_mu: float,
     loss_network: nn.Module,
 ) -> torch.Tensor:
-    r"""biHomE loss implementation. Based on: :cite:`koguciuk2021perceptual`.
+    r"""biHomE loss implementation.
+    
+    Based on: :cite:`koguciuk2021perceptual` and https://github.com/NeurAI-Lab/biHomE.
 
     Args:
         patch_1: image tensor with shape :math:`(B, C, H, W)` where B = batch size,
@@ -248,7 +250,9 @@ def bihome_loss(
 
 
 class biHomELoss(nn.Module):
-    r"""Criterion that computes biHomE perceptual loss. Based on: :cite:`koguciuk2021perceptual`.
+    r"""Criterion that computes biHomE perceptual loss.
+    
+    Based on: :cite:`koguciuk2021perceptual` and https://github.com/NeurAI-Lab/biHomE.
    
     Args:
         loss_network_name: loss network name from torchvision models.
