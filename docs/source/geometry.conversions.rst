@@ -22,6 +22,9 @@ Coordinates
 .. autofunction:: normalize_pixel_coordinates
 .. autofunction:: denormalize_pixel_coordinates3d
 .. autofunction:: normalize_pixel_coordinates3d
+.. autofunction:: normalize_points_with_intrinsics
+.. autofunction:: denormalize_points_with_intrinsics
+
 
 Homography
 ----------
