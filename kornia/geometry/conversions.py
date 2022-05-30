@@ -7,6 +7,7 @@ import torch.nn.functional as F
 
 from kornia.constants import pi
 from kornia.utils.helpers import _torch_inverse_cast
+from kornia.testing import KORNIA_CHECK_SHAPE
 
 __all__ = [
     "rad2deg",
@@ -1199,20 +1200,10 @@ def normalize_points_with_intrinsics(point_2d: torch.Tensor, camera_matrix: torc
         >>> normalize_points_with_intrinsics(X, K)
         tensor([[5.6088, 8.6827]])
     """
-    if not isinstance(point_3d, torch.Tensor):
-        raise TypeError(f"Input point_3d type is not a torch.Tensor. Got {type(point_3d)}")
-
-    if not isinstance(camera_matrix, torch.Tensor):
-        raise TypeError(f"Input camera_matrix type is not a torch.Tensor. Got {type(camera_matrix)}")
-
-    if not (point_3d.device == camera_matrix.device):
+    KORNIA_CHECK_SHAPE(point_2d, ["*", "2"])
+    KORNIA_CHECK_SHAPE(camera_matrix, ["*", "3", "3"])
+    if not (point_2d.device == camera_matrix.device):
         raise ValueError("Input tensors must be all in the same device.")
-
-    if not point_3d.shape[-1] == 3:
-        raise ValueError("Input points_3d must be in the shape of (*, 3)." " Got {}".format(point_3d.shape))
-
-    if not camera_matrix.shape[-2:] == (3, 3):
-        raise ValueError("Input camera_matrix must be in the shape of (*, 3, 3).")
     # projection eq. K_inv * [u v 1]'
     # x = (u - cx) * Z / fx
     # y = (v - cy) * Z / fy
@@ -1255,27 +1246,18 @@ def denormalize_points_with_intrinsics(point_2d_norm: torch.Tensor, camera_matri
         >>> denormalize_points_with_intrinsics(X, K)
         tensor([[5.6088, 8.6827]])
     """
-    if not isinstance(point_3d, torch.Tensor):
-        raise TypeError(f"Input point_3d type is not a torch.Tensor. Got {type(point_3d)}")
-
-    if not isinstance(camera_matrix, torch.Tensor):
-        raise TypeError(f"Input camera_matrix type is not a torch.Tensor. Got {type(camera_matrix)}")
-
-    if not (point_3d.device == camera_matrix.device):
+    KORNIA_CHECK_SHAPE(point_2d_norm, ["*", "2"])
+    KORNIA_CHECK_SHAPE(camera_matrix, ["*", "3", "3"])
+    if not (point_2d_norm.device == camera_matrix.device):
         raise ValueError("Input tensors must be all in the same device.")
 
-    if not point_3d.shape[-1] == 3:
-        raise ValueError("Input points_3d must be in the shape of (*, 3)." " Got {}".format(point_3d.shape))
-
-    if not camera_matrix.shape[-2:] == (3, 3):
-        raise ValueError("Input camera_matrix must be in the shape of (*, 3, 3).")
     # projection eq. [u, v, w]' = K * [x y z 1]'
-    # u = fx * X / Z + cx
-    # v = fy * Y / Z + cy
+    # u = fx * X + cx
+    # v = fy * Y + cy
 
     # unpack coordinates
-    x_coord: torch.Tensor = xy_coords[..., 0]
-    y_coord: torch.Tensor = xy_coords[..., 1]
+    x_coord: torch.Tensor = point_2d_norm[..., 0]
+    y_coord: torch.Tensor = point_2d_norm[..., 1]
 
     # unpack intrinsics
     fx: torch.Tensor = camera_matrix[..., 0, 0]

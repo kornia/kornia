@@ -1435,14 +1435,14 @@ class TestDenormalizePointsWithIntrinsics:
         points_2d = torch.zeros(2, 2, device=device, dtype=dtype)
         camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(2, -1, -1)
         points_norm = kornia.geometry.conversions.denormalize_points_with_intrinsics(points_2d, camera_matrix)
-        assert point_3d.shape == (2, 2)
+        assert points_norm.shape == (2, 2)
 
     def test_toy(self, device, dtype):
         point_2d = torch.tensor([[1.0, 1.0]], device=device, dtype=dtype)
         camera_matrix = torch.tensor([[64., 0.0, 128.0], [0.0, 64., 128.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
-        op = kornia.geometry.conversions.normalize_points_with_intrinsics
+        op = kornia.geometry.conversions.denormalize_points_with_intrinsics
         expected = torch.tensor([[192., 192.]], device=device, dtype=dtype)
-        assert_close(point_2d, point_2d_hat, atol=1e-4, rtol=1e-4)
+        assert_close(op(point_2d, camera_matrix), expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         points_2d = torch.zeros(1, 2, device=device, dtype=dtype)
@@ -1463,6 +1463,7 @@ class TestDenormalizePointsWithIntrinsics:
         op_jit = torch.jit.script(op)
         assert_close(op(*args), op_jit(*args))
 
+
 class TestNormalizePointsWithIntrinsics:
     def test_smoke(self, device, dtype):
         points_2d = torch.zeros(1, 2, device=device, dtype=dtype)
@@ -1474,7 +1475,7 @@ class TestNormalizePointsWithIntrinsics:
         points_2d = torch.zeros(2, 2, device=device, dtype=dtype)
         camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(2, -1, -1)
         points_norm = kornia.geometry.conversions.normalize_points_with_intrinsics(points_2d, camera_matrix)
-        assert point_3d.shape == (2, 2)
+        assert points_norm.shape == (2, 2)
 
     def test_norm_unnorm(self, device, dtype):
         point_2d = torch.tensor([[128.0, 128.0]], device=device, dtype=dtype)
@@ -1489,8 +1490,9 @@ class TestNormalizePointsWithIntrinsics:
         point_2d = torch.tensor([[192.0, 192.0]], device=device, dtype=dtype)
         camera_matrix = torch.tensor([[64., 0.0, 128.0], [0.0, 64., 128.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
         op = kornia.geometry.conversions.normalize_points_with_intrinsics
+        out = op(point_2d, camera_matrix)
         expected = torch.tensor([[1., 1.]], device=device, dtype=dtype)
-        assert_close(point_2d, point_2d_hat, atol=1e-4, rtol=1e-4)
+        assert_close(out, expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         points_2d = torch.zeros(1, 2, device=device, dtype=dtype)

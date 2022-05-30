@@ -188,16 +188,21 @@ def KORNIA_CHECK_SHAPE(x, shape: List[str]) -> None:
     # does not like variable-length tuples
     KORNIA_CHECK_IS_TENSOR(x)
     if '*' == shape[0]:
-        start_idx: int = 1
-        x_shape_to_check = x.shape[-len(shape) - 1 :]
+        valid_shape = shape[1:]
+        if len(x.shape) == len(valid_shape):  # we have no dimention at all for *
+            x_shape_to_check = x.shape
+        else:
+            x_shape_to_check = x.shape[-(len(shape) - 1):]
+            print (x_shape_to_check)
+
     else:
-        start_idx = 0
+        valid_shape = shape
         x_shape_to_check = x.shape
 
-    for i in range(start_idx, len(shape)):
+    for i in range(len(valid_shape)):
         # The voodoo below is because torchscript does not like
         # that dim can be both int and str
-        dim_: str = shape[i]
+        dim_: str = valid_shape[i]
         if not dim_.isnumeric():
             continue
         dim = int(dim_)
