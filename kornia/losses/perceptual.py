@@ -1,4 +1,4 @@
-from typing import Tuple, Callable
+from typing import Callable, Tuple
 
 import torch
 import torch.nn as nn
@@ -16,7 +16,8 @@ class LossNetwork(nn.Module):
         freeze: bool = True,
     ) -> None:
         super().__init__()
-        assert 'resnet' in model_name, 'Only ResNets are supported ATM'
+        if 'resnet' not in model_name:
+            raise ValueError('Only ResNets are supported ATM')
 
         # Define resnet model
         loss_network_fn = getattr(torchvision.models, model_name)
@@ -70,7 +71,8 @@ def _image_shape_to_corners(image: torch.Tensor) -> torch.Tensor:
     Return:
         the corners of the image.
     """
-    assert len(image.shape) == 4, 'patch should be of size B, C, H, W'
+    if len(image.shape) != 4:
+        raise ValueError('patch should be of size B, C, H, W')
     batch_size = image.shape[0]
     image_width = image.shape[-2]
     image_height = image.shape[-1]
@@ -144,7 +146,7 @@ def bihome_loss(
     loss_network: nn.Module,
 ) -> torch.Tensor:
     r"""biHomE loss implementation.
-    
+
     Based on: :cite:`koguciuk2021perceptual` and https://github.com/NeurAI-Lab/biHomE.
 
     Args:
@@ -251,9 +253,9 @@ def bihome_loss(
 
 class biHomELoss(nn.Module):
     r"""Criterion that computes biHomE perceptual loss.
-    
+
     Based on: :cite:`koguciuk2021perceptual` and https://github.com/NeurAI-Lab/biHomE.
-   
+
     Args:
         loss_network_name: loss network name from torchvision models.
         loss_network: the user can use its own Loss Network implementation instead of predefined
