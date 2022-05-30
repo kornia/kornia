@@ -36,6 +36,8 @@ __all__ = [
     "normalize_homography3d",
     "normal_transform_pixel",
     "normal_transform_pixel3d",
+    "normalize_points_with_intrinsics",
+    "denormalize_points_with_intrinsics",
 ]
 
 
@@ -1175,3 +1177,114 @@ def normalize_homography3d(
     # compute chain transformations
     dst_norm_trans_src_norm: torch.Tensor = dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm)
     return dst_norm_trans_src_norm
+
+
+def normalize_points_with_intrinsics(point_2d: torch.Tensor, camera_matrix: torch.Tensor):
+    r"""Normalizes points with intrinsics. Useful for conversion of keypoints
+    to be used with essential matrix.
+
+    Args:
+        point_2d: tensor containing the 2d points in the image pixel coordinates.
+        The shape of the tensor can be :math:`(*, 2)`.
+        camera_matrix: tensor containing the intrinsics camera
+            matrix. The tensor shape must be :math:`(*, 3, 3)`.
+
+    Returns:
+        tensor of (u, v) cam coordinates with shape :math:`(*, 2)`.
+
+    Example:
+        >>> _ = torch.manual_seed(0)
+        >>> X = torch.rand(1, 2)
+        >>> K = torch.eye(3)[None]
+        >>> normalize_points_with_intrinsics(X, K)
+        tensor([[5.6088, 8.6827]])
+    """
+    if not isinstance(point_3d, torch.Tensor):
+        raise TypeError(f"Input point_3d type is not a torch.Tensor. Got {type(point_3d)}")
+
+    if not isinstance(camera_matrix, torch.Tensor):
+        raise TypeError(f"Input camera_matrix type is not a torch.Tensor. Got {type(camera_matrix)}")
+
+    if not (point_3d.device == camera_matrix.device):
+        raise ValueError("Input tensors must be all in the same device.")
+
+    if not point_3d.shape[-1] == 3:
+        raise ValueError("Input points_3d must be in the shape of (*, 3)." " Got {}".format(point_3d.shape))
+
+    if not camera_matrix.shape[-2:] == (3, 3):
+        raise ValueError("Input camera_matrix must be in the shape of (*, 3, 3).")
+    # projection eq. K_inv * [u v 1]'
+    # x = (u - cx) * Z / fx
+    # y = (v - cy) * Z / fy
+
+    # unpack coordinates
+    u_coord: torch.Tensor = point_2d[..., 0]
+    v_coord: torch.Tensor = point_2d[..., 1]
+
+    # unpack intrinsics
+    fx: torch.Tensor = camera_matrix[..., 0, 0]
+    fy: torch.Tensor = camera_matrix[..., 1, 1]
+    cx: torch.Tensor = camera_matrix[..., 0, 2]
+    cy: torch.Tensor = camera_matrix[..., 1, 2]
+
+    # projective
+    x_coord: torch.Tensor = (u_coord - cx) / fx
+    y_coord: torch.Tensor = (v_coord - cy) / fy
+
+    xy: torch.Tensor = torch.stack([x_coord, y_coord], dim=-1)
+    return xy
+
+
+def denormalize_points_with_intrinsics(point_2d_norm: torch.Tensor, camera_matrix: torch.Tensor):
+    r"""Normalizes points with intrinsics. Useful for conversion of keypoints
+    to be used with essential matrix.
+
+    Args:
+        point_2d_norm: tensor containing the 2d points in the image pixel coordinates.
+        The shape of the tensor can be :math:`(*, 2)`.
+        camera_matrix: tensor containing the intrinsics camera
+            matrix. The tensor shape must be :math:`(*, 3, 3)`.
+
+    Returns:
+        tensor of (u, v) cam coordinates with shape :math:`(*, 2)`.
+
+    Example:
+        >>> _ = torch.manual_seed(0)
+        >>> X = torch.rand(1, 2)
+        >>> K = torch.eye(3)[None]
+        >>> denormalize_points_with_intrinsics(X, K)
+        tensor([[5.6088, 8.6827]])
+    """
+    if not isinstance(point_3d, torch.Tensor):
+        raise TypeError(f"Input point_3d type is not a torch.Tensor. Got {type(point_3d)}")
+
+    if not isinstance(camera_matrix, torch.Tensor):
+        raise TypeError(f"Input camera_matrix type is not a torch.Tensor. Got {type(camera_matrix)}")
+
+    if not (point_3d.device == camera_matrix.device):
+        raise ValueError("Input tensors must be all in the same device.")
+
+    if not point_3d.shape[-1] == 3:
+        raise ValueError("Input points_3d must be in the shape of (*, 3)." " Got {}".format(point_3d.shape))
+
+    if not camera_matrix.shape[-2:] == (3, 3):
+        raise ValueError("Input camera_matrix must be in the shape of (*, 3, 3).")
+    # projection eq. [u, v, w]' = K * [x y z 1]'
+    # u = fx * X / Z + cx
+    # v = fy * Y / Z + cy
+
+    # unpack coordinates
+    x_coord: torch.Tensor = xy_coords[..., 0]
+    y_coord: torch.Tensor = xy_coords[..., 1]
+
+    # unpack intrinsics
+    fx: torch.Tensor = camera_matrix[..., 0, 0]
+    fy: torch.Tensor = camera_matrix[..., 1, 1]
+    cx: torch.Tensor = camera_matrix[..., 0, 2]
+    cy: torch.Tensor = camera_matrix[..., 1, 2]
+
+    # apply intrinsics ans return
+    u_coord: torch.Tensor = x_coord * fx + cx
+    v_coord: torch.Tensor = y_coord * fy + cy
+
+    return torch.stack([u_coord, v_coord], dim=-1)
