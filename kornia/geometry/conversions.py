@@ -6,8 +6,8 @@ import torch
 import torch.nn.functional as F
 
 from kornia.constants import pi
-from kornia.utils.helpers import _torch_inverse_cast
 from kornia.testing import KORNIA_CHECK_SHAPE
+from kornia.utils.helpers import _torch_inverse_cast
 
 __all__ = [
     "rad2deg",
