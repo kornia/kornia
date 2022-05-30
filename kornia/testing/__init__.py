@@ -193,7 +193,6 @@ def KORNIA_CHECK_SHAPE(x, shape: List[str]) -> None:
             x_shape_to_check = x.shape
         else:
             x_shape_to_check = x.shape[-(len(shape) - 1):]
-            print (x_shape_to_check)
 
     else:
         valid_shape = shape
