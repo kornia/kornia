@@ -2,7 +2,7 @@ from typing import Iterable, Optional
 
 import torch
 
-from kornia.geometry.camera.perspective import project_points  # , unproject_points
+from kornia.geometry.camera.perspective import project_points, unproject_points
 from kornia.geometry.linalg import inverse_transformation, transform_points
 
 
@@ -36,6 +36,7 @@ class PinholeCamera:
         self.width: torch.Tensor = width
         self._intrinsics: torch.Tensor = intrinsics
         self._extrinsics: torch.Tensor = extrinsics
+        self._rotation_matrix_inverse: torch.Tensor = self.rotation_matrix.inverse()
 
     @staticmethod
     def _check_valid(data_iter: Iterable[torch.Tensor]) -> bool:
@@ -200,6 +201,15 @@ class PinholeCamera:
         return self.extrinsics[..., :3, :3]
 
     @property
+    def rotation_matrix_inverse(self) -> torch.Tensor:
+        r"""Return the 3x3 inverse rotation matrix from the extrinsics.
+
+        Returns:
+            tensor of shape :math:`(B, 3, 3)`.
+        """
+        return self._rotation_matrix_inverse
+
+    @property
     def translation_vector(self) -> torch.Tensor:
         r"""Return the translation vector from the extrinsics.
 
@@ -268,10 +278,65 @@ class PinholeCamera:
         return self
 
     def project_points(self, point_3d: torch.Tensor) -> torch.Tensor:
+        r"""Project a 3d point in world coordinates onto the 2d camera plane.
+
+        Args:
+            point3d: tensor containing the 3d points to be projected
+                to the camera plane. The shape of the tensor can be :math:`(*, 3)`.
+
+        Returns:
+            tensor of (u, v) cam coordinates with shape :math:`(*, 2)`.
+
+        Example:
+            >>> _ = torch.manual_seed(0)
+            >>> X = torch.rand(1, 3)
+            >>> I = torch.eye(4)[None]
+            >>> E = torch.eye(4)[None]
+            >>> h = torch.ones(1)
+            >>> w = torch.ones(1)
+            >>> pinhole = kornia.geometry.camera.PinholeCamera(K, E, h, w)
+            >>> pinhole.project_points(X)
+            tensor([[5.6088, 8.6827]])
+        """
         R = self.rotation_matrix
         t = self.translation_vector
         point_3d_cam = torch.matmul(R, point_3d.view(3, 1)) + t
         return project_points(point_3d_cam.view(point_3d_cam.shape[0], 3), self.camera_matrix)
+
+    def unproject_points(self, point_2d: torch.Tensor, depth: torch.Tensor, normalize: bool = False):
+        r"""Unproject a 2d point in 3d.
+
+        Transform coordinates in the pixel frame to the world frame.
+
+        Args:
+            point2d: tensor containing the 2d to be projected to
+                world coordinates. The shape of the tensor can be :math:`(*, 2)`.
+            depth: tensor containing the depth value of each 2d
+                points. The tensor shape must be equal to point2d :math:`(*, 1)`.
+            normalize: whether to normalize the pointcloud. This
+                must be set to `True` when the depth is represented as the Euclidean
+                ray length from the camera position.
+
+        Returns:
+            tensor of (x, y, z) world coordinates with shape :math:`(*, 3)`.
+
+        Example:
+            >>> _ = torch.manual_seed(0)
+            >>> x = torch.rand(1, 2)
+            >>> depth = torch.ones(1, 1)
+            >>> I = torch.eye(4)[None]
+            >>> E = torch.eye(4)[None]
+            >>> h = torch.ones(1)
+            >>> w = torch.ones(1)
+            >>> pinhole = kornia.geometry.camera.PinholeCamera(K, E, h, w)
+            >>> pinhole.unproject_points(x, depth)
+            tensor([[0.4963, 0.7682, 1.0000]])
+        """
+        point_3d_cam = unproject_points(point_2d, depth, self.camera_matrix, normalize)
+        point_3d_cam = torch.unsqueeze(point_3d_cam, dim=1).view(-1, 3, 1)
+        t = self.translation_vector
+        point_3d = torch.matmul(self.rotation_matrix_inverse, point_3d_cam) - t
+        return point_3d.view(-1, 1, 3)
 
     # NOTE: just for test. Decide if we keep it.
     @classmethod

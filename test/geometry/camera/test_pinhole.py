@@ -434,12 +434,12 @@ class TestPinholeCamera:
         assert_close(pinhole_scale.height, pinhole.height * scale_val, atol=1e-4, rtol=1e-4)
         assert_close(pinhole_scale.width, pinhole.width * scale_val, atol=1e-4, rtol=1e-4)
 
-    def test_pinhole_camera_project_unproject(self, device, dtype):
+    def test_pinhole_camera_project_and_unproject(self, device, dtype):
         batch_size = 4
         height, width = 4, 6
         fx, fy, cx, cy = 1, 2, width / 2, height / 2
-        alpha, beta, gamma = 0.2, 0.3, 0.4
-        tx, ty, tz = 1, 2, 3
+        alpha, beta, gamma = 0.0, 0.0, 0.4
+        tx, ty, tz = 0, 0, 3
 
         intrinsics = self._create_intrinsics(batch_size, fx, fy, cx, cy, device=device, dtype=dtype)
         extrinsics = self._create_extrinsics_with_rotation(
@@ -452,6 +452,9 @@ class TestPinholeCamera:
         pinhole = kornia.geometry.camera.PinholeCamera(intrinsics, extrinsics, height, width)
 
         point_3d = torch.tensor([[10.0, 2.0, 30.0]], device=device, dtype=dtype)
-        depth = point_3d[..., -1:]
+
+        depth = torch.tensor(33.0).expand(1)
+
         point_2d = pinhole.project_points(point_3d)
-        print(depth, point_2d)
+        point_3d_hat = pinhole.unproject_points(point_2d, depth)
+        assert_close(point_3d, point_3d_hat[0], atol=1e-4, rtol=1e-4)
