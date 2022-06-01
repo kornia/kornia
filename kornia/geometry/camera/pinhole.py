@@ -289,8 +289,8 @@ class PinholeCamera:
             >>> pinhole.project_points(X)
             tensor([[5.6088, 8.6827]])
         """
-        point_3d_cam = transform_points(self.extrinsics, point_3d)
-        return convert_points_from_homogeneous(transform_points(self.intrinsics, point_3d_cam))
+        P = self.intrinsics @ self.extrinsics
+        return convert_points_from_homogeneous(transform_points(P, point_3d))
 
     def unproject(self, point_2d: torch.Tensor, depth: torch.Tensor):
         r"""Unproject a 2d point in 3d.
@@ -321,10 +321,9 @@ class PinholeCamera:
             >>> pinhole.unproject_points(x, depth)
             tensor([[0.4963, 0.7682, 1.0000]])
         """
-        extrinsics_inv = _torch_inverse_cast(self.extrinsics)
-        intrinsics_inv = _torch_inverse_cast(self.intrinsics)
-        point_3d_cam = transform_points(intrinsics_inv, convert_points_to_homogeneous(point_2d)) * depth
-        return transform_points(extrinsics_inv, point_3d_cam)
+        P = self.intrinsics @ self.extrinsics
+        P_inv = _torch_inverse_cast(P)
+        return transform_points(P_inv, convert_points_to_homogeneous(point_2d) * depth)
 
     # NOTE: just for test. Decide if we keep it.
     @classmethod
