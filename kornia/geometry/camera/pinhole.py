@@ -2,8 +2,9 @@ from typing import Iterable, Optional
 
 import torch
 
-from kornia.geometry.camera.perspective import project_points, unproject_points
+from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.linalg import inverse_transformation, transform_points
+from kornia.utils.helpers import _torch_inverse_cast
 
 
 class PinholeCamera:
@@ -36,7 +37,6 @@ class PinholeCamera:
         self.width: torch.Tensor = width
         self._intrinsics: torch.Tensor = intrinsics
         self._extrinsics: torch.Tensor = extrinsics
-        self._rotation_matrix_inverse: torch.Tensor = self.rotation_matrix.inverse()
 
     @staticmethod
     def _check_valid(data_iter: Iterable[torch.Tensor]) -> bool:
@@ -201,15 +201,6 @@ class PinholeCamera:
         return self.extrinsics[..., :3, :3]
 
     @property
-    def rotation_matrix_inverse(self) -> torch.Tensor:
-        r"""Return the 3x3 inverse rotation matrix from the extrinsics.
-
-        Returns:
-            tensor of shape :math:`(B, 3, 3)`.
-        """
-        return self._rotation_matrix_inverse
-
-    @property
     def translation_vector(self) -> torch.Tensor:
         r"""Return the translation vector from the extrinsics.
 
@@ -277,7 +268,7 @@ class PinholeCamera:
         self.width *= scale_factor
         return self
 
-    def project_points(self, point_3d: torch.Tensor) -> torch.Tensor:
+    def project(self, point_3d: torch.Tensor) -> torch.Tensor:
         r"""Project a 3d point in world coordinates onto the 2d camera plane.
 
         Args:
@@ -298,12 +289,10 @@ class PinholeCamera:
             >>> pinhole.project_points(X)
             tensor([[5.6088, 8.6827]])
         """
-        R = self.rotation_matrix
-        t = self.translation_vector
-        point_3d_cam = torch.matmul(R, point_3d.view(3, 1)) + t
-        return project_points(point_3d_cam.view(point_3d_cam.shape[0], 3), self.camera_matrix)
+        point_3d_cam = transform_points(self.extrinsics, point_3d)
+        return convert_points_from_homogeneous(transform_points(self.intrinsics, point_3d_cam))
 
-    def unproject_points(self, point_2d: torch.Tensor, depth: torch.Tensor, normalize: bool = False):
+    def unproject(self, point_2d: torch.Tensor, depth: torch.Tensor):
         r"""Unproject a 2d point in 3d.
 
         Transform coordinates in the pixel frame to the world frame.
@@ -332,11 +321,10 @@ class PinholeCamera:
             >>> pinhole.unproject_points(x, depth)
             tensor([[0.4963, 0.7682, 1.0000]])
         """
-        point_3d_cam = unproject_points(point_2d, depth, self.camera_matrix, normalize)
-        point_3d_cam = torch.unsqueeze(point_3d_cam, dim=1).view(-1, 3, 1)
-        t = self.translation_vector
-        point_3d = torch.matmul(self.rotation_matrix_inverse, point_3d_cam) - t
-        return point_3d.view(-1, 1, 3)
+        extrinsics_inv = _torch_inverse_cast(self.extrinsics)
+        intrinsics_inv = _torch_inverse_cast(self.intrinsics)
+        point_3d_cam = transform_points(intrinsics_inv, convert_points_to_homogeneous(point_2d)) * depth
+        return transform_points(extrinsics_inv, point_3d_cam)
 
     # NOTE: just for test. Decide if we keep it.
     @classmethod
