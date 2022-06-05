@@ -33,13 +33,15 @@ class RandomRaySampler(RaySampler):
 
     def __init__(self, heights: torch.Tensor, widths: torch.Tensor, num_rays: torch.Tensor) -> None:
         super().__init__(heights, widths)
-        self._num_rays: torch.Tensor = num_rays
+        self._num_rays: torch.Tensor = num_rays.int()
 
     def sample_points(self) -> None:
         # points_2d_camera: Dict[int, RaySampler.Points2DAsList] = {}
 
         cameras_dims: Dict[int, RandomRaySampler.CameraDims] = {}
-        for camera_id, height, width, n in enumerate(zip(self._heights, self._widths, self._num_rays)):
+        for camera_id, (height, width, n) in enumerate(
+            zip(self._heights.numpy(), self._widths.numpy(), self._num_rays.numpy())
+        ):
             if n not in cameras_dims:
                 cameras_dims[n] = RandomRaySampler.CameraDims()
             cameras_dims[n]._heights.extend([height] * n)
@@ -57,9 +59,13 @@ class UniformRaySampler(RaySampler):
 
 
 class Rays:
-    _origins: torch.Tensor
-    _directions: torch.Tensor
-    _lengths: torch.Tensor
+    _origins: torch.Tensor  # Ray origins in world coordinates
+    _directions: torch.Tensor  # Ray directions in worlds coordinates
+    _lengths: torch.Tensor  # Ray lengths
+    _camera_ids: torch.Tensor  # Ray camera ID
+    _points_2d: torch.Tensor  # Ray intersection with image plane in camera coordinates
+
+    # FIXME: Not division to cameras - just big tensors for each ray parameters
 
     def __init__(self, cameras: PinholeCamera) -> None:
         pass
