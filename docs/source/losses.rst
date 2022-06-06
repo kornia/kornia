@@ -11,6 +11,12 @@ Reconstruction
 .. autofunction:: total_variation
 .. autofunction:: inverse_depth_smoothness_loss
 
+.. autoclass:: SSIMLoss
+.. autoclass:: MS_SSIMLoss
+.. autoclass:: TotalVariation
+.. autoclass:: PSNRLoss
+.. autoclass:: InverseDepthSmoothnessLoss
+
 Semantic Segmentation
 ---------------------
 
@@ -18,6 +24,15 @@ Semantic Segmentation
 .. autofunction:: focal_loss
 .. autofunction:: dice_loss
 .. autofunction:: tversky_loss
+.. autofunction:: lovasz_hinge_loss
+.. autofunction:: lovasz_softmax_loss
+
+.. autoclass:: BinaryFocalLossWithLogits
+.. autoclass:: DiceLoss
+.. autoclass:: TverskyLoss
+.. autoclass:: FocalLoss
+.. autoclass:: LovaszHingeLoss
+.. autoclass:: LovaszSoftmaxLoss
 
 Distributions
 -------------
@@ -30,16 +45,3 @@ Morphology
 
 .. autoclass:: HausdorffERLoss
 .. autoclass:: HausdorffERLoss3D
-
-Module
-------
-
-.. autoclass:: DiceLoss
-.. autoclass:: TverskyLoss
-.. autoclass:: FocalLoss
-.. autoclass:: SSIMLoss
-.. autoclass:: MS_SSIMLoss
-.. autoclass:: InverseDepthSmoothnessLoss
-.. autoclass:: TotalVariation
-.. autoclass:: PSNRLoss
-.. autoclass:: BinaryFocalLossWithLogits

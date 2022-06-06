@@ -578,7 +578,7 @@ def invert_affine_transform(matrix: torch.Tensor) -> torch.Tensor:
         raise ValueError(f"Input matrix must be a Bx2x3 tensor. Got {matrix.shape}")
 
     matrix_tmp: torch.Tensor = convert_affinematrix_to_homography(matrix)
-    matrix_inv: torch.Tensor = torch.inverse(matrix_tmp)
+    matrix_inv: torch.Tensor = _torch_inverse_cast(matrix_tmp)
 
     return matrix_inv[..., :2, :3]
 
