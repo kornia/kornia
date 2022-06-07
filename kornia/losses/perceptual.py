@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 import torchvision
 
+import kornia
+from kornia import testing
 from kornia.geometry.transform.imgwarp import get_perspective_transform, warp_perspective
 
 
@@ -71,8 +73,7 @@ def _image_shape_to_corners(image: torch.Tensor) -> torch.Tensor:
     Return:
         the corners of the image.
     """
-    if len(image.shape) != 4:
-        raise ValueError('patch should be of size B, C, H, W')
+    testing.KORNIA_CHECK_SHAPE(image, ['*', '*', '*', '*'])
     batch_size = image.shape[0]
     image_width = image.shape[-2]
     image_height = image.shape[-1]
@@ -98,21 +99,13 @@ def _four_point_to_homography(corners: torch.Tensor, deltas: torch.Tensor) -> to
         the converted homography.
     """
 
-    if not isinstance(corners, torch.Tensor):
-        raise TypeError(f"corners type is not a torch.Tensor. Got {type(corners)}")
-
-    if not isinstance(deltas, torch.Tensor):
-        raise TypeError(f"deltas type is not a torch.Tensor. Got {type(deltas)}")
-
-    if not len(corners.shape) == 3 or not corners.shape[1] == 4 or not corners.shape[2] == 2:
-        raise ValueError(f"Invalid input shape of corners, we expect Bx4x2. Got: {corners.shape}")
-
-    if not len(deltas.shape) == 3 or not deltas.shape[1] == 4 or not deltas.shape[2] == 2:
-        raise ValueError(f"Invalid input shape of deltas, we expect Bx4x2. Got: {deltas.shape}")
-
-    if not corners.size(0) == deltas.size(0):
-        raise ValueError(f'Expected corners batch_size ({corners.size(0)}) to match deltas batch '
-                         f'size ({deltas.size(0)}).')
+    testing.KORNIA_CHECK_SHAPE(deltas, ['*', '4', '2'])
+    testing.KORNIA_CHECK_SHAPE(corners, ['*', '4', '2'])
+    testing.KORNIA_CHECK(
+        corners.size(0) == deltas.size(0),
+        f'Expected corners batch_size ({corners.size(0)}) to match deltas batch '
+        f'size ({deltas.size(0)}).'
+    )
 
     corners_hat = corners + deltas
     homography_inv = get_perspective_transform(corners, corners_hat)
@@ -164,43 +157,44 @@ def bihome_loss(
     Return:
         the computed loss.
     """
-    if not isinstance(patch_1, torch.Tensor):
-        raise TypeError(f"patch_1 type is not a torch.Tensor. Got {type(patch_1)}")
-
-    if not len(patch_1.shape) == 4:
-        raise ValueError(f"Invalid input shape of patch_1, we expect BxCxHxW. Got: {patch_1.shape}")
-
-    if not isinstance(patch_2, torch.Tensor):
-        raise TypeError(f"patch_2 type is not a torch.Tensor. Got {type(patch_2)}")
-
-    if not len(patch_2.shape) == 4:
-        raise ValueError(f"Invalid input shape of patch_2, we expect BxCxHxW. Got: {patch_2.shape}")
-
-    if patch_1.shape != patch_2.shape:
-        raise ValueError(f'Expected patch_1 shape ({patch_1.shape}) to match patch_2 shape ({patch_2.shape}).')
-
-    if not isinstance(delta_hat_12, torch.Tensor):
-        raise TypeError(f"delta_hat_12 type is not a torch.Tensor. Got {type(delta_hat_12)}")
-
-    if not len(delta_hat_12.shape) == 3 or not delta_hat_12.shape[1] == 4 or not delta_hat_12.shape[2] == 2:
-        raise ValueError(f"Invalid input shape of delta_hat_12, we expect Bx4x2. Got: {delta_hat_12.shape}")
-
-    if not delta_hat_12.size(0) == patch_1.size(0):
-        raise ValueError(f'Expected delta_hat_12 batch_size ({delta_hat_12.size(0)}) to match patch_1 batch size '
-                         f'({patch_1.size(0)}).')
-
-    if not isinstance(delta_hat_21, torch.Tensor):
-        raise TypeError(f"delta_hat_21 type is not a torch.Tensor. Got {type(delta_hat_21)}")
-
-    if not len(delta_hat_21.shape) == 3 or not delta_hat_21.shape[1] == 4 or not delta_hat_21.shape[2] == 2:
-        raise ValueError(f"Invalid input shape of delta_hat_21, we expect Bx4x2. Got: {delta_hat_21.shape}")
-
-    if not delta_hat_21.size(0) == patch_1.size(0):
-        raise ValueError(f'Expected delta_hat_21 batch_size ({delta_hat_21.size(0)}) to match patch_1 batch size '
-                         f'({patch_1.size(0)}).')
-
-    if not isinstance(loss_network, nn.Module):
-        raise TypeError(f"loss_network type is not a str. Got {type(loss_network)}")
+    testing.KORNIA_CHECK_SHAPE(
+        patch_1,
+        ['*', '*', '*', '*'],
+        # f"Invalid input shape of patch_1, we expect BxCxHxW. Got: {patch_1.shape}",
+    )
+    testing.KORNIA_CHECK_SHAPE(
+        patch_2,
+        ['*', '*', '*', '*'],
+        # f"Invalid input shape of patch_2, we expect BxCxHxW. Got: {patch_2.shape}",
+    )
+    testing.KORNIA_CHECK(
+        patch_1.shape == patch_2.shape,
+        f'Expected patch_1 shape ({patch_1.shape}) to match patch_2 shape ({patch_2.shape}).',
+    )
+    testing.KORNIA_CHECK_SHAPE(
+        delta_hat_12,
+        ['*', '4', '2'],
+        # f"Invalid input shape of delta_hat_12, we expect Bx4x2. Got: {delta_hat_12.shape}",
+    )
+    testing.KORNIA_CHECK(
+        delta_hat_12.size(0) == patch_1.size(0),
+        f'Expected delta_hat_12 batch_size ({delta_hat_12.size(0)}) to match patch_1 batch size '
+        f'({patch_1.size(0)}).',
+    )
+    testing.KORNIA_CHECK_SHAPE(
+        delta_hat_21,
+        ['*', '4', '2'],
+        # f"Invalid input shape of delta_hat_21, we expect Bx4x2. Got: {delta_hat_21.shape}",
+    )
+    testing.KORNIA_CHECK(
+        delta_hat_21.size(0) == patch_1.size(0),
+        f'Expected delta_hat_21 batch_size ({delta_hat_21.size(0)}) to match patch_1 batch size '
+        f'({patch_1.size(0)}).',
+    )
+    testing.KORNIA_CHECK(
+        isinstance(loss_network, nn.Module),
+        f"loss_network type is not a str. Got {type(loss_network)}",
+    )
 
     # Compute features of both patches
     patch_1_f = loss_network(patch_1)
@@ -223,11 +217,38 @@ def bihome_loss(
     # Mask size mismatch downsampling
     _, _, f_h, _ = patch_1_prime_f.shape
     downsample_factor = patch_1_m.shape[-1] // f_h
-    downsample_layer = torch.nn.AvgPool2d(kernel_size=downsample_factor, stride=downsample_factor, padding=0)
-    patch_1_m = torch.squeeze(downsample_layer(patch_1_m), dim=1)
-    patch_2_m = torch.squeeze(downsample_layer(patch_2_m), dim=1)
-    patch_1_m_prime = torch.squeeze(downsample_layer(patch_1_m_prime), dim=1)
-    patch_2_m_prime = torch.squeeze(downsample_layer(patch_2_m_prime), dim=1)
+    patch_1_m = torch.squeeze(
+        torch.nn.functional.avg_pool2d(
+            input=patch_1_m,
+            kernel_size=downsample_factor,
+            stride=downsample_factor,
+            padding=0,
+        ), dim=1
+    )
+    patch_2_m = torch.squeeze(
+        torch.nn.functional.avg_pool2d(
+            input=patch_2_m,
+            kernel_size=downsample_factor,
+            stride=downsample_factor,
+            padding=0,
+        ), dim=1
+    )
+    patch_1_m_prime = torch.squeeze(
+        torch.nn.functional.avg_pool2d(
+            input=patch_1_m_prime,
+            kernel_size=downsample_factor,
+            stride=downsample_factor,
+            padding=0,
+        ), dim=1
+    )
+    patch_2_m_prime = torch.squeeze(
+        torch.nn.functional.avg_pool2d(
+            input=patch_2_m_prime,
+            kernel_size=downsample_factor,
+            stride=downsample_factor,
+            padding=0,
+        ), dim=1
+    )
 
     # Triplet Margin Loss
     l1 = torch.sum(torch.abs(patch_1_prime_f - patch_2_f), dim=1)
@@ -243,15 +264,14 @@ def bihome_loss(
     ln2 = torch.sum(ln2_nom / ln2_den)
 
     # Regularization
-    batch_size = patch_1.size(0)
-    eye = torch.eye(3, dtype=h1.dtype, device=h1.device).unsqueeze(dim=0).repeat(batch_size, 1, 1)
+    eye = kornia.eye_like(3, h1)
     ln3 = torch.sum((torch.matmul(h1, h2) - eye) ** 2) * triplet_mu
 
     loss = ln1 + ln2 + ln3
     return loss
 
 
-class biHomELoss(nn.Module):
+class BiHomELoss(nn.Module):
     r"""Criterion that computes biHomE perceptual loss.
 
     Based on: :cite:`koguciuk2021perceptual` and https://github.com/NeurAI-Lab/biHomE.
