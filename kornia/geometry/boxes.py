@@ -97,10 +97,12 @@ def _boxes_to_quadrilaterals(
 
     if mode.startswith("vertices"):
         if mode == "vertices":
+            quadrilaterals = boxes.clone()
+            quadrilaterals[..., 1:3, 0] = quadrilaterals[..., 1:3, 0] - 1
+            quadrilaterals[..., 2:, 1] = quadrilaterals[..., 2:, 1] - 1
+        elif mode == "vertices_plus":
             # Avoid passing reference
             quadrilaterals = boxes.clone()
-        elif mode == "vertices_plus":
-            quadrilaterals = boxes.clone()  # TODO: perform +1
         else:
             raise ValueError(f"Unknown mode {mode}")
         validate_boxes or validate_bbox(quadrilaterals)
