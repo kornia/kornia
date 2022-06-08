@@ -436,7 +436,7 @@ class TestPinholeCamera:
 
     def test_pinhole_camera_project_and_unproject(self, device, dtype):
         batch_size = 5
-        n = 2  # Point per batch
+        n = 2  # Points per batch
         height, width = 4, 6
         fx, fy, cx, cy = 1, 2, width / 2, height / 2
         alpha, beta, gamma = 0.0, 0.0, 0.4
