@@ -105,7 +105,7 @@ class TestRays:
 
     def test_rays(self, device, dtype):
 
-        num_rays: torch.Tensor = torch.ones(4, device=device, dtype=torch.int) * 2
+        num_rays: torch.Tensor = torch.ones(4, device=device, dtype=torch.int) * 5
 
         cameras = self._create_four_cameras(device=device, dtype=dtype)
 

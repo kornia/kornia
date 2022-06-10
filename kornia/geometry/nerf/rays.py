@@ -83,17 +83,22 @@ class Rays:
     # FIXME: Not division to cameras - just big tensors for each ray parameters
 
     def __init__(self, cameras: PinholeCamera, ray_sampler: RaySampler, num_rays: torch.Tensor) -> None:
-        if len(cameras.height != num_rays.shape[0]):
+        num_cams = cameras.height.shape[0]
+        if num_cams != num_rays.shape[0]:
             raise ValueError(
                 'Number of cameras does not match size of tensor to define number of rays to march from each camera'
             )
         ray_sampler.sample_points(cameras.height, cameras.width, num_rays)
 
         # Unproject 2d points in image plane to 3d world for two depths
-        # depths = torch.tensor([[[[1.0]]], [[[2.0]]]])
-        for obj in ray_sampler.points_2d_camera.values():
-            # points_3d = cameras.unproject(obj.points_2d, depths)
-            pass
+        directions = []
+        for n, obj in ray_sampler.points_2d_camera.items():
+            depths = torch.ones(num_cams, 2 * n, 3)
+            depths[:, n:] = 2.0
+            points_3d = cameras.unproject(obj.points_2d.repeat(1, 2, 1), depths)
+            directions.append(points_3d[:, :n] - points_3d[:, n:])
+        self._directions = torch.cat(directions)
+        pass
 
     def _calc_ray_params(self, cameras: PinholeCamera):
         pass
