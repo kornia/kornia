@@ -26,7 +26,7 @@ class RaySampler:
     def points_2d_camera(self) -> Dict[int, Points2D]:
         return self._points_2d_camera
 
-    def sample_points(self, heights: torch.Tensor, widths: torch.Tensor, num_rays: torch.Tensor) -> None:
+    def sample_points_2d(self, heights: torch.Tensor, widths: torch.Tensor, num_rays: torch.Tensor) -> None:
         raise NotImplementedError
 
 
@@ -52,7 +52,7 @@ class RandomRaySampler(RaySampler):
     def __init__(self) -> None:
         super().__init__()
 
-    def sample_points(self, heights: torch.Tensor, widths: torch.Tensor, num_rays: torch.Tensor) -> None:
+    def sample_points_2d(self, heights: torch.Tensor, widths: torch.Tensor, num_rays: torch.Tensor) -> None:
         num_rays: torch.Tensor = num_rays.int()
         cameras_dims: Dict[int, RandomRaySampler.CameraDims] = {}
         for camera_id, (height, width, n) in enumerate(zip(heights.numpy(), widths.numpy(), num_rays.numpy())):
@@ -73,7 +73,7 @@ class UniformRaySampler(RaySampler):
     pass
 
 
-class Rays:
+class Rays:  # FIXME: This class should be merged with RaySampler above
     _origins: torch.Tensor  # Ray origins in world coordinates
     _directions: torch.Tensor  # Ray directions in worlds coordinates
     _lengths: torch.Tensor  # Ray lengths
@@ -88,7 +88,7 @@ class Rays:
             raise ValueError(
                 'Number of cameras does not match size of tensor to define number of rays to march from each camera'
             )
-        ray_sampler.sample_points(cameras.height, cameras.width, num_rays)
+        ray_sampler.sample_points_2d(cameras.height, cameras.width, num_rays)
 
         # Unproject 2d points in image plane to 3d world for two depths
         directions = []
@@ -102,3 +102,17 @@ class Rays:
 
     def _calc_ray_params(self, cameras: PinholeCamera):
         pass
+
+
+def sample_points_3d(
+    origins: torch.Tensor, directions: torch.Tensor, lengths: torch.Tensor
+) -> torch.Tensor:  # FIXME: Test by projecting to points_2d and compare with sampler 2d points
+    r"""
+    Args:
+        origins: tensor containing ray origins in 3d world coordinates. Tensor shape :math:`(*, 3)`.
+        directions: tensor containing ray directions in 3d world coordinates. Tensor shape :math:`(*, 3)`.
+        lengths: tensor cotaining sampled distances along each ray. Tensor shape :math:`(*, num_ray_points)`.
+
+    """
+    points_3d = origins[..., None, :] + lengths[..., None] * directions[..., None, :]
+    return points_3d
