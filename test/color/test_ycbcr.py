@@ -17,7 +17,7 @@ class TestRgbToYcbcr(BaseTester):
         img = torch.ones(shape, device=device, dtype=dtype)
         assert kornia.color.rgb_to_ycbcr(img).shape == shape
 
-    @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 4, 4), (2, 2, 3, 4, 4)])
+    @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 4, 4)])
     def test_rgb_to_y(self, device, dtype, shape):
         img = torch.rand(*shape, device=device, dtype=dtype)
         output_y = kornia.color.rgb_to_y(img)
