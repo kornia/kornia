@@ -6,7 +6,7 @@ import torch
 from torch import Tensor
 
 from kornia.enhance import normalize_min_max
-from kornia.filters import filter2D
+from kornia.filters import filter2d
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 # the default kernels for the diamond square
@@ -122,13 +122,13 @@ def _one_diamond_one_square(
 
     # TODO(edgar): use kornia.filter2d
     # diamond
-    diamond_regions = filter2D(new_img, diamond_kernel)
+    diamond_regions = filter2d(new_img, diamond_kernel)
     diamond_centers = (diamond_regions > 0).to(img.dtype)
     # TODO (anguelos) make sure diamond_regions*diamond_centers is needed
     new_img = new_img + (1 - random_scale) * diamond_regions * diamond_centers + diamond_centers * random_img
 
     # square
-    square_regions = filter2D(new_img, square_kernel) * pad_compencate
+    square_regions = filter2d(new_img, square_kernel) * pad_compencate
     square_centers = (square_regions > 0).to(img.dtype)
 
     # TODO (anguelos) make sure square_centers*square_regions is needed
