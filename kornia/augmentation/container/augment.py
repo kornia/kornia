@@ -237,11 +237,10 @@ class AugmentationSequential(ImageSequential):
                 input = arg.data  # all boxes are in (B, N, 4, 2) format now.
             else:
                 input = arg
-            for (_, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
+            for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
                 if isinstance(module, (_AugmentationBase, ImageSequential)):
                     # TODO(jian): verify what's happening here. Mypy was complaining,
-                    # param = params[name] if name in params else param
-                    pass
+                    param = params[name] if name in params else param  # type: ignore
                 else:
                     param = None
                 if (
