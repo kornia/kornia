@@ -29,7 +29,7 @@ class TestRaySampler:
             )
         )
         sampler = RandomRaySampler()
-        sampler.sample_points(heights, widths, num_rays)
+        sampler.sample_points_2d(heights, widths, num_rays)
         assert len(sampler.points_2d_camera) == 2
         assert sampler.points_2d_camera[10].points_2d.shape == (3, 10, 2)
         assert sampler.points_2d_camera[15].points_2d.shape == (2, 15, 2)
@@ -112,6 +112,6 @@ class TestRays:
         ray_sampler = RandomRaySampler()
 
         rays = Rays(
-            cameras, ray_sampler, num_rays
+            cameras, ray_sampler, num_rays, 1.0, 2.0, 10
         )  # FIXME: num_rays should be a property of (random) sampler, and not sent here to Rays
         print(rays)
