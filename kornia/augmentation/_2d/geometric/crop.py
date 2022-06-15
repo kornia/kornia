@@ -148,11 +148,9 @@ class RandomCrop(GeometricAugmentationBase2D):
         return input
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        if flags["cropping_mode"] == "resample":
+        if flags["cropping_mode"] in ("resample", "slice"):
             transform: Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
             return transform
-        if flags["cropping_mode"] == "slice":  # Skip the computation for slicing.
-            return self.identity_matrix(input)
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def apply_transform(
