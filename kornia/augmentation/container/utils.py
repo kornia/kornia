@@ -99,7 +99,7 @@ class ApplyInverseImpl(ApplyInverseInterface):
             to_apply = torch.ones(input.shape[0], device=input.device, dtype=input.dtype).bool()
 
         # If any inputs need to be transformed.
-        if mat is not None and to_apply is not None and to_apply.sum() != 0:
+        if mat is not None and to_apply is not None and to_apply.sum() != 0 and input.numel() > 0:
             input[to_apply] = cls.apply_func(mat, input[to_apply])
 
         return input, label

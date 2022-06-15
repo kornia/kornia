@@ -3,7 +3,6 @@ from typing import List
 import torch
 import torch.nn.functional as F
 
-from .__tmp__ import _deprecation_wrapper
 from .kernels import normalize_kernel2d
 
 
@@ -31,8 +30,11 @@ def _compute_padding(kernel_size: List[int]) -> List[int]:
 
 
 def filter2d(
-    input: torch.Tensor, kernel: torch.Tensor, border_type: str = 'reflect', normalized: bool = False,
-    padding: str = 'same'
+    input: torch.Tensor,
+    kernel: torch.Tensor,
+    border_type: str = 'reflect',
+    normalized: bool = False,
+    padding: str = 'same',
 ) -> torch.Tensor:
     r"""Convolve a tensor with a 2d kernel.
 
@@ -82,8 +84,10 @@ def filter2d(
         raise TypeError(f"Input border_type is not string. Got {type(border_type)}")
 
     if border_type not in ['constant', 'reflect', 'replicate', 'circular']:
-        raise ValueError(f"Invalid border type, we expect 'constant', \
-        'reflect', 'replicate', 'circular'. Got:{border_type}")
+        raise ValueError(
+            f"Invalid border type, we expect 'constant', \
+        'reflect', 'replicate', 'circular'. Got:{border_type}"
+        )
 
     if not isinstance(padding, str):
         raise TypeError(f"Input padding is not string. Got {type(padding)}")
@@ -128,12 +132,14 @@ def filter2d(
     return out
 
 
-def filter2d_separable(input: torch.Tensor,
-                       kernel_x: torch.Tensor,
-                       kernel_y: torch.Tensor,
-                       border_type: str = 'reflect',
-                       normalized: bool = False,
-                       padding: str = 'same') -> torch.Tensor:
+def filter2d_separable(
+    input: torch.Tensor,
+    kernel_x: torch.Tensor,
+    kernel_y: torch.Tensor,
+    border_type: str = 'reflect',
+    normalized: bool = False,
+    padding: str = 'same',
+) -> torch.Tensor:
     r"""Convolve a tensor with two 1d kernels, in x and y directions.
 
     The function applies a given kernel to a tensor. The kernel is applied
@@ -280,8 +286,3 @@ def filter3d(
     output = F.conv3d(input_pad, tmp_kernel, groups=tmp_kernel.size(0), padding=0, stride=1)
 
     return output.view(b, c, d, h, w)
-
-
-# for backward compatibility.
-filter2D = _deprecation_wrapper(filter2d, 'filter2D')
-filter3D = _deprecation_wrapper(filter3d, 'filter3D')
