@@ -82,7 +82,15 @@ class Rays:  # FIXME: This class should be merged with RaySampler above
 
     # FIXME: Not division to cameras - just big tensors for each ray parameters
 
-    def __init__(self, cameras: PinholeCamera, ray_sampler: RaySampler, num_rays: torch.Tensor) -> None:
+    def __init__(
+        self,
+        cameras: PinholeCamera,
+        ray_sampler: RaySampler,
+        num_rays: torch.Tensor,
+        min_depth: float,
+        max_depth: float,
+        num_ray_points: int,
+    ) -> None:
         num_cams = cameras.height.shape[0]
         if num_cams != num_rays.shape[0]:
             raise ValueError(
@@ -91,20 +99,29 @@ class Rays:  # FIXME: This class should be merged with RaySampler above
         ray_sampler.sample_points_2d(cameras.height, cameras.width, num_rays)
 
         # Unproject 2d points in image plane to 3d world for two depths
+        origins = []
         directions = []
-        for n, obj in ray_sampler.points_2d_camera.items():
-            depths = torch.ones(num_cams, 2 * n, 3)
-            depths[:, n:] = 2.0
-            points_3d = cameras.unproject(obj.points_2d.repeat(1, 2, 1), depths)
-            directions.append(points_3d[:, :n] - points_3d[:, n:])
-        self._directions = torch.cat(directions)
+        lengths: List[torch.Tensor] = []
+        for obj in ray_sampler.points_2d_camera.values():
+            num_cams_group, num_points_per_cam_group = obj.points_2d.shape[:2]
+            num_points_group = num_cams_group * num_points_per_cam_group
+            depths = torch.ones(num_cams_group, 2 * num_points_per_cam_group, 3) * min_depth
+            depths[:, num_points_per_cam_group:] = max_depth
+            points_3d = cameras.unproject(obj.points_2d.repeat(1, 2, 1), depths).reshape(2 * num_points_group, -1)
+            origins.append(points_3d[:num_points_group])
+            directions.append(points_3d[:num_points_group] - points_3d[num_points_group:])
+            lengths.append(torch.linspace(min_depth, max_depth, num_ray_points).repeat(num_points_group, 1))
+        self._origins = torch.cat(origins)
+        self._directions = torch.cat(directions)  # FIXME: Directions should be normalized to unit vectors!
+        self._legths = torch.cat(lengths)
+
         pass
 
     def _calc_ray_params(self, cameras: PinholeCamera):
         pass
 
 
-def sample_points_3d(
+def sample_ray_points(
     origins: torch.Tensor, directions: torch.Tensor, lengths: torch.Tensor
 ) -> torch.Tensor:  # FIXME: Test by projecting to points_2d and compare with sampler 2d points
     r"""
