@@ -97,10 +97,15 @@ def _boxes_to_quadrilaterals(
 
     if mode.startswith("vertices"):
         if mode == "vertices":
+            quadrilaterals = boxes.clone()
+            # Here, vertices are quadrilaterals with width and height defined as `width = xmax - xmin`  and
+            # `height = ymax - ymin`. We need to convert to `width = xmax - xmin + 1` and `height = ymax - ymin + 1` to
+            # match with internal Boxes Kornia representation.
+            quadrilaterals[..., 1:3, 0] = quadrilaterals[..., 1:3, 0] - 1
+            quadrilaterals[..., 2:, 1] = quadrilaterals[..., 2:, 1] - 1
+        elif mode == "vertices_plus":
             # Avoid passing reference
             quadrilaterals = boxes.clone()
-        elif mode == "vertices_plus":
-            quadrilaterals = boxes.clone()  # TODO: perform +1
         else:
             raise ValueError(f"Unknown mode {mode}")
         validate_boxes or validate_bbox(quadrilaterals)
