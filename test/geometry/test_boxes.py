@@ -84,12 +84,18 @@ class TestBoxes2D:
         box_xyxy = torch.as_tensor([[1, 2, 3, 4]], device=device, dtype=dtype).view(*shape)
         box_xyxy_plus = torch.as_tensor([[1, 2, 2, 3]], device=device, dtype=dtype).view(*shape)
         box_xywh = torch.as_tensor([[1, 2, 2, 2]], device=device, dtype=dtype).view(*shape)
+        box_vertices = torch.as_tensor([[[1, 2], [3, 2], [3, 4], [1, 4]]], device=device, dtype=dtype).view(*shape, 2)
+        box_vertices_plus = torch.as_tensor([[[1, 2], [2, 2], [2, 3], [1, 3]]], device=device, dtype=dtype).view(
+            *shape, 2
+        )
 
         expected_box = torch.as_tensor([[[1, 2], [2, 2], [2, 3], [1, 3]]], device=device, dtype=dtype).view(*shape, 2)
 
         boxes_xyxy = Boxes.from_tensor(box_xyxy, mode='xyxy').data
         boxes_xyxy_plus = Boxes.from_tensor(box_xyxy_plus, mode='xyxy_plus').data
         boxes_xywh = Boxes.from_tensor(box_xywh, mode='xywh').data
+        box_vertices = Boxes.from_tensor(box_vertices, mode='vertices').data
+        boxes_vertices_plus = Boxes.from_tensor(box_vertices_plus, mode='vertices_plus').data
 
         assert boxes_xyxy.shape == expected_box.shape
         assert_allclose(boxes_xyxy, expected_box)
@@ -99,6 +105,12 @@ class TestBoxes2D:
 
         assert boxes_xywh.shape == expected_box.shape
         assert_allclose(boxes_xywh, expected_box)
+
+        assert box_vertices.shape == expected_box.shape
+        assert_allclose(box_vertices, expected_box)
+
+        assert boxes_vertices_plus.shape == expected_box.shape
+        assert_allclose(boxes_vertices_plus, expected_box)
 
     @pytest.mark.parametrize('shape', [(1, 4), (1, 1, 4)])
     def test_from_invalid_tensor(self, shape: Tuple[int], device, dtype):
