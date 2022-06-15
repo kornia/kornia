@@ -2,7 +2,9 @@ from typing import Iterable, Optional
 
 import torch
 
+from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.linalg import inverse_transformation, transform_points
+from kornia.utils.helpers import _torch_inverse_cast
 
 
 class PinholeCamera:
@@ -265,6 +267,63 @@ class PinholeCamera:
         self.height *= scale_factor
         self.width *= scale_factor
         return self
+
+    def project(self, point_3d: torch.Tensor) -> torch.Tensor:
+        r"""Project a 3d point in world coordinates onto the 2d camera plane.
+
+        Args:
+            point3d: tensor containing the 3d points to be projected
+                to the camera plane. The shape of the tensor can be :math:`(*, 3)`.
+
+        Returns:
+            tensor of (u, v) cam coordinates with shape :math:`(*, 2)`.
+
+        Example:
+            >>> _ = torch.manual_seed(0)
+            >>> X = torch.rand(1, 3)
+            >>> K = torch.eye(4)[None]
+            >>> E = torch.eye(4)[None]
+            >>> h = torch.ones(1)
+            >>> w = torch.ones(1)
+            >>> pinhole = kornia.geometry.camera.PinholeCamera(K, E, h, w)
+            >>> pinhole.project(X)
+            tensor([[5.6088, 8.6827]])
+        """
+        P = self.intrinsics @ self.extrinsics
+        return convert_points_from_homogeneous(transform_points(P, point_3d))
+
+    def unproject(self, point_2d: torch.Tensor, depth: torch.Tensor):
+        r"""Unproject a 2d point in 3d.
+
+        Transform coordinates in the pixel frame to the world frame.
+
+        Args:
+            point2d: tensor containing the 2d to be projected to
+                world coordinates. The shape of the tensor can be :math:`(*, 2)`.
+            depth: tensor containing the depth value of each 2d
+                points. The tensor shape must be equal to point2d :math:`(*, 1)`.
+            normalize: whether to normalize the pointcloud. This
+                must be set to `True` when the depth is represented as the Euclidean
+                ray length from the camera position.
+
+        Returns:
+            tensor of (x, y, z) world coordinates with shape :math:`(*, 3)`.
+
+        Example:
+            >>> _ = torch.manual_seed(0)
+            >>> x = torch.rand(1, 2)
+            >>> depth = torch.ones(1, 1)
+            >>> K = torch.eye(4)[None]
+            >>> E = torch.eye(4)[None]
+            >>> h = torch.ones(1)
+            >>> w = torch.ones(1)
+            >>> pinhole = kornia.geometry.camera.PinholeCamera(K, E, h, w)
+            >>> pinhole.unproject(x, depth)
+            tensor([[0.4963, 0.7682, 1.0000]])
+        """
+        P = self.intrinsics @ self.extrinsics
+        P_inv = _torch_inverse_cast(P)
+        return transform_points(P_inv, convert_points_to_homogeneous(point_2d) * depth)
 
     # NOTE: just for test. Decide if we keep it.
     @classmethod

@@ -91,12 +91,10 @@ class CenterCrop(GeometricAugmentationBase2D):
         return rg.center_crop_generator(batch_shape[0], batch_shape[-2], batch_shape[-1], self.size, self.device)
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        if flags["cropping_mode"] == "resample":
+        if flags["cropping_mode"] in ("resample", "slice"):
             transform: Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
             transform = transform.expand(input.shape[0], -1, -1)
             return transform
-        if flags["cropping_mode"] == "slice":  # Skip the computation for slicing.
-            return self.identity_matrix(input)
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def apply_transform(
