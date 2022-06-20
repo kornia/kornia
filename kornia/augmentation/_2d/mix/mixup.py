@@ -188,7 +188,7 @@ class RandomMixUpV2(MixAugmentationBaseV2):
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tuple[Tensor, Tensor]:
+    ) -> Tensor:
         input_permute = input.index_select(dim=0, index=params["mixup_pairs"].to(input.device))
 
         lam = params["mixup_lambdas"].view(-1, 1, 1, 1).expand_as(input).to(input.device)
@@ -197,7 +197,7 @@ class RandomMixUpV2(MixAugmentationBaseV2):
 
     def apply_transform_class(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tuple[Tensor, Tensor]:
+    ) -> Tensor:
         labels_permute = input.index_select(dim=0, index=params["mixup_pairs"].to(input.device))
 
         out_labels = torch.stack(

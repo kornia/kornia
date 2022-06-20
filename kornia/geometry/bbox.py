@@ -59,7 +59,7 @@ def validate_bbox3d(boxes: torch.Tensor) -> bool:
             front-bottom-right, front-bottom-left, back-top-left, back-top-right, back-bottom-right, back-bottom-left.
             The coordinates must be in the x, y, z order.
     """
-    if not (len(boxes.shape) == [3, 4] and boxes.shape[-2:] == torch.Size([8, 3])):
+    if not (len(boxes.shape) in [3, 4] and boxes.shape[-2:] == torch.Size([8, 3])):
         raise AssertionError(f"Box shape must be (B, 8, 3) or (B, N, 8, 3). Got {boxes.shape}.")
 
     if len(boxes.shape) == 4:

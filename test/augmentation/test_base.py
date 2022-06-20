@@ -62,9 +62,7 @@ class TestBasicAugmentationBase:
             augmentation, "transform_tensor", autospec=True
         ) as transform_tensor, patch.object(
             augmentation, "transform_output_tensor", autospec=True
-        ) as transform_output_tensor, patch.object(
-            augmentation, "__check_batching__", autospec=True
-        ) as check_batching:
+        ) as transform_output_tensor:
 
             generate_parameters.side_effect = lambda shape: {
                 'degrees': torch.arange(0, shape[0], device=device, dtype=dtype)
@@ -72,7 +70,7 @@ class TestBasicAugmentationBase:
             transform_tensor.side_effect = lambda x: x.unsqueeze(dim=0)
             transform_output_tensor.side_effect = lambda x, y: x.squeeze()
             apply_transform.side_effect = lambda input, params, flags: input[..., :2, :2]
-            check_batching.side_effect = lambda input: None
+            # check_batching.side_effect = lambda input: None
             output = augmentation(input)
             assert output.shape == expected_output.shape
             assert_close(output, expected_output)
