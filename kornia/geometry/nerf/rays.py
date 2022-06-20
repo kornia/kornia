@@ -12,10 +12,16 @@ class RaySampler:
     _camera_ids: torch.Tensor  # Ray camera ID
     _points_2d: torch.Tensor  # Ray intersection with image plane in camera coordinates
 
+    class Points2D_AsLists:
+        def __init__(self) -> None:
+            self._x: List[float] = []
+            self._y: List[float] = []
+            self._camera_ids: List[int] = []
+
     class Points2D:
         def __init__(self, points_2d: torch.Tensor, camera_ids: List[int]) -> None:
-            self._points_2d: torch.Tensor = points_2d
-            self._camera_ids: torch.Tensor = camera_ids
+            self._points_2d = points_2d  # (*, N, 2)
+            self._camera_ids = camera_ids
 
         @property
         def points_2d(self):
@@ -47,35 +53,43 @@ class RaySampler:
         self._directions = torch.cat(directions)  # FIXME: Directions should be normalized to unit vectors!
         self._lengths = torch.cat(lengths)
 
+    @staticmethod
+    def _add_points2d_as_lists_to_num_ray_dict(
+        n: int, x: torch.tensor, y: torch.tensor, camera_id: int, points2d_as_lists: Dict[int, Points2D_AsLists]
+    ) -> None:
+        if n not in points2d_as_lists:
+            points2d_as_lists[n] = RaySampler.Points2D_AsLists()
+        points2d_as_lists[n]._y.extend(y.tolist())
+        points2d_as_lists[n]._x.extend(x.tolist())
+        points2d_as_lists[n]._camera_ids.append(camera_id)
+
+    @staticmethod
+    def _build_num_ray_dict_of_points2d(points2d_as_lists: Dict[int, Points2D_AsLists]) -> Dict[int, Points2D]:
+        num_ray_dict_of_points2d: Dict[int, RaySampler.Points2D] = {}
+        for n, points2d_as_list in points2d_as_lists.items():
+            points_2d = (
+                torch.stack((torch.tensor(points2d_as_lists[n]._y), torch.tensor(points2d_as_lists[n]._x)))
+                .permute(1, 0)
+                .reshape(-1, n, 2)
+            )
+            num_ray_dict_of_points2d[n] = RaySampler.Points2D(points_2d, points2d_as_list._camera_ids)
+        return num_ray_dict_of_points2d
+
 
 class RandomRaySampler(RaySampler):
-    class CameraDims:
-        def __init__(self) -> None:
-            self._heights: List[int] = []
-            self._widths: List[int] = []
-            self._camera_ids: List[int] = []
-
     def __init__(self, min_depth: float, max_depth: float, num_ray_points: int) -> None:
         super().__init__(min_depth, max_depth, num_ray_points)
 
     def sample_points_2d(
         self, heights: torch.Tensor, widths: torch.Tensor, num_rays: torch.Tensor
     ) -> Dict[int, RaySampler.Points2D]:
-        num_rays: torch.Tensor = num_rays.int()
-        cameras_dims: Dict[int, RandomRaySampler.CameraDims] = {}
+        num_rays = num_rays.int()
+        points2d_as_lists: Dict[int, RaySampler.Points2D_AsLists] = {}
         for camera_id, (height, width, n) in enumerate(zip(heights.numpy(), widths.numpy(), num_rays.numpy())):
-            if n not in cameras_dims:
-                cameras_dims[n] = RandomRaySampler.CameraDims()
-            cameras_dims[n]._heights.extend([height] * n)
-            cameras_dims[n]._widths.extend([width] * n)
-            cameras_dims[n]._camera_ids.append(camera_id)
-
-        points_2d_camera: Dict[int, RaySampler.Points2D] = {}
-        for n, camera_dims in cameras_dims.items():
-            dims = torch.tensor([camera_dims._heights, camera_dims._widths], dtype=torch.float32).T
-            points_2d = torch.trunc(torch.rand_like(dims, dtype=torch.float32) * dims).reshape(-1, n, 2)
-            points_2d_camera[n] = RaySampler.Points2D(points_2d, camera_dims._camera_ids)
-        return points_2d_camera
+            y_rand = torch.trunc(torch.rand(n, dtype=torch.float32) * height)
+            x_rand = torch.trunc(torch.rand(n, dtype=torch.float32) * width)
+            RaySampler._add_points2d_as_lists_to_num_ray_dict(n, x_rand, y_rand, camera_id, points2d_as_lists)
+        return RaySampler._build_num_ray_dict_of_points2d(points2d_as_lists)
 
     def calc_ray_params(self, cameras: PinholeCamera, num_rays: torch.Tensor):
         num_cams = cameras.height.shape[0]
@@ -92,13 +106,23 @@ class UniformRaySampler(RaySampler):
         super().__init__(min_depth, max_depth, num_ray_points)
 
     def sample_points_2d(self, heights: torch.Tensor, widths: torch.Tensor) -> Dict[int, RaySampler.Points2D]:
-        points_2d: List[torch.Tensor] = []
-        for height, width in zip(heights.numpy(), widths.numpy()):
-            height_grid, width_grid = torch.meshgrid(torch.arange(height), torch.arange(width))
-            points_2d.append(torch.cat(height_grid, width_grid).reshape(-1, 2))
-        num_cams = heights.shape[0]
-        num_rays = points_2d.shape[0]
-        return {num_rays: RaySampler.Points2D(torch.cat(points_2d), torch.arange(num_cams))}
+        heights = heights.int()
+        widths = widths.int()
+        points2d_as_lists: Dict[int, RaySampler.Points2D_AsLists] = {}
+        for camera_id, (height, width) in enumerate(zip(heights.numpy(), widths.numpy())):
+            n = height * width
+            y_grid, x_grid = torch.meshgrid(
+                torch.arange(height, dtype=torch.float32), torch.arange(width, dtype=torch.float32)
+            )
+            RaySampler._add_points2d_as_lists_to_num_ray_dict(n, x_grid, y_grid, camera_id, points2d_as_lists)
+
+            # if n not in points2d_as_lists:        # FIXME: Delete this after fixing the bug
+            #     points2d_as_lists[n] = RaySampler.Points2D_AsLists()
+            # points2d_as_lists[n]._y.extend(y_grid.flatten().tolist())
+            # points2d_as_lists[n]._x.extend(x_grid.flatten().tolist())
+            # points2d_as_lists[n]._camera_ids.append(camera_id)
+
+        return RaySampler._build_num_ray_dict_of_points2d(points2d_as_lists)
 
     def calc_ray_params(self, cameras: PinholeCamera):
         points_2d_camera = self.sample_points_2d(cameras.height, cameras.width)
