@@ -3,11 +3,12 @@ import math
 import torch
 
 import kornia
-from kornia.geometry.nerf.rays import RandomRaySampler  # , UniformRaySampler
+from kornia.geometry.nerf.rays import RandomRaySampler, UniformRaySampler  # , UniformRaySampler
 
 
-class TestRandom2DSampler:
-    def test_dimensions(self, device, dtype):
+class TestRaySampler_2DPoints:
+    @staticmethod
+    def __create_camera_dimensions(device, dtype):
         n_cams1 = 3
         n_cams2 = 2
         heights: torch.Tensor = torch.cat(
@@ -28,11 +29,23 @@ class TestRandom2DSampler:
                 torch.tensor([15] * n_cams2, device=device, dtype=dtype),
             )
         )
+        return heights, widths, num_rays
+
+    def test_dimensions_random_sampler(self, device, dtype):
+        heights, widths, num_rays = TestRaySampler_2DPoints.__create_camera_dimensions(device, dtype)
         sampler = RandomRaySampler(1, 1, 1)
         points_2d_camera = sampler.sample_points_2d(heights, widths, num_rays)
         assert len(points_2d_camera) == 2
         assert points_2d_camera[10].points_2d.shape == (3, 10, 2)
         assert points_2d_camera[15].points_2d.shape == (2, 15, 2)
+
+    def test_dimensions_uniform_sampler(self, device, dtype):
+        heights, widths, _ = TestRaySampler_2DPoints.__create_camera_dimensions(device, dtype)
+        sampler = UniformRaySampler(1, 1, 1)
+        points_2d_camera = sampler.sample_points_2d(heights, widths)
+        assert len(points_2d_camera) == 2
+        assert points_2d_camera[60000].points_2d.shape == (3, 60000, 2)
+        assert points_2d_camera[40000].points_2d.shape == (2, 40000, 2)
 
 
 class TestUniform2DSampler:
