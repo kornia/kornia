@@ -59,8 +59,8 @@ class RaySampler:
     ) -> None:
         if n not in points2d_as_lists:
             points2d_as_lists[n] = RaySampler.Points2D_AsLists()
-        points2d_as_lists[n]._y.extend(y.tolist())
-        points2d_as_lists[n]._x.extend(x.tolist())
+        points2d_as_lists[n]._x.extend(x.flatten().tolist())
+        points2d_as_lists[n]._y.extend(y.flatten().tolist())
         points2d_as_lists[n]._camera_ids.append(camera_id)
 
     @staticmethod
@@ -68,7 +68,7 @@ class RaySampler:
         num_ray_dict_of_points2d: Dict[int, RaySampler.Points2D] = {}
         for n, points2d_as_list in points2d_as_lists.items():
             points_2d = (
-                torch.stack((torch.tensor(points2d_as_lists[n]._y), torch.tensor(points2d_as_lists[n]._x)))
+                torch.stack((torch.tensor(points2d_as_lists[n]._x), torch.tensor(points2d_as_lists[n]._y)))
                 .permute(1, 0)
                 .reshape(-1, n, 2)
             )
@@ -115,64 +115,11 @@ class UniformRaySampler(RaySampler):
                 torch.arange(height, dtype=torch.float32), torch.arange(width, dtype=torch.float32)
             )
             RaySampler._add_points2d_as_lists_to_num_ray_dict(n, x_grid, y_grid, camera_id, points2d_as_lists)
-
-            # if n not in points2d_as_lists:        # FIXME: Delete this after fixing the bug
-            #     points2d_as_lists[n] = RaySampler.Points2D_AsLists()
-            # points2d_as_lists[n]._y.extend(y_grid.flatten().tolist())
-            # points2d_as_lists[n]._x.extend(x_grid.flatten().tolist())
-            # points2d_as_lists[n]._camera_ids.append(camera_id)
-
         return RaySampler._build_num_ray_dict_of_points2d(points2d_as_lists)
 
     def calc_ray_params(self, cameras: PinholeCamera):
         points_2d_camera = self.sample_points_2d(cameras.height, cameras.width)
         self._calc_ray_params(cameras, points_2d_camera)
-
-
-# class Rays:  # FIXME: This class should be merged with RaySampler above
-#     _origins: torch.Tensor  # Ray origins in world coordinates
-#     _directions: torch.Tensor  # Ray directions in worlds coordinates
-#     _lengths: torch.Tensor  # Ray lengths
-#     _camera_ids: torch.Tensor  # Ray camera ID
-#     _points_2d: torch.Tensor  # Ray intersection with image plane in camera coordinates
-
-#     # FIXME: Not division to cameras - just big tensors for each ray parameters
-
-#     def __init__(
-#         self,
-#         cameras: PinholeCamera,
-#         ray_sampler: RaySampler,
-#         num_rays: torch.Tensor,
-#         min_depth: float,
-#         max_depth: float,
-#         num_ray_points: int,
-#     ) -> None:
-#         num_cams = cameras.height.shape[0]
-#         if num_cams != num_rays.shape[0]:
-#             raise ValueError(
-#                 'Number of cameras does not match size of tensor to define number of rays to march from each camera'
-#             )
-#         ray_sampler.sample_points_2d(cameras.height, cameras.width, num_rays)
-
-#         # Unproject 2d points in image plane to 3d world for two depths
-#         origins = []
-#         directions = []
-#         lengths: List[torch.Tensor] = []
-#         for obj in ray_sampler.points_2d_camera.values():
-#             num_cams_group, num_points_per_cam_group = obj.points_2d.shape[:2]
-#             num_points_group = num_cams_group * num_points_per_cam_group
-#             depths = torch.ones(num_cams_group, 2 * num_points_per_cam_group, 3) * min_depth
-#             depths[:, num_points_per_cam_group:] = max_depth
-#             points_3d = cameras.unproject(obj.points_2d.repeat(1, 2, 1), depths).reshape(2 * num_points_group, -1)
-#             origins.append(points_3d[:num_points_group])
-#             directions.append(points_3d[:num_points_group] - points_3d[num_points_group:])
-#             lengths.append(torch.linspace(min_depth, max_depth, num_ray_points).repeat(num_points_group, 1))
-#         self._origins = torch.cat(origins)
-#         self._directions = torch.cat(directions)  # FIXME: Directions should be normalized to unit vectors!
-#         self._legths = torch.cat(lengths)
-
-#     def _calc_ray_params(self, cameras: PinholeCamera):
-#         pass
 
 
 def sample_ray_points(
