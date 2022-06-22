@@ -39,83 +39,88 @@ class TestRaySampler_2DPoints:
         assert points_2d_camera[10].points_2d.shape == (3, 10, 2)
         assert points_2d_camera[15].points_2d.shape == (2, 15, 2)
 
-    def test_dimensions_uniform_sampler(self, device, dtype):
-        heights, widths, _ = create_camera_dimensions(device, dtype)
-        sampler = UniformRaySampler(1, 1, 1)
-        points_2d_camera = sampler.sample_points_2d(heights, widths)
-        assert len(points_2d_camera) == 2
-        assert points_2d_camera[60000].points_2d.shape == (3, 60000, 2)
-        assert points_2d_camera[40000].points_2d.shape == (2, 40000, 2)
+
+def test_dimensions_uniform_sampler(self, device, dtype):
+    heights, widths, _ = create_camera_dimensions(device, dtype)
+    sampler = UniformRaySampler(1, 1, 1)
+    points_2d_camera = sampler.sample_points_2d(heights, widths)
+    assert len(points_2d_camera) == 2
+    assert points_2d_camera[60000].points_2d.shape == (3, 60000, 2)
+    assert points_2d_camera[40000].points_2d.shape == (2, 40000, 2)
 
 
-class TestRays:
-    def _create_intrinsics(self, fxs, fys, cxs, cys, device, dtype):
-        intrinsics_batch = []
-        for fx, fy, cx, cy in zip(fxs, fys, cxs, cys):
-            intrinsics = torch.eye(4, device=device, dtype=dtype)
-            intrinsics[0, 0] = fx
-            intrinsics[1, 1] = fy
-            intrinsics[0, 2] = cx
-            intrinsics[1, 2] = cy
-            intrinsics_batch.append(intrinsics)
-        return torch.stack(intrinsics_batch)
+def create_intrinsics(fxs, fys, cxs, cys, device, dtype):
+    intrinsics_batch = []
+    for fx, fy, cx, cy in zip(fxs, fys, cxs, cys):
+        intrinsics = torch.eye(4, device=device, dtype=dtype)
+        intrinsics[0, 0] = fx
+        intrinsics[1, 1] = fy
+        intrinsics[0, 2] = cx
+        intrinsics[1, 2] = cy
+        intrinsics_batch.append(intrinsics)
+    return torch.stack(intrinsics_batch)
 
-    def _create_extrinsics_with_rotation(self, alphas, betas, gammas, txs, tys, tzs, device, dtype):
-        extrinsics_batch = []
-        for alpha, beta, gamma, tx, ty, tz in zip(alphas, betas, gammas, txs, tys, tzs):
-            Rx = torch.eye(3, device=device, dtype=dtype)
-            Rx[1, 1] = math.cos(alpha)
-            Rx[1, 2] = math.sin(alpha)
-            Rx[2, 1] = -Rx[1, 2]
-            Rx[2, 2] = Rx[1, 1]
 
-            Ry = torch.eye(3, device=device, dtype=dtype)
-            Ry[0, 0] = math.cos(beta)
-            Ry[0, 2] = -math.sin(beta)
-            Ry[2, 0] = -Ry[0, 2]
-            Ry[2, 2] = Ry[0, 0]
+def create_extrinsics_with_rotation(alphas, betas, gammas, txs, tys, tzs, device, dtype):
+    extrinsics_batch = []
+    for alpha, beta, gamma, tx, ty, tz in zip(alphas, betas, gammas, txs, tys, tzs):
+        Rx = torch.eye(3, device=device, dtype=dtype)
+        Rx[1, 1] = math.cos(alpha)
+        Rx[1, 2] = math.sin(alpha)
+        Rx[2, 1] = -Rx[1, 2]
+        Rx[2, 2] = Rx[1, 1]
 
-            Rz = torch.eye(3, device=device, dtype=dtype)
-            Rz[0, 0] = math.cos(gamma)
-            Rz[0, 1] = math.sin(gamma)
-            Rz[1, 0] = -Rz[0, 1]
-            Rz[1, 1] = Rz[0, 0]
+        Ry = torch.eye(3, device=device, dtype=dtype)
+        Ry[0, 0] = math.cos(beta)
+        Ry[0, 2] = -math.sin(beta)
+        Ry[2, 0] = -Ry[0, 2]
+        Ry[2, 2] = Ry[0, 0]
 
-            Ryz = torch.matmul(Ry, Rz)
-            R = torch.matmul(Rx, Ryz)
+        Rz = torch.eye(3, device=device, dtype=dtype)
+        Rz[0, 0] = math.cos(gamma)
+        Rz[0, 1] = math.sin(gamma)
+        Rz[1, 0] = -Rz[0, 1]
+        Rz[1, 1] = Rz[0, 0]
 
-            extrinsics = torch.eye(4, device=device, dtype=dtype)
-            extrinsics[..., 0, -1] = tx
-            extrinsics[..., 1, -1] = ty
-            extrinsics[..., 2, -1] = tz
-            extrinsics[:3, :3] = R
+        Ryz = torch.matmul(Ry, Rz)
+        R = torch.matmul(Rx, Ryz)
 
-            extrinsics_batch.append(extrinsics)
-        return torch.stack(extrinsics_batch)
+        extrinsics = torch.eye(4, device=device, dtype=dtype)
+        extrinsics[..., 0, -1] = tx
+        extrinsics[..., 1, -1] = ty
+        extrinsics[..., 2, -1] = tz
+        extrinsics[:3, :3] = R
 
-    def _create_four_cameras(self, device, dtype) -> kornia.geometry.camera.PinholeCamera:
-        height = torch.tensor([4, 4, 4, 4])
-        width = torch.tensor([6, 6, 6, 6])
+        extrinsics_batch.append(extrinsics)
+    return torch.stack(extrinsics_batch)
 
-        fx = [1.0, 1.0, 1.0, 1.0]
-        fy = [1.0, 1.0, 1.0, 1.0]
-        cx = [width[0] / 2.0, width[1] / 2.0, width[2] / 2.0, width[3] / 2.0]
-        cy = [height[0] / 2.0, height[1] / 2.0, height[2] / 2.0, height[3] / 2.0]
 
-        tx = [1.0, 1.0, 1.0, 1.0]
-        ty = [0.0, 0.0, 0.0, 0.0]
-        tz = [0.0, 0.0, 0.0, 0.0]
-        pi = torch.pi
-        alpha = [0.0, 0.0, 0.0, 0.0]
-        beta = [0.0, 0.0, 0.0, pi / 2.0]
-        gamma = [pi, -pi / 2.0, 0.0, 0.0]
+def create_four_cameras(device, dtype) -> kornia.geometry.camera.PinholeCamera:
+    height = torch.tensor([4, 4, 4, 4])
+    width = torch.tensor([7, 7, 7, 7])
 
-        intrinsics = self._create_intrinsics(fx, fy, cx, cy, device=device, dtype=dtype)
-        extrinsics = self._create_extrinsics_with_rotation(alpha, beta, gamma, tx, ty, tz, device=device, dtype=dtype)
+    fx = [1.0, 1.0, 1.0, 1.0]
+    fy = [1.0, 1.0, 1.0, 1.0]
+    cx = (width - 1.0) / 2.0
+    cy = (height - 1.0) / 2.0
 
-        cameras = kornia.geometry.camera.PinholeCamera(intrinsics, extrinsics, height, width)
-        return cameras
+    tx = [0.0, 0.0, 0.0, 0.0]
+    ty = [0.0, 0.0, 0.0, 0.0]
+    tz = [10.0, 10.0, 10.0, 10.0]
 
+    pi = torch.pi
+    alpha = [pi / 2.0, pi / 2.0, pi / 2.0, 0.0]
+    beta = [0.0, 0.0, 0.0, pi]
+    gamma = [-pi / 2.0, 0.0, pi / 2.0, 0.0]
+
+    intrinsics = create_intrinsics(fx, fy, cx, cy, device=device, dtype=dtype)
+    extrinsics = create_extrinsics_with_rotation(alpha, beta, gamma, tx, ty, tz, device=device, dtype=dtype)
+
+    cameras = kornia.geometry.camera.PinholeCamera(intrinsics, extrinsics, height, width)
+    return cameras
+
+
+class TestRaySampler_3DPoints:
     def test_rays(self, device, dtype):
         pass
         # num_rays: torch.Tensor = torch.ones(4, device=device, dtype=torch.int) * 5
