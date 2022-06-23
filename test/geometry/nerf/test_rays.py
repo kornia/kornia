@@ -3,7 +3,7 @@ import math
 import torch
 
 import kornia
-from kornia.geometry.nerf.rays import RandomRaySampler, UniformRaySampler
+from kornia.geometry.nerf.rays import RandomRaySampler, UniformRaySampler, cameras_for_ids, sample_ray_points
 
 
 def create_camera_dimensions(device, dtype):
@@ -96,17 +96,17 @@ def create_extrinsics_with_rotation(alphas, betas, gammas, txs, tys, tzs, device
 
 
 def create_four_cameras(device, dtype) -> kornia.geometry.camera.PinholeCamera:
-    height = torch.tensor([4, 4, 4, 4])
-    width = torch.tensor([7, 7, 7, 7])
+    height = torch.tensor([5, 4, 4, 4])
+    width = torch.tensor([8, 7, 7, 7])
 
-    fx = [1.0, 1.0, 1.0, 1.0]
-    fy = [1.0, 1.0, 1.0, 1.0]
+    fx = [2.0, 0.5, 0.5, 0.5]
+    fy = [2.0, 0.5, 0.5, 0.5]
     cx = (width - 1.0) / 2.0
     cy = (height - 1.0) / 2.0
 
     tx = [0.0, 0.0, 0.0, 0.0]
     ty = [0.0, 0.0, 0.0, 0.0]
-    tz = [10.0, 10.0, 10.0, 10.0]
+    tz = [11.0, 11.0, 11.0, 11.0]
 
     pi = torch.pi
     alpha = [pi / 2.0, pi / 2.0, pi / 2.0, 0.0]
@@ -121,15 +121,32 @@ def create_four_cameras(device, dtype) -> kornia.geometry.camera.PinholeCamera:
 
 
 class TestRaySampler_3DPoints:
-    def test_rays(self, device, dtype):
-        pass
-        # num_rays: torch.Tensor = torch.ones(4, device=device, dtype=torch.int) * 5
+    def test_dimensions_uniform_sampler(self, device, dtype):
+        cameras = create_four_cameras('cpu', torch.float32)
+        uniform_sampler_four_cameras = UniformRaySampler(1, 1, 1)
+        points_2d_four_cameras = uniform_sampler_four_cameras.sample_points_2d(cameras.height, cameras.width)
+        cameras_28 = cameras_for_ids(cameras, points_2d_four_cameras[28].camera_ids)
+        points_3d_28 = cameras_28.unproject(points_2d_four_cameras[28].points_2d, 1)
+        cameras_40 = cameras_for_ids(cameras, points_2d_four_cameras[40].camera_ids)
+        points_3d_40 = cameras_40.unproject(points_2d_four_cameras[40].points_2d, 1)
+        assert points_3d_28.shape == (3, 28, 3)
+        assert points_3d_40.shape == (1, 40, 3)
 
-        # cameras = self._create_four_cameras(device=device, dtype=dtype)
+    def test_dimensions_ray_params(self, device, dtype):
+        cameras = create_four_cameras('cpu', torch.float32)
+        uniform_sampler_four_cameras = UniformRaySampler(1, 2, 10)
+        uniform_sampler_four_cameras.calc_ray_params(cameras)
+        assert uniform_sampler_four_cameras.origins.shape == (3 * 28 + 40, 3)
+        assert uniform_sampler_four_cameras.directions.shape == (3 * 28 + 40, 3)
+        assert uniform_sampler_four_cameras.lengths.shape == (3 * 28 + 40, 10)
 
-        # ray_sampler = RandomRaySampler()
-
-        # rays = Rays(
-        #     cameras, ray_sampler, num_rays, 1.0, 2.0, 10
-        # )  # FIXME: num_rays should be a property of (random) sampler, and not sent here to Rays
-        # print(rays)
+    def test_dimensions_sample_ray_points(self, device, dtype):
+        cameras = create_four_cameras('cpu', torch.float32)
+        uniform_sampler_four_cameras = UniformRaySampler(1, 2, 10)
+        uniform_sampler_four_cameras.calc_ray_params(cameras)
+        points_3d = sample_ray_points(
+            uniform_sampler_four_cameras.origins,
+            uniform_sampler_four_cameras.directions,
+            uniform_sampler_four_cameras.lengths,
+        )
+        assert points_3d.shape == (3 * 28 + 40, 10, 3)

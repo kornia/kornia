@@ -5,6 +5,14 @@ import torch
 from kornia.geometry.camera import PinholeCamera
 
 
+def cameras_for_ids(cameras: PinholeCamera, camera_ids: List[int]):
+    intrinsics = cameras.intrinsics[camera_ids]
+    extrinsics = cameras.extrinsics[camera_ids]
+    height = cameras.height[camera_ids]
+    width = cameras.width[camera_ids]
+    return PinholeCamera(intrinsics, extrinsics, height, width)
+
+
 class RaySampler:
     _origins: torch.Tensor  # Ray origins in world coordinates
     _directions: torch.Tensor  # Ray directions in worlds coordinates
@@ -27,10 +35,26 @@ class RaySampler:
         def points_2d(self):
             return self._points_2d
 
+        @property
+        def camera_ids(self):
+            return self._camera_ids
+
     def __init__(self, min_depth: float, max_depth: float, num_ray_points: int) -> None:
         self._min_depth = min_depth
         self._max_depth = max_depth
         self._num_ray_points = num_ray_points
+
+    @property
+    def origins(self) -> torch.Tensor:
+        return self._origins
+
+    @property
+    def directions(self) -> torch.Tensor:
+        return self._directions
+
+    @property
+    def lengths(self) -> torch.Tensor:
+        return self._lengths
 
     def _calc_ray_params(self, cameras: PinholeCamera, points_2d_camera: Dict[int, Points2D]):
 
@@ -41,15 +65,14 @@ class RaySampler:
         for obj in points_2d_camera.values():
             num_cams_group, num_points_per_cam_group = obj._points_2d.shape[:2]
             num_points_group = num_cams_group * num_points_per_cam_group
-            depths = torch.ones(num_cams_group, 2 * num_points_per_cam_group, 3) * self.min_depth
-            depths[:, num_points_per_cam_group:] = self.max_depth
-            points_3d = cameras.unproject(obj._points_2d.repeat(1, 2, 1), depths).reshape(
-                2 * num_points_group, -1
-            )  # FIXME: This is a bug - cameras should be for the relevant id's
+            depths = torch.ones(num_cams_group, 2 * num_points_per_cam_group, 3) * self._min_depth
+            depths[:, num_points_per_cam_group:] = self._max_depth
+            cameras_id = cameras_for_ids(cameras, obj.camera_ids)
+            points_3d = cameras_id.unproject(obj._points_2d.repeat(1, 2, 1), depths).reshape(2 * num_points_group, -1)
             origins.append(points_3d[:num_points_group])
             directions.append(points_3d[:num_points_group] - points_3d[num_points_group:])
             lengths.append(
-                torch.linspace(self.min_depth, self.max_depth, self.num_ray_points).repeat(num_points_group, 1)
+                torch.linspace(self._min_depth, self._max_depth, self._num_ray_points).repeat(num_points_group, 1)
             )
         self._origins = torch.cat(origins)
         self._directions = torch.cat(directions)  # FIXME: Directions should be normalized to unit vectors!
