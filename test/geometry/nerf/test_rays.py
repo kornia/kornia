@@ -99,8 +99,8 @@ def create_four_cameras(device, dtype) -> kornia.geometry.camera.PinholeCamera:
     height = torch.tensor([5, 4, 4, 4])
     width = torch.tensor([8, 7, 7, 7])
 
-    fx = [2.0, 0.5, 0.5, 0.5]
-    fy = [2.0, 0.5, 0.5, 0.5]
+    fx = [1.0, 1.0, 1.0, 1.0]
+    fy = [1.0, 1.0, 1.0, 1.0]
     cx = (width - 1.0) / 2.0
     cy = (height - 1.0) / 2.0
 
