@@ -68,10 +68,13 @@ class RaySampler:
             depths = torch.ones(num_cams_group, 2 * num_points_per_cam_group, 3) * self._min_depth
             depths[:, num_points_per_cam_group:] = self._max_depth
             cameras_id = cameras_for_ids(cameras, obj.camera_ids)
-            points_3d = cameras_id.unproject(obj._points_2d.repeat(1, 2, 1), depths).reshape(2 * num_points_group, -1)
-            origins.append(points_3d[:num_points_group])
-            directions.append(points_3d[num_points_group:] - points_3d[:num_points_group])
-            # torch.nn.functional.normalize(directions[-1], out=directions[-1], dim=-1)  # Normalizing direction vectors
+            points_3d = cameras_id.unproject(obj._points_2d.repeat(1, 2, 1), depths)
+            origins.append(points_3d[..., :num_points_per_cam_group, :].reshape(-1, 3))
+            directions.append(
+                (points_3d[..., num_points_per_cam_group:, :] - points_3d[..., :num_points_per_cam_group, :]).reshape(
+                    -1, 3
+                )
+            )
             lengths.append(torch.linspace(0.0, 1.0, self._num_ray_points).repeat(num_points_group, 1))
         self._origins = torch.cat(origins)
         self._directions = torch.cat(directions)
