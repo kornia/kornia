@@ -16,7 +16,6 @@ def cameras_for_ids(cameras: PinholeCamera, camera_ids: List[int]):
 class RaySampler:
     _origins: torch.Tensor  # Ray origins in world coordinates
     _directions: torch.Tensor  # Ray directions in worlds coordinates
-    _lengths: torch.Tensor  # Ray lengths
     _camera_ids: torch.Tensor  # Ray camera ID
     _points_2d: torch.Tensor  # Ray intersection with image plane in camera coordinates
 
@@ -39,10 +38,9 @@ class RaySampler:
         def camera_ids(self):
             return self._camera_ids
 
-    def __init__(self, min_depth: float, max_depth: float, num_ray_points: int) -> None:
+    def __init__(self, min_depth: float, max_depth: float) -> None:
         self._min_depth = min_depth
         self._max_depth = max_depth
-        self._num_ray_points = num_ray_points
 
     @property
     def origins(self) -> torch.Tensor:
@@ -61,10 +59,8 @@ class RaySampler:
         # Unproject 2d points in image plane to 3d world for two depths
         origins = []
         directions = []
-        lengths: List[torch.Tensor] = []
         for obj in points_2d_camera.values():
             num_cams_group, num_points_per_cam_group = obj._points_2d.shape[:2]
-            num_points_group = num_cams_group * num_points_per_cam_group
             depths = torch.ones(num_cams_group, 2 * num_points_per_cam_group, 3) * self._min_depth
             depths[:, num_points_per_cam_group:] = self._max_depth
             cameras_id = cameras_for_ids(cameras, obj.camera_ids)
@@ -75,10 +71,8 @@ class RaySampler:
                     -1, 3
                 )
             )
-            lengths.append(torch.linspace(0.0, 1.0, self._num_ray_points).repeat(num_points_group, 1))
         self._origins = torch.cat(origins)
         self._directions = torch.cat(directions)
-        self._lengths = torch.cat(lengths)
 
     @staticmethod
     def _add_points2d_as_lists_to_num_ray_dict(
@@ -104,8 +98,8 @@ class RaySampler:
 
 
 class RandomRaySampler(RaySampler):
-    def __init__(self, min_depth: float, max_depth: float, num_ray_points: int) -> None:
-        super().__init__(min_depth, max_depth, num_ray_points)
+    def __init__(self, min_depth: float, max_depth: float) -> None:
+        super().__init__(min_depth, max_depth)
 
     def sample_points_2d(
         self, heights: torch.Tensor, widths: torch.Tensor, num_rays: torch.Tensor
@@ -129,8 +123,8 @@ class RandomRaySampler(RaySampler):
 
 
 class UniformRaySampler(RaySampler):
-    def __init__(self, min_depth: float, max_depth: float, num_ray_points: int) -> None:
-        super().__init__(min_depth, max_depth, num_ray_points)
+    def __init__(self, min_depth: float, max_depth: float) -> None:
+        super().__init__(min_depth, max_depth)
 
     def sample_points_2d(self, heights: torch.Tensor, widths: torch.Tensor) -> Dict[int, RaySampler.Points2D]:
         heights = heights.int()
@@ -147,6 +141,18 @@ class UniformRaySampler(RaySampler):
     def calc_ray_params(self, cameras: PinholeCamera):
         points_2d_camera = self.sample_points_2d(cameras.height, cameras.width)
         self._calc_ray_params(cameras, points_2d_camera)
+
+
+def sample_lengths(num_rays: int, num_ray_points: int, irregular=False) -> torch.Tensor:
+    if num_ray_points <= 1:
+        raise ValueError('Number of ray points must be greater than 1')
+    if not irregular:
+        zero_to_one = torch.linspace(0.0, 1.0, num_ray_points)
+        lengths = zero_to_one.repeat(num_rays, 1)
+    else:
+        zero_to_one = torch.linspace(0.0, 1.0, num_ray_points + 1)
+        lengths = torch.rand(num_rays, num_ray_points) / num_ray_points + zero_to_one[:-1]
+    return lengths
 
 
 def sample_ray_points(
