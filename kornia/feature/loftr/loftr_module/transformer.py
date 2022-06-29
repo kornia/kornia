@@ -97,7 +97,8 @@ class LocalFeatureTransformer(nn.Module):
             msg = "the feature number of src and transformer must be equal"
             raise ValueError(msg)
 
-        for layer, name in zip(self.layers, self.layer_names):
+        for i, (layer) in enumerate(self.layers):
+            name = self.layer_names[i]
             if name == 'self':
                 feat0 = layer(feat0, feat0, mask0, mask0)
                 feat1 = layer(feat1, feat1, mask1, mask1)
