@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# from coarse_matching_u import mask_border
+from kornia.core import Tensor
 
 INF = 1e9
 
@@ -89,7 +89,7 @@ class CoarseMatching(nn.Module):
         else:
             raise NotImplementedError()
 
-    def forward(self, feat_c0, feat_c1, data: Dict[str, torch.Tensor], mask_c0=None, mask_c1=None):
+    def forward(self, feat_c0, feat_c1, data: Dict[str, Tensor], mask_c0=None, mask_c1=None):
         """
         Args:
             feat0 (torch.Tensor): [N, L, C]

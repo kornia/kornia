@@ -3,6 +3,7 @@ from typing import Dict, List, Optional
 import torch
 import torch.nn as nn
 
+from kornia.core import Tensor
 from kornia.geometry import resize
 
 from .backbone import build_backbone
@@ -100,7 +101,7 @@ class LoFTR(nn.Module):
             self.load_state_dict(pretrained_dict['state_dict'])
         self.eval()
 
-    def forward(self, data: Dict[str, torch.Tensor]):
+    def forward(self, data: Dict[str, Tensor]):
         """
         Args:
             data: dictionary containing the input data in the following format:
@@ -119,9 +120,9 @@ class LoFTR(nn.Module):
         """
 
         # 1. Local Feature CNN
-        bs = torch.tensor(data['image0'].size(0))
-        hw0_i = torch.tensor(data['image0'].shape[2:])
-        hw1_i = torch.tensor(data['image1'].shape[2:])
+        bs = torch.as_tensor(data['image0'].size(0))
+        hw0_i = torch.as_tensor(data['image0'].shape[2:])
+        hw1_i = torch.as_tensor(data['image1'].shape[2:])
         data.update({'bs': bs, 'hw0_i': hw0_i, 'hw1_i': hw1_i})
 
         if (hw0_i[0] == hw1_i[0]) and (hw0_i[1] == hw1_i[1]): # faster & better BN convergence
@@ -131,8 +132,8 @@ class LoFTR(nn.Module):
             (feat_c0, feat_f0), (feat_c1, feat_f1) = self.backbone(data['image0']), self.backbone(data['image1'])
 
         data.update({
-            'hw0_c': torch.tensor(feat_c0.shape[2:]), 'hw1_c': torch.tensor(feat_c1.shape[2:]),
-            'hw0_f': torch.tensor(feat_f0.shape[2:]), 'hw1_f': torch.tensor(feat_f1.shape[2:])
+            'hw0_c': torch.as_tensor(feat_c0.shape[2:]), 'hw1_c': torch.as_tensor(feat_c1.shape[2:]),
+            'hw0_f': torch.as_tensor(feat_f0.shape[2:]), 'hw1_f': torch.as_tensor(feat_f1.shape[2:])
         })
 
         # 2. coarse-level loftr module

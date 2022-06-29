@@ -4,6 +4,7 @@ from typing import Dict
 import torch
 import torch.nn as nn
 
+from kornia.core import Tensor
 from kornia.geometry.subpix import dsnt
 from kornia.utils.grid import create_meshgrid
 
@@ -14,7 +15,7 @@ class FineMatching(nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, feat_f0, feat_f1, data: Dict[str, torch.Tensor]):
+    def forward(self, feat_f0, feat_f1, data: Dict[str, Tensor]):
         """
         Args:
             feat0 (torch.Tensor): [M, WW, C]

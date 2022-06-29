@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from kornia.core import Tensor
 
 class FinePreprocess(nn.Module):
     def __init__(self, config):
@@ -27,25 +28,25 @@ class FinePreprocess(nn.Module):
             if p.dim() > 1:
                 nn.init.kaiming_normal_(p, mode="fan_out", nonlinearity="relu")
 
-    def forward(self, feat_f0, feat_f1, feat_c0, feat_c1, data: Dict[str, torch.Tensor]):
+    def forward(self, feat_f0, feat_f1, feat_c0, feat_c1, data: Dict[str, Tensor]):
         W = self.W
         stride = data['hw0_f'][0] // data['hw0_c'][0]
 
-        data.update({'W': torch.tensor(W)})
+        data.update({'W': torch.as_tensor(W)})
         if data['b_ids'].shape[0] == 0:
-            feat0 = torch.empty(0, torch.tensor(W)**2, self.d_model_f, device=feat_f0.device)
-            feat1 = torch.empty(0, torch.tensor(W)**2, self.d_model_f, device=feat_f0.device)
+            feat0 = torch.empty(0, torch.as_tensor(W)**2, self.d_model_f, device=feat_f0.device)
+            feat1 = torch.empty(0, torch.as_tensor(W)**2, self.d_model_f, device=feat_f0.device)
             return feat0, feat1
 
         # 1. unfold(crop) all local windows
-        feat_f0_unfold = F.unfold(feat_f0, kernel_size=(self.W, self.W), stride=int(torch.tensor(stride).item()), padding=self.W // 2)
+        feat_f0_unfold = F.unfold(feat_f0, kernel_size=(self.W, self.W), stride=int(torch.as_tensor(stride).item()), padding=self.W // 2)
 
         # feat_f0_unfold = rearrange(feat_f0_unfold, 'n (c ww) l -> n l ww c', ww=W**2)
         n0, cww0, l0 = feat_f0_unfold.shape
         c0 = cww0 // (W * W)
         feat_f0_unfold = feat_f0_unfold.reshape(n0, c0, -1, l0).permute(0, 3, 2, 1)
 
-        feat_f1_unfold = F.unfold(feat_f1, kernel_size=(self.W, self.W), stride=int(torch.tensor(stride).item()), padding=self.W // 2)
+        feat_f1_unfold = F.unfold(feat_f1, kernel_size=(self.W, self.W), stride=int(torch.as_tensor(stride).item()), padding=self.W // 2)
         # feat_f1_unfold = rearrange(feat_f1_unfold, 'n (c ww) l -> n l ww c', ww=W**2)
         n1, cww1, l1 = feat_f1_unfold.shape
         c1 = cww1 // (W * W)
@@ -61,7 +62,7 @@ class FinePreprocess(nn.Module):
                                                    feat_c1[data['b_ids'], data['j_ids']]], 0))  # [2n, c]
             feat_cf_win = self.merge_feat(torch.cat([
                 torch.cat([feat_f0_unfold, feat_f1_unfold], 0),  # [2n, ww, cf]
-                feat_c_win.unsqueeze(1).repeat(1, torch.tensor(W)**2, 1),  # [2n, ww, cf]
+                feat_c_win.unsqueeze(1).repeat(1, torch.as_tensor(W)**2, 1),  # [2n, ww, cf]
             ], -1))
             feat_f0_unfold, feat_f1_unfold = torch.chunk(feat_cf_win, 2, dim=0)
 
