@@ -1,4 +1,5 @@
 import math
+from typing import Dict
 
 import torch
 import torch.nn as nn
@@ -6,7 +7,6 @@ import torch.nn as nn
 from kornia.geometry.subpix import dsnt
 from kornia.utils.grid import create_meshgrid
 
-from typing import Dict
 
 class FineMatching(nn.Module):
     """FineMatching with s2d paradigm."""

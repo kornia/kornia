@@ -1,7 +1,9 @@
+from typing import Dict
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Dict
+
 # from coarse_matching_u import mask_border
 
 INF = 1e9

@@ -123,7 +123,7 @@ class LoFTR(nn.Module):
         hw0_i = torch.tensor(data['image0'].shape[2:])
         hw1_i = torch.tensor(data['image1'].shape[2:])
         data.update({'bs': bs, 'hw0_i': hw0_i, 'hw1_i': hw1_i})
-        
+
         if (hw0_i[0] == hw1_i[0]) and (hw0_i[1] == hw1_i[1]): # faster & better BN convergence
             feats_c, feats_f = self.backbone(torch.cat([data['image0'], data['image1']], dim=0))
             (feat_c0, feat_c1), (feat_f0, feat_f1) = feats_c.split(data['bs']), feats_f.split(data['bs'])
