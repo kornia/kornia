@@ -169,7 +169,7 @@ def sample_ray_points(
     return points_3d
 
 
-def calc_ray_t_vals(directions: torch.Tensor, lengths: torch.Tensor) -> torch.Tensor:
+def calc_ray_t_vals(points_3d: torch.Tensor) -> torch.Tensor:
     r"""Calculates t values along rays
 
     Args:
@@ -183,4 +183,5 @@ def calc_ray_t_vals(directions: torch.Tensor, lengths: torch.Tensor) -> torch.Te
         >>> convert_points_to_homogeneous(input)
         tensor([[0., 0., 1.]])
     """
-    pass
+    t_vals = torch.linalg.norm(points_3d - points_3d[..., 0, :].unsqueeze(1), dim=-1)
+    return t_vals
