@@ -213,15 +213,15 @@ def binary_focal_loss_with_logits(
 
     if pos_weight is None:
         pos_weight = torch.ones(input.size(-1), device=input.device)
-    elif pos_weight is not None and not isinstance(pos_weight, torch.Tensor):
+    elif not isinstance(pos_weight, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
-    elif pos_weight is not None and input.size(-1) != pos_weight.size(0):
+    elif input.size(-1) != pos_weight.size(0):
         raise ValueError(f"Expected pos_weight size ({pos_weight.size(0)}) to match number of "
                          f"classes ({input.size(1)})")
 
     probs_pos = torch.sigmoid(input)
     probs_neg = torch.sigmoid(-input)
-    loss_tmp = -pos_weight * alpha * torch.pow(probs_neg, gamma) * target * F.logsigmoid(input) - (
+    loss_tmp = -alpha * pos_weight * torch.pow(probs_neg, gamma) * target * F.logsigmoid(input) - (
         1 - alpha
     ) * torch.pow(probs_pos, gamma) * (1.0 - target) * F.logsigmoid(-input)
 
