@@ -167,3 +167,20 @@ def sample_ray_points(
     """
     points_3d = origins[..., None, :] + lengths[..., None] * directions[..., None, :]
     return points_3d
+
+
+def calc_ray_t_vals(directions: torch.Tensor, lengths: torch.Tensor) -> torch.Tensor:
+    r"""Calculates t values along rays
+
+    Args:
+        points_3d: Points along rays :math:`(*, num_ray_points, 3)`
+
+    Returns:
+        t calues along rays :math:`(*, num_ray_points)`
+
+    Examples:       # FIXME: Fix this example!!
+        >>> input = torch.tensor([[0., 0.]])
+        >>> convert_points_to_homogeneous(input)
+        tensor([[0., 0., 1.]])
+    """
+    pass
