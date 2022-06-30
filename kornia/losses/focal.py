@@ -157,6 +157,7 @@ def binary_focal_loss_with_logits(
     gamma: float = 2.0,
     reduction: str = 'none',
     eps: Optional[float] = None,
+    pos_weight: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     r"""Function that computes Binary Focal loss.
 
@@ -178,6 +179,9 @@ def binary_focal_loss_with_logits(
           the number of elements in the output, ``'sum'``: the output will be
           summed.
         eps: Deprecated: scalar for numerically stability when dividing. This is no longer used.
+        pos_weight: a weight of positive examples.
+          It’s possible to trade off recall and precision by adding weights to positive examples.
+          Must be a vector with length equal to the number of classes.
 
     Returns:
         the computed loss.
@@ -207,9 +211,17 @@ def binary_focal_loss_with_logits(
     if input.size(0) != target.size(0):
         raise ValueError(f'Expected input batch_size ({input.size(0)}) to match target batch_size ({target.size(0)}).')
 
+    if pos_weight is None:
+        pos_weight = torch.ones(input.size(-1), device=input.device)
+    elif pos_weight is not None and not isinstance(pos_weight, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+    elif pos_weight is not None and input.size(-1) != pos_weight.size(0):
+        raise ValueError(f"Expected pos_weight size ({pos_weight.size(0)}) to match number of "
+                         f"classes ({input.size(1)})")
+
     probs_pos = torch.sigmoid(input)
     probs_neg = torch.sigmoid(-input)
-    loss_tmp = -alpha * torch.pow(probs_neg, gamma) * target * F.logsigmoid(input) - (
+    loss_tmp = -pos_weight * alpha * torch.pow(probs_neg, gamma) * target * F.logsigmoid(input) - (
         1 - alpha
     ) * torch.pow(probs_pos, gamma) * (1.0 - target) * F.logsigmoid(-input)
 
@@ -237,13 +249,16 @@ class BinaryFocalLossWithLogits(nn.Module):
        - :math:`p_t` is the model's estimated probability for each class.
 
     Args:
-        alpha): Weighting factor for the rare class :math:`\alpha \in [0, 1]`.
+        alpha: Weighting factor for the rare class :math:`\alpha \in [0, 1]`.
         gamma: Focusing parameter :math:`\gamma >= 0`.
         reduction: Specifies the reduction to apply to the
           output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
           will be applied, ``'mean'``: the sum of the output will be divided by
           the number of elements in the output, ``'sum'``: the output will be
           summed.
+        pos_weight: a weight of positive examples.
+          It’s possible to trade off recall and precision by adding weights to positive examples.
+          Must be a vector with length equal to the number of classes.
 
     Shape:
         - Input: :math:`(N, *)`.
@@ -258,11 +273,20 @@ class BinaryFocalLossWithLogits(nn.Module):
         >>> output.backward()
     """
 
-    def __init__(self, alpha: float, gamma: float = 2.0, reduction: str = 'none') -> None:
+    def __init__(
+        self,
+        alpha: float,
+        gamma: float = 2.0,
+        reduction: str = 'none',
+        pos_weight: Optional[torch.Tensor] = None
+    ) -> None:
         super().__init__()
         self.alpha: float = alpha
         self.gamma: float = gamma
         self.reduction: str = reduction
+        self.pos_weight: Optional[torch.Tensor] = pos_weight
 
     def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        return binary_focal_loss_with_logits(input, target, self.alpha, self.gamma, self.reduction)
+        return binary_focal_loss_with_logits(
+            input, target, self.alpha, self.gamma, self.reduction, pos_weight=self.pos_weight
+        )
