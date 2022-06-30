@@ -32,6 +32,7 @@ class PinholeCamera:
         self._check_valid_params(extrinsics, "extrinsics")
         self._check_valid_shape(height, "height")
         self._check_valid_shape(width, "width")
+        self._check_consistent_device([intrinsics, extrinsics, height, width])
         # set class attributes
         self.height: torch.Tensor = height
         self.width: torch.Tensor = width
@@ -60,6 +61,21 @@ class PinholeCamera:
                 "Argument {} shape must be in the following shape" " B. Got {}".format(data_name, data.shape)
             )
         return True
+
+    @staticmethod
+    def _check_consistent_device(data_iter: Iterable[torch.Tensor]) -> bool:
+        first = data_iter[0]
+        if not all(data.device == first.device for data in data_iter):
+            raise ValueError('Not all arguments are on the same device')
+        return True
+
+    def device(self) -> torch.device:
+        r"""Returns the device for camera buffers.
+
+        Returns:
+            Device type
+        """
+        return self._intrinsics.device
 
     @property
     def intrinsics(self) -> torch.Tensor:
