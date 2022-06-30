@@ -100,7 +100,7 @@ class ApplyInverseImpl(ApplyInverseInterface):
 
         # If any inputs need to be transformed.
         if mat is not None and to_apply is not None and to_apply.sum() != 0 and input.numel() > 0:
-            input[to_apply] = cls.apply_func(mat, input[to_apply])
+            input[to_apply] = cls.apply_func(mat[to_apply], input[to_apply])
 
         return input, label
 
