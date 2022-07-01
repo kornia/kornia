@@ -212,7 +212,7 @@ def binary_focal_loss_with_logits(
         raise ValueError(f'Expected input batch_size ({input.size(0)}) to match target batch_size ({target.size(0)}).')
 
     if pos_weight is None:
-        pos_weight = torch.ones(input.size(-1), device=input.device)
+        pos_weight = torch.ones(input.size(-1), device=input.device, dtype=input.dtype)
     elif not isinstance(pos_weight, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
     elif input.size(-1) != pos_weight.size(0):
