@@ -37,15 +37,11 @@ class LoFTREncoderLayer(nn.Module):
 
     def forward(self,
                 x: torch.Tensor,
-                source: torch.Tensor,
-                x_mask: Optional[torch.Tensor] = None,
-                source_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+                source: torch.Tensor) -> torch.Tensor:
         """
         Args:
             x (torch.Tensor): [N, L, C]
             source (torch.Tensor): [N, S, C]
-            x_mask (torch.Tensor): [N, L] (optional)
-            source_mask (torch.Tensor): [N, S] (optional)
         """
         bs = x.size(0)
         query, key, value = x, source, source
@@ -54,7 +50,7 @@ class LoFTREncoderLayer(nn.Module):
         query = self.q_proj(query).view(bs, -1, self.nhead, self.dim)  # [N, L, (H, D)]
         key = self.k_proj(key).view(bs, -1, self.nhead, self.dim)  # [N, S, (H, D)]
         value = self.v_proj(value).view(bs, -1, self.nhead, self.dim)
-        message = self.attention(query, key, value, q_mask=x_mask, kv_mask=source_mask)  # [N, L, (H, D)]
+        message = self.attention(query, key, value)  # [N, L, (H, D)]
         message = self.merge(message.view(bs, -1, self.nhead * self.dim))  # [N, L, C]
         message = self.norm1(message)
 
@@ -84,13 +80,11 @@ class LocalFeatureTransformer(nn.Module):
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
-    def forward(self, feat0, feat1, mask0=None, mask1=None):
+    def forward(self, feat0, feat1):
         """
         Args:
             feat0 (torch.Tensor): [N, L, C]
             feat1 (torch.Tensor): [N, S, C]
-            mask0 (torch.Tensor): [N, L] (optional)
-            mask1 (torch.Tensor): [N, S] (optional)
         """
 
         if self.d_model != feat0.size(2):
@@ -100,11 +94,11 @@ class LocalFeatureTransformer(nn.Module):
         for i, (layer) in enumerate(self.layers):
             name = self.layer_names[i]
             if name == 'self':
-                feat0 = layer(feat0, feat0, mask0, mask0)
-                feat1 = layer(feat1, feat1, mask1, mask1)
+                feat0 = layer(feat0, feat0)
+                feat1 = layer(feat1, feat1)
             elif name == 'cross':
-                feat0 = layer(feat0, feat1, mask0, mask1)
-                feat1 = layer(feat1, feat0, mask1, mask0)
+                feat0 = layer(feat0, feat1)
+                feat1 = layer(feat1, feat0)
             else:
                 raise KeyError
 

@@ -21,28 +21,17 @@ class LinearAttention(Module):
     def forward(self,
                 queries: torch.Tensor,
                 keys: torch.Tensor,
-                values: torch.Tensor,
-                q_mask: Optional[torch.Tensor] = None,
-                kv_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+                values: torch.Tensor) -> torch.Tensor:
         """ Multi-Head linear attention proposed in "Transformers are RNNs"
         Args:
             queries: [N, L, H, D]
             keys: [N, S, H, D]
             values: [N, S, H, D]
-            q_mask: [N, L]
-            kv_mask: [N, S]
         Returns:
             queried_values: (N, L, H, D)
         """
         Q = self.feature_map(queries)
         K = self.feature_map(keys)
-
-        # set padded position to zero
-        if q_mask is not None:
-            Q = Q * q_mask[:, :, None, None]
-        if kv_mask is not None:
-            K = K * kv_mask[:, :, None, None]
-            values = values * kv_mask[:, :, None, None]
 
         v_length = values.size(1)
         values = values / v_length  # prevent fp16 overflow
@@ -59,7 +48,7 @@ class FullAttention(Module):
         self.use_dropout = use_dropout
         self.dropout = Dropout(attention_dropout)
 
-    def forward(self, queries, keys, values, q_mask=None, kv_mask=None):
+    def forward(self, queries, keys, values):
         """Multi-head scaled dot-product attention, a.k.a full attention.
 
         Args:
@@ -74,8 +63,6 @@ class FullAttention(Module):
 
         # Compute the unnormalized attention and apply the masks
         QK = torch.einsum("nlhd,nshd->nlsh", queries, keys)
-        if kv_mask is not None:
-            QK.masked_fill_(~(q_mask[:, :, None, None] * kv_mask[:, None, :, None]), float('-inf'))
 
         # Compute the attention and the weighted average
         softmax_temp = 1. / queries.size(3)**.5  # sqrt(D)
