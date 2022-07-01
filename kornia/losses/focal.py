@@ -157,7 +157,7 @@ def binary_focal_loss_with_logits(
     gamma: float = 2.0,
     reduction: str = 'none',
     eps: Optional[float] = None,
-    pos_weight: Optional[torch.Tensor] = None,
+    pos_weight: Optional[Tensor] = None,
 ) -> torch.Tensor:
     r"""Function that computes Binary Focal loss.
 
