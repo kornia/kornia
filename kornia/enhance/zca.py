@@ -95,7 +95,7 @@ class ZCAWhitening(nn.Module):
 
         T, mean, T_inv = zca_mean(x, self.dim, self.unbiased, self.eps, self.compute_inv)
 
-        self.mean_vector: torch.Tensor = mean
+        self.mean_vector = mean
         self.transform_matrix: torch.Tensor = T
         if T_inv is None:
             self.transform_inv: Optional[torch.Tensor] = torch.empty([0])
