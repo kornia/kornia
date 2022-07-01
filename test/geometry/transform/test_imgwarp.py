@@ -8,30 +8,49 @@ from kornia.testing import assert_close
 from kornia.utils.helpers import _torch_inverse_cast
 
 
-@pytest.mark.parametrize("batch_size", [1, 2, 5])
-def test_get_perspective_transform(batch_size, device, dtype):
-    # generate input data
-    h_max, w_max = 64, 32  # height, width
-    h = torch.ceil(h_max * torch.rand(batch_size, device=device, dtype=dtype))
-    w = torch.ceil(w_max * torch.rand(batch_size, device=device, dtype=dtype))
+class TestGetPerspectiveTransform:
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
+    def test_smoke(self, device, dtype, batch_size):
+        points_src = torch.rand(batch_size, 4, 2, device=device, dtype=dtype)
+        points_dst = torch.rand(batch_size, 4, 2, device=device, dtype=dtype)
 
-    norm = torch.rand(batch_size, 4, 2, device=device, dtype=dtype)
-    points_src = torch.zeros_like(norm, device=device, dtype=dtype)
-    points_src[:, 1, 0] = h
-    points_src[:, 2, 1] = w
-    points_src[:, 3, 0] = h
-    points_src[:, 3, 1] = w
-    points_dst = points_src + norm
+        dst_trans_src = kornia.geometry.get_perspective_transform(points_src, points_dst)
+        assert dst_trans_src.shape == (batch_size, 3, 3)
 
-    # compute transform from source to target
-    dst_homo_src = kornia.geometry.get_perspective_transform(points_src, points_dst)
+    def test_back_and_forth(self, device, dtype):
+        # generate input data
+        h_max, w_max = 64, 32  # height, width
+        h = torch.ceil(h_max * torch.rand(1, device=device, dtype=dtype))
+        w = torch.ceil(w_max * torch.rand(1, device=device, dtype=dtype))
 
-    assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-4, atol=1e-4)
+        norm = torch.rand(1, 4, 2, device=device, dtype=dtype)
+        points_src = torch.zeros_like(norm, device=device, dtype=dtype)
+        points_src[:, 1, 0] = h
+        points_src[:, 2, 1] = w
+        points_src[:, 3, 0] = h
+        points_src[:, 3, 1] = w
+        points_dst = points_src + norm
 
-    # compute gradient check
-    points_src = utils.tensor_to_gradcheck_var(points_src)  # to var
-    points_dst = utils.tensor_to_gradcheck_var(points_dst)  # to var
-    assert gradcheck(kornia.geometry.get_perspective_transform, (points_src, points_dst), raise_exception=True)
+        # compute transform from source to target
+        dst_trans_src = kornia.geometry.get_perspective_transform(points_src, points_dst)
+        points_dst_hat = kornia.geometry.transform_points(dst_trans_src, points_src)
+        assert_close(points_dst, points_dst_hat)
+
+    def test_jit(self, device, dtype):
+        points_src = torch.rand(1, 4, 2, device=device, dtype=dtype)
+        points_dst = torch.rand(1, 4, 2, device=device, dtype=dtype)
+
+        op = kornia.geometry.get_perspective_transform
+        op_jit = torch.jit.script(op)
+
+        assert_close(op(points_src, points_dst), op_jit(points_src, points_dst))
+
+    def test_gradcheck(self, device):
+        # compute gradient check
+        points_src = torch.rand(1, 4, 2, device=device, dtype=torch.float64, requires_grad=True)
+        points_dst = torch.rand(1, 4, 2, device=device, dtype=torch.float64, requires_grad=False)
+        assert gradcheck(kornia.geometry.get_perspective_transform,
+            (points_src, points_dst), raise_exception=True)
 
 
 @pytest.mark.parametrize("batch_size", [1, 2, 5])
