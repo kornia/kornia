@@ -1,5 +1,5 @@
 import math
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional
 
 import torch
 import torch.nn as nn
@@ -165,8 +165,9 @@ class OriNet(nn.Module):
         self.eps = eps
         # use torch.hub to load pretrained model
         if pretrained:
+            storage_fcn: Callable = lambda storage, loc: storage
             pretrained_dict = torch.hub.load_state_dict_from_url(
-                urls['orinet'], map_location=lambda storage, loc: storage
+                urls['orinet'], map_location=storage_fcn
             )
             self.load_state_dict(pretrained_dict['state_dict'], strict=False)
         self.eval()

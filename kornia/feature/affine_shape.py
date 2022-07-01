@@ -1,6 +1,6 @@
 import math
 import warnings
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional
 
 import torch
 import torch.nn as nn
@@ -189,8 +189,9 @@ class LAFAffNetShapeEstimator(nn.Module):
         self.patch_size = 32
         # use torch.hub to load pretrained model
         if pretrained:
+            storage_fcn: Callable = lambda storage, loc: storage
             pretrained_dict = torch.hub.load_state_dict_from_url(
-                urls['affnet'], map_location=lambda storage, loc: storage
+                urls['affnet'], map_location=storage_fcn
             )
             self.load_state_dict(pretrained_dict['state_dict'], strict=False)
         self.preserve_orientation = preserve_orientation
