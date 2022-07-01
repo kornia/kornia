@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Callable, Dict
 
 import torch
 import torch.nn as nn
@@ -54,8 +54,9 @@ class TFeat(nn.Module):
         self.descr = nn.Sequential(nn.Linear(64 * 8 * 8, 128), nn.Tanh())
         # use torch.hub to load pretrained model
         if pretrained:
+            storage_fcn: Callable = lambda storage, loc: storage
             pretrained_dict = torch.hub.load_state_dict_from_url(
-                urls['liberty'], map_location=lambda storage, loc: storage
+                urls['liberty'], map_location=storage_fcn
             )
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
