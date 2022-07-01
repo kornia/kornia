@@ -13,7 +13,7 @@ def cameras_for_ids(cameras: PinholeCamera, camera_ids: List[int]):
     return PinholeCamera(intrinsics, extrinsics, height, width)
 
 
-class RaySampler:
+class RaySampler:  # FIXME: Add device handling!!
     _origins: torch.Tensor  # Ray origins in world coordinates
     _directions: torch.Tensor  # Ray directions in worlds coordinates
     _camera_ids: torch.Tensor  # Ray camera ID
@@ -54,7 +54,7 @@ class RaySampler:
     def lengths(self) -> torch.Tensor:
         return self._lengths
 
-    def _calc_ray_params(self, cameras: PinholeCamera, points_2d_camera: Dict[int, Points2D]):
+    def _calc_ray_params(self, cameras: PinholeCamera, points_2d_camera: Dict[int, Points2D]) -> None:
 
         # Unproject 2d points in image plane to 3d world for two depths
         origins = []
@@ -112,7 +112,7 @@ class RandomRaySampler(RaySampler):
             RaySampler._add_points2d_as_lists_to_num_ray_dict(n, x_rand, y_rand, camera_id, points2d_as_lists)
         return RaySampler._build_num_ray_dict_of_points2d(points2d_as_lists)
 
-    def calc_ray_params(self, cameras: PinholeCamera, num_rays: torch.Tensor):
+    def calc_ray_params(self, cameras: PinholeCamera, num_rays: torch.Tensor) -> None:
         num_cams = cameras.height.shape[0]
         if num_cams != num_rays.shape[0]:
             raise ValueError(
@@ -138,7 +138,7 @@ class UniformRaySampler(RaySampler):
             RaySampler._add_points2d_as_lists_to_num_ray_dict(n, x_grid, y_grid, camera_id, points2d_as_lists)
         return RaySampler._build_num_ray_dict_of_points2d(points2d_as_lists)
 
-    def calc_ray_params(self, cameras: PinholeCamera):
+    def calc_ray_params(self, cameras: PinholeCamera) -> None:
         points_2d_camera = self.sample_points_2d(cameras.height, cameras.width)
         self._calc_ray_params(cameras, points_2d_camera)
 
