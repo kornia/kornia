@@ -5,6 +5,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from kornia.core import Tensor
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 from kornia.utils.one_hot import one_hot
 
 # based on:
@@ -12,13 +14,13 @@ from kornia.utils.one_hot import one_hot
 
 
 def focal_loss(
-    input: torch.Tensor,
-    target: torch.Tensor,
+    input: Tensor,
+    target: Tensor,
     alpha: float,
     gamma: float = 2.0,
     reduction: str = 'none',
     eps: Optional[float] = None,
-) -> torch.Tensor:
+) -> Tensor:
     r"""Criterion that computes Focal loss.
 
     According to :cite:`lin2018focal`, the Focal loss is computed as follows:
@@ -60,8 +62,8 @@ def focal_loss(
             stacklevel=2,
         )
 
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+    if not isinstance(input, Tensor):
+        raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
 
     if not len(input.shape) >= 2:
         raise ValueError(f"Invalid input shape, we expect BxCx*. Got: {input.shape}")
@@ -78,11 +80,11 @@ def focal_loss(
         raise ValueError(f"input and target must be in the same device. Got: {input.device} and {target.device}")
 
     # compute softmax over the classes axis
-    input_soft: torch.Tensor = F.softmax(input, dim=1)
-    log_input_soft: torch.Tensor = F.log_softmax(input, dim=1)
+    input_soft: Tensor = F.softmax(input, dim=1)
+    log_input_soft: Tensor = F.log_softmax(input, dim=1)
 
     # create the labels one hot tensor
-    target_one_hot: torch.Tensor = one_hot(target, num_classes=input.shape[1], device=input.device, dtype=input.dtype)
+    target_one_hot: Tensor = one_hot(target, num_classes=input.shape[1], device=input.device, dtype=input.dtype)
 
     # compute the actual focal loss
     weight = torch.pow(-input_soft + 1.0, gamma)
@@ -146,19 +148,19 @@ class FocalLoss(nn.Module):
         self.reduction: str = reduction
         self.eps: Optional[float] = eps
 
-    def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: Tensor, target: Tensor) -> Tensor:
         return focal_loss(input, target, self.alpha, self.gamma, self.reduction, self.eps)
 
 
 def binary_focal_loss_with_logits(
-    input: torch.Tensor,
-    target: torch.Tensor,
+    input: Tensor,
+    target: Tensor,
     alpha: float = 0.25,
     gamma: float = 2.0,
     reduction: str = 'none',
     eps: Optional[float] = None,
     pos_weight: Optional[Tensor] = None,
-) -> torch.Tensor:
+) -> Tensor:
     r"""Function that computes Binary Focal loss.
 
     .. math::
@@ -188,8 +190,8 @@ def binary_focal_loss_with_logits(
 
     Examples:
         >>> kwargs = {"alpha": 0.25, "gamma": 2.0, "reduction": 'mean'}
-        >>> logits = torch.tensor([[[6.325]],[[5.26]],[[87.49]]])
-        >>> labels = torch.tensor([[[1.]],[[1.]],[[0.]]])
+        >>> logits = tensor([[[6.325]],[[5.26]],[[87.49]]])
+        >>> labels = tensor([[[1.]],[[1.]],[[0.]]])
         >>> binary_focal_loss_with_logits(logits, labels, **kwargs)
         tensor(21.8725)
     """
@@ -202,8 +204,8 @@ def binary_focal_loss_with_logits(
             stacklevel=2,
         )
 
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+    if not isinstance(input, Tensor):
+        raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
 
     if not len(input.shape) >= 2:
         raise ValueError(f"Invalid input shape, we expect BxCx*. Got: {input.shape}")
@@ -213,11 +215,10 @@ def binary_focal_loss_with_logits(
 
     if pos_weight is None:
         pos_weight = torch.ones(input.size(-1), device=input.device, dtype=input.dtype)
-    elif not isinstance(pos_weight, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
-    elif input.size(-1) != pos_weight.size(0):
-        raise ValueError(f"Expected pos_weight size ({pos_weight.size(0)}) to match number of "
-                         f"classes ({input.size(1)})")
+
+    KORNIA_CHECK_IS_TENSOR(pos_weight)
+    KORNIA_CHECK(input.size(-1) == pos_weight.size(0), "Expected pos_weight equals number of "
+                                                       "classes.")
 
     probs_pos = torch.sigmoid(input)
     probs_neg = torch.sigmoid(-input)
@@ -278,15 +279,15 @@ class BinaryFocalLossWithLogits(nn.Module):
         alpha: float,
         gamma: float = 2.0,
         reduction: str = 'none',
-        pos_weight: Optional[torch.Tensor] = None
+        pos_weight: Optional[Tensor] = None
     ) -> None:
         super().__init__()
         self.alpha: float = alpha
         self.gamma: float = gamma
         self.reduction: str = reduction
-        self.pos_weight: Optional[torch.Tensor] = pos_weight
+        self.pos_weight: Optional[Tensor] = pos_weight
 
-    def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: Tensor, target: Tensor) -> Tensor:
         return binary_focal_loss_with_logits(
             input, target, self.alpha, self.gamma, self.reduction, pos_weight=self.pos_weight
         )
