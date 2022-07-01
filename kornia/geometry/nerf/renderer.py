@@ -11,7 +11,7 @@ class VolumeRenderer(torch.nn.Module):
 
     def _render(self, alpha: torch.Tensor, rgbs: torch.Tensor) -> torch.Tensor:
         trans = torch.cumprod(1 - alpha + self._eps, dim=-1)  # (*, N)
-        trans = torch.roll(trans, shifts=self._shift, dim=-1)  # (*, N)
+        trans = torch.roll(trans, shifts=self._shift, dims=-1)  # (*, N)
         trans[..., : self._shift] = 1  # (*, N)
 
         weights = trans * alpha  # (*, N)
