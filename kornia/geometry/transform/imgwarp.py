@@ -359,7 +359,8 @@ def get_perspective_transform(src, dst):
     )
 
     # solve the system Ax = b
-    X, _ = _torch_solve_cast(b, A)
+    #X, _ = _torch_solve_cast(b, A)
+    X = torch.linalg.lstsq(A, b).solution
 
     # create variable to return
     batch_size = src.shape[0]
