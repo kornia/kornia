@@ -14,8 +14,8 @@ def cameras_for_ids(cameras: PinholeCamera, camera_ids: List[int]):
 
 
 class RaySampler:  # FIXME: Add device handling!!
-    _origins: torch.Tensor  # Ray origins in world coordinates
-    _directions: torch.Tensor  # Ray directions in worlds coordinates
+    _origins: torch.Tensor  # Ray origins in world coordinates (*, 2)
+    _directions: torch.Tensor  # Ray directions in worlds coordinates (*, 2)
     _camera_ids: torch.Tensor  # Ray camera ID
     _points_2d: torch.Tensor  # Ray intersection with image plane in camera coordinates
 
@@ -50,29 +50,30 @@ class RaySampler:  # FIXME: Add device handling!!
     def directions(self) -> torch.Tensor:
         return self._directions
 
-    @property
-    def lengths(self) -> torch.Tensor:
-        return self._lengths
-
     def _calc_ray_params(self, cameras: PinholeCamera, points_2d_camera: Dict[int, Points2D]) -> None:
 
         # Unproject 2d points in image plane to 3d world for two depths
         origins = []
         directions = []
+        camera_ids = []
         for obj in points_2d_camera.values():
             num_cams_group, num_points_per_cam_group = obj._points_2d.shape[:2]
             depths = torch.ones(num_cams_group, 2 * num_points_per_cam_group, 3) * self._min_depth
             depths[:, num_points_per_cam_group:] = self._max_depth
-            cameras_id = cameras_for_ids(cameras, obj.camera_ids)
-            points_3d = cameras_id.unproject(obj._points_2d.repeat(1, 2, 1), depths)
+            cams = cameras_for_ids(cameras, obj.camera_ids)
+            points_3d = cams.unproject(obj._points_2d.repeat(1, 2, 1), depths)
             origins.append(points_3d[..., :num_points_per_cam_group, :].reshape(-1, 3))
             directions.append(
                 (points_3d[..., num_points_per_cam_group:, :] - points_3d[..., :num_points_per_cam_group, :]).reshape(
                     -1, 3
                 )
             )
+            camera_ids.append(
+                torch.tensor(obj.camera_ids).repeat(num_points_per_cam_group, 1).permute(1, 0).reshape(1, -1).squeeze()
+            )
         self._origins = torch.cat(origins)
         self._directions = torch.cat(directions)
+        self._camera_ids = torch.cat(camera_ids)
 
     @staticmethod
     def _add_points2d_as_lists_to_num_ray_dict(
