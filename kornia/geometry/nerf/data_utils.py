@@ -36,7 +36,7 @@ class RayDataset(Dataset):  # FIXME: Add device
         return imgs
 
     def __len__(self):
-        pass
+        self._ray_sampler.origins().shape[0]
 
-    def __getitem__(self, idx: int) -> Any:
-        return super().__getitem__(idx)
+    def __getitem__(self, idx: int) -> Any:  # FIXME: idx as a list for batch processing?
+        return self._ray_sampler.origins()[idx], self._ray_sampler.directions()[idx]
