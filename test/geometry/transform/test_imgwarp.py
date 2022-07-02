@@ -6,6 +6,7 @@ import kornia
 import kornia.testing as utils  # test utils
 from kornia.testing import assert_close
 from kornia.utils.helpers import _torch_inverse_cast
+from kornia.utils._compat import torch_version_lt
 
 
 class TestGetPerspectiveTransform:
@@ -14,14 +15,16 @@ class TestGetPerspectiveTransform:
         points_src = torch.rand(batch_size, 4, 2, device=device, dtype=dtype)
         points_dst = torch.rand(batch_size, 4, 2, device=device, dtype=dtype)
 
-        dst_trans_src = kornia.geometry.get_perspective_transform(points_src, points_dst)
+        dst_trans_src = kornia.geometry.get_perspective_transform(
+            points_src, points_dst)
+
         assert dst_trans_src.shape == (batch_size, 3, 3)
 
     def test_back_and_forth(self, device, dtype):
         # generate input data
         h_max, w_max = 64, 32  # height, width
-        h = torch.ceil(h_max * torch.rand(1, device=device, dtype=dtype))
-        w = torch.ceil(w_max * torch.rand(1, device=device, dtype=dtype))
+        h = h_max * torch.rand(1, device=device, dtype=dtype)
+        w = w_max * torch.rand(1, device=device, dtype=dtype)
 
         norm = torch.rand(1, 4, 2, device=device, dtype=dtype)
         points_src = torch.zeros_like(norm, device=device, dtype=dtype)
@@ -36,6 +39,23 @@ class TestGetPerspectiveTransform:
         points_dst_hat = kornia.geometry.transform_points(dst_trans_src, points_src)
         assert_close(points_dst, points_dst_hat)
 
+    def test_hflip(self, device, dtype):
+        points_src = torch.tensor(
+            [[[0., 0.], [1., 0.], [1., 1.], [0., 1.]]], device=device, dtype=dtype)
+
+        points_dst = torch.tensor(
+            [[[1., 0.], [0., 0.], [0., 1.], [1., 1.]]], device=device, dtype=dtype)
+
+        dst_trans_src = kornia.geometry.get_perspective_transform(
+            points_src, points_dst)
+
+        point_left = torch.tensor([[[0., 0.]]], device=device, dtype=dtype)
+        point_right = torch.tensor([[[1., 0.]]], device=device, dtype=dtype)
+        
+        assert_close(
+            kornia.geometry.transform_points(dst_trans_src, point_left),
+            point_right)
+
     def test_jit(self, device, dtype):
         points_src = torch.rand(1, 4, 2, device=device, dtype=dtype)
         points_dst = torch.rand(1, 4, 2, device=device, dtype=dtype)
@@ -45,6 +65,9 @@ class TestGetPerspectiveTransform:
 
         assert_close(op(points_src, points_dst), op_jit(points_src, points_dst))
 
+    @pytest.mark.skipif(
+        torch_version_lt(1, 11, 0),
+        reason="backward for LSTSQ not supported in pytorch < 1.11.0")
     def test_gradcheck(self, device):
         # compute gradient check
         points_src = torch.rand(1, 4, 2, device=device, dtype=torch.float64, requires_grad=True)

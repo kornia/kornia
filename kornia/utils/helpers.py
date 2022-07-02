@@ -5,6 +5,7 @@ from typing import Any, Callable, List, Optional, Tuple
 
 import torch
 
+from kornia.core import Tensor
 from kornia.utils._compat import solve, torch_version_geq
 
 
@@ -143,6 +144,17 @@ def _torch_solve_cast(input: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tenso
     out = solve(A.to(dtype), input.to(dtype))
 
     return (out.to(input.dtype), out)
+
+
+def _torch_lstsq_cast(A: Tensor, B: Tensor) -> Tensor:
+    """Helper function to make torch.linalg.lstsq work with other than fp32/64."""
+    dtype: torch.dtype = A.dtype
+    if dtype not in (torch.float32, torch.float64):
+        dtype = torch.float32
+
+    X = torch.linalg.lstsq(A.to(dtype), B.to(dtype)).solution
+
+    return X.to(A.dtype)
 
 
 def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:

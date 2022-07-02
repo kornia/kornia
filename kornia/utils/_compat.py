@@ -16,6 +16,11 @@ def torch_version_geq(major, minor) -> bool:
     return _version >= version.parse(f"{major}.{minor}")
 
 
+def torch_version_lt(major: int, minor: int, patch: int) -> bool:
+    _version = version.parse(torch_version())
+    return _version < version.parse(f"{major}.{minor}.{patch}")
+
+
 if version.parse(torch_version()) > version.parse("1.7.1"):
     # TODO: remove the type: ignore once Python 3.6 is deprecated.
     # It turns out that Pytorch has no attribute `torch.linalg` for

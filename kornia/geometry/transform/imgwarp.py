@@ -2,9 +2,9 @@ from typing import List, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
-from torch import Tensor, stack
 from torch.nn.functional import grid_sample
 
+from kornia.core import Tensor, stack
 from kornia.geometry.conversions import (
     angle_axis_to_rotation_matrix,
     angle_to_rotation_matrix,
@@ -16,9 +16,9 @@ from kornia.geometry.conversions import (
     normalize_pixel_coordinates,
 )
 from kornia.geometry.linalg import transform_points
-from kornia.testing import KORNIA_CHECK_IS_TENSOR
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.utils import create_meshgrid, create_meshgrid3d, eye_like
-from kornia.utils.helpers import _torch_inverse_cast, _torch_solve_cast
+from kornia.utils.helpers import _torch_inverse_cast, _torch_solve_cast, _torch_lstsq_cast
 
 __all__ = [
     "warp_perspective",
@@ -277,11 +277,14 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
     return flow.view(batch_size, depth, height, width, 3)  # NxDxHxWx3
 
 
-def get_perspective_transform(src, dst):
-    r"""Calculate a perspective transform from four pairs of the corresponding
-    points.
+def get_perspective_transform(points_src: Tensor, points_dst: Tensor) -> Tensor:
+    r"""Calculate a perspective transform from four pairs of the corresponding points.
+    
+    The algorithm is a vanilla implementation of the Direct Linear transform (DLT).
+    See more: https://www.cs.cmu.edu/~16385/s17/Slides/10.2_2D_Alignment__DLT.pdf
 
-    The function calculates the matrix of a perspective transform so that:
+    The function calculates the matrix of a perspective transform that maps from
+    the source to destination points:
 
     .. math ::
 
@@ -300,73 +303,62 @@ def get_perspective_transform(src, dst):
 
     where
 
-    .. math ::
+    .. math::
+
         dst(i) = (x_{i}^{'},y_{i}^{'}), src(i) = (x_{i}, y_{i}), i = 0,1,2,3
 
     Args:
-        src: coordinates of quadrangle vertices in the source image with shape :math:`(B, 4, 2)`.
-        dst: coordinates of the corresponding quadrangle vertices in
+        points_src: coordinates of quadrangle vertices in the source image with shape :math:`(B, 4, 2)`.
+        points_dst: coordinates of the corresponding quadrangle vertices in
             the destination image with shape :math:`(B, 4, 2)`.
 
     Returns:
         the perspective transformation with shape :math:`(B, 3, 3)`.
 
+    Example:
+        >>> x1 = torch.tensor([[[0., 0.], [1., 0.], [1., 1.], [0., 1.]]])
+        >>> x2 = torch.tensor([[[1., 0.], [0., 0.], [0., 1.], [1., 1.]]])
+
     .. note::
         This function is often used in conjunction with :func:`warp_perspective`.
     """
-    if not isinstance(src, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(src)}")
-
-    if not isinstance(dst, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(dst)}")
-
-    if not src.dtype == dst.dtype:
-        raise TypeError(f"Source data type {src.dtype} must match Destination data type {dst.dtype}")
-
-    if not src.shape[-2:] == (4, 2):
-        raise ValueError(f"Inputs must be a Bx4x2 tensor. Got {src.shape}")
-
-    if not src.shape == dst.shape:
-        raise ValueError(f"Inputs must have the same shape. Got {dst.shape}")
-
-    if not (src.shape[0] == dst.shape[0]):
-        raise ValueError(f"Inputs must have same batch size dimension. Expect {src.shape} but got {dst.shape}")
+    KORNIA_CHECK_SHAPE(points_src, ["B", "4", "2"])
+    KORNIA_CHECK_SHAPE(points_dst, ["B", "4", "2"])
+    KORNIA_CHECK(points_src.shape == points_dst.shape,
+        "Source data shape must match Destination data shape.")
+    KORNIA_CHECK(points_src.dtype == points_dst.dtype,
+        "Source data type must match Destination data type.")
 
     # we build matrix A by using only 4 point correspondence. The linear
     # system is solved with the least square method, so here
     # we could even pass more correspondence
-    p = []
-    for i in [0, 1, 2, 3]:
-        p.append(_build_perspective_param(src[:, i], dst[:, i], 'x'))
-        p.append(_build_perspective_param(src[:, i], dst[:, i], 'y'))
 
-    # A is Bx8x8
-    A = torch.stack(p, dim=1)
+    # create the lhs tensor with shape # Bx8x8
+    B: int = points_src.shape[0]  # batch_size
 
-    # b is a Bx8x1
-    b = torch.stack(
-        [
-            dst[:, 0:1, 0],
-            dst[:, 0:1, 1],
-            dst[:, 1:2, 0],
-            dst[:, 1:2, 1],
-            dst[:, 2:3, 0],
-            dst[:, 2:3, 1],
-            dst[:, 3:4, 0],
-            dst[:, 3:4, 1],
-        ],
-        dim=1,
-    )
+    A = torch.empty(B, 8, 8, device=points_src.device, dtype=points_src.dtype)
 
-    # solve the system Ax = b
-    #X, _ = _torch_solve_cast(b, A)
-    import pdb;pdb.set_trace()
-    X = torch.linalg.lstsq(A, b).solution
+    # we need to perform in batch
+    zeros = torch.zeros(B, device=points_src.device, dtype=points_src.dtype)
+    ones = torch.ones(B, device=points_src.device, dtype=points_src.dtype)
 
-    # create variable to return
-    batch_size = src.shape[0]
-    M = torch.ones(batch_size, 9, device=src.device, dtype=src.dtype)
-    M[..., :8] = torch.squeeze(X, dim=-1)
+    for i in range(4):
+        x1, y1 = points_src[..., i, 0], points_src[..., i, 1]  # Bx4
+        x2, y2 = points_dst[..., i, 0], points_dst[..., i, 1]  # Bx4
+
+        A[:, 2 * i] = stack([x1, y1, ones, zeros, zeros, zeros, -x1 * x2, -y1 * x2], -1)
+        A[:, 2 * i + 1] = stack([zeros, zeros, zeros, x1, y1, ones, -x1 * y2, -y1 * y2], -1)
+
+    # the rhs tensor
+    b = points_dst.view(-1, 8, 1)
+
+    ## solve the system Ax = b
+    X: Tensor = _torch_lstsq_cast(A, b)
+
+    ## create variable to return the Bx3x3 transform
+    M = torch.empty(B, 9, device=points_src.device, dtype=points_src.dtype)
+    M[..., :8] = X[..., 0]  # Bx8
+    M[..., -1].fill_(1)
 
     return M.view(-1, 3, 3)  # Bx3x3
 
