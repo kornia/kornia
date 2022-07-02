@@ -330,10 +330,8 @@ def get_perspective_transform(points_src: Tensor, points_dst: Tensor) -> Tensor:
     """
     KORNIA_CHECK_SHAPE(points_src, ["B", "4", "2"])
     KORNIA_CHECK_SHAPE(points_dst, ["B", "4", "2"])
-    KORNIA_CHECK(points_src.shape == points_dst.shape,
-        "Source data shape must match Destination data shape.")
-    KORNIA_CHECK(points_src.dtype == points_dst.dtype,
-        "Source data type must match Destination data type.")
+    KORNIA_CHECK(points_src.shape == points_dst.shape, "Source data shape must match Destination data shape.")
+    KORNIA_CHECK(points_src.dtype == points_dst.dtype, "Source data type must match Destination data type.")
 
     # we build matrix A by using only 4 point correspondence. The linear
     # system is solved with the least square method, so here
@@ -358,10 +356,10 @@ def get_perspective_transform(points_src: Tensor, points_dst: Tensor) -> Tensor:
     # the rhs tensor
     b = points_dst.view(-1, 8, 1)
 
-    ## solve the system Ax = b
+    # solve the system Ax = b
     X: Tensor = _torch_lstsq_cast(A, b)
 
-    ## create variable to return the Bx3x3 transform
+    # create variable to return the Bx3x3 transform
     M = torch.empty(B, 9, device=points_src.device, dtype=points_src.dtype)
     M[..., :8] = X[..., 0]  # Bx8
     M[..., -1].fill_(1)
