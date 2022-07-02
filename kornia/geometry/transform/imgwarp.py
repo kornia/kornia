@@ -278,7 +278,7 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
 
 
 # TODO: move to kornia.geometry.projective
-# TODO: create the nn.Module -- TBD what inputs/outpus etc
+# TODO: create the nn.Module -- TBD what inputs/outputs etc
 # class PerspectiveTransform(nn.Module):
 #     def __init__(self) -> None:
 #         super().__init__()
