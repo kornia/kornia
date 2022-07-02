@@ -5,6 +5,7 @@ from typing import Any, Callable, List, Optional, Tuple
 
 import torch
 
+from kornia.core import Tensor
 from kornia.utils._compat import torch_version_geq
 
 
