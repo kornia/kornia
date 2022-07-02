@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Callable, Dict
 
 import torch
 import torch.nn as nn
@@ -205,8 +205,9 @@ class HyNet(nn.Module):
         self.desc_norm = nn.LocalResponseNorm(2 * self.dim_desc, 2.0 * self.dim_desc, 0.5, 0.0)
         # use torch.hub to load pretrained model
         if pretrained:
+            storage_fcn: Callable = lambda storage, loc: storage
             pretrained_dict = torch.hub.load_state_dict_from_url(
-                urls['liberty'], map_location=lambda storage, loc: storage
+                urls['liberty'], map_location=storage_fcn
             )
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
