@@ -5,7 +5,7 @@ from typing import Any, Callable, List, Optional, Tuple
 
 import torch
 
-from kornia.utils._compat import solve, torch_version_geq
+from kornia.utils._compat import torch_version_geq
 
 
 def get_cuda_device_if_available(index: int = 0) -> torch.device:
@@ -140,7 +140,7 @@ def _torch_solve_cast(input: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tenso
     if dtype not in (torch.float32, torch.float64):
         dtype = torch.float32
 
-    out = solve(A.to(dtype), input.to(dtype))
+    out = torch.linalg.solve(A.to(dtype), input.to(dtype))
 
     return (out.to(input.dtype), out)
 
