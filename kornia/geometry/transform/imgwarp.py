@@ -277,6 +277,12 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
     return flow.view(batch_size, depth, height, width, 3)  # NxDxHxWx3
 
 
+# TODO: move to kornia.geometry.projective
+# TODO: create the nn.Module -- TBD what inputs/outpus etc
+# class PerspectiveTransform(nn.Module):
+#     def __init__(self) -> None:
+#         super().__init__()
+
 def get_perspective_transform(points_src: Tensor, points_dst: Tensor) -> Tensor:
     r"""Calculate a perspective transform from four pairs of the corresponding points.
 
@@ -289,23 +295,22 @@ def get_perspective_transform(points_src: Tensor, points_dst: Tensor) -> Tensor:
     .. math ::
 
         \begin{bmatrix}
-        t_{i}x_{i}^{'} \\
-        t_{i}y_{i}^{'} \\
-        t_{i} \\
-        \end{bmatrix}
-        =
-        \textbf{map_matrix} \cdot
-        \begin{bmatrix}
-        x_{i} \\
-        y_{i} \\
+        x^{'} \\
+        y^{'} \\
         1 \\
         \end{bmatrix}
-
-    where
-
-    .. math::
-
-        dst(i) = (x_{i}^{'},y_{i}^{'}), src(i) = (x_{i}, y_{i}), i = 0,1,2,3
+        =
+        \begin{bmatrix}
+        h_1 & h_2 & h_3 \\
+        h_4 & h_5 & h_6 \\
+        h_7 & h_8 & h_9 \\
+        \end{bmatrix}
+        \cdot
+        \begin{bmatrix}
+        x \\
+        y \\
+        1 \\
+        \end{bmatrix}
 
     Args:
         points_src: coordinates of quadrangle vertices in the source image with shape :math:`(B, 4, 2)`.
@@ -315,12 +320,13 @@ def get_perspective_transform(points_src: Tensor, points_dst: Tensor) -> Tensor:
     Returns:
         the perspective transformation with shape :math:`(B, 3, 3)`.
 
+    .. note::
+        This function is often used in conjunction with :func:`warp_perspective`.
+
     Example:
         >>> x1 = torch.tensor([[[0., 0.], [1., 0.], [1., 1.], [0., 1.]]])
         >>> x2 = torch.tensor([[[1., 0.], [0., 0.], [0., 1.], [1., 1.]]])
-
-    .. note::
-        This function is often used in conjunction with :func:`warp_perspective`.
+        >>> x2_trans_x1 = get_perspective_transform(x1, x2)
     """
     KORNIA_CHECK_SHAPE(points_src, ["B", "4", "2"])
     KORNIA_CHECK_SHAPE(points_dst, ["B", "4", "2"])
@@ -363,22 +369,7 @@ def get_perspective_transform(points_src: Tensor, points_dst: Tensor) -> Tensor:
     return M.view(-1, 3, 3)  # Bx3x3
 
 
-def _build_perspective_param(p: torch.Tensor, q: torch.Tensor, axis: str) -> torch.Tensor:
-    ones = torch.ones_like(p)[..., 0:1]
-    zeros = torch.zeros_like(p)[..., 0:1]
-    if axis == 'x':
-        return torch.cat(
-            [p[:, 0:1], p[:, 1:2], ones, zeros, zeros, zeros, -p[:, 0:1] * q[:, 0:1], -p[:, 1:2] * q[:, 0:1]], dim=1
-        )
-
-    if axis == 'y':
-        return torch.cat(
-            [zeros, zeros, zeros, p[:, 0:1], p[:, 1:2], ones, -p[:, 0:1] * q[:, 1:2], -p[:, 1:2] * q[:, 1:2]], dim=1
-        )
-
-    raise NotImplementedError(f"perspective params for axis `{axis}` is not implemented.")
-
-
+# TODO: move to kornia.geometry.affine
 def get_rotation_matrix2d(center: torch.Tensor, angle: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
     r"""Calculate an affine matrix of 2D rotation.
 
