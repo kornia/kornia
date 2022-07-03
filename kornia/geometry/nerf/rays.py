@@ -50,12 +50,21 @@ class RaySampler:  # FIXME: Add device handling!!
     def directions(self) -> torch.Tensor:
         return self._directions
 
+    @property
+    def camera_ids(self) -> torch.Tensor:
+        return self._camera_ids
+
+    @property
+    def points_2d(self) -> torch.Tensor:
+        return self._points_2d
+
     def _calc_ray_params(self, cameras: PinholeCamera, points_2d_camera: Dict[int, Points2D]) -> None:
 
         # Unproject 2d points in image plane to 3d world for two depths
         origins = []
         directions = []
         camera_ids = []
+        points_2d = []
         for obj in points_2d_camera.values():
             num_cams_group, num_points_per_cam_group = obj._points_2d.shape[:2]
             depths = torch.ones(num_cams_group, 2 * num_points_per_cam_group, 3) * self._min_depth
@@ -71,9 +80,11 @@ class RaySampler:  # FIXME: Add device handling!!
             camera_ids.append(
                 torch.tensor(obj.camera_ids).repeat(num_points_per_cam_group, 1).permute(1, 0).reshape(1, -1).squeeze()
             )
+            points_2d.append(obj._points_2d.reshape(-1, 2).type(torch.uint8))
         self._origins = torch.cat(origins)
         self._directions = torch.cat(directions)
         self._camera_ids = torch.cat(camera_ids)
+        self._points_2d = torch.cat(points_2d)
 
     @staticmethod
     def _add_points2d_as_lists_to_num_ray_dict(

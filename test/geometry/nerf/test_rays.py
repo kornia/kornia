@@ -147,6 +147,8 @@ class TestRaySampler_3DPoints:
         lengths = sample_lengths(uniform_sampler_four_cameras.origins.shape[0], 10, irregular=True)
         assert uniform_sampler_four_cameras.origins.shape == (3 * 28 + 45, 3)
         assert uniform_sampler_four_cameras.directions.shape == (3 * 28 + 45, 3)
+        assert uniform_sampler_four_cameras.camera_ids.shape == (3 * 28 + 45,)
+        assert uniform_sampler_four_cameras.points_2d.shape == (3 * 28 + 45, 2)
         assert lengths.shape == (3 * 28 + 45, 10)
 
     def test_dimensions_sample_ray_points(self, device, dtype):
