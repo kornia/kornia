@@ -7,6 +7,10 @@ from torchvision.io import read_image
 from kornia.geometry.camera import PinholeCamera
 from kornia.geometry.nerf.rays import RandomRaySampler, RaySampler, UniformRaySampler
 
+ImagePaths = List[str]
+ImageTensors = List[torch.Tensor]
+Images = Union[ImagePaths, ImageTensors]
+
 
 class RayDataset(Dataset):  # FIXME: Add device
     def __init__(self, cameras: PinholeCamera, min_depth: float, max_depth: float) -> None:
@@ -16,10 +20,6 @@ class RayDataset(Dataset):  # FIXME: Add device
         self._cameras = cameras
         self._min_depth = min_depth
         self._max_depth = max_depth
-
-    ImagePaths = List[str]
-    ImageTensors = List[torch.Tensor]
-    Images = Union[ImagePaths, ImageTensors]
 
     def init_ray_dataset(self, imgs: Images, num_rays: Optional[torch.Tensor] = None) -> None:
         self._check_image_type_consistency(imgs)
@@ -42,24 +42,22 @@ class RayDataset(Dataset):  # FIXME: Add device
         self._ray_sampler.calc_ray_params(self._cameras)
 
     def _check_image_type_consistency(self, imgs: Images):
-        first_img_type = type(imgs[0])
-        if not isinstance(first_img_type, str) and not isinstance(first_img_type, torch.Tensor):
-            raise ValueError('Input images can be a list of either paths or tensors')
-        if not all(isinstance(type(img), first_img_type) for img in imgs):
+        if not all(isinstance(img, str) for img in imgs) and not all(isinstance(img, torch.Tensor) for img in imgs):
             raise ValueError('The list of input images can only be all paths or tensors')
 
     def _check_dimensions(self, imgs: ImageTensors):
-        if len(imgs) != self._cameras.batch_size():
+        if len(imgs) != self._cameras.batch_size:
             raise ValueError(
-                f'Number of images {len(imgs)} does not match number of cameras {self._cameras.batch_size()}'
+                f'Number of images {len(imgs)} does not match number of cameras {self._cameras.batch_size}'
             )
         if not all(img.shape[0] == 3 for img in imgs):
             raise ValueError('Not all input images have 3 channels')
-        if not all(
-            img.shape[1:] == (height, width)
-            for img, height, width in zip(imgs, self._cameras.height, self._cameras.width)
-        ):
-            raise ValueError('Inconsistent camera and input image dimensions')
+        for i, (img, height, width) in enumerate(zip(imgs, self._cameras.height, self._cameras.width)):
+            if img.shape[1:] != (height, width):
+                raise ValueError(
+                    f'Image index {i} dimensions {(img.shape[1], img.shape[2])} are inconsistent with equivalent '
+                    f'camera dimensions {(height.item(), width.item())}'
+                )
 
     @staticmethod
     def _load_images(img_paths: List[str]) -> List[torch.Tensor]:
