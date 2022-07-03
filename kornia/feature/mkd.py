@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple, Union
+from typing import Callable, Dict, List, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -579,8 +579,9 @@ class MKDDescriptor(nn.Module):
 
         # Load supervised(lw)/unsupervised(pca) model trained on training_set.
         if self.whitening is not None:
+            storage_fcn: Callable = lambda storage, loc: storage
             whitening_models = torch.hub.load_state_dict_from_url(
-                urls[self.kernel_type], map_location=lambda storage, loc: storage
+                urls[self.kernel_type], map_location=storage_fcn
             )
             whitening_model = whitening_models[training_set]
             self.whitening_layer = Whitening(
@@ -639,7 +640,10 @@ class MKDDescriptor(nn.Module):
 
 
 def load_whitening_model(kernel_type: str, training_set: str) -> Dict:
-    whitening_models = torch.hub.load_state_dict_from_url(urls[kernel_type], map_location=lambda storage, loc: storage)
+    storage_fcn: Callable = lambda storage, loc: storage
+    whitening_models = torch.hub.load_state_dict_from_url(
+        urls[kernel_type], map_location=storage_fcn
+    )
     whitening_model = whitening_models[training_set]
     return whitening_model
 

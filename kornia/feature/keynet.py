@@ -1,5 +1,5 @@
 import math
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -148,8 +148,9 @@ class KeyNet(nn.Module):
                                        nn.ReLU(inplace=True))
         # use torch.hub to load pretrained model
         if pretrained:
+            storage_fcn: Callable = lambda storage, loc: storage
             pretrained_dict = torch.hub.load_state_dict_from_url(
-                urls['keynet'], map_location=lambda storage, loc: storage
+                urls['keynet'], map_location=storage_fcn
             )
             self.load_state_dict(pretrained_dict['state_dict'], strict=True)
         self.eval()
