@@ -82,6 +82,10 @@ class ZCAWhitening(nn.Module):
 
         self.fitted = False
 
+        self.mean_vector: torch.Tensor
+        self.transform_matrix: torch.Tensor
+        self.transform_inv: Optional[torch.Tensor]
+
     def fit(self, x: torch.Tensor):
         r"""Fit ZCA whitening matrices to the data.
 
@@ -96,9 +100,9 @@ class ZCAWhitening(nn.Module):
         T, mean, T_inv = zca_mean(x, self.dim, self.unbiased, self.eps, self.compute_inv)
 
         self.mean_vector = mean
-        self.transform_matrix: torch.Tensor = T
+        self.transform_matrix = T
         if T_inv is None:
-            self.transform_inv: Optional[torch.Tensor] = torch.empty([0])
+            self.transform_inv = torch.empty([0])
         else:
             self.transform_inv = T_inv
 
