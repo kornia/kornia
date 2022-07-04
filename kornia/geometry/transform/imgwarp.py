@@ -16,9 +16,9 @@ from kornia.geometry.conversions import (
     normalize_pixel_coordinates,
 )
 from kornia.geometry.linalg import transform_points
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.utils import create_meshgrid, create_meshgrid3d, eye_like
-from kornia.utils.helpers import _torch_inverse_cast, _torch_lstsq_cast, _torch_solve_cast
+from kornia.utils.helpers import _torch_inverse_cast, _torch_solve_cast
 
 __all__ = [
     "warp_perspective",
@@ -357,7 +357,7 @@ def get_perspective_transform(points_src: Tensor, points_dst: Tensor) -> Tensor:
     b = points_dst.view(-1, 8, 1)
 
     # solve the system Ax = b
-    X: Tensor = _torch_lstsq_cast(A, b)
+    X: Tensor = _torch_solve_cast(A, b)
 
     # create variable to return the Bx3x3 transform
     M = torch.empty(B, 9, device=points_src.device, dtype=points_src.dtype)
@@ -509,9 +509,9 @@ def remap(
     .. note::
         This function is often used in conjunction with :func:`kornia.utils.create_meshgrid`.
     """
-    KORNIA_CHECK_IS_TENSOR(image, "Expected shape BxCxHxW")
-    KORNIA_CHECK_IS_TENSOR(map_x, "Expected shape BxHxW")
-    KORNIA_CHECK_IS_TENSOR(map_y, "Expected shape BxHxW")
+    KORNIA_CHECK_SHAPE(image, ["B", "C", "H", "W"])
+    KORNIA_CHECK_SHAPE(map_x, ["B", "H", "W"])
+    KORNIA_CHECK_SHAPE(map_y, ["B", "H", "W"])
 
     batch_size, _, height, width = image.shape
 
@@ -526,8 +526,7 @@ def remap(
     map_xy = map_xy.expand(batch_size, -1, -1, -1)
 
     # warp the image tensor and return
-    warped = grid_sample(image, map_xy, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
-    return warped
+    return grid_sample(image, map_xy, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
 
 
 def invert_affine_transform(matrix: torch.Tensor) -> torch.Tensor:
@@ -1068,12 +1067,14 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
     )
 
     # solve the system Ax = b
-    X, _ = _torch_solve_cast(b, A)
+    X: Tensor = _torch_solve_cast(A, b)
 
     # create variable to return
-    batch_size = src.shape[0]
-    M = torch.ones(batch_size, 16, device=src.device, dtype=src.dtype)
-    M[..., :15] = torch.squeeze(X, dim=-1)
+    batch_size: int = src.shape[0]
+    M = torch.empty(batch_size, 16, device=src.device, dtype=src.dtype)
+    M[..., :15] = X[..., 0]
+    M[..., -1].fill_(1)
+
     return M.view(-1, 4, 4)  # Bx4x4
 
 

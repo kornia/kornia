@@ -129,21 +129,19 @@ def _torch_svd_cast(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, to
 
 
 # TODO: return only `torch.Tensor` and review all the calls to adjust
-def _torch_solve_cast(input: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def _torch_solve_cast(A: Tensor, B: Tensor) -> Tensor:
     """Helper function to make torch.solve work with other than fp32/64.
 
     The function torch.solve is only implemented for fp32/64 which makes impossible to be used by fp16 or others. What
     this function does, is cast input data type to fp32, apply torch.svd, and cast back to the input dtype.
     """
-    if not isinstance(input, torch.Tensor):
-        raise AssertionError(f"Input must be torch.Tensor. Got: {type(input)}.")
-    dtype: torch.dtype = input.dtype
+    dtype: torch.dtype = A.dtype
     if dtype not in (torch.float32, torch.float64):
         dtype = torch.float32
 
-    out = torch.linalg.solve(A.to(dtype), input.to(dtype))
+    out = torch.linalg.solve(A.to(dtype), B.to(dtype))
 
-    return (out.to(input.dtype), out)
+    return out.to(A.dtype)
 
 
 def _torch_lstsq_cast(A: Tensor, B: Tensor) -> Tensor:
