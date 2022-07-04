@@ -6,7 +6,7 @@ from typing import Any, Callable, List, Optional, Tuple
 import torch
 
 from kornia.core import Tensor
-from kornia.utils._compat import torch_lstsq, torch_version_geq
+from kornia.utils._compat import torch_version_geq
 
 
 def get_cuda_device_if_available(index: int = 0) -> torch.device:
@@ -142,17 +142,6 @@ def _torch_solve_cast(A: Tensor, B: Tensor) -> Tensor:
     out = torch.linalg.solve(A.to(dtype), B.to(dtype))
 
     return out.to(A.dtype)
-
-
-def _torch_lstsq_cast(A: Tensor, B: Tensor) -> Tensor:
-    """Helper function to make torch.linalg.lstsq work with other than fp32/64."""
-    dtype: torch.dtype = A.dtype
-    if dtype not in (torch.float32, torch.float64):
-        dtype = torch.float32
-
-    X = torch_lstsq(A.to(dtype), B.to(dtype), driver="gels")
-
-    return X.to(A.dtype)
 
 
 def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
