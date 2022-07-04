@@ -79,7 +79,7 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
     B = x1 - x2
     C = x2 * y1 - x1 * y2
 
-    # make sure A is positive to utilize the functiom properly
+    # make sure A is positive to utilize the function properly
     if A < 0:
         A = -A
         B = -B

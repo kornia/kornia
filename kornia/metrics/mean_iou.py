@@ -61,7 +61,7 @@ def mean_iou(input: torch.Tensor, target: torch.Tensor, num_classes: int, eps: f
 
 
 def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor) -> torch.Tensor:
-    """Compute the IoU of the cartisian product of two sets of boxes.
+    """Compute the IoU of the cartesian product of two sets of boxes.
 
     Each box in each set shall be (x1, y1, x2, y2).
 
