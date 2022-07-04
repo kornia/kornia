@@ -1,3 +1,3 @@
-from ._backend import Module, Tensor, concatenate
+from ._backend import Module, Tensor, concatenate, stack
 
-__all__ = ["concatenate", "Module", "Tensor"]
+__all__ = ["concatenate", "stack", "Module", "Tensor"]
