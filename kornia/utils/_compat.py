@@ -21,6 +21,11 @@ def torch_version_lt(major: int, minor: int, patch: int) -> bool:
     return _version < version.parse(f"{major}.{minor}.{patch}")
 
 
+def torch_version_ge(major: int, minor: int, patch: int) -> bool:
+    _version = version.parse(torch_version())
+    return _version >= version.parse(f"{major}.{minor}.{patch}")
+
+
 if version.parse(torch_version()) > version.parse("1.7.1"):
     # TODO: remove the type: ignore once Python 3.6 is deprecated.
     # It turns out that Pytorch has no attribute `torch.linalg` for
@@ -30,14 +35,24 @@ else:
     from torch import qr as linalg_qr  # type: ignore # noqa: F401
 
 
-if torch_version_lt(1, 8, 1):
-    from torch import lstsq as lstsq  # type: ignore
+if torch_version_ge(1, 9, 0):
+    if not TYPE_CHECKING:
+
+        def torch_lstsq(A: Tensor, B: Tensor, driver: str) -> Tensor:
+            return torch.linalg.lstsq(A, B, driver=driver).solution
+
 else:
-    from torch.linalg import lstsq as lstsq  # type: ignore # noqa: F401
+
+    if not TYPE_CHECKING:
+        def torch_lstsq(A: Tensor, B: Tensor, driver: str) -> Tensor:
+            return torch.solve(B, A).solution
+    else:
+        def torch_lstsq(A: Tensor, B: Tensor, driver: str) -> Tensor:
+            return torch.solve(B, A).solution
 
 
 # TODO: remove after deprecating < 1.9.1
-if version.parse(torch_version()) > version.parse("1.9.1"):
+if torch_version_ge(1, 9, 1):
 
     if not TYPE_CHECKING:
 
