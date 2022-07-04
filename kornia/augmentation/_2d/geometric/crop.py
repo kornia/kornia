@@ -58,12 +58,12 @@ class RandomCrop(GeometricAugmentationBase2D):
         >>> aug = RandomCrop((2, 2), p=1., cropping_mode="resample")
         >>> out = aug(inputs)
         >>> out
-        tensor([[[[3.0000, 4.0000],
-                  [6.0000, 7.0000]]]])
+        tensor([[[[3., 4.],
+                  [6., 7.]]]])
         >>> aug.inverse(out, padding_mode="replicate")
-        tensor([[[[3.0000, 4.0000, 4.0000],
-                  [3.0000, 4.0000, 4.0000],
-                  [6.0000, 7.0000, 7.0000]]]])
+        tensor([[[[3., 4., 4.],
+                  [3., 4., 4.],
+                  [6., 7., 7.]]]])
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
         >>> input = torch.randn(1, 3, 32, 32)
