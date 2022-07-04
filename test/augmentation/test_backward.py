@@ -13,6 +13,7 @@ from kornia.augmentation import (
     RandomRotation,
     RandomSharpness,
 )
+from kornia.utils._compat import torch_version_lt
 
 
 class TestColorJiggleBackward:
@@ -286,6 +287,9 @@ class TestRandomRotationBackward:
                 assert (degrees.to(device=device, dtype=dtype) - aug._param_generator.degrees.data).sum() != 0
 
 
+@pytest.mark.skipif(
+    torch_version_lt(1, 11, 0),
+    reason="backward for LSTSQ not supported in pytorch < 1.11.0")
 class TestRandomPerspectiveBackward:
     @pytest.mark.parametrize("distortion_scale", [0.5, torch.tensor(0.5)])
     @pytest.mark.parametrize("resample", ['bilinear'])  # TODO: Ignore nearest for now.
