@@ -93,7 +93,7 @@ class TestGetPerspectiveTransform:
     def test_gradcheck(self, device):
         # compute gradient check
         points_src = torch.rand(1, 4, 2, device=device, dtype=torch.float64, requires_grad=True)
-        points_dst = torch.rand(1, 4, 2, device=device, dtype=torch.float64, requires_grad=False)
+        points_dst = torch.rand(1, 4, 2, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.geometry.get_perspective_transform, (points_src, points_dst), raise_exception=True)
 
 
