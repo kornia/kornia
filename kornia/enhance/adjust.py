@@ -342,7 +342,7 @@ def adjust_contrast(image: Tensor, factor: Union[float, Tensor], clip_output: bo
     while len(factor.shape) != len(image.shape):
         factor = factor[..., None]
 
-    KORNIA_CHECK((factor >= 0).any(), f"Contrast factor must be positive. Got {factor}")
+    KORNIA_CHECK(any(factor >= 0), f"Contrast factor must be positive. Got {factor}")
 
     # Apply contrast factor to each channel
     img_adjust: Tensor = image * factor
@@ -396,7 +396,7 @@ def adjust_contrast_with_mean_subtraction(image: Tensor, factor: Union[float, Te
     while len(factor.shape) != len(image.shape):
         factor = factor[..., None]
 
-    KORNIA_CHECK((factor >= 0).any(), f"Contrast factor must be positive. Got {factor}")
+    KORNIA_CHECK(any(factor >= 0), f"Contrast factor must be positive. Got {factor}")
 
     if image.shape[-3] == 3:
         img_mean = rgb_to_grayscale(image).mean((-2, -1), True)

@@ -205,7 +205,7 @@ def KORNIA_CHECK_SHAPE(x, shape: List[str]) -> None:
             raise TypeError(f"{x} shape should be must be [{shape}]. Got {x.shape}")
 
 
-def KORNIA_CHECK(condition, msg: Optional[str] = None):
+def KORNIA_CHECK(condition: bool, msg: Optional[str] = None):
     if not condition:
         raise Exception(f"{condition} not true.\n{msg}")
 
