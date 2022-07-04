@@ -36,22 +36,6 @@ else:
     from torch import qr as linalg_qr  # type: ignore # noqa: F401
 
 
-if torch_version_ge(1, 9, 0):
-    if not TYPE_CHECKING:
-
-        def torch_lstsq(A: Tensor, B: Tensor, driver: str) -> Tensor:
-            return torch.linalg.lstsq(A, B, driver=driver).solution
-
-else:
-
-    if not TYPE_CHECKING:
-        def torch_lstsq(A: Tensor, B: Tensor, driver: str) -> Tensor:
-            return torch.solve(B, A).solution
-    else:
-        def torch_lstsq(A: Tensor, B: Tensor, driver: str) -> Tensor:
-            return torch.solve(B, A).solution
-
-
 if torch_version_ge(1, 10, 0):
 
     if not TYPE_CHECKING:
