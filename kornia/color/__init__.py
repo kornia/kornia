@@ -52,6 +52,7 @@ __all__ = [
     "hls_to_rgb",
     "rgb_to_ycbcr",
     "ycbcr_to_rgb",
+    "rgb_to_y",
     "rgb_to_yuv",
     "rgb_to_yuv420",
     "rgb_to_yuv422",

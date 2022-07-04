@@ -92,7 +92,7 @@ def main():
         aug = cls(*args, p=1.0)
         # set seed
         torch.manual_seed(seed)
-        # apply the augmentaiton to the image and concat
+        # apply the augmentation to the image and concat
         out = aug(img_in)
 
         if aug_name == "CenterCrop":
@@ -121,7 +121,7 @@ def main():
         aug = cls(*args, p=1.0)
         # set seed
         torch.manual_seed(seed)
-        # apply the augmentaiton to the image and concat
+        # apply the augmentation to the image and concat
         out, _ = aug(img_in, torch.tensor([0, 1]))
         out = torch.cat([img_in[0], img_in[1], *(out[i] for i in range(out.size(0)))], dim=-1)
         # save the output image
