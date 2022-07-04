@@ -152,7 +152,7 @@ def _torch_lstsq_cast(A: Tensor, B: Tensor) -> Tensor:
     if dtype not in (torch.float32, torch.float64):
         dtype = torch.float32
 
-    X = torch_lstsq(A.to(dtype), B.to(dtype), driver="gels")  # type: ignore
+    X = torch_lstsq(A.to(dtype), B.to(dtype), driver="gels")
 
     return X.to(A.dtype)
 
