@@ -30,6 +30,12 @@ else:
     from torch import qr as linalg_qr  # type: ignore # noqa: F401
 
 
+if torch_version_lt(1, 8, 1):
+    from torch import lstsq as lstsq  # type: ignore
+else:
+    from torch.linalg import lstsq as lstsq  # type: ignore # noqa: F401
+
+
 # TODO: remove after deprecating < 1.9.1
 if version.parse(torch_version()) > version.parse("1.9.1"):
 

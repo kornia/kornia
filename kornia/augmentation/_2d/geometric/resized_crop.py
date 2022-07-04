@@ -52,9 +52,9 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
                   [4.0000, 4.5000, 5.0000],
                   [7.0000, 7.5000, 8.0000]]]])
         >>> aug.inverse(out, padding_mode="border")
-        tensor([[[[1., 1., 2.],
-                  [4., 4., 5.],
-                  [7., 7., 8.]]]])
+        tensor([[[[1.0000, 1.0000, 2.0000],
+                  [4.0000, 4.0000, 5.0000],
+                  [7.0000, 7.0000, 8.0000]]]])
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
         >>> input = torch.randn(1, 3, 32, 32)

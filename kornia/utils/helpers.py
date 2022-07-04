@@ -6,7 +6,7 @@ from typing import Any, Callable, List, Optional, Tuple
 import torch
 
 from kornia.core import Tensor
-from kornia.utils._compat import torch_version_geq
+from kornia.utils._compat import lstsq, torch_version_geq
 
 
 def get_cuda_device_if_available(index: int = 0) -> torch.device:
@@ -152,7 +152,7 @@ def _torch_lstsq_cast(A: Tensor, B: Tensor) -> Tensor:
     if dtype not in (torch.float32, torch.float64):
         dtype = torch.float32
 
-    X = torch.linalg.lstsq(A.to(dtype), B.to(dtype)).solution
+    X = lstsq(A.to(dtype), B.to(dtype), driver="gels").solution  # type: ignore
 
     return X.to(A.dtype)
 
