@@ -20,7 +20,6 @@ repos:
     rev: 22.6.0
     hooks:
       - id: black
-        args: [--diff]
 
   - repo: https://github.com/codespell-project/codespell
     rev: v2.1.0
