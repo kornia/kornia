@@ -11,7 +11,7 @@ def integral(input: torch.Tensor) -> torch.Tensor:
 
     Returns:
         Integral tensor for the input tensor
-    
+
     Examples:
         >>> input = torch.randn(2,2,5,5)
         >>> output = integral(input)
