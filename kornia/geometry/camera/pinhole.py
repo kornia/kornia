@@ -64,7 +64,7 @@ class PinholeCamera:
         return True
 
     @staticmethod
-    def _check_consistent_device(data_iter: List[torch.Tensor]) -> bool:
+    def _check_consistent_device(data_iter: List[torch.Tensor]) -> None:
         first = data_iter[0]
         for data in data_iter:
             KORNIA_CHECK_SAME_DEVICES(data, first)
