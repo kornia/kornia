@@ -134,7 +134,7 @@ class CutmixGenerator(RandomGeneratorBase):
         return dict(
             mix_pairs=mix_pairs.to(device=_device, dtype=torch.long),
             crop_src=crop_src.floor().to(device=_device, dtype=_dtype),
-            image_shape=batch_shape[-2:]
+            image_shape=torch.as_tensor(batch_shape[-2:], device=_device, dtype=_dtype)
         )
 
 

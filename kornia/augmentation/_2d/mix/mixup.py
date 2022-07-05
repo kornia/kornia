@@ -142,9 +142,9 @@ class RandomMixUpV2(MixAugmentationBaseV2):
                    probabilities batch-wisely.
         lambda_val: min-max value of mixup strength. Default is 0-1.
         same_on_batch: apply the same transformation across the batch.
-            This flag will not maintain permutation order. Default: False.
+            This flag will not maintain permutation order.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False
+                        to the batch form (False).
 
     Inputs:
         - Input image tensors, shape of :math:`(B, C, H, W)`.
@@ -187,7 +187,7 @@ class RandomMixUpV2(MixAugmentationBaseV2):
         self._param_generator = cast(rg.MixupGenerator, rg.MixupGenerator(lambda_val, p=p))
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
+        self, input: Tensor, params: Dict[str, Tensor], maybe_flags: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         input_permute = input.index_select(dim=0, index=params["mixup_pairs"].to(input.device))
 
@@ -196,7 +196,7 @@ class RandomMixUpV2(MixAugmentationBaseV2):
         return inputs
 
     def apply_transform_class(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
+        self, input: Tensor, params: Dict[str, Tensor], maybe_flags: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         labels_permute = input.index_select(dim=0, index=params["mixup_pairs"].to(input.device))
 

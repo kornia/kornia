@@ -157,15 +157,15 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         width: the width of the input image.
         p: probability for applying an augmentation to a batch. This param controls the augmentation
                    probabilities batch-wisely.
-        num_mix: cut mix times. Default is 1.
+        num_mix: cut mix times.
         beta: hyperparameter for generating cut size from beta distribution.
             Beta cannot be set to 0 after torch 1.8.0. If None, it will be set to 1.
         cut_size: controlling the minimum and maximum cut ratio from [0, 1].
             If None, it will be set to [0, 1], which means no restriction.
         same_on_batch: apply the same transformation across the batch.
-            This flag will not maintain permutation order. Default: False.
+            This flag will not maintain permutation order.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False
+                        to the batch form (False).
 
     Inputs:
         - Input image tensors, shape of :math:`(B, C, H, W)`.
@@ -227,7 +227,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         return torch.stack(out_labels, dim=0)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
+        self, input: Tensor, params: Dict[str, Tensor], maybe_flags: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         height, width = input.size(2), input.size(3)
 

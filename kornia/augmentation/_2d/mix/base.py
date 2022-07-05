@@ -8,6 +8,7 @@ from kornia.augmentation.utils import _transform_input, _transform_output_shape,
 from kornia.constants import DataKey
 from kornia.core import Tensor
 from kornia.geometry.boxes import Boxes
+from kornia.testing import KORNIA_UNWRAP
 
 
 class MixAugmentationBase(_BasicAugmentationBase):
@@ -140,42 +141,48 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
         return _transform_input(input)
 
-    def apply_transform(  # type: ignore
-        self, input: Tensor, params: Dict[str, Tensor],
-        flags: Optional[Dict[str, Any]] = None
+    def apply_transform(
+        self, input: Tensor,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any]
     ) -> Tensor:
         # NOTE: apply_transform receives the whole tensor, but returns only altered elements.
         raise NotImplementedError
 
-    def apply_non_transform(  # type: ignore
-        self, input: Tensor, params: Dict[str, Tensor],
-        flags: Optional[Dict[str, Any]] = None
+    def apply_non_transform(
+        self, input: Tensor,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any]
     ) -> Tensor:
         # For the images where batch_prob == False.
         return input
 
     def transform_input(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
+        self, input: Tensor,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any]
     ) -> Tensor:
         to_apply = params['batch_prob']
         ori_shape = input.shape
         in_tensor = self.transform_tensor(input)
         output = in_tensor
-        if torch.sum(to_apply) != len(to_apply):
-            output = self.apply_non_transform(in_tensor, params=params, flags=flags)
-        if torch.sum(to_apply) != 0:
-            output[to_apply] = self.apply_transform(in_tensor, params=params, flags=flags)
-        output = _transform_output_shape(output, ori_shape) if self.keepdim else output  # type: ignore
+        if sum(to_apply) != len(to_apply):
+            output = self.apply_non_transform(in_tensor, params, flags)
+        if sum(to_apply) != 0:
+            output[to_apply] = self.apply_transform(in_tensor, params, flags)
+        output = _transform_output_shape(output, ori_shape) if self.keepdim else output
         return output
 
     def transform_mask(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
+        self, input: Tensor,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any]
     ) -> Tensor:
         to_apply = params['batch_prob']
         output = input
-        if torch.sum(to_apply) != len(to_apply):
-            output = self.apply_non_transform_mask(input, params=params, flags=flags)
-        if torch.sum(to_apply) != 0:
+        if sum(to_apply) != len(to_apply):
+            output = self.apply_non_transform_mask(input, params, flags)
+        if sum(to_apply) != 0:
             output = self.apply_transform_mask(input, params, flags)
         return output
 
@@ -189,9 +196,9 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             input = Boxes(input, False, mode="vertices_plus")
         to_apply = params['batch_prob']
         output = input
-        if torch.sum(to_apply) != len(to_apply):
-            output = self.apply_non_transform_boxes(input, params=params, flags=flags)
-        if torch.sum(to_apply) != 0:
+        if sum(to_apply) != len(to_apply):
+            output = self.apply_non_transform_boxes(input, params, flags)
+        if sum(to_apply) != 0:
             output = self.apply_transform_boxes(output, params, flags)
         return output
 
@@ -200,9 +207,9 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
     ) -> Tensor:
         to_apply = params['batch_prob']
         output = input
-        if torch.sum(to_apply) != len(to_apply):
-            output = self.apply_non_transform_keypoint(input, params=params, flags=flags)
-        if torch.sum(to_apply) != 0:
+        if sum(to_apply) != len(to_apply):
+            output = self.apply_non_transform_keypoint(input, params, flags)
+        if sum(to_apply) != 0:
             output = self.apply_transform_keypoint(input, params, flags)
         return output
 
@@ -211,9 +218,9 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
     ) -> Tensor:
         to_apply = params['batch_prob']
         output = input
-        if torch.sum(to_apply) != len(to_apply):
-            output = self.apply_non_transform_class(input, params=params, flags=flags)
-        if torch.sum(to_apply) != 0:
+        if sum(to_apply) != len(to_apply):
+            output = self.apply_non_transform_class(input, params, flags)
+        if sum(to_apply) != 0:
             output = self.apply_transform_class(input, params, flags)
         return output
 
@@ -263,21 +270,23 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         params: Optional[Dict[str, Tensor]] = None,
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
     ) -> Union[Tensor, List[Tensor]]:
+        keys: List[DataKey]
         if data_keys is None:
-            data_keys = self.data_keys
+            keys = self.data_keys
         else:
-            data_keys = [DataKey.get(inp) for inp in data_keys]
+            keys = [DataKey.get(inp) for inp in data_keys]
 
         if params is None:
-            in_tensor_idx = data_keys.index(DataKey.INPUT)
-            in_tensor = input[in_tensor_idx]
+            in_tensor_idx: int = keys.index(DataKey.INPUT)
+            in_tensor: Tensor = input[in_tensor_idx]
             in_tensor = self.transform_tensor(in_tensor)
-            batch_shape = in_tensor.shape
-            params = self.forward_parameters(batch_shape)
-        self._params = params
+            self._params = self.forward_parameters(in_tensor.shape)
+        else:
+            self._params = params
 
         outputs = []
-        for dcate, _input in zip(data_keys, input):
+        for dcate, _input in zip(keys, input):
+            output: Tensor
             if dcate == DataKey.INPUT:
                 output = self.transform_input(_input, self._params, self.flags)
             elif dcate == DataKey.MASK:
@@ -285,15 +294,15 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             elif dcate == DataKey.BBOX:
                 box = Boxes.from_tensor(_input, mode="vertices", validate_boxes=False)
                 box = self.transform_boxes(box, self._params, self.flags)
-                output = box.to_tensor("vertices")
+                output = KORNIA_UNWRAP(box.to_tensor("vertices"), Tensor)
             elif dcate == DataKey.BBOX_XYXY:
                 box = Boxes.from_tensor(_input, mode="xyxy", validate_boxes=False)
                 box = self.transform_boxes(box, self._params, self.flags)
-                output = box.to_tensor("xyxy")
+                output = KORNIA_UNWRAP(box.to_tensor("xyxy"), Tensor)
             elif dcate == DataKey.BBOX_XYWH:
                 box = Boxes.from_tensor(_input, mode="xywh", validate_boxes=False)
                 box = self.transform_boxes(box, self._params, self.flags)
-                output = box.to_tensor("xywh")
+                output = KORNIA_UNWRAP(box.to_tensor("xywh"), Tensor)
             elif dcate == DataKey.KEYPOINTS:
                 output = self.transform_keypoint(_input, self._params, self.flags)
             elif dcate == DataKey.CLASS:

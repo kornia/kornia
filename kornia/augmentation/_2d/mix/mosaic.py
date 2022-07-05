@@ -9,6 +9,7 @@ from kornia.constants import DataKey, Resample
 from kornia.core import Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
+from kornia.testing import KORNIA_UNWRAP
 from kornia.utils import eye_like
 
 __all__ = [
@@ -18,6 +19,8 @@ __all__ = [
 
 class RandomMosaic(MixAugmentationBaseV2):
     r"""Mosaic augmentation.
+
+    .. image:: https://raw.githubusercontent.com/kornia/data/main/random_mosaic.png
 
     Given a certain number of images, mosaic transform combines them into one output image.
     The output image is composed of the parts from each sub-image.
@@ -104,7 +107,7 @@ class RandomMosaic(MixAugmentationBaseV2):
         offset_end = dst_box[0, 2].repeat(input.data.shape[0], 1)
         idx = torch.arange(0, input.data.shape[0], device=input.device, dtype=torch.long)[params["batch_prob"]]
 
-        out_boxes: Optional[Boxes] = None
+        maybe_out_boxes: Optional[Boxes] = None
         for i in range(flags['mosaic_grid'][0]):
             for j in range(flags['mosaic_grid'][1]):
                 _offset = offset.clone()
@@ -116,11 +119,12 @@ class RandomMosaic(MixAugmentationBaseV2):
                 _box.translate(_offset, inplace=True)
                 # zero-out unrelated batch elements.
                 _box._data[~params["batch_prob"]] = 0
-                if out_boxes is None:
+                if maybe_out_boxes is None:
                     _box._data[~params["batch_prob"]] = input._data[~params["batch_prob"]]
-                    out_boxes = _box
+                    maybe_out_boxes = _box
                 else:
-                    out_boxes.merge(_box, inplace=True)
+                    KORNIA_UNWRAP(maybe_out_boxes, Boxes).merge(_box, inplace=True)
+        out_boxes: Boxes = KORNIA_UNWRAP(maybe_out_boxes, Boxes)
         out_boxes.clamp(offset, offset_end, inplace=True)
         out_boxes.filter_boxes_by_area(flags["min_bbox_size"], inplace=True)
         return out_boxes
@@ -133,7 +137,7 @@ class RandomMosaic(MixAugmentationBaseV2):
     def apply_transform_class(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
-        raise RuntimeError(f"{__class__.__name__} does not support `TAG` types.")
+        raise RuntimeError(f"{self.__class__.__name__} does not support `TAG` types.")
 
     @torch.no_grad()
     def _compose_images(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
@@ -184,12 +188,13 @@ class RandomMosaic(MixAugmentationBaseV2):
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def apply_non_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
+        self, input: Tensor, params: Dict[str, Tensor], flags: Optional[Dict[str, Any]] = None
     ) -> Tensor:
-        if flags["output_size"] is not None:
+        if flags is not None and flags["output_size"] is not None:
+            output_size = KORNIA_UNWRAP(flags["output_size"], Tuple[int, int])
             return pad(
                 input,
-                [0, flags["output_size"][0] - input.shape[-2], 0, flags["output_size"][1] - input.shape[-1]]
+                [0, output_size[0] - input.shape[-2], 0, output_size[1] - input.shape[-1]]
             )
             # NOTE: resize is not suitable for being consistent with bounding boxes.
             # return resize(
@@ -201,8 +206,9 @@ class RandomMosaic(MixAugmentationBaseV2):
         return input
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
+        self, input: Tensor, params: Dict[str, Tensor], maybe_flags: Optional[Dict[str, Any]] = None
     ) -> Tensor:
+        flags = KORNIA_UNWRAP(maybe_flags, Dict[str, Any])
         output = self._compose_images(input, params, flags=flags)
         transform = self.compute_transformation(output, params, flags=flags)
         output = self._crop_images(output, params, flags=flags, transform=transform)

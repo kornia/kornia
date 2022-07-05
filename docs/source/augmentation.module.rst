@@ -49,8 +49,11 @@ Geometric
 Mix
 ~~~
 
+.. autoclass:: RandomMosaic
 .. autoclass:: RandomCutMix
+.. autoclass:: RandomCutMixV2
 .. autoclass:: RandomMixUp
+.. autoclass:: RandomMixUpV2
 
 Transforms3D
 ------------

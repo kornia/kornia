@@ -533,7 +533,7 @@ class Boxes:
         size: Tensor,
         method: str = "warp",
         inplace: bool = False
-    ) -> None:
+    ) -> "Boxes":
         """Translates boxes by the provided size.
 
         Args:
@@ -547,10 +547,13 @@ class Boxes:
         if method == "fast":
             raise NotImplementedError
         elif method == "warp":
-            M = eye_like(3, size)
-            M[:, :2, 2] = size
-            return self.transform_boxes(M, inplace=inplace)
-        raise NotImplementedError
+            pass
+        else:
+            raise NotImplementedError
+
+        M: Tensor = eye_like(3, size)
+        M[:, :2, 2] = size
+        return self.transform_boxes(M, inplace=inplace)
 
     @property
     def data(self) -> torch.Tensor:
