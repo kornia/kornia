@@ -33,6 +33,7 @@ def get_test_dtypes() -> Dict[str, torch.dtype]:
         dict(str, torch.dtype): list with dtype names.
     """
     dtypes: Dict[str, torch.dtype] = {}
+    dtypes["bfloat16"] = torch.bfloat16
     dtypes["float16"] = torch.float16
     dtypes["float32"] = torch.float32
     dtypes["float64"] = torch.float64
@@ -45,7 +46,8 @@ TEST_DEVICES: Dict[str, torch.device] = get_test_devices()
 TEST_DTYPES: Dict[str, torch.dtype] = get_test_dtypes()
 
 # Combinations of device and dtype to be excluded from testing.
-DEVICE_DTYPE_BLACKLIST = {('cpu', 'float16')}
+# DEVICE_DTYPE_BLACKLIST = {('cpu', 'float16')}
+DEVICE_DTYPE_BLACKLIST = {}
 
 
 @pytest.fixture()

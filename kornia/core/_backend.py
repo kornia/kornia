@@ -7,3 +7,4 @@ Module = torch.nn.Module
 
 # functions
 concatenate = torch.cat
+stack = torch.stack
