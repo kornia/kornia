@@ -227,4 +227,9 @@ def KORNIA_CHECK_IS_GRAY(x: Tensor, msg: Optional[str] = None):
 
 def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: Tensor, msg: Optional[str] = None):
     if len(x.shape) < 3 or x.shape[-3] not in [1, 3]:
-        raise TypeError(f"Not an color or gray tensor. Got: {type(x)}.\n{msg}")
+        raise TypeError(f"Not a color or gray tensor. Got: {type(x)}.\n{msg}")
+
+
+def KORNIA_CHECK_SAME_DEVICES(x: Tensor, y: Tensor):
+    if x.device != y.device:
+        raise TypeError(f"Not same device for tensors. Got: {x.device} and {y.device}")

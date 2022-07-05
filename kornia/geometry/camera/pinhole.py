@@ -1,9 +1,10 @@
-from typing import Iterable, Optional
+from typing import Iterable, List, Optional
 
 import torch
 
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.linalg import inverse_transformation, transform_points
+from kornia.testing import KORNIA_CHECK_SAME_DEVICES
 from kornia.utils.helpers import _torch_inverse_cast
 
 
@@ -63,11 +64,10 @@ class PinholeCamera:
         return True
 
     @staticmethod
-    def _check_consistent_device(data_iter: Iterable[torch.Tensor]) -> bool:
+    def _check_consistent_device(data_iter: List[torch.Tensor]) -> bool:
         first = data_iter[0]
-        if not all(data.device == first.device for data in data_iter):
-            raise ValueError('Not all arguments are on the same device')
-        return True
+        for data in data_iter:
+            KORNIA_CHECK_SAME_DEVICES(data, first)
 
     def device(self) -> torch.device:
         r"""Returns the device for camera buffers.
