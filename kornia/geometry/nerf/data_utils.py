@@ -1,7 +1,7 @@
-from typing import Any, List, Optional, Union
+from typing import Any, List, Optional, Tuple, Union
 
 import torch
-from torch.utils.data import BatchSampler, DataLoader, Dataset, RandomSampler
+from torch.utils.data import BatchSampler, DataLoader, Dataset, RandomSampler, SequentialSampler
 from torchvision.io import read_image
 
 from kornia.geometry.camera import PinholeCamera
@@ -10,13 +10,6 @@ from kornia.geometry.nerf.rays import RandomRaySampler, RaySampler, UniformRaySa
 ImagePaths = List[str]
 ImageTensors = List[torch.Tensor]
 Images = Union[ImagePaths, ImageTensors]
-
-
-class DatasetItem:
-    def __init__(self, origin: torch.Tensor, direction: torch.Tensor, rgb: torch.Tensor) -> None:
-        self._origin = origin
-        self._direction = direction
-        self._rgb = rgb
 
 
 class RayDataset(Dataset):  # FIXME: Add device
@@ -76,28 +69,28 @@ class RayDataset(Dataset):  # FIXME: Add device
     def __len__(self):
         return self._ray_sampler.origins.shape[0]
 
-    def __getitem__(self, idx: Union[int, List[int]]) -> Any:
-        origin = self._ray_sampler.origins[idx]
-        direction = self._ray_sampler.directions[idx]
-        camerd_id = self._ray_sampler.camera_ids[idx]
-        point_2d = self._ray_sampler.points_2d[idx]
-        x = point_2d[0].item()
-        y = point_2d[1].item()
-        rgb = self._imgs[camerd_id][:, y, x]
-        return DatasetItem(origin, direction, rgb)
+    def __getitem__(self, idxs: Union[int, List[int]]) -> Any:
+        origins = self._ray_sampler.origins[idxs]
+        directions = self._ray_sampler.directions[idxs]
+        camerd_ids = self._ray_sampler.camera_ids[idxs]
+        points_2d = self._ray_sampler.points_2d[idxs]
+        imgs_for_ids = [self._imgs[i] for i in camerd_ids]
+        rgbs = torch.stack(
+            [img[:, point2d[1].item(), point2d[0].item()] for img, point2d in zip(imgs_for_ids, points_2d)]
+        )
+        return origins, directions, rgbs
 
 
 class RayDataloader(DataLoader):
-    def __init__(self, dataset: RayDataset, batch_size: int = 1):
+    def __init__(self, dataset: RayDataset, batch_size: int = 1, shufle: bool = True):
         super().__init__(
             dataset,
-            sampler=BatchSampler(RandomSampler(dataset), batch_size, drop_last=False),
+            sampler=BatchSampler(
+                RandomSampler(dataset) if shufle else SequentialSampler(dataset), batch_size, drop_last=False
+            ),
             collate_fn=self._collate_rays,
         )
 
     @staticmethod
-    def _collate_rays(dataset_items: List[DatasetItem]) -> None:
-        origins = [dataset_item._origin for dataset_item in dataset_items]
-        directions = [dataset_item._direction for dataset_item in dataset_items]
-        rgbs = [dataset_item._rgb for dataset_item in dataset_items]
-        return torch.stack(origins), torch.stack(directions), torch.stack(rgbs)
+    def _collate_rays(items: List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]) -> None:
+        return items[0]
