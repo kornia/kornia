@@ -20,7 +20,7 @@ def gaussian(window_size: int, sigma: float) -> torch.Tensor:
     x = torch.arange(window_size, device=device, dtype=dtype) - window_size // 2
     if window_size % 2 == 0:
         x = x + 0.5
-    gauss = torch.exp(-x.pow(2.0) / (2 * sigma ** 2))
+    gauss = torch.exp(-x.pow(2.0) / (2 * sigma**2))
     return gauss / gauss.sum()
 
 
@@ -516,7 +516,7 @@ def get_laplacian_kernel2d(kernel_size: int) -> torch.Tensor:
 
     kernel = torch.ones((kernel_size, kernel_size))
     mid = kernel_size // 2
-    kernel[mid, mid] = 1 - kernel_size ** 2
+    kernel[mid, mid] = 1 - kernel_size**2
     kernel_2d: torch.Tensor = kernel
     return kernel_2d
 
@@ -663,9 +663,7 @@ def get_hanning_kernel1d(kernel_size: int, device=torch.device('cpu'), dtype=tor
     return x
 
 
-def get_hanning_kernel2d(kernel_size: Tuple[int, int],
-                         device=torch.device('cpu'),
-                         dtype=torch.float) -> torch.Tensor:
+def get_hanning_kernel2d(kernel_size: Tuple[int, int], device=torch.device('cpu'), dtype=torch.float) -> torch.Tensor:
     r"""Returns 2d Hanning kernel, used in signal processing and KCF tracker.
 
     Args:

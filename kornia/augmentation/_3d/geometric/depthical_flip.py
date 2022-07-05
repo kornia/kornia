@@ -59,8 +59,11 @@ class RandomDepthicalFlip3D(AugmentationBase3D):
     """
 
     def __init__(
-        self, return_transform: Optional[bool] = None,
-        same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False
+        self,
+        return_transform: Optional[bool] = None,
+        same_on_batch: bool = False,
+        p: float = 0.5,
+        keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
 

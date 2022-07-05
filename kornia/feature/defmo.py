@@ -288,13 +288,9 @@ class DeFMO(nn.Module):
         # use torch.hub to load pretrained model
         if pretrained:
             storage_fcn: Callable = lambda storage, loc: storage
-            pretrained_dict = torch.hub.load_state_dict_from_url(
-                urls['defmo_encoder'], map_location=storage_fcn
-            )
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls['defmo_encoder'], map_location=storage_fcn)
             self.encoder.load_state_dict(pretrained_dict, strict=True)
-            pretrained_dict_ren = torch.hub.load_state_dict_from_url(
-                urls['defmo_rendering'], map_location=storage_fcn
-            )
+            pretrained_dict_ren = torch.hub.load_state_dict_from_url(urls['defmo_rendering'], map_location=storage_fcn)
             self.rendering.load_state_dict(pretrained_dict_ren, strict=True)
         self.eval()
 

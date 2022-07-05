@@ -216,13 +216,13 @@ def _map_luts(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
         (num_imgs, gh, gw, 4, c, luts.shape[-1]), -1, dtype=interp_tiles.dtype, device=interp_tiles.device
     )
     # corner regions
-    luts_x_interp_tiles[:, 0:: gh - 1, 0:: gw - 1, 0] = luts[:, 0:: max(gh // 2 - 1, 1), 0:: max(gw // 2 - 1, 1)]
+    luts_x_interp_tiles[:, 0 :: gh - 1, 0 :: gw - 1, 0] = luts[:, 0 :: max(gh // 2 - 1, 1), 0 :: max(gw // 2 - 1, 1)]
     # border region (h)
-    luts_x_interp_tiles[:, 1:-1, 0:: gw - 1, 0] = luts[:, j_idxs[:, 0], 0:: max(gw // 2 - 1, 1)]
-    luts_x_interp_tiles[:, 1:-1, 0:: gw - 1, 1] = luts[:, j_idxs[:, 2], 0:: max(gw // 2 - 1, 1)]
+    luts_x_interp_tiles[:, 1:-1, 0 :: gw - 1, 0] = luts[:, j_idxs[:, 0], 0 :: max(gw // 2 - 1, 1)]
+    luts_x_interp_tiles[:, 1:-1, 0 :: gw - 1, 1] = luts[:, j_idxs[:, 2], 0 :: max(gw // 2 - 1, 1)]
     # border region (w)
-    luts_x_interp_tiles[:, 0:: gh - 1, 1:-1, 0] = luts[:, 0:: max(gh // 2 - 1, 1), i_idxs[:, 0]]
-    luts_x_interp_tiles[:, 0:: gh - 1, 1:-1, 1] = luts[:, 0:: max(gh // 2 - 1, 1), i_idxs[:, 1]]
+    luts_x_interp_tiles[:, 0 :: gh - 1, 1:-1, 0] = luts[:, 0 :: max(gh // 2 - 1, 1), i_idxs[:, 0]]
+    luts_x_interp_tiles[:, 0 :: gh - 1, 1:-1, 1] = luts[:, 0 :: max(gh // 2 - 1, 1), i_idxs[:, 1]]
     # internal region
     luts_x_interp_tiles[:, 1:-1, 1:-1, :] = luts[
         :, j_idxs.repeat(max(gh - 2, 1), 1, 1).permute(1, 0, 2), i_idxs.repeat(max(gw - 2, 1), 1, 1)
@@ -293,7 +293,7 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
     tiles_equalized[:, 1:-1, 1:-1] = torch.addcmul(b, tih, torch.sub(t, b))
 
     # corner regions
-    tiles_equalized[:, 0:: gh - 1, 0:: gw - 1] = preinterp_tiles_equalized[:, 0:: gh - 1, 0:: gw - 1, 0]
+    tiles_equalized[:, 0 :: gh - 1, 0 :: gw - 1] = preinterp_tiles_equalized[:, 0 :: gh - 1, 0 :: gw - 1, 0]
 
     # border region (h)
     t, b, _, _ = preinterp_tiles_equalized[:, 1:-1, 0].unbind(2)
@@ -312,10 +312,12 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
 
 
 @perform_keep_shape_image
-def equalize_clahe(input: torch.Tensor,
-                   clip_limit: float = 40.0,
-                   grid_size: Tuple[int, int] = (8, 8),
-                   slow_and_differentiable: bool = False) -> torch.Tensor:
+def equalize_clahe(
+    input: torch.Tensor,
+    clip_limit: float = 40.0,
+    grid_size: Tuple[int, int] = (8, 8),
+    slow_and_differentiable: bool = False,
+) -> torch.Tensor:
     r"""Apply clahe equalization on the input tensor.
 
     .. image:: _static/img/equalize_clahe.png

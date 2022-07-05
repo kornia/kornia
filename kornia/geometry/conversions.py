@@ -128,7 +128,7 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> Tuple[tor
     if not (isinstance(x, torch.Tensor) & isinstance(y, torch.Tensor)):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(x)}, {type(y)}")
 
-    rho = torch.sqrt(x ** 2 + y ** 2 + eps)
+    rho = torch.sqrt(x**2 + y**2 + eps)
     phi = torch.atan2(y, x)
     return rho, phi
 

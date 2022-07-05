@@ -53,6 +53,7 @@ class Lambda(nn.Module):
         >>> fcn(torch.rand(1, 4, 64, 32)).shape
         torch.Size([1, 4, 32, 16])
     """
+
     def __init__(self, fcn):
         super().__init__()
         self.fcn = fcn
@@ -63,11 +64,12 @@ class Lambda(nn.Module):
 
 class StatsTracker:
     """Stats tracker for computing metrics on the fly."""
+
     def __init__(self) -> None:
         self._stats: Dict[str, AverageMeter] = {}
 
     @property
-    def stats(self,):
+    def stats(self):
         return self._stats
 
     def update(self, key: str, val: float, batch_size: int) -> None:

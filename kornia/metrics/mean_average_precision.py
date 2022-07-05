@@ -6,8 +6,13 @@ from .mean_iou import mean_iou_bbox
 
 
 def mean_average_precision(
-    pred_boxes: List[torch.Tensor], pred_labels: List[torch.Tensor], pred_scores: List[torch.Tensor],
-    gt_boxes: List[torch.Tensor], gt_labels: List[torch.Tensor], n_classes: int, threshold: float = 0.5
+    pred_boxes: List[torch.Tensor],
+    pred_labels: List[torch.Tensor],
+    pred_scores: List[torch.Tensor],
+    gt_boxes: List[torch.Tensor],
+    gt_labels: List[torch.Tensor],
+    n_classes: int,
+    threshold: float = 0.5,
 ) -> Tuple[torch.Tensor, dict]:
     """Calculate the Mean Average Precision (mAP) of detected objects.
 
@@ -62,7 +67,8 @@ def mean_average_precision(
 
     # Calculate APs for each class (except background)
     average_precisions = torch.zeros(
-        (n_classes - 1), device=_pred_boxes.device, dtype=_pred_boxes.dtype)  # (n_classes - 1)
+        (n_classes - 1), device=_pred_boxes.device, dtype=_pred_boxes.dtype
+    )  # (n_classes - 1)
     for c in range(1, n_classes):
         # Extract only objects with this class
         gt_class_images = _gt_images[_gt_labels == c]  # (n_class_objects)
@@ -71,7 +77,8 @@ def mean_average_precision(
         # Keep track of which true objects with this class have already been 'detected'
         # (n_class_objects)
         gt_class_boxes_detected = torch.zeros(
-            (gt_class_images.size(0)), dtype=torch.uint8, device=gt_class_images.device)
+            (gt_class_images.size(0)), dtype=torch.uint8, device=gt_class_images.device
+        )
 
         # Extract only detections with this class
         pred_class_images = _pred_images[_pred_labels == c]  # (n_class_detections)
@@ -88,9 +95,11 @@ def mean_average_precision(
 
         # In the order of decreasing scores, check if true or false positive
         gt_positives = torch.zeros(
-            (n_class_detections,), dtype=pred_class_boxes.dtype, device=pred_class_boxes.device)  # (n_class_detections)
+            (n_class_detections,), dtype=pred_class_boxes.dtype, device=pred_class_boxes.device
+        )  # (n_class_detections)
         false_positives = torch.zeros(
-            (n_class_detections,), dtype=pred_class_boxes.dtype, device=pred_class_boxes.device)  # (n_class_detections)
+            (n_class_detections,), dtype=pred_class_boxes.dtype, device=pred_class_boxes.device
+        )  # (n_class_detections)
         for d in range(n_class_detections):
             this_detection_box = pred_class_boxes[d].unsqueeze(0)  # (1, 4)
             this_image = pred_class_images[d]  # (), scalar
@@ -130,19 +139,19 @@ def mean_average_precision(
         cumul_gt_positives = torch.cumsum(gt_positives, dim=0)  # (n_class_detections)
         cumul_false_positives = torch.cumsum(false_positives, dim=0)  # (n_class_detections)
         cumul_precision = cumul_gt_positives / (
-            cumul_gt_positives + cumul_false_positives + 1e-10)  # (n_class_detections)
+            cumul_gt_positives + cumul_false_positives + 1e-10
+        )  # (n_class_detections)
         cumul_recall = cumul_gt_positives / _gt_boxes.size(0)  # (n_class_detections)
 
         # Find the mean of the maximum of the precisions corresponding to recalls above the threshold 't'
-        recall_thresholds = torch.arange(start=0, end=1.1, step=.1).tolist()  # (11)
-        precisions = torch.zeros(
-            (len(recall_thresholds)), device=_gt_boxes.device, dtype=_gt_boxes.dtype)  # (11)
+        recall_thresholds = torch.arange(start=0, end=1.1, step=0.1).tolist()  # (11)
+        precisions = torch.zeros((len(recall_thresholds)), device=_gt_boxes.device, dtype=_gt_boxes.dtype)  # (11)
         for i, t in enumerate(recall_thresholds):
             recalls_above_t = cumul_recall >= t
             if recalls_above_t.any():
                 precisions[i] = cumul_precision[recalls_above_t].max()
             else:
-                precisions[i] = 0.
+                precisions[i] = 0.0
         average_precisions[c - 1] = precisions.mean()  # c is in [1, n_classes - 1]
 
     # Calculate Mean Average Precision (mAP)

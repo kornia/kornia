@@ -33,9 +33,7 @@ class ImageStitcher(nn.Module):
         plt.imshow(K.tensor_to_image(out))
     """
 
-    def __init__(
-        self, matcher: nn.Module, estimator: str = 'ransac', blending_method: str = "naive",
-    ) -> None:
+    def __init__(self, matcher: nn.Module, estimator: str = 'ransac', blending_method: str = "naive") -> None:
         super().__init__()
         self.matcher = matcher
         self.estimator = estimator
@@ -55,9 +53,7 @@ class ImageStitcher(nn.Module):
         homo: torch.Tensor
         if self.estimator == "vanilla":
             homo = find_homography_dlt_iterated(
-                keypoints2[None],
-                keypoints1[None],
-                torch.ones_like(keypoints1[None, :, 0])
+                keypoints2[None], keypoints1[None], torch.ones_like(keypoints1[None, :, 0])
             )
         elif self.estimator == "ransac":
             homo, _ = self.ransac(keypoints2, keypoints1)
@@ -91,7 +87,7 @@ class ImageStitcher(nn.Module):
         if isinstance(self.matcher, LoFTR) or isinstance(self.matcher, LocalFeatureMatcher):
             input_dict: Dict[str, torch.Tensor] = {  # LofTR works on grayscale images only
                 "image0": rgb_to_grayscale(image_1),
-                "image1": rgb_to_grayscale(image_2)
+                "image1": rgb_to_grayscale(image_2),
             }
         else:
             raise NotImplementedError(f"The preprocessor for {self.matcher} has not been implemented.")
@@ -109,8 +105,11 @@ class ImageStitcher(nn.Module):
         return self.matcher(data)
 
     def stitch_pair(
-        self, images_left: torch.Tensor, images_right: torch.Tensor,
-        mask_left: Optional[torch.Tensor] = None, mask_right: Optional[torch.Tensor] = None
+        self,
+        images_left: torch.Tensor,
+        images_right: torch.Tensor,
+        mask_left: Optional[torch.Tensor] = None,
+        mask_right: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         # Compute the transformed images
         input_dict: Dict[str, torch.Tensor] = self.preprocess(images_left, images_right)
