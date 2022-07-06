@@ -1,4 +1,4 @@
-from typing import Any, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 from torch.utils.data import BatchSampler, DataLoader, Dataset, RandomSampler, SequentialSampler
@@ -10,6 +10,8 @@ from kornia.geometry.nerf.rays import RandomRaySampler, RaySampler, UniformRaySa
 ImagePaths = List[str]
 ImageTensors = List[torch.Tensor]
 Images = Union[ImagePaths, ImageTensors]
+
+RayBatch = Tuple[torch.Tensor, torch.Tensor, torch.Tensor]
 
 
 class RayDataset(Dataset):  # FIXME: Add device
@@ -69,7 +71,7 @@ class RayDataset(Dataset):  # FIXME: Add device
     def __len__(self):
         return self._ray_sampler.origins.shape[0]
 
-    def __getitem__(self, idxs: Union[int, List[int]]) -> Any:
+    def __getitem__(self, idxs: Union[int, List[int]]) -> RayBatch:
         origins = self._ray_sampler.origins[idxs]
         directions = self._ray_sampler.directions[idxs]
         camerd_ids = self._ray_sampler.camera_ids[idxs]
@@ -92,5 +94,5 @@ class RayDataloader(DataLoader):
         )
 
     @staticmethod
-    def _collate_rays(items: List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]) -> None:
+    def _collate_rays(items: List[RayBatch]) -> RayBatch:
         return items[0]
