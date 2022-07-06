@@ -15,6 +15,7 @@ from kornia.augmentation.utils import override_parameters
 from kornia.constants import DataKey
 from kornia.geometry.bbox import transform_bbox
 from kornia.geometry.linalg import transform_points
+from kornia.testing import KORNIA_UNWRAP
 from kornia.utils.helpers import _torch_inverse_cast
 
 
@@ -135,25 +136,27 @@ class ApplyInverseImpl(ApplyInverseInterface):
 
     @classmethod
     def _get_transformation(
-        cls, input: Tensor, module: nn.Module, param: Optional[ParamItem] = None, extra_args: Dict[str, Any] = {}
+        cls, input: Tensor, module: nn.Module, maybe_param: Optional[ParamItem] = None, extra_args: Dict[str, Any] = {}
     ) -> Optional[Tensor]:
 
-        if isinstance(module, (GeometricAugmentationBase2D, kornia.augmentation.ImageSequential)) and param is None:
+        if (
+            isinstance(module, (GeometricAugmentationBase2D, kornia.augmentation.ImageSequential))
+            and maybe_param is None
+        ):
             raise ValueError(f"Parameters of transformation matrix for {module} has not been computed.")
 
-        mat: Optional[Tensor] = None
+        maybe_mat: Optional[Tensor] = None
+        param = KORNIA_UNWRAP(maybe_param, ParamItem)
         if isinstance(module, GeometricAugmentationBase2D):
-            _param = cast(Dict[str, Tensor], param.data)  # type: ignore
+            param_data = KORNIA_UNWRAP(param.data, Dict[str, Tensor])
             flags = override_parameters(module.flags, extra_args)
-            mat = module.get_transformation_matrix(input, _param, flags=flags)
+            maybe_mat = module.get_transformation_matrix(input, param_data, flags=flags)
         elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
-            _param = cast(List[ParamItem], param.data)  # type: ignore
-            mat = module.get_transformation_matrix(
-                input, _param, recompute=False, extra_args=extra_args
-            )  # type: ignore
+            param_data = KORNIA_UNWRAP(param.data, List[ParamItem])
+            maybe_mat = module.get_transformation_matrix(input, param_data, recompute=False, extra_args=extra_args)
         else:
-            return None  # No need to update anything
-        return mat
+            pass  # No need to update anything
+        return maybe_mat
 
     @classmethod
     def _get_inverse_transformation(cls, transform: Tensor) -> Tensor:
