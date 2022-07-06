@@ -1,4 +1,4 @@
-from typing import Dict, List  # , Tuple
+from typing import Dict, List
 
 import torch
 
@@ -165,6 +165,9 @@ def sample_lengths(num_rays: int, num_ray_points: int, irregular=False) -> torch
         zero_to_one = torch.linspace(0.0, 1.0, num_ray_points + 1)
         lengths = torch.rand(num_rays, num_ray_points) / num_ray_points + zero_to_one[:-1]
     return lengths
+
+
+# TODO: Implement hierarchical ray sampling as described in Mildenhall (2020) Sec. 5.2
 
 
 def sample_ray_points(

@@ -23,6 +23,7 @@ class MLP(nn.Module):
             if i > 0 and i % self._n_unit_layers == 0:
                 out = torch.cat((out, inp_skip), dim=-1)
             out = layer(out)
+        return out
 
 
 class NerfModel(nn.Module):

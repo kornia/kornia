@@ -14,8 +14,14 @@ class TestDataset:
         dataset = RayDataset(cameras, 1, 2)
         dataset.init_ray_dataset(imgs)
 
-        data_loader = RayDataloader(dataset, batch_size=32, shufle=False)
+        batch_size = 32
+        data_loader = RayDataloader(dataset, batch_size=batch_size, shufle=False)
         d = next(iter(data_loader))  # First batch of 32 labeled rays
+
+        # Check dimensions
+        assert d[0].shape == (batch_size, 3)  # Ray origins
+        assert d[1].shape == (batch_size, 3)  # Ray directions
+        assert d[2].shape == (batch_size, 3)  # Ray rgbs
 
         # Comparing RGB values between sampled rays and original images
         assert torch.equal(d[2][0], imgs[0][:, 0, 0])
