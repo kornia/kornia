@@ -22,17 +22,20 @@ class HomographyTracker(nn.Module):
         ransac: homography estimation module. Default: :class:`~kornia.geometry.RANSAC`.
         minimum_inliers_num: threshold for number inliers for matching to be successful.
     """
-    def __init__(self,
-                 initial_matcher: Optional[LocalFeature] = None,
-                 fast_matcher: Optional[nn.Module] = None,
-                 ransac: Optional[nn.Module] = None,
-                 minimum_inliers_num: int = 30) -> None:
+
+    def __init__(
+        self,
+        initial_matcher: Optional[LocalFeature] = None,
+        fast_matcher: Optional[nn.Module] = None,
+        ransac: Optional[nn.Module] = None,
+        minimum_inliers_num: int = 30,
+    ) -> None:
         super().__init__()
         self.initial_matcher = initial_matcher or (
-            LocalFeatureMatcher(GFTTAffNetHardNet(3000), DescriptorMatcher('smnn', 0.95)))
+            LocalFeatureMatcher(GFTTAffNetHardNet(3000), DescriptorMatcher('smnn', 0.95))
+        )
         self.fast_matcher = fast_matcher or LoFTR('outdoor')
-        self.ransac = ransac or RANSAC(
-            'homography', inl_th=5.0, batch_size=4096, max_iter=10, max_lo_iters=10)
+        self.ransac = ransac or RANSAC('homography', inl_th=5.0, batch_size=4096, max_iter=10, max_lo_iters=10)
         self.minimum_inliers_num = minimum_inliers_num
 
         # placeholders

@@ -112,15 +112,15 @@ class TestHomographyWarper:
         dst_homo_src[..., 1, 2] = 2.0
         dst_homo_src = dst_homo_src.expand(batch_size, -1, -1)
 
-        denorm_homo = kornia.geometry.conversions.denormalize_homography(
-            dst_homo_src, (height, width), (height, width))
+        denorm_homo = kornia.geometry.conversions.denormalize_homography(dst_homo_src, (height, width), (height, width))
         norm_denorm_homo = kornia.geometry.conversions.normalize_homography(
-            denorm_homo, (height, width), (height, width))
+            denorm_homo, (height, width), (height, width)
+        )
         assert (dst_homo_src == norm_denorm_homo).all()
-        norm_homo = kornia.geometry.conversions.normalize_homography(
-            dst_homo_src, (height, width), (height, width))
+        norm_homo = kornia.geometry.conversions.normalize_homography(dst_homo_src, (height, width), (height, width))
         denorm_norm_homo = kornia.geometry.conversions.denormalize_homography(
-            norm_homo, (height, width), (height, width))
+            norm_homo, (height, width), (height, width)
+        )
         assert (dst_homo_src == denorm_norm_homo).all()
 
     @pytest.mark.parametrize("offset", [1, 3, 7])
@@ -341,7 +341,8 @@ class TestHomographyNormalTransform:
         input = torch.tensor([[0.0, 0.0, 0.0], [width - 1, height - 1, depth - 1]], device=device, dtype=dtype)
         expected = torch.tensor([[-1.0, -1.0, -1.0], [1.0, 1.0, 1.0]], device=device, dtype=dtype)
         transform = kornia.geometry.conversions.normal_transform_pixel3d(
-            depth, height, width, device=device, dtype=dtype)
+            depth, height, width, device=device, dtype=dtype
+        )
         output = kornia.geometry.linalg.transform_points(transform, input)
         assert_close(output, expected.to(device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 

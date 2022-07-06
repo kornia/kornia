@@ -143,9 +143,10 @@ def adjust_hue_raw(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
     r"""Adjust hue of an image. Expecting image to be in hsv format already."""
 
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
-    KORNIA_CHECK(isinstance(factor, (float, Tensor)),
-                 f"The factor should be a float number or Tensor in the range between"
-                 f" [-PI, PI]. Got {type(factor)}")
+    KORNIA_CHECK(
+        isinstance(factor, (float, Tensor)),
+        f"The factor should be a float number or Tensor in the range between" f" [-PI, PI]. Got {type(factor)}",
+    )
 
     if isinstance(factor, float):
         factor = torch.as_tensor(factor)
@@ -556,9 +557,9 @@ def adjust_sigmoid(image: Tensor, cutoff: float = 0.5, gain: float = 10, inv: bo
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
 
     if inv:
-        img_adjust = (1 - 1 / (1 + (gain * (cutoff - image)).exp()))
+        img_adjust = 1 - 1 / (1 + (gain * (cutoff - image)).exp())
     else:
-        img_adjust = (1 / (1 + (gain * (cutoff - image)).exp()))
+        img_adjust = 1 / (1 + (gain * (cutoff - image)).exp())
     return img_adjust
 
 
@@ -588,7 +589,7 @@ def adjust_log(image: Tensor, gain: float = 1, inv: bool = False, clip_output: b
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
 
     if inv:
-        img_adjust = (2 ** image - 1) * gain
+        img_adjust = (2**image - 1) * gain
     else:
         img_adjust = (1 + image).log2() * gain
 
@@ -1209,10 +1210,7 @@ class AdjustContrast(Module):
         torch.Size([2, 5, 3, 3])
     """
 
-    def __init__(
-        self,
-        contrast_factor: Union[float, Tensor],
-    ) -> None:
+    def __init__(self, contrast_factor: Union[float, Tensor]) -> None:
         super().__init__()
         self.contrast_factor: Union[float, Tensor] = contrast_factor
 
@@ -1250,10 +1248,7 @@ class AdjustContrastWithMeanSubtraction(Module):
         torch.Size([2, 5, 3, 3])
     """
 
-    def __init__(
-        self,
-        contrast_factor: Union[float, Tensor],
-    ) -> None:
+    def __init__(self, contrast_factor: Union[float, Tensor]) -> None:
         super().__init__()
         self.contrast_factor: Union[float, Tensor] = contrast_factor
 
@@ -1289,10 +1284,7 @@ class AdjustBrightness(Module):
         torch.Size([2, 5, 3, 3])
     """
 
-    def __init__(
-        self,
-        brightness_factor: Union[float, Tensor],
-    ) -> None:
+    def __init__(self, brightness_factor: Union[float, Tensor]) -> None:
         super().__init__()
         self.brightness_factor: Union[float, Tensor] = brightness_factor
 
@@ -1322,12 +1314,7 @@ class AdjustSigmoid(Module):
                   [0.5000, 0.5000]]]])
     """
 
-    def __init__(
-        self,
-        cutoff: float = 0.5,
-        gain: float = 10,
-        inv: bool = False,
-    ) -> None:
+    def __init__(self, cutoff: float = 0.5, gain: float = 10, inv: bool = False) -> None:
         super().__init__()
         self.cutoff: float = cutoff
         self.gain: float = gain
@@ -1358,12 +1345,7 @@ class AdjustLog(Module):
                   [0., 0.]]]])
     """
 
-    def __init__(
-        self,
-        gain: float = 1,
-        inv: bool = False,
-        clip_output: bool = True,
-    ) -> None:
+    def __init__(self, gain: float = 1, inv: bool = False, clip_output: bool = True) -> None:
         super().__init__()
         self.gain: float = gain
         self.inv: bool = inv
@@ -1401,10 +1383,7 @@ class AdjustBrightnessAccumulative(Module):
         torch.Size([2, 5, 3, 3])
     """
 
-    def __init__(
-        self,
-        brightness_factor: Union[float, Tensor],
-    ) -> None:
+    def __init__(self, brightness_factor: Union[float, Tensor]) -> None:
         super().__init__()
         self.brightness_factor: Union[float, Tensor] = brightness_factor
 

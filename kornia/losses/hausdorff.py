@@ -37,9 +37,7 @@ class _HausdorffERLossBase(torch.jit.ScriptModule):
         """Get kernel for image morphology convolution."""
         raise NotImplementedError
 
-    def perform_erosion(
-        self, pred: torch.Tensor, target: torch.Tensor
-    ) -> torch.Tensor:
+    def perform_erosion(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         bound = (pred - target) ** 2
 
         kernel = torch.as_tensor(self.kernel, device=pred.device, dtype=pred.dtype)
@@ -58,7 +56,7 @@ class _HausdorffERLossBase(torch.jit.ScriptModule):
 
             # image-wise differences for 2D images
             erosion_max = self.max_pool(erosion)
-            erosion_min = - self.max_pool(- erosion)
+            erosion_min = -self.max_pool(-erosion)
             # No normalization needed if `max - min = 0`
             _to_norm = (erosion_max - erosion_min) != 0
             to_norm = _to_norm.squeeze()
@@ -96,17 +94,19 @@ class _HausdorffERLossBase(torch.jit.ScriptModule):
         if pred.size(1) < target.max().item():
             raise ValueError("Invalid target value.")
 
-        out = torch.stack([
-            self.perform_erosion(
-                pred[:, i:i + 1],
-                torch.where(
-                    target == i,
-                    torch.tensor(1, device=target.device, dtype=target.dtype),
-                    torch.tensor(0, device=target.device, dtype=target.dtype)
+        out = torch.stack(
+            [
+                self.perform_erosion(
+                    pred[:, i : i + 1],
+                    torch.where(
+                        target == i,
+                        torch.tensor(1, device=target.device, dtype=target.dtype),
+                        torch.tensor(0, device=target.device, dtype=target.dtype),
+                    ),
                 )
-            )
-            for i in range(pred.size(1))
-        ])
+                for i in range(pred.size(1))
+            ]
+        )
 
         if self.reduction == 'mean':
             out = out.mean()
@@ -182,8 +182,7 @@ class HausdorffERLoss(_HausdorffERLossBase):
 
         if not (target.max() < pred.size(1) and target.min() >= 0 and target.dtype == torch.long):
             raise ValueError(
-                f"Expect long type target value in range (0, {pred.size(1)})."
-                f"({target.min()}, {target.max()})"
+                f"Expect long type target value in range (0, {pred.size(1)})." f"({target.min()}, {target.max()})"
             )
         return super().forward(pred, target)
 

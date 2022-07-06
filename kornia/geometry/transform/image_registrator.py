@@ -10,11 +10,7 @@ from kornia.geometry.conversions import angle_to_rotation_matrix, convert_affine
 from .homography_warper import HomographyWarper
 from .pyramid import build_pyramid
 
-__all__ = [
-    "ImageRegistrator",
-    "Homography",
-    "Similarity"
-]
+__all__ = ["ImageRegistrator", "Homography", "Similarity"]
 
 
 class Homography(nn.Module):
@@ -61,10 +57,7 @@ class Similarity(nn.Module):
         shift: if True, the shift is optimizable, else constant one.
     """
 
-    def __init__(self,
-                 rotation: bool = True,
-                 scale: bool = True,
-                 shift: bool = True) -> None:
+    def __init__(self, rotation: bool = True, scale: bool = True, shift: bool = True) -> None:
         super().__init__()
         if rotation:
             self.rot = nn.Parameter(torch.zeros(1))
@@ -96,8 +89,7 @@ class Similarity(nn.Module):
         Returns:
             Similarity with shape :math:`(1, 3, 3)`"""
         rot = self.scale * angle_to_rotation_matrix(self.rot)
-        out = convert_affinematrix_to_homography(torch.cat([rot, self.shift],
-                                                           dim=2))
+        out = convert_affinematrix_to_homography(torch.cat([rot, self.shift], dim=2))
         return out
 
     def forward_inverse(self) -> torch.Tensor:
@@ -128,22 +120,20 @@ class ImageRegistrator(nn.Module):
         >>> registrator = ImageRegistrator('similarity')
         >>> homo = registrator.register(img_src, img_dst)
     """
-    known_models = ['homography',
-                    'similarity',
-                    'translation',
-                    'scale',
-                    'rotation']
+    known_models = ['homography', 'similarity', 'translation', 'scale', 'rotation']
 
     # TODO: resolve better type, potentially using factory.
-    def __init__(self,
-                 model_type='homography',
-                 optimizer=optim.Adam,
-                 loss_fn: Callable = F.l1_loss,
-                 pyramid_levels: int = 5,
-                 lr: float = 1e-3,
-                 num_iterations: int = 100,
-                 tolerance: float = 1e-4,
-                 warper=None) -> None:
+    def __init__(
+        self,
+        model_type='homography',
+        optimizer=optim.Adam,
+        loss_fn: Callable = F.l1_loss,
+        pyramid_levels: int = 5,
+        lr: float = 1e-3,
+        num_iterations: int = 100,
+        tolerance: float = 1e-4,
+        warper=None,
+    ) -> None:
         super().__init__()
         # We provide pre-defined combinations or allow user to supply model
         # together with warper
@@ -177,15 +167,16 @@ class ImageRegistrator(nn.Module):
         self.num_iterations = num_iterations
         self.tolerance = tolerance
 
-    def get_single_level_loss(self,
-                              img_src: torch.Tensor,
-                              img_dst: torch.Tensor,
-                              transform_model: torch.Tensor) -> torch.Tensor:
+    def get_single_level_loss(
+        self, img_src: torch.Tensor, img_dst: torch.Tensor, transform_model: torch.Tensor
+    ) -> torch.Tensor:
         """Warp img_src into img_dst with transform_model and returns loss."""
         # ToDo: Make possible registration of images of different shape
         if img_src.shape != img_dst.shape:
-            raise ValueError(f"Cannot register images of different shapes\
-                              {img_src.shape} {img_dst.shape:} ")
+            raise ValueError(
+                f"Cannot register images of different shapes\
+                              {img_src.shape} {img_dst.shape:} "
+            )
         _height, _width = img_dst.shape[-2:]
         warper = self.warper(_height, _width)
         img_src_to_dst = warper(img_src, transform_model)
@@ -199,12 +190,13 @@ class ImageRegistrator(nn.Module):
         """Calls model reset function."""
         self.model.reset_model()
 
-    def register(self,
-                 src_img: torch.Tensor,
-                 dst_img: torch.Tensor,
-                 verbose: bool = False,
-                 output_intermediate_models: bool = False) -> \
-            Union[torch.Tensor, Tuple[torch.Tensor, List[torch.Tensor]]]:
+    def register(
+        self,
+        src_img: torch.Tensor,
+        dst_img: torch.Tensor,
+        verbose: bool = False,
+        output_intermediate_models: bool = False,
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, List[torch.Tensor]]]:
         r"""Estimate the tranformation' which warps src_img into dst_img by gradient descent.
         The shape of the tensors is not checked, because it may depend on the model, e.g. volume registration
 
@@ -235,12 +227,8 @@ class ImageRegistrator(nn.Module):
             for i in range(self.num_iterations):
                 # compute gradient and update optimizer parameters
                 opt.zero_grad()
-                loss = self.get_single_level_loss(img_src_level,
-                                                  img_dst_level,
-                                                  self.model())
-                loss += self.get_single_level_loss(img_dst_level,
-                                                   img_src_level,
-                                                   self.model.forward_inverse())
+                loss = self.get_single_level_loss(img_src_level, img_dst_level, self.model())
+                loss += self.get_single_level_loss(img_dst_level, img_src_level, self.model.forward_inverse())
                 current_loss = loss.item()
                 if abs(current_loss - prev_loss) < self.tolerance:
                     break

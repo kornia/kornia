@@ -134,7 +134,6 @@ html_theme_options = {
         "color-sidebar-caption-text": "white",
         "color-sidebar-link-text--top-level": "white",
     },
-
     # "announcement": """
     #     <a style=\"text-decoration: none; color: white;\"
     #        href=\"https://github.com/kornia/kornia\">

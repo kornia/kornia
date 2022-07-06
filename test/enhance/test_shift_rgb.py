@@ -7,7 +7,6 @@ import kornia.testing as utils  # test utils
 
 
 class TestRGBShift:
-
     def test_rgb_shift_no_shift(self, device, dtype):
         r_shift, g_shift, b_shift = 0, 0, 0
         image = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)
@@ -46,7 +45,7 @@ class TestRGBShift:
 
     def test_rgb_shift(self, device, dtype):
         r_shift, g_shift, b_shift = 0.1, 0.2, -0.3
-        image = torch.tensor([[[[0.2, 0.]], [[0.3, 0.5]], [[0.4, 0.7]]]], device=device, dtype=dtype)
+        image = torch.tensor([[[[0.2, 0.0]], [[0.3, 0.5]], [[0.4, 0.7]]]], device=device, dtype=dtype)
         shifted = kornia.enhance.shift_rgb(image, r_shift, g_shift, b_shift)
         expected = torch.tensor([[[[0.3, 0.1]], [[0.5, 0.7]], [[0.1, 0.4]]]], device=device, dtype=dtype)
 

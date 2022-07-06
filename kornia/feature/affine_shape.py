@@ -91,20 +91,21 @@ class LAFAffineShapeEstimator(nn.Module):
         preserve_orientation: if True, the original orientation is preserved.
     """  # pylint: disable
 
-    def __init__(self,
-                 patch_size: int = 32,
-                 affine_shape_detector: Optional[nn.Module] = None,
-                 preserve_orientation: bool = True) -> None:
+    def __init__(
+        self, patch_size: int = 32, affine_shape_detector: Optional[nn.Module] = None, preserve_orientation: bool = True
+    ) -> None:
         super().__init__()
         self.patch_size = patch_size
         self.affine_shape_detector = affine_shape_detector or PatchAffineShapeEstimator(self.patch_size)
         self.preserve_orientation = preserve_orientation
         if preserve_orientation:
-            warnings.warn("`LAFAffineShapeEstimator` default behaviour is changed "
-                          "and now it does preserve original LAF orientation. "
-                          "Make sure your code accounts for this.",
-                          DeprecationWarning,
-                          stacklevel=2)
+            warnings.warn(
+                "`LAFAffineShapeEstimator` default behaviour is changed "
+                "and now it does preserve original LAF orientation. "
+                "Make sure your code accounts for this.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
     def __repr__(self):
         return (
@@ -190,17 +191,17 @@ class LAFAffNetShapeEstimator(nn.Module):
         # use torch.hub to load pretrained model
         if pretrained:
             storage_fcn: Callable = lambda storage, loc: storage
-            pretrained_dict = torch.hub.load_state_dict_from_url(
-                urls['affnet'], map_location=storage_fcn
-            )
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls['affnet'], map_location=storage_fcn)
             self.load_state_dict(pretrained_dict['state_dict'], strict=False)
         self.preserve_orientation = preserve_orientation
         if preserve_orientation:
-            warnings.warn("`LAFAffNetShapeEstimator` default behaviour is changed "
-                          "and now it does preserve original LAF orientation. "
-                          "Make sure your code accounts for this.",
-                          DeprecationWarning,
-                          stacklevel=2)
+            warnings.warn(
+                "`LAFAffNetShapeEstimator` default behaviour is changed "
+                "and now it does preserve original LAF orientation. "
+                "Make sure your code accounts for this.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         self.eval()
 
     @staticmethod

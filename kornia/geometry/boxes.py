@@ -12,14 +12,10 @@ def _is_floating_point_dtype(dtype: torch.dtype) -> bool:
     return dtype in (torch.float16, torch.float32, torch.float64, torch.bfloat16, torch.half)
 
 
-def _merge_box_list(
-    boxes: List[torch.Tensor], method: str = "pad"
-) -> Tuple[torch.Tensor, List[int]]:
-    r"""Merge a list of boxes into one tensor.
-    """
+def _merge_box_list(boxes: List[torch.Tensor], method: str = "pad") -> Tuple[torch.Tensor, List[int]]:
+    r"""Merge a list of boxes into one tensor."""
     if not all(box.shape[-2:] == torch.Size([4, 2]) and box.dim() == 3 for box in boxes):
-        raise TypeError(
-            f"Input boxes must be a list of (N, 4, 2) shaped. Got: {[box.shape for box in boxes]}.")
+        raise TypeError(f"Input boxes must be a list of (N, 4, 2) shaped. Got: {[box.shape for box in boxes]}.")
 
     if method == "pad":
         max_N = max(box.shape[0] for box in boxes)
@@ -75,9 +71,7 @@ def _boxes_to_polygons(
     return polygons
 
 
-def _boxes_to_quadrilaterals(
-    boxes: torch.Tensor, mode: str = "xyxy", validate_boxes: bool = True
-) -> torch.Tensor:
+def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_boxes: bool = True) -> torch.Tensor:
     """Convert from boxes to quadrilaterals."""
     mode = mode.lower()
 
@@ -185,9 +179,12 @@ class Boxes:
         ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. Examples of
         `quadrilaterals <https://en.wikipedia.org/wiki/Quadrilateral>`_ are rectangles, rhombus and trapezoids.
     """
+
     def __init__(
-        self, boxes: Union[torch.Tensor, List[torch.Tensor]], raise_if_not_floating_point: bool = True,
-        mode: str = "vertices_plus"
+        self,
+        boxes: Union[torch.Tensor, List[torch.Tensor]],
+        raise_if_not_floating_point: bool = True,
+        mode: str = "vertices_plus",
     ) -> None:
 
         self._N: Optional[List[int]] = None
@@ -354,8 +351,9 @@ class Boxes:
             boxes = _boxes_to_polygons(boxes[..., 0], boxes[..., 1], boxes[..., 2], boxes[..., 3])
 
         if self._N is not None and not as_padded_sequence:
-            boxes = list(torch.nn.functional.pad(
-                o, (len(o.shape) - 1) * [0, 0] + [0, - n]) for o, n in zip(boxes, self._N))
+            boxes = list(
+                torch.nn.functional.pad(o, (len(o.shape) - 1) * [0, 0] + [0, -n]) for o, n in zip(boxes, self._N)
+            )
         else:
             boxes = boxes if self._is_batched else boxes.squeeze(0)
         return boxes
@@ -482,9 +480,9 @@ class Boxes3D:
         ``width = xmax - xmin + 1``, ``height = ymax - ymin + 1`` and ``depth = zmax - zmin + 1``. Examples of
         `hexahedrons <https://en.wikipedia.org/wiki/Hexahedron>`_ are cubes and rhombohedrons.
     """
+
     def __init__(
-        self, boxes: torch.Tensor, raise_if_not_floating_point: bool = True,
-        mode: str = "xyzxyz_plus"
+        self, boxes: torch.Tensor, raise_if_not_floating_point: bool = True, mode: str = "xyzxyz_plus"
     ) -> None:
         if not isinstance(boxes, torch.Tensor):
             raise TypeError(f"Input boxes is not a Tensor. Got: {type(boxes)}.")
@@ -642,10 +640,12 @@ class Boxes3D:
             >>> assert (boxes.to_tensor(mode='xyzxyz') == boxes_xyzxyz).all()
         """
         if self._data.requires_grad:
-            raise RuntimeError("Boxes3D.to_tensor doesn't support computing gradients since they aren't accurate. "
-                               "Please, create boxes from tensors with `requires_grad=False`. "
-                               "This is a known bug. Help is needed to fix it. For more information, "
-                               "see https://github.com/kornia/kornia/issues/1396.")
+            raise RuntimeError(
+                "Boxes3D.to_tensor doesn't support computing gradients since they aren't accurate. "
+                "Please, create boxes from tensors with `requires_grad=False`. "
+                "This is a known bug. Help is needed to fix it. For more information, "
+                "see https://github.com/kornia/kornia/issues/1396."
+            )
 
         batched_boxes = self._data if self._is_batched else self._data.unsqueeze(0)
 

@@ -50,9 +50,7 @@ class TestGetLAFDescriptors:
         B, C, H, W = 1, 1, 32, 32
         PS = 16
         img = torch.rand(B, C, H, W, device=device)
-        centers = torch.tensor([[H / 2.0, W / 2.0], [2.0 * H / 3.0, W / 2.0]], device=device, dtype=dtype).view(
-            1, 2, 2
-        )
+        centers = torch.tensor([[H / 2.0, W / 2.0], [2.0 * H / 3.0, W / 2.0]], device=device, dtype=dtype).view(1, 2, 2)
         scales = torch.tensor([(H + W) / 5.0, (H + W) / 6.0], device=device, dtype=dtype).view(1, 2, 1, 1)
         ori = torch.tensor([0.0, 30.0], device=device, dtype=dtype).view(1, 2, 1)
         lafs = kornia.feature.laf_from_center_scale_ori(centers, scales, ori)
@@ -64,8 +62,9 @@ class TestGetLAFDescriptors:
                 return inputs.mean(dim=(2, 3))
 
         desc = _MeanPatch()
-        assert gradcheck(get_laf_descriptors, (img, lafs, desc, PS, True),
-                         eps=1e-3, atol=1e-3, raise_exception=True, nondet_tol=1e-3)
+        assert gradcheck(
+            get_laf_descriptors, (img, lafs, desc, PS, True), eps=1e-3, atol=1e-3, raise_exception=True, nondet_tol=1e-3
+        )
 
 
 class TestLAFDescriptor:
@@ -92,9 +91,7 @@ class TestLAFDescriptor:
         B, C, H, W = 1, 1, 32, 32
         PS = 16
         img = torch.rand(B, C, H, W, device=device)
-        centers = torch.tensor([[H / 2.0, W / 2.0], [2.0 * H / 3.0, W / 2.0]], device=device).view(
-            1, 2, 2
-        )
+        centers = torch.tensor([[H / 2.0, W / 2.0], [2.0 * H / 3.0, W / 2.0]], device=device).view(1, 2, 2)
         scales = torch.tensor([(H + W) / 5.0, (H + W) / 6.0], device=device).view(1, 2, 1, 1)
         ori = torch.tensor([0.0, 30.0], device=device).view(1, 2, 1)
         lafs = kornia.feature.laf_from_center_scale_ori(centers, scales, ori)
@@ -104,6 +101,7 @@ class TestLAFDescriptor:
         class _MeanPatch(nn.Module):
             def forward(self, inputs):
                 return inputs.mean(dim=(2, 3))
+
         lafdesc = LAFDescriptor(_MeanPatch(), PS)
         assert gradcheck(lafdesc, (img, lafs), eps=1e-3, atol=1e-3, raise_exception=True, nondet_tol=1e-3)
 
@@ -259,8 +257,7 @@ class TestLocalFeatureMatcher:
         # Reprojection error of 5px is OK
         assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
 
-    @pytest.mark.skipif(sys.platform == "win32",
-                        reason="this test takes so much memory in the CI with Windows")
+    @pytest.mark.skipif(sys.platform == "win32", reason="this test takes so much memory in the CI with Windows")
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_real_gftt(self, device, dtype, data):
         torch.random.manual_seed(0)
@@ -277,8 +274,7 @@ class TestLocalFeatureMatcher:
         # Reprojection error of 5px is OK
         assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
 
-    @pytest.mark.skipif(sys.platform == "win32",
-                        reason="this test takes so much memory in the CI with Windows")
+    @pytest.mark.skipif(sys.platform == "win32", reason="this test takes so much memory in the CI with Windows")
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_real_keynet(self, device, dtype, data):
         torch.random.manual_seed(0)
