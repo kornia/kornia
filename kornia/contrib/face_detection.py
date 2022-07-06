@@ -12,7 +12,7 @@ from kornia.geometry.bbox import nms as nms_kornia
 __all__ = ["FaceDetector", "FaceDetectorResult", "FaceKeypoint"]
 
 
-url: str = "https://github.com/ShiqiYu/libfacedetection.train/raw/master/tasks/task1/weights/yunet_final.pth"
+url: str = "https://github.com/ShiqiYu/libfacedetection.train/raw/master/weights/yunet_final.pth"
 
 
 class FaceKeypoint(Enum):
