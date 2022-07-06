@@ -54,11 +54,7 @@ class NonMaximaSuppression2d(nn.Module):
         B, CH, HP, WP = x_padded.size()
 
         max_non_center = (
-            F.conv2d(
-                x_padded.view(B * CH, 1, HP, WP),
-                self.kernel.to(x.device, x.dtype),  # type: ignore
-                stride=1
-            )
+            F.conv2d(x_padded.view(B * CH, 1, HP, WP), self.kernel.to(x.device, x.dtype), stride=1)  # type: ignore
             .view(B, CH, -1, H, W)
             .max(dim=2)[0]
         )
@@ -101,32 +97,34 @@ class NonMaximaSuppression3d(nn.Module):
             left = slice(0, -2)
             right = slice(2, None)
             center_tensor = x[..., center, center, center]
-            mask[..., 1: -1, 1: -1, 1: -1] = ((center_tensor > x[..., center, center, left]) &  # noqa: W504
-                                              (center_tensor > x[..., center, center, right]) &  # noqa: W504
-                                              (center_tensor > x[..., center, left, center]) &  # noqa: W504
-                                              (center_tensor > x[..., center, left, left]) &  # noqa: W504
-                                              (center_tensor > x[..., center, left, right]) &  # noqa: W504
-                                              (center_tensor > x[..., center, right, center]) &  # noqa: W504
-                                              (center_tensor > x[..., center, right, left]) &  # noqa: W504
-                                              (center_tensor > x[..., center, right, right]) &  # noqa: W504
-                                              (center_tensor > x[..., left, center, center]) &  # noqa: W504
-                                              (center_tensor > x[..., left, center, left]) &  # noqa: W504
-                                              (center_tensor > x[..., left, center, right]) &  # noqa: W504
-                                              (center_tensor > x[..., left, left, center]) &  # noqa: W504
-                                              (center_tensor > x[..., left, left, left]) &  # noqa: W504
-                                              (center_tensor > x[..., left, left, right]) &  # noqa: W504
-                                              (center_tensor > x[..., left, right, center]) &  # noqa: W504
-                                              (center_tensor > x[..., left, right, left]) &  # noqa: W504
-                                              (center_tensor > x[..., left, right, right]) &  # noqa: W504
-                                              (center_tensor > x[..., right, center, center]) &  # noqa: W504
-                                              (center_tensor > x[..., right, center, left]) &  # noqa: W504
-                                              (center_tensor > x[..., right, center, right]) &  # noqa: W504
-                                              (center_tensor > x[..., right, left, center]) &  # noqa: W504
-                                              (center_tensor > x[..., right, left, left]) &  # noqa: W504
-                                              (center_tensor > x[..., right, left, right]) &  # noqa: W504
-                                              (center_tensor > x[..., right, right, center]) &  # noqa: W504
-                                              (center_tensor > x[..., right, right, left]) &  # noqa: W504
-                                              (center_tensor > x[..., right, right, right]))
+            mask[..., 1:-1, 1:-1, 1:-1] = (
+                (center_tensor > x[..., center, center, left])
+                & (center_tensor > x[..., center, center, right])
+                & (center_tensor > x[..., center, left, center])
+                & (center_tensor > x[..., center, left, left])
+                & (center_tensor > x[..., center, left, right])
+                & (center_tensor > x[..., center, right, center])
+                & (center_tensor > x[..., center, right, left])
+                & (center_tensor > x[..., center, right, right])
+                & (center_tensor > x[..., left, center, center])
+                & (center_tensor > x[..., left, center, left])
+                & (center_tensor > x[..., left, center, right])
+                & (center_tensor > x[..., left, left, center])
+                & (center_tensor > x[..., left, left, left])
+                & (center_tensor > x[..., left, left, right])
+                & (center_tensor > x[..., left, right, center])
+                & (center_tensor > x[..., left, right, left])
+                & (center_tensor > x[..., left, right, right])
+                & (center_tensor > x[..., right, center, center])
+                & (center_tensor > x[..., right, center, left])
+                & (center_tensor > x[..., right, center, right])
+                & (center_tensor > x[..., right, left, center])
+                & (center_tensor > x[..., right, left, left])
+                & (center_tensor > x[..., right, left, right])
+                & (center_tensor > x[..., right, right, center])
+                & (center_tensor > x[..., right, right, left])
+                & (center_tensor > x[..., right, right, right])
+            )
         else:
             max_non_center = (
                 F.conv3d(

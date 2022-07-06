@@ -98,9 +98,7 @@ class TestRandomMixUp:
 class TestRandomCutMix:
     def test_smoke(self):
         f = RandomCutMix()
-        repr = (
-            "RandomCutMix(cut_size=None, beta=None, num_mix=1, p=1.0, p_batch=1.0, same_on_batch=False)"
-        )
+        repr = "RandomCutMix(cut_size=None, beta=None, num_mix=1, p=1.0, p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
 
     def test_random_mixup_p1(self, device, dtype):

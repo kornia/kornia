@@ -129,6 +129,8 @@ class RandomAffine(GeometricAugmentationBase2D):
         size: Optional[Tuple[int, int]] = None,
     ) -> Tensor:
         return self.apply_transform(
-            input, params=self._params, transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype),
-            flags=flags
+            input,
+            params=self._params,
+            transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype),
+            flags=flags,
         )

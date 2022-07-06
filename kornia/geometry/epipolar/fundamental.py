@@ -112,9 +112,7 @@ def find_fundamental(points1: torch.Tensor, points2: torch.Tensor, weights: torc
 
     # reconstruct and force the matrix to have rank2
     U, S, V = torch.svd(F_mat)
-    rank_mask = torch.tensor([1.0, 1.0, 0.0],
-                             device=F_mat.device,
-                             dtype=F_mat.dtype)
+    rank_mask = torch.tensor([1.0, 1.0, 0.0], device=F_mat.device, dtype=F_mat.dtype)
 
     F_projected = U @ (torch.diag_embed(S * rank_mask) @ V.transpose(-2, -1))
     F_est = transform2.transpose(-2, -1) @ (F_projected @ transform1)

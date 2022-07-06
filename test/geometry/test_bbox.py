@@ -140,7 +140,7 @@ class TestTransformBoxes2D:
                 [114.6880, 103.0150, 258.0480, 307.5075],
                 [0.0000, 80.5547, 510.9760, 431.4453],
                 [1.3654, 262.1440, 345.4293, 246.7840],
-                [254.9760, 144.2067, 137.2160, 265.9225]
+                [254.9760, 144.2067, 137.2160, 265.9225],
             ],
             device=device,
             dtype=dtype,
@@ -253,12 +253,16 @@ class TestBbox3D:
 
 class TestNMS:
     def test_smoke(self, device, dtype):
-        boxes = torch.tensor([
-            [10., 10., 20., 20.],
-            [15., 5., 15., 25.],
-            [100., 100., 200., 200.],
-            [100., 100., 200., 200.],
-        ], device=device, dtype=dtype)
+        boxes = torch.tensor(
+            [
+                [10.0, 10.0, 20.0, 20.0],
+                [15.0, 5.0, 15.0, 25.0],
+                [100.0, 100.0, 200.0, 200.0],
+                [100.0, 100.0, 200.0, 200.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )
         scores = torch.tensor([0.9, 0.8, 0.7, 0.9], device=device, dtype=dtype)
         expected = torch.tensor([0, 3, 1], device=device, dtype=torch.long)
         actual = nms(boxes, scores, iou_threshold=0.8)

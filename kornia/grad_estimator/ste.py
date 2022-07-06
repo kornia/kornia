@@ -4,10 +4,7 @@ import torch.nn as nn
 from torch import Tensor
 from torch.autograd import Function
 
-__all__ = [
-    "STEFunction",
-    "StraightThroughEstimator"
-]
+__all__ = ["STEFunction", "StraightThroughEstimator"]
 
 
 class STEFunction(Function):
@@ -40,8 +37,7 @@ class STEFunction(Function):
 
     @staticmethod
     def forward(  # type:ignore
-        ctx, input: Tensor, output: Tensor,
-        grad_fn: Optional[Callable] = None
+        ctx, input: Tensor, output: Tensor, grad_fn: Optional[Callable] = None
     ) -> Tensor:
         ctx.in_shape = input.shape
         ctx.out_shape = output.shape
@@ -55,7 +51,7 @@ class STEFunction(Function):
         return (
             ctx.grad_fn(grad_output.sum_to_size(ctx.in_shape)),
             ctx.grad_fn(grad_output.sum_to_size(ctx.out_shape)),
-            None
+            None,
         )
 
     # https://pytorch.org/docs/1.10.0/onnx.html#torch-autograd-functions
@@ -121,6 +117,7 @@ class StraightThroughEstimator(nn.Module):
         out = self.target_fn(input)
         if not isinstance(out, Tensor):
             raise NotImplementedError(
-                "Only Tensor is supported at the moment. Feel free to contribute to https://github.com/kornia/kornia.")
+                "Only Tensor is supported at the moment. Feel free to contribute to https://github.com/kornia/kornia."
+            )
         output = STEFunction.apply(input, out, self.grad_fn)
         return output

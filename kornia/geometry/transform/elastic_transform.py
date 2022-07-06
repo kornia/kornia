@@ -17,7 +17,7 @@ def elastic_transform2d(
     alpha: Tuple[float, float] = (1.0, 1.0),
     align_corners: bool = False,
     mode: str = 'bilinear',
-    padding_mode: str = 'zeros'
+    padding_mode: str = 'zeros',
 ) -> torch.Tensor:
     r"""Apply elastic transform of images as described in :cite:`Simard2003BestPF`.
 
@@ -91,7 +91,8 @@ def elastic_transform2d(
     # Warp image based on displacement matrix
     _, _, h, w = image.shape
     grid = create_meshgrid(h, w, device=image.device).to(image.dtype)
-    warped = F.grid_sample(image, (grid + disp).clamp(-1, 1), align_corners=align_corners, mode=mode,
-                           padding_mode=padding_mode)
+    warped = F.grid_sample(
+        image, (grid + disp).clamp(-1, 1), align_corners=align_corners, mode=mode, padding_mode=padding_mode
+    )
 
     return warped

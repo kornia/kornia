@@ -128,7 +128,7 @@ class VonMisesKernel(nn.Module):
         frange = frange.reshape(-1, 1, 1)
         weights = torch.zeros([2 * n + 1])
         weights[: n + 1] = torch.sqrt(b_coeffs)
-        weights[n + 1:] = torch.sqrt(b_coeffs[1:])
+        weights[n + 1 :] = torch.sqrt(b_coeffs[1:])
         weights = weights.reshape(-1, 1, 1)
         self.register_buffer('emb0', emb0)
         self.register_buffer('frange', frange)
@@ -336,7 +336,7 @@ class ExplicitSpacialEncoding(nn.Module):
     def get_gmask(self, sigma: float) -> torch.Tensor:
         """Compute Gaussian mask."""
         norm_rho = self.grid['rho'] / self.grid['rho'].max()
-        gmask = torch.exp(-1 * norm_rho ** 2 / sigma ** 2)
+        gmask = torch.exp(-1 * norm_rho**2 / sigma**2)
         return gmask
 
     def init_kron(self) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -580,9 +580,7 @@ class MKDDescriptor(nn.Module):
         # Load supervised(lw)/unsupervised(pca) model trained on training_set.
         if self.whitening is not None:
             storage_fcn: Callable = lambda storage, loc: storage
-            whitening_models = torch.hub.load_state_dict_from_url(
-                urls[self.kernel_type], map_location=storage_fcn
-            )
+            whitening_models = torch.hub.load_state_dict_from_url(urls[self.kernel_type], map_location=storage_fcn)
             whitening_model = whitening_models[training_set]
             self.whitening_layer = Whitening(
                 whitening, whitening_model, in_dims=self.odims, output_dims=self.output_dims
@@ -641,9 +639,7 @@ class MKDDescriptor(nn.Module):
 
 def load_whitening_model(kernel_type: str, training_set: str) -> Dict:
     storage_fcn: Callable = lambda storage, loc: storage
-    whitening_models = torch.hub.load_state_dict_from_url(
-        urls[kernel_type], map_location=storage_fcn
-    )
+    whitening_models = torch.hub.load_state_dict_from_url(urls[kernel_type], map_location=storage_fcn)
     whitening_model = whitening_models[training_set]
     return whitening_model
 

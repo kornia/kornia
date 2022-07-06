@@ -145,7 +145,7 @@ class TestBuildPyramid:
         assert len(pyramid) == max_level
         for i in range(1, max_level):
             img = pyramid[i]
-            denom = 2 ** i
+            denom = 2**i
             expected_shape = (batch_size, channels, height // denom, width // denom)
             assert img.shape == expected_shape
 

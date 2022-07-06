@@ -191,6 +191,7 @@ class DescriptorMatcher(nn.Module):
         match_mode: type of matching, can be `nn`, `snn`, `mnn`, `smnn`.
         th: threshold on distance ratio, or other quality measure.
     """
+
     known_modes = ['nn', 'mnn', 'snn', 'smnn']
 
     def __init__(self, match_mode: str = 'snn', th: float = 0.8) -> None:
