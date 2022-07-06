@@ -16,7 +16,7 @@ __all__ = [
 ]
 
 
-url: str = "https://github.com/ShiqiYu/libfacedetection.train/raw/master/tasks/task1/weights/yunet_final.pth"
+url: str = "https://github.com/kornia/data/raw/main/yunet_final.pth"
 
 
 class FaceKeypoint(Enum):
