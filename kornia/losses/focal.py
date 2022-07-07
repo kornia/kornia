@@ -3,10 +3,9 @@ from typing import Optional
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from kornia.core import Tensor
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.utils.one_hot import one_hot
 
 # based on:
@@ -62,26 +61,17 @@ def focal_loss(
             stacklevel=2,
         )
 
-    if not isinstance(input, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
-
-    if not len(input.shape) >= 2:
-        raise ValueError(f"Invalid input shape, we expect BxCx*. Got: {input.shape}")
-
-    if input.size(0) != target.size(0):
-        raise ValueError(f'Expected input batch_size ({input.size(0)}) to match target batch_size ({target.size(0)}).')
+    KORNIA_CHECK_SHAPE(input, ["B", "C", "*"])
 
     n = input.size(0)
     out_size = (n,) + input.size()[2:]
-    if target.size()[1:] != input.size()[2:]:
-        raise ValueError(f'Expected target size {out_size}, got {target.size()}')
 
-    if not input.device == target.device:
-        raise ValueError(f"input and target must be in the same device. Got: {input.device} and {target.device}")
+    KORNIA_CHECK(target.size()[1:] == input.size()[2:], f'Expected target size {out_size}, got {target.size()}')
+    KORNIA_CHECK(input.device == target.device, f"input and target must be in the same device. Got: {input.device} and {target.device}")
 
     # compute softmax over the classes axis
     input_soft: Tensor = input.softmax(1)
-    log_input_soft: Tensor = F.log_softmax(input, dim=1)
+    log_input_soft: Tensor = input.log_softmax(1)
 
     # create the labels one hot tensor
     target_one_hot: Tensor = one_hot(target, num_classes=input.shape[1], device=input.device, dtype=input.dtype)
@@ -204,14 +194,8 @@ def binary_focal_loss_with_logits(
             stacklevel=2,
         )
 
-    if not isinstance(input, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
-
-    if not len(input.shape) >= 2:
-        raise ValueError(f"Invalid input shape, we expect BxCx*. Got: {input.shape}")
-
-    if input.size(0) != target.size(0):
-        raise ValueError(f'Expected input batch_size ({input.size(0)}) to match target batch_size ({target.size(0)}).')
+    KORNIA_CHECK_SHAPE(input, ["B", "C", "*"])
+    KORNIA_CHECK(input.size(0) == target.size(0), f'Expected input batch_size ({input.size(0)}) to match target batch_size ({target.size(0)}).')
 
     if pos_weight is None:
         pos_weight = torch.ones(input.size(-1), device=input.device, dtype=input.dtype)
@@ -222,9 +206,9 @@ def binary_focal_loss_with_logits(
     probs_pos = input.sigmoid()
     probs_neg = torch.sigmoid(-input)
 
-    loss_tmp = -alpha * pos_weight * probs_neg.pow(gamma) * target * input.logsigmoid() - (1 - alpha) * torch.pow(
+    loss_tmp = -alpha * pos_weight * probs_neg.pow(gamma) * target * input.sigmoid().log() - (1 - alpha) * torch.pow(
         probs_pos, gamma
-    ) * (1.0 - target) * F.logsigmoid(-input)
+    ) * (1.0 - target) * -input.sigmoid().log()
 
     if reduction == 'none':
         loss = loss_tmp
