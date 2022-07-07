@@ -24,13 +24,7 @@ class TestRandomMotionBlur:
     @pytest.mark.parametrize("same_on_batch", [True, False])
     @pytest.mark.parametrize("p", [0.0, 1.0])
     def test_random_motion_blur(self, kernel_size, same_on_batch, p, device, dtype):
-        f = RandomMotionBlur(
-            kernel_size=kernel_size,
-            angle=(10, 30),
-            direction=0.5,
-            same_on_batch=same_on_batch,
-            p=p,
-        )
+        f = RandomMotionBlur(kernel_size=kernel_size, angle=(10, 30), direction=0.5, same_on_batch=same_on_batch, p=p)
         torch.manual_seed(0)
         batch_size = 2
         input = torch.randn(1, 3, 5, 6, device=device, dtype=dtype).repeat(batch_size, 1, 1, 1)
@@ -99,13 +93,7 @@ class TestRandomMotionBlur3D:
     @pytest.mark.parametrize("same_on_batch", [True, False])
     @pytest.mark.parametrize("p", [0.0, 1.0])
     def test_random_motion_blur(self, same_on_batch, p, device, dtype):
-        f = RandomMotionBlur3D(
-            kernel_size=(3, 5),
-            angle=(10, 30),
-            direction=0.5,
-            same_on_batch=same_on_batch,
-            p=p,
-        )
+        f = RandomMotionBlur3D(kernel_size=(3, 5), angle=(10, 30), direction=0.5, same_on_batch=same_on_batch, p=p)
         batch_size = 2
         input = torch.randn(1, 3, 5, 6, 7, device=device, dtype=dtype).repeat(batch_size, 1, 1, 1, 1)
 

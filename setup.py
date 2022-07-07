@@ -25,9 +25,7 @@ VERSION = find_version("kornia/_version.py")
 
 
 # NOTE: kornia MUST only require PyTorch
-requirements = [
-    'torch>=1.8.1', 'packaging',
-]
+requirements = ['torch>=1.8.1', 'packaging']
 
 # open readme file and set long description
 with open("README.md", encoding="utf-8") as fh:
@@ -39,10 +37,7 @@ def load_requirements(filename: str):
         return [x.strip() for x in f.readlines() if "-r" != x[0:2]]
 
 
-requirements_extras = {
-    "x": load_requirements("requirements/x.txt"),
-    "dev": load_requirements("requirements/dev.txt")
-}
+requirements_extras = {"x": load_requirements("requirements/x.txt"), "dev": load_requirements("requirements/dev.txt")}
 requirements_extras["all"] = requirements_extras["x"] + requirements_extras["dev"]
 
 

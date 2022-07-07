@@ -166,9 +166,7 @@ class OriNet(nn.Module):
         # use torch.hub to load pretrained model
         if pretrained:
             storage_fcn: Callable = lambda storage, loc: storage
-            pretrained_dict = torch.hub.load_state_dict_from_url(
-                urls['orinet'], map_location=storage_fcn
-            )
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls['orinet'], map_location=storage_fcn)
             self.load_state_dict(pretrained_dict['state_dict'], strict=False)
         self.eval()
 

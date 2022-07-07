@@ -222,9 +222,7 @@ class TestAugmentationSequential:
     def test_mixup(self, inp, random_apply, same_on_batch, device, dtype):
         inp = torch.as_tensor(inp, device=device, dtype=dtype)
         aug = K.AugmentationSequential(
-            K.ImageSequential(
-                K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)
-            ),
+            K.ImageSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)),
             K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
             K.RandomAffine(360, p=1.0),
             K.RandomMixUp(p=1.0),
@@ -265,9 +263,7 @@ class TestAugmentationSequential:
     def test_3d_augmentations(self, device, dtype):
         input = torch.randn(2, 2, 3, 5, 6, device=device, dtype=dtype)
         aug_list = K.AugmentationSequential(
-            K.RandomAffine3D(360., p=1.),
-            K.RandomHorizontalFlip3D(p=1.),
-            data_keys=["input"],
+            K.RandomAffine3D(360.0, p=1.0), K.RandomHorizontalFlip3D(p=1.0), data_keys=["input"]
         )
         out = aug_list(input)
         assert out.shape == input.shape
@@ -316,7 +312,8 @@ class TestAugmentationSequential:
         # specifying the crop locations allows us to compute by hand the expected outputs
         crop_locations = torch.tensor(
             [[1.0, 2.0], [1.0, 1.0], [2.0, 0.0]],
-            device=_params[0].data['src'].device, dtype=_params[0].data['src'].dtype,
+            device=_params[0].data['src'].device,
+            dtype=_params[0].data['src'].dtype,
         )
         crops = crop_locations.expand(4, -1, -1).permute(1, 0, 2).clone()
         crops[:, 1:3, 0] += crop_width - 1
@@ -350,14 +347,12 @@ class TestAugmentationSequential:
     def test_random_erasing(self, device, dtype):
         fill_value = 0.5
         input = torch.randn(3, 3, 100, 100, device=device, dtype=dtype)
-        aug = K.AugmentationSequential(
-            K.RandomErasing(p=1., value=fill_value), data_keys=["input", "mask"],
-        )
+        aug = K.AugmentationSequential(K.RandomErasing(p=1.0, value=fill_value), data_keys=["input", "mask"])
 
         reproducibility_test((input, input), aug)
 
         out = aug(input, input)
-        assert torch.all(out[1][out[0] == fill_value] == 0.)
+        assert torch.all(out[1][out[0] == fill_value] == 0.0)
 
     def test_random_crops(self, device, dtype):
         torch.manual_seed(233)
@@ -368,9 +363,9 @@ class TestAugmentationSequential:
         points = torch.tensor([[[0.0, 0.0], [1.0, 1.0]]], device=device, dtype=dtype).expand(3, -1, -1)
         aug = K.AugmentationSequential(
             K.RandomCrop((3, 3), padding=1, cropping_mode='resample', fill=0),
-            K.RandomAffine((360., 360.), p=1.),
+            K.RandomAffine((360.0, 360.0), p=1.0),
             data_keys=["input", "mask", "bbox_xyxy", "keypoints"],
-            extra_args={}
+            extra_args={},
         )
 
         reproducibility_test((input, input, bbox, points), aug)
@@ -425,13 +420,12 @@ class TestAugmentationSequential:
             torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 1000, 500
         )[:, None].float()
         aug = K.AugmentationSequential(
-            K.ImageSequential(
-                K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)
-            ),
+            K.ImageSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)),
             K.AugmentationSequential(
-                K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0),
+                K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
                 K.RandomAffine(360, p=1.0),
-                data_keys=["input", "mask", "bbox", "keypoints"]
+                K.RandomAffine(360, p=1.0),
+                data_keys=["input", "mask", "bbox", "keypoints"],
             ),
             K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
             K.RandomAffine(360, p=1.0),
@@ -463,16 +457,12 @@ class TestAugmentationSequential:
         crop_size = (200, 200)
 
         aug = K.AugmentationSequential(
-            K.ImageSequential(
-                K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)
-            ),
-            K.AugmentationSequential(
-                K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)
-            ),
+            K.ImageSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)),
+            K.AugmentationSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)),
             K.RandomAffine(360, p=1.0),
             K.RandomCrop(crop_size, padding=1, cropping_mode='resample', fill=0),
             data_keys=['input', 'mask', 'bbox', 'keypoints'],
-            extra_args={}
+            extra_args={},
         )
         # NOTE: Mask data with nearest not passing reproducibility check under float64.
         reproducibility_test((inp, mask, bbox, keypoints), aug)
@@ -509,17 +499,13 @@ class TestAugmentationSequential:
             torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 1000, 500
         )[:, None].float()
         aug = K.AugmentationSequential(
-            K.ImageSequential(
-                K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)
-            ),
-            K.AugmentationSequential(
-                K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)
-            ),
+            K.ImageSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)),
+            K.AugmentationSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)),
             K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
             K.RandomAffine(360, p=1.0),
             data_keys=["input", "mask", "bbox", "keypoints"],
             random_apply=random_apply,
-            extra_args={}
+            extra_args={},
         )
         out = aug(inp, mask, bbox, keypoints)
         assert out[0].shape == inp.shape
@@ -557,12 +543,8 @@ class TestAugmentationSequential:
             torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 1000, 500
         )[:, None].float()
         aug = K.AugmentationSequential(
-            K.ImageSequential(
-                K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)
-            ),
-            K.AugmentationSequential(
-                K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)
-            ),
+            K.ImageSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)),
+            K.AugmentationSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)),
             K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
             K.RandomAffine(360, p=1.0),
             data_keys=["input", "mask", "bbox", "keypoints", "bbox", "BBOX_XYWH", "BBOX_XYWH"],

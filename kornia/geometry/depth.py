@@ -12,13 +12,7 @@ from .camera import PinholeCamera, cam2pixel, pixel2cam, project_points, unproje
 from .conversions import normalize_pixel_coordinates
 from .linalg import compose_transformations, convert_points_to_homogeneous, inverse_transformation, transform_points
 
-__all__ = [
-    "depth_to_3d",
-    "depth_to_normals",
-    "warp_frame_depth",
-    "depth_warp",
-    "DepthWarper"
-]
+__all__ = ["depth_to_3d", "depth_to_normals", "warp_frame_depth", "depth_warp", "DepthWarper"]
 
 
 def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_points: bool = False) -> torch.Tensor:

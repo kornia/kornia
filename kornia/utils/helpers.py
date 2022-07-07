@@ -5,6 +5,7 @@ from typing import Any, Callable, List, Optional, Tuple
 
 import torch
 
+from kornia.core import Tensor
 from kornia.utils._compat import torch_version_geq
 
 
@@ -42,7 +43,8 @@ def _deprecated(func: Callable = None, replace_with: Optional[str] = None):
             warnings.warn(f"`{name}` is deprecated in favor of `{replace_with}`.", category=DeprecationWarning)
         else:
             warnings.warn(
-                f"`{name}` is deprecated and will be removed in the future versions.", category=DeprecationWarning)
+                f"`{name}` is deprecated and will be removed in the future versions.", category=DeprecationWarning
+            )
         return func(*args, **kwargs)
 
     return wrapper
@@ -128,30 +130,28 @@ def _torch_svd_cast(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, to
 
 
 # TODO: return only `torch.Tensor` and review all the calls to adjust
-def _torch_solve_cast(input: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def _torch_solve_cast(A: Tensor, B: Tensor) -> Tensor:
     """Helper function to make torch.solve work with other than fp32/64.
 
     The function torch.solve is only implemented for fp32/64 which makes impossible to be used by fp16 or others. What
     this function does, is cast input data type to fp32, apply torch.svd, and cast back to the input dtype.
     """
-    if not isinstance(input, torch.Tensor):
-        raise AssertionError(f"Input must be torch.Tensor. Got: {type(input)}.")
-    dtype: torch.dtype = input.dtype
+    dtype: torch.dtype = A.dtype
     if dtype not in (torch.float32, torch.float64):
         dtype = torch.float32
 
-    out = torch.linalg.solve(A.to(dtype), input.to(dtype))
+    out = torch.linalg.solve(A.to(dtype), B.to(dtype))
 
-    return (out.to(input.dtype), out)
+    return out.to(A.dtype)
 
 
 def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     r"""Helper function, which avoids crashing because of singular matrix input and outputs the
     mask of valid solution"""
     if not torch_version_geq(1, 10):
-        sol, lu = _torch_solve_cast(B, A)
+        sol = _torch_solve_cast(A, B)
         warnings.warn('PyTorch version < 1.10, solve validness mask maybe not correct', RuntimeWarning)
-        return sol, lu, torch.ones(len(A), dtype=torch.bool, device=A.device)
+        return sol, sol, torch.ones(len(A), dtype=torch.bool, device=A.device)
     # Based on https://github.com/pytorch/pytorch/issues/31546#issuecomment-694135622
     if not isinstance(B, torch.Tensor):
         raise AssertionError(f"B must be torch.Tensor. Got: {type(B)}.")
@@ -180,6 +180,7 @@ def safe_inverse_with_mask(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]
     else:
         dtype = dtype_original
     from torch.linalg import inv_ex  # type: ignore # (not available in 1.8.1)
+
     inverse, info = inv_ex(A.to(dtype))
     mask = info == 0
     return inverse.to(dtype_original), mask
