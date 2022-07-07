@@ -2,7 +2,7 @@ from test.geometry.nerf.test_rays import create_four_cameras
 
 import torch
 
-from kornia.geometry.nerf.data_utils import ImageTensors, RayDataloader, RayDataset
+from kornia.geometry.nerf.data_utils import ImageTensors, RayDataset, instantiate_ray_dataloader
 
 
 class TestDataset:
@@ -15,7 +15,7 @@ class TestDataset:
         dataset.init_ray_dataset(imgs)
 
         batch_size = 32
-        data_loader = RayDataloader(dataset, batch_size=batch_size, shufle=False)
+        data_loader = instantiate_ray_dataloader(dataset, batch_size=batch_size, shufle=False)
         d = next(iter(data_loader))  # First batch of 32 labeled rays
 
         # Check dimensions

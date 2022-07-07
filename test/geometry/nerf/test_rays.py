@@ -163,7 +163,7 @@ class TestRaySampler_3DPoints:
 
     def test_t_vals(self, device, dtype):
         cameras = create_four_cameras('cpu', torch.float32)
-        uniform_sampler_four_cameras = UniformRaySampler(1, 2)
+        uniform_sampler_four_cameras = UniformRaySampler(2, 3.5)
         uniform_sampler_four_cameras.calc_ray_params(cameras)
         lengths = sample_lengths(uniform_sampler_four_cameras.origins.shape[0], 10, irregular=False)
         points_3d = sample_ray_points(
@@ -171,4 +171,4 @@ class TestRaySampler_3DPoints:
         )
         t_vals = calc_ray_t_vals(points_3d)
         assert t_vals.shape == (3 * 28 + 45, 10)
-        assert_close(t_vals[22, -1], 1.0)  # Testing middle ray
+        assert_close(t_vals[22, -1], 1.5)  # Testing middle ray

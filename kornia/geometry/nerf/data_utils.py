@@ -83,16 +83,14 @@ class RayDataset(Dataset):  # FIXME: Add device
         return origins, directions, rgbs
 
 
-class RayDataloader(DataLoader):
-    def __init__(self, dataset: RayDataset, batch_size: int = 1, shufle: bool = True):
-        super().__init__(
-            dataset,
-            sampler=BatchSampler(
-                RandomSampler(dataset) if shufle else SequentialSampler(dataset), batch_size, drop_last=False
-            ),
-            collate_fn=self._collate_rays,
-        )
-
-    @staticmethod
-    def _collate_rays(items: List[RayBatch]) -> RayBatch:
+def instantiate_ray_dataloader(dataset: RayDataset, batch_size: int = 1, shufle: bool = True):
+    def collate_rays(items: List[RayBatch]) -> RayBatch:
         return items[0]
+
+    return DataLoader(
+        dataset,
+        sampler=BatchSampler(
+            RandomSampler(dataset) if shufle else SequentialSampler(dataset), batch_size, drop_last=False
+        ),
+        collate_fn=collate_rays,
+    )

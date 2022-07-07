@@ -7,8 +7,9 @@ class TestPositionalEncoder:
     def test_dimensions(self, device, dtype):
         num_rays = 15
         num_ray_points = 11
-        x = torch.rand(num_rays, num_ray_points, 3)
+        num_dims = 3
+        x = torch.rand(num_rays, num_ray_points, num_dims)
         num_freqs = 10
-        pos_encoder = PositionalEncoder(num_freqs)
+        pos_encoder = PositionalEncoder(num_dims, num_freqs)
         x_encoded = pos_encoder(x)
-        assert x_encoded.shape == (num_rays, num_ray_points, 3 * (2 * num_freqs + 1))
+        assert x_encoded.shape == (num_rays, num_ray_points, pos_encoder.num_encoded_dims)
