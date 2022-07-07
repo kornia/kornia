@@ -220,7 +220,7 @@ def binary_focal_loss_with_logits(
     KORNIA_CHECK(input.shape[-1] == pos_weight.shape[0], "Expected pos_weight equals number of "
                                                        "classes.")
 
-    probs_pos = torch.sigmoid(input)
+    probs_pos =  input.sigmoid()
     probs_neg = torch.sigmoid(-input)
     loss_tmp = -alpha * pos_weight * torch.pow(probs_neg, gamma) * target * F.logsigmoid(input) - (
         1 - alpha
