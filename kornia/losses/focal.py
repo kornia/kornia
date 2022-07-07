@@ -63,10 +63,10 @@ def focal_loss(
 
     KORNIA_CHECK_SHAPE(input, ["B", "C", "*"])
 
-    n = input.size(0)
-    out_size = (n,) + input.size()[2:]
+    n = input.shape[0]
+    out_size = (n,) + input.shape[2:]
 
-    KORNIA_CHECK(target.size()[1:] == input.size()[2:], f'Expected target size {out_size}, got {target.size()}')
+    KORNIA_CHECK(target.shape[1:] == input.shape[2:], f'Expected target size {out_size}, got {target.size()}')
     KORNIA_CHECK(
         input.device == target.device,
         f"input and target must be in the same device. Got: {input.device} and {target.device}",
@@ -199,15 +199,15 @@ def binary_focal_loss_with_logits(
 
     KORNIA_CHECK_SHAPE(input, ["B", "C", "*"])
     KORNIA_CHECK(
-        input.size(0) == target.size(0),
-        f'Expected input batch_size ({input.size(0)}) to match target batch_size ({target.size(0)}).',
+        input.shape[0] == target.shape[0],
+        f'Expected input batch_size ({input.shape[0]}) to match target batch_size ({target.shape[0]}).',
     )
 
     if pos_weight is None:
-        pos_weight = torch.ones(input.size(-1), device=input.device, dtype=input.dtype)
+        pos_weight = torch.ones(input.shape[-1], device=input.device, dtype=input.dtype)
 
     KORNIA_CHECK_IS_TENSOR(pos_weight)
-    KORNIA_CHECK(input.shape[-1] == pos_weight.shape[0], "Expected pos_weight equals number of " "classes.")
+    KORNIA_CHECK(input.shape[-1] == pos_weight.shape[0], "Expected pos_weight equals number of classes.")
 
     probs_pos = input.sigmoid()
     probs_neg = torch.sigmoid(-input)
