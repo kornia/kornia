@@ -217,15 +217,14 @@ def binary_focal_loss_with_logits(
         pos_weight = torch.ones(input.size(-1), device=input.device, dtype=input.dtype)
 
     KORNIA_CHECK_IS_TENSOR(pos_weight)
-    KORNIA_CHECK(input.shape[-1] == pos_weight.shape[0], "Expected pos_weight equals number of "
-                                                       "classes.")
+    KORNIA_CHECK(input.shape[-1] == pos_weight.shape[0], "Expected pos_weight equals number of " "classes.")
 
-    probs_pos =  input.sigmoid()
+    probs_pos = input.sigmoid()
     probs_neg = torch.sigmoid(-input)
 
-    loss_tmp = -alpha * pos_weight * probs_neg.pow(gamma) * target * input.logsigmoid() - (
-        1 - alpha
-    ) * torch.pow(probs_pos, gamma) * (1.0 - target) * F.logsigmoid(-input)
+    loss_tmp = -alpha * pos_weight * probs_neg.pow(gamma) * target * input.logsigmoid() - (1 - alpha) * torch.pow(
+        probs_pos, gamma
+    ) * (1.0 - target) * F.logsigmoid(-input)
 
     if reduction == 'none':
         loss = loss_tmp
@@ -276,11 +275,7 @@ class BinaryFocalLossWithLogits(nn.Module):
     """
 
     def __init__(
-        self,
-        alpha: float,
-        gamma: float = 2.0,
-        reduction: str = 'none',
-        pos_weight: Optional[Tensor] = None
+        self, alpha: float, gamma: float = 2.0, reduction: str = 'none', pos_weight: Optional[Tensor] = None
     ) -> None:
         super().__init__()
         self.alpha: float = alpha
