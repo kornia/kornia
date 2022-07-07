@@ -80,7 +80,7 @@ def focal_loss(
         raise ValueError(f"input and target must be in the same device. Got: {input.device} and {target.device}")
 
     # compute softmax over the classes axis
-    input_soft: Tensor = F.softmax(input, dim=1)
+    input_soft: Tensor = input.softmax(1)
     log_input_soft: Tensor = F.log_softmax(input, dim=1)
 
     # create the labels one hot tensor
