@@ -67,7 +67,10 @@ def focal_loss(
     out_size = (n,) + input.size()[2:]
 
     KORNIA_CHECK(target.size()[1:] == input.size()[2:], f'Expected target size {out_size}, got {target.size()}')
-    KORNIA_CHECK(input.device == target.device, f"input and target must be in the same device. Got: {input.device} and {target.device}")
+    KORNIA_CHECK(
+        input.device == target.device,
+        f"input and target must be in the same device. Got: {input.device} and {target.device}",
+    )
 
     # compute softmax over the classes axis
     input_soft: Tensor = input.softmax(1)
@@ -195,7 +198,10 @@ def binary_focal_loss_with_logits(
         )
 
     KORNIA_CHECK_SHAPE(input, ["B", "C", "*"])
-    KORNIA_CHECK(input.size(0) == target.size(0), f'Expected input batch_size ({input.size(0)}) to match target batch_size ({target.size(0)}).')
+    KORNIA_CHECK(
+        input.size(0) == target.size(0),
+        f'Expected input batch_size ({input.size(0)}) to match target batch_size ({target.size(0)}).',
+    )
 
     if pos_weight is None:
         pos_weight = torch.ones(input.size(-1), device=input.device, dtype=input.dtype)
@@ -206,9 +212,10 @@ def binary_focal_loss_with_logits(
     probs_pos = input.sigmoid()
     probs_neg = torch.sigmoid(-input)
 
-    loss_tmp = -alpha * pos_weight * probs_neg.pow(gamma) * target * input.sigmoid().log() - (1 - alpha) * torch.pow(
-        probs_pos, gamma
-    ) * (1.0 - target) * -input.sigmoid().log()
+    loss_tmp = (
+        -alpha * pos_weight * probs_neg.pow(gamma) * target * input.sigmoid().log()
+        - (1 - alpha) * torch.pow(probs_pos, gamma) * (1.0 - target) * -input.sigmoid().log()
+    )
 
     if reduction == 'none':
         loss = loss_tmp
