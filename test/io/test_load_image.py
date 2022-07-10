@@ -9,7 +9,7 @@ import torch
 
 from kornia.core import Tensor
 from kornia.io import ImageLoadType, load_image
-from kornia.utils._compat import torch_version_geq
+from kornia.utils._compat import torch_version_ge
 
 try:
     import kornia_rs
@@ -19,7 +19,7 @@ except ImportError:
 
 def available_package() -> bool:
     return (
-        sys.version_info >= (3, 7, 0) and sys.platform == "linux" and torch_version_geq(1, 10) and kornia_rs is not None
+        sys.version_info >= (3, 7, 0) and torch_version_ge(1, 10, 0) and kornia_rs is not None
     )
 
 
