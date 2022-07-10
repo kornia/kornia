@@ -33,5 +33,5 @@ jobs:
       with:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         BRANCH: gh_pages # The branch the action should deploy to.
-        FOLDER: doc/html-dir # The folder the action should deploy.
+        FOLDER: docs/build/html # The folder the action should deploy.
         CLEAN: true # Automatically remove deleted files from the deploy branch
