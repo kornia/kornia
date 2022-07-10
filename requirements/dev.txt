@@ -4,9 +4,9 @@ flake8==4.0.1
 pytest-cov==3.0.0
 #pytest-mypy==0.9.1
 pytest-mypy
-pydocstyle==0.6.11
+pydocstyle
 pre-commit>=2.0
-isort==5.10.1
+isort
 numpy
 scipy
 opencv-python
