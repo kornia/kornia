@@ -21,7 +21,7 @@ jobs:
     - name: Install dependencies
       shell: bash -l {0}
       run: |
-        pip install .[all]
+        pip install -r docs/requirements.txt
     - name: Build Documentation
       shell: bash -l {0}
       run: make build-docs
