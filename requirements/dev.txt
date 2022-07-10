@@ -1,6 +1,6 @@
-pytest==6.2.5
-pytest-flake8==1.0.7
-flake8==3.9.2  # flake8==4.0.1 is buggy
+pytest==7.1.2
+pytest-flake8==1.1.1
+flake8==4.0.1
 pytest-cov==3.0.0
 pytest-mypy==0.9.1
 pytest-xdist==2.5.0
@@ -12,6 +12,6 @@ isort
 numpy
 scipy
 opencv-python
-kornia_rs==0.0.5; python_version>="3.7" and sys_platform=="linux"
+kornia_rs==0.0.5; python_version>="3.7"
 -r ../docs/requirements.txt
 -r ./x.txt  # kornia[x]
