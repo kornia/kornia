@@ -5,13 +5,9 @@ on:
   push:
     branches:
       - master
-    paths:
-      - 'doc/**'
   pull_request:
     branches:
       - master
-    paths:
-      - 'doc/**'
 
 jobs:
   build-docs:
