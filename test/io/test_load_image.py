@@ -18,9 +18,7 @@ except ImportError:
 
 
 def available_package() -> bool:
-    return (
-        sys.version_info >= (3, 7, 0) and torch_version_ge(1, 10, 0) and kornia_rs is not None
-    )
+    return sys.version_info >= (3, 7, 0) and torch_version_ge(1, 10, 0) and kornia_rs is not None
 
 
 def create_random_img8(height: int, width: int, channels: int) -> np.ndarray:
