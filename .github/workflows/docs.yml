@@ -1,12 +1,13 @@
 name: test-docs
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - master
   pull_request:
-  schedule:
-    - cron: "0 4 * * *"
+    branches:
+      - master
 
 jobs:
   build-docs:
@@ -26,3 +27,11 @@ jobs:
     - name: Build Documentation
       shell: bash -l {0}
       run: make build-docs
+    - name: Deploy to GitHub Pages
+      if: ${{ github.event_name != 'pull_request' }}
+      uses: JamesIves/github-pages-deploy-action@3.7.1
+      with:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        BRANCH: gh_pages # The branch the action should deploy to.
+        FOLDER: docs/build/html # The folder the action should deploy.
+        CLEAN: true # Automatically remove deleted files from the deploy branch
