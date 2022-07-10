@@ -1,7 +1,7 @@
-import pytest
 import torch
 
 import kornia
+from kornia.testing import assert_close
 
 
 class TestOneHot:
@@ -16,7 +16,7 @@ class TestOneHot:
         # convert labels to one hot tensor
         one_hot = kornia.utils.one_hot(labels, num_classes)
 
-        assert pytest.approx(one_hot[0, labels[0, 0, 0], 0, 0].item(), 1.0)
-        assert pytest.approx(one_hot[0, labels[0, 1, 0], 1, 0].item(), 1.0)
-        assert pytest.approx(one_hot[1, labels[1, 0, 0], 0, 0].item(), 1.0)
-        assert pytest.approx(one_hot[1, labels[1, 1, 0], 1, 0].item(), 1.0)
+        assert_close(one_hot[0, labels[0, 0, 0], 0, 0], 1.0)
+        assert_close(one_hot[0, labels[0, 1, 0], 1, 0], 1.0)
+        assert_close(one_hot[1, labels[1, 0, 0], 0, 0], 1.0)
+        assert_close(one_hot[1, labels[1, 1, 0], 1, 0], 1.0)
