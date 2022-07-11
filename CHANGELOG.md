@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add Lovasz-Hinge/Softmax losses (#1682)
 - Add `adjust_sigmoid` and `adjust_log` initial implementation (#1685)
 - Added distribution mapper (#1667)
+- `pos_weight` param to focal loss (#1744)
 
 ### :lady_beetle: Bug fixes
 - Fixes filter2d's output shape shrink when padding='same' (#1661)
