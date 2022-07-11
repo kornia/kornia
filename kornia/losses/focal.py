@@ -3,8 +3,9 @@ from typing import Optional
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
+from kornia.core import Tensor
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.utils.one_hot import one_hot
 
 # based on:
@@ -12,13 +13,13 @@ from kornia.utils.one_hot import one_hot
 
 
 def focal_loss(
-    input: torch.Tensor,
-    target: torch.Tensor,
+    input: Tensor,
+    target: Tensor,
     alpha: float,
     gamma: float = 2.0,
     reduction: str = 'none',
     eps: Optional[float] = None,
-) -> torch.Tensor:
+) -> Tensor:
     r"""Criterion that computes Focal loss.
 
     According to :cite:`lin2018focal`, the Focal loss is computed as follows:
@@ -60,29 +61,23 @@ def focal_loss(
             stacklevel=2,
         )
 
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+    KORNIA_CHECK_SHAPE(input, ["B", "C", "*"])
 
-    if not len(input.shape) >= 2:
-        raise ValueError(f"Invalid input shape, we expect BxCx*. Got: {input.shape}")
+    n = input.shape[0]
+    out_size = (n,) + input.shape[2:]
 
-    if input.size(0) != target.size(0):
-        raise ValueError(f'Expected input batch_size ({input.size(0)}) to match target batch_size ({target.size(0)}).')
-
-    n = input.size(0)
-    out_size = (n,) + input.size()[2:]
-    if target.size()[1:] != input.size()[2:]:
-        raise ValueError(f'Expected target size {out_size}, got {target.size()}')
-
-    if not input.device == target.device:
-        raise ValueError(f"input and target must be in the same device. Got: {input.device} and {target.device}")
+    KORNIA_CHECK(target.shape[1:] == input.shape[2:], f'Expected target size {out_size}, got {target.size()}')
+    KORNIA_CHECK(
+        input.device == target.device,
+        f"input and target must be in the same device. Got: {input.device} and {target.device}",
+    )
 
     # compute softmax over the classes axis
-    input_soft: torch.Tensor = F.softmax(input, dim=1)
-    log_input_soft: torch.Tensor = F.log_softmax(input, dim=1)
+    input_soft: Tensor = input.softmax(1)
+    log_input_soft: Tensor = input.log_softmax(1)
 
     # create the labels one hot tensor
-    target_one_hot: torch.Tensor = one_hot(target, num_classes=input.shape[1], device=input.device, dtype=input.dtype)
+    target_one_hot: Tensor = one_hot(target, num_classes=input.shape[1], device=input.device, dtype=input.dtype)
 
     # compute the actual focal loss
     weight = torch.pow(-input_soft + 1.0, gamma)
@@ -146,18 +141,19 @@ class FocalLoss(nn.Module):
         self.reduction: str = reduction
         self.eps: Optional[float] = eps
 
-    def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: Tensor, target: Tensor) -> Tensor:
         return focal_loss(input, target, self.alpha, self.gamma, self.reduction, self.eps)
 
 
 def binary_focal_loss_with_logits(
-    input: torch.Tensor,
-    target: torch.Tensor,
+    input: Tensor,
+    target: Tensor,
     alpha: float = 0.25,
     gamma: float = 2.0,
     reduction: str = 'none',
     eps: Optional[float] = None,
-) -> torch.Tensor:
+    pos_weight: Optional[Tensor] = None,
+) -> Tensor:
     r"""Function that computes Binary Focal loss.
 
     .. math::
@@ -178,6 +174,9 @@ def binary_focal_loss_with_logits(
           the number of elements in the output, ``'sum'``: the output will be
           summed.
         eps: Deprecated: scalar for numerically stability when dividing. This is no longer used.
+        pos_weight: a weight of positive examples.
+          It’s possible to trade off recall and precision by adding weights to positive examples.
+          Must be a vector with length equal to the number of classes.
 
     Returns:
         the computed loss.
@@ -198,20 +197,25 @@ def binary_focal_loss_with_logits(
             stacklevel=2,
         )
 
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+    KORNIA_CHECK_SHAPE(input, ["B", "C", "*"])
+    KORNIA_CHECK(
+        input.shape[0] == target.shape[0],
+        f'Expected input batch_size ({input.shape[0]}) to match target batch_size ({target.shape[0]}).',
+    )
 
-    if not len(input.shape) >= 2:
-        raise ValueError(f"Invalid input shape, we expect BxCx*. Got: {input.shape}")
+    if pos_weight is None:
+        pos_weight = torch.ones(input.shape[-1], device=input.device, dtype=input.dtype)
 
-    if input.size(0) != target.size(0):
-        raise ValueError(f'Expected input batch_size ({input.size(0)}) to match target batch_size ({target.size(0)}).')
+    KORNIA_CHECK_IS_TENSOR(pos_weight)
+    KORNIA_CHECK(input.shape[-1] == pos_weight.shape[0], "Expected pos_weight equals number of classes.")
 
-    probs_pos = torch.sigmoid(input)
+    probs_pos = input.sigmoid()
     probs_neg = torch.sigmoid(-input)
-    loss_tmp = -alpha * torch.pow(probs_neg, gamma) * target * F.logsigmoid(input) - (1 - alpha) * torch.pow(
-        probs_pos, gamma
-    ) * (1.0 - target) * F.logsigmoid(-input)
+
+    loss_tmp = (
+        -alpha * pos_weight * probs_neg.pow(gamma) * target * input.sigmoid().log()
+        - (1 - alpha) * torch.pow(probs_pos, gamma) * (1.0 - target) * (-input).sigmoid().log()
+    )
 
     if reduction == 'none':
         loss = loss_tmp
@@ -237,13 +241,16 @@ class BinaryFocalLossWithLogits(nn.Module):
        - :math:`p_t` is the model's estimated probability for each class.
 
     Args:
-        alpha): Weighting factor for the rare class :math:`\alpha \in [0, 1]`.
+        alpha: Weighting factor for the rare class :math:`\alpha \in [0, 1]`.
         gamma: Focusing parameter :math:`\gamma >= 0`.
         reduction: Specifies the reduction to apply to the
           output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
           will be applied, ``'mean'``: the sum of the output will be divided by
           the number of elements in the output, ``'sum'``: the output will be
           summed.
+        pos_weight: a weight of positive examples.
+          It’s possible to trade off recall and precision by adding weights to positive examples.
+          Must be a vector with length equal to the number of classes.
 
     Shape:
         - Input: :math:`(N, *)`.
@@ -258,11 +265,16 @@ class BinaryFocalLossWithLogits(nn.Module):
         >>> output.backward()
     """
 
-    def __init__(self, alpha: float, gamma: float = 2.0, reduction: str = 'none') -> None:
+    def __init__(
+        self, alpha: float, gamma: float = 2.0, reduction: str = 'none', pos_weight: Optional[Tensor] = None
+    ) -> None:
         super().__init__()
         self.alpha: float = alpha
         self.gamma: float = gamma
         self.reduction: str = reduction
+        self.pos_weight: Optional[Tensor] = pos_weight
 
-    def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        return binary_focal_loss_with_logits(input, target, self.alpha, self.gamma, self.reduction)
+    def forward(self, input: Tensor, target: Tensor) -> Tensor:
+        return binary_focal_loss_with_logits(
+            input, target, self.alpha, self.gamma, self.reduction, pos_weight=self.pos_weight
+        )
