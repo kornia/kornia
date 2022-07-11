@@ -215,6 +215,11 @@ def KORNIA_CHECK_IS_TENSOR(x, msg: Optional[str] = None):
         raise TypeError(f"Not a Tensor type. Got: {type(x)}.\n{msg}")
 
 
+def KORNIA_CHECK_SAME_DEVICES(tensors: List[Tensor], msg: Optional[str] = None):
+    if not all(tensors[0].device == x.device for x in tensors):
+        raise Exception(f"Not same device for tensors. Got: {[x.device for x in tensors]}.\n{msg}")
+
+
 def KORNIA_CHECK_IS_COLOR(x: Tensor, msg: Optional[str] = None):
     if len(x.shape) < 3 or x.shape[-3] != 3:
         raise TypeError(f"Not a color tensor. Got: {type(x)}.\n{msg}")
