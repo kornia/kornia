@@ -220,6 +220,7 @@ def KORNIA_CHECK_IS_TENSOR(x, msg: Optional[str] = None):
 
 
 def KORNIA_CHECK_SAME_DEVICES(tensors: List[Tensor], msg: Optional[str] = None):
+  KORNIA_CHECK(isinstance(tensors, list) and len(tensors) >= 1, "Expected a list with at least one element")
     if not all(tensors[0].device == x.device for x in tensors):
         raise Exception(f"Not same device for tensors. Got: {[x.device for x in tensors]}.\n{msg}")
 
