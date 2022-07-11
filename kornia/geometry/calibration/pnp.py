@@ -8,9 +8,7 @@ from kornia.utils import eye_like
 from kornia.utils._compat import linalg_qr
 
 
-def _mean_isotropic_scale_normalize(
-    points: torch.Tensor, eps: float = 1e-8
-) -> Tuple[torch.Tensor, torch.Tensor]:
+def _mean_isotropic_scale_normalize(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Normalizes points.
 
     Args:
@@ -46,8 +44,10 @@ def _mean_isotropic_scale_normalize(
 
 
 def solve_pnp_dlt(
-    world_points: torch.Tensor, img_points: torch.Tensor,
-    intrinsics: torch.Tensor, weights: Optional[torch.Tensor] = None,
+    world_points: torch.Tensor,
+    img_points: torch.Tensor,
+    intrinsics: torch.Tensor,
+    weights: Optional[torch.Tensor] = None,
     svd_eps: float = 1e-4,
 ) -> torch.Tensor:
     r"""This function attempts to solve the Perspective-n-Point (PnP)
@@ -134,14 +134,10 @@ def solve_pnp_dlt(
         )
 
     if not isinstance(img_points, torch.Tensor):
-        raise AssertionError(
-            f"img_points is not an instance of torch.Tensor. Type of img_points is {type(img_points)}"
-        )
+        raise AssertionError(f"img_points is not an instance of torch.Tensor. Type of img_points is {type(img_points)}")
 
     if not isinstance(intrinsics, torch.Tensor):
-        raise AssertionError(
-            f"intrinsics is not an instance of torch.Tensor. Type of intrinsics is {type(intrinsics)}"
-        )
+        raise AssertionError(f"intrinsics is not an instance of torch.Tensor. Type of intrinsics is {type(intrinsics)}")
 
     if (weights is not None) and (not isinstance(weights, torch.Tensor)):
         raise AssertionError(
@@ -173,19 +169,13 @@ def solve_pnp_dlt(
         )
 
     if (len(world_points.shape) != 3) or (world_points.shape[2] != 3):
-        raise AssertionError(
-            f"world_points must be of shape (B, N, 3). Got shape {world_points.shape}."
-        )
+        raise AssertionError(f"world_points must be of shape (B, N, 3). Got shape {world_points.shape}.")
 
     if (len(img_points.shape) != 3) or (img_points.shape[2] != 2):
-        raise AssertionError(
-            f"img_points must be of shape (B, N, 2). Got shape {img_points.shape}."
-        )
+        raise AssertionError(f"img_points must be of shape (B, N, 2). Got shape {img_points.shape}.")
 
     if (len(intrinsics.shape) != 3) or (intrinsics.shape[1:] != (3, 3)):
-        raise AssertionError(
-            f"intrinsics must be of shape (B, 3, 3). Got shape {intrinsics.shape}."
-        )
+        raise AssertionError(f"intrinsics must be of shape (B, 3, 3). Got shape {intrinsics.shape}.")
 
     if world_points.shape[1] != img_points.shape[1]:
         raise AssertionError("world_points and img_points must have equal number of points.")
@@ -195,8 +185,7 @@ def solve_pnp_dlt(
 
     if world_points.shape[1] < 6:
         raise AssertionError(
-            f"At least 6 points are required to use this function. "
-            f"Got {world_points.shape[1]} points."
+            f"At least 6 points are required to use this function. " f"Got {world_points.shape[1]} points."
         )
 
     B, N = world_points.shape[:2]

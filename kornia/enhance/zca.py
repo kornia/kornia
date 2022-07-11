@@ -82,6 +82,10 @@ class ZCAWhitening(nn.Module):
 
         self.fitted = False
 
+        self.mean_vector: torch.Tensor
+        self.transform_matrix: torch.Tensor
+        self.transform_inv: Optional[torch.Tensor]
+
     def fit(self, x: torch.Tensor):
         r"""Fit ZCA whitening matrices to the data.
 
@@ -96,9 +100,9 @@ class ZCAWhitening(nn.Module):
         T, mean, T_inv = zca_mean(x, self.dim, self.unbiased, self.eps, self.compute_inv)
 
         self.mean_vector = mean
-        self.transform_matrix: torch.Tensor = T
+        self.transform_matrix = T
         if T_inv is None:
-            self.transform_inv: Optional[torch.Tensor] = torch.empty([0])
+            self.transform_inv = torch.empty([0])
         else:
             self.transform_inv = T_inv
 
@@ -228,7 +232,7 @@ def zca_mean(
     inp_permute = inp.permute(new_order)
 
     N = inp_size[dim]
-    feature_sizes = torch.tensor(inp_size[0:dim] + inp_size[dim + 1::])
+    feature_sizes = torch.tensor(inp_size[0:dim] + inp_size[dim + 1 : :])
     num_features: int = int(torch.prod(feature_sizes).item())
 
     mean: torch.Tensor = torch.mean(inp_permute, dim=0, keepdim=True)
@@ -368,7 +372,7 @@ def linear_transform(
     new_order: List[int] = perm.tolist()
     inv_order: List[int] = perm_inv.tolist()
 
-    feature_sizes = torch.tensor(inp_size[0:dim] + inp_size[dim + 1::])
+    feature_sizes = torch.tensor(inp_size[0:dim] + inp_size[dim + 1 : :])
     num_features: int = int(torch.prod(feature_sizes).item())
 
     inp_permute = inp.permute(new_order)

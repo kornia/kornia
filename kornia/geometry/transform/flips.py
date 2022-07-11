@@ -1,14 +1,7 @@
 import torch
 import torch.nn as nn
 
-__all__ = [
-    "Vflip",
-    "Hflip",
-    "Rot180",
-    "rot180",
-    "hflip",
-    "vflip",
-]
+__all__ = ["Vflip", "Hflip", "Rot180", "rot180", "hflip", "vflip"]
 
 
 class Vflip(nn.Module):

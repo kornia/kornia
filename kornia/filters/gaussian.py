@@ -7,11 +7,13 @@ from .filter import filter2d, filter2d_separable
 from .kernels import get_gaussian_kernel1d, get_gaussian_kernel2d
 
 
-def gaussian_blur2d(input: torch.Tensor,
-                    kernel_size: Tuple[int, int],
-                    sigma: Tuple[float, float],
-                    border_type: str = 'reflect',
-                    separable: bool = True) -> torch.Tensor:
+def gaussian_blur2d(
+    input: torch.Tensor,
+    kernel_size: Tuple[int, int],
+    sigma: Tuple[float, float],
+    border_type: str = 'reflect',
+    separable: bool = True,
+) -> torch.Tensor:
     r"""Create an operator that blurs a tensor using a Gaussian filter.
 
     .. image:: _static/img/gaussian_blur2d.png
@@ -81,11 +83,13 @@ class GaussianBlur2d(nn.Module):
         torch.Size([2, 4, 5, 5])
     """
 
-    def __init__(self,
-                 kernel_size: Tuple[int, int],
-                 sigma: Tuple[float, float],
-                 border_type: str = 'reflect',
-                 separable: bool = True) -> None:
+    def __init__(
+        self,
+        kernel_size: Tuple[int, int],
+        sigma: Tuple[float, float],
+        border_type: str = 'reflect',
+        separable: bool = True,
+    ) -> None:
         super().__init__()
         self.kernel_size: Tuple[int, int] = kernel_size
         self.sigma: Tuple[float, float] = sigma
@@ -109,8 +113,4 @@ class GaussianBlur2d(nn.Module):
         )
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        return gaussian_blur2d(input,
-                               self.kernel_size,
-                               self.sigma,
-                               self.border_type,
-                               self.separable)
+        return gaussian_blur2d(input, self.kernel_size, self.sigma, self.border_type, self.separable)

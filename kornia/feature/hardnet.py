@@ -66,9 +66,7 @@ class HardNet(nn.Module):
         # use torch.hub to load pretrained model
         if pretrained:
             storage_fcn: Callable = lambda storage, loc: storage
-            pretrained_dict = torch.hub.load_state_dict_from_url(
-                urls['liberty_aug'], map_location=storage_fcn
-            )
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls['liberty_aug'], map_location=storage_fcn)
             self.load_state_dict(pretrained_dict['state_dict'], strict=True)
         self.eval()
 
@@ -147,9 +145,7 @@ class HardNet8(nn.Module):
         # use torch.hub to load pretrained model
         if pretrained:
             storage_fcn: Callable = lambda storage, loc: storage
-            pretrained_dict = torch.hub.load_state_dict_from_url(
-                urls['hardnet8v2'], map_location=storage_fcn
-            )
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls['hardnet8v2'], map_location=storage_fcn)
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
