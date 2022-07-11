@@ -23,7 +23,7 @@ jobs:
       shell: bash -l {0}
       run: |
         pip install -r docs/requirements.txt
-        pip install .[all]
+        pip install .
     - name: Build Documentation
       shell: bash -l {0}
       run: make build-docs
