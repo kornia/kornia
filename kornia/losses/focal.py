@@ -184,7 +184,7 @@ def binary_focal_loss_with_logits(
     Examples:
         >>> kwargs = {"alpha": 0.25, "gamma": 2.0, "reduction": 'mean'}
         >>> logits = torch.tensor([[[6.325]],[[5.26]],[[87.49]]])
-        >>> labels = tensor([[[1.]],[[1.]],[[0.]]])
+        >>> labels = torch.tensor([[[1.]],[[1.]],[[0.]]])
         >>> binary_focal_loss_with_logits(logits, labels, **kwargs)
         tensor(21.8725)
     """
