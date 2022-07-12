@@ -103,8 +103,8 @@ def create_extrinsics_with_rotation(alphas, betas, gammas, txs, tys, tzs, device
 
 
 def create_four_cameras(device, dtype) -> kornia.geometry.camera.PinholeCamera:
-    height = torch.tensor([5, 4, 4, 4])
-    width = torch.tensor([9, 7, 7, 7])
+    height = torch.tensor([5, 4, 4, 4], device=device, dtype=dtype)
+    width = torch.tensor([9, 7, 7, 7], device=device, dtype=dtype)
 
     fx = width.tolist()
     fy = height.tolist()
@@ -130,7 +130,7 @@ def create_four_cameras(device, dtype) -> kornia.geometry.camera.PinholeCamera:
 
 class TestRaySampler_3DPoints:
     def test_dimensions_uniform_sampler(self, device, dtype):
-        cameras = create_four_cameras('cpu', torch.float32)
+        cameras = create_four_cameras(device, dtype)
         uniform_sampler_four_cameras = UniformRaySampler(1, 1)
         points_2d_four_cameras = uniform_sampler_four_cameras.sample_points_2d(cameras.height, cameras.width)
         cameras_28 = cameras_for_ids(cameras, points_2d_four_cameras[28].camera_ids)
@@ -141,7 +141,7 @@ class TestRaySampler_3DPoints:
         assert points_3d_40.shape == (1, 45, 3)
 
     def test_dimensions_ray_params(self, device, dtype):
-        cameras = create_four_cameras('cpu', torch.float32)
+        cameras = create_four_cameras(device, dtype)
         uniform_sampler_four_cameras = UniformRaySampler(1, 2)
         uniform_sampler_four_cameras.calc_ray_params(cameras)
         lengths = sample_lengths(uniform_sampler_four_cameras.origins.shape[0], 10, irregular=True)
@@ -152,7 +152,7 @@ class TestRaySampler_3DPoints:
         assert lengths.shape == (3 * 28 + 45, 10)
 
     def test_dimensions_sample_ray_points(self, device, dtype):
-        cameras = create_four_cameras('cpu', torch.float32)
+        cameras = create_four_cameras(device, torch.float32)
         uniform_sampler_four_cameras = UniformRaySampler(1, 2)
         uniform_sampler_four_cameras.calc_ray_params(cameras)
         lengths = sample_lengths(uniform_sampler_four_cameras.origins.shape[0], 10, irregular=True)
@@ -162,7 +162,7 @@ class TestRaySampler_3DPoints:
         assert points_3d.shape == (3 * 28 + 45, 10, 3)
 
     def test_t_vals(self, device, dtype):
-        cameras = create_four_cameras('cpu', torch.float32)
+        cameras = create_four_cameras(device, dtype)
         uniform_sampler_four_cameras = UniformRaySampler(2, 3.5)
         uniform_sampler_four_cameras.calc_ray_params(cameras)
         lengths = sample_lengths(uniform_sampler_four_cameras.origins.shape[0], 10, irregular=False)
@@ -172,3 +172,11 @@ class TestRaySampler_3DPoints:
         t_vals = calc_ray_t_vals(points_3d)
         assert t_vals.shape == (3 * 28 + 45, 10)
         assert_close(t_vals[22, -1], 1.5)  # Testing middle ray
+
+    def test_dimensions_ray_params_in_ndc(self, device, dtype):
+        cameras = create_four_cameras(device, dtype)
+        uniform_sampler_four_cameras = UniformRaySampler(2, 3.5)
+        uniform_sampler_four_cameras.calc_ray_params(cameras)
+        origins_ndc, directions_ndc = uniform_sampler_four_cameras.transform_ray_params_world_to_ndc(cameras)
+        assert origins_ndc.shape == (3 * 28 + 45, 3)
+        assert directions_ndc.shape == (3 * 28 + 45, 3)
