@@ -3,6 +3,7 @@ from typing import Dict, List, Tuple
 import torch
 
 from kornia.geometry.camera import PinholeCamera
+from kornia.geometry.linalg import transform_points
 
 
 def cameras_for_ids(cameras: PinholeCamera, camera_ids: List[int]):
@@ -86,13 +87,24 @@ class RaySampler:  # FIXME: Add device handling!!
         self._camera_ids = torch.cat(camera_ids)
         self._points_2d = torch.cat(points_2d)
 
-    def transform_ray_params_world_to_ndc(self) -> Tuple[torch.Tensor, torch.Tensor]:
+    def transform_ray_params_world_to_ndc(self, cameras: PinholeCamera) -> Tuple[torch.Tensor, torch.Tensor]:
         num_rays = self._origins.shape[0]
         lengths = sample_lengths(num_rays, 2, irregular=False)
         points_3d = sample_ray_points(self._origins, self._directions, lengths)
-        print(points_3d)
-        # FIXME: Continue with: 1) building projection matrix world->ndc; 2) projecting points3d to ndc; 3) calculating
-        # origins and directions in ndc from 3d point pairs
+        H = torch.zeros((num_rays, 4, 4))  # FIXME: Add device and type
+        fx = cameras.fx[self._camera_ids]
+        fy = cameras.fy[self._camera_ids]
+        widths = cameras.width[self._camera_ids]
+        heights = cameras.height[self._camera_ids]
+        H[..., 0, 0] = 2.0 * fx / widths
+        H[..., 1, 1] = 2.0 * fy / heights
+        H[..., 2, 2] = -1.0
+        H[..., 2, 3] = -2.0 * self._min_depth
+        H[..., 3, 2] = 1.0  # FIXME: Think more on the sign here
+        points_3d_ndc = transform_points(H, points_3d)
+        origins = points_3d_ndc[..., :1, :].squeeze()
+        directions = (points_3d_ndc[..., :1, :] - points_3d_ndc[..., 1:, :]).squeeze()
+        return origins, directions
 
     @staticmethod
     def _add_points2d_as_lists_to_num_ray_dict(
@@ -187,6 +199,8 @@ def sample_ray_points(
         directions: tensor containing ray directions in 3d world coordinates. Tensor shape :math:`(*, 3)`.
         lengths: tensor cotaining sampled distances along each ray. Tensor shape :math:`(*, num_ray_points)`.
 
+    Returns:
+        points_3d: Points along rays :math:`(*, num_ray_points, 3)`
     """
     points_3d = origins[..., None, :] + lengths[..., None] * directions[..., None, :]
     return points_3d
