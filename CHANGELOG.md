@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added antialiasing option to Resize augmentation (#1687)
 - Use nearest neighbour interpolation for masks (#1630)
 - grayscale to rgb for `torch.uint8` (#1705)
+- Add `KORNIA_CHECK_SAME_DEVICES` (#1775)
 
 ## :rocket: [0.6.4] - 2022-03-19
 ### :new:  New Features
