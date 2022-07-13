@@ -4,6 +4,7 @@ import torch
 
 from kornia.geometry.camera import PinholeCamera
 from kornia.geometry.linalg import transform_points
+from kornia.utils.helpers import _torch_inverse_cast
 
 
 def cameras_for_ids(cameras: PinholeCamera, camera_ids: List[int]):
@@ -91,8 +92,11 @@ class RaySampler:  # FIXME: Add device handling!!
         num_rays = self._origins.shape[0]
         lengths = sample_lengths(num_rays, 2, irregular=False)
         points_3d = sample_ray_points(self._origins, self._directions, lengths)
+        cams = cameras_for_ids(cameras, self._camera_ids)
+        points_3d_cams = cams.transform_to_camera_view(points_3d)
+
         H = torch.zeros((num_rays, 4, 4))  # FIXME: Add device and type
-        fx = cameras.fx[self._camera_ids]
+        fx = cameras.fx[self._camera_ids]  # FIXME: It would be cleaner to take from 'cams'
         fy = cameras.fy[self._camera_ids]
         widths = cameras.width[self._camera_ids]
         heights = cameras.height[self._camera_ids]
@@ -101,9 +105,20 @@ class RaySampler:  # FIXME: Add device handling!!
         H[..., 2, 2] = -1.0
         H[..., 2, 3] = -2.0 * self._min_depth
         H[..., 3, 2] = 1.0  # FIXME: Think more on the sign here
-        points_3d_ndc = transform_points(H, points_3d)
-        origins = points_3d_ndc[..., :1, :].squeeze()
-        directions = (points_3d_ndc[..., :1, :] - points_3d_ndc[..., 1:, :]).squeeze()
+        points_3d_ndc = transform_points(H, points_3d_cams)
+
+        # points_3d_ndc_world = cams.transform_to_world(points_3d_ndc)
+
+        # FIXME: This part should be revised to something cleaner - maybe move to Pinhole class
+        E = torch.clone(cams.extrinsics)
+        E[..., 0, -1] = 0
+        E[..., 1, -1] = 0
+        E[..., 2, -1] = 0
+        E_inv = _torch_inverse_cast(E)
+        points_3d_ndc_world = transform_points(E_inv, points_3d_ndc)
+
+        origins = points_3d_ndc_world[..., :1, :].squeeze()
+        directions = (points_3d_ndc_world[..., :1, :] - points_3d_ndc_world[..., 1:, :]).squeeze()
         return origins, directions
 
     @staticmethod
