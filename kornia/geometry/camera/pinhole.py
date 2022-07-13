@@ -268,7 +268,7 @@ class PinholeCamera:
         self.width *= scale_factor
         return self
 
-    def project(self, point_3d: torch.Tensor) -> torch.Tensor:
+    def project(self, points_3d: torch.Tensor) -> torch.Tensor:
         r"""Project a 3d point in world coordinates onto the 2d camera plane.
 
         Args:
@@ -290,9 +290,9 @@ class PinholeCamera:
             tensor([[5.6088, 8.6827]])
         """
         P = self.intrinsics @ self.extrinsics
-        return convert_points_from_homogeneous(transform_points(P, point_3d))
+        return convert_points_from_homogeneous(transform_points(P, points_3d))
 
-    def unproject(self, point_2d: torch.Tensor, depth: torch.Tensor):
+    def unproject(self, points_2d: torch.Tensor, depth: torch.Tensor):
         r"""Unproject a 2d point in 3d.
 
         Transform coordinates in the pixel frame to the world frame.
@@ -323,7 +323,14 @@ class PinholeCamera:
         """
         P = self.intrinsics @ self.extrinsics
         P_inv = _torch_inverse_cast(P)
-        return transform_points(P_inv, convert_points_to_homogeneous(point_2d) * depth)
+        return transform_points(P_inv, convert_points_to_homogeneous(points_2d) * depth)
+
+    def transform_to_camera_view(self, points_3d: torch.Tensor) -> torch.Tensor:
+        return transform_points(self.extrinsics, points_3d)
+
+    def transform_to_world(self, points_3d: torch.Tensor) -> torch.Tensor:
+        R_inv = _torch_inverse_cast(self.extrinsics)
+        return transform_points(R_inv, points_3d)
 
     # NOTE: just for test. Decide if we keep it.
     @classmethod
