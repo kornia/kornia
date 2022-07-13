@@ -104,9 +104,7 @@ class TestRandomHorizontalFlip3D:
 
     def test_sequential(self, device):
 
-        f = AugmentationSequential(
-            RandomHorizontalFlip3D(p=1.0), RandomHorizontalFlip3D(p=1.0)
-        )
+        f = AugmentationSequential(RandomHorizontalFlip3D(p=1.0), RandomHorizontalFlip3D(p=1.0))
 
         input = torch.tensor([[[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]]]])  # 1 x 1 x 3 x 3
         input = input.to(device)
@@ -225,9 +223,7 @@ class TestRandomVerticalFlip3D:
 
     def test_sequential(self, device):
 
-        f = AugmentationSequential(
-            RandomVerticalFlip3D(p=1.0), RandomVerticalFlip3D(p=1.0)
-        )
+        f = AugmentationSequential(RandomVerticalFlip3D(p=1.0), RandomVerticalFlip3D(p=1.0))
 
         input = torch.tensor([[[[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]]]]])  # 1 x 1 x 1 x 4 x 4
         input = input.to(device)
@@ -356,9 +352,7 @@ class TestRandomDepthicalFlip3D:
 
     def test_sequential(self, device):
 
-        f = AugmentationSequential(
-            RandomDepthicalFlip3D(p=1.0), RandomDepthicalFlip3D(p=1.0)
-        )
+        f = AugmentationSequential(RandomDepthicalFlip3D(p=1.0), RandomDepthicalFlip3D(p=1.0))
 
         input = torch.tensor(
             [
@@ -571,10 +565,7 @@ class TestRandomRotation3D:
 
         torch.manual_seed(24)  # for random reproductibility
 
-        f = AugmentationSequential(
-            RandomRotation3D(torch.tensor([-45.0, 90])),
-            RandomRotation3D(10.4),
-        )
+        f = AugmentationSequential(RandomRotation3D(torch.tensor([-45.0, 90])), RandomRotation3D(10.4))
         input = torch.tensor(
             [
                 [[1.0, 0.0, 0.0, 2.0], [0.0, 0.0, 0.0, 0.0], [0.0, 1.0, 2.0, 0.0], [0.0, 0.0, 1.0, 2.0]],
@@ -719,8 +710,13 @@ class TestRandomCrop3D:
 
     def test_same_on_batch(self, device, dtype):
         f = RandomCrop3D(size=(2, 3, 4), padding=None, align_corners=True, p=1.0, same_on_batch=True)
-        input = torch.eye(
-            6, device=device, dtype=dtype).unsqueeze(dim=0).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 5, 1, 1)
+        input = (
+            torch.eye(6, device=device, dtype=dtype)
+            .unsqueeze(dim=0)
+            .unsqueeze(dim=0)
+            .unsqueeze(dim=0)
+            .repeat(2, 3, 5, 1, 1)
+        )
         res = f(input)
         assert (res[0] == res[1]).all()
 
@@ -818,7 +814,7 @@ class TestCenterCrop3D:
 
     def test_transform(self, device, dtype):
         inp = torch.rand(1, 2, 5, 4, 8, device=device, dtype=dtype)
-        aug = CenterCrop3D(2,)
+        aug = CenterCrop3D(2)
         out = aug(inp)
         assert out.shape == (1, 2, 2, 2, 2)
         assert aug.transform_matrix.shape == (1, 4, 4)

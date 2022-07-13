@@ -7,13 +7,7 @@ from kornia.geometry.bbox import infer_bbox_shape, validate_bbox
 from .affwarp import resize
 from .imgwarp import get_perspective_transform, warp_affine
 
-__all__ = [
-    "crop_and_resize",
-    "crop_by_boxes",
-    "crop_by_transform_mat",
-    "crop_by_indices",
-    "center_crop",
-]
+__all__ = ["crop_and_resize", "crop_by_boxes", "crop_by_transform_mat", "crop_by_indices", "center_crop"]
 
 
 def crop_and_resize(
@@ -170,7 +164,7 @@ def crop_by_boxes(
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
     align_corners: bool = True,
-    validate_boxes: bool = True
+    validate_boxes: bool = True,
 ) -> torch.Tensor:
     """Perform crop transform on 2D images (4D tensor) given two bounding boxes.
 
@@ -309,18 +303,16 @@ def crop_by_indices(
     y2 = src[:, 3, 1] + 1
 
     if (
-        len(x1.unique(sorted=False)) == len(x2.unique(sorted=False)) == len(
-            y1.unique(sorted=False)) == len(y2.unique(sorted=False)) == 1
+        len(x1.unique(sorted=False))
+        == len(x2.unique(sorted=False))
+        == len(y1.unique(sorted=False))
+        == len(y2.unique(sorted=False))
+        == 1
     ):
-        out = input[..., y1[0]:y2[0], x1[0]:x2[0]]  # type:ignore
+        out = input[..., y1[0] : y2[0], x1[0] : x2[0]]  # type:ignore
         if size is not None and out.shape[-2:] != size:
             return resize(
-                out,
-                size,
-                interpolation=interpolation,
-                align_corners=align_corners,
-                side="short",
-                antialias=antialias
+                out, size, interpolation=interpolation, align_corners=align_corners, side="short", antialias=antialias
             )
 
     if size is None:
@@ -334,13 +326,13 @@ def crop_by_indices(
     for i, same in enumerate(same_sized):
         if not same:
             out[i] = resize(
-                input[i:i + 1, :, y1[i]:y2[i], x1[i]:x2[i]],  # type:ignore
+                input[i : i + 1, :, y1[i] : y2[i], x1[i] : x2[i]],  # type:ignore
                 size,
                 interpolation=interpolation,
                 align_corners=align_corners,
                 side="short",
-                antialias=antialias
+                antialias=antialias,
             )
         else:
-            out[i] = input[i:i + 1, :, y1[i]:y2[i], x1[i]:x2[i]]  # type:ignore
+            out[i] = input[i : i + 1, :, y1[i] : y2[i], x1[i] : x2[i]]  # type:ignore
     return out

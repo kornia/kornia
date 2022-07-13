@@ -146,13 +146,13 @@ class TestLAFAffNetShapeEstimator:
         sift = LAFAffNetShapeEstimator()
         sift.__repr__()
 
-    def test_toy(self, device):
-        aff = LAFAffNetShapeEstimator(True).to(device).eval()
-        inp = torch.zeros(1, 1, 32, 32, device=device)
+    def test_toy(self, device, dtype):
+        aff = LAFAffNetShapeEstimator(True).to(device, dtype).eval()
+        inp = torch.zeros(1, 1, 32, 32, device=device, dtype=dtype)
         inp[:, :, 15:-15, 9:-9] = 1
-        laf = torch.tensor([[[[20.0, 0.0, 16.0], [0.0, 20.0, 16.0]]]], device=device)
+        laf = torch.tensor([[[[20.0, 0.0, 16.0], [0.0, 20.0, 16.0]]]], device=device, dtype=dtype)
         new_laf = aff(laf, inp)
-        expected = torch.tensor([[[[40.8758, 0.0, 16.0], [-0.3824, 9.7857, 16.0]]]], device=device)
+        expected = torch.tensor([[[[40.8758, 0.0, 16.0], [-0.3824, 9.7857, 16.0]]]], device=device, dtype=dtype)
         assert_close(new_laf, expected, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.skip("jacobian not well computed")

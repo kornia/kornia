@@ -78,15 +78,15 @@ def harris_response(
 
     # compute the structure tensor M elements
 
-    dx2: torch.Tensor = gaussian_blur2d(dx ** 2, (7, 7), (1.0, 1.0))
-    dy2: torch.Tensor = gaussian_blur2d(dy ** 2, (7, 7), (1.0, 1.0))
+    dx2: torch.Tensor = gaussian_blur2d(dx**2, (7, 7), (1.0, 1.0))
+    dy2: torch.Tensor = gaussian_blur2d(dy**2, (7, 7), (1.0, 1.0))
     dxy: torch.Tensor = gaussian_blur2d(dx * dy, (7, 7), (1.0, 1.0))
 
     det_m: torch.Tensor = dx2 * dy2 - dxy * dxy
     trace_m: torch.Tensor = dx2 + dy2
 
     # compute the response map
-    scores: torch.Tensor = det_m - k * (trace_m ** 2)
+    scores: torch.Tensor = det_m - k * (trace_m**2)
 
     if sigmas is not None:
         scores = scores * sigmas.pow(4).view(-1, 1, 1, 1)
@@ -150,15 +150,15 @@ def gftt_response(
     dx: torch.Tensor = gradients[:, :, 0]
     dy: torch.Tensor = gradients[:, :, 1]
 
-    dx2: torch.Tensor = gaussian_blur2d(dx ** 2, (7, 7), (1.0, 1.0))
-    dy2: torch.Tensor = gaussian_blur2d(dy ** 2, (7, 7), (1.0, 1.0))
+    dx2: torch.Tensor = gaussian_blur2d(dx**2, (7, 7), (1.0, 1.0))
+    dy2: torch.Tensor = gaussian_blur2d(dy**2, (7, 7), (1.0, 1.0))
     dxy: torch.Tensor = gaussian_blur2d(dx * dy, (7, 7), (1.0, 1.0))
 
     det_m: torch.Tensor = dx2 * dy2 - dxy * dxy
     trace_m: torch.Tensor = dx2 + dy2
 
-    e1: torch.Tensor = 0.5 * (trace_m + torch.sqrt((trace_m ** 2 - 4 * det_m).abs()))
-    e2: torch.Tensor = 0.5 * (trace_m - torch.sqrt((trace_m ** 2 - 4 * det_m).abs()))
+    e1: torch.Tensor = 0.5 * (trace_m + torch.sqrt((trace_m**2 - 4 * det_m).abs()))
+    e2: torch.Tensor = 0.5 * (trace_m - torch.sqrt((trace_m**2 - 4 * det_m).abs()))
 
     scores: torch.Tensor = torch.min(e1, e2)
 
@@ -236,7 +236,7 @@ def hessian_response(
     dxy: torch.Tensor = gradients[:, :, 1]
     dyy: torch.Tensor = gradients[:, :, 2]
 
-    scores: torch.Tensor = dxx * dyy - dxy ** 2
+    scores: torch.Tensor = dxx * dyy - dxy**2
 
     if sigmas is not None:
         scores = scores * sigmas.pow(4).view(-1, 1, 1, 1)

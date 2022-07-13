@@ -41,7 +41,7 @@ class TestSIFTDescriptor:
         inp = torch.ones(3, 1, 19, 19, device=device, dtype=dtype)
         sift = SIFTDescriptor(19, 5, 3).to(device, dtype)
         out = sift(inp)
-        assert out.shape == (3, (3 ** 2) * 5)
+        assert out.shape == (3, (3**2) * 5)
 
     def test_toy(self, device, dtype):
         patch = torch.ones(1, 1, 6, 6, device=device, dtype=dtype)
@@ -99,5 +99,4 @@ class TestDenseSIFTDescriptor:
         batch_size, channels, height, width = 1, 1, 32, 32
         patches = torch.rand(batch_size, channels, height, width, device=device)
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
-        assert gradcheck(DenseSIFTDescriptor(4, 2, 2), (patches),
-                         raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(DenseSIFTDescriptor(4, 2, 2), (patches), raise_exception=True, nondet_tol=1e-4)

@@ -11,6 +11,7 @@ sphinxcontrib-youtube
 sphinx-autodoc-typehints>=1.0
 sphinx-copybutton>=0.3
 sphinx-autodoc-defaultargs
+sphinxcontrib-gtagjs
 PyYAML>=5.1,<6.1.0
 furo
 sphinx-design

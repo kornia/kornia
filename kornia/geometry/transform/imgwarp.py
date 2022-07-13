@@ -16,9 +16,9 @@ from kornia.geometry.conversions import (
     normalize_pixel_coordinates,
 )
 from kornia.geometry.linalg import transform_points
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.utils import create_meshgrid, create_meshgrid3d, eye_like
-from kornia.utils.helpers import _torch_inverse_cast, _torch_solve_cast, _torch_lstsq_cast
+from kornia.utils.helpers import _torch_inverse_cast, _torch_solve_cast
 
 __all__ = [
     "warp_perspective",
@@ -277,9 +277,16 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
     return flow.view(batch_size, depth, height, width, 3)  # NxDxHxWx3
 
 
+# TODO: move to kornia.geometry.projective
+# TODO: create the nn.Module -- TBD what inputs/outputs etc
+# class PerspectiveTransform(nn.Module):
+#     def __init__(self) -> None:
+#         super().__init__()
+
+
 def get_perspective_transform(points_src: Tensor, points_dst: Tensor) -> Tensor:
     r"""Calculate a perspective transform from four pairs of the corresponding points.
-    
+
     The algorithm is a vanilla implementation of the Direct Linear transform (DLT).
     See more: https://www.cs.cmu.edu/~16385/s17/Slides/10.2_2D_Alignment__DLT.pdf
 
@@ -289,23 +296,22 @@ def get_perspective_transform(points_src: Tensor, points_dst: Tensor) -> Tensor:
     .. math ::
 
         \begin{bmatrix}
-        t_{i}x_{i}^{'} \\
-        t_{i}y_{i}^{'} \\
-        t_{i} \\
-        \end{bmatrix}
-        =
-        \textbf{map_matrix} \cdot
-        \begin{bmatrix}
-        x_{i} \\
-        y_{i} \\
+        x^{'} \\
+        y^{'} \\
         1 \\
         \end{bmatrix}
-
-    where
-
-    .. math::
-
-        dst(i) = (x_{i}^{'},y_{i}^{'}), src(i) = (x_{i}, y_{i}), i = 0,1,2,3
+        =
+        \begin{bmatrix}
+        h_1 & h_2 & h_3 \\
+        h_4 & h_5 & h_6 \\
+        h_7 & h_8 & h_9 \\
+        \end{bmatrix}
+        \cdot
+        \begin{bmatrix}
+        x \\
+        y \\
+        1 \\
+        \end{bmatrix}
 
     Args:
         points_src: coordinates of quadrangle vertices in the source image with shape :math:`(B, 4, 2)`.
@@ -321,13 +327,16 @@ def get_perspective_transform(points_src: Tensor, points_dst: Tensor) -> Tensor:
 
     .. note::
         This function is often used in conjunction with :func:`warp_perspective`.
+
+    Example:
+        >>> x1 = torch.tensor([[[0., 0.], [1., 0.], [1., 1.], [0., 1.]]])
+        >>> x2 = torch.tensor([[[1., 0.], [0., 0.], [0., 1.], [1., 1.]]])
+        >>> x2_trans_x1 = get_perspective_transform(x1, x2)
     """
     KORNIA_CHECK_SHAPE(points_src, ["B", "4", "2"])
     KORNIA_CHECK_SHAPE(points_dst, ["B", "4", "2"])
-    KORNIA_CHECK(points_src.shape == points_dst.shape,
-        "Source data shape must match Destination data shape.")
-    KORNIA_CHECK(points_src.dtype == points_dst.dtype,
-        "Source data type must match Destination data type.")
+    KORNIA_CHECK(points_src.shape == points_dst.shape, "Source data shape must match Destination data shape.")
+    KORNIA_CHECK(points_src.dtype == points_dst.dtype, "Source data type must match Destination data type.")
 
     # we build matrix A by using only 4 point correspondence. The linear
     # system is solved with the least square method, so here
@@ -352,10 +361,10 @@ def get_perspective_transform(points_src: Tensor, points_dst: Tensor) -> Tensor:
     # the rhs tensor
     b = points_dst.view(-1, 8, 1)
 
-    ## solve the system Ax = b
-    X: Tensor = _torch_lstsq_cast(A, b)
+    # solve the system Ax = b
+    X: Tensor = _torch_solve_cast(A, b)
 
-    ## create variable to return the Bx3x3 transform
+    # create variable to return the Bx3x3 transform
     M = torch.empty(B, 9, device=points_src.device, dtype=points_src.dtype)
     M[..., :8] = X[..., 0]  # Bx8
     M[..., -1].fill_(1)
@@ -363,22 +372,7 @@ def get_perspective_transform(points_src: Tensor, points_dst: Tensor) -> Tensor:
     return M.view(-1, 3, 3)  # Bx3x3
 
 
-def _build_perspective_param(p: torch.Tensor, q: torch.Tensor, axis: str) -> torch.Tensor:
-    ones = torch.ones_like(p)[..., 0:1]
-    zeros = torch.zeros_like(p)[..., 0:1]
-    if axis == 'x':
-        return torch.cat(
-            [p[:, 0:1], p[:, 1:2], ones, zeros, zeros, zeros, -p[:, 0:1] * q[:, 0:1], -p[:, 1:2] * q[:, 0:1]], dim=1
-        )
-
-    if axis == 'y':
-        return torch.cat(
-            [zeros, zeros, zeros, p[:, 0:1], p[:, 1:2], ones, -p[:, 0:1] * q[:, 1:2], -p[:, 1:2] * q[:, 1:2]], dim=1
-        )
-
-    raise NotImplementedError(f"perspective params for axis `{axis}` is not implemented.")
-
-
+# TODO: move to kornia.geometry.affine
 def get_rotation_matrix2d(center: torch.Tensor, angle: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
     r"""Calculate an affine matrix of 2D rotation.
 
@@ -520,9 +514,9 @@ def remap(
     .. note::
         This function is often used in conjunction with :func:`kornia.utils.create_meshgrid`.
     """
-    KORNIA_CHECK_IS_TENSOR(image, "Expected shape BxCxHxW")
-    KORNIA_CHECK_IS_TENSOR(map_x, "Expected shape BxHxW")
-    KORNIA_CHECK_IS_TENSOR(map_y, "Expected shape BxHxW")
+    KORNIA_CHECK_SHAPE(image, ["B", "C", "H", "W"])
+    KORNIA_CHECK_SHAPE(map_x, ["B", "H", "W"])
+    KORNIA_CHECK_SHAPE(map_y, ["B", "H", "W"])
 
     batch_size, _, height, width = image.shape
 
@@ -537,8 +531,7 @@ def remap(
     map_xy = map_xy.expand(batch_size, -1, -1, -1)
 
     # warp the image tensor and return
-    warped = grid_sample(image, map_xy, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
-    return warped
+    return grid_sample(image, map_xy, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
 
 
 def invert_affine_transform(matrix: torch.Tensor) -> torch.Tensor:
@@ -1079,12 +1072,14 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
     )
 
     # solve the system Ax = b
-    X, _ = _torch_solve_cast(b, A)
+    X: Tensor = _torch_solve_cast(A, b)
 
     # create variable to return
-    batch_size = src.shape[0]
-    M = torch.ones(batch_size, 16, device=src.device, dtype=src.dtype)
-    M[..., :15] = torch.squeeze(X, dim=-1)
+    batch_size: int = src.shape[0]
+    M = torch.empty(batch_size, 16, device=src.device, dtype=src.dtype)
+    M[..., :15] = X[..., 0]
+    M[..., -1].fill_(1)
+
     return M.view(-1, 4, 4)  # Bx4x4
 
 

@@ -99,9 +99,7 @@ class RandomRotation(GeometricAugmentationBase2D):
     ) -> Tensor:
         transform = cast(Tensor, transform)
 
-        return affine(
-            input, transform[..., :2, :3], flags["resample"].name.lower(), "zeros", flags["align_corners"]
-        )
+        return affine(input, transform[..., :2, :3], flags["resample"].name.lower(), "zeros", flags["align_corners"])
 
     def inverse_transform(
         self,
@@ -111,6 +109,8 @@ class RandomRotation(GeometricAugmentationBase2D):
         size: Optional[Tuple[int, int]] = None,
     ) -> Tensor:
         return self.apply_transform(
-            input, params=self._params, transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype),
-            flags=flags
+            input,
+            params=self._params,
+            transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype),
+            flags=flags,
         )

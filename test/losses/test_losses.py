@@ -22,22 +22,47 @@ class TestBinaryFocalLossWithLogits:
         logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
-        assert (kornia.losses.binary_focal_loss_with_logits(
-            logits, labels, alpha=0.5, gamma=2.0, reduction="sum").shape == ())
+        assert (
+            kornia.losses.binary_focal_loss_with_logits(logits, labels, alpha=0.5, gamma=2.0, reduction="sum").shape
+            == ()
+        )
 
     def test_smoke_mean(self, device, dtype):
         logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
-        assert (kornia.losses.binary_focal_loss_with_logits(
-            logits, labels, alpha=0.5, gamma=2.0, reduction="mean").shape == ())
+        assert (
+            kornia.losses.binary_focal_loss_with_logits(logits, labels, alpha=0.5, gamma=2.0, reduction="mean").shape
+            == ()
+        )
 
     def test_smoke_mean_flat(self, device, dtype):
         logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
-        assert (kornia.losses.binary_focal_loss_with_logits(
-            logits, labels, alpha=0.5, gamma=2.0, reduction="mean").shape == ())
+        assert (
+            kornia.losses.binary_focal_loss_with_logits(logits, labels, alpha=0.5, gamma=2.0, reduction="mean").shape
+            == ()
+        )
+
+    @pytest.mark.parametrize("pos_weight", [None, 1, 5])
+    def test_smoke_pos_weight(self, device, dtype, pos_weight):
+        logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
+        labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
+
+        assert (
+            kornia.losses.binary_focal_loss_with_logits(
+                logits,
+                labels,
+                alpha=0.5,
+                gamma=2.0,
+                reduction="mean",
+                pos_weight=None
+                if pos_weight is None
+                else torch.full([logits.size(-1)], pos_weight, dtype=dtype, device=device),
+            ).shape
+            == ()
+        )
 
     def test_jit(self, device, dtype):
         logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
@@ -577,7 +602,6 @@ class TestPSNRLoss:
 
 
 class TestLovaszHingeLoss:
-
     def test_smoke(self, device, dtype):
         num_classes = 1
         logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
@@ -663,7 +687,7 @@ class TestLovaszSoftmaxLoss:
         # make perfect prediction
         # note that softmax(prediction[:, 1]) == 1. softmax(prediction[:, 0]) == 0.
         prediction = torch.zeros(2, num_classes, 1, 2, device=device, dtype=dtype)
-        prediction[:, 1] = 100.
+        prediction[:, 1] = 100.0
         labels = torch.ones(2, 1, 2, device=device, dtype=torch.int64)
 
         criterion = kornia.losses.LovaszSoftmaxLoss()
