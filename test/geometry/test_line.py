@@ -62,7 +62,7 @@ class TestParametrizedLine:
         p1 = torch.tensor([1.0, 0.0], device=device, dtype=dtype)
         l1 = ParametrizedLine.through(p0, p1)
         point = torch.tensor([1.0, 4.0], device=device, dtype=dtype)
-        distance_expected: float = 4.0
+        distance_expected = torch.tensor(4.0, device=device, dtype=dtype)
         assert_close(l1.distance(point), distance_expected)
 
     def test_squared_distance(self, device, dtype):
@@ -70,8 +70,8 @@ class TestParametrizedLine:
         p1 = torch.tensor([1.0, 0.0], device=device, dtype=dtype)
         l1 = ParametrizedLine.through(p0, p1)
         point = torch.tensor([1.0, 4.0], device=device, dtype=dtype)
-        distance_expected: float = 4.0
-        assert_close(l1.squared_distance(point), distance_expected**2)
+        distance_expected = torch.tensor(16.0, device=device, dtype=dtype)
+        assert_close(l1.squared_distance(point), distance_expected)
 
 
 class TestFitLine:
@@ -98,8 +98,11 @@ class TestFitLine:
 
         dir_est = fit_line(pts)
         dir_exp = torch.tensor([0.7071, 0.7071], device=device, dtype=dtype)
-        # NOTE: result differs with the sign between cpu/cuda
-        assert_close(dir_est.dot(dir_exp), 0.0)
+        # NOTE: for some reason the result in c[u/cuda differs
+        angle_est = torch.nn.functional.cosine_similarity(dir_est.abs(), dir_exp, -1)
+
+        angle_exp = torch.tensor(1.0, device=device, dtype=dtype)
+        assert_close(angle_est, angle_exp)
 
     @pytest.mark.skip(reason="investigate for another solution")
     def test_fit_line3(self, device, dtype):

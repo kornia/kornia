@@ -1,4 +1,5 @@
 # kornia.geometry.line module inspired by Eigen::geometry::ParametrizedLine
+# https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/ParametrizedLine.h
 from typing import Optional, Union
 
 import torch
@@ -115,8 +116,7 @@ class ParametrizedLine(Module):
             point: the point to calculate the distance onto the line.
         """
         diff: Tensor = point - self.origin
-        return squared_norm(torch.inner(diff - self.direction, diff) * self.direction)
-        # return squared_norm(((diff - self.direction) @ diff) * self.direction)
+        return squared_norm(diff - (self.direction @ diff) * self.direction)
 
     def distance(self, point: Tensor) -> Tensor:
         """Return the distance of a point to its projections onto the line.
