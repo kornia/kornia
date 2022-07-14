@@ -10,6 +10,13 @@ from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SH
 __all__ = ["ParametrizedLine", "fit_line"]
 
 
+# TODO: implement me: https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h
+class Hyperplane:
+    """Not implemented yet: https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h."""
+
+    pass
+
+
 class ParametrizedLine(Module):
     """Class that describes a parametrize line.
 
@@ -72,9 +79,9 @@ class ParametrizedLine(Module):
         """
         return ParametrizedLine(p0, normalize((p1 - p0), p=2, dim=-1))
 
-    # @classmethod
-    # def from_hyperplane(cls, plane: "Hyperplane") -> "ParametrizedLine":
-    #     raise NotImplementedError
+    @classmethod
+    def from_hyperplane(cls, plane: Hyperplane) -> "ParametrizedLine":
+        raise NotImplementedError(f"Plane not implemented yet {plane}.")
 
     def point_at(self, t: Union[float, Tensor]) -> Tensor:
         """The point at :math:`t` along this line.
