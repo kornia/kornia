@@ -37,8 +37,8 @@ class ParametrizedLine(Module):
             direction: the normalized vector direction of any dimension.
 
         Example:
-            >>> o = tensor([0.0, 0.0])
-            >>> d = tensor([1.0, 1.0])
+            >>> o = torch.tensor([0.0, 0.0])
+            >>> d = torch.tensor([1.0, 1.0])
             >>> l = ParametrizedLine(o, d)
         """
         super().__init__()
@@ -74,8 +74,8 @@ class ParametrizedLine(Module):
             p1: tensor with second point :math:`(B, D)`.
 
         Example:
-            >>> p0 = tensor([0.0, 0.0])
-            >>> p1 = tensor([1.0, 1.0])
+            >>> p0 = torch.tensor([0.0, 0.0])
+            >>> p1 = torch.tensor([1.0, 1.0])
             >>> l = ParametrizedLine.through(p0, p1)
         """
         return ParametrizedLine(p0, normalize((p1 - p0), p=2, dim=-1))
@@ -94,8 +94,8 @@ class ParametrizedLine(Module):
             tensor with the point.
 
         Example:
-            >>> p0 = tensor([0.0, 0.0])
-            >>> p1 = tensor([1.0, 1.0])
+            >>> p0 = torch.tensor([0.0, 0.0])
+            >>> p1 = torch.tensor([1.0, 1.0])
             >>> l = ParametrizedLine.through(p0, p1)
             >>> p2 = l.point_at(0.1)
         """
@@ -149,7 +149,7 @@ def fit_line(points: Tensor, weights: Optional[Tensor] = None) -> Tensor:
         >>> weights = torch.ones(2, 10)
         >>> direction = fit_line(points, weights)
         >>> direction.shape
-        torch.Size([2,3])
+        torch.Size([2, 3])
     """
     KORNIA_CHECK_IS_TENSOR(points, "points must be a tensor")
     KORNIA_CHECK_SHAPE(points, ["B", "N", "D"])
@@ -159,8 +159,8 @@ def fit_line(points: Tensor, weights: Optional[Tensor] = None) -> Tensor:
 
     if weights is not None:
         KORNIA_CHECK_IS_TENSOR(weights, "weights must be a tensor")
-        KORNIA_CHECK_SHAPE(weights, ["B", "N"])
-        KORNIA_CHECK(points.shape[:2] == weights.shape[:2])
+        KORNIA_CHECK_SHAPE(weights, ["B"])
+        KORNIA_CHECK(points.shape[0] == weights.shape[0])
         A = A.transpose(-2, -1) @ torch.diag_embed(weights) @ A
     else:
         A = A.transpose(-2, -1) @ A
