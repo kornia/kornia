@@ -2,6 +2,7 @@ import pytest
 import torch
 from torch.autograd import gradcheck
 
+from kornia.core import Tensor
 from kornia.geometry.line import ParametrizedLine, fit_line
 from kornia.testing import assert_close
 
@@ -11,8 +12,8 @@ class TestParametrizedLine:
         p0 = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
         d0 = torch.tensor([1.0, 0.0], device=device, dtype=dtype)
         l0 = ParametrizedLine(p0, d0)
-        assert_close(l0.origin, p0)
-        assert_close(l0.direction, d0)
+        assert_close(Tensor(l0.origin), p0)
+        assert_close(Tensor(l0.direction), d0)
         assert_close(l0.dim(), 2)
 
     def test_through(self, device, dtype):
@@ -20,8 +21,8 @@ class TestParametrizedLine:
         p1 = torch.tensor([1.0, 1.0], device=device, dtype=dtype)
         l1 = ParametrizedLine.through(p0, p1)
         direction_expected = torch.tensor([0.7071, 0.7071], device=device, dtype=dtype)
-        assert_close(l1.origin, p0)
-        assert_close(l1.direction, direction_expected)
+        assert_close(Tensor(l1.origin), p0)
+        assert_close(Tensor(l1.direction), direction_expected)
 
     def test_point_at(self, device, dtype):
         p0 = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
