@@ -155,8 +155,8 @@ def fit_line(points: Tensor, weights: Optional[Tensor] = None) -> ParametrizedLi
     Example:
         >>> points = torch.rand(2, 10, 3)
         >>> weights = torch.ones(2, 10)
-        >>> direction = fit_line(points, weights)
-        >>> direction.shape
+        >>> line = fit_line(points, weights)
+        >>> line.direction.shape
         torch.Size([2, 3])
     """
     KORNIA_CHECK_IS_TENSOR(points, "points must be a tensor")
