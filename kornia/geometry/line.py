@@ -69,7 +69,7 @@ class ParametrizedLine(Module):
 
     def dim(self) -> int:
         """Return the dimension in which the line holds."""
-        return len(self.direction)
+        return self.direction.shape[-1]
 
     @classmethod
     def through(cls, p0, p1) -> "ParametrizedLine":
