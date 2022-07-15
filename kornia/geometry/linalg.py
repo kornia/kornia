@@ -228,7 +228,7 @@ def point_line_distance(point: Tensor, line: Tensor, eps: float = 1e-9) -> Tenso
 
 def squared_norm(x: Tensor) -> Tensor:
     """Return the squared norm of a vector."""
-    return x.norm(2, -1) ** 2
+    return x.pow(2).sum(-1)
 
 
 # TODO:

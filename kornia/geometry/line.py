@@ -33,7 +33,7 @@ class ParametrizedLine(Module):
         """Initializes a parametrized line of direction and origin.
 
         Args:
-            origin: the origin point of the line of any dimension.
+            origin: any point on the line of any dimension.
             direction: the normalized vector direction of any dimension.
 
         Example:
@@ -51,6 +51,12 @@ class ParametrizedLine(Module):
     def __repr__(self) -> str:
         return str(self)
 
+    def __getitem__(self, idx) -> Tensor:
+        return self.origin if idx == 0 else self.direction
+
+    def __iter__(self):
+        yield from (self.origin, self.direction)
+
     @property
     def origin(self) -> Tensor:
         """Return the line origin point."""
@@ -62,7 +68,7 @@ class ParametrizedLine(Module):
         return self._direction
 
     def dim(self) -> int:
-        """Return the dimension in the line holds."""
+        """Return the dimension in which the line holds."""
         return len(self.direction)
 
     @classmethod
@@ -70,8 +76,8 @@ class ParametrizedLine(Module):
         """Constructs a parametrized line going from a point :math:`p0` to :math:`p1`.
 
         Args:
-            p0: tensor with first point :math:`(B, D)`.
-            p1: tensor with second point :math:`(B, D)`.
+            p0: tensor with first point :math:`(B, D)` where `D` is the point dimension.
+            p1: tensor with second point :math:`(B, D)` where `D` is the point dimension.
 
         Example:
             >>> p0 = torch.tensor([0.0, 0.0])
@@ -109,6 +115,7 @@ class ParametrizedLine(Module):
         """
         return self.origin + (self.direction @ (point - self.origin)) * self.direction
 
+    # TODO: improve order and speed
     def squared_distance(self, point: Tensor) -> Tensor:
         """Return the squared distance of a point to its projection onte the line.
 
@@ -118,6 +125,7 @@ class ParametrizedLine(Module):
         diff: Tensor = point - self.origin
         return squared_norm(diff - (self.direction @ diff) * self.direction)
 
+    # TODO: improve order and speed
     def distance(self, point: Tensor) -> Tensor:
         """Return the distance of a point to its projections onto the line.
 
@@ -132,7 +140,7 @@ class ParametrizedLine(Module):
     # - intersection_point
 
 
-def fit_line(points: Tensor, weights: Optional[Tensor] = None) -> Tensor:
+def fit_line(points: Tensor, weights: Optional[Tensor] = None) -> ParametrizedLine:
     """Fit a line from a set of points.
 
     Args:
@@ -154,8 +162,8 @@ def fit_line(points: Tensor, weights: Optional[Tensor] = None) -> Tensor:
     KORNIA_CHECK_IS_TENSOR(points, "points must be a tensor")
     KORNIA_CHECK_SHAPE(points, ["B", "N", "D"])
 
-    points_mean = points.mean(-2, True)
-    A = points - points_mean
+    mean = points.mean(-2, True)
+    A = points - mean
 
     if weights is not None:
         KORNIA_CHECK_IS_TENSOR(weights, "weights must be a tensor")
@@ -169,5 +177,7 @@ def fit_line(points: Tensor, weights: Optional[Tensor] = None) -> Tensor:
     _, _, V = torch.linalg.svd(A)
 
     # the first left eigenvector is the direction on the fited line
-    L = V[..., 0]
-    return L  # Bx2
+    direction = V[..., 0, :]  # BxD
+    origin = mean[..., 0, :]  # BxD
+
+    return ParametrizedLine(origin, direction)

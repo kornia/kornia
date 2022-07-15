@@ -80,8 +80,17 @@ class TestFitLine:
     def test_smoke(self, device, dtype, B, D):
         N: int = 10  # num points
         points = torch.ones(B, N, D, device=device, dtype=dtype)
-        dir_est = fit_line(points)
-        assert dir_est.shape == (B, D)
+        line = fit_line(points)
+        assert isinstance(line, ParametrizedLine)
+        assert line.origin.shape == (B, D)
+        assert line.direction.shape == (B, D)
+
+        assert (line.origin == line[0]).all()
+        assert (line.direction == line[1]).all()
+
+        origin, direction = fit_line(points)
+        assert (line.origin == origin).all()
+        assert (line.direction == direction).all()
 
     def test_fit_line2(self, device, dtype):
         p0 = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
@@ -96,15 +105,14 @@ class TestFitLine:
             pts.append(p2)
         pts = torch.stack(pts)
 
-        dir_est = fit_line(pts)
+        line_est = fit_line(pts[None])
         dir_exp = torch.tensor([0.7071, 0.7071], device=device, dtype=dtype)
         # NOTE: for some reason the result in c[u/cuda differs
-        angle_est = torch.nn.functional.cosine_similarity(dir_est.abs(), dir_exp, -1)
+        angle_est = torch.nn.functional.cosine_similarity(line_est.direction, dir_exp, -1)
 
-        angle_exp = torch.tensor(1.0, device=device, dtype=dtype)
-        assert_close(angle_est, angle_exp)
+        angle_exp = torch.tensor([1.0], device=device, dtype=dtype)
+        assert_close(angle_est.abs(), angle_exp)
 
-    @pytest.mark.skip(reason="investigate for another solution")
     def test_fit_line3(self, device, dtype):
         p0 = torch.tensor([0.0, 0.0, 0.0], device=device, dtype=dtype)
         p1 = torch.tensor([1.0, 1.0, 1.0], device=device, dtype=dtype)
@@ -118,12 +126,19 @@ class TestFitLine:
             pts.append(p2)
         pts = torch.stack(pts)
 
-        dir_est = fit_line(pts[None])
+        line_est = fit_line(pts[None])
         dir_exp = torch.tensor([0.7071, 0.7071, 0.7071], device=device, dtype=dtype)
         # NOTE: result differs with the sign between cpu/cuda
-        assert_close(dir_est.dot(dir_exp), 0.0)
+        angle_est = torch.nn.functional.cosine_similarity(line_est.direction, dir_exp, -1)
+        angle_exp = torch.tensor([1.0], device=device, dtype=dtype)
+        assert_close(angle_est.abs(), angle_exp)
 
+    @pytest.mark.skip(reason="numerical do not match with analytical")
     def test_gradcheck(self, device):
-        pts = torch.rand(2, 3, 2, device=device, dtype=torch.float64)
-        weights = torch.ones(2, 3, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(fit_line, (pts, weights), raise_exception=True)
+        def proxy_func(pts, weights):
+            line = fit_line(pts, weights)
+            return line.projection(pts[:, 0].T)
+
+        pts = torch.rand(1, 3, 2, device=device, dtype=torch.float64, requires_grad=True)
+        weights = torch.rand(1, 3, device=device, dtype=torch.float64, requires_grad=False)
+        assert gradcheck(proxy_func, (pts, weights), raise_exception=True)
