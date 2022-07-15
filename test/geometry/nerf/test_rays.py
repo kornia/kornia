@@ -114,7 +114,7 @@ def create_four_cameras(device, dtype) -> kornia.geometry.camera.PinholeCamera:
 
     tx = [0.0, 0.0, 0.0, 0.0]
     ty = [0.0, 0.0, 0.0, 0.0]
-    tz = [11.0, 11.0, 11.0, 11.0]
+    tz = [11.0, 11.0, 11.0, 5.0]
 
     pi = torch.pi
     alpha = [pi / 2.0, pi / 2.0, pi / 2.0, 0.0]

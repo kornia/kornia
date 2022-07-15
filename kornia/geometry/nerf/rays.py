@@ -97,10 +97,10 @@ class RaySampler:  # FIXME: Add device handling!!
 
         # Camera to ndc projection matrix, assuming a symmetric viewing frustum
         H = torch.zeros((num_rays, 4, 4))  # FIXME: Add device and type
-        fx = cameras.fx[self._camera_ids]  # FIXME: It would be cleaner to take from 'cams'
-        fy = cameras.fy[self._camera_ids]
-        widths = cameras.width[self._camera_ids]
-        heights = cameras.height[self._camera_ids]
+        fx = cams.fx
+        fy = cams.fy
+        widths = cams.width
+        heights = cams.height
         H[..., 0, 0] = 2.0 * fx / widths
         H[..., 1, 1] = 2.0 * fy / heights
         H[..., 2, 2] = (self._max_depth + self._min_depth) / (self._max_depth - self._min_depth)
@@ -108,13 +108,8 @@ class RaySampler:  # FIXME: Add device handling!!
         H[..., 3, 2] = 1.0
         points_3d_ndc = transform_points(H, points_3d_cams)
 
-        # FIXME: This part should be revised to something cleaner - maybe move to Pinhole class
-        E = torch.clone(cams.extrinsics)
-        E[..., 0, -1] = 0
-        E[..., 1, -1] = 0
-        E[..., 2, -1] = 0
-        E_inv = _torch_inverse_cast(E)
-        points_3d_ndc_world = transform_points(E_inv, points_3d_ndc)
+        R_inv = _torch_inverse_cast(cams.rotation_matrix)
+        points_3d_ndc_world = (R_inv[:, None, ...].repeat(1, 2, 1, 1) @ points_3d_ndc[..., None]).squeeze()
 
         origins = points_3d_ndc_world[..., :1, :].squeeze()
         directions = (points_3d_ndc_world[..., :1, :] - points_3d_ndc_world[..., 1:, :]).squeeze()
