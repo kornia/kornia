@@ -7,9 +7,9 @@ from kornia.geometry.nerf.data_utils import ImageTensors, RayDataset, instantiat
 
 class TestDataset:
     def test_uniform_ray_dataset(self, device, dtype):
-        cameras = create_four_cameras('cpu', torch.float32)
+        cameras = create_four_cameras(device, dtype)
         imgs: ImageTensors = []
-        imgs.append(torch.randint(0, 255, (3, cameras.height[0], cameras.width[0]), dtype=torch.uint8))  # (3, 5, 9)
+        imgs.append(torch.randint(0, 255, (3, 5, 9), dtype=torch.uint8))  # (3, 5, 9)
         imgs.extend([torch.randint(0, 255, (3, 3, 4, 7), dtype=torch.uint8)[i] for i in range(3)])  # (3, 4, 7)
         dataset = RayDataset(cameras, 1, 2)
         dataset.init_ray_dataset(imgs)
