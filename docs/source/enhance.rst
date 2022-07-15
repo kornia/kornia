@@ -71,4 +71,4 @@ Interactive Demo
 .. raw:: html
    :file: gradio/enhance_gradio.html
 
-Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/NimaBoscarino/kornia-image-enhancement>`_.
+Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/kornia/kornia-image-enhancement>`_.
