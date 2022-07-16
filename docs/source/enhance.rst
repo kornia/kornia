@@ -5,6 +5,8 @@ kornia.enhance
 
 The functions in this section perform normalisations and intensity transformations.
 
+* `Interactive Demo`_
+
 Adjustment
 ----------
 
@@ -62,3 +64,11 @@ Modules
 .. autoclass:: AddWeighted
 
 .. autoclass:: Invert
+
+
+Interactive Demo
+----------------
+.. raw:: html
+   :file: gradio/enhance_gradio.html
+
+Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/kornia/kornia-image-enhancement>`_.
