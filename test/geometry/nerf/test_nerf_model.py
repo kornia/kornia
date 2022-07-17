@@ -1,6 +1,6 @@
 import torch
 
-from kornia.geometry.nerf.nerf_model import MLP
+from kornia.geometry.nerf.nerf_model import MLP, NerfModel
 
 
 class TestNerfModel:
@@ -14,3 +14,20 @@ class TestNerfModel:
         x = torch.rand(num_rays, num_ray_points, d_input)
         xout = mlp(x)
         assert xout.shape == (num_rays, num_ray_points, num_hidden)
+
+    def test_nerf(self, device, dtype):
+        num_ray_points = 11
+        nerf_model = NerfModel(
+            num_ray_points=num_ray_points,
+            num_pos_freqs=10,
+            num_dir_freqs=4,
+            num_units=2,
+            num_nuit_layers=4,
+            num_hidden=256,
+        )
+        num_rays = 15
+        origins = torch.rand(num_rays, 3)
+        directions = torch.rand(num_rays, 3)
+        sigma, rgb = nerf_model(origins, directions)
+        assert sigma.shape == (num_rays, num_ray_points, 1)
+        assert rgb.shape == (num_rays, num_ray_points, 3)

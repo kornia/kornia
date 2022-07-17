@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+from torch.nn import functional as F
 
 from kornia.geometry.nerf.positional_encoder import PositionalEncoder
 from kornia.geometry.nerf.rays import sample_lengths, sample_ray_points
@@ -16,7 +17,7 @@ class MLP(nn.Module):
                 num_layer_inp_dims = n_unit_inp_dims if j == 0 else num_hidden
                 layer = nn.Linear(num_layer_inp_dims, num_hidden)
                 nn.init.xavier_uniform_(layer.weight.data)  # FIXME: Verify proper Xavier weight initialization!
-                layers.append(nn.Sequential(layer, nn.ReLU(True)))
+                layers.append(nn.Sequential(layer, nn.ReLU()))
         self._mlp = nn.ModuleList(layers)
 
     def forward(self, inp: torch.Tensor) -> torch.Tensor:
@@ -41,9 +42,15 @@ class NerfModel(nn.Module):
     ):
         super().__init__()
         self._num_ray_points = num_ray_points
-        self._pos_encoder = PositionalEncoder(num_pos_freqs)
-        self._dir_encoder = PositionalEncoder(num_dir_freqs)
+        self._pos_encoder = PositionalEncoder(3, num_pos_freqs)
+        self._dir_encoder = PositionalEncoder(3, num_dir_freqs)
         self._mlp = MLP(self._pos_encoder.num_encoded_dims, num_units, num_nuit_layers, num_hidden)
+        self._fc1 = nn.Linear(num_hidden, num_hidden)  # FIXME: Relu activation for FC1?
+        self._fc2 = nn.Sequential(
+            nn.Linear(num_hidden + self._dir_encoder.num_encoded_dims, num_hidden // 2), nn.ReLU()
+        )
+        self._sigma = nn.Linear(num_hidden, 1)
+        self._rgb = nn.Linear(num_hidden // 2, 3)
 
     def forward(self, origins: torch.Tensor, directions: torch.Tensor):
 
@@ -52,17 +59,20 @@ class NerfModel(nn.Module):
         lengths = sample_lengths(
             batch_size, self._num_ray_points, irregular=False
         )  # FIXME: handle the case of irregular smapling along rays, and hierarchical sampling
-        points_3d = sample_ray_points(
-            origins, directions, lengths
-        )  # FIXME: Normalize points to [-1, 1] before encoding?
+        points_3d = sample_ray_points(origins, directions, lengths)
 
         # Encode positions & directions
         points_3d_encoded = self._pos_encoder(points_3d)
-        directions_encoded = self._dir_encoder(directions)  # FIXME: Normalize directions to [-1, 1] before encoding?
+        directions_encoded = self._dir_encoder(F.normalize(directions, dim=-1))
 
         # Map positional encodings to latent features (MLP with skip connections)
         y = self._mlp(points_3d_encoded)
+        y = self._fc1(y)
+        sigma = self._sigma(y)
 
-        print(directions_encoded, y)  # FIXME: Remove this line
+        z = torch.cat((y, directions_encoded[..., None, :].expand(-1, self._num_ray_points, -1)), dim=-1)
+        z = self._fc2(z)
+        rgb = self._rgb(z)
 
         # Return sample point color and density
+        return sigma, rgb
