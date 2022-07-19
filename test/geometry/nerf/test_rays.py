@@ -29,20 +29,20 @@ def create_camera_dimensions(device, dtype):
             torch.tensor([400] * n_cams2, device=device, dtype=dtype),
         )
     )
-    num_rays: torch.Tensor = torch.cat(
+    num_img_rays: torch.Tensor = torch.cat(
         (
             torch.tensor([10] * n_cams1, device=device, dtype=dtype),
             torch.tensor([15] * n_cams2, device=device, dtype=dtype),
         )
     )
-    return heights, widths, num_rays
+    return heights, widths, num_img_rays
 
 
 class TestRaySampler_2DPoints:
     def test_dimensions_random_sampler(self, device, dtype):
-        heights, widths, num_rays = create_camera_dimensions(device, dtype)
+        heights, widths, num_img_rays = create_camera_dimensions(device, dtype)
         sampler = RandomRaySampler(1, 1)
-        points_2d_camera = sampler.sample_points_2d(heights, widths, num_rays)
+        points_2d_camera = sampler.sample_points_2d(heights, widths, num_img_rays)
         assert len(points_2d_camera) == 2
         assert points_2d_camera[10].points_2d.shape == (3, 10, 2)
         assert points_2d_camera[15].points_2d.shape == (2, 15, 2)

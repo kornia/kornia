@@ -6,7 +6,7 @@ from kornia.geometry.nerf.renderer import IrregularRenderer, RegularRenderer
 from kornia.testing import assert_close
 
 
-class TestIrregularRenderer:
+class TestRenderer:
     def test_dimensions(self, device, dtype):
         height = 5
         width = 4
