@@ -23,21 +23,21 @@ class RayDataset(Dataset):  # FIXME: Add device
         self._min_depth = min_depth
         self._max_depth = max_depth
 
-    def init_ray_dataset(self, imgs: Images, num_rays: Optional[torch.Tensor] = None) -> None:
+    def init_ray_dataset(self, imgs: Images, num_img_rays: Optional[torch.Tensor] = None) -> None:
         self._check_image_type_consistency(imgs)
-        if num_rays is None:
+        if num_img_rays is None:
             self._init_uniform_ray_dataset()
         else:
-            self._init_random_ray_dataset(num_rays)
-        if isinstance(imgs[0], str):
+            self._init_random_ray_dataset(num_img_rays)
+        if isinstance(imgs[0], str):  # Load images from disk
             self._imgs = self._load_images(imgs)
         else:
-            self._imgs = imgs
+            self._imgs = imgs  # Take images provided on input
         self._check_dimensions(self._imgs)
 
-    def _init_random_ray_dataset(self, num_rays: torch.Tensor):
+    def _init_random_ray_dataset(self, num_img_rays: torch.Tensor):
         self._ray_sampler = RandomRaySampler(self._min_depth, self._max_depth)
-        self._ray_sampler.calc_ray_params(self._cameras, num_rays)
+        self._ray_sampler.calc_ray_params(self._cameras, num_img_rays)
 
     def _init_uniform_ray_dataset(self):
         self._ray_sampler = UniformRaySampler(self._min_depth, self._max_depth)

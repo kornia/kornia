@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -34,17 +36,19 @@ class NerfModel(nn.Module):
     def __init__(
         self,
         num_ray_points: int,
-        num_pos_freqs: int,  # FIXME: Decide on defaults for arguments
-        num_dir_freqs: int,
-        num_units: int,
-        num_nuit_layers: int,
-        num_hidden: int,
+        num_pos_freqs: int = 10,
+        num_dir_freqs: int = 4,
+        num_units: int = 2,
+        num_unit_layers: int = 4,
+        num_hidden: int = 256,
     ):
         super().__init__()
         self._num_ray_points = num_ray_points
+        self._irregular = False
+
         self._pos_encoder = PositionalEncoder(3, num_pos_freqs)
         self._dir_encoder = PositionalEncoder(3, num_dir_freqs)
-        self._mlp = MLP(self._pos_encoder.num_encoded_dims, num_units, num_nuit_layers, num_hidden)
+        self._mlp = MLP(self._pos_encoder.num_encoded_dims, num_units, num_unit_layers, num_hidden)
         self._fc1 = nn.Linear(num_hidden, num_hidden)  # FIXME: Relu activation for FC1?
         self._fc2 = nn.Sequential(
             nn.Linear(num_hidden + self._dir_encoder.num_encoded_dims, num_hidden // 2), nn.ReLU()
@@ -52,12 +56,12 @@ class NerfModel(nn.Module):
         self._sigma = nn.Linear(num_hidden, 1)
         self._rgb = nn.Linear(num_hidden // 2, 3)
 
-    def forward(self, origins: torch.Tensor, directions: torch.Tensor):
+    def forward(self, origins: torch.Tensor, directions: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
 
         # Sample xyz for ray parameters
         batch_size = origins.shape[0]
         lengths = sample_lengths(
-            batch_size, self._num_ray_points, irregular=False
+            batch_size, self._num_ray_points, irregular=self._irregular
         )  # FIXME: handle the case of irregular smapling along rays, and hierarchical sampling
         points_3d = sample_ray_points(origins, directions, lengths)
 
@@ -68,11 +72,13 @@ class NerfModel(nn.Module):
         # Map positional encodings to latent features (MLP with skip connections)
         y = self._mlp(points_3d_encoded)
         y = self._fc1(y)
-        sigma = self._sigma(y)
+        sigmas = self._sigma(y)
 
-        z = torch.cat((y, directions_encoded[..., None, :].expand(-1, self._num_ray_points, -1)), dim=-1)
-        z = self._fc2(z)
-        rgb = self._rgb(z)
+        y = torch.cat((y, directions_encoded[..., None, :].expand(-1, self._num_ray_points, -1)), dim=-1)
+        y = self._fc2(y)
+        rgbs = self._rgb(y)
+
+        # t vals that will be used for rendering
 
         # Return sample point color and density
-        return sigma, rgb
+        return sigmas, rgbs

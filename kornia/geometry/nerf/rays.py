@@ -143,23 +143,23 @@ class RandomRaySampler(RaySampler):
         super().__init__(min_depth, max_depth)
 
     def sample_points_2d(
-        self, heights: torch.Tensor, widths: torch.Tensor, num_rays: torch.Tensor
+        self, heights: torch.Tensor, widths: torch.Tensor, num_img_rays: torch.Tensor
     ) -> Dict[int, RaySampler.Points2D]:
-        num_rays = num_rays.int()
+        num_img_rays = num_img_rays.int()
         points2d_as_lists: Dict[int, RaySampler.Points2D_AsLists] = {}
-        for camera_id, (height, width, n) in enumerate(zip(heights.numpy(), widths.numpy(), num_rays.numpy())):
+        for camera_id, (height, width, n) in enumerate(zip(heights.numpy(), widths.numpy(), num_img_rays.numpy())):
             y_rand = torch.trunc(torch.rand(n, dtype=torch.float32) * height)
             x_rand = torch.trunc(torch.rand(n, dtype=torch.float32) * width)
             RaySampler._add_points2d_as_lists_to_num_ray_dict(n, x_rand, y_rand, camera_id, points2d_as_lists)
         return RaySampler._build_num_ray_dict_of_points2d(points2d_as_lists)
 
-    def calc_ray_params(self, cameras: PinholeCamera, num_rays: torch.Tensor) -> None:
+    def calc_ray_params(self, cameras: PinholeCamera, num_img_rays: torch.Tensor) -> None:
         num_cams = cameras.height.shape[0]
-        if num_cams != num_rays.shape[0]:
+        if num_cams != num_img_rays.shape[0]:
             raise ValueError(
                 'Number of cameras does not match size of tensor to define number of rays to march from each camera'
             )
-        points_2d_camera = self.sample_points_2d(cameras.height, cameras.width, num_rays)
+        points_2d_camera = self.sample_points_2d(cameras.height, cameras.width, num_img_rays)
         self._calc_ray_params(cameras, points_2d_camera)
 
 
@@ -189,7 +189,7 @@ def sample_lengths(num_rays: int, num_ray_points: int, irregular=False) -> torch
         raise ValueError('Number of ray points must be greater than 1')
     if not irregular:
         zero_to_one = torch.linspace(0.0, 1.0, num_ray_points)
-        lengths = zero_to_one.repeat(num_rays, 1)
+        lengths = zero_to_one.repeat(num_rays, 1)  # FIXME: Expand instead of repeat maybe?
     else:
         zero_to_one = torch.linspace(0.0, 1.0, num_ray_points + 1)
         lengths = torch.rand(num_rays, num_ray_points) / num_ray_points + zero_to_one[:-1]
