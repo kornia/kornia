@@ -1,11 +1,10 @@
-from typing import Tuple
-
 import torch
 from torch import nn
 from torch.nn import functional as F
 
 from kornia.geometry.nerf.positional_encoder import PositionalEncoder
-from kornia.geometry.nerf.rays import sample_lengths, sample_ray_points
+from kornia.geometry.nerf.rays import calc_ray_t_vals, sample_lengths, sample_ray_points
+from kornia.geometry.nerf.renderer import IrregularRenderer, RegularRenderer
 
 
 class MLP(nn.Module):
@@ -44,7 +43,8 @@ class NerfModel(nn.Module):
     ):
         super().__init__()
         self._num_ray_points = num_ray_points
-        self._irregular = False
+        self._irregular_ray_sampling = False
+        self._renderer = IrregularRenderer() if self._irregular_ray_sampling else RegularRenderer()
 
         self._pos_encoder = PositionalEncoder(3, num_pos_freqs)
         self._dir_encoder = PositionalEncoder(3, num_dir_freqs)
@@ -56,13 +56,13 @@ class NerfModel(nn.Module):
         self._sigma = nn.Linear(num_hidden, 1)
         self._rgb = nn.Linear(num_hidden // 2, 3)
 
-    def forward(self, origins: torch.Tensor, directions: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, origins: torch.Tensor, directions: torch.Tensor) -> torch.Tensor:
 
         # Sample xyz for ray parameters
         batch_size = origins.shape[0]
         lengths = sample_lengths(
-            batch_size, self._num_ray_points, irregular=self._irregular
-        )  # FIXME: handle the case of irregular smapling along rays, and hierarchical sampling
+            batch_size, self._num_ray_points, irregular=self._irregular_ray_sampling
+        )  # FIXME: handle the case of hierarchical sampling
         points_3d = sample_ray_points(origins, directions, lengths)
 
         # Encode positions & directions
@@ -72,13 +72,22 @@ class NerfModel(nn.Module):
         # Map positional encodings to latent features (MLP with skip connections)
         y = self._mlp(points_3d_encoded)
         y = self._fc1(y)
-        sigmas = self._sigma(y)
+        densities_ray_points = self._sigma(y)
 
         y = torch.cat((y, directions_encoded[..., None, :].expand(-1, self._num_ray_points, -1)), dim=-1)
         y = self._fc2(y)
-        rgbs = self._rgb(y)
+        rgbs_ray_points = self._rgb(y)
 
-        # t vals that will be used for rendering
+        # Rendring rgbs and densities along rays
+        if (
+            self._irregular_ray_sampling
+        ):  # FIXME: Consolidate irregular and regular renderer to one unique forward API that will get point_3d as an
+            # additional input, and will internally calculatite either deltas to t_vals
+            t_vals = calc_ray_t_vals(points_3d)
+            rgbs = self._renderer(rgbs_ray_points, densities_ray_points, t_vals)
+        else:
+            deltas = torch.ones(batch_size) * 1.0 / (self._num_ray_points - 1)
+            rgbs = self._renderer(rgbs_ray_points, densities_ray_points, deltas)
 
         # Return sample point color and density
-        return sigmas, rgbs
+        return rgbs
