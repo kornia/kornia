@@ -1,5 +1,7 @@
 import torch
 
+from kornia.geometry.nerf.rays import calc_ray_t_vals
+
 
 class VolumeRenderer(torch.nn.Module):
     _huge = 1.0e10
@@ -20,12 +22,15 @@ class VolumeRenderer(torch.nn.Module):
 
         return rgbs_rendered
 
+    def forward(self, rgbs: torch.Tensor, densities: torch.Tensor, points_3d: torch.tensor) -> torch.Tensor:
+        raise NotImplementedError
+
 
 class IrregularRenderer(VolumeRenderer):
     def __init__(self, shift: int = 1) -> None:
         super().__init__(shift)
 
-    def forward(self, rgbs: torch.Tensor, densities: torch.Tensor, t_vals: torch.Tensor) -> torch.Tensor:
+    def forward(self, rgbs: torch.Tensor, densities: torch.Tensor, points_3d: torch.tensor) -> torch.Tensor:
         r"""Renders 3D irregularly sampled points along rays.       # FIXME: Add Mildenhall (2020) as a reference
 
         Args:
@@ -41,6 +46,7 @@ class IrregularRenderer(VolumeRenderer):
             >>> convert_points_to_homogeneous(input)
             tensor([[0., 0., 1.]])
         """
+        t_vals = calc_ray_t_vals(points_3d)
         deltas = t_vals[..., 1:] - t_vals[..., :-1]  # (*, N - 1)
         far = torch.empty(size=t_vals.shape[:-1], dtype=t_vals.dtype, device=t_vals.device).fill_(self._huge)
         deltas = torch.cat([deltas, far[..., None]], dim=-1)  # (*, N)
@@ -54,7 +60,7 @@ class RegularRenderer(VolumeRenderer):
     def __init__(self, shift: int = 1) -> None:
         super().__init__(shift)
 
-    def forward(self, rgbs: torch.Tensor, densities: torch.Tensor, deltas: torch.Tensor) -> torch.Tensor:
+    def forward(self, rgbs: torch.Tensor, densities: torch.Tensor, points_3d: torch.tensor) -> torch.Tensor:
         r"""Renders 3D regularly sampled points along rays.       # FIXME: Add Mildenhall (2020) as a reference
 
         Args:
@@ -70,6 +76,9 @@ class RegularRenderer(VolumeRenderer):
             >>> convert_points_to_homogeneous(input)
             tensor([[0., 0., 1.]])
         """
+        num_rays = points_3d.shape[0]
+        num_ray_points = points_3d.shape[1]
+        deltas = torch.ones(num_rays) * 1.0 / (num_ray_points - 1)
         alpha = 1 - torch.exp(-1.0 * densities * deltas[..., None])  # (*, N)
         alpha[..., -1] = 0
 
