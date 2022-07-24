@@ -26,6 +26,7 @@ Intensity
 .. autoclass:: RandomMotionBlur
 .. autoclass:: RandomPosterize
 .. autoclass:: RandomRGBShift
+.. autoclass:: RandomSnow
 .. autoclass:: RandomSharpness
 .. autoclass:: RandomSolarize
 

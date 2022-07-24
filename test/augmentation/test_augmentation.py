@@ -34,6 +34,7 @@ from kornia.augmentation import (
     RandomPosterize,
     RandomResizedCrop,
     RandomRGBShift,
+    RandomSnow,
     RandomRotation,
     RandomThinPlateSpline,
     RandomVerticalFlip,
@@ -3062,3 +3063,16 @@ class TestRandomRGBShift:
         aug = RandomRGBShift(p=1.0).to(device)
         out = aug(img)
         assert out.shape == (1, 3, 4, 5)
+
+
+class TestRandomSnow:
+    def test_smoke(self, device, dtype):
+        img = torch.rand(1, 3, 4, 5, device=device, dtype=dtype)
+        aug = RandomSnow(p=1.0).to(device)
+        out = aug(img)
+        assert out.shape == (1, 3, 4, 5)
+
+    def test_onnx_export(self, device, dtype):
+        img = torch.rand(1, 3, 4, 5, device=device, dtype=dtype)
+        aug = RandomSnow(p=1.0).to(device)
+        torch.onnx.export(aug, img, "temp.onnx", export_params=True)
