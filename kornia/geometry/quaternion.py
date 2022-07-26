@@ -1,16 +1,19 @@
 from math import pi
-from typing import Tuple
+from typing import Tuple, Union
 
-from kornia.core import Module, Parameter, Tensor, as_tensor, concatenate, cos, rand, sin, sqrt, stack
+from kornia.core import Module, Parameter, Tensor, as_tensor, concatenate, rand, stack
+from kornia.geometry.conversions import (
+    QuaternionCoeffOrder,
+    normalize_quaternion,
+    quaternion_to_rotation_matrix,
+    rotation_matrix_to_quaternion,
+)
 from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
-
-# NOTE: discuss whether is more appropiated to inherit from Tensor
 
 
 class Quaternion(Module):
     def __init__(self, data: Tensor) -> None:
         super().__init__()
-        # NOTE: discuss whether we want to support more dimensions
         KORNIA_CHECK_SHAPE(data, ["B", "4"])
         self._data = Parameter(data)
 
@@ -35,11 +38,11 @@ class Quaternion(Module):
         KORNIA_CHECK_TYPE(right, Quaternion)
         # NOTE: borrowed from sophus sympy
         # https://github.com/strasdat/Sophus/blob/785fef35b7d9e0fc67b4964a69124277b7434a44/sympy/sophus/quaternion.py#L19
-        new_real = self.real * right.real - self.vec @ right.vec.T
+        new_real = self.real * right.real - self._batched_squared_norm(self.vec, right.vec)
         new_vec = self.real * right.vec + right.real * self.vec + self.vec.cross(right.vec)
         return Quaternion(concatenate((new_real, new_vec), -1))
 
-    def __div__(self, right: 'Quaternion') -> 'Quaternion':
+    def __div__(self, right: Union[Tensor, 'Quaternion']) -> 'Quaternion':
         if isinstance(right, Tensor):
             return Quaternion(self.data / right)
         KORNIA_CHECK_TYPE(right, Quaternion)
@@ -53,16 +56,16 @@ class Quaternion(Module):
         return self._data
 
     @property
+    def coeffs(self) -> Tensor:
+        return self._data
+
+    @property
     def real(self) -> Tensor:
         return self.w
 
     @property
     def vec(self) -> Tensor:
         return self.data[..., 1:]
-
-    @property
-    def v(self) -> Tensor:
-        return self.vec
 
     @property
     def q(self) -> Tensor:
@@ -89,23 +92,29 @@ class Quaternion(Module):
         return self.data[..., 3:4]
 
     @property
-    def shape(self) -> Tuple[int]:
-        return self.data.shape
+    def shape(self) -> Tuple[int, ...]:
+        return tuple(self.data.shape)
 
-    def matrix(self):
-        from kornia.geometry.conversions import QuaternionCoeffOrder, quaternion_to_rotation_matrix
+    @property
+    def polar_angle(self) -> Tensor:
+        return (self.scalar / self.norm()).acos()
 
+    def matrix(self) -> Tensor:
         return quaternion_to_rotation_matrix(self.data, order=QuaternionCoeffOrder.WXYZ)
 
     @classmethod
-    def identity(cls, batch_size: int) -> Tensor:
+    def from_matrix(cls, matrix: Tensor) -> 'Quaternion':
+        return cls(rotation_matrix_to_quaternion(matrix, order=QuaternionCoeffOrder.WXYZ))
+
+    @classmethod
+    def identity(cls, batch_size: int) -> 'Quaternion':
         data: Tensor = as_tensor([1.0, 0.0, 0.0, 0.0])
         data = data.repeat(batch_size, 1)
         return cls(data)
 
     @classmethod
-    def from_coeffs(cls, scalar: float, x: float, y: float, z: float) -> 'Quaternion':
-        return cls(as_tensor([[scalar, x, y, z]]))
+    def from_coeffs(cls, w: float, x: float, y: float, z: float) -> 'Quaternion':
+        return cls(as_tensor([[w, x, y, z]]))
 
     @classmethod
     def random(cls, batch_size: int) -> 'Quaternion':
@@ -114,14 +123,17 @@ class Quaternion(Module):
         Uniformly distributed across the rotation space As per: http://planning.cs.uiuc.edu/node198.html
         """
         r1, r2, r3 = rand(3, batch_size)
-        q1 = sqrt(1.0 - r1) * (sin(2 * pi * r2))
-        q2 = sqrt(1.0 - r1) * (cos(2 * pi * r2))
-        q3 = sqrt(r1) * (sin(2 * pi * r3))
-        q4 = sqrt(r1) * (cos(2 * pi * r3))
+        q1 = (1.0 - r1).sqrt() * ((2 * pi * r2).sin())
+        q2 = (1.0 - r1).sqrt() * ((2 * pi * r2).cos())
+        q3 = r1.sqrt() * (2 * pi * r3).sin()
+        q4 = r1.sqrt() * (2 * pi * r3).cos()
         return cls(stack((q1, q2, q3, q4), -1))
 
     def norm(self) -> Tensor:
         return self.data.norm(p=2, dim=-1)
+
+    def normalize(self) -> 'Quaternion':
+        return Quaternion(normalize_quaternion(self.data))
 
     def conj(self) -> 'Quaternion':
         return Quaternion(concatenate((self.real, -self.vec), -1))
@@ -132,5 +144,11 @@ class Quaternion(Module):
     def squared_norm(self) -> Tensor:
         return self._batched_squared_norm(self.vec) + self.real**2
 
-    def _batched_squared_norm(self, x):
-        return (x[..., None, :] @ x[..., :, None])[..., 0]
+    def _batched_squared_norm(self, x, y=None):
+        if y is None:
+            y = x
+        return (x[..., None, :] @ y[..., :, None])[..., 0]
+
+    # TODO: implement me
+    def slerp(self):
+        raise NotImplementedError

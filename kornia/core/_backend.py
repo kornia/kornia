@@ -14,10 +14,5 @@ normalize = F.normalize
 # constructors
 as_tensor = torch.as_tensor
 
-# math
-cos = torch.cos
-sin = torch.sin
-sqrt = torch.sqrt
-
 # random
 rand = torch.rand
