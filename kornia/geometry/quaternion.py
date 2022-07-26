@@ -1,3 +1,7 @@
+# kornia.geometry.quaternion module inspired by Eigen, Sophus-sympy, and PyQuaternion.
+# https://github.com/strasdat/Sophus/blob/master/sympy/sophus/quaternion.py
+# https://github.com/KieranWynn/pyquaternion/blob/master/pyquaternion/quaternion.py
+# https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Quaternion.h
 from math import pi
 from typing import Tuple, Union
 
@@ -8,7 +12,7 @@ from kornia.geometry.conversions import (
     quaternion_to_rotation_matrix,
     rotation_matrix_to_quaternion,
 )
-from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 
 
 class Quaternion(Module):
@@ -36,7 +40,7 @@ class Quaternion(Module):
 
     def __mul__(self, right: 'Quaternion') -> 'Quaternion':
         KORNIA_CHECK_TYPE(right, Quaternion)
-        # NOTE: borrowed from sophus sympy
+        # NOTE: borrowed from sophus sympy. Produce less multiplications compared to others.
         # https://github.com/strasdat/Sophus/blob/785fef35b7d9e0fc67b4964a69124277b7434a44/sympy/sophus/quaternion.py#L19
         new_real = self.real * right.real - self._batched_squared_norm(self.vec, right.vec)
         new_vec = self.real * right.vec + right.real * self.vec + self.vec.cross(right.vec)
@@ -147,6 +151,7 @@ class Quaternion(Module):
     def _batched_squared_norm(self, x, y=None):
         if y is None:
             y = x
+        KORNIA_CHECK(x.shape == y.shape)
         return (x[..., None, :] @ y[..., :, None])[..., 0]
 
     # TODO: implement me
