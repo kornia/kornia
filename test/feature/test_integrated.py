@@ -91,6 +91,16 @@ class TestLAFDescriptor:
         descs_reference = sift(patches.view(B1 * N1, CH1, H1, W1)).view(B1, N1, -1)
         assert_close(descs_test, descs_reference)
 
+    def test_empty(self, device):
+        B, C, H, W = 1, 1, 32, 32
+        PS = 16
+        img = torch.rand(B, C, H, W, device=device)
+        lafs = torch.zeros(B, 0, 2, 3, device=device)
+        sift = SIFTDescriptor(PS).to(device)
+        lafsift = LAFDescriptor(sift, PS)
+        descs_test = lafsift(img, lafs)
+        assert descs_test.shape == (B, 0, 128)
+
     def test_gradcheck(self, device):
         B, C, H, W = 1, 1, 32, 32
         PS = 16
