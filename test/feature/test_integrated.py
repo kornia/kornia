@@ -17,11 +17,10 @@ from kornia.feature import (
     SIFTDescriptor,
     SIFTFeature,
     extract_patches_from_pyramid,
-    get_laf_descriptors,
-    get_laf_scale,
-    get_laf_orientation,
     get_laf_center,
-
+    get_laf_descriptors,
+    get_laf_orientation,
+    get_laf_scale,
 )
 from kornia.feature.integrated import LocalFeatureMatcher
 from kornia.geometry import RANSAC, resize, transform_points

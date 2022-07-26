@@ -1,5 +1,5 @@
-from typing import Dict, List, Optional, Tuple
 import warnings
+from typing import Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -121,10 +121,7 @@ class LocalFeature(nn.Module):
         scaling_coef: multiplier for change default detector scale (e.g. it is too small for KeyNet by default)
     """
 
-    def __init__(self,
-                 detector: nn.Module,
-                 descriptor: LAFDescriptor,
-                 scaling_coef: float = 1.0) -> None:
+    def __init__(self, detector: nn.Module, descriptor: LAFDescriptor, scaling_coef: float = 1.0) -> None:
         super().__init__()
         self.detector = detector
         self.descriptor = descriptor
@@ -202,11 +199,13 @@ class GFTTAffNetHardNet(LocalFeature):
 class KeyNetHardNet(LocalFeature):
     """Convenience module, which implements KeyNet detector + HardNet descriptor."""
 
-    def __init__(self,
-                 num_features: int = 8000,
-                 upright: bool = False,
-                 device: torch.device = torch.device('cpu'),
-                 scale_laf: float = 1.0):
+    def __init__(
+        self,
+        num_features: int = 8000,
+        upright: bool = False,
+        device: torch.device = torch.device('cpu'),
+        scale_laf: float = 1.0,
+    ):
         ori_module = PassLAF() if upright else LAFOrienter(angle_detector=OriNet(True))
         detector = KeyNetDetector(True, num_features=num_features, ori_module=ori_module).to(device)
         descriptor = LAFDescriptor(None, patch_size=32, grayscale_descriptor=True).to(device)
@@ -216,11 +215,13 @@ class KeyNetHardNet(LocalFeature):
 class KeyNetAffNetHardNet(LocalFeature):
     """Convenience module, which implements KeyNet detector + AffNet + HardNet descriptor."""
 
-    def __init__(self,
-                 num_features: int = 8000,
-                 upright: bool = False,
-                 device: torch.device = torch.device('cpu'),
-                 scale_laf: float = 1.0):
+    def __init__(
+        self,
+        num_features: int = 8000,
+        upright: bool = False,
+        device: torch.device = torch.device('cpu'),
+        scale_laf: float = 1.0,
+    ):
         ori_module = PassLAF() if upright else LAFOrienter(angle_detector=OriNet(True))
         detector = KeyNetDetector(
             True, num_features=num_features, ori_module=ori_module, aff_module=LAFAffNetShapeEstimator(True).eval()
