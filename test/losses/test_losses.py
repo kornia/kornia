@@ -74,11 +74,11 @@ class TestBinaryFocalLossWithLogits:
         expected = op(logits, labels, alpha=0.5, gamma=2.0, reduction="none")
         assert_close(actual, expected)
 
-    def test_gradcheck(self, device):
+    def test_gradcheck(self, device, dtype):
         alpha, gamma = 0.5, 2.0  # for focal loss with logits
-        logits = torch.rand(2, 3, 2).to(device)
+        logits = torch.rand(2, 3, 2).to(device, dtype)
         labels = torch.rand(2, 1, 3, 2)
-        labels = labels.to(device).long()
+        labels = labels.to(device, dtype).long()
 
         logits = utils.tensor_to_gradcheck_var(logits)  # to var
         assert gradcheck(
@@ -329,7 +329,8 @@ class TestDivergenceLoss:
     )
     def test_js_div_loss_2d(self, device, dtype, input, target, expected):
         actual = kornia.losses.js_div_loss_2d(input.to(device, dtype), target.to(device, dtype))
-        assert_close(actual.item(), expected)
+        expected = torch.tensor(expected).to(device, dtype)
+        assert_close(actual, expected)
 
     @pytest.mark.parametrize(
         'input,target,expected',
@@ -342,7 +343,8 @@ class TestDivergenceLoss:
     )
     def test_kl_div_loss_2d(self, device, dtype, input, target, expected):
         actual = kornia.losses.kl_div_loss_2d(input.to(device, dtype), target.to(device, dtype))
-        assert_close(actual.item(), expected)
+        expected = torch.tensor(expected).to(device, dtype)
+        assert_close(actual, expected)
 
     @pytest.mark.parametrize(
         'input,target,expected',
@@ -369,7 +371,8 @@ class TestDivergenceLoss:
     def test_noncontiguous_kl(self, device, dtype, input, target, expected):
         input = input.to(device, dtype).view(input.shape[::-1]).T
         target = target.to(device, dtype).view(target.shape[::-1]).T
-        actual = kornia.losses.kl_div_loss_2d(input, target).item()
+        actual = kornia.losses.kl_div_loss_2d(input, target)
+        expected = torch.tensor(expected).to(device, dtype)
         assert_close(actual, expected)
 
     @pytest.mark.parametrize(
@@ -384,7 +387,8 @@ class TestDivergenceLoss:
     def test_noncontiguous_js(self, device, dtype, input, target, expected):
         input = input.to(device, dtype).view(input.shape[::-1]).T
         target = target.to(device, dtype).view(target.shape[::-1]).T
-        actual = kornia.losses.js_div_loss_2d(input, target).item()
+        actual = kornia.losses.js_div_loss_2d(input, target)
+        expected = torch.tensor(expected).to(device, dtype)
         assert_close(actual, expected)
 
     def test_gradcheck_kl(self, device, dtype):
@@ -505,7 +509,7 @@ class TestTotalVariation:
     )
     def test_tv_on_4d(self, device, dtype, input, expected):
         actual = kornia.losses.total_variation(input.to(device, dtype))
-        assert_close(actual, expected.to(device, dtype), rtol=1e-4, atol=1e-4)
+        assert_close(actual, expected.to(device, dtype))
 
     # Expect ValueError to be raised when tensors of ndim != 3 or 4 are passed
     @pytest.mark.parametrize('input', [torch.rand(2, 3, 4, 5, 3), torch.rand(3, 1)])
