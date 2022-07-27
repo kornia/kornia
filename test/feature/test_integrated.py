@@ -17,7 +17,10 @@ from kornia.feature import (
     SIFTDescriptor,
     SIFTFeature,
     extract_patches_from_pyramid,
+    get_laf_center,
     get_laf_descriptors,
+    get_laf_orientation,
+    get_laf_scale,
 )
 from kornia.feature.integrated import LocalFeatureMatcher
 from kornia.geometry import RANSAC, resize, transform_points
@@ -87,6 +90,16 @@ class TestLAFDescriptor:
         descs_reference = sift(patches.view(B1 * N1, CH1, H1, W1)).view(B1, N1, -1)
         assert_close(descs_test, descs_reference)
 
+    def test_empty(self, device):
+        B, C, H, W = 1, 1, 32, 32
+        PS = 16
+        img = torch.rand(B, C, H, W, device=device)
+        lafs = torch.zeros(B, 0, 2, 3, device=device)
+        sift = SIFTDescriptor(PS).to(device)
+        lafsift = LAFDescriptor(sift, PS)
+        descs_test = lafsift(img, lafs)
+        assert descs_test.shape == (B, 0, 128)
+
     def test_gradcheck(self, device):
         B, C, H, W = 1, 1, 32, 32
         PS = 16
@@ -130,6 +143,20 @@ class TestLocalFeature:
         # So we need to reshape a bit :)
         descs1 = desc(patches.view(B1 * N1, CH1, H1, W1)).view(B1, N1, -1)
         assert_close(descs, descs1)
+
+    def test_scale(self, device, dtype):
+        B, C, H, W = 1, 1, 64, 64
+        PS = 16
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        det = ScaleSpaceDetector(10)
+        desc = SIFTDescriptor(PS)
+        local_feature = LocalFeature(det, LAFDescriptor(desc, PS), 1.0).to(device, dtype)
+        local_feature2 = LocalFeature(det, LAFDescriptor(desc, PS), 2.0).to(device, dtype)
+        lafs, responses, descs = local_feature(img)
+        lafs2, responses2, descs2 = local_feature2(img)
+        assert_close(get_laf_center(lafs), get_laf_center(lafs2))
+        assert_close(get_laf_orientation(lafs), get_laf_orientation(lafs2))
+        assert_close(2.0 * get_laf_scale(lafs), get_laf_scale(lafs2))
 
     @pytest.mark.skip("Takes too long time (but works)")
     def test_gradcheck(self, device):
