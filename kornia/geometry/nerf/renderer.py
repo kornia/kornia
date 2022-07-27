@@ -76,10 +76,11 @@ class RegularRenderer(VolumeRenderer):
             >>> convert_points_to_homogeneous(input)
             tensor([[0., 0., 1.]])
         """
-        num_rays = points_3d.shape[0]
-        num_ray_points = points_3d.shape[1]
-        deltas = torch.ones(num_rays) * 1.0 / (num_ray_points - 1)
-        alpha = 1 - torch.exp(-1.0 * densities * deltas[..., None])  # (*, N)
+        num_ray_points = points_3d.shape[-2]
+        delta_3d = points_3d.reshape(-1, num_ray_points, 3)[0, 1, :] - points_3d.reshape(-1, num_ray_points, 3)[0, 0, :]
+        delta = torch.linalg.norm(delta_3d, dim=-1)
+
+        alpha = 1 - torch.exp(-1.0 * densities * delta)  # (*, N)
         alpha[..., -1] = 0
 
         return self._render(alpha, rgbs)
