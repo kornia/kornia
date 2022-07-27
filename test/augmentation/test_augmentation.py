@@ -2333,7 +2333,7 @@ class TestRandomResizedCrop:
             2, 1, 1, 1
         )
         res = f(input)
-        assert (res[0] == res[1]).all()
+        assert_close(res[0], res[1])
 
         torch.manual_seed(0)
         aug = RandomResizedCrop(
@@ -2341,7 +2341,7 @@ class TestRandomResizedCrop:
         )
         out = aug(input)
         inversed = aug.inverse(out)
-        assert (inversed[0] == inversed[1]).all()
+        assert_close(inversed[0], inversed[1])
 
     def test_crop_scale_ratio(self, device, dtype):
         # This is included in doctest
@@ -3057,7 +3057,6 @@ class TestPlanckianJitter:
 
 
 class TestRandomRGBShift:
-
     def test_smoke(self, device, dtype):
         img = torch.rand(1, 3, 4, 5, device=device, dtype=dtype)
         aug = RandomRGBShift(p=1.0).to(device)

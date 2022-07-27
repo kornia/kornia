@@ -45,9 +45,7 @@ class TestRandomAffine3DBackward:
     @pytest.mark.parametrize("resample", ['bilinear'])  # TODO: Ignore nearest for now.
     @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False])
-    def test_param(
-        self, degrees, translate, scale, shear, resample, align_corners, same_on_batch, device, dtype
-    ):
+    def test_param(self, degrees, translate, scale, shear, resample, align_corners, same_on_batch, device, dtype):
 
         _degrees = (
             degrees
@@ -169,13 +167,7 @@ class TestRandomRotation3DBackward:
 
         torch.manual_seed(0)
         input = torch.randint(255, (2, 3, 10, 10, 10), device=device, dtype=dtype) / 255.0
-        aug = RandomRotation3D(
-            _degrees,
-            resample,
-            align_corners=align_corners,
-            same_on_batch=same_on_batch,
-            p=1.0,
-        )
+        aug = RandomRotation3D(_degrees, resample, align_corners=align_corners, same_on_batch=same_on_batch, p=1.0)
 
         output = aug(input)
 
@@ -216,11 +208,7 @@ class TestRandomPerspective3DBackward:
         torch.manual_seed(0)
         input = torch.randint(255, (2, 3, 10, 10, 10), device=device, dtype=dtype) / 255.0
         aug = RandomPerspective3D(
-            _distortion_scale,
-            resample=resample,
-            same_on_batch=same_on_batch,
-            align_corners=align_corners,
-            p=1.0,
+            _distortion_scale, resample=resample, same_on_batch=same_on_batch, align_corners=align_corners, p=1.0
         )
 
         output = aug(input)
@@ -272,9 +260,7 @@ class TestRandomMotionBlur3DBackward:
 
         torch.manual_seed(0)
         input = torch.randint(255, (2, 3, 10, 10, 10), device=device, dtype=dtype) / 255.0
-        aug = RandomMotionBlur3D(
-            (3, 3), _angle, _direction, border_type, resample, same_on_batch, p=1.0
-        )
+        aug = RandomMotionBlur3D((3, 3), _angle, _direction, border_type, resample, same_on_batch, p=1.0)
 
         output = aug(input)
 

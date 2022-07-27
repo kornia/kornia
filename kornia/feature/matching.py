@@ -125,7 +125,7 @@ def match_snn(
 
 
 def match_smnn(
-    desc1: torch.Tensor, desc2: torch.Tensor, th: float = 0.8, dm: Optional[torch.Tensor] = None
+    desc1: torch.Tensor, desc2: torch.Tensor, th: float = 0.95, dm: Optional[torch.Tensor] = None
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Function, which finds mutual nearest neighbors in desc2 for each vector in desc1.
 
@@ -191,6 +191,7 @@ class DescriptorMatcher(nn.Module):
         match_mode: type of matching, can be `nn`, `snn`, `mnn`, `smnn`.
         th: threshold on distance ratio, or other quality measure.
     """
+
     known_modes = ['nn', 'mnn', 'snn', 'smnn']
 
     def __init__(self, match_mode: str = 'snn', th: float = 0.8) -> None:

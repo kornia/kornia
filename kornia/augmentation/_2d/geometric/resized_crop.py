@@ -82,8 +82,11 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         )
         self._param_generator = cast(rg.ResizedCropGenerator, rg.ResizedCropGenerator(size, scale, ratio))
         self.flags = dict(
-            size=size, resample=Resample.get(resample), align_corners=align_corners, cropping_mode=cropping_mode,
-            padding_mode="zeros"
+            size=size,
+            resample=Resample.get(resample),
+            align_corners=align_corners,
+            cropping_mode=cropping_mode,
+            padding_mode="zeros",
         )
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
@@ -112,7 +115,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
                 params["src"],
                 flags["size"],
                 interpolation=flags["resample"].name.lower(),
-                align_corners=flags["align_corners"]
+                align_corners=flags["align_corners"],
             )
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
@@ -130,6 +133,10 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         size = cast(Tuple[int, int], size)
         transform = cast(Tensor, transform)
         return crop_by_transform_mat(
-            input, transform[:, :2, :], size, flags["resample"].name.lower(),
-            flags["padding_mode"], flags["align_corners"]
+            input,
+            transform[:, :2, :],
+            size,
+            flags["resample"].name.lower(),
+            flags["padding_mode"],
+            flags["align_corners"],
         )

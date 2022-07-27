@@ -83,7 +83,7 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> Tup
     l_matrix: torch.Tensor = torch.cat((k_matrix, p_matrix), -1)
     l_matrix = torch.cat((l_matrix, p_matrix_t), 1)
 
-    weights, _ = _torch_solve_cast(dest_with_zeros, l_matrix)
+    weights = _torch_solve_cast(l_matrix, dest_with_zeros)
     kernel_weights: torch.Tensor = weights[:, :-3]
     affine_weights: torch.Tensor = weights[:, -3:]
 

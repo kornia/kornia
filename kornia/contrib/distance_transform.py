@@ -7,11 +7,7 @@ from kornia.filters import filter2d
 from kornia.utils import create_meshgrid
 
 
-def distance_transform(
-    image: torch.Tensor,
-    kernel_size: int = 3,
-    h: float = 0.35
-) -> torch.Tensor:
+def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.35) -> torch.Tensor:
     r"""Approximates the Manhattan distance transform of images using cascaded convolution operations.
 
     The value at each pixel in the output represents the distance to the nearest non-zero pixel in the image image.
@@ -43,8 +39,9 @@ def distance_transform(
     # n_iters is set such that the DT will be able to propagate from any corner of the image to its far,
     # diagonally opposite corner
     n_iters: int = math.ceil(max(image.shape[2], image.shape[3]) / math.floor(kernel_size / 2))
-    grid = create_meshgrid(kernel_size, kernel_size, normalized_coordinates=False,
-                           device=image.device, dtype=image.dtype)
+    grid = create_meshgrid(
+        kernel_size, kernel_size, normalized_coordinates=False, device=image.device, dtype=image.dtype
+    )
 
     grid -= math.floor(kernel_size / 2)
     kernel = torch.hypot(grid[0, :, :, 0], grid[0, :, :, 1])
@@ -82,11 +79,8 @@ class DistanceTransform(nn.Module):
         h: value that influence the approximation of the min function.
 
     """
-    def __init__(
-        self,
-        kernel_size: int = 3,
-        h: float = 0.35
-    ):
+
+    def __init__(self, kernel_size: int = 3, h: float = 0.35):
         super().__init__()
         self.kernel_size = kernel_size
         self.h = h

@@ -197,7 +197,7 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
     box_i = (boxes + 1).long()
     # set all pixels within box to 1
     for msk, bx in zip(mask, box_i):
-        msk[bx[0, 1]:bx[2, 1] + 1, bx[0, 0]:bx[1, 0] + 1] = 1.0
+        msk[bx[0, 1] : bx[2, 1] + 1, bx[0, 0] : bx[1, 0] + 1] = 1.0
     return mask[:, 1:-1, 1:-1]
 
 
@@ -537,8 +537,8 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
         xx2 = torch.min(x2[i], x2[order[1:]])
         yy2 = torch.min(y2[i], y2[order[1:]])
 
-        w = torch.clamp(xx2 - xx1, min=0.)
-        h = torch.clamp(yy2 - yy1, min=0.)
+        w = torch.clamp(xx2 - xx1, min=0.0)
+        h = torch.clamp(yy2 - yy1, min=0.0)
         inter = w * h
         ovr = inter / (areas[i] + areas[order[1:]] - inter)
 

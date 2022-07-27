@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional
 
 import torch
 import torch.nn as nn
@@ -18,38 +18,33 @@ urls["indoor"] = "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_indoor.ckpt"
 # Comments: the config below is the one corresponding to the pretrained models
 # Some do not change there anything, unless you want to retrain it.
 
-default_cfg = {'backbone_type': 'ResNetFPN',
-               'resolution': (8, 2),
-               'fine_window_size': 5,
-               'fine_concat_coarse_feat': True,
-               'resnetfpn': {'initial_dim': 128, 'block_dims': [128, 196, 256]},
-               'coarse': {'d_model': 256,
-                          'd_ffn': 256,
-                          'nhead': 8,
-                          'layer_names': ['self',
-                                          'cross',
-                                          'self',
-                                          'cross',
-                                          'self',
-                                          'cross',
-                                          'self',
-                                          'cross'],
-                          'attention': 'linear',
-                          'temp_bug_fix': False},
-               'match_coarse': {'thr': 0.2,
-                                'border_rm': 2,
-                                'match_type': 'dual_softmax',
-                                'dsmax_temperature': 0.1,
-                                'skh_iters': 3,
-                                'skh_init_bin_score': 1.0,
-                                'skh_prefilter': True,
-                                'train_coarse_percent': 0.4,
-                                'train_pad_num_gt_min': 200},
-               'fine': {'d_model': 128,
-                        'd_ffn': 128,
-                        'nhead': 8,
-                        'layer_names': ['self', 'cross'],
-                        'attention': 'linear'}}
+default_cfg = {
+    'backbone_type': 'ResNetFPN',
+    'resolution': (8, 2),
+    'fine_window_size': 5,
+    'fine_concat_coarse_feat': True,
+    'resnetfpn': {'initial_dim': 128, 'block_dims': [128, 196, 256]},
+    'coarse': {
+        'd_model': 256,
+        'd_ffn': 256,
+        'nhead': 8,
+        'layer_names': ['self', 'cross', 'self', 'cross', 'self', 'cross', 'self', 'cross'],
+        'attention': 'linear',
+        'temp_bug_fix': False,
+    },
+    'match_coarse': {
+        'thr': 0.2,
+        'border_rm': 2,
+        'match_type': 'dual_softmax',
+        'dsmax_temperature': 0.1,
+        'skh_iters': 3,
+        'skh_init_bin_score': 1.0,
+        'skh_prefilter': True,
+        'train_coarse_percent': 0.4,
+        'train_pad_num_gt_min': 200,
+    },
+    'fine': {'d_model': 128, 'd_ffn': 128, 'nhead': 8, 'layer_names': ['self', 'cross'], 'attention': 'linear'},
+}
 
 
 class LoFTR(nn.Module):
@@ -84,8 +79,8 @@ class LoFTR(nn.Module):
         # Modules
         self.backbone = build_backbone(config)
         self.pos_encoding = PositionEncodingSine(
-            config['coarse']['d_model'],
-            temp_bug_fix=config['coarse']['temp_bug_fix'])
+            config['coarse']['d_model'], temp_bug_fix=config['coarse']['temp_bug_fix']
+        )
         self.loftr_coarse = LocalFeatureTransformer(config['coarse'])
         self.coarse_matching = CoarseMatching(config['match_coarse'])
         self.fine_preprocess = FinePreprocess(config)
@@ -95,8 +90,8 @@ class LoFTR(nn.Module):
         if pretrained is not None:
             if pretrained not in urls.keys():
                 raise ValueError(f"pretrained should be None or one of {urls.keys()}")
-            pretrained_dict = torch.hub.load_state_dict_from_url(
-                urls[pretrained], map_location=lambda storage, loc: storage)
+            storage_fcn: Callable = lambda storage, loc: storage
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls[pretrained], map_location=storage_fcn)
             self.load_state_dict(pretrained_dict['state_dict'])
         self.eval()
 
@@ -119,10 +114,9 @@ class LoFTR(nn.Module):
         """
 
         # 1. Local Feature CNN
-        data.update({
-            'bs': data['image0'].size(0),
-            'hw0_i': data['image0'].shape[2:], 'hw1_i': data['image1'].shape[2:]
-        })
+        data.update(
+            {'bs': data['image0'].size(0), 'hw0_i': data['image0'].shape[2:], 'hw1_i': data['image1'].shape[2:]}
+        )
 
         if data['hw0_i'] == data['hw1_i']:  # faster & better BN convergence
             feats_c, feats_f = self.backbone(torch.cat([data['image0'], data['image1']], dim=0))
@@ -130,10 +124,14 @@ class LoFTR(nn.Module):
         else:  # handle different input shapes
             (feat_c0, feat_f0), (feat_c1, feat_f1) = self.backbone(data['image0']), self.backbone(data['image1'])
 
-        data.update({
-            'hw0_c': feat_c0.shape[2:], 'hw1_c': feat_c1.shape[2:],
-            'hw0_f': feat_f0.shape[2:], 'hw1_f': feat_f1.shape[2:]
-        })
+        data.update(
+            {
+                'hw0_c': feat_c0.shape[2:],
+                'hw1_c': feat_c1.shape[2:],
+                'hw0_f': feat_f0.shape[2:],
+                'hw1_f': feat_f1.shape[2:],
+            }
+        )
 
         # 2. coarse-level loftr module
         # add featmap with positional encoding, then flatten it to sequence [N, HW, C]
@@ -166,10 +164,12 @@ class LoFTR(nn.Module):
         # 5. match fine-level
         self.fine_matching(feat_f0_unfold, feat_f1_unfold, data)
 
-        rename_keys: Dict[str, str] = {"mkpts0_f": 'keypoints0',
-                                       "mkpts1_f": 'keypoints1',
-                                       "mconf": 'confidence',
-                                       "b_ids": 'batch_indexes'}
+        rename_keys: Dict[str, str] = {
+            "mkpts0_f": 'keypoints0',
+            "mkpts1_f": 'keypoints1',
+            "mconf": 'confidence',
+            "b_ids": 'batch_indexes',
+        }
         out = {}
         for k, v in rename_keys.items():
             out[v] = data[k]

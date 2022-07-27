@@ -58,6 +58,7 @@ class Trainer:
         Learn how to use the API in our documentation
         `here <https://kornia.readthedocs.io/en/latest/get-started/training.html>`_.
     """
+
     def __init__(
         self,
         model: nn.Module,
@@ -71,8 +72,7 @@ class Trainer:
     ) -> None:
         # setup the accelerator
         if Accelerator is None:
-            raise ModuleNotFoundError(
-                "accelerate library is not installed: pip install kornia[x]")
+            raise ModuleNotFoundError("accelerate library is not installed: pip install kornia[x]")
         self.accelerator = Accelerator()
 
         # setup the data related objects
@@ -131,7 +131,7 @@ class Trainer:
                     f"Loss: {losses.val:.3f} {losses.avg:.3f}"
                 )
 
-    def fit(self,) -> None:
+    def fit(self) -> None:
         # execute the main loop
         # NOTE: Do not change and keep this structure clear for readability.
         for epoch in range(self.num_epochs):
@@ -180,9 +180,7 @@ class Trainer:
             stats.update_from_dict(self.compute_metrics(out, sample['target']), batch_size)
 
             if sample_id % 10 == 0:
-                self._logger.info(
-                    f"Test: {sample_id}/{len(self.valid_dataloader)} {stats}"
-                )
+                self._logger.info(f"Test: {sample_id}/{len(self.valid_dataloader)} {stats}")
 
         return stats.as_dict()
 

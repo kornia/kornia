@@ -205,14 +205,24 @@ def KORNIA_CHECK_SHAPE(x, shape: List[str]) -> None:
             raise TypeError(f"{x} shape should be must be [{shape}]. Got {x.shape}")
 
 
-def KORNIA_CHECK(condition, msg: Optional[str] = None):
+def KORNIA_CHECK(condition: bool, msg: Optional[str] = None):
     if not condition:
         raise Exception(f"{condition} not true.\n{msg}")
+
+
+def KORNIA_UNWRAP(maybe_obj, typ):
+    return cast(typ, maybe_obj)
 
 
 def KORNIA_CHECK_IS_TENSOR(x, msg: Optional[str] = None):
     if not isinstance(x, Tensor):
         raise TypeError(f"Not a Tensor type. Got: {type(x)}.\n{msg}")
+
+
+def KORNIA_CHECK_SAME_DEVICES(tensors: List[Tensor], msg: Optional[str] = None):
+    KORNIA_CHECK(isinstance(tensors, list) and len(tensors) >= 1, "Expected a list with at least one element")
+    if not all(tensors[0].device == x.device for x in tensors):
+        raise Exception(f"Not same device for tensors. Got: {[x.device for x in tensors]}.\n{msg}")
 
 
 def KORNIA_CHECK_IS_COLOR(x: Tensor, msg: Optional[str] = None):

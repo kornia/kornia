@@ -200,8 +200,13 @@ class VideoSequential(ImageSequential):
                 if self.same_on_frame:
                     for k, v in mod_param.items():
                         # TODO: revise ColorJiggle and ColorJitter order param in the future to align the standard.
-                        if not (k == "order" and (isinstance(module, kornia.augmentation.ColorJiggle)
-                                                  or isinstance(module, kornia.augmentation.ColorJitter))):
+                        if not (
+                            k == "order"
+                            and (
+                                isinstance(module, kornia.augmentation.ColorJiggle)
+                                or isinstance(module, kornia.augmentation.ColorJitter)
+                            )
+                        ):
                             mod_param.update({k: self.__repeat_param_across_channels__(v, frame_num)})
                 param = ParamItem(name, mod_param)
             else:
@@ -211,8 +216,7 @@ class VideoSequential(ImageSequential):
         return params
 
     def inverse(
-        self, input: torch.Tensor, params: Optional[List[ParamItem]] = None,
-        extra_args: Dict[str, Any] = {}
+        self, input: torch.Tensor, params: Optional[List[ParamItem]] = None, extra_args: Dict[str, Any] = {}
     ) -> torch.Tensor:
         """Inverse transformation.
 
@@ -235,8 +239,11 @@ class VideoSequential(ImageSequential):
         return input
 
     def forward(  # type: ignore
-        self, input: torch.Tensor, label: Optional[torch.Tensor] = None, params: Optional[List[ParamItem]] = None,
-        extra_args: Dict[str, Any] = {}
+        self,
+        input: torch.Tensor,
+        label: Optional[torch.Tensor] = None,
+        params: Optional[List[ParamItem]] = None,
+        extra_args: Dict[str, Any] = {},
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """Define the video computation performed."""
         if len(input.shape) != 5:

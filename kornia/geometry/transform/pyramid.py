@@ -7,14 +7,7 @@ import torch.nn.functional as F
 
 from kornia.filters import filter2d, gaussian_blur2d
 
-__all__ = [
-    "PyrDown",
-    "PyrUp",
-    "ScalePyramid",
-    "pyrdown",
-    "pyrup",
-    "build_pyramid"
-]
+__all__ = ["PyrDown", "PyrUp", "ScalePyramid", "pyrdown", "pyrup", "build_pyramid"]
 
 
 def _get_pyramid_gaussian_kernel() -> torch.Tensor:
@@ -183,7 +176,7 @@ class ScalePyramid(nn.Module):
         else:
             x = input
         if self.init_sigma > cur_sigma:
-            sigma = max(math.sqrt(self.init_sigma ** 2 - cur_sigma ** 2), 0.01)
+            sigma = max(math.sqrt(self.init_sigma**2 - cur_sigma**2), 0.01)
             ksize = self.get_kernel_size(sigma)
             cur_level = gaussian_blur2d(x, (ksize, ksize), (sigma, sigma))
             cur_sigma = self.init_sigma
@@ -202,7 +195,7 @@ class ScalePyramid(nn.Module):
         while True:
             cur_level = pyr[-1][0]
             for level_idx in range(1, self.n_levels + self.extra_levels):
-                sigma = cur_sigma * math.sqrt(self.sigma_step ** 2 - 1.0)
+                sigma = cur_sigma * math.sqrt(self.sigma_step**2 - 1.0)
                 ksize = self.get_kernel_size(sigma)
 
                 # Hack, because PyTorch does not allow to pad more than original size.
@@ -234,8 +227,9 @@ class ScalePyramid(nn.Module):
         return pyr, sigmas, pixel_dists
 
 
-def pyrdown(input: torch.Tensor, border_type: str = 'reflect',
-            align_corners: bool = False, factor: float = 2.0) -> torch.Tensor:
+def pyrdown(
+    input: torch.Tensor, border_type: str = 'reflect', align_corners: bool = False, factor: float = 2.0
+) -> torch.Tensor:
     r"""Blur a tensor and downsamples it.
 
     .. image:: _static/img/pyrdown.png
@@ -270,7 +264,7 @@ def pyrdown(input: torch.Tensor, border_type: str = 'reflect',
         x_blur,
         size=(int(float(height) / factor), int(float(width) // factor)),
         mode='bilinear',
-        align_corners=align_corners
+        align_corners=align_corners,
     )
     return out
 
