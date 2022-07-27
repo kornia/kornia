@@ -125,7 +125,7 @@ def match_snn(
 
 
 def match_smnn(
-    desc1: torch.Tensor, desc2: torch.Tensor, th: float = 0.8, dm: Optional[torch.Tensor] = None
+    desc1: torch.Tensor, desc2: torch.Tensor, th: float = 0.95, dm: Optional[torch.Tensor] = None
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Function, which finds mutual nearest neighbors in desc2 for each vector in desc1.
 
