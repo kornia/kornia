@@ -23,7 +23,7 @@ def _get_lazy_distance_matrix(desc1: Tensor, desc2: Tensor, dm_: Optional[Tensor
     return dm
 
 
-def no_match(dm: Tensor):
+def _no_match(dm: Tensor):
     """Helper function, which output empty tensors
 
     Returns:
@@ -32,6 +32,7 @@ def no_match(dm: Tensor):
     dists = torch.empty(0, 1, device=dm.device, dtype=dm.dtype)
     idxs = torch.empty(0, 2, device=dm.device, dtype=torch.long)
     return dists, idxs
+
 
 def match_nn(
     desc1: Tensor, desc2: Tensor, dm: Optional[Tensor] = None
@@ -126,14 +127,14 @@ def match_snn(
     distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm)
 
     if desc2.shape[0] < 2:  # We cannot perform snn check, so output empty matches
-        return no_match(distance_matrix)
+        return _no_match(distance_matrix)
 
     vals, idxs_in_2 = torch.topk(distance_matrix, 2, dim=1, largest=False)
     ratio = vals[:, 0] / vals[:, 1]
     mask = ratio <= th
     match_dists = ratio[mask]
-    if len (match_dists) == 0:
-        return no_match(distance_matrix)
+    if len(match_dists) == 0:
+        return _no_match(distance_matrix)
     idxs_in1 = torch.arange(0, idxs_in_2.size(0), device=distance_matrix.device)[mask]
     idxs_in_2 = idxs_in_2[:, 0][mask]
     matches_idxs = torch.cat([idxs_in1.view(-1, 1), idxs_in_2.view(-1, 1)], dim=1)
@@ -165,7 +166,7 @@ def match_smnn(
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
 
     if (desc1.shape[0] < 2) or (desc2.shape[0] < 2):
-        return no_match(desc1)
+        return _no_match(desc1)
 
     distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm)
 
@@ -188,7 +189,7 @@ def match_smnn(
         matches_idxs = good_idxs1
         match_dists, matches_idxs = match_dists.view(-1, 1), matches_idxs.view(-1, 2)
     else:
-        match_dists, matches_idxs = no_match(distance_matrix)
+        match_dists, matches_idxs = _no_match(distance_matrix)
     return match_dists, matches_idxs
 
 
