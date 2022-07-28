@@ -3,12 +3,39 @@ from typing import Optional, Tuple
 import torch
 import torch.nn as nn
 
-from kornia.testing import KORNIA_CHECK_SHAPE
+from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK_DM_DESC, Tensor
 
+
+def _get_lazy_distance_matrix(desc1: Tensor, desc2: Tensor, dm_: Optional[Tensor] = None):
+    """Helper function, which checks validity of provided distance matrix,
+    or calculates L2-distance matrix dm is not provided
+
+    Args:
+        desc1: Batch of descriptors of a shape :math:`(B1, D)`.
+        desc2: Batch of descriptors of a shape :math:`(B2, D)`.
+        dm: Tensor containing the distances from each descriptor in desc1
+          to each descriptor in desc2, shape of :math:`(B1, B2)`."""
+    if dm_ is None:
+        dm = torch.cdist(desc1, desc2)
+    else:
+        KORNIA_CHECK_DM_DESC(desc1, desc2, dm_)
+        dm = dm_
+    return dm
+
+
+def no_match(dm: Tensor):
+    """Helper function, which output empty tensors
+
+    Returns:
+            - Descriptor distance of matching descriptors, shape of :math:`(0, 1)`.
+            - Long tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(0, 2)`."""
+    dists = torch.empty(0, 1, device=dm.device, dtype=dm.dtype)
+    idxs = torch.empty(0, 2, device=dm.device, dtype=torch.long)
+    return dists, idxs
 
 def match_nn(
-    desc1: torch.Tensor, desc2: torch.Tensor, dm: Optional[torch.Tensor] = None
-) -> Tuple[torch.Tensor, torch.Tensor]:
+    desc1: Tensor, desc2: Tensor, dm: Optional[Tensor] = None
+) -> Tuple[Tensor, Tensor]:
     r"""Function, which finds nearest neighbors in desc2 for each vector in desc1.
 
     If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
@@ -26,21 +53,16 @@ def match_nn(
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
 
-    if dm is None:
-        dm = torch.cdist(desc1, desc2)
-    else:
-        if not ((dm.size(0) == desc1.size(0)) and (dm.size(1) == desc2.size(0))):
-            raise AssertionError
-
-    match_dists, idxs_in_2 = torch.min(dm, dim=1)
-    idxs_in1: torch.Tensor = torch.arange(0, idxs_in_2.size(0), device=idxs_in_2.device)
-    matches_idxs: torch.Tensor = torch.cat([idxs_in1.view(-1, 1), idxs_in_2.view(-1, 1)], dim=1)
+    distance_matrix: Tensor = _get_lazy_distance_matrix(desc1, desc2, dm)
+    match_dists, idxs_in_2 = torch.min(distance_matrix, dim=1)
+    idxs_in1: Tensor = torch.arange(0, idxs_in_2.size(0), device=idxs_in_2.device)
+    matches_idxs: Tensor = torch.cat([idxs_in1.view(-1, 1), idxs_in_2.view(-1, 1)], dim=1)
     return match_dists.view(-1, 1), matches_idxs.view(-1, 2)
 
 
 def match_mnn(
-    desc1: torch.Tensor, desc2: torch.Tensor, dm: Optional[torch.Tensor] = None
-) -> Tuple[torch.Tensor, torch.Tensor]:
+    desc1: Tensor, desc2: Tensor, dm: Optional[Tensor] = None
+) -> Tuple[Tensor, Tensor]:
     """Function, which finds mutual nearest neighbors in desc2 for each vector in desc1.
 
     If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
@@ -59,18 +81,14 @@ def match_mnn(
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
 
-    if dm is None:
-        dm = torch.cdist(desc1, desc2)
-    else:
-        if not ((dm.size(0) == desc1.size(0)) and (dm.size(1) == desc2.size(0))):
-            raise AssertionError
+    distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm)
 
-    ms = min(dm.size(0), dm.size(1))
-    match_dists, idxs_in_2 = torch.min(dm, dim=1)
-    match_dists2, idxs_in_1 = torch.min(dm, dim=0)
-    minsize_idxs = torch.arange(ms, device=dm.device)
+    ms = min(distance_matrix.size(0), distance_matrix.size(1))
+    match_dists, idxs_in_2 = torch.min(distance_matrix, dim=1)
+    match_dists2, idxs_in_1 = torch.min(distance_matrix, dim=0)
+    minsize_idxs = torch.arange(ms, device=distance_matrix.device)
 
-    if dm.size(0) <= dm.size(1):
+    if distance_matrix.size(0) <= distance_matrix.size(1):
         mutual_nns = minsize_idxs == idxs_in_1[idxs_in_2][:ms]
         matches_idxs = torch.cat([minsize_idxs.view(-1, 1), idxs_in_2.view(-1, 1)], dim=1)[mutual_nns]
         match_dists = match_dists[mutual_nns]
@@ -82,8 +100,8 @@ def match_mnn(
 
 
 def match_snn(
-    desc1: torch.Tensor, desc2: torch.Tensor, th: float = 0.8, dm: Optional[torch.Tensor] = None
-) -> Tuple[torch.Tensor, torch.Tensor]:
+    desc1: Tensor, desc2: Tensor, th: float = 0.8, dm: Optional[Tensor] = None
+) -> Tuple[Tensor, Tensor]:
     """Function, which finds nearest neighbors in desc2 for each vector in desc1.
 
     The method satisfies first to second nearest neighbor distance <= th.
@@ -105,28 +123,26 @@ def match_snn(
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
 
-    if desc2.shape[0] < 2:
-        raise AssertionError
+    distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm)
 
-    if dm is None:
-        dm = torch.cdist(desc1, desc2)
-    else:
-        if not ((dm.size(0) == desc1.size(0)) and (dm.size(1) == desc2.size(0))):
-            raise AssertionError
+    if desc2.shape[0] < 2:  # We cannot perform snn check, so output empty matches
+        return no_match(distance_matrix)
 
-    vals, idxs_in_2 = torch.topk(dm, 2, dim=1, largest=False)
+    vals, idxs_in_2 = torch.topk(distance_matrix, 2, dim=1, largest=False)
     ratio = vals[:, 0] / vals[:, 1]
     mask = ratio <= th
     match_dists = ratio[mask]
-    idxs_in1 = torch.arange(0, idxs_in_2.size(0), device=dm.device)[mask]
+    if len (match_dists) == 0:
+        return no_match(distance_matrix)
+    idxs_in1 = torch.arange(0, idxs_in_2.size(0), device=distance_matrix.device)[mask]
     idxs_in_2 = idxs_in_2[:, 0][mask]
     matches_idxs = torch.cat([idxs_in1.view(-1, 1), idxs_in_2.view(-1, 1)], dim=1)
     return match_dists.view(-1, 1), matches_idxs.view(-1, 2)
 
 
 def match_smnn(
-    desc1: torch.Tensor, desc2: torch.Tensor, th: float = 0.95, dm: Optional[torch.Tensor] = None
-) -> Tuple[torch.Tensor, torch.Tensor]:
+    desc1: Tensor, desc2: Tensor, th: float = 0.95, dm: Optional[Tensor] = None
+) -> Tuple[Tensor, Tensor]:
     """Function, which finds mutual nearest neighbors in desc2 for each vector in desc1.
 
     the method satisfies first to second nearest neighbor distance <= th.
@@ -148,19 +164,13 @@ def match_smnn(
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
 
-    if desc1.shape[0] < 2:
-        raise AssertionError
-    if desc2.shape[0] < 2:
-        raise AssertionError
+    if (desc1.shape[0] < 2) or (desc2.shape[0] < 2):
+        return no_match(desc1)
 
-    if dm is None:
-        dm = torch.cdist(desc1, desc2)
-    else:
-        if not ((dm.size(0) == desc1.size(0)) and (dm.size(1) == desc2.size(0))):
-            raise AssertionError
+    distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm)
 
-    dists1, idx1 = match_snn(desc1, desc2, th, dm)
-    dists2, idx2 = match_snn(desc2, desc1, th, dm.t())
+    dists1, idx1 = match_snn(desc1, desc2, th, distance_matrix)
+    dists2, idx2 = match_snn(desc2, desc1, th, distance_matrix.t())
 
     if len(dists2) > 0 and len(dists1) > 0:
         idx2 = idx2.flip(1)
@@ -176,9 +186,10 @@ def match_smnn(
         good_idxs1 = good_idxs1[idx_upl1]
         match_dists = torch.max(dists1_good[idx_upl1], dists2_good[idx_upl2])
         matches_idxs = good_idxs1
+        match_dists, matches_idxs = match_dists.view(-1, 1), matches_idxs.view(-1, 2)
     else:
-        matches_idxs, match_dists = torch.empty(0, 2, device=dm.device), torch.empty(0, 1, device=dm.device)
-    return match_dists.view(-1, 1), matches_idxs.view(-1, 2)
+        match_dists, matches_idxs = no_match(distance_matrix)
+    return match_dists, matches_idxs
 
 
 class DescriptorMatcher(nn.Module):
@@ -202,7 +213,7 @@ class DescriptorMatcher(nn.Module):
         self.match_mode = _match_mode
         self.th = th
 
-    def forward(self, desc1: torch.Tensor, desc2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, desc1: Tensor, desc2: Tensor) -> Tuple[Tensor, Tensor]:
         """
         Args:
             desc1: Batch of descriptors of a shape :math:`(B1, D)`.
