@@ -3,7 +3,7 @@ from torch import nn
 from torch.nn import functional as F
 
 from kornia.geometry.nerf.positional_encoder import PositionalEncoder
-from kornia.geometry.nerf.rays import calc_ray_t_vals, sample_lengths, sample_ray_points
+from kornia.geometry.nerf.rays import sample_lengths, sample_ray_points
 from kornia.geometry.nerf.renderer import IrregularRenderer, RegularRenderer
 
 
@@ -79,15 +79,7 @@ class NerfModel(nn.Module):
         rgbs_ray_points = self._rgb(y)
 
         # Rendring rgbs and densities along rays
-        if (
-            self._irregular_ray_sampling
-        ):  # FIXME: Consolidate irregular and regular renderer to one unique forward API that will get point_3d as an
-            # additional input, and will internally calculatite either deltas to t_vals
-            t_vals = calc_ray_t_vals(points_3d)
-            rgbs = self._renderer(rgbs_ray_points, densities_ray_points, t_vals)
-        else:
-            deltas = torch.ones(batch_size) * 1.0 / (self._num_ray_points - 1)
-            rgbs = self._renderer(rgbs_ray_points, densities_ray_points, deltas)
+        rgbs = self._renderer(rgbs_ray_points, densities_ray_points, points_3d)
 
         # Return sample point color and density
         return rgbs

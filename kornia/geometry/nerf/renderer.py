@@ -12,13 +12,13 @@ class VolumeRenderer(torch.nn.Module):
         self._shift = shift
 
     def _render(self, alpha: torch.Tensor, rgbs: torch.Tensor) -> torch.Tensor:
-        trans = torch.cumprod(1 - alpha + self._eps, dim=-1)  # (*, N)
-        trans = torch.roll(trans, shifts=self._shift, dims=-1)  # (*, N)
-        trans[..., : self._shift] = 1  # (*, N)
+        trans = torch.cumprod(1 - alpha + self._eps, dim=-2)  # (*, N, 1)
+        trans = torch.roll(trans, shifts=self._shift, dims=-2)  # (*, N, 1)
+        trans[..., : self._shift, :] = 1  # (*, N, 1)
 
-        weights = trans * alpha  # (*, N)
+        weights = trans * alpha  # (*, N, 1)
 
-        rgbs_rendered = torch.sum(weights[..., None] * rgbs, dim=-2)  # (*, 3)
+        rgbs_rendered = torch.sum(weights * rgbs, dim=-2)  # (*, 3)
 
         return rgbs_rendered
 
@@ -51,7 +51,7 @@ class IrregularRenderer(VolumeRenderer):
         far = torch.empty(size=t_vals.shape[:-1], dtype=t_vals.dtype, device=t_vals.device).fill_(self._huge)
         deltas = torch.cat([deltas, far[..., None]], dim=-1)  # (*, N)
 
-        alpha = 1 - torch.exp(-1.0 * densities * deltas)  # (*, N)
+        alpha = 1 - torch.exp(-1.0 * densities * deltas[..., None])  # (*, N)
 
         return self._render(alpha, rgbs)
 
@@ -81,6 +81,6 @@ class RegularRenderer(VolumeRenderer):
         delta = torch.linalg.norm(delta_3d, dim=-1)
 
         alpha = 1 - torch.exp(-1.0 * densities * delta)  # (*, N)
-        alpha[..., -1] = 0
+        alpha[..., -1, :] = 0  # FIXME: Understand again this conditioning!!
 
         return self._render(alpha, rgbs)

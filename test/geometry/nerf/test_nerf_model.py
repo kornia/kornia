@@ -22,12 +22,11 @@ class TestNerfModel:
             num_pos_freqs=10,
             num_dir_freqs=4,
             num_units=2,
-            num_nuit_layers=4,
+            num_unit_layers=4,
             num_hidden=256,
         )
         num_rays = 15
         origins = torch.rand(num_rays, 3)
         directions = torch.rand(num_rays, 3)
-        sigma, rgb = nerf_model(origins, directions)
-        assert sigma.shape == (num_rays, num_ray_points, 1)
-        assert rgb.shape == (num_rays, num_ray_points, 3)
+        rgbs = nerf_model(origins, directions)
+        assert rgbs.shape == (num_rays, 3)
