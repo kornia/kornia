@@ -85,6 +85,14 @@ class TestMatchSNN:
         assert idxs.shape[0] == dists.shape[0]
         assert dists.shape[0] <= num_desc1
 
+    def test_nomatch(self, device):
+        desc1 = torch.tensor([[0, 0.0], [1, 1], [2, 2], [3, 3.0], [5, 5.0]], device=device)
+        desc2 = torch.tensor([[5, 5.0]], device=device)
+
+        dists, idxs = match_snn(desc1, desc2, 0.8)
+        assert len(dists) == 0
+        assert len(idxs) == 0
+
     def test_matching1(self, device):
         desc1 = torch.tensor([[0, 0.0], [1, 1], [2, 2], [3, 3.0], [5, 5.0]], device=device)
         desc2 = torch.tensor([[5, 5.0], [3, 3.0], [2.3, 2.4], [1, 1], [0, 0.0]], device=device)
@@ -147,6 +155,14 @@ class TestMatchSMNN:
         dists1, idxs1 = matcher(desc1, desc2)
         assert_close(dists1, expected_dists)
         assert_close(idxs1, expected_idx)
+
+    def test_nomatch(self, device):
+        desc1 = torch.tensor([[0, 0.0]], device=device)
+        desc2 = torch.tensor([[5, 5.0]], device=device)
+
+        dists, idxs = match_smnn(desc1, desc2, 0.8)
+        assert len(dists) == 0
+        assert len(idxs) == 0
 
     def test_matching2(self, device):
         desc1 = torch.tensor([[0, 0.0], [1, 1], [2, 2], [3, 3.0], [5, 5.0]], device=device)
