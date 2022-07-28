@@ -24,7 +24,7 @@ class TestRenderer:
         width = 4
         num_ray_points = 7
         rgbs = torch.rand((height, width, num_ray_points, 3), dtype=dtype, device=device)
-        densities = torch.rand((height, width, num_ray_points), dtype=dtype, device=device)
+        densities = torch.rand((height, width, num_ray_points, 1), dtype=dtype, device=device)
 
         points3d = _create_regular_point_cloud(height, width, num_ray_points)
 
@@ -38,7 +38,7 @@ class TestRenderer:
         num_ray_points = 7
         rgbs = torch.zeros((height, width, num_ray_points, 3), dtype=dtype, device=device)
         rgbs[..., 0] = 1
-        densities = torch.rand((height, width, num_ray_points), dtype=dtype, device=device)
+        densities = torch.rand((height, width, num_ray_points, 1), dtype=dtype, device=device)
 
         points3d = _create_regular_point_cloud(height, width, num_ray_points)
 
@@ -53,8 +53,8 @@ class TestRenderer:
         width = 4
         num_ray_points = 11
         rgbs = torch.rand((height, width, num_ray_points, 3), dtype=dtype, device=device)
-        densities = torch.zeros((height, width, num_ray_points), dtype=dtype, device=device)
-        densities[..., 0] = 1
+        densities = torch.zeros((height, width, num_ray_points, 1), dtype=dtype, device=device)
+        densities[..., 0, :] = 1
 
         points3d = _create_regular_point_cloud(height, width, num_ray_points)
 
@@ -69,8 +69,8 @@ class TestRenderer:
         width = 4
         num_ray_points = 11
         rgbs = torch.rand((height, width, num_ray_points, 3), dtype=dtype, device=device)
-        densities = torch.zeros((height, width, num_ray_points), dtype=dtype, device=device)
-        densities[..., 0] = 10
+        densities = torch.zeros((height, width, num_ray_points, 1), dtype=dtype, device=device)
+        densities[..., 0, :] = 10
 
         points3d = _create_regular_point_cloud(height, width, num_ray_points)
 
