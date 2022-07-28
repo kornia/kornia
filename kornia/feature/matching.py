@@ -3,18 +3,19 @@ from typing import Optional, Tuple
 import torch
 import torch.nn as nn
 
-from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK_DM_DESC, Tensor
+from kornia.testing import KORNIA_CHECK_DM_DESC, KORNIA_CHECK_SHAPE, Tensor
 
 
 def _get_lazy_distance_matrix(desc1: Tensor, desc2: Tensor, dm_: Optional[Tensor] = None):
-    """Helper function, which checks validity of provided distance matrix,
-    or calculates L2-distance matrix dm is not provided
+    """Helper function, which checks validity of provided distance matrix, or calculates L2-distance matrix dm is
+    not provided.
 
     Args:
         desc1: Batch of descriptors of a shape :math:`(B1, D)`.
         desc2: Batch of descriptors of a shape :math:`(B2, D)`.
         dm: Tensor containing the distances from each descriptor in desc1
-          to each descriptor in desc2, shape of :math:`(B1, B2)`."""
+          to each descriptor in desc2, shape of :math:`(B1, B2)`.
+    """
     if dm_ is None:
         dm = torch.cdist(desc1, desc2)
     else:
@@ -24,19 +25,18 @@ def _get_lazy_distance_matrix(desc1: Tensor, desc2: Tensor, dm_: Optional[Tensor
 
 
 def _no_match(dm: Tensor):
-    """Helper function, which output empty tensors
+    """Helper function, which output empty tensors.
 
     Returns:
             - Descriptor distance of matching descriptors, shape of :math:`(0, 1)`.
-            - Long tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(0, 2)`."""
+            - Long tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(0, 2)`.
+    """
     dists = torch.empty(0, 1, device=dm.device, dtype=dm.dtype)
     idxs = torch.empty(0, 2, device=dm.device, dtype=torch.long)
     return dists, idxs
 
 
-def match_nn(
-    desc1: Tensor, desc2: Tensor, dm: Optional[Tensor] = None
-) -> Tuple[Tensor, Tensor]:
+def match_nn(desc1: Tensor, desc2: Tensor, dm: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
     r"""Function, which finds nearest neighbors in desc2 for each vector in desc1.
 
     If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
@@ -61,9 +61,7 @@ def match_nn(
     return match_dists.view(-1, 1), matches_idxs.view(-1, 2)
 
 
-def match_mnn(
-    desc1: Tensor, desc2: Tensor, dm: Optional[Tensor] = None
-) -> Tuple[Tensor, Tensor]:
+def match_mnn(desc1: Tensor, desc2: Tensor, dm: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
     """Function, which finds mutual nearest neighbors in desc2 for each vector in desc1.
 
     If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
@@ -100,9 +98,7 @@ def match_mnn(
     return match_dists.view(-1, 1), matches_idxs.view(-1, 2)
 
 
-def match_snn(
-    desc1: Tensor, desc2: Tensor, th: float = 0.8, dm: Optional[Tensor] = None
-) -> Tuple[Tensor, Tensor]:
+def match_snn(desc1: Tensor, desc2: Tensor, th: float = 0.8, dm: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
     """Function, which finds nearest neighbors in desc2 for each vector in desc1.
 
     The method satisfies first to second nearest neighbor distance <= th.
@@ -141,9 +137,7 @@ def match_snn(
     return match_dists.view(-1, 1), matches_idxs.view(-1, 2)
 
 
-def match_smnn(
-    desc1: Tensor, desc2: Tensor, th: float = 0.95, dm: Optional[Tensor] = None
-) -> Tuple[Tensor, Tensor]:
+def match_smnn(desc1: Tensor, desc2: Tensor, th: float = 0.95, dm: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
     """Function, which finds mutual nearest neighbors in desc2 for each vector in desc1.
 
     the method satisfies first to second nearest neighbor distance <= th.
