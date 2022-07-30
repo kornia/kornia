@@ -5,4 +5,4 @@ kornia.geometry.quaternion
 
 .. autoclass:: Quaternion
    :members:
-   :special-members: __init__
+   :special-members:
