@@ -354,13 +354,7 @@ class GeometryAwareDescriptorMatcher(nn.Module):
         if self.match_mode == 'fginn':
             params = _get_default_fginn_params()
             params.update(self.params)
-            out = match_fginn(desc1,
-                              desc2,
-                              lafs1,
-                              lafs2,
-                              params['th'],
-                              params['spatial_th'],
-                              params['mutual'])
+            out = match_fginn(desc1, desc2, lafs1, lafs2, params['th'], params['spatial_th'], params['mutual'])
         else:
             raise NotImplementedError
         return out

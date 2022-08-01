@@ -37,11 +37,11 @@ from .loftr import LoFTR
 from .matching import (
     DescriptorMatcher,
     GeometryAwareDescriptorMatcher,
+    match_fginn,
     match_mnn,
     match_nn,
     match_smnn,
     match_snn,
-    match_fginn,
 )
 from .mkd import MKDDescriptor
 from .orientation import LAFOrienter, OriNet, PatchDominantGradientOrientation
