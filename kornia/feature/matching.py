@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 from kornia.testing import KORNIA_CHECK_DM_DESC, KORNIA_CHECK_SHAPE, Tensor
-
+from .adalam import match_adalam
 
 def _get_lazy_distance_matrix(desc1: Tensor, desc2: Tensor, dm_: Optional[Tensor] = None):
     """Helper function, which checks validity of provided distance matrix, or calculates L2-distance matrix dm is

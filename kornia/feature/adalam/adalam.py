@@ -1,8 +1,11 @@
 import torch
-import os
-
+from torch import Tensor
 from .core import adalam_core
 from .utils import dist_matrix
+
+from typing import Optional, Dict, Tuple
+from kornia.feature.laf import get_laf_scale, get_laf_center, get_laf_orientation
+from kornia.testing import KORNIA_CHECK_SHAPE
 
 def get_adalam_default_config():
     DEFAULT_CONFIG = {
@@ -26,6 +29,8 @@ def match_adalam(
      lafs1: Tensor,
      lafs2: Tensor,
      config: Dict = get_adalam_default_config(),
+     hw1: Optional[Tensor] = None,
+     hw2: Optional[Tensor] = None,
      dm: Optional[Tensor] = None,
  ) -> Tuple[Tensor, Tensor]:
      """Function, which performs descriptor matching, followed by AdaLAM filtering
@@ -49,7 +54,17 @@ def match_adalam(
      """
      KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
      KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
-     BIG_NUMBER = 1000000.0
+     adalam_object = AdalamFilter(config)
+     idxs = adalam_object.match_and_filter(get_laf_center(lafs1).reshape(-1, 2),
+                             get_laf_center(lafs2).reshape(-1, 2),
+                             desc1, desc2,
+                             hw1, hw2,
+                             get_laf_orientation(lafs1).reshape(-1),
+                             get_laf_orientation(lafs2).reshape(-1),
+                             get_laf_scale(lafs1).reshape(-1),
+                             get_laf_scale(lafs2).reshape(-1))
+     quality = None
+     return quality, idxs
 
 
 class AdalamFilter:

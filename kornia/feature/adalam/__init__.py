@@ -1,1 +1,1 @@
-from .adalam import AdalamFilter
+from .adalam import match_adalam, AdalamFilter

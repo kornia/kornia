@@ -116,7 +116,7 @@ def draw_first_k_couples(k: int, rdims: int, dv: torch.device):
     max_exhaustive_search = int(math.sqrt(2*k + 0.25) - 0.5)
     residual_search = k - max_exhaustive_search*(max_exhaustive_search + 1)/2
     repeats = torch.cat([torch.arange(max_exhaustive_search, dtype=torch.long, device=dv) + 1,
-                        tensor([residual_search])]),
+                        torch.tensor([residual_search], dtype=torch.long)])
     idx_sequence = torch.stack([repeats.repeat_interleave(repeats), arange_sequence(repeats)], dim=-1)
     return torch.remainder(idx_sequence.unsqueeze(-1), rdims)
 
