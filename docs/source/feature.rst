@@ -37,12 +37,11 @@ Matching
 .. autofunction:: match_smnn
 .. autofunction:: match_fginn
 
-
 .. autoclass:: DescriptorMatcher
    :members: forward
 
- .. autoclass:: GeometryAwareDescriptorMatcher
-    :members: forward
+.. autoclass:: GeometryAwareDescriptorMatcher
+   :members: forward
 
 .. autoclass:: LocalFeature
    :members: forward
