@@ -3,9 +3,9 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia.testing as utils  # test utils
-from kornia.feature.matching import DescriptorMatcher, match_mnn, match_nn, match_smnn, match_snn, match_fginn
-from kornia.testing import assert_close
 from kornia.feature.laf import laf_from_center_scale_ori
+from kornia.feature.matching import DescriptorMatcher, match_fginn, match_mnn, match_nn, match_smnn, match_snn
+from kornia.testing import assert_close
 
 
 class TestMatchNN:
@@ -244,7 +244,7 @@ class TestMatchFGINN:
         assert_close(idxs1, expected_idx)
 
     def test_matching_mutual(self, device):
-        desc1 = torch.tensor([[0, 0.1], [1, 1], [2, 2], [3, 3.0], [5, 5.0], [0., 0]], device=device)
+        desc1 = torch.tensor([[0, 0.1], [1, 1], [2, 2], [3, 3.0], [5, 5.0], [0.0, 0]], device=device)
         desc2 = torch.tensor([[5, 5.0], [3, 3.0], [2.3, 2.4], [1, 1], [0, 0.0]], device=device)
         lafs1 = laf_from_center_scale_ori(desc1[None])
         lafs2 = laf_from_center_scale_ori(desc2[None])

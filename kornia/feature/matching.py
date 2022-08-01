@@ -1,10 +1,10 @@
-from typing import Optional, Tuple, Dict
+from typing import Dict, Optional, Tuple
 
 import torch
 import torch.nn as nn
 
-from kornia.testing import KORNIA_CHECK_DM_DESC, KORNIA_CHECK_SHAPE, Tensor
 from kornia.feature.laf import get_laf_center
+from kornia.testing import KORNIA_CHECK_DM_DESC, KORNIA_CHECK_SHAPE, Tensor
 
 
 def _get_lazy_distance_matrix(desc1: Tensor, desc2: Tensor, dm_: Optional[Tensor] = None):
@@ -188,14 +188,16 @@ def match_smnn(desc1: Tensor, desc2: Tensor, th: float = 0.95, dm: Optional[Tens
     return match_dists, matches_idxs
 
 
-def match_fginn(desc1: Tensor,
-                desc2: Tensor,
-                lafs1: Tensor,
-                lafs2: Tensor,
-                th: float = 0.8,
-                spatial_th: float = 10.0,
-                mutual: bool = False,
-                dm: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
+def match_fginn(
+    desc1: Tensor,
+    desc2: Tensor,
+    lafs1: Tensor,
+    lafs2: Tensor,
+    th: float = 0.8,
+    spatial_th: float = 10.0,
+    mutual: bool = False,
+    dm: Optional[Tensor] = None,
+) -> Tuple[Tensor, Tensor]:
     """Function, which finds nearest neighbors in desc2 for each vector in desc1.
 
     The method satisfies first to second nearest neighbor distance <= th,
@@ -223,7 +225,7 @@ def match_fginn(desc1: Tensor,
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
-    BIG_NUMBER = 1000000.
+    BIG_NUMBER = 1000000.0
 
     distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm)
     dtype = distance_matrix.dtype
@@ -285,11 +287,9 @@ class DescriptorMatcher(nn.Module):
         self.th = th
         self.params = params
 
-    def forward(self,
-                desc1: Tensor,
-                desc2: Tensor,
-                lafs1: Optional[Tensor] = None,
-                lafs2: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
+    def forward(
+        self, desc1: Tensor, desc2: Tensor, lafs1: Optional[Tensor] = None, lafs2: Optional[Tensor] = None
+    ) -> Tuple[Tensor, Tensor]:
         """
         Args:
             desc1: Batch of descriptors of a shape :math:`(B1, D)`.
