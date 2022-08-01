@@ -4,7 +4,15 @@ from torch.autograd import gradcheck
 
 import kornia.testing as utils  # test utils
 from kornia.feature.laf import laf_from_center_scale_ori
-from kornia.feature.matching import DescriptorMatcher, match_fginn, match_mnn, match_nn, match_smnn, match_snn
+from kornia.feature.matching import (
+    DescriptorMatcher,
+    GeometryAwareDescriptorMatcher,
+    match_fginn,
+    match_mnn,
+    match_nn,
+    match_smnn,
+    match_snn,
+)
 from kornia.testing import assert_close
 
 
@@ -238,7 +246,7 @@ class TestMatchFGINN:
         expected_idx = torch.tensor([[0, 4], [1, 3], [2, 2], [3, 1], [4, 0]], device=device)
         assert_close(dists, expected_dists, rtol=0.001, atol=1e-3)
         assert_close(idxs, expected_idx)
-        matcher = DescriptorMatcher('fginn', 0.8, {"spatial_th": 2.0}).to(device)
+        matcher = GeometryAwareDescriptorMatcher('fginn', {"spatial_th": 2.0}).to(device)
         dists1, idxs1 = matcher(desc1, desc2, lafs1, lafs2)
         assert_close(dists1, expected_dists, rtol=0.001, atol=1e-3)
         assert_close(idxs1, expected_idx)
@@ -254,7 +262,7 @@ class TestMatchFGINN:
         expected_idx = torch.tensor([[1, 3], [2, 2], [3, 1], [4, 0], [5, 4]], device=device)
         assert_close(dists, expected_dists, rtol=0.001, atol=1e-3)
         assert_close(idxs, expected_idx)
-        matcher = DescriptorMatcher('fginn', 0.8, {"spatial_th": 2.0, "mutual": True}).to(device)
+        matcher = GeometryAwareDescriptorMatcher('fginn', {"spatial_th": 2.0, "mutual": True}).to(device)
         dists1, idxs1 = matcher(desc1, desc2, lafs1, lafs2)
         assert_close(dists1, expected_dists, rtol=0.001, atol=1e-3)
         assert_close(idxs1, expected_idx)
@@ -280,7 +288,7 @@ class TestMatchFGINN:
         expected_idx = torch.tensor([[0, 4], [1, 3], [2, 2], [3, 1], [4, 0]], device=device)
         assert_close(dists, expected_dists, rtol=0.001, atol=1e-3)
         assert_close(idxs, expected_idx)
-        matcher = DescriptorMatcher('fginn', 0.8, {"spatial_th": 2.0}).to(device)
+        matcher = GeometryAwareDescriptorMatcher('fginn', {"spatial_th": 2.0}).to(device)
         dists1, idxs1 = matcher(desc1, desc2, lafs1, lafs2)
         assert_close(dists1, expected_dists, rtol=0.001, atol=1e-3)
         assert_close(idxs1, expected_idx)

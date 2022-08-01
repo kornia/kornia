@@ -34,7 +34,15 @@ from .laf import (
     set_laf_orientation,
 )
 from .loftr import LoFTR
-from .matching import DescriptorMatcher, match_mnn, match_nn, match_smnn, match_snn
+from .matching import (
+    DescriptorMatcher,
+    GeometryAwareDescriptorMatcher,
+    match_mnn,
+    match_nn,
+    match_smnn,
+    match_snn,
+    match_fginn,
+)
 from .mkd import MKDDescriptor
 from .orientation import LAFOrienter, OriNet, PatchDominantGradientOrientation
 from .responses import (
@@ -57,7 +65,9 @@ __all__ = [
     "match_mnn",
     "match_snn",
     "match_smnn",
+    "match_fginn",
     "DescriptorMatcher",
+    "GeometryAwareDescriptorMatcher",
     "get_laf_descriptors",
     "LAFDescriptor",
     "LocalFeature",

@@ -41,6 +41,9 @@ Matching
 .. autoclass:: DescriptorMatcher
    :members: forward
 
+ .. autoclass:: GeometryAwareDescriptorMatcher
+    :members: forward
+
 .. autoclass:: LocalFeature
    :members: forward
 

@@ -7,6 +7,11 @@ from kornia.feature.laf import get_laf_center
 from kornia.testing import KORNIA_CHECK_DM_DESC, KORNIA_CHECK_SHAPE, Tensor
 
 
+def _get_default_fginn_params():
+    config = {"th": 0.85, "mutual": False, "spatial_th": 10.0}
+    return config
+
+
 def _get_lazy_distance_matrix(desc1: Tensor, desc2: Tensor, dm_: Optional[Tensor] = None):
     """Helper function, which checks validity of provided distance matrix, or calculates L2-distance matrix dm is
     not provided.
@@ -276,20 +281,17 @@ class DescriptorMatcher(nn.Module):
         th: threshold on distance ratio, or other quality measure.
     """
 
-    known_modes = ['nn', 'mnn', 'snn', 'smnn', 'fginn']
+    known_modes = ['nn', 'mnn', 'snn', 'smnn']
 
-    def __init__(self, match_mode: str = 'snn', th: float = 0.8, params: Dict = {}) -> None:
+    def __init__(self, match_mode: str = 'snn', th: float = 0.8) -> None:
         super().__init__()
         _match_mode: str = match_mode.lower()
         if _match_mode not in self.known_modes:
             raise NotImplementedError(f"{match_mode} is not supported. Try one of {self.known_modes}")
         self.match_mode = _match_mode
         self.th = th
-        self.params = params
 
-    def forward(
-        self, desc1: Tensor, desc2: Tensor, lafs1: Optional[Tensor] = None, lafs2: Optional[Tensor] = None
-    ) -> Tuple[Tensor, Tensor]:
+    def forward(self, desc1: Tensor, desc2: Tensor) -> Tuple[Tensor, Tensor]:
         """
         Args:
             desc1: Batch of descriptors of a shape :math:`(B1, D)`.
@@ -310,8 +312,55 @@ class DescriptorMatcher(nn.Module):
             out = match_snn(desc1, desc2, self.th)
         elif self.match_mode == 'smnn':
             out = match_smnn(desc1, desc2, self.th)
-        elif self.match_mode == 'fginn':
-            out = match_fginn(desc1, desc2, lafs1, lafs2, self.th, **self.params)  # type: ignore
+        else:
+            raise NotImplementedError
+        return out
+
+
+class GeometryAwareDescriptorMatcher(nn.Module):
+    """Module version of matching functions.
+
+    See :func:`~kornia.feature.match_nn`, :func:`~kornia.feature.match_snn`,
+        :func:`~kornia.feature.match_mnn` or :func:`~kornia.feature.match_smnn` for more details.
+
+    Args:
+        match_mode: type of matching, can be `fginn`.
+        th: threshold on distance ratio, or other quality measure.
+    """
+
+    known_modes = ['fginn']
+
+    def __init__(self, match_mode: str = 'fginn', params: Dict = {}) -> None:
+        super().__init__()
+        _match_mode: str = match_mode.lower()
+        if _match_mode not in self.known_modes:
+            raise NotImplementedError(f"{match_mode} is not supported. Try one of {self.known_modes}")
+        self.match_mode = _match_mode
+        self.params = params
+
+    def forward(self, desc1: Tensor, desc2: Tensor, lafs1: Tensor, lafs2: Tensor) -> Tuple[Tensor, Tensor]:
+        """
+        Args:
+            desc1: Batch of descriptors of a shape :math:`(B1, D)`.
+            desc2: Batch of descriptors of a shape :math:`(B2, D)`.
+            lafs1: LAFs of a shape :math:`(1, B1, 2, 3)`.
+            lafs2: LAFs of a shape :math:`(1, B1, 2, 3)`.
+
+        Return:
+            - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
+            - Long tensor indexes of matching descriptors in desc1 and desc2,
+                shape of :math:`(B3, 2)` where :math:`0 <= B3 <= B1`.
+        """
+        if self.match_mode == 'fginn':
+            params = _get_default_fginn_params()
+            params.update(self.params)
+            out = match_fginn(desc1,
+                              desc2,
+                              lafs1,
+                              lafs2,
+                              params['th'],
+                              params['spatial_th'],
+                              params['mutual'])
         else:
             raise NotImplementedError
         return out
