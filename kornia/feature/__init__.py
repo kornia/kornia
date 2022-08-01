@@ -34,7 +34,7 @@ from .laf import (
     set_laf_orientation,
 )
 from .loftr import LoFTR
-from .matching import DescriptorMatcher, match_mnn, match_nn, match_smnn, match_snn, match_adalam
+from .matching import DescriptorMatcher, match_adalam, match_mnn, match_nn, match_smnn, match_snn
 from .mkd import MKDDescriptor
 from .orientation import LAFOrienter, OriNet, PatchDominantGradientOrientation
 from .responses import (

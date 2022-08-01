@@ -1,5 +1,7 @@
-import torch
 import math
+
+import torch
+
 
 def arange_sequence(ranges):
     """
@@ -17,8 +19,8 @@ def arange_sequence(ranges):
 def dist_matrix(d1, d2, is_normalized=False):
     if is_normalized:
         return 2 - 2.0 * d1 @ d2.t()
-    x_norm = (d1 ** 2).sum(1).view(-1, 1)
-    y_norm = (d2 ** 2).sum(1).view(1, -1)
+    x_norm = (d1**2).sum(1).view(-1, 1)
+    y_norm = (d2**2).sum(1).view(1, -1)
     # print(x_norm, y_norm)
     distmat = x_norm + y_norm - 2.0 * d1 @ d2.t()
     # distmat[torch.isnan(distmat)] = np.inf
@@ -27,7 +29,7 @@ def dist_matrix(d1, d2, is_normalized=False):
 
 def orientation_diff(o1, o2):
     diff = o2 - o1
-    diff[diff < - 180] += 360
+    diff[diff < -180] += 360
     diff[diff >= 180] -= 360
     return diff
 
@@ -92,15 +94,14 @@ def batch_2x2_ellipse(m):
     b = am * cm + bm * dm
     d = cm**2 + dm**2
 
-
-    trh = (a + d)/2
+    trh = (a + d) / 2
     # det = a * d - b * c
-    sqrtdisc = torch.sqrt(((a-d)/2)**2 + b**2)
+    sqrtdisc = torch.sqrt(((a - d) / 2) ** 2 + b**2)
 
     eigenvals = torch.stack([trh + sqrtdisc, trh - sqrtdisc], dim=-1).clamp(min=0)
     dens = eigenvals - a.unsqueeze(-1)
     dens[torch.abs(dens) < 1e-6] = 1e-6
-    eigenvecs = torch.stack([b.unsqueeze(-1)/dens, torch.ones_like(dens)], dim=-2)
+    eigenvecs = torch.stack([b.unsqueeze(-1) / dens, torch.ones_like(dens)], dim=-2)
     eigenvecs = eigenvecs / torch.norm(eigenvecs, dim=-2, keepdim=True)
 
     # err = eigenvecs @ torch.diag_embed(eigenvals) @ eigenvecs.transpose(-2, -1) - q
@@ -113,10 +114,14 @@ def draw_first_k_couples(k: int, rdims: int, dv: torch.device):
     # max n for which we can exhaustively sample with k couples:
     # n2/2 + n/2 = k
     # n = sqrt(1/4 + 2k)-1/2 = (sqrt(8k+1)-1)/2
-    max_exhaustive_search = int(math.sqrt(2*k + 0.25) - 0.5)
-    residual_search = k - max_exhaustive_search*(max_exhaustive_search + 1)/2
-    repeats = torch.cat([torch.arange(max_exhaustive_search, dtype=torch.long, device=dv) + 1,
-                        torch.tensor([residual_search], dtype=torch.long)])
+    max_exhaustive_search = int(math.sqrt(2 * k + 0.25) - 0.5)
+    residual_search = k - max_exhaustive_search * (max_exhaustive_search + 1) / 2
+    repeats = torch.cat(
+        [
+            torch.arange(max_exhaustive_search, dtype=torch.long, device=dv) + 1,
+            torch.tensor([residual_search], dtype=torch.long),
+        ]
+    )
     idx_sequence = torch.stack([repeats.repeat_interleave(repeats), arange_sequence(repeats)], dim=-1)
     return torch.remainder(idx_sequence.unsqueeze(-1), rdims)
 
