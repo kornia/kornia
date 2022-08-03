@@ -2,15 +2,21 @@ from test.geometry.nerf.test_rays import create_four_cameras
 
 import torch
 
+from kornia.geometry.camera import PinholeCamera
 from kornia.geometry.nerf.data_utils import ImageTensors, RayDataset, instantiate_ray_dataloader
+
+
+def create_random_images_for_cameras(cameras: PinholeCamera) -> ImageTensors:
+    imgs: ImageTensors = []
+    for height, width in zip(cameras.height.tolist(), cameras.width.tolist()):
+        imgs.append(torch.randint(0, 255, (3, int(height), int(width)), dtype=torch.uint8))  # (C, H, W)
+    return imgs
 
 
 class TestDataset:
     def test_uniform_ray_dataset(self, device, dtype):
         cameras = create_four_cameras(device, dtype)
-        imgs: ImageTensors = []
-        imgs.append(torch.randint(0, 255, (3, 5, 9), dtype=torch.uint8))  # (3, 5, 9)
-        imgs.extend([torch.randint(0, 255, (3, 3, 4, 7), dtype=torch.uint8)[i] for i in range(3)])  # (3, 4, 7)
+        imgs = create_random_images_for_cameras(cameras)
         dataset = RayDataset(cameras, 1, 2)
         dataset.init_ray_dataset(imgs)
 
