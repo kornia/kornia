@@ -2,7 +2,7 @@ import math
 
 import torch
 
-import kornia
+from kornia.geometry.camera import PinholeCamera
 from kornia.geometry.nerf.rays import (
     RandomRaySampler,
     UniformRaySampler,
@@ -102,7 +102,7 @@ def create_extrinsics_with_rotation(alphas, betas, gammas, txs, tys, tzs, device
     return torch.stack(extrinsics_batch)
 
 
-def create_four_cameras(device, dtype) -> kornia.geometry.camera.PinholeCamera:
+def create_four_cameras(device, dtype) -> PinholeCamera:
     height = torch.tensor([5, 4, 4, 4], device=device, dtype=dtype)
     width = torch.tensor([9, 7, 7, 7], device=device, dtype=dtype)
 
@@ -124,7 +124,7 @@ def create_four_cameras(device, dtype) -> kornia.geometry.camera.PinholeCamera:
     intrinsics = create_intrinsics(fx, fy, cx, cy, device=device, dtype=dtype)
     extrinsics = create_extrinsics_with_rotation(alpha, beta, gamma, tx, ty, tz, device=device, dtype=dtype)
 
-    cameras = kornia.geometry.camera.PinholeCamera(intrinsics, extrinsics, height, width)
+    cameras = PinholeCamera(intrinsics, extrinsics, height, width)
     return cameras
 
 

@@ -1,11 +1,10 @@
 from typing import Optional
 
 import torch.optim as optim
-from data_utils import Images
 from torch import nn
 
 from kornia.geometry.camera import PinholeCamera
-from kornia.geometry.nerf.data_utils import RayDataset, instantiate_ray_dataloader
+from kornia.geometry.nerf.data_utils import Images, RayDataset, instantiate_ray_dataloader
 from kornia.geometry.nerf.nerf_model import NerfModel
 
 """
@@ -25,7 +24,7 @@ Training one epoch:
 """
 
 
-class Nerf:
+class NerfSolver:
     def __init__(self) -> None:
         self._cameras: Optional[PinholeCamera] = None
         self._min_depth: float = 0.0
@@ -44,7 +43,7 @@ class Nerf:
     def init_training(self, imgs: Images):
         self._nerf_model = NerfModel(self._num_ray_points)
 
-    def __train_one_epoch(self):
+    def train_one_epoch(self):
         ray_dataset = RayDataset(self._cameras, self._min_depth, self._max_depth)
         ray_dataset.init_ray_dataset(self._imgs, self._num_img_rays)
         ray_data_loader = instantiate_ray_dataloader(ray_dataset, self._batch_size, shufle=True)
