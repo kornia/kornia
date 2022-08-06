@@ -35,8 +35,12 @@ Matching
 .. autofunction:: match_mnn
 .. autofunction:: match_snn
 .. autofunction:: match_smnn
+.. autofunction:: match_fginn
 
 .. autoclass:: DescriptorMatcher
+   :members: forward
+
+.. autoclass:: GeometryAwareDescriptorMatcher
    :members: forward
 
 .. autoclass:: LocalFeature
