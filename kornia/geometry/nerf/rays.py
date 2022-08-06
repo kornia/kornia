@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import torch
 
@@ -16,10 +16,10 @@ def cameras_for_ids(cameras: PinholeCamera, camera_ids: List[int]):
 
 
 class RaySampler:  # FIXME: Add device handling!!
-    _origins: torch.Tensor  # Ray origins in world coordinates (*, 2)
-    _directions: torch.Tensor  # Ray directions in worlds coordinates (*, 2)
-    _camera_ids: torch.Tensor  # Ray camera ID
-    _points_2d: torch.Tensor  # Ray intersection with image plane in camera coordinates
+    _origins: Optional[torch.Tensor] = None  # Ray origins in world coordinates (*, 2)
+    _directions: Optional[torch.Tensor] = None  # Ray directions in worlds coordinates (*, 2)
+    _camera_ids: Optional[torch.Tensor] = None  # Ray camera ID
+    _points_2d: Optional[torch.Tensor] = None  # Ray intersection with image plane in camera coordinates
 
     class Points2D_AsLists:
         def __init__(self) -> None:
@@ -60,6 +60,11 @@ class RaySampler:  # FIXME: Add device handling!!
     def points_2d(self) -> torch.Tensor:
         return self._points_2d
 
+    def __len__(self) -> int:
+        if self.origins is None:
+            return 0
+        return self.origins.shape[0]
+
     def _calc_ray_params(self, cameras: PinholeCamera, points_2d_camera: Dict[int, Points2D]) -> None:
 
         # Unproject 2d points in image plane to 3d world for two depths
@@ -89,7 +94,7 @@ class RaySampler:  # FIXME: Add device handling!!
         self._points_2d = torch.cat(points_2d)
 
     def transform_ray_params_world_to_ndc(self, cameras: PinholeCamera) -> Tuple[torch.Tensor, torch.Tensor]:
-        num_rays = self._origins.shape[0]
+        num_rays = self.__len__()
         lengths = sample_lengths(num_rays, 2, irregular=False)
         points_3d = sample_ray_points(self._origins, self._directions, lengths)
         cams = cameras_for_ids(cameras, self._camera_ids)
