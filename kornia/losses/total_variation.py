@@ -2,14 +2,17 @@ import torch
 import torch.nn as nn
 
 
-def total_variation(img: torch.Tensor) -> torch.Tensor:
+def total_variation(img: torch.Tensor, reduction: str = 'sum') -> torch.Tensor:
     r"""Function that computes Total Variation according to [1].
 
     Args:
-        img: the input image with shape :math:`(N, C, H, W)` or :math:`(C, H, W)`.
+        img: the input image with shape :math:`(*, C, H, W)`.
+        reduction : Specifies the reduction to apply to the output: ``'mean'`` | ``'sum'``.
+         ``'mean'``: the sum of the output will be divided by the number of elements
+         in the output, ``'sum'``: the output will be summed.
 
     Return:
-         a scalar with the computer loss.
+         a tensor with shape :math:`(*,)`.
 
     Examples:
         >>> total_variation(torch.ones(3, 4, 4))
@@ -25,15 +28,25 @@ def total_variation(img: torch.Tensor) -> torch.Tensor:
     if not isinstance(img, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(img)}")
 
-    if len(img.shape) < 3 or len(img.shape) > 4:
-        raise ValueError(f"Expected input tensor to be of ndim 3 or 4, but got {len(img.shape)}.")
+    if len(img.shape) < 3:
+        raise ValueError(f"Expected input tensor to have at least 3 dims, but got {len(img.shape)}.")
+
+    if reduction not in ("mean", "sum"):
+        raise ValueError(f"Expected reduction to be one of 'mean'/'sum', but got '{reduction}'.")
 
     pixel_dif1 = img[..., 1:, :] - img[..., :-1, :]
     pixel_dif2 = img[..., :, 1:] - img[..., :, :-1]
 
+    res1 = pixel_dif1.abs()
+    res2 = pixel_dif2.abs()
+
     reduce_axes = (-3, -2, -1)
-    res1 = pixel_dif1.abs().sum(dim=reduce_axes)
-    res2 = pixel_dif2.abs().sum(dim=reduce_axes)
+    if reduction == 'mean':
+        res1 = res1.mean(dim=reduce_axes)
+        res2 = res2.mean(dim=reduce_axes)
+    elif reduction == 'sum':
+        res1 = res1.sum(dim=reduce_axes)
+        res2 = res2.sum(dim=reduce_axes)
 
     return res1 + res2
 
@@ -42,8 +55,8 @@ class TotalVariation(nn.Module):
     r"""Compute the Total Variation according to [1].
 
     Shape:
-        - Input: :math:`(N, C, H, W)` or :math:`(C, H, W)`.
-        - Output: :math:`(N,)` or scalar.
+        - Input: :math:`(*, C, H, W)`.
+        - Output: :math:`(*,)`.
 
     Examples:
         >>> tv = TotalVariation()
