@@ -1,8 +1,11 @@
 import torch
 import torch.nn as nn
 
+from kornia.core import Tensor
+from kornia.testing import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, KORNIA_CHECK
 
-def total_variation(img: torch.Tensor, reduction: str = 'sum') -> torch.Tensor:
+
+def total_variation(img: Tensor, reduction: str = "sum") -> Tensor:
     r"""Function that computes Total Variation according to [1].
 
     Args:
@@ -25,14 +28,9 @@ def total_variation(img: torch.Tensor, reduction: str = 'sum') -> torch.Tensor:
     Reference:
         [1] https://en.wikipedia.org/wiki/Total_variation
     """
-    if not isinstance(img, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(img)}")
-
-    if len(img.shape) < 3:
-        raise ValueError(f"Expected input tensor to have at least 3 dims, but got {len(img.shape)}.")
-
-    if reduction not in ("mean", "sum"):
-        raise ValueError(f"Expected reduction to be one of 'mean'/'sum', but got '{reduction}'.")
+    KORNIA_CHECK_IS_TENSOR(img)
+    KORNIA_CHECK_SHAPE(img, ["*", "C", "H", "W"])
+    KORNIA_CHECK(reduction in ("mean", "sum"), f"Expected reduction to be one of 'mean'/'sum', but got '{reduction}'.")
 
     pixel_dif1 = img[..., 1:, :] - img[..., :-1, :]
     pixel_dif2 = img[..., :, 1:] - img[..., :, :-1]
@@ -41,10 +39,10 @@ def total_variation(img: torch.Tensor, reduction: str = 'sum') -> torch.Tensor:
     res2 = pixel_dif2.abs()
 
     reduce_axes = (-3, -2, -1)
-    if reduction == 'mean':
+    if reduction == "mean":
         res1 = res1.mean(dim=reduce_axes)
         res2 = res2.mean(dim=reduce_axes)
-    elif reduction == 'sum':
+    elif reduction == "sum":
         res1 = res1.sum(dim=reduce_axes)
         res2 = res2.sum(dim=reduce_axes)
 
@@ -69,5 +67,5 @@ class TotalVariation(nn.Module):
         [1] https://en.wikipedia.org/wiki/Total_variation
     """
 
-    def forward(self, img) -> torch.Tensor:
+    def forward(self, img) -> Tensor:
         return total_variation(img)
