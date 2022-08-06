@@ -350,3 +350,49 @@ def build_pyramid(
         pyramid.append(img_down)
 
     return pyramid
+
+
+def build_laplacian_pyramid(
+    input: torch.Tensor, max_level: int, border_type: str = 'reflect', align_corners: bool = False
+) -> List[torch.Tensor]:
+    r"""Construct the Laplacian pyramid for an image.
+
+    .. image:: _static/img/build_pyramid.png
+
+    The function constructs a vector of images and builds the Laplacian pyramid
+    by recursively computing the difference after applying
+    pyrUp to the adjacent layer in it's Gaussian pyramid.
+
+    Args:
+        input : the tensor to be used to construct the pyramid.
+        max_level: 0-based index of the last (the smallest) pyramid layer.
+          It must be non-negative.
+        border_type: the padding mode to be applied before convolving.
+          The expected modes are: ``'constant'``, ``'reflect'``,
+          ``'replicate'`` or ``'circular'``.
+        align_corners: interpolation flag.
+
+    Shape:
+        - Input: :math:`(B, C, H, W)`
+        - Output :math:`[(B, C, H, W), (B, C, H/2, W/2), ...]`
+    """
+    if not isinstance(input, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+
+    if not len(input.shape) == 4:
+        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
+
+    if not isinstance(max_level, int) or max_level < 0:
+        raise ValueError(f"Invalid max_level, it must be a positive integer. Got: {max_level}")
+
+    # create gaussian pyramid
+    gaussian_pyramid: List[torch.Tensor] = build_pyramid(input, max_level)
+    # create empty list
+    laplacian_pyramid: List[torch.Tensor] = []
+
+    for i in range(max_level - 1):
+        img_expand: torch.Tensor = pyrup(gaussian_pyramid[i + 1])
+        laplacian: torch.Tensor = gaussian_pyramid[i] - img_expand
+        laplacian_pyramid.append(laplacian)
+    laplacian_pyramid.append(gaussian_pyramid[-1])
+    return laplacian_pyramid
