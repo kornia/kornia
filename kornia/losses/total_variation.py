@@ -47,7 +47,7 @@ def total_variation(img: Tensor, reduction: str = "sum") -> Tensor:
     return res1 + res2
 
 
-class TotalVariation(nn.Module):
+class TotalVariation(Module):
     r"""Compute the Total Variation according to [1].
 
     Shape:
