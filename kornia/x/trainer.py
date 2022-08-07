@@ -1,12 +1,12 @@
 import logging
 from typing import Callable, Dict, Optional
 
+# the accelerator library is a requirement for the Trainer
+# but it is optional for grousnd base user of kornia.
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-# the accelerator library is a requirement for the Trainer
-# but it is optional for grousnd base user of kornia.
 try:
     from accelerate import Accelerator
 except ImportError:
