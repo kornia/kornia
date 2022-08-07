@@ -1,15 +1,14 @@
-import torch
 import torch.nn as nn
 
 from kornia.core import Tensor
-from kornia.testing import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, KORNIA_CHECK
+from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK
 
 
 def total_variation(img: Tensor, reduction: str = "sum") -> Tensor:
     r"""Function that computes Total Variation according to [1].
 
     Args:
-        img: the input image with shape :math:`(*, C, H, W)`.
+        img: the input image with shape :math:`(*, H, W)`.
         reduction : Specifies the reduction to apply to the output: ``'mean'`` | ``'sum'``.
          ``'mean'``: the sum of the output will be divided by the number of elements
          in the output, ``'sum'``: the output will be summed.
@@ -18,8 +17,10 @@ def total_variation(img: Tensor, reduction: str = "sum") -> Tensor:
          a tensor with shape :math:`(*,)`.
 
     Examples:
-        >>> total_variation(torch.ones(3, 4, 4))
+        >>> total_variation(torch.ones(4, 4))
         tensor(0.)
+        >>> total_variation(torch.ones(2, 5, 3, 4, 4)).shape
+        torch.Size([2, 5, 3])
 
     .. note::
        See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
@@ -28,8 +29,7 @@ def total_variation(img: Tensor, reduction: str = "sum") -> Tensor:
     Reference:
         [1] https://en.wikipedia.org/wiki/Total_variation
     """
-    KORNIA_CHECK_IS_TENSOR(img)
-    KORNIA_CHECK_SHAPE(img, ["*", "C", "H", "W"])
+    KORNIA_CHECK_SHAPE(img, ["*", "H", "W"])
     KORNIA_CHECK(reduction in ("mean", "sum"), f"Expected reduction to be one of 'mean'/'sum', but got '{reduction}'.")
 
     pixel_dif1 = img[..., 1:, :] - img[..., :-1, :]
@@ -38,7 +38,7 @@ def total_variation(img: Tensor, reduction: str = "sum") -> Tensor:
     res1 = pixel_dif1.abs()
     res2 = pixel_dif2.abs()
 
-    reduce_axes = (-3, -2, -1)
+    reduce_axes = (-2, -1)
     if reduction == "mean":
         res1 = res1.mean(dim=reduce_axes)
         res2 = res2.mean(dim=reduce_axes)
@@ -53,14 +53,15 @@ class TotalVariation(nn.Module):
     r"""Compute the Total Variation according to [1].
 
     Shape:
-        - Input: :math:`(*, C, H, W)`.
+        - Input: :math:`(*, H, W)`.
         - Output: :math:`(*,)`.
 
     Examples:
         >>> tv = TotalVariation()
         >>> output = tv(torch.ones((2, 3, 4, 4), requires_grad=True))
         >>> output.data
-        tensor([0., 0.])
+        tensor([[0., 0., 0.],
+                [0., 0., 0.]])
         >>> output.sum().backward()  # grad can be implicitly created only for scalar outputs
 
     Reference:

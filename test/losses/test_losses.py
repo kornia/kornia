@@ -507,17 +507,18 @@ class TestTotalVariation:
         actual = kornia.losses.total_variation(input.to(device, dtype))
         assert_close(actual, expected.to(device, dtype), rtol=1e-4, atol=1e-4)
 
-    # Expect ValueError to be raised when tensors of ndim < 3 are passed
-    @pytest.mark.parametrize('input', [torch.rand(3, ), torch.rand(3, 1)])
-    def test_tv_on_invalid_dims(self, device, dtype, input):
-        with pytest.raises(ValueError):
-            kornia.losses.total_variation(input.to(device, dtype))
-
-    @pytest.mark.parametrize('input', [torch.rand(3, 5, 5), torch.rand(4, 3, 5, 5), torch.rand(4, 2, 3, 5, 5)])
+    @pytest.mark.parametrize('input', [
+        torch.rand(3, 5, 5), torch.rand(4, 3, 5, 5), torch.rand(4, 2, 3, 5, 5),
+    ])
     def test_tv_shapes(self, device, dtype, input):
-        actual = kornia.losses.total_variation(input.to(device, dtype)).shape
-        expected = input.shape[:-3]
-        assert actual == expected
+        input = input.to(device, dtype)
+        actual_lesser_dims = []
+        for slice in torch.unbind(input, dim=0):
+            slice_tv = kornia.losses.total_variation(slice)
+            actual_lesser_dims.append(slice_tv)
+        actual_lesser_dims = torch.stack(actual_lesser_dims, dim=0)
+        actual_higher_dims = kornia.losses.total_variation(input)
+        assert_close(actual_lesser_dims, actual_higher_dims, rtol=1e-4, atol=1e-4)
 
     # Expect TypeError to be raised when non-torch tensors are passed
     @pytest.mark.parametrize('input', [1, [1, 2]])
