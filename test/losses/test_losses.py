@@ -507,9 +507,7 @@ class TestTotalVariation:
         actual = kornia.losses.total_variation(input.to(device, dtype))
         assert_close(actual, expected.to(device, dtype), rtol=1e-4, atol=1e-4)
 
-    @pytest.mark.parametrize('input', [
-        torch.rand(3, 5, 5), torch.rand(4, 3, 5, 5), torch.rand(4, 2, 3, 5, 5),
-    ])
+    @pytest.mark.parametrize('input', [torch.rand(3, 5, 5), torch.rand(4, 3, 5, 5), torch.rand(4, 2, 3, 5, 5)])
     def test_tv_shapes(self, device, dtype, input):
         input = input.to(device, dtype)
         actual_lesser_dims = []

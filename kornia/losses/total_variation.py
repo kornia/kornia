@@ -1,7 +1,7 @@
 import torch.nn as nn
 
 from kornia.core import Tensor
-from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 
 def total_variation(img: Tensor, reduction: str = "sum") -> Tensor:
