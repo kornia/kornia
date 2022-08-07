@@ -1,12 +1,14 @@
 import logging
 from typing import Callable, Dict, Optional
 
+import accelerate
+
+# the accelerator library is a requirement for the Trainer
+# but it is optional for grousnd base user of kornia.
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-# the accelerator library is a requirement for the Trainer
-# but it is optional for grousnd base user of kornia.
 try:
     from accelerate import Accelerator
 except ImportError:
@@ -70,6 +72,7 @@ class Trainer:
         config: Configuration,
         callbacks: Dict[str, Callable] = {},
     ) -> None:
+        print(accelerate.__version__)
         # setup the accelerator
         if Accelerator is None:
             raise ModuleNotFoundError("accelerate library is not installed: pip install kornia[x]")
