@@ -1,4 +1,3 @@
-
 from kornia.core import Tensor
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
