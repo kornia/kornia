@@ -35,11 +35,8 @@ lint: FORCE
 mypy: FORCE
 	pytest -v --cache-clear --mypy kornia/ -m mypy
 
-autopep8: FORCE
-	autopep8 --in-place --aggressive --recursive kornia/ test/ examples/
-
-yapf: FORCE
-	yapf --in-place --parallel --recursive kornia/ test/ examples/
+black: FORCE
+	black kornia/ test/ examples/ --check
 
 doctest:
 	pytest -v --doctest-modules kornia/
