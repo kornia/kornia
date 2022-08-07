@@ -1,6 +1,5 @@
 pytest==7.1.2
-pytest-flake8==1.1.1
-flake8==4.0.1
+flake8==5.0.3
 pytest-cov==3.0.0
 pytest-mypy==0.9.1
 pydocstyle

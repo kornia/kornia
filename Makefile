@@ -30,7 +30,7 @@ test-slow: FORCE
 	pytest -v --device all --dtype all -m "(jit or grad or nn)"
 
 lint: FORCE
-	pytest -v --cache-clear --flake8 kornia/ examples/ test/ -m flake8
+	flake8 -v kornia/ test/ examples/
 
 mypy: FORCE
 	pytest -v --cache-clear --mypy kornia/ -m mypy
