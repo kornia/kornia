@@ -425,10 +425,11 @@ class TestDivergenceLoss:
 class TestTotalVariation:
     # Total variation of constant vectors is 0
     @pytest.mark.parametrize(
-        'input, expected', [
-            (torch.ones(3, 4, 5), torch.tensor([0., 0., 0.])),
-            (2 * torch.ones(2, 3, 4, 5), torch.tensor([[0., 0., 0.], [0., 0., 0.]]))
-        ]
+        'input, expected',
+        [
+            (torch.ones(3, 4, 5), torch.tensor([0.0, 0.0, 0.0])),
+            (2 * torch.ones(2, 3, 4, 5), torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])),
+        ],
     )
     def test_tv_on_constant(self, device, dtype, input, expected):
         actual = kornia.losses.total_variation(input.to(device, dtype))
@@ -461,7 +462,7 @@ class TestTotalVariation:
                         ],
                     ]
                 ),
-                torch.tensor([12.6647,  7.9527, 12.3838]),
+                torch.tensor([12.6647, 7.9527, 12.3838]),
             ),
             (
                 torch.tensor([[[0.09094203, 0.32630223, 0.8066123], [0.10921168, 0.09534764, 0.48588026]]]),
@@ -492,8 +493,7 @@ class TestTotalVariation:
                         ],
                     ]
                 ),
-                torch.tensor([[1.5672, 1.2836, 2.1544],
-                              [1.4134, 0.8584, 0.9154]]),
+                torch.tensor([[1.5672, 1.2836, 2.1544], [1.4134, 0.8584, 0.9154]]),
             ),
             (
                 torch.tensor(
@@ -503,9 +503,7 @@ class TestTotalVariation:
                         [[[0.5078, 0.5703, 0.9110], [0.4765, 0.8401, 0.2754]]],
                     ]
                 ),
-                torch.tensor([[1.9566],
-                              [2.5787],
-                              [2.2682]]),
+                torch.tensor([[1.9566], [2.5787], [2.2682]]),
             ),
         ],
     )
