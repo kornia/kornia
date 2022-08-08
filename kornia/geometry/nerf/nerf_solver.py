@@ -67,6 +67,10 @@ class NerfSolver:
         self._nerf_model = NerfModel(num_ray_points)
         self._opt_nerf = optim.Adam(self._nerf_model.parameters(), lr=lr)
 
+    @property
+    def nerf_model(self) -> nn.Module:
+        return self._nerf_model
+
     @staticmethod
     def _check_camera_image_consistency(cameras: PinholeCamera, imgs: Images):
         if cameras is None:
