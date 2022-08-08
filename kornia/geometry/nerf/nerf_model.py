@@ -17,7 +17,7 @@ class MLP(nn.Module):
             for j in range(num_unit_layers):
                 num_layer_inp_dims = n_unit_inp_dims if j == 0 else num_hidden
                 layer = nn.Linear(num_layer_inp_dims, num_hidden)
-                nn.init.xavier_uniform_(layer.weight.data)  # FIXME: Verify proper Xavier weight initialization!
+                # nn.init.xavier_uniform_(layer.weight.data)  # FIXME: Verify proper Xavier weight initialization!
                 layers.append(nn.Sequential(layer, nn.ReLU()))
         self._mlp = nn.ModuleList(layers)
 
@@ -49,12 +49,12 @@ class NerfModel(nn.Module):
         self._pos_encoder = PositionalEncoder(3, num_pos_freqs)
         self._dir_encoder = PositionalEncoder(3, num_dir_freqs)
         self._mlp = MLP(self._pos_encoder.num_encoded_dims, num_units, num_unit_layers, num_hidden)
-        self._fc1 = nn.Linear(num_hidden, num_hidden)  # FIXME: Relu activation for FC1?
+        self._fc1 = nn.Linear(num_hidden, num_hidden)
         self._fc2 = nn.Sequential(
             nn.Linear(num_hidden + self._dir_encoder.num_encoded_dims, num_hidden // 2), nn.ReLU()
         )
-        self._sigma = nn.Linear(num_hidden, 1)
-        self._rgb = nn.Linear(num_hidden // 2, 3)
+        self._sigma = nn.Sequential(nn.Linear(num_hidden, 1), nn.ReLU())
+        self._rgb = nn.Sequential(nn.Linear(num_hidden // 2, 3), nn.Sigmoid())
 
     def forward(self, origins: torch.Tensor, directions: torch.Tensor) -> torch.Tensor:
 
