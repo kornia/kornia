@@ -7,6 +7,7 @@ from kornia.geometry.nerf.data_utils import ImageTensors, RayDataset, instantiat
 
 
 def create_random_images_for_cameras(cameras: PinholeCamera) -> ImageTensors:
+    torch.manual_seed(0)
     imgs: ImageTensors = []
     for height, width in zip(cameras.height.tolist(), cameras.width.tolist()):
         imgs.append(torch.randint(0, 255, (3, int(height), int(width)), dtype=torch.uint8))  # (C, H, W)
