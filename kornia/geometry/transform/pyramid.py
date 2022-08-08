@@ -229,9 +229,7 @@ class ScalePyramid(nn.Module):
         return pyr, sigmas, pixel_dists
 
 
-def pyrdown(
-    input: Tensor, border_type: str = 'reflect', align_corners: bool = False, factor: float = 2.0
-) -> Tensor:
+def pyrdown(input: Tensor, border_type: str = 'reflect', align_corners: bool = False, factor: float = 2.0) -> Tensor:
     r"""Blur a tensor and downsamples it.
 
     .. image:: _static/img/pyrdown.png
@@ -299,9 +297,7 @@ def pyrup(input: Tensor, border_type: str = 'reflect', align_corners: bool = Fal
     # upsample tensor
     _, _, height, width = input.shape
     # TODO: use kornia.geometry.resize/rescale
-    x_up: Tensor = F.interpolate(
-        input, size=(height * 2, width * 2), mode='bilinear', align_corners=align_corners
-    )
+    x_up: Tensor = F.interpolate(input, size=(height * 2, width * 2), mode='bilinear', align_corners=align_corners)
 
     # blurs upsampled tensor
     x_blur: Tensor = filter2d(x_up, kernel, border_type)
@@ -335,7 +331,8 @@ def build_pyramid(
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     KORNIA_CHECK(
         isinstance(max_level, int) or max_level < 0,
-        f"Invalid max_level, it must be a positive integer. Got: {max_level}")
+        f"Invalid max_level, it must be a positive integer. Got: {max_level}",
+    )
 
     # create empty list and append the original image
     pyramid: List[Tensor] = []
@@ -373,16 +370,17 @@ def build_laplacian_pyramid(
     Shape:
         - Input: :math:`(B, C, H, W)`
         - Output :math:`[(B, C, H, W), (B, C, H/2, W/2), ...]`
-    
+
     Reference:
         [1] https://ieeexplore.ieee.org/document/1095851
     """
-    
+
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     KORNIA_CHECK(
         isinstance(max_level, int) or max_level < 0,
-        f"Invalid max_level, it must be a positive integer. Got: {max_level}")
+        f"Invalid max_level, it must be a positive integer. Got: {max_level}",
+    )
 
     # create gaussian pyramid
     gaussian_pyramid: List[Tensor] = build_pyramid(input, max_level, border_type, align_corners)
