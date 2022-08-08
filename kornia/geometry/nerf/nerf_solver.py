@@ -41,6 +41,8 @@ class NerfSolver:
 
         self._nerf_optimizaer: Optional[optim.Optimizer] = None
 
+        self._opt_nerf: optim.Optimizer = None
+
     def init_training(
         self,
         cameras: PinholeCamera,
@@ -49,6 +51,7 @@ class NerfSolver:
         imgs: Images,
         batch_size: int,
         num_ray_points: int,
+        lr: float = 1.0e-3,
     ):
         self._check_camera_image_consistency(cameras, imgs)
 
@@ -62,6 +65,7 @@ class NerfSolver:
         self._batch_size = batch_size
 
         self._nerf_model = NerfModel(num_ray_points)
+        self._opt_nerf = optim.Adam(self._nerf_model.parameters(), lr=lr)
 
     @staticmethod
     def _check_camera_image_consistency(cameras: PinholeCamera, imgs: Images):
@@ -86,7 +90,6 @@ class NerfSolver:
             rgbs_model = self._nerf_model(origins, directions)
             loss = F.mse_loss(rgbs_model, rgbs)
 
+            self._opt_nerf.zero_grad()
             loss.backward()
-
-            # opt_nerf.step()
-            # opt_nerf.zero_grad()
+            self._opt_nerf.step()

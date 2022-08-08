@@ -80,6 +80,7 @@ class RayDataset(Dataset):  # FIXME: Add device
         rgbs = torch.stack(
             [img[:, point2d[1].item(), point2d[0].item()] for img, point2d in zip(imgs_for_ids, points_2d)]
         )
+        rgbs = rgbs.float() / 255.0
         return origins, directions, rgbs
 
 
