@@ -5,12 +5,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from kornia.core import Tensor
 from kornia.filters import filter2d, gaussian_blur2d
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 __all__ = ["PyrDown", "PyrUp", "ScalePyramid", "pyrdown", "pyrup", "build_pyramid"]
 
 
-def _get_pyramid_gaussian_kernel() -> torch.Tensor:
+def _get_pyramid_gaussian_kernel() -> Tensor:
     """Utility function that return a pre-computed gaussian kernel."""
     return (
         torch.tensor(
@@ -56,7 +58,7 @@ class PyrDown(nn.Module):
         self.align_corners: bool = align_corners
         self.factor: float = factor
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: Tensor) -> Tensor:
         return pyrdown(input, self.border_type, self.align_corners, self.factor)
 
 
@@ -86,7 +88,7 @@ class PyrUp(nn.Module):
         self.border_type: str = border_type
         self.align_corners: bool = align_corners
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: Tensor) -> Tensor:
         return pyrup(input, self.border_type, self.align_corners)
 
 
@@ -184,7 +186,7 @@ class ScalePyramid(nn.Module):
             cur_level = x
         return cur_level, cur_sigma, pixel_distance
 
-    def forward(self, x: torch.Tensor) -> Tuple[List, List, List]:  # type: ignore
+    def forward(self, x: Tensor) -> Tuple[List, List, List]:  # type: ignore
         bs, _, _, _ = x.size()
         cur_level, cur_sigma, pixel_distance = self.get_first_level(x)
 
@@ -228,8 +230,8 @@ class ScalePyramid(nn.Module):
 
 
 def pyrdown(
-    input: torch.Tensor, border_type: str = 'reflect', align_corners: bool = False, factor: float = 2.0
-) -> torch.Tensor:
+    input: Tensor, border_type: str = 'reflect', align_corners: bool = False, factor: float = 2.0
+) -> Tensor:
     r"""Blur a tensor and downsamples it.
 
     .. image:: _static/img/pyrdown.png
@@ -251,16 +253,16 @@ def pyrdown(
         tensor([[[[ 3.7500,  5.2500],
                   [ 9.7500, 11.2500]]]])
     """
-    if not len(input.shape) == 4:
-        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
-    kernel: torch.Tensor = _get_pyramid_gaussian_kernel()
+    KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
+
+    kernel: Tensor = _get_pyramid_gaussian_kernel()
     _, _, height, width = input.shape
     # blur image
-    x_blur: torch.Tensor = filter2d(input, kernel, border_type)
+    x_blur: Tensor = filter2d(input, kernel, border_type)
 
     # TODO: use kornia.geometry.resize/rescale
     # downsample.
-    out: torch.Tensor = F.interpolate(
+    out: Tensor = F.interpolate(
         x_blur,
         size=(int(float(height) / factor), int(float(width) // factor)),
         mode='bilinear',
@@ -269,7 +271,7 @@ def pyrdown(
     return out
 
 
-def pyrup(input: torch.Tensor, border_type: str = 'reflect', align_corners: bool = False) -> torch.Tensor:
+def pyrup(input: Tensor, border_type: str = 'reflect', align_corners: bool = False) -> Tensor:
     r"""Upsample a tensor and then blurs it.
 
     .. image:: _static/img/pyrup.png
@@ -291,25 +293,25 @@ def pyrup(input: torch.Tensor, border_type: str = 'reflect', align_corners: bool
                   [1.5000, 1.6250, 1.8750, 2.0000],
                   [1.7500, 1.8750, 2.1250, 2.2500]]]])
     """
-    if not len(input.shape) == 4:
-        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
-    kernel: torch.Tensor = _get_pyramid_gaussian_kernel()
+    KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
+
+    kernel: Tensor = _get_pyramid_gaussian_kernel()
     # upsample tensor
     _, _, height, width = input.shape
     # TODO: use kornia.geometry.resize/rescale
-    x_up: torch.Tensor = F.interpolate(
+    x_up: Tensor = F.interpolate(
         input, size=(height * 2, width * 2), mode='bilinear', align_corners=align_corners
     )
 
     # blurs upsampled tensor
-    x_blur: torch.Tensor = filter2d(x_up, kernel, border_type)
+    x_blur: Tensor = filter2d(x_up, kernel, border_type)
     return x_blur
 
 
 def build_pyramid(
-    input: torch.Tensor, max_level: int, border_type: str = 'reflect', align_corners: bool = False
-) -> List[torch.Tensor]:
-    r"""Construct the Gaussian pyramid for an image.
+    input: Tensor, max_level: int, border_type: str = 'reflect', align_corners: bool = False
+) -> List[Tensor]:
+    r"""Construct the Gaussian pyramid for a tensor image.
 
     .. image:: _static/img/build_pyramid.png
 
@@ -329,33 +331,29 @@ def build_pyramid(
         - Input: :math:`(B, C, H, W)`
         - Output :math:`[(B, C, H, W), (B, C, H/2, W/2), ...]`
     """
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
-
-    if not len(input.shape) == 4:
-        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
-
-    if not isinstance(max_level, int) or max_level < 0:
-        raise ValueError(f"Invalid max_level, it must be a positive integer. Got: {max_level}")
+    KORNIA_CHECK_IS_TENSOR(input)
+    KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
+    KORNIA_CHECK(
+        isinstance(max_level, int) or max_level < 0,
+        f"Invalid max_level, it must be a positive integer. Got: {max_level}")
 
     # create empty list and append the original image
-    pyramid: List[torch.Tensor] = []
+    pyramid: List[Tensor] = []
     pyramid.append(input)
 
     # iterate and downsample
-
     for _ in range(max_level - 1):
-        img_curr: torch.Tensor = pyramid[-1]
-        img_down: torch.Tensor = pyrdown(img_curr, border_type, align_corners)
+        img_curr: Tensor = pyramid[-1]
+        img_down: Tensor = pyrdown(img_curr, border_type, align_corners)
         pyramid.append(img_down)
 
     return pyramid
 
 
 def build_laplacian_pyramid(
-    input: torch.Tensor, max_level: int, border_type: str = 'reflect', align_corners: bool = False
-) -> List[torch.Tensor]:
-    r"""Construct the Laplacian pyramid for an image.
+    input: Tensor, max_level: int, border_type: str = 'reflect', align_corners: bool = False
+) -> List[Tensor]:
+    r"""Construct the Laplacian pyramid for a tensor image.
 
     .. image:: _static/img/build_pyramid.png
 
@@ -375,24 +373,26 @@ def build_laplacian_pyramid(
     Shape:
         - Input: :math:`(B, C, H, W)`
         - Output :math:`[(B, C, H, W), (B, C, H/2, W/2), ...]`
+    
+    Reference:
+        [1] https://ieeexplore.ieee.org/document/1095851
     """
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
-
-    if not len(input.shape) == 4:
-        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
-
-    if not isinstance(max_level, int) or max_level < 0:
-        raise ValueError(f"Invalid max_level, it must be a positive integer. Got: {max_level}")
+    
+    KORNIA_CHECK_IS_TENSOR(input)
+    KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
+    KORNIA_CHECK(
+        isinstance(max_level, int) or max_level < 0,
+        f"Invalid max_level, it must be a positive integer. Got: {max_level}")
 
     # create gaussian pyramid
-    gaussian_pyramid: List[torch.Tensor] = build_pyramid(input, max_level)
+    gaussian_pyramid: List[Tensor] = build_pyramid(input, max_level, border_type, align_corners)
     # create empty list
-    laplacian_pyramid: List[torch.Tensor] = []
+    laplacian_pyramid: List[Tensor] = []
 
+    # iterate and compute difference of adjacent layers in a gaussian pyramid
     for i in range(max_level - 1):
-        img_expand: torch.Tensor = pyrup(gaussian_pyramid[i + 1])
-        laplacian: torch.Tensor = gaussian_pyramid[i] - img_expand
+        img_expand: Tensor = pyrup(gaussian_pyramid[i + 1])
+        laplacian: Tensor = gaussian_pyramid[i] - img_expand
         laplacian_pyramid.append(laplacian)
     laplacian_pyramid.append(gaussian_pyramid[-1])
     return laplacian_pyramid
