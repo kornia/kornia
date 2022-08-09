@@ -326,7 +326,7 @@ def crop_by_indices(
     out = torch.empty(B, C, *size, device=input.device, dtype=input.dtype)
     # Find out the cropped shapes that need to be resized.
     for i, _ in enumerate(out):
-        _out = input[i:i + 1, :, y1[i]:y2[i], x1[i]:x2[i]]  # type: ignore[misc]
+        _out = input[i : i + 1, :, y1[i] : y2[i], x1[i] : x2[i]]  # type: ignore[misc]
         if _out.shape[-2:] != size:
             if shape_compensation == "resize":
                 out[i] = resize(
@@ -335,7 +335,7 @@ def crop_by_indices(
                     interpolation=interpolation,
                     align_corners=align_corners,
                     side="short",
-                    antialias=antialias
+                    antialias=antialias,
                 )
             else:
                 out[i] = F.pad(_out, [0, size[1] - _out.shape[-1], 0, size[0] - _out.shape[-2]])

@@ -253,7 +253,7 @@ class Boxes:
         self,
         topleft: Optional[Union[Tensor, Tuple[int, int]]] = None,
         botright: Optional[Union[Tensor, Tuple[int, int]]] = None,
-        inplace: bool = False
+        inplace: bool = False,
     ) -> "Boxes":
         """"""
         if not (isinstance(topleft, Tensor) and isinstance(botright, Tensor)):
@@ -277,9 +277,7 @@ class Boxes:
             return self
         return Boxes(_data, False)
 
-    def trim(
-        self, correspondence_preserve: bool = False, inplace: bool = False
-    ) -> "Boxes":
+    def trim(self, correspondence_preserve: bool = False, inplace: bool = False) -> "Boxes":
         """Trim out zero padded boxes.
 
         Given box arrangements of shape :math:`(4, 4, Box)`:
@@ -309,14 +307,14 @@ class Boxes:
         else:
             _data = self._data.clone()
         if min_area is not None:
-            _data[area < min_area] = 0.
+            _data[area < min_area] = 0.0
         if max_area is not None:
-            _data[area > max_area] = 0.
+            _data[area > max_area] = 0.0
         if inplace:
             return self
         return Boxes(_data, False)
 
-    def compute_area(self,) -> torch.Tensor:
+    def compute_area(self) -> torch.Tensor:
         """Returns :math:`(B, N)`."""
         w = self._data[:, :, 1, 0] - self._data[:, :, 0, 0]
         h = self._data[:, :, 2, 1] - self._data[:, :, 0, 1]
@@ -528,12 +526,7 @@ class Boxes:
         """Inplace version of :func:`Boxes.transform_boxes`"""
         return self.transform_boxes(M, inplace=True)
 
-    def translate(
-        self,
-        size: Tensor,
-        method: str = "warp",
-        inplace: bool = False
-    ) -> "Boxes":
+    def translate(self, size: Tensor, method: str = "warp", inplace: bool = False) -> "Boxes":
         """Translates boxes by the provided size.
 
         Args:
@@ -581,7 +574,7 @@ class Boxes:
         self._data = self._data.to(device=device, dtype=dtype)
         return self
 
-    def clone(self,) -> "Boxes":
+    def clone(self) -> "Boxes":
         return Boxes(self._data.clone(), False)
 
 

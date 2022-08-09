@@ -200,8 +200,10 @@ class VideoSequential(ImageSequential):
                 if self.same_on_frame:
                     for k, v in mod_param.items():
                         # TODO: revise ColorJiggle and ColorJitter order param in the future to align the standard.
-                        if (k == "order" and (isinstance(module, kornia.augmentation.ColorJiggle)
-                                              or isinstance(module, kornia.augmentation.ColorJitter))):
+                        if k == "order" and (
+                            isinstance(module, kornia.augmentation.ColorJiggle)
+                            or isinstance(module, kornia.augmentation.ColorJitter)
+                        ):
                             continue
                         if k == "forward_input_shape":
                             mod_param.update({k: v})

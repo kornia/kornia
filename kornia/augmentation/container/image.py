@@ -224,9 +224,7 @@ class ImageSequential(SequentialBase):
             if isinstance(module, RandomCrop):
                 mod_param = module.forward_parameters_precrop(batch_shape)
                 param = ParamItem(name, mod_param)
-            elif isinstance(module, (
-                _AugmentationBase, MixAugmentationBase, MixAugmentationBaseV2, ImageSequential)
-            ):
+            elif isinstance(module, (_AugmentationBase, MixAugmentationBase, MixAugmentationBaseV2, ImageSequential)):
                 mod_param = module.forward_parameters(batch_shape)
                 param = ParamItem(name, mod_param)
             else:

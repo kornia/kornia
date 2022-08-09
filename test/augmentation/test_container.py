@@ -290,7 +290,7 @@ class TestAugmentationSequential:
         aug = K.AugmentationSequential(
             K.RandomCrop((crop_width, crop_height), padding=1, cropping_mode='resample', fill=0),
             K.RandomHorizontalFlip(p=1.0),
-            K.RandomMosaic(p=1.),
+            K.RandomMosaic(p=1.0),
             data_keys=["input", "bbox_xyxy"],
         )
 

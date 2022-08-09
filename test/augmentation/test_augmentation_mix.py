@@ -99,9 +99,7 @@ class TestRandomMixUpV2:
 class TestRandomCutMixV2:
     def test_smoke(self):
         f = RandomCutMixV2(data_keys=["input", "class"])
-        repr = (
-            "RandomCutMixV2(cut_size=None, beta=None, num_mix=1, p=1.0, p_batch=1.0, same_on_batch=False)"
-        )
+        repr = "RandomCutMixV2(cut_size=None, beta=None, num_mix=1, p=1.0, p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
 
     def test_random_mixup_p1(self, device, dtype):
@@ -251,77 +249,91 @@ class TestRandomMosaic:
 
     def test_numerical(self, device, dtype):
         torch.manual_seed(76)
-        f = RandomMosaic(p=1., data_keys=["input", "bbox_xyxy"])
+        f = RandomMosaic(p=1.0, data_keys=["input", "bbox_xyxy"])
 
-        input = torch.stack([
-            torch.ones(1, 8, 8, device=device, dtype=dtype),
-            torch.zeros(1, 8, 8, device=device, dtype=dtype)
-        ])
-        boxes = torch.tensor([
-            [[4, 5, 6, 7], [1, 2, 3, 4]],
-            [[2, 2, 6, 6], [0, 0, 0, 0]]
-        ], device=device, dtype=dtype)
+        input = torch.stack(
+            [torch.ones(1, 8, 8, device=device, dtype=dtype), torch.zeros(1, 8, 8, device=device, dtype=dtype)]
+        )
+        boxes = torch.tensor([[[4, 5, 6, 7], [1, 2, 3, 4]], [[2, 2, 6, 6], [0, 0, 0, 0]]], device=device, dtype=dtype)
 
         out_image, out_box = f(input, boxes)
 
-        expected = torch.tensor([
-            [[[1., 1., 1., 1., 1., 1., 1., 1.],
-              [1., 1., 1., 1., 1., 1., 1., 1.],
-              [1., 1., 1., 1., 1., 1., 1., 1.],
-              [1., 1., 1., 1., 1., 1., 1., 1.],
-              [0., 0., 0., 0., 0., 1., 1., 1.],
-              [0., 0., 0., 0., 0., 1., 1., 1.],
-              [0., 0., 0., 0., 0., 1., 1., 1.],
-              [0., 0., 0., 0., 0., 1., 1., 1.]]],
-            [[[0., 0., 0., 0., 0., 0., 0., 0.],
-              [0., 0., 0., 0., 0., 0., 0., 0.],
-              [0., 0., 0., 0., 0., 0., 0., 0.],
-              [0., 0., 0., 0., 0., 0., 0., 0.],
-              [0., 0., 0., 0., 0., 0., 0., 0.],
-              [1., 1., 1., 0., 0., 0., 0., 0.],
-              [1., 1., 1., 0., 0., 0., 0., 0.],
-              [1., 1., 1., 0., 0., 0., 0., 0.]]]
-        ], device=device, dtype=dtype)
+        expected = torch.tensor(
+            [
+                [
+                    [
+                        [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+                        [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+                        [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+                        [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+                    ]
+                ],
+                [
+                    [
+                        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                        [1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                        [1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                        [1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    ]
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
-        expected_box = torch.tensor([
-            [[0.7074, 0.7099, 2.7074, 2.7099],
-             [0.0000, 0.0000, 1.0000, 1.0000],
-             [0.0000, 5.7099, 2.7074, 8.0000],
-             [0.0000, 2.7099, 1.0000, 4.7099],
-             [7.0000, 0.7099, 8.0000, 2.7099],
-             [5.7074, 0.0000, 7.7074, 1.0000],
-             [7.0000, 7.0000, 8.0000, 8.0000],
-             [5.7074, 5.7099, 7.7074, 7.7099]],
-            [[0.0000, 0.0000, 1.0000, 2.8313],
-             [0.0000, 0.0000, 1.0000, 1.0000],
-             [0.0000, 7.0000, 1.0000, 8.0000],
-             [0.0000, 6.8313, 1.0000, 8.0000],
-             [4.5036, 0.0000, 8.0000, 2.8313],
-             [1.5036, 0.0000, 3.5036, 1.0000],
-             [4.5036, 6.8313, 8.0000, 8.0000],
-             [1.5036, 3.8313, 3.5036, 5.8313]]
-        ], device=device, dtype=dtype)
+        expected_box = torch.tensor(
+            [
+                [
+                    [0.7074, 0.7099, 2.7074, 2.7099],
+                    [0.0000, 0.0000, 1.0000, 1.0000],
+                    [0.0000, 5.7099, 2.7074, 8.0000],
+                    [0.0000, 2.7099, 1.0000, 4.7099],
+                    [7.0000, 0.7099, 8.0000, 2.7099],
+                    [5.7074, 0.0000, 7.7074, 1.0000],
+                    [7.0000, 7.0000, 8.0000, 8.0000],
+                    [5.7074, 5.7099, 7.7074, 7.7099],
+                ],
+                [
+                    [0.0000, 0.0000, 1.0000, 2.8313],
+                    [0.0000, 0.0000, 1.0000, 1.0000],
+                    [0.0000, 7.0000, 1.0000, 8.0000],
+                    [0.0000, 6.8313, 1.0000, 8.0000],
+                    [4.5036, 0.0000, 8.0000, 2.8313],
+                    [1.5036, 0.0000, 3.5036, 1.0000],
+                    [4.5036, 6.8313, 8.0000, 8.0000],
+                    [1.5036, 3.8313, 3.5036, 5.8313],
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
         assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
         assert_close(out_box, expected_box, rtol=1e-4, atol=1e-4)
 
-    @pytest.mark.parametrize("p", [0., 0.5, 1.])
+    @pytest.mark.parametrize("p", [0.0, 0.5, 1.0])
     def test_p(self, p, device, dtype):
         torch.manual_seed(76)
         f = RandomMosaic(p=p, data_keys=["input", "bbox_xyxy"])
 
         input = torch.randn((2, 3, 224, 224), device=device, dtype=dtype)
-        boxes = torch.tensor([
-            # image 1
+        boxes = torch.tensor(
             [
-                [70., 5, 150, 100],  # head
-                [60, 180, 175, 220],  # feet
+                # image 1
+                [[70.0, 5, 150, 100], [60, 180, 175, 220]],  # head  # feet
+                # image 2
+                [[75, 30, 175, 140], [0, 0, 0, 0]],  # head  # placeholder
             ],
-            # image 2
-            [
-                [75, 30, 175, 140],  # head
-                [0, 0, 0, 0]  # placeholder
-            ]
-        ], device=device, dtype=dtype)
+            device=device,
+            dtype=dtype,
+        )
 
         f(input, boxes)
