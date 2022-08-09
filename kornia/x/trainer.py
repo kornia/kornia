@@ -72,7 +72,7 @@ class Trainer:
     ) -> None:
         # setup the accelerator
         if Accelerator is None:
-            raise ModuleNotFoundError("accelerate library is not installed: pip install kornia[x]")
+            raise ModuleNotFoundError('accelerate library is not installed: pip install "kornia[x]"')
         self.accelerator = Accelerator()
 
         # setup the data related objects

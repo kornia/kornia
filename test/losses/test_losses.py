@@ -472,7 +472,7 @@ class TestTotalVariation:
     )
     def test_tv_on_3d(self, device, dtype, input, expected):
         actual = kornia.losses.total_variation(input.to(device, dtype))
-        assert_close(actual, expected.to(device, dtype))
+        assert_close(actual, expected.to(device, dtype), rtol=1e-3, atol=1e-3)
 
     # Total variation for 4D tensors
     @pytest.mark.parametrize(
@@ -509,7 +509,7 @@ class TestTotalVariation:
     )
     def test_tv_on_4d(self, device, dtype, input, expected):
         actual = kornia.losses.total_variation(input.to(device, dtype))
-        assert_close(actual, expected.to(device, dtype), rtol=1e-4, atol=1e-4)
+        assert_close(actual, expected.to(device, dtype), rtol=1e-3, atol=1e-3)
 
     @pytest.mark.parametrize('input', [torch.rand(3, 5, 5), torch.rand(4, 3, 5, 5), torch.rand(4, 2, 3, 5, 5)])
     def test_tv_shapes(self, device, dtype, input):
@@ -520,7 +520,7 @@ class TestTotalVariation:
             actual_lesser_dims.append(slice_tv)
         actual_lesser_dims = torch.stack(actual_lesser_dims, dim=0)
         actual_higher_dims = kornia.losses.total_variation(input)
-        assert_close(actual_lesser_dims, actual_higher_dims, rtol=1e-4, atol=1e-4)
+        assert_close(actual_lesser_dims, actual_higher_dims.to(device, dtype), rtol=1e-3, atol=1e-3)
 
     # Expect TypeError to be raised when non-torch tensors are passed
     @pytest.mark.parametrize('input', [1, [1, 2]])
