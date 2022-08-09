@@ -9,7 +9,7 @@ from kornia.core import Tensor
 from kornia.filters import filter2d, gaussian_blur2d
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
-__all__ = ["PyrDown", "PyrUp", "ScalePyramid", "pyrdown", "pyrup", "build_pyramid"]
+__all__ = ["PyrDown", "PyrUp", "ScalePyramid", "pyrdown", "pyrup", "build_pyramid", "build_laplacian_pyramid"]
 
 
 def _get_pyramid_gaussian_kernel() -> Tensor:
@@ -358,6 +358,8 @@ def build_laplacian_pyramid(
     by recursively computing the difference after applying
     pyrUp to the adjacent layer in it's Gaussian pyramid.
 
+    See :cite:`burt1987laplacian` for more details.
+
     Args:
         input : the tensor to be used to construct the pyramid.
         max_level: 0-based index of the last (the smallest) pyramid layer.
@@ -370,9 +372,6 @@ def build_laplacian_pyramid(
     Shape:
         - Input: :math:`(B, C, H, W)`
         - Output :math:`[(B, C, H, W), (B, C, H/2, W/2), ...]`
-
-    Reference:
-        [1] https://ieeexplore.ieee.org/document/1095851
     """
 
     KORNIA_CHECK_IS_TENSOR(input)
