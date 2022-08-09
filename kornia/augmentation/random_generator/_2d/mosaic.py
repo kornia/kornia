@@ -67,11 +67,15 @@ class MosaicGenerator(RandomGeneratorBase):
         perm_times = self.mosaic_grid[0] * self.mosaic_grid[1]
         # Generate mosiac order in one shot
         rand_ids = torch.randperm(batch_size * (perm_times - 1), device=_device) % batch_size
-        mosiac_ids = torch.cat(
-            [torch.arange(0, batch_size, device=_device), rand_ids]).reshape(perm_times, batch_size).permute(1, 0)
+        mosiac_ids = (
+            torch.cat([torch.arange(0, batch_size, device=_device), rand_ids])
+            .reshape(perm_times, batch_size)
+            .permute(1, 0)
+        )
 
         start_corner_factor = _adapted_rsampling(
-            (batch_size, 2), self.start_ratio_range_sampler, same_on_batch=False).to(device=_device, dtype=_dtype)
+            (batch_size, 2), self.start_ratio_range_sampler, same_on_batch=False
+        ).to(device=_device, dtype=_dtype)
         start_corner_x = start_corner_factor[:, 0] * batch_shape[-2]
         start_corner_y = start_corner_factor[:, 1] * batch_shape[-1]
         crop_src = bbox_generator(
@@ -81,14 +85,7 @@ class MosaicGenerator(RandomGeneratorBase):
             start_corner_y.clone().fill_(output_size[1]),
         )
         crop_dst = torch.tensor(
-            [
-                [
-                    [0, 0],
-                    [output_size[1] - 1, 0],
-                    [output_size[1] - 1, output_size[0] - 1],
-                    [0, output_size[0] - 1],
-                ]
-            ],
+            [[[0, 0], [output_size[1] - 1, 0], [output_size[1] - 1, output_size[0] - 1], [0, output_size[0] - 1]]],
             device=_device,
             dtype=_dtype,
         ).repeat(batch_size, 1, 1)

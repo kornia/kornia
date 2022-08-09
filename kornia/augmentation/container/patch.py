@@ -277,16 +277,16 @@ class PatchSequential(ImageSequential):
                 seq, mix_added = self.get_random_forward_sequence(with_mix=with_mix)
                 with_mix = mix_added
                 for s in seq:
-                    if isinstance(s[1], (
-                        _AugmentationBase, MixAugmentationBase, SequentialBase, MixAugmentationBaseV2)
+                    if isinstance(
+                        s[1], (_AugmentationBase, MixAugmentationBase, SequentialBase, MixAugmentationBaseV2)
                     ):
                         yield ParamItem(s[0], s[1].forward_parameters(torch.Size(batch_shape[1:]))), i
                     else:
                         yield ParamItem(s[0], None), i
         elif not self.same_on_batch and not self.random_apply:
             for i, nchild in enumerate(self.named_children()):
-                if isinstance(nchild[1], (
-                    _AugmentationBase, MixAugmentationBase, SequentialBase, MixAugmentationBaseV2)
+                if isinstance(
+                    nchild[1], (_AugmentationBase, MixAugmentationBase, SequentialBase, MixAugmentationBaseV2)
                 ):
                     yield ParamItem(nchild[0], nchild[1].forward_parameters(torch.Size(batch_shape[1:]))), i
                 else:
@@ -294,8 +294,8 @@ class PatchSequential(ImageSequential):
         elif not self.random_apply:
             # same_on_batch + not random_apply => location-wise augmentation
             for i, nchild in enumerate(islice(cycle(self.named_children()), batch_shape[0])):
-                if isinstance(nchild[1], (
-                    _AugmentationBase, MixAugmentationBase, SequentialBase, MixAugmentationBaseV2)
+                if isinstance(
+                    nchild[1], (_AugmentationBase, MixAugmentationBase, SequentialBase, MixAugmentationBaseV2)
                 ):
                     yield ParamItem(nchild[0], nchild[1].forward_parameters(torch.Size(batch_shape[1:]))), i
                 else:
@@ -307,8 +307,8 @@ class PatchSequential(ImageSequential):
                 seq, mix_added = self.get_random_forward_sequence(with_mix=with_mix)
                 with_mix = mix_added
                 for s in seq:
-                    if isinstance(s[1], (
-                        _AugmentationBase, MixAugmentationBase, SequentialBase, MixAugmentationBaseV2)
+                    if isinstance(
+                        s[1], (_AugmentationBase, MixAugmentationBase, SequentialBase, MixAugmentationBaseV2)
                     ):
                         yield ParamItem(s[0], s[1].forward_parameters(torch.Size(batch_shape[1:]))), i
                     else:

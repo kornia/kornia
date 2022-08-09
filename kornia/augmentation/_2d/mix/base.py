@@ -130,7 +130,11 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
     """
 
     def __init__(
-        self, p: float, p_batch: float, same_on_batch: bool = False, keepdim: bool = False,
+        self,
+        p: float,
+        p_batch: float,
+        same_on_batch: bool = False,
+        keepdim: bool = False,
         data_keys: List[Union[str, int, DataKey]] = [DataKey.INPUT],
     ) -> None:
         super().__init__(p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=keepdim)
@@ -141,27 +145,15 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
         return _transform_input(input)
 
-    def apply_transform(
-        self, input: Tensor,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         # NOTE: apply_transform receives the whole tensor, but returns only altered elements.
         raise NotImplementedError
 
-    def apply_non_transform(
-        self, input: Tensor,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_non_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         # For the images where batch_prob == False.
         return input
 
-    def transform_input(
-        self, input: Tensor,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any]
-    ) -> Tensor:
+    def transform_input(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         to_apply = params['batch_prob']
         ori_shape = input.shape
         in_tensor = self.transform_tensor(input)
@@ -173,11 +165,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         output = _transform_output_shape(output, ori_shape) if self.keepdim else output
         return output
 
-    def transform_mask(
-        self, input: Tensor,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any]
-    ) -> Tensor:
+    def transform_mask(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         to_apply = params['batch_prob']
         output = input
         if sum(to_apply) != len(to_apply):
@@ -186,9 +174,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             output = self.apply_transform_mask(input, params, flags)
         return output
 
-    def transform_boxes(
-        self, input: Union[Tensor, Boxes], params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Boxes:
+    def transform_boxes(self, input: Union[Tensor, Boxes], params: Dict[str, Tensor], flags: Dict[str, Any]) -> Boxes:
         # input is BxNx4x2 or Boxes.
         if isinstance(input, Tensor):
             if not (len(input.shape) == 4 and input.shape[2:] == torch.Size([4, 2])):
@@ -202,9 +188,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             output = self.apply_transform_boxes(output, params, flags)
         return output
 
-    def transform_keypoint(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def transform_keypoint(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         to_apply = params['batch_prob']
         output = input
         if sum(to_apply) != len(to_apply):
@@ -213,9 +197,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             output = self.apply_transform_keypoint(input, params, flags)
         return output
 
-    def transform_class(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def transform_class(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         to_apply = params['batch_prob']
         output = input
         if sum(to_apply) != len(to_apply):
@@ -224,44 +206,28 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             output = self.apply_transform_class(input, params, flags)
         return output
 
-    def apply_non_transform_mask(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_non_transform_mask(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         raise NotImplementedError
 
-    def apply_transform_mask(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform_mask(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         raise NotImplementedError
 
-    def apply_non_transform_boxes(
-        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Boxes:
+    def apply_non_transform_boxes(self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Boxes:
         return input
 
-    def apply_transform_boxes(
-        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Boxes:
+    def apply_transform_boxes(self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Boxes:
         raise NotImplementedError
 
-    def apply_non_transform_keypoint(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_non_transform_keypoint(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return input
 
-    def apply_transform_keypoint(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform_keypoint(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         raise NotImplementedError
 
-    def apply_non_transform_class(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_non_transform_class(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return input
 
-    def apply_transform_class(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform_class(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         raise NotImplementedError
 
     def forward(  # type: ignore
@@ -319,5 +285,5 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         raise RuntimeError(f"Inverse for {self.__class__.__name__} is not supported.")
 
     @property
-    def transform_matrix(self,):
+    def transform_matrix(self):
         raise RuntimeError(f"Transformation matrices for {self.__class__.__name__} is not supported.")

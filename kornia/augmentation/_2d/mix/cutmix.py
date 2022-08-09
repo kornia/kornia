@@ -210,9 +210,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         super().__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim, data_keys=data_keys)
         self._param_generator = cast(rg.CutmixGenerator, rg.CutmixGenerator(cut_size, beta, num_mix, p=p))
 
-    def apply_transform_class(
-        self, label: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform_class(self, label: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         height, width = params["image_shape"]
 
         out_labels = []

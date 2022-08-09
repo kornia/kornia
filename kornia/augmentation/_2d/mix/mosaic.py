@@ -12,9 +12,7 @@ from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, ge
 from kornia.testing import KORNIA_UNWRAP
 from kornia.utils import eye_like
 
-__all__ = [
-    "RandomMosaic"
-]
+__all__ = ["RandomMosaic"]
 
 
 class RandomMosaic(MixAugmentationBaseV2):
@@ -66,19 +64,20 @@ class RandomMosaic(MixAugmentationBaseV2):
         output_size: Optional[Tuple[int, int]] = None,
         mosaic_grid: Tuple[int, int] = (2, 2),
         start_ratio_range: Tuple[float, float] = (0.3, 0.7),
-        min_bbox_size: float = 0.,
+        min_bbox_size: float = 0.0,
         data_keys: List[Union[str, int, DataKey]] = [DataKey.INPUT],
-        p: float = .7,
+        p: float = 0.7,
         keepdim: bool = False,
         padding_mode: str = "constant",
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         align_corners: bool = True,
         cropping_mode: str = "slice",
     ) -> None:
-        super().__init__(p=p, p_batch=1., same_on_batch=False, keepdim=keepdim, data_keys=data_keys)
+        super().__init__(p=p, p_batch=1.0, same_on_batch=False, keepdim=keepdim, data_keys=data_keys)
         self.start_ratio_range = start_ratio_range
         self._param_generator = cast(
-            rg.MosaicGenerator, rg.MosaicGenerator(output_size, mosaic_grid, start_ratio_range))
+            rg.MosaicGenerator, rg.MosaicGenerator(output_size, mosaic_grid, start_ratio_range)
+        )
         self.flags = dict(
             mosaic_grid=mosaic_grid,
             output_size=output_size,
@@ -89,15 +88,11 @@ class RandomMosaic(MixAugmentationBaseV2):
             cropping_mode=cropping_mode,
         )
 
-    def apply_transform_mask(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform_mask(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         raise NotImplementedError
 
     @torch.no_grad()
-    def apply_transform_boxes(
-        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Boxes:
+    def apply_transform_boxes(self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Boxes:
         src_box = torch.as_tensor(params["src"], device=input.device, dtype=input.dtype)
         dst_box = torch.as_tensor(params["dst"], device=input.device, dtype=input.dtype)
         # Boxes is BxNx4x2 only.
@@ -129,14 +124,10 @@ class RandomMosaic(MixAugmentationBaseV2):
         out_boxes.filter_boxes_by_area(flags["min_bbox_size"], inplace=True)
         return out_boxes
 
-    def apply_transform_keypoint(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform_keypoint(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         raise NotImplementedError
 
-    def apply_transform_class(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform_class(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         raise RuntimeError(f"{self.__class__.__name__} does not support `TAG` types.")
 
     @torch.no_grad()
@@ -192,10 +183,7 @@ class RandomMosaic(MixAugmentationBaseV2):
     ) -> Tensor:
         if flags is not None and flags["output_size"] is not None:
             output_size = KORNIA_UNWRAP(flags["output_size"], Tuple[int, int])
-            return pad(
-                input,
-                [0, output_size[0] - input.shape[-2], 0, output_size[1] - input.shape[-1]]
-            )
+            return pad(input, [0, output_size[0] - input.shape[-2], 0, output_size[1] - input.shape[-1]])
             # NOTE: resize is not suitable for being consistent with bounding boxes.
             # return resize(
             #     input,
