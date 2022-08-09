@@ -83,8 +83,11 @@ class CenterCrop(GeometricAugmentationBase2D):
             raise Exception(f"Invalid size type. Expected (int, tuple(int, int). " f"Got: {type(size)}.")
 
         self.flags = dict(
-            resample=Resample.get(resample), cropping_mode=cropping_mode, align_corners=align_corners, size=self.size,
-            padding_mode="zeros"
+            resample=Resample.get(resample),
+            cropping_mode=cropping_mode,
+            align_corners=align_corners,
+            size=self.size,
+            padding_mode="zeros",
         )
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, Tensor]:
@@ -104,12 +107,7 @@ class CenterCrop(GeometricAugmentationBase2D):
             transform = cast(Tensor, transform)
 
             return crop_by_transform_mat(
-                input,
-                transform[:, :2, :],
-                self.size,
-                flags["resample"].name.lower(),
-                "zeros",
-                flags["align_corners"],
+                input, transform[:, :2, :], self.size, flags["resample"].name.lower(), "zeros", flags["align_corners"]
             )
         if flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
             return crop_by_indices(input, params["src"], flags["size"])
@@ -130,6 +128,10 @@ class CenterCrop(GeometricAugmentationBase2D):
             size = self.size
         transform = cast(Tensor, transform)
         return crop_by_transform_mat(
-            input, transform[:, :2, :], size, flags["resample"].name.lower(),
-            flags["padding_mode"], flags["align_corners"]
+            input,
+            transform[:, :2, :],
+            size,
+            flags["resample"].name.lower(),
+            flags["padding_mode"],
+            flags["align_corners"],
         )

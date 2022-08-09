@@ -56,8 +56,9 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
     return tilt
 
 
-def distort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor, new_K: Optional[torch.Tensor] = None
-                   ) -> torch.Tensor:
+def distort_points(
+    points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor, new_K: Optional[torch.Tensor] = None
+) -> torch.Tensor:
     r"""Distortion of a set of 2D points based on the lens distortion model.
 
     Radial :math:`(k_1, k_2, k_3, k_4, k_4, k_6)`,
@@ -114,8 +115,8 @@ def distort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor, ne
     # Distort points
     r2 = x * x + y * y
 
-    rad_poly = (1 + dist[..., 0:1] * r2 + dist[..., 1:2] * r2 * r2 + dist[..., 4:5] * r2 ** 3) / (
-        1 + dist[..., 5:6] * r2 + dist[..., 6:7] * r2 * r2 + dist[..., 7:8] * r2 ** 3
+    rad_poly = (1 + dist[..., 0:1] * r2 + dist[..., 1:2] * r2 * r2 + dist[..., 4:5] * r2**3) / (
+        1 + dist[..., 5:6] * r2 + dist[..., 6:7] * r2 * r2 + dist[..., 7:8] * r2**3
     )
     xd = (
         x * rad_poly

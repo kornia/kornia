@@ -34,14 +34,10 @@ class Resize(GeometricAugmentationBase2D):
         return_transform: Optional[bool] = None,
         keepdim: bool = False,
     ) -> None:
-        super().__init__(p=1., return_transform=return_transform, same_on_batch=True, p_batch=p, keepdim=keepdim)
+        super().__init__(p=1.0, return_transform=return_transform, same_on_batch=True, p_batch=p, keepdim=keepdim)
         self._param_generator = cast(rg.ResizeGenerator, rg.ResizeGenerator(resize_to=size, side=side))
         self.flags = dict(
-            size=size,
-            side=side,
-            resample=Resample.get(resample),
-            align_corners=align_corners,
-            antialias=antialias
+            size=size, side=side, resample=Resample.get(resample), align_corners=align_corners, antialias=antialias
         )
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
@@ -69,7 +65,7 @@ class Resize(GeometricAugmentationBase2D):
                 out_size,
                 interpolation=flags["resample"].name.lower(),
                 align_corners=flags["align_corners"],
-                antialias=flags["antialias"]
+                antialias=flags["antialias"],
             )
         return out
 
@@ -83,7 +79,8 @@ class Resize(GeometricAugmentationBase2D):
         size = cast(Tuple[int, int], size)
         transform = cast(Tensor, transform)
         return crop_by_transform_mat(
-            input, transform[:, :2, :], size, flags["resample"], flags["padding_mode"], flags["align_corners"])
+            input, transform[:, :2, :], size, flags["resample"], flags["padding_mode"], flags["align_corners"]
+        )
 
 
 class LongestMaxSize(Resize):

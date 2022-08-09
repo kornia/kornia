@@ -11,6 +11,7 @@ __all__ = [
     "inverse_transformation",
     "transform_points",
     "point_line_distance",
+    "squared_norm",
 ]
 
 
@@ -223,6 +224,11 @@ def point_line_distance(point: Tensor, line: Tensor, eps: float = 1e-9) -> Tenso
     denominator = line[..., :2].norm(dim=-1)
 
     return numerator / (denominator + eps)
+
+
+def squared_norm(x: Tensor) -> Tensor:
+    """Return the squared norm of a vector."""
+    return x.pow(2).sum(-1)
 
 
 # TODO:

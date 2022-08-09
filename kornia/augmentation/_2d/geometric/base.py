@@ -40,14 +40,14 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
     ) -> Tensor:
         flags = self.flags if flags is None else flags
         if params is not None:
-            transform = self.compute_transformation(
-                input[params['batch_prob']], params=params, flags=flags)
+            transform = self.compute_transformation(input[params['batch_prob']], params=params, flags=flags)
 
         elif self.transform_matrix is None:
             params = self.forward_parameters(input.shape)
             transform = self.identity_matrix(input)
             transform[params['batch_prob']] = self.compute_transformation(
-                input[params['batch_prob']], params=params, flags=flags)
+                input[params['batch_prob']], params=params, flags=flags
+            )
         else:
             transform = self.transform_matrix
         return as_tensor(transform, device=input.device, dtype=input.dtype)
@@ -82,7 +82,8 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
         if params is not None:
             transform = self.identity_matrix(in_tensor)
             transform[params['batch_prob']] = self.compute_transformation(
-                in_tensor[params['batch_prob']], params=params, flags=flags)
+                in_tensor[params['batch_prob']], params=params, flags=flags
+            )
         else:
             # Avoid recompute.
             transform = self.get_transformation_matrix(in_tensor, params=params, flags=flags)
@@ -107,5 +108,6 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
         else:
             transform[to_apply] = self.compute_inverse_transformation(transform[to_apply])
             output[to_apply] = self.inverse_transform(
-                in_tensor[to_apply], transform=transform[to_apply], size=size, flags=flags)
+                in_tensor[to_apply], transform=transform[to_apply], size=size, flags=flags
+            )
         return cast(Tensor, self.transform_output_tensor(output, input_shape)) if self.keepdim else output

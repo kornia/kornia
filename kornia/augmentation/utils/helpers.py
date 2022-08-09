@@ -132,9 +132,7 @@ def _validate_input_dtype(input: Tensor, accepted_dtypes: List) -> None:
         raise TypeError(f"Expected input of {accepted_dtypes}. Got {input.dtype}")
 
 
-def _transform_output_shape(
-    output: Tensor, shape: Tuple
-) -> Tensor:
+def _transform_output_shape(output: Tensor, shape: Tuple) -> Tensor:
     r"""Collapse the broadcasted batch dimensions an input tensor to be the specified shape.
     Args:
         input: Tensor
@@ -248,9 +246,7 @@ def _adapted_beta(
     By default, sampling happens on the default device and dtype. If a/b is a tensor, sampling will happen
     in the same device/dtype as a/b tensor.
     """
-    device, dtype = _extract_device_dtype(
-        [a if isinstance(a, Tensor) else None, b if isinstance(b, Tensor) else None]
-    )
+    device, dtype = _extract_device_dtype([a if isinstance(a, Tensor) else None, b if isinstance(b, Tensor) else None])
     a = torch.as_tensor(a, device=device, dtype=dtype)
     b = torch.as_tensor(b, device=device, dtype=dtype)
     dist = Beta(a, b, validate_args=False)
@@ -278,8 +274,10 @@ def deepcopy_dict(params: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def override_parameters(
-    params: Dict[str, Any], params_override: Optional[Dict[str, Any]] = None,
-    if_none_exist: str = 'ignore', in_place: bool = False
+    params: Dict[str, Any],
+    params_override: Optional[Dict[str, Any]] = None,
+    if_none_exist: str = 'ignore',
+    in_place: bool = False,
 ) -> Dict[str, Any]:
     """Override params dict w.r.t params_override.
 

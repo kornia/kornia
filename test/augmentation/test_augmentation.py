@@ -3057,7 +3057,6 @@ class TestPlanckianJitter:
 
 
 class TestRandomRGBShift:
-
     def test_smoke(self, device, dtype):
         img = torch.rand(1, 3, 4, 5, device=device, dtype=dtype)
         aug = RandomRGBShift(p=1.0).to(device)

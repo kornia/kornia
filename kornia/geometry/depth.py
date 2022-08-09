@@ -12,13 +12,7 @@ from .camera import PinholeCamera, cam2pixel, pixel2cam, project_points, unproje
 from .conversions import normalize_pixel_coordinates
 from .linalg import compose_transformations, convert_points_to_homogeneous, inverse_transformation, transform_points
 
-__all__ = [
-    "depth_to_3d",
-    "depth_to_normals",
-    "warp_frame_depth",
-    "depth_warp",
-    "DepthWarper"
-]
+__all__ = ["depth_to_3d", "depth_to_normals", "warp_frame_depth", "depth_warp", "DepthWarper"]
 
 
 def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_points: bool = False) -> torch.Tensor:
@@ -255,7 +249,7 @@ class DepthWarper(nn.Module):
             raise ValueError("Please, call compute_projection_matrix.")
 
         point = torch.tensor(
-            [[[x], [y], [1.0], [invd]]], device=self._dst_proj_src.device, dtype=self._dst_proj_src.dtype
+            [[[x], [y], [invd], [1.0]]], device=self._dst_proj_src.device, dtype=self._dst_proj_src.dtype
         )
         flow = torch.matmul(self._dst_proj_src, point)
         z = 1.0 / flow[:, 2]

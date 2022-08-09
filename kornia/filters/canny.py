@@ -92,7 +92,7 @@ def canny(
     angle: torch.Tensor = torch.atan2(gy, gx)
 
     # Radians to Degrees
-    angle = 180. * angle / math.pi
+    angle = 180.0 * angle / math.pi
 
     # Round angle to the nearest 45 degree
     angle = torch.round(angle / 45) * 45

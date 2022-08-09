@@ -29,8 +29,8 @@ def test_get_hanning_kernel1d_5(device, dtype):
 
 def test_get_hanning_kernel2d_3x4(device, dtype):
     kernel = kornia.filters.get_hanning_kernel2d((3, 4), dtype=dtype, device=device)
-    expected = torch.tensor([[0., 0.00, 0.00, 0.],
-                             [0., 0.75, 0.75, 0.],
-                             [0., 0.00, 0.00, 0.]], dtype=dtype, device=device)
+    expected = torch.tensor(
+        [[0.0, 0.00, 0.00, 0.0], [0.0, 0.75, 0.75, 0.0], [0.0, 0.00, 0.00, 0.0]], dtype=dtype, device=device
+    )
     assert kernel.shape == (3, 4)
     assert_close(kernel, expected)

@@ -48,9 +48,7 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         h: int = int(params["forward_input_shape"][-2])
-        flip_mat: Tensor = torch.tensor(
-            [[1, 0, 0], [0, -1, h - 1], [0, 0, 1]], device=input.device, dtype=input.dtype
-        )
+        flip_mat: Tensor = torch.tensor([[1, 0, 0], [0, -1, h - 1], [0, 0, 1]], device=input.device, dtype=input.dtype)
 
         return flip_mat.repeat(input.size(0), 1, 1)
 
@@ -67,6 +65,8 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
         size: Optional[Tuple[int, int]] = None,
     ) -> Tensor:
         return self.apply_transform(
-            input, params=self._params, transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype),
-            flags=flags
+            input,
+            params=self._params,
+            transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype),
+            flags=flags,
         )

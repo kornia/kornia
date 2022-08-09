@@ -43,7 +43,8 @@ def _deprecated(func: Callable = None, replace_with: Optional[str] = None):
             warnings.warn(f"`{name}` is deprecated in favor of `{replace_with}`.", category=DeprecationWarning)
         else:
             warnings.warn(
-                f"`{name}` is deprecated and will be removed in the future versions.", category=DeprecationWarning)
+                f"`{name}` is deprecated and will be removed in the future versions.", category=DeprecationWarning
+            )
         return func(*args, **kwargs)
 
     return wrapper
@@ -179,6 +180,7 @@ def safe_inverse_with_mask(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]
     else:
         dtype = dtype_original
     from torch.linalg import inv_ex  # type: ignore # (not available in 1.8.1)
+
     inverse, info = inv_ex(A.to(dtype))
     mask = info == 0
     return inverse.to(dtype_original), mask
