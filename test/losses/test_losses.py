@@ -522,6 +522,13 @@ class TestTotalVariation:
         actual_higher_dims = kornia.losses.total_variation(input)
         assert_close(actual_lesser_dims, actual_higher_dims.to(device, dtype), rtol=1e-3, atol=1e-3)
 
+    @pytest.mark.parametrize('reduction, expected', [('sum', torch.tensor(20)), ('mean', torch.tensor(1))])
+    def test_tv_reduction(self, device, dtype, reduction, expected):
+        input, _ = torch.meshgrid(torch.arange(5), torch.arange(5))
+        input = input.to(device, dtype)
+        actual = kornia.losses.total_variation(input, reduction=reduction)
+        assert_close(actual, expected.to(device, dtype), rtol=1e-3, atol=1e-3)
+
     # Expect TypeError to be raised when non-torch tensors are passed
     @pytest.mark.parametrize('input', [1, [1, 2]])
     def test_tv_on_invalid_types(self, device, dtype, input):

@@ -23,6 +23,8 @@ def total_variation(img: Tensor, reduction: str = "sum") -> Tensor:
     .. note::
        See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
        total_variation_denoising.html>`__.
+       Total Variation is formulated with summation, however this is not resolution invariant.
+       Thus, `reduction='mean'` was added as an optional reduction method.
 
     Reference:
         [1] https://en.wikipedia.org/wiki/Total_variation
@@ -38,8 +40,12 @@ def total_variation(img: Tensor, reduction: str = "sum") -> Tensor:
 
     reduce_axes = (-2, -1)
     if reduction == "mean":
-        res1 = res1.mean(dim=reduce_axes)
-        res2 = res2.mean(dim=reduce_axes)
+        if img.is_floating_point():
+            res1 = res1.to(img).mean(dim=reduce_axes)
+            res2 = res2.to(img).mean(dim=reduce_axes)
+        else:
+            res1 = res1.float().mean(dim=reduce_axes)
+            res2 = res2.float().mean(dim=reduce_axes)
     elif reduction == "sum":
         res1 = res1.sum(dim=reduce_axes)
         res2 = res2.sum(dim=reduce_axes)
