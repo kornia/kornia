@@ -287,7 +287,7 @@ class ImageSequential(SequentialBase):
                 if recompute:
                     mat: Tensor = self.identity_matrix(input)
                     flags = override_parameters(module.flags, extra_args, in_place=False)
-                    mat[to_apply] = module.compute_transformation(input[to_apply], param_data, flags)  # type: ignore
+                    mat[to_apply] = module.compute_transformation(input[to_apply], param.data, flags)  # type: ignore
                 else:
                     mat = torch.as_tensor(module._transform_matrix, device=input.device, dtype=input.dtype)
                 res_mat = mat if res_mat is None else mat @ res_mat
@@ -299,7 +299,7 @@ class ImageSequential(SequentialBase):
                 if isinstance(module, (kornia.augmentation.AugmentationSequential,)) and not recompute:
                     mat = torch.as_tensor(module._transform_matrix, device=input.device, dtype=input.dtype)
                 else:
-                    maybe_param_data = cast(Optional[List[ParamItem]], param_item.data)
+                    maybe_param_data = cast(Optional[List[ParamItem]], param.data)
                     _mat = module.get_transformation_matrix(
                         input, maybe_param_data, recompute=recompute, extra_args=extra_args
                     )  # type: ignore
