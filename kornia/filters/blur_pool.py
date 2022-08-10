@@ -202,3 +202,47 @@ def _max_blur_pool_by_kernel2d(
     # blur and downsample
     padding: Tuple[int, int] = _compute_zero_padding((kernel.shape[-2], kernel.shape[-1]))
     return F.conv2d(input, kernel, padding=padding, stride=stride, groups=input.size(1))
+
+
+def edge_aware_blur_pool2d(
+    input: torch.Tensor,
+    kernel_size: int,
+    edge_threshold: float = 2.0,
+    edge_dilatation_kernel_size: int = 3,
+    epsilon: float = 1e-6,
+) -> torch.Tensor:
+    r"""Blur the input tensor while maintaining its edges.
+    Edge detection is done with the sobel filter, and blurring is done with a pool2d.
+
+    Args:
+        input: the input image to blur with shape :math:`(B, C, H, W)`.
+        kernel_size: the kernel size for max pooling.
+        edge_threshold: threshold for the edge decision rule; edge/non-edge.
+        edge_dilatation_kernel_size: the kernel size for dilating the edges.
+        epsilon: for numerical stability.
+
+    Returns:
+        The blurred tensor of shape :math:`(B, C, H, W)`.
+    """
+    input = F.pad(input, (2, 2, 2, 2), mode="reflect")  # pad to avoid artifacts near physical edges
+    blurred_input = blur_pool2d(input, kernel_size=kernel_size, stride=1)  # blurry version of the input
+
+    # calculate the edges
+    log_thresh = torch.log2(torch.tensor(edge_threshold))
+    input_eps = input + epsilon  # add to avoid taking the log of 0
+    edges_x = torch.log2(input_eps[..., :, 4:]) - torch.log2(input_eps[..., :, :-4])
+    edges_y = torch.log2(input_eps[..., 4:, :]) - torch.log2(input_eps[..., :-4, :])
+    edges_x_mask, edges_y_mask = edges_x.abs() > log_thresh.to(edges_x), edges_y.abs() > log_thresh.to(edges_y)
+    edges_xy_mask = (edges_x_mask[..., 2:-2, :] + edges_y_mask[..., :, 2:-2]).type_as(input)
+
+    # dilate the content edges to have a soft mask of edges
+    dilated_edges = F.max_pool3d(edges_xy_mask, edge_dilatation_kernel_size, 1, edge_dilatation_kernel_size // 2)
+
+    # slice the padded regions
+    input = input[..., 2:-2, 2:-2]
+    blurred_input = blurred_input[..., 2:-2, 2:-2]
+
+    # fuse the input image on edges and blurry input everywhere else
+    blurred = dilated_edges * input + (1.0 - dilated_edges) * blurred_input
+
+    return blurred
