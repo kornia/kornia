@@ -227,11 +227,11 @@ def edge_aware_blur_pool2d(
     input = F.pad(input, (2, 2, 2, 2), mode="reflect")  # pad to avoid artifacts near physical edges
     blurred_input = blur_pool2d(input, kernel_size=kernel_size, stride=1)  # blurry version of the input
 
-    # calculate the edges
-    log_thresh = torch.log2(torch.tensor(edge_threshold))
-    input_eps = input + epsilon  # add to avoid taking the log of 0
-    edges_x = torch.log2(input_eps[..., :, 4:]) - torch.log2(input_eps[..., :, :-4])
-    edges_y = torch.log2(input_eps[..., 4:, :]) - torch.log2(input_eps[..., :-4, :])
+    # calculate the edges (add epsilon to avoid taking the log of 0)
+    log_input, log_thresh = torch.log2(input + epsilon), torch.log2(torch.tensor(edge_threshold))
+    edges_x = log_input[..., :, 4:] - log_input[..., :, :-4]
+    edges_y = log_input[..., 4:, :] - log_input[..., :-4, :]
+    edges_x, edges_y = torch.mean(edges_x, dim=-3, keepdim=True), torch.mean(edges_y, dim=-3, keepdim=True)
     edges_x_mask, edges_y_mask = edges_x.abs() > log_thresh.to(edges_x), edges_y.abs() > log_thresh.to(edges_y)
     edges_xy_mask = (edges_x_mask[..., 2:-2, :] + edges_y_mask[..., :, 2:-2]).type_as(input)
 
