@@ -322,7 +322,6 @@ def main():
         "pyrdown": ((), 1),
         "pyrup": ((), 1),
         "build_pyramid": ((3,), 1),
-        "build_laplacian_pyramid": ((3,), 1),
     }
     # ITERATE OVER THE TRANSFORMS
     for fn_name, (args, num_samples) in transforms.items():
@@ -334,7 +333,7 @@ def main():
         if fn_name in ("resize", "rescale", "pyrdown", "pyrup"):
             h_new, w_new = out.shape[-2:]
             out = torch.nn.functional.pad(out, (0, (w - w_new), 0, (h - h_new)))
-        if fn_name == "build_pyramid" or "build_laplacian_pyramid":
+        if fn_name == "build_pyramid":
             _out = []
             for pyr in out[1:]:
                 h_new, w_new = pyr.shape[-2:]

@@ -347,12 +347,21 @@ def build_pyramid(
     return pyramid
 
 
+def is_powerof_two(x):
+    # check if number x is a power of two
+    return x and (not (x & (x - 1)))
+
+
+def find_next_powerof_two(x):
+    # return the nearest power of 2
+    n = math.ceil(math.log(x) / math.log(2))
+    return 2**n
+
+
 def build_laplacian_pyramid(
     input: Tensor, max_level: int, border_type: str = 'reflect', align_corners: bool = False
 ) -> List[Tensor]:
     r"""Construct the Laplacian pyramid for a tensor image.
-
-    .. image:: _static/img/build_pyramid.png
 
     The function constructs a vector of images and builds the Laplacian pyramid
     by recursively computing the difference after applying
@@ -380,6 +389,16 @@ def build_laplacian_pyramid(
         isinstance(max_level, int) or max_level < 0,
         f"Invalid max_level, it must be a positive integer. Got: {max_level}",
     )
+
+    h = input.size()[2]
+    w = input.size()[3]
+    require_padding = is_powerof_two(w) or is_powerof_two(h)
+
+    if require_padding:
+        # in case of arbitrary shape tensor image need to be padded.
+        # Reference: https://stackoverflow.com/a/29967555
+        pad = (0, find_next_powerof_two(w) - w, 0, find_next_powerof_two(h) - h)
+        input = F.pad(input, pad, "reflect")
 
     # create gaussian pyramid
     gaussian_pyramid: List[Tensor] = build_pyramid(input, max_level, border_type, align_corners)
