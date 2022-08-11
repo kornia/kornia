@@ -1368,3 +1368,26 @@ class TestDenormalizePixelCoordinates:
         expected = op(grid, height, width)
 
         assert_close(actual, expected)
+
+
+class TestRt2Extrinsics:
+    @pytest.mark.parametrize("batch_size", [1, 2, 3])
+    def test_everything(self, batch_size, device, dtype):
+        # generate input data
+        R = torch.rand(batch_size, 3, 3, dtype=dtype, device=device)
+        t = torch.rand(batch_size, 3, 1, dtype=dtype, device=device)
+
+        Rt = kornia.geometry.conversions.extrinsics_from_Rt(R, t)
+        assert Rt.shape == (batch_size, 4, 4)
+
+        R2, t2 = kornia.geometry.conversions.Rt_from_extrinsics(Rt)
+        assert R2.shape == (batch_size, 3, 3)
+        assert t2.shape == (batch_size, 3, 1)
+
+        assert_close(R, R2)
+        assert_close(t, t2)
+        assert gradcheck(
+            kornia.geometry.conversions.extrinsics_from_Rt,
+            (tensor_to_gradcheck_var(R), tensor_to_gradcheck_var(t)),
+            raise_exception=True,
+        )

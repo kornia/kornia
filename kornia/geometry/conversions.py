@@ -4,9 +4,12 @@ from typing import Optional, Tuple
 
 import torch
 import torch.nn.functional as F
+from torch import Tensor
 
 from kornia.constants import pi
 from kornia.utils.helpers import _torch_inverse_cast
+from kornia.testing import KORNIA_CHECK_SHAPE
+
 
 __all__ = [
     "rad2deg",
@@ -1175,3 +1178,35 @@ def normalize_homography3d(
     # compute chain transformations
     dst_norm_trans_src_norm: torch.Tensor = dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm)
     return dst_norm_trans_src_norm
+
+
+def extrinsics_from_Rt(R: Tensor, t: Tensor) -> Tensor:
+    r"""Combines 3x3 R and 1x3 t into 4x4 extrinsics.
+
+    Args:
+        R: Rotation matrix, :math:`(B, 3, 3).`
+        t: Translation matrix :math:`(B, 3, 1)`.
+
+    Returns:
+        the extrinsics :math:`(B, 4, 4)`.
+
+    """
+    KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
+    KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
+    Rt = torch.cat([R, t], dim=2)
+    return convert_affinematrix_to_homography3d(Rt)
+
+
+def Rt_from_extrinsics(extrinsics: Tensor) -> Tuple[Tensor, Tensor]:
+    r"""Combines 4x4 extrinsics into 3x3 R and 1x3 t .
+
+    Args:
+        extrinsics: pose matrix :math:`(B, 4, 4)`.
+
+    Returns:
+        R: Rotation matrix, :math:`(B, 3, 3).`
+        t: Translation matrix :math:`(B, 3, 1)`.
+    """
+    KORNIA_CHECK_SHAPE(extrinsics, ["B", "4", "4"])
+    R, t = extrinsics[:, :3, :3], extrinsics[:, :3, 3:]
+    return R, t
