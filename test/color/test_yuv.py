@@ -3,7 +3,7 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia
-from kornia.testing import BaseTester, assert_close
+from kornia.testing import BaseTester
 
 
 class TestRgbToYuv(BaseTester):
@@ -41,7 +41,7 @@ class TestRgbToYuv(BaseTester):
         rgb = kornia.color.yuv_to_rgb
 
         data_out = rgb(yuv(data))
-        assert_close(data_out, data, rtol=1e-2, atol=1e-2)
+        self.assert_close(data_out, data, low_tolerance=True)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
@@ -55,7 +55,7 @@ class TestRgbToYuv(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.rgb_to_yuv
         op_jit = torch.jit.script(op)
-        assert_close(op(img), op_jit(img))
+        self.assert_close(op(img), op_jit(img))
 
     @pytest.mark.nn
     def test_module(self, device, dtype):
@@ -63,7 +63,7 @@ class TestRgbToYuv(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.RgbToYuv().to(device, dtype)
         fcn = kornia.color.rgb_to_yuv
-        assert_close(ops(img), fcn(img))
+        self.assert_close(ops(img), fcn(img))
 
 
 class TestRgbToYuv420(BaseTester):
@@ -123,8 +123,8 @@ class TestRgbToYuv420(BaseTester):
 
         resy = (kornia.color.rgb_to_yuv420(rgb)[0] * 255.0).round().type(torch.uint8)
         resuv = (kornia.color.rgb_to_yuv420(rgb)[1] * 255.0).round().clamp(-128, 127).type(torch.int8)
-        assert_close(refy, resy)
-        assert_close(refuv, resuv)
+        self.assert_close(refy, resy)
+        self.assert_close(refuv, resuv)
 
     def test_unit_black(self, device, dtype):  # skipcq: PYL-R0201
         rgb = (
@@ -138,8 +138,8 @@ class TestRgbToYuv420(BaseTester):
 
         resy = (kornia.color.rgb_to_yuv420(rgb)[0] * 255.0).round().type(torch.uint8)
         resuv = (kornia.color.rgb_to_yuv420(rgb)[1] * 255.0).round().clamp(-128, 127).type(torch.int8)
-        assert_close(refy, resy)
-        assert_close(refuv, resuv)
+        self.assert_close(refy, resy)
+        self.assert_close(refuv, resuv)
 
     def test_unit_gray(self, device, dtype):  # skipcq: PYL-R0201
         rgb = (
@@ -155,8 +155,8 @@ class TestRgbToYuv420(BaseTester):
 
         resy = (kornia.color.rgb_to_yuv420(rgb)[0] * 255.0).round().type(torch.uint8)
         resuv = (kornia.color.rgb_to_yuv420(rgb)[1] * 255.0).round().clamp(-128, 127).type(torch.int8)
-        assert_close(refy, resy)
-        assert_close(refuv, resuv)
+        self.assert_close(refy, resy)
+        self.assert_close(refuv, resuv)
 
     def test_unit_red(self, device, dtype):  # skipcq: PYL-R0201
         rgb = (
@@ -170,8 +170,8 @@ class TestRgbToYuv420(BaseTester):
 
         resy = (kornia.color.rgb_to_yuv420(rgb)[0] * 255.0).round().type(torch.uint8)
         resuv = (kornia.color.rgb_to_yuv420(rgb)[1] * 255.0).round().clamp(-128, 127).type(torch.int8)
-        assert_close(refy, resy)
-        assert_close(refuv, resuv)
+        self.assert_close(refy, resy)
+        self.assert_close(refuv, resuv)
 
     def test_unit_blue(self, device, dtype):  # skipcq: PYL-R0201
         rgb = (
@@ -185,8 +185,8 @@ class TestRgbToYuv420(BaseTester):
 
         resy = (kornia.color.rgb_to_yuv420(rgb)[0] * 255.0).type(torch.uint8)
         resuv = (kornia.color.rgb_to_yuv420(rgb)[1] * 255.0).clamp(-128, 127).type(torch.int8)
-        assert_close(refy, resy)
-        assert_close(refuv, resuv)
+        self.assert_close(refy, resy)
+        self.assert_close(refuv, resuv)
 
     # This measures accuracy, given the impact of the subsampling we will avoid the issue by
     # repeating a 2x2 pattern for which mean will match what we get from upscaling again
@@ -197,7 +197,7 @@ class TestRgbToYuv420(BaseTester):
         rgb = kornia.color.yuv420_to_rgb
         (a, b) = yuv(data)
         data_out = rgb(a, b)
-        assert_close(data_out, data, rtol=1e-2, atol=1e-2)
+        self.assert_close(data_out, data, low_tolerance=True)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
@@ -211,8 +211,8 @@ class TestRgbToYuv420(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.rgb_to_yuv420
         op_jit = torch.jit.script(op)
-        assert_close(op(img)[0], op_jit(img)[0])
-        assert_close(op(img)[1], op_jit(img)[1])
+        self.assert_close(op(img)[0], op_jit(img)[0])
+        self.assert_close(op(img)[1], op_jit(img)[1])
 
     @pytest.mark.nn
     def test_module(self, device, dtype):
@@ -220,8 +220,8 @@ class TestRgbToYuv420(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.RgbToYuv420().to(device, dtype)
         fcn = kornia.color.rgb_to_yuv420
-        assert_close(ops(img)[0], fcn(img)[0])
-        assert_close(ops(img)[1], fcn(img)[1])
+        self.assert_close(ops(img)[0], fcn(img)[0])
+        self.assert_close(ops(img)[1], fcn(img)[1])
 
 
 class TestRgbToYuv422(BaseTester):
@@ -268,7 +268,7 @@ class TestRgbToYuv422(BaseTester):
         rgb = kornia.color.yuv422_to_rgb
         (a, b) = yuv(data)
         data_out = rgb(a, b)
-        assert_close(data_out, data, rtol=1e-2, atol=1e-2)
+        self.assert_close(data_out, data, low_tolerance=True)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
@@ -282,8 +282,8 @@ class TestRgbToYuv422(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.rgb_to_yuv422
         op_jit = torch.jit.script(op)
-        assert_close(op(img)[0], op_jit(img)[0])
-        assert_close(op(img)[1], op_jit(img)[1])
+        self.assert_close(op(img)[0], op_jit(img)[0])
+        self.assert_close(op(img)[1], op_jit(img)[1])
 
     @pytest.mark.nn
     def test_module(self, device, dtype):
@@ -291,8 +291,8 @@ class TestRgbToYuv422(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.RgbToYuv422().to(device, dtype)
         fcn = kornia.color.rgb_to_yuv422
-        assert_close(ops(img)[0], fcn(img)[0])
-        assert_close(ops(img)[1], fcn(img)[1])
+        self.assert_close(ops(img)[0], fcn(img)[0])
+        self.assert_close(ops(img)[1], fcn(img)[1])
 
 
 class TestYuvToRgb(BaseTester):
@@ -329,7 +329,7 @@ class TestYuvToRgb(BaseTester):
         yuv = kornia.color.rgb_to_yuv
 
         data_out = rgb(yuv(data))
-        assert_close(data_out, data, rtol=1e-2, atol=1e-2)
+        self.assert_close(data_out, data, low_tolerance=True)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
@@ -343,7 +343,7 @@ class TestYuvToRgb(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.yuv_to_rgb
         op_jit = torch.jit.script(op)
-        assert_close(op(img), op_jit(img))
+        self.assert_close(op(img), op_jit(img))
 
     @pytest.mark.nn
     def test_module(self, device, dtype):
@@ -351,7 +351,7 @@ class TestYuvToRgb(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.YuvToRgb().to(device, dtype)
         fcn = kornia.color.yuv_to_rgb
-        assert_close(ops(img), fcn(img))
+        self.assert_close(ops(img), fcn(img))
 
 
 class TestYuv420ToRgb(BaseTester):
@@ -412,7 +412,7 @@ class TestYuv420ToRgb(BaseTester):
         uv = torch.tensor([[[0]], [[0]]], device=device, dtype=torch.int8).type(torch.float) / 255.0
 
         resrgb = (kornia.color.yuv420_to_rgb(y, uv) * 255.0).round().type(torch.uint8)
-        assert_close(refrgb, resrgb)
+        self.assert_close(refrgb, resrgb)
 
     def test_unit_red(self, device, dtype):  # skipcq: PYL-R0201
         refrgb = torch.tensor(
@@ -422,7 +422,7 @@ class TestYuv420ToRgb(BaseTester):
         uv = torch.tensor([[[-37]], [[127]]], device=device, dtype=torch.int8).type(torch.float) / 255.0
 
         resrgb = (kornia.color.yuv420_to_rgb(y, uv) * 255.0).round().type(torch.uint8)
-        assert_close(refrgb, resrgb)
+        self.assert_close(refrgb, resrgb)
 
     # TODO: improve accuracy
     def test_forth_and_back(self, device, dtype):  # skipcq: PYL-R0201
@@ -432,8 +432,8 @@ class TestYuv420ToRgb(BaseTester):
         yuv = kornia.color.rgb_to_yuv420
 
         (data_outy, data_outuv) = yuv(rgb(datay, datauv))
-        assert_close(data_outy, datay, rtol=1e-2, atol=1e-2)
-        assert_close(data_outuv, datauv, rtol=1e-2, atol=1e-2)
+        self.assert_close(data_outy, datay, low_tolerance=True)
+        self.assert_close(data_outuv, datauv, low_tolerance=True)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
@@ -449,7 +449,7 @@ class TestYuv420ToRgb(BaseTester):
         imguv = torch.ones(B, 2, int(H / 2), int(W / 2), device=device, dtype=dtype)
         op = kornia.color.yuv420_to_rgb
         op_jit = torch.jit.script(op)
-        assert_close(op(imgy, imguv), op_jit(imgy, imguv))
+        self.assert_close(op(imgy, imguv), op_jit(imgy, imguv))
 
     @pytest.mark.nn
     def test_module(self, device, dtype):
@@ -458,7 +458,7 @@ class TestYuv420ToRgb(BaseTester):
         imguv = torch.ones(B, 2, int(H / 2), int(W / 2), device=device, dtype=dtype)
         ops = kornia.color.Yuv420ToRgb().to(device, dtype)
         fcn = kornia.color.yuv420_to_rgb
-        assert_close(ops(imgy, imguv), fcn(imgy, imguv))
+        self.assert_close(ops(imgy, imguv), fcn(imgy, imguv))
 
 
 class TestYuv422ToRgb(BaseTester):
@@ -512,8 +512,8 @@ class TestYuv422ToRgb(BaseTester):
         yuv = kornia.color.rgb_to_yuv422
 
         (data_outy, data_outuv) = yuv(rgb(datay, datauv))
-        assert_close(data_outy, datay, rtol=1e-2, atol=1e-2)
-        assert_close(data_outuv, datauv, rtol=1e-2, atol=1e-2)
+        self.assert_close(data_outy, datay, low_tolerance=True)
+        self.assert_close(data_outuv, datauv, low_tolerance=True)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
@@ -529,7 +529,7 @@ class TestYuv422ToRgb(BaseTester):
         imguv = torch.ones(B, 2, H, int(W / 2), device=device, dtype=dtype)
         op = kornia.color.yuv422_to_rgb
         op_jit = torch.jit.script(op)
-        assert_close(op(imgy, imguv), op_jit(imgy, imguv))
+        self.assert_close(op(imgy, imguv), op_jit(imgy, imguv))
 
     @pytest.mark.nn
     def test_module(self, device, dtype):
@@ -538,4 +538,4 @@ class TestYuv422ToRgb(BaseTester):
         imguv = torch.ones(B, 2, H, int(W / 2), device=device, dtype=dtype)
         ops = kornia.color.Yuv422ToRgb().to(device, dtype)
         fcn = kornia.color.yuv422_to_rgb
-        assert_close(ops(imgy, imguv), fcn(imgy, imguv))
+        self.assert_close(ops(imgy, imguv), fcn(imgy, imguv))

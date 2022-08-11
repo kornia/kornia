@@ -76,29 +76,43 @@ def create_random_fundamental_matrix(batch_size, std_val=1e-3):
 
 
 class BaseTester(ABC):
+    DTYPE_PRECISIONS = {torch.float16: (1e-2, 1e-3), torch.float32: (1e-4, 1e-4), torch.float64: (1e-5, 1e-8)}
+
     @abstractmethod
-    def test_smoke(self):
+    def test_smoke(self, device, dtype):
         raise NotImplementedError("Implement a stupid routine.")
 
     @abstractmethod
-    def test_exception(self):
+    def test_exception(self, device, dtype):
         raise NotImplementedError("Implement a stupid routine.")
 
     @abstractmethod
-    def test_cardinality(self):
+    def test_cardinality(self, device, dtype):
         raise NotImplementedError("Implement a stupid routine.")
 
     @abstractmethod
-    def test_jit(self):
+    def test_jit(self, device, dtype):
         raise NotImplementedError("Implement a stupid routine.")
 
     @abstractmethod
-    def test_gradcheck(self):
+    def test_gradcheck(self, device, dtype):
         raise NotImplementedError("Implement a stupid routine.")
 
     @abstractmethod
-    def test_module(self):
+    def test_module(self, device, dtype):
         raise NotImplementedError("Implement a stupid routine.")
+
+    def assert_close(self, actual: torch.Tensor, expected: torch.Tensor, low_tolerance: bool = False) -> None:
+        if low_tolerance:
+            rtol, atol = 1e-2, 1e-2
+        elif 'xla' in actual.device.type or 'xla' in expected.device.type:
+            rtol, atol = 1e-2, 1e-2
+        else:
+            actual_rtol, actual_atol = self.DTYPE_PRECISIONS.get(actual.dtype, (0.0, 0.0))
+            expected_rtol, expected_atol = self.DTYPE_PRECISIONS.get(expected.dtype, (0.0, 0.0))
+            rtol, atol = max(actual_rtol, expected_rtol), max(actual_atol, expected_atol)
+
+        return _assert_close(actual, expected, rtol=rtol, atol=atol)
 
 
 def cartesian_product_of_parameters(**possible_parameters):
@@ -163,7 +177,7 @@ try:
 except ImportError:
     # Partial backport of torch.testing.assert_close for torch<1.9
     # TODO: remove this branch if kornia relies on torch>=1.9
-    from torch.testing import assert_allclose as _assert_allclose
+    from torch.testing import assert_allclose as _assert_close
 
     class UsageError(Exception):
         pass
@@ -177,7 +191,7 @@ except ImportError:
         **kwargs: Any,
     ) -> None:
         try:
-            return _assert_allclose(actual, expected, rtol=rtol, atol=atol, **kwargs)
+            return _assert_close(actual, expected, rtol=rtol, atol=atol, **kwargs)
         except ValueError as error:
             raise UsageError(str(error)) from error
 
