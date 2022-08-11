@@ -14,6 +14,8 @@ from kornia.geometry.conversions import (
     camtoworldRt_to_poseRt,
     extrinsics_from_Rt,
     poseRt_to_camtoworldRt,
+    ARKitQTVecs_to_ColmapQTVecs,
+    screenpose_to_camerapose
 )
 from kornia.testing import assert_close, create_eye_batch, tensor_to_gradcheck_var
 
@@ -1410,12 +1412,14 @@ class TestCamtoworldGraphicsToVision:
         R = kornia.geometry.angle_axis_to_rotation_matrix(angles).repeat(batch_size, 1, 1)
         K_vis = extrinsics_from_Rt(R, t)
         K_graf = camtoworld_vision_to_graphics(K_vis)
+        K_graf2 = screenpose_to_camerapose(K_vis)
 
         expected = torch.tensor(
             [[0, 0, -1, 2], [0, -1, 0, 3], [-1, 0, 0, 4], [0, 0, 0, 1]], device=device, dtype=dtype
         )[None].repeat(batch_size, 1, 1)
 
         assert_close(K_graf, expected)
+        assert_close(K_graf2, expected)
 
         Kvis_back = camtoworld_graphics_to_vision(K_graf)
         assert_close(Kvis_back, K_vis)
@@ -1450,3 +1454,22 @@ class TestCamtoworldRtToPoseRt:
         assert gradcheck(
             poseRt_to_camtoworldRt, (tensor_to_gradcheck_var(R), tensor_to_gradcheck_var(t)), raise_exception=True
         )
+
+
+class TestCARKitToColmap:
+    def test_everything(self, device, dtype):
+        # generate input data
+        t = torch.tensor([1, 0, 0], device=device, dtype=dtype).view(1, 3, 1)
+        ang_deg = torch.tensor([45, 60., 0.], device=device, dtype=dtype)[None]
+        ang_rad = kornia.geometry.conversions.deg2rad(ang_deg)
+        qvec = kornia.geometry.angle_axis_to_quaternion(ang_rad, order=QuaternionCoeffOrder.WXYZ)
+
+        q_colmap, t_colmap = ARKitQTVecs_to_ColmapQTVecs(qvec, t)
+
+        angles_colmap = kornia.geometry.conversions.quaternion_to_angle_axis(q_colmap, order=QuaternionCoeffOrder.WXYZ)
+        angles_colmap = kornia.geometry.conversions.rad2deg(angles_colmap)
+        expected_angles = torch.tensor([[-45., 60, 0.]], device=device, dtype=dtype)
+        expected_t = torch.tensor([[[-0.5256], [0.3558], [0.7727]]], device=device, dtype=dtype)
+
+        assert_close(angles_colmap, expected_angles)
+        assert_close(t_colmap, expected_t)

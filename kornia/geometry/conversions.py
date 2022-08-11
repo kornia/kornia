@@ -44,6 +44,8 @@ __all__ = [
     "Rt_from_extrinsics",
     "camtoworld_graphics_to_vision",
     "camtoworld_vision_to_graphics",
+    "ARKitQTVecs_to_ColmapQTVecs",
+    "screenpose_to_camerapose",
 ]
 
 
@@ -1304,3 +1306,42 @@ def camtoworldRt_to_poseRt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
     new_t: Tensor = -R_inv @ t
 
     return (R_inv, new_t)
+
+
+def screenpose_to_camerapose(extrinsics_screen: Tensor) -> Tensor:
+    r"""Converts pose of the phonescreen to pose of the camera.
+    See https://developer.apple.com/documentation/arkit/arconfiguration/worldalignment/gravity
+
+    Camera convention: [+x, +y, +z] == [right, down, forwards]
+    Screen convention: [+x, +y, +z] == [right, up, backwards]
+
+    Args:
+        extrinsics: pose matrix :math:`(B, 4, 4)`.
+
+    Returns:
+        extrinsics: pose matrix :math:`(B, 4, 4)`.
+    """
+    return camtoworld_vision_to_graphics(extrinsics_screen)
+
+
+def ARKitQTVecs_to_ColmapQTVecs(qvec: Tensor, tvec: Tensor) -> Tuple[Tensor, Tensor]:
+    r"""Converts output of Apple ARKit screen pose (in quaternion representation)
+    to the camera-to-world transformation, expected by Colmap, also in quaternion
+    representation
+
+    Args:
+        qvec: ARKit rotation quaternion :math:`(B, 4)`, [x, y, z, w] format.
+        tvec: translation vector :math:`(B, 3, 1)`, [x, y, z]
+
+    Returns:
+        qvec: Colmap rotation quaternion :math:`(B, 4)`, [w, x, y, z] format.
+        tvec: translation vector :math:`(B, 3, 1)`, [x, y, z]
+    """
+    Rpose_screen = quaternion_to_rotation_matrix(qvec, order=QuaternionCoeffOrder.WXYZ)
+    E_pose_camera = screenpose_to_camerapose(extrinsics_from_Rt(Rpose_screen, tvec))
+    Rcam, tcam = poseRt_to_camtoworldRt(*Rt_from_extrinsics(E_pose_camera))
+    Efin = camtoworld_graphics_to_vision(extrinsics_from_Rt(Rcam, tcam))
+    Rcol, t_colmap = Rt_from_extrinsics(Efin)
+    t_colmap = t_colmap.reshape(-1, 3, 1)
+    q_colmap = rotation_matrix_to_quaternion(Rcol.contiguous(), order=QuaternionCoeffOrder.WXYZ)
+    return q_colmap, t_colmap

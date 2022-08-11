@@ -60,3 +60,5 @@ Pose (extrinsics)
 .. autofunction:: poseRt_to_camtoworldRt
 .. autofunction:: camtoworld_graphics_to_vision
 .. autofunction:: camtoworld_vision_to_graphics
+.. autofunction:: ARKitQTVecs_to_ColmapQTVecs
+.. autofunction:: screenpose_to_camerapose
