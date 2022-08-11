@@ -6,16 +6,15 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia
-from kornia.geometry.conversions import QuaternionCoeffOrder
 from kornia.geometry.conversions import (
-    camtoworldRt_to_poseRt,
-    poseRt_to_camtoworldRt,
-    extrinsics_from_Rt,
+    QuaternionCoeffOrder,
     Rt_from_extrinsics,
     camtoworld_graphics_to_vision,
     camtoworld_vision_to_graphics,
+    camtoworldRt_to_poseRt,
+    extrinsics_from_Rt,
+    poseRt_to_camtoworldRt,
 )
-
 from kornia.testing import assert_close, create_eye_batch, tensor_to_gradcheck_var
 
 
@@ -1407,30 +1406,21 @@ class TestCamtoworldGraphicsToVision:
     def test_everything(self, batch_size, device, dtype):
         # generate input data
         t = torch.tensor([2, 3, 4], device=device, dtype=dtype).view(1, 3, 1).repeat(batch_size, 1, 1)
-        angles = torch.tensor([0, kornia.pi / 2., 0.], device=device, dtype=dtype)[None]
+        angles = torch.tensor([0, kornia.pi / 2.0, 0.0], device=device, dtype=dtype)[None]
         R = kornia.geometry.angle_axis_to_rotation_matrix(angles).repeat(batch_size, 1, 1)
         K_vis = extrinsics_from_Rt(R, t)
         K_graf = camtoworld_vision_to_graphics(K_vis)
 
-        expected = torch.tensor([[0, 0, -1, 2],
-                                 [0, -1, 0, 3],
-                                 [-1, 0, 0, 4],
-                                 [0, 0, 0, 1]], device=device, dtype=dtype)[None].repeat(batch_size, 1, 1)
+        expected = torch.tensor(
+            [[0, 0, -1, 2], [0, -1, 0, 3], [-1, 0, 0, 4], [0, 0, 0, 1]], device=device, dtype=dtype
+        )[None].repeat(batch_size, 1, 1)
 
         assert_close(K_graf, expected)
 
         Kvis_back = camtoworld_graphics_to_vision(K_graf)
         assert_close(Kvis_back, K_vis)
-        assert gradcheck(
-            camtoworld_graphics_to_vision,
-            (tensor_to_gradcheck_var(K_vis)),
-            raise_exception=True,
-        )
-        assert gradcheck(
-            camtoworld_vision_to_graphics,
-            (tensor_to_gradcheck_var(K_vis)),
-            raise_exception=True,
-        )
+        assert gradcheck(camtoworld_graphics_to_vision, (tensor_to_gradcheck_var(K_vis)), raise_exception=True)
+        assert gradcheck(camtoworld_vision_to_graphics, (tensor_to_gradcheck_var(K_vis)), raise_exception=True)
 
 
 class TestCamtoworldRtToPoseRt:
@@ -1438,14 +1428,14 @@ class TestCamtoworldRtToPoseRt:
     def test_everything(self, batch_size, device, dtype):
         # generate input data
         t = torch.tensor([2, 3, 4], device=device, dtype=dtype).view(1, 3, 1).repeat(batch_size, 1, 1)
-        angles = torch.tensor([0, kornia.pi / 2., 0.], device=device, dtype=dtype)[None]
+        angles = torch.tensor([0, kornia.pi / 2.0, 0.0], device=device, dtype=dtype)[None]
         R = kornia.geometry.angle_axis_to_rotation_matrix(angles).repeat(batch_size, 1, 1)
 
         Rp, tp = camtoworldRt_to_poseRt(R, t)
 
-        expected_Rp = torch.tensor([[0, 0, -1],
-                                    [0, 1, 0],
-                                    [1, 0, 0]], device=device, dtype=dtype)[None].repeat(batch_size, 1, 1)
+        expected_Rp = torch.tensor([[0, 0, -1], [0, 1, 0], [1, 0, 0]], device=device, dtype=dtype)[None].repeat(
+            batch_size, 1, 1
+        )
         expected_tp = torch.tensor([4, -3, -2], device=device, dtype=dtype).view(1, 3, 1).repeat(batch_size, 1, 1)
         assert_close(Rp, expected_Rp)
         assert_close(tp, expected_tp)
@@ -1455,12 +1445,8 @@ class TestCamtoworldRtToPoseRt:
         assert_close(tback, t)
 
         assert gradcheck(
-            camtoworldRt_to_poseRt,
-            (tensor_to_gradcheck_var(R), tensor_to_gradcheck_var(t)),
-            raise_exception=True,
+            camtoworldRt_to_poseRt, (tensor_to_gradcheck_var(R), tensor_to_gradcheck_var(t)), raise_exception=True
         )
         assert gradcheck(
-            poseRt_to_camtoworldRt,
-            (tensor_to_gradcheck_var(R), tensor_to_gradcheck_var(t)),
-            raise_exception=True,
+            poseRt_to_camtoworldRt, (tensor_to_gradcheck_var(R), tensor_to_gradcheck_var(t)), raise_exception=True
         )

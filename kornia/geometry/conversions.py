@@ -7,9 +7,8 @@ import torch.nn.functional as F
 from torch import Tensor, tensor
 
 from kornia.constants import pi
-from kornia.utils.helpers import _torch_inverse_cast
 from kornia.testing import KORNIA_CHECK_SHAPE
-
+from kornia.utils.helpers import _torch_inverse_cast
 
 __all__ = [
     "rad2deg",
@@ -1235,12 +1234,11 @@ def camtoworld_graphics_to_vision(extrinsics_graphics: Tensor) -> Tensor:
         extrinsics: pose matrix :math:`(B, 4, 4)`.
     """
     KORNIA_CHECK_SHAPE(extrinsics_graphics, ["B", "4", "4"])
-    invert_yz = tensor([[[1, 0, 0, 0],
-                       [0, -1, 0, 0],
-                       [0, 0, -1, 0],
-                       [0, 0, 0, 1.]]],
-                       dtype=extrinsics_graphics.dtype,
-                       device=extrinsics_graphics.device)
+    invert_yz = tensor(
+        [[[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1.0]]],
+        dtype=extrinsics_graphics.dtype,
+        device=extrinsics_graphics.device,
+    )
     return extrinsics_graphics @ invert_yz
 
 
@@ -1257,12 +1255,11 @@ def camtoworld_vision_to_graphics(extrinsics_vision: Tensor) -> Tensor:
         extrinsics: pose matrix :math:`(B, 4, 4)`.
     """
     KORNIA_CHECK_SHAPE(extrinsics_vision, ["B", "4", "4"])
-    invert_yz = torch.tensor([[[1, 0, 0, 0],
-                             [0, -1, 0, 0],
-                             [0, 0, -1, 0],
-                             [0, 0, 0, 1.]]],
-                             dtype=extrinsics_vision.dtype,
-                             device=extrinsics_vision.device)
+    invert_yz = torch.tensor(
+        [[[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1.0]]],
+        dtype=extrinsics_vision.dtype,
+        device=extrinsics_vision.device,
+    )
     return extrinsics_vision @ invert_yz
 
 
