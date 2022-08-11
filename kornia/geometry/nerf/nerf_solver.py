@@ -88,7 +88,8 @@ class NerfSolver:
 
     def train_one_epoch(self):
         ray_dataset = RayDataset(self._cameras, self._min_depth, self._max_depth)
-        ray_dataset.init_ray_dataset(self._imgs, self._num_img_rays)
+        ray_dataset.init_ray_dataset(self._num_img_rays)
+        ray_dataset.init_images_for_training(self._imgs)  # FIXME: Do we need to load the same images on each Epoch?
         ray_data_loader = instantiate_ray_dataloader(ray_dataset, self._batch_size, shufle=True)
         for origins, directions, rgbs in ray_data_loader:
             rgbs_model = self._nerf_model(origins, directions)
@@ -97,3 +98,12 @@ class NerfSolver:
             self._opt_nerf.zero_grad()
             loss.backward()
             self._opt_nerf.step()
+
+    def render_views(self, cameras: PinholeCamera):
+        ray_dataset = RayDataset(cameras, self._min_depth, self._max_depth)
+        ray_dataset.init_ray_dataset()
+        idx0 = 0
+        for height, width in zip(cameras.height.tolist(), cameras.width.tolist()):
+            idxs = list(range(idx0, idx0 + height * width))
+            idx0 = idx0 + height * width
+            ray_dataset[idxs]  # FIXME: Continue here

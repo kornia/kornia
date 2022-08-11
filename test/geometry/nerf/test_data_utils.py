@@ -28,7 +28,8 @@ class TestDataset:
         cameras = create_four_cameras(device, dtype)
         imgs = create_random_images_for_cameras(cameras)
         dataset = RayDataset(cameras, 1, 2)
-        dataset.init_ray_dataset(imgs)
+        dataset.init_ray_dataset()
+        dataset.init_images_for_training(imgs)
 
         batch_size = 32
         data_loader = instantiate_ray_dataloader(dataset, batch_size=batch_size, shufle=False)
@@ -40,6 +41,10 @@ class TestDataset:
         assert d[2].shape == (batch_size, 3)  # Ray rgbs
 
         # Comparing RGB values between sampled rays and original images
-        assert torch.equal(d[2][0], imgs[0][:, 0, 0])
-        assert torch.equal(d[2][1], imgs[0][:, 0, 1])  # First row, second column in the image (1 sample point index)
-        assert torch.equal(d[2][9], imgs[0][:, 1, 0])  # Second row, first column in the image (9 sample point index)
+        assert torch.equal(d[2][0], imgs[0][:, 0, 0] / 255.0)
+        assert torch.equal(
+            d[2][1], imgs[0][:, 0, 1] / 255.0
+        )  # First row, second column in the image (1 sample point index)
+        assert torch.equal(
+            d[2][9], imgs[0][:, 1, 0] / 255.0
+        )  # Second row, first column in the image (9 sample point index)
