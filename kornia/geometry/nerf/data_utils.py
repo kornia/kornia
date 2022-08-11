@@ -23,12 +23,14 @@ class RayDataset(Dataset):  # FIXME: Add device
         self._min_depth = min_depth
         self._max_depth = max_depth
 
-    def init_ray_dataset(self, imgs: Images, num_img_rays: Optional[torch.Tensor] = None) -> None:
-        self._check_image_type_consistency(imgs)
+    def init_ray_dataset(self, num_img_rays: Optional[torch.Tensor] = None) -> None:
         if num_img_rays is None:
             self._init_uniform_ray_dataset()
         else:
             self._init_random_ray_dataset(num_img_rays)
+
+    def init_images_for_training(self, imgs: Images) -> None:
+        self._check_image_type_consistency(imgs)
         if isinstance(imgs[0], str):  # Load images from disk
             self._imgs = self._load_images(imgs)
         else:
