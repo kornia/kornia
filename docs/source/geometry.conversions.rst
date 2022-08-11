@@ -50,3 +50,13 @@ Angle Axis
 
 .. autofunction:: angle_axis_to_quaternion
 .. autofunction:: angle_axis_to_rotation_matrix
+
+Pose (extrinsics)
+----------
+
+.. autofunction:: extrinsics_from_Rt
+.. autofunction:: Rt_from_extrinsics
+.. autofunction:: camtoworldRt_to_poseRt
+.. autofunction:: poseRt_to_camtoworldRt
+.. autofunction:: camtoworld_graphics_to_vision
+.. autofunction:: camtoworld_vision_to_graphics

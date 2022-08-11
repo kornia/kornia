@@ -4,7 +4,7 @@ from typing import Optional, Tuple
 
 import torch
 import torch.nn.functional as F
-from torch import Tensor
+from torch import Tensor, tensor
 
 from kornia.constants import pi
 from kornia.utils.helpers import _torch_inverse_cast
@@ -39,6 +39,12 @@ __all__ = [
     "normalize_homography3d",
     "normal_transform_pixel",
     "normal_transform_pixel3d",
+    "camtoworldRt_to_poseRt",
+    "poseRt_to_camtoworldRt",
+    "extrinsics_from_Rt",
+    "Rt_from_extrinsics",
+    "camtoworld_graphics_to_vision",
+    "camtoworld_vision_to_graphics",
 ]
 
 
@@ -1182,6 +1188,8 @@ def normalize_homography3d(
 
 def extrinsics_from_Rt(R: Tensor, t: Tensor) -> Tensor:
     r"""Combines 3x3 R and 1x3 t into 4x4 extrinsics.
+    Extrinsics matrix is usually named `K`, but we avoid this,
+    to not interfere with `import kornia as K`
 
     Args:
         R: Rotation matrix, :math:`(B, 3, 3).`
@@ -1199,6 +1207,8 @@ def extrinsics_from_Rt(R: Tensor, t: Tensor) -> Tensor:
 
 def Rt_from_extrinsics(extrinsics: Tensor) -> Tuple[Tensor, Tensor]:
     r"""Combines 4x4 extrinsics into 3x3 R and 1x3 t .
+    Extrinsics matrix is usually named `K`, but we avoid this,
+    to not interfere with `import kornia as K`
 
     Args:
         extrinsics: pose matrix :math:`(B, 4, 4)`.
@@ -1210,3 +1220,90 @@ def Rt_from_extrinsics(extrinsics: Tensor) -> Tuple[Tensor, Tensor]:
     KORNIA_CHECK_SHAPE(extrinsics, ["B", "4", "4"])
     R, t = extrinsics[:, :3, :3], extrinsics[:, :3, 3:]
     return R, t
+
+
+def camtoworld_graphics_to_vision(extrinsics_graphics: Tensor) -> Tensor:
+    r"""Converts graphics coordinate frame (e.g. OpenGL) to vision coordinate
+    frame (e.g. OpenCV.).
+    Graphics convention: [+x, +y, +z] == [right, up, backwards].
+    Vision convention: [+x, +y, +z] == [right, down, forwards]
+
+    Args:
+        extrinsics: pose matrix :math:`(B, 4, 4)`.
+
+    Returns:
+        extrinsics: pose matrix :math:`(B, 4, 4)`.
+    """
+    KORNIA_CHECK_SHAPE(extrinsics_graphics, ["B", "4", "4"])
+    invert_yz = tensor([[[1, 0, 0, 0],
+                       [0, -1, 0, 0],
+                       [0, 0, -1, 0],
+                       [0, 0, 0, 1.]]],
+                       dtype=extrinsics_graphics.dtype,
+                       device=extrinsics_graphics.device)
+    return extrinsics_graphics @ invert_yz
+
+
+def camtoworld_vision_to_graphics(extrinsics_vision: Tensor) -> Tensor:
+    r"""Converts vision coordinate frame (e.g. OpenCV) to graphics coordinate
+    frame (e.g. OpenGK.).
+    Graphics convention: [+x, +y, +z] == [right, up, backwards].
+    Vision convention: [+x, +y, +z] == [right, down, forwards]
+
+    Args:
+        extrinsics: pose matrix :math:`(B, 4, 4)`.
+
+    Returns:
+        extrinsics: pose matrix :math:`(B, 4, 4)`.
+    """
+    KORNIA_CHECK_SHAPE(extrinsics_vision, ["B", "4", "4"])
+    invert_yz = torch.tensor([[[1, 0, 0, 0],
+                             [0, -1, 0, 0],
+                             [0, 0, -1, 0],
+                             [0, 0, 0, 1.]]],
+                             dtype=extrinsics_vision.dtype,
+                             device=extrinsics_vision.device)
+    return extrinsics_vision @ invert_yz
+
+
+def poseRt_to_camtoworldRt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
+    r"""Converts camera pose in world coordinates to camtoworld frame,
+    e.g. used in Colmap
+
+    Args:
+        R: Rotation matrix, :math:`(B, 3, 3).`
+        t: Translation matrix :math:`(B, 3, 1)`.
+
+    Returns:
+        Rinv: Rotation matrix, :math:`(B, 3, 3).`
+        tinv: Translation matrix :math:`(B, 3, 1)`.
+    """
+    KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
+    KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
+
+    R_inv = R.transpose(1, 2)
+
+    new_t: Tensor = -R_inv @ t
+
+    return (R_inv, new_t)
+
+
+def camtoworldRt_to_poseRt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
+    r"""Converts camtoworld frame e.g. used in Colmap to pose.
+
+    Args:
+        R: Rotation matrix, :math:`(B, 3, 3).`
+        t: Translation matrix :math:`(B, 3, 1)`.
+
+    Returns:
+        R: Rotation matrix, :math:`(B, 3, 3).`
+        t: Translation matrix :math:`(B, 3, 1)`.
+    """
+    KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
+    KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
+
+    R_inv = R.transpose(1, 2)
+
+    new_t: Tensor = -R_inv @ t
+
+    return (R_inv, new_t)
