@@ -57,7 +57,6 @@ class TestRgbToYuv(BaseTester):
         op_jit = torch.jit.script(op)
         self.assert_close(op(img), op_jit(img))
 
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -214,7 +213,6 @@ class TestRgbToYuv420(BaseTester):
         self.assert_close(op(img)[0], op_jit(img)[0])
         self.assert_close(op(img)[1], op_jit(img)[1])
 
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -285,7 +283,6 @@ class TestRgbToYuv422(BaseTester):
         self.assert_close(op(img)[0], op_jit(img)[0])
         self.assert_close(op(img)[1], op_jit(img)[1])
 
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -345,7 +342,6 @@ class TestYuvToRgb(BaseTester):
         op_jit = torch.jit.script(op)
         self.assert_close(op(img), op_jit(img))
 
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -451,7 +447,6 @@ class TestYuv420ToRgb(BaseTester):
         op_jit = torch.jit.script(op)
         self.assert_close(op(imgy, imguv), op_jit(imgy, imguv))
 
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         B, H, W = 2, 4, 4
         imgy = torch.ones(B, 1, H, W, device=device, dtype=dtype)
@@ -531,7 +526,6 @@ class TestYuv422ToRgb(BaseTester):
         op_jit = torch.jit.script(op)
         self.assert_close(op(imgy, imguv), op_jit(imgy, imguv))
 
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         B, H, W = 2, 4, 4
         imgy = torch.ones(B, 1, H, W, device=device, dtype=dtype)

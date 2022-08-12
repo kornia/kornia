@@ -966,22 +966,18 @@ class TestRandomVerticalFlip(BaseTester):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_exception(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_gradcheck(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_jit(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         pass
 

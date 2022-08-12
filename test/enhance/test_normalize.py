@@ -137,12 +137,10 @@ class TestNormalize(BaseTester):
             f(inputs)
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_cardinality(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_exception(self, device, dtype):
         pass
 
@@ -261,12 +259,10 @@ class TestDenormalize(BaseTester):
         self.assert_close(op(*inputs), op_module(data))
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_cardinality(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_exception(self, device, dtype):
         pass
 
@@ -323,6 +319,5 @@ class TestNormalizeMinMax(BaseTester):
         assert gradcheck(kornia.enhance.normalize_min_max, (x,), raise_exception=True)
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         pass

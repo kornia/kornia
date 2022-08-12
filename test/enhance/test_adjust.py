@@ -44,7 +44,6 @@ class TestInvert(BaseTester):
         op_jit = torch.jit.script(op)
         self.assert_close(op(img), op_jit(img))
 
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -53,7 +52,6 @@ class TestInvert(BaseTester):
         self.assert_close(op(img), op_mod(img))
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_exception(self, device, dtype):
         pass
 
@@ -136,22 +134,18 @@ class TestAdjustSaturation(BaseTester):
         assert gradcheck(kornia.enhance.adjust_saturation_with_gray_subtraction, (img, 2.0), raise_exception=True)
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_exception(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_jit(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_smoke(self, device, dtype):
         pass
 
@@ -212,22 +206,18 @@ class TestAdjustHue(BaseTester):
         assert gradcheck(kornia.enhance.adjust_hue, (img, 2.0), raise_exception=True)
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_exception(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_jit(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_smoke(self, device, dtype):
         pass
 
@@ -325,22 +315,18 @@ class TestAdjustGamma(BaseTester):
         assert gradcheck(kornia.enhance.adjust_gamma, (img, 1.0, 2.0), raise_exception=True)
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_exception(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_jit(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_smoke(self, device, dtype):
         pass
 
@@ -629,22 +615,18 @@ class TestAdjustContrast(BaseTester):
         assert gradcheck(kornia.enhance.adjust_contrast_with_mean_subtraction, (img, 2.0), raise_exception=True)
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_exception(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_jit(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_smoke(self, device, dtype):
         pass
 
@@ -729,27 +711,22 @@ class TestAdjustBrightness(BaseTester):
         assert gradcheck(kornia.enhance.adjust_brightness_accumulative, (img, 2.0), raise_exception=True)
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_gradcheck(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_exception(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_jit(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_smoke(self, device, dtype):
         pass
 
@@ -807,22 +784,18 @@ class TestAdjustSigmoid(BaseTester):
         assert gradcheck(kornia.enhance.adjust_sigmoid, inputs, raise_exception=True)
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_cardinality(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_exception(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_smoke(self, device, dtype):
         pass
 
@@ -881,22 +854,18 @@ class TestAdjustLog(BaseTester):
         assert gradcheck(kornia.enhance.adjust_log, (inputs, 0.1), raise_exception=True)
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_cardinality(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_exception(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_smoke(self, device, dtype):
         pass
 
@@ -1021,22 +990,18 @@ class TestEqualize(BaseTester):
         return batch
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_cardinality(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_exception(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_smoke(self, device, dtype):
         pass
 
@@ -1120,22 +1085,18 @@ class TestEqualize3D(BaseTester):
         return batch
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_cardinality(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_exception(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_smoke(self, device, dtype):
         pass
 
@@ -1237,7 +1198,6 @@ class TestSharpness(BaseTester):
 
     # TODO: update with module when exists
     @pytest.mark.skip(reason="Not having it yet.")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         img = torch.ones(2, 3, 4, 4, device=device, dtype=dtype)
         ops = TestSharpness.f
@@ -1329,7 +1289,6 @@ class TestSolarize(BaseTester):
 
     # TODO: update with module when exists
     @pytest.mark.skip(reason="Not having it yet.")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         img = torch.ones(2, 3, 4, 4, device=device, dtype=dtype)
         ops = TestSolarize.f
@@ -1411,7 +1370,6 @@ class TestPosterize(BaseTester):
 
     # TODO: update with module when exists
     @pytest.mark.skip(reason="Not having it yet.")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         img = torch.ones(2, 3, 4, 4, device=device, dtype=dtype)
         ops = TestPosterize.f

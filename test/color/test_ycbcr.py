@@ -118,7 +118,6 @@ class TestRgbToYcbcr(BaseTester):
         op_jit = torch.jit.script(op)
         self.assert_close(op(img), op_jit(img))
 
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -232,7 +231,6 @@ class TestYcbcrToRgb(BaseTester):
         op_jit = torch.jit.script(op)
         self.assert_close(op(img), op_jit(img))
 
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
