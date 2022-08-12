@@ -87,18 +87,28 @@ class NerfSolver:
         if not all(width == img.shape[2] for width, img in zip(cameras.width.tolist(), imgs)):
             raise ValueError('All image widths must match camera widths')
 
-    def train_one_epoch(self):
+    def _train_one_epoch(self) -> float:
         ray_dataset = RayDataset(self._cameras, self._min_depth, self._max_depth)
         ray_dataset.init_ray_dataset(self._num_img_rays)
         ray_dataset.init_images_for_training(self._imgs)  # FIXME: Do we need to load the same images on each Epoch?
         ray_data_loader = instantiate_ray_dataloader(ray_dataset, self._batch_size, shufle=True)
-        for origins, directions, rgbs in ray_data_loader:
+        total_loss = 0.0
+        for i_batch, (origins, directions, rgbs) in enumerate(ray_data_loader):
             rgbs_model = self._nerf_model(origins, directions)
             loss = F.mse_loss(rgbs_model, rgbs)
+
+            total_loss = total_loss + loss.item()
 
             self._opt_nerf.zero_grad()
             loss.backward()
             self._opt_nerf.step()
+        return total_loss / i_batch
+
+    def run(self, num_epochs=1):
+        for i_epoch in range(num_epochs):
+            epoch_loss = self._train_one_epoch()
+
+            print(f'Epoch: {i_epoch}: epoch_loss = {epoch_loss}')
 
     def render_views(self, cameras: PinholeCamera) -> ImageTensors:
         ray_dataset = RayDataset(cameras, self._min_depth, self._max_depth)
@@ -110,5 +120,8 @@ class NerfSolver:
             idx0 = idx0 + height * width
             origins, directions, _ = ray_dataset[idxs]
             rgbs_model = self._nerf_model(origins, directions)
-            imgs.append(torch.permute(rgbs_model.reshape(height, width, -1), (2, 0, 1)))
+            img = torch.tensor(
+                torch.permute(rgbs_model.reshape(height, width, -1), (2, 0, 1)) * 255.0, dtype=torch.uint8
+            )
+            imgs.append(img)
         return imgs

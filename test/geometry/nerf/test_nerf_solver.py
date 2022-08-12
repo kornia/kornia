@@ -16,7 +16,7 @@ class TestNerfSolver:
 
         params_before_update = [torch.clone(param) for param in nerf_obj.nerf_model.parameters()]
 
-        nerf_obj.train_one_epoch()
+        nerf_obj.run()
 
         params_after_update = [torch.clone(param) for param in nerf_obj.nerf_model.parameters()]
 
@@ -36,6 +36,8 @@ class TestNerfSolver:
 
         nerf_obj = NerfSolver()
         nerf_obj.init_training(camera, 1.0, 3.0, img, 2, 10)
-        nerf_obj.train_one_epoch()
+        nerf_obj.run(num_epochs=5)
 
-        nerf_obj.render_views(camera)
+        img_rendered = nerf_obj.render_views(camera)[0]
+
+        assert torch.all(torch.isclose(img[0] / 255.0, img_rendered / 255.0)).item()
