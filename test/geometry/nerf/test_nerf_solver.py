@@ -37,3 +37,5 @@ class TestNerfSolver:
         nerf_obj = NerfSolver()
         nerf_obj.init_training(camera, 1.0, 3.0, img, 2, 10)
         nerf_obj.train_one_epoch()
+
+        nerf_obj.render_views(camera)

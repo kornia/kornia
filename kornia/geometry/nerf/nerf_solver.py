@@ -1,11 +1,12 @@
 from typing import Optional
 
+import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from torch import nn
 
 from kornia.geometry.camera import PinholeCamera
-from kornia.geometry.nerf.data_utils import Images, RayDataset, instantiate_ray_dataloader
+from kornia.geometry.nerf.data_utils import Images, ImageTensors, RayDataset, instantiate_ray_dataloader
 from kornia.geometry.nerf.nerf_model import NerfModel
 
 """
@@ -99,11 +100,15 @@ class NerfSolver:
             loss.backward()
             self._opt_nerf.step()
 
-    def render_views(self, cameras: PinholeCamera):
+    def render_views(self, cameras: PinholeCamera) -> ImageTensors:
         ray_dataset = RayDataset(cameras, self._min_depth, self._max_depth)
         ray_dataset.init_ray_dataset()
         idx0 = 0
-        for height, width in zip(cameras.height.tolist(), cameras.width.tolist()):
+        imgs: ImageTensors = []
+        for height, width in zip(cameras.height.int().tolist(), cameras.width.int().tolist()):
             idxs = list(range(idx0, idx0 + height * width))
             idx0 = idx0 + height * width
-            ray_dataset[idxs]  # FIXME: Continue here
+            origins, directions, _ = ray_dataset[idxs]
+            rgbs_model = self._nerf_model(origins, directions)
+            imgs.append(torch.permute(rgbs_model.reshape(height, width, -1), (2, 0, 1)))
+        return imgs

@@ -11,14 +11,14 @@ ImagePaths = List[str]
 ImageTensors = List[torch.Tensor]
 Images = Union[ImagePaths, ImageTensors]
 
-RayBatch = Tuple[torch.Tensor, torch.Tensor, torch.Tensor]
+RayGroup = Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]
 
 
 class RayDataset(Dataset):  # FIXME: Add device
     def __init__(self, cameras: PinholeCamera, min_depth: float, max_depth: float) -> None:
         super().__init__()
         self._ray_sampler: Optional[RaySampler] = None
-        self._imgs: List[torch.Tensor] = []
+        self._imgs: Optional[List[torch.Tensor]] = None
         self._cameras = cameras
         self._min_depth = min_depth
         self._max_depth = max_depth
@@ -73,21 +73,23 @@ class RayDataset(Dataset):  # FIXME: Add device
     def __len__(self):
         return len(self._ray_sampler)
 
-    def __getitem__(self, idxs: Union[int, List[int]]) -> RayBatch:
+    def __getitem__(self, idxs: Union[int, List[int]]) -> RayGroup:
         origins = self._ray_sampler.origins[idxs]
         directions = self._ray_sampler.directions[idxs]
         camerd_ids = self._ray_sampler.camera_ids[idxs]
         points_2d = self._ray_sampler.points_2d[idxs]
-        imgs_for_ids = [self._imgs[i] for i in camerd_ids]
-        rgbs = torch.stack(
-            [img[:, point2d[1].item(), point2d[0].item()] for img, point2d in zip(imgs_for_ids, points_2d)]
-        )
-        rgbs = rgbs.float() / 255.0
+        rgbs = None
+        if self._imgs is not None:
+            imgs_for_ids = [self._imgs[i] for i in camerd_ids]
+            rgbs = torch.stack(
+                [img[:, point2d[1].item(), point2d[0].item()] for img, point2d in zip(imgs_for_ids, points_2d)]
+            )
+            rgbs = rgbs.float() / 255.0
         return origins, directions, rgbs
 
 
 def instantiate_ray_dataloader(dataset: RayDataset, batch_size: int = 1, shufle: bool = True):
-    def collate_rays(items: List[RayBatch]) -> RayBatch:
+    def collate_rays(items: List[RayGroup]) -> RayGroup:
         return items[0]
 
     return DataLoader(
