@@ -1,7 +1,6 @@
 from typing import Tuple
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 
 from kornia.core import Module, Tensor
@@ -10,7 +9,7 @@ from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from .kernels import get_pascal_kernel_2d
 from .median import _compute_zero_padding  # TODO: Move to proper place
 
-__all__ = ["BlurPool2D", "MaxBlurPool2D", "blur_pool2d", "max_blur_pool2d"]
+__all__ = ["BlurPool2D", "MaxBlurPool2D", "blur_pool2d", "max_blur_pool2d", 'edge_aware_blur_pool2d']
 
 
 class BlurPool2D(Module):
@@ -205,7 +204,6 @@ def _max_blur_pool_by_kernel2d(
     # blur and downsample
     padding: Tuple[int, int] = _compute_zero_padding((kernel.shape[-2], kernel.shape[-1]))
     return F.conv2d(input, kernel, padding=padding, stride=stride, groups=input.size(1))
-
 
 
 def edge_aware_blur_pool2d(
