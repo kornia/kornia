@@ -962,7 +962,6 @@ class TestRandomVerticalFlip(BaseTester):
         ).all()
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_cardinality(self, device, dtype):
         pass
 
