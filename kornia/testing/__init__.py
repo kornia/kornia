@@ -102,7 +102,7 @@ class BaseTester(ABC):
     def test_module(self, device, dtype):
         raise NotImplementedError("Implement a stupid routine.")
 
-    def assert_close(self, actual: torch.Tensor, expected: torch.Tensor, low_tolerance: bool = False) -> None:
+    def assert_close(self, actual: Tensor, expected: Tensor, low_tolerance: bool = False) -> None:
         if low_tolerance:
             rtol, atol = 1e-2, 1e-2
         elif 'xla' in actual.device.type or 'xla' in expected.device.type:
