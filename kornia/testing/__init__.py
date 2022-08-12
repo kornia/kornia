@@ -95,7 +95,7 @@ class BaseTester(ABC):
         raise NotImplementedError("Implement a stupid routine.")
 
     @abstractmethod
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         raise NotImplementedError("Implement a stupid routine.")
 
     @abstractmethod
