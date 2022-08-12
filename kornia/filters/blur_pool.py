@@ -193,9 +193,7 @@ def _blur_pool_by_kernel2d(input: Tensor, kernel: Tensor, stride: int):
     return F.conv2d(input, kernel, padding=padding, stride=stride, groups=input.size(1))
 
 
-def _max_blur_pool_by_kernel2d(
-    input: Tensor, kernel: Tensor, stride: int, max_pool_size: int, ceil_mode: bool
-):
+def _max_blur_pool_by_kernel2d(input: Tensor, kernel: Tensor, stride: int, max_pool_size: int, ceil_mode: bool):
     """Compute max_blur_pool by a given :math:`CxC_{out}xNxN` kernel."""
     if not (len(kernel.shape) == 4 and kernel.size(-1) == kernel.size(-2)):
         raise AssertionError(f"Invalid kernel shape. Expect CxC_outxNxN, Got {kernel.shape}")
