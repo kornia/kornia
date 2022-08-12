@@ -1394,8 +1394,8 @@ class TestRt2Extrinsics:
         assert R2.shape == (batch_size, 3, 3)
         assert t2.shape == (batch_size, 3, 1)
 
-        assert_close(R, R2)
-        assert_close(t, t2)
+        assert_close(R, R2, rtol=1e-4, atol=1e-5)
+        assert_close(t, t2, rtol=1e-4, atol=1e-5)
         assert gradcheck(
             kornia.geometry.conversions.extrinsics_from_Rt,
             (tensor_to_gradcheck_var(R), tensor_to_gradcheck_var(t)),
@@ -1418,11 +1418,11 @@ class TestCamtoworldGraphicsToVision:
             [[0, 0, -1, 2], [0, -1, 0, 3], [-1, 0, 0, 4], [0, 0, 0, 1]], device=device, dtype=dtype
         )[None].repeat(batch_size, 1, 1)
 
-        assert_close(K_graf, expected)
-        assert_close(K_graf2, expected)
+        assert_close(K_graf, expected, rtol=1e-4, atol=1e-5)
+        assert_close(K_graf2, expected, rtol=1e-4, atol=1e-5)
 
         Kvis_back = camtoworld_graphics_to_vision(K_graf)
-        assert_close(Kvis_back, K_vis)
+        assert_close(Kvis_back, K_vis, rtol=1e-4, atol=1e-5)
         assert gradcheck(camtoworld_graphics_to_vision, (tensor_to_gradcheck_var(K_vis)), raise_exception=True)
         assert gradcheck(camtoworld_vision_to_graphics, (tensor_to_gradcheck_var(K_vis)), raise_exception=True)
 
@@ -1441,12 +1441,12 @@ class TestCamtoworldRtToPoseRt:
             batch_size, 1, 1
         )
         expected_tp = torch.tensor([4, -3, -2], device=device, dtype=dtype).view(1, 3, 1).repeat(batch_size, 1, 1)
-        assert_close(Rp, expected_Rp)
-        assert_close(tp, expected_tp)
+        assert_close(Rp, expected_Rp, rtol=1e-4, atol=1e-5)
+        assert_close(tp, expected_tp, rtol=1e-4, atol=1e-5)
 
         Rback, tback = poseRt_to_camtoworldRt(Rp, tp)
-        assert_close(Rback, R)
-        assert_close(tback, t)
+        assert_close(Rback, R, rtol=1e-4, atol=1e-5)
+        assert_close(tback, t, rtol=1e-4, atol=1e-5)
 
         assert gradcheck(
             camtoworldRt_to_poseRt, (tensor_to_gradcheck_var(R), tensor_to_gradcheck_var(t)), raise_exception=True
@@ -1471,5 +1471,5 @@ class TestCARKitToColmap:
         expected_angles = torch.tensor([[-45.0, 60, 0.0]], device=device, dtype=dtype)
         expected_t = torch.tensor([[[-0.5256], [0.3558], [0.7727]]], device=device, dtype=dtype)
 
-        assert_close(angles_colmap, expected_angles)
-        assert_close(t_colmap, expected_t)
+        assert_close(angles_colmap, expected_angles, rtol=1e-4, atol=1e-5)
+        assert_close(t_colmap, expected_t, rtol=1e-4, atol=1e-5)
