@@ -50,18 +50,19 @@ class NerfSolver:
         min_depth: float,
         max_depth: float,
         imgs: Images,
+        num_img_rays: Optional[torch.tensor],
         batch_size: int,
         num_ray_points: int,
         lr: float = 1.0e-3,
     ):
-        self._check_camera_image_consistency(cameras, imgs)
+        # self._check_camera_image_consistency(cameras, imgs)
 
         self._cameras = cameras
         self._min_depth = min_depth
         self._max_depth = max_depth
 
         self._imgs = imgs
-        self._num_img_rays = None
+        self._num_img_rays = num_img_rays
 
         self._batch_size = batch_size
 
@@ -72,6 +73,7 @@ class NerfSolver:
     def nerf_model(self) -> nn.Module:
         return self._nerf_model
 
+    # FIXME: Remove this function - consistency is checked in
     @staticmethod
     def _check_camera_image_consistency(cameras: PinholeCamera, imgs: Images):
         if cameras is None:
