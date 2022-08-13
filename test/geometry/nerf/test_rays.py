@@ -102,6 +102,31 @@ def create_extrinsics_with_rotation(alphas, betas, gammas, txs, tys, tzs, device
     return torch.stack(extrinsics_batch)
 
 
+def create_one_camera(height, width, device, dtype=torch.float32) -> PinholeCamera:
+    fx = width
+    fy = height
+    cx = (width - 1.0) / 2.0
+    cy = (height - 1.0) / 2.0
+
+    tx = 0.0
+    ty = 0.0
+    tz = 11.0
+
+    alpha = torch.pi / 2.0
+    beta = 0.0
+    gamma = -torch.pi / 2.0
+
+    intrinsics = create_intrinsics([fx], [fy], [cx], [cy], device=device, dtype=dtype)
+    extrinsics = create_extrinsics_with_rotation([alpha], [beta], [gamma], [tx], [ty], [tz], device=device, dtype=dtype)
+
+    return PinholeCamera(
+        intrinsics,
+        extrinsics,
+        torch.tensor([height], device=device, dtype=dtype),
+        torch.tensor([width], device=device, dtype=dtype),
+    )
+
+
 def create_four_cameras(device, dtype) -> PinholeCamera:
     height = torch.tensor([5, 4, 4, 4], device=device, dtype=dtype)
     width = torch.tensor([9, 7, 7, 7], device=device, dtype=dtype)
