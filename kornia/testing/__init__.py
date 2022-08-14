@@ -6,7 +6,6 @@ from copy import deepcopy
 from itertools import product
 from typing import Any, Iterable, List, Optional, Tuple, Type, TypeVar, Union, cast
 
-import pytest
 import torch
 from torch import Tensor
 
@@ -18,11 +17,6 @@ def xla_is_available() -> bool:
     if importlib.util.find_spec("torch_xla") is not None:
         return True
     return False
-
-
-@pytest.fixture(name='device')
-def half_precision_is_available():
-    return device()
 
 
 # TODO: Isn't this function duplicated with eye_like?
