@@ -36,7 +36,7 @@ fi
 # define a python version to initialise the conda environment.
 # by default we assume python 3.7.
 python_version=${PYTHON_VERSION:-"3.7"}
-pytorch_version=${PYTORCH_VERSION:-"1.10.1"}
+pytorch_version=${PYTORCH_VERSION:-"1.10.2"}
 pytorch_mode=${PYTORCH_MODE:-""}  # use `cpuonly` for CPU or leave it in blank for GPU
 cuda_version=${CUDA_VERSION:-"10.2"}
 

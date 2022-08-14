@@ -1,3 +1,4 @@
+import warnings
 from typing import Dict, List, Optional, Tuple
 
 import torch
@@ -10,7 +11,7 @@ from kornia.geometry.transform import ScalePyramid
 from .affine_shape import LAFAffNetShapeEstimator
 from .hardnet import HardNet
 from .keynet import KeyNetDetector
-from .laf import extract_patches_from_pyramid, get_laf_center, raise_error_if_laf_is_not_valid
+from .laf import extract_patches_from_pyramid, get_laf_center, raise_error_if_laf_is_not_valid, scale_laf
 from .orientation import LAFOrienter, OriNet, PassLAF
 from .responses import BlobDoG, CornerGFTT
 from .scale_space_detector import ScaleSpaceDetector
@@ -42,6 +43,9 @@ def get_laf_descriptors(
     patch_descriptor.eval()
 
     timg: torch.Tensor = img
+    if lafs.shape[1] == 0:
+        warnings.warn(f"LAF contains no keypoints {lafs.shape}, returning empty tensor")
+        return torch.empty(lafs.shape[0], lafs.shape[1], 128)
     if grayscale_descriptor and img.size(1) == 3:
         timg = rgb_to_grayscale(img)
 
@@ -114,12 +118,16 @@ class LocalFeature(nn.Module):
     Args:
         detector: the detection module.
         descriptor: the descriptor module.
+        scaling_coef: multiplier for change default detector scale (e.g. it is too small for KeyNet by default)
     """
 
-    def __init__(self, detector: nn.Module, descriptor: LAFDescriptor) -> None:
+    def __init__(self, detector: nn.Module, descriptor: LAFDescriptor, scaling_coef: float = 1.0) -> None:
         super().__init__()
         self.detector = detector
         self.descriptor = descriptor
+        if scaling_coef <= 0:
+            raise ValueError(f"Scaling coef should be >= 0, got {scaling_coef}")
+        self.scaling_coef = scaling_coef
 
     def forward(
         self, img: torch.Tensor, mask: Optional[torch.Tensor] = None
@@ -136,6 +144,7 @@ class LocalFeature(nn.Module):
             - Local descriptors of shape :math:`(B,N,D)` where :math:`D` is descriptor size.
         """
         lafs, responses = self.detector(img, mask)
+        lafs = scale_laf(lafs, self.scaling_coef)
         descs = self.descriptor(img, lafs)
         return (lafs, responses, descs)
 
@@ -190,23 +199,35 @@ class GFTTAffNetHardNet(LocalFeature):
 class KeyNetHardNet(LocalFeature):
     """Convenience module, which implements KeyNet detector + HardNet descriptor."""
 
-    def __init__(self, num_features: int = 8000, upright: bool = False, device: torch.device = torch.device('cpu')):
+    def __init__(
+        self,
+        num_features: int = 8000,
+        upright: bool = False,
+        device: torch.device = torch.device('cpu'),
+        scale_laf: float = 1.0,
+    ):
         ori_module = PassLAF() if upright else LAFOrienter(angle_detector=OriNet(True))
         detector = KeyNetDetector(True, num_features=num_features, ori_module=ori_module).to(device)
         descriptor = LAFDescriptor(None, patch_size=32, grayscale_descriptor=True).to(device)
-        super().__init__(detector, descriptor)
+        super().__init__(detector, descriptor, scale_laf)
 
 
 class KeyNetAffNetHardNet(LocalFeature):
     """Convenience module, which implements KeyNet detector + AffNet + HardNet descriptor."""
 
-    def __init__(self, num_features: int = 8000, upright: bool = False, device: torch.device = torch.device('cpu')):
+    def __init__(
+        self,
+        num_features: int = 8000,
+        upright: bool = False,
+        device: torch.device = torch.device('cpu'),
+        scale_laf: float = 1.0,
+    ):
         ori_module = PassLAF() if upright else LAFOrienter(angle_detector=OriNet(True))
         detector = KeyNetDetector(
             True, num_features=num_features, ori_module=ori_module, aff_module=LAFAffNetShapeEstimator(True).eval()
         ).to(device)
         descriptor = LAFDescriptor(None, patch_size=32, grayscale_descriptor=True).to(device)
-        super().__init__(detector, descriptor)
+        super().__init__(detector, descriptor, scale_laf)
 
 
 class LocalFeatureMatcher(nn.Module):

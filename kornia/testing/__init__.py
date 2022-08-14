@@ -243,3 +243,11 @@ def KORNIA_CHECK_IS_GRAY(x: Tensor, msg: Optional[str] = None):
 def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: Tensor, msg: Optional[str] = None):
     if len(x.shape) < 3 or x.shape[-3] not in [1, 3]:
         raise TypeError(f"Not an color or gray tensor. Got: {type(x)}.\n{msg}")
+
+
+def KORNIA_CHECK_DM_DESC(desc1: Tensor, desc2: Tensor, dm: Tensor):
+    if not ((dm.size(0) == desc1.size(0)) and (dm.size(1) == desc2.size(0))):
+        message = f"""distance matrix shape {dm.shape} is not
+                      consistent with descriptors shape: desc1 {desc1.shape}
+                      desc2 {desc2.shape}"""
+        raise TypeError(message)
