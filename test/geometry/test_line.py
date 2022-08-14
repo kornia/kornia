@@ -3,33 +3,40 @@ import torch
 from torch.autograd import gradcheck
 
 from kornia.geometry.line import ParametrizedLine, fit_line
-from kornia.testing import assert_close
 
 
-class TestParametrizedLine:
+class BaseTester:
+    def assert_close(self, actual, expected, rtol=None, atol=None):
+        if isinstance(actual, torch.nn.Parameter):
+            actual = actual.data
+        if isinstance(expected, torch.nn.Parameter):
+            expected = expected.data
+
+
+class TestParametrizedLine(BaseTester):
     def test_smoke(self, device, dtype):
         p0 = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
         d0 = torch.tensor([1.0, 0.0], device=device, dtype=dtype)
         l0 = ParametrizedLine(p0, d0)
-        assert_close(torch.tensor(l0.origin), p0)
-        assert_close(torch.tensor(l0.direction), d0)
-        assert_close(l0.dim(), 2)
+        self.assert_close(l0.origin, p0)
+        self.assert_close(l0.direction, d0)
+        self.assert_close(l0.dim(), 2)
 
     def test_through(self, device, dtype):
         p0 = torch.tensor([-1.0, -1.0], device=device, dtype=dtype)
         p1 = torch.tensor([1.0, 1.0], device=device, dtype=dtype)
         l1 = ParametrizedLine.through(p0, p1)
         direction_expected = torch.tensor([0.7071, 0.7071], device=device, dtype=dtype)
-        assert_close(torch.tensor(l1.origin), p0)
-        assert_close(torch.tensor(l1.direction), direction_expected)
+        self.assert_close(l1.origin, p0)
+        self.assert_close(l1.direction, direction_expected)
 
     def test_point_at(self, device, dtype):
         p0 = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
         p1 = torch.tensor([1.0, 0.0], device=device, dtype=dtype)
         l1 = ParametrizedLine.through(p0, p1)
-        assert_close(l1.point_at(0.0), torch.tensor([0.0, 0.0], device=device, dtype=dtype))
-        assert_close(l1.point_at(0.5), torch.tensor([0.5, 0.0], device=device, dtype=dtype))
-        assert_close(l1.point_at(1.0), torch.tensor([1.0, 0.0], device=device, dtype=dtype))
+        self.assert_close(l1.point_at(0.0), torch.tensor([0.0, 0.0], device=device, dtype=dtype))
+        self.assert_close(l1.point_at(0.5), torch.tensor([0.5, 0.0], device=device, dtype=dtype))
+        self.assert_close(l1.point_at(1.0), torch.tensor([1.0, 0.0], device=device, dtype=dtype))
 
     def test_projection1(self, device, dtype):
         p0 = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
@@ -38,7 +45,7 @@ class TestParametrizedLine:
         p3_expected = torch.tensor([0.5, 0.0], device=device, dtype=dtype)
         l1 = ParametrizedLine.through(p0, p1)
         p3 = l1.projection(p2)
-        assert_close(p3, p3_expected)
+        self.assert_close(p3, p3_expected)
 
     def test_projection2(self, device, dtype):
         p0 = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
@@ -47,7 +54,7 @@ class TestParametrizedLine:
         p3_expected = torch.tensor([0.0, 0.5], device=device, dtype=dtype)
         l1 = ParametrizedLine.through(p0, p1)
         p3 = l1.projection(p2)
-        assert_close(p3, p3_expected)
+        self.assert_close(p3, p3_expected)
 
     def test_projection(self, device, dtype):
         p0 = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
@@ -55,7 +62,7 @@ class TestParametrizedLine:
         l1 = ParametrizedLine.through(p0, p1)
         point = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
         point_projection = torch.tensor([1.0, 0.0], device=device, dtype=dtype)
-        assert_close(l1.projection(point), point_projection)
+        self.assert_close(l1.projection(point), point_projection)
 
     def test_distance(self, device, dtype):
         p0 = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
@@ -63,7 +70,7 @@ class TestParametrizedLine:
         l1 = ParametrizedLine.through(p0, p1)
         point = torch.tensor([1.0, 4.0], device=device, dtype=dtype)
         distance_expected = torch.tensor(4.0, device=device, dtype=dtype)
-        assert_close(l1.distance(point), distance_expected)
+        self.assert_close(l1.distance(point), distance_expected)
 
     def test_squared_distance(self, device, dtype):
         p0 = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
@@ -71,10 +78,10 @@ class TestParametrizedLine:
         l1 = ParametrizedLine.through(p0, p1)
         point = torch.tensor([1.0, 4.0], device=device, dtype=dtype)
         distance_expected = torch.tensor(16.0, device=device, dtype=dtype)
-        assert_close(l1.squared_distance(point), distance_expected)
+        self.assert_close(l1.squared_distance(point), distance_expected)
 
 
-class TestFitLine:
+class TestFitLine(BaseTester):
     @pytest.mark.parametrize("B", (1, 2))
     @pytest.mark.parametrize("D", (2, 3, 4))
     def test_smoke(self, device, dtype, B, D):
@@ -111,7 +118,7 @@ class TestFitLine:
         angle_est = torch.nn.functional.cosine_similarity(line_est.direction, dir_exp, -1)
 
         angle_exp = torch.tensor([1.0], device=device, dtype=dtype)
-        assert_close(angle_est.abs(), angle_exp)
+        self.assert_close(angle_est.abs(), angle_exp)
 
     def test_fit_line3(self, device, dtype):
         p0 = torch.tensor([0.0, 0.0, 0.0], device=device, dtype=dtype)
@@ -131,7 +138,7 @@ class TestFitLine:
         # NOTE: result differs with the sign between cpu/cuda
         angle_est = torch.nn.functional.cosine_similarity(line_est.direction, dir_exp, -1)
         angle_exp = torch.tensor([1.0], device=device, dtype=dtype)
-        assert_close(angle_est.abs(), angle_exp)
+        self.assert_close(angle_est.abs(), angle_exp)
 
     @pytest.mark.skip(reason="numerical do not match with analytical")
     def test_gradcheck(self, device):
