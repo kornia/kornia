@@ -6,7 +6,6 @@ from torch.autograd import gradcheck
 
 import kornia
 import kornia.testing as utils  # test utils
-from conftest import device, dtype
 from kornia.augmentation import (
     AugmentationSequential,
     CenterCrop,
