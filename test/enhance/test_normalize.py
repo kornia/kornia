@@ -293,8 +293,8 @@ class TestNormalizeMinMax(BaseTester):
     def test_range(self, device, dtype, min_val, max_val):
         x = torch.rand(1, 2, 4, 5, device=device, dtype=dtype)
         out = kornia.enhance.normalize_min_max(x, min_val=min_val, max_val=max_val)
-        self.assert_close(out.min(), torch.tensor(min_val))
-        self.assert_close(out.max(), torch.tensor(max_val))
+        self.assert_close(out.min(), torch.tensor(min_val).to(device))
+        self.assert_close(out.max(), torch.tensor(max_val).to(device))
 
     def test_values(self, device, dtype):
         x = torch.tensor([[[[0.0, 1.0, 3.0], [-1.0, 4.0, 3.0], [9.0, 5.0, 2.0]]]], device=device, dtype=dtype)

@@ -6,6 +6,7 @@ from torch.autograd import gradcheck
 
 import kornia
 import kornia.testing as utils  # test utils
+from conftest import device, dtype
 from kornia.augmentation import (
     AugmentationSequential,
     CenterCrop,
@@ -563,6 +564,9 @@ class TestRandomRotationAlternative(CommonTests):
         )
 
     def test_batch(self):
+        if self.dtype == torch.float16:
+            pytest.skip('not work for half-precision')
+
         torch.manual_seed(12)
 
         input_tensor = torch.tensor(
@@ -1254,6 +1258,8 @@ class TestColorJiggle(BaseTester):
         self.assert_close(f(input), expected)
 
     def test_sequential(self, device, dtype):
+        if dtype == torch.float16:
+            pytest.skip('not work for half-precision')
 
         f = AugmentationSequential(ColorJiggle(), ColorJiggle())
 
@@ -1267,6 +1273,9 @@ class TestColorJiggle(BaseTester):
         self.assert_close(f.transform_matrix, expected_transform)
 
     def test_color_jitter_batch_sequential(self, device, dtype):
+        if dtype == torch.float16:
+            pytest.skip('not work for half-precision')
+
         f = AugmentationSequential(ColorJiggle(), ColorJiggle())
 
         input = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)  # 2 x 3 x 5 x 5
@@ -1319,6 +1328,8 @@ class TestColorJitter(BaseTester):
         assert str(f) == repr
 
     def test_color_jitter(self, device, dtype):
+        if dtype == torch.float16:
+            pytest.skip('not work for half-precision')
 
         f = ColorJitter()
 
@@ -1331,6 +1342,9 @@ class TestColorJitter(BaseTester):
         self.assert_close(f.transform_matrix, expected_transform)
 
     def test_color_jitter_batch(self, device, dtype):
+        if dtype == torch.float16:
+            pytest.skip('not work for half-precision')
+
         f = ColorJitter()
 
         input = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)  # 2 x 3 x 5 x 5
@@ -1576,6 +1590,8 @@ class TestColorJitter(BaseTester):
         self.assert_close(f(input), expected)
 
     def test_sequential(self, device, dtype):
+        if dtype == torch.float16:
+            pytest.skip('not work for half-precision')
 
         f = AugmentationSequential(ColorJiggle(), ColorJiggle())
 
@@ -1589,6 +1605,9 @@ class TestColorJitter(BaseTester):
         self.assert_close(f.transform_matrix, expected_transform)
 
     def test_color_jitter_batch_sequential(self, device, dtype):
+        if dtype == torch.float16:
+            pytest.skip('not work for half-precision')
+
         f = AugmentationSequential(ColorJitter(), ColorJitter())
 
         input = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)  # 2 x 3 x 5 x 5

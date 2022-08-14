@@ -94,6 +94,9 @@ class TestRgbToHls(BaseTester):
         self.assert_close(kornia.color.rgb_to_hls(data), expected)
 
     def test_nan_rgb_to_hls(self, device, dtype):
+        if dtype == torch.float16:
+            pytest.skip('not work for half-precision')
+
         if device != torch.device('cpu') and version.parse(torch.__version__) < version.parse('1.7.0'):
             warnings.warn(
                 "This test is not compatible with pytorch < 1.7.0. This message will be removed as soon as we do not "
