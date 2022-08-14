@@ -213,6 +213,7 @@ def edge_aware_blur_pool2d(
 ) -> Tensor:
     r"""Blur the input tensor while maintaining its edges.
 
+
     Args:
         input: the input image to blur with shape :math:`(B, C, H, W)`.
         kernel_size: the kernel size for max pooling.
