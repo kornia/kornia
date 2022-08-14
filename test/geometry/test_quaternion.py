@@ -8,9 +8,14 @@ from kornia.testing import assert_close
 class TestQuaternion:
     def assert_close(self, actual, expected, rtol=None, atol=None):
         if isinstance(actual, Quaternion):
+            actual = actual.data.data
+        elif isinstance(actual, torch.nn.Parameter):
             actual = actual.data
         if isinstance(expected, Quaternion):
+            expected = expected.data.data
+        elif isinstance(expected, torch.nn.Parameter):
             expected = expected.data
+
         assert_close(actual, expected, rtol=rtol, atol=atol)
 
     def test_smoke(self, device, dtype):
@@ -19,11 +24,11 @@ class TestQuaternion:
         q_data = torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype)
         assert isinstance(q, Quaternion)
         assert q.shape == (1, 4)
-        assert_close(q.data, q_data)
-        assert_close(q.q, q_data)
-        assert_close(q.real, q_data[..., :1])
-        assert_close(q.scalar, q_data[..., :1])
-        assert_close(q.vec, q_data[..., 1:])
+        self.assert_close(q.data, q_data)
+        self.assert_close(q.q, q_data)
+        self.assert_close(q.real, q_data[..., :1])
+        self.assert_close(q.scalar, q_data[..., :1])
+        self.assert_close(q.vec, q_data[..., 1:])
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_init(self, device, dtype, batch_size):
