@@ -284,7 +284,9 @@ def get_diff_kernel2d_2nd_order() -> torch.Tensor:
 
 def get_spatial_gradient_kernel2d(mode: str, order: int) -> torch.Tensor:
     r"""Function that returns kernel for 1st or 2nd order image gradients, using one of the following operators:
-    sobel, diff."""
+
+    sobel, diff.
+    """
     if mode not in ['sobel', 'diff']:
         raise TypeError(
             "mode should be either sobel\
