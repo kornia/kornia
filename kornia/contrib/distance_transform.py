@@ -77,7 +77,6 @@ class DistanceTransform(nn.Module):
     Args:
         kernel_size: size of the convolution kernel.
         h: value that influence the approximation of the min function.
-
     """
 
     def __init__(self, kernel_size: int = 3, h: float = 0.35):

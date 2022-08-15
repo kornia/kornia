@@ -106,7 +106,6 @@ def rot180(input: torch.Tensor) -> torch.Tensor:
 
     Returns:
         The rotated image tensor.
-
     """
 
     return torch.flip(input, [-2, -1])
@@ -124,7 +123,6 @@ def hflip(input: torch.Tensor) -> torch.Tensor:
 
     Returns:
         The horizontally flipped image tensor.
-
     """
     w = input.shape[-1]
     return input[..., torch.arange(w - 1, -1, -1, device=input.device)]
@@ -142,7 +140,6 @@ def vflip(input: torch.Tensor) -> torch.Tensor:
 
     Returns:
         The vertically flipped image tensor.
-
     """
 
     h = input.shape[-2]

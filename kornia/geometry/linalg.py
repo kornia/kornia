@@ -37,7 +37,6 @@ def compose_transformations(trans_01: torch.Tensor, trans_12: torch.Tensor) -> t
         >>> trans_01 = torch.eye(4)  # 4x4
         >>> trans_12 = torch.eye(4)  # 4x4
         >>> trans_02 = compose_transformations(trans_01, trans_12)  # 4x4
-
     """
     if not torch.is_tensor(trans_01):
         raise TypeError(f"Input trans_01 type is not a torch.Tensor. Got {type(trans_01)}")

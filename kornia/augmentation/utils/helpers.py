@@ -57,7 +57,10 @@ def _validate_input3d(f: Callable) -> Callable:
 
 
 def _infer_batch_shape(input: Union[Tensor, Tuple[Tensor, Tensor]]) -> torch.Size:
-    r"""Infer input shape. Input may be either (tensor,) or (tensor, transform_matrix)"""
+    r"""Infer input shape.
+
+    Input may be either (tensor,) or (tensor, transform_matrix)
+    """
     if isinstance(input, tuple):
         tensor = _transform_input(input[0])
     else:
@@ -66,7 +69,10 @@ def _infer_batch_shape(input: Union[Tensor, Tuple[Tensor, Tensor]]) -> torch.Siz
 
 
 def _infer_batch_shape3d(input: Union[Tensor, Tuple[Tensor, Tensor]]) -> torch.Size:
-    r"""Infer input shape. Input may be either (tensor,) or (tensor, transform_matrix)"""
+    r"""Infer input shape.
+
+    Input may be either (tensor,) or (tensor, transform_matrix)
+    """
     if isinstance(input, tuple):
         tensor = _transform_input3d(input[0])
     else:
@@ -168,7 +174,9 @@ def _validate_shape(shape: Union[Tuple, torch.Size], required_shapes: Tuple[str,
 
 
 def _validate_input_shape(input: Tensor, channel_index: int, number: int) -> bool:
-    r"""Validate if an input has the right shape. e.g. to check if an input is channel first.
+    r"""Validate if an input has the right shape.
+
+    e.g. to check if an input is channel first.
     If channel first, the second channel of an RGB input shall be fixed to 3. To verify using:
         _validate_input_shape(input, 1, 3)
     Args:
@@ -186,8 +194,8 @@ def _adapted_rsampling(
 ) -> Tensor:
     r"""The uniform reparameterized sampling function that accepts 'same_on_batch'.
 
-    If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]).
-    By default, same_on_batch is set to False.
+    If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
+    same_on_batch is set to False.
     """
     if same_on_batch:
         return dist.rsample((1, *shape[1:])).repeat(shape[0], *[1] * (len(shape) - 1))
@@ -199,8 +207,8 @@ def _adapted_sampling(
 ) -> Tensor:
     r"""The uniform sampling function that accepts 'same_on_batch'.
 
-    If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]).
-    By default, same_on_batch is set to False.
+    If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
+    same_on_batch is set to False.
     """
     if same_on_batch:
         return dist.sample((1, *shape[1:])).repeat(shape[0], *[1] * (len(shape) - 1))

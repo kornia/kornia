@@ -146,8 +146,8 @@ def _torch_solve_cast(A: Tensor, B: Tensor) -> Tensor:
 
 
 def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    r"""Helper function, which avoids crashing because of singular matrix input and outputs the
-    mask of valid solution"""
+    r"""Helper function, which avoids crashing because of singular matrix input and outputs the mask of valid
+    solution."""
     if not torch_version_geq(1, 10):
         sol = _torch_solve_cast(A, B)
         warnings.warn('PyTorch version < 1.10, solve validness mask maybe not correct', RuntimeWarning)
@@ -165,8 +165,8 @@ def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor
 
 
 def safe_inverse_with_mask(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-    r"""Helper function, which avoids crashing because of non-invertable matrix input and outputs the
-    mask of valid solution"""
+    r"""Helper function, which avoids crashing because of non-invertable matrix input and outputs the mask of valid
+    solution."""
     # Based on https://github.com/pytorch/pytorch/issues/31546#issuecomment-694135622
     if not torch_version_geq(1, 9):
         inv = _torch_inverse_cast(A)

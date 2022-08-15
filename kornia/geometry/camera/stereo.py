@@ -175,7 +175,6 @@ class StereoCamera:
 
         Returns:
             Tensor of shape :math:`(B)`
-
         """
         return -self.rectified_right_camera[..., 0, 3] / self.fx
 

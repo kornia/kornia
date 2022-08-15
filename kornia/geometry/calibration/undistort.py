@@ -41,7 +41,6 @@ def undistort_points(
                  [ 0.0711,  0.1100],
                  [-0.0697,  0.0228],
                  [-0.1843, -0.1606]]])
-
     """
     if points.dim() < 2 and points.shape[-1] != 2:
         raise ValueError(f'points shape is invalid. Got {points.shape}.')
@@ -137,7 +136,6 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
         >>> out = undistort_image(img, K, dist_coeff)
         >>> out.shape
         torch.Size([1, 3, 5, 5])
-
     """
     if len(image.shape) < 3:
         raise ValueError(f"Image shape is invalid. Got: {image.shape}.")
