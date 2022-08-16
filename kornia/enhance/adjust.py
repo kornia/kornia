@@ -12,7 +12,10 @@ from kornia.utils.image import perform_keep_shape_image, perform_keep_shape_vide
 
 
 def adjust_saturation_raw(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
-    r"""Adjust color saturation of an image. Expecting image to be in hsv format already."""
+    r"""Adjust color saturation of an image.
+
+    Expecting image to be in hsv format already.
+    """
 
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
     KORNIA_CHECK(isinstance(factor, (float, Tensor)), "Factor should be float or Tensor.")
@@ -140,7 +143,10 @@ def adjust_saturation(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
 
 
 def adjust_hue_raw(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
-    r"""Adjust hue of an image. Expecting image to be in hsv format already."""
+    r"""Adjust hue of an image.
+
+    Expecting image to be in hsv format already.
+    """
 
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
     KORNIA_CHECK(
@@ -601,8 +607,8 @@ def adjust_log(image: Tensor, gain: float = 1, inv: bool = False, clip_output: b
 
 
 def _solarize(input: Tensor, thresholds: Union[float, Tensor] = 0.5) -> Tensor:
-    r"""For each pixel in the image, select the pixel if the value is less than the threshold.
-    Otherwise, subtract 1.0 from the pixel.
+    r"""For each pixel in the image, select the pixel if the value is less than the threshold. Otherwise, subtract
+    1.0 from the pixel.
 
     Args:
         input: image or batched images to solarize.
