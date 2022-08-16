@@ -420,7 +420,7 @@ class PinholeCamerasList(PinholeCamera):
 
 
 def pinhole_matrix(pinholes: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
-    r"""Function that returns the pinhole matrix from a pinhole model
+    r"""Function that returns the pinhole matrix from a pinhole model.
 
     .. note::
         This method is going to be deprecated in version 0.2 in favour of
@@ -464,7 +464,7 @@ def pinhole_matrix(pinholes: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
 
 
 def inverse_pinhole_matrix(pinhole: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
-    r"""Return the inverted pinhole matrix from a pinhole model
+    r"""Return the inverted pinhole matrix from a pinhole model.
 
     .. note::
         This method is going to be deprecated in version 0.2 in favour of
@@ -567,7 +567,7 @@ def get_optical_pose_base(pinholes: torch.Tensor) -> torch.Tensor:
 
 
 def homography_i_H_ref(pinhole_i: torch.Tensor, pinhole_ref: torch.Tensor) -> torch.Tensor:
-    r"""Homography from reference to ith pinhole
+    r"""Homography from reference to ith pinhole.
 
     .. note::
         The pinhole model is represented in a single vector as follows:

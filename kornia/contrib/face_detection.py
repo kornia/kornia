@@ -32,7 +32,6 @@ class FaceDetectorResult:
 
     Args:
         data: the encoded results coming from the feature detector with shape :math:`(14,)`.
-
     """
 
     def __init__(self, data: torch.Tensor) -> None:

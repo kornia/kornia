@@ -184,7 +184,6 @@ class CombineTensorPatches(nn.Module):
 
     .. note::
         This function is supposed to be used in conjunction with :class:`ExtractTensorPatches`.
-
     """
 
     def __init__(

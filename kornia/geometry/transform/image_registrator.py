@@ -14,9 +14,8 @@ __all__ = ["ImageRegistrator", "Homography", "Similarity"]
 
 
 class Homography(nn.Module):
-    r"""Homography geometric model to be used together with ImageRegistrator
-    module for the optimization-based image
-    registration."""
+    r"""Homography geometric model to be used together with ImageRegistrator module for the optimization-based
+    image registration."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -87,7 +86,8 @@ class Similarity(nn.Module):
         r"""Single-batch similarity transform".
 
         Returns:
-            Similarity with shape :math:`(1, 3, 3)`"""
+            Similarity with shape :math:`(1, 3, 3)`
+        """
         rot = self.scale * angle_to_rotation_matrix(self.rot)
         out = convert_affinematrix_to_homography(torch.cat([rot, self.shift], dim=2))
         return out
@@ -96,7 +96,8 @@ class Similarity(nn.Module):
         r"""Single-batch inverse similarity transform".
 
         Returns:
-            Similarity with shape :math:`(1, 3, 3)`"""
+            Similarity with shape :math:`(1, 3, 3)`
+        """
         return torch.inverse(self.forward())
 
 
@@ -197,8 +198,8 @@ class ImageRegistrator(nn.Module):
         verbose: bool = False,
         output_intermediate_models: bool = False,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, List[torch.Tensor]]]:
-        r"""Estimate the tranformation' which warps src_img into dst_img by gradient descent.
-        The shape of the tensors is not checked, because it may depend on the model, e.g. volume registration
+        r"""Estimate the tranformation' which warps src_img into dst_img by gradient descent. The shape of the
+        tensors is not checked, because it may depend on the model, e.g. volume registration.
 
         Args:
             src_img: Input image tensor.
@@ -209,7 +210,6 @@ class ImageRegistrator(nn.Module):
         Returns:
             the transformation between two images, shape depends on the model,
             typically [1x3x3] tensor for string model_types.
-
         """
         self.reset_model()
         # ToDo: better parameter passing to optimizer

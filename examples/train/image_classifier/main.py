@@ -16,7 +16,6 @@ cs.store(name="config", node=Configuration)
 
 @hydra.main(config_path=".", config_name="config.yaml")
 def my_app(config: Configuration) -> None:
-
     # create the model
     model = nn.Sequential(
         K.contrib.VisionTransformer(image_size=32, patch_size=16, embed_dim=128, num_heads=3),
