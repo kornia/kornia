@@ -252,7 +252,6 @@ def dog_response(input: torch.Tensor) -> torch.Tensor:
 
     Return:
         the response map per channel with shape :math:`(B, C, D-1, H, W)`.
-
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "L", "H", "W"])
 

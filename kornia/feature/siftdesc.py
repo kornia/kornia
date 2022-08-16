@@ -185,6 +185,7 @@ def sift_describe(
     clipval: float = 0.2,
 ) -> torch.Tensor:
     r"""Computes the sift descriptor.
+
     See :class:`~kornia.feature.SIFTDescriptor` for details.
     """
     return SIFTDescriptor(patch_size, num_ang_bins, num_spatial_bins, rootsift, clipval)(input)

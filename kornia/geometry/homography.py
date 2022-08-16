@@ -28,7 +28,6 @@ def oneway_transfer_error(
 
     Returns:
         the computed distance with shape :math:`(B, N)`.
-
     """
     if not isinstance(H, torch.Tensor):
         raise TypeError(f"H type is not a torch.Tensor. Got {type(H)}")
@@ -67,7 +66,6 @@ def symmetric_transfer_error(
 
     Returns:
         the computed distance with shape :math:`(B, N)`.
-
     """
     if not isinstance(H, torch.Tensor):
         raise TypeError(f"H type is not a torch.Tensor. Got {type(H)}")

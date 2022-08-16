@@ -124,7 +124,6 @@ class ZCAWhitening(nn.Module):
 
         Returns:
             The transformed data.
-
         """
 
         if include_fit:
@@ -195,7 +194,6 @@ def zca_mean(
         >>> x = torch.rand(3,20,2,2)
         >>> transform_matrix, mean_vector, inv_transform = zca_mean(x, dim = 1, return_inverse = True)
         >>> # transform_matrix.size() equals (12,12) and the mean vector.size equal (1,12)
-
     """
 
     if not isinstance(inp, torch.Tensor):
@@ -309,12 +307,9 @@ def zca_whiten(inp: torch.Tensor, dim: int = 0, unbiased: bool = True, eps: floa
 def linear_transform(
     inp: torch.Tensor, transform_matrix: torch.Tensor, mean_vector: torch.Tensor, dim: int = 0
 ) -> torch.Tensor:
-    r"""
-
-    Given a transformation matrix and a mean vector, this function will flatten
-    the input tensor along the given dimension and subtract the mean vector
-    from it. Then the dot product with the transformation matrix will be computed
-    and then the resulting tensor is reshaped to the original input shape.
+    r"""Given a transformation matrix and a mean vector, this function will flatten the input tensor along the given
+    dimension and subtract the mean vector from it. Then the dot product with the transformation matrix will be
+    computed and then the resulting tensor is reshaped to the original input shape.
 
     .. math::
 

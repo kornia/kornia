@@ -289,8 +289,8 @@ class Boxes:
     def to_tensor(
         self, mode: Optional[str] = None, as_padded_sequence: bool = False
     ) -> Union[torch.Tensor, List[torch.Tensor]]:
-        r"""Cast :class:`Boxes` to a tensor. ``mode`` controls which 2D boxes format should be use to represent boxes
-        in the tensor.
+        r"""Cast :class:`Boxes` to a tensor. ``mode`` controls which 2D boxes format should be use to represent
+        boxes in the tensor.
 
         Args:
             mode: the output box format. It could be:
@@ -604,8 +604,8 @@ class Boxes3D:
         return cls(hexahedrons, raise_if_not_floating_point=False, mode=mode)
 
     def to_tensor(self, mode: str = "xyzxyz") -> torch.Tensor:
-        r"""Cast :class:`Boxes3D` to a tensor. ``mode`` controls which 3D boxes format should be use to represent boxes
-        in the tensor.
+        r"""Cast :class:`Boxes3D` to a tensor. ``mode`` controls which 3D boxes format should be use to represent
+        boxes in the tensor.
 
         Args:
             mode: The format in which the boxes are provided.
