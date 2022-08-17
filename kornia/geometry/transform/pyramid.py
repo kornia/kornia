@@ -327,7 +327,6 @@ def build_pyramid(
         - Input: :math:`(B, C, H, W)`
         - Output :math:`[(B, C, H, W), (B, C, H/2, W/2), ...]`
     """
-    KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     KORNIA_CHECK(
         isinstance(max_level, int) or max_level < 0,
@@ -370,7 +369,7 @@ def build_laplacian_pyramid(
     See :cite:`burt1987laplacian` for more details.
 
     Args:
-        input : the tensor to be used to construct the pyramid.
+        input : the tensor to be used to construct the pyramid with shape :math:`(B, C, H, W)`.
         max_level: 0-based index of the last (the smallest) pyramid layer.
           It must be non-negative.
         border_type: the padding mode to be applied before convolving.
@@ -383,7 +382,6 @@ def build_laplacian_pyramid(
         - Output :math:`[(B, C, H, W), (B, C, H/2, W/2), ...]`
     """
 
-    KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     KORNIA_CHECK(
         isinstance(max_level, int) or max_level < 0,
@@ -392,7 +390,7 @@ def build_laplacian_pyramid(
 
     h = input.size()[2]
     w = input.size()[3]
-    require_padding = is_powerof_two(w) or is_powerof_two(h)
+    require_padding = not (is_powerof_two(w) or is_powerof_two(h))
 
     if require_padding:
         # in case of arbitrary shape tensor image need to be padded.
@@ -407,7 +405,7 @@ def build_laplacian_pyramid(
 
     # iterate and compute difference of adjacent layers in a gaussian pyramid
     for i in range(max_level - 1):
-        img_expand: Tensor = pyrup(gaussian_pyramid[i + 1])
+        img_expand: Tensor = pyrup(gaussian_pyramid[i + 1], border_type, align_corners)
         laplacian: Tensor = gaussian_pyramid[i] - img_expand
         laplacian_pyramid.append(laplacian)
     laplacian_pyramid.append(gaussian_pyramid[-1])
