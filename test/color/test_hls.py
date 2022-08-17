@@ -91,7 +91,7 @@ class TestRgbToHls(BaseTester):
             dtype=dtype,
         )
 
-        self.assert_close(kornia.color.rgb_to_hls(data), expected)
+        self.assert_close(kornia.color.rgb_to_hls(data), expected, low_tolerance=True)
 
     def test_nan_rgb_to_hls(self, device, dtype):
         if dtype == torch.float16:
@@ -242,13 +242,13 @@ class TestHlsToRgb(BaseTester):
         )
 
         f = kornia.color.hls_to_rgb
-        self.assert_close(f(data), expected)
+        self.assert_close(f(data), expected, low_tolerance=True)
 
         data[:, 0] += 2 * math.pi
-        self.assert_close(f(data), expected)
+        self.assert_close(f(data), expected, low_tolerance=True)
 
         data[:, 0] -= 4 * math.pi
-        self.assert_close(f(data), expected)
+        self.assert_close(f(data), expected, low_tolerance=True)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):

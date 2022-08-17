@@ -139,6 +139,7 @@ class TestEqualization(BaseTester):
                 dtype=res.dtype,
                 device=res.device,
             ),
+            low_tolerance=True,
         )
 
     def test_ahe(self, img):
@@ -179,6 +180,7 @@ class TestEqualization(BaseTester):
                 dtype=res.dtype,
                 device=res.device,
             ),
+            low_tolerance=True,
         )
 
     def test_clahe(self, img):
@@ -248,5 +250,5 @@ class TestEqualization(BaseTester):
             dtype=res.dtype,
             device=res.device,
         )
-        self.assert_close(res[..., 0, :], expected)
-        self.assert_close(res_diff[..., 0, :], exp_diff)
+        self.assert_close(res[..., 0, :], expected, low_tolerance=True)
+        self.assert_close(res_diff[..., 0, :], exp_diff, low_tolerance=True)

@@ -200,10 +200,10 @@ class CommonTests(BaseTester):
 
         # Output should match
         assert output.shape == expected_output.shape
-        self.assert_close(output, expected_output.to(device=self.device, dtype=self.dtype))
+        self.assert_close(output, expected_output.to(device=self.device, dtype=self.dtype), low_tolerance=True)
         if expected_transformation is not None:
             transform = augmentation.transform_matrix
-            self.assert_close(transform, expected_transformation)
+            self.assert_close(transform, expected_transformation, low_tolerance=True)
 
     def _test_module_implementation(self, params):
         augmentation = self._create_augmentation_from_params(**params, p=0.5)
@@ -224,8 +224,8 @@ class CommonTests(BaseTester):
 
         assert out1.shape == out_sequence.shape
         assert transform.shape == transform_sequence.shape
-        self.assert_close(out2, out_sequence)
-        self.assert_close(transform, transform_sequence)
+        self.assert_close(out2, out_sequence, low_tolerance=True)
+        self.assert_close(transform, transform_sequence, low_tolerance=True)
 
     def _test_inverse_coordinate_check_implementation(self, params):
         torch.manual_seed(42)
@@ -254,7 +254,7 @@ class CommonTests(BaseTester):
         output_values = output[0, :, output_indices[:, 1][value_mask], output_indices[:, 0][value_mask]]
         input_values = input_tensor[0, :, input_indices[:, 1][value_mask], input_indices[:, 0][value_mask]]
 
-        self.assert_close(output_values, input_values)
+        self.assert_close(output_values, input_values, low_tolerance=True)
 
     def _test_gradcheck_implementation(self, params):
         input_tensor = torch.rand((3, 5, 5), device=self.device, dtype=self.dtype)  # 3 x 3
@@ -854,13 +854,13 @@ class TestRandomVerticalFlip(BaseTester):
             [[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
         )  # 3 x 3
 
-        self.assert_close(f(input), expected)
-        self.assert_close(f.transform_matrix, expected_transform)
-        self.assert_close(f1(input), input)
-        self.assert_close(f1.transform_matrix, identity)
+        self.assert_close(f(input), expected, low_tolerance=True)
+        self.assert_close(f.transform_matrix, expected_transform, low_tolerance=True)
+        self.assert_close(f1(input), input, low_tolerance=True)
+        self.assert_close(f1.transform_matrix, identity, low_tolerance=True)
 
-        self.assert_close(f.inverse(expected), input)
-        self.assert_close(f1.inverse(input), input)
+        self.assert_close(f.inverse(expected), input, low_tolerance=True)
+        self.assert_close(f1.inverse(input), input, low_tolerance=True)
 
     def test_batch_random_vflip(self, device, dtype):
 
@@ -887,9 +887,9 @@ class TestRandomVerticalFlip(BaseTester):
         expected_transform = expected_transform.repeat(5, 1, 1)  # 5 x 3 x 3
         identity = identity.repeat(5, 1, 1)  # 5 x 3 x 3
 
-        self.assert_close(f(input), expected)
-        self.assert_close(f.transform_matrix, expected_transform)
-        self.assert_close(f.inverse(expected), input)
+        self.assert_close(f(input), expected, low_tolerance=True)
+        self.assert_close(f.transform_matrix, expected_transform, low_tolerance=True)
+        self.assert_close(f.inverse(expected), input, low_tolerance=True)
 
     def test_same_on_batch(self, device, dtype):
         f = RandomVerticalFlip(p=0.5, same_on_batch=True)
@@ -912,8 +912,8 @@ class TestRandomVerticalFlip(BaseTester):
 
         expected_transform_1 = expected_transform @ expected_transform
 
-        self.assert_close(f(input), input)
-        self.assert_close(f.transform_matrix, expected_transform_1)
+        self.assert_close(f(input), input, low_tolerance=True)
+        self.assert_close(f.transform_matrix, expected_transform_1, low_tolerance=True)
 
     def test_random_vflip_coord_check(self, device, dtype):
 
@@ -1008,8 +1008,8 @@ class TestColorJiggle(BaseTester):
 
         expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
 
-        self.assert_close(f(input), expected)
-        self.assert_close(f.transform_matrix, expected_transform)
+        self.assert_close(f(input), expected, low_tolerance=True)
+        self.assert_close(f.transform_matrix, expected_transform, low_tolerance=True)
 
     def test_color_jiggle_batch(self, device, dtype):
         f = ColorJiggle()
@@ -1019,8 +1019,8 @@ class TestColorJiggle(BaseTester):
 
         expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).expand((2, 3, 3))  # 2 x 3 x 3
 
-        self.assert_close(f(input), expected)
-        self.assert_close(f.transform_matrix, expected_transform)
+        self.assert_close(f(input), expected, low_tolerance=True)
+        self.assert_close(f.transform_matrix, expected_transform, low_tolerance=True)
 
     def test_same_on_batch(self, device, dtype):
         f = ColorJiggle(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.1, same_on_batch=True)
@@ -1057,7 +1057,7 @@ class TestColorJiggle(BaseTester):
 
         expected = self._get_expected_brightness(device, dtype)
 
-        self.assert_close(f(input), expected)
+        self.assert_close(f(input), expected, low_tolerance=True)
 
     def test_random_brightness_tuple(self, device, dtype):
         torch.manual_seed(42)
@@ -1070,7 +1070,7 @@ class TestColorJiggle(BaseTester):
 
         expected = self._get_expected_brightness(device, dtype)
 
-        self.assert_close(f(input), expected)
+        self.assert_close(f(input), expected, low_tolerance=True)
 
     def _get_expected_contrast(self, device, dtype):
         return torch.tensor(
@@ -1101,7 +1101,7 @@ class TestColorJiggle(BaseTester):
 
         expected = self._get_expected_contrast(device, dtype)
 
-        self.assert_close(f(input), expected)
+        self.assert_close(f(input), expected, low_tolerance=True)
 
     def test_random_contrast_list(self, device, dtype):
         torch.manual_seed(42)
@@ -1114,7 +1114,7 @@ class TestColorJiggle(BaseTester):
 
         expected = self._get_expected_contrast(device, dtype)
 
-        self.assert_close(f(input), expected)
+        self.assert_close(f(input), expected, low_tolerance=True)
 
     def _get_expected_saturation(self, device, dtype):
         return torch.tensor(
@@ -1152,7 +1152,7 @@ class TestColorJiggle(BaseTester):
         input = input.repeat(2, 1, 1, 1)  # 2 x 3 x 3
 
         expected = self._get_expected_saturation(device, dtype)
-        self.assert_close(f(input), expected)
+        self.assert_close(f(input), expected, low_tolerance=True)
 
     def test_random_saturation_tensor(self, device, dtype):
         torch.manual_seed(42)
@@ -1173,7 +1173,7 @@ class TestColorJiggle(BaseTester):
 
         expected = self._get_expected_saturation(device, dtype)
 
-        self.assert_close(f(input), expected)
+        self.assert_close(f(input), expected, low_tolerance=True)
 
     def test_random_saturation_tuple(self, device, dtype):
         torch.manual_seed(42)
@@ -1194,7 +1194,7 @@ class TestColorJiggle(BaseTester):
 
         expected = self._get_expected_saturation(device, dtype)
 
-        self.assert_close(f(input), expected)
+        self.assert_close(f(input), expected, low_tolerance=True)
 
     def _get_expected_hue(self, device, dtype):
         return torch.tensor(
@@ -1233,7 +1233,7 @@ class TestColorJiggle(BaseTester):
 
         expected = self._get_expected_hue(device, dtype)
 
-        self.assert_close(f(input), expected)
+        self.assert_close(f(input), expected, low_tolerance=True)
 
     def test_random_hue_list(self, device, dtype):
         torch.manual_seed(42)
@@ -1254,7 +1254,7 @@ class TestColorJiggle(BaseTester):
 
         expected = self._get_expected_hue(device, dtype)
 
-        self.assert_close(f(input), expected)
+        self.assert_close(f(input), expected, low_tolerance=True)
 
     def test_sequential(self, device, dtype):
         if dtype == torch.float16:
@@ -1282,9 +1282,9 @@ class TestColorJiggle(BaseTester):
 
         expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).expand((2, 3, 3))  # 2 x 3 x 3
 
-        self.assert_close(f(input), expected)
-        self.assert_close(f(input), expected)
-        self.assert_close(f.transform_matrix, expected_transform)
+        self.assert_close(f(input), expected, low_tolerance=True)
+        self.assert_close(f(input), expected, low_tolerance=True)
+        self.assert_close(f.transform_matrix, expected_transform, low_tolerance=True)
 
     def test_gradcheck(self, device, dtype):
         input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
@@ -1292,22 +1292,18 @@ class TestColorJiggle(BaseTester):
         assert gradcheck(ColorJiggle(p=1.0), (input,), raise_exception=True)
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_cardinality(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_exception(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_jit(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         pass
 
@@ -1389,7 +1385,7 @@ class TestColorJitter(BaseTester):
 
         expected = self._get_expected_brightness(device, dtype)
 
-        self.assert_close(f(input), expected)
+        self.assert_close(f(input), expected, low_tolerance=True)
 
     def test_random_brightness_tuple(self, device, dtype):
         torch.manual_seed(42)
@@ -1402,7 +1398,7 @@ class TestColorJitter(BaseTester):
 
         expected = self._get_expected_brightness(device, dtype)
 
-        self.assert_close(f(input), expected)
+        self.assert_close(f(input), expected, low_tolerance=True)
 
     def _get_expected_contrast(self, device, dtype):
         return torch.tensor(
@@ -1433,7 +1429,7 @@ class TestColorJitter(BaseTester):
 
         expected = self._get_expected_contrast(device, dtype)
 
-        self.assert_close(f(input), expected)
+        self.assert_close(f(input), expected, low_tolerance=True)
 
     def test_random_contrast_list(self, device, dtype):
         torch.manual_seed(42)
@@ -1446,7 +1442,7 @@ class TestColorJitter(BaseTester):
 
         expected = self._get_expected_contrast(device, dtype)
 
-        self.assert_close(f(input), expected)
+        self.assert_close(f(input), expected, low_tolerance=True)
 
     def _get_expected_saturation(self, device, dtype):
         return torch.tensor(
@@ -1484,7 +1480,7 @@ class TestColorJitter(BaseTester):
         input = input.repeat(2, 1, 1, 1)  # 2 x 3 x 3
 
         expected = self._get_expected_saturation(device, dtype)
-        self.assert_close(f(input), expected)
+        self.assert_close(f(input), expected, low_tolerance=True)
 
     def test_random_saturation_tensor(self, device, dtype):
         torch.manual_seed(42)
@@ -1505,7 +1501,7 @@ class TestColorJitter(BaseTester):
 
         expected = self._get_expected_saturation(device, dtype)
 
-        self.assert_close(f(input), expected)
+        self.assert_close(f(input), expected, low_tolerance=True)
 
     def test_random_saturation_tuple(self, device, dtype):
         torch.manual_seed(42)
@@ -1526,7 +1522,7 @@ class TestColorJitter(BaseTester):
 
         expected = self._get_expected_saturation(device, dtype)
 
-        self.assert_close(f(input), expected)
+        self.assert_close(f(input), expected, low_tolerance=True)
 
     def _get_expected_hue(self, device, dtype):
         return torch.tensor(
@@ -1565,7 +1561,7 @@ class TestColorJitter(BaseTester):
 
         expected = self._get_expected_hue(device, dtype)
 
-        self.assert_close(f(input), expected)
+        self.assert_close(f(input), expected, low_tolerance=True)
 
     def test_random_hue_list(self, device, dtype):
         torch.manual_seed(42)
@@ -1586,7 +1582,7 @@ class TestColorJitter(BaseTester):
 
         expected = self._get_expected_hue(device, dtype)
 
-        self.assert_close(f(input), expected)
+        self.assert_close(f(input), expected, low_tolerance=True)
 
     def test_sequential(self, device, dtype):
         if dtype == torch.float16:
@@ -1624,22 +1620,18 @@ class TestColorJitter(BaseTester):
         assert gradcheck(ColorJitter(p=1.0), (input,), raise_exception=True)
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_cardinality(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_exception(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_jit(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         pass
 
@@ -1685,27 +1677,22 @@ class TestRectangleRandomErasing(BaseTester):
         assert gradcheck(rand_rec, (input, rect_params), raise_exception=True)
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_smoke(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_cardinality(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_exception(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_jit(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         pass
 
@@ -1954,22 +1941,18 @@ class TestRandomGrayscale(BaseTester):
         assert gradcheck(RandomGrayscale(p=0.0), (input,), raise_exception=True)
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_cardinality(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_exception(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_jit(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         pass
 
@@ -2022,27 +2005,22 @@ class TestCenterCrop(BaseTester):
         assert gradcheck(CenterCrop(3), (input,), raise_exception=True)
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_smoke(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_cardinality(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_exception(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_jit(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         pass
 
@@ -2096,8 +2074,8 @@ class TestRandomRotation(BaseTester):
         )  # 1 x 3 x 3
 
         out = f(input)
-        self.assert_close(out, expected)
-        self.assert_close(f.transform_matrix, expected_transform)
+        self.assert_close(out, expected, low_tolerance=True)
+        self.assert_close(f.transform_matrix, expected_transform, low_tolerance=True)
 
     def test_batch_random_rotation(self, device, dtype):
 
@@ -2146,8 +2124,8 @@ class TestRandomRotation(BaseTester):
         input = input.repeat(2, 1, 1, 1)  # 5 x 3 x 3 x 3
 
         out = f(input)
-        self.assert_close(out, expected)
-        self.assert_close(f.transform_matrix, expected_transform)
+        self.assert_close(out, expected, low_tolerance=True)
+        self.assert_close(f.transform_matrix, expected_transform, low_tolerance=True)
 
     def test_same_on_batch(self, device, dtype):
         f = RandomRotation(degrees=40, same_on_batch=True)
@@ -2189,8 +2167,8 @@ class TestRandomRotation(BaseTester):
         )  # 1 x 3 x 3
 
         out = f(input)
-        self.assert_close(out, expected)
-        self.assert_close(f.transform_matrix, expected_transform)
+        self.assert_close(out, expected, low_tolerance=True)
+        self.assert_close(f.transform_matrix, expected_transform, low_tolerance=True)
 
     def test_gradcheck(self, device, dtype):
 
@@ -2201,22 +2179,18 @@ class TestRandomRotation(BaseTester):
         assert gradcheck(RandomRotation(degrees=(15.0, 15.0), p=1.0), (input,), raise_exception=True)
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_cardinality(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_exception(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_jit(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         pass
 
@@ -2373,7 +2347,7 @@ class TestRandomCrop(BaseTester):
         rc = RandomCrop(size=(2, 3), padding=(0, 1, 2, 3), fill=8, align_corners=True, p=1.0)
         out = rc(inp)
 
-        self.assert_close(out, expected)
+        self.assert_close(out, expected, low_tolerance=True)
 
         torch.manual_seed(0)
         inversed = torch.tensor(
@@ -2386,8 +2360,8 @@ class TestRandomCrop(BaseTester):
         )
         aug = RandomCrop(size=(2, 3), padding=(0, 1, 2, 3), fill=8, align_corners=True, p=1.0, cropping_mode="resample")
         out = aug(inp)
-        self.assert_close(out, expected)
-        self.assert_close(aug.inverse(out), inversed)
+        self.assert_close(out, expected, low_tolerance=True)
+        self.assert_close(aug.inverse(out), inversed, low_tolerance=True)
 
     def test_padding_no_forward(self, device, dtype):
         torch.manual_seed(0)
@@ -2466,17 +2440,14 @@ class TestRandomCrop(BaseTester):
         self.assert_close(actual, expected)
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_cardinality(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_exception(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         pass
 
@@ -2572,14 +2543,14 @@ class TestRandomResizedCrop(BaseTester):
         # It will crop a size of (3, 3) from the aspect ratio implementation of torch
         out = rrc(inp)
         assert out.shape == torch.Size([1, 1, 4, 4])
-        self.assert_close(out, exp)
+        self.assert_close(out, exp, low_tolerance=True)
 
         torch.manual_seed(0)
         inversed = torch.tensor([[[[0.0, 1.0, 2.0], [0.0, 4.0, 5.0], [0.0, 7.0, 8.0]]]], device=device, dtype=dtype)
         aug = RandomResizedCrop(size=(4, 4), scale=(3.0, 3.0), ratio=(2.0, 2.0), cropping_mode="resample")
         out = aug(inp)
-        self.assert_close(out, exp)
-        self.assert_close(aug.inverse(out), inversed)
+        self.assert_close(out, exp, low_tolerance=True)
+        self.assert_close(aug.inverse(out), inversed, low_tolerance=True)
 
     def test_crop_scale_ratio_batch(self, device, dtype):
         torch.manual_seed(0)
@@ -2635,22 +2606,18 @@ class TestRandomResizedCrop(BaseTester):
         )
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_cardinality(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_exception(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_jit(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         pass
 
@@ -2699,10 +2666,10 @@ class TestRandomEqualize(BaseTester):
         expected = self.build_input(channels, height, width, bs=1, row=row_expected, device=device, dtype=dtype)
         identity = kornia.eye_like(3, expected)  # 3 x 3
 
-        self.assert_close(f(inputs), expected)
-        self.assert_close(f.transform_matrix, identity)
-        self.assert_close(f1(inputs), inputs)
-        self.assert_close(f1.transform_matrix, identity)
+        self.assert_close(f(inputs), expected, low_tolerance=True)
+        self.assert_close(f.transform_matrix, identity, low_tolerance=True)
+        self.assert_close(f1(inputs), inputs, low_tolerance=True)
+        self.assert_close(f1.transform_matrix, identity, low_tolerance=True)
 
     def test_batch_random_equalize(self, device, dtype):
         f = RandomEqualize(p=1.0)
@@ -2740,10 +2707,10 @@ class TestRandomEqualize(BaseTester):
 
         identity = kornia.eye_like(3, expected)  # 2 x 3 x 3
 
-        self.assert_close(f(inputs), expected)
-        self.assert_close(f.transform_matrix, identity)
-        self.assert_close(f1(inputs), inputs)
-        self.assert_close(f1.transform_matrix, identity)
+        self.assert_close(f(inputs), expected, low_tolerance=True)
+        self.assert_close(f.transform_matrix, identity, low_tolerance=True)
+        self.assert_close(f1(inputs), inputs, low_tolerance=True)
+        self.assert_close(f1.transform_matrix, identity, low_tolerance=True)
 
     def test_same_on_batch(self, device, dtype):
         f = RandomEqualize(p=0.5, same_on_batch=True)
@@ -2772,22 +2739,18 @@ class TestRandomEqualize(BaseTester):
         return batch.to(device, dtype)
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_cardinality(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_exception(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_jit(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         pass
 
@@ -2809,27 +2772,22 @@ class TestRandomInvert(BaseTester):
         self.assert_close(RandomInvert(p=1.0)(img), torch.zeros_like(img))
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_cardinality(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_exception(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_gradcheck(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_jit(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         pass
 
@@ -2850,27 +2808,22 @@ class TestRandomChannelShuffle(BaseTester):
         self.assert_close(out, out_expected)
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_cardinality(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_exception(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_gradcheck(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_jit(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         pass
 
@@ -2953,22 +2906,18 @@ class TestNormalize(BaseTester):
         )
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_cardinality(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_exception(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_jit(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         pass
 
@@ -3023,22 +2972,18 @@ class TestDenormalize(BaseTester):
         )
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_cardinality(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_exception(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_jit(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         pass
 
@@ -3340,14 +3285,14 @@ class TestPlanckianJitter(BaseTester):
         f = RandomPlanckianJitter(select_from=1).to(device, dtype)
         input = self._get_input(device, dtype)
         expected = self._get_expected_output_blackbody(device, dtype)
-        self.assert_close(f(input), expected)
+        self.assert_close(f(input), expected, low_tolerance=True)
 
     def test_planckian_jitter_cied(self, device, dtype):
         torch.manual_seed(0)
         f = RandomPlanckianJitter(mode='CIED', select_from=1).to(device, dtype)
         input = self._get_input(device, dtype)
         expected = self._get_expected_output_cied(device, dtype)
-        self.assert_close(f(input), expected)
+        self.assert_close(f(input), expected, low_tolerance=True)
 
     def test_planckian_jitter_batch(self, device, dtype):
         torch.manual_seed(0)
@@ -3356,7 +3301,7 @@ class TestPlanckianJitter(BaseTester):
         select_from = [1, 2, 24]
         f = RandomPlanckianJitter(select_from=select_from).to(device, dtype)
         expected = self._get_expected_output_batch(device, dtype)
-        self.assert_close(f(input), expected)
+        self.assert_close(f(input), expected, low_tolerance=True)
 
     def test_planckian_jitter_same_on_batch(self, device, dtype):
         torch.manual_seed(0)
@@ -3365,35 +3310,29 @@ class TestPlanckianJitter(BaseTester):
         select_from = [1, 2, 24, 3, 4, 5]
         f = RandomPlanckianJitter(select_from=select_from, same_on_batch=True, p=1.0).to(device, dtype)
         expected = self._get_expected_output_same_on_batch(device, dtype)
-        self.assert_close(f(input), expected)
+        self.assert_close(f(input), expected, low_tolerance=True)
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_smoke(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_cardinality(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_exception(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_gradcheck(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_jit(self, device, dtype):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         pass
 

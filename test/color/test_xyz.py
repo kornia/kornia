@@ -196,7 +196,7 @@ class TestXyzToRgb(BaseTester):
             dtype=dtype,
         )
 
-        self.assert_close(kornia.color.xyz_to_rgb(data), expected)
+        self.assert_close(kornia.color.xyz_to_rgb(data), expected, low_tolerance=True)
 
     def test_forth_and_back(self, device, dtype):
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
@@ -204,7 +204,7 @@ class TestXyzToRgb(BaseTester):
         rgb = kornia.color.xyz_to_rgb
 
         data_out = rgb(xyz(data))
-        self.assert_close(data_out, data)
+        self.assert_close(data_out, data, low_tolerance=True)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):

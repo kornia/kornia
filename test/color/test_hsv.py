@@ -208,10 +208,10 @@ class TestHsvToRgb(BaseTester):
         self.assert_close(f(data), expected)
 
         data[:, 0] += 2 * math.pi
-        self.assert_close(f(data), expected)
+        self.assert_close(f(data), expected, low_tolerance=True)
 
         data[:, 0] -= 4 * math.pi
-        self.assert_close(f(data), expected)
+        self.assert_close(f(data), expected, low_tolerance=True)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):

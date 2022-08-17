@@ -600,7 +600,7 @@ class TestAdjustContrast(BaseTester):
 
         f = kornia.enhance.AdjustContrastWithMeanSubtraction(factor)
 
-        self.assert_close(f(data), expected)
+        self.assert_close(f(data), expected, low_tolerance=True)
 
     def test_gradcheck(self, device, dtype):
         batch_size, channels, height, width = 2, 3, 4, 5
@@ -922,7 +922,7 @@ class TestEqualize(BaseTester):
 
         f = kornia.enhance.equalize
 
-        self.assert_close(f(inputs), expected)
+        self.assert_close(f(inputs), expected, low_tolerance=True)
 
     def test_equalize_batch(self, device, dtype):
         bs, channels, height, width = 2, 3, 20, 20
@@ -960,7 +960,7 @@ class TestEqualize(BaseTester):
 
         f = kornia.enhance.equalize
 
-        self.assert_close(f(inputs), expected)
+        self.assert_close(f(inputs), expected, low_tolerance=True)
 
     def test_gradcheck(self, device, dtype):
         bs, channels, height, width = 1, 2, 3, 3
@@ -1037,7 +1037,7 @@ class TestEqualize3D(BaseTester):
 
         f = kornia.enhance.equalize3d
 
-        self.assert_close(f(inputs3d), expected)
+        self.assert_close(f(inputs3d), expected, low_tolerance=True)
 
     def test_equalize3d_batch(self, device, dtype):
         bs, channels, depth, height, width = 2, 3, 6, 10, 10
@@ -1054,7 +1054,7 @@ class TestEqualize3D(BaseTester):
 
         f = kornia.enhance.equalize3d
 
-        self.assert_close(f(inputs3d), expected)
+        self.assert_close(f(inputs3d), expected, low_tolerance=True)
 
     def test_gradcheck(self, device, dtype):
         bs, channels, depth, height, width = 1, 2, 3, 4, 5
@@ -1142,8 +1142,8 @@ class TestSharpness(BaseTester):
         # If factor == 1, shall return original
         # TODO(jian): add test for this case
         # assert_close(TestSharpness.f(inputs, 0.), inputs, rtol=1e-4, atol=1e-4)
-        self.assert_close(TestSharpness.f(inputs, 1.0), inputs)
-        self.assert_close(TestSharpness.f(inputs, 0.8), expected)
+        self.assert_close(TestSharpness.f(inputs, 1.0), inputs, low_tolerance=True)
+        self.assert_close(TestSharpness.f(inputs, 0.8), expected, low_tolerance=True)
 
     def test_value_batch(self, device, dtype):
         torch.manual_seed(0)
@@ -1174,10 +1174,10 @@ class TestSharpness(BaseTester):
 
         # If factor == 1, shall return original
         # tol_val: float = utils._get_precision(device, dtype)
-        self.assert_close(TestSharpness.f(inputs, 1), inputs)
-        self.assert_close(TestSharpness.f(inputs, torch.tensor([1.0, 1.0])), inputs)
-        self.assert_close(TestSharpness.f(inputs, 0.8), expected_08)
-        self.assert_close(TestSharpness.f(inputs, torch.tensor([0.8, 1.3])), expected_08_13)
+        self.assert_close(TestSharpness.f(inputs, 1), inputs, low_tolerance=True)
+        self.assert_close(TestSharpness.f(inputs, torch.tensor([1.0, 1.0])), inputs, low_tolerance=True)
+        self.assert_close(TestSharpness.f(inputs, 0.8), expected_08, low_tolerance=True)
+        self.assert_close(TestSharpness.f(inputs, torch.tensor([0.8, 1.3])), expected_08_13, low_tolerance=True)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
@@ -1267,7 +1267,7 @@ class TestSolarize(BaseTester):
         )
 
         # TODO(jian): precision is very bad compared to PIL
-        self.assert_close(TestSolarize.f(inputs, 0.5), expected, low_tolerance=True)
+        self.assert_close(TestSolarize.f(inputs, 0.5), expected, rtol=1e-2, atol=1e-2)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):

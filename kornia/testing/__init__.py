@@ -1,6 +1,7 @@
 """The testing package contains testing-specific utilities."""
 import contextlib
 import importlib
+import math
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from itertools import product
@@ -76,7 +77,7 @@ def create_random_fundamental_matrix(batch_size, std_val=1e-3):
 
 
 class BaseTester(ABC):
-    DTYPE_PRECISIONS = {torch.float16: (1e-2, 1e-3), torch.float32: (1e-4, 1e-4), torch.float64: (1e-5, 1e-8)}
+    DTYPE_PRECISIONS = {torch.float16: (1e-3, 1e-3), torch.float32: (1.3e-6, 1e-5), torch.float64: (1e-6, 1e-5)}
 
     @abstractmethod
     def test_smoke(self, device, dtype):
@@ -102,15 +103,25 @@ class BaseTester(ABC):
     def test_module(self, device, dtype):
         raise NotImplementedError("Implement a stupid routine.")
 
-    def assert_close(self, actual: Tensor, expected: Tensor, low_tolerance: bool = False) -> None:
-        if low_tolerance:
+    def assert_close(
+        self,
+        actual: Tensor,
+        expected: Tensor,
+        rtol: Optional[float] = None,
+        atol: Optional[float] = None,
+        low_tolerance: bool = False,
+    ) -> None:
+        if 'xla' in actual.device.type or 'xla' in expected.device.type:
             rtol, atol = 1e-2, 1e-2
-        elif 'xla' in actual.device.type or 'xla' in expected.device.type:
-            rtol, atol = 1e-2, 1e-2
-        else:
+
+        if rtol is None and atol is None:
             actual_rtol, actual_atol = self.DTYPE_PRECISIONS.get(actual.dtype, (0.0, 0.0))
             expected_rtol, expected_atol = self.DTYPE_PRECISIONS.get(expected.dtype, (0.0, 0.0))
             rtol, atol = max(actual_rtol, expected_rtol), max(actual_atol, expected_atol)
+
+            # halve the tolerance if `low_tolerance` is true
+            rtol = math.sqrt(rtol) if low_tolerance else rtol
+            atol = math.sqrt(atol) if low_tolerance else atol
 
         return _assert_close(actual, expected, rtol=rtol, atol=atol)
 

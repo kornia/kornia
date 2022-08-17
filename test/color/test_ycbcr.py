@@ -98,7 +98,7 @@ class TestRgbToYcbcr(BaseTester):
             dtype=dtype,
         )
 
-        self.assert_close(kornia.color.rgb_to_ycbcr(data), expected)
+        self.assert_close(kornia.color.rgb_to_ycbcr(data), expected, low_tolerance=True)
 
     # TODO: investigate and implement me
     # def test_forth_and_back(self, device, dtype):

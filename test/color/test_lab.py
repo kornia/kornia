@@ -84,7 +84,7 @@ class TestRgbToLab(BaseTester):
             dtype=dtype,
         )
 
-        self.assert_close(kornia.color.rgb_to_lab(data), expected)
+        self.assert_close(kornia.color.rgb_to_lab(data), expected, low_tolerance=True)
 
     def test_forth_and_back(self, device, dtype):
         if dtype == torch.float16:
