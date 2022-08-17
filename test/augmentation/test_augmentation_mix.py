@@ -136,11 +136,12 @@ class TestRandomCutMixV2:
         label = torch.tensor([1, 0], device=device)
 
         expected = input.clone()
+        exp_label = torch.tensor([[[1, 1, 0], [0, 0, 0]]], device=device, dtype=dtype)
 
         out_image, out_label = f(input, label)
 
         assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
-        assert (out_label == label).all()
+        assert (out_label == exp_label).all()
 
     def test_random_mixup_beta0(self, device, dtype):
         torch.manual_seed(76)

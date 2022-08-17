@@ -210,16 +210,32 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         super().__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim, data_keys=data_keys)
         self._param_generator = cast(rg.CutmixGenerator, rg.CutmixGenerator(cut_size, beta, num_mix, p=p))
 
-    def apply_transform_class(self, label: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def apply_transform_class(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         height, width = params["image_shape"]
 
         out_labels = []
         for pair, crop in zip(params["mix_pairs"], params["crop_src"]):
-            labels_permute = label.index_select(dim=0, index=pair.to(label.device))
+            labels_permute = input.index_select(dim=0, index=pair.to(input.device))
             w, h = infer_bbox_shape(crop)
-            lam = w.to(label.dtype) * h.to(label.dtype) / (width * height)  # width_beta * height_beta
+            lam = w.to(input.dtype) * h.to(input.dtype) / (width * height)  # width_beta * height_beta
             out_labels.append(
-                torch.stack([label.to(label.dtype), labels_permute.to(label.dtype), lam.to(label.device)], dim=1)
+                torch.stack([input.to(params["crop_src"].dtype), labels_permute.to(params["crop_src"].dtype), lam.to(params["crop_src"])], dim=1)
+            )
+
+        return torch.stack(out_labels, dim=0)
+
+    def apply_non_transform_class(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Optional[Dict[str, Any]] = None
+    ) -> Tensor:
+        out_labels = []
+        lam = torch.zeros((len(input,)), device=input.device, dtype=input.dtype)
+        for _ in range(self._param_generator.num_mix):
+            out_labels.append(
+                torch.stack([
+                    input.to(params["crop_src"].dtype),
+                    input.to(params["crop_src"].dtype),
+                    lam.to(params["crop_src"].device)
+                ], dim=1)
             )
 
         return torch.stack(out_labels, dim=0)
