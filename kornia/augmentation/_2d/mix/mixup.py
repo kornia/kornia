@@ -195,6 +195,19 @@ class RandomMixUpV2(MixAugmentationBaseV2):
         inputs = input * (1 - lam) + input_permute * lam
         return inputs
 
+    def apply_non_transform_class(
+        self, input: Tensor, params: Dict[str, Tensor], maybe_flags: Optional[Dict[str, Any]] = None
+    ) -> Tensor:
+        out_labels = torch.stack(
+            [
+                input.to(params["mixup_lambdas"].dtype),
+                input.to(params["mixup_lambdas"].dtype),
+                torch.zeros((len(input),), device=params["mixup_lambdas"].device, dtype=params["mixup_lambdas"].dtype)
+            ],
+            dim=-1,
+        ).to(input.device)
+        return out_labels
+
     def apply_transform_class(
         self, input: Tensor, params: Dict[str, Tensor], maybe_flags: Optional[Dict[str, Any]] = None
     ) -> Tensor:

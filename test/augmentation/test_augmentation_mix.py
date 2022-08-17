@@ -43,15 +43,14 @@ class TestRandomMixUpV2:
             [torch.ones(1, 3, 4, device=device, dtype=dtype), torch.zeros(1, 3, 4, device=device, dtype=dtype)]
         )
         label = torch.tensor([1, 0], device=device)
-        # TODO(jian): where is it used ?
-        # lam = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
+        lam = torch.tensor([0.0, 0.0], device=device)
 
         expected = input.clone()
 
         out_image, out_label = f(input, label)
 
         assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
-        assert (out_label == label).all()
+        assert_close(out_label[:, 2], lam, rtol=1e-4, atol=1e-4)
 
     def test_random_mixup_lam0(self, device, dtype):
         torch.manual_seed(0)
@@ -61,7 +60,7 @@ class TestRandomMixUpV2:
             [torch.ones(1, 3, 4, device=device, dtype=dtype), torch.zeros(1, 3, 4, device=device, dtype=dtype)]
         )
         label = torch.tensor([1, 0], device=device)
-        lam = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
+        lam = torch.tensor([0.0, 0.0], device=device)
 
         expected = input.clone()
 
@@ -80,7 +79,7 @@ class TestRandomMixUpV2:
             [torch.ones(1, 3, 4, device=device, dtype=dtype), torch.zeros(1, 3, 4, device=device, dtype=dtype)]
         )
         label = torch.tensor([1, 0], device=device)
-        lam = torch.tensor([0.0885, 0.0885], device=device, dtype=dtype)
+        lam = torch.tensor([0.0885, 0.0885], device=device)
 
         expected = torch.stack(
             [
@@ -110,8 +109,6 @@ class TestRandomCutMixV2:
             [torch.ones(1, 3, 4, device=device, dtype=dtype), torch.zeros(1, 3, 4, device=device, dtype=dtype)]
         )
         label = torch.tensor([1, 0], device=device)
-        # TODO(jian): where is it used ?
-        # lam = torch.tensor([0.1320, 0.3074], device=device, dtype=dtype)
 
         expected = torch.tensor(
             [
@@ -215,8 +212,6 @@ class TestRandomCutMixV2:
             [torch.ones(1, 3, 4, device=device, dtype=dtype), torch.zeros(1, 3, 4, device=device, dtype=dtype)]
         )
         label = torch.tensor([1, 0], device=device)
-        # TODO(jian): where is it used ?
-        # lam = torch.tensor([0.0885, 0.0885], device=device, dtype=dtype)
 
         expected = torch.tensor(
             [
