@@ -202,7 +202,7 @@ class RandomMixUpV2(MixAugmentationBaseV2):
             [
                 input.to(params["mixup_lambdas"].dtype),
                 input.to(params["mixup_lambdas"].dtype),
-                torch.zeros((len(input),), device=params["mixup_lambdas"].device, dtype=params["mixup_lambdas"].dtype)
+                torch.zeros((len(input),), device=params["mixup_lambdas"].device, dtype=params["mixup_lambdas"].dtype),
             ],
             dim=-1,
         ).to(input.device)
