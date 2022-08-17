@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 from kornia.core import Tensor
 from kornia.filters import filter2d, gaussian_blur2d
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 __all__ = ["PyrDown", "PyrUp", "ScalePyramid", "pyrdown", "pyrup", "build_pyramid", "build_laplacian_pyramid"]
 
