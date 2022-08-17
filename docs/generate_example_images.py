@@ -351,9 +351,9 @@ def main():
                 print(out_tmp.size())
                 _out.append(out_tmp)
             out = torch.cat(_out)
-                
+
         # save the output image
-        if fn_name is not "build_laplacian_pyramid":
+        if fn_name != "build_laplacian_pyramid":
             out = torch.cat([img_in[0], *(out[i] for i in range(out.size(0)))], dim=-1)
         else:
             out = torch.cat([*(out[i] for i in range(out.size(0)))], dim=-1)
