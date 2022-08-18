@@ -214,6 +214,11 @@ def KORNIA_UNWRAP(maybe_obj, typ):
     return cast(typ, maybe_obj)
 
 
+def KORNIA_CHECK_TYPE(x, typ, msg: Optional[str] = None):
+    if not isinstance(x, typ):
+        raise TypeError(f"Invalid type: {type(x)}.\n{msg}")
+
+
 def KORNIA_CHECK_IS_TENSOR(x, msg: Optional[str] = None):
     if not isinstance(x, Tensor):
         raise TypeError(f"Not a Tensor type. Got: {type(x)}.\n{msg}")
