@@ -9,7 +9,6 @@ from kornia.testing import KORNIA_CHECK_DM_DESC, KORNIA_CHECK_SHAPE, Tensor
 from .adalam import match_adalam, get_adalam_default_config
 
 
-
 def _get_default_fginn_params():
     config = {"th": 0.85, "mutual": False, "spatial_th": 10.0}
     return config

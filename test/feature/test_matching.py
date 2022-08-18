@@ -340,6 +340,7 @@ class TestAdalam:
         assert dists.shape[0] <= data_dev['descs2'].shape[0]
         expected_idxs = data_dev['expected_idxs']
         assert_close(idxs, expected_idxs, rtol=1e-4, atol=1e-4)
+
     @pytest.mark.parametrize("data", ["adalam_idxs"], indirect=True)
     def test_module(self, device, dtype, data):
         torch.random.manual_seed(0)
