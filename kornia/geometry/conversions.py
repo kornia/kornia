@@ -1189,8 +1189,7 @@ def normalize_homography3d(
 
 
 def Rt_to_matrix4x4(R: Tensor, t: Tensor) -> Tensor:
-    r"""Combines 3x3 rotation matrix R and 1x3 translation vector t
-     into 4x4 extrinsics.
+    r"""Combines 3x3 rotation matrix R and 1x3 translation vector t into 4x4 extrinsics.
 
     Args:
         R: Rotation matrix, :math:`(B, 3, 3).`
@@ -1214,8 +1213,7 @@ def Rt_to_matrix4x4(R: Tensor, t: Tensor) -> Tensor:
 
 
 def matrix4x4_to_Rt(extrinsics: Tensor) -> Tuple[Tensor, Tensor]:
-    r"""Converts 4x4 extrinsics into 3x3 rotation matrix R
-    and 1x3 translation vector ts.
+    r"""Converts 4x4 extrinsics into 3x3 rotation matrix R and 1x3 translation vector ts.
 
     Args:
         extrinsics: pose matrix :math:`(B, 4, 4)`.
