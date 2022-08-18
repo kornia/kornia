@@ -5,7 +5,7 @@ import torch.nn as nn
 
 from kornia.testing import KORNIA_CHECK_DM_DESC, KORNIA_CHECK_SHAPE, Tensor
 
-from .adalam import match_adalam
+from .adalam import match_adalam   # noqa: F401
 
 
 def _get_lazy_distance_matrix(desc1: Tensor, desc2: Tensor, dm_: Optional[Tensor] = None):

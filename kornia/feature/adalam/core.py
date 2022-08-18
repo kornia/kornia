@@ -1,12 +1,13 @@
 import math
 
 import torch
-
+from typing import Union, Optional, Tuple
+from torch import Tensor, tensor
 from .ransac import ransac
 from .utils import dist_matrix, orientation_diff
 
 
-def select_seeds(dist1: torch.Tensor, R1: float, scores1: torch.Tensor, fnn12: torch.Tensor, mnn: torch.Tensor):
+def select_seeds(dist1: Tensor, R1: Union[float, Tensor], scores1: Tensor, fnn12: Tensor, mnn: Optional[Tensor]):
     """Select seed correspondences among the set of available matches.
 
     dist1: Precomputed distance matrix between keypoints in image I_1
@@ -23,7 +24,7 @@ def select_seeds(dist1: torch.Tensor, R1: float, scores1: torch.Tensor, fnn12: t
 
         im1seeds: Keypoint index of chosen seeds in image I_1
         im2seeds: Keypoint index of chosen seeds in image I_2
-    """
+    """     # noqa: E501
     im1neighmap = dist1 < R1**2  # (n1, n1)
     # find out who scores higher than whom
     im1scorescomp = scores1.unsqueeze(1) > scores1.unsqueeze(0)  # (n1, n1)
@@ -42,18 +43,18 @@ def select_seeds(dist1: torch.Tensor, R1: float, scores1: torch.Tensor, fnn12: t
 
 
 def extract_neighborhood_sets(
-    o1: torch.Tensor,
-    o2: torch.Tensor,
-    s1: torch.Tensor,
-    s2: torch.Tensor,
-    dist1: torch.Tensor,
-    im1seeds: torch.Tensor,
-    im2seeds: torch.Tensor,
-    k1: torch.Tensor,
-    k2: torch.Tensor,
-    R1: float,
-    R2: float,
-    fnn12: torch.Tensor,
+    o1: Optional[Tensor],
+    o2: Optional[Tensor],
+    s1: Optional[Tensor],
+    s2: Optional[Tensor],
+    dist1: Tensor,
+    im1seeds: Tensor,
+    im2seeds: Tensor,
+    k1: Tensor,
+    k2: Tensor,
+    R1: Union[float, Tensor],
+    R2: Union[float, Tensor],
+    fnn12: Tensor,
     ORIENTATION_THR: float,
     SCALE_RATE_THR: float,
     SEARCH_EXP: float,
@@ -97,13 +98,13 @@ def extract_neighborhood_sets(
     local_neighs_mask = (dst1 < (SEARCH_EXP * R1) ** 2) & (dst2 < (SEARCH_EXP * R2) ** 2)
 
     # If requested, also their orientation delta should be compatible with that of the corresponding seed
-    if ORIENTATION_THR is not None and ORIENTATION_THR < 180:
+    if ORIENTATION_THR is not None and ORIENTATION_THR < 180 and (o1 is not None) and (o2 is not None):
         relo = orientation_diff(o1, o2[fnn12])
         orientation_diffs = torch.abs(orientation_diff(relo.unsqueeze(0), relo[im1seeds].unsqueeze(1)))
         local_neighs_mask = local_neighs_mask & (orientation_diffs < ORIENTATION_THR)
 
     # If requested, also their scale delta should be compatible with that of the corresponding seed
-    if SCALE_RATE_THR is not None and SCALE_RATE_THR < 10:
+    if SCALE_RATE_THR is not None and (SCALE_RATE_THR < 10) and (s1 is not None) and (s2 is not None):
         rels = s2[fnn12] / s1
         scale_rates = rels[im1seeds].unsqueeze(1) / rels.unsqueeze(0)
         local_neighs_mask = (
@@ -123,13 +124,13 @@ def extract_neighborhood_sets(
 
 
 def extract_local_patterns(
-    fnn12: torch.Tensor,
-    fnn_to_seed_local_consistency_map_corr: torch.Tensor,
-    k1: torch.Tensor,
-    k2: torch.Tensor,
-    im1seeds: torch.Tensor,
-    im2seeds: torch.Tensor,
-    scores: torch.Tensor,
+    fnn12: Tensor,
+    fnn_to_seed_local_consistency_map_corr: Tensor,
+    k1: Tensor,
+    k2: Tensor,
+    im1seeds: Tensor,
+    im2seeds: Tensor,
+    scores: Tensor,
 ):
     """Prepare local neighborhoods around each seed for the parallel RANSACs. This involves two steps: 1) Collect
     all selected keypoints and refer them with respect to their seed point 2) Sort keypoints by score for the
@@ -189,18 +190,18 @@ def extract_local_patterns(
 
 
 def adalam_core(
-    k1: torch.Tensor,
-    k2: torch.Tensor,
-    fnn12: torch.Tensor,
-    scores1: torch.Tensor,
+    k1: Tensor,
+    k2: Tensor,
+    fnn12: Tensor,
+    scores1: Tensor,
     config: dict,
-    mnn: torch.Tensor = None,
-    im1shape: tuple = None,
-    im2shape: tuple = None,
-    o1: torch.Tensor = None,
-    o2: torch.Tensor = None,
-    s1: torch.Tensor = None,
-    s2: torch.Tensor = None,
+    mnn: Optional[Tensor] = None,
+    im1shape: Optional[Tuple] = None,
+    im2shape: Optional[Tuple] = None,
+    o1: Optional[Tensor] = None,
+    o2: Optional[Tensor] = None,
+    s1: Optional[Tensor] = None,
+    s2: Optional[Tensor] = None,
 ):
     """Call the core functionality of AdaLAM, i.e. just outlier filtering. No sanity check is performed on the
     inputs.
@@ -233,7 +234,7 @@ def adalam_core(
     Returns:
         Filtered putative matches.
         A long tensor with shape (num_filtered_matches, 2) with indices of corresponding keypoints in k1 and k2.
-    """
+    """      # noqa: E501
     AREA_RATIO = config['area_ratio']
     SEARCH_EXP = config['search_expansion']
     RANSAC_ITERS = config['ransac_iters']
@@ -253,8 +254,8 @@ def adalam_core(
         im2shape = k2maxs - k2mins
 
     # Compute seed selection radii to be invariant to image rescaling
-    R1 = torch.sqrt(torch.prod(im1shape[:2]) / AREA_RATIO / math.pi)
-    R2 = torch.sqrt(torch.prod(im2shape[:2]) / AREA_RATIO / math.pi)
+    R1 = torch.sqrt(torch.prod(tensor(im1shape[:2])) / AREA_RATIO / math.pi)
+    R2 = torch.sqrt(torch.prod(tensor(im2shape[:2])) / AREA_RATIO / math.pi)
 
     # Precompute the inner distances of keypoints in image I_1
     dist1 = dist_matrix(k1, k1)

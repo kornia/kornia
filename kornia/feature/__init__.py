@@ -29,7 +29,7 @@ from .laf import (
     make_upright,
     normalize_laf,
     perspective_transform_lafs,
-    raise_error_if_laf_is_not_valid,
+    KORNIA_CHECK_LAF,
     scale_laf,
     set_laf_orientation,
 )
@@ -106,7 +106,7 @@ __all__ = [
     "PatchAffineShapeEstimator",
     "LAFOrienter",
     "PatchDominantGradientOrientation",
-    "raise_error_if_laf_is_not_valid",
+    "KORNIA_CHECK_LAF",
     "laf_is_inside_image",
     "laf_from_center_scale_ori",
     "laf_to_three_points",

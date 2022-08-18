@@ -4,7 +4,8 @@ import torch
 from torch import Tensor
 
 from kornia.feature.laf import get_laf_center, get_laf_orientation, get_laf_scale
-from kornia.testing import KORNIA_CHECK_SHAPE
+from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK_LAF
+from kornia.utils.helpers import get_cuda_device_if_available
 
 from .core import adalam_core
 from .utils import dist_matrix
@@ -12,19 +13,18 @@ from .utils import dist_matrix
 
 def get_adalam_default_config():
     DEFAULT_CONFIG = {
-        'area_ratio': 100,  # Ratio between seed circle area and image area. Higher values produce more seeds with smaller neighborhoods.
-        'search_expansion': 4,  # Expansion factor of the seed circle radius for the purpose of collecting neighborhoods. Increases neighborhood radius without changing seed distribution
-        'ransac_iters': 128,  # Fixed number of inner GPU-RANSAC iterations
-        'min_inliers': 6,  # Minimum number of inliers required to accept inliers coming from a neighborhood
-        'min_confidence': 200,  # Threshold used by the confidence-based GPU-RANSAC
-        'orientation_difference_threshold': 30,  # Maximum difference in orientations for a point to be accepted in a neighborhood. Set to None to disable the use of keypoint orientations.
-        'scale_rate_threshold': 1.5,  # Maximum difference (ratio) in scales for a point to be accepted in a neighborhood. Set to None to disable the use of keypoint scales.
-        'detected_scale_rate_threshold': 5,  # Prior on maximum possible scale change detectable in image couples. Affinities with higher scale changes are regarded as outliers.
-        'refit': True,  # Whether to perform refitting at the end of the RANSACs. Generally improves accuracy at the cost of runtime.
-        'force_seed_mnn': True,  # Whether to consider only MNN for the purpose of selecting seeds. Generally improves accuracy at the cost of runtime. You can provide a MNN mask in input to skip MNN computation and still get the improvement.
-        'device': torch.device('cuda')
-        if torch.cuda.is_available()
-        else torch.device('cpu'),  # Device to be used for running AdaLAM. Use GPU if available.
+        'area_ratio': 100,  # Ratio between seed circle area and image area. Higher values produce more seeds with smaller neighborhoods.    # noqa: E501
+        'search_expansion': 4,  # Expansion factor of the seed circle radius for the purpose of collecting neighborhoods. Increases neighborhood radius without changing seed distribution    # noqa: E501
+        'ransac_iters': 128,  # Fixed number of inner GPU-RANSAC iterations    # noqa: E501
+        'min_inliers': 6,  # Minimum number of inliers required to accept inliers coming from a neighborhood    # noqa: E501
+        'min_confidence': 200,  # Threshold used by the confidence-based GPU-RANSAC   # noqa: E501
+        'orientation_difference_threshold': 30,  # Maximum difference in orientations for a point to be accepted in a neighborhood. Set to None to disable the use of keypoint orientations.   # noqa: E501
+        'scale_rate_threshold': 1.5,  # Maximum difference (ratio) in scales for a point to be accepted in a neighborhood. Set to None to disable the use of keypoint scales.   # noqa: E501
+        'detected_scale_rate_threshold': 5,  # Prior on maximum possible scale change detectable in image couples. Affinities with higher scale changes are regarded as outliers.   # noqa: E501
+        'refit': True,  # Whether to perform refitting at the end of the RANSACs. Generally improves accuracy at the cost of runtime.   # noqa: E501
+        'force_seed_mnn': True,  # Whether to consider only MNN for the purpose of selecting seeds. Generally improves accuracy at the cost of runtime.    # noqa: E501
+        # You can provide a MNN mask in input to skip MNN computation and still get the improvement.    # noqa: E501
+        'device': get_cuda_device_if_available(),  # Device to be used for running AdaLAM. Use GPU if available.   # noqa: E501
     }
     return DEFAULT_CONFIG
 
@@ -60,6 +60,9 @@ def match_adalam(
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
+    KORNIA_CHECK_LAF(lafs1)
+    KORNIA_CHECK_LAF(lafs2)
+
     adalam_object = AdalamFilter(config)
     idxs = adalam_object.match_and_filter(
         get_laf_center(lafs1).reshape(-1, 2),
@@ -73,26 +76,12 @@ def match_adalam(
         get_laf_scale(lafs1).reshape(-1),
         get_laf_scale(lafs2).reshape(-1),
     )
-    quality = None
+    quality = torch.ones(len(idxs), 1, dtype=desc1.dtype, device=desc1.device)
     return quality, idxs
 
 
 class AdalamFilter:
-    DEFAULT_CONFIG = {
-        'area_ratio': 100,  # Ratio between seed circle area and image area. Higher values produce more seeds with smaller neighborhoods.
-        'search_expansion': 4,  # Expansion factor of the seed circle radius for the purpose of collecting neighborhoods. Increases neighborhood radius without changing seed distribution
-        'ransac_iters': 128,  # Fixed number of inner GPU-RANSAC iterations
-        'min_inliers': 6,  # Minimum number of inliers required to accept inliers coming from a neighborhood
-        'min_confidence': 200,  # Threshold used by the confidence-based GPU-RANSAC
-        'orientation_difference_threshold': 30,  # Maximum difference in orientations for a point to be accepted in a neighborhood. Set to None to disable the use of keypoint orientations.
-        'scale_rate_threshold': 1.5,  # Maximum difference (ratio) in scales for a point to be accepted in a neighborhood. Set to None to disable the use of keypoint scales.
-        'detected_scale_rate_threshold': 5,  # Prior on maximum possible scale change detectable in image couples. Affinities with higher scale changes are regarded as outliers.
-        'refit': True,  # Whether to perform refitting at the end of the RANSACs. Generally improves accuracy at the cost of runtime.
-        'force_seed_mnn': True,  # Whether to consider only MNN for the purpose of selecting seeds. Generally improves accuracy at the cost of runtime. You can provide a MNN mask in input to skip MNN computation and still get the improvement.
-        'device': torch.device('cuda')
-        if torch.cuda.is_available()
-        else torch.device('cpu'),  # Device to be used for running AdaLAM. Use GPU if available.
-    }
+    DEFAULT_CONFIG = get_adalam_default_config()
 
     def __init__(self, custom_config: dict = None):
         """This class acts as a wrapper to the method AdaLAM for outlier filtering.
@@ -158,7 +147,7 @@ class AdalamFilter:
         Returns:
             Filtered putative matches.
             A long tensor with shape (num_filtered_matches, 2) with indices of corresponding keypoints in k1 and k2.
-        """
+        """      # noqa: E501
         with torch.no_grad():
             return adalam_core(
                 k1,
@@ -207,18 +196,18 @@ class AdalamFilter:
         Returns:
             Filtered putative matches.
             A long tensor with shape (num_filtered_matches, 2) with indices of corresponding keypoints in k1 and k2.
-        """
+        """      # noqa: E501
         if s1 is None or s2 is None:
             if self.config['scale_rate_threshold'] is not None:
-                raise AttributeError(
-                    "Current configuration considers keypoint scales for filtering, but scales have not been provided.\n"
+                raise AttributeError(       # noqa: E501
+                    "Current configuration considers keypoint scales for filtering, but scales have not been provided.\n"       # noqa: E501
                     "Please either provide scales or set 'scale_rate_threshold' to None to disable scale filtering"
                 )
         if o1 is None or o2 is None:
             if self.config['orientation_difference_threshold'] is not None:
-                raise AttributeError(
-                    "Current configuration considers keypoint orientations for filtering, but orientations have not been provided.\n"
-                    "Please either provide orientations or set 'orientation_difference_threshold' to None to disable orientations filtering"
+                raise AttributeError(       # noqa: E501
+                    "Current configuration considers keypoint orientations for filtering, but orientations have not been provided.\n"        # noqa: E501
+                    "Please either provide orientations or set 'orientation_difference_threshold' to None to disable orientations filtering"        # noqa: E501
                 )
         k1, k2, d1, d2, o1, o2, s1, s2 = self.__to_torch(k1, k2, d1, d2, o1, o2, s1, s2)
         distmat = dist_matrix(d1, d2, is_normalized=False)

@@ -3,7 +3,14 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia.testing as utils  # test utils
-from kornia.feature.matching import DescriptorMatcher, match_mnn, match_nn, match_smnn, match_snn
+from kornia.feature.matching import (
+    DescriptorMatcher,
+    match_adalam,
+    match_mnn,
+    match_nn,
+    match_smnn,
+    match_snn
+)
 from kornia.testing import assert_close
 
 
@@ -196,3 +203,23 @@ class TestMatchSMNN:
         matcher_jit = torch.jit.script(DescriptorMatcher(match_type, 0.8).to(device))
         assert_close(matcher(desc1, desc2)[0], matcher_jit(desc1, desc2)[0])
         assert_close(matcher(desc1, desc2)[1], matcher_jit(desc1, desc2)[1])
+
+
+class TestAdalam:
+    @pytest.mark.parametrize("data", ["adalam_idxs"], indirect=True)
+    def test_real(self, device, dtype, data):
+        torch.random.manual_seed(0)
+        # This is not unit test, but that is quite good integration test
+        data_dev = utils.dict_to(data, device, dtype)
+        with torch.no_grad():
+            dists, idxs = match_adalam(data_dev['descs1'],
+                                       data_dev['descs2'],
+                                       data_dev['lafs1'],
+                                       data_dev['lafs2'])
+        assert idxs.shape[1] == 2
+        assert dists.shape[1] == 1
+        assert idxs.shape[0] == dists.shape[0]
+        assert dists.shape[0] <= data_dev['descs1'].shape[0]
+        assert dists.shape[0] <= data_dev['descs2'].shape[0]
+        expected_idxs = data_dev['expected_idxs']
+        assert_close(idxs, expected_idxs, rtol=1e-4, atol=1e-4)

@@ -90,7 +90,6 @@ def ransac(xsamples, ysamples, rdims, config, iters=128, refit=True):
     dv = config['device']
 
     numransacs = rdims.shape[0]
-    numsamples = xsamples.shape[0]
     ransidx = torch.arange(numransacs, device=dv).repeat_interleave(rdims)
     idxoffsets = torch.cat([torch.tensor([0], device=dv), torch.cumsum(rdims[:-1], dim=0)], dim=0)
 
