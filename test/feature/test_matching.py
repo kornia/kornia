@@ -316,8 +316,8 @@ class TestMatchFGINN:
         center2 = torch.rand(1, 7, 2, device=device)
         lafs1 = laf_from_center_scale_ori(center1)
         lafs2 = laf_from_center_scale_ori(center2)
-        matcher = DescriptorMatcher('fginn', 0.8).to(device)
-        matcher_jit = torch.jit.script(GeometryAwareDescriptorMatcher('fginn').to(device))
+        matcher = GeometryAwareDescriptorMatcher('fginn', 0.8).to(device)
+        matcher_jit = torch.jit.script(GeometryAwareDescriptorMatcher('fginn', 0.8).to(device))
         assert_close(matcher(desc1, desc2)[0], matcher_jit(desc1, desc2, lafs1, lafs2)[0])
         assert_close(matcher(desc1, desc2)[1], matcher_jit(desc1, desc2, lafs1, lafs2)[1])
 
@@ -333,6 +333,24 @@ class TestAdalam:
                                        data_dev['descs2'],
                                        data_dev['lafs1'],
                                        data_dev['lafs2'])
+        assert idxs.shape[1] == 2
+        assert dists.shape[1] == 1
+        assert idxs.shape[0] == dists.shape[0]
+        assert dists.shape[0] <= data_dev['descs1'].shape[0]
+        assert dists.shape[0] <= data_dev['descs2'].shape[0]
+        expected_idxs = data_dev['expected_idxs']
+        assert_close(idxs, expected_idxs, rtol=1e-4, atol=1e-4)
+    @pytest.mark.parametrize("data", ["adalam_idxs"], indirect=True)
+    def test_module(self, device, dtype, data):
+        torch.random.manual_seed(0)
+        # This is not unit test, but that is quite good integration test
+        data_dev = utils.dict_to(data, device, dtype)
+        matcher = GeometryAwareDescriptorMatcher('adalam').to(device)
+        with torch.no_grad():
+            dists, idxs = matcher(data_dev['descs1'],
+                                  data_dev['descs2'],
+                                  data_dev['lafs1'],
+                                  data_dev['lafs2'])
         assert idxs.shape[1] == 2
         assert dists.shape[1] == 1
         assert idxs.shape[0] == dists.shape[0]
