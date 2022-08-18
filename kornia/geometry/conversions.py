@@ -1243,7 +1243,7 @@ def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: Tensor) -> Tensor:
     return extrinsics_graphics @ invert_yz
 
 
-def camtoworld_graphics_to_vision_Rt(extrinsics_graphics: Tensor) -> Tensor:
+def camtoworld_graphics_to_vision_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
     r"""Converts graphics coordinate frame (e.g. OpenGL) to vision coordinate
     frame (e.g. OpenCV.), , i.e. flips y and z axis.
     Graphics convention: [+x, +y, +z] == [right, up, backwards].
@@ -1286,7 +1286,7 @@ def camtoworld_vision_to_graphics_4x4(extrinsics_vision: Tensor) -> Tensor:
     return extrinsics_vision @ invert_yz
 
 
-def camtoworld_graphics_to_vision_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
+def camtoworld_vision_to_graphics_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
     r"""Converts graphics coordinate frame (e.g. OpenGL) to vision coordinate
     frame (e.g. OpenCV.), , i.e. flips y and z axis.
     Graphics convention: [+x, +y, +z] == [right, up, backwards].

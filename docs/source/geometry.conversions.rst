@@ -60,4 +60,6 @@ Pose (extrinsics)
 .. autofunction:: camtoworld_to_worldtocam_Rt
 .. autofunction:: camtoworld_graphics_to_vision_4x4
 .. autofunction:: camtoworld_vision_to_graphics_4x4
+.. autofunction:: camtoworld_graphics_to_vision_Rt
+.. autofunction:: camtoworld_vision_to_graphics_Rt
 .. autofunction:: ARKitQTVecs_to_ColmapQTVecs

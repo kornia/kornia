@@ -12,9 +12,11 @@ from kornia.geometry.conversions import (
     matrix4x4_to_Rt,
     Rt_to_matrix4x4,
     camtoworld_graphics_to_vision_4x4,
+    camtoworld_graphics_to_vision_Rt,
     camtoworld_vision_to_graphics_4x4,
+    camtoworld_vision_to_graphics_Rt,
     camtoworld_to_worldtocam_Rt,
-    worldtocam_to_camtoworld_Rt
+    worldtocam_to_camtoworld_Rt,
 )
 from kornia.testing import assert_close, create_eye_batch, tensor_to_gradcheck_var
 
@@ -1406,10 +1408,10 @@ class TestCamtoworldGraphicsToVision:
     @pytest.mark.parametrize("batch_size", [1, 2, 3])
     def test_everything(self, batch_size, device, dtype):
         # generate input data
-        t = torch.tensor([2, 3, 4], device=device, dtype=dtype).view(1, 3, 1).repeat(batch_size, 1, 1)
+        t_vis = torch.tensor([2, 3, 4], device=device, dtype=dtype).view(1, 3, 1).repeat(batch_size, 1, 1)
         angles = torch.tensor([0, kornia.pi / 2.0, 0.0], device=device, dtype=dtype)[None]
-        R = kornia.geometry.angle_axis_to_rotation_matrix(angles).repeat(batch_size, 1, 1)
-        K_vis = Rt_to_matrix4x4(R, t)
+        R_vis = kornia.geometry.angle_axis_to_rotation_matrix(angles).repeat(batch_size, 1, 1)
+        K_vis = Rt_to_matrix4x4(R_vis, t_vis)
         K_graf = camtoworld_vision_to_graphics_4x4(K_vis)
 
         expected = torch.tensor(
@@ -1417,9 +1419,21 @@ class TestCamtoworldGraphicsToVision:
         )[None].repeat(batch_size, 1, 1)
 
         assert_close(K_graf, expected, rtol=1e-4, atol=1e-5)
+        R_graf, t_graf = camtoworld_vision_to_graphics_Rt(R_vis, t_vis)
+        expected_R = torch.tensor(
+            [[0, 0, -1], [0, -1, 0], [-1, 0, 0]], device=device, dtype=dtype
+        )[None].repeat(batch_size, 1, 1)
+        expected_t = torch.tensor([2, 3, 4], device=device, dtype=dtype).reshape(1, 3, 1).repeat(batch_size, 1, 1)
+
+        assert_close(t_graf, expected_t, rtol=1e-4, atol=1e-5)
+        assert_close(R_graf, expected_R, rtol=1e-4, atol=1e-5)
 
         Kvis_back = camtoworld_graphics_to_vision_4x4(K_graf)
         assert_close(Kvis_back, K_vis, rtol=1e-4, atol=1e-5)
+
+        R_vis_back, t_vis_back = camtoworld_graphics_to_vision_Rt(R_graf, t_graf)
+        assert_close(R_vis_back, R_vis, rtol=1e-4, atol=1e-5)
+        assert_close(t_vis_back, t_vis, rtol=1e-4, atol=1e-5)
         assert gradcheck(camtoworld_graphics_to_vision_4x4, (tensor_to_gradcheck_var(K_vis)), raise_exception=True)
         assert gradcheck(camtoworld_vision_to_graphics_4x4, (tensor_to_gradcheck_var(K_vis)), raise_exception=True)
 
@@ -1440,7 +1454,6 @@ class TestCamtoworldRtToPoseRt:
         expected_tp = torch.tensor([4, -3, -2], device=device, dtype=dtype).view(1, 3, 1).repeat(batch_size, 1, 1)
         assert_close(Rp, expected_Rp, rtol=1e-4, atol=1e-5)
         assert_close(tp, expected_tp, rtol=1e-4, atol=1e-5)
-
 
         Rback, tback = worldtocam_to_camtoworld_Rt(Rp, tp)
         assert_close(Rback, R, rtol=1e-4, atol=1e-5)
