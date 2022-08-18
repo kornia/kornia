@@ -9,13 +9,13 @@ import kornia
 from kornia.geometry.conversions import (
     ARKitQTVecs_to_ColmapQTVecs,
     QuaternionCoeffOrder,
-    matrix4x4_to_Rt,
     Rt_to_matrix4x4,
     camtoworld_graphics_to_vision_4x4,
     camtoworld_graphics_to_vision_Rt,
+    camtoworld_to_worldtocam_Rt,
     camtoworld_vision_to_graphics_4x4,
     camtoworld_vision_to_graphics_Rt,
-    camtoworld_to_worldtocam_Rt,
+    matrix4x4_to_Rt,
     worldtocam_to_camtoworld_Rt,
 )
 from kornia.testing import assert_close, create_eye_batch, tensor_to_gradcheck_var
@@ -1420,9 +1420,9 @@ class TestCamtoworldGraphicsToVision:
 
         assert_close(K_graf, expected, rtol=1e-4, atol=1e-5)
         R_graf, t_graf = camtoworld_vision_to_graphics_Rt(R_vis, t_vis)
-        expected_R = torch.tensor(
-            [[0, 0, -1], [0, -1, 0], [-1, 0, 0]], device=device, dtype=dtype
-        )[None].repeat(batch_size, 1, 1)
+        expected_R = torch.tensor([[0, 0, -1], [0, -1, 0], [-1, 0, 0]], device=device, dtype=dtype)[None].repeat(
+            batch_size, 1, 1
+        )
         expected_t = torch.tensor([2, 3, 4], device=device, dtype=dtype).reshape(1, 3, 1).repeat(batch_size, 1, 1)
 
         assert_close(t_graf, expected_t, rtol=1e-4, atol=1e-5)

@@ -7,9 +7,8 @@ import torch.nn.functional as F
 from torch import Tensor, tensor
 
 from kornia.constants import pi
-from kornia.utils.helpers import _torch_inverse_cast
 from kornia.testing import KORNIA_CHECK_SHAPE
-
+from kornia.utils.helpers import _torch_inverse_cast
 
 __all__ = [
     "rad2deg",
@@ -1188,9 +1187,8 @@ def normalize_homography3d(
 
 
 def Rt_to_matrix4x4(R: Tensor, t: Tensor) -> Tensor:
-    r"""Combines 3x3 R and 1x3 t into 4x4 extrinsics.
-    Extrinsics matrix is usually named `K`, but we avoid this,
-    to not interfere with `import kornia as K`
+    r"""Combines 3x3 R and 1x3 t into 4x4 extrinsics. Extrinsics matrix is usually named `K`, but we avoid this, to
+    not interfere with `import kornia as K`
 
     Args:
         R: Rotation matrix, :math:`(B, 3, 3).`
@@ -1198,7 +1196,6 @@ def Rt_to_matrix4x4(R: Tensor, t: Tensor) -> Tensor:
 
     Returns:
         the extrinsics :math:`(B, 4, 4)`.
-
     """
     KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
     KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
@@ -1222,10 +1219,9 @@ def matrix4x4_to_Rt(extrinsics: Tensor) -> Tuple[Tensor, Tensor]:
 
 
 def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: Tensor) -> Tensor:
-    r"""Converts graphics coordinate frame (e.g. OpenGL) to vision coordinate
-    frame (e.g. OpenCV.), , i.e. flips y and z axis.
-    Graphics convention: [+x, +y, +z] == [right, up, backwards].
-    Vision convention: [+x, +y, +z] == [right, down, forwards]
+    r"""Converts graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.), , i.e. flips y
+    and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards]. Vision convention: [+x, +y, +z] ==
+    [right, down, forwards]
 
     Args:
         extrinsics: pose matrix :math:`(B, 4, 4)`.
@@ -1234,20 +1230,18 @@ def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: Tensor) -> Tensor:
         extrinsics: pose matrix :math:`(B, 4, 4)`.
     """
     KORNIA_CHECK_SHAPE(extrinsics_graphics, ["B", "4", "4"])
-    invert_yz = tensor([[[1, 0, 0, 0],
-                       [0, -1, 0, 0],
-                       [0, 0, -1, 0],
-                       [0, 0, 0, 1.]]],
-                       dtype=extrinsics_graphics.dtype,
-                       device=extrinsics_graphics.device)
+    invert_yz = tensor(
+        [[[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1.0]]],
+        dtype=extrinsics_graphics.dtype,
+        device=extrinsics_graphics.device,
+    )
     return extrinsics_graphics @ invert_yz
 
 
 def camtoworld_graphics_to_vision_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
-    r"""Converts graphics coordinate frame (e.g. OpenGL) to vision coordinate
-    frame (e.g. OpenCV.), , i.e. flips y and z axis.
-    Graphics convention: [+x, +y, +z] == [right, up, backwards].
-    Vision convention: [+x, +y, +z] == [right, down, forwards]
+    r"""Converts graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.), , i.e. flips y
+    and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards]. Vision convention: [+x, +y, +z] ==
+    [right, down, forwards]
 
     Args:
         R: Rotation matrix, :math:`(B, 3, 3).`
@@ -1264,11 +1258,9 @@ def camtoworld_graphics_to_vision_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tens
 
 
 def camtoworld_vision_to_graphics_4x4(extrinsics_vision: Tensor) -> Tensor:
-    r"""Converts vision coordinate frame (e.g. OpenCV) to graphics coordinate
-    frame (e.g. OpenGK.), i.e. flips y and z axis
-    Graphics convention: [+x, +y, +z] == [right, up, backwards].
-    Vision convention: [+x, +y, +z] == [right, down, forwards]
-
+    r"""Converts vision coordinate frame (e.g. OpenCV) to graphics coordinate frame (e.g. OpenGK.), i.e. flips y and
+    z axis Graphics convention: [+x, +y, +z] == [right, up, backwards]. Vision convention: [+x, +y, +z] == [right,
+    down, forwards]
 
     Args:
         extrinsics: pose matrix :math:`(B, 4, 4)`.
@@ -1277,20 +1269,18 @@ def camtoworld_vision_to_graphics_4x4(extrinsics_vision: Tensor) -> Tensor:
         extrinsics: pose matrix :math:`(B, 4, 4)`.
     """
     KORNIA_CHECK_SHAPE(extrinsics_vision, ["B", "4", "4"])
-    invert_yz = torch.tensor([[[1, 0, 0, 0],
-                             [0, -1, 0, 0],
-                             [0, 0, -1, 0],
-                             [0, 0, 0, 1.]]],
-                             dtype=extrinsics_vision.dtype,
-                             device=extrinsics_vision.device)
+    invert_yz = torch.tensor(
+        [[[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1.0]]],
+        dtype=extrinsics_vision.dtype,
+        device=extrinsics_vision.device,
+    )
     return extrinsics_vision @ invert_yz
 
 
 def camtoworld_vision_to_graphics_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
-    r"""Converts graphics coordinate frame (e.g. OpenGL) to vision coordinate
-    frame (e.g. OpenCV.), , i.e. flips y and z axis.
-    Graphics convention: [+x, +y, +z] == [right, up, backwards].
-    Vision convention: [+x, +y, +z] == [right, down, forwards]
+    r"""Converts graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.), , i.e. flips y
+    and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards]. Vision convention: [+x, +y, +z] ==
+    [right, down, forwards]
 
     Args:
         R: Rotation matrix, :math:`(B, 3, 3).`
@@ -1307,9 +1297,8 @@ def camtoworld_vision_to_graphics_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tens
 
 
 def camtoworld_to_worldtocam_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
-    r"""Converts camtoworld, i.e. projection from camera coordinate system
-    to world coordinate system, to worldtocam frame i.e. projection from world to the camera
-    coordinate system (used in Colmap).
+    r"""Converts camtoworld, i.e. projection from camera coordinate system to world coordinate system, to worldtocam
+    frame i.e. projection from world to the camera coordinate system (used in Colmap).
 
     Args:
         R: Rotation matrix, :math:`(B, 3, 3).`
@@ -1329,9 +1318,8 @@ def camtoworld_to_worldtocam_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
 
 
 def worldtocam_to_camtoworld_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
-    r"""Converts worldtocam frame i.e. projection from world to the camera
-    coordinate system (used in Colmap) to camtoworld,
-    i.e. projection from camera coordinate system to world coordinate system.
+    r"""Converts worldtocam frame i.e. projection from world to the camera coordinate system (used in Colmap) to
+    camtoworld, i.e. projection from camera coordinate system to world coordinate system.
 
     Args:
         R: Rotation matrix, :math:`(B, 3, 3).`
@@ -1351,9 +1339,8 @@ def worldtocam_to_camtoworld_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
 
 
 def ARKitQTVecs_to_ColmapQTVecs(qvec: Tensor, tvec: Tensor) -> Tuple[Tensor, Tensor]:
-    r"""Converts output of Apple ARKit screen pose (in quaternion representation)
-    to the camera-to-world transformation, expected by Colmap, also in quaternion
-    representation
+    r"""Converts output of Apple ARKit screen pose (in quaternion representation) to the camera-to-world
+    transformation, expected by Colmap, also in quaternion representation.
 
     Args:
         qvec: ARKit rotation quaternion :math:`(B, 4)`, [x, y, z, w] format.
