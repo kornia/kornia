@@ -1226,11 +1226,10 @@ def matrix4x4_to_Rt(extrinsics: Tensor) -> Tuple[Tensor, Tensor]:
         >>> ext = torch.eye(4)[None]
         >>> matrix4x4_to_Rt(ext)
         (tensor([[[1., 0., 0.],
-                  [0., 1., 0.],
-                  [0., 0., 1.]]]),
-         tensor([[[0.],
-                  [0.],
-                  [0.]]]))
+                 [0., 1., 0.],
+                 [0., 0., 1.]]]), tensor([[[0.],
+                 [0.],
+                 [0.]]]))
     """
     KORNIA_CHECK_SHAPE(extrinsics, ["B", "4", "4"])
     R, t = extrinsics[:, :3, :3], extrinsics[:, :3, 3:]
@@ -1286,8 +1285,8 @@ def camtoworld_graphics_to_vision_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tens
         (tensor([[[ 1.,  0.,  0.],
                  [ 0., -1.,  0.],
                  [ 0.,  0., -1.]]]), tensor([[[1.],
-                  [1.],
-                  [1.]]]))
+                 [1.],
+                 [1.]]]))
     """
     KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
     KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
