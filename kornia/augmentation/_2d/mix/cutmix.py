@@ -219,11 +219,14 @@ class RandomCutMixV2(MixAugmentationBaseV2):
             w, h = infer_bbox_shape(crop)
             lam = w.to(input.dtype) * h.to(input.dtype) / (width * height)  # width_beta * height_beta
             out_labels.append(
-                torch.stack([
-                    input.to(device=input.device, dtype=params["dtype"]),
-                    labels_permute.to(device=input.device, dtype=params["dtype"]),
-                    lam.to(device=input.device, dtype=params["dtype"])
-                ], dim=1)
+                torch.stack(
+                    [
+                        input.to(device=input.device, dtype=params["dtype"]),
+                        labels_permute.to(device=input.device, dtype=params["dtype"]),
+                        lam.to(device=input.device, dtype=params["dtype"]),
+                    ],
+                    dim=1,
+                )
             )
 
         return torch.stack(out_labels, dim=0)
@@ -232,14 +235,17 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         self, input: Tensor, params: Dict[str, Tensor], flags: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         out_labels = []
-        lam = torch.zeros((len(input,)), device=input.device, dtype=params["dtype"])
+        lam = torch.zeros((len(input)), device=input.device, dtype=params["dtype"])
         for _ in range(self._param_generator.num_mix):
             out_labels.append(
-                torch.stack([
-                    input.to(device=input.device, dtype=params["dtype"]),
-                    input.to(device=input.device, dtype=params["dtype"]),
-                    lam
-                ], dim=1)
+                torch.stack(
+                    [
+                        input.to(device=input.device, dtype=params["dtype"]),
+                        input.to(device=input.device, dtype=params["dtype"]),
+                        lam,
+                    ],
+                    dim=1,
+                )
             )
 
         return torch.stack(out_labels, dim=0)
