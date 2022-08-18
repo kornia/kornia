@@ -1357,6 +1357,8 @@ def camtoworld_vision_to_graphics_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tens
 def camtoworld_to_worldtocam_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
     r"""Converts camtoworld, i.e. projection from camera coordinate system to world coordinate system, to worldtocam
     frame i.e. projection from world to the camera coordinate system (used in Colmap).
+    See
+    long-url: https://colmap.github.io/format.html#output-format
 
     Args:
         R: Rotation matrix, :math:`(B, 3, 3).`
