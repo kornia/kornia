@@ -205,7 +205,7 @@ class RandomMixUpV2(MixAugmentationBaseV2):
                 torch.zeros((len(input),), device=input.device, dtype=params["dtype"]),
             ],
             dim=-1,
-        ).to(input.device)
+        )
         return out_labels
 
     def apply_transform_class(
