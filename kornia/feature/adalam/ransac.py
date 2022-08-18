@@ -75,8 +75,9 @@ def confidence_based_inlier_selection(residuals, ransidx, rdims, idxoffsets, dv,
 
 def sample_padded_inliers(xsamples, ysamples, inlier_counts, inl_ransidx, inl_sampleidx, numransacs, dv):
     maxinliers = torch.max(inlier_counts).item()
-    padded_inlier_x = torch.zeros(size=(numransacs, maxinliers, 2), device=dv)
-    padded_inlier_y = torch.zeros(size=(numransacs, maxinliers, 2), device=dv)
+    dtype=xsamples.dtype
+    padded_inlier_x = torch.zeros(size=(numransacs, maxinliers, 2), device=dv, dtype=dtype)
+    padded_inlier_y = torch.zeros(size=(numransacs, maxinliers, 2), device=dv, dtype=dtype)
 
     padded_inlier_x[inl_ransidx, piecewise_arange(inl_ransidx)] = xsamples[inl_sampleidx]
     padded_inlier_y[inl_ransidx, piecewise_arange(inl_ransidx)] = ysamples[inl_sampleidx]
@@ -143,7 +144,7 @@ def ransac(xsamples, ysamples, rdims, config, iters=128, refit=True):
     # Filter out degenerate affinities with large scale changes
     eigenvals, eigenvecs = batch_2x2_ellipse(refit_affinity)
     bad_ones = (eigenvals[..., 1] < 1 / DET_THR**2) | (eigenvals[..., 0] > DET_THR**2)
-    refit_affinity[bad_ones] = torch.eye(2, device=dv)
+    refit_affinity[bad_ones] = torch.eye(2, device=dv, dtype=refit_affinity.dtype)
     y_pred = (refit_affinity[ransidx] @ xsamples.unsqueeze(-1)).squeeze(-1)
 
     residuals = torch.norm(y_pred - ysamples, dim=-1)
