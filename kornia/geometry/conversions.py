@@ -1199,7 +1199,7 @@ def Rt_to_matrix4x4(R: Tensor, t: Tensor) -> Tensor:
         the extrinsics :math:`(B, 4, 4)`.
 
     Example:
-        >>> R, t = torch.eye(3)[None], torch.rand(3).reshape(1, 3, 1)
+        >>> R, t = torch.eye(3)[None], torch.ones(3).reshape(1, 3, 1)
         >>> Rt_to_matrix4x4(R, t)
         tensor([[[1., 0., 0., 1.],
                  [0., 1., 0., 1.],
@@ -1284,9 +1284,8 @@ def camtoworld_graphics_to_vision_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tens
         >>> R, t = torch.eye(3)[None], torch.ones(3).reshape(1, 3, 1)
         >>> camtoworld_graphics_to_vision_Rt(R, t)
         (tensor([[[ 1.,  0.,  0.],
-                  [ 0., -1.,  0.],
-                  [ 0.,  0., -1.]]]),
-         tensor([[[1.],
+                 [ 0., -1.,  0.],
+                 [ 0.,  0., -1.]]]), tensor([[[1.],
                   [1.],
                   [1.]]]))
     """
@@ -1342,11 +1341,10 @@ def camtoworld_vision_to_graphics_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tens
         >>> R, t = torch.eye(3)[None], torch.ones(3).reshape(1, 3, 1)
         >>> camtoworld_vision_to_graphics_Rt(R, t)
         (tensor([[[ 1.,  0.,  0.],
-                  [ 0., -1.,  0.],
-                  [ 0.,  0., -1.]]]),
-         tensor([[[1.],
-                  [1.],
-                  [1.]]]))
+                 [ 0., -1.,  0.],
+                 [ 0.,  0., -1.]]]), tensor([[[1.],
+                 [1.],
+                 [1.]]]))
     """
     KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
     KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
@@ -1372,11 +1370,10 @@ def camtoworld_to_worldtocam_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
         >>> R, t = torch.eye(3)[None], torch.ones(3).reshape(1, 3, 1)
         >>> camtoworld_to_worldtocam_Rt(R, t)
         (tensor([[[1., 0., 0.],
-                  [0., 1., 0.],
-                  [0., 0., 1.]]]),
-         tensor([[[-1.],
-                  [-1.],
-                  [-1.]]]))
+                 [0., 1., 0.],
+                 [0., 0., 1.]]]), tensor([[[-1.],
+                 [-1.],
+                 [-1.]]]))
     """
     KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
     KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
@@ -1403,11 +1400,10 @@ def worldtocam_to_camtoworld_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
         >>> R, t = torch.eye(3)[None], torch.ones(3).reshape(1, 3, 1)
         >>> worldtocam_to_camtoworld_Rt(R, t)
         (tensor([[[1., 0., 0.],
-                  [0., 1., 0.],
-                  [0., 0., 1.]]]),
-         tensor([[[-1.],
-                  [-1.],
-                  [-1.]]]))
+                 [0., 1., 0.],
+                 [0., 0., 1.]]]), tensor([[[-1.],
+                 [-1.],
+                 [-1.]]]))
     """
     KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
     KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
@@ -1433,10 +1429,9 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: Tensor, tvec: Tensor) -> Tuple[Tensor, Ten
     Example:
         >>> q, t = torch.tensor([0, 1, 0, 1.])[None], torch.ones(3).reshape(1, 3, 1)
         >>> ARKitQTVecs_to_ColmapQTVecs(q, t)
-        (tensor([[0.7071, 0.0000, 0.7071, 0.0000]]),
-         tensor([[[-1.0000],
-                  [-1.0000],
-                  [ 1.0000]]]))
+        (tensor([[0.7071, 0.0000, 0.7071, 0.0000]]), tensor([[[-1.0000],
+                 [-1.0000],
+                 [ 1.0000]]]))
     """
     # ToDo:  integrate QuaterniaonAPI
 
