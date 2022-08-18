@@ -30,17 +30,17 @@ def get_adalam_default_config():
 
 
 def match_adalam(
-    desc1: Tensor,
-    desc2: Tensor,
-    lafs1: Tensor,
-    lafs2: Tensor,
-    config: Dict = get_adalam_default_config(),
-    hw1: Optional[Tensor] = None,
-    hw2: Optional[Tensor] = None,
-    dm: Optional[Tensor] = None,
-) -> Tuple[Tensor, Tensor]:
-    """Function, which performs descriptor matching, followed by AdaLAM filtering (see :cite:`AdaLAM2020` for more
-    details)
+     desc1: Tensor,
+     desc2: Tensor,
+     lafs1: Tensor,
+     lafs2: Tensor,
+     config: Dict = get_adalam_default_config(),
+     hw1: Optional[Tensor] = None,
+     hw2: Optional[Tensor] = None,
+     dm: Optional[Tensor] = None,
+ ) -> Tuple[Tensor, Tensor]:
+     """Function, which performs descriptor matching, followed by AdaLAM filtering
+     (see :cite:`AdaLAM2020` for more details)
 
     If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
 
