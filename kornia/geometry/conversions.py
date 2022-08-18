@@ -39,14 +39,13 @@ __all__ = [
     "normalize_homography3d",
     "normal_transform_pixel",
     "normal_transform_pixel3d",
-    "worldtocam_to_camtoworld",
-    "camtoworld_to_worldtocam",
-    "extrinsics_from_Rt",
-    "Rt_from_extrinsics",
-    "camtoworld_graphics_to_vision",
-    "camtoworld_vision_to_graphics",
+    "worldtocam_to_camtoworld_Rt",
+    "camtoworld_to_worldtocam_Rt",
+    "Rt_to_matrix4x4",
+    "matrix4x4_to_Rt",
+    "camtoworld_graphics_to_vision_4x4",
+    "camtoworld_vision_to_graphics_4x4",
     "ARKitQTVecs_to_ColmapQTVecs",
-    "screenpose_to_camerapose",
 ]
 
 
@@ -1188,7 +1187,7 @@ def normalize_homography3d(
     return dst_norm_trans_src_norm
 
 
-def extrinsics_from_Rt(R: Tensor, t: Tensor) -> Tensor:
+def Rt_to_matrix4x4(R: Tensor, t: Tensor) -> Tensor:
     r"""Combines 3x3 R and 1x3 t into 4x4 extrinsics.
     Extrinsics matrix is usually named `K`, but we avoid this,
     to not interfere with `import kornia as K`
@@ -1207,10 +1206,8 @@ def extrinsics_from_Rt(R: Tensor, t: Tensor) -> Tensor:
     return convert_affinematrix_to_homography3d(Rt)
 
 
-def Rt_from_extrinsics(extrinsics: Tensor) -> Tuple[Tensor, Tensor]:
+def matrix4x4_to_Rt(extrinsics: Tensor) -> Tuple[Tensor, Tensor]:
     r"""Combines 4x4 extrinsics into 3x3 R and 1x3 t .
-    Extrinsics matrix is usually named `K`, but we avoid this,
-    to not interfere with `import kornia as K`
 
     Args:
         extrinsics: pose matrix :math:`(B, 4, 4)`.
@@ -1224,9 +1221,9 @@ def Rt_from_extrinsics(extrinsics: Tensor) -> Tuple[Tensor, Tensor]:
     return R, t
 
 
-def camtoworld_graphics_to_vision(extrinsics_graphics: Tensor) -> Tensor:
+def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: Tensor) -> Tensor:
     r"""Converts graphics coordinate frame (e.g. OpenGL) to vision coordinate
-    frame (e.g. OpenCV.).
+    frame (e.g. OpenCV.), , i.e. flips y and z axis.
     Graphics convention: [+x, +y, +z] == [right, up, backwards].
     Vision convention: [+x, +y, +z] == [right, down, forwards]
 
@@ -1246,11 +1243,32 @@ def camtoworld_graphics_to_vision(extrinsics_graphics: Tensor) -> Tensor:
     return extrinsics_graphics @ invert_yz
 
 
-def camtoworld_vision_to_graphics(extrinsics_vision: Tensor) -> Tensor:
-    r"""Converts vision coordinate frame (e.g. OpenCV) to graphics coordinate
-    frame (e.g. OpenGK.).
+def camtoworld_graphics_to_vision_Rt(extrinsics_graphics: Tensor) -> Tensor:
+    r"""Converts graphics coordinate frame (e.g. OpenGL) to vision coordinate
+    frame (e.g. OpenCV.), , i.e. flips y and z axis.
     Graphics convention: [+x, +y, +z] == [right, up, backwards].
     Vision convention: [+x, +y, +z] == [right, down, forwards]
+
+    Args:
+        R: Rotation matrix, :math:`(B, 3, 3).`
+        t: Translation matrix :math:`(B, 3, 1)`.
+
+    Returns:
+        R: Rotation matrix, :math:`(B, 3, 3).`
+        t: Translation matrix :math:`(B, 3, 1)`.
+    """
+    KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
+    KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
+    mat4x4 = camtoworld_graphics_to_vision_4x4(Rt_to_matrix4x4(R, t))
+    return matrix4x4_to_Rt(mat4x4)
+
+
+def camtoworld_vision_to_graphics_4x4(extrinsics_vision: Tensor) -> Tensor:
+    r"""Converts vision coordinate frame (e.g. OpenCV) to graphics coordinate
+    frame (e.g. OpenGK.), i.e. flips y and z axis
+    Graphics convention: [+x, +y, +z] == [right, up, backwards].
+    Vision convention: [+x, +y, +z] == [right, down, forwards]
+
 
     Args:
         extrinsics: pose matrix :math:`(B, 4, 4)`.
@@ -1268,9 +1286,30 @@ def camtoworld_vision_to_graphics(extrinsics_vision: Tensor) -> Tensor:
     return extrinsics_vision @ invert_yz
 
 
-def camtoworld_to_worldtocam(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
-    r"""Converts camera pose in world coordinates to worldtocam frame,
-    e.g. used in Colmap
+def camtoworld_graphics_to_vision_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
+    r"""Converts graphics coordinate frame (e.g. OpenGL) to vision coordinate
+    frame (e.g. OpenCV.), , i.e. flips y and z axis.
+    Graphics convention: [+x, +y, +z] == [right, up, backwards].
+    Vision convention: [+x, +y, +z] == [right, down, forwards]
+
+    Args:
+        R: Rotation matrix, :math:`(B, 3, 3).`
+        t: Translation matrix :math:`(B, 3, 1)`.
+
+    Returns:
+        R: Rotation matrix, :math:`(B, 3, 3).`
+        t: Translation matrix :math:`(B, 3, 1)`.
+    """
+    KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
+    KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
+    mat4x4 = camtoworld_vision_to_graphics_4x4(Rt_to_matrix4x4(R, t))
+    return matrix4x4_to_Rt(mat4x4)
+
+
+def camtoworld_to_worldtocam_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
+    r"""Converts camtoworld, i.e. projection from camera coordinate system
+    to world coordinate system, to worldtocam frame i.e. projection from world to the camera
+    coordinate system (used in Colmap).
 
     Args:
         R: Rotation matrix, :math:`(B, 3, 3).`
@@ -1284,54 +1323,31 @@ def camtoworld_to_worldtocam(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
     KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
 
     R_inv = R.transpose(1, 2)
-
     new_t: Tensor = -R_inv @ t
 
     return (R_inv, new_t)
 
 
-def worldtocam_to_camtoworld(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
-    r"""Converts worldtocam frame e.g. used in Colmap to pose.
+def worldtocam_to_camtoworld_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
+    r"""Converts worldtocam frame i.e. projection from world to the camera
+    coordinate system (used in Colmap) to camtoworld,
+    i.e. projection from camera coordinate system to world coordinate system.
 
     Args:
         R: Rotation matrix, :math:`(B, 3, 3).`
         t: Translation matrix :math:`(B, 3, 1)`.
 
     Returns:
-        R: Rotation matrix, :math:`(B, 3, 3).`
-        t: Translation matrix :math:`(B, 3, 1)`.
+        Rinv: Rotation matrix, :math:`(B, 3, 3).`
+        tinv: Translation matrix :math:`(B, 3, 1)`.
     """
     KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
     KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
 
     R_inv = R.transpose(1, 2)
-
     new_t: Tensor = -R_inv @ t
 
     return (R_inv, new_t)
-
-
-def screenpose_to_camerapose(extrinsics_screen: Tensor) -> Tensor:
-    r"""Converts pose of the phonescreen to pose of the camera.
-    See https://developer.apple.com/documentation/arkit/arconfiguration/worldalignment/gravity
-
-    Camera convention: [+x, +y, +z] == [right, down, forwards]
-    Screen convention: [+x, +y, +z] == [left, up, backwards]
-
-    Args:
-        extrinsics: pose matrix :math:`(B, 4, 4)`.
-
-    Returns:
-        extrinsics: pose matrix :math:`(B, 4, 4)`.
-    """
-    KORNIA_CHECK_SHAPE(extrinsics_screen, ["B", "4", "4"])
-    invert_yz = torch.tensor([[[1, 0, 0, 0],
-                             [0, -1, 0, 0],
-                             [0, 0, -1, 0],
-                             [0, 0, 0, 1.]]],
-                             dtype=extrinsics_screen.dtype,
-                             device=extrinsics_screen.device)
-    return extrinsics_screen @ invert_yz
 
 
 def ARKitQTVecs_to_ColmapQTVecs(qvec: Tensor, tvec: Tensor) -> Tuple[Tensor, Tensor]:
@@ -1347,11 +1363,9 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: Tensor, tvec: Tensor) -> Tuple[Tensor, Ten
         qvec: Colmap rotation quaternion :math:`(B, 4)`, [w, x, y, z] format.
         tvec: translation vector :math:`(B, 3, 1)`, [x, y, z]
     """
-    Rpose_screen = quaternion_to_rotation_matrix(qvec, order=QuaternionCoeffOrder.WXYZ)
-    E_pose_camera = screenpose_to_camerapose(extrinsics_from_Rt(Rpose_screen, tvec))
-    Rcam, tcam = camtoworld_to_worldtocam(*Rt_from_extrinsics(E_pose_camera))
-    Efin = camtoworld_graphics_to_vision(extrinsics_from_Rt(Rcam, tcam))
-    Rcol, t_colmap = Rt_from_extrinsics(Efin)
+    Rcg = quaternion_to_rotation_matrix(qvec, order=QuaternionCoeffOrder.WXYZ)
+    Rcv, Tcv = camtoworld_graphics_to_vision_Rt(Rcg, tvec)
+    R_colmap, t_colmap = camtoworld_to_worldtocam_Rt(Rcv, Tcv)
     t_colmap = t_colmap.reshape(-1, 3, 1)
-    q_colmap = rotation_matrix_to_quaternion(Rcol.contiguous(), order=QuaternionCoeffOrder.WXYZ)
+    q_colmap = rotation_matrix_to_quaternion(R_colmap.contiguous(), order=QuaternionCoeffOrder.WXYZ)
     return q_colmap, t_colmap

@@ -54,11 +54,10 @@ Angle Axis
 Pose (extrinsics)
 ----------
 
-.. autofunction:: extrinsics_from_Rt
-.. autofunction:: Rt_from_extrinsics
-.. autofunction:: camtoworldRt_to_poseRt
-.. autofunction:: poseRt_to_camtoworldRt
-.. autofunction:: camtoworld_graphics_to_vision
-.. autofunction:: camtoworld_vision_to_graphics
+.. autofunction:: Rt_to_matrix4x4
+.. autofunction:: matrix4x4_to_Rt
+.. autofunction:: worldtocam_to_camtoworld_Rt
+.. autofunction:: camtoworld_to_worldtocam_Rt
+.. autofunction:: camtoworld_graphics_to_vision_4x4
+.. autofunction:: camtoworld_vision_to_graphics_4x4
 .. autofunction:: ARKitQTVecs_to_ColmapQTVecs
-.. autofunction:: screenpose_to_camerapose
