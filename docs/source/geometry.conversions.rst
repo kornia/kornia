@@ -51,7 +51,7 @@ Angle Axis
 .. autofunction:: angle_axis_to_quaternion
 .. autofunction:: angle_axis_to_rotation_matrix
 
-Pose (extrinsics)
+Pose
 ----------
 
 .. autofunction:: Rt_to_matrix4x4
