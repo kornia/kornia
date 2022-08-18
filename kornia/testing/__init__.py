@@ -252,6 +252,7 @@ def KORNIA_CHECK_DM_DESC(desc1: Tensor, desc2: Tensor, dm: Tensor):
                       desc2 {desc2.shape}"""
         raise TypeError(message)
 
+
 def KORNIA_CHECK_LAF(laf: Tensor) -> None:
     """Auxiliary function, which verifies that input.
 
