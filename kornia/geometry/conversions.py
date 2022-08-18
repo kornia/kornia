@@ -44,6 +44,8 @@ __all__ = [
     "matrix4x4_to_Rt",
     "camtoworld_graphics_to_vision_4x4",
     "camtoworld_vision_to_graphics_4x4",
+    "camtoworld_graphics_to_vision_Rt",
+    "camtoworld_vision_to_graphics_Rt",
     "ARKitQTVecs_to_ColmapQTVecs",
 ]
 
@@ -1196,6 +1198,14 @@ def Rt_to_matrix4x4(R: Tensor, t: Tensor) -> Tensor:
 
     Returns:
         the extrinsics :math:`(B, 4, 4)`.
+
+    Example:
+        >>> R, t = torch.eye(3)[None], torch.rand(3).reshape(1, 3, 1)
+        >>> Rt_to_matrix4x4(R, t)
+        tensor([[[1., 0., 0., 1.],
+                 [0., 1., 0., 1.],
+                 [0., 0., 1., 1.],
+                 [0., 0., 0., 1.]]])
     """
     KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
     KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
@@ -1212,6 +1222,16 @@ def matrix4x4_to_Rt(extrinsics: Tensor) -> Tuple[Tensor, Tensor]:
     Returns:
         R: Rotation matrix, :math:`(B, 3, 3).`
         t: Translation matrix :math:`(B, 3, 1)`.
+
+    Example:
+        >>> ext = torch.eye(4)[None]
+        >>> matrix4x4_to_Rt(ext)
+        (tensor([[[1., 0., 0.],
+                  [0., 1., 0.],
+                  [0., 0., 1.]]]),
+         tensor([[[0.],
+                  [0.],
+                  [0.]]]))
     """
     KORNIA_CHECK_SHAPE(extrinsics, ["B", "4", "4"])
     R, t = extrinsics[:, :3, :3], extrinsics[:, :3, 3:]
@@ -1228,6 +1248,14 @@ def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: Tensor) -> Tensor:
 
     Returns:
         extrinsics: pose matrix :math:`(B, 4, 4)`.
+
+    Example:
+        >>> ext = torch.eye(4)[None]
+        >>> camtoworld_graphics_to_vision_4x4(ext)
+        tensor([[[ 1.,  0.,  0.,  0.],
+                 [ 0., -1.,  0.,  0.],
+                 [ 0.,  0., -1.,  0.],
+                 [ 0.,  0.,  0.,  1.]]])
     """
     KORNIA_CHECK_SHAPE(extrinsics_graphics, ["B", "4", "4"])
     invert_yz = tensor(
@@ -1250,6 +1278,16 @@ def camtoworld_graphics_to_vision_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tens
     Returns:
         R: Rotation matrix, :math:`(B, 3, 3).`
         t: Translation matrix :math:`(B, 3, 1)`.
+
+    Example:
+        >>> R, t = torch.eye(3)[None], torch.ones(3).reshape(1, 3, 1)
+        >>> camtoworld_graphics_to_vision_Rt(R, t)
+        (tensor([[[ 1.,  0.,  0.],
+                  [ 0., -1.,  0.],
+                  [ 0.,  0., -1.]]]),
+         tensor([[[1.],
+                  [1.],
+                  [1.]]]))
     """
     KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
     KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
@@ -1267,6 +1305,14 @@ def camtoworld_vision_to_graphics_4x4(extrinsics_vision: Tensor) -> Tensor:
 
     Returns:
         extrinsics: pose matrix :math:`(B, 4, 4)`.
+
+    Example:
+        >>> ext = torch.eye(4)[None]
+        >>> camtoworld_vision_to_graphics_4x4(ext)
+        tensor([[[ 1.,  0.,  0.,  0.],
+                 [ 0., -1.,  0.,  0.],
+                 [ 0.,  0., -1.,  0.],
+                 [ 0.,  0.,  0.,  1.]]])
     """
     KORNIA_CHECK_SHAPE(extrinsics_vision, ["B", "4", "4"])
     invert_yz = torch.tensor(
@@ -1289,6 +1335,16 @@ def camtoworld_vision_to_graphics_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tens
     Returns:
         R: Rotation matrix, :math:`(B, 3, 3).`
         t: Translation matrix :math:`(B, 3, 1)`.
+
+    Example:
+        >>> R, t = torch.eye(3)[None], torch.ones(3).reshape(1, 3, 1)
+        >>> camtoworld_vision_to_graphics_Rt(R, t)
+        (tensor([[[ 1.,  0.,  0.],
+                  [ 0., -1.,  0.],
+                  [ 0.,  0., -1.]]]),
+         tensor([[[1.],
+                  [1.],
+                  [1.]]]))
     """
     KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
     KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
@@ -1307,6 +1363,16 @@ def camtoworld_to_worldtocam_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
     Returns:
         Rinv: Rotation matrix, :math:`(B, 3, 3).`
         tinv: Translation matrix :math:`(B, 3, 1)`.
+
+    Example:
+        >>> R, t = torch.eye(3)[None], torch.ones(3).reshape(1, 3, 1)
+        >>> camtoworld_to_worldtocam_Rt(R, t)
+        (tensor([[[1., 0., 0.],
+                  [0., 1., 0.],
+                  [0., 0., 1.]]]),
+         tensor([[[-1.],
+                  [-1.],
+                  [-1.]]]))
     """
     KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
     KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
@@ -1328,6 +1394,16 @@ def worldtocam_to_camtoworld_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
     Returns:
         Rinv: Rotation matrix, :math:`(B, 3, 3).`
         tinv: Translation matrix :math:`(B, 3, 1)`.
+
+    Example:
+        >>> R, t = torch.eye(3)[None], torch.ones(3).reshape(1, 3, 1)
+        >>> worldtocam_to_camtoworld_Rt(R, t)
+        (tensor([[[1., 0., 0.],
+                  [0., 1., 0.],
+                  [0., 0., 1.]]]),
+         tensor([[[-1.],
+                  [-1.],
+                  [-1.]]]))
     """
     KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
     KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
@@ -1349,7 +1425,17 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: Tensor, tvec: Tensor) -> Tuple[Tensor, Ten
     Returns:
         qvec: Colmap rotation quaternion :math:`(B, 4)`, [w, x, y, z] format.
         tvec: translation vector :math:`(B, 3, 1)`, [x, y, z]
+
+    Example:
+        >>> q, t = torch.tensor([0, 1, 0, 1.])[None], torch.ones(3).reshape(1, 3, 1)
+        >>> ARKitQTVecs_to_ColmapQTVecs(q, t)
+        (tensor([[0.7071, 0.0000, 0.7071, 0.0000]]),
+         tensor([[[-1.0000],
+                  [-1.0000],
+                  [ 1.0000]]]))
     """
+    # ToDo:  integrate QuaterniaonAPI
+
     Rcg = quaternion_to_rotation_matrix(qvec, order=QuaternionCoeffOrder.WXYZ)
     Rcv, Tcv = camtoworld_graphics_to_vision_Rt(Rcg, tvec)
     R_colmap, t_colmap = camtoworld_to_worldtocam_Rt(Rcv, Tcv)
