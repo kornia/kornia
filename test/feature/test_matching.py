@@ -7,6 +7,7 @@ from kornia.feature.laf import laf_from_center_scale_ori
 from kornia.feature.matching import (
     DescriptorMatcher,
     GeometryAwareDescriptorMatcher,
+    match_adalam,
     match_fginn,
     match_mnn,
     match_nn,
@@ -319,6 +320,7 @@ class TestMatchFGINN:
         matcher_jit = torch.jit.script(GeometryAwareDescriptorMatcher('fginn').to(device))
         assert_close(matcher(desc1, desc2)[0], matcher_jit(desc1, desc2, lafs1, lafs2)[0])
         assert_close(matcher(desc1, desc2)[1], matcher_jit(desc1, desc2, lafs1, lafs2)[1])
+
 
 class TestAdalam:
     @pytest.mark.parametrize("data", ["adalam_idxs"], indirect=True)

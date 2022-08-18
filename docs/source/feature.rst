@@ -38,6 +38,7 @@ Matching
 .. autofunction:: match_fginn
 .. autofunction:: match_adalam
 
+
 .. autoclass:: DescriptorMatcher
    :members: forward
 
