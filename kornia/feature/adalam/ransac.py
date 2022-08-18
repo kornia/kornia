@@ -75,7 +75,7 @@ def confidence_based_inlier_selection(residuals, ransidx, rdims, idxoffsets, dv,
 
 def sample_padded_inliers(xsamples, ysamples, inlier_counts, inl_ransidx, inl_sampleidx, numransacs, dv):
     maxinliers = torch.max(inlier_counts).item()
-    dtype=xsamples.dtype
+    dtype = xsamples.dtype
     padded_inlier_x = torch.zeros(size=(numransacs, maxinliers, 2), device=dv, dtype=dtype)
     padded_inlier_y = torch.zeros(size=(numransacs, maxinliers, 2), device=dv, dtype=dtype)
 
