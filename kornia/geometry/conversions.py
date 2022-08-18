@@ -7,8 +7,9 @@ import torch.nn.functional as F
 from torch import Tensor, tensor
 
 from kornia.constants import pi
-from kornia.testing import KORNIA_CHECK_SHAPE
 from kornia.utils.helpers import _torch_inverse_cast
+from kornia.testing import KORNIA_CHECK_SHAPE
+
 
 __all__ = [
     "rad2deg",
@@ -38,8 +39,8 @@ __all__ = [
     "normalize_homography3d",
     "normal_transform_pixel",
     "normal_transform_pixel3d",
-    "camtoworldRt_to_poseRt",
-    "poseRt_to_camtoworldRt",
+    "worldtocam_to_camtoworld",
+    "camtoworld_to_worldtocam",
     "extrinsics_from_Rt",
     "Rt_from_extrinsics",
     "camtoworld_graphics_to_vision",
@@ -1236,11 +1237,12 @@ def camtoworld_graphics_to_vision(extrinsics_graphics: Tensor) -> Tensor:
         extrinsics: pose matrix :math:`(B, 4, 4)`.
     """
     KORNIA_CHECK_SHAPE(extrinsics_graphics, ["B", "4", "4"])
-    invert_yz = tensor(
-        [[[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1.0]]],
-        dtype=extrinsics_graphics.dtype,
-        device=extrinsics_graphics.device,
-    )
+    invert_yz = tensor([[[1, 0, 0, 0],
+                       [0, -1, 0, 0],
+                       [0, 0, -1, 0],
+                       [0, 0, 0, 1.]]],
+                       dtype=extrinsics_graphics.dtype,
+                       device=extrinsics_graphics.device)
     return extrinsics_graphics @ invert_yz
 
 
@@ -1257,16 +1259,17 @@ def camtoworld_vision_to_graphics(extrinsics_vision: Tensor) -> Tensor:
         extrinsics: pose matrix :math:`(B, 4, 4)`.
     """
     KORNIA_CHECK_SHAPE(extrinsics_vision, ["B", "4", "4"])
-    invert_yz = torch.tensor(
-        [[[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1.0]]],
-        dtype=extrinsics_vision.dtype,
-        device=extrinsics_vision.device,
-    )
+    invert_yz = torch.tensor([[[1, 0, 0, 0],
+                             [0, -1, 0, 0],
+                             [0, 0, -1, 0],
+                             [0, 0, 0, 1.]]],
+                             dtype=extrinsics_vision.dtype,
+                             device=extrinsics_vision.device)
     return extrinsics_vision @ invert_yz
 
 
-def poseRt_to_camtoworldRt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
-    r"""Converts camera pose in world coordinates to camtoworld frame,
+def camtoworld_to_worldtocam(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
+    r"""Converts camera pose in world coordinates to worldtocam frame,
     e.g. used in Colmap
 
     Args:
@@ -1287,8 +1290,8 @@ def poseRt_to_camtoworldRt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
     return (R_inv, new_t)
 
 
-def camtoworldRt_to_poseRt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
-    r"""Converts camtoworld frame e.g. used in Colmap to pose.
+def worldtocam_to_camtoworld(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
+    r"""Converts worldtocam frame e.g. used in Colmap to pose.
 
     Args:
         R: Rotation matrix, :math:`(B, 3, 3).`
@@ -1313,7 +1316,7 @@ def screenpose_to_camerapose(extrinsics_screen: Tensor) -> Tensor:
     See https://developer.apple.com/documentation/arkit/arconfiguration/worldalignment/gravity
 
     Camera convention: [+x, +y, +z] == [right, down, forwards]
-    Screen convention: [+x, +y, +z] == [right, up, backwards]
+    Screen convention: [+x, +y, +z] == [left, up, backwards]
 
     Args:
         extrinsics: pose matrix :math:`(B, 4, 4)`.
@@ -1321,7 +1324,14 @@ def screenpose_to_camerapose(extrinsics_screen: Tensor) -> Tensor:
     Returns:
         extrinsics: pose matrix :math:`(B, 4, 4)`.
     """
-    return camtoworld_vision_to_graphics(extrinsics_screen)
+    KORNIA_CHECK_SHAPE(extrinsics_screen, ["B", "4", "4"])
+    invert_yz = torch.tensor([[[1, 0, 0, 0],
+                             [0, -1, 0, 0],
+                             [0, 0, -1, 0],
+                             [0, 0, 0, 1.]]],
+                             dtype=extrinsics_screen.dtype,
+                             device=extrinsics_screen.device)
+    return extrinsics_screen @ invert_yz
 
 
 def ARKitQTVecs_to_ColmapQTVecs(qvec: Tensor, tvec: Tensor) -> Tuple[Tensor, Tensor]:
@@ -1339,7 +1349,7 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: Tensor, tvec: Tensor) -> Tuple[Tensor, Ten
     """
     Rpose_screen = quaternion_to_rotation_matrix(qvec, order=QuaternionCoeffOrder.WXYZ)
     E_pose_camera = screenpose_to_camerapose(extrinsics_from_Rt(Rpose_screen, tvec))
-    Rcam, tcam = poseRt_to_camtoworldRt(*Rt_from_extrinsics(E_pose_camera))
+    Rcam, tcam = camtoworld_to_worldtocam(*Rt_from_extrinsics(E_pose_camera))
     Efin = camtoworld_graphics_to_vision(extrinsics_from_Rt(Rcam, tcam))
     Rcol, t_colmap = Rt_from_extrinsics(Efin)
     t_colmap = t_colmap.reshape(-1, 3, 1)

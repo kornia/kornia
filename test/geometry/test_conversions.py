@@ -12,7 +12,7 @@ from kornia.geometry.conversions import (
     Rt_from_extrinsics,
     camtoworld_graphics_to_vision,
     camtoworld_vision_to_graphics,
-    camtoworldRt_to_poseRt,
+    camtoworld_to_worldtocam,
     extrinsics_from_Rt,
     poseRt_to_camtoworldRt,
     screenpose_to_camerapose,
@@ -1435,7 +1435,7 @@ class TestCamtoworldRtToPoseRt:
         angles = torch.tensor([0, kornia.pi / 2.0, 0.0], device=device, dtype=dtype)[None]
         R = kornia.geometry.angle_axis_to_rotation_matrix(angles).repeat(batch_size, 1, 1)
 
-        Rp, tp = camtoworldRt_to_poseRt(R, t)
+        Rp, tp = camtoworld_to_worldtocam(R, t)
 
         expected_Rp = torch.tensor([[0, 0, -1], [0, 1, 0], [1, 0, 0]], device=device, dtype=dtype)[None].repeat(
             batch_size, 1, 1
@@ -1444,15 +1444,16 @@ class TestCamtoworldRtToPoseRt:
         assert_close(Rp, expected_Rp, rtol=1e-4, atol=1e-5)
         assert_close(tp, expected_tp, rtol=1e-4, atol=1e-5)
 
+
         Rback, tback = poseRt_to_camtoworldRt(Rp, tp)
         assert_close(Rback, R, rtol=1e-4, atol=1e-5)
         assert_close(tback, t, rtol=1e-4, atol=1e-5)
 
         assert gradcheck(
-            camtoworldRt_to_poseRt, (tensor_to_gradcheck_var(R), tensor_to_gradcheck_var(t)), raise_exception=True
+            camtoworld_to_worldtocam, (tensor_to_gradcheck_var(R), tensor_to_gradcheck_var(t)), raise_exception=True
         )
         assert gradcheck(
-            poseRt_to_camtoworldRt, (tensor_to_gradcheck_var(R), tensor_to_gradcheck_var(t)), raise_exception=True
+            worldtocam_to_camtoworld, (tensor_to_gradcheck_var(R), tensor_to_gradcheck_var(t)), raise_exception=True
         )
 
 
