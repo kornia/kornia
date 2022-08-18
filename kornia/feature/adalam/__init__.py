@@ -1,1 +1,1 @@
-from .adalam import AdalamFilter, match_adalam, get_adalam_default_config
+from .adalam import AdalamFilter, get_adalam_default_config, match_adalam

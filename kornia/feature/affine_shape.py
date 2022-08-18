@@ -7,7 +7,7 @@ import torch.nn as nn
 
 from kornia.filters.kernels import get_gaussian_kernel2d
 from kornia.filters.sobel import SpatialGradient
-from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK_LAF
+from kornia.testing import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 
 from .laf import (
     ellipse_to_laf,

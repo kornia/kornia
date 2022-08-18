@@ -14,6 +14,7 @@ from .integrated import (
 )
 from .keynet import KeyNet, KeyNetDetector
 from .laf import (
+    KORNIA_CHECK_LAF,
     denormalize_laf,
     ellipse_to_laf,
     extract_patches_from_pyramid,
@@ -29,7 +30,6 @@ from .laf import (
     make_upright,
     normalize_laf,
     perspective_transform_lafs,
-    KORNIA_CHECK_LAF,
     scale_laf,
     set_laf_orientation,
 )

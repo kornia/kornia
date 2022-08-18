@@ -329,10 +329,7 @@ class TestAdalam:
         # This is not unit test, but that is quite good integration test
         data_dev = utils.dict_to(data, device, dtype)
         with torch.no_grad():
-            dists, idxs = match_adalam(data_dev['descs1'],
-                                       data_dev['descs2'],
-                                       data_dev['lafs1'],
-                                       data_dev['lafs2'])
+            dists, idxs = match_adalam(data_dev['descs1'], data_dev['descs2'], data_dev['lafs1'], data_dev['lafs2'])
         assert idxs.shape[1] == 2
         assert dists.shape[1] == 1
         assert idxs.shape[0] == dists.shape[0]
@@ -348,10 +345,7 @@ class TestAdalam:
         data_dev = utils.dict_to(data, device, dtype)
         matcher = GeometryAwareDescriptorMatcher('adalam').to(device)
         with torch.no_grad():
-            dists, idxs = matcher(data_dev['descs1'],
-                                  data_dev['descs2'],
-                                  data_dev['lafs1'],
-                                  data_dev['lafs2'])
+            dists, idxs = matcher(data_dev['descs1'], data_dev['descs2'], data_dev['lafs1'], data_dev['lafs2'])
         assert idxs.shape[1] == 2
         assert dists.shape[1] == 1
         assert idxs.shape[0] == dists.shape[0]

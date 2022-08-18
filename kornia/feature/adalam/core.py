@@ -1,8 +1,9 @@
 import math
+from typing import Optional, Tuple, Union
 
 import torch
-from typing import Union, Optional, Tuple
 from torch import Tensor, tensor
+
 from .ransac import ransac
 from .utils import dist_matrix, orientation_diff
 
@@ -24,7 +25,7 @@ def select_seeds(dist1: Tensor, R1: Union[float, Tensor], scores1: Tensor, fnn12
 
         im1seeds: Keypoint index of chosen seeds in image I_1
         im2seeds: Keypoint index of chosen seeds in image I_2
-    """     # noqa: E501
+    """  # noqa: E501
     im1neighmap = dist1 < R1**2  # (n1, n1)
     # find out who scores higher than whom
     im1scorescomp = scores1.unsqueeze(1) > scores1.unsqueeze(0)  # (n1, n1)
@@ -234,7 +235,7 @@ def adalam_core(
     Returns:
         Filtered putative matches.
         A long tensor with shape (num_filtered_matches, 2) with indices of corresponding keypoints in k1 and k2.
-    """      # noqa: E501
+    """  # noqa: E501
     AREA_RATIO = config['area_ratio']
     SEARCH_EXP = config['search_expansion']
     RANSAC_ITERS = config['ransac_iters']

@@ -6,7 +6,7 @@ import torch.nn as nn
 from kornia.feature.laf import get_laf_center
 from kornia.testing import KORNIA_CHECK_DM_DESC, KORNIA_CHECK_SHAPE, Tensor
 
-from .adalam import match_adalam, get_adalam_default_config
+from .adalam import get_adalam_default_config, match_adalam
 
 
 def _get_default_fginn_params():
