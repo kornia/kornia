@@ -200,9 +200,9 @@ class RandomMixUpV2(MixAugmentationBaseV2):
     ) -> Tensor:
         out_labels = torch.stack(
             [
-                input.to(params["mixup_lambdas"].dtype),
-                input.to(params["mixup_lambdas"].dtype),
-                torch.zeros((len(input),), device=params["mixup_lambdas"].device, dtype=params["mixup_lambdas"].dtype),
+                input.to(device=input.device, dtype=params["dtype"]),
+                input.to(device=input.device, dtype=params["dtype"]),
+                torch.zeros((len(input),), device=input.device, dtype=params["dtype"]),
             ],
             dim=-1,
         ).to(input.device)
@@ -215,10 +215,10 @@ class RandomMixUpV2(MixAugmentationBaseV2):
 
         out_labels = torch.stack(
             [
-                input.to(params["mixup_lambdas"].dtype),
-                labels_permute.to(params["mixup_lambdas"].dtype),
-                params["mixup_lambdas"].to(input.device),
+                input.to(device=input.device, dtype=params["dtype"]),
+                labels_permute.to(device=input.device, dtype=params["dtype"]),
+                params["mixup_lambdas"].to(device=input.device, dtype=params["dtype"]),
             ],
             dim=-1,
-        ).to(input.device)
+        )
         return out_labels

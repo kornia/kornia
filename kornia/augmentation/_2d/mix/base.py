@@ -247,8 +247,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             in_tensor: Tensor = input[in_tensor_idx]
             in_tensor = self.transform_tensor(in_tensor)
             self._params = self.forward_parameters(in_tensor.shape)
-            # keep the device to GPU to ensure the reproducibility
-            self._param_generator.to(dtype=in_tensor.dtype)
+            self._params.update({"device": in_tensor.device, "dtype": in_tensor.dtype})
         else:
             self._params = params
 
