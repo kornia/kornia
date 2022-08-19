@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Union
 
 import torch
 import torch.nn.functional as F
@@ -50,7 +50,7 @@ class NerfSolver:
         min_depth: float,
         max_depth: float,
         imgs: Images,
-        num_img_rays: Optional[torch.tensor],
+        num_img_rays: Optional[Union[torch.tensor, int]],
         batch_size: int,
         num_ray_points: int,
         lr: float = 1.0e-3,
@@ -62,7 +62,12 @@ class NerfSolver:
         self._max_depth = max_depth
 
         self._imgs = imgs
-        self._num_img_rays = num_img_rays
+        if isinstance(num_img_rays, int):
+            self._num_img_rays = torch.tensor([num_img_rays] * cameras.batch_size)
+        elif isinstance(num_img_rays, torch.tensor):
+            self._num_img_rays = num_img_rays
+        else:
+            raise TypeError('num_img_rays can be either an int or a torch.tensor')
 
         self._batch_size = batch_size
 
@@ -104,7 +109,7 @@ class NerfSolver:
             self._opt_nerf.zero_grad()
             loss.backward()
             self._opt_nerf.step()
-        return total_loss / i_batch
+        return total_loss / (i_batch + 1)
 
     def run(self, num_epochs=1):
         for i_epoch in range(num_epochs):
@@ -117,13 +122,18 @@ class NerfSolver:
         ray_dataset.init_ray_dataset()
         idx0 = 0
         imgs: ImageTensors = []
+        batch_size = 4096  # FIXME: Consider exposing this value to the user
         for height, width in zip(cameras.height.int().tolist(), cameras.width.int().tolist()):
-            idxs = list(range(idx0, idx0 + height * width))
-            idx0 = idx0 + height * width
-            origins, directions, _ = ray_dataset[idxs]
-            rgbs_model = self._nerf_model(origins, directions)
-            img = torch.tensor(
-                torch.permute(rgbs_model.reshape(height, width, -1), (2, 0, 1)) * 255.0, dtype=torch.uint8
-            )
+            bsz = batch_size if batch_size != -1 else height * width
+            img = torch.zeros((height * width, 3), dtype=torch.uint8)
+            for idx0 in range(idx0, idx0 + height * width, bsz):
+                idxe = idx0 + bsz if idx0 + bsz < height * width else height * width
+                idxs = list(range(idx0, idxe))
+                origins, directions, _ = ray_dataset[idxs]
+                with torch.inference_mode():
+                    rgb_model = self._nerf_model(origins, directions) * 255.0
+                    img[idx0:idxe] = rgb_model
+            img = img.reshape(height, width, -1)
+            img = torch.permute(img, (2, 0, 1))
             imgs.append(img)
         return imgs

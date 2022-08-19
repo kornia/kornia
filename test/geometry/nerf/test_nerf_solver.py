@@ -11,7 +11,7 @@ class TestNerfSolver:
         nerf_obj = NerfSolver()
         cameras = create_four_cameras(device, dtype)
         imgs = create_random_images_for_cameras(cameras)
-        nerf_obj.init_training(cameras, 1.0, 3.0, imgs, 2, 10)
+        nerf_obj.init_training(cameras, 1.0, 3.0, imgs, 11, 2, 10)
 
         params_before_update = [torch.clone(param) for param in nerf_obj.nerf_model.parameters()]
 
@@ -35,6 +35,14 @@ class TestNerfSolver:
         img_rendered = nerf_obj.render_views(camera)[0]
 
         assert torch.all(torch.isclose(img[0] / 255.0, img_rendered / 255.0)).item()
+
+    def test_single_ray(self, device, dtype):
+        camera = create_one_camera(5, 9, device, dtype)
+        img = create_red_images_for_cameras(camera)
+
+        nerf_obj = NerfSolver()
+        nerf_obj.init_training(camera, 1.0, 3.0, img, 1, 2, 10)
+        nerf_obj.run(num_epochs=20)
 
     def test_only_red(self, device, dtype):
         camera = create_one_camera(5, 9, device, dtype)

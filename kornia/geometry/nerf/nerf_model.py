@@ -53,8 +53,17 @@ class NerfModel(nn.Module):
         self._fc2 = nn.Sequential(
             nn.Linear(num_hidden + self._dir_encoder.num_encoded_dims, num_hidden // 2), nn.ReLU()
         )
-        self._sigma = nn.Sequential(nn.Linear(num_hidden, 1), nn.ReLU())
+
+        sigma = nn.Linear(num_hidden, 1, bias=True)
+        torch.nn.init.xavier_uniform_(sigma.weight.data)
+
+        sigma.bias.data = torch.tensor([0.0]).float()
+
+        self._sigma = sigma  # nn.Sequential(sigma, nn.ReLU())      # FIXME: Revise this
+
         self._rgb = nn.Sequential(nn.Linear(num_hidden // 2, 3), nn.Sigmoid())
+
+        self._debug = nn.Linear(3, 3)  # FIXME: Remove this line
 
     def forward(self, origins: torch.Tensor, directions: torch.Tensor) -> torch.Tensor:
 
@@ -64,6 +73,8 @@ class NerfModel(nn.Module):
             batch_size, self._num_ray_points, irregular=self._irregular_ray_sampling
         )  # FIXME: handle the case of hierarchical sampling
         points_3d = sample_ray_points(origins, directions, lengths)
+
+        # return self._debug(points_3d)   # FIXME: Remove this line
 
         # Encode positions & directions
         points_3d_encoded = self._pos_encoder(points_3d)
@@ -75,6 +86,8 @@ class NerfModel(nn.Module):
         y = self._mlp(points_3d_encoded)
         y = self._fc1(y)
         densities_ray_points = self._sigma(y)
+        densities_ray_points = densities_ray_points + torch.randn_like(densities_ray_points) * 0.1
+        densities_ray_points = torch.relu(densities_ray_points)  # FIXME: Revise this
 
         y = torch.cat((y, directions_encoded[..., None, :].expand(-1, self._num_ray_points, -1)), dim=-1)
         y = self._fc2(y)

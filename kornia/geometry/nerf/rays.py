@@ -85,7 +85,7 @@ class RaySampler:  # FIXME: Add device handling!!
                 )
             )
             camera_ids.append(
-                torch.tensor(obj.camera_ids).repeat(num_points_per_cam_group, 1).permute(1, 0).reshape(1, -1).squeeze()
+                torch.tensor(obj.camera_ids).repeat(num_points_per_cam_group, 1).permute(1, 0).reshape(1, -1).squeeze(0)
             )
             points_2d.append(obj._points_2d.reshape(-1, 2).type(torch.uint8))
         self._origins = torch.cat(origins)
@@ -159,7 +159,7 @@ class RandomRaySampler(RaySampler):
         return RaySampler._build_num_ray_dict_of_points2d(points2d_as_lists)
 
     def calc_ray_params(self, cameras: PinholeCamera, num_img_rays: torch.Tensor) -> None:
-        num_cams = cameras.height.shape[0]
+        num_cams = cameras.batch_size
         if num_cams != num_img_rays.shape[0]:
             raise ValueError(
                 'Number of cameras does not match size of tensor to define number of rays to march from each camera'
