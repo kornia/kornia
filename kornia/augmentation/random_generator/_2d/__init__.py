@@ -5,6 +5,7 @@ from kornia.augmentation.random_generator._2d.crop import *
 from kornia.augmentation.random_generator._2d.cutmix import *
 from kornia.augmentation.random_generator._2d.func import *
 from kornia.augmentation.random_generator._2d.mixup import *
+from kornia.augmentation.random_generator._2d.mosaic import *
 from kornia.augmentation.random_generator._2d.motion_blur import *
 from kornia.augmentation.random_generator._2d.perspective import *
 from kornia.augmentation.random_generator._2d.plain_uniform import *

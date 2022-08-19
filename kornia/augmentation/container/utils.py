@@ -9,6 +9,7 @@ from torch import Tensor
 
 import kornia  # lazy loading for circular dependencies
 from kornia.augmentation import GeometricAugmentationBase2D, MixAugmentationBase, RandomCrop, RandomErasing
+from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import ParamItem
 from kornia.augmentation.utils import override_parameters
@@ -188,7 +189,7 @@ class InputApplyInverse(ApplyInverseImpl):
         """
         if isinstance(module, (MixAugmentationBase,)):
             input, label = module(input, label=label, params=param.data)
-        elif isinstance(module, (_AugmentationBase,)):
+        elif isinstance(module, (_AugmentationBase, MixAugmentationBaseV2)):
             input = module(input, params=param.data, **extra_args)
         elif isinstance(module, kornia.augmentation.ImageSequential):
             temp = module.apply_inverse_func

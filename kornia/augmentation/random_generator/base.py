@@ -19,6 +19,8 @@ class RandomGeneratorBase(nn.Module, metaclass=_PostInitInjectionMetaClass):
 
     def __init__(self) -> None:
         super().__init__()
+        self.device = None
+        self.dtype = None
 
     def __post_init__(self) -> None:
         self.set_rng_device_and_dtype()
@@ -31,7 +33,16 @@ class RandomGeneratorBase(nn.Module, metaclass=_PostInitInjectionMetaClass):
         Note:
             The generated random numbers are not reproducible across different devices and dtypes.
         """
-        self.make_samplers(device, dtype)
+        if self.device != device or self.dtype != dtype:
+            self.make_samplers(device, dtype)
+            self.device = device
+            self.dtype = dtype
+
+    # TODO: refine the logic with module.to()
+    def to(self, *args, **kwargs):
+        device, dtype, non_blocking, convert_to_format = torch._C._nn._parse_to(*args, **kwargs)
+        self.set_rng_device_and_dtype(device=device, dtype=dtype)
+        return self
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         raise NotImplementedError
