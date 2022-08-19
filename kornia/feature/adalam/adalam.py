@@ -1,3 +1,7 @@
+# Integrated from original AdaLAM repo
+# https://github.com/cavalli1234/AdaLAM
+# Copyright (c) 2020, Luca Cavalli
+
 from typing import Dict, Optional, Tuple
 
 import torch
