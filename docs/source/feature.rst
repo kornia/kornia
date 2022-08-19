@@ -36,6 +36,8 @@ Matching
 .. autofunction:: match_snn
 .. autofunction:: match_smnn
 .. autofunction:: match_fginn
+.. autofunction:: match_adalam
+
 
 .. autoclass:: DescriptorMatcher
    :members: forward
@@ -83,7 +85,7 @@ Local Affine Frames (LAF)
 .. autofunction:: laf_is_inside_image
 .. autofunction:: laf_to_three_points
 .. autofunction:: laf_from_three_points
-.. autofunction:: raise_error_if_laf_is_not_valid
+.. autofunction:: KORNIA_CHECK_LAF
 .. autofunction:: perspective_transform_lafs
 
 Module
