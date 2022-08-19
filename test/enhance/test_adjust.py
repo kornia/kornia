@@ -4,12 +4,11 @@ from torch import Tensor
 from torch.autograd import gradcheck
 
 import kornia
-import kornia.testing as utils
 from kornia.constants import pi
-from kornia.testing import BaseTester, assert_close, tensor_to_gradcheck_var
+from kornia.testing import BaseTester, tensor_to_gradcheck_var
 
 
-class TestInvert:
+class TestInvert(BaseTester):
     def test_smoke(self, device, dtype):
         img = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
         assert kornia.enhance.invert(img) is not None
@@ -23,12 +22,12 @@ class TestInvert:
     def test_max_val_1(self, device, dtype):
         img = torch.ones(1, 3, 4, 4, device=device, dtype=dtype)
         out = kornia.enhance.invert(img, torch.tensor(1.0))
-        assert_close(out, torch.zeros_like(out))
+        self.assert_close(out, torch.zeros_like(out))
 
     def test_max_val_255(self, device, dtype):
         img = 255.0 * torch.ones(1, 3, 4, 4, device=device, dtype=dtype)
         out = kornia.enhance.invert(img, torch.tensor(255.0))
-        assert_close(out, torch.zeros_like(out))
+        self.assert_close(out, torch.zeros_like(out))
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
@@ -43,18 +42,21 @@ class TestInvert:
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.enhance.invert
         op_jit = torch.jit.script(op)
-        assert_close(op(img), op_jit(img))
+        self.assert_close(op(img), op_jit(img))
 
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.enhance.invert
         op_mod = kornia.enhance.Invert()
-        assert_close(op(img), op_mod(img))
+        self.assert_close(op(img), op_mod(img))
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_exception(self, device, dtype):
+        pass
 
 
-class TestAdjustSaturation:
+class TestAdjustSaturation(BaseTester):
     @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 3, 3), (4, 3, 3, 1, 1)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.rand(shape, device=device, dtype=dtype)
@@ -77,7 +79,7 @@ class TestAdjustSaturation:
         expected = data.clone()
 
         f = kornia.enhance.AdjustSaturation(1.0)
-        assert_close(f(data), expected)
+        self.assert_close(f(data), expected)
 
     def test_saturation_with_gray_subtraction_one(self, device, dtype):
         data = torch.tensor(
@@ -89,7 +91,7 @@ class TestAdjustSaturation:
         expected = data.clone()
 
         f = kornia.enhance.AdjustSaturationWithGraySubtraction(1.0)
-        assert_close(f(data), expected)
+        self.assert_close(f(data), expected)
 
     def test_saturation_one_batch(self, device, dtype):
         data = torch.tensor(
@@ -103,7 +105,7 @@ class TestAdjustSaturation:
 
         expected = data
         f = kornia.enhance.AdjustSaturation(torch.ones(2))
-        assert_close(f(data), expected)
+        self.assert_close(f(data), expected)
 
     def test_saturation_with_gray_subtraction_one_batch(self, device, dtype):
         data = torch.tensor(
@@ -117,7 +119,7 @@ class TestAdjustSaturation:
 
         expected = data
         f = kornia.enhance.AdjustSaturationWithGraySubtraction(torch.ones(2))
-        assert_close(f(data), expected)
+        self.assert_close(f(data), expected)
 
     def test_gradcheck(self, device, dtype):
         batch_size, channels, height, width = 2, 3, 4, 5
@@ -131,8 +133,24 @@ class TestAdjustSaturation:
         img = tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.enhance.adjust_saturation_with_gray_subtraction, (img, 2.0), raise_exception=True)
 
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_exception(self, device, dtype):
+        pass
 
-class TestAdjustHue:
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_jit(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_module(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_smoke(self, device, dtype):
+        pass
+
+
+class TestAdjustHue(BaseTester):
     @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 3, 3), (4, 3, 3, 1, 1)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.rand(shape, device=device, dtype=dtype)
@@ -149,7 +167,7 @@ class TestAdjustHue:
         expected = data.clone()
 
         f = kornia.enhance.AdjustHue(0.0)
-        assert_close(f(data), expected)
+        self.assert_close(f(data), expected)
 
     def test_hue_one_batch(self, device, dtype):
         data = torch.tensor(
@@ -163,7 +181,7 @@ class TestAdjustHue:
 
         expected = data
         f = kornia.enhance.AdjustHue(torch.tensor([0, 0]))
-        assert_close(f(data), expected)
+        self.assert_close(f(data), expected)
 
     def test_hue_flip_batch(self, device, dtype):
         data = torch.tensor(
@@ -179,7 +197,7 @@ class TestAdjustHue:
         f = kornia.enhance.AdjustHue(pi_t)
 
         result = f(data)
-        assert_close(result, result.flip(0))
+        self.assert_close(result, result.flip(0))
 
     def test_gradcheck(self, device, dtype):
         batch_size, channels, height, width = 2, 3, 4, 5
@@ -187,8 +205,24 @@ class TestAdjustHue:
         img = tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.enhance.adjust_hue, (img, 2.0), raise_exception=True)
 
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_exception(self, device, dtype):
+        pass
 
-class TestAdjustGamma:
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_jit(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_module(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_smoke(self, device, dtype):
+        pass
+
+
+class TestAdjustGamma(BaseTester):
     @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 3, 3), (4, 3, 3, 1, 1)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.rand(shape, device=device, dtype=dtype)
@@ -205,7 +239,7 @@ class TestAdjustGamma:
         expected = torch.ones_like(data)
 
         f = kornia.enhance.AdjustGamma(0.0)
-        assert_close(f(data), expected)
+        self.assert_close(f(data), expected)
 
     def test_gamma_one(self, device, dtype):
         data = torch.tensor(
@@ -217,7 +251,7 @@ class TestAdjustGamma:
         expected = data.clone()
 
         f = kornia.enhance.AdjustGamma(1.0)
-        assert_close(f(data), expected)
+        self.assert_close(f(data), expected)
 
     def test_gamma_one_gain_two(self, device, dtype):
         data = torch.tensor(
@@ -231,7 +265,7 @@ class TestAdjustGamma:
         )  # 3x2x2
 
         f = kornia.enhance.AdjustGamma(1.0, 2.0)
-        assert_close(f(data), expected)
+        self.assert_close(f(data), expected)
 
     def test_gamma_two(self, device, dtype):
         data = torch.tensor(
@@ -247,7 +281,7 @@ class TestAdjustGamma:
         )  # 3x2x2
 
         f = kornia.enhance.AdjustGamma(2.0)
-        assert_close(f(data), expected)
+        self.assert_close(f(data), expected)
 
     def test_gamma_two_batch(self, device, dtype):
         data = torch.tensor(
@@ -272,7 +306,7 @@ class TestAdjustGamma:
         p2 = torch.ones(2, device=device, dtype=dtype)
 
         f = kornia.enhance.AdjustGamma(p1, gain=p2)
-        assert_close(f(data), expected)
+        self.assert_close(f(data), expected)
 
     def test_gradcheck(self, device, dtype):
         batch_size, channels, height, width = 2, 3, 4, 5
@@ -280,8 +314,24 @@ class TestAdjustGamma:
         img = tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.enhance.adjust_gamma, (img, 1.0, 2.0), raise_exception=True)
 
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_exception(self, device, dtype):
+        pass
 
-class TestAdjustContrast:
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_jit(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_module(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_smoke(self, device, dtype):
+        pass
+
+
+class TestAdjustContrast(BaseTester):
     @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 3, 3), (4, 3, 3, 1, 1)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.rand(shape, device=device, dtype=dtype)
@@ -305,7 +355,7 @@ class TestAdjustContrast:
         expected = torch.zeros_like(data)
 
         f = kornia.enhance.AdjustContrast(0.0)
-        assert_close(f(data), expected)
+        self.assert_close(f(data), expected)
 
     def test_factor_zero_with_mean_subtraction(self, device, dtype):
         # prepare input data
@@ -326,7 +376,7 @@ class TestAdjustContrast:
         )  # 3x2x2
 
         f = kornia.enhance.AdjustContrastWithMeanSubtraction(0.0)
-        assert_close(f(data), expected)
+        self.assert_close(f(data), expected)
 
     def test_factor_one_acumulative(self, device, dtype):
         # prepare input data
@@ -339,7 +389,7 @@ class TestAdjustContrast:
         expected = data.clone()
 
         f = kornia.enhance.AdjustContrast(1.0)
-        assert_close(f(data), expected)
+        self.assert_close(f(data), expected)
 
     def test_factor_one_with_mean_subtraction(self, device, dtype):
         # prepare input data
@@ -352,7 +402,7 @@ class TestAdjustContrast:
         expected = data.clone()
 
         f = kornia.enhance.AdjustContrastWithMeanSubtraction(1.0)
-        assert_close(f(data), expected)
+        self.assert_close(f(data), expected)
 
     def test_factor_two(self, device, dtype):
         # prepare input data
@@ -367,7 +417,7 @@ class TestAdjustContrast:
         )  # 3x2x2
 
         f = kornia.enhance.AdjustContrast(2.0)
-        assert_close(f(data), expected)
+        self.assert_close(f(data), expected)
 
     def test_factor_two_with_mean_subtraction(self, device, dtype):
         # prepare input data
@@ -388,7 +438,7 @@ class TestAdjustContrast:
         )  # 3x2x2
 
         f = kornia.enhance.AdjustContrastWithMeanSubtraction(2.0)
-        assert_close(f(data), expected)
+        self.assert_close(f(data), expected)
 
     def test_factor_tensor(self, device, dtype):
         # prepare input data
@@ -417,7 +467,7 @@ class TestAdjustContrast:
         factor = torch.tensor([0, 1, 1.5, 2], device=device, dtype=dtype)
 
         f = kornia.enhance.AdjustContrast(factor)
-        assert_close(f(data), expected)
+        self.assert_close(f(data), expected)
 
     def test_factor_tensor_color(self, device, dtype):
         # prepare input data
@@ -442,7 +492,7 @@ class TestAdjustContrast:
         factor = torch.tensor([1, 2], device=device, dtype=dtype)
 
         f = kornia.enhance.AdjustContrast(factor)
-        assert_close(f(data), expected)
+        self.assert_close(f(data), expected)
 
     def test_factor_tensor_color_with_mean_subtraction(self, device, dtype):
         # prepare input data
@@ -467,7 +517,7 @@ class TestAdjustContrast:
         factor = torch.tensor([1, 2], device=device, dtype=dtype)
 
         f = kornia.enhance.AdjustContrastWithMeanSubtraction(factor)
-        assert_close(f(data), expected)
+        self.assert_close(f(data), expected)
 
     def test_factor_tensor_shape(self, device, dtype):
         # prepare input data
@@ -508,7 +558,7 @@ class TestAdjustContrast:
         factor = torch.tensor([1.5, 2.0], device=device, dtype=dtype)
 
         f = kornia.enhance.AdjustContrast(factor)
-        assert_close(f(data), expected)
+        self.assert_close(f(data), expected)
 
     def test_factor_tensor_shape_with_mean_subtraction(self, device, dtype):
         # prepare input data
@@ -550,7 +600,7 @@ class TestAdjustContrast:
 
         f = kornia.enhance.AdjustContrastWithMeanSubtraction(factor)
 
-        assert_close(f(data), expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(f(data), expected, low_tolerance=True)
 
     def test_gradcheck(self, device, dtype):
         batch_size, channels, height, width = 2, 3, 4, 5
@@ -564,8 +614,24 @@ class TestAdjustContrast:
         img = tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.enhance.adjust_contrast_with_mean_subtraction, (img, 2.0), raise_exception=True)
 
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_exception(self, device, dtype):
+        pass
 
-class TestAdjustBrightness:
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_jit(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_module(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_smoke(self, device, dtype):
+        pass
+
+
+class TestAdjustBrightness(BaseTester):
     @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 3, 3), (4, 3, 3, 1, 1)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.rand(shape, device=device, dtype=dtype)
@@ -581,7 +647,7 @@ class TestAdjustBrightness:
         )  # 3x2x2
 
         f = kornia.enhance.AdjustBrightness(0.0)
-        assert_close(f(data), data)
+        self.assert_close(f(data), data)
 
     def test_factor_saturat(self, device, dtype):
         # prepare input data
@@ -589,7 +655,7 @@ class TestAdjustBrightness:
         ones = torch.ones_like(data)
 
         f = kornia.enhance.AdjustBrightness(0.6)
-        assert_close(f(data), ones)
+        self.assert_close(f(data), ones)
 
     @pytest.mark.parametrize("channels", [1, 4, 5])
     def test_factor_tensor(self, device, dtype, channels):
@@ -630,7 +696,7 @@ class TestAdjustBrightness:
         factor = torch.tensor([0.25, 0.1], device=device, dtype=dtype)
 
         f = kornia.enhance.AdjustBrightnessAccumulative(factor)
-        assert_close(f(data), expected)
+        self.assert_close(f(data), expected)
 
     def test_gradcheck_additive(self, device, dtype):
         batch_size, channels, height, width = 2, 3, 4, 5
@@ -644,8 +710,28 @@ class TestAdjustBrightness:
         img = tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.enhance.adjust_brightness_accumulative, (img, 2.0), raise_exception=True)
 
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_gradcheck(self, device, dtype):
+        pass
 
-class TestAdjustSigmoid:
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_exception(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_jit(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_module(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_smoke(self, device, dtype):
+        pass
+
+
+class TestAdjustSigmoid(BaseTester):
     @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 4, 4)])
     def test_shape_sigmoid(self, shape, device):
         inputs = torch.ones(*shape, device=device)
@@ -680,7 +766,7 @@ class TestAdjustSigmoid:
         )  # 2x3x2x2
 
         f = kornia.enhance.AdjustSigmoid()
-        assert_close(f(data), expected)
+        self.assert_close(f(data), expected)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
@@ -688,7 +774,7 @@ class TestAdjustSigmoid:
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.enhance.adjust_sigmoid
         op_jit = torch.jit.script(op)
-        assert_close(op(img), op_jit(img))
+        self.assert_close(op(img), op_jit(img))
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
@@ -697,8 +783,24 @@ class TestAdjustSigmoid:
         inputs = tensor_to_gradcheck_var(inputs)
         assert gradcheck(kornia.enhance.adjust_sigmoid, inputs, raise_exception=True)
 
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_cardinality(self, device, dtype):
+        pass
 
-class TestAdjustLog:
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_exception(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_module(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_smoke(self, device, dtype):
+        pass
+
+
+class TestAdjustLog(BaseTester):
     @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 4, 4)])
     def test_shape_sigmoid(self, shape, device):
         inputs = torch.ones(*shape, device=device)
@@ -734,7 +836,7 @@ class TestAdjustLog:
         )  # 2x3x2x2
 
         f = kornia.enhance.AdjustLog()
-        assert_close(f(data), expected)
+        self.assert_close(f(data), expected)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
@@ -742,7 +844,7 @@ class TestAdjustLog:
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.enhance.adjust_log
         op_jit = torch.jit.script(op)
-        assert_close(op(img), op_jit(img))
+        self.assert_close(op(img), op_jit(img))
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
@@ -751,8 +853,24 @@ class TestAdjustLog:
         inputs = tensor_to_gradcheck_var(inputs)
         assert gradcheck(kornia.enhance.adjust_log, (inputs, 0.1), raise_exception=True)
 
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_cardinality(self, device, dtype):
+        pass
 
-class TestEqualize:
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_exception(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_module(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_smoke(self, device, dtype):
+        pass
+
+
+class TestEqualize(BaseTester):
     @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 4, 4), (3, 2, 3, 3, 4, 4)])
     def test_shape_equalize(self, shape, device, dtype):
         inputs = torch.ones(*shape, device=device, dtype=dtype)
@@ -804,7 +922,7 @@ class TestEqualize:
 
         f = kornia.enhance.equalize
 
-        assert_close(f(inputs), expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(f(inputs), expected, low_tolerance=True)
 
     def test_equalize_batch(self, device, dtype):
         bs, channels, height, width = 2, 3, 20, 20
@@ -842,7 +960,7 @@ class TestEqualize:
 
         f = kornia.enhance.equalize
 
-        assert_close(f(inputs), expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(f(inputs), expected, low_tolerance=True)
 
     def test_gradcheck(self, device, dtype):
         bs, channels, height, width = 1, 2, 3, 3
@@ -858,7 +976,7 @@ class TestEqualize:
         op = kornia.enhance.equalize
         op_script = torch.jit.script(op)
 
-        assert_close(op(inp), op_script(inp))
+        self.assert_close(op(inp), op_script(inp))
 
     @staticmethod
     def build_input(batch_size, channels, height, width, device, dtype, row=None):
@@ -871,8 +989,24 @@ class TestEqualize:
 
         return batch
 
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_cardinality(self, device, dtype):
+        pass
 
-class TestEqualize3D:
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_exception(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_module(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_smoke(self, device, dtype):
+        pass
+
+
+class TestEqualize3D(BaseTester):
     @pytest.mark.parametrize("shape", [(3, 6, 10, 10), (2, 3, 6, 10, 10), (3, 2, 3, 6, 10, 10)])
     def test_shape_equalize3d(self, shape, device, dtype):
         inputs3d = torch.ones(*shape, device=device, dtype=dtype)
@@ -903,7 +1037,7 @@ class TestEqualize3D:
 
         f = kornia.enhance.equalize3d
 
-        assert_close(f(inputs3d), expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(f(inputs3d), expected, low_tolerance=True)
 
     def test_equalize3d_batch(self, device, dtype):
         bs, channels, depth, height, width = 2, 3, 6, 10, 10
@@ -920,7 +1054,7 @@ class TestEqualize3D:
 
         f = kornia.enhance.equalize3d
 
-        assert_close(f(inputs3d), expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(f(inputs3d), expected, low_tolerance=True)
 
     def test_gradcheck(self, device, dtype):
         bs, channels, depth, height, width = 1, 2, 3, 4, 5
@@ -936,7 +1070,7 @@ class TestEqualize3D:
         op = kornia.enhance.equalize3d
         op_script = torch.jit.script(op)
 
-        assert_close(op(inp), op_script(inp))
+        self.assert_close(op(inp), op_script(inp))
 
     @staticmethod
     def build_input(batch_size, channels, depth, height, width, device, dtype, row=None):
@@ -949,6 +1083,22 @@ class TestEqualize3D:
         batch = torch.stack([image3d] * batch_size).to(device, dtype)
 
         return batch
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_cardinality(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_exception(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_module(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_smoke(self, device, dtype):
+        pass
 
 
 class TestSharpness(BaseTester):
@@ -992,8 +1142,8 @@ class TestSharpness(BaseTester):
         # If factor == 1, shall return original
         # TODO(jian): add test for this case
         # assert_close(TestSharpness.f(inputs, 0.), inputs, rtol=1e-4, atol=1e-4)
-        assert_close(TestSharpness.f(inputs, 1.0), inputs, rtol=1e-4, atol=1e-4)
-        assert_close(TestSharpness.f(inputs, 0.8), expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(TestSharpness.f(inputs, 1.0), inputs, low_tolerance=True)
+        self.assert_close(TestSharpness.f(inputs, 0.8), expected, low_tolerance=True)
 
     def test_value_batch(self, device, dtype):
         torch.manual_seed(0)
@@ -1023,11 +1173,11 @@ class TestSharpness(BaseTester):
         )
 
         # If factor == 1, shall return original
-        tol_val: float = utils._get_precision(device, dtype)
-        assert_close(TestSharpness.f(inputs, 1), inputs, rtol=tol_val, atol=tol_val)
-        assert_close(TestSharpness.f(inputs, torch.tensor([1.0, 1.0])), inputs, rtol=tol_val, atol=tol_val)
-        assert_close(TestSharpness.f(inputs, 0.8), expected_08, rtol=tol_val, atol=tol_val)
-        assert_close(TestSharpness.f(inputs, torch.tensor([0.8, 1.3])), expected_08_13, rtol=tol_val, atol=tol_val)
+        # tol_val: float = utils._get_precision(device, dtype)
+        self.assert_close(TestSharpness.f(inputs, 1), inputs, low_tolerance=True)
+        self.assert_close(TestSharpness.f(inputs, torch.tensor([1.0, 1.0])), inputs, low_tolerance=True)
+        self.assert_close(TestSharpness.f(inputs, 0.8), expected_08, low_tolerance=True)
+        self.assert_close(TestSharpness.f(inputs, torch.tensor([0.8, 1.3])), expected_08_13, low_tolerance=True)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
@@ -1044,16 +1194,15 @@ class TestSharpness(BaseTester):
         img = torch.rand(2, 1, 3, 3).to(device=device, dtype=dtype)
         expected = op(img, 0.8)
         actual = op_script(img, 0.8)
-        assert_close(actual, expected)
+        self.assert_close(actual, expected)
 
     # TODO: update with module when exists
     @pytest.mark.skip(reason="Not having it yet.")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         img = torch.ones(2, 3, 4, 4, device=device, dtype=dtype)
         ops = TestSharpness.f
         mod = TestSharpness.f
-        assert_close(ops(img), mod(img))
+        self.assert_close(ops(img), mod(img))
 
 
 @pytest.mark.skipif(kornia.xla_is_available(), reason="issues with xla device")
@@ -1118,7 +1267,7 @@ class TestSolarize(BaseTester):
         )
 
         # TODO(jian): precision is very bad compared to PIL
-        assert_close(TestSolarize.f(inputs, 0.5), expected, rtol=1e-2, atol=1e-2)
+        self.assert_close(TestSolarize.f(inputs, 0.5), expected, rtol=1e-2, atol=1e-2)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
@@ -1136,16 +1285,15 @@ class TestSolarize(BaseTester):
         img = torch.rand(2, 1, 3, 3).to(device=device, dtype=dtype)
         expected = op(img, 0.8)
         actual = op_script(img, 0.8)
-        assert_close(actual, expected)
+        self.assert_close(actual, expected)
 
     # TODO: update with module when exists
     @pytest.mark.skip(reason="Not having it yet.")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         img = torch.ones(2, 3, 4, 4, device=device, dtype=dtype)
         ops = TestSolarize.f
         mod = TestSolarize.f
-        assert_close(ops(img), mod(img))
+        self.assert_close(ops(img), mod(img))
 
 
 class TestPosterize(BaseTester):
@@ -1197,9 +1345,9 @@ class TestPosterize(BaseTester):
             [[[[0.0, 0.50196078, 0.0], [0.0, 0.0, 0.50196078], [0.0, 0.50196078, 0.0]]]], device=device, dtype=dtype
         )
 
-        assert_close(TestPosterize.f(inputs, 1), expected)
-        assert_close(TestPosterize.f(inputs, 0), torch.zeros_like(inputs))
-        assert_close(TestPosterize.f(inputs, 8), inputs)
+        self.assert_close(TestPosterize.f(inputs, 1), expected)
+        self.assert_close(TestPosterize.f(inputs, 0), torch.zeros_like(inputs))
+        self.assert_close(TestPosterize.f(inputs, 8), inputs)
 
     @pytest.mark.skip(reason="IndexError: tuple index out of range")
     @pytest.mark.grad
@@ -1218,13 +1366,12 @@ class TestPosterize(BaseTester):
         img = torch.rand(2, 1, 3, 3).to(device=device, dtype=dtype)
         expected = op(img, 8)
         actual = op_script(img, 8)
-        assert_close(actual, expected)
+        self.assert_close(actual, expected)
 
     # TODO: update with module when exists
     @pytest.mark.skip(reason="Not having it yet.")
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         img = torch.ones(2, 3, 4, 4, device=device, dtype=dtype)
         ops = TestPosterize.f
         mod = TestPosterize.f
-        assert_close(ops(img), mod(img))
+        self.assert_close(ops(img), mod(img))
