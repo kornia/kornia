@@ -76,15 +76,16 @@ class RayDataset(Dataset):  # FIXME: Add device
     def __getitem__(self, idxs: Union[int, List[int]]) -> RayGroup:
         origins = self._ray_sampler.origins[idxs]
         directions = self._ray_sampler.directions[idxs]
+        if self._imgs is None:
+            return origins, directions, None
         camerd_ids = self._ray_sampler.camera_ids[idxs]
         points_2d = self._ray_sampler.points_2d[idxs]
         rgbs = None
-        if self._imgs is not None:
-            imgs_for_ids = [self._imgs[i] for i in camerd_ids]
-            rgbs = torch.stack(
-                [img[:, point2d[1].item(), point2d[0].item()] for img, point2d in zip(imgs_for_ids, points_2d)]
-            )
-            rgbs = rgbs.float() / 255.0
+        imgs_for_ids = [self._imgs[i] for i in camerd_ids]
+        rgbs = torch.stack(
+            [img[:, point2d[1].item(), point2d[0].item()] for img, point2d in zip(imgs_for_ids, points_2d)]
+        )
+        rgbs = rgbs.float() / 255.0
         return origins, directions, rgbs
 
 
