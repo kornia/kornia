@@ -10,6 +10,7 @@ from kornia.augmentation import (
     IntensityAugmentationBase2D,
     RandomErasing,
 )
+from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import SequentialBase
 from kornia.augmentation.container.image import ImageSequential, ParamItem
@@ -404,6 +405,10 @@ class AugmentationSequential(ImageSequential):
                     and dcate in DataKey
                 ):
                     input, label = ApplyInverse.apply_by_key(input, label, module, param, dcate, extra_args=extra_args)
+                elif isinstance(module, MixAugmentationBaseV2):
+                    if dcate in [DataKey.BBOX_XYXY, DataKey.BBOX_XYWH]:
+                        dcate = DataKey.BBOX
+                    input = module(input, params=param.data, data_keys=[dcate])
                 elif isinstance(module, (SequentialBase,)):
                     raise ValueError(f"Unsupported Sequential {module}.")
                 else:
