@@ -7,11 +7,12 @@ import torch.nn as nn
 from kornia.color import rgb_to_grayscale
 from kornia.geometry.subpix import ConvQuadInterp3d
 from kornia.geometry.transform import ScalePyramid
+from kornia.testing import KORNIA_CHECK_LAF
 
 from .affine_shape import LAFAffNetShapeEstimator
 from .hardnet import HardNet
 from .keynet import KeyNetDetector
-from .laf import extract_patches_from_pyramid, get_laf_center, raise_error_if_laf_is_not_valid, scale_laf
+from .laf import extract_patches_from_pyramid, get_laf_center, scale_laf
 from .orientation import LAFOrienter, OriNet, PassLAF
 from .responses import BlobDoG, CornerGFTT
 from .scale_space_detector import ScaleSpaceDetector
@@ -38,7 +39,7 @@ def get_laf_descriptors(
     Returns:
         Local descriptors of shape :math:`(B,N,D)` where :math:`D` is descriptor size.
     """
-    raise_error_if_laf_is_not_valid(lafs)
+    KORNIA_CHECK_LAF(lafs)
     patch_descriptor = patch_descriptor.to(img)
     patch_descriptor.eval()
 

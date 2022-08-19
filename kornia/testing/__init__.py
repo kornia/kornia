@@ -276,3 +276,12 @@ def KORNIA_CHECK_DM_DESC(desc1: Tensor, desc2: Tensor, dm: Tensor):
                       consistent with descriptors shape: desc1 {desc1.shape}
                       desc2 {desc2.shape}"""
         raise TypeError(message)
+
+
+def KORNIA_CHECK_LAF(laf: Tensor) -> None:
+    """Auxiliary function, which verifies that input.
+
+    Args:
+        laf: [BxNx2x3] shape.
+    """
+    KORNIA_CHECK_SHAPE(laf, ["B", "N", "2", "3"])

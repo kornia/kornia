@@ -99,6 +99,7 @@ def add_np(doctest_namespace):
 
 # the commit hash for the data version
 sha: str = 'cb8f42bf28b9f347df6afba5558738f62a11f28a'
+sha2: str = '824ff1518870864644df6842a4ec964040f64504'
 
 
 @pytest.fixture(scope='session')
@@ -106,5 +107,6 @@ def data(request):
     url = {
         'loftr_homo': f'https://github.com/kornia/data_test/blob/{sha}/loftr_outdoor_and_homography_data.pt?raw=true',
         'loftr_fund': f'https://github.com/kornia/data_test/blob/{sha}/loftr_indoor_and_fundamental_data.pt?raw=true',
+        'adalam_idxs': f'https://github.com/kornia/data_test/blob/{sha2}/adalam_test.pt?raw=true',
     }
     return torch.hub.load_state_dict_from_url(url[request.param])
