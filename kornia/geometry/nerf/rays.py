@@ -4,6 +4,7 @@ import torch
 
 from kornia.geometry.camera import PinholeCamera
 from kornia.geometry.linalg import transform_points
+from kornia.geometry.nerf.types import Device
 from kornia.utils.helpers import _torch_inverse_cast
 
 
@@ -15,16 +16,16 @@ def cameras_for_ids(cameras: PinholeCamera, camera_ids: List[int]):
     return PinholeCamera(intrinsics, extrinsics, height, width)
 
 
-class RaySampler:  # FIXME: Add device handling!!
+class RaySampler:
     _origins: Optional[torch.Tensor] = None  # Ray origins in world coordinates (*, 2)
     _directions: Optional[torch.Tensor] = None  # Ray directions in worlds coordinates (*, 2)
     _camera_ids: Optional[torch.Tensor] = None  # Ray camera ID
     _points_2d: Optional[torch.Tensor] = None  # Ray intersection with image plane in camera coordinates
 
-    class Points2D_AsLists:
+    class Points2D_FlatTensors:
         def __init__(self) -> None:
-            self._x: List[float] = []
-            self._y: List[float] = []
+            self._x: torch.Tensor
+            self._y: torch.Tensor
             self._camera_ids: List[int] = []
 
     class Points2D:
@@ -40,9 +41,10 @@ class RaySampler:  # FIXME: Add device handling!!
         def camera_ids(self):
             return self._camera_ids
 
-    def __init__(self, min_depth: float, max_depth: float) -> None:
+    def __init__(self, min_depth: float, max_depth: float, device: Device) -> None:
         self._min_depth = min_depth
         self._max_depth = max_depth
+        self._device = torch.device(device)
 
     @property
     def origins(self) -> torch.Tensor:
@@ -74,7 +76,7 @@ class RaySampler:  # FIXME: Add device handling!!
         points_2d = []
         for obj in points_2d_camera.values():
             num_cams_group, num_points_per_cam_group = obj._points_2d.shape[:2]
-            depths = torch.ones(num_cams_group, 2 * num_points_per_cam_group, 3) * self._min_depth
+            depths = torch.ones(num_cams_group, 2 * num_points_per_cam_group, 3, device=self._device) * self._min_depth
             depths[:, num_points_per_cam_group:] = self._max_depth
             cams = cameras_for_ids(cameras, obj.camera_ids)
             points_3d = cams.unproject(obj._points_2d.repeat(1, 2, 1), depths)
@@ -95,13 +97,13 @@ class RaySampler:  # FIXME: Add device handling!!
 
     def transform_ray_params_world_to_ndc(self, cameras: PinholeCamera) -> Tuple[torch.Tensor, torch.Tensor]:
         num_rays = self.__len__()
-        lengths = sample_lengths(num_rays, 2, irregular=False)
+        lengths = sample_lengths(num_rays, 2, device=self._device, irregular=False)
         points_3d = sample_ray_points(self._origins, self._directions, lengths)
         cams = cameras_for_ids(cameras, self._camera_ids)
         points_3d_cams = cams.transform_to_camera_view(points_3d)
 
         # Camera to ndc projection matrix, assuming a symmetric viewing frustum
-        H = torch.zeros((num_rays, 4, 4))  # FIXME: Add device and type
+        H = torch.zeros((num_rays, 4, 4), device=self._device, dtype=torch.float32)
         fx = cams.fx
         fy = cams.fy
         widths = cams.width
@@ -121,21 +123,30 @@ class RaySampler:  # FIXME: Add device handling!!
         return origins, directions
 
     @staticmethod
-    def _add_points2d_as_lists_to_num_ray_dict(
-        n: int, x: torch.tensor, y: torch.tensor, camera_id: int, points2d_as_lists: Dict[int, Points2D_AsLists]
+    def _add_points2d_as_flat_tensors_to_num_ray_dict(
+        n: int,
+        x: torch.tensor,
+        y: torch.tensor,
+        camera_id: int,
+        points2d_as_flat_tensors: Dict[int, Points2D_FlatTensors],
     ) -> None:
-        if n not in points2d_as_lists:
-            points2d_as_lists[n] = RaySampler.Points2D_AsLists()
-        points2d_as_lists[n]._x.extend(x.flatten().tolist())
-        points2d_as_lists[n]._y.extend(y.flatten().tolist())
-        points2d_as_lists[n]._camera_ids.append(camera_id)
+        if n not in points2d_as_flat_tensors:
+            points2d_as_flat_tensors[n] = RaySampler.Points2D_FlatTensors()
+            points2d_as_flat_tensors[n]._x = x.flatten()
+            points2d_as_flat_tensors[n]._y = y.flatten()
+        else:
+            points2d_as_flat_tensors[n]._x = torch.cat((points2d_as_flat_tensors[n]._x, x.flatten()))
+            points2d_as_flat_tensors[n]._y = torch.cat((points2d_as_flat_tensors[n]._y, y.flatten()))
+        points2d_as_flat_tensors[n]._camera_ids.append(camera_id)
 
     @staticmethod
-    def _build_num_ray_dict_of_points2d(points2d_as_lists: Dict[int, Points2D_AsLists]) -> Dict[int, Points2D]:
+    def _build_num_ray_dict_of_points2d(
+        points2d_as_flat_tensors: Dict[int, Points2D_FlatTensors]
+    ) -> Dict[int, Points2D]:
         num_ray_dict_of_points2d: Dict[int, RaySampler.Points2D] = {}
-        for n, points2d_as_list in points2d_as_lists.items():
+        for n, points2d_as_list in points2d_as_flat_tensors.items():
             points_2d = (
-                torch.stack((torch.tensor(points2d_as_lists[n]._x), torch.tensor(points2d_as_lists[n]._y)))
+                torch.stack((points2d_as_flat_tensors[n]._x, points2d_as_flat_tensors[n]._y))
                 .permute(1, 0)
                 .reshape(-1, n, 2)
             )
@@ -144,19 +155,21 @@ class RaySampler:  # FIXME: Add device handling!!
 
 
 class RandomRaySampler(RaySampler):
-    def __init__(self, min_depth: float, max_depth: float) -> None:
-        super().__init__(min_depth, max_depth)
+    def __init__(self, min_depth: float, max_depth: float, device: Device = 'cpu') -> None:
+        super().__init__(min_depth, max_depth, device)
 
     def sample_points_2d(
         self, heights: torch.Tensor, widths: torch.Tensor, num_img_rays: torch.Tensor
     ) -> Dict[int, RaySampler.Points2D]:
         num_img_rays = num_img_rays.int()
-        points2d_as_lists: Dict[int, RaySampler.Points2D_AsLists] = {}
-        for camera_id, (height, width, n) in enumerate(zip(heights.numpy(), widths.numpy(), num_img_rays.numpy())):
+        points2d_as_flat_tensors: Dict[int, RaySampler.Points2D_FlatTensors] = {}
+        for camera_id, (height, width, n) in enumerate(zip(heights.tolist(), widths.tolist(), num_img_rays.tolist())):
             y_rand = torch.trunc(torch.rand(n, dtype=torch.float32) * height)
             x_rand = torch.trunc(torch.rand(n, dtype=torch.float32) * width)
-            RaySampler._add_points2d_as_lists_to_num_ray_dict(n, x_rand, y_rand, camera_id, points2d_as_lists)
-        return RaySampler._build_num_ray_dict_of_points2d(points2d_as_lists)
+            RaySampler._add_points2d_as_flat_tensors_to_num_ray_dict(
+                n, x_rand, y_rand, camera_id, points2d_as_flat_tensors
+            )
+        return RaySampler._build_num_ray_dict_of_points2d(points2d_as_flat_tensors)
 
     def calc_ray_params(self, cameras: PinholeCamera, num_img_rays: torch.Tensor) -> None:
         num_cams = cameras.height.shape[0]
@@ -169,35 +182,38 @@ class RandomRaySampler(RaySampler):
 
 
 class UniformRaySampler(RaySampler):
-    def __init__(self, min_depth: float, max_depth: float) -> None:
-        super().__init__(min_depth, max_depth)
+    def __init__(self, min_depth: float, max_depth: float, device: Device = 'cpu') -> None:
+        super().__init__(min_depth, max_depth, device)
 
     def sample_points_2d(self, heights: torch.Tensor, widths: torch.Tensor) -> Dict[int, RaySampler.Points2D]:
         heights = heights.int()
         widths = widths.int()
-        points2d_as_lists: Dict[int, RaySampler.Points2D_AsLists] = {}
-        for camera_id, (height, width) in enumerate(zip(heights.numpy(), widths.numpy())):
+        points2d_as_flat_tensors: Dict[int, RaySampler.Points2D_FlatTensors] = {}
+        for camera_id, (height, width) in enumerate(zip(heights.tolist(), widths.tolist())):
             n = height * width
             y_grid, x_grid = torch.meshgrid(
-                torch.arange(height, dtype=torch.float32), torch.arange(width, dtype=torch.float32)
+                torch.arange(height, device=self._device, dtype=torch.float32),
+                torch.arange(width, device=self._device, dtype=torch.float32),
             )
-            RaySampler._add_points2d_as_lists_to_num_ray_dict(n, x_grid, y_grid, camera_id, points2d_as_lists)
-        return RaySampler._build_num_ray_dict_of_points2d(points2d_as_lists)
+            RaySampler._add_points2d_as_flat_tensors_to_num_ray_dict(
+                n, x_grid, y_grid, camera_id, points2d_as_flat_tensors
+            )
+        return RaySampler._build_num_ray_dict_of_points2d(points2d_as_flat_tensors)
 
     def calc_ray_params(self, cameras: PinholeCamera) -> None:
         points_2d_camera = self.sample_points_2d(cameras.height, cameras.width)
         self._calc_ray_params(cameras, points_2d_camera)
 
 
-def sample_lengths(num_rays: int, num_ray_points: int, irregular=False) -> torch.Tensor:
+def sample_lengths(num_rays: int, num_ray_points: int, device, irregular=False) -> torch.Tensor:
     if num_ray_points <= 1:
         raise ValueError('Number of ray points must be greater than 1')
     if not irregular:
-        zero_to_one = torch.linspace(0.0, 1.0, num_ray_points)
+        zero_to_one = torch.linspace(0.0, 1.0, num_ray_points, device=device)
         lengths = zero_to_one.repeat(num_rays, 1)  # FIXME: Expand instead of repeat maybe?
     else:
-        zero_to_one = torch.linspace(0.0, 1.0, num_ray_points + 1)
-        lengths = torch.rand(num_rays, num_ray_points) / num_ray_points + zero_to_one[:-1]
+        zero_to_one = torch.linspace(0.0, 1.0, num_ray_points + 1, device=device)
+        lengths = torch.rand(num_rays, num_ray_points, device=device) / num_ray_points + zero_to_one[:-1]
     return lengths
 
 
