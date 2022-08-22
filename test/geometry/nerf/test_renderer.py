@@ -6,12 +6,12 @@ from kornia.geometry.nerf.renderer import IrregularRenderer, RegularRenderer
 from kornia.testing import assert_close
 
 
-def _create_regular_point_cloud(height: int, width: int, num_ray_points: int) -> torch.tensor:
-    x = torch.linspace(0, width, steps=width)
-    y = torch.linspace(0, height, steps=height)
+def _create_regular_point_cloud(height: int, width: int, num_ray_points: int, device) -> torch.tensor:
+    x = torch.linspace(0, width, steps=width, device=device)
+    y = torch.linspace(0, height, steps=height, device=device)
     xy = torch.meshgrid(y, x)
-    z = torch.linspace(1, 11, steps=num_ray_points)
-    points3d = torch.zeros(height, width, num_ray_points, 3)
+    z = torch.linspace(1, 11, steps=num_ray_points, device=device)
+    points3d = torch.zeros(height, width, num_ray_points, 3, device=device)
     points3d[..., 0] = xy[0].unsqueeze(-1)
     points3d[..., 1] = xy[1].unsqueeze(-1)
     points3d[..., 2] = z
@@ -26,7 +26,7 @@ class TestRenderer:
         rgbs = torch.rand((height, width, num_ray_points, 3), dtype=dtype, device=device)
         densities = torch.rand((height, width, num_ray_points, 1), dtype=dtype, device=device)
 
-        points3d = _create_regular_point_cloud(height, width, num_ray_points)
+        points3d = _create_regular_point_cloud(height, width, num_ray_points, device=device)
 
         irreg_renderer = IrregularRenderer()
         rgb_rendered = irreg_renderer(rgbs, densities, points3d)
@@ -40,7 +40,7 @@ class TestRenderer:
         rgbs[..., 0] = 1
         densities = torch.rand((height, width, num_ray_points, 1), dtype=dtype, device=device)
 
-        points3d = _create_regular_point_cloud(height, width, num_ray_points)
+        points3d = _create_regular_point_cloud(height, width, num_ray_points, device=device)
 
         irreg_renderer = IrregularRenderer()
         rgbs_rendered = irreg_renderer(rgbs, densities, points3d)
@@ -56,7 +56,7 @@ class TestRenderer:
         densities = torch.zeros((height, width, num_ray_points, 1), dtype=dtype, device=device)
         densities[..., 0, :] = 1
 
-        points3d = _create_regular_point_cloud(height, width, num_ray_points)
+        points3d = _create_regular_point_cloud(height, width, num_ray_points, device=device)
 
         regular_renderer = RegularRenderer()
         rgbs_rendered = regular_renderer(rgbs, densities, points3d)
@@ -72,7 +72,7 @@ class TestRenderer:
         densities = torch.zeros((height, width, num_ray_points, 1), dtype=dtype, device=device)
         densities[..., 0, :] = 10
 
-        points3d = _create_regular_point_cloud(height, width, num_ray_points)
+        points3d = _create_regular_point_cloud(height, width, num_ray_points, device=device)
 
         irreg_renderer = IrregularRenderer()
         irreg_rgb_rendered = irreg_renderer(rgbs, densities, points3d)
