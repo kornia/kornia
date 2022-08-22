@@ -41,7 +41,7 @@ def create_camera_dimensions(device, dtype):
 class TestRaySampler_2DPoints:
     def test_dimensions_random_sampler(self, device, dtype):
         heights, widths, num_img_rays = create_camera_dimensions(device, dtype)
-        sampler = RandomRaySampler(1, 1)
+        sampler = RandomRaySampler(1, 1, device)
         points_2d_camera = sampler.sample_points_2d(heights, widths, num_img_rays)
         assert len(points_2d_camera) == 2
         assert points_2d_camera[10].points_2d.shape == (3, 10, 2)
@@ -49,7 +49,7 @@ class TestRaySampler_2DPoints:
 
     def test_dimensions_uniform_sampler(self, device, dtype):
         heights, widths, _ = create_camera_dimensions(device, dtype)
-        sampler = UniformRaySampler(1, 1)
+        sampler = UniformRaySampler(1, 1, device)
         points_2d_camera = sampler.sample_points_2d(heights, widths)
         assert len(points_2d_camera) == 2
         assert points_2d_camera[60000].points_2d.shape == (3, 60000, 2)
@@ -156,7 +156,7 @@ def create_four_cameras(device, dtype) -> PinholeCamera:
 class TestRaySampler_3DPoints:
     def test_dimensions_uniform_sampler(self, device, dtype):
         cameras = create_four_cameras(device, dtype)
-        uniform_sampler_four_cameras = UniformRaySampler(1, 1)
+        uniform_sampler_four_cameras = UniformRaySampler(1, 1, device=device)
         points_2d_four_cameras = uniform_sampler_four_cameras.sample_points_2d(cameras.height, cameras.width)
         cameras_28 = cameras_for_ids(cameras, points_2d_four_cameras[28].camera_ids)
         points_3d_28 = cameras_28.unproject(points_2d_four_cameras[28].points_2d, 1)
@@ -167,9 +167,9 @@ class TestRaySampler_3DPoints:
 
     def test_dimensions_ray_params(self, device, dtype):
         cameras = create_four_cameras(device, dtype)
-        uniform_sampler_four_cameras = UniformRaySampler(1, 2)
+        uniform_sampler_four_cameras = UniformRaySampler(1, 2, device=device)
         uniform_sampler_four_cameras.calc_ray_params(cameras)
-        lengths = sample_lengths(uniform_sampler_four_cameras.origins.shape[0], 10, irregular=True)
+        lengths = sample_lengths(uniform_sampler_four_cameras.origins.shape[0], 10, device=device, irregular=True)
         assert uniform_sampler_four_cameras.origins.shape == (3 * 28 + 45, 3)
         assert uniform_sampler_four_cameras.directions.shape == (3 * 28 + 45, 3)
         assert uniform_sampler_four_cameras.camera_ids.shape == (3 * 28 + 45,)
@@ -178,9 +178,9 @@ class TestRaySampler_3DPoints:
 
     def test_dimensions_sample_ray_points(self, device, dtype):
         cameras = create_four_cameras(device, torch.float32)
-        uniform_sampler_four_cameras = UniformRaySampler(1, 2)
+        uniform_sampler_four_cameras = UniformRaySampler(1, 2, device)
         uniform_sampler_four_cameras.calc_ray_params(cameras)
-        lengths = sample_lengths(uniform_sampler_four_cameras.origins.shape[0], 10, irregular=True)
+        lengths = sample_lengths(uniform_sampler_four_cameras.origins.shape[0], 10, device=device, irregular=True)
         points_3d = sample_ray_points(
             uniform_sampler_four_cameras.origins, uniform_sampler_four_cameras.directions, lengths
         )
@@ -188,19 +188,19 @@ class TestRaySampler_3DPoints:
 
     def test_t_vals(self, device, dtype):
         cameras = create_four_cameras(device, dtype)
-        uniform_sampler_four_cameras = UniformRaySampler(2, 3.5)
+        uniform_sampler_four_cameras = UniformRaySampler(2, 3.5, device=device)
         uniform_sampler_four_cameras.calc_ray_params(cameras)
-        lengths = sample_lengths(uniform_sampler_four_cameras.origins.shape[0], 10, irregular=False)
+        lengths = sample_lengths(uniform_sampler_four_cameras.origins.shape[0], 10, device=device, irregular=False)
         points_3d = sample_ray_points(
             uniform_sampler_four_cameras.origins, uniform_sampler_four_cameras.directions, lengths
         )
         t_vals = calc_ray_t_vals(points_3d)
         assert t_vals.shape == (3 * 28 + 45, 10)
-        assert_close(t_vals[22, -1], 1.5)  # Testing middle ray
+        assert_close(t_vals[22, -1].item(), 1.5)  # Testing middle ray
 
     def test_dimensions_ray_params_in_ndc(self, device, dtype):
         cameras = create_four_cameras(device, dtype)
-        uniform_sampler_four_cameras = UniformRaySampler(2, 3.5)
+        uniform_sampler_four_cameras = UniformRaySampler(2, 3.5, device=device)
         uniform_sampler_four_cameras.calc_ray_params(cameras)
         origins_ndc, directions_ndc = uniform_sampler_four_cameras.transform_ray_params_world_to_ndc(cameras)
         assert origins_ndc.shape == (3 * 28 + 45, 3)

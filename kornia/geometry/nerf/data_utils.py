@@ -6,6 +6,7 @@ from torchvision.io import read_image
 
 from kornia.geometry.camera import PinholeCamera
 from kornia.geometry.nerf.rays import RandomRaySampler, RaySampler, UniformRaySampler
+from kornia.geometry.nerf.types import Device
 
 ImagePaths = List[str]
 ImageTensors = List[torch.Tensor]
@@ -15,13 +16,14 @@ RayGroup = Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]
 
 
 class RayDataset(Dataset):  # FIXME: Add device
-    def __init__(self, cameras: PinholeCamera, min_depth: float, max_depth: float) -> None:
+    def __init__(self, cameras: PinholeCamera, min_depth: float, max_depth: float, device: Device) -> None:
         super().__init__()
         self._ray_sampler: Optional[RaySampler] = None
         self._imgs: Optional[List[torch.Tensor]] = None
         self._cameras = cameras
         self._min_depth = min_depth
         self._max_depth = max_depth
+        self._device = device
 
     def init_ray_dataset(self, num_img_rays: Optional[torch.Tensor] = None) -> None:
         if num_img_rays is None:
@@ -37,12 +39,15 @@ class RayDataset(Dataset):  # FIXME: Add device
             self._imgs = imgs  # Take images provided on input
         self._check_dimensions(self._imgs)
 
+        # Move images to defined device
+        self._imgs = [img.to(self._device) for img in self._imgs]
+
     def _init_random_ray_dataset(self, num_img_rays: torch.Tensor):
-        self._ray_sampler = RandomRaySampler(self._min_depth, self._max_depth)
+        self._ray_sampler = RandomRaySampler(self._min_depth, self._max_depth, device=self._device)
         self._ray_sampler.calc_ray_params(self._cameras, num_img_rays)
 
     def _init_uniform_ray_dataset(self):
-        self._ray_sampler = UniformRaySampler(self._min_depth, self._max_depth)
+        self._ray_sampler = UniformRaySampler(self._min_depth, self._max_depth, device=self._device)
         self._ray_sampler.calc_ray_params(self._cameras)
 
     def _check_image_type_consistency(self, imgs: Images):
