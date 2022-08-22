@@ -25,8 +25,9 @@ class TestNerfModel:
             num_unit_layers=4,
             num_hidden=256,
         )
+        nerf_model.to(device)
         num_rays = 15
-        origins = torch.rand(num_rays, 3)
-        directions = torch.rand(num_rays, 3)
+        origins = torch.rand(num_rays, 3, device=device)
+        directions = torch.rand(num_rays, 3, device=device)
         rgbs = nerf_model(origins, directions)
         assert rgbs.shape == (num_rays, 3)

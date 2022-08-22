@@ -8,16 +8,16 @@ from kornia.geometry.nerf.nerf_solver import NerfSolver
 
 class TestNerfSolver:
     def test_parameter_change_after_one_epoch(self, device, dtype):
-        nerf_obj = NerfSolver()
+        nerf_obj = NerfSolver(device=device)
         cameras = create_four_cameras(device, dtype)
         imgs = create_random_images_for_cameras(cameras)
-        nerf_obj.init_training(cameras, 1.0, 3.0, imgs, 11, 2, 10)
+        nerf_obj.init_training(cameras, 1.0, 3.0, imgs, num_img_rays=1, batch_size=2, num_ray_points=10)
 
-        params_before_update = [torch.clone(param) for param in nerf_obj.nerf_model.parameters()]
+        params_before_update = [torch.clone(param).detach() for param in nerf_obj.nerf_model.parameters()]
 
         nerf_obj.run()
 
-        params_after_update = [torch.clone(param) for param in nerf_obj.nerf_model.parameters()]
+        params_after_update = [torch.clone(param).detach() for param in nerf_obj.nerf_model.parameters()]
 
         assert all(
             not torch.equal(param_before_update, param_after_update)

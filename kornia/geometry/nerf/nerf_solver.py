@@ -8,6 +8,7 @@ from torch import nn
 from kornia.geometry.camera import PinholeCamera
 from kornia.geometry.nerf.data_utils import Images, ImageTensors, RayDataset, instantiate_ray_dataloader
 from kornia.geometry.nerf.nerf_model import NerfModel
+from kornia.geometry.nerf.types import Device
 
 """
 General design for Nerf computation:
@@ -27,7 +28,7 @@ Training one epoch:
 
 
 class NerfSolver:
-    def __init__(self) -> None:
+    def __init__(self, device: Device) -> None:
         self._cameras: Optional[PinholeCamera] = None
         self._min_depth: float = 0.0
         self._max_depth: float = 0.0
@@ -43,6 +44,8 @@ class NerfSolver:
         self._nerf_optimizaer: Optional[optim.Optimizer] = None
 
         self._opt_nerf: optim.Optimizer = None
+
+        self._device = device
 
     def init_training(
         self,
@@ -72,6 +75,7 @@ class NerfSolver:
         self._batch_size = batch_size
 
         self._nerf_model = NerfModel(num_ray_points)
+        self._nerf_model.to(self._device)
         self._opt_nerf = optim.Adam(self._nerf_model.parameters(), lr=lr)
 
     @property
@@ -95,7 +99,7 @@ class NerfSolver:
             raise ValueError('All image widths must match camera widths')
 
     def _train_one_epoch(self) -> float:
-        ray_dataset = RayDataset(self._cameras, self._min_depth, self._max_depth)
+        ray_dataset = RayDataset(self._cameras, self._min_depth, self._max_depth, device=self._device)
         ray_dataset.init_ray_dataset(self._num_img_rays)
         ray_dataset.init_images_for_training(self._imgs)  # FIXME: Do we need to load the same images on each Epoch?
         ray_data_loader = instantiate_ray_dataloader(ray_dataset, self._batch_size, shufle=True)

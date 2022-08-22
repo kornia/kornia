@@ -70,7 +70,7 @@ class NerfModel(nn.Module):
         # Sample xyz for ray parameters
         batch_size = origins.shape[0]
         lengths = sample_lengths(
-            batch_size, self._num_ray_points, irregular=self._irregular_ray_sampling
+            batch_size, self._num_ray_points, device=origins.device, irregular=self._irregular_ray_sampling
         )  # FIXME: handle the case of hierarchical sampling
         points_3d = sample_ray_points(origins, directions, lengths)
 
