@@ -90,10 +90,6 @@ class TestParametrizedLine(BaseTester):
         pass
 
     @pytest.mark.skip(reason="not implemented yet")
-    def test_smoke(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
     def test_gradcheck(self, device):
         pass
 
