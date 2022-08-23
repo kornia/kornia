@@ -11,11 +11,11 @@ class TestNerfSolver:
         nerf_obj = NerfSolver(device=device)
         cameras = create_four_cameras(device, dtype)
         imgs = create_random_images_for_cameras(cameras)
-        nerf_obj.init_training(cameras, 1.0, 3.0, imgs, num_img_rays=1, batch_size=2, num_ray_points=10)
+        nerf_obj.init_training(cameras, 1.0, 3.0, imgs, num_img_rays=45, batch_size=2, num_ray_points=10)
 
         params_before_update = [torch.clone(param).detach() for param in nerf_obj.nerf_model.parameters()]
 
-        nerf_obj.run()
+        nerf_obj.run(num_epochs=5)
 
         params_after_update = [torch.clone(param).detach() for param in nerf_obj.nerf_model.parameters()]
 
@@ -28,7 +28,7 @@ class TestNerfSolver:
         camera = create_one_camera(5, 9, device, dtype)
         img = create_red_images_for_cameras(camera)
 
-        nerf_obj = NerfSolver()
+        nerf_obj = NerfSolver(device)
         nerf_obj.init_training(camera, 1.0, 3.0, img, None, 2, 10)
         nerf_obj.run(num_epochs=5)
 
@@ -40,7 +40,7 @@ class TestNerfSolver:
         camera = create_one_camera(5, 9, device, dtype)
         img = create_red_images_for_cameras(camera)
 
-        nerf_obj = NerfSolver()
+        nerf_obj = NerfSolver(device=device)
         nerf_obj.init_training(camera, 1.0, 3.0, img, 1, 2, 10)
         nerf_obj.run(num_epochs=20)
 
@@ -48,7 +48,7 @@ class TestNerfSolver:
         camera = create_one_camera(5, 9, device, dtype)
         img = create_red_images_for_cameras(camera)
 
-        nerf_obj = NerfSolver()
+        nerf_obj = NerfSolver(device=device)
         num_img_rays = torch.tensor([15])
         nerf_obj.init_training(camera, 1.0, 3.0, img, num_img_rays, 2, 10)
         nerf_obj.run(num_epochs=5)

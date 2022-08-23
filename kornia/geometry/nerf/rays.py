@@ -164,8 +164,8 @@ class RandomRaySampler(RaySampler):
         num_img_rays = num_img_rays.int()
         points2d_as_flat_tensors: Dict[int, RaySampler.Points2D_FlatTensors] = {}
         for camera_id, (height, width, n) in enumerate(zip(heights.tolist(), widths.tolist(), num_img_rays.tolist())):
-            y_rand = torch.trunc(torch.rand(n, dtype=torch.float32) * height)
-            x_rand = torch.trunc(torch.rand(n, dtype=torch.float32) * width)
+            y_rand = torch.trunc(torch.rand(n, device=self._device, dtype=torch.float32) * height)
+            x_rand = torch.trunc(torch.rand(n, device=self._device, dtype=torch.float32) * width)
             RaySampler._add_points2d_as_flat_tensors_to_num_ray_dict(
                 n, x_rand, y_rand, camera_id, points2d_as_flat_tensors
             )

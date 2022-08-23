@@ -65,11 +65,12 @@ class NerfSolver:
         self._max_depth = max_depth
 
         self._imgs = imgs
+        self._num_img_rays = None
         if isinstance(num_img_rays, int):
             self._num_img_rays = torch.tensor([num_img_rays] * cameras.batch_size)
-        elif isinstance(num_img_rays, torch.tensor):
+        elif torch.is_tensor(num_img_rays):
             self._num_img_rays = num_img_rays
-        else:
+        elif num_img_rays is not None:
             raise TypeError('num_img_rays can be either an int or a torch.tensor')
 
         self._batch_size = batch_size
@@ -122,7 +123,7 @@ class NerfSolver:
             print(f'Epoch: {i_epoch}: epoch_loss = {epoch_loss}')
 
     def render_views(self, cameras: PinholeCamera) -> ImageTensors:
-        ray_dataset = RayDataset(cameras, self._min_depth, self._max_depth)
+        ray_dataset = RayDataset(cameras, self._min_depth, self._max_depth, device=self._device)
         ray_dataset.init_ray_dataset()
         idx0 = 0
         imgs: ImageTensors = []
