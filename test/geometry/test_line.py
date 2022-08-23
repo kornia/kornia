@@ -182,7 +182,3 @@ class TestFitLine(BaseTester):
     @pytest.mark.skip(reason="not implemented yet")
     def test_module(self, device, dtype):
         pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_smoke(self, device, dtype):
-        pass

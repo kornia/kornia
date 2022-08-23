@@ -140,7 +140,7 @@ class BaseTester(ABC):
             rtol = math.sqrt(rtol) if low_tolerance else rtol
             atol = math.sqrt(atol) if low_tolerance else atol
 
-        return _assert_close(actual, expected, rtol=rtol, atol=atol, check_stride=False)
+        return torch.testing.assert_close(actual, expected, rtol=rtol, atol=atol, check_stride=False)
 
 
 def cartesian_product_of_parameters(**possible_parameters):
