@@ -77,7 +77,7 @@ def create_random_fundamental_matrix(batch_size, std_val=1e-3):
 
 
 class BaseTester(ABC):
-    DTYPE_PRECISIONS = {torch.float16: (1e-3, 1e-3), torch.float32: (1.3e-6, 1e-5), torch.float64: (1e-6, 1e-5)}
+    DTYPE_PRECISIONS = {torch.float16: (1e-3, 1e-3), torch.float32: (1.3e-6, 1e-5), torch.float64: (1.3e-6, 1e-5)}
 
     @abstractmethod
     def test_smoke(self, device, dtype):
@@ -111,6 +111,23 @@ class BaseTester(ABC):
         atol: Optional[float] = None,
         low_tolerance: bool = False,
     ) -> None:
+        """
+        Asserts that `actual` and `expected` are close.
+
+        Args:
+            actual: Actual input.
+            expected: Expected input.
+            rtol: Relative tolerance.
+            atol: Absolute tolerance.
+            low_tolerance:
+                This parameter allows to reduce tolerance. Half the decimal places.
+                Example, 1e-4 -> 1e-2 or 1e-6 -> 1e-3
+        """
+        if isinstance(actual, torch.nn.Parameter):
+            actual = actual.data
+        if isinstance(expected, torch.nn.Parameter):
+            expected = expected.data
+
         if 'xla' in actual.device.type or 'xla' in expected.device.type:
             rtol, atol = 1e-2, 1e-2
 
@@ -123,7 +140,7 @@ class BaseTester(ABC):
             rtol = math.sqrt(rtol) if low_tolerance else rtol
             atol = math.sqrt(atol) if low_tolerance else atol
 
-        return _assert_close(actual, expected, rtol=rtol, atol=atol)
+        return _assert_close(actual, expected, rtol=rtol, atol=atol, check_stride=False)
 
 
 def cartesian_product_of_parameters(**possible_parameters):
