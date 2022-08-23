@@ -59,11 +59,12 @@ class NerfModel(nn.Module):
 
         sigma.bias.data = torch.tensor([0.0]).float()
 
-        self._sigma = sigma  # nn.Sequential(sigma, nn.ReLU())      # FIXME: Revise this
+        # self._sigma = nn.Sequential(sigma, nn.ReLU())  # FIXME: Revise this
+        self._sigma = sigma
 
         self._rgb = nn.Sequential(nn.Linear(num_hidden // 2, 3), nn.Sigmoid())
 
-        self._debug = nn.Linear(3, 3)  # FIXME: Remove this line
+        # self._debug = nn.Linear(3, 3)  # FIXME: Remove this line
 
     def forward(self, origins: torch.Tensor, directions: torch.Tensor) -> torch.Tensor:
 
@@ -86,8 +87,8 @@ class NerfModel(nn.Module):
         y = self._mlp(points_3d_encoded)
         y = self._fc1(y)
         densities_ray_points = self._sigma(y)
-        densities_ray_points = densities_ray_points + torch.randn_like(densities_ray_points) * 0.1
-        densities_ray_points = torch.relu(densities_ray_points)  # FIXME: Revise this
+        # densities_ray_points = densities_ray_points + torch.randn_like(densities_ray_points) * 0.1
+        # densities_ray_points = torch.relu(densities_ray_points)  # FIXME: Revise this
 
         y = torch.cat((y, directions_encoded[..., None, :].expand(-1, self._num_ray_points, -1)), dim=-1)
         y = self._fc2(y)
