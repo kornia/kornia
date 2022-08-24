@@ -9,6 +9,7 @@ from typing import Any, Iterable, List, Optional, Tuple, Type, TypeVar, Union, c
 
 import torch
 from torch import Tensor
+from torch.nn import Parameter
 
 __all__ = ['tensor_to_gradcheck_var', 'create_eye_batch', 'xla_is_available', 'assert_close']
 
@@ -122,9 +123,9 @@ class BaseTester(ABC):
                 This parameter allows to reduce tolerance. Half the decimal places.
                 Example, 1e-4 -> 1e-2 or 1e-6 -> 1e-3
         """
-        if isinstance(actual, torch.nn.Parameter):
+        if isinstance(actual, Parameter):
             actual = actual.data
-        if isinstance(expected, torch.nn.Parameter):
+        if isinstance(expected, Parameter):
             expected = expected.data
 
         if 'xla' in actual.device.type or 'xla' in expected.device.type:
@@ -139,7 +140,7 @@ class BaseTester(ABC):
             rtol = math.sqrt(rtol) if low_tolerance else rtol
             atol = math.sqrt(atol) if low_tolerance else atol
 
-        return torch.testing.assert_close(actual, expected, rtol=rtol, atol=atol, check_stride=False)
+        return assert_close(actual, expected, rtol=rtol, atol=atol)
 
 
 def cartesian_product_of_parameters(**possible_parameters):
