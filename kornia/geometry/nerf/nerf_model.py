@@ -81,7 +81,7 @@ class NerfModel(nn.Module):
         points_3d_encoded = self._pos_encoder(points_3d)
         directions_encoded = self._dir_encoder(
             F.normalize(directions, dim=-1)
-        )  # FIXME: Normalize directions before encoding?
+        )
 
         # Map positional encodings to latent features (MLP with skip connections)
         y = self._mlp(points_3d_encoded)

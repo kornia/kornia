@@ -110,7 +110,7 @@ def create_one_camera(height, width, device, dtype=torch.float32) -> PinholeCame
 
     tx = 0.0
     ty = 0.0
-    tz = 11.0
+    tz = 1.0
 
     alpha = torch.pi / 2.0
     beta = 0.0
