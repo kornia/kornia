@@ -1,6 +1,7 @@
 """The testing package contains testing-specific utilities."""
 import contextlib
 import importlib
+import math
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from itertools import product
@@ -76,29 +77,53 @@ def create_random_fundamental_matrix(batch_size, std_val=1e-3):
 
 
 class BaseTester(ABC):
+    DTYPE_PRECISIONS = {torch.float16: (1e-3, 1e-3), torch.float32: (1.3e-6, 1e-5), torch.float64: (1e-6, 1e-5)}
+
     @abstractmethod
-    def test_smoke(self):
+    def test_smoke(self, device, dtype):
         raise NotImplementedError("Implement a stupid routine.")
 
     @abstractmethod
-    def test_exception(self):
+    def test_exception(self, device, dtype):
         raise NotImplementedError("Implement a stupid routine.")
 
     @abstractmethod
-    def test_cardinality(self):
+    def test_cardinality(self, device, dtype):
         raise NotImplementedError("Implement a stupid routine.")
 
     @abstractmethod
-    def test_jit(self):
+    def test_jit(self, device, dtype):
         raise NotImplementedError("Implement a stupid routine.")
 
     @abstractmethod
-    def test_gradcheck(self):
+    def test_gradcheck(self, device):
         raise NotImplementedError("Implement a stupid routine.")
 
     @abstractmethod
-    def test_module(self):
+    def test_module(self, device, dtype):
         raise NotImplementedError("Implement a stupid routine.")
+
+    def assert_close(
+        self,
+        actual: Tensor,
+        expected: Tensor,
+        rtol: Optional[float] = None,
+        atol: Optional[float] = None,
+        low_tolerance: bool = False,
+    ) -> None:
+        if 'xla' in actual.device.type or 'xla' in expected.device.type:
+            rtol, atol = 1e-2, 1e-2
+
+        if rtol is None and atol is None:
+            actual_rtol, actual_atol = self.DTYPE_PRECISIONS.get(actual.dtype, (0.0, 0.0))
+            expected_rtol, expected_atol = self.DTYPE_PRECISIONS.get(expected.dtype, (0.0, 0.0))
+            rtol, atol = max(actual_rtol, expected_rtol), max(actual_atol, expected_atol)
+
+            # halve the tolerance if `low_tolerance` is true
+            rtol = math.sqrt(rtol) if low_tolerance else rtol
+            atol = math.sqrt(atol) if low_tolerance else atol
+
+        return _assert_close(actual, expected, rtol=rtol, atol=atol)
 
 
 def cartesian_product_of_parameters(**possible_parameters):
@@ -163,7 +188,7 @@ try:
 except ImportError:
     # Partial backport of torch.testing.assert_close for torch<1.9
     # TODO: remove this branch if kornia relies on torch>=1.9
-    from torch.testing import assert_allclose as _assert_allclose
+    from torch.testing import assert_allclose as _assert_close
 
     class UsageError(Exception):
         pass
@@ -177,7 +202,7 @@ except ImportError:
         **kwargs: Any,
     ) -> None:
         try:
-            return _assert_allclose(actual, expected, rtol=rtol, atol=atol, **kwargs)
+            return _assert_close(actual, expected, rtol=rtol, atol=atol, **kwargs)
         except ValueError as error:
             raise UsageError(str(error)) from error
 
@@ -205,14 +230,29 @@ def KORNIA_CHECK_SHAPE(x, shape: List[str]) -> None:
             raise TypeError(f"{x} shape should be must be [{shape}]. Got {x.shape}")
 
 
-def KORNIA_CHECK(condition, msg: Optional[str] = None):
+def KORNIA_CHECK(condition: bool, msg: Optional[str] = None):
     if not condition:
         raise Exception(f"{condition} not true.\n{msg}")
+
+
+def KORNIA_UNWRAP(maybe_obj, typ):
+    return cast(typ, maybe_obj)
+
+
+def KORNIA_CHECK_TYPE(x, typ, msg: Optional[str] = None):
+    if not isinstance(x, typ):
+        raise TypeError(f"Invalid type: {type(x)}.\n{msg}")
 
 
 def KORNIA_CHECK_IS_TENSOR(x, msg: Optional[str] = None):
     if not isinstance(x, Tensor):
         raise TypeError(f"Not a Tensor type. Got: {type(x)}.\n{msg}")
+
+
+def KORNIA_CHECK_SAME_DEVICES(tensors: List[Tensor], msg: Optional[str] = None):
+    KORNIA_CHECK(isinstance(tensors, list) and len(tensors) >= 1, "Expected a list with at least one element")
+    if not all(tensors[0].device == x.device for x in tensors):
+        raise Exception(f"Not same device for tensors. Got: {[x.device for x in tensors]}.\n{msg}")
 
 
 def KORNIA_CHECK_IS_COLOR(x: Tensor, msg: Optional[str] = None):
@@ -228,3 +268,20 @@ def KORNIA_CHECK_IS_GRAY(x: Tensor, msg: Optional[str] = None):
 def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: Tensor, msg: Optional[str] = None):
     if len(x.shape) < 3 or x.shape[-3] not in [1, 3]:
         raise TypeError(f"Not an color or gray tensor. Got: {type(x)}.\n{msg}")
+
+
+def KORNIA_CHECK_DM_DESC(desc1: Tensor, desc2: Tensor, dm: Tensor):
+    if not ((dm.size(0) == desc1.size(0)) and (dm.size(1) == desc2.size(0))):
+        message = f"""distance matrix shape {dm.shape} is not
+                      consistent with descriptors shape: desc1 {desc1.shape}
+                      desc2 {desc2.shape}"""
+        raise TypeError(message)
+
+
+def KORNIA_CHECK_LAF(laf: Tensor) -> None:
+    """Auxiliary function, which verifies that input.
+
+    Args:
+        laf: [BxNx2x3] shape.
+    """
+    KORNIA_CHECK_SHAPE(laf, ["B", "N", "2", "3"])

@@ -582,8 +582,7 @@ def resize(
     if antialias:
         # First, we have to determine sigma
         # Taken from skimage: https://github.com/scikit-image/scikit-image/blob/v0.19.2/skimage/transform/_warps.py#L171
-        sigmas = (max((factors[0] - 1.0) / 2.0, 0.001),
-                  max((factors[1] - 1.0) / 2.0, 0.001))
+        sigmas = (max((factors[0] - 1.0) / 2.0, 0.001), max((factors[1] - 1.0) / 2.0, 0.001))
 
         # Now kernel size. Good results are for 3 sigma, but that is kind of slow. Pillow uses 1 sigma
         # https://github.com/python-pillow/Pillow/blob/master/src/libImaging/Resample.c#L206
@@ -906,11 +905,7 @@ class Translate(nn.Module):
     """
 
     def __init__(
-        self,
-        translation: torch.Tensor,
-        mode: str = 'bilinear',
-        padding_mode: str = 'zeros',
-        align_corners: bool = True,
+        self, translation: torch.Tensor, mode: str = 'bilinear', padding_mode: str = 'zeros', align_corners: bool = True
     ) -> None:
         super().__init__()
         self.translation: torch.Tensor = translation

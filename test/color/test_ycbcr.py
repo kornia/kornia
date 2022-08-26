@@ -3,7 +3,7 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia
-from kornia.testing import BaseTester, assert_close
+from kornia.testing import BaseTester
 
 
 class TestRgbToYcbcr(BaseTester):
@@ -16,6 +16,13 @@ class TestRgbToYcbcr(BaseTester):
     def test_cardinality(self, device, dtype, shape):
         img = torch.ones(shape, device=device, dtype=dtype)
         assert kornia.color.rgb_to_ycbcr(img).shape == shape
+
+    @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 4, 4)])
+    def test_rgb_to_y(self, device, dtype, shape):
+        img = torch.rand(*shape, device=device, dtype=dtype)
+        output_y = kornia.color.rgb_to_y(img)
+        output_ycbcr = kornia.color.rgb_to_ycbcr(img)
+        assert torch.equal(output_y, output_ycbcr[..., 0:1, :, :])
 
     def test_exception(self, device, dtype):
         with pytest.raises(TypeError):
@@ -91,7 +98,7 @@ class TestRgbToYcbcr(BaseTester):
             dtype=dtype,
         )
 
-        assert_close(kornia.color.rgb_to_ycbcr(data), expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(kornia.color.rgb_to_ycbcr(data), expected, low_tolerance=True)
 
     # TODO: investigate and implement me
     # def test_forth_and_back(self, device, dtype):
@@ -109,15 +116,14 @@ class TestRgbToYcbcr(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.rgb_to_ycbcr
         op_jit = torch.jit.script(op)
-        assert_close(op(img), op_jit(img))
+        self.assert_close(op(img), op_jit(img))
 
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.RgbToYcbcr().to(device, dtype)
         fcn = kornia.color.rgb_to_ycbcr
-        assert_close(ops(img), fcn(img))
+        self.assert_close(ops(img), fcn(img))
 
 
 class TestYcbcrToRgb(BaseTester):
@@ -205,7 +211,7 @@ class TestYcbcrToRgb(BaseTester):
             dtype=dtype,
         )
 
-        assert_close(kornia.color.ycbcr_to_rgb(data), expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(kornia.color.ycbcr_to_rgb(data), expected)
 
     # TODO: investigate and implement me
     # def test_forth_and_back(self, device, dtype):
@@ -223,12 +229,11 @@ class TestYcbcrToRgb(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.ycbcr_to_rgb
         op_jit = torch.jit.script(op)
-        assert_close(op(img), op_jit(img))
+        self.assert_close(op(img), op_jit(img))
 
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.YcbcrToRgb().to(device, dtype)
         fcn = kornia.color.ycbcr_to_rgb
-        assert_close(ops(img), fcn(img))
+        self.assert_close(ops(img), fcn(img))

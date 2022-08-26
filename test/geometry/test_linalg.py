@@ -9,12 +9,12 @@ from kornia.testing import assert_close
 
 
 def identity_matrix(batch_size, device, dtype):
-    r"""Create a batched homogeneous identity matrix"""
+    r"""Create a batched homogeneous identity matrix."""
     return torch.eye(4, device=device, dtype=dtype).repeat(batch_size, 1, 1)  # Nx4x4
 
 
 def euler_angles_to_rotation_matrix(x, y, z):
-    r"""Create a rotation matrix from x, y, z angles"""
+    r"""Create a rotation matrix from x, y, z angles."""
     assert x.dim() == 1, x.shape
     assert x.shape == y.shape == z.shape
     ones, zeros = torch.ones_like(x), torch.zeros_like(x)
@@ -368,7 +368,7 @@ class TestPointsLinesDistances:
     def test_functional(self, device):
         pts = torch.tensor([1.0, 0], device=device, dtype=torch.float64).view(1, 1, 2).tile(1, 6, 1)
         lines = torch.tensor(
-            [[0.0, 1.0, 0.0], [0.0, 1.0, 1.0], [1.0, 0.0, 0.0], [1.0, 0.0, 1.0], [1.0, 1.0, 0.0], [1.0, 1.0, 1.0], ],
+            [[0.0, 1.0, 0.0], [0.0, 1.0, 1.0], [1.0, 0.0, 0.0], [1.0, 0.0, 1.0], [1.0, 1.0, 0.0], [1.0, 1.0, 1.0]],
             device=device,
             dtype=torch.float64,
         ).view(1, 6, 3)

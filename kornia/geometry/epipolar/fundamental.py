@@ -25,7 +25,6 @@ def normalize_points(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Ten
     Returns:
        tuple containing the normalized points in the shape :math:`(B, N, 2)` and the transformation matrix
        in the shape :math:`(B, 3, 3)`.
-
     """
     if len(points.shape) != 3:
         raise AssertionError(points.shape)
@@ -61,7 +60,6 @@ def normalize_transformation(M: torch.Tensor, eps: float = 1e-8) -> torch.Tensor
 
     Returns:
         the normalized transformation matrix with same shape as the input.
-
     """
     if len(M.shape) < 2:
         raise AssertionError(M.shape)
@@ -81,7 +79,6 @@ def find_fundamental(points1: torch.Tensor, points2: torch.Tensor, weights: torc
 
     Returns:
         the computed fundamental matrix with shape :math:`(B, 3, 3)`.
-
     """
     if points1.shape != points2.shape:
         raise AssertionError(points1.shape, points2.shape)
@@ -112,9 +109,7 @@ def find_fundamental(points1: torch.Tensor, points2: torch.Tensor, weights: torc
 
     # reconstruct and force the matrix to have rank2
     U, S, V = torch.svd(F_mat)
-    rank_mask = torch.tensor([1.0, 1.0, 0.0],
-                             device=F_mat.device,
-                             dtype=F_mat.dtype)
+    rank_mask = torch.tensor([1.0, 1.0, 0.0], device=F_mat.device, dtype=F_mat.dtype)
 
     F_projected = U @ (torch.diag_embed(S * rank_mask) @ V.transpose(-2, -1))
     F_est = transform2.transpose(-2, -1) @ (F_projected @ transform1)
@@ -133,7 +128,6 @@ def compute_correspond_epilines(points: torch.Tensor, F_mat: torch.Tensor) -> to
         a tensor with shape :math:`(*, N, 3)` containing a vector of the epipolar
         lines corresponding to the points to the other image. Each line is described as
         :math:`ax + by + c = 0` and encoding the vectors as :math:`(a, b, c)`.
-
     """
     if not (len(points.shape) >= 2 and points.shape[-1] == 2):
         raise AssertionError(points.shape)
@@ -166,7 +160,6 @@ def fundamental_from_essential(E_mat: torch.Tensor, K1: torch.Tensor, K2: torch.
 
     Returns:
         The fundamental matrix with shape :math:`(*, 3, 3)`.
-
     """
     if not (len(E_mat.shape) >= 2 and E_mat.shape[-2:] == (3, 3)):
         raise AssertionError(E_mat.shape)
@@ -194,7 +187,6 @@ def fundamental_from_projections(P1: torch.Tensor, P2: torch.Tensor) -> torch.Te
 
     Returns:
          The fundamental matrix with shape :math:`(*, 3, 3)`.
-
     """
     if not (len(P1.shape) >= 2 and P1.shape[-2:] == (3, 4)):
         raise AssertionError(P1.shape)

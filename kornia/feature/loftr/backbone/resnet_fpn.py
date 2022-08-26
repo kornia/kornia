@@ -24,10 +24,7 @@ class BasicBlock(nn.Module):
         if stride == 1:
             self.downsample = None
         else:
-            self.downsample = nn.Sequential(
-                conv1x1(in_planes, planes, stride=stride),
-                nn.BatchNorm2d(planes)
-            )
+            self.downsample = nn.Sequential(conv1x1(in_planes, planes, stride=stride), nn.BatchNorm2d(planes))
 
     def forward(self, x):
         y = x
@@ -188,11 +185,11 @@ class ResNetFPN_16_4(nn.Module):
         # FPN
         x4_out = self.layer4_outconv(x4)
 
-        x4_out_2x = F.interpolate(x4_out, scale_factor=2., mode='bilinear', align_corners=True)
+        x4_out_2x = F.interpolate(x4_out, scale_factor=2.0, mode='bilinear', align_corners=True)
         x3_out = self.layer3_outconv(x3)
         x3_out = self.layer3_outconv2(x3_out + x4_out_2x)
 
-        x3_out_2x = F.interpolate(x3_out, scale_factor=2., mode='bilinear', align_corners=True)
+        x3_out_2x = F.interpolate(x3_out, scale_factor=2.0, mode='bilinear', align_corners=True)
         x2_out = self.layer2_outconv(x2)
         x2_out = self.layer2_outconv2(x2_out + x3_out_2x)
 

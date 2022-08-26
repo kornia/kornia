@@ -6,7 +6,7 @@ from torch.autograd import gradcheck
 
 from kornia import enhance
 from kornia.geometry import rotate
-from kornia.testing import BaseTester, assert_close, tensor_to_gradcheck_var
+from kornia.testing import BaseTester, tensor_to_gradcheck_var
 
 
 class TestEqualization(BaseTester):
@@ -87,7 +87,7 @@ class TestEqualization(BaseTester):
         inp = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         op = enhance.equalize_clahe
         op_script = torch.jit.script(op)
-        assert_close(op(inp), op_script(inp))
+        self.assert_close(op(inp), op_script(inp))
 
     def test_module(self):
         # equalize_clahe is only a function
@@ -107,7 +107,7 @@ class TestEqualization(BaseTester):
         res = enhance.equalize_clahe(img, clip_limit=clip_limit, grid_size=grid_size)
         # NOTE: for next versions we need to improve the computation of the LUT
         # and test with a better image
-        assert torch.allclose(
+        self.assert_close(
             res[..., 0, :],
             torch.tensor(
                 [
@@ -139,8 +139,7 @@ class TestEqualization(BaseTester):
                 dtype=res.dtype,
                 device=res.device,
             ),
-            atol=1e-04,
-            rtol=1e-04,
+            low_tolerance=True,
         )
 
     def test_ahe(self, img):
@@ -149,7 +148,7 @@ class TestEqualization(BaseTester):
         res = enhance.equalize_clahe(img, clip_limit=clip_limit, grid_size=grid_size)
         # NOTE: for next versions we need to improve the computation of the LUT
         # and test with a better image
-        assert torch.allclose(
+        self.assert_close(
             res[..., 0, :],
             torch.tensor(
                 [
@@ -181,8 +180,7 @@ class TestEqualization(BaseTester):
                 dtype=res.dtype,
                 device=res.device,
             ),
-            atol=1e-04,
-            rtol=1e-04,
+            low_tolerance=True,
         )
 
     def test_clahe(self, img):
@@ -252,5 +250,5 @@ class TestEqualization(BaseTester):
             dtype=res.dtype,
             device=res.device,
         )
-        assert torch.allclose(res[..., 0, :], expected, atol=1e-04, rtol=1e-04)
-        assert torch.allclose(res_diff[..., 0, :], exp_diff, atol=1e-04, rtol=1e-04)
+        self.assert_close(res[..., 0, :], expected, low_tolerance=True)
+        self.assert_close(res_diff[..., 0, :], exp_diff, low_tolerance=True)

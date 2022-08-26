@@ -53,6 +53,8 @@ transforms, camera, conversions, linalg and depth. We next describe each of them
    geometry.epipolar
    geometry.homography
    geometry.linalg
+   geometry.line
+   geometry.quaternion
    geometry.subpix
    geometry.transform
    geometry.ransac

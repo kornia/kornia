@@ -15,8 +15,7 @@ from .nms import nms3d
 
 
 def _get_window_grid_kernel2d(h: int, w: int, device: torch.device = torch.device('cpu')) -> torch.Tensor:
-    r"""Helper function, which generates a kernel to with window coordinates,
-       residual to window center.
+    r"""Helper function, which generates a kernel to with window coordinates, residual to window center.
 
     Args:
          h: kernel height.
@@ -33,8 +32,8 @@ def _get_window_grid_kernel2d(h: int, w: int, device: torch.device = torch.devic
 
 
 def _get_center_kernel2d(h: int, w: int, device: torch.device = torch.device('cpu')) -> torch.Tensor:
-    r"""Helper function, which generates a kernel to return center coordinates,
-       when applied with F.conv2d to 2d coordinates grid.
+    r"""Helper function, which generates a kernel to return center coordinates, when applied with F.conv2d to 2d
+    coordinates grid.
 
     Args:
         h: kernel height.
@@ -64,8 +63,8 @@ def _get_center_kernel2d(h: int, w: int, device: torch.device = torch.device('cp
 
 
 def _get_center_kernel3d(d: int, h: int, w: int, device: torch.device = torch.device('cpu')) -> torch.Tensor:
-    r"""Helper function, which generates a kernel to return center coordinates,
-       when applied with F.conv2d to 3d coordinates grid.
+    r"""Helper function, which generates a kernel to return center coordinates, when applied with F.conv2d to 3d
+    coordinates grid.
 
     Args:
         d: kernel depth.
@@ -102,8 +101,7 @@ def _get_center_kernel3d(d: int, h: int, w: int, device: torch.device = torch.de
 
 
 def _get_window_grid_kernel3d(d: int, h: int, w: int, device: torch.device = torch.device('cpu')) -> torch.Tensor:
-    r"""Helper function, which generates a kernel to return coordinates,
-       residual to window center.
+    r"""Helper function, which generates a kernel to return coordinates, residual to window center.
 
     Args:
         d: kernel depth.
@@ -496,16 +494,14 @@ def conv_soft_argmax3d(
         out_levels: int = x_softmaxpool.size(2)
         skip_levels: int = (in_levels - out_levels) // 2
         strict_maxima: torch.Tensor = F.avg_pool3d(nms3d(input, kernel_size), 1, stride, 0)
-        strict_maxima = strict_maxima[:, :, skip_levels: out_levels - skip_levels]
+        strict_maxima = strict_maxima[:, :, skip_levels : out_levels - skip_levels]
         x_softmaxpool *= 1.0 + strict_maxima_bonus * strict_maxima
     x_softmaxpool = x_softmaxpool.view(b, c, x_softmaxpool.size(2), x_softmaxpool.size(3), x_softmaxpool.size(4))
     return coords_max, x_softmaxpool
 
 
 def spatial_soft_argmax2d(
-    input: torch.Tensor,
-    temperature: torch.Tensor = torch.tensor(1.0),
-    normalized_coordinates: bool = True,
+    input: torch.Tensor, temperature: torch.Tensor = torch.tensor(1.0), normalized_coordinates: bool = True
 ) -> torch.Tensor:
     r"""Compute the Spatial Soft-Argmax 2D of a given input heatmap.
 
@@ -538,9 +534,7 @@ class SpatialSoftArgmax2d(nn.Module):
     See :func:`~kornia.geometry.subpix.spatial_soft_argmax2d` for details.
     """
 
-    def __init__(
-        self, temperature: torch.Tensor = torch.tensor(1.0), normalized_coordinates: bool = True
-    ) -> None:
+    def __init__(self, temperature: torch.Tensor = torch.tensor(1.0), normalized_coordinates: bool = True) -> None:
         super().__init__()
         self.temperature: torch.Tensor = temperature
         self.normalized_coordinates: bool = normalized_coordinates
@@ -647,7 +641,7 @@ def conv_quad_interp3d(
 
 
 class ConvQuadInterp3d(nn.Module):
-    r"""Calculate soft argmax 3d per window
+    r"""Calculate soft argmax 3d per window.
 
     See :func:`~kornia.geometry.subpix.conv_quad_interp3d` for details.
     """

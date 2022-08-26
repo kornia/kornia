@@ -112,19 +112,9 @@ class RandomCrop(GeometricAugmentationBase2D):
             if isinstance(flags["padding"], int):
                 padding = [flags["padding"]] * 4
             elif isinstance(flags["padding"], tuple) and len(flags["padding"]) == 2:
-                padding = [
-                    flags["padding"][1],
-                    flags["padding"][1],
-                    flags["padding"][0],
-                    flags["padding"][0],
-                ]
+                padding = [flags["padding"][1], flags["padding"][1], flags["padding"][0], flags["padding"][0]]
             elif isinstance(flags["padding"], tuple) and len(flags["padding"]) == 4:
-                padding = [
-                    flags["padding"][3],
-                    flags["padding"][2],
-                    flags["padding"][1],
-                    flags["padding"][0],
-                ]
+                padding = [flags["padding"][3], flags["padding"][2], flags["padding"][1], flags["padding"][0]]
             else:
                 raise RuntimeError(f"Expect `padding` to be a scalar, or length 2/4 list. Got {flags['padding']}.")
 
@@ -148,11 +138,9 @@ class RandomCrop(GeometricAugmentationBase2D):
         return input
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        if flags["cropping_mode"] == "resample":
+        if flags["cropping_mode"] in ("resample", "slice"):
             transform: Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
             return transform
-        if flags["cropping_mode"] == "slice":  # Skip the computation for slicing.
-            return self.identity_matrix(input)
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def apply_transform(
@@ -206,8 +194,12 @@ class RandomCrop(GeometricAugmentationBase2D):
         else:
             padding_mode = flags['padding_mode']
         return crop_by_transform_mat(
-            input, transform[:, :2, :], size, flags["resample"].name.lower(),
-            padding_mode=padding_mode, align_corners=flags["align_corners"]
+            input,
+            transform[:, :2, :],
+            size,
+            flags["resample"].name.lower(),
+            padding_mode=padding_mode,
+            align_corners=flags["align_corners"],
         )
 
     def inverse(
@@ -239,12 +231,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         _params.update({"padding_size": padding_size})
         return _params
 
-    def forward(
-        self,
-        input: Tensor,
-        params: Optional[Dict[str, Tensor]] = None,
-        **kwargs
-    ) -> Tensor:
+    def forward(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs) -> Tensor:
         padding_size = params.get("padding_size") if params else None
         if padding_size is not None:
             input_pad = padding_size.unique(dim=0).cpu().squeeze().numpy().tolist()

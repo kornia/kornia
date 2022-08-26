@@ -92,7 +92,7 @@ class CutmixGenerator(RandomGeneratorBase):
         if batch_size == 0:
             return dict(
                 mix_pairs=torch.zeros([0, 3], device=_device, dtype=torch.long),
-                crop_src=torch.zeros([0, 4, 2], device=_device, dtype=torch.long),
+                crop_src=torch.zeros([0, 4, 2], device=_device, dtype=_dtype),
             )
 
         with torch.no_grad():
@@ -134,6 +134,7 @@ class CutmixGenerator(RandomGeneratorBase):
         return dict(
             mix_pairs=mix_pairs.to(device=_device, dtype=torch.long),
             crop_src=crop_src.floor().to(device=_device, dtype=_dtype),
+            image_shape=torch.as_tensor(batch_shape[-2:], device=_device, dtype=_dtype),
         )
 
 

@@ -64,10 +64,6 @@ class _BasicAugmentationBase(nn.Module):
     def __unpack_input__(self, input: Tensor) -> Tensor:
         return input
 
-    def __check_batching__(self, input: Tensor):
-        """Check if a transformation matrix is returned, it has to be in the same batching mode as output."""
-        raise NotImplementedError
-
     def transform_tensor(self, input: Tensor) -> Tensor:
         """Standardize input tensors."""
         raise NotImplementedError
@@ -151,9 +147,7 @@ class _BasicAugmentationBase(nn.Module):
     def apply_func(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return self.apply_transform(input, params, flags)
 
-    def forward(  # type: ignore
-        self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs
-    ) -> Tensor:
+    def forward(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs) -> Tensor:  # type: ignore
         """Perform forward operations.
 
         Args:
@@ -168,7 +162,6 @@ class _BasicAugmentationBase(nn.Module):
             ``save_kwargs=True`` additionally.
         """
         in_tensor = self.__unpack_input__(input)
-        self.__check_batching__(input)
         input_shape = in_tensor.shape
         in_tensor = self.transform_tensor(in_tensor)
         batch_shape = in_tensor.shape
@@ -215,11 +208,11 @@ class _AugmentationBase(_BasicAugmentationBase):
         if return_transform is not None:
             raise ValueError(
                 "`return_transform` is deprecated. Please access the transformation matrix with "
-                "`.transform_matrix`. For chained matrices, please use `AugmentationSequential`.",
+                "`.transform_matrix`. For chained matrices, please use `AugmentationSequential`."
             )
 
     @property
-    def transform_matrix(self,) -> Tensor:
+    def transform_matrix(self) -> Tensor:
         return self._transform_matrix
 
     def __repr__(self) -> str:
@@ -237,10 +230,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         raise NotImplementedError
 
     def apply_func(  # type: ignore
-        self,
-        in_tensor: Tensor,
-        params: Dict[str, Tensor],
-        flags: Optional[Dict[str, Any]] = None
+        self, in_tensor: Tensor, params: Dict[str, Tensor], flags: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         if flags is None:
             flags = self.flags
@@ -257,10 +247,10 @@ class _AugmentationBase(_BasicAugmentationBase):
         else:
             output = in_tensor.clone()
             trans_matrix = self.identity_matrix(in_tensor)
-            trans_matrix[to_apply] = self.compute_transformation(
-                in_tensor[to_apply], params=params, flags=flags)
+            trans_matrix[to_apply] = self.compute_transformation(in_tensor[to_apply], params=params, flags=flags)
             output[to_apply] = self.apply_transform(
-                in_tensor[to_apply], params=params, flags=flags, transform=trans_matrix[to_apply])
+                in_tensor[to_apply], params=params, flags=flags, transform=trans_matrix[to_apply]
+            )
 
         self._transform_matrix = trans_matrix
 

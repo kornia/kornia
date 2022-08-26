@@ -83,20 +83,21 @@ class CenterCrop(GeometricAugmentationBase2D):
             raise Exception(f"Invalid size type. Expected (int, tuple(int, int). " f"Got: {type(size)}.")
 
         self.flags = dict(
-            resample=Resample.get(resample), cropping_mode=cropping_mode, align_corners=align_corners, size=self.size,
-            padding_mode="zeros"
+            resample=Resample.get(resample),
+            cropping_mode=cropping_mode,
+            align_corners=align_corners,
+            size=self.size,
+            padding_mode="zeros",
         )
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, Tensor]:
         return rg.center_crop_generator(batch_shape[0], batch_shape[-2], batch_shape[-1], self.size, self.device)
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        if flags["cropping_mode"] == "resample":
+        if flags["cropping_mode"] in ("resample", "slice"):
             transform: Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
             transform = transform.expand(input.shape[0], -1, -1)
             return transform
-        if flags["cropping_mode"] == "slice":  # Skip the computation for slicing.
-            return self.identity_matrix(input)
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def apply_transform(
@@ -106,12 +107,7 @@ class CenterCrop(GeometricAugmentationBase2D):
             transform = cast(Tensor, transform)
 
             return crop_by_transform_mat(
-                input,
-                transform[:, :2, :],
-                self.size,
-                flags["resample"].name.lower(),
-                "zeros",
-                flags["align_corners"],
+                input, transform[:, :2, :], self.size, flags["resample"].name.lower(), "zeros", flags["align_corners"]
             )
         if flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
             return crop_by_indices(input, params["src"], flags["size"])
@@ -132,6 +128,10 @@ class CenterCrop(GeometricAugmentationBase2D):
             size = self.size
         transform = cast(Tensor, transform)
         return crop_by_transform_mat(
-            input, transform[:, :2, :], size, flags["resample"].name.lower(),
-            flags["padding_mode"], flags["align_corners"]
+            input,
+            transform[:, :2, :],
+            size,
+            flags["resample"].name.lower(),
+            flags["padding_mode"],
+            flags["align_corners"],
         )

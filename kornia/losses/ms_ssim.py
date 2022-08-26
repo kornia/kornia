@@ -96,7 +96,7 @@ class MS_SSIMLoss(nn.Module):
         """
         coords = torch.arange(size, device=device, dtype=dtype)
         coords -= size // 2
-        g = torch.exp(-(coords ** 2) / (2 * sigma ** 2))
+        g = torch.exp(-(coords**2) / (2 * sigma**2))
         g /= g.sum()
         return g.reshape(-1)
 
@@ -160,9 +160,7 @@ class MS_SSIMLoss(nn.Module):
         loss_l1 = F.l1_loss(img1, img2, reduction='none')
 
         # Compute average l1 loss in 3 channels
-        gaussian_l1 = F.conv2d(loss_l1, g_masks[-CH:], groups=CH, padding=self.pad).mean(
-            1
-        )
+        gaussian_l1 = F.conv2d(loss_l1, g_masks[-CH:], groups=CH, padding=self.pad).mean(1)
 
         # Compute MS-SSIM + L1 loss
         loss = self.alpha * loss_ms_ssim + (1 - self.alpha) * gaussian_l1 / self.DR

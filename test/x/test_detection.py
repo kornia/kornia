@@ -11,16 +11,13 @@ class DummyDatasetDetection(Dataset):
         return 10
 
     def __getitem__(self, index):
-        return torch.ones(3, 32, 32), torch.tensor([10., 10., 15., 15.])
+        return torch.ones(3, 32, 32), torch.tensor([10.0, 10.0, 15.0, 15.0])
 
 
 class DummyModel(nn.Module):
     def __init__(self):
         super().__init__()
-        self.model = nn.Sequential(
-            nn.Conv2d(3, 1, kernel_size=16, stride=16),
-            nn.Flatten()
-        )
+        self.model = nn.Sequential(nn.Conv2d(3, 1, kernel_size=16, stride=16), nn.Flatten())
 
     def forward(self, x, y=None):
         return self.model(x)
@@ -63,14 +60,28 @@ class TestObjectDetectionTrainer:
     @pytest.mark.parametrize("loss_computed_by_model", [True, False])
     def test_fit(self, model, dataloader, criterion, optimizer, scheduler, configuration, loss_computed_by_model):
         trainer = ObjectDetectionTrainer(
-            model, dataloader, dataloader, criterion, optimizer, scheduler, configuration, num_classes=3,
-            loss_computed_by_model=loss_computed_by_model
+            model,
+            dataloader,
+            dataloader,
+            criterion,
+            optimizer,
+            scheduler,
+            configuration,
+            num_classes=3,
+            loss_computed_by_model=loss_computed_by_model,
         )
         trainer.fit()
 
     def test_exception(self, model, dataloader, criterion, optimizer, scheduler, configuration):
         with pytest.raises(ValueError):
             ObjectDetectionTrainer(
-                model, dataloader, dataloader, criterion, optimizer, scheduler, configuration, num_classes=3,
-                callbacks={'frodo': None}
+                model,
+                dataloader,
+                dataloader,
+                criterion,
+                optimizer,
+                scheduler,
+                configuration,
+                num_classes=3,
+                callbacks={'frodo': None},
             )

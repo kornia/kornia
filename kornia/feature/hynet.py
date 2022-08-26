@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Callable, Dict
 
 import torch
 import torch.nn as nn
@@ -38,12 +38,15 @@ class FilterResponseNorm2d(nn.Module):
         - Input: :math:`(B, \text{num_features}, H, W)`
         - Output: :math:`(B, \text{num_features}, H, W)`
     """
-    def __init__(self,
-                 num_features: int,
-                 eps: float = 1e-6,
-                 is_bias: bool = True,
-                 is_scale: bool = True,
-                 is_eps_leanable: bool = False):
+
+    def __init__(
+        self,
+        num_features: int,
+        eps: float = 1e-6,
+        is_bias: bool = True,
+        is_scale: bool = True,
+        is_eps_leanable: bool = False,
+    ):
 
         super().__init__()
 
@@ -102,6 +105,7 @@ class TLU(nn.Module):
         - Input: :math:`(B, \text{num_features}, H, W)`
         - Output: :math:`(B, \text{num_features}, H, W)`
     """
+
     def __init__(self, num_features: int):
         """max(y, tau) = max(y - tau, 0) + tau = ReLU(y - tau) + tau"""
         super().__init__()
@@ -149,12 +153,15 @@ class HyNet(nn.Module):
     """
     patch_size = 32
 
-    def __init__(self, pretrained: bool = False,
-                 is_bias: bool = True,
-                 is_bias_FRN: bool = True,
-                 dim_desc: int = 128,
-                 drop_rate: float = 0.3,
-                 eps_l2_norm: float = 1e-10):
+    def __init__(
+        self,
+        pretrained: bool = False,
+        is_bias: bool = True,
+        is_bias_FRN: bool = True,
+        dim_desc: int = 128,
+        drop_rate: float = 0.3,
+        eps_l2_norm: float = 1e-10,
+    ):
         super().__init__()
         self.eps_l2_norm = eps_l2_norm
         self.dim_desc = dim_desc
@@ -199,15 +206,14 @@ class HyNet(nn.Module):
         self.layer7 = nn.Sequential(
             nn.Dropout(self.drop_rate),
             nn.Conv2d(128, self.dim_desc, kernel_size=8, bias=False),
-            nn.BatchNorm2d(self.dim_desc, affine=False)
+            nn.BatchNorm2d(self.dim_desc, affine=False),
         )
 
         self.desc_norm = nn.LocalResponseNorm(2 * self.dim_desc, 2.0 * self.dim_desc, 0.5, 0.0)
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(
-                urls['liberty'], map_location=lambda storage, loc: storage
-            )
+            storage_fcn: Callable = lambda storage, loc: storage
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls['liberty'], map_location=storage_fcn)
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
         return

@@ -6,6 +6,7 @@ import kornia
 import kornia.geometry.transform as proj
 import kornia.testing as utils  # test utils
 from kornia.testing import assert_close
+from kornia.utils.helpers import _torch_inverse_cast
 
 
 class TestWarpAffine3d:
@@ -36,7 +37,7 @@ class TestWarpAffine3d:
         input = torch.rand(2, 5, 3, 4, 5, device=device, dtype=dtype)
         P = torch.rand(2, 3, 4, device=device, dtype=dtype)
         P = kornia.geometry.convert_affinematrix_to_homography3d(P)
-        P_hat = (P.inverse() @ P)[:, :3]
+        P_hat = (_torch_inverse_cast(P) @ P)[:, :3]
         output = proj.warp_affine3d(input, P_hat, out_shape, flags='nearest')
         assert_close(output, input, rtol=1e-4, atol=1e-4)
 
