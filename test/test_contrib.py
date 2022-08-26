@@ -518,9 +518,9 @@ class TestConvDistanceTransform:
         output1 = kornia.contrib.distance_transform(sample1, kernel_size, h)
         assert_close(expected_output1, output1)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         B, C, H, W = 1, 1, 32, 32
-        sample1 = torch.ones(B, C, H, W, device=device, dtype=dtype, requires_grad=True)
+        sample1 = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.contrib.distance_transform, (sample1), raise_exception=True)
 
     def test_loss_grad(self, device, dtype):
