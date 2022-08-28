@@ -39,15 +39,15 @@ class NerfModel(nn.Module):
         num_dir_freqs: int = 4,
         num_units: int = 2,
         num_unit_layers: int = 4,
-        num_hidden: int = 256,
+        num_hidden: int = 256,      # FIXME: add as call argument
     ):
         super().__init__()
         self._num_ray_points = num_ray_points
         self._irregular_ray_sampling = False
         self._renderer = IrregularRenderer() if self._irregular_ray_sampling else RegularRenderer()
 
-        self._pos_encoder = PositionalEncoder(3, num_pos_freqs)
-        self._dir_encoder = PositionalEncoder(3, num_dir_freqs)
+        self._pos_encoder = PositionalEncoder(3, num_pos_freqs, log_space=True)  # FIXME: Parameterize log_space
+        self._dir_encoder = PositionalEncoder(3, num_dir_freqs, log_space=True)
         self._mlp = MLP(self._pos_encoder.num_encoded_dims, num_units, num_unit_layers, num_hidden)
         self._fc1 = nn.Linear(num_hidden, num_hidden)
         self._fc2 = nn.Sequential(
@@ -79,9 +79,7 @@ class NerfModel(nn.Module):
 
         # Encode positions & directions
         points_3d_encoded = self._pos_encoder(points_3d)
-        directions_encoded = self._dir_encoder(
-            F.normalize(directions, dim=-1)
-        )
+        directions_encoded = self._dir_encoder(F.normalize(directions, dim=-1))
 
         # Map positional encodings to latent features (MLP with skip connections)
         y = self._mlp(points_3d_encoded)

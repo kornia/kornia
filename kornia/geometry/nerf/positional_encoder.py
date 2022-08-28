@@ -40,5 +40,4 @@ class PositionalEncoder(nn.Module):
                 f'Input tensor number of dimensions {x.shape[-1]} does not match instantiated dimensionality '
                 f'{self._num_dims}'
             )
-        # FIXME: Make sure x in normalized [-1, 1]!!
         return torch.concat([fn(x) for fn in self._embed_fns], dim=-1)

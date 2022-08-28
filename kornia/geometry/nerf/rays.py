@@ -89,7 +89,7 @@ class RaySampler:
             camera_ids.append(
                 torch.tensor(obj.camera_ids).repeat(num_points_per_cam_group, 1).permute(1, 0).reshape(1, -1).squeeze(0)
             )
-            points_2d.append(obj._points_2d.reshape(-1, 2).type(torch.uint8))
+            points_2d.append(obj._points_2d.reshape(-1, 2).int())
         self._origins = torch.cat(origins)
         self._directions = torch.cat(directions)
         self._camera_ids = torch.cat(camera_ids)
