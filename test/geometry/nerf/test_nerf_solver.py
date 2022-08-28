@@ -11,7 +11,7 @@ class TestNerfSolver:
         nerf_obj = NerfSolver(device=device)
         cameras = create_four_cameras(device, dtype)
         imgs = create_random_images_for_cameras(cameras)
-        nerf_obj.init_training(cameras, 1.0, 3.0, imgs, num_img_rays=45, batch_size=2, num_ray_points=10)
+        nerf_obj.init_training(cameras, 1.0, 3.0, imgs, num_img_rays=45, batch_size=1, num_ray_points=10)
 
         params_before_update = [torch.clone(param).detach() for param in nerf_obj.nerf_model.parameters()]
 

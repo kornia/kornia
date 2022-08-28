@@ -120,7 +120,8 @@ class NerfSolver:
         for i_epoch in range(num_epochs):
             epoch_loss = self._train_one_epoch()
 
-            print(f'Epoch: {i_epoch}: epoch_loss = {epoch_loss}')
+            if i_epoch % 10 == 0:
+                print(f'Epoch: {i_epoch}: epoch_loss = {epoch_loss}')
 
     def render_views(self, cameras: PinholeCamera) -> ImageTensors:
         ray_dataset = RayDataset(cameras, self._min_depth, self._max_depth, device=self._device)
