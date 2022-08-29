@@ -76,14 +76,20 @@ class TestBasicAugmentationBase:
             assert output.shape == expected_output.shape
             assert_close(output, expected_output)
 
-    @pytest.mark.parametrize("seed", [0, 1])
-    def test_autocast(self, seed, device, dtype):
+    @pytest.mark.parametrize("seed, expected_batch_prob", [[0, [True, True]], [1, [False, True]]])
+    def test_autocast(self, seed, expected_batch_prob, device, dtype):
         # seed=0: triggers all data to be augmented
         # seed=1: triggers part of the dta to be augmented
         torch.manual_seed(seed)
 
         aug = RandomGaussianBlur((3, 3), (0.1, 3), p=0.5)
         x = torch.rand(2, 3, 100, 100, dtype=torch.float32).to(device)
+
+        # Check that the seed behavior is correct
+        params = aug.forward_parameters(x.shape)
+        expected_batch_prob = torch.tensor(expected_batch_prob, device=params["batch_prob"].device)
+        assert torch.all(params["batch_prob"] == expected_batch_prob)
+
         with torch.autocast(device.type):
             res = aug(x)
 
