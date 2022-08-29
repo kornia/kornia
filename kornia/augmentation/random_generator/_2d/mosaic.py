@@ -59,7 +59,8 @@ class MosaicGenerator(RandomGeneratorBase):
 
     def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
-        output_size = (batch_shape[-2], batch_shape[-1]) if self.output_size is None else self.output_size
+        input_sizes = (batch_shape[-2], batch_shape[-1]) 
+        # output_size = input_sizes if self.output_size is None else self.output_size
 
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.mosaic_grid])
@@ -81,11 +82,11 @@ class MosaicGenerator(RandomGeneratorBase):
         crop_src = bbox_generator(
             start_corner_x,
             start_corner_y,
-            start_corner_x.clone().fill_(output_size[0]),
-            start_corner_y.clone().fill_(output_size[1]),
+            start_corner_x.clone().fill_(input_sizes[0]),
+            start_corner_y.clone().fill_(input_sizes[1]),
         )
         crop_dst = torch.tensor(
-            [[[0, 0], [output_size[1] - 1, 0], [output_size[1] - 1, output_size[0] - 1], [0, output_size[0] - 1]]],
+            [[[0, 0], [input_sizes[1] - 1, 0], [input_sizes[1] - 1, input_sizes[0] - 1], [0, input_sizes[0] - 1]]],
             device=_device,
             dtype=_dtype,
         ).repeat(batch_size, 1, 1)
