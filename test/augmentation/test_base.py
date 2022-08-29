@@ -5,9 +5,9 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia.testing as utils  # test utils
+from kornia.augmentation import RandomGaussianBlur
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.augmentation.base import _BasicAugmentationBase
-from kornia.augmentation import RandomGaussianBlur
 from kornia.testing import assert_close
 
 
@@ -82,7 +82,7 @@ class TestBasicAugmentationBase:
         # seed=1: triggers part of the dta to be augmented
         torch.manual_seed(seed)
 
-        aug = RandomGaussianBlur((3,3), (0.1, 3), p=0.5)
+        aug = RandomGaussianBlur((3, 3), (0.1, 3), p=0.5)
         x = torch.rand(2, 3, 100, 100, dtype=torch.float32).to(device)
         with torch.autocast(device.type):
             res = aug(x)
