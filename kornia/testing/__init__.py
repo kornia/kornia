@@ -20,7 +20,7 @@ def xla_is_available() -> bool:
 
 
 def is_mps_tensor_safe(x: Tensor) -> bool:
-    """Return whether tensor is on MPS device"""
+    """Return whether tensor is on MPS device."""
     if not hasattr(torch.backends, 'mps'):
         return False
     return 'mps' in str(x.device)
