@@ -74,7 +74,11 @@ class HardNet(nn.Module):
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
         """Utility function that normalizes the input by batch."""
-        sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
+        if not (x.device == torch.device('mps:0')):
+            sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
+        else:
+            mp = torch.mean(x, dim=(-3,-2,-1), keepdim=True)
+            sp = torch.std(x, dim=(-3,-2,-1), keepdim=True)
         # WARNING: we need to .detach() input, otherwise the gradients produced by
         # the patches extractor with F.grid_sample are very noisy, making the detector
         # training totally unstable.
@@ -161,7 +165,11 @@ class HardNet8(nn.Module):
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-7) -> torch.Tensor:
         """Utility function that normalizes the input by batch."""
-        sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
+        if not (x.device == torch.device('mps:0')):
+            sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
+        else:
+            mp = torch.mean(x, dim=(-3,-2,-1), keepdim=True)
+            sp = torch.std(x, dim=(-3,-2,-1), keepdim=True)
         # WARNING: we need to .detach() input, otherwise the gradients produced by
         # the patches extractor with F.grid_sample are very noisy, making the detector
         # training totally unstable.
