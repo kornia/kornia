@@ -236,6 +236,14 @@ class _AugmentationBase(_BasicAugmentationBase):
             flags = self.flags
         to_apply = params['batch_prob']
 
+        # Note about the explicit type conversions here:
+        # If this code is run in an autocast-enabled region, the transformation matrix or the output
+        # may be float16 even though the input was float32 (e.g. torch.mm produces float16 output),
+        # see also the documentation on autocasting: https://pytorch.org/docs/stable/amp.html.
+        # It may be unexpected for the user if the output type changes and it can also lead to errors
+        # for the index_put operation below (see also https://github.com/kornia/kornia/issues/1737)
+        # In case the type already matches the input type, the conversions are no-ops
+
         # if no augmentation needed
         if not to_apply.any():
             output = in_tensor
@@ -247,11 +255,13 @@ class _AugmentationBase(_BasicAugmentationBase):
         else:
             output = in_tensor.clone()
             trans_matrix = self.identity_matrix(in_tensor)
-            trans_matrix[to_apply] = self.compute_transformation(in_tensor[to_apply], params=params, flags=flags)
+            trans_matrix[to_apply] = self.compute_transformation(
+                in_tensor[to_apply], params=params, flags=flags
+            ).type(in_tensor.dtype)
             output[to_apply] = self.apply_transform(
                 in_tensor[to_apply], params=params, flags=flags, transform=trans_matrix[to_apply]
-            )
+            ).type(in_tensor.dtype)
 
-        self._transform_matrix = trans_matrix
+        self._transform_matrix = trans_matrix.type(in_tensor.dtype)
 
-        return output
+        return output.type(in_tensor.dtype)

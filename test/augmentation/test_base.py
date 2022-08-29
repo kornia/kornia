@@ -7,6 +7,7 @@ from torch.autograd import gradcheck
 import kornia.testing as utils  # test utils
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.augmentation.base import _BasicAugmentationBase
+from kornia.augmentation import RandomGaussianBlur
 from kornia.testing import assert_close
 
 
@@ -74,6 +75,19 @@ class TestBasicAugmentationBase:
             output = augmentation(input)
             assert output.shape == expected_output.shape
             assert_close(output, expected_output)
+
+    @pytest.mark.parametrize("seed", [0, 1])
+    def test_autocast(self, seed, device, dtype):
+        # seed=0: triggers all data to be augmented
+        # seed=1: triggers part of the dta to be augmented
+        torch.manual_seed(seed)
+
+        aug = RandomGaussianBlur((3,3), (0.1, 3), p=0.5)
+        x = torch.rand(2, 3, 100, 100, dtype=torch.float32).to(device)
+        with torch.autocast(device.type):
+            res = aug(x)
+
+        assert res.dtype == dtype, "The output dtype should match the input dtype"
 
 
 class TestAugmentationBase2D:
