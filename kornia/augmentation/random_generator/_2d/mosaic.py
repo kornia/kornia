@@ -59,7 +59,7 @@ class MosaicGenerator(RandomGeneratorBase):
 
     def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
-        input_sizes = (batch_shape[-2], batch_shape[-1]) 
+        input_sizes = (batch_shape[-2], batch_shape[-1])
         # output_size = input_sizes if self.output_size is None else self.output_size
 
         _common_param_check(batch_size, same_on_batch)
