@@ -74,7 +74,7 @@ class HardNet(nn.Module):
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
         """Utility function that normalizes the input by batch."""
-        if not (x.device == torch.device('mps:0')):
+        if not is_mps_tensor_safe(x):
             sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
         else:
             mp = torch.mean(x, dim=(-3, -2, -1), keepdim=True)
@@ -165,7 +165,7 @@ class HardNet8(nn.Module):
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-7) -> torch.Tensor:
         """Utility function that normalizes the input by batch."""
-        if not (x.device == torch.device('mps:0')):
+        if not is_mps_tensor_safe(x):
             sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
         else:
             mp = torch.mean(x, dim=(-3, -2, -1), keepdim=True)

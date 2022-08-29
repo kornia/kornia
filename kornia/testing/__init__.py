@@ -19,6 +19,13 @@ def xla_is_available() -> bool:
     return False
 
 
+def is_mps_tensor_safe(x: Tensor) -> bool:
+    """Return whether tensor is on MPS device"""
+    if not hasattr(torch.backends, 'mps'):
+        return False
+    return 'mps' in str(x.device)
+
+
 # TODO: Isn't this function duplicated with eye_like?
 def create_eye_batch(batch_size, eye_size, device=None, dtype=None):
     """Create a batch of identity matrices of shape Bx3x3."""
