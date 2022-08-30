@@ -4,7 +4,7 @@ from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
-from torch import tensor, Tensor
+from torch import Tensor, tensor
 
 from kornia.geometry import (
     find_fundamental,
@@ -19,8 +19,7 @@ __all__ = ["RANSAC"]
 
 
 class RANSAC(nn.Module):
-    """Module for robust geometry estimation with RANSAC.
-    https://en.wikipedia.org/wiki/Random_sample_consensus
+    """Module for robust geometry estimation with RANSAC. https://en.wikipedia.org/wiki/Random_sample_consensus.
 
     Args:
         model_type: type of model to estimate, e.g. "homography" or "fundamental".
@@ -90,9 +89,7 @@ class RANSAC(nn.Module):
         H = self.minimal_solver(kp1, kp2, torch.ones(batch_size, sample_size, dtype=kp1.dtype, device=kp1.device))
         return H
 
-    def verify(
-        self, kp1: Tensor, kp2: Tensor, models: Tensor, inl_th: float
-    ) -> Tuple[Tensor, Tensor, float]:
+    def verify(self, kp1: Tensor, kp2: Tensor, models: Tensor, inl_th: float) -> Tuple[Tensor, Tensor, float]:
         if len(kp1.shape) == 2:
             kp1 = kp1[None]
         if len(kp2.shape) == 2:
@@ -133,9 +130,7 @@ class RANSAC(nn.Module):
         )
         return model
 
-    def forward(
-        self, kp1: Tensor, kp2: Tensor, weights: Optional[Tensor] = None
-    ) -> Tuple[Tensor, Tensor]:
+    def forward(self, kp1: Tensor, kp2: Tensor, weights: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
         r"""Main forward method to execute the RANSAC algorithm.
 
         Args:
