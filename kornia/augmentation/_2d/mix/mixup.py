@@ -1,4 +1,5 @@
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
+import warnings
 
 import torch
 
@@ -86,6 +87,7 @@ class RandomMixUp(MixAugmentationBase):
     ) -> None:
         super().__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator = cast(rg.MixupGenerator, rg.MixupGenerator(lambda_val, p=p))
+        warnings.warn("`RandomMixUp` is deprecated. Please use `RandomMixUpV2` instead.")
 
     def apply_transform(  # type: ignore
         self, input: Tensor, label: Tensor, params: Dict[str, Tensor]
