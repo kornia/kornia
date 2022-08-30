@@ -93,10 +93,9 @@ def symmetric_transfer_error(
     return (out + eps).sqrt()
 
 
-def find_homography_dlt(points1: torch.Tensor,
-                        points2: torch.Tensor,
-                        weights: Optional[torch.Tensor] = None,
-                        solver: str = 'lu') -> torch.Tensor:
+def find_homography_dlt(
+    points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None, solver: str = 'lu'
+) -> torch.Tensor:
     r"""Compute the homography matrix using the DLT formulation.
 
     The linear system is solved by using the Weighted Least Squares Solution for the 4 Points algorithm.

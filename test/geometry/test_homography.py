@@ -241,7 +241,9 @@ class TestFindHomographyDLT:
                 gradcheck(
                     find_homography_dlt,
                     (points_src, points_dst, weights, 'lu'),
-                    rtol=1e-6, atol=1e-6, raise_exception=True
+                    rtol=1e-6,
+                    atol=1e-6,
+                    raise_exception=True,
                 )
 
             # Gradcheck failed
