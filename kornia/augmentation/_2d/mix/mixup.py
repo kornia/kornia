@@ -1,5 +1,5 @@
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
 import warnings
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
 
