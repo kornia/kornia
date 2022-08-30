@@ -12,7 +12,7 @@ from .backbones import SOLD2Net
 from .sold2_detector import LineSegmentDetectionModule, line_map_to_segments, prob_to_junctions
 
 urls: Dict[str, str] = {}
-urls["wireframe"] = "https://www.polybox.ethz.ch/index.php/s/blOrW89gqSLoHOk/download"
+urls["wireframe"] = "http://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth"
 
 
 default_cfg: Dict = {
