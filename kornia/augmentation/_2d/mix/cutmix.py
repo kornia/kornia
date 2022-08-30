@@ -109,6 +109,7 @@ class RandomCutMix(MixAugmentationBase):
                 category=DeprecationWarning,
             )
         self._param_generator = cast(rg.CutmixGenerator, rg.CutmixGenerator(cut_size, beta, num_mix, p=p))
+        warnings.warn("`RandomCutMix` is deprecated. Please use `RandomCutMixV2` instead.")
 
     def apply_transform(  # type: ignore
         self, input: Tensor, label: Tensor, params: Dict[str, Tensor]  # type: ignore

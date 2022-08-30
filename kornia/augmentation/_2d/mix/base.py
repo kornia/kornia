@@ -161,7 +161,9 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         if sum(to_apply) != len(to_apply):
             output = self.apply_non_transform(in_tensor, params, flags)
         if sum(to_apply) != 0:
-            output[to_apply] = self.apply_transform(in_tensor, params, flags)
+            applied = self.apply_transform(in_tensor, params, flags)
+            output = self.apply_non_transform(in_tensor, params, flags)
+            output[to_apply] = self.apply_non_transform(applied, params, flags)
         output = _transform_output_shape(output, ori_shape) if self.keepdim else output
         return output
 

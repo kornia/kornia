@@ -183,7 +183,7 @@ class RandomMosaic(MixAugmentationBaseV2):
     ) -> Tensor:
         if flags is not None and flags["output_size"] is not None:
             output_size = KORNIA_UNWRAP(flags["output_size"], Tuple[int, int])
-            return pad(input, [0, output_size[0] - input.shape[-2], 0, output_size[1] - input.shape[-1]])
+            return pad(input, [0, output_size[1] - input.shape[-1], 0, output_size[0] - input.shape[-2]])
             # NOTE: resize is not suitable for being consistent with bounding boxes.
             # return resize(
             #     input,
