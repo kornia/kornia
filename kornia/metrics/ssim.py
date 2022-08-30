@@ -94,12 +94,12 @@ def ssim(
     elif padding == 'same':
         pass
 
-    mu1_sq = mu1 ** 2
-    mu2_sq = mu2 ** 2
+    mu1_sq = mu1**2
+    mu2_sq = mu2**2
     mu1_mu2 = mu1 * mu2
 
-    mu_img1_sq = filter2d(img1 ** 2, kernel)
-    mu_img2_sq = filter2d(img2 ** 2, kernel)
+    mu_img1_sq = filter2d(img1**2, kernel)
+    mu_img2_sq = filter2d(img2**2, kernel)
     mu_img1_img2 = filter2d(img1 * img2, kernel)
 
     if padding == 'valid':

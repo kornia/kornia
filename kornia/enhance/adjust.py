@@ -12,7 +12,10 @@ from kornia.utils.image import perform_keep_shape_image, perform_keep_shape_vide
 
 
 def adjust_saturation_raw(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
-    r"""Adjust color saturation of an image. Expecting image to be in hsv format already."""
+    r"""Adjust color saturation of an image.
+
+    Expecting image to be in hsv format already.
+    """
 
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
     KORNIA_CHECK(isinstance(factor, (float, Tensor)), "Factor should be float or Tensor.")
@@ -140,12 +143,16 @@ def adjust_saturation(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
 
 
 def adjust_hue_raw(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
-    r"""Adjust hue of an image. Expecting image to be in hsv format already."""
+    r"""Adjust hue of an image.
+
+    Expecting image to be in hsv format already.
+    """
 
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
-    KORNIA_CHECK(isinstance(factor, (float, Tensor)),
-                 f"The factor should be a float number or Tensor in the range between"
-                 f" [-PI, PI]. Got {type(factor)}")
+    KORNIA_CHECK(
+        isinstance(factor, (float, Tensor)),
+        f"The factor should be a float number or Tensor in the range between" f" [-PI, PI]. Got {type(factor)}",
+    )
 
     if isinstance(factor, float):
         factor = torch.as_tensor(factor)
@@ -342,7 +349,7 @@ def adjust_contrast(image: Tensor, factor: Union[float, Tensor], clip_output: bo
     while len(factor.shape) != len(image.shape):
         factor = factor[..., None]
 
-    KORNIA_CHECK((factor >= 0).any(), f"Contrast factor must be positive. Got {factor}")
+    KORNIA_CHECK(any(factor >= 0), f"Contrast factor must be positive. Got {factor}")
 
     # Apply contrast factor to each channel
     img_adjust: Tensor = image * factor
@@ -396,7 +403,7 @@ def adjust_contrast_with_mean_subtraction(image: Tensor, factor: Union[float, Te
     while len(factor.shape) != len(image.shape):
         factor = factor[..., None]
 
-    KORNIA_CHECK((factor >= 0).any(), f"Contrast factor must be positive. Got {factor}")
+    KORNIA_CHECK(any(factor >= 0), f"Contrast factor must be positive. Got {factor}")
 
     if image.shape[-3] == 3:
         img_mean = rgb_to_grayscale(image).mean((-2, -1), True)
@@ -529,9 +536,79 @@ def adjust_brightness_accumulative(image: Tensor, factor: Union[float, Tensor], 
     return img_adjust
 
 
+def adjust_sigmoid(image: Tensor, cutoff: float = 0.5, gain: float = 10, inv: bool = False) -> Tensor:
+    """Adjust sigmoid correction on the input image tensor.
+
+    The input image is expected to be in the range of [0, 1].
+
+    Reference:
+    [1]: Gustav J. Braun, "Image Lightness Rescaling Using Sigmoidal Contrast Enhancement Functions",
+        http://markfairchild.org/PDFs/PAP07.pdf
+
+    Args:
+        image: Image to be adjusted in the shape of :math:`(*, H, W)`.
+        cutoff: The cutoff of sigmoid function.
+        gain: The multiplier of sigmoid function.
+        inv: If is set to True the function will return the inverse sigmoid correction.
+
+    Returns:
+         Adjusted tensor in the shape of :math:`(*, H, W)`.
+
+    Example:
+        >>> x = torch.ones(1, 1, 2, 2)
+        >>> adjust_sigmoid(x, gain=0)
+        tensor([[[[0.5000, 0.5000],
+                  [0.5000, 0.5000]]]])
+    """
+    KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
+
+    if inv:
+        img_adjust = 1 - 1 / (1 + (gain * (cutoff - image)).exp())
+    else:
+        img_adjust = 1 / (1 + (gain * (cutoff - image)).exp())
+    return img_adjust
+
+
+def adjust_log(image: Tensor, gain: float = 1, inv: bool = False, clip_output: bool = True) -> Tensor:
+    """Adjust log correction on the input image tensor.
+
+    The input image is expected to be in the range of [0, 1].
+
+    Reference:
+    [1]: http://www.ece.ucsb.edu/Faculty/Manjunath/courses/ece178W03/EnhancePart1.pdf
+
+    Args:
+        image: Image to be adjusted in the shape of :math:`(*, H, W)`.
+        gain: The multiplier of logarithmic function.
+        inv:  If is set to True the function will return the inverse logarithmic correction.
+        clip_output: Whether to clip the output image with range of [0, 1].
+
+    Returns:
+        Adjusted tensor in the shape of :math:`(*, H, W)`.
+
+    Example:
+        >>> x = torch.zeros(1, 1, 2, 2)
+        >>> adjust_log(x, inv=True)
+        tensor([[[[0., 0.],
+                  [0., 0.]]]])
+    """
+    KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
+
+    if inv:
+        img_adjust = (2**image - 1) * gain
+    else:
+        img_adjust = (1 + image).log2() * gain
+
+    # truncate between pixel values
+    if clip_output:
+        img_adjust = img_adjust.clamp(min=0.0, max=1.0)
+
+    return img_adjust
+
+
 def _solarize(input: Tensor, thresholds: Union[float, Tensor] = 0.5) -> Tensor:
-    r"""For each pixel in the image, select the pixel if the value is less than the threshold.
-    Otherwise, subtract 1.0 from the pixel.
+    r"""For each pixel in the image, select the pixel if the value is less than the threshold. Otherwise, subtract
+    1.0 from the pixel.
 
     Args:
         input: image or batched images to solarize.
@@ -1139,10 +1216,7 @@ class AdjustContrast(Module):
         torch.Size([2, 5, 3, 3])
     """
 
-    def __init__(
-        self,
-        contrast_factor: Union[float, Tensor],
-    ) -> None:
+    def __init__(self, contrast_factor: Union[float, Tensor]) -> None:
         super().__init__()
         self.contrast_factor: Union[float, Tensor] = contrast_factor
 
@@ -1180,10 +1254,7 @@ class AdjustContrastWithMeanSubtraction(Module):
         torch.Size([2, 5, 3, 3])
     """
 
-    def __init__(
-        self,
-        contrast_factor: Union[float, Tensor],
-    ) -> None:
+    def __init__(self, contrast_factor: Union[float, Tensor]) -> None:
         super().__init__()
         self.contrast_factor: Union[float, Tensor] = contrast_factor
 
@@ -1219,15 +1290,75 @@ class AdjustBrightness(Module):
         torch.Size([2, 5, 3, 3])
     """
 
-    def __init__(
-        self,
-        brightness_factor: Union[float, Tensor],
-    ) -> None:
+    def __init__(self, brightness_factor: Union[float, Tensor]) -> None:
         super().__init__()
         self.brightness_factor: Union[float, Tensor] = brightness_factor
 
     def forward(self, input: Tensor) -> Tensor:
         return adjust_brightness(input, self.brightness_factor)
+
+
+class AdjustSigmoid(Module):
+    r"""Adjust the contrast of an image tensor or performs sigmoid correction on the input image tensor.
+
+    The input image is expected to be in the range of [0, 1].
+
+    Reference:
+    [1]: Gustav J. Braun, "Image Lightness Rescaling Using Sigmoidal Contrast Enhancement Functions",
+        http://markfairchild.org/PDFs/PAP07.pdf
+
+    Args:
+        image: Image to be adjusted in the shape of :math:`(*, H, W)`.
+        cutoff: The cutoff of sigmoid function.
+        gain: The multiplier of sigmoid function.
+        inv: If is set to True the function will return the negative sigmoid correction.
+
+    Example:
+        >>> x = torch.ones(1, 1, 2, 2)
+        >>> AdjustSigmoid(gain=0)(x)
+        tensor([[[[0.5000, 0.5000],
+                  [0.5000, 0.5000]]]])
+    """
+
+    def __init__(self, cutoff: float = 0.5, gain: float = 10, inv: bool = False) -> None:
+        super().__init__()
+        self.cutoff: float = cutoff
+        self.gain: float = gain
+        self.inv: bool = inv
+
+    def forward(self, image: Tensor) -> Tensor:
+        return adjust_sigmoid(image, cutoff=self.cutoff, gain=self.gain, inv=self.inv)
+
+
+class AdjustLog(Module):
+    """Adjust log correction on the input image tensor.
+
+    The input image is expected to be in the range of [0, 1].
+
+    Reference:
+    [1]: http://www.ece.ucsb.edu/Faculty/Manjunath/courses/ece178W03/EnhancePart1.pdf
+
+    Args:
+        image: Image to be adjusted in the shape of :math:`(*, H, W)`.
+        gain: The multiplier of logarithmic function.
+        inv:  If is set to True the function will return the inverse logarithmic correction.
+        clip_output: Whether to clip the output image with range of [0, 1].
+
+    Example:
+        >>> x = torch.zeros(1, 1, 2, 2)
+        >>> AdjustLog(inv=True)(x)
+        tensor([[[[0., 0.],
+                  [0., 0.]]]])
+    """
+
+    def __init__(self, gain: float = 1, inv: bool = False, clip_output: bool = True) -> None:
+        super().__init__()
+        self.gain: float = gain
+        self.inv: bool = inv
+        self.clip_output: bool = clip_output
+
+    def forward(self, image: Tensor) -> Tensor:
+        return adjust_log(image, gain=self.gain, inv=self.inv, clip_output=self.clip_output)
 
 
 class AdjustBrightnessAccumulative(Module):
@@ -1258,10 +1389,7 @@ class AdjustBrightnessAccumulative(Module):
         torch.Size([2, 5, 3, 3])
     """
 
-    def __init__(
-        self,
-        brightness_factor: Union[float, Tensor],
-    ) -> None:
+    def __init__(self, brightness_factor: Union[float, Tensor]) -> None:
         super().__init__()
         self.brightness_factor: Union[float, Tensor] = brightness_factor
 

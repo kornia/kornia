@@ -8,3 +8,5 @@ kornia.geometry.linalg
 .. autofunction:: compose_transformations
 .. autofunction:: inverse_transformation
 .. autofunction:: transform_points
+.. autofunction:: point_line_distance
+.. autofunction:: squared_norm

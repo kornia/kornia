@@ -15,7 +15,7 @@ def draw_keypoint(img: np.ndarray, det: FaceDetectorResult, kpt_type: FaceKeypoi
 
 def scale_image(img: np.ndarray, size: int) -> np.ndarray:
     h, w = img.shape[:2]
-    scale = 1. * size / w
+    scale = 1.0 * size / w
     return cv2.resize(img, (int(w * scale), int(h * scale)))
 
 
@@ -35,7 +35,7 @@ def my_app():
     fps = cap.get(cv2.CAP_PROP_FPS)
     print(f"Video: h/w: {height}/{width} fps:{fps}")
 
-    scale = 1. * args.image_size / width
+    scale = 1.0 * args.image_size / width
     w, h = int(width * scale), int(height * scale)
 
     # create the video writer object
@@ -49,7 +49,7 @@ def my_app():
 
     draw_keypoints: bool = False
 
-    while(True):
+    while True:
 
         # Capture the video frame
         # by frame
@@ -73,8 +73,7 @@ def my_app():
 
         frame_vis = frame.copy()
 
-        frame_vis = cv2.putText(
-            frame_vis, f"FPS: {fps:.1f}", (10, 20), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
+        frame_vis = cv2.putText(frame_vis, f"FPS: {fps:.1f}", (10, 20), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
 
         for b in dets:
             if b.score < args.vis_threshold:
@@ -112,7 +111,8 @@ def my_app():
                 pt = b.top_left.int().tolist()
 
                 frame_vis = cv2.putText(
-                    frame_vis, f"{b.score:.2f}", (pt[0], pt[1] - 12), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
+                    frame_vis, f"{b.score:.2f}", (pt[0], pt[1] - 12), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255)
+                )
 
         # write the processed frame
         out.write(frame_vis)

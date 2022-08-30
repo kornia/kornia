@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 
 from kornia.augmentation import MixAugmentationBase
+from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.augmentation.base import _AugmentationBase
 
 __all__ = ["SequentialBase", "ParamItem"]
@@ -56,7 +57,7 @@ class SequentialBase(nn.Sequential):
     ) -> None:
         for mod in self.children():
             # MixAugmentation does not have return transform
-            if isinstance(mod, (_AugmentationBase, MixAugmentationBase)):
+            if isinstance(mod, (_AugmentationBase, MixAugmentationBase, MixAugmentationBaseV2)):
                 if same_on_batch is not None:
                     mod.same_on_batch = same_on_batch
                 if keepdim is not None:
@@ -133,9 +134,11 @@ class SequentialBase(nn.Sequential):
         self.update_attribute(keepdim=keepdim)
 
     def clear_state(self) -> None:
+        """Reset self._params state to None."""
         self._params = None
 
     def update_params(self, param: Any) -> None:
+        """Update self._params state."""
         if self._params is None:
             self._params = [param]
         else:

@@ -42,6 +42,7 @@ extensions = [
     'sphinx.ext.viewcode',
     'sphinx.ext.githubpages',
     'sphinxcontrib.bibtex',
+    "sphinxcontrib.gtagjs",
     'sphinxcontrib.youtube',
     'sphinx_design',
 ]
@@ -69,6 +70,8 @@ master_doc = 'index'
 project = 'Kornia'
 author = f'{project} developers'
 copyright = f'2019, {author}'
+
+gtagjs_ids = ["UA-203957082-2"]
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -134,7 +137,6 @@ html_theme_options = {
         "color-sidebar-caption-text": "white",
         "color-sidebar-link-text--top-level": "white",
     },
-
     # "announcement": """
     #     <a style=\"text-decoration: none; color: white;\"
     #        href=\"https://github.com/kornia/kornia\">

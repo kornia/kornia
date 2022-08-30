@@ -28,7 +28,6 @@ def add_weighted(src1: torch.Tensor, alpha: float, src2: torch.Tensor, beta: flo
         >>> output = add_weighted(input1, 0.5, input2, 0.5, 1.0)
         >>> output.shape
         torch.Size([1, 1, 5, 5])
-
     """
     if not isinstance(src1, torch.Tensor):
         raise TypeError(f"src1 should be a tensor. Got {type(src1)}")
@@ -72,7 +71,6 @@ class AddWeighted(nn.Module):
         >>> output = AddWeighted(0.5, 0.5, 1.0)(input1, input2)
         >>> output.shape
         torch.Size([1, 1, 5, 5])
-
     """
 
     def __init__(self, alpha: float, beta: float, gamma: float) -> None:

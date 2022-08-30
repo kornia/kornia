@@ -61,15 +61,16 @@ class TestBasicAugmentationBase:
         ) as generate_parameters, patch.object(
             augmentation, "transform_tensor", autospec=True
         ) as transform_tensor, patch.object(
-            augmentation, "__check_batching__", autospec=True
-        ) as check_batching:
+            augmentation, "transform_output_tensor", autospec=True
+        ) as transform_output_tensor:
 
             generate_parameters.side_effect = lambda shape: {
                 'degrees': torch.arange(0, shape[0], device=device, dtype=dtype)
             }
             transform_tensor.side_effect = lambda x: x.unsqueeze(dim=0)
-            apply_transform.side_effect = lambda input, params: input[..., :2, :2]
-            check_batching.side_effect = lambda input: None
+            transform_output_tensor.side_effect = lambda x, y: x.squeeze()
+            apply_transform.side_effect = lambda input, params, flags: input[..., :2, :2]
+            # check_batching.side_effect = lambda input: None
             output = augmentation(input)
             assert output.shape == expected_output.shape
             assert_close(output, expected_output)
@@ -156,7 +157,7 @@ class TestAugmentationBase2D:
         output = utils.tensor_to_gradcheck_var(output)  # to var
         other_transform = utils.tensor_to_gradcheck_var(other_transform)  # to var
 
-        input_param = {'batch_prob': torch.tensor([True]), 'params': {'x': input_transform}, 'flags': {}}
+        input_param = {'batch_prob': torch.tensor([True]), 'x': input_transform, 'y': {}}
 
         augmentation = AugmentationBase2D(p=1.0)
 

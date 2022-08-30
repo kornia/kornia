@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple, Union, cast
+from typing import Any, Dict, Optional, Tuple, Union, cast
 
 from torch import Size, Tensor
 
@@ -74,31 +74,27 @@ class CenterCrop3D(AugmentationBase3D):
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
         super().__init__(p=1.0, return_transform=return_transform, same_on_batch=True, p_batch=p, keepdim=keepdim)
         if isinstance(size, tuple):
-            size = (size[0], size[1], size[2])
+            self.size = (size[0], size[1], size[2])
         elif isinstance(size, int):
-            size = (size, size, size)
+            self.size = (size, size, size)
         else:
             raise Exception(f"Invalid size type. Expected (int, tuple(int, int int). Got: {size}.")
-        self.flags = dict(size=size, align_corners=align_corners, resample=Resample.get(resample))
+        self.flags = dict(align_corners=align_corners, resample=Resample.get(resample))
 
     def generate_parameters(self, batch_shape: Size) -> Dict[str, Tensor]:
         return rg.center_crop_generator3d(
-            batch_shape[0], batch_shape[-3], batch_shape[-2], batch_shape[-1], self.flags["size"], device=self.device
+            batch_shape[0], batch_shape[-3], batch_shape[-2], batch_shape[-1], self.size, device=self.device
         )
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         transform: Tensor = get_perspective_transform3d(params["src"].to(input), params["dst"].to(input))
         transform = transform.expand(input.shape[0], -1, -1)
         return transform
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         transform = cast(Tensor, transform)
         return crop_by_transform_mat3d(
-            input,
-            transform,
-            self.flags["size"],
-            mode=self.flags["resample"].name.lower(),
-            align_corners=self.flags["align_corners"],
+            input, transform, self.size, mode=flags["resample"].name.lower(), align_corners=flags["align_corners"]
         )

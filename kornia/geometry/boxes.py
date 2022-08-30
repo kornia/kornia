@@ -2,8 +2,10 @@ from typing import List, Optional, Tuple, Union, cast
 
 import torch
 
+from kornia.core import Tensor
 from kornia.geometry.bbox import validate_bbox
 from kornia.geometry.linalg import transform_points
+from kornia.utils import eye_like
 
 __all__ = ["Boxes", "Boxes3D"]
 
@@ -12,14 +14,10 @@ def _is_floating_point_dtype(dtype: torch.dtype) -> bool:
     return dtype in (torch.float16, torch.float32, torch.float64, torch.bfloat16, torch.half)
 
 
-def _merge_box_list(
-    boxes: List[torch.Tensor], method: str = "pad"
-) -> Tuple[torch.Tensor, List[int]]:
-    r"""Merge a list of boxes into one tensor.
-    """
+def _merge_box_list(boxes: List[torch.Tensor], method: str = "pad") -> Tuple[torch.Tensor, List[int]]:
+    r"""Merge a list of boxes into one tensor."""
     if not all(box.shape[-2:] == torch.Size([4, 2]) and box.dim() == 3 for box in boxes):
-        raise TypeError(
-            f"Input boxes must be a list of (N, 4, 2) shaped. Got: {[box.shape for box in boxes]}.")
+        raise TypeError(f"Input boxes must be a list of (N, 4, 2) shaped. Got: {[box.shape for box in boxes]}.")
 
     if method == "pad":
         max_N = max(box.shape[0] for box in boxes)
@@ -75,9 +73,7 @@ def _boxes_to_polygons(
     return polygons
 
 
-def _boxes_to_quadrilaterals(
-    boxes: torch.Tensor, mode: str = "xyxy", validate_boxes: bool = True
-) -> torch.Tensor:
+def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_boxes: bool = True) -> torch.Tensor:
     """Convert from boxes to quadrilaterals."""
     mode = mode.lower()
 
@@ -97,13 +93,18 @@ def _boxes_to_quadrilaterals(
 
     if mode.startswith("vertices"):
         if mode == "vertices":
+            quadrilaterals = boxes.clone()
+            # Here, vertices are quadrilaterals with width and height defined as `width = xmax - xmin`  and
+            # `height = ymax - ymin`. We need to convert to `width = xmax - xmin + 1` and `height = ymax - ymin + 1` to
+            # match with internal Boxes Kornia representation.
+            quadrilaterals[..., 1:3, 0] = quadrilaterals[..., 1:3, 0] - 1
+            quadrilaterals[..., 2:, 1] = quadrilaterals[..., 2:, 1] - 1
+        elif mode == "vertices_plus":
             # Avoid passing reference
             quadrilaterals = boxes.clone()
-        elif mode == "vertices_plus":
-            quadrilaterals = boxes.clone()  # TODO: perform +1
         else:
             raise ValueError(f"Unknown mode {mode}")
-        validate_boxes or validate_bbox(quadrilaterals)
+        not validate_boxes or validate_bbox(quadrilaterals)
     elif mode.startswith("xy"):
         if mode == "xyxy":
             height, width = boxes[..., 3] - boxes[..., 1], boxes[..., 2] - boxes[..., 0]
@@ -180,9 +181,12 @@ class Boxes:
         ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. Examples of
         `quadrilaterals <https://en.wikipedia.org/wiki/Quadrilateral>`_ are rectangles, rhombus and trapezoids.
     """
+
     def __init__(
-        self, boxes: Union[torch.Tensor, List[torch.Tensor]], raise_if_not_floating_point: bool = True,
-        mode: str = "vertices_plus"
+        self,
+        boxes: Union[torch.Tensor, List[torch.Tensor]],
+        raise_if_not_floating_point: bool = True,
+        mode: str = "vertices_plus",
     ) -> None:
 
         self._N: Optional[List[int]] = None
@@ -228,6 +232,93 @@ class Boxes:
         boxes_xywh = cast(torch.Tensor, self.to_tensor("xywh", as_padded_sequence=True))
         widths, heights = boxes_xywh[..., 2], boxes_xywh[..., 3]
         return heights, widths
+
+    def merge(self, boxes: "Boxes", inplace: bool = False) -> "Boxes":
+        """Merges boxes.
+
+        Say, current instance holds :math:`(B, N, 4, 2)` and the incoming boxes holds :math:`(B, M, 4, 2)`,
+        the merge results in :math:`(B, N + M, 4, 2)`.
+
+        Args:
+            boxes: 2D boxes.
+            inplace: do transform in-place and return self.
+        """
+        data = torch.cat([self._data, boxes.data], dim=1)
+        if inplace:
+            self._data = data
+            return self
+        return Boxes(data, False)
+
+    def clamp(
+        self,
+        topleft: Optional[Union[Tensor, Tuple[int, int]]] = None,
+        botright: Optional[Union[Tensor, Tuple[int, int]]] = None,
+        inplace: bool = False,
+    ) -> "Boxes":
+        """"""
+        if not (isinstance(topleft, Tensor) and isinstance(botright, Tensor)):
+            raise NotImplementedError
+        if inplace:
+            _data = self._data
+        else:
+            _data = self._data.clone()
+        topleft_x = topleft[:, None, :1].repeat(1, _data.size(1), 4)
+        _data[..., 0][_data[..., 0] < topleft_x] = topleft_x[_data[..., 0] < topleft_x]
+
+        topleft_y = topleft[:, None, 1:].repeat(1, _data.size(1), 4)
+        _data[..., 1][_data[..., 1] < topleft_y] = topleft_y[_data[..., 1] < topleft_y]
+
+        botright_x = botright[:, None, :1].repeat(1, _data.size(1), 4)
+        _data[..., 0][_data[..., 0] > botright_x] = botright_x[_data[..., 0] > botright_x]
+
+        botright_y = botright[:, None, 1:].repeat(1, _data.size(1), 4)
+        _data[..., 1][_data[..., 1] > botright_y] = botright_y[_data[..., 1] > botright_y]
+        if inplace:
+            return self
+        return Boxes(_data, False)
+
+    def trim(self, correspondence_preserve: bool = False, inplace: bool = False) -> "Boxes":
+        """Trim out zero padded boxes.
+
+        Given box arrangements of shape :math:`(4, 4, Box)`:
+            -- Box -- Box -- Box  -- Box --
+            --  0  --  0  -- Box  -- Box --
+            --  0  -- Box --  0   --  0  --
+            --  0  --  0  --  0   --  0  --
+
+        Nothing will change if correspondence_preserve is True. Only pure zero layers will be
+        removed, resulting in shape :math:`(4, 3, Box)`:
+            -- Box -- Box -- Box  -- Box --
+            --  0  --  0  -- Box  -- Box --
+            --  0  -- Box --  0   --  0  --
+
+        Otherwise, you will get :math:`(4, 2, Box)`:
+            -- Box -- Box -- Box  -- Box --
+            --  0  -- Box -- Box  -- Box --
+        """
+        raise NotImplementedError
+
+    def filter_boxes_by_area(
+        self, min_area: Optional[float] = None, max_area: Optional[float] = None, inplace: bool = False
+    ) -> "Boxes":
+        area = self.compute_area()
+        if inplace:
+            _data = self._data
+        else:
+            _data = self._data.clone()
+        if min_area is not None:
+            _data[area < min_area] = 0.0
+        if max_area is not None:
+            _data[area > max_area] = 0.0
+        if inplace:
+            return self
+        return Boxes(_data, False)
+
+    def compute_area(self) -> torch.Tensor:
+        """Returns :math:`(B, N)`."""
+        w = self._data[:, :, 1, 0] - self._data[:, :, 0, 0]
+        h = self._data[:, :, 2, 1] - self._data[:, :, 0, 1]
+        return w * h
 
     @classmethod
     def from_tensor(
@@ -287,8 +378,8 @@ class Boxes:
     def to_tensor(
         self, mode: Optional[str] = None, as_padded_sequence: bool = False
     ) -> Union[torch.Tensor, List[torch.Tensor]]:
-        r"""Cast :class:`Boxes` to a tensor. ``mode`` controls which 2D boxes format should be use to represent boxes
-        in the tensor.
+        r"""Cast :class:`Boxes` to a tensor. ``mode`` controls which 2D boxes format should be use to represent
+        boxes in the tensor.
 
         Args:
             mode: the output box format. It could be:
@@ -349,8 +440,9 @@ class Boxes:
             boxes = _boxes_to_polygons(boxes[..., 0], boxes[..., 1], boxes[..., 2], boxes[..., 3])
 
         if self._N is not None and not as_padded_sequence:
-            boxes = list(torch.nn.functional.pad(
-                o, (len(o.shape) - 1) * [0, 0] + [0, - n]) for o, n in zip(boxes, self._N))
+            boxes = list(
+                torch.nn.functional.pad(o, (len(o.shape) - 1) * [0, 0] + [0, -n]) for o, n in zip(boxes, self._N)
+            )
         else:
             boxes = boxes if self._is_batched else boxes.squeeze(0)
         return boxes
@@ -434,6 +526,28 @@ class Boxes:
         """Inplace version of :func:`Boxes.transform_boxes`"""
         return self.transform_boxes(M, inplace=True)
 
+    def translate(self, size: Tensor, method: str = "warp", inplace: bool = False) -> "Boxes":
+        """Translates boxes by the provided size.
+
+        Args:
+            size: translate size for x, y direction, shape of :math:`(B, 2)`.
+            method: "warp" or "fast".
+            inplace: do transform in-place and return self.
+
+        Returns:
+            The transformed boxes.
+        """
+        if method == "fast":
+            raise NotImplementedError
+        elif method == "warp":
+            pass
+        else:
+            raise NotImplementedError
+
+        M: Tensor = eye_like(3, size)
+        M[:, :2, 2] = size
+        return self.transform_boxes(M, inplace=inplace)
+
     @property
     def data(self) -> torch.Tensor:
         return self._data
@@ -460,6 +574,9 @@ class Boxes:
         self._data = self._data.to(device=device, dtype=dtype)
         return self
 
+    def clone(self) -> "Boxes":
+        return Boxes(self._data.clone(), False)
+
 
 @torch.jit.script
 class Boxes3D:
@@ -477,9 +594,9 @@ class Boxes3D:
         ``width = xmax - xmin + 1``, ``height = ymax - ymin + 1`` and ``depth = zmax - zmin + 1``. Examples of
         `hexahedrons <https://en.wikipedia.org/wiki/Hexahedron>`_ are cubes and rhombohedrons.
     """
+
     def __init__(
-        self, boxes: torch.Tensor, raise_if_not_floating_point: bool = True,
-        mode: str = "xyzxyz_plus"
+        self, boxes: torch.Tensor, raise_if_not_floating_point: bool = True, mode: str = "xyzxyz_plus"
     ) -> None:
         if not isinstance(boxes, torch.Tensor):
             raise TypeError(f"Input boxes is not a Tensor. Got: {type(boxes)}.")
@@ -601,8 +718,8 @@ class Boxes3D:
         return cls(hexahedrons, raise_if_not_floating_point=False, mode=mode)
 
     def to_tensor(self, mode: str = "xyzxyz") -> torch.Tensor:
-        r"""Cast :class:`Boxes3D` to a tensor. ``mode`` controls which 3D boxes format should be use to represent boxes
-        in the tensor.
+        r"""Cast :class:`Boxes3D` to a tensor. ``mode`` controls which 3D boxes format should be use to represent
+        boxes in the tensor.
 
         Args:
             mode: The format in which the boxes are provided.
@@ -637,10 +754,12 @@ class Boxes3D:
             >>> assert (boxes.to_tensor(mode='xyzxyz') == boxes_xyzxyz).all()
         """
         if self._data.requires_grad:
-            raise RuntimeError("Boxes3D.to_tensor doesn't support computing gradients since they aren't accurate. "
-                               "Please, create boxes from tensors with `requires_grad=False`. "
-                               "This is a known bug. Help is needed to fix it. For more information, "
-                               "see https://github.com/kornia/kornia/issues/1396.")
+            raise RuntimeError(
+                "Boxes3D.to_tensor doesn't support computing gradients since they aren't accurate. "
+                "Please, create boxes from tensors with `requires_grad=False`. "
+                "This is a known bug. Help is needed to fix it. For more information, "
+                "see https://github.com/kornia/kornia/issues/1396."
+            )
 
         batched_boxes = self._data if self._is_batched else self._data.unsqueeze(0)
 

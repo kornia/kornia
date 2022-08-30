@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 from torch import Tensor
 
@@ -64,7 +64,7 @@ class ColorJiggle(IntensityAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None
+        return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self.brightness = brightness
@@ -72,12 +72,11 @@ class ColorJiggle(IntensityAugmentationBase2D):
         self.saturation = saturation
         self.hue = hue
         self._param_generator = cast(
-            rg.ColorJiggleGenerator,
-            rg.ColorJiggleGenerator(brightness, contrast, saturation, hue)
+            rg.ColorJiggleGenerator, rg.ColorJiggleGenerator(brightness, contrast, saturation, hue)
         )
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
 
         transforms = [

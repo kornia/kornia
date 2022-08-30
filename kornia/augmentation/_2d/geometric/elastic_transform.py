@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 from torch import Tensor
@@ -77,19 +77,19 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
         return dict(noise=noise * 2 - 1)
 
     # TODO: It is incorrect to return identity
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return self.identity_matrix(input)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         return elastic_transform2d(
             input,
             params["noise"].to(input),
-            self.flags["kernel_size"],
-            self.flags["sigma"],
-            self.flags["alpha"],
-            self.flags["align_corners"],
-            self.flags["mode"],
-            self.flags["padding_mode"],
+            flags["kernel_size"],
+            flags["sigma"],
+            flags["alpha"],
+            flags["align_corners"],
+            flags["mode"],
+            flags["padding_mode"],
         )

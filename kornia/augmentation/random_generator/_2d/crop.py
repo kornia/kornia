@@ -159,9 +159,6 @@ class ResizedCropGenerator(CropGenerator):
         scale: Union[torch.Tensor, Tuple[float, float]],
         ratio: Union[torch.Tensor, Tuple[float, float]],
     ) -> None:
-        self.scale = scale
-        self.ratio = ratio
-        self.output_size = output_size
         if not (
             len(output_size) == 2
             and isinstance(output_size[0], (int,))
@@ -170,7 +167,10 @@ class ResizedCropGenerator(CropGenerator):
             and output_size[1] > 0
         ):
             raise AssertionError(f"`output_size` must be a tuple of 2 positive integers. Got {output_size}.")
-        super().__init__(size=output_size, resize_to=self.output_size)  # fake an intermedia crop size
+        super().__init__(size=output_size, resize_to=output_size)  # fake an intermedia crop size
+        self.scale = scale
+        self.ratio = ratio
+        self.output_size = output_size
 
     def __repr__(self) -> str:
         repr = f"scale={self.scale}, resize_to={self.ratio}, output_size={self.output_size}"

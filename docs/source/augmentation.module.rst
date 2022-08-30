@@ -12,6 +12,9 @@ Intensity
 ~~~~~~~~~
 
 .. autoclass:: RandomPlanckianJitter
+.. autoclass:: RandomPlasmaShadow
+.. autoclass:: RandomPlasmaBrightness
+.. autoclass:: RandomPlasmaContrast
 .. autoclass:: ColorJiggle
 .. autoclass:: ColorJitter
 .. autoclass:: RandomBoxBlur
@@ -22,6 +25,7 @@ Intensity
 .. autoclass:: RandomGaussianNoise
 .. autoclass:: RandomMotionBlur
 .. autoclass:: RandomPosterize
+.. autoclass:: RandomRGBShift
 .. autoclass:: RandomSharpness
 .. autoclass:: RandomSolarize
 
@@ -45,8 +49,11 @@ Geometric
 Mix
 ~~~
 
+.. autoclass:: RandomMosaic
 .. autoclass:: RandomCutMix
+.. autoclass:: RandomCutMixV2
 .. autoclass:: RandomMixUp
+.. autoclass:: RandomMixUpV2
 
 Transforms3D
 ------------

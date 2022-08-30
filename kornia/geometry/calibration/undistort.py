@@ -10,8 +10,9 @@ from .distort import distort_points, tilt_projection
 
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/undistort.dispatch.cpp#L384
-def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor,
-                     new_K: Optional[torch.Tensor] = None, num_iters: int = 5) -> torch.Tensor:
+def undistort_points(
+    points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor, new_K: Optional[torch.Tensor] = None, num_iters: int = 5
+) -> torch.Tensor:
     r"""Compensate for lens distortion a set of 2D image points.
 
     Radial :math:`(k_1, k_2, k_3, k_4, k_5, k_6)`,
@@ -40,7 +41,6 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor,
                  [ 0.0711,  0.1100],
                  [-0.0697,  0.0228],
                  [-0.1843, -0.1606]]])
-
     """
     if points.dim() < 2 and points.shape[-1] != 2:
         raise ValueError(f'points shape is invalid. Got {points.shape}.')
@@ -82,8 +82,8 @@ def undistort_points(points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor,
     for _ in range(num_iters):
         r2 = x * x + y * y
 
-        inv_rad_poly = (1 + dist[..., 5:6] * r2 + dist[..., 6:7] * r2 * r2 + dist[..., 7:8] * r2 ** 3) / (
-            1 + dist[..., 0:1] * r2 + dist[..., 1:2] * r2 * r2 + dist[..., 4:5] * r2 ** 3
+        inv_rad_poly = (1 + dist[..., 5:6] * r2 + dist[..., 6:7] * r2 * r2 + dist[..., 7:8] * r2**3) / (
+            1 + dist[..., 0:1] * r2 + dist[..., 1:2] * r2 * r2 + dist[..., 4:5] * r2**3
         )
         deltaX = (
             2 * dist[..., 2:3] * x * y
@@ -136,7 +136,6 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
         >>> out = undistort_image(img, K, dist_coeff)
         >>> out.shape
         torch.Size([1, 3, 5, 5])
-
     """
     if len(image.shape) < 3:
         raise ValueError(f"Image shape is invalid. Got: {image.shape}.")

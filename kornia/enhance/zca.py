@@ -82,6 +82,10 @@ class ZCAWhitening(nn.Module):
 
         self.fitted = False
 
+        self.mean_vector: torch.Tensor
+        self.transform_matrix: torch.Tensor
+        self.transform_inv: Optional[torch.Tensor]
+
     def fit(self, x: torch.Tensor):
         r"""Fit ZCA whitening matrices to the data.
 
@@ -95,10 +99,10 @@ class ZCAWhitening(nn.Module):
 
         T, mean, T_inv = zca_mean(x, self.dim, self.unbiased, self.eps, self.compute_inv)
 
-        self.mean_vector: torch.Tensor = mean
-        self.transform_matrix: torch.Tensor = T
+        self.mean_vector = mean
+        self.transform_matrix = T
         if T_inv is None:
-            self.transform_inv: Optional[torch.Tensor] = torch.empty([0])
+            self.transform_inv = torch.empty([0])
         else:
             self.transform_inv = T_inv
 
@@ -120,7 +124,6 @@ class ZCAWhitening(nn.Module):
 
         Returns:
             The transformed data.
-
         """
 
         if include_fit:
@@ -191,7 +194,6 @@ def zca_mean(
         >>> x = torch.rand(3,20,2,2)
         >>> transform_matrix, mean_vector, inv_transform = zca_mean(x, dim = 1, return_inverse = True)
         >>> # transform_matrix.size() equals (12,12) and the mean vector.size equal (1,12)
-
     """
 
     if not isinstance(inp, torch.Tensor):
@@ -228,7 +230,7 @@ def zca_mean(
     inp_permute = inp.permute(new_order)
 
     N = inp_size[dim]
-    feature_sizes = torch.tensor(inp_size[0:dim] + inp_size[dim + 1::])
+    feature_sizes = torch.tensor(inp_size[0:dim] + inp_size[dim + 1 : :])
     num_features: int = int(torch.prod(feature_sizes).item())
 
     mean: torch.Tensor = torch.mean(inp_permute, dim=0, keepdim=True)
@@ -305,12 +307,9 @@ def zca_whiten(inp: torch.Tensor, dim: int = 0, unbiased: bool = True, eps: floa
 def linear_transform(
     inp: torch.Tensor, transform_matrix: torch.Tensor, mean_vector: torch.Tensor, dim: int = 0
 ) -> torch.Tensor:
-    r"""
-
-    Given a transformation matrix and a mean vector, this function will flatten
-    the input tensor along the given dimension and subtract the mean vector
-    from it. Then the dot product with the transformation matrix will be computed
-    and then the resulting tensor is reshaped to the original input shape.
+    r"""Given a transformation matrix and a mean vector, this function will flatten the input tensor along the given
+    dimension and subtract the mean vector from it. Then the dot product with the transformation matrix will be
+    computed and then the resulting tensor is reshaped to the original input shape.
 
     .. math::
 
@@ -368,7 +367,7 @@ def linear_transform(
     new_order: List[int] = perm.tolist()
     inv_order: List[int] = perm_inv.tolist()
 
-    feature_sizes = torch.tensor(inp_size[0:dim] + inp_size[dim + 1::])
+    feature_sizes = torch.tensor(inp_size[0:dim] + inp_size[dim + 1 : :])
     num_features: int = int(torch.prod(feature_sizes).item())
 
     inp_permute = inp.permute(new_order)

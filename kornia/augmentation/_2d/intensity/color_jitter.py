@@ -1,5 +1,5 @@
 import warnings
-from typing import Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 from torch import Tensor
 
@@ -75,7 +75,7 @@ class ColorJitter(IntensityAugmentationBase2D):
         p: float = 1.0,
         keepdim: bool = False,
         return_transform: Optional[bool] = None,
-        silence_instantiation_warning: bool = False
+        silence_instantiation_warning: bool = False,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
 
@@ -83,7 +83,7 @@ class ColorJitter(IntensityAugmentationBase2D):
             warnings.warn(
                 "`ColorJitter` is now following Torchvision implementation. Old "
                 "behavior can be retrieved by instantiating `ColorJiggle`.",
-                category=DeprecationWarning
+                category=DeprecationWarning,
             )
 
         self.brightness = brightness
@@ -91,12 +91,11 @@ class ColorJitter(IntensityAugmentationBase2D):
         self.saturation = saturation
         self.hue = hue
         self._param_generator = cast(
-            rg.ColorJitterGenerator,
-            rg.ColorJitterGenerator(brightness, contrast, saturation, hue)
+            rg.ColorJitterGenerator, rg.ColorJitterGenerator(brightness, contrast, saturation, hue)
         )
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
 
         transforms = [

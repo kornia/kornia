@@ -5,8 +5,10 @@ from .adjust import (
     AdjustContrastWithMeanSubtraction,
     AdjustGamma,
     AdjustHue,
+    AdjustLog,
     AdjustSaturation,
     AdjustSaturationWithGraySubtraction,
+    AdjustSigmoid,
     Invert,
     adjust_brightness,
     adjust_brightness_accumulative,
@@ -15,9 +17,11 @@ from .adjust import (
     adjust_gamma,
     adjust_hue,
     adjust_hue_raw,
+    adjust_log,
     adjust_saturation,
     adjust_saturation_raw,
     adjust_saturation_with_gray_subtraction,
+    adjust_sigmoid,
     equalize,
     equalize3d,
     invert,
@@ -29,6 +33,7 @@ from .core import AddWeighted, add_weighted
 from .equalization import equalize_clahe
 from .histogram import histogram, histogram2d, image_histogram2d
 from .normalize import Denormalize, Normalize, denormalize, normalize, normalize_min_max
+from .shift_rgb import shift_rgb
 from .zca import ZCAWhitening, linear_transform, zca_mean, zca_whiten
 
 __all__ = [
@@ -42,11 +47,14 @@ __all__ = [
     "adjust_saturation_with_gray_subtraction",
     "adjust_hue_raw",
     "adjust_saturation_raw",
+    "adjust_sigmoid",
+    "adjust_log",
     "solarize",
     "equalize",
     "equalize3d",
     "posterize",
     "sharpness",
+    "shift_rgb",
     "invert",
     "AdjustBrightness",
     "AdjustBrightnessAccumulative",
@@ -56,6 +64,8 @@ __all__ = [
     "AdjustHue",
     "AdjustSaturation",
     "AdjustSaturationWithGraySubtraction",
+    "AdjustSigmoid",
+    "AdjustLog",
     "Invert",
     "add_weighted",
     "AddWeighted",

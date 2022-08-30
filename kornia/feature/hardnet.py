@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Callable, Dict
 
 import torch
 import torch.nn as nn
@@ -65,9 +65,8 @@ class HardNet(nn.Module):
 
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(
-                urls['liberty_aug'], map_location=lambda storage, loc: storage
-            )
+            storage_fcn: Callable = lambda storage, loc: storage
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls['liberty_aug'], map_location=storage_fcn)
             self.load_state_dict(pretrained_dict['state_dict'], strict=True)
         self.eval()
 
@@ -145,9 +144,8 @@ class HardNet8(nn.Module):
 
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(
-                urls['hardnet8v2'], map_location=lambda storage, loc: storage
-            )
+            storage_fcn: Callable = lambda storage, loc: storage
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls['hardnet8v2'], map_location=storage_fcn)
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 

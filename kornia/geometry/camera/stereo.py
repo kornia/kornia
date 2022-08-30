@@ -175,7 +175,6 @@ class StereoCamera:
 
         Returns:
             Tensor of shape :math:`(B)`
-
         """
         return -self.rectified_right_camera[..., 0, 3] / self.fx
 
@@ -276,7 +275,7 @@ def reproject_disparity_to_3D(disparity_tensor: torch.Tensor, Q_matrix: torch.Te
     r"""Reproject the disparity tensor to a 3D point cloud.
 
     Args:
-        disparity_tensor: Disparity tensor of shape :math:`(B, 1, H, W)`.
+        disparity_tensor: Disparity tensor of shape :math:`(B, H, W, 1)`.
         Q_matrix: Tensor of Q matrices of shapes :math:`(B, 4, 4)`.
 
     Returns:

@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple, Union, cast
+from typing import Any, Dict, Optional, Tuple, Union, cast
 
 import torch
 from torch import Tensor
@@ -96,7 +96,7 @@ class RandomAffine(GeometricAugmentationBase2D):
             resample=Resample.get(resample), padding_mode=SamplePadding.get(padding_mode), align_corners=align_corners
         )
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return get_affine_matrix2d(
             torch.as_tensor(params["translations"], device=input.device, dtype=input.dtype),
             torch.as_tensor(params["center"], device=input.device, dtype=input.dtype),
@@ -107,26 +107,30 @@ class RandomAffine(GeometricAugmentationBase2D):
         )
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         _, _, height, width = input.shape
         transform = cast(Tensor, transform)
+
         return warp_affine(
             input,
             transform[:, :2, :],
             (height, width),
-            self.flags["resample"].name.lower(),
-            align_corners=self.flags["align_corners"],
-            padding_mode=self.flags["padding_mode"].name.lower(),
+            flags["resample"].name.lower(),
+            align_corners=flags["align_corners"],
+            padding_mode=flags["padding_mode"].name.lower(),
         )
 
     def inverse_transform(
         self,
         input: Tensor,
+        flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
-        **kwargs,
     ) -> Tensor:
         return self.apply_transform(
-            input, params=self._params, transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype)
+            input,
+            params=self._params,
+            transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype),
+            flags=flags,
         )

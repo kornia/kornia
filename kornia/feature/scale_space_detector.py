@@ -13,8 +13,8 @@ from .responses import BlobHessian
 
 
 def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor, num_levels: int) -> torch.Tensor:
-    r"""Auxiliary function for ScaleSpaceDetector. Converts scale level index from ConvSoftArgmax3d
-    to the actual scale, using the sigmas from the ScalePyramid output.
+    r"""Auxiliary function for ScaleSpaceDetector. Converts scale level index from ConvSoftArgmax3d to the actual
+    scale, using the sigmas from the ScalePyramid output.
 
     Args:
         max_coords: tensor [BxNx3].
@@ -46,8 +46,8 @@ def _create_octave_mask(mask: torch.Tensor, octave_shape: List[int]) -> torch.Te
 
 
 class ScaleSpaceDetector(nn.Module):
-    r"""Module for differentiable local feature detection, as close as possible to classical
-    local feature detectors like Harris, Hessian-Affine or SIFT (DoG).
+    r"""Module for differentiable local feature detection, as close as possible to classical local feature detectors
+    like Harris, Hessian-Affine or SIFT (DoG).
 
     It has 5 modules inside: scale pyramid generator, response ("cornerness") function,
     soft nms function, affine shape estimator and patch orientation estimator.

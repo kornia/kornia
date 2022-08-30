@@ -28,7 +28,6 @@ def _compute_tiles(
     Returns:
         tensor with tiles (B, GH, GW, C, TH, TW). B = 1 in case of a single image is provided.
         tensor with the padded batch of 2D imageswith shape (B, C, H', W').
-
     """
     batch: torch.Tensor = imgs  # B x C x H x W
 
@@ -82,7 +81,6 @@ def _compute_interpolation_tiles(padded_imgs: torch.Tensor, tile_size: Tuple[int
 
     Returns:
         tensor with the interpolation tiles (B, 2GH, 2GW, C, TH/2, TW/2).
-
     """
     if padded_imgs.dim() != 4:
         raise AssertionError("Images Tensor must be 4D.")
@@ -136,7 +134,6 @@ def _compute_luts(
 
     Returns:
         Lut for each tile (B, GH, GW, C, 256).
-
     """
     if tiles_x_im.dim() != 6:
         raise AssertionError("Tensor must be 6D.")
@@ -184,7 +181,6 @@ def _map_luts(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
 
     Returns:
          mapped luts (B, 2GH, 2GW, 4, C, 256)
-
     """
     if interp_tiles.dim() != 6:
         raise AssertionError("interp_tiles tensor must be 6D.")
@@ -216,13 +212,13 @@ def _map_luts(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
         (num_imgs, gh, gw, 4, c, luts.shape[-1]), -1, dtype=interp_tiles.dtype, device=interp_tiles.device
     )
     # corner regions
-    luts_x_interp_tiles[:, 0:: gh - 1, 0:: gw - 1, 0] = luts[:, 0:: max(gh // 2 - 1, 1), 0:: max(gw // 2 - 1, 1)]
+    luts_x_interp_tiles[:, 0 :: gh - 1, 0 :: gw - 1, 0] = luts[:, 0 :: max(gh // 2 - 1, 1), 0 :: max(gw // 2 - 1, 1)]
     # border region (h)
-    luts_x_interp_tiles[:, 1:-1, 0:: gw - 1, 0] = luts[:, j_idxs[:, 0], 0:: max(gw // 2 - 1, 1)]
-    luts_x_interp_tiles[:, 1:-1, 0:: gw - 1, 1] = luts[:, j_idxs[:, 2], 0:: max(gw // 2 - 1, 1)]
+    luts_x_interp_tiles[:, 1:-1, 0 :: gw - 1, 0] = luts[:, j_idxs[:, 0], 0 :: max(gw // 2 - 1, 1)]
+    luts_x_interp_tiles[:, 1:-1, 0 :: gw - 1, 1] = luts[:, j_idxs[:, 2], 0 :: max(gw // 2 - 1, 1)]
     # border region (w)
-    luts_x_interp_tiles[:, 0:: gh - 1, 1:-1, 0] = luts[:, 0:: max(gh // 2 - 1, 1), i_idxs[:, 0]]
-    luts_x_interp_tiles[:, 0:: gh - 1, 1:-1, 1] = luts[:, 0:: max(gh // 2 - 1, 1), i_idxs[:, 1]]
+    luts_x_interp_tiles[:, 0 :: gh - 1, 1:-1, 0] = luts[:, 0 :: max(gh // 2 - 1, 1), i_idxs[:, 0]]
+    luts_x_interp_tiles[:, 0 :: gh - 1, 1:-1, 1] = luts[:, 0 :: max(gh // 2 - 1, 1), i_idxs[:, 1]]
     # internal region
     luts_x_interp_tiles[:, 1:-1, 1:-1, :] = luts[
         :, j_idxs.repeat(max(gh - 2, 1), 1, 1).permute(1, 0, 2), i_idxs.repeat(max(gw - 2, 1), 1, 1)
@@ -241,7 +237,6 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
 
     Returns:
         equalized tiles (B, 2GH, 2GW, C, TH/2, TW/2)
-
     """
     if interp_tiles.dim() != 6:
         raise AssertionError("interp_tiles tensor must be 6D.")
@@ -293,7 +288,7 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
     tiles_equalized[:, 1:-1, 1:-1] = torch.addcmul(b, tih, torch.sub(t, b))
 
     # corner regions
-    tiles_equalized[:, 0:: gh - 1, 0:: gw - 1] = preinterp_tiles_equalized[:, 0:: gh - 1, 0:: gw - 1, 0]
+    tiles_equalized[:, 0 :: gh - 1, 0 :: gw - 1] = preinterp_tiles_equalized[:, 0 :: gh - 1, 0 :: gw - 1, 0]
 
     # border region (h)
     t, b, _, _ = preinterp_tiles_equalized[:, 1:-1, 0].unbind(2)
@@ -312,10 +307,12 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
 
 
 @perform_keep_shape_image
-def equalize_clahe(input: torch.Tensor,
-                   clip_limit: float = 40.0,
-                   grid_size: Tuple[int, int] = (8, 8),
-                   slow_and_differentiable: bool = False) -> torch.Tensor:
+def equalize_clahe(
+    input: torch.Tensor,
+    clip_limit: float = 40.0,
+    grid_size: Tuple[int, int] = (8, 8),
+    slow_and_differentiable: bool = False,
+) -> torch.Tensor:
     r"""Apply clahe equalization on the input tensor.
 
     .. image:: _static/img/equalize_clahe.png
@@ -341,7 +338,6 @@ def equalize_clahe(input: torch.Tensor,
         >>> res = equalize_clahe(img)
         >>> res.shape
         torch.Size([2, 3, 10, 20])
-
     """
     if not isinstance(clip_limit, float):
         raise TypeError(f"Input clip_limit type is not float. Got {type(clip_limit)}")
@@ -356,7 +352,7 @@ def equalize_clahe(input: torch.Tensor,
         raise TypeError("Input grid_size type is not valid, must be a Tuple[int, int].")
 
     if grid_size[0] <= 0 or grid_size[1] <= 0:
-        raise ValueError("Input grid_size elements must be positive. Got {grid_size}")
+        raise ValueError(f"Input grid_size elements must be positive. Got {grid_size}")
 
     imgs: torch.Tensor = input  # B x C x H x W
 

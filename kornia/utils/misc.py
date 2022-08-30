@@ -11,7 +11,6 @@ def eye_like(n: int, input: torch.Tensor) -> torch.Tensor:
 
     Returns:
        The identity matrix with the same batch size as the input :math:`(B, N, N)`.
-
     """
     if n <= 0:
         raise AssertionError(type(n), n)
@@ -32,7 +31,6 @@ def vec_like(n, tensor):
 
     Returns:
         The vector with the same batch size as the input :math:`(B, N, 1)`.
-
     """
     if n <= 0:
         raise AssertionError(type(n), n)

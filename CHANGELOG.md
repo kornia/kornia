@@ -5,6 +5,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ****
+## :rocket: [0.6.5] - 2022-05-16
+### :new:  New Features
+- Create `kornia.io` and implement `load_image` with rust (#1701)
+- Implement `diamond_square` and plasma augmentations: `RandomPlasmaBrightness`, `RandomPlasmaContrast`, `RandomPlasmaShadow` (#1700)
+- Added `RandomRGBShift` augmentations (#1694)
+- Added STE gradient estimator (#1666)
+- More epipolar geometry metrics (+linalg utility) (#1674)
+- Add Lovasz-Hinge/Softmax losses (#1682)
+- Add `adjust_sigmoid` and `adjust_log` initial implementation (#1685)
+- Added distribution mapper (#1667)
+- `pos_weight` param to focal loss (#1744)
+
+### :lady_beetle: Bug fixes
+- Fixes filter2d's output shape shrink when padding='same' (#1661)
+- fix: added eps in geometry/rotmat_to_quaternion (#1665)
+- [fix] receive num_features as an arg to KeyNetDetector constructor (#1686
+
+### :zap:  Improvements
+- Add reduction option to `MS_SSIMLoss` (#1655)
+- Making epipolar metrics work with volumetric tensors (#1656)
+- Add get_safe_device util (#1662)
+- Added antialiasing option to Resize augmentation (#1687)
+- Use nearest neighbour interpolation for masks (#1630)
+- grayscale to rgb for `torch.uint8` (#1705)
+- Add `KORNIA_CHECK_SAME_DEVICES` (#1775)
+
 ## :rocket: [0.6.4] - 2022-03-19
 ### :new:  New Features
 - Adds MS-SSIMLoss reconstruction loss function (#1551)

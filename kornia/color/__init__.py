@@ -23,7 +23,7 @@ from .rgb import (
     rgba_to_rgb,
 )
 from .xyz import RgbToXyz, XyzToRgb, rgb_to_xyz, xyz_to_rgb
-from .ycbcr import RgbToYcbcr, YcbcrToRgb, rgb_to_ycbcr, ycbcr_to_rgb
+from .ycbcr import RgbToYcbcr, YcbcrToRgb, rgb_to_y, rgb_to_ycbcr, ycbcr_to_rgb
 from .yuv import (
     RgbToYuv,
     RgbToYuv420,
@@ -52,6 +52,7 @@ __all__ = [
     "hls_to_rgb",
     "rgb_to_ycbcr",
     "ycbcr_to_rgb",
+    "rgb_to_y",
     "rgb_to_yuv",
     "rgb_to_yuv420",
     "rgb_to_yuv422",
