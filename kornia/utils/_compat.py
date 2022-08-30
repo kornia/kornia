@@ -23,7 +23,7 @@ else:
 
     # NOTE: in previous versions `torch.solve` accepted arguments in another order.
     def solve(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
-        return _solve(B, A).solution
+        return _solve(B, A).solution  # type: ignore
 
 
 if version.parse(torch_version()) > version.parse("1.7.1"):

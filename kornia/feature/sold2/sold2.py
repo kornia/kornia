@@ -3,8 +3,10 @@ from typing import Dict, Optional, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch import Tensor
 
 from kornia.geometry.conversions import normalize_pixel_coordinates
+from kornia.testing import KORNIA_CHECK_SHAPE
 
 from .backbones import SOLD2Net
 from .sold2_detector import LineSegmentDetectionModule, line_map_to_segments, prob_to_junctions
@@ -106,7 +108,7 @@ class SOLD2(nn.Module):
         # Initialize the line matcher
         self.line_matcher = WunschLineMatcher(**self.config["line_matcher_cfg"])
 
-    def forward(self, img: torch.Tensor) -> Dict:
+    def forward(self, img: Tensor) -> Dict:
         """
         Args:
             img: batched images with shape :math:`(B, 1, H, W)`.
@@ -117,8 +119,7 @@ class SOLD2(nn.Module):
             - ``line_heatmap``: raw line heatmap of shape :math:`(B, H, W)`.
             - ``dense_desc``: the semi-dense descriptor map of shape :math:`(B, 128, H/4, W/4)`.
         """
-        if ((not len(img.shape) == 4) or (not isinstance(img, torch.Tensor))):
-            raise ValueError("The input image should be a 4D torch tensor.")
+        KORNIA_CHECK_SHAPE(img, ["B", "1", "H", "W"])
         outputs = {}
 
         # Forward pass of the CNN backbone
@@ -141,8 +142,8 @@ class SOLD2(nn.Module):
 
         return outputs
 
-    def match(self, line_seg1: torch.Tensor, line_seg2: torch.Tensor,
-              desc1: torch.Tensor, desc2: torch.Tensor) -> torch.Tensor:
+    def match(self, line_seg1: Tensor, line_seg2: Tensor,
+              desc1: Tensor, desc2: Tensor) -> Tensor:
         """Find the best matches between two sets of line segments and their corresponding descriptors.
 
         Args:
@@ -165,13 +166,14 @@ class SOLD2(nn.Module):
         return state_dict
 
 
-class WunschLineMatcher:
+class WunschLineMatcher(nn.Module):
     """Class matching two sets of line segments with the Needleman-Wunsch algorithm.
 
     TODO: move it later in kornia.feature.matching
     """
     def __init__(self, cross_check: bool = True, num_samples: int = 10, min_dist_pts: int = 8,
                  top_k_candidates: int = 10, grid_size: int = 8, line_score: bool = False):
+        super().__init__()
         self.cross_check = cross_check
         self.num_samples = num_samples
         self.min_dist_pts = min_dist_pts
@@ -179,17 +181,25 @@ class WunschLineMatcher:
         self.grid_size = grid_size
         self.line_score = line_score  # True to compute saliency on a line
 
-    def __call__(self, line_seg1: torch.Tensor, line_seg2: torch.Tensor,
-                 desc1: torch.Tensor, desc2: torch.Tensor) -> torch.Tensor:
+    def forward(self,
+                line_seg1: Tensor,
+                line_seg2: Tensor,
+                desc1: Tensor,
+                desc2: Tensor) -> Tensor:
         """Find the best matches between two sets of line segments and their corresponding descriptors."""
+        KORNIA_CHECK_SHAPE(line_seg1, ["N", "2", "2"])
+        KORNIA_CHECK_SHAPE(line_seg2, ["N", "2", "2"])
+        KORNIA_CHECK_SHAPE(desc1, ["B", "D", "H", "H"])
+        KORNIA_CHECK_SHAPE(desc2, ["B", "D", "H", "H"])
+        device = desc1.device
         img_size1 = (desc1.shape[2] * self.grid_size, desc1.shape[3] * self.grid_size)
         img_size2 = (desc2.shape[2] * self.grid_size, desc2.shape[3] * self.grid_size)
 
         # Default case when an image has no lines
         if len(line_seg1) == 0:
-            return torch.empty(0, dtype=torch.int)
+            return torch.empty(0, dtype=torch.int, device=device)
         if len(line_seg2) == 0:
-            return -torch.ones(len(line_seg1), dtype=torch.int)
+            return -torch.ones(len(line_seg1), dtype=torch.int, device=device)
 
         # Sample points regularly along each line
         line_points1, valid_points1 = self.sample_line_points(line_seg1)
@@ -218,21 +228,21 @@ class WunschLineMatcher:
         # [Optionally] filter matches with mutual nearest neighbor filtering
         if self.cross_check:
             matches2 = self.filter_and_match_lines(scores.permute(1, 0, 3, 2))
-            mutual = matches2[matches] == torch.arange(len(line_seg1))
+            mutual = matches2[matches] == torch.arange(len(line_seg1), device=device)
             matches[~mutual] = -1
 
         return matches
 
-    def sample_line_points(self, line_seg: torch.Tensor) -> Tuple:
+    def sample_line_points(self, line_seg: Tensor) -> Tuple:
         """Regularly sample points along each line segments, with a minimal distance between each point.
-
         Pad the remaining points.
         Inputs:
-            line_seg: an Nx2x2 torch.Tensor.
+            line_seg: an Nx2x2 Tensor.
         Outputs:
-            line_points: an Nxnum_samplesx2 torch.Tensor.
-            valid_points: a boolean Nxnum_samples torch.Tensor.
+            line_points: an N x num_samples x 2 Tensor.
+            valid_points: a boolean N x num_samples Tensor.
         """
+        KORNIA_CHECK_SHAPE(line_seg, ["N", "2", "2"])
         num_lines = len(line_seg)
         line_lengths = torch.norm(line_seg[:, 0] - line_seg[:, 1], dim=1)
 
@@ -260,16 +270,18 @@ class WunschLineMatcher:
 
         return line_points, valid_points
 
-    def filter_and_match_lines(self, scores: torch.Tensor) -> torch.Tensor:
+    def filter_and_match_lines(self, scores: Tensor) -> Tensor:
         """Use the scores to keep the top k best lines, compute the Needleman- Wunsch algorithm on each candidate
         pairs, and keep the highest score.
 
         Inputs:
-            scores: a (N, M, n, n) torch.Tensor containing the pairwise scores
+            scores: a (N, M, n, n) Tensor containing the pairwise scores
                     of the elements to match.
         Outputs:
-            matches: a (N) torch.Tensor containing the indices of the best match
+            matches: a (N) Tensor containing the indices of the best match
         """
+        KORNIA_CHECK_SHAPE(scores, ["M", "N", "n", "n"])
+
         # Pre-filter the pairs and keep the top k best candidate lines
         line_scores1 = scores.max(3)[0]
         valid_scores1 = line_scores1 != -1
@@ -295,15 +307,16 @@ class WunschLineMatcher:
         matches = topk_lines[torch.arange(n_lines1), matches]
         return matches
 
-    def needleman_wunsch(self, scores: torch.Tensor) -> torch.Tensor:
+    def needleman_wunsch(self, scores: Tensor) -> Tensor:
         """Batched implementation of the Needleman-Wunsch algorithm.
 
         The cost of the InDel operation is set to 0 by subtracting the gap
         penalty to the scores.
         Inputs:
-            scores: a (B, N, M) torch.Tensor containing the pairwise scores
+            scores: a (B, N, M) Tensor containing the pairwise scores
                     of the elements to match.
         """
+        KORNIA_CHECK_SHAPE(scores, ["B", "N", "M"])
         b, n, m = scores.shape
 
         # Recalibrate the scores to get a gap score of 0
@@ -321,13 +334,14 @@ class WunschLineMatcher:
         return nw_grid[:, -1, -1]
 
 
-def keypoints_to_grid(keypoints: torch.Tensor, img_size: tuple) -> torch.Tensor:
+def keypoints_to_grid(keypoints: Tensor, img_size: tuple) -> Tensor:
     """Convert a list of keypoints into a grid in [-1, 1]² that can be used in torch.nn.functional.interpolate.
 
     Args:
         keypoints: a tensor [N, 2] of N keypoints (ij coordinates convention).
         img_size: the original image size (H, W)
     """
+    KORNIA_CHECK_SHAPE(keypoints, ["N", "2"])
     n_points = len(keypoints)
     grid_points = normalize_pixel_coordinates(
         keypoints[:, [1, 0]], img_size[0], img_size[1])

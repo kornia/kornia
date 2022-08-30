@@ -1,5 +1,4 @@
 """Implements several backbone networks."""
-
 from typing import Dict, List, Tuple, Union
 
 import torch
@@ -151,7 +150,6 @@ class Hourglass(nn.Module):
 
 class HourglassNet(nn.Module):
     """Hourglass model from Newell et al ECCV 2016."""
-
     def __init__(self,
                  block: torch.nn.Module,
                  head: torch.nn.Module,
@@ -263,7 +261,6 @@ def hg(**kwargs):
 
 
 # [Backbone decoders]
-
 class SuperpointDecoder(nn.Module):
     """Junction decoder based on the SuperPoint architecture.
 
