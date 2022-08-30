@@ -3,7 +3,7 @@ from typing import Dict, Tuple
 
 import torch
 import torch.nn as nn
-from torch import tensor, Tensor
+from torch import Tensor, tensor
 
 from kornia.geometry.bbox import nms
 from kornia.testing import KORNIA_CHECK_SHAPE
@@ -16,13 +16,7 @@ urls["wireframe"] = "https://www.polybox.ethz.ch/index.php/s/blOrW89gqSLoHOk/dow
 
 
 default_detector_cfg = {
-    'backbone_cfg': {
-        'input_channel': 1,
-        'depth': 4,
-        'num_stacks': 2,
-        'num_blocks': 1,
-        'num_classes': 5,
-    },
+    'backbone_cfg': {'input_channel': 1, 'depth': 4, 'num_stacks': 2, 'num_blocks': 1, 'num_classes': 5},
     'use_descriptor': False,
     'grid_size': 8,
     'keep_border_valid': True,
@@ -33,7 +27,7 @@ default_detector_cfg = {
         'num_samples': 64,
         'inlier_thresh': 0.99,
         'use_candidate_suppression': True,
-        'nms_dist_tolerance': 3.,
+        'nms_dist_tolerance': 3.0,
         'use_heatmap_refinement': True,
         'heatmap_refine_cfg': {
             'mode': "local",
@@ -43,10 +37,7 @@ default_detector_cfg = {
             'overlap_ratio': 0.5,
         },
         'use_junction_refinement': True,
-        'junction_refine_cfg': {
-            'num_perturbs': 9,
-            'perturb_interval': 0.25,
-        },
+        'junction_refine_cfg': {'num_perturbs': 9, 'perturb_interval': 0.25},
     },
 }
 
@@ -83,7 +74,8 @@ class SOLD2_detector(nn.Module):
         self.model = SOLD2Net(self.config)
         if pretrained:
             pretrained_dict = torch.hub.load_state_dict_from_url(
-                urls["wireframe"], map_location=lambda storage, loc: storage)
+                urls["wireframe"], map_location=lambda storage, loc: storage
+            )
             state_dict = self.adapt_state_dict(pretrained_dict['model_state_dict'])
             self.model.load_state_dict(state_dict)
         self.eval()
@@ -124,8 +116,7 @@ class SOLD2_detector(nn.Module):
         lines = []
         for junc_prob, heatmap in zip(net_outputs["junctions"], net_outputs["heatmap"]):
             # Get the junctions
-            junctions = prob_to_junctions(junc_prob, self.grid_size,
-                                          self.junc_detect_thresh, self.max_num_junctions)
+            junctions = prob_to_junctions(junc_prob, self.grid_size, self.junc_detect_thresh, self.max_num_junctions)
 
             # Run the line detector
             line_map, junctions, _ = self.line_detector.detect(junctions, heatmap)
@@ -137,6 +128,7 @@ class SOLD2_detector(nn.Module):
 
 class LineSegmentDetectionModule:
     r"""Module extracting line segments from junctions and line heatmaps.
+
     Args:
         detect_thresh: The probability threshold for mean activation (0. ~ 1.)
         num_samples: Number of sampling locations along the line segments.
@@ -152,17 +144,18 @@ class LineSegmentDetectionModule:
         use_junction_refinement: Use junction refinement method or not.
         junction_refine_cfg: The configs for junction refinement methods.
     """
+
     def __init__(
         self,
         detect_thresh: float,
         num_samples: int = 64,
-        inlier_thresh: float = 0.,
+        inlier_thresh: float = 0.0,
         heatmap_low_thresh: float = 0.15,
         heatmap_high_thresh: float = 0.2,
         max_local_patch_radius: float = 3,
-        lambda_radius: float = 2.,
+        lambda_radius: float = 2.0,
         use_candidate_suppression: bool = False,
-        nms_dist_tolerance: float = 3.,
+        nms_dist_tolerance: float = 3.0,
         use_heatmap_refinement: bool = False,
         heatmap_refine_cfg=None,
         use_junction_refinement: bool = False,
@@ -210,9 +203,7 @@ class LineSegmentDetectionModule:
         if self.use_heatmap_refinement:
             if self.heatmap_refine_cfg["mode"] == "global":
                 heatmap = self.refine_heatmap(
-                    heatmap,
-                    self.heatmap_refine_cfg["ratio"],
-                    self.heatmap_refine_cfg["valid_thresh"]
+                    heatmap, self.heatmap_refine_cfg["ratio"], self.heatmap_refine_cfg["valid_thresh"]
                 )
             elif self.heatmap_refine_cfg["mode"] == "local":
                 heatmap = self.refine_heatmap_local(
@@ -220,21 +211,21 @@ class LineSegmentDetectionModule:
                     self.heatmap_refine_cfg["num_blocks"],
                     self.heatmap_refine_cfg["overlap_ratio"],
                     self.heatmap_refine_cfg["ratio"],
-                    self.heatmap_refine_cfg["valid_thresh"]
+                    self.heatmap_refine_cfg["valid_thresh"],
                 )
 
         # Initialize empty line map
         num_junctions = len(junctions)
-        line_map_pred = torch.zeros([num_junctions, num_junctions],
-                                    device=device, dtype=torch.int32)
+        line_map_pred = torch.zeros([num_junctions, num_junctions], device=device, dtype=torch.int32)
 
         # Stop if there are not enough junctions
         if num_junctions < 2:
             return line_map_pred, junctions, heatmap
 
         # Generate the candidate map
-        candidate_map = torch.triu(torch.ones(
-            [num_junctions, num_junctions], device=device, dtype=torch.int32), diagonal=1)
+        candidate_map = torch.triu(
+            torch.ones([num_junctions, num_junctions], device=device, dtype=torch.int32), diagonal=1
+        )
 
         # Optionally perform candidate filtering
         if self.use_candidate_suppression:
@@ -242,8 +233,7 @@ class LineSegmentDetectionModule:
 
         # Fetch the candidates
         candidate_indices = torch.where(candidate_map)
-        candidate_index_map = torch.cat([candidate_indices[0][..., None],
-                                         candidate_indices[1][..., None]], dim=-1)
+        candidate_index_map = torch.cat([candidate_indices[0][..., None], candidate_indices[1][..., None]], dim=-1)
 
         # Get the corresponding start and end junctions
         candidate_junc_start = junctions[candidate_index_map[:, 0]]
@@ -251,10 +241,8 @@ class LineSegmentDetectionModule:
 
         # Get the sampling locations (N x 64)
         sampler = self.torch_sampler.to(device)[None]
-        cand_samples_h = (candidate_junc_start[:, 0:1] * sampler
-                          + candidate_junc_end[:, 0:1] * (1 - sampler))
-        cand_samples_w = (candidate_junc_start[:, 1:2] * sampler
-                          + candidate_junc_end[:, 1:2] * (1 - sampler))
+        cand_samples_h = candidate_junc_start[:, 0:1] * sampler + candidate_junc_end[:, 0:1] * (1 - sampler)
+        cand_samples_w = candidate_junc_start[:, 1:2] * sampler + candidate_junc_end[:, 1:2] * (1 - sampler)
 
         # Clip to image boundary
         cand_h = torch.clamp(cand_samples_h, min=0, max=H - 1)
@@ -262,9 +250,10 @@ class LineSegmentDetectionModule:
 
         # [Local maximum search]
         # Compute normalized segment lengths
-        segments_length = torch.sqrt(torch.sum((candidate_junc_start.to(torch.float32)
-                                                - candidate_junc_end.to(torch.float32)) ** 2, dim=-1))
-        normalized_seg_length = segments_length / (((H ** 2) + (W ** 2)) ** 0.5)
+        segments_length = torch.sqrt(
+            torch.sum((candidate_junc_start.to(torch.float32) - candidate_junc_end.to(torch.float32)) ** 2, dim=-1)
+        )
+        normalized_seg_length = segments_length / (((H**2) + (W**2)) ** 0.5)
 
         # Perform local max search
         num_cand = len(cand_h)
@@ -274,24 +263,18 @@ class LineSegmentDetectionModule:
             sampled_feat_lst = []
             for iter_idx in range(num_iter):
                 if not iter_idx == num_iter - 1:
-                    cand_h_ = cand_h[iter_idx * group_size:
-                                     (iter_idx + 1) * group_size, :]
-                    cand_w_ = cand_w[iter_idx * group_size:
-                                     (iter_idx + 1) * group_size, :]
-                    normalized_seg_length_ = normalized_seg_length[
-                        iter_idx * group_size: (iter_idx + 1) * group_size]
+                    cand_h_ = cand_h[iter_idx * group_size : (iter_idx + 1) * group_size, :]
+                    cand_w_ = cand_w[iter_idx * group_size : (iter_idx + 1) * group_size, :]
+                    normalized_seg_length_ = normalized_seg_length[iter_idx * group_size : (iter_idx + 1) * group_size]
                 else:
-                    cand_h_ = cand_h[iter_idx * group_size:, :]
-                    cand_w_ = cand_w[iter_idx * group_size:, :]
-                    normalized_seg_length_ = normalized_seg_length[
-                        iter_idx * group_size:]
-                sampled_feat_ = self.detect_local_max(
-                    heatmap, cand_h_, cand_w_, H, W, normalized_seg_length_, device)
+                    cand_h_ = cand_h[iter_idx * group_size :, :]
+                    cand_w_ = cand_w[iter_idx * group_size :, :]
+                    normalized_seg_length_ = normalized_seg_length[iter_idx * group_size :]
+                sampled_feat_ = self.detect_local_max(heatmap, cand_h_, cand_w_, H, W, normalized_seg_length_, device)
                 sampled_feat_lst.append(sampled_feat_)
             sampled_feat = torch.cat(sampled_feat_lst, dim=0)
         else:
-            sampled_feat = self.detect_local_max(
-                heatmap, cand_h, cand_w, H, W, normalized_seg_length, device)
+            sampled_feat = self.detect_local_max(heatmap, cand_h, cand_w, H, W, normalized_seg_length, device)
 
         # [Simple threshold detection]
         # detection_results is a mask over all candidates
@@ -299,8 +282,7 @@ class LineSegmentDetectionModule:
 
         # [Inlier threshold detection]
         if self.inlier_thresh > 0:
-            inlier_ratio = torch.sum(sampled_feat > self.detect_thresh,
-                                     dim=-1).to(heatmap.dtype) / self.num_samples
+            inlier_ratio = torch.sum(sampled_feat > self.detect_thresh, dim=-1).to(heatmap.dtype) / self.num_samples
             detection_results_inlier = inlier_ratio >= self.inlier_thresh
             detection_results = detection_results * detection_results_inlier
 
@@ -311,24 +293,28 @@ class LineSegmentDetectionModule:
 
         # [Junction refinement]
         if self.use_junction_refinement and len(detected_junc_indexes) > 0:
-            junctions, line_map_pred = self.refine_junction_perturb(
-                junctions, line_map_pred, heatmap, H, W, device)
+            junctions, line_map_pred = self.refine_junction_perturb(junctions, line_map_pred, heatmap, H, W, device)
 
         return line_map_pred, junctions, heatmap
 
-    def refine_heatmap(self, heatmap: Tensor, ratio: float = 0.2,
-                       valid_thresh: float = 1e-2) -> Tensor:
+    def refine_heatmap(self, heatmap: Tensor, ratio: float = 0.2, valid_thresh: float = 1e-2) -> Tensor:
         """Global heatmap refinement method."""
         # Grab the top 10% values
         heatmap_values = heatmap[heatmap > valid_thresh]
         sorted_values = torch.sort(heatmap_values, descending=True)[0]
         top10_len = math.ceil(sorted_values.shape[0] * ratio)
         max20 = torch.mean(sorted_values[:top10_len])
-        heatmap = torch.clamp(heatmap / max20, min=0., max=1.)
+        heatmap = torch.clamp(heatmap / max20, min=0.0, max=1.0)
         return heatmap
 
-    def refine_heatmap_local(self, heatmap: Tensor, num_blocks: int = 5, overlap_ratio: float = 0.5,
-                             ratio: float = 0.2, valid_thresh: float = 2e-3) -> Tensor:
+    def refine_heatmap_local(
+        self,
+        heatmap: Tensor,
+        num_blocks: int = 5,
+        overlap_ratio: float = 0.5,
+        ratio: float = 0.2,
+        valid_thresh: float = 2e-3,
+    ) -> Tensor:
         """Local heatmap refinement method."""
         # Get the shape of the heatmap
         H, W = heatmap.shape
@@ -349,13 +335,12 @@ class LineSegmentDetectionModule:
 
                 subheatmap = heatmap[h_start:h_end, w_start:w_end]
                 if subheatmap.max() > valid_thresh:
-                    subheatmap = self.refine_heatmap(
-                        subheatmap, ratio, valid_thresh=valid_thresh)
+                    subheatmap = self.refine_heatmap(subheatmap, ratio, valid_thresh=valid_thresh)
 
                 # Aggregate it to the final heatmap
                 heatmap_output[h_start:h_end, w_start:w_end] += subheatmap
                 count_map[h_start:h_end, w_start:w_end] += 1
-        heatmap_output = torch.clamp(heatmap_output / count_map, max=1., min=0.)
+        heatmap_output = torch.clamp(heatmap_output / count_map, max=1.0, min=0.0)
 
         return heatmap_output
 
@@ -366,8 +351,7 @@ class LineSegmentDetectionModule:
 
         # Compute distance between junction pairs
         # (num_junc x 1 x 2) - (1 x num_junc x 2) => num_junc x num_junc map
-        line_dist_map = torch.sum((torch.unsqueeze(junctions, dim=1)
-                                  - junctions[None, ...]) ** 2, dim=-1) ** 0.5
+        line_dist_map = torch.sum((torch.unsqueeze(junctions, dim=1) - junctions[None, ...]) ** 2, dim=-1) ** 0.5
 
         # Fetch all the "detected lines"
         seg_indexes = torch.where(torch.triu(candidate_map, diagonal=1))
@@ -388,8 +372,9 @@ class LineSegmentDetectionModule:
         proj = torch.einsum('bij,bjk->bik', cand_vecs, dir_vecs[..., None]) / line_dists[..., None, None]
         # proj is num_segs x num_junction x 1
         proj_mask = (proj >= 0) * (proj <= 1)
-        cand_angles = torch.acos(torch.einsum('bij,bjk->bik', cand_vecs, dir_vecs[..., None])
-                                 / cand_vecs_norm[..., None])
+        cand_angles = torch.acos(
+            torch.einsum('bij,bjk->bik', cand_vecs, dir_vecs[..., None]) / cand_vecs_norm[..., None]
+        )
         cand_dists = cand_vecs_norm[..., None] * torch.sin(cand_angles)
         junc_dist_mask = cand_dists <= dist_tolerance
         junc_mask = junc_dist_mask * proj_mask
@@ -406,8 +391,9 @@ class LineSegmentDetectionModule:
 
         return candidate_map
 
-    def refine_junction_perturb(self, junctions: Tensor, line_map: Tensor,
-                                heatmap: Tensor, H: int, W: int, device: torch.device) -> Tuple:
+    def refine_junction_perturb(
+        self, junctions: Tensor, line_map: Tensor, heatmap: Tensor, H: int, W: int, device: torch.device
+    ) -> Tuple:
         """Refine the line endpoints in a similar way as in LSD."""
         # Fetch refinement parameters
         num_perturbs = self.junction_refine_cfg["num_perturbs"]
@@ -415,17 +401,21 @@ class LineSegmentDetectionModule:
         side_perturbs = (num_perturbs - 1) // 2
 
         # Fetch the 2D perturb mat
-        perturb_vec = torch.arange(start=-perturb_interval * side_perturbs,
-                                   end=perturb_interval * (side_perturbs + 1),
-                                   step=perturb_interval, device=device)
+        perturb_vec = torch.arange(
+            start=-perturb_interval * side_perturbs,
+            end=perturb_interval * (side_perturbs + 1),
+            step=perturb_interval,
+            device=device,
+        )
         if version.parse(torch.__version__) < version.parse('1.10'):
-            h1_grid, w1_grid, h2_grid, w2_grid = torch.meshgrid(
-                perturb_vec, perturb_vec, perturb_vec, perturb_vec)
+            h1_grid, w1_grid, h2_grid, w2_grid = torch.meshgrid(perturb_vec, perturb_vec, perturb_vec, perturb_vec)
         else:
             h1_grid, w1_grid, h2_grid, w2_grid = torch.meshgrid(
-                perturb_vec, perturb_vec, perturb_vec, perturb_vec, indexing='ij')
-        perturb_tensor = torch.cat([h1_grid[..., None], w1_grid[..., None],
-                                    h2_grid[..., None], w2_grid[..., None]], dim=-1)
+                perturb_vec, perturb_vec, perturb_vec, perturb_vec, indexing='ij'
+            )
+        perturb_tensor = torch.cat(
+            [h1_grid[..., None], w1_grid[..., None], h2_grid[..., None], w2_grid[..., None]], dim=-1
+        )
         perturb_tensor_flat = perturb_tensor.view(-1, 2, 2)
 
         # Fetch all the detected lines
@@ -434,13 +424,10 @@ class LineSegmentDetectionModule:
         end_points = junctions[detected_seg_indexes[1]]
         line_segments = torch.stack([start_points, end_points], dim=1)
 
-        line_segment_candidates = (line_segments.unsqueeze(dim=1)
-                                   + perturb_tensor_flat[None])
+        line_segment_candidates = line_segments.unsqueeze(dim=1) + perturb_tensor_flat[None]
         # Clip the boundaries
-        line_segment_candidates[..., 0] = torch.clamp(
-            line_segment_candidates[..., 0], min=0, max=H - 1)
-        line_segment_candidates[..., 1] = torch.clamp(
-            line_segment_candidates[..., 1], min=0, max=W - 1)
+        line_segment_candidates[..., 0] = torch.clamp(line_segment_candidates[..., 0], min=0, max=H - 1)
+        line_segment_candidates[..., 1] = torch.clamp(line_segment_candidates[..., 1], min=0, max=W - 1)
 
         # Iterate through all the segments
         refined_segment_lst = []
@@ -453,10 +440,8 @@ class LineSegmentDetectionModule:
 
             # Get the sampling locations (N x 64)
             sampler = self.torch_sampler.to(device)[None]
-            cand_samples_h = (candidate_junc_start[:, 0:1] * sampler
-                              + candidate_junc_end[:, 0:1] * (1 - sampler))
-            cand_samples_w = (candidate_junc_start[:, 1:2] * sampler
-                              + candidate_junc_end[:, 1:2] * (1 - sampler))
+            cand_samples_h = candidate_junc_start[:, 0:1] * sampler + candidate_junc_end[:, 0:1] * (1 - sampler)
+            cand_samples_w = candidate_junc_start[:, 1:2] * sampler + candidate_junc_end[:, 1:2] * (1 - sampler)
 
             # Clip to image boundary
             cand_h = torch.clamp(cand_samples_h, min=0, max=H - 1)
@@ -472,8 +457,7 @@ class LineSegmentDetectionModule:
         refined_segments = torch.cat(refined_segment_lst, dim=0)
 
         # Convert back to junctions and line_map
-        junctions_new = torch.cat(
-            [refined_segments[:, 0, :], refined_segments[:, 1, :]], dim=0)
+        junctions_new = torch.cat([refined_segments[:, 0, :], refined_segments[:, 1, :]], dim=0)
         junctions_new = torch.unique(junctions_new, dim=0)
         line_map_new = self.segments_to_line_map(junctions_new, refined_segments)
 
@@ -505,20 +489,27 @@ class LineSegmentDetectionModule:
 
         # Perform the bilinear sampling
         cand_samples_feat = (
-            heatmap[cand_h_floor, cand_w_floor] * (cand_h_ceil - cand_h)
-            * (cand_w_ceil - cand_w) + heatmap[cand_h_floor, cand_w_ceil]
-            * (cand_h_ceil - cand_h) * (cand_w - cand_w_floor)
-            + heatmap[cand_h_ceil, cand_w_floor] * (cand_h - cand_h_floor)
-            * (cand_w_ceil - cand_w) + heatmap[cand_h_ceil, cand_w_ceil]
-            * (cand_h - cand_h_floor) * (cand_w - cand_w_floor))
+            heatmap[cand_h_floor, cand_w_floor] * (cand_h_ceil - cand_h) * (cand_w_ceil - cand_w)
+            + heatmap[cand_h_floor, cand_w_ceil] * (cand_h_ceil - cand_h) * (cand_w - cand_w_floor)
+            + heatmap[cand_h_ceil, cand_w_floor] * (cand_h - cand_h_floor) * (cand_w_ceil - cand_w)
+            + heatmap[cand_h_ceil, cand_w_ceil] * (cand_h - cand_h_floor) * (cand_w - cand_w_floor)
+        )
 
         return cand_samples_feat
 
-    def detect_local_max(self, heatmap: Tensor, cand_h: Tensor, cand_w: Tensor, H: int, W: int,
-                         normalized_seg_length: Tensor, device: torch.device) -> Tensor:
+    def detect_local_max(
+        self,
+        heatmap: Tensor,
+        cand_h: Tensor,
+        cand_w: Tensor,
+        H: int,
+        W: int,
+        normalized_seg_length: Tensor,
+        device: torch.device,
+    ) -> Tensor:
         """Detection by local maximum search."""
         # Compute the distance threshold
-        dist_thresh = 0.5 * (2 ** 0.5) + self.lambda_radius * normalized_seg_length
+        dist_thresh = 0.5 * (2**0.5) + self.lambda_radius * normalized_seg_length
         # Make it N x 64
         dist_thresh = torch.repeat_interleave(dist_thresh[..., None], self.num_samples, dim=-1)
 
@@ -527,11 +518,10 @@ class LineSegmentDetectionModule:
         cand_points_round = torch.round(cand_points)  # N x 64 x 2
 
         # Construct local patches 9x9 = 81
-        patch_mask = torch.zeros([int(2 * self.local_patch_radius + 1),
-                                  int(2 * self.local_patch_radius + 1)], device=device)
-        patch_center = tensor(
-            [[self.local_patch_radius, self.local_patch_radius]],
-            device=device, dtype=torch.float32)
+        patch_mask = torch.zeros(
+            [int(2 * self.local_patch_radius + 1), int(2 * self.local_patch_radius + 1)], device=device
+        )
+        patch_center = tensor([[self.local_patch_radius, self.local_patch_radius]], device=device, dtype=torch.float32)
         H_patch_points, W_patch_points = torch.where(patch_mask >= 0)
         patch_points = torch.cat([H_patch_points[..., None], W_patch_points[..., None]], dim=-1)
         # Fetch the circle region
@@ -542,15 +532,12 @@ class LineSegmentDetectionModule:
 
         # Construct local patch mask
         patch_points_shifted = torch.unsqueeze(cand_points_round, dim=2) + patch_points[None, None]
-        patch_dist = torch.sqrt(torch.sum((torch.unsqueeze(cand_points, dim=2)
-                                          - patch_points_shifted) ** 2, dim=-1))
+        patch_dist = torch.sqrt(torch.sum((torch.unsqueeze(cand_points, dim=2) - patch_points_shifted) ** 2, dim=-1))
         patch_dist_mask = patch_dist < dist_thresh[..., None]
 
         # Get all points => num_points_center x num_patch_points x 2
-        points_H = torch.clamp(patch_points_shifted[:, :, :, 0], min=0,
-                               max=H - 1).to(torch.long)
-        points_W = torch.clamp(patch_points_shifted[:, :, :, 1], min=0,
-                               max=W - 1).to(torch.long)
+        points_H = torch.clamp(patch_points_shifted[:, :, :, 0], min=0, max=H - 1).to(torch.long)
+        points_W = torch.clamp(patch_points_shifted[:, :, :, 1], min=0, max=W - 1).to(torch.long)
         points = torch.cat([points_H[..., None], points_W[..., None]], dim=-1)
 
         # Sample the feature (N x 64 x 81)

@@ -16,13 +16,7 @@ urls["wireframe"] = "https://www.polybox.ethz.ch/index.php/s/blOrW89gqSLoHOk/dow
 
 
 default_cfg: Dict = {
-    'backbone_cfg': {
-        'input_channel': 1,
-        'depth': 4,
-        'num_stacks': 2,
-        'num_blocks': 1,
-        'num_classes': 5,
-    },
+    'backbone_cfg': {'input_channel': 1, 'depth': 4, 'num_stacks': 2, 'num_blocks': 1, 'num_classes': 5},
     'use_descriptor': True,
     'grid_size': 8,
     'keep_border_valid': True,
@@ -33,7 +27,7 @@ default_cfg: Dict = {
         'num_samples': 64,
         'inlier_thresh': 0.99,
         'use_candidate_suppression': True,
-        'nms_dist_tolerance': 3.,
+        'nms_dist_tolerance': 3.0,
         'use_heatmap_refinement': True,
         'heatmap_refine_cfg': {
             'mode': "local",
@@ -43,10 +37,7 @@ default_cfg: Dict = {
             'overlap_ratio': 0.5,
         },
         'use_junction_refinement': True,
-        'junction_refine_cfg': {
-            'num_perturbs': 9,
-            'perturb_interval': 0.25,
-        },
+        'junction_refine_cfg': {'num_perturbs': 9, 'perturb_interval': 0.25},
     },
     'line_matcher_cfg': {
         'cross_check': True,
@@ -96,7 +87,8 @@ class SOLD2(nn.Module):
         self.model = SOLD2Net(self.config)
         if pretrained:
             pretrained_dict = torch.hub.load_state_dict_from_url(
-                urls["wireframe"], map_location=lambda storage, loc: storage)
+                urls["wireframe"], map_location=lambda storage, loc: storage
+            )
             state_dict = self.adapt_state_dict(pretrained_dict['model_state_dict'])
             self.model.load_state_dict(state_dict)
         self.eval()
@@ -132,8 +124,7 @@ class SOLD2(nn.Module):
         lines = []
         for junc_prob, heatmap in zip(net_outputs["junctions"], net_outputs["heatmap"]):
             # Get the junctions
-            junctions = prob_to_junctions(junc_prob, self.grid_size,
-                                          self.junc_detect_thresh, self.max_num_junctions)
+            junctions = prob_to_junctions(junc_prob, self.grid_size, self.junc_detect_thresh, self.max_num_junctions)
 
             # Run the line detector
             line_map, junctions, _ = self.line_detector.detect(junctions, heatmap)
@@ -142,8 +133,7 @@ class SOLD2(nn.Module):
 
         return outputs
 
-    def match(self, line_seg1: Tensor, line_seg2: Tensor,
-              desc1: Tensor, desc2: Tensor) -> Tensor:
+    def match(self, line_seg1: Tensor, line_seg2: Tensor, desc1: Tensor, desc2: Tensor) -> Tensor:
         """Find the best matches between two sets of line segments and their corresponding descriptors.
 
         Args:
@@ -171,8 +161,16 @@ class WunschLineMatcher(nn.Module):
 
     TODO: move it later in kornia.feature.matching
     """
-    def __init__(self, cross_check: bool = True, num_samples: int = 10, min_dist_pts: int = 8,
-                 top_k_candidates: int = 10, grid_size: int = 8, line_score: bool = False):
+
+    def __init__(
+        self,
+        cross_check: bool = True,
+        num_samples: int = 10,
+        min_dist_pts: int = 8,
+        top_k_candidates: int = 10,
+        grid_size: int = 8,
+        line_score: bool = False,
+    ):
         super().__init__()
         self.cross_check = cross_check
         self.num_samples = num_samples
@@ -181,11 +179,7 @@ class WunschLineMatcher(nn.Module):
         self.grid_size = grid_size
         self.line_score = line_score  # True to compute saliency on a line
 
-    def forward(self,
-                line_seg1: Tensor,
-                line_seg2: Tensor,
-                desc1: Tensor,
-                desc2: Tensor) -> Tensor:
+    def forward(self, line_seg1: Tensor, line_seg2: Tensor, desc1: Tensor, desc2: Tensor) -> Tensor:
         """Find the best matches between two sets of line segments and their corresponding descriptors."""
         KORNIA_CHECK_SHAPE(line_seg1, ["N", "2", "2"])
         KORNIA_CHECK_SHAPE(line_seg2, ["N", "2", "2"])
@@ -235,6 +229,7 @@ class WunschLineMatcher(nn.Module):
 
     def sample_line_points(self, line_seg: Tensor) -> Tuple:
         """Regularly sample points along each line segments, with a minimal distance between each point.
+
         Pad the remaining points.
         Inputs:
             line_seg: an Nx2x2 Tensor.
@@ -248,8 +243,9 @@ class WunschLineMatcher(nn.Module):
 
         # Sample the points separated by at least min_dist_pts along each line
         # The number of samples depends on the length of the line
-        num_samples_lst = torch.clamp(torch.div(line_lengths, self.min_dist_pts, rounding_mode='floor'),
-                                      2, self.num_samples).int()
+        num_samples_lst = torch.clamp(
+            torch.div(line_lengths, self.min_dist_pts, rounding_mode='floor'), 2, self.num_samples
+        ).int()
         line_points = torch.empty((num_lines, self.num_samples, 2), dtype=torch.float)
         valid_points = torch.empty((num_lines, self.num_samples), dtype=torch.bool)
         for n_samp in range(2, self.num_samples + 1):
@@ -290,7 +286,7 @@ class WunschLineMatcher(nn.Module):
         valid_scores2 = line_scores2 != -1
         line_scores2 = (line_scores2 * valid_scores2).sum(2) / valid_scores2.sum(2)
         line_scores = (line_scores1 + line_scores2) / 2
-        topk_lines = torch.argsort(line_scores, dim=1)[:, -self.top_k_candidates:]
+        topk_lines = torch.argsort(line_scores, dim=1)[:, -self.top_k_candidates :]
         # topk_lines.shape = (n_lines1, top_k_candidates)
         top_scores = torch.take_along_dim(scores, topk_lines[:, :, None, None], dim=1)
 
@@ -328,8 +324,8 @@ class WunschLineMatcher(nn.Module):
         for i in range(n):
             for j in range(m):
                 nw_grid[:, i + 1, j + 1] = torch.maximum(
-                    torch.maximum(nw_grid[:, i + 1, j], nw_grid[:, i, j + 1]),
-                    nw_grid[:, i, j] + nw_scores[:, i, j])
+                    torch.maximum(nw_grid[:, i + 1, j], nw_grid[:, i, j + 1]), nw_grid[:, i, j] + nw_scores[:, i, j]
+                )
 
         return nw_grid[:, -1, -1]
 
@@ -343,8 +339,7 @@ def keypoints_to_grid(keypoints: Tensor, img_size: tuple) -> Tensor:
     """
     KORNIA_CHECK_SHAPE(keypoints, ["N", "2"])
     n_points = len(keypoints)
-    grid_points = normalize_pixel_coordinates(
-        keypoints[:, [1, 0]], img_size[0], img_size[1])
+    grid_points = normalize_pixel_coordinates(keypoints[:, [1, 0]], img_size[0], img_size[1])
     grid_points = grid_points.view(-1, n_points, 1, 2)
     return grid_points
 
