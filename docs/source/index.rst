@@ -31,7 +31,7 @@ Join the community
 
 - Join our social network communities with 1.8k+ members:
    - `Twitter <https://twitter.com/kornia_foss>`_: we share the recent research and news for out mainstream community.
-   - `Slack <https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-CnydWe5fmvkcktIeRFGCEQ>`_: come to us and chat with our engineers and mentors to get support and resolve your questions.
+   - `Slack <https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-2AQRi~X9Uu6PLMuUZdvfjA>`_: come to us and chat with our engineers and mentors to get support and resolve your questions.
    - `LibreCV <https://librecv.org>`_: its our Open Source and Machine Learning community forum. Come and have fun !
 - Subscribe to our `YouTube channel <https://www.youtube.com/channel/UCI1SE1Ij2Fast5BSKxoa7Ag>`_ to get the latest video demos.
 
@@ -54,24 +54,26 @@ Join the community
    :hidden:
 
    applications/intro
+   applications/face_detection
    applications/image_augmentations
    applications/image_classification
    applications/image_matching
    applications/image_stitching
    applications/image_registration
    applications/semantic_segmentation
-   applications/video_deblur
 
 .. toctree::
    :caption: KORNIA MODELS
    :hidden:
 
+   models/yunet
    models/vit
    models/vit_mobile
    models/loftr
    models/defmo
    models/hardnet
    models/affnet
+   models/sold2
 
 
 .. toctree::
@@ -86,6 +88,7 @@ Join the community
    feature
    filters
    geometry
+   io
    losses
    metrics
    morphology
@@ -98,7 +101,7 @@ Join the community
    :hidden:
 
    Issue tracker <https://github.com/kornia/kornia/issues>
-   Slack community <https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-CnydWe5fmvkcktIeRFGCEQ>
+   Slack community <https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-2AQRi~X9Uu6PLMuUZdvfjA>
    LibreCV community <https://librecv.org>
    Twitter @kornia_foss <https://twitter.com/kornia_foss>
    community/chinese

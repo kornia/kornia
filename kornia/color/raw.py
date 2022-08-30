@@ -5,7 +5,7 @@ import torch.nn as nn
 
 
 class CFA(Enum):
-    r"""Defines the configuration of the color filter array.
+    r"""Define the configuration of the color filter array.
 
     So far only bayer images is supported and the enum sets the pixel order for bayer. Note that this can change due
     to things like rotations and cropping of images. Take care if including the translations in pipeline.
@@ -123,18 +123,21 @@ def raw_to_rgb(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
     # for a 2x2 bayer filter
     gpadded = torch.nn.functional.pad(image, [1, 1, 1, 1], 'reflect')
 
-    ru = torch.nn.functional.interpolate(rpadded, size=(image.shape[-2] + 1, image.shape[-1] + 1),
-                                         mode='bilinear', align_corners=True)
-    bu = torch.nn.functional.interpolate(bpadded, size=(image.shape[-2] + 1, image.shape[-1] + 1),
-                                         mode='bilinear', align_corners=True)
+    ru = torch.nn.functional.interpolate(
+        rpadded, size=(image.shape[-2] + 1, image.shape[-1] + 1), mode='bilinear', align_corners=True
+    )
+    bu = torch.nn.functional.interpolate(
+        bpadded, size=(image.shape[-2] + 1, image.shape[-1] + 1), mode='bilinear', align_corners=True
+    )
 
     # remove the extra padding
     ru = torch.nn.functional.pad(ru, [-x for x in rpad])
     bu = torch.nn.functional.pad(bu, [-x for x in bpad])
 
     # all unknown pixels are the average of the nearby green samples
-    kernel = torch.tensor([[[[0.0, 0.25, 0.0], [0.25, 0.0, 0.25], [0.0, 0.25, 0.0]]]],
-                          dtype=image.dtype, device=image.device)
+    kernel = torch.tensor(
+        [[[[0.0, 0.25, 0.0], [0.25, 0.0, 0.25], [0.0, 0.25, 0.0]]]], dtype=image.dtype, device=image.device
+    )
 
     # This is done on all samples but result for the known green samples is then overwritten by the input
     gu = torch.nn.functional.conv2d(gpadded, kernel)

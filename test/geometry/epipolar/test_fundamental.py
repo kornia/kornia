@@ -182,7 +182,7 @@ class TestFindFundamental:
         assert gradcheck(epi.find_fundamental, (points1, points2, weights), raise_exception=True)
 
 
-class TestComputeCorrespondEpilimes:
+class TestComputeCorrespondEpilines:
     def test_smoke(self, device, dtype):
         point = torch.rand(1, 1, 2, device=device, dtype=dtype)
         F_mat = torch.rand(1, 3, 3, device=device, dtype=dtype)
@@ -196,6 +196,22 @@ class TestComputeCorrespondEpilimes:
         F_mat = torch.rand(B, 3, 3, device=device, dtype=dtype)
         lines = epi.compute_correspond_epilines(point, F_mat)
         assert lines.shape == (B, N, 3)
+
+    @pytest.mark.parametrize(
+        "batch_size, num_frames, num_points",
+        [(1, 1, 1), (1, 1, 2), (1, 2, 1), (1, 2, 2), (2, 1, 1), (2, 1, 2), (2, 2, 1), (2, 2, 2)],
+    )
+    def test_volumetric(self, batch_size, num_frames, num_points, device, dtype):
+        B, T, N = batch_size, num_frames, num_points
+        point = torch.rand(B, T, N, 2, device=device, dtype=dtype)
+        F_mat = torch.rand(B, T, 3, 3, device=device, dtype=dtype)
+
+        lines_T_hops = torch.zeros(B, T, N, 3, device=device, dtype=dtype)
+        for i in range(T):
+            lines_T_hops[:, i, ...] = epi.compute_correspond_epilines(point[:, i, ...], F_mat[:, i, ...])
+        lines_one_hop = epi.compute_correspond_epilines(point, F_mat)
+
+        assert_close(lines_T_hops, lines_one_hop, atol=1e-8, rtol=1e-8)
 
     def test_opencv(self, device, dtype):
         point = torch.rand(1, 2, 2, device=device, dtype=dtype)

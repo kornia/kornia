@@ -8,18 +8,18 @@ ci:
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.0.1
+    rev: v4.3.0
     hooks:
       - id: end-of-file-fixer
       - id: trailing-whitespace
       - id: check-yaml
       - id: pretty-format-json
+        exclude: ^$|.devcontainer
 
   - repo: https://github.com/psf/black
-    rev: 21.9b0
+    rev: 22.6.0
     hooks:
       - id: black
-        args: [--diff]
 
   - repo: https://github.com/codespell-project/codespell
     rev: v2.1.0
@@ -32,39 +32,44 @@ repos:
           - "*.bib,*.ipynb"
 
   - repo: https://github.com/PyCQA/isort
-    rev: 5.9.3
+    rev: 5.10.1
     hooks:
       - id: isort
 
   - repo: https://github.com/PyCQA/flake8
-    rev: 4.0.1
+    rev: 5.0.4
     hooks:
       - id: flake8
 
   - repo: https://github.com/asottile/pyupgrade
-    rev: v2.29.0
+    rev: v2.37.3
     hooks:
       - id: pyupgrade
         args: [--py36-plus]
 
   - repo: https://github.com/PyCQA/bandit
-    rev: 1.7.0
+    rev: 1.7.4
     hooks:
       - id: bandit
+        name: bandit excluding the test directory
         language_version: python3
         exclude: ^test/
+      - id: bandit
+        name: bandit only the test directory
+        language_version: python3
+        files: ^test/
         args:
-          - -s
-          - "B404,B602,B603,B607"
+          - --skip
+          - "B101,B311"
 
   - repo: https://github.com/myint/docformatter
-    rev: v1.4
+    rev: v1.5.0-rc1
     hooks:
       - id: docformatter
         args: [--in-place, --wrap-summaries=115, --wrap-descriptions=120]
 
   - repo: https://github.com/asottile/yesqa
-    rev: v1.3.0
+    rev: v1.4.0
     hooks:
       - id: yesqa
         name: Unused noqa

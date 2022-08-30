@@ -1,4 +1,9 @@
-from ._metrics import sampson_epipolar_distance, symmetrical_epipolar_distance
+from ._metrics import (
+    left_to_right_epipolar_distance,
+    right_to_left_epipolar_distance,
+    sampson_epipolar_distance,
+    symmetrical_epipolar_distance,
+)
 from .essential import (
     decompose_essential_matrix,
     essential_from_fundamental,
@@ -17,9 +22,9 @@ from .fundamental import (
 )
 from .numeric import cross_product_matrix
 from .projection import (
+    KRt_from_projection,
     depth_from_point,
     intrinsics_like,
-    KRt_from_projection,
     projection_from_KRt,
     projections_from_fundamental,
     random_intrinsics,
@@ -32,6 +37,8 @@ __all__ = [
     "cross_product_matrix",
     "sampson_epipolar_distance",
     "symmetrical_epipolar_distance",
+    "left_to_right_epipolar_distance",
+    "right_to_left_epipolar_distance",
     "essential_from_fundamental",
     "decompose_essential_matrix",
     "essential_from_Rt",

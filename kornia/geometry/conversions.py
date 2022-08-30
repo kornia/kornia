@@ -1,11 +1,14 @@
 import enum
 import warnings
-from typing import Tuple
+from typing import Optional, Tuple
 
 import torch
 import torch.nn.functional as F
+from torch import Tensor, tensor
 
 from kornia.constants import pi
+from kornia.testing import KORNIA_CHECK_SHAPE
+from kornia.utils.helpers import _torch_inverse_cast
 
 __all__ = [
     "rad2deg",
@@ -30,6 +33,20 @@ __all__ = [
     "denormalize_pixel_coordinates3d",
     "normalize_pixel_coordinates3d",
     "angle_to_rotation_matrix",
+    "normalize_homography",
+    "denormalize_homography",
+    "normalize_homography3d",
+    "normal_transform_pixel",
+    "normal_transform_pixel3d",
+    "worldtocam_to_camtoworld_Rt",
+    "camtoworld_to_worldtocam_Rt",
+    "Rt_to_matrix4x4",
+    "matrix4x4_to_Rt",
+    "camtoworld_graphics_to_vision_4x4",
+    "camtoworld_vision_to_graphics_4x4",
+    "camtoworld_graphics_to_vision_Rt",
+    "camtoworld_vision_to_graphics_Rt",
+    "ARKitQTVecs_to_ColmapQTVecs",
 ]
 
 
@@ -86,7 +103,8 @@ def pol2cart(rho: torch.Tensor, phi: torch.Tensor) -> Tuple[torch.Tensor, torch.
         phi: Tensor of same arbitrary shape.
 
     Returns:
-        Tensor with same shape as input.
+        - x: Tensor with same shape as input.
+        - y: Tensor with same shape as input.
 
     Example:
         >>> rho = torch.rand(1, 3, 3)
@@ -105,12 +123,13 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> Tuple[tor
     """Function that converts cartesian coordinates to polar coordinates.
 
     Args:
-        rho: Tensor of arbitrary shape.
-        phi: Tensor of same arbitrary shape.
+        x: Tensor of arbitrary shape.
+        y: Tensor of same arbitrary shape.
         eps: To avoid division by zero.
 
     Returns:
-        Tensor with same shape as input.
+        - rho: Tensor with same shape as input.
+        - phi: Tensor with same shape as input.
 
     Example:
         >>> x = torch.rand(1, 3, 3)
@@ -120,7 +139,7 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> Tuple[tor
     if not (isinstance(x, torch.Tensor) & isinstance(y, torch.Tensor)):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(x)}, {type(y)}")
 
-    rho = torch.sqrt(x ** 2 + y ** 2 + eps)
+    rho = torch.sqrt(x**2 + y**2 + eps)
     phi = torch.atan2(y, x)
     return rho, phi
 
@@ -162,10 +181,10 @@ def convert_points_to_homogeneous(points: torch.Tensor) -> torch.Tensor:
     r"""Function that converts points from Euclidean to homogeneous space.
 
     Args:
-        points: the points to be transformed with shape :math:`(B, N, D)`.
+        points: the points to be transformed with shape :math:`(*, N, D)`.
 
     Returns:
-        the points in homogeneous coordinates :math:`(B, N, D+1)`.
+        the points in homogeneous coordinates :math:`(*, N, D+1)`.
 
     Examples:
         >>> input = torch.tensor([[0., 0.]])
@@ -407,7 +426,7 @@ def rotation_matrix_to_quaternion(
     trace: torch.Tensor = m00 + m11 + m22
 
     def trace_positive_cond():
-        sq = torch.sqrt(trace + 1.0) * 2.0  # sq = 4 * qw.
+        sq = torch.sqrt(trace + 1.0 + eps) * 2.0  # sq = 4 * qw.
         qw = 0.25 * sq
         qx = safe_zero_division(m21 - m12, sq)
         qy = safe_zero_division(m02 - m20, sq)
@@ -983,14 +1002,10 @@ def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
     r"""Create a rotation matrix out of angles in degrees.
 
     Args:
-        angle: tensor of angles in degrees, any shape.
+        angle: tensor of angles in degrees, any shape :math:`(*)`.
 
     Returns:
-        tensor of *x2x2 rotation matrices.
-
-    Shape:
-        - Input: :math:`(*)`
-        - Output: :math:`(*, 2, 2)`
+        tensor of rotation matrices with shape :math:`(*, 2, 2)`.
 
     Example:
         >>> input = torch.rand(1, 3)  # Nx3
@@ -1000,3 +1015,428 @@ def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
     cos_a: torch.Tensor = torch.cos(ang_rad)
     sin_a: torch.Tensor = torch.sin(ang_rad)
     return torch.stack([cos_a, sin_a, -sin_a, cos_a], dim=-1).view(*angle.shape, 2, 2)
+
+
+def normalize_homography(
+    dst_pix_trans_src_pix: torch.Tensor, dsize_src: Tuple[int, int], dsize_dst: Tuple[int, int]
+) -> torch.Tensor:
+    r"""Normalize a given homography in pixels to [-1, 1].
+
+    Args:
+        dst_pix_trans_src_pix: homography/ies from source to destination to be
+          normalized. :math:`(B, 3, 3)`
+        dsize_src: size of the source image (height, width).
+        dsize_dst: size of the destination image (height, width).
+
+    Returns:
+        the normalized homography of shape :math:`(B, 3, 3)`.
+    """
+    if not isinstance(dst_pix_trans_src_pix, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(dst_pix_trans_src_pix)}")
+
+    if not (len(dst_pix_trans_src_pix.shape) == 3 or dst_pix_trans_src_pix.shape[-2:] == (3, 3)):
+        raise ValueError(f"Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {dst_pix_trans_src_pix.shape}")
+
+    # source and destination sizes
+    src_h, src_w = dsize_src
+    dst_h, dst_w = dsize_dst
+
+    # compute the transformation pixel/norm for src/dst
+    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel(src_h, src_w).to(dst_pix_trans_src_pix)
+
+    src_pix_trans_src_norm = _torch_inverse_cast(src_norm_trans_src_pix)
+    dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel(dst_h, dst_w).to(dst_pix_trans_src_pix)
+
+    # compute chain transformations
+    dst_norm_trans_src_norm: torch.Tensor = dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm)
+    return dst_norm_trans_src_norm
+
+
+def normal_transform_pixel(
+    height: int,
+    width: int,
+    eps: float = 1e-14,
+    device: Optional[torch.device] = None,
+    dtype: Optional[torch.dtype] = None,
+) -> torch.Tensor:
+    r"""Compute the normalization matrix from image size in pixels to [-1, 1].
+
+    Args:
+        height image height.
+        width: image width.
+        eps: epsilon to prevent divide-by-zero errors
+
+    Returns:
+        normalized transform with shape :math:`(1, 3, 3)`.
+    """
+    tr_mat = torch.tensor([[1.0, 0.0, -1.0], [0.0, 1.0, -1.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)  # 3x3
+
+    # prevent divide by zero bugs
+    width_denom: float = eps if width == 1 else width - 1.0
+    height_denom: float = eps if height == 1 else height - 1.0
+
+    tr_mat[0, 0] = tr_mat[0, 0] * 2.0 / width_denom
+    tr_mat[1, 1] = tr_mat[1, 1] * 2.0 / height_denom
+
+    return tr_mat.unsqueeze(0)  # 1x3x3
+
+
+def normal_transform_pixel3d(
+    depth: int,
+    height: int,
+    width: int,
+    eps: float = 1e-14,
+    device: Optional[torch.device] = None,
+    dtype: Optional[torch.dtype] = None,
+) -> torch.Tensor:
+    r"""Compute the normalization matrix from image size in pixels to [-1, 1].
+
+    Args:
+        depth: image depth.
+        height: image height.
+        width: image width.
+        eps: epsilon to prevent divide-by-zero errors
+
+    Returns:
+        normalized transform with shape :math:`(1, 4, 4)`.
+    """
+    tr_mat = torch.tensor(
+        [[1.0, 0.0, 0.0, -1.0], [0.0, 1.0, 0.0, -1.0], [0.0, 0.0, 1.0, -1.0], [0.0, 0.0, 0.0, 1.0]],
+        device=device,
+        dtype=dtype,
+    )  # 4x4
+
+    # prevent divide by zero bugs
+    width_denom: float = eps if width == 1 else width - 1.0
+    height_denom: float = eps if height == 1 else height - 1.0
+    depth_denom: float = eps if depth == 1 else depth - 1.0
+
+    tr_mat[0, 0] = tr_mat[0, 0] * 2.0 / width_denom
+    tr_mat[1, 1] = tr_mat[1, 1] * 2.0 / height_denom
+    tr_mat[2, 2] = tr_mat[2, 2] * 2.0 / depth_denom
+
+    return tr_mat.unsqueeze(0)  # 1x4x4
+
+
+def denormalize_homography(
+    dst_pix_trans_src_pix: torch.Tensor, dsize_src: Tuple[int, int], dsize_dst: Tuple[int, int]
+) -> torch.Tensor:
+    r"""De-normalize a given homography in pixels from [-1, 1] to actual height and width.
+
+    Args:
+        dst_pix_trans_src_pix: homography/ies from source to destination to be
+          denormalized. :math:`(B, 3, 3)`
+        dsize_src: size of the source image (height, width).
+        dsize_dst: size of the destination image (height, width).
+
+    Returns:
+        the denormalized homography of shape :math:`(B, 3, 3)`.
+    """
+    if not isinstance(dst_pix_trans_src_pix, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(dst_pix_trans_src_pix)}")
+
+    if not (len(dst_pix_trans_src_pix.shape) == 3 or dst_pix_trans_src_pix.shape[-2:] == (3, 3)):
+        raise ValueError(f"Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {dst_pix_trans_src_pix.shape}")
+
+    # source and destination sizes
+    src_h, src_w = dsize_src
+    dst_h, dst_w = dsize_dst
+
+    # compute the transformation pixel/norm for src/dst
+    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel(src_h, src_w).to(dst_pix_trans_src_pix)
+
+    dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel(dst_h, dst_w).to(dst_pix_trans_src_pix)
+    dst_denorm_trans_dst_pix = _torch_inverse_cast(dst_norm_trans_dst_pix)
+    # compute chain transformations
+    dst_norm_trans_src_norm: torch.Tensor = dst_denorm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_norm_trans_src_pix)
+    return dst_norm_trans_src_norm
+
+
+def normalize_homography3d(
+    dst_pix_trans_src_pix: torch.Tensor, dsize_src: Tuple[int, int, int], dsize_dst: Tuple[int, int, int]
+) -> torch.Tensor:
+    r"""Normalize a given homography in pixels to [-1, 1].
+
+    Args:
+        dst_pix_trans_src_pix: homography/ies from source to destination to be
+          normalized. :math:`(B, 4, 4)`
+        dsize_src: size of the source image (depth, height, width).
+        dsize_src: size of the destination image (depth, height, width).
+
+    Returns:
+        the normalized homography.
+
+    Shape:
+        Output: :math:`(B, 4, 4)`
+    """
+    if not isinstance(dst_pix_trans_src_pix, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(dst_pix_trans_src_pix)}")
+
+    if not (len(dst_pix_trans_src_pix.shape) == 3 or dst_pix_trans_src_pix.shape[-2:] == (4, 4)):
+        raise ValueError(f"Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {dst_pix_trans_src_pix.shape}")
+
+    # source and destination sizes
+    src_d, src_h, src_w = dsize_src
+    dst_d, dst_h, dst_w = dsize_dst
+    # compute the transformation pixel/norm for src/dst
+    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel3d(src_d, src_h, src_w).to(dst_pix_trans_src_pix)
+
+    src_pix_trans_src_norm = _torch_inverse_cast(src_norm_trans_src_pix)
+    dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel3d(dst_d, dst_h, dst_w).to(dst_pix_trans_src_pix)
+    # compute chain transformations
+    dst_norm_trans_src_norm: torch.Tensor = dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm)
+    return dst_norm_trans_src_norm
+
+
+def Rt_to_matrix4x4(R: Tensor, t: Tensor) -> Tensor:
+    r"""Combines 3x3 rotation matrix R and 1x3 translation vector t into 4x4 extrinsics.
+
+    Args:
+        R: Rotation matrix, :math:`(B, 3, 3).`
+        t: Translation matrix :math:`(B, 3, 1)`.
+
+    Returns:
+        the extrinsics :math:`(B, 4, 4)`.
+
+    Example:
+        >>> R, t = torch.eye(3)[None], torch.ones(3).reshape(1, 3, 1)
+        >>> Rt_to_matrix4x4(R, t)
+        tensor([[[1., 0., 0., 1.],
+                 [0., 1., 0., 1.],
+                 [0., 0., 1., 1.],
+                 [0., 0., 0., 1.]]])
+    """
+    KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
+    KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
+    Rt = torch.cat([R, t], dim=2)
+    return convert_affinematrix_to_homography3d(Rt)
+
+
+def matrix4x4_to_Rt(extrinsics: Tensor) -> Tuple[Tensor, Tensor]:
+    r"""Converts 4x4 extrinsics into 3x3 rotation matrix R and 1x3 translation vector ts.
+
+    Args:
+        extrinsics: pose matrix :math:`(B, 4, 4)`.
+
+    Returns:
+        R: Rotation matrix, :math:`(B, 3, 3).`
+        t: Translation matrix :math:`(B, 3, 1)`.
+
+    Example:
+        >>> ext = torch.eye(4)[None]
+        >>> matrix4x4_to_Rt(ext)
+        (tensor([[[1., 0., 0.],
+                 [0., 1., 0.],
+                 [0., 0., 1.]]]), tensor([[[0.],
+                 [0.],
+                 [0.]]]))
+    """
+    KORNIA_CHECK_SHAPE(extrinsics, ["B", "4", "4"])
+    R, t = extrinsics[:, :3, :3], extrinsics[:, :3, 3:]
+    return R, t
+
+
+def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: Tensor) -> Tensor:
+    r"""Converts graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.), , i.e. flips y
+    and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards]. Vision convention: [+x, +y, +z] ==
+
+    [right, down, forwards]
+
+    Args:
+        extrinsics: pose matrix :math:`(B, 4, 4)`.
+
+    Returns:
+        extrinsics: pose matrix :math:`(B, 4, 4)`.
+
+    Example:
+        >>> ext = torch.eye(4)[None]
+        >>> camtoworld_graphics_to_vision_4x4(ext)
+        tensor([[[ 1.,  0.,  0.,  0.],
+                 [ 0., -1.,  0.,  0.],
+                 [ 0.,  0., -1.,  0.],
+                 [ 0.,  0.,  0.,  1.]]])
+    """
+    KORNIA_CHECK_SHAPE(extrinsics_graphics, ["B", "4", "4"])
+    invert_yz = tensor(
+        [[[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1.0]]],
+        dtype=extrinsics_graphics.dtype,
+        device=extrinsics_graphics.device,
+    )
+    return extrinsics_graphics @ invert_yz
+
+
+def camtoworld_graphics_to_vision_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
+    r"""Converts graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.), , i.e. flips y
+    and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards]. Vision convention: [+x, +y, +z] ==
+
+    [right, down, forwards]
+
+    Args:
+        R: Rotation matrix, :math:`(B, 3, 3).`
+        t: Translation matrix :math:`(B, 3, 1)`.
+
+    Returns:
+        R: Rotation matrix, :math:`(B, 3, 3).`
+        t: Translation matrix :math:`(B, 3, 1)`.
+
+    Example:
+        >>> R, t = torch.eye(3)[None], torch.ones(3).reshape(1, 3, 1)
+        >>> camtoworld_graphics_to_vision_Rt(R, t)
+        (tensor([[[ 1.,  0.,  0.],
+                 [ 0., -1.,  0.],
+                 [ 0.,  0., -1.]]]), tensor([[[1.],
+                 [1.],
+                 [1.]]]))
+    """
+    KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
+    KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
+    mat4x4 = camtoworld_graphics_to_vision_4x4(Rt_to_matrix4x4(R, t))
+    return matrix4x4_to_Rt(mat4x4)
+
+
+def camtoworld_vision_to_graphics_4x4(extrinsics_vision: Tensor) -> Tensor:
+    r"""Converts vision coordinate frame (e.g. OpenCV) to graphics coordinate frame (e.g. OpenGK.), i.e. flips y and
+    z axis Graphics convention: [+x, +y, +z] == [right, up, backwards]. Vision convention: [+x, +y, +z] == [right,
+    down, forwards]
+
+    Args:
+        extrinsics: pose matrix :math:`(B, 4, 4)`.
+
+    Returns:
+        extrinsics: pose matrix :math:`(B, 4, 4)`.
+
+    Example:
+        >>> ext = torch.eye(4)[None]
+        >>> camtoworld_vision_to_graphics_4x4(ext)
+        tensor([[[ 1.,  0.,  0.,  0.],
+                 [ 0., -1.,  0.,  0.],
+                 [ 0.,  0., -1.,  0.],
+                 [ 0.,  0.,  0.,  1.]]])
+    """
+    KORNIA_CHECK_SHAPE(extrinsics_vision, ["B", "4", "4"])
+    invert_yz = torch.tensor(
+        [[[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1.0]]],
+        dtype=extrinsics_vision.dtype,
+        device=extrinsics_vision.device,
+    )
+    return extrinsics_vision @ invert_yz
+
+
+def camtoworld_vision_to_graphics_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
+    r"""Converts graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.), , i.e. flips y
+    and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards]. Vision convention: [+x, +y, +z] ==
+
+    [right, down, forwards]
+
+    Args:
+        R: Rotation matrix, :math:`(B, 3, 3).`
+        t: Translation matrix :math:`(B, 3, 1)`.
+
+    Returns:
+        R: Rotation matrix, :math:`(B, 3, 3).`
+        t: Translation matrix :math:`(B, 3, 1)`.
+
+    Example:
+        >>> R, t = torch.eye(3)[None], torch.ones(3).reshape(1, 3, 1)
+        >>> camtoworld_vision_to_graphics_Rt(R, t)
+        (tensor([[[ 1.,  0.,  0.],
+                 [ 0., -1.,  0.],
+                 [ 0.,  0., -1.]]]), tensor([[[1.],
+                 [1.],
+                 [1.]]]))
+    """
+    KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
+    KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
+    mat4x4 = camtoworld_vision_to_graphics_4x4(Rt_to_matrix4x4(R, t))
+    return matrix4x4_to_Rt(mat4x4)
+
+
+def camtoworld_to_worldtocam_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
+    r"""Converts camtoworld, i.e. projection from camera coordinate system to world coordinate system, to worldtocam
+    frame i.e. projection from world to the camera coordinate system (used in Colmap).
+    See
+    long-url: https://colmap.github.io/format.html#output-format
+
+    Args:
+        R: Rotation matrix, :math:`(B, 3, 3).`
+        t: Translation matrix :math:`(B, 3, 1)`.
+
+    Returns:
+        Rinv: Rotation matrix, :math:`(B, 3, 3).`
+        tinv: Translation matrix :math:`(B, 3, 1)`.
+
+    Example:
+        >>> R, t = torch.eye(3)[None], torch.ones(3).reshape(1, 3, 1)
+        >>> camtoworld_to_worldtocam_Rt(R, t)
+        (tensor([[[1., 0., 0.],
+                 [0., 1., 0.],
+                 [0., 0., 1.]]]), tensor([[[-1.],
+                 [-1.],
+                 [-1.]]]))
+    """
+    KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
+    KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
+
+    R_inv = R.transpose(1, 2)
+    new_t: Tensor = -R_inv @ t
+
+    return (R_inv, new_t)
+
+
+def worldtocam_to_camtoworld_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
+    r"""Converts worldtocam frame i.e. projection from world to the camera coordinate system (used in Colmap) to
+    camtoworld, i.e. projection from camera coordinate system to world coordinate system.
+
+    Args:
+        R: Rotation matrix, :math:`(B, 3, 3).`
+        t: Translation matrix :math:`(B, 3, 1)`.
+
+    Returns:
+        Rinv: Rotation matrix, :math:`(B, 3, 3).`
+        tinv: Translation matrix :math:`(B, 3, 1)`.
+
+    Example:
+        >>> R, t = torch.eye(3)[None], torch.ones(3).reshape(1, 3, 1)
+        >>> worldtocam_to_camtoworld_Rt(R, t)
+        (tensor([[[1., 0., 0.],
+                 [0., 1., 0.],
+                 [0., 0., 1.]]]), tensor([[[-1.],
+                 [-1.],
+                 [-1.]]]))
+    """
+    KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
+    KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
+
+    R_inv = R.transpose(1, 2)
+    new_t: Tensor = -R_inv @ t
+
+    return (R_inv, new_t)
+
+
+def ARKitQTVecs_to_ColmapQTVecs(qvec: Tensor, tvec: Tensor) -> Tuple[Tensor, Tensor]:
+    r"""Converts output of Apple ARKit screen pose (in quaternion representation) to the camera-to-world
+    transformation, expected by Colmap, also in quaternion representation.
+
+    Args:
+        qvec: ARKit rotation quaternion :math:`(B, 4)`, [x, y, z, w] format.
+        tvec: translation vector :math:`(B, 3, 1)`, [x, y, z]
+
+    Returns:
+        qvec: Colmap rotation quaternion :math:`(B, 4)`, [w, x, y, z] format.
+        tvec: translation vector :math:`(B, 3, 1)`, [x, y, z]
+
+    Example:
+        >>> q, t = torch.tensor([0, 1, 0, 1.])[None], torch.ones(3).reshape(1, 3, 1)
+        >>> ARKitQTVecs_to_ColmapQTVecs(q, t)
+        (tensor([[0.7071, 0.0000, 0.7071, 0.0000]]), tensor([[[-1.0000],
+                 [-1.0000],
+                 [ 1.0000]]]))
+    """
+    # ToDo:  integrate QuaterniaonAPI
+
+    Rcg = quaternion_to_rotation_matrix(qvec, order=QuaternionCoeffOrder.WXYZ)
+    Rcv, Tcv = camtoworld_graphics_to_vision_Rt(Rcg, tvec)
+    R_colmap, t_colmap = camtoworld_to_worldtocam_Rt(Rcv, Tcv)
+    t_colmap = t_colmap.reshape(-1, 3, 1)
+    q_colmap = rotation_matrix_to_quaternion(R_colmap.contiguous(), order=QuaternionCoeffOrder.WXYZ)
+    return q_colmap, t_colmap

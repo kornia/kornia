@@ -49,8 +49,6 @@ Matrix transformations
 .. autofunction:: invert_affine_transform
 .. autofunction:: projection_from_Rt
 .. autofunction:: get_tps_transform
-.. autofunction:: normalize_homography
-.. autofunction:: denormalize_homography
 
 Crop operators
 --------------

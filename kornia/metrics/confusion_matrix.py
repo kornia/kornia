@@ -59,7 +59,7 @@ def confusion_matrix(
     confusion_list = []
     for iter_id in range(batch_size):
         pb: torch.Tensor = pre_bincount_vec[iter_id]
-        bin_count: torch.Tensor = torch.bincount(pb, minlength=num_classes ** 2)
+        bin_count: torch.Tensor = torch.bincount(pb, minlength=num_classes**2)
         confusion_list.append(bin_count)
 
     confusion_vec: torch.Tensor = torch.stack(confusion_list)

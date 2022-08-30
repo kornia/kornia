@@ -1,11 +1,26 @@
+from typing import List
+
 import torch
 import torch.nn as nn
 
 from kornia.filters import filter2d, get_gaussian_kernel2d
+from kornia.filters.filter import _compute_padding
+
+
+def _crop(img: torch.Tensor, cropping_shape: List[int]) -> torch.Tensor:
+    """Crop out the part of "valid" convolution area."""
+    return torch.nn.functional.pad(
+        img, (-cropping_shape[2], -cropping_shape[3], -cropping_shape[0], -cropping_shape[1])
+    )
 
 
 def ssim(
-    img1: torch.Tensor, img2: torch.Tensor, window_size: int, max_val: float = 1.0, eps: float = 1e-12
+    img1: torch.Tensor,
+    img2: torch.Tensor,
+    window_size: int,
+    max_val: float = 1.0,
+    eps: float = 1e-12,
+    padding: str = 'same',
 ) -> torch.Tensor:
     r"""Function that computes the Structural Similarity (SSIM) index map between two images.
 
@@ -30,6 +45,8 @@ def ssim(
         window_size: the size of the gaussian kernel to smooth the images.
         max_val: the dynamic range of the images.
         eps: Small value for numerically stability when dividing.
+        padding: ``'same'`` | ``'valid'``. Whether to only use the "valid" convolution
+         area to compute SSIM to match the MATLAB implementation of original SSIM paper.
 
     Returns:
        The ssim index map with shape :math:`(B, C, H, W)`.
@@ -68,14 +85,34 @@ def ssim(
     mu1: torch.Tensor = filter2d(img1, kernel)
     mu2: torch.Tensor = filter2d(img2, kernel)
 
-    mu1_sq = mu1 ** 2
-    mu2_sq = mu2 ** 2
+    cropping_shape: List[int] = []
+    if padding == 'valid':
+        height, width = kernel.shape[-2:]
+        cropping_shape = _compute_padding([height, width])
+        mu1 = _crop(mu1, cropping_shape)
+        mu2 = _crop(mu2, cropping_shape)
+    elif padding == 'same':
+        pass
+
+    mu1_sq = mu1**2
+    mu2_sq = mu2**2
     mu1_mu2 = mu1 * mu2
 
+    mu_img1_sq = filter2d(img1**2, kernel)
+    mu_img2_sq = filter2d(img2**2, kernel)
+    mu_img1_img2 = filter2d(img1 * img2, kernel)
+
+    if padding == 'valid':
+        mu_img1_sq = _crop(mu_img1_sq, cropping_shape)
+        mu_img2_sq = _crop(mu_img2_sq, cropping_shape)
+        mu_img1_img2 = _crop(mu_img1_img2, cropping_shape)
+    elif padding == 'same':
+        pass
+
     # compute local sigma per channel
-    sigma1_sq = filter2d(img1 ** 2, kernel) - mu1_sq
-    sigma2_sq = filter2d(img2 ** 2, kernel) - mu2_sq
-    sigma12 = filter2d(img1 * img2, kernel) - mu1_mu2
+    sigma1_sq = mu_img1_sq - mu1_sq
+    sigma2_sq = mu_img2_sq - mu2_sq
+    sigma12 = mu_img1_img2 - mu1_mu2
 
     # compute the similarity index map
     num: torch.Tensor = (2.0 * mu1_mu2 + C1) * (2.0 * sigma12 + C2)
@@ -106,6 +143,8 @@ class SSIM(nn.Module):
         window_size: the size of the gaussian kernel to smooth the images.
         max_val: the dynamic range of the images.
         eps: Small value for numerically stability when dividing.
+        padding: ``'same'`` | ``'valid'``. Whether to only use the "valid" convolution
+         area to compute SSIM to match the MATLAB implementation of original SSIM paper.
 
     Shape:
         - Input: :math:`(B, C, H, W)`.
@@ -119,11 +158,12 @@ class SSIM(nn.Module):
         >>> ssim_map = ssim(input1, input2)  # 1x4x5x5
     """
 
-    def __init__(self, window_size: int, max_val: float = 1.0, eps: float = 1e-12) -> None:
+    def __init__(self, window_size: int, max_val: float = 1.0, eps: float = 1e-12, padding: str = 'same') -> None:
         super().__init__()
         self.window_size: int = window_size
         self.max_val: float = max_val
         self.eps = eps
+        self.padding = padding
 
     def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> torch.Tensor:
-        return ssim(img1, img2, self.window_size, self.max_val, self.eps)
+        return ssim(img1, img2, self.window_size, self.max_val, self.eps, self.padding)

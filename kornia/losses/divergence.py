@@ -64,7 +64,7 @@ def kl_div_loss_2d(input: torch.Tensor, target: torch.Tensor, reduction: str = '
 
     Examples:
         >>> input = torch.full((1, 1, 2, 4), 0.125)
-        >>> loss = js_div_loss_2d(input, input)
+        >>> loss = kl_div_loss_2d(input, input)
         >>> loss.item()
         0.0
     """

@@ -5,32 +5,88 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.testing import assert_close
+from kornia.utils._compat import torch_version_lt
+from kornia.utils.helpers import _torch_inverse_cast
 
 
-@pytest.mark.parametrize("batch_size", [1, 2, 5])
-def test_get_perspective_transform(batch_size, device, dtype):
-    # generate input data
-    h_max, w_max = 64, 32  # height, width
-    h = torch.ceil(h_max * torch.rand(batch_size, device=device, dtype=dtype))
-    w = torch.ceil(w_max * torch.rand(batch_size, device=device, dtype=dtype))
+class TestGetPerspectiveTransform:
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
+    def test_smoke(self, device, dtype, batch_size):
+        points_src = torch.rand(batch_size, 4, 2, device=device, dtype=dtype)
+        points_dst = torch.rand(batch_size, 4, 2, device=device, dtype=dtype)
 
-    norm = torch.rand(batch_size, 4, 2, device=device, dtype=dtype)
-    points_src = torch.zeros_like(norm, device=device, dtype=dtype)
-    points_src[:, 1, 0] = h
-    points_src[:, 2, 1] = w
-    points_src[:, 3, 0] = h
-    points_src[:, 3, 1] = w
-    points_dst = points_src + norm
+        dst_trans_src = kornia.geometry.get_perspective_transform(points_src, points_dst)
 
-    # compute transform from source to target
-    dst_homo_src = kornia.geometry.get_perspective_transform(points_src, points_dst)
+        assert dst_trans_src.shape == (batch_size, 3, 3)
 
-    assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-4, atol=1e-4)
+    @pytest.mark.parametrize("batch_size", [1, 5])
+    def test_crop_src_dst_type_mismatch(self, device, dtype, batch_size):
+        # generate input data
+        src_h, src_w = 3, 3
+        dst_h, dst_w = 3, 3
 
-    # compute gradient check
-    points_src = utils.tensor_to_gradcheck_var(points_src)  # to var
-    points_dst = utils.tensor_to_gradcheck_var(points_dst)  # to var
-    assert gradcheck(kornia.geometry.get_perspective_transform, (points_src, points_dst), raise_exception=True)
+        # [x, y] origin
+        # top-left, top-right, bottom-right, bottom-left
+        points_src = torch.tensor(
+            [[[0, 0], [0, src_w - 1], [src_h - 1, src_w - 1], [src_h - 1, 0]]], device=device, dtype=torch.int64
+        )
+
+        # [x, y] destination
+        # top-left, top-right, bottom-right, bottom-left
+        points_dst = torch.tensor(
+            [[[0, 0], [0, dst_w - 1], [dst_h - 1, dst_w - 1], [dst_h - 1, 0]]], device=device, dtype=dtype
+        )
+
+        # compute transformation between points
+        with pytest.raises(Exception):
+            _ = kornia.geometry.get_perspective_transform(points_src, points_dst)
+
+    def test_back_and_forth(self, device, dtype):
+        # generate input data
+        h_max, w_max = 64, 32  # height, width
+        h = h_max * torch.rand(1, device=device, dtype=dtype)
+        w = w_max * torch.rand(1, device=device, dtype=dtype)
+
+        norm = torch.rand(1, 4, 2, device=device, dtype=dtype)
+        points_src = torch.zeros_like(norm, device=device, dtype=dtype)
+        points_src[:, 1, 0] = h
+        points_src[:, 2, 1] = w
+        points_src[:, 3, 0] = h
+        points_src[:, 3, 1] = w
+        points_dst = points_src + norm
+
+        # compute transform from source to target
+        dst_trans_src = kornia.geometry.get_perspective_transform(points_src, points_dst)
+        points_dst_hat = kornia.geometry.transform_points(dst_trans_src, points_src)
+        assert_close(points_dst, points_dst_hat)
+
+    def test_hflip(self, device, dtype):
+        points_src = torch.tensor([[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]], device=device, dtype=dtype)
+
+        points_dst = torch.tensor([[[1.0, 0.0], [0.0, 0.0], [0.0, 1.0], [1.0, 1.0]]], device=device, dtype=dtype)
+
+        dst_trans_src = kornia.geometry.get_perspective_transform(points_src, points_dst)
+
+        point_left = torch.tensor([[[0.0, 0.0]]], device=device, dtype=dtype)
+        point_right = torch.tensor([[[1.0, 0.0]]], device=device, dtype=dtype)
+
+        assert_close(kornia.geometry.transform_points(dst_trans_src, point_left), point_right)
+
+    def test_jit(self, device, dtype):
+        points_src = torch.rand(1, 4, 2, device=device, dtype=dtype)
+        points_dst = torch.rand(1, 4, 2, device=device, dtype=dtype)
+
+        op = kornia.geometry.get_perspective_transform
+        op_jit = torch.jit.script(op)
+
+        assert_close(op(points_src, points_dst), op_jit(points_src, points_dst))
+
+    @pytest.mark.skipif(torch_version_lt(1, 11, 0), reason="backward for LSTSQ not supported in pytorch < 1.11.0")
+    def test_gradcheck(self, device):
+        # compute gradient check
+        points_src = torch.rand(1, 4, 2, device=device, dtype=torch.float64, requires_grad=True)
+        points_dst = torch.rand(1, 4, 2, device=device, dtype=torch.float64, requires_grad=True)
+        assert gradcheck(kornia.geometry.get_perspective_transform, (points_src, points_dst), raise_exception=True)
 
 
 @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -143,16 +199,17 @@ class TestWarpAffine:
         center = torch.tensor([[w - 1, h - 1]], device=device, dtype=dtype) / 2
         scale = torch.ones((1, 2), device=device, dtype=dtype)
         angle = 90.0 * torch.ones(1, device=device, dtype=dtype)
-        aff_ab = kornia.geometry.get_rotation_matrix2d(center, angle, scale)
+        aff_ab_2x3 = kornia.geometry.get_rotation_matrix2d(center, angle, scale)
         # Same as opencv: cv2.getRotationMatrix2D(((w-1)/2,(h-1)/2), 90., 1.)
 
         # warp the tensor
         # Same as opencv: cv2.warpAffine(kornia.tensor_to_image(img_b), aff_ab[0].numpy(), (w, h))
-        img_a = kornia.geometry.warp_affine(img_b, aff_ab, (h, w))
+        img_a = kornia.geometry.warp_affine(img_b, aff_ab_2x3, (h, w))
 
         # invert the transform
-        aff_ba = kornia.geometry.conversions.convert_affinematrix_to_homography(aff_ab).inverse()[..., :2, :]
-        img_b_hat = kornia.geometry.warp_affine(img_a, aff_ba, (h, w))
+        aff_ab_3x3 = kornia.geometry.conversions.convert_affinematrix_to_homography(aff_ab_2x3)
+        aff_ba_2x3 = _torch_inverse_cast(aff_ab_3x3)[..., :2, :]
+        img_b_hat = kornia.geometry.warp_affine(img_a, aff_ba_2x3, (h, w))
         assert_close(img_b_hat, img_b, atol=1e-3, rtol=1e-3)
 
     def test_jit(self, device, dtype):
@@ -170,6 +227,23 @@ class TestWarpAffine:
         aff_ab = utils.tensor_to_gradcheck_var(aff_ab)  # to var
         img_b = utils.tensor_to_gradcheck_var(img_b)  # to var
         assert gradcheck(kornia.geometry.warp_affine, (img_b, aff_ab, (height, width)), raise_exception=True)
+
+    def test_fill_padding_translation(self, device, dtype):
+        offset = 1.0
+        h, w = 3, 4
+        aff_ab = torch.eye(2, 3, device=device, dtype=dtype)[None]
+        aff_ab[..., -1] += offset
+
+        img_b = torch.arange(float(3 * h * w), device=device, dtype=dtype).view(1, 3, h, w)
+
+        # normally fill_value will also be converted to the right device and type in warp_affine
+        fill_value = torch.tensor([0.5, 0.2, 0.1], device=device, dtype=dtype)
+
+        img_a = kornia.geometry.warp_affine(img_b, aff_ab, (h, w), padding_mode="fill", fill_value=fill_value)
+        top_row_mean = img_a[..., :1, :].mean(dim=[0, 2, 3])
+        first_col_mean = img_a[..., :1].mean(dim=[0, 2, 3])
+        assert_close(top_row_mean, fill_value)
+        assert_close(first_col_mean, fill_value)
 
 
 class TestWarpPerspective:
@@ -224,6 +298,21 @@ class TestWarpPerspective:
         img_a = kornia.geometry.warp_perspective(img_b, homo_ab, (h, w))
         assert_close(img_a, expected, atol=1e-4, rtol=1e-4)
 
+    def test_translation_normalized(self, device, dtype):
+        offset = 1.0
+        h, w = 3, 4
+
+        img_b = torch.arange(float(h * w), device=device, dtype=dtype).view(1, 1, h, w)
+        homo_ab = kornia.eye_like(3, img_b)
+        homo_ab[..., :2, -1] += offset
+
+        expected = torch.zeros_like(img_b)
+        expected[..., 1:, 1:] = img_b[..., :2, :3]
+
+        # Same as opencv: cv2.warpPerspective(kornia.tensor_to_image(img_b), homo_ab[0].numpy(), (w, h))
+        img_a = kornia.geometry.transform.homography_warp(img_b, homo_ab, (h, w), normalized_homography=False)
+        assert_close(img_a, expected, atol=1e-4, rtol=1e-4)
+
     def test_rotation_inverse(self, device, dtype):
         h, w = 4, 4
         img_b = torch.rand(1, 1, h, w, device=device, dtype=dtype)
@@ -242,7 +331,7 @@ class TestWarpPerspective:
         img_a = kornia.geometry.warp_perspective(img_b, H_ab, (h, w))
 
         # invert the transform
-        H_ba = torch.inverse(H_ab)
+        H_ba = _torch_inverse_cast(H_ab)
         img_b_hat = kornia.geometry.warp_perspective(img_a, H_ba, (h, w))
         assert_close(img_b_hat, img_b, rtol=1e-4, atol=1e-4)
 
@@ -278,28 +367,6 @@ class TestWarpPerspective:
         # warp and assert
         patch_warped = kornia.geometry.warp_perspective(patch, dst_trans_src, (dst_h, dst_w))
         assert_close(patch_warped, expected)
-
-    @pytest.mark.parametrize("batch_size", [1, 5])
-    def test_crop_src_dst_type_mismatch(self, device, dtype, batch_size):
-        # generate input data
-        src_h, src_w = 3, 3
-        dst_h, dst_w = 3, 3
-
-        # [x, y] origin
-        # top-left, top-right, bottom-right, bottom-left
-        points_src = torch.tensor(
-            [[[0, 0], [0, src_w - 1], [src_h - 1, src_w - 1], [src_h - 1, 0]]], device=device, dtype=torch.int64
-        )
-
-        # [x, y] destination
-        # top-left, top-right, bottom-right, bottom-left
-        points_dst = torch.tensor(
-            [[[0, 0], [0, dst_w - 1], [dst_h - 1, dst_w - 1], [dst_h - 1, 0]]], device=device, dtype=dtype
-        )
-
-        # compute transformation between points
-        with pytest.raises(TypeError):
-            kornia.geometry.get_perspective_transform(points_src, points_dst).expand(batch_size, -1, -1)
 
     def test_crop_center_resize(self, device, dtype):
         # generate input data
@@ -359,14 +426,41 @@ class TestWarpPerspective:
         H_ab = utils.tensor_to_gradcheck_var(H_ab, requires_grad=False)  # to var
         assert gradcheck(kornia.geometry.warp_perspective, (img_b, H_ab, (height, width)), raise_exception=True)
 
+    def test_fill_padding_translation(self, device, dtype):
+        offset = 1.0
+        h, w = 3, 4
+
+        img_b = torch.arange(float(3 * h * w), device=device, dtype=dtype).view(1, 3, h, w)
+        homo_ab = kornia.eye_like(3, img_b)
+        homo_ab[..., :2, -1] += offset
+
+        # normally fill_value will also be converted to the right device and type in warp_perspective
+        fill_value = torch.tensor([0.5, 0.2, 0.1], device=device, dtype=dtype)
+
+        img_a = kornia.geometry.warp_perspective(img_b, homo_ab, (h, w), padding_mode="fill", fill_value=fill_value)
+        top_row_mean = img_a[..., :1, :].mean(dim=[0, 2, 3])
+        first_col_mean = img_a[..., :1].mean(dim=[0, 2, 3])
+        assert_close(top_row_mean, fill_value)
+        assert_close(first_col_mean, fill_value)
+
 
 class TestRemap:
     def test_smoke(self, device, dtype):
         height, width = 3, 4
         input = torch.ones(1, 1, height, width, device=device, dtype=dtype)
-        grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=False, device=device).to(dtype)
-        input_warped = kornia.geometry.remap(input, grid[..., 0], grid[..., 1], align_corners=True)
+        grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=False, device=device, dtype=dtype)
+        input_warped = kornia.geometry.remap(
+            input, grid[..., 0], grid[..., 1], normalized_coordinates=False, align_corners=True
+        )
         assert_close(input, input_warped, rtol=1e-4, atol=1e-4)
+
+    def test_different_size(self, device, dtype):
+        height, width = 3, 4
+        grid = kornia.utils.create_meshgrid(height, width, device=device, dtype=dtype)
+
+        img = torch.rand(1, 2, 6, 5, device=device, dtype=dtype)
+        img_warped = kornia.geometry.remap(img, grid[..., 0], grid[..., 1])
+        assert img_warped.shape == (1, 2, height, width)
 
     def test_shift(self, device, dtype):
         height, width = 3, 4

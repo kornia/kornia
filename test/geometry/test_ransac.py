@@ -10,6 +10,7 @@ from kornia.testing import assert_close
 
 class TestRANSACHomography:
     def test_smoke(self, device, dtype):
+        torch.random.manual_seed(0)
         points1 = torch.rand(4, 2, device=device, dtype=dtype)
         points2 = torch.rand(4, 2, device=device, dtype=dtype)
         ransac = RANSAC('homography').to(device=device, dtype=dtype)

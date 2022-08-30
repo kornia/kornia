@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 
 from kornia.filters import gaussian_blur2d, spatial_gradient
+from kornia.testing import KORNIA_CHECK_SHAPE
 
 
 def harris_response(
@@ -63,11 +64,7 @@ def harris_response(
                   [0.0012, 0.0039, 0.0020, 0.0000, 0.0020, 0.0039, 0.0012]]]])
     """
     # TODO: Recompute doctest
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
-
-    if not len(input.shape) == 4:
-        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
+    KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
 
     if sigmas is not None:
         if not isinstance(sigmas, torch.Tensor):
@@ -81,15 +78,15 @@ def harris_response(
 
     # compute the structure tensor M elements
 
-    dx2: torch.Tensor = gaussian_blur2d(dx ** 2, (7, 7), (1.0, 1.0))
-    dy2: torch.Tensor = gaussian_blur2d(dy ** 2, (7, 7), (1.0, 1.0))
+    dx2: torch.Tensor = gaussian_blur2d(dx**2, (7, 7), (1.0, 1.0))
+    dy2: torch.Tensor = gaussian_blur2d(dy**2, (7, 7), (1.0, 1.0))
     dxy: torch.Tensor = gaussian_blur2d(dx * dy, (7, 7), (1.0, 1.0))
 
     det_m: torch.Tensor = dx2 * dy2 - dxy * dxy
     trace_m: torch.Tensor = dx2 + dy2
 
     # compute the response map
-    scores: torch.Tensor = det_m - k * (trace_m ** 2)
+    scores: torch.Tensor = det_m - k * (trace_m**2)
 
     if sigmas is not None:
         scores = scores * sigmas.pow(4).view(-1, 1, 1, 1)
@@ -147,25 +144,21 @@ def gftt_response(
                   [0.0155, 0.0334, 0.0194, 0.0000, 0.0194, 0.0334, 0.0155]]]])
     """
     # TODO: Recompute doctest
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
-
-    if not len(input.shape) == 4:
-        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
+    KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
 
     gradients: torch.Tensor = spatial_gradient(input, grads_mode)
     dx: torch.Tensor = gradients[:, :, 0]
     dy: torch.Tensor = gradients[:, :, 1]
 
-    dx2: torch.Tensor = gaussian_blur2d(dx ** 2, (7, 7), (1.0, 1.0))
-    dy2: torch.Tensor = gaussian_blur2d(dy ** 2, (7, 7), (1.0, 1.0))
+    dx2: torch.Tensor = gaussian_blur2d(dx**2, (7, 7), (1.0, 1.0))
+    dy2: torch.Tensor = gaussian_blur2d(dy**2, (7, 7), (1.0, 1.0))
     dxy: torch.Tensor = gaussian_blur2d(dx * dy, (7, 7), (1.0, 1.0))
 
     det_m: torch.Tensor = dx2 * dy2 - dxy * dxy
     trace_m: torch.Tensor = dx2 + dy2
 
-    e1: torch.Tensor = 0.5 * (trace_m + torch.sqrt((trace_m ** 2 - 4 * det_m).abs()))
-    e2: torch.Tensor = 0.5 * (trace_m - torch.sqrt((trace_m ** 2 - 4 * det_m).abs()))
+    e1: torch.Tensor = 0.5 * (trace_m + torch.sqrt((trace_m**2 - 4 * det_m).abs()))
+    e2: torch.Tensor = 0.5 * (trace_m - torch.sqrt((trace_m**2 - 4 * det_m).abs()))
 
     scores: torch.Tensor = torch.min(e1, e2)
 
@@ -229,11 +222,7 @@ def hessian_response(
                   [0.0155, 0.0334, 0.0194, 0.0000, 0.0194, 0.0334, 0.0155]]]])
     """
     # TODO: Recompute doctest
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
-
-    if not len(input.shape) == 4:
-        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
+    KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
 
     if sigmas is not None:
         if not isinstance(sigmas, torch.Tensor):
@@ -247,7 +236,7 @@ def hessian_response(
     dxy: torch.Tensor = gradients[:, :, 1]
     dyy: torch.Tensor = gradients[:, :, 2]
 
-    scores: torch.Tensor = dxx * dyy - dxy ** 2
+    scores: torch.Tensor = dxx * dyy - dxy**2
 
     if sigmas is not None:
         scores = scores * sigmas.pow(4).view(-1, 1, 1, 1)
@@ -263,13 +252,8 @@ def dog_response(input: torch.Tensor) -> torch.Tensor:
 
     Return:
         the response map per channel with shape :math:`(B, C, D-1, H, W)`.
-
     """
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
-
-    if not len(input.shape) == 5:
-        raise ValueError(f"Invalid input shape, we expect BxCxDxHxW. Got: {input.shape}")
+    KORNIA_CHECK_SHAPE(input, ["B", "C", "L", "H", "W"])
 
     return input[:, :, 1:] - input[:, :, :-1]
 

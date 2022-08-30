@@ -44,11 +44,8 @@ class TestRandomAffine3DBackward:
     )
     @pytest.mark.parametrize("resample", ['bilinear'])  # TODO: Ignore nearest for now.
     @pytest.mark.parametrize("align_corners", [True, False])
-    @pytest.mark.parametrize("return_transform", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False])
-    def test_param(
-        self, degrees, translate, scale, shear, resample, align_corners, return_transform, same_on_batch, device, dtype
-    ):
+    def test_param(self, degrees, translate, scale, shear, resample, align_corners, same_on_batch, device, dtype):
 
         _degrees = (
             degrees
@@ -80,15 +77,11 @@ class TestRandomAffine3DBackward:
             _shear,
             resample,
             align_corners=align_corners,
-            return_transform=return_transform,
             same_on_batch=same_on_batch,
             p=1.0,
         )
 
-        if return_transform:
-            output, _ = aug(input)
-        else:
-            output = aug(input)
+        output = aug(input)
 
         if len(list(aug.parameters())) != 0:
             mse = nn.MSELoss()
@@ -163,9 +156,8 @@ class TestRandomRotation3DBackward:
     )
     @pytest.mark.parametrize("resample", ['bilinear'])  # TODO: Ignore nearest for now.
     @pytest.mark.parametrize("align_corners", [True, False])
-    @pytest.mark.parametrize("return_transform", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False])
-    def test_param(self, degrees, resample, align_corners, return_transform, same_on_batch, device, dtype):
+    def test_param(self, degrees, resample, align_corners, same_on_batch, device, dtype):
 
         _degrees = (
             degrees
@@ -175,19 +167,9 @@ class TestRandomRotation3DBackward:
 
         torch.manual_seed(0)
         input = torch.randint(255, (2, 3, 10, 10, 10), device=device, dtype=dtype) / 255.0
-        aug = RandomRotation3D(
-            _degrees,
-            resample,
-            align_corners=align_corners,
-            return_transform=return_transform,
-            same_on_batch=same_on_batch,
-            p=1.0,
-        )
+        aug = RandomRotation3D(_degrees, resample, align_corners=align_corners, same_on_batch=same_on_batch, p=1.0)
 
-        if return_transform:
-            output, _ = aug(input)
-        else:
-            output = aug(input)
+        output = aug(input)
 
         if len(list(aug.parameters())) != 0:
             mse = nn.MSELoss()
@@ -197,26 +179,25 @@ class TestRandomRotation3DBackward:
             opt.step()
 
         if not isinstance(degrees, (int, float, list, tuple)):
-            assert isinstance(aug.degrees, torch.Tensor)
+            assert isinstance(aug._param_generator.degrees, torch.Tensor)
             # Assert if param not updated
-            if resample == 'nearest' and aug.degrees.is_cuda:
+            if resample == 'nearest' and aug._param_generator.degrees.is_cuda:
                 # grid_sample in nearest mode and cuda device returns nan than 0
                 pass
-            elif resample == 'nearest' or torch.all(aug.degrees._grad == 0.0):
+            elif resample == 'nearest' or torch.all(aug._param_generator.degrees._grad == 0.0):
                 # grid_sample will return grad = 0 for resample nearest
                 # https://discuss.pytorch.org/t/autograd-issue-with-f-grid-sample/76894
-                assert (degrees.to(device=device, dtype=dtype) - aug.degrees.data).sum() == 0
+                assert (degrees.to(device=device, dtype=dtype) - aug._param_generator.degrees.data).sum() == 0
             else:
-                assert (degrees.to(device=device, dtype=dtype) - aug.degrees.data).sum() != 0
+                assert (degrees.to(device=device, dtype=dtype) - aug._param_generator.degrees.data).sum() != 0
 
 
 class TestRandomPerspective3DBackward:
     @pytest.mark.parametrize("distortion_scale", [0.5, torch.tensor(0.5)])
     @pytest.mark.parametrize("resample", ['bilinear'])  # TODO: Ignore nearest for now.
     @pytest.mark.parametrize("align_corners", [True, False])
-    @pytest.mark.parametrize("return_transform", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False])
-    def test_param(self, distortion_scale, resample, align_corners, return_transform, same_on_batch, device, dtype):
+    def test_param(self, distortion_scale, resample, align_corners, same_on_batch, device, dtype):
 
         _distortion_scale = (
             distortion_scale
@@ -227,18 +208,10 @@ class TestRandomPerspective3DBackward:
         torch.manual_seed(0)
         input = torch.randint(255, (2, 3, 10, 10, 10), device=device, dtype=dtype) / 255.0
         aug = RandomPerspective3D(
-            _distortion_scale,
-            resample=resample,
-            return_transform=return_transform,
-            same_on_batch=same_on_batch,
-            align_corners=align_corners,
-            p=1.0,
+            _distortion_scale, resample=resample, same_on_batch=same_on_batch, align_corners=align_corners, p=1.0
         )
 
-        if return_transform:
-            output, _ = aug(input)
-        else:
-            output = aug(input)
+        output = aug(input)
 
         if len(list(aug.parameters())) != 0:
             mse = nn.MSELoss()
@@ -248,17 +221,21 @@ class TestRandomPerspective3DBackward:
             opt.step()
 
         if not isinstance(distortion_scale, (float, int)):
-            assert isinstance(aug.distortion_scale, torch.Tensor)
+            assert isinstance(aug._param_generator.distortion_scale, torch.Tensor)
             # Assert if param not updated
-            if resample == 'nearest' and aug.distortion_scale.is_cuda:
+            if resample == 'nearest' and aug._param_generator.distortion_scale.is_cuda:
                 # grid_sample in nearest mode and cuda device returns nan than 0
                 pass
-            elif resample == 'nearest' or torch.all(aug.distortion_scale._grad == 0.0):
+            elif resample == 'nearest' or torch.all(aug._param_generator.distortion_scale._grad == 0.0):
                 # grid_sample will return grad = 0 for resample nearest
                 # https://discuss.pytorch.org/t/autograd-issue-with-f-grid-sample/76894
-                assert (distortion_scale.to(device=device, dtype=dtype) - aug.distortion_scale.data).sum() == 0
+                assert (
+                    distortion_scale.to(device=device, dtype=dtype) - aug._param_generator.distortion_scale.data
+                ).sum() == 0
             else:
-                assert (distortion_scale.to(device=device, dtype=dtype) - aug.distortion_scale.data).sum() != 0
+                assert (
+                    distortion_scale.to(device=device, dtype=dtype) - aug._param_generator.distortion_scale.data
+                ).sum() != 0
 
 
 class TestRandomMotionBlur3DBackward:
@@ -267,9 +244,8 @@ class TestRandomMotionBlur3DBackward:
     # 'reflect' is not implemented by torch.
     @pytest.mark.parametrize("border_type", ['constant', 'replicate', 'circular'])
     @pytest.mark.parametrize("resample", ['bilinear'])  # TODO: Ignore nearest for now.
-    @pytest.mark.parametrize("return_transform", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False])
-    def test_param(self, angle, direction, border_type, resample, return_transform, same_on_batch, device, dtype):
+    def test_param(self, angle, direction, border_type, resample, same_on_batch, device, dtype):
 
         _angle = (
             angle
@@ -284,14 +260,9 @@ class TestRandomMotionBlur3DBackward:
 
         torch.manual_seed(0)
         input = torch.randint(255, (2, 3, 10, 10, 10), device=device, dtype=dtype) / 255.0
-        aug = RandomMotionBlur3D(
-            (3, 3), _angle, _direction, border_type, resample, return_transform, same_on_batch, p=1.0
-        )
+        aug = RandomMotionBlur3D((3, 3), _angle, _direction, border_type, resample, same_on_batch, p=1.0)
 
-        if return_transform:
-            output, _ = aug(input)
-        else:
-            output = aug(input)
+        output = aug(input)
 
         if len(list(aug.parameters())) != 0:
             mse = nn.MSELoss()
@@ -301,23 +272,23 @@ class TestRandomMotionBlur3DBackward:
             opt.step()
 
         if not isinstance(angle, (float, int, list, tuple)):
-            assert isinstance(aug.angle, torch.Tensor)
-            if resample == 'nearest' and aug.angle.is_cuda:
+            assert isinstance(aug._param_generator.angle, torch.Tensor)
+            if resample == 'nearest' and aug._param_generator.angle.is_cuda:
                 # grid_sample in nearest mode and cuda device returns nan than 0
                 pass
-            elif resample == 'nearest' or torch.all(aug.angle._grad == 0.0):
+            elif resample == 'nearest' or torch.all(aug._param_generator.angle._grad == 0.0):
                 # grid_sample will return grad = 0 for resample nearest
                 # https://discuss.pytorch.org/t/autograd-issue-with-f-grid-sample/76894
-                assert (angle.to(device=device, dtype=dtype) - aug.angle.data).sum() == 0
+                assert (angle.to(device=device, dtype=dtype) - aug._param_generator.angle.data).sum() == 0
             else:
                 # Assert if param not updated
-                assert (angle.to(device=device, dtype=dtype) - aug.angle.data).sum() != 0
+                assert (angle.to(device=device, dtype=dtype) - aug._param_generator.angle.data).sum() != 0
         if not isinstance(direction, (list, tuple)):
-            assert isinstance(aug.direction, torch.Tensor)
-            if torch.all(aug.direction._grad == 0.0):
+            assert isinstance(aug._param_generator.direction, torch.Tensor)
+            if torch.all(aug._param_generator.direction._grad == 0.0):
                 # grid_sample will return grad = 0 for resample nearest
                 # https://discuss.pytorch.org/t/autograd-issue-with-f-grid-sample/76894
-                assert (direction.to(device=device, dtype=dtype) - aug.direction.data).sum() == 0
+                assert (direction.to(device=device, dtype=dtype) - aug._param_generator.direction.data).sum() == 0
             else:
                 # Assert if param not updated
-                assert (direction.to(device=device, dtype=dtype) - aug.direction.data).sum() != 0
+                assert (direction.to(device=device, dtype=dtype) - aug._param_generator.direction.data).sum() != 0

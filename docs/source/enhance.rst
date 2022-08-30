@@ -5,15 +5,20 @@ kornia.enhance
 
 The functions in this section perform normalisations and intensity transformations.
 
+* `Interactive Demo`_
+
 Adjustment
 ----------
 
 .. autofunction:: add_weighted
 .. autofunction:: adjust_brightness
 .. autofunction:: adjust_contrast
+.. autofunction:: adjust_contrast_with_mean_subtraction
 .. autofunction:: adjust_gamma
 .. autofunction:: adjust_hue
 .. autofunction:: adjust_saturation
+.. autofunction:: adjust_sigmoid
+.. autofunction:: adjust_log
 .. autofunction:: invert
 .. autofunction:: posterize
 .. autofunction:: sharpness
@@ -54,6 +59,16 @@ Modules
 .. autoclass:: AdjustSaturation
 .. autoclass:: AdjustHue
 .. autoclass:: AdjustGamma
+.. autoclass:: AdjustSigmoid
+.. autoclass:: AdjustLog
 .. autoclass:: AddWeighted
 
 .. autoclass:: Invert
+
+
+Interactive Demo
+----------------
+.. raw:: html
+   :file: gradio/enhance_gradio.html
+
+Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/kornia/kornia-image-enhancement>`_.

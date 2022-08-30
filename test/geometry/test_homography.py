@@ -10,9 +10,33 @@ from kornia.geometry.homography import (
     find_homography_dlt,
     find_homography_dlt_iterated,
     oneway_transfer_error,
+    sample_is_valid_for_homography,
     symmetric_transfer_error,
 )
 from kornia.testing import assert_close
+
+
+class TestSampleValidation:
+    def test_good(self, device, dtype):
+        pts1 = torch.tensor([[0.0, 0.0], [0.0, 1.0], [1.0, 1.0], [1.0, 0.0]], device=device, dtype=dtype)[None]
+        mask = sample_is_valid_for_homography(pts1, pts1)
+        expected = torch.tensor([True], device=device, dtype=torch.bool)
+        assert torch.equal(mask, expected)
+
+    def test_bad(self, device, dtype):
+        pts1 = torch.tensor([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]], device=device, dtype=dtype)[None]
+
+        pts2 = torch.tensor([[0.0, 0.0], [0.0, 1.0], [1.0, 0.0], [1.0, 1.0]], device=device, dtype=dtype)[None]
+        mask = sample_is_valid_for_homography(pts1, pts2)
+        expected = torch.tensor([False], device=device, dtype=torch.bool)
+        assert torch.equal(mask, expected)
+
+    def test_batch(self, device, dtype):
+        batch_size = 5
+        pts1 = torch.rand(batch_size, 4, 2, device=device, dtype=dtype)
+        pts2 = torch.rand(batch_size, 4, 2, device=device, dtype=dtype)
+        mask = sample_is_valid_for_homography(pts1, pts2)
+        assert mask.shape == torch.Size([batch_size])
 
 
 class TestOneWayError:

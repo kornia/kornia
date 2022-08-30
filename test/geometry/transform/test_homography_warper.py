@@ -33,14 +33,14 @@ class TestHomographyWarper:
 
         res = torch.tensor([[[0.5, 0.0, -1.0], [0.0, 2.0, -1.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         assert (
-            kornia.geometry.transform.normal_transform_pixel(height, width, device=device, dtype=dtype) == res
+            kornia.geometry.conversions.normal_transform_pixel(height, width, device=device, dtype=dtype) == res
         ).all()
 
-        norm_homo = kornia.geometry.transform.normalize_homography(dst_homo_src, (height, width), (height, width))
+        norm_homo = kornia.geometry.conversions.normalize_homography(dst_homo_src, (height, width), (height, width))
         assert (norm_homo == dst_homo_src).all()
 
         # change output scale
-        norm_homo = kornia.geometry.transform.normalize_homography(
+        norm_homo = kornia.geometry.conversions.normalize_homography(
             dst_homo_src, (height, width), (height * 2, width // 2)
         )
         res = torch.tensor(
@@ -56,14 +56,14 @@ class TestHomographyWarper:
 
         res = torch.tensor([[[0.5, 0.0, -1.0], [0.0, 2.0, -1.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         assert (
-            kornia.geometry.transform.normal_transform_pixel(height, width, device=device, dtype=dtype) == res
+            kornia.geometry.conversions.normal_transform_pixel(height, width, device=device, dtype=dtype) == res
         ).all()
 
-        denorm_homo = kornia.geometry.transform.denormalize_homography(dst_homo_src, (height, width), (height, width))
+        denorm_homo = kornia.geometry.conversions.denormalize_homography(dst_homo_src, (height, width), (height, width))
         assert (denorm_homo == dst_homo_src).all()
 
         # change output scale
-        denorm_homo = kornia.geometry.transform.denormalize_homography(
+        denorm_homo = kornia.geometry.conversions.denormalize_homography(
             dst_homo_src, (height, width), (height * 2, width // 2)
         )
         res = torch.tensor([[[0.25, 0.0, 0.0], [0.0, 3.0, 0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype).repeat(
@@ -82,7 +82,7 @@ class TestHomographyWarper:
         dst_homo_src[..., 1, 2] = 2.0
         dst_homo_src = dst_homo_src.expand(batch_size, -1, -1)
 
-        norm_homo = kornia.geometry.transform.normalize_homography(dst_homo_src, (height, width), (height, width))
+        norm_homo = kornia.geometry.conversions.normalize_homography(dst_homo_src, (height, width), (height, width))
         res = torch.tensor([[[0.5, 0.0, 0.0], [0.0, 2.0, 5.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         assert (norm_homo == res).all()
 
@@ -97,7 +97,7 @@ class TestHomographyWarper:
         dst_homo_src[..., 1, 2] = 2.0
         dst_homo_src = dst_homo_src.expand(batch_size, -1, -1)
 
-        denorm_homo = kornia.geometry.transform.denormalize_homography(dst_homo_src, (height, width), (height, width))
+        denorm_homo = kornia.geometry.conversions.denormalize_homography(dst_homo_src, (height, width), (height, width))
         res = torch.tensor([[[0.5, 0.0, 3.0], [0.0, 2.0, 0.5], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         assert (denorm_homo == res).all()
 
@@ -112,11 +112,15 @@ class TestHomographyWarper:
         dst_homo_src[..., 1, 2] = 2.0
         dst_homo_src = dst_homo_src.expand(batch_size, -1, -1)
 
-        denorm_homo = kornia.geometry.transform.denormalize_homography(dst_homo_src, (height, width), (height, width))
-        norm_denorm_homo = kornia.geometry.transform.normalize_homography(denorm_homo, (height, width), (height, width))
+        denorm_homo = kornia.geometry.conversions.denormalize_homography(dst_homo_src, (height, width), (height, width))
+        norm_denorm_homo = kornia.geometry.conversions.normalize_homography(
+            denorm_homo, (height, width), (height, width)
+        )
         assert (dst_homo_src == norm_denorm_homo).all()
-        norm_homo = kornia.geometry.transform.normalize_homography(dst_homo_src, (height, width), (height, width))
-        denorm_norm_homo = kornia.geometry.transform.denormalize_homography(norm_homo, (height, width), (height, width))
+        norm_homo = kornia.geometry.conversions.normalize_homography(dst_homo_src, (height, width), (height, width))
+        denorm_norm_homo = kornia.geometry.conversions.denormalize_homography(
+            norm_homo, (height, width), (height, width)
+        )
         assert (dst_homo_src == denorm_norm_homo).all()
 
     @pytest.mark.parametrize("offset", [1, 3, 7])
@@ -215,7 +219,7 @@ class TestHomographyWarper:
             # same transform precomputing the grid
             warper.precompute_warp_grid(_torch_inverse_cast(dst_homo_src_i))
             patch_dst_to_src_precomputed = warper(patch_dst)
-            assert (patch_dst_to_src_precomputed == patch_dst_to_src).all()
+            assert_close(patch_dst_to_src_precomputed, patch_dst_to_src, atol=1e-4, rtol=1e-4)
 
             # projected should be equal as initial
             error = utils.compute_patch_error(patch_src, patch_dst_to_src, height, width)
@@ -302,41 +306,43 @@ class TestHomographyNormalTransform:
 
     @pytest.mark.parametrize("height,width,expected", [(2, 5, expected_2d_0), (1, 5, expected_2d_1)])
     def test_transform2d(self, height, width, expected, device, dtype):
-        output = kornia.geometry.transform.normal_transform_pixel(height, width, device=device, dtype=dtype)
+        output = kornia.geometry.conversions.normal_transform_pixel(height, width, device=device, dtype=dtype)
 
         assert_close(output, expected.to(device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("height", [1, 2, 5])
     @pytest.mark.parametrize("width", [1, 2, 5])
     def test_divide_by_zero2d(self, height, width, device, dtype):
-        output = kornia.geometry.transform.normal_transform_pixel(height, width, device=device, dtype=dtype)
+        output = kornia.geometry.conversions.normal_transform_pixel(height, width, device=device, dtype=dtype)
         assert torch.isinf(output).sum().item() == 0
 
     def test_transform2d_apply(self, device, dtype):
         height, width = 2, 5
         input = torch.tensor([[0.0, 0.0], [width - 1, height - 1]], device=device, dtype=dtype)
         expected = torch.tensor([[-1.0, -1.0], [1.0, 1.0]], device=device, dtype=dtype)
-        transform = kornia.geometry.transform.normal_transform_pixel(height, width, device=device, dtype=dtype)
+        transform = kornia.geometry.conversions.normal_transform_pixel(height, width, device=device, dtype=dtype)
         output = kornia.geometry.linalg.transform_points(transform, input)
         assert_close(output, expected.to(device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("height,width,depth,expected", [(2, 6, 4, expected_3d_0), (1, 6, 4, expected_3d_1)])
     def test_transform3d(self, height, width, depth, expected, device, dtype):
-        output = kornia.geometry.transform.normal_transform_pixel3d(depth, height, width, device=device, dtype=dtype)
+        output = kornia.geometry.conversions.normal_transform_pixel3d(depth, height, width, device=device, dtype=dtype)
         assert_close(output, expected.to(device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("height", [1, 2, 5])
     @pytest.mark.parametrize("width", [1, 2, 5])
     @pytest.mark.parametrize("depth", [1, 2, 5])
     def test_divide_by_zero3d(self, height, width, depth, device, dtype):
-        output = kornia.geometry.transform.normal_transform_pixel3d(depth, height, width, device=device, dtype=dtype)
+        output = kornia.geometry.conversions.normal_transform_pixel3d(depth, height, width, device=device, dtype=dtype)
         assert torch.isinf(output).sum().item() == 0
 
     def test_transform3d_apply(self, device, dtype):
         depth, height, width = 3, 2, 5
         input = torch.tensor([[0.0, 0.0, 0.0], [width - 1, height - 1, depth - 1]], device=device, dtype=dtype)
         expected = torch.tensor([[-1.0, -1.0, -1.0], [1.0, 1.0, 1.0]], device=device, dtype=dtype)
-        transform = kornia.geometry.transform.normal_transform_pixel3d(depth, height, width, device=device, dtype=dtype)
+        transform = kornia.geometry.conversions.normal_transform_pixel3d(
+            depth, height, width, device=device, dtype=dtype
+        )
         output = kornia.geometry.linalg.transform_points(transform, input)
         assert_close(output, expected.to(device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
@@ -356,23 +362,23 @@ class TestHomographyWarper3D:
             device=device,
             dtype=dtype,
         )
-        norm = kornia.geometry.transform.normal_transform_pixel3d(input_shape[0], input_shape[1], input_shape[2]).to(
+        norm = kornia.geometry.conversions.normal_transform_pixel3d(input_shape[0], input_shape[1], input_shape[2]).to(
             device=device, dtype=dtype
         )
         assert_close(norm, res, rtol=1e-4, atol=1e-4)
 
-        norm_homo = kornia.geometry.transform.normalize_homography3d(dst_homo_src, input_shape, input_shape).to(
+        norm_homo = kornia.geometry.conversions.normalize_homography3d(dst_homo_src, input_shape, input_shape).to(
             device=device, dtype=dtype
         )
         assert_close(norm_homo, dst_homo_src, rtol=1e-4, atol=1e-4)
 
-        norm_homo = kornia.geometry.transform.normalize_homography3d(dst_homo_src, input_shape, input_shape).to(
+        norm_homo = kornia.geometry.conversions.normalize_homography3d(dst_homo_src, input_shape, input_shape).to(
             device=device, dtype=dtype
         )
         assert_close(norm_homo, dst_homo_src, rtol=1e-4, atol=1e-4)
 
         # change output scale
-        norm_homo = kornia.geometry.transform.normalize_homography3d(
+        norm_homo = kornia.geometry.conversions.normalize_homography3d(
             dst_homo_src, input_shape, (input_shape[0] // 2, input_shape[1] * 2, input_shape[2] // 2)
         ).to(device=device, dtype=dtype)
         res = torch.tensor(
@@ -394,7 +400,7 @@ class TestHomographyWarper3D:
         dst_homo_src[..., 2, 3] = 3.0
         dst_homo_src = dst_homo_src.expand(batch_size, -1, -1)
 
-        norm_homo = kornia.geometry.transform.normalize_homography3d(dst_homo_src, (2, 2, 5), (2, 2, 5))
+        norm_homo = kornia.geometry.conversions.normalize_homography3d(dst_homo_src, (2, 2, 5), (2, 2, 5))
         res = torch.tensor(
             [[[0.5, 0.0, 0.0, 0.0], [0.0, 0.5, 0.0, 3.5], [0.0, 0.0, 2.0, 7.0], [0.0, 0.0, 0.0, 1.0]]],
             device=device,

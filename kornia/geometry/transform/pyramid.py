@@ -7,14 +7,7 @@ import torch.nn.functional as F
 
 from kornia.filters import filter2d, gaussian_blur2d
 
-__all__ = [
-    "PyrDown",
-    "PyrUp",
-    "ScalePyramid",
-    "pyrdown",
-    "pyrup",
-    "build_pyramid"
-]
+__all__ = ["PyrDown", "PyrUp", "ScalePyramid", "pyrdown", "pyrup", "build_pyramid"]
 
 
 def _get_pyramid_gaussian_kernel() -> torch.Tensor:
@@ -43,6 +36,7 @@ class PyrDown(nn.Module):
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``.
         align_corners: interpolation flag.
+        factor: the downsampling factor
 
     Return:
         the downsampled tensor.
@@ -56,13 +50,14 @@ class PyrDown(nn.Module):
         >>> output = PyrDown()(input)  # 1x2x2x2
     """
 
-    def __init__(self, border_type: str = 'reflect', align_corners: bool = False) -> None:
+    def __init__(self, border_type: str = 'reflect', align_corners: bool = False, factor: float = 2.0) -> None:
         super().__init__()
         self.border_type: str = border_type
         self.align_corners: bool = align_corners
+        self.factor: float = factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        return pyrdown(input, self.border_type, self.align_corners)
+        return pyrdown(input, self.border_type, self.align_corners, self.factor)
 
 
 class PyrUp(nn.Module):
@@ -181,7 +176,7 @@ class ScalePyramid(nn.Module):
         else:
             x = input
         if self.init_sigma > cur_sigma:
-            sigma = max(math.sqrt(self.init_sigma ** 2 - cur_sigma ** 2), 0.01)
+            sigma = max(math.sqrt(self.init_sigma**2 - cur_sigma**2), 0.01)
             ksize = self.get_kernel_size(sigma)
             cur_level = gaussian_blur2d(x, (ksize, ksize), (sigma, sigma))
             cur_sigma = self.init_sigma
@@ -200,7 +195,7 @@ class ScalePyramid(nn.Module):
         while True:
             cur_level = pyr[-1][0]
             for level_idx in range(1, self.n_levels + self.extra_levels):
-                sigma = cur_sigma * math.sqrt(self.sigma_step ** 2 - 1.0)
+                sigma = cur_sigma * math.sqrt(self.sigma_step**2 - 1.0)
                 ksize = self.get_kernel_size(sigma)
 
                 # Hack, because PyTorch does not allow to pad more than original size.
@@ -232,7 +227,9 @@ class ScalePyramid(nn.Module):
         return pyr, sigmas, pixel_dists
 
 
-def pyrdown(input: torch.Tensor, border_type: str = 'reflect', align_corners: bool = False) -> torch.Tensor:
+def pyrdown(
+    input: torch.Tensor, border_type: str = 'reflect', align_corners: bool = False, factor: float = 2.0
+) -> torch.Tensor:
     r"""Blur a tensor and downsamples it.
 
     .. image:: _static/img/pyrdown.png
@@ -243,6 +240,7 @@ def pyrdown(input: torch.Tensor, border_type: str = 'reflect', align_corners: bo
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``.
         align_corners: interpolation flag.
+        factor: the downsampling factor
 
     Return:
         the downsampled tensor.
@@ -263,7 +261,10 @@ def pyrdown(input: torch.Tensor, border_type: str = 'reflect', align_corners: bo
     # TODO: use kornia.geometry.resize/rescale
     # downsample.
     out: torch.Tensor = F.interpolate(
-        x_blur, size=(height // 2, width // 2), mode='bilinear', align_corners=align_corners
+        x_blur,
+        size=(int(float(height) / factor), int(float(width) // factor)),
+        mode='bilinear',
+        align_corners=align_corners,
     )
     return out
 

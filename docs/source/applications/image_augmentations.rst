@@ -8,7 +8,7 @@ where training data is limited or expensive to obtain like in biomedical applica
 .. image:: https://github.com/kornia/data/raw/main/girona_aug.png
    :align: center
 
-Learn more: `https://paperswithcode.com/task/image-registration <https://paperswithcode.com/task/image-augmentation>`_
+Learn more: `https://paperswithcode.com/task/image-augmentation <https://paperswithcode.com/task/image-augmentation>`_
 
 Kornia Augmentations
 --------------------
@@ -34,7 +34,7 @@ However, we provide the following guide to migrate kornia <-> torchvision. Pleas
 
    transform = nn.Sequential(
       K.RandomAffine(360),
-      K.ColorJitter(0.2, 0.3, 0.2, 0.3)
+      K.ColorJiggle(0.2, 0.3, 0.2, 0.3)
    )
 
 
@@ -51,7 +51,7 @@ for automating the processing of masks, bounding boxes, and keypoints.
    import kornia.augmentation as K
 
    aug = K.AugmentationSequential(
-      K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+      K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
       K.RandomAffine(360, [0.1, 0.1], [0.7, 1.2], [30., 50.], p=1.0),
       K.RandomPerspective(0.5, p=1.0),
       data_keys=["input", "bbox", "keypoints", "mask"],  # Just to define the future input here.
@@ -109,7 +109,7 @@ To enable those behaviour, you may simply set the flags to True.
 	 self.aff = K.RandomAffine(
             360, return_transform=True, same_on_batch=True
          )
-	 self.jit = K.ColorJitter(0.2, 0.3, 0.2, 0.3, same_on_batch=True)
+	 self.jit = K.ColorJiggle(0.2, 0.3, 0.2, 0.3, same_on_batch=True)
 
       def forward(self, input):
 	 input, transform = self.aff(input)
@@ -126,7 +126,7 @@ Example for semantic segmentation using low-level randomness control:
       def __init__(self) -> None:
 	 super(MyAugmentationPipeline, self).__init__()
 	 self.aff = K.RandomAffine(360)
-	 self.jit = K.ColorJitter(0.2, 0.3, 0.2, 0.3)
+	 self.jit = K.ColorJiggle(0.2, 0.3, 0.2, 0.3)
 
       def forward(self, input, mask):
          assert input.shape == mask.shape,

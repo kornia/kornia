@@ -11,8 +11,8 @@ from kornia.geometry.transform import warp_perspective
 
 
 class HomographyTracker(nn.Module):
-    r"""Module, which performs local-feature-based tracking of the target planar object in the
-    sequence of the frames.
+    r"""Module, which performs local-feature-based tracking of the target planar object in the sequence of the
+    frames.
 
     Args:
         initial_matcher: image matching module, e.g. :class:`~kornia.feature.LocalFeatureMatcher`
@@ -22,17 +22,20 @@ class HomographyTracker(nn.Module):
         ransac: homography estimation module. Default: :class:`~kornia.geometry.RANSAC`.
         minimum_inliers_num: threshold for number inliers for matching to be successful.
     """
-    def __init__(self,
-                 initial_matcher: Optional[LocalFeature] = None,
-                 fast_matcher: Optional[nn.Module] = None,
-                 ransac: Optional[nn.Module] = None,
-                 minimum_inliers_num: int = 30) -> None:
+
+    def __init__(
+        self,
+        initial_matcher: Optional[LocalFeature] = None,
+        fast_matcher: Optional[nn.Module] = None,
+        ransac: Optional[nn.Module] = None,
+        minimum_inliers_num: int = 30,
+    ) -> None:
         super().__init__()
         self.initial_matcher = initial_matcher or (
-            LocalFeatureMatcher(GFTTAffNetHardNet(3000), DescriptorMatcher('smnn', 0.95)))
+            LocalFeatureMatcher(GFTTAffNetHardNet(3000), DescriptorMatcher('smnn', 0.95))
+        )
         self.fast_matcher = fast_matcher or LoFTR('outdoor')
-        self.ransac = ransac or RANSAC(
-            'homography', inl_th=5.0, batch_size=4096, max_iter=10, max_lo_iters=10)
+        self.ransac = ransac or RANSAC('homography', inl_th=5.0, batch_size=4096, max_iter=10, max_lo_iters=10)
         self.minimum_inliers_num = minimum_inliers_num
 
         # placeholders
@@ -40,6 +43,10 @@ class HomographyTracker(nn.Module):
         self.target_initial_representation: Dict[str, torch.Tensor] = {}
         self.target_fast_representation: Dict[str, torch.Tensor] = {}
         self.previous_homography: Optional[torch.Tensor] = None
+
+        self.inliers_num: int = 0
+        self.keypoints0_num: int = 0
+        self.keypoints1_num: int = 0
 
         self.reset_tracking()
 
@@ -65,6 +72,9 @@ class HomographyTracker(nn.Module):
         self.previous_homography = None
 
     def no_match(self) -> Tuple[torch.Tensor, bool]:
+        self.inliers_num = 0
+        self.keypoints0_num = 0
+        self.keypoints1_num = 0
         return torch.empty(3, 3, device=self.device, dtype=self.dtype), False
 
     def match_initial(self, x: torch.Tensor) -> Tuple[torch.Tensor, bool]:
@@ -78,11 +88,16 @@ class HomographyTracker(nn.Module):
         keypoints0 = match_dict['keypoints0'][match_dict['batch_indexes'] == 0]
         keypoints1 = match_dict['keypoints1'][match_dict['batch_indexes'] == 0]
 
-        if len(keypoints0) < self.minimum_inliers_num:
-            return self.no_match()
-        H, inliers = self.ransac(keypoints0, keypoints1)
+        self.keypoints0_num = len(keypoints0)
+        self.keypoints1_num = len(keypoints1)
 
-        if inliers.sum().item() < self.minimum_inliers_num:
+        if self.keypoints0_num < self.minimum_inliers_num:
+            return self.no_match()
+
+        H, inliers = self.ransac(keypoints0, keypoints1)
+        self.inliers_num = inliers.sum().item()
+
+        if self.inliers_num < self.minimum_inliers_num:
             return self.no_match()
         self.previous_homography = H.clone()
 
@@ -108,13 +123,20 @@ class HomographyTracker(nn.Module):
         keypoints1 = match_dict['keypoints1'][match_dict['batch_indexes'] == 0]
         keypoints1 = transform_points(Hwarp, keypoints1)
 
-        if len(keypoints0) < self.minimum_inliers_num:
+        self.keypoints0_num = len(keypoints0)
+        self.keypoints1_num = len(keypoints1)
+
+        if self.keypoints0_num < self.minimum_inliers_num:
             self.reset_tracking()
             return self.no_match()
+
         H, inliers = self.ransac(keypoints0, keypoints1)
-        if inliers.sum().item() < self.minimum_inliers_num:
+        self.inliers_num = inliers.sum().item()
+
+        if self.inliers_num < self.minimum_inliers_num:
             self.reset_tracking()
             return self.no_match()
+
         self.previous_homography = H.clone()
         return H, True
 

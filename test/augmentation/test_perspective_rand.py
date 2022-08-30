@@ -11,64 +11,83 @@ class TestRandomPerspective:
 
     torch.manual_seed(0)  # for random reproductibility
 
-    def test_smoke_no_transform(self, device):
+    def test_smoke_no_transform_float(self, device):
         x_data = torch.rand(1, 2, 8, 9).to(device)
 
-        aug = kornia.augmentation.RandomPerspective(0.5, p=0.5, return_transform=False)
+        aug = kornia.augmentation.RandomPerspective(0.5, p=0.5)
 
         out_perspective = aug(x_data)
 
         assert out_perspective.shape == x_data.shape
         assert aug.inverse(out_perspective).shape == x_data.shape
 
-    def test_smoke_no_transform_batch(self, device):
-        x_data = torch.rand(2, 2, 8, 9).to(device)
+    def test_smoke_no_transform(self, device, dtype):
+        x_data = torch.rand(1, 2, 8, 9, dtype=dtype).to(device)
 
-        aug = kornia.augmentation.RandomPerspective(0.5, p=0.5, return_transform=False)
+        aug = kornia.augmentation.RandomPerspective(torch.tensor(0.5, device=device, dtype=dtype), p=0.5)
 
         out_perspective = aug(x_data)
 
         assert out_perspective.shape == x_data.shape
         assert aug.inverse(out_perspective).shape == x_data.shape
 
-    def test_smoke_transform(self, device):
-        x_data = torch.rand(1, 2, 4, 5).to(device)
+    def test_smoke_no_transform_batch(self, device, dtype):
+        x_data = torch.rand(2, 2, 8, 9, dtype=dtype).to(device)
 
-        aug = kornia.augmentation.RandomPerspective(0.5, p=0.5, return_transform=True)
+        aug = kornia.augmentation.RandomPerspective(torch.tensor(0.5, device=device, dtype=dtype), p=0.5)
 
         out_perspective = aug(x_data)
 
-        assert isinstance(out_perspective, tuple)
-        assert len(out_perspective) == 2
-        assert out_perspective[0].shape == x_data.shape
-        assert out_perspective[1].shape == (1, 3, 3)
+        assert out_perspective.shape == x_data.shape
         assert aug.inverse(out_perspective).shape == x_data.shape
 
-    def test_no_transform_module(self, device):
-        x_data = torch.rand(1, 2, 8, 9).to(device)
-        aug = kornia.augmentation.RandomPerspective()
+    def test_smoke_transform(self, device, dtype):
+        x_data = torch.rand(1, 2, 4, 5, dtype=dtype).to(device)
+
+        aug = kornia.augmentation.RandomPerspective(torch.tensor(0.5, device=device, dtype=dtype), p=0.5)
+
+        out_perspective = aug(x_data)
+
+        assert out_perspective.shape == x_data.shape
+        assert aug.transform_matrix.shape == torch.Size([1, 3, 3])
+        assert aug.inverse(out_perspective).shape == x_data.shape
+
+    def test_smoke_transform_sampling_method(self, device, dtype):
+        x_data = torch.rand(1, 2, 4, 5, dtype=dtype).to(device)
+
+        aug = kornia.augmentation.RandomPerspective(
+            torch.tensor(0.5, device=device, dtype=dtype), p=0.5, sampling_method="area_preserving"
+        )
+
+        out_perspective = aug(x_data)
+
+        assert out_perspective.shape == x_data.shape
+        assert aug.transform_matrix.shape == torch.Size([1, 3, 3])
+        assert aug.inverse(out_perspective).shape == x_data.shape
+
+    def test_no_transform_module(self, device, dtype):
+        x_data = torch.rand(1, 2, 8, 9, dtype=dtype).to(device)
+        aug = kornia.augmentation.RandomPerspective(torch.tensor(0.5, device=device, dtype=dtype))
         out_perspective = aug(x_data)
         assert out_perspective.shape == x_data.shape
         assert aug.inverse(out_perspective).shape == x_data.shape
 
-    def test_transform_module_should_return_identity(self, device):
+    def test_transform_module_should_return_identity(self, device, dtype):
         torch.manual_seed(0)
-        x_data = torch.rand(1, 2, 4, 5).to(device)
+        x_data = torch.rand(1, 2, 4, 5, dtype=dtype).to(device)
 
-        aug = kornia.augmentation.RandomPerspective(p=0.0, return_transform=True)
+        aug = kornia.augmentation.RandomPerspective(torch.tensor(0.5, device=device, dtype=dtype), p=0.0)
 
         out_perspective = aug(x_data)
-        assert isinstance(out_perspective, tuple)
-        assert len(out_perspective) == 2
-        assert out_perspective[0].shape == x_data.shape
-        assert out_perspective[1].shape == (1, 3, 3)
-        assert_close(out_perspective[0], x_data)
-        assert_close(out_perspective[1], torch.eye(3, device=device)[None])
+        assert out_perspective.shape == x_data.shape
+        assert aug.transform_matrix.shape == (1, 3, 3)
+        assert_close(out_perspective, x_data)
+        assert_close(aug.transform_matrix, torch.eye(3, device=device, dtype=dtype)[None])
         assert aug.inverse(out_perspective).shape == x_data.shape
 
-    def test_transform_module_should_return_expected_transform(self, device):
+    def test_transform_module_should_return_expected_transform(self, device, dtype):
         torch.manual_seed(0)
-        x_data = torch.rand(1, 2, 4, 5).to(device)
+        x_data = torch.rand(1, 2, 4, 5).to(device).type(dtype)
 
         expected_output = torch.tensor(
             [
@@ -97,23 +116,27 @@ class TestRandomPerspective:
             dtype=x_data.dtype,
         )
 
-        aug = kornia.augmentation.RandomPerspective(p=0.99999999, return_transform=True)  # step one the random state
+        aug = kornia.augmentation.RandomPerspective(
+            torch.tensor(0.5, device=device, dtype=dtype), p=0.99999999
+        )  # step one the random state
 
         out_perspective = aug(x_data)
 
-        assert isinstance(out_perspective, tuple)
-        assert len(out_perspective) == 2
-        assert out_perspective[0].shape == x_data.shape
-        assert out_perspective[1].shape == (1, 3, 3)
-        assert_close(out_perspective[0], expected_output, atol=1e-4, rtol=1e-4)
-        assert_close(out_perspective[1], expected_transform, atol=1e-4, rtol=1e-4)
+        assert out_perspective.shape == x_data.shape
+        assert aug.transform_matrix.shape == (1, 3, 3)
+        assert_close(out_perspective, expected_output, atol=1e-4, rtol=1e-4)
+        assert_close(aug.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
         assert aug.inverse(out_perspective).shape == x_data.shape
 
-    def test_gradcheck(self, device):
-        input = torch.rand(1, 2, 5, 7).to(device)
+    def test_gradcheck(self, device, dtype):
+        input = torch.rand(1, 2, 5, 7, dtype=dtype).to(device)
         input = utils.tensor_to_gradcheck_var(input)  # to var
         # TODO: turned off with p=0
-        assert gradcheck(kornia.augmentation.RandomPerspective(p=0.0), (input,), raise_exception=True)
+        assert gradcheck(
+            kornia.augmentation.RandomPerspective(torch.tensor(0.5, device=device, dtype=dtype), p=0.0),
+            (input,),
+            raise_exception=True,
+        )
 
 
 class TestRandomAffine:
@@ -133,6 +156,7 @@ class TestRandomAffine:
         aug = kornia.augmentation.RandomAffine(0.0)
         out = aug(x_data)
         assert out.shape == x_data.shape
+        # assert False, (aug.transform_matrix.shape, out.shape, aug._params)
         assert aug.inverse(out).shape == x_data.shape
         assert aug.inverse(out, aug._params).shape == x_data.shape
 
@@ -161,13 +185,11 @@ class TestRandomAffine:
 
     def test_smoke_transform(self, device):
         x_data = torch.rand(1, 2, 4, 5).to(device)
-        aug = kornia.augmentation.RandomAffine(0.0, return_transform=True)
+        aug = kornia.augmentation.RandomAffine(0.0)
         out = aug(x_data)
 
-        assert isinstance(out, tuple)
-        assert len(out) == 2
-        assert out[0].shape == x_data.shape
-        assert out[1].shape == (1, 3, 3)
+        assert out.shape == x_data.shape
+        assert aug.transform_matrix.shape == torch.Size([1, 3, 3])
         assert aug.inverse(out).shape == x_data.shape
 
     def test_gradcheck(self, device):

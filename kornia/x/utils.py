@@ -1,8 +1,11 @@
 # TODO: remove the type: ignore in below after deprecating python 3.6
 from dataclasses import dataclass, field  # type: ignore
 from enum import Enum
+from typing import Dict
 
 import torch.nn as nn
+
+from kornia.metrics.average_meter import AverageMeter
 
 # import yaml  # type: ignore
 
@@ -50,9 +53,39 @@ class Lambda(nn.Module):
         >>> fcn(torch.rand(1, 4, 64, 32)).shape
         torch.Size([1, 4, 32, 16])
     """
+
     def __init__(self, fcn):
         super().__init__()
         self.fcn = fcn
 
     def forward(self, x):
         return self.fcn(x)
+
+
+class StatsTracker:
+    """Stats tracker for computing metrics on the fly."""
+
+    def __init__(self) -> None:
+        self._stats: Dict[str, AverageMeter] = {}
+
+    @property
+    def stats(self):
+        return self._stats
+
+    def update(self, key: str, val: float, batch_size: int) -> None:
+        """Update the stats by the key value pair."""
+        if key not in self._stats:
+            self._stats[key] = AverageMeter()
+        self._stats[key].update(val, batch_size)
+
+    def update_from_dict(self, dic: Dict[str, float], batch_size: int) -> None:
+        """Update the stats by the dict."""
+        for k, v in dic.items():
+            self.update(k, v, batch_size)
+
+    def __repr__(self) -> str:
+        return " ".join([f"{k.upper()}: {v.val:.2f} {v.val:.2f} " for k, v in self._stats.items()])
+
+    def as_dict(self) -> Dict[str, AverageMeter]:
+        """Return the dict format."""
+        return self._stats

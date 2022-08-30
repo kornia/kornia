@@ -1,7 +1,9 @@
-from typing import Dict
+from typing import Callable, Dict
 
 import torch
 import torch.nn as nn
+
+from kornia.testing import KORNIA_CHECK_SHAPE
 
 urls: Dict[str, str] = {}
 urls["lib"] = "https://github.com/yuruntian/SOSNet/raw/master/sosnet-weights/sosnet_32x32_liberty.pth"
@@ -57,12 +59,14 @@ class SOSNet(nn.Module):
         self.desc_norm = nn.Sequential(nn.LocalResponseNorm(256, alpha=256.0, beta=0.5, k=0.0))
         # load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls['lib'], map_location=lambda storage, loc: storage)
+            storage_fcn: Callable = lambda storage, loc: storage
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls['lib'], map_location=storage_fcn)
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
         return
 
     def forward(self, input: torch.Tensor, eps: float = 1e-10) -> torch.Tensor:
+        KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         descr = self.desc_norm(self.layers(input) + eps)
         descr = descr.view(descr.size(0), -1)
         return descr

@@ -3,7 +3,12 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia.testing as utils  # test utils
-from kornia.feature.siftdesc import get_sift_bin_ksize_stride_pad, get_sift_pooling_kernel, SIFTDescriptor
+from kornia.feature.siftdesc import (
+    DenseSIFTDescriptor,
+    SIFTDescriptor,
+    get_sift_bin_ksize_stride_pad,
+    get_sift_pooling_kernel,
+)
 from kornia.testing import assert_close
 
 
@@ -36,7 +41,7 @@ class TestSIFTDescriptor:
         inp = torch.ones(3, 1, 19, 19, device=device, dtype=dtype)
         sift = SIFTDescriptor(19, 5, 3).to(device, dtype)
         out = sift(inp)
-        assert out.shape == (3, (3 ** 2) * 5)
+        assert out.shape == (3, (3**2) * 5)
 
     def test_toy(self, device, dtype):
         patch = torch.ones(1, 1, 6, 6, device=device, dtype=dtype)
@@ -58,6 +63,40 @@ class TestSIFTDescriptor:
     def test_jit(self, device, dtype):
         B, C, H, W = 1, 1, 32, 32
         patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
-        model = SIFTDescriptor(32).to(patches.device, patches.dtype).eval()
-        model_jit = torch.jit.script(model)
+        model = SIFTDescriptor(41).to(patches.device, patches.dtype).eval()
+        model_jit = torch.jit.script(SIFTDescriptor(41).to(patches.device, patches.dtype).eval())
         assert_close(model(patches), model_jit(patches))
+
+
+class TestDenseSIFTDescriptor:
+    def test_shape_default(self, device, dtype):
+        bs, h, w = 1, 40, 30
+        inp = torch.rand(1, 1, h, w, device=device, dtype=dtype)
+        sift = DenseSIFTDescriptor().to(device, dtype)
+        out = sift(inp)
+        assert out.shape == torch.Size([bs, 128, h, w])
+
+    def test_batch_shape(self, device, dtype):
+        bs, h, w = 2, 32, 15
+        inp = torch.rand(bs, 1, h, w, device=device, dtype=dtype)
+        sift = DenseSIFTDescriptor().to(device, dtype)
+        out = sift(inp)
+        assert out.shape == torch.Size([bs, 128, h, w])
+
+    def test_batch_shape_custom(self, device, dtype):
+        bs, h, w = 2, 40, 30
+        inp = torch.rand(bs, 1, h, w, device=device, dtype=dtype)
+        sift = DenseSIFTDescriptor(5, 3, 3, padding=1, stride=2).to(device, dtype)
+        out = sift(inp)
+        assert out.shape == torch.Size([bs, 45, h // 2, w // 2])
+
+    def test_print(self, device):
+        sift = DenseSIFTDescriptor()
+        sift.__repr__()
+
+    @pytest.mark.xfail(reason='May raise checkIfNumericalAnalyticAreClose.')
+    def test_gradcheck(self, device):
+        batch_size, channels, height, width = 1, 1, 32, 32
+        patches = torch.rand(batch_size, channels, height, width, device=device)
+        patches = utils.tensor_to_gradcheck_var(patches)  # to var
+        assert gradcheck(DenseSIFTDescriptor(4, 2, 2), (patches), raise_exception=True, nondet_tol=1e-4)
