@@ -200,43 +200,35 @@ def sample_is_valid_for_homography(points1: Tensor, points2: Tensor) -> Tensor:
     return sample_is_valid
 
 
-def find_homography_lines_dlt(
-    lineseg_start1: Tensor,
-    lineseg_end1: Tensor,
-    lineseg_start2: Tensor,
-    lineseg_end2: Tensor,
-    weights: Optional[Tensor] = None,
-) -> Tensor:
+def find_homography_lines_dlt(ls1: Tensor,
+                              ls2: Tensor,
+                              weights: Optional[Tensor] = None) -> Tensor:
     r"""Compute the homography matrix using the DLT formulation for line correspondences.
 
     See :cite:`homolines2001` for details.
     The linear system is solved by using the Weighted Least Squares Solution for the 4 Line correspondences algorithm.
     Args:
-        lineseg_start1: A set of start points in the first image with a tensor shape :math:`(B, N, 2)`.
-        lineseg_end1: A set of end points in the first image with a tensor shape :math:`(B, N, 2)`.
-        lineseg_start2: A set of start points in the second image with a tensor shape :math:`(B, N, 2)`.
-        lineseg_end2: A set of end points in the second image with a tensor shape :math:`(B, N, 2)`.
+        lineseg_start1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`.
+        lineseg_end2: A set of line segments in the second image with a tensor shape :math:`(B, N, 2, 2)`.
         weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
     Returns:
         the computed homography matrix with shape :math:`(B, 3, 3)`.
     """
-    KORNIA_CHECK_SHAPE(lineseg_start1, ["B", "N", "2"])
-    KORNIA_CHECK_SHAPE(lineseg_end1, ["B", "N", "2"])
-    KORNIA_CHECK_SHAPE(lineseg_start2, ["B", "N", "2"])
-    KORNIA_CHECK_SHAPE(lineseg_end2, ["B", "N", "2"])
+    KORNIA_CHECK_SHAPE(ls1, ["B", "N", "2", "2"])
+    KORNIA_CHECK_SHAPE(ls2, ["B", "N", "2", "2"])
+    B, N = ls1.shape[:2]
+    device, dtype = _extract_device_dtype([ls1, ls2])
 
-    device, dtype = _extract_device_dtype([lineseg_start1, lineseg_start2])
-
-    points1 = torch.cat([lineseg_start1, lineseg_end1], dim=1)
-    points2 = torch.cat([lineseg_start2, lineseg_end2], dim=1)
+    points1 = ls1.reshape(B, 2 * N, 2)
+    points2 = ls2.reshape(B, 2 * N, 2)
 
     points1_norm, transform1 = normalize_points(points1)
     points2_norm, transform2 = normalize_points(points2)
-    ls1, le1 = torch.chunk(points1_norm, dim=1, chunks=2)
-    ls2, le2 = torch.chunk(points2_norm, dim=1, chunks=2)
+    lst1, le1 = torch.chunk(points1_norm, dim=1, chunks=2)
+    lst2, le2 = torch.chunk(points2_norm, dim=1, chunks=2)
 
-    xs1, ys1 = torch.chunk(ls1, dim=-1, chunks=2)  # BxNx1
-    xs2, ys2 = torch.chunk(ls2, dim=-1, chunks=2)  # BxNx1
+    xs1, ys1 = torch.chunk(lst1, dim=-1, chunks=2)  # BxNx1
+    xs2, ys2 = torch.chunk(lst2, dim=-1, chunks=2)  # BxNx1
     xe1, ye1 = torch.chunk(le1, dim=-1, chunks=2)  # BxNx1
     xe2, ye2 = torch.chunk(le2, dim=-1, chunks=2)  # BxNx1
 
@@ -257,7 +249,7 @@ def find_homography_lines_dlt(
         A = A.transpose(-2, -1) @ A
     else:
         # We should use provided weights
-        if not (len(weights.shape) == 2 and weights.shape == lineseg_start1.shape[:2]):
+        if not ((len(weights.shape) == 2) and (weights.shape == ls1.shape[:2])):
             raise AssertionError(weights.shape)
         w_diag = torch.diag_embed(weights.unsqueeze(dim=-1).repeat(1, 1, 2).reshape(weights.shape[0], -1))
         A = A.transpose(-2, -1) @ w_diag @ A
