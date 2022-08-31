@@ -104,16 +104,16 @@ class TestRANSACHomographyLineSegments:
         H[:2] = H[:2] + 0.1 * torch.rand_like(H[:2])
         H[2:, :2] = H[2:, :2] + 0.001 * torch.rand_like(H[2:, :2])
 
-        points_src_st = 100.0 * torch.rand(1, 20, 2, 2, device=device, dtype=dtype)
-        points_src_end = 100.0 * torch.rand(1, 20, 2, 2, device=device, dtype=dtype)
+        points_src_st = 100.0 * torch.rand(1, 20, 2, device=device, dtype=dtype)
+        points_src_end = 100.0 * torch.rand(1, 20, 2, device=device, dtype=dtype)
 
         points_dst_st = transform_points(H[None], points_src_st)
         points_dst_end = transform_points(H[None], points_src_end)
 
         # making last point an outlier
         points_dst_st[:, -1, :] += 800
-        ls1 = torch.stack([points_src_st, points_src_end], dim=1)
-        ls2 = torch.stack([points_dst_st, points_dst_end], dim=1)
+        ls1 = torch.stack([points_src_st, points_src_end], dim=2)
+        ls2 = torch.stack([points_dst_st, points_dst_end], dim=2)
 
         ransac = RANSAC('homography_from_linesegments', inl_th=0.5, max_iter=20).to(device=device, dtype=dtype)
         # compute transform from source to target
