@@ -215,11 +215,11 @@ def find_homography_lines_dlt(ls1_: Tensor,
         the computed homography matrix with shape :math:`(B, 3, 3)`.
     """
     if len(ls1_.shape) == 3:
-        ls1 = ls1_[None]
+        ls1: Tensor = ls1_[None]
     else:
         ls1 = ls1_
     if len(ls2_.shape) == 3:
-        ls2 = ls2_[None]
+        ls2: Tensor = ls2_[None]
     else:
         ls2 = ls2_
     KORNIA_CHECK_SHAPE(ls1, ["B", "N", "2", "2"])
@@ -241,16 +241,15 @@ def find_homography_lines_dlt(ls1_: Tensor,
     xe2, ye2 = torch.chunk(le2, dim=-1, chunks=2)  # BxNx1
 
     A = ys2 - ye2
-    B = xe2 - xs2
+    B = xe2 - xs2  # type: ignore
     C = xs2 * ye2 - xe2 * ys2
 
     eps: float = 1e-8
 
     # http://diis.unizar.es/biblioteca/00/09/000902.pdf
-    ax = torch.cat([A * xs1, A * ys1, A, B * xs1, B * ys1, B, C * xs1, C * ys1, C], dim=-1)
-    ay = torch.cat([A * xe1, A * ye1, A, B * xe1, B * ye1, B, C * xe1, C * ye1, C], dim=-1)
-
-    A = torch.cat((ax, ay), dim=-1).reshape(ax.shape[0], -1, ax.shape[-1])
+    ax = torch.cat([A * xs1, A * ys1, A, B * xs1, B * ys1, B, C * xs1, C * ys1, C], dim=-1)  # type: ignore
+    ay = torch.cat([A * xe1, A * ye1, A, B * xe1, B * ye1, B, C * xe1, C * ye1, C], dim=-1)  # type: ignore
+    A = torch.cat((ax, ay), dim=-1).reshape(ax.shape[0], -1, ax.shape[-1])  # type: ignore
 
     if weights is None:
         # All points are equally important
