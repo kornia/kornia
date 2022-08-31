@@ -10,6 +10,7 @@ from kornia.geometry.homography import (
     find_homography_dlt,
     find_homography_dlt_iterated,
     find_homography_lines_dlt,
+    find_homography_lines_dlt_iterated,
     line_segment_transfer_error_one_way,
     oneway_transfer_error,
     sample_is_valid_for_homography,
@@ -236,7 +237,6 @@ class TestFindHomographyDLT:
             torch.manual_seed(initial_seed)
             return
 
-
 class TestFindHomographyFromLinesDLT:
     def test_smoke(self, device, dtype):
         points1st = torch.rand(1, 4, 2, device=device, dtype=dtype)
@@ -327,6 +327,26 @@ class TestFindHomographyFromLinesDLT:
         ls2 = torch.stack([points_dst_st, points_dst_end], axis=2)
         # compute transform from source to target
         dst_homo_src = find_homography_lines_dlt(ls1, ls2, None)
+
+        assert_close(kornia.geometry.transform_points(dst_homo_src, points_src_st), points_dst_st, rtol=1e-3, atol=1e-4)
+
+
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
+    def test_clean_points_iter(self, batch_size, device, dtype):
+        # generate input data
+        points_src_st = torch.rand(batch_size, 10, 2, device=device, dtype=dtype)
+        points_src_end = torch.rand(batch_size, 10, 2, device=device, dtype=dtype)
+
+        H = kornia.eye_like(3, points_src_st)
+        H = H * 0.3 * torch.rand_like(H)
+        H = H / H[:, 2:3, 2:3]
+        points_dst_st = kornia.geometry.transform_points(H, points_src_st)
+        points_dst_end = kornia.geometry.transform_points(H, points_src_end)
+
+        ls1 = torch.stack([points_src_st, points_src_end], axis=2)
+        ls2 = torch.stack([points_dst_st, points_dst_end], axis=2)
+        # compute transform from source to target
+        dst_homo_src = find_homography_lines_dlt_iterated(ls1, ls2, None, 5)
 
         assert_close(kornia.geometry.transform_points(dst_homo_src, points_src_st), points_dst_st, rtol=1e-3, atol=1e-4)
 

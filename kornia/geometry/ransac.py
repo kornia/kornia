@@ -11,6 +11,7 @@ from kornia.geometry import (
     find_homography_dlt,
     find_homography_dlt_iterated,
     find_homography_lines_dlt,
+    find_homography_lines_dlt_iterated,
     symmetrical_epipolar_distance,
 )
 from kornia.geometry.homography import (
@@ -64,7 +65,7 @@ class RANSAC(nn.Module):
         elif model_type == 'homography_from_linesegments':
             self.error_fn = line_segment_transfer_error_one_way  # type: ignore
             self.minimal_solver = find_homography_lines_dlt  # type: ignore
-            self.polisher_solver = find_homography_lines_dlt  # type: ignore
+            self.polisher_solver = find_homography_lines_dlt_iterated  # type: ignore
             self.minimal_sample_size = 4
         elif model_type == 'fundamental':
             self.error_fn = symmetrical_epipolar_distance  # type: ignore
@@ -169,9 +170,9 @@ class RANSAC(nn.Module):
         r"""Main forward method to execute the RANSAC algorithm.
 
         Args:
-            kp1 (Tensor): source image keypoints :math:`(N, 2)`.
-            kp2 (Tensor): distance image keypoints :math:`(N, 2)`.
-            weights (Tensor): optional correspondences weights. Not used now
+            kp1: source image keypoints :math:`(N, 2)`.
+            kp2: distance image keypoints :math:`(N, 2)`.
+            weights: optional correspondences weights. Not used now.
 
         Returns:
             - Estimated model, shape of :math:`(1, 3, 3)`.

@@ -28,6 +28,7 @@ def oneway_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: bool =
 
     Returns:
         the computed distance with shape :math:`(B, N)`.
+
     """
     KORNIA_CHECK_SHAPE(H, ["B", "3", "3"])
 
@@ -60,6 +61,7 @@ def symmetric_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: boo
 
     Returns:
         the computed distance with shape :math:`(B, N)`.
+
     """
     KORNIA_CHECK_SHAPE(H, ["B", "3", "3"])
     if pts1.size(-1) == 3:
@@ -83,8 +85,7 @@ def symmetric_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: boo
 
 
 def line_segment_transfer_error_one_way(
-    ls1: Tensor, ls2: Tensor, H: Tensor, squared: bool = True, eps: float = 1e-8
-) -> Tensor:
+    ls1: Tensor, ls2: Tensor, H: Tensor, squared: bool = False) -> Tensor:
     r"""Return transfer error in image 2 for line segment correspondences given the homography matrix. Line segment
     end points are reprojected into image 2, and point-to-line error is calculted w.r.t. line, induced by line
     segment in image 2. See :cite:`homolines2001` for details.
@@ -95,11 +96,11 @@ def line_segment_transfer_error_one_way(
         ls2: line segment correspondences from the right images with shape
           (B, N, 2, 2).
         H: Homographies with shape :math:`(B, 3, 3)`.
-        squared: if True (default), the squared distance is returned.
-        eps: Small constant for safe sqrt.
+        squared: if True (default is False), the squared distance is returned.
 
     Returns:
         the computed distance with shape :math:`(B, N)`.
+
     """
     KORNIA_CHECK_SHAPE(H, ["B", "3", "3"])
     KORNIA_CHECK_SHAPE(ls1, ["B", "N", "2", "2"])
@@ -195,8 +196,6 @@ def find_homography_dlt_iterated(
     Returns:
         the computed homography matrix with shape :math:`(B, 3, 3)`.
     """
-    '''Function, which finds homography via iteratively-reweighted
-    least squares ToDo: add citation'''
     H: Tensor = find_homography_dlt(points1, points2, weights)
     for _ in range(n_iter - 1):
         errors: Tensor = symmetric_transfer_error(points1, points2, H, False)
@@ -238,7 +237,7 @@ def sample_is_valid_for_homography(points1: Tensor, points2: Tensor) -> Tensor:
     return sample_is_valid
 
 
-def find_homography_lines_dlt(ls1_: Tensor, ls2_: Tensor, weights: Optional[Tensor] = None) -> Tensor:
+def find_homography_lines_dlt(ls1: Tensor, ls2: Tensor, weights: Optional[Tensor] = None) -> Tensor:
     r"""Compute the homography matrix using the DLT formulation for line correspondences.
 
     See :cite:`homolines2001` for details.
@@ -249,22 +248,19 @@ def find_homography_lines_dlt(ls1_: Tensor, ls2_: Tensor, weights: Optional[Tens
         weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
     Returns:
         the computed homography matrix with shape :math:`(B, 3, 3)`.
+
     """
-    if len(ls1_.shape) == 3:
-        ls1: Tensor = ls1_[None]
-    else:
-        ls1 = ls1_
-    if len(ls2_.shape) == 3:
-        ls2: Tensor = ls2_[None]
-    else:
-        ls2 = ls2_
+    if len(ls1.shape) == 3:
+        ls1 = ls1[None]
+    if len(ls2.shape) == 3:
+        ls2 = ls2[None]
     KORNIA_CHECK_SHAPE(ls1, ["B", "N", "2", "2"])
     KORNIA_CHECK_SHAPE(ls2, ["B", "N", "2", "2"])
-    B, N = ls1.shape[:2]
+    BS, N = ls1.shape[:2]
     device, dtype = _extract_device_dtype([ls1, ls2])
 
-    points1 = ls1.reshape(B, 2 * N, 2)
-    points2 = ls2.reshape(B, 2 * N, 2)
+    points1 = ls1.reshape(BS, 2 * N, 2)
+    points2 = ls2.reshape(BS, 2 * N, 2)
 
     points1_norm, transform1 = normalize_points(points1)
     points2_norm, transform2 = normalize_points(points2)
@@ -277,15 +273,15 @@ def find_homography_lines_dlt(ls1_: Tensor, ls2_: Tensor, weights: Optional[Tens
     xe2, ye2 = torch.chunk(le2, dim=-1, chunks=2)  # BxNx1
 
     A = ys2 - ye2
-    B = xe2 - xs2  # type: ignore
+    B = xe2 - xs2
     C = xs2 * ye2 - xe2 * ys2
 
     eps: float = 1e-8
 
     # http://diis.unizar.es/biblioteca/00/09/000902.pdf
-    ax = torch.cat([A * xs1, A * ys1, A, B * xs1, B * ys1, B, C * xs1, C * ys1, C], dim=-1)  # type: ignore
-    ay = torch.cat([A * xe1, A * ye1, A, B * xe1, B * ye1, B, C * xe1, C * ye1, C], dim=-1)  # type: ignore
-    A = torch.cat((ax, ay), dim=-1).reshape(ax.shape[0], -1, ax.shape[-1])  # type: ignore
+    ax = torch.cat([A * xs1, A * ys1, A, B * xs1, B * ys1, B, C * xs1, C * ys1, C], dim=-1)
+    ay = torch.cat([A * xe1, A * ye1, A, B * xe1, B * ye1, B, C * xe1, C * ye1, C], dim=-1)
+    A = torch.cat((ax, ay), dim=-1).reshape(ax.shape[0], -1, ax.shape[-1])
 
     if weights is None:
         # All points are equally important
@@ -307,3 +303,29 @@ def find_homography_lines_dlt(ls1_: Tensor, ls2_: Tensor, weights: Optional[Tens
     H = transform2.inverse() @ (H @ transform1)
     H_norm = H / (H[..., -1:, -1:] + eps)
     return H_norm
+
+
+def find_homography_lines_dlt_iterated(
+    ls1: Tensor, ls2: Tensor, weights: Tensor, soft_inl_th: float = 4.0, n_iter: int = 5
+) -> Tensor:
+    r"""Compute the homography matrix using the iteratively-reweighted least squares (IRWLS) from
+    line segments.
+    The linear system is solved by using the Reweighted Least Squares Solution for the 4 line segments algorithm.
+
+    Args:
+        ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`.
+        ls2: A set of line segments in the second image with a tensor shape :math:`(B, N, 2, 2)`.
+        weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
+          Used for the first iteration of the IRWLS.
+        soft_inl_th: Soft inlier threshold used for weight calculation.
+        n_iter: number of iterations.
+
+    Returns:
+        the computed homography matrix with shape :math:`(B, 3, 3)`.
+    """
+    H: Tensor = find_homography_lines_dlt(ls1, ls2, weights)
+    for _ in range(n_iter - 1):
+        errors: Tensor = line_segment_transfer_error_one_way(ls1, ls2, H, False)
+        weights_new: Tensor = torch.exp(-errors / (2.0 * (soft_inl_th**2)))
+        H = find_homography_lines_dlt(ls1, ls2, weights_new)
+    return H
