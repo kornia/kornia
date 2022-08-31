@@ -28,7 +28,6 @@ def oneway_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: bool =
 
     Returns:
         the computed distance with shape :math:`(B, N)`.
-
     """
     KORNIA_CHECK_SHAPE(H, ["B", "3", "3"])
 
@@ -61,7 +60,6 @@ def symmetric_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: boo
 
     Returns:
         the computed distance with shape :math:`(B, N)`.
-
     """
     KORNIA_CHECK_SHAPE(H, ["B", "3", "3"])
     if pts1.size(-1) == 3:
@@ -99,7 +97,6 @@ def line_segment_transfer_error_one_way(ls1: Tensor, ls2: Tensor, H: Tensor, squ
 
     Returns:
         the computed distance with shape :math:`(B, N)`.
-
     """
     KORNIA_CHECK_SHAPE(H, ["B", "3", "3"])
     KORNIA_CHECK_SHAPE(ls1, ["B", "N", "2", "2"])
@@ -247,7 +244,6 @@ def find_homography_lines_dlt(ls1: Tensor, ls2: Tensor, weights: Optional[Tensor
         weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
     Returns:
         the computed homography matrix with shape :math:`(B, 3, 3)`.
-
     """
     if len(ls1.shape) == 3:
         ls1 = ls1[None]
@@ -307,9 +303,8 @@ def find_homography_lines_dlt(ls1: Tensor, ls2: Tensor, weights: Optional[Tensor
 def find_homography_lines_dlt_iterated(
     ls1: Tensor, ls2: Tensor, weights: Tensor, soft_inl_th: float = 4.0, n_iter: int = 5
 ) -> Tensor:
-    r"""Compute the homography matrix using the iteratively-reweighted least squares (IRWLS) from
-    line segments.
-    The linear system is solved by using the Reweighted Least Squares Solution for the 4 line segments algorithm.
+    r"""Compute the homography matrix using the iteratively-reweighted least squares (IRWLS) from line segments. The
+    linear system is solved by using the Reweighted Least Squares Solution for the 4 line segments algorithm.
 
     Args:
         ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`.
