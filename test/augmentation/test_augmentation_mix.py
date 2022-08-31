@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from kornia.augmentation import RandomCutMixV2, RandomMixUpV2, RandomMosaic
+from kornia.augmentation import RandomCutMixV2, RandomMixUpV2, RandomMosaic, RandomJigsaw
 from kornia.testing import assert_close
 
 
@@ -333,3 +333,51 @@ class TestRandomMosaic:
         )
 
         f(input, boxes)
+
+
+class TestRandomJigsaw:
+    def test_smoke(self):
+        f = RandomJigsaw(data_keys=["input"])
+        repr = (
+            "RandomJigsaw(grid=(4, 4), p=0.5, p_batch=1.0, same_on_batch=False, grid=(4, 4))"
+        )
+        assert str(f) == repr
+
+    def test_numerical(self, device, dtype):
+        torch.manual_seed(22)
+        f = RandomJigsaw(grid=(2, 2), p=1.0, data_keys=["input"])
+
+        input = torch.arange(32, device=device, dtype=dtype).reshape(2, 1, 4, 4)
+
+        out_image = f(input)
+
+        expected = torch.tensor(
+            [
+                [[
+                    [ 2.,  3.,  0.,  1.],
+                    [ 6.,  7.,  4.,  5.],
+                    [ 8.,  9., 10., 11.],
+                    [12., 13., 14., 15.],
+                ]],
+                [[
+                    [16., 17., 18., 19.],
+                    [20., 21., 22., 23.],
+                    [24., 25., 26., 27.],
+                    [28., 29., 30., 31.]
+                ]]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
+
+    @pytest.mark.parametrize("p", [0.0, 0.5, 1.0])
+    @pytest.mark.parametrize("same_on_batch", [True, False])
+    def test_p(self, p, same_on_batch, device, dtype):
+        torch.manual_seed(76)
+        f = RandomJigsaw(p=p, data_keys=["input"], same_on_batch=same_on_batch)
+
+        input = torch.randn((12, 3, 256, 256), device=device, dtype=dtype)
+
+        f(input)

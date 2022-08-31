@@ -1,0 +1,61 @@
+from typing import Dict, Optional, Tuple
+
+import torch
+from torch.distributions import Uniform
+
+from kornia.augmentation.random_generator.base import RandomGeneratorBase
+from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
+from kornia.core import Tensor
+from kornia.geometry.bbox import bbox_generator
+from kornia.utils.helpers import _extract_device_dtype
+
+
+class JigsawGenerator(RandomGeneratorBase):
+    r"""Generate mixup indexes and lambdas for a batch of inputs.
+
+    Args:
+        grid: the Jigsaw puzzle grid. e.g. (2, 2) means
+            each output will mix image patches in a 2x2 grid.
+
+    Returns:
+        A dict of parameters to be passed for transformation.
+            - permutation (Tensor): Jigsaw permutation arrangement.
+
+    Note:
+        The generated random numbers are not reproducible across different devices and dtypes. By default,
+        the parameters will be generated on CPU in float32. This can be changed by calling
+        ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
+    """
+
+    def __init__(
+        self,
+        grid: Tuple[int, int] = (4, 4),
+    ) -> None:
+        super().__init__()
+        self.grid = grid
+
+    def __repr__(self) -> str:
+        repr = (
+            f"grid={self.grid}"
+        )
+        return repr
+
+    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+        self._device = device
+        self._dtype = dtype
+
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        _common_param_check(batch_size, same_on_batch)
+
+        perm_times = self.grid[0] * self.grid[1]
+        # Generate mosiac order in one shot
+        if batch_size == 0:
+            rand_ids = torch.zeros([0, perm_times], device=self._device)
+        elif same_on_batch:
+            rand_ids = torch.randperm(perm_times, device=self._device)
+        else:
+            rand_ids = torch.stack([torch.randperm(perm_times, device=self._device) for _ in range(batch_size)])
+        return dict(
+            permutation=rand_ids,
+        )
