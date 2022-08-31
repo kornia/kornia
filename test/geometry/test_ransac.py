@@ -128,7 +128,7 @@ class TestRANSACHomographyLineSegments:
         torch.random.manual_seed(0)
         points1 = torch.rand(4, 2, 2, device=device, dtype=dtype)
         points2 = torch.rand(4, 2, 2, device=device, dtype=dtype)
-        ransac = RANSAC('homography_from_linesegments').to(device=device, dtype=dtype)
+        model = RANSAC('homography_from_linesegments').to(device=device, dtype=dtype)
         model_jit = torch.jit.script(RANSAC('homography_from_linesegments').to(device=device, dtype=dtype))
         assert_close(model(points1, points2)[0], model_jit(points1, points2)[0], rtol=1e-4, atol=1e-4)
 
