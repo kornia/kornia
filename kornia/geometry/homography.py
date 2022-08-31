@@ -3,18 +3,20 @@ from typing import Optional, Tuple
 
 import torch
 
-from kornia.core import Tensor
-from kornia.testing import KORNIA_CHECK_SHAPE
 from kornia.utils import _extract_device_dtype, safe_inverse_with_mask
-
+from kornia.core import Tensor
 from .conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from .epipolar import normalize_points
 from .linalg import transform_points
+from kornia.testing import KORNIA_CHECK_SHAPE
+
 
 TupleTensor = Tuple[Tensor, Tensor]
 
 
-def oneway_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: bool = True, eps: float = 1e-8) -> Tensor:
+def oneway_transfer_error(
+    pts1: Tensor, pts2: Tensor, H: Tensor, squared: bool = True, eps: float = 1e-8
+) -> Tensor:
     r"""Return transfer error in image 2 for correspondences given the homography matrix.
 
     Args:
@@ -46,7 +48,9 @@ def oneway_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: bool =
     return (error_squared + eps).sqrt()
 
 
-def symmetric_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: bool = True, eps: float = 1e-8) -> Tensor:
+def symmetric_transfer_error(
+    pts1: Tensor, pts2: Tensor, H: Tensor, squared: bool = True, eps: float = 1e-8
+) -> Tensor:
     r"""Return Symmetric transfer error for correspondences given the homography matrix.
 
     Args:
@@ -82,7 +86,48 @@ def symmetric_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: boo
     return (out + eps).sqrt()
 
 
-def find_homography_dlt(points1: Tensor, points2: Tensor, weights: Optional[Tensor] = None) -> Tensor:
+def line_segment_transfer_error_one_way(
+    ls1: Tensor, ls2: Tensor, H: Tensor, squared: bool = True, eps: float = 1e-8
+) -> Tensor:
+    r"""Return transfer error in image 2 for line segment correspondences given the homography matrix.
+    Line segment end points are reprojected into image 2, and point-to-line error
+    is calculted w.r.t. line, induced by line segment in image 2.
+    See :cite:`homolines2001` for details.
+
+    Args:
+        ls1: line segment correspondences from the left images with shape
+          (B, N, 2, 2).
+        ls2: line segment correspondences from the right images with shape
+          (B, N, 2, 2).
+        H: Homographies with shape :math:`(B, 3, 3)`.
+        squared: if True (default), the squared distance is returned.
+        eps: Small constant for safe sqrt.
+
+    Returns:
+        the computed distance with shape :math:`(B, N)`.
+    """
+    KORNIA_CHECK_SHAPE(H, ["B", "3", "3"])
+    KORNIA_CHECK_SHAPE(ls1, ["B", "N", "2", "2"])
+    KORNIA_CHECK_SHAPE(ls2, ["B", "N", "2", "2"])
+    B, N = ls1.shape[:2]
+    ps1, pe1 = torch.chunk(ls1, dim=2, chunks=2)
+    ps2, pe2 = torch.chunk(ls2, dim=2, chunks=2)
+    ps2_h = convert_points_to_homogeneous(ps2)
+    pe2_h = convert_points_to_homogeneous(pe2)
+    ln2 = ps2_h.cross(pe2_h, dim=3)
+    ps1_in2 = convert_points_to_homogeneous(transform_points(H, ps1))
+    pe1_in2 = convert_points_to_homogeneous(transform_points(H, pe1))
+    er_st1 = (ln2 @ ps1_in2.transpose(-2, -1)).view(B, N).abs()
+    er_end1 = (ln2 @ pe1_in2.transpose(-2, -1)).view(B, N).abs()
+    error = 0.5 * (er_st1 + er_end1)
+    if squared:
+        error = error ** 2
+    return error
+
+
+def find_homography_dlt(
+    points1: Tensor, points2: Tensor, weights: Optional[Tensor] = None
+) -> Tensor:
     r"""Compute the homography matrix using the DLT formulation.
 
     The linear system is solved by using the Weighted Least Squares Solution for the 4 Points algorithm.
@@ -204,7 +249,6 @@ def find_homography_lines_dlt(ls1_: Tensor,
                               ls2_: Tensor,
                               weights: Optional[Tensor] = None) -> Tensor:
     r"""Compute the homography matrix using the DLT formulation for line correspondences.
-
     See :cite:`homolines2001` for details.
     The linear system is solved by using the Weighted Least Squares Solution for the 4 Line correspondences algorithm.
     Args:
