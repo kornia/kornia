@@ -8,6 +8,7 @@ import kornia
 import kornia.testing as utils
 from kornia.geometry.homography import (
     find_homography_dlt,
+    find_homography_lines_dlt,
     find_homography_dlt_iterated,
     oneway_transfer_error,
     sample_is_valid_for_homography,
@@ -186,6 +187,127 @@ class TestFindHomographyDLT:
                     assert gradcheck(
                         find_homography_dlt,
                         (points_src, points_dst, weights),
+                        rtol=1e-6,
+                        atol=1e-6,
+                        raise_exception=True,
+                    )
+                # Next iteration
+                else:
+                    current_seed = random.randrange(0xFFFFFFFFFFFFFFFF)
+                    continue
+
+            # Gradcheck succeed
+            torch.manual_seed(initial_seed)
+            return
+
+
+class TestFindHomographyFromLinesDLT:
+    def test_smoke(self, device, dtype):
+        points1st = torch.rand(1, 4, 2, device=device, dtype=dtype)
+        points1end = torch.rand(1, 4, 2, device=device, dtype=dtype)
+        points2st = torch.rand(1, 4, 2, device=device, dtype=dtype)
+        points2end = torch.rand(1, 4, 2, device=device, dtype=dtype)
+        weights = torch.ones(1, 4, device=device, dtype=dtype)
+        H = find_homography_lines_dlt(points1st, points1end, points2st, points2end, weights)
+        assert H.shape == (1, 3, 3)
+
+    def test_nocrash(self, device, dtype):
+        points1st = torch.rand(1, 4, 2, device=device, dtype=dtype)
+        points1end = torch.rand(1, 4, 2, device=device, dtype=dtype)
+        points2st = torch.rand(1, 4, 2, device=device, dtype=dtype)
+        points2end = torch.rand(1, 4, 2, device=device, dtype=dtype)
+        weights = torch.ones(1, 4, device=device, dtype=dtype)
+        points1st[0, 0, 0] = float('nan')
+        H = find_homography_lines_dlt(points1st, points1end, points2st, points2end, weights)
+        assert H.shape == (1, 3, 3)
+
+    @pytest.mark.parametrize("batch_size, num_points", [(1, 4), (2, 5), (3, 6)])
+    def test_shape(self, batch_size, num_points, device, dtype):
+        B, N = batch_size, num_points
+        points1st = torch.rand(B, N, 2, device=device, dtype=dtype)
+        points1end = torch.rand(B, N, 2, device=device, dtype=dtype)
+        points2st = torch.rand(B, N, 2, device=device, dtype=dtype)
+        points2end = torch.rand(B, N, 2, device=device, dtype=dtype)
+        weights = torch.ones(B, N, device=device, dtype=dtype)
+        H = find_homography_lines_dlt(points1st, points1end, points2st, points2end, weights)
+        assert H.shape == (B, 3, 3)
+
+    @pytest.mark.parametrize("batch_size, num_points", [(1, 4), (2, 5), (3, 6)])
+    def test_shape_noweights(self, batch_size, num_points, device, dtype):
+        B, N = batch_size, num_points
+        points1st = torch.rand(B, N, 2, device=device, dtype=dtype)
+        points1end = torch.rand(B, N, 2, device=device, dtype=dtype)
+        points2st = torch.rand(B, N, 2, device=device, dtype=dtype)
+        points2end = torch.rand(B, N, 2, device=device, dtype=dtype)
+        H = find_homography_lines_dlt(points1st, points1end, points2st, points2end)
+        assert H.shape == (B, 3, 3)
+
+    @pytest.mark.parametrize("batch_size, num_points", [(1, 4), (2, 5), (3, 6)])
+    def test_points_noweights(self, batch_size, num_points, device, dtype):
+        B, N = batch_size, num_points
+        points1st = torch.rand(B, N, 2, device=device, dtype=dtype)
+        points1end = torch.rand(B, N, 2, device=device, dtype=dtype)
+        points2st = torch.rand(B, N, 2, device=device, dtype=dtype)
+        points2end = torch.rand(B, N, 2, device=device, dtype=dtype)
+        weights = torch.ones(B, N, device=device, dtype=dtype)
+        H_noweights = find_homography_lines_dlt(points1st, points1end, points2st, points2end, None)
+        H_withweights = find_homography_lines_dlt(points1st, points1end, points2st, points2end, weights)
+        assert H_noweights.shape == (B, 3, 3) and H_withweights.shape == (B, 3, 3)
+        assert_close(H_noweights, H_withweights, rtol=1e-3, atol=1e-4)
+
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
+    def test_clean_points(self, batch_size, device, dtype):
+        # generate input data
+        points_src_st = torch.rand(batch_size, 10, 2, device=device, dtype=dtype)
+        points_src_end = torch.rand(batch_size, 10, 2, device=device, dtype=dtype)
+
+        H = kornia.eye_like(3, points_src_st)
+        H = H * 0.3 * torch.rand_like(H)
+        H = H / H[:, 2:3, 2:3]
+        points_dst_st = kornia.geometry.transform_points(H, points_src_st)
+        points_dst_end = kornia.geometry.transform_points(H, points_src_end)
+        # compute transform from source to target
+        dst_homo_src = find_homography_lines_dlt(points_src_st,
+                                                 points_src_end,
+                                                 points_dst_st,
+                                                 points_dst_end, None)
+
+        assert_close(kornia.geometry.transform_points(dst_homo_src, points_src_st), points_dst_st, rtol=1e-3, atol=1e-4)
+
+    @pytest.mark.grad
+    @pytest.mark.skipif(torch.__version__ < '1.7', reason="pytorch bug of incopatible types: #33546 fixed in v1.7")
+    def test_gradcheck(self, device):
+        # Save initial seed
+        initial_seed = torch.random.initial_seed()
+        max_number_of_checks = 10
+
+        # Test gradients for a max_number_of_checks times
+        current_seed = initial_seed
+        for i in range(max_number_of_checks):
+            torch.manual_seed(current_seed)
+            points_src_st = torch.rand(1, 10, 2, device=device, dtype=torch.float64, requires_grad=True)
+            points_src_end = torch.rand(1, 10, 2, device=device, dtype=torch.float64, requires_grad=True)
+
+            points_dst_st = torch.rand_like(points_src_st)
+            points_dst_end = torch.rand_like(points_src_end)
+            weights = torch.ones_like(points_src_st)[..., 0]
+            try:
+                gradcheck(
+                    find_homography_lines_dlt, (points_src_st,
+                                                points_src_end,
+                                                points_dst_st,
+                                                points_dst_end,
+                                                weights), rtol=1e-6, atol=1e-6, raise_exception=True
+                )
+
+            # Gradcheck failed
+            except RuntimeError:
+
+                # All iterations failed
+                if i == max_number_of_checks - 1:
+                    assert gradcheck(
+                        find_homography_lines_dlt,
+                        (points_src_st, points_src_end, points_dst_st, points_dst_end, weights),
                         rtol=1e-6,
                         atol=1e-6,
                         raise_exception=True,
