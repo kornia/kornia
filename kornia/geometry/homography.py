@@ -200,20 +200,28 @@ def sample_is_valid_for_homography(points1: Tensor, points2: Tensor) -> Tensor:
     return sample_is_valid
 
 
-def find_homography_lines_dlt(ls1: Tensor,
-                              ls2: Tensor,
+def find_homography_lines_dlt(ls1_: Tensor,
+                              ls2_: Tensor,
                               weights: Optional[Tensor] = None) -> Tensor:
     r"""Compute the homography matrix using the DLT formulation for line correspondences.
 
     See :cite:`homolines2001` for details.
     The linear system is solved by using the Weighted Least Squares Solution for the 4 Line correspondences algorithm.
     Args:
-        lineseg_start1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`.
-        lineseg_end2: A set of line segments in the second image with a tensor shape :math:`(B, N, 2, 2)`.
+        ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`.
+        ls2: A set of line segments in the second image with a tensor shape :math:`(B, N, 2, 2)`.
         weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
     Returns:
         the computed homography matrix with shape :math:`(B, 3, 3)`.
     """
+    if len(ls1_.shape) == 3:
+        ls1 = ls1_[None]
+    else:
+        ls1 = ls1_
+    if len(ls2_.shape) == 3:
+        ls2 = ls2_[None]
+    else:
+        ls2 = ls2_
     KORNIA_CHECK_SHAPE(ls1, ["B", "N", "2", "2"])
     KORNIA_CHECK_SHAPE(ls2, ["B", "N", "2", "2"])
     B, N = ls1.shape[:2]
