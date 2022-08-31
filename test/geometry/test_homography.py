@@ -237,6 +237,7 @@ class TestFindHomographyDLT:
             torch.manual_seed(initial_seed)
             return
 
+
 class TestFindHomographyFromLinesDLT:
     def test_smoke(self, device, dtype):
         points1st = torch.rand(1, 4, 2, device=device, dtype=dtype)
@@ -329,7 +330,6 @@ class TestFindHomographyFromLinesDLT:
         dst_homo_src = find_homography_lines_dlt(ls1, ls2, None)
 
         assert_close(kornia.geometry.transform_points(dst_homo_src, points_src_st), points_dst_st, rtol=1e-3, atol=1e-4)
-
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_clean_points_iter(self, batch_size, device, dtype):

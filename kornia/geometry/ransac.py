@@ -77,9 +77,11 @@ class RANSAC(nn.Module):
         else:
             raise NotImplementedError(f"{model_type} is unknown. Try one of {self.supported_models}")
 
-    def sample(
-        self, sample_size: int, pop_size: int, batch_size: int, device: torch.device = torch.device('cpu')
-    ) -> Tensor:
+    def sample(self,
+               sample_size: int,
+               pop_size: int,
+               batch_size: int,
+               device: torch.device = torch.device('cpu')) -> Tensor:
         """Minimal sampler, but unlike traditional RANSAC we sample in batches to get benefit of the parallel
         processing, esp.
 
