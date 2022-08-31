@@ -83,9 +83,7 @@ class RANSAC(nn.Module):
                batch_size: int,
                device: torch.device = torch.device('cpu')) -> Tensor:
         """Minimal sampler, but unlike traditional RANSAC we sample in batches to get benefit of the parallel
-        processing, esp.
-
-        on GPU
+        processing, esp. on GPU.
         """
         rand = torch.rand(batch_size, pop_size, device=device)
         _, out = rand.topk(k=sample_size, dim=1)
