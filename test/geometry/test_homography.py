@@ -8,10 +8,10 @@ import kornia
 import kornia.testing as utils
 from kornia.geometry.homography import (
     find_homography_dlt,
-    find_homography_lines_dlt,
     find_homography_dlt_iterated,
-    oneway_transfer_error,
+    find_homography_lines_dlt,
     line_segment_transfer_error_one_way,
+    oneway_transfer_error,
     sample_is_valid_for_homography,
     symmetric_transfer_error,
 )
@@ -350,9 +350,7 @@ class TestFindHomographyFromLinesDLT:
             ls1 = torch.stack([points_src_st, points_src_end], axis=2)
             ls2 = torch.stack([points_dst_st, points_dst_end], axis=2)
             try:
-                gradcheck(
-                    find_homography_lines_dlt, (ls1, ls2, weights), rtol=1e-6, atol=1e-6, raise_exception=True
-                )
+                gradcheck(find_homography_lines_dlt, (ls1, ls2, weights), rtol=1e-6, atol=1e-6, raise_exception=True)
 
             # Gradcheck failed
             except RuntimeError:
@@ -360,11 +358,7 @@ class TestFindHomographyFromLinesDLT:
                 # All iterations failed
                 if i == max_number_of_checks - 1:
                     assert gradcheck(
-                        find_homography_lines_dlt,
-                        (ls1, ls2, weights),
-                        rtol=1e-6,
-                        atol=1e-6,
-                        raise_exception=True,
+                        find_homography_lines_dlt, (ls1, ls2, weights), rtol=1e-6, atol=1e-6, raise_exception=True
                     )
                 # Next iteration
                 else:

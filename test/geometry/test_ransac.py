@@ -119,7 +119,9 @@ class TestRANSACHomographyLineSegments:
         # compute transform from source to target
         dst_homo_src, _ = ransac(ls1[0], ls2[0])
 
-        assert_close(transform_points(dst_homo_src[None], points_src_st[:, :-1]), points_dst_st[:, :-1], rtol=1e-3, atol=1e-3)
+        assert_close(
+            transform_points(dst_homo_src[None], points_src_st[:, :-1]), points_dst_st[:, :-1], rtol=1e-3, atol=1e-3
+        )
 
     @pytest.mark.skip(reason="find_homography_dlt is using try/except block")
     def test_jit(self, device, dtype):
