@@ -48,12 +48,8 @@ class RandomJigsaw(MixAugmentationBaseV2):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, p_batch=1.0, same_on_batch=False, keepdim=keepdim, data_keys=data_keys)
-        self._param_generator = cast(
-            rg.JigsawGenerator, rg.JigsawGenerator(grid)
-        )
-        self.flags = dict(
-            grid=grid,
-        )
+        self._param_generator = cast(rg.JigsawGenerator, rg.JigsawGenerator(grid))
+        self.flags = dict(grid=grid)
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], maybe_flags: Optional[Dict[str, Any]] = None
@@ -66,16 +62,24 @@ class RandomJigsaw(MixAugmentationBaseV2):
         perm = params["permutation"]
         piece_size_h, piece_size_w = input.shape[-2] // self.flags["grid"][0], input.shape[-1] // self.flags["grid"][1]
         # Convert to C BxN H' W'
-        input = input.unfold(2, piece_size_h, piece_size_w).unfold(
-            3, piece_size_h, piece_size_w).reshape(b, c, -1, piece_size_h, piece_size_w).permute(
-                1, 0, 2, 3, 4).reshape(c, -1, piece_size_h, piece_size_w)
+        input = (
+            input.unfold(2, piece_size_h, piece_size_w)
+            .unfold(3, piece_size_h, piece_size_w)
+            .reshape(b, c, -1, piece_size_h, piece_size_w)
+            .permute(1, 0, 2, 3, 4)
+            .reshape(c, -1, piece_size_h, piece_size_w)
+        )
         if self.same_on_batch:
             input = input[:, perm, :, :]
         else:
             # Retain it to be element-wise
             perm = (perm + torch.arange(0, b, device=perm.device)[:, None] * perm.shape[1]).view(-1)
             input = input[:, perm, :, :]
-        input = input.reshape(
-            -1, b, self.flags["grid"][1], h, piece_size_w).permute(0, 1, 2, 4, 3).reshape(
-                -1, b, h, w).permute(0, 1, 3, 2).permute(1, 0, 2, 3)
+        input = (
+            input.reshape(-1, b, self.flags["grid"][1], h, piece_size_w)
+            .permute(0, 1, 2, 4, 3)
+            .reshape(-1, b, h, w)
+            .permute(0, 1, 3, 2)
+            .permute(1, 0, 2, 3)
+        )
         return input

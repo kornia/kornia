@@ -27,17 +27,12 @@ class JigsawGenerator(RandomGeneratorBase):
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
     """
 
-    def __init__(
-        self,
-        grid: Tuple[int, int] = (4, 4),
-    ) -> None:
+    def __init__(self, grid: Tuple[int, int] = (4, 4)) -> None:
         super().__init__()
         self.grid = grid
 
     def __repr__(self) -> str:
-        repr = (
-            f"grid={self.grid}"
-        )
+        repr = f"grid={self.grid}"
         return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
@@ -56,6 +51,4 @@ class JigsawGenerator(RandomGeneratorBase):
             rand_ids = torch.randperm(perm_times, device=self._device)
         else:
             rand_ids = torch.stack([torch.randperm(perm_times, device=self._device) for _ in range(batch_size)])
-        return dict(
-            permutation=rand_ids,
-        )
+        return dict(permutation=rand_ids)
