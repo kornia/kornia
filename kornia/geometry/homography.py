@@ -3,20 +3,18 @@ from typing import Optional, Tuple
 
 import torch
 
-from kornia.utils import _extract_device_dtype, safe_inverse_with_mask
 from kornia.core import Tensor
+from kornia.testing import KORNIA_CHECK_SHAPE
+from kornia.utils import _extract_device_dtype, safe_inverse_with_mask
+
 from .conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from .epipolar import normalize_points
 from .linalg import transform_points
-from kornia.testing import KORNIA_CHECK_SHAPE
-
 
 TupleTensor = Tuple[Tensor, Tensor]
 
 
-def oneway_transfer_error(
-    pts1: Tensor, pts2: Tensor, H: Tensor, squared: bool = True, eps: float = 1e-8
-) -> Tensor:
+def oneway_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: bool = True, eps: float = 1e-8) -> Tensor:
     r"""Return transfer error in image 2 for correspondences given the homography matrix.
 
     Args:
@@ -48,9 +46,7 @@ def oneway_transfer_error(
     return (error_squared + eps).sqrt()
 
 
-def symmetric_transfer_error(
-    pts1: Tensor, pts2: Tensor, H: Tensor, squared: bool = True, eps: float = 1e-8
-) -> Tensor:
+def symmetric_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: bool = True, eps: float = 1e-8) -> Tensor:
     r"""Return Symmetric transfer error for correspondences given the homography matrix.
 
     Args:
@@ -86,9 +82,7 @@ def symmetric_transfer_error(
     return (out + eps).sqrt()
 
 
-def find_homography_dlt(
-    points1: Tensor, points2: Tensor, weights: Optional[Tensor] = None
-) -> Tensor:
+def find_homography_dlt(points1: Tensor, points2: Tensor, weights: Optional[Tensor] = None) -> Tensor:
     r"""Compute the homography matrix using the DLT formulation.
 
     The linear system is solved by using the Weighted Least Squares Solution for the 4 Points algorithm.
@@ -206,12 +200,15 @@ def sample_is_valid_for_homography(points1: Tensor, points2: Tensor) -> Tensor:
     return sample_is_valid
 
 
-def find_homography_lines_dlt(lineseg_start1: Tensor,
-                              lineseg_end1: Tensor,
-                              lineseg_start2: Tensor,
-                              lineseg_end2: Tensor,
-                              weights: Optional[Tensor] = None) -> Tensor:
+def find_homography_lines_dlt(
+    lineseg_start1: Tensor,
+    lineseg_end1: Tensor,
+    lineseg_start2: Tensor,
+    lineseg_end2: Tensor,
+    weights: Optional[Tensor] = None,
+) -> Tensor:
     r"""Compute the homography matrix using the DLT formulation for line correspondences.
+
     See :cite:`homolines2001` for details.
     The linear system is solved by using the Weighted Least Squares Solution for the 4 Line correspondences algorithm.
     Args:

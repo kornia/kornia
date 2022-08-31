@@ -8,8 +8,8 @@ import kornia
 import kornia.testing as utils
 from kornia.geometry.homography import (
     find_homography_dlt,
-    find_homography_lines_dlt,
     find_homography_dlt_iterated,
+    find_homography_lines_dlt,
     oneway_transfer_error,
     sample_is_valid_for_homography,
     symmetric_transfer_error,
@@ -267,10 +267,7 @@ class TestFindHomographyFromLinesDLT:
         points_dst_st = kornia.geometry.transform_points(H, points_src_st)
         points_dst_end = kornia.geometry.transform_points(H, points_src_end)
         # compute transform from source to target
-        dst_homo_src = find_homography_lines_dlt(points_src_st,
-                                                 points_src_end,
-                                                 points_dst_st,
-                                                 points_dst_end, None)
+        dst_homo_src = find_homography_lines_dlt(points_src_st, points_src_end, points_dst_st, points_dst_end, None)
 
         assert_close(kornia.geometry.transform_points(dst_homo_src, points_src_st), points_dst_st, rtol=1e-3, atol=1e-4)
 
@@ -293,11 +290,11 @@ class TestFindHomographyFromLinesDLT:
             weights = torch.ones_like(points_src_st)[..., 0]
             try:
                 gradcheck(
-                    find_homography_lines_dlt, (points_src_st,
-                                                points_src_end,
-                                                points_dst_st,
-                                                points_dst_end,
-                                                weights), rtol=1e-6, atol=1e-6, raise_exception=True
+                    find_homography_lines_dlt,
+                    (points_src_st, points_src_end, points_dst_st, points_dst_end, weights),
+                    rtol=1e-6,
+                    atol=1e-6,
+                    raise_exception=True,
                 )
 
             # Gradcheck failed
