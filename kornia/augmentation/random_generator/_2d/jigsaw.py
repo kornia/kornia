@@ -11,7 +11,7 @@ from kornia.utils.helpers import _extract_device_dtype
 
 
 class JigsawGenerator(RandomGeneratorBase):
-    r"""Generate mixup indexes and lambdas for a batch of inputs.
+    r"""Generate Jigsaw permutation indicies for a batch of inputs.
 
     Args:
         grid: the Jigsaw puzzle grid. e.g. (2, 2) means
