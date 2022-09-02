@@ -1,3 +1,4 @@
+import math
 from typing import Optional, Union
 
 import torch
@@ -116,12 +117,18 @@ class NerfSolver:
             self._opt_nerf.step()
         return total_loss / (i_batch + 1)
 
+    @staticmethod
+    def psnr(mse):
+        mse = max(mse, 1e-10)
+        return -10.0 * math.log10(mse)
+
     def run(self, num_epochs=1):
         for i_epoch in range(num_epochs):
             epoch_loss = self._train_one_epoch()
 
             if i_epoch % 10 == 0:
-                print(f'Epoch: {i_epoch}: epoch_loss = {epoch_loss}')
+                epoch_psnr = self.psnr(epoch_loss)
+                print(f'Epoch: {i_epoch}: epoch_psnr = {epoch_psnr}')
 
     def render_views(self, cameras: PinholeCamera) -> ImageTensors:
         ray_dataset = RayDataset(cameras, self._min_depth, self._max_depth, device=self._device)
