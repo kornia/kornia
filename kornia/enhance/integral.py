@@ -1,5 +1,6 @@
 from typing import Tuple
-from kornia.core import Tensor, Module
+
+from kornia.core import Module, Tensor
 from kornia.testing import KORNIA_CHECK_SHAPE
 
 
@@ -34,7 +35,6 @@ def integral_image(image: Tensor) -> Tensor:
 
     Args:
     image: the image to be summed.
-
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     return integral_tensor(image, (-2, -1))

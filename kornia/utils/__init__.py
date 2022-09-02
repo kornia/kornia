@@ -7,7 +7,6 @@ from .misc import eye_like, vec_like
 from .one_hot import one_hot
 from .pointcloud_io import load_pointcloud_ply, save_pointcloud_ply
 
-
 __all__ = [
     "batched_forward",
     "one_hot",
@@ -27,5 +26,5 @@ __all__ = [
     "safe_solve_with_mask",
     "ImageToTensor",
     "eye_like",
-    "vec_like"
+    "vec_like",
 ]
