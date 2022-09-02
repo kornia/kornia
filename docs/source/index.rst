@@ -73,6 +73,7 @@ Join the community
    models/defmo
    models/hardnet
    models/affnet
+   models/sold2
 
 
 .. toctree::

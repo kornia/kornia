@@ -318,7 +318,7 @@ class TestRandomMosaic:
     @pytest.mark.parametrize("p", [0.0, 0.5, 1.0])
     def test_p(self, p, device, dtype):
         torch.manual_seed(76)
-        f = RandomMosaic(p=p, data_keys=["input", "bbox_xyxy"])
+        f = RandomMosaic(output_size=(300, 300), p=p, data_keys=["input", "bbox_xyxy"])
 
         input = torch.randn((2, 3, 224, 224), device=device, dtype=dtype)
         boxes = torch.tensor(
