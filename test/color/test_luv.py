@@ -3,7 +3,7 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia
-from kornia.testing import BaseTester, _get_precision, assert_close
+from kornia.testing import BaseTester
 
 
 class TestRgbToLuv(BaseTester):
@@ -30,6 +30,9 @@ class TestRgbToLuv(BaseTester):
             assert kornia.color.rgb_to_luv(img)
 
     def test_unit(self, device, dtype):
+        if dtype == torch.float16:
+            pytest.skip('not work for half-precision')
+
         data = torch.tensor(
             [
                 [
@@ -81,16 +84,18 @@ class TestRgbToLuv(BaseTester):
             dtype=dtype,
         )
 
-        tol_val: float = _get_precision(device, dtype)
-        assert_close(kornia.color.rgb_to_luv(data), expected, rtol=tol_val, atol=tol_val)
+        self.assert_close(kornia.color.rgb_to_luv(data), expected, low_tolerance=True)
 
     def test_forth_and_back(self, device, dtype):
+        if dtype == torch.float16:
+            pytest.skip('not work for half-precision')
+
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
         luv = kornia.color.rgb_to_luv
         rgb = kornia.color.luv_to_rgb
 
         data_out = luv(rgb(data))
-        assert_close(data_out, data, rtol=1e-4, atol=1e-4)
+        self.assert_close(data_out, data)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
@@ -104,15 +109,14 @@ class TestRgbToLuv(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.rgb_to_luv
         op_jit = torch.jit.script(op)
-        assert_close(op(img), op_jit(img), rtol=1e-3, atol=1e-3)
+        self.assert_close(op(img), op_jit(img))
 
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.RgbToLuv().to(device, dtype)
         fcn = kornia.color.rgb_to_luv
-        assert_close(ops(img), fcn(img))
+        self.assert_close(ops(img), fcn(img))
 
 
 class TestLuvToRgb(BaseTester):
@@ -139,6 +143,8 @@ class TestLuvToRgb(BaseTester):
             assert kornia.color.luv_to_rgb(img)
 
     def test_unit(self, device, dtype):
+        if dtype == torch.float16:
+            pytest.skip('not work for half-precision')
         data = torch.tensor(
             [
                 [
@@ -195,15 +201,18 @@ class TestLuvToRgb(BaseTester):
             dtype=dtype,
         )
 
-        assert_close(kornia.color.luv_to_rgb(data), expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(kornia.color.luv_to_rgb(data), expected)
 
     def test_forth_and_back(self, device, dtype):
+        if dtype == torch.float16:
+            pytest.skip('not work for half-precision')
+
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
         luv = kornia.color.rgb_to_luv
         rgb = kornia.color.luv_to_rgb
 
         data_out = rgb(luv(data))
-        assert_close(data_out, data, rtol=1e-4, atol=1e-4)
+        self.assert_close(data_out, data)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
@@ -218,12 +227,11 @@ class TestLuvToRgb(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.luv_to_rgb
         op_jit = torch.jit.script(op)
-        assert_close(op(img), op_jit(img))
+        self.assert_close(op(img), op_jit(img))
 
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.LuvToRgb().to(device, dtype)
         fcn = kornia.color.luv_to_rgb
-        assert_close(ops(img), fcn(img))
+        self.assert_close(ops(img), fcn(img))

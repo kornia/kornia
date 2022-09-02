@@ -168,9 +168,9 @@ class TestBoxes2D:
     @pytest.mark.parametrize('mode', ['xyxy', 'xyxy_plus', 'xywh', 'vertices', 'vertices_plus'])
     def test_boxes_list_to_tensor_list(self, mode, device, dtype):
         src_1 = [
-            torch.as_tensor([[[2, 2], [2, 3], [1, 3], [1, 2]]], device=device, dtype=dtype),
+            torch.as_tensor([[[1, 2], [1, 3], [2, 2], [2, 3]]], device=device, dtype=dtype),
             torch.as_tensor(
-                [[[2, 2], [2, 3], [1, 3], [1, 2]], [[2, 2], [2, 3], [1, 3], [1, 2]]], device=device, dtype=dtype
+                [[[1, 2], [1, 3], [2, 2], [2, 3]], [[1, 2], [1, 3], [2, 2], [2, 3]]], device=device, dtype=dtype
             ),
         ]
         src_2 = [

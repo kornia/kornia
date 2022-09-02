@@ -6,6 +6,8 @@ import torch.nn as nn
 from kornia.feature.laf import get_laf_center
 from kornia.testing import KORNIA_CHECK_DM_DESC, KORNIA_CHECK_SHAPE, Tensor
 
+from .adalam import get_adalam_default_config, match_adalam
+
 
 def _get_default_fginn_params():
     config = {"th": 0.85, "mutual": False, "spatial_th": 10.0}
@@ -328,7 +330,7 @@ class GeometryAwareDescriptorMatcher(nn.Module):
         th: threshold on distance ratio, or other quality measure.
     """
 
-    known_modes = ['fginn']
+    known_modes = ['fginn', "adalam"]
 
     def __init__(self, match_mode: str = 'fginn', params: Dict = {}) -> None:
         super().__init__()
@@ -355,6 +357,10 @@ class GeometryAwareDescriptorMatcher(nn.Module):
             params = _get_default_fginn_params()
             params.update(self.params)
             out = match_fginn(desc1, desc2, lafs1, lafs2, params['th'], params['spatial_th'], params['mutual'])
+        elif self.match_mode == 'adalam':
+            params = get_adalam_default_config()
+            params.update(self.params)
+            out = match_adalam(desc1, desc2, lafs1, lafs2, config=params)
         else:
             raise NotImplementedError
         return out

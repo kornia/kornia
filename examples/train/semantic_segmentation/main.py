@@ -28,7 +28,6 @@ class Transform(nn.Module):
 
 @hydra.main(config_path=".", config_name="config.yaml")
 def my_app(config: Configuration) -> None:
-
     # make image size homogeneous
     transform = Transform(tuple(config.image_size))
 

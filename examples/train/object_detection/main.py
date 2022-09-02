@@ -15,7 +15,6 @@ cs.store(name="config", node=Configuration)
 
 @hydra.main(config_path=".", config_name="config.yaml")
 def my_app(config: Configuration) -> None:
-
     # create the model
     model = torchvision.models.detection.retinanet_resnet50_fpn(pretrained=True)
 

@@ -6,8 +6,7 @@ from .kernels import get_spatial_gradient_kernel2d, get_spatial_gradient_kernel3
 
 
 def spatial_gradient(input: torch.Tensor, mode: str = 'sobel', order: int = 1, normalized: bool = True) -> torch.Tensor:
-    r"""Compute the first order image derivative in both x and y using a Sobel
-    operator.
+    r"""Compute the first order image derivative in both x and y using a Sobel operator.
 
     .. image:: _static/img/spatial_gradient.png
 
@@ -57,8 +56,7 @@ def spatial_gradient(input: torch.Tensor, mode: str = 'sobel', order: int = 1, n
 
 
 def spatial_gradient3d(input: torch.Tensor, mode: str = 'diff', order: int = 1) -> torch.Tensor:
-    r"""Compute the first and second order volume derivative in x, y and d using a diff
-    operator.
+    r"""Compute the first and second order volume derivative in x, y and d using a diff operator.
 
     Args:
         input: input features tensor with shape :math:`(B, C, D, H, W)`.
@@ -164,8 +162,7 @@ def sobel(input: torch.Tensor, normalized: bool = True, eps: float = 1e-6) -> to
 
 
 class SpatialGradient(nn.Module):
-    r"""Compute the first order image derivative in both x and y using a Sobel
-    operator.
+    r"""Compute the first order image derivative in both x and y using a Sobel operator.
 
     Args:
         mode: derivatives modality, can be: `sobel` or `diff`.
@@ -201,8 +198,7 @@ class SpatialGradient(nn.Module):
 
 
 class SpatialGradient3d(nn.Module):
-    r"""Compute the first and second order volume derivative in x, y and d using a diff
-    operator.
+    r"""Compute the first and second order volume derivative in x, y and d using a diff operator.
 
     Args:
         mode: derivatives modality, can be: `sobel` or `diff`.

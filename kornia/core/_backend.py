@@ -10,3 +10,9 @@ Parameter = torch.nn.Parameter
 concatenate = torch.cat
 stack = torch.stack
 normalize = F.normalize
+
+# constructors
+as_tensor = torch.as_tensor
+
+# random
+rand = torch.rand

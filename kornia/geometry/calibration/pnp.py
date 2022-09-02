@@ -18,7 +18,6 @@ def _mean_isotropic_scale_normalize(points: torch.Tensor, eps: float = 1e-8) -> 
     Returns:
        Tuple containing the normalized points in the shape :math:`(B, N, D)` and the transformation matrix
        in the shape :math:`(B, D+1, D+1)`.
-
     """
     if not isinstance(points, torch.Tensor):
         raise AssertionError(f"points is not an instance of torch.Tensor. Type of points is {type(points)}")
@@ -50,8 +49,7 @@ def solve_pnp_dlt(
     weights: Optional[torch.Tensor] = None,
     svd_eps: float = 1e-4,
 ) -> torch.Tensor:
-    r"""This function attempts to solve the Perspective-n-Point (PnP)
-    problem using Direct Linear Transform (DLT).
+    r"""This function attempts to solve the Perspective-n-Point (PnP) problem using Direct Linear Transform (DLT).
 
     Given a batch (where batch size is :math:`B`) of :math:`N` 3D points
     (where :math:`N \geq 6`) in the world space, a batch of :math:`N`

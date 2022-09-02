@@ -14,6 +14,7 @@ from .integrated import (
 )
 from .keynet import KeyNet, KeyNetDetector
 from .laf import (
+    KORNIA_CHECK_LAF,
     denormalize_laf,
     ellipse_to_laf,
     extract_patches_from_pyramid,
@@ -29,7 +30,6 @@ from .laf import (
     make_upright,
     normalize_laf,
     perspective_transform_lafs,
-    raise_error_if_laf_is_not_valid,
     scale_laf,
     set_laf_orientation,
 )
@@ -37,6 +37,7 @@ from .loftr import LoFTR
 from .matching import (
     DescriptorMatcher,
     GeometryAwareDescriptorMatcher,
+    match_adalam,
     match_fginn,
     match_mnn,
     match_nn,
@@ -57,6 +58,7 @@ from .responses import (
 )
 from .scale_space_detector import PassLAF, ScaleSpaceDetector
 from .siftdesc import DenseSIFTDescriptor, SIFTDescriptor
+from .sold2 import SOLD2, SOLD2_detector
 from .sosnet import SOSNet
 from .tfeat import TFeat
 
@@ -66,6 +68,7 @@ __all__ = [
     "match_snn",
     "match_smnn",
     "match_fginn",
+    "match_adalam",
     "DescriptorMatcher",
     "GeometryAwareDescriptorMatcher",
     "get_laf_descriptors",
@@ -115,7 +118,7 @@ __all__ = [
     "PatchAffineShapeEstimator",
     "LAFOrienter",
     "PatchDominantGradientOrientation",
-    "raise_error_if_laf_is_not_valid",
+    "KORNIA_CHECK_LAF",
     "laf_is_inside_image",
     "laf_from_center_scale_ori",
     "laf_to_three_points",
@@ -136,4 +139,6 @@ __all__ = [
     "DescriptorMatcher",
     "LoFTR",
     "perspective_transform_lafs",
+    "SOLD2_detector",
+    "SOLD2",
 ]

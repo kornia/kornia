@@ -5,7 +5,7 @@ import torch.nn as nn
 
 import kornia
 from kornia.augmentation import RandomCrop
-from kornia.augmentation._2d.mix.base import MixAugmentationBase
+from kornia.augmentation._2d.mix.base import MixAugmentationBase, MixAugmentationBaseV2
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import SequentialBase
 from kornia.augmentation.container.image import ImageSequential, ParamItem, _get_new_batch_shape
@@ -195,19 +195,20 @@ class VideoSequential(ImageSequential):
                 if self.same_on_frame:
                     raise ValueError("Sequential is currently unsupported for ``same_on_frame``.")
                 param = ParamItem(name, seq_param)
-            elif isinstance(module, (_AugmentationBase, MixAugmentationBase)):
+            elif isinstance(module, (_AugmentationBase, MixAugmentationBase, MixAugmentationBaseV2)):
                 mod_param = module.forward_parameters(batch_shape)
                 if self.same_on_frame:
                     for k, v in mod_param.items():
                         # TODO: revise ColorJiggle and ColorJitter order param in the future to align the standard.
-                        if not (
-                            k == "order"
-                            and (
-                                isinstance(module, kornia.augmentation.ColorJiggle)
-                                or isinstance(module, kornia.augmentation.ColorJitter)
-                            )
+                        if k == "order" and (
+                            isinstance(module, kornia.augmentation.ColorJiggle)
+                            or isinstance(module, kornia.augmentation.ColorJitter)
                         ):
-                            mod_param.update({k: self.__repeat_param_across_channels__(v, frame_num)})
+                            continue
+                        if k == "forward_input_shape":
+                            mod_param.update({k: v})
+                            continue
+                        mod_param.update({k: self.__repeat_param_across_channels__(v, frame_num)})
                 param = ParamItem(name, mod_param)
             else:
                 param = ParamItem(name, None)

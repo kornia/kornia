@@ -7,7 +7,7 @@ import torch.nn as nn
 
 from kornia.filters.kernels import get_gaussian_kernel2d
 from kornia.filters.sobel import SpatialGradient
-from kornia.testing import KORNIA_CHECK_SHAPE
+from kornia.testing import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 
 from .laf import (
     ellipse_to_laf,
@@ -15,7 +15,6 @@ from .laf import (
     get_laf_orientation,
     get_laf_scale,
     make_upright,
-    raise_error_if_laf_is_not_valid,
     scale_laf,
     set_laf_orientation,
 )
@@ -129,7 +128,7 @@ class LAFAffineShapeEstimator(nn.Module):
 
         Returns:
             torch.Tensor: laf_out shape [BxNx2x3]"""
-        raise_error_if_laf_is_not_valid(laf)
+        KORNIA_CHECK_LAF(laf)
         KORNIA_CHECK_SHAPE(img, ["B", "1", "H", "W"])
         B, N = laf.shape[:2]
         PS: int = self.patch_size
@@ -222,7 +221,7 @@ class LAFAffNetShapeEstimator(nn.Module):
         Returns:
             laf_out shape [BxNx2x3]
         """
-        raise_error_if_laf_is_not_valid(laf)
+        KORNIA_CHECK_LAF(laf)
         KORNIA_CHECK_SHAPE(img, ["B", "1", "H", "W"])
         B, N = laf.shape[:2]
         PS: int = self.patch_size

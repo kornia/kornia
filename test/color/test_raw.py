@@ -140,7 +140,6 @@ class TestRawToRgb(BaseTester):
         op_jit = torch.jit.script(op)
         assert_close(op(img, kornia.color.raw.CFA.BG), op_jit(img, kornia.color.raw.CFA.BG))
 
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         B, C, H, W = 2, 1, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -192,7 +191,6 @@ class TestRgbToRaw(BaseTester):
         op_jit = torch.jit.script(op)
         assert_close(op(img, kornia.color.raw.CFA.BG), op_jit(img, kornia.color.raw.CFA.BG))
 
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
