@@ -35,6 +35,7 @@ from .histogram import histogram, histogram2d, image_histogram2d
 from .normalize import Denormalize, Normalize, denormalize, normalize, normalize_min_max
 from .shift_rgb import shift_rgb
 from .zca import ZCAWhitening, linear_transform, zca_mean, zca_whiten
+from .integral import IntegralImage, IntegralTensor, integral_tensor, integral_image
 
 __all__ = [
     "adjust_brightness",
@@ -82,4 +83,8 @@ __all__ = [
     "zca_whiten",
     "linear_transform",
     "ZCAWhitening",
+    "integral_tensor",
+    "integral_image",
+    "IntegralImage",
+    "IntegralTensor"
 ]
