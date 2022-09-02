@@ -13,7 +13,7 @@ from kornia.utils.helpers import _extract_device_dtype
 class ColorJitterGenerator(RandomGeneratorBase):
     r"""Generate random color jiter parameters for a batch of images following Pil.
 
-    This implementation is for maintaining compaibility with torchvision. It does not
+    This implementation is for maintaining compatibility with torchvision. It does not
     follow the color theory and is not be actively maintained. Prefer using
     :func:`kornia.augmentation.ColorJiggleGenerator`
 
