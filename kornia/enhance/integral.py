@@ -51,6 +51,7 @@ class IntegralTensor(Module):
     Shape:
         - Input: :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
+
     Examples:
         >>> input = torch.randn(2,2,5,5)
         >>> integral_calc = Integral()
