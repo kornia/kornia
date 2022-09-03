@@ -48,6 +48,7 @@ class IntegralTensor(Module):
 
     Returns:
         Integral tensor for the input tensor with shape :math:`(B,C,H,W)`.
+
     Shape:
         - Input: :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
