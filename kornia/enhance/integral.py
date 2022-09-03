@@ -4,7 +4,7 @@ from kornia.core import Module, Tensor
 from kornia.testing import KORNIA_CHECK_SHAPE
 
 
-def integral_tensor(input: Tensor, dim: Tuple[int] = None) -> Tensor:
+def integral_tensor(input: Tensor, dim: Optional[Tuple[int]] = None) -> Tensor:
     r"""Calculates integral of the input tensor.
 
     Args:
