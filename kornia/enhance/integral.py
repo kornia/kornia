@@ -19,7 +19,6 @@ def integral_tensor(input: Tensor, dim: Optional[Tuple[int]] = None) -> Tensor:
         >>> output.shape
         torch.Size([2, 2, 5, 5])
     """
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     if dim is None:
         dim = (-1,)
