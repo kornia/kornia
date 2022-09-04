@@ -144,13 +144,14 @@ class RaySampler:
         points2d_as_flat_tensors: Dict[int, Points2D_FlatTensors]
     ) -> Dict[int, Points2D]:
         num_ray_dict_of_points2d: Dict[int, RaySampler.Points2D] = {}
-        for n, points2d_as_list in points2d_as_flat_tensors.items():
+        for n, points2d_as_flat_tensor in points2d_as_flat_tensors.items():
+            num_cams = len(points2d_as_flat_tensor._camera_ids)
             points_2d = (
-                torch.stack((points2d_as_flat_tensors[n]._x, points2d_as_flat_tensors[n]._y))
+                torch.stack((points2d_as_flat_tensor._x, points2d_as_flat_tensor._y))
                 .permute(1, 0)
-                .reshape(-1, n, 2)
+                .reshape(num_cams, -1, 2)
             )
-            num_ray_dict_of_points2d[n] = RaySampler.Points2D(points_2d, points2d_as_list._camera_ids)
+            num_ray_dict_of_points2d[n] = RaySampler.Points2D(points_2d, points2d_as_flat_tensor._camera_ids)
         return num_ray_dict_of_points2d
 
 
@@ -185,15 +186,18 @@ class UniformRaySampler(RaySampler):
     def __init__(self, min_depth: float, max_depth: float, device: Device = 'cpu') -> None:
         super().__init__(min_depth, max_depth, device)
 
-    def sample_points_2d(self, heights: torch.Tensor, widths: torch.Tensor) -> Dict[int, RaySampler.Points2D]:
+    def sample_points_2d(
+        self, heights: torch.Tensor, widths: torch.Tensor, sampling_step=1
+    ) -> Dict[int, RaySampler.Points2D]:
         heights = heights.int()
         widths = widths.int()
         points2d_as_flat_tensors: Dict[int, RaySampler.Points2D_FlatTensors] = {}
         for camera_id, (height, width) in enumerate(zip(heights.tolist(), widths.tolist())):
             n = height * width
             y_grid, x_grid = torch.meshgrid(
-                torch.arange(height, device=self._device, dtype=torch.float32),
-                torch.arange(width, device=self._device, dtype=torch.float32),
+                torch.arange(0, height, sampling_step, device=self._device, dtype=torch.float32),
+                torch.arange(0, width, sampling_step, device=self._device, dtype=torch.float32),
+                indexing='ij',
             )
             RaySampler._add_points2d_as_flat_tensors_to_num_ray_dict(
                 n, x_grid, y_grid, camera_id, points2d_as_flat_tensors
