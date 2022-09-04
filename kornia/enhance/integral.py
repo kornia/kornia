@@ -8,7 +8,7 @@ def integral_tensor(input: Tensor, dim: Optional[Tuple[int]] = None) -> Tensor:
     r"""Calculates integral of the input tensor.
 
     Args:
-        input: the input tensor with shape :math:`(B,C,H,W)` with shape :math:`(B,C,H,W)`.
+        input: the input tensor with shape :math:`(B,C,H,W)`.
 
     Returns:
         Integral tensor for the input tensor
