@@ -11,7 +11,7 @@ def integral_tensor(input: Tensor, dim: Optional[Tuple[int]] = None) -> Tensor:
         input: the input tensor with shape :math:`(B,C,H,W)`.
 
     Returns:
-        Integral tensor for the input tensor
+        Integral tensor for the input tensor.
 
     Examples:
         >>> input = torch.randn(2,2,5,5)
