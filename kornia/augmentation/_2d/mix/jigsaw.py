@@ -34,7 +34,7 @@ class RandomJigsaw(MixAugmentationBaseV2):
     Examples:
         >>> jigsaw = RandomJigsaw((4, 4))
         >>> input = torch.randn(8, 3, 256, 256)
-        >>> out = jigsaw(input, boxes)
+        >>> out = jigsaw(input)
         >>> out.shape
         torch.Size([8, 3, 256, 256])
     """
