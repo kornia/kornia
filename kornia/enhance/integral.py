@@ -33,7 +33,7 @@ def integral_image(image: Tensor) -> Tensor:
     r"""Calculates integral of the input image tensor.
 
     Args:
-    image: the image to be summed.
+      image: the image to be summed.
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     return integral_tensor(image, (-2, -1))
