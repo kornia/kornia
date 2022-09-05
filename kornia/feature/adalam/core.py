@@ -203,7 +203,7 @@ def adalam_core(
     o2: Optional[Tensor] = None,
     s1: Optional[Tensor] = None,
     s2: Optional[Tensor] = None,
-    return_dist: bool = False
+    return_dist: bool = False,
 ) -> Union[Tuple[Tensor, Tensor], Tensor]:
     """Call the core functionality of AdaLAM, i.e. just outlier filtering. No sanity check is performed on the
     inputs.
@@ -237,7 +237,6 @@ def adalam_core(
     Returns:
         idxs: A long tensor with shape (num_filtered_matches, 2) with indices of corresponding keypoints in k1 and k2.
         dists: inverse confidence ratio.
-
     """  # noqa: E501
     AREA_RATIO = config['area_ratio']
     SEARCH_EXP = config['search_expansion']
@@ -318,10 +317,7 @@ def adalam_core(
     final_matches = torch.stack([absolute_im1idx, absolute_im2idx], dim=1)
     if final_matches.shape[0] > 1:
         # https://stackoverflow.com/a/72005790
-        final_matches, idxs, counts = torch.unique(final_matches,
-                                                   dim=0,
-                                                   return_inverse=True,
-                                                   return_counts=True)
+        final_matches, idxs, counts = torch.unique(final_matches, dim=0, return_inverse=True, return_counts=True)
         _, ind_sorted = torch.sort(idxs, stable=True)
         cum_sum = counts.cumsum(0)
         cum_sum = torch.cat((torch.tensor([0]), cum_sum[:-1]))

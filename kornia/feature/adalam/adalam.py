@@ -83,7 +83,7 @@ def match_adalam(
         get_laf_orientation(lafs2).reshape(-1),
         get_laf_scale(lafs1).reshape(-1),
         get_laf_scale(lafs2).reshape(-1),
-        return_dist=True
+        return_dist=True,
     )
     return quality, idxs
 
@@ -172,10 +172,23 @@ class AdalamFilter:
                 s1=s1,
                 s2=s2,
                 config=self.config,
-                return_dist=return_dist
+                return_dist=return_dist,
             )
 
-    def match_and_filter(self, k1, k2, d1, d2, im1shape=None, im2shape=None, o1=None, o2=None, s1=None, s2=None, return_dist: bool = False):  # noqa: E501
+    def match_and_filter(
+        self,
+        k1,
+        k2,
+        d1,
+        d2,
+        im1shape=None,
+        im2shape=None,
+        o1=None,
+        o2=None,
+        s1=None,
+        s2=None,
+        return_dist: bool = False,
+    ):
         """Standard matching and filtering with AdaLAM. This function:
 
             - performs some elementary sanity check on the inputs;
@@ -233,7 +246,9 @@ class AdalamFilter:
         else:
             mnn = None
 
-        return self.filter_matches(k1, k2, putative_matches, scores, mnn, im1shape, im2shape, o1, o2, s1, s2, return_dist)  # noqa: E501
+        return self.filter_matches(
+            k1, k2, putative_matches, scores, mnn, im1shape, im2shape, o1, o2, s1, s2, return_dist
+        )
 
     def __to_torch(self, *args):
         return (
