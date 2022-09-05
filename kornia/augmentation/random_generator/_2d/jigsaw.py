@@ -53,7 +53,7 @@ class JigsawGenerator(RandomGeneratorBase):
             rand_ids = randperm(perm_times, ensure_perm=self.ensure_perm, device=self._device)
             rand_ids = torch.stack([rand_ids] * batch_size)
         else:
-            rand_ids = torch.stack([
-                randperm(perm_times, ensure_perm=self.ensure_perm, device=self._device) for _ in range(batch_size)
-            ])
+            rand_ids = torch.stack(
+                [randperm(perm_times, ensure_perm=self.ensure_perm, device=self._device) for _ in range(batch_size)]
+            )
         return dict(permutation=rand_ids)
