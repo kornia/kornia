@@ -4,6 +4,7 @@ import torch
 from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
+from kornia.augmentation.random_generator.utils import randperm
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
 from kornia.core import Tensor
 from kornia.geometry.bbox import bbox_generator
@@ -27,9 +28,10 @@ class JigsawGenerator(RandomGeneratorBase):
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
     """
 
-    def __init__(self, grid: Tuple[int, int] = (4, 4)) -> None:
+    def __init__(self, grid: Tuple[int, int] = (4, 4), ensure_perm: bool = True) -> None:
         super().__init__()
         self.grid = grid
+        self.ensure_perm = ensure_perm
 
     def __repr__(self) -> str:
         repr = f"grid={self.grid}"
@@ -48,7 +50,10 @@ class JigsawGenerator(RandomGeneratorBase):
         if batch_size == 0:
             rand_ids = torch.zeros([0, perm_times], device=self._device)
         elif same_on_batch:
-            rand_ids = torch.randperm(perm_times, device=self._device)
+            rand_ids = randperm(perm_times, ensure_perm=self.ensure_perm, device=self._device)
+            rand_ids = torch.stack([rand_ids] * batch_size)
         else:
-            rand_ids = torch.stack([torch.randperm(perm_times, device=self._device) for _ in range(batch_size)])
+            rand_ids = torch.stack([
+                randperm(perm_times, ensure_perm=self.ensure_perm, device=self._device) for _ in range(batch_size)
+            ])
         return dict(permutation=rand_ids)

@@ -25,9 +25,12 @@ class RandomJigsaw(MixAugmentationBaseV2):
     Args:
         grid: the Jigsaw puzzle grid. e.g. (2, 2) means
             each output will mix image patches in a 2x2 grid.
+        ensure_perm: to ensure the nonidentical patch permutation generation against
+            the original one.
         data_keys: the input type sequential for applying augmentations.
             Accepts "input", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints".
         p: probability of applying the transformation for the whole batch.
+        same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
             to the batch form ``False``.
 
@@ -46,9 +49,10 @@ class RandomJigsaw(MixAugmentationBaseV2):
         p: float = 0.5,
         same_on_batch: bool = False,
         keepdim: bool = False,
+        ensure_perm: bool = True,
     ) -> None:
-        super().__init__(p=p, p_batch=1.0, same_on_batch=False, keepdim=keepdim, data_keys=data_keys)
-        self._param_generator = cast(rg.JigsawGenerator, rg.JigsawGenerator(grid))
+        super().__init__(p=p, p_batch=1.0, same_on_batch=same_on_batch, keepdim=keepdim, data_keys=data_keys)
+        self._param_generator = cast(rg.JigsawGenerator, rg.JigsawGenerator(grid, ensure_perm))
         self.flags = dict(grid=grid)
 
     def apply_transform(
@@ -69,12 +73,8 @@ class RandomJigsaw(MixAugmentationBaseV2):
             .permute(1, 0, 2, 3, 4)
             .reshape(c, -1, piece_size_h, piece_size_w)
         )
-        if self.same_on_batch:
-            input = input[:, perm, :, :]
-        else:
-            # Retain it to be element-wise
-            perm = (perm + torch.arange(0, b, device=perm.device)[:, None] * perm.shape[1]).view(-1)
-            input = input[:, perm, :, :]
+        perm = (perm + torch.arange(0, b, device=perm.device)[:, None] * perm.shape[1]).view(-1)
+        input = input[:, perm, :, :]
         input = (
             input.reshape(-1, b, self.flags["grid"][1], h, piece_size_w)
             .permute(0, 1, 2, 4, 3)
