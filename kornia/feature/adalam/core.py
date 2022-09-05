@@ -317,10 +317,7 @@ def adalam_core(
     final_matches = torch.stack([absolute_im1idx, absolute_im2idx], dim=1)
     if final_matches.shape[0] > 1:
         # https://stackoverflow.com/a/72005790
-        final_matches, idxs, counts = torch.unique(final_matches,
-                                                   dim=0,
-                                                   return_inverse=True,
-                                                   return_counts=True)
+        final_matches, idxs, counts = torch.unique(final_matches, dim=0, return_inverse=True, return_counts=True)
         _, ind_sorted = torch.sort(idxs)
         cum_sum = counts.cumsum(0)
         cum_sum = torch.cat((torch.tensor([0]), cum_sum[:-1]))
