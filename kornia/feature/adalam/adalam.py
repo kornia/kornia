@@ -152,7 +152,7 @@ class AdalamFilter:
             s1/s2: keypoint scales. They can be None if 'scale_rate_threshold' in config is set to None.
                    See documentation on 'scale_rate_threshold' in the DEFAULT_CONFIG.
                    Expected a float32 tensor with shape (num_keypoints_in_source/destination_image,)
-            return_dist: if True, inverse confidence value is also outputed. Default is False
+            return_dist: if True, inverse confidence value is also outputted.
 
         Returns:
             Filtered putative matches.
@@ -216,7 +216,7 @@ class AdalamFilter:
             s1/s2: keypoint scales. They can be None if 'scale_rate_threshold' in config is set to None.
                    See documentation on 'scale_rate_threshold' in the DEFAULT_CONFIG.
                    Expected an array with shape (num_keypoints_in_source/destination_image,)
-            return_dist: if True, inverse confidence value is also outputed. Default is False
+            return_dist: if True, inverse confidence value is also outputted.
 
         Returns:
             Filtered putative matches.
