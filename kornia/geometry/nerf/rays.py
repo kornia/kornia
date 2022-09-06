@@ -4,16 +4,9 @@ import torch
 
 from kornia.geometry.camera import PinholeCamera
 from kornia.geometry.linalg import transform_points
+from kornia.geometry.nerf.camera_utils import cameras_for_ids
 from kornia.geometry.nerf.types import Device
 from kornia.utils.helpers import _torch_inverse_cast
-
-
-def cameras_for_ids(cameras: PinholeCamera, camera_ids: List[int]):
-    intrinsics = cameras.intrinsics[camera_ids]
-    extrinsics = cameras.extrinsics[camera_ids]
-    height = cameras.height[camera_ids]
-    width = cameras.width[camera_ids]
-    return PinholeCamera(intrinsics, extrinsics, height, width)
 
 
 class RaySampler:
