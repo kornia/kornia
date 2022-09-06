@@ -75,3 +75,29 @@ class CameraParser:
             torch.tensor([height] * num_cams, device=self._device),
             torch.tensor([width] * num_cams, device=self._device),
         )
+
+
+def cameras_for_ids(cameras: PinholeCamera, camera_ids: List[int]) -> PinholeCamera:
+    intrinsics = cameras.intrinsics[camera_ids]
+    extrinsics = cameras.extrinsics[camera_ids]
+    height = cameras.height[camera_ids]
+    width = cameras.width[camera_ids]
+    return PinholeCamera(intrinsics, extrinsics, height, width)
+
+
+def create_spiral_path(cameras: PinholeCamera, rad: float, num_views: int, num_circles: int) -> PinholeCamera:
+
+    # Average locations over all cameras
+    mean_center = torch.squeeze(torch.mean(cameras.translation_vector, dim=0))
+    t = torch.linspace(0, 2 * torch.pi * num_circles, num_views)
+    cos_t = torch.cos(t)
+    sin_t = -torch.sin(t)
+    sin_05t = -torch.sin(0.5 * t)
+    translation_vector = torch.unsqueeze(mean_center, dim=0) + torch.stack((cos_t, sin_t, sin_05t)).permute((1, 0))
+    mean_intrinsics = torch.mean(cameras.intrinsics, dim=0, keepdims=True).repeat((num_views, 1, 1))
+    mean_extrinsics = torch.mean(cameras.extrinsics, dim=0, keepdims=True).repeat((num_views, 1, 1))
+    extrinsics = mean_extrinsics
+    extrinsics[:, :3, 3] = translation_vector
+    height = torch.tensor([cameras.height[0]] * num_views)
+    width = torch.tensor([cameras.width[0]] * num_views)
+    return PinholeCamera(mean_intrinsics, extrinsics, height, width)

@@ -139,13 +139,15 @@ class NerfSolver:
         for height, width in zip(cameras.height.int().tolist(), cameras.width.int().tolist()):
             bsz = batch_size if batch_size != -1 else height * width
             img = torch.zeros((height * width, 3), dtype=torch.uint8)
+            idx0_camera = idx0
             for idx0 in range(idx0, idx0 + height * width, bsz):
-                idxe = idx0 + bsz if idx0 + bsz < height * width else height * width
+                idxe = min(idx0 + bsz, idx0_camera + height * width)
                 idxs = list(range(idx0, idxe))
                 origins, directions, _ = ray_dataset[idxs]
                 with torch.inference_mode():
                     rgb_model = self._nerf_model(origins, directions) * 255.0
-                    img[idx0:idxe] = rgb_model
+                    img[idx0 - idx0_camera:idxe - idx0_camera] = rgb_model
+            idx0 = idxe
             img = img.reshape(height, width, -1)
             img = torch.permute(img, (2, 0, 1))
             imgs.append(img)
