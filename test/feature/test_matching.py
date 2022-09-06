@@ -236,30 +236,30 @@ class TestMatchFGINN:
         assert dists.shape[0] <= num_desc1
         assert dists.shape[0] <= num_desc2
 
-    def test_matching1(self, device):
-        desc1 = torch.tensor([[0, 0.0], [1, 1], [2, 2], [3, 3.0], [5, 5.0]], device=device)
-        desc2 = torch.tensor([[5, 5.0], [3, 3.0], [2.3, 2.4], [1, 1], [0, 0.0]], device=device)
+    def test_matching1(self, device, dtype):
+        desc1 = torch.tensor([[0, 0.0], [1, 1.001], [2, 2], [3, 3.0], [5, 5.0]], dtype=dtype, device=device)
+        desc2 = torch.tensor([[5, 5.0], [3, 3.0], [2.3, 2.4], [1, 1.001], [0, 0.0]], dtype=dtype, device=device)
         lafs1 = laf_from_center_scale_ori(desc1[None])
         lafs2 = laf_from_center_scale_ori(desc2[None])
 
-        dists, idxs = match_fginn(desc1, desc2, lafs1, lafs2, 0.8, 2.0)
-        expected_dists = torch.tensor([0, 0, 0.3536, 0, 0], device=device).view(-1, 1)
+        dists, idxs = match_fginn(desc1, desc2, lafs1, lafs2, 0.8, 0.01)
+        expected_dists = torch.tensor([0, 0, 0.3536, 0, 0], dtype=dtype, device=device).view(-1, 1)
         expected_idx = torch.tensor([[0, 4], [1, 3], [2, 2], [3, 1], [4, 0]], device=device)
         assert_close(dists, expected_dists, rtol=0.001, atol=1e-3)
         assert_close(idxs, expected_idx)
-        matcher = GeometryAwareDescriptorMatcher('fginn', {"spatial_th": 2.0}).to(device)
+        matcher = GeometryAwareDescriptorMatcher('fginn', {"spatial_th": 0.01}).to(device)
         dists1, idxs1 = matcher(desc1, desc2, lafs1, lafs2)
         assert_close(dists1, expected_dists, rtol=0.001, atol=1e-3)
         assert_close(idxs1, expected_idx)
 
-    def test_matching_mutual(self, device):
-        desc1 = torch.tensor([[0, 0.1], [1, 1], [2, 2], [3, 3.0], [5, 5.0], [0.0, 0]], device=device)
-        desc2 = torch.tensor([[5, 5.0], [3, 3.0], [2.3, 2.4], [1, 1], [0, 0.0]], device=device)
+    def test_matching_mutual(self, device, dtype):
+        desc1 = torch.tensor([[0, 0.1], [1, 1.001], [2, 2], [3, 3.0], [5, 5.0], [0.0, 0]], dtype=dtype, device=device)
+        desc2 = torch.tensor([[5, 5.0], [3, 3.0], [2.3, 2.4], [1, 1.001], [0, 0.0]], dtype=dtype, device=device)
         lafs1 = laf_from_center_scale_ori(desc1[None])
         lafs2 = laf_from_center_scale_ori(desc2[None])
 
         dists, idxs = match_fginn(desc1, desc2, lafs1, lafs2, 0.8, 2.0, mutual=True)
-        expected_dists = torch.tensor([0, 0.3535, 0, 0, 0], device=device).view(-1, 1)
+        expected_dists = torch.tensor([0, 0.1768, 0, 0, 0], dtype=dtype, device=device).view(-1, 1)
         expected_idx = torch.tensor([[1, 3], [2, 2], [3, 1], [4, 0], [5, 4]], device=device)
         assert_close(dists, expected_dists, rtol=0.001, atol=1e-3)
         assert_close(idxs, expected_idx)
@@ -268,9 +268,9 @@ class TestMatchFGINN:
         assert_close(dists1, expected_dists, rtol=0.001, atol=1e-3)
         assert_close(idxs1, expected_idx)
 
-    def test_nomatch(self, device):
-        desc1 = torch.tensor([[0, 0.0]], device=device)
-        desc2 = torch.tensor([[5, 5.0]], device=device)
+    def test_nomatch(self, device, dtype):
+        desc1 = torch.tensor([[0, 0.0]], dtype=dtype, device=device)
+        desc2 = torch.tensor([[5, 5.0]], dtype=dtype, device=device)
         lafs1 = laf_from_center_scale_ori(desc1[None])
         lafs2 = laf_from_center_scale_ori(desc2[None])
 
@@ -278,14 +278,14 @@ class TestMatchFGINN:
         assert len(dists) == 0
         assert len(idxs) == 0
 
-    def test_matching2(self, device):
-        desc1 = torch.tensor([[0, 0.0], [1, 1], [2, 2], [3, 3.0], [5, 5.0]], device=device)
-        desc2 = torch.tensor([[5, 5.0], [3, 3.0], [2.3, 2.4], [1, 1], [0, 0.0]], device=device)
+    def test_matching2(self, device, dtype):
+        desc1 = torch.tensor([[0, 0.0], [1, 1.001], [2, 2], [3, 3.0], [5, 5.0]], dtype=dtype, device=device)
+        desc2 = torch.tensor([[5, 5.0], [3, 3.0], [2.3, 2.4], [1, 1.001], [0, 0.0]], dtype=dtype, device=device)
         lafs1 = laf_from_center_scale_ori(desc1[None])
         lafs2 = laf_from_center_scale_ori(desc2[None])
 
-        dists, idxs = match_fginn(desc1, desc2, lafs1, lafs2, 0.8, 0.0001)
-        expected_dists = torch.tensor([0, 0, 0.3536, 0, 0], device=device).view(-1, 1)
+        dists, idxs = match_fginn(desc1, desc2, lafs1, lafs2, 0.8, 2.0)
+        expected_dists = torch.tensor([0, 0, 0.1768, 0, 0], dtype=dtype, device=device).view(-1, 1)
         expected_idx = torch.tensor([[0, 4], [1, 3], [2, 2], [3, 1], [4, 0]], device=device)
         assert_close(dists, expected_dists, rtol=0.001, atol=1e-3)
         assert_close(idxs, expected_idx)
@@ -343,7 +343,7 @@ class TestAdalam:
         torch.random.manual_seed(0)
         # This is not unit test, but that is quite good integration test
         data_dev = utils.dict_to(data, device, dtype)
-        matcher = GeometryAwareDescriptorMatcher('adalam').to(device, dtype)
+        matcher = GeometryAwareDescriptorMatcher('adalam', {"device": device}).to(device, dtype)
         with torch.no_grad():
             dists, idxs = matcher(data_dev['descs1'], data_dev['descs2'], data_dev['lafs1'], data_dev['lafs2'])
         assert idxs.shape[1] == 2

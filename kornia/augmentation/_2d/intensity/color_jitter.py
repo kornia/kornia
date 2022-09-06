@@ -17,7 +17,9 @@ from kornia.enhance import (
 class ColorJitter(IntensityAugmentationBase2D):
     r"""Apply a random transformation to the brightness, contrast, saturation and hue of a tensor image.
 
-    This implementation aligns PIL. Hence, the output is close to TorchVision.
+    This implementation aligns PIL. Hence, the output is close to TorchVision. However, it does not
+    follow the color theory and is not be actively maintained. Prefer using
+    :func:`kornia.augmentation.ColorJiggle`
 
     .. image:: _static/img/ColorJitter.png
 
