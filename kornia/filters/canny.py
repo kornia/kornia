@@ -108,7 +108,7 @@ def canny(
     negative_idx: torch.Tensor = ((angle / 45) + 4) % 8
     negative_idx = negative_idx.long()
 
-    # Apply the non-maximum suppresion to the different directions
+    # Apply the non-maximum suppression to the different directions
     channel_select_filtered_positive: torch.Tensor = torch.gather(nms_magnitude, 1, positive_idx)
     channel_select_filtered_negative: torch.Tensor = torch.gather(nms_magnitude, 1, negative_idx)
 

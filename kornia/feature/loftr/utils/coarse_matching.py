@@ -62,7 +62,7 @@ class CoarseMatching(nn.Module):
         # general config
         self.thr = config['thr']
         self.border_rm = config['border_rm']
-        # -- # for trainig fine-level LoFTR
+        # -- # for training fine-level LoFTR
         self.train_coarse_percent = config['train_coarse_percent']
         self.train_pad_num_gt_min = config['train_pad_num_gt_min']
 
