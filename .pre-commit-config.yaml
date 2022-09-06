@@ -17,12 +17,12 @@ repos:
         exclude: ^$|.devcontainer
 
   - repo: https://github.com/psf/black
-    rev: 22.6.0
+    rev: 22.8.0
     hooks:
       - id: black
 
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.1.0
+    rev: v2.2.1
     hooks:
       - id: codespell
         args:
@@ -63,7 +63,7 @@ repos:
           - "B101,B311"
 
   - repo: https://github.com/myint/docformatter
-    rev: v1.5.0-rc1
+    rev: v1.5.0
     hooks:
       - id: docformatter
         args: [--in-place, --wrap-summaries=115, --wrap-descriptions=120]

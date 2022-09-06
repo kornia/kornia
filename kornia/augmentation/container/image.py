@@ -31,7 +31,7 @@ class ImageSequential(SequentialBase):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False). If None, it will not overwrite the function-wise settings.
         random_apply: randomly select a sublist (order agnostic) of args to
-            apply transformation. The selection probablity aligns to the ``random_apply_weights``.
+            apply transformation. The selection probability aligns to the ``random_apply_weights``.
             If int, a fixed number of transformations will be selected.
             If (a,), x number of transformations (a <= x <= len(args)) will be selected.
             If (a, b), x number of transformations (a <= x <= b) will be selected.
