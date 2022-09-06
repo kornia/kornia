@@ -1,8 +1,8 @@
-import torch
-import torch.nn as nn
+from kornia.core import Module, Tensor
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 
 
-def add_weighted(src1: torch.Tensor, alpha: float, src2: torch.Tensor, beta: float, gamma: float) -> torch.Tensor:
+def add_weighted(src1: Tensor, alpha, src2: Tensor, beta, gamma) -> Tensor:
     r"""Calculate the weighted sum of two Tensors.
 
     .. image:: _static/img/add_weighted.png
@@ -13,14 +13,14 @@ def add_weighted(src1: torch.Tensor, alpha: float, src2: torch.Tensor, beta: flo
         out = src1 * alpha + src2 * beta + gamma
 
     Args:
-        src1: Tensor of shape :math:`(*, H, W)`.
-        alpha: weight of the src1 elements.
-        src2: Tensor of same size and channel number as src1 :math:`(*, H, W)`.
-        beta: weight of the src2 elements.
-        gamma: scalar added to each sum.
+        src1: Tensor with an arbitrary shape, equal to shape of src2.
+        alpha: weight of the src1 elements as Union[float, Tensor].
+        src2: Tensor with an arbitrary shape, equal to shape of src1.
+        beta: weight of the src2 elements as Union[float, Tensor].
+        gamma: scalar added to each sum as Union[float, Tensor].
 
     Returns:
-        Weighted Tensor of shape :math:`(B, C, H, W)`.
+        Weighted Tensor with shape equal to src1 and src2 shapes.
 
     Example:
         >>> input1 = torch.rand(1, 1, 5, 5)
@@ -28,26 +28,24 @@ def add_weighted(src1: torch.Tensor, alpha: float, src2: torch.Tensor, beta: flo
         >>> output = add_weighted(input1, 0.5, input2, 0.5, 1.0)
         >>> output.shape
         torch.Size([1, 1, 5, 5])
+
+    Notes:
+        Tensor alpha/beta/gamma have to be with shape broadcastable to src1 and src2 shapes.
     """
-    if not isinstance(src1, torch.Tensor):
-        raise TypeError(f"src1 should be a tensor. Got {type(src1)}")
-
-    if not isinstance(src2, torch.Tensor):
-        raise TypeError(f"src2 should be a tensor. Got {type(src2)}")
-
-    if not isinstance(alpha, float):
-        raise TypeError(f"alpha should be a float. Got {type(alpha)}")
-
-    if not isinstance(beta, float):
-        raise TypeError(f"beta should be a float. Got {type(beta)}")
-
-    if not isinstance(gamma, float):
-        raise TypeError(f"gamma should be a float. Got {type(gamma)}")
+    KORNIA_CHECK_IS_TENSOR(src1)
+    KORNIA_CHECK_IS_TENSOR(src2)
+    KORNIA_CHECK(src1.shape == src2.shape, f"src1 and src2 have different shapes. Got {src1.shape} and {src2.shape}")
+    if isinstance(alpha, Tensor):
+        KORNIA_CHECK(src1.shape == alpha.shape, "alpha has a different shape than src.")
+    if isinstance(beta, Tensor):
+        KORNIA_CHECK(src1.shape == beta.shape, "beta has a different shape than src.")
+    if isinstance(gamma, Tensor):
+        KORNIA_CHECK(src1.shape == gamma.shape, "gamma has a different shape than src.")
 
     return src1 * alpha + src2 * beta + gamma
 
 
-class AddWeighted(nn.Module):
+class AddWeighted(Module):
     r"""Calculate the weighted sum of two Tensors.
 
     The function calculates the weighted sum of two Tensors as follows:
@@ -56,14 +54,14 @@ class AddWeighted(nn.Module):
         out = src1 * alpha + src2 * beta + gamma
 
     Args:
-        alpha: weight of the src1 elements.
-        beta: weight of the src2 elements.
-        gamma: scalar added to each sum.
+        alpha: weight of the src1 elements as Union[float, Tensor].
+        beta: weight of the src2 elements as Union[float, Tensor].
+        gamma: scalar added to each sum as Union[float, Tensor].
 
     Shape:
-        - Input1: Tensor of shape :math:`(B, C, H, W)`.
-        - Input2: Tensor of shape :math:`(B, C, H, W)`.
-        - Output: Weighted tensor of shape :math:`(B, C, H, W)`.
+        - Input1: Tensor with an arbitrary shape, equal to shape of Input2.
+        - Input2: Tensor with an arbitrary shape, equal to shape of Input1.
+        - Output: Weighted tensor with shape equal to src1 and src2 shapes.
 
     Example:
         >>> input1 = torch.rand(1, 1, 5, 5)
@@ -71,13 +69,16 @@ class AddWeighted(nn.Module):
         >>> output = AddWeighted(0.5, 0.5, 1.0)(input1, input2)
         >>> output.shape
         torch.Size([1, 1, 5, 5])
+
+    Notes:
+        Tensor alpha/beta/gamma have to be with shape broadcastable to src1 and src2 shapes.
     """
 
-    def __init__(self, alpha: float, beta: float, gamma: float) -> None:
+    def __init__(self, alpha, beta, gamma) -> None:
         super().__init__()
         self.alpha = alpha
         self.beta = beta
         self.gamma = gamma
 
-    def forward(self, src1: torch.Tensor, src2: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, src1: Tensor, src2: Tensor) -> Tensor:  # type: ignore
         return add_weighted(src1, self.alpha, src2, self.beta, self.gamma)
