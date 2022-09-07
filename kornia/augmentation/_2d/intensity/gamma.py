@@ -32,11 +32,11 @@ class RandomGamma(IntensityAugmentationBase2D):
     Examples:
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.rand(1, 3, 3, 3)
-        >>> aug = RandomGamma((0.5,2.),(1.5,1.5) p=1.)
+        >>> aug = RandomGamma((0.5,2.),(1.5,1.5),p=1.)
         >>> aug(inputs)
         tensor([[[[1.0000, 1.0000, 0.3912],
                   [0.4883, 0.7801, 1.0000],
-                  [1.0000, 1.0000, 0.9702],
+                  [1.0000, 1.0000, 0.9702]],
         <BLANKLINE>
                  [[1.0000, 0.8368, 0.9048],
                   [0.1824, 0.5597, 0.7609],
