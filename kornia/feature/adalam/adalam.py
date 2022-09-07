@@ -2,7 +2,7 @@
 # https://github.com/cavalli1234/AdaLAM
 # Copyright (c) 2020, Luca Cavalli
 
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, Union
 
 import torch
 from torch import Tensor
@@ -72,7 +72,7 @@ def match_adalam(
     else:
         config_ = config
     adalam_object = AdalamFilter(config_)
-    idxs = adalam_object.match_and_filter(
+    idxs, quality = adalam_object.match_and_filter(
         get_laf_center(lafs1).reshape(-1, 2),
         get_laf_center(lafs2).reshape(-1, 2),
         desc1,
@@ -83,8 +83,8 @@ def match_adalam(
         get_laf_orientation(lafs2).reshape(-1),
         get_laf_scale(lafs1).reshape(-1),
         get_laf_scale(lafs2).reshape(-1),
+        return_dist=True,
     )
-    quality = torch.ones(len(idxs), 1, dtype=desc1.dtype, device=desc1.device)
     return quality, idxs
 
 
@@ -123,7 +123,8 @@ class AdalamFilter:
         o2: torch.Tensor = None,
         s1: torch.Tensor = None,
         s2: torch.Tensor = None,
-    ):
+        return_dist: bool = False,
+    ) -> Union[Tuple[Tensor, Tensor], Tensor]:
         """Call the core functionality of AdaLAM, i.e. just outlier filtering. No sanity check is performed on the
         inputs.
 
@@ -151,6 +152,7 @@ class AdalamFilter:
             s1/s2: keypoint scales. They can be None if 'scale_rate_threshold' in config is set to None.
                    See documentation on 'scale_rate_threshold' in the DEFAULT_CONFIG.
                    Expected a float32 tensor with shape (num_keypoints_in_source/destination_image,)
+            return_dist: if True, inverse confidence value is also outputted.
 
         Returns:
             Filtered putative matches.
@@ -170,9 +172,23 @@ class AdalamFilter:
                 s1=s1,
                 s2=s2,
                 config=self.config,
+                return_dist=return_dist,
             )
 
-    def match_and_filter(self, k1, k2, d1, d2, im1shape=None, im2shape=None, o1=None, o2=None, s1=None, s2=None):
+    def match_and_filter(
+        self,
+        k1,
+        k2,
+        d1,
+        d2,
+        im1shape=None,
+        im2shape=None,
+        o1=None,
+        o2=None,
+        s1=None,
+        s2=None,
+        return_dist: bool = False,
+    ):
         """Standard matching and filtering with AdaLAM. This function:
 
             - performs some elementary sanity check on the inputs;
@@ -200,6 +216,7 @@ class AdalamFilter:
             s1/s2: keypoint scales. They can be None if 'scale_rate_threshold' in config is set to None.
                    See documentation on 'scale_rate_threshold' in the DEFAULT_CONFIG.
                    Expected an array with shape (num_keypoints_in_source/destination_image,)
+            return_dist: if True, inverse confidence value is also outputted.
 
         Returns:
             Filtered putative matches.
@@ -229,7 +246,9 @@ class AdalamFilter:
         else:
             mnn = None
 
-        return self.filter_matches(k1, k2, putative_matches, scores, mnn, im1shape, im2shape, o1, o2, s1, s2)
+        return self.filter_matches(
+            k1, k2, putative_matches, scores, mnn, im1shape, im2shape, o1, o2, s1, s2, return_dist
+        )
 
     def __to_torch(self, *args):
         return (
