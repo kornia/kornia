@@ -203,7 +203,8 @@ def adalam_core(
     o2: Optional[Tensor] = None,
     s1: Optional[Tensor] = None,
     s2: Optional[Tensor] = None,
-):
+    return_dist: bool = False,
+) -> Union[Tuple[Tensor, Tensor], Tensor]:
     """Call the core functionality of AdaLAM, i.e. just outlier filtering. No sanity check is performed on the
     inputs.
 
@@ -231,10 +232,11 @@ def adalam_core(
         s1/s2: keypoint scales. They can be None if 'scale_rate_threshold' in config is set to None.
                See documentation on 'scale_rate_threshold' in the DEFAULT_CONFIG.
                Expected a float32 tensor with shape (num_keypoints_in_source/destination_image,)
+        return_dist: if True, inverse confidence value is also outputed. Default is False
 
     Returns:
-        Filtered putative matches.
-        A long tensor with shape (num_filtered_matches, 2) with indices of corresponding keypoints in k1 and k2.
+        idxs: A long tensor with shape (num_filtered_matches, 2) with indices of corresponding keypoints in k1 and k2.
+        dists: inverse confidence ratio.
     """  # noqa: E501
     AREA_RATIO = config['area_ratio']
     SEARCH_EXP = config['search_expansion']
@@ -304,13 +306,23 @@ def adalam_core(
 
     conf = inl_confidence[ransidx[inlier_idx]]
     cnt = inlier_counts[ransidx[inlier_idx]].float()
-    passed_inliers_mask = (conf >= MIN_CONF) & (cnt * (1 - 1 / conf) >= MIN_INLIERS)
+    dist_ratio = 1.0 / conf
+    passed_inliers_mask = (conf >= MIN_CONF) & (cnt * (1 - dist_ratio) >= MIN_INLIERS)
     accepted_inliers = inlier_idx[passed_inliers_mask]
+    accepted_dist = dist_ratio[passed_inliers_mask]
 
     absolute_im1idx = tokp1[accepted_inliers]
     absolute_im2idx = tokp2[accepted_inliers]
 
     final_matches = torch.stack([absolute_im1idx, absolute_im2idx], dim=1)
     if final_matches.shape[0] > 1:
-        return torch.unique(final_matches, dim=0)
+        # https://stackoverflow.com/a/72005790
+        final_matches, idxs, counts = torch.unique(final_matches, dim=0, return_inverse=True, return_counts=True)
+        _, ind_sorted = torch.sort(idxs)
+        cum_sum = counts.cumsum(0)
+        cum_sum = torch.cat((torch.tensor([0]), cum_sum[:-1]))
+        first_indicies = ind_sorted[cum_sum]
+        accepted_dist = accepted_dist[first_indicies]
+    if return_dist:
+        return final_matches, accepted_dist.reshape(-1, 1)
     return final_matches
