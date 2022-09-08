@@ -20,3 +20,4 @@ Learn more: https://paperswithcode.com/task/image-stitching/
 .. image:: https://raw.githubusercontent.com/kornia/data/main/panorama/out_panorama.jpg
 
 Explore with your data: https://colab.research.google.com/github/kornia/tutorials/blob/master/source/image_stitching.ipynb
+Visit the demo on [Hugging Face Spaces.](https://huggingface.co/spaces/kornia/Image-Stitching)
