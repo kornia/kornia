@@ -232,7 +232,7 @@ def adalam_core(
         s1/s2: keypoint scales. They can be None if 'scale_rate_threshold' in config is set to None.
                See documentation on 'scale_rate_threshold' in the DEFAULT_CONFIG.
                Expected a float32 tensor with shape (num_keypoints_in_source/destination_image,)
-        return_dist: if True, inverse confidence value is also outputed. Default is False
+        return_dist: if True, inverse confidence value is also outputted. Default is False
 
     Returns:
         idxs: A long tensor with shape (num_filtered_matches, 2) with indices of corresponding keypoints in k1 and k2.
