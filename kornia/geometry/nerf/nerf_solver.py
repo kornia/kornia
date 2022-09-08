@@ -148,7 +148,6 @@ class NerfSolver:
                     rgb_model = self._nerf_model(origins, directions) * 255.0
                     img[idx0 - idx0_camera:idxe - idx0_camera] = rgb_model
             idx0 = idxe
-            img = img.reshape(height, width, -1)
-            img = torch.permute(img, (2, 0, 1))
+            img = img.reshape(height, width, -1)    # (H, W, C)
             imgs.append(img)
         return imgs
