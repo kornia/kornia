@@ -19,7 +19,7 @@ Blurring
 Edge detection
 --------------
 
-* `Edge Detection Interactive Demo`_
+* `Interactive Demo`_
 
 .. autofunction:: canny
 .. autofunction:: laplacian
@@ -27,11 +27,6 @@ Edge detection
 .. autofunction:: spatial_gradient
 .. autofunction:: spatial_gradient3d
 
-Edge Detection Interactive Demo
--------------------------------
-
-.. raw:: html
-    :file: gradio/edge_filter_gradio.html
 
 Filtering API
 -------------
@@ -68,3 +63,10 @@ Module
 .. autoclass:: SpatialGradient3d
 .. autoclass:: MotionBlur
 .. autoclass:: UnsharpMask
+
+
+Interactive Demo
+----------------
+
+.. raw:: html
+    :file: gradio/edge_filter_gradio.html
