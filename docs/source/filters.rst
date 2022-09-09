@@ -19,11 +19,19 @@ Blurring
 Edge detection
 --------------
 
+* `Edge Detection Interactive Demo`_
+
 .. autofunction:: canny
 .. autofunction:: laplacian
 .. autofunction:: sobel
 .. autofunction:: spatial_gradient
 .. autofunction:: spatial_gradient3d
+
+Edge Detection Interactive Demo
+-------------------------------
+
+.. raw:: html
+    :file: gradio/edge_filter_gradio.html
 
 Filtering API
 -------------
