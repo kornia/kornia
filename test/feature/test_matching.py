@@ -339,6 +339,17 @@ class TestAdalam:
         assert_close(idxs, expected_idxs, rtol=1e-4, atol=1e-4)
 
     @pytest.mark.parametrize("data", ["adalam_idxs"], indirect=True)
+    def test_single_nocrash(self, device, dtype, data):
+        torch.random.manual_seed(0)
+        # This is not unit test, but that is quite good integration test
+        data_dev = utils.dict_to(data, device, dtype)
+        with torch.no_grad():
+            dists, idxs = match_adalam(data_dev['descs1'],
+                                       data_dev['descs2'][:1],
+                                       data_dev['lafs1'],
+                                       data_dev['lafs2'][:, :1])
+
+    @pytest.mark.parametrize("data", ["adalam_idxs"], indirect=True)
     def test_module(self, device, dtype, data):
         torch.random.manual_seed(0)
         # This is not unit test, but that is quite good integration test
