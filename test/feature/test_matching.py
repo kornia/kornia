@@ -344,10 +344,9 @@ class TestAdalam:
         # This is not unit test, but that is quite good integration test
         data_dev = utils.dict_to(data, device, dtype)
         with torch.no_grad():
-            dists, idxs = match_adalam(data_dev['descs1'],
-                                       data_dev['descs2'][:1],
-                                       data_dev['lafs1'],
-                                       data_dev['lafs2'][:, :1])
+            dists, idxs = match_adalam(
+                data_dev['descs1'], data_dev['descs2'][:1], data_dev['lafs1'], data_dev['lafs2'][:, :1]
+            )
 
     @pytest.mark.parametrize("data", ["adalam_idxs"], indirect=True)
     def test_module(self, device, dtype, data):
