@@ -15,7 +15,8 @@ class RandomJigsaw(MixAugmentationBaseV2):
 
     .. image:: https://raw.githubusercontent.com/kornia/data/main/random_jigsaw.png
 
-    Make Jigsaw puzzles for each image individually.
+    Make Jigsaw puzzles for each image individually. To mix with different images in a
+    batch, referring to :class:`kornia.augmentation.RandomMosic`.
 
     Args:
         grid: the Jigsaw puzzle grid. e.g. (2, 2) means
