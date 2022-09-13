@@ -8,7 +8,7 @@ from kornia.augmentation.utils import _common_param_check
 
 
 class JigsawGenerator(RandomGeneratorBase):
-    r"""Generate Jigsaw permutation indicies for a batch of inputs.
+    r"""Generate Jigsaw permutation indices for a batch of inputs.
 
     Args:
         grid: the Jigsaw puzzle grid. e.g. (2, 2) means
