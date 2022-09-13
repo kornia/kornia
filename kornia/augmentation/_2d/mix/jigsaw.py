@@ -1,16 +1,11 @@
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
-from torch.nn.functional import pad
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
-from kornia.constants import DataKey, Resample
+from kornia.constants import DataKey
 from kornia.core import Tensor
-from kornia.geometry.boxes import Boxes
-from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
-from kornia.testing import KORNIA_UNWRAP
-from kornia.utils import eye_like
 
 __all__ = ["RandomJigsaw"]
 
