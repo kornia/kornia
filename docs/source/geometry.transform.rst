@@ -60,7 +60,7 @@ Crop operators
 Module
 ------
 
-* `Interactive Demo`_
+
 
 .. autoclass:: Rotate
 .. autoclass:: Translate
@@ -73,6 +73,7 @@ Module
 .. autoclass:: Vflip
 .. autoclass:: Rot180
 .. autoclass:: Resize
+* `Interactive Demo`_
 .. autoclass:: Rescale
 .. autoclass:: Affine
 .. autoclass:: HomographyWarper
