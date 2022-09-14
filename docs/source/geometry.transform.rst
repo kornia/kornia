@@ -60,6 +60,8 @@ Crop operators
 Module
 ------
 
+* `Interactive Demo`_
+
 .. autoclass:: Rotate
 .. autoclass:: Translate
 .. autoclass:: Scale
@@ -85,3 +87,9 @@ Image registration
 
 .. automodule:: kornia.geometry.transform.image_registrator
     :members:
+
+Interactive Demo
+----------------
+
+.. raw:: html
+    :file: gradio/resize_antialias.html
