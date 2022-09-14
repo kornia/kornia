@@ -8,6 +8,8 @@ The functions in this sections perform various image filtering operations.
 Blurring
 --------
 
+* `Interactive Demo`_
+
 .. autofunction:: blur_pool2d
 .. autofunction:: box_blur
 .. autofunction:: gaussian_blur2d
@@ -70,3 +72,4 @@ Interactive Demo
 
 .. raw:: html
     :file: gradio/edge_filter_gradio.html
+    :file: gradio/filtering_operators_gradio.html
