@@ -39,3 +39,18 @@ def vec_like(n, tensor):
 
     vec = torch.zeros(n, 1, device=tensor.device, dtype=tensor.dtype)
     return vec[None].repeat(tensor.shape[0], 1, 1)
+
+
+def zeros_like(input: torch.Tensor) ->torch.Tensor:
+    r"""Returns a tensor filled with the scalar value 0, with the same size as input
+
+    Args:
+        input: input tensor size will determine the size of the output tensor.
+
+    Returns:
+        A tensor filled with value 0, with the same size as input
+    """
+    if len(input.shape) < 1:
+        raise AssertionError(input.shape)
+
+    return torch.zeros_like(input)
