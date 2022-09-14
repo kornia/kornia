@@ -8,6 +8,8 @@ The functions in this sections perform various image filtering operations.
 Blurring
 --------
 
+* `Interactive Demo`_
+
 .. autofunction:: blur_pool2d
 .. autofunction:: box_blur
 .. autofunction:: gaussian_blur2d
@@ -19,11 +21,14 @@ Blurring
 Edge detection
 --------------
 
+* `Interactive Demo`_
+
 .. autofunction:: canny
 .. autofunction:: laplacian
 .. autofunction:: sobel
 .. autofunction:: spatial_gradient
 .. autofunction:: spatial_gradient3d
+
 
 Filtering API
 -------------
@@ -60,3 +65,11 @@ Module
 .. autoclass:: SpatialGradient3d
 .. autoclass:: MotionBlur
 .. autoclass:: UnsharpMask
+
+
+Interactive Demo
+----------------
+
+.. raw:: html
+    :file: gradio/edge_filter_gradio.html
+    :file: gradio/filtering_operators_gradio.html
