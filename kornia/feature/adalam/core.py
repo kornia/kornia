@@ -288,9 +288,14 @@ def adalam_core(
 
     if rdims.shape[0] == 0:
         # No seed point survived. Just output ratio-test matches. This should happen very rarely.
-        absolute_im1idx = torch.where(scores1 < 0.8**2)[0]
+        score_mask = scores1 < 0.9
+        absolute_im1idx = torch.where(score_mask)[0]
         absolute_im2idx = fnn12[absolute_im1idx]
-        return torch.stack([absolute_im1idx, absolute_im2idx], dim=1)
+        out_scores = scores1[score_mask]
+        if return_dist:
+            return torch.stack([absolute_im1idx, absolute_im2idx], dim=1), out_scores.reshape(-1)
+        else:
+            return torch.stack([absolute_im1idx, absolute_im2idx], dim=1)
 
     # Format neighborhoods for parallel RANSACs
     im1loc, im2loc, ransidx, tokp1, tokp2 = extract_local_patterns(

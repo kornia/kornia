@@ -248,7 +248,10 @@ class AdalamFilter:
                 )
         k1, k2, d1, d2, o1, o2, s1, s2 = self.__to_torch(k1, k2, d1, d2, o1, o2, s1, s2)
         if len(d2) <= 1:
-            return _no_match(d1)
+            idxs, dists = _no_match(d1)
+            if return_dist:
+                return idxs, dists
+            return idxs
         distmat = dist_matrix(d1, d2, is_normalized=False)
         dd12, nn12 = torch.topk(distmat, k=2, dim=1, largest=False)  # (n1, 2)
 
