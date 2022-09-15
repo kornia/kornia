@@ -1,8 +1,7 @@
-from kornia.core import Tensor, concatenate, stack
+from kornia.core import Tensor, concatenate, stack, zeros_like
 
-from ._utils import squared_norm
-from kornia.utils.misc import zeros_like
 from kornia.geometry.quaternion import Quaternion
+from kornia.geometry.liegroup._utils import squared_norm
 
 from kornia.testing import KORNIA_CHECK_TYPE
 
@@ -30,25 +29,27 @@ class So3:
 
     @staticmethod
     def hat(o):
+        ox, oy, oz = o[..., 0], o[..., 1], o[..., 2]
         zeros = zeros_like(o)[..., 0]
-        row0 = concatenate([zeros, -o[..., 2], o[..., 1]], -1)
-        row1 = concatenate([o[..., 2], zeros, -o[..., 0]], -1)
-        row2 = concatenate([-o[..., 1], o[..., 0], zeros], -1)
+        row0 = concatenate([zeros, -oz, oy], -1)
+        row1 = concatenate([oz, zeros, -ox], -1)
+        row2 = concatenate([-oy, ox, zeros], -1)
         return stack([row0, row1, row2], -2)
 
     def matrix(self):
-        e1 = (1 - 2 * self.q.vec[..., 1] ** 2 - 2 * self.q.vec[..., 2] ** 2).reshape(1, 1,-1)
-        e2 = (2 * self.q.vec[..., 0] * self.q.vec[..., 1] - 2 * self.q.vec[..., 2] * self.q[..., 3]).reshape(1,1,-1)
-        e3 = (2 * self.q.vec[..., 0] * self.q.vec[..., 2] + 2 * self.q.vec[..., 1] * self.q[..., 3]).reshape(1,1,-1)
-        col1 = concatenate([e1,e2,e3], 1)
-        e1 = (2 * self.q.vec[..., 0] * self.q.vec[..., 1] + 2 * self.q.vec[..., 2] * self.q[..., 3]).reshape(1,1,-1)
-        e2 = (1 - 2 * self.q.vec[..., 0] ** 2 - 2 * self.q.vec[..., 2] ** 2).reshape(1,1,-1)
-        e3 = (2 * self.q.vec[..., 1] * self.q.vec[..., 2] - 2 * self.q.vec[..., 0] * self.q[..., 3]).reshape(1,1,-1)
-        col2 = concatenate([e1,e2,e3], 1)
-        e1 = (2 * self.q.vec[..., 0] * self.q.vec[..., 2] - 2 * self.q.vec[..., 1] * self.q[..., 3]).reshape(1,1,-1)
-        e2 = (2 * self.q.vec[..., 1] * self.q.vec[..., 2] + 2 * self.q.vec[..., 0] * self.q[..., 3]).reshape(1,1,-1)
-        e3 = (1 - 2 * self.q.vec[..., 0] ** 2 - 2 * self.q.vec[..., 1] ** 2).reshape(1,1,-1)
-        col3 = concatenate([e1,e2,e3], 1)
+        w, x, y, z = self.q[..., 0], self.q.vec[..., 0], self.q.vec[..., 1], self.q.vec[..., 2]
+        q1 = (1 - 2 * y ** 2 - 2 * z ** 2).reshape(1, 1,-1)
+        q2 = (2 * x * y - 2 * z * w).reshape(1,1,-1)
+        q3 = (2 * x * z + 2 * y * w).reshape(1,1,-1)
+        col1 = concatenate([q1,q2,q3], 1)
+        q1 = (2 * x * y + 2 * z * w).reshape(1,1,-1)
+        q2 = (1 - 2 * x ** 2 - 2 * z ** 2).reshape(1,1,-1)
+        q3 = (2 * y * z - 2 * x * w).reshape(1,1,-1)
+        col2 = concatenate([q1,q2,q3], 1)
+        q1 = (2 * x * z - 2 * y * w).reshape(1,1,-1)
+        q2 = (2 * y * z + 2 * x * w).reshape(1,1,-1)
+        q3 = (1 - 2 * x ** 2 - 2 * y ** 2).reshape(1,1,-1)
+        col3 = concatenate([q1,q2,q3], 1)
         return concatenate([col1,col2,col3], 0)
 
     @classmethod
