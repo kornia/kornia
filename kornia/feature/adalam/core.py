@@ -8,6 +8,18 @@ from .ransac import ransac
 from .utils import dist_matrix, orientation_diff
 
 
+def _no_match(dm: Tensor):
+    """Helper function, which output empty tensors.
+
+    Returns:
+            - Descriptor distance of matching descriptors, shape of :math:`(0, 1)`.
+            - Long tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(0, 2)`.
+    """
+    dists = torch.empty(0, 1, device=dm.device, dtype=dm.dtype)
+    idxs = torch.empty(0, 2, device=dm.device, dtype=torch.long)
+    return dists, idxs
+
+
 def select_seeds(dist1: Tensor, R1: Union[float, Tensor], scores1: Tensor, fnn12: Tensor, mnn: Optional[Tensor]):
     """Select seed correspondences among the set of available matches.
 
@@ -288,14 +300,18 @@ def adalam_core(
 
     if rdims.shape[0] == 0:
         # No seed point survived. Just output ratio-test matches. This should happen very rarely.
-        score_mask = scores1 < 0.9
+        score_mask = scores1 <= 0.95
         absolute_im1idx = torch.where(score_mask)[0]
-        absolute_im2idx = fnn12[absolute_im1idx]
-        out_scores = scores1[score_mask]
-        if return_dist:
-            return torch.stack([absolute_im1idx, absolute_im2idx], dim=1), out_scores.reshape(-1, 1)
+        if len(absolute_im1idx) > 0:
+            absolute_im2idx = fnn12[absolute_im1idx]
+            out_scores = scores1[score_mask].reshape(-1, 1)
+            idxs = torch.stack([absolute_im1idx, absolute_im2idx], dim=1)
         else:
-            return torch.stack([absolute_im1idx, absolute_im2idx], dim=1)
+            idxs, out_scores = _no_match(scores1)
+        if return_dist:
+            return idxs, out_scores
+        else:
+            return idxs
 
     # Format neighborhoods for parallel RANSACs
     im1loc, im2loc, ransidx, tokp1, tokp2 = extract_local_patterns(

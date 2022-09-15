@@ -11,20 +11,8 @@ from kornia.feature.laf import get_laf_center, get_laf_orientation, get_laf_scal
 from kornia.testing import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 from kornia.utils.helpers import get_cuda_device_if_available
 
-from .core import adalam_core
+from .core import adalam_core, _no_match
 from .utils import dist_matrix
-
-
-def _no_match(dm: Tensor):
-    """Helper function, which output empty tensors.
-
-    Returns:
-            - Descriptor distance of matching descriptors, shape of :math:`(0, 1)`.
-            - Long tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(0, 2)`.
-    """
-    dists = torch.empty(0, 1, device=dm.device, dtype=dm.dtype)
-    idxs = torch.empty(0, 2, device=dm.device, dtype=torch.long)
-    return dists, idxs
 
 
 def get_adalam_default_config():
