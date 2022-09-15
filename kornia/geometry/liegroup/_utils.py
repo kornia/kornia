@@ -1,3 +1,10 @@
-def squared_norm(m):
-    assert m.shape[-1] == 3
-    return m.pow(2).sum(-1, True)
+from kornia.testing import KORNIA_CHECK
+
+def squared_norm(x, y=None):
+    return _batched_squared_norm(x, y)
+
+def _batched_squared_norm(x, y=None):
+    if y is None:
+        y = x
+    KORNIA_CHECK(x.shape == y.shape)
+    return (x[..., None, :] @ y[..., :, None])[..., 0]
