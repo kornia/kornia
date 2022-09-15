@@ -11,7 +11,7 @@ from kornia.feature.laf import get_laf_center, get_laf_orientation, get_laf_scal
 from kornia.testing import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 from kornia.utils.helpers import get_cuda_device_if_available
 
-from .core import adalam_core, _no_match
+from .core import _no_match, adalam_core
 from .utils import dist_matrix
 
 
