@@ -293,7 +293,7 @@ def adalam_core(
         absolute_im2idx = fnn12[absolute_im1idx]
         out_scores = scores1[score_mask]
         if return_dist:
-            return torch.stack([absolute_im1idx, absolute_im2idx], dim=1), out_scores.reshape(-1)
+            return torch.stack([absolute_im1idx, absolute_im2idx], dim=1), out_scores.reshape(-1, 1)
         else:
             return torch.stack([absolute_im1idx, absolute_im2idx], dim=1)
 
