@@ -10,6 +10,7 @@ Parameter = torch.nn.Parameter
 concatenate = torch.cat
 stack = torch.stack
 normalize = F.normalize
+zeros_like = torch.zeros_like
 
 # constructors
 as_tensor = torch.as_tensor
