@@ -358,7 +358,7 @@ class TestAdalam:
                 data_dev['descs1'][:100],
                 data_dev['descs2'][:100],
                 data_dev['lafs1'][:, :100],
-                data_dev['lafs2'][:, :100]
+                data_dev['lafs2'][:, :100],
             )
 
     @pytest.mark.parametrize("data", ["adalam_idxs"], indirect=True)
