@@ -71,6 +71,4 @@ Interactive Demo
 ----------------
 
 .. raw:: html
-    :file: gradio/edge_filter_gradio.html
-    :file: gradio/filtering_operators_gradio.html
     :file: gradio/edge_detector_gradio.html
