@@ -377,9 +377,8 @@ def build_laplacian_pyramid(
           ``'replicate'`` or ``'circular'``.
         align_corners: interpolation flag.
 
-    Shape:
-        - Input: :math:`(B, C, H, W)`
-        - Output :math:`[(B, C, H, W), (B, C, H/2, W/2), ...]`
+    Return:
+        Output: :math:`[(B, C, H, W), (B, C, H/2, W/2), ...]`
     """
 
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
