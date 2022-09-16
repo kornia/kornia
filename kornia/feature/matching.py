@@ -61,7 +61,8 @@ def match_nn(desc1: Tensor, desc2: Tensor, dm: Optional[Tensor] = None) -> Tuple
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
-
+    if (len(desc1) == 0) or (len(desc2) == 0):
+        return _no_match(desc1)
     distance_matrix: Tensor = _get_lazy_distance_matrix(desc1, desc2, dm)
     match_dists, idxs_in_2 = torch.min(distance_matrix, dim=1)
     idxs_in1: Tensor = torch.arange(0, idxs_in_2.size(0), device=idxs_in_2.device)
@@ -87,7 +88,8 @@ def match_mnn(desc1: Tensor, desc2: Tensor, dm: Optional[Tensor] = None) -> Tupl
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
-
+    if (len(desc1) == 0) or (len(desc2) == 0):
+        return _no_match(desc1)
     distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm)
 
     ms = min(distance_matrix.size(0), distance_matrix.size(1))
