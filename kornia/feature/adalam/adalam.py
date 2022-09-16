@@ -235,7 +235,7 @@ class AdalamFilter:
                     "Please either provide orientations or set 'orientation_difference_threshold' to None to disable orientations filtering"  # noqa: E501
                 )
         k1, k2, d1, d2, o1, o2, s1, s2 = self.__to_torch(k1, k2, d1, d2, o1, o2, s1, s2)
-        if len(d2) <= 1:
+        if (len(d2) <= 1) or (len(d1) <= 1):
             idxs, dists = _no_match(d1)
             if return_dist:
                 return idxs, dists
