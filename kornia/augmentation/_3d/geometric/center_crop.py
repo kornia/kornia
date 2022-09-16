@@ -96,9 +96,5 @@ class CenterCrop3D(AugmentationBase3D):
     ) -> Tensor:
         transform = cast(Tensor, transform)
         return crop_by_transform_mat3d(
-            input,
-            transform,
-            self.size,
-            mode=flags["resample"].name.lower(),
-            align_corners=flags["align_corners"],
+            input, transform, self.size, mode=flags["resample"].name.lower(), align_corners=flags["align_corners"]
         )

@@ -11,7 +11,7 @@ Everyone is welcomed to get involved with the project. There are different ways 
     - In case you find an unreported bug, please open a new ticket.
     - Try to provide as much information as possible.
 
-3. Join our Slack `[HERE] <https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-CnydWe5fmvkcktIeRFGCEQ>`_
+3. Join our Slack `[HERE] <https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-2AQRi~X9Uu6PLMuUZdvfjA>`_
 
 4. Fix a bug or develop a feature from the roadmap:
     - We will always have an open ticket showing the current roadmap.

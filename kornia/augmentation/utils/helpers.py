@@ -57,7 +57,10 @@ def _validate_input3d(f: Callable) -> Callable:
 
 
 def _infer_batch_shape(input: Union[Tensor, Tuple[Tensor, Tensor]]) -> torch.Size:
-    r"""Infer input shape. Input may be either (tensor,) or (tensor, transform_matrix)"""
+    r"""Infer input shape.
+
+    Input may be either (tensor,) or (tensor, transform_matrix)
+    """
     if isinstance(input, tuple):
         tensor = _transform_input(input[0])
     else:
@@ -66,7 +69,10 @@ def _infer_batch_shape(input: Union[Tensor, Tuple[Tensor, Tensor]]) -> torch.Siz
 
 
 def _infer_batch_shape3d(input: Union[Tensor, Tuple[Tensor, Tensor]]) -> torch.Size:
-    r"""Infer input shape. Input may be either (tensor,) or (tensor, transform_matrix)"""
+    r"""Infer input shape.
+
+    Input may be either (tensor,) or (tensor, transform_matrix)
+    """
     if isinstance(input, tuple):
         tensor = _transform_input3d(input[0])
     else:
@@ -132,9 +138,7 @@ def _validate_input_dtype(input: Tensor, accepted_dtypes: List) -> None:
         raise TypeError(f"Expected input of {accepted_dtypes}. Got {input.dtype}")
 
 
-def _transform_output_shape(
-    output: Tensor, shape: Tuple
-) -> Tensor:
+def _transform_output_shape(output: Tensor, shape: Tuple) -> Tensor:
     r"""Collapse the broadcasted batch dimensions an input tensor to be the specified shape.
     Args:
         input: Tensor
@@ -170,7 +174,9 @@ def _validate_shape(shape: Union[Tuple, torch.Size], required_shapes: Tuple[str,
 
 
 def _validate_input_shape(input: Tensor, channel_index: int, number: int) -> bool:
-    r"""Validate if an input has the right shape. e.g. to check if an input is channel first.
+    r"""Validate if an input has the right shape.
+
+    e.g. to check if an input is channel first.
     If channel first, the second channel of an RGB input shall be fixed to 3. To verify using:
         _validate_input_shape(input, 1, 3)
     Args:
@@ -188,8 +194,8 @@ def _adapted_rsampling(
 ) -> Tensor:
     r"""The uniform reparameterized sampling function that accepts 'same_on_batch'.
 
-    If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]).
-    By default, same_on_batch is set to False.
+    If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
+    same_on_batch is set to False.
     """
     if same_on_batch:
         return dist.rsample((1, *shape[1:])).repeat(shape[0], *[1] * (len(shape) - 1))
@@ -201,8 +207,8 @@ def _adapted_sampling(
 ) -> Tensor:
     r"""The uniform sampling function that accepts 'same_on_batch'.
 
-    If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]).
-    By default, same_on_batch is set to False.
+    If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
+    same_on_batch is set to False.
     """
     if same_on_batch:
         return dist.sample((1, *shape[1:])).repeat(shape[0], *[1] * (len(shape) - 1))
@@ -248,9 +254,7 @@ def _adapted_beta(
     By default, sampling happens on the default device and dtype. If a/b is a tensor, sampling will happen
     in the same device/dtype as a/b tensor.
     """
-    device, dtype = _extract_device_dtype(
-        [a if isinstance(a, Tensor) else None, b if isinstance(b, Tensor) else None]
-    )
+    device, dtype = _extract_device_dtype([a if isinstance(a, Tensor) else None, b if isinstance(b, Tensor) else None])
     a = torch.as_tensor(a, device=device, dtype=dtype)
     b = torch.as_tensor(b, device=device, dtype=dtype)
     dist = Beta(a, b, validate_args=False)
@@ -278,8 +282,10 @@ def deepcopy_dict(params: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def override_parameters(
-    params: Dict[str, Any], params_override: Optional[Dict[str, Any]] = None,
-    if_none_exist: str = 'ignore', in_place: bool = False
+    params: Dict[str, Any],
+    params_override: Optional[Dict[str, Any]] = None,
+    if_none_exist: str = 'ignore',
+    in_place: bool = False,
 ) -> Dict[str, Any]:
     """Override params dict w.r.t params_override.
 

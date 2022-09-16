@@ -222,16 +222,16 @@ def image_histogram2d(
     u = torch.abs(image.unsqueeze(0) - centers) / bandwidth
 
     if kernel == "gaussian":
-        kernel_values = torch.exp(-0.5 * u ** 2)
-    elif kernel in ("triangular", "uniform", "epanechnikov",):
+        kernel_values = torch.exp(-0.5 * u**2)
+    elif kernel in ("triangular", "uniform", "epanechnikov"):
         # compute the mask and cast to floating point
         mask = (u <= 1).to(u.dtype)
         if kernel == "triangular":
-            kernel_values = (1. - u) * mask
+            kernel_values = (1.0 - u) * mask
         elif kernel == "uniform":
             kernel_values = torch.ones_like(u) * mask
         else:  # kernel == "epanechnikov"
-            kernel_values = (1. - u ** 2) * mask
+            kernel_values = (1.0 - u**2) * mask
     else:
         raise ValueError(f"Kernel must be 'triangular', 'gaussian', " f"'uniform' or 'epanechnikov'. Got {kernel}.")
 

@@ -9,6 +9,10 @@ on:
   schedule:
     - cron: "0 4 * * *"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   tests-cpu:
     runs-on: ${{ matrix.os }}
@@ -16,8 +20,8 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: [3.6, 3.8, 3.9]
-        pytorch-version: [1.8.1, 1.9.1, 1.10.1]
+        python-version: [3.7, 3.8, 3.9]
+        pytorch-version: [1.8.1, 1.10.2, 1.12.1]
     steps:
     - uses: actions/checkout@v2
     - name: Setup conda dependencies
@@ -33,7 +37,7 @@ jobs:
         pip install .[all]
     - name: Run Tests
       shell: bash -l {0}
-      run: pytest -v --device cpu --dtype float32,float64 --cov=kornia --cov-report xml ./test --flake8 --mypy
+      run: pytest -v --device cpu --dtype float32,float64 --cov=kornia --cov-report xml ./test --mypy
     - name: Upload coverage
       uses: codecov/codecov-action@v1
       with:

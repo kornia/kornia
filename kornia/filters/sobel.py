@@ -6,8 +6,7 @@ from .kernels import get_spatial_gradient_kernel2d, get_spatial_gradient_kernel3
 
 
 def spatial_gradient(input: torch.Tensor, mode: str = 'sobel', order: int = 1, normalized: bool = True) -> torch.Tensor:
-    r"""Compute the first order image derivative in both x and y using a Sobel
-    operator.
+    r"""Compute the first order image derivative in both x and y using a Sobel operator.
 
     .. image:: _static/img/spatial_gradient.png
 
@@ -57,8 +56,7 @@ def spatial_gradient(input: torch.Tensor, mode: str = 'sobel', order: int = 1, n
 
 
 def spatial_gradient3d(input: torch.Tensor, mode: str = 'diff', order: int = 1) -> torch.Tensor:
-    r"""Compute the first and second order volume derivative in x, y and d using a diff
-    operator.
+    r"""Compute the first and second order volume derivative in x, y and d using a diff operator.
 
     Args:
         input: input features tensor with shape :math:`(B, C, D, H, W)`.
@@ -90,9 +88,9 @@ def spatial_gradient3d(input: torch.Tensor, mode: str = 'diff', order: int = 1) 
         left = slice(0, -2)
         right = slice(2, None)
         out = torch.empty(b, c, 3, d, h, w, device=dev, dtype=dtype)
-        out[..., 0, :, :, :] = (x[..., center, center, right] - x[..., center, center, left])
-        out[..., 1, :, :, :] = (x[..., center, right, center] - x[..., center, left, center])
-        out[..., 2, :, :, :] = (x[..., right, center, center] - x[..., left, center, center])
+        out[..., 0, :, :, :] = x[..., center, center, right] - x[..., center, center, left]
+        out[..., 1, :, :, :] = x[..., center, right, center] - x[..., center, left, center]
+        out[..., 2, :, :, :] = x[..., right, center, center] - x[..., left, center, center]
         out = 0.5 * out
     else:
         # prepare kernel
@@ -106,17 +104,18 @@ def spatial_gradient3d(input: torch.Tensor, mode: str = 'diff', order: int = 1) 
         kernel_flip: torch.Tensor = tmp_kernel.flip(-3)
 
         # Pad with "replicate for spatial dims, but with zeros for channel
-        spatial_pad = [kernel.size(2) // 2,
-                       kernel.size(2) // 2,
-                       kernel.size(3) // 2,
-                       kernel.size(3) // 2,
-                       kernel.size(4) // 2,
-                       kernel.size(4) // 2]
+        spatial_pad = [
+            kernel.size(2) // 2,
+            kernel.size(2) // 2,
+            kernel.size(3) // 2,
+            kernel.size(3) // 2,
+            kernel.size(4) // 2,
+            kernel.size(4) // 2,
+        ]
         out_ch: int = 6 if order == 2 else 3
-        out = F.conv3d(F.pad(input, spatial_pad, 'replicate'),
-                       kernel_flip,
-                       padding=0,
-                       groups=c).view(b, c, out_ch, d, h, w)
+        out = F.conv3d(F.pad(input, spatial_pad, 'replicate'), kernel_flip, padding=0, groups=c).view(
+            b, c, out_ch, d, h, w
+        )
     return out
 
 
@@ -163,8 +162,7 @@ def sobel(input: torch.Tensor, normalized: bool = True, eps: float = 1e-6) -> to
 
 
 class SpatialGradient(nn.Module):
-    r"""Compute the first order image derivative in both x and y using a Sobel
-    operator.
+    r"""Compute the first order image derivative in both x and y using a Sobel operator.
 
     Args:
         mode: derivatives modality, can be: `sobel` or `diff`.
@@ -200,8 +198,7 @@ class SpatialGradient(nn.Module):
 
 
 class SpatialGradient3d(nn.Module):
-    r"""Compute the first and second order volume derivative in x, y and d using a diff
-    operator.
+    r"""Compute the first and second order volume derivative in x, y and d using a diff operator.
 
     Args:
         mode: derivatives modality, can be: `sobel` or `diff`.

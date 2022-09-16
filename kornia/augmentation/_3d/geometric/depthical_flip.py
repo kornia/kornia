@@ -55,12 +55,14 @@ class RandomDepthicalFlip3D(AugmentationBase3D):
         >>> aug = RandomDepthicalFlip3D(p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
-
     """
 
     def __init__(
-        self, return_transform: Optional[bool] = None,
-        same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False
+        self,
+        return_transform: Optional[bool] = None,
+        same_on_batch: bool = False,
+        p: float = 0.5,
+        keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
 

@@ -31,7 +31,6 @@ def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.
 
     Returns:
         The essential matrix with shape :math:`(*, 3, 3)`.
-
     """
     if not (len(F_mat.shape) >= 2 and F_mat.shape[-2:] == (3, 3)):
         raise AssertionError(F_mat.shape)
@@ -57,7 +56,6 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
     Returns:
        A tuple containing the first and second possible rotation matrices and the translation vector.
        The shape of the tensors with be same input :math:`[(*, 3, 3), (*, 3, 3), (*, 3, 1)]`.
-
     """
     if not (len(E_mat.shape) >= 2 and E_mat.shape[-2:]):
         raise AssertionError(E_mat.shape)
@@ -102,7 +100,6 @@ def essential_from_Rt(R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: 
 
     Returns:
         The Essential matrix with the shape :math:`(*, 3, 3)`.
-
     """
     if not (len(R1.shape) >= 2 and R1.shape[-2:] == (3, 3)):
         raise AssertionError(R1.shape)
@@ -134,7 +131,6 @@ def motion_from_essential(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tens
     Returns:
         The rotation and translation containing the four possible combination for the retrieved motion.
         The tuple is as following :math:`[(*, 4, 3, 3), (*, 4, 3, 1)]`.
-
     """
     if not (len(E_mat.shape) >= 2 and E_mat.shape[-2:] == (3, 3)):
         raise AssertionError(E_mat.shape)
@@ -180,7 +176,6 @@ def motion_from_essential_choose_solution(
     Returns:
         The rotation and translation plus the 3d triangulated points.
         The tuple is as following :math:`[(*, 3, 3), (*, 3, 1), (*, N, 3)]`.
-
     """
     if not (len(E_mat.shape) >= 2 and E_mat.shape[-2:] == (3, 3)):
         raise AssertionError(E_mat.shape)
@@ -279,7 +274,6 @@ def relative_camera_motion(
     Returns:
         A tuple with the relative rotation matrix and
         translation vector with the shape of :math:`[(*, 3, 3), (*, 3, 1)]`.
-
     """
     if not (len(R1.shape) >= 2 and R1.shape[-2:] == (3, 3)):
         raise AssertionError(R1.shape)

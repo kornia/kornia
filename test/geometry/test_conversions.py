@@ -6,7 +6,18 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia
-from kornia.geometry.conversions import QuaternionCoeffOrder
+from kornia.geometry.conversions import (
+    ARKitQTVecs_to_ColmapQTVecs,
+    QuaternionCoeffOrder,
+    Rt_to_matrix4x4,
+    camtoworld_graphics_to_vision_4x4,
+    camtoworld_graphics_to_vision_Rt,
+    camtoworld_to_worldtocam_Rt,
+    camtoworld_vision_to_graphics_4x4,
+    camtoworld_vision_to_graphics_Rt,
+    matrix4x4_to_Rt,
+    worldtocam_to_camtoworld_Rt,
+)
 from kornia.testing import assert_close, create_eye_batch, tensor_to_gradcheck_var
 
 
@@ -1368,3 +1379,108 @@ class TestDenormalizePixelCoordinates:
         expected = op(grid, height, width)
 
         assert_close(actual, expected)
+
+
+class TestRt2Extrinsics:
+    @pytest.mark.parametrize("batch_size", [1, 2, 3])
+    def test_everything(self, batch_size, device, dtype):
+        # generate input data
+        R = torch.rand(batch_size, 3, 3, dtype=dtype, device=device)
+        t = torch.rand(batch_size, 3, 1, dtype=dtype, device=device)
+
+        Rt = Rt_to_matrix4x4(R, t)
+        assert Rt.shape == (batch_size, 4, 4)
+
+        R2, t2 = matrix4x4_to_Rt(Rt)
+        assert R2.shape == (batch_size, 3, 3)
+        assert t2.shape == (batch_size, 3, 1)
+
+        assert_close(R, R2, rtol=1e-4, atol=1e-5)
+        assert_close(t, t2, rtol=1e-4, atol=1e-5)
+        assert gradcheck(
+            kornia.geometry.conversions.Rt_to_matrix4x4,
+            (tensor_to_gradcheck_var(R), tensor_to_gradcheck_var(t)),
+            raise_exception=True,
+        )
+
+
+class TestCamtoworldGraphicsToVision:
+    @pytest.mark.parametrize("batch_size", [1, 2, 3])
+    def test_everything(self, batch_size, device, dtype):
+        # generate input data
+        t_vis = torch.tensor([2, 3, 4], device=device, dtype=dtype).view(1, 3, 1).repeat(batch_size, 1, 1)
+        angles = torch.tensor([0, kornia.pi / 2.0, 0.0], device=device, dtype=dtype)[None]
+        R_vis = kornia.geometry.angle_axis_to_rotation_matrix(angles).repeat(batch_size, 1, 1)
+        K_vis = Rt_to_matrix4x4(R_vis, t_vis)
+        K_graf = camtoworld_vision_to_graphics_4x4(K_vis)
+
+        expected = torch.tensor(
+            [[0, 0, -1, 2], [0, -1, 0, 3], [-1, 0, 0, 4], [0, 0, 0, 1]], device=device, dtype=dtype
+        )[None].repeat(batch_size, 1, 1)
+
+        assert_close(K_graf, expected, rtol=1e-4, atol=1e-5)
+        R_graf, t_graf = camtoworld_vision_to_graphics_Rt(R_vis, t_vis)
+        expected_R = torch.tensor([[0, 0, -1], [0, -1, 0], [-1, 0, 0]], device=device, dtype=dtype)[None].repeat(
+            batch_size, 1, 1
+        )
+        expected_t = torch.tensor([2, 3, 4], device=device, dtype=dtype).reshape(1, 3, 1).repeat(batch_size, 1, 1)
+
+        assert_close(t_graf, expected_t, rtol=1e-4, atol=1e-5)
+        assert_close(R_graf, expected_R, rtol=1e-4, atol=1e-5)
+
+        Kvis_back = camtoworld_graphics_to_vision_4x4(K_graf)
+        assert_close(Kvis_back, K_vis, rtol=1e-4, atol=1e-5)
+
+        R_vis_back, t_vis_back = camtoworld_graphics_to_vision_Rt(R_graf, t_graf)
+        assert_close(R_vis_back, R_vis, rtol=1e-4, atol=1e-5)
+        assert_close(t_vis_back, t_vis, rtol=1e-4, atol=1e-5)
+        assert gradcheck(camtoworld_graphics_to_vision_4x4, (tensor_to_gradcheck_var(K_vis)), raise_exception=True)
+        assert gradcheck(camtoworld_vision_to_graphics_4x4, (tensor_to_gradcheck_var(K_vis)), raise_exception=True)
+
+
+class TestCamtoworldRtToPoseRt:
+    @pytest.mark.parametrize("batch_size", [1, 2, 3])
+    def test_everything(self, batch_size, device, dtype):
+        # generate input data
+        t = torch.tensor([2, 3, 4], device=device, dtype=dtype).view(1, 3, 1).repeat(batch_size, 1, 1)
+        angles = torch.tensor([0, kornia.pi / 2.0, 0.0], device=device, dtype=dtype)[None]
+        R = kornia.geometry.angle_axis_to_rotation_matrix(angles).repeat(batch_size, 1, 1)
+
+        Rp, tp = camtoworld_to_worldtocam_Rt(R, t)
+
+        expected_Rp = torch.tensor([[0, 0, -1], [0, 1, 0], [1, 0, 0]], device=device, dtype=dtype)[None].repeat(
+            batch_size, 1, 1
+        )
+        expected_tp = torch.tensor([4, -3, -2], device=device, dtype=dtype).view(1, 3, 1).repeat(batch_size, 1, 1)
+        assert_close(Rp, expected_Rp, rtol=1e-4, atol=1e-5)
+        assert_close(tp, expected_tp, rtol=1e-4, atol=1e-5)
+
+        Rback, tback = worldtocam_to_camtoworld_Rt(Rp, tp)
+        assert_close(Rback, R, rtol=1e-4, atol=1e-5)
+        assert_close(tback, t, rtol=1e-4, atol=1e-5)
+
+        assert gradcheck(
+            camtoworld_to_worldtocam_Rt, (tensor_to_gradcheck_var(R), tensor_to_gradcheck_var(t)), raise_exception=True
+        )
+        assert gradcheck(
+            worldtocam_to_camtoworld_Rt, (tensor_to_gradcheck_var(R), tensor_to_gradcheck_var(t)), raise_exception=True
+        )
+
+
+class TestCARKitToColmap:
+    def test_everything(self, device, dtype):
+        # generate input data
+        t = torch.tensor([1, 0, 0], device=device, dtype=dtype).view(1, 3, 1)
+        ang_deg = torch.tensor([45, 60.0, 0.0], device=device, dtype=dtype)[None]
+        ang_rad = kornia.geometry.conversions.deg2rad(ang_deg)
+        qvec = kornia.geometry.angle_axis_to_quaternion(ang_rad, order=QuaternionCoeffOrder.WXYZ)
+
+        q_colmap, t_colmap = ARKitQTVecs_to_ColmapQTVecs(qvec, t)
+
+        angles_colmap = kornia.geometry.conversions.quaternion_to_angle_axis(q_colmap, order=QuaternionCoeffOrder.WXYZ)
+        angles_colmap = kornia.geometry.conversions.rad2deg(angles_colmap)
+        expected_angles = torch.tensor([[116.8870620728, 0.0, -71.7524719238]], device=device, dtype=dtype)
+        expected_t = torch.tensor([[[-0.5256], [0.3558], [0.7727]]], device=device, dtype=dtype)
+
+        assert_close(angles_colmap, expected_angles, rtol=1e-4, atol=1e-5)
+        assert_close(t_colmap, expected_t, rtol=1e-4, atol=1e-5)

@@ -12,6 +12,7 @@ from kornia.augmentation import (
     MixAugmentationBase,
     RandomCrop,
 )
+from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import ParamItem, SequentialBase
 from kornia.augmentation.container.utils import ApplyInverseInterface, InputApplyInverse
@@ -30,7 +31,7 @@ class ImageSequential(SequentialBase):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False). If None, it will not overwrite the function-wise settings.
         random_apply: randomly select a sublist (order agnostic) of args to
-            apply transformation. The selection probablity aligns to the ``random_apply_weights``.
+            apply transformation. The selection probability aligns to the ``random_apply_weights``.
             If int, a fixed number of transformations will be selected.
             If (a,), x number of transformations (a <= x <= len(args)) will be selected.
             If (a, b), x number of transformations (a <= x <= b) will be selected.
@@ -180,7 +181,7 @@ class ImageSequential(SequentialBase):
         """
         indices = []
         for idx, (_, child) in enumerate(named_modules):
-            if isinstance(child, (MixAugmentationBase,)):
+            if isinstance(child, (MixAugmentationBase,)):  # NOTE: MixV2 will not be a special op in the future.
                 indices.append(idx)
         return indices
 
@@ -208,7 +209,7 @@ class ImageSequential(SequentialBase):
         label: Optional[Tensor],
         module: Optional[nn.Module],
         param: ParamItem,
-        extra_args: Dict[str, Any]
+        extra_args: Dict[str, Any],
     ) -> Tuple[Tensor, Optional[Tensor]]:
         if module is None:
             module = self.get_submodule(param.name)
@@ -223,7 +224,7 @@ class ImageSequential(SequentialBase):
             if isinstance(module, RandomCrop):
                 mod_param = module.forward_parameters_precrop(batch_shape)
                 param = ParamItem(name, mod_param)
-            elif isinstance(module, (_AugmentationBase, MixAugmentationBase, ImageSequential)):
+            elif isinstance(module, (_AugmentationBase, MixAugmentationBase, MixAugmentationBaseV2, ImageSequential)):
                 mod_param = module.forward_parameters(batch_shape)
                 param = ParamItem(name, mod_param)
             else:
@@ -235,13 +236,11 @@ class ImageSequential(SequentialBase):
     def contains_label_operations(self, params: List[ParamItem]) -> bool:
         """Check if current sequential contains label-involved operations like MixUp."""
         for param in params:
-            if param.name.startswith("RandomMixUp") or param.name.startswith("RandomCutMix"):
+            if param.name.startswith("RandomMixUp_") or param.name.startswith("RandomCutMix_"):
                 return True
         return False
 
-    def __packup_output__(
-        self, output: Tensor, label: Optional[Tensor] = None
-    ) -> Union[Tensor, Tuple[Tensor, Tensor]]:
+    def __packup_output__(self, output: Tensor, label: Optional[Tensor] = None) -> Union[Tensor, Tuple[Tensor, Tensor]]:
         if self.return_label:
             return output, label  # type: ignore
             # Implicitly indicating the label cannot be optional since there is a mix aug
@@ -252,8 +251,11 @@ class ImageSequential(SequentialBase):
         return kornia.eye_like(3, input)
 
     def get_transformation_matrix(
-        self, input: Tensor, params: Optional[List[ParamItem]] = None, recompute: bool = False,
-        extra_args: Dict[str, Any] = {}
+        self,
+        input: Tensor,
+        params: Optional[List[ParamItem]] = None,
+        recompute: bool = False,
+        extra_args: Dict[str, Any] = {},
     ) -> Optional[Tensor]:
         """Compute the transformation matrix according to the provided parameters.
 
@@ -270,7 +272,9 @@ class ImageSequential(SequentialBase):
         # Define as 1 for broadcasting
         res_mat: Optional[Tensor] = None
         for (_, module), param in zip(named_modules, params if params is not None else []):
-            if isinstance(module, (_AugmentationBase,)) and not isinstance(module, (MixAugmentationBase,)):
+            if isinstance(module, (_AugmentationBase,)) and not isinstance(
+                module, (MixAugmentationBase, MixAugmentationBaseV2)
+            ):
                 pdata = cast(Dict[str, Tensor], param.data)
                 to_apply = pdata['batch_prob']  # type: ignore
                 ori_shape = input.shape
@@ -283,8 +287,7 @@ class ImageSequential(SequentialBase):
                 if recompute:
                     mat: Tensor = self.identity_matrix(input)
                     flags = override_parameters(module.flags, extra_args, in_place=False)
-                    mat[to_apply] = module.compute_transformation(
-                        input[to_apply], pdata, flags)  # type: ignore
+                    mat[to_apply] = module.compute_transformation(input[to_apply], param.data, flags)  # type: ignore
                 else:
                     mat = torch.as_tensor(module._transform_matrix, device=input.device, dtype=input.dtype)
                 res_mat = mat if res_mat is None else mat @ res_mat
@@ -296,8 +299,10 @@ class ImageSequential(SequentialBase):
                 if isinstance(module, (kornia.augmentation.AugmentationSequential,)) and not recompute:
                     mat = torch.as_tensor(module._transform_matrix, device=input.device, dtype=input.dtype)
                 else:
+                    maybe_param_data = cast(Optional[List[ParamItem]], param.data)
                     _mat = module.get_transformation_matrix(
-                        input, param.data, recompute=recompute, extra_args=extra_args)  # type: ignore
+                        input, maybe_param_data, recompute=recompute, extra_args=extra_args
+                    )  # type: ignore
                     mat = module.identity_matrix(input) if _mat is None else _mat
                 res_mat = mat if res_mat is None else mat @ res_mat
         return res_mat
@@ -326,8 +331,7 @@ class ImageSequential(SequentialBase):
         return True
 
     def inverse(
-        self, input: Tensor, params: Optional[List[ParamItem]] = None,
-        extra_args: Dict[str, Any] = {}
+        self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Dict[str, Any] = {}
     ) -> Tensor:
         """Inverse transformation.
 
@@ -343,17 +347,17 @@ class ImageSequential(SequentialBase):
             params = self._params
 
         for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
+            maybe_param: Optional[ParamItem] = None
             if isinstance(module, (_AugmentationBase, ImageSequential)):
-                param = params[name] if name in params else param
-            else:
-                param = None
+                maybe_param = params[name] if name in params else param  # type: ignore
 
             if isinstance(module, IntensityAugmentationBase2D):
                 pass  # Do nothing
             elif isinstance(module, ImageSequential) and module.is_intensity_only():
                 pass  # Do nothing
-            elif isinstance(module, ImageSequential):
-                input = module.inverse(input, param.data, extra_args=extra_args)
+            elif isinstance(module, ImageSequential) and maybe_param is not None:
+                param_data = cast(List[ParamItem], cast(ParamItem, maybe_param).data)
+                input = module.inverse(input, param_data, extra_args=extra_args)
             elif isinstance(module, (GeometricAugmentationBase2D,)):
                 input = self.apply_inverse_func.inverse(input, module, param, extra_args=extra_args)
             else:
@@ -367,7 +371,7 @@ class ImageSequential(SequentialBase):
         input: Tensor,
         label: Optional[Tensor] = None,
         params: Optional[List[ParamItem]] = None,
-        extra_args: Dict[str, Any] = {}
+        extra_args: Dict[str, Any] = {},
     ) -> Union[Tensor, Tuple[Tensor, Tensor]]:
         self.clear_state()
         if params is None:
@@ -379,7 +383,7 @@ class ImageSequential(SequentialBase):
         for param in params:
             module = self.get_submodule(param.name)
             input, label = self.apply_to_input(input, label, module, param=param, extra_args=extra_args)  # type: ignore
-            if isinstance(module, (_AugmentationBase, MixAugmentationBase, SequentialBase)):
+            if isinstance(module, (_AugmentationBase, MixAugmentationBase, MixAugmentationBaseV2, SequentialBase)):
                 param = ParamItem(param.name, module._params)
             else:
                 param = ParamItem(param.name, None)
