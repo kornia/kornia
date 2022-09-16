@@ -141,7 +141,7 @@ def match_snn(desc1: Tensor, desc2: Tensor, th: float = 0.8, dm: Optional[Tensor
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
 
     if desc2.shape[0] < 2:  # We cannot perform snn check, so output empty matches
-        return _no_match(distance_matrix)
+        return _no_match(desc1)
     distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm)
     vals, idxs_in_2 = torch.topk(distance_matrix, 2, dim=1, largest=False)
     ratio = vals[:, 0] / vals[:, 1]
