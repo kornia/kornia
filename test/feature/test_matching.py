@@ -347,6 +347,32 @@ class TestAdalam:
             dists, idxs = match_adalam(
                 data_dev['descs1'], data_dev['descs2'][:1], data_dev['lafs1'], data_dev['lafs2'][:, :1]
             )
+            dists, idxs = match_adalam(
+                data_dev['descs1'][:1], data_dev['descs2'], data_dev['lafs1'][:, :1], data_dev['lafs2']
+            )
+
+    @pytest.mark.parametrize("data", ["adalam_idxs"], indirect=True)
+    def test_empty_nocrash(self, device, dtype, data):
+        torch.random.manual_seed(0)
+        # This is not unit test, but that is quite good integration test
+        data_dev = utils.dict_to(data, device, dtype)
+        with torch.no_grad():
+            dists, idxs = match_adalam(
+                data_dev['descs1'], torch.empty(0, 128, device=device, dtype=dtype), data_dev['lafs1'], torch.empty(0, 0, 2, 3, device=device, dtype=dtype)
+            )
+            dists, idxs = match_adalam(
+                torch.empty(0, 128, device=device, dtype=dtype), data_dev['descs2'], torch.empty(0, 0, 2, 3, device=device, dtype=dtype), data_dev['lafs2']
+            )
+
+    @pytest.mark.parametrize("data", ["adalam_idxs"], indirect=True)
+    def test_small(self, device, dtype, data):
+        torch.random.manual_seed(0)
+        # This is not unit test, but that is quite good integration test
+        data_dev = utils.dict_to(data, device, dtype)
+        with torch.no_grad():
+            dists, idxs = match_adalam(
+                data_dev['descs1'][:4], data_dev['descs2'][:4], data_dev['lafs1'][:, :4], data_dev['lafs2'][:, :4]
+            )
 
     @pytest.mark.parametrize("data", ["adalam_idxs"], indirect=True)
     def test_seeds_fail(self, device, dtype, data):
