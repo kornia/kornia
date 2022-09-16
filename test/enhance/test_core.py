@@ -23,9 +23,9 @@ class TestAddWeighted:
         shape = random_shape(size, max_elem)
         src1 = torch.randn(shape, device=device, dtype=dtype)
         src2 = torch.randn(shape, device=device, dtype=dtype)
-        alpha = float(random.random())
-        beta = float(random.random())
-        gamma = float(random.random())
+        alpha = random.random()
+        beta = random.random()
+        gamma = random.random()
         return src1, src2, alpha, beta, gamma
 
     @pytest.mark.parametrize("size", [2, 3, 4, 5])
