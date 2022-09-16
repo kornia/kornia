@@ -3,18 +3,18 @@ from typing import Dict, Optional, Tuple
 import torch
 import torch.nn as nn
 
-
 from kornia.feature.laf import get_laf_center
 from kornia.testing import KORNIA_CHECK_DM_DESC, KORNIA_CHECK_SHAPE, Tensor, is_mps_tensor_safe
+
 from .adalam import get_adalam_default_config, match_adalam
 
 
 def _cdist(d1: torch.Tensor, d2: torch.Tensor) -> torch.Tensor:
-    r"""Manual `torch.cdist` for M1"""
+    r"""Manual `torch.cdist` for M1."""
     if (not is_mps_tensor_safe(d1)) and (not is_mps_tensor_safe(d2)):
         return torch.cdist(d1, d2)
-    d1_sq = (d1 ** 2).sum(dim=1, keepdim=True)
-    d2_sq = (d2 ** 2).sum(dim=1, keepdim=True)
+    d1_sq = (d1**2).sum(dim=1, keepdim=True)
+    d2_sq = (d2**2).sum(dim=1, keepdim=True)
     dm = d1_sq.repeat(1, d2.size(0)) + d2_sq.repeat(1, d1.size(0)).t() - 2.0 * d1 @ d2.t()
     dm = dm.clamp(min=0.0).sqrt()
     return dm
