@@ -23,9 +23,9 @@ class TestAddWeighted:
         shape = random_shape(size, max_elem)
         src1 = torch.randn(shape, device=device, dtype=dtype)
         src2 = torch.randn(shape, device=device, dtype=dtype)
-        alpha = random.random()
-        beta = random.random()
-        gamma = random.random()
+        alpha = float(random.random())
+        beta = float(random.random())
+        gamma = float(random.random())
         return src1, src2, alpha, beta, gamma
 
     @pytest.mark.parametrize("size", [2, 3, 4, 5])
@@ -56,7 +56,7 @@ class TestAddWeighted:
         assert_close(TestAddWeighted.fcn(src1, alpha, src2, beta, gamma), src1 * alpha + src2 * beta + gamma)
 
     @pytest.mark.skipif(
-        torch_version_le(1, 11, 0), reason="`Union` type hint not supported in JIT with PyTorch <= 1.11.0"
+        torch_version_le(1, 13, 0), reason="`Union` type hint not supported in JIT with PyTorch <= 1.11.0"
     )
     def test_jit(self, device, dtype):
         src1, src2, alpha, beta, gamma = self.get_input(device, dtype, size=3)
