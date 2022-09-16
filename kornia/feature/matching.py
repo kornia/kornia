@@ -3,7 +3,19 @@ from typing import Optional, Tuple
 import torch
 import torch.nn as nn
 
-from kornia.testing import KORNIA_CHECK_SHAPE
+
+from kornia.testing import KORNIA_CHECK_SHAPE, is_mps_tensor_safe
+
+
+def _cdist(d1: torch.Tensor, d2: torch.Tensor) -> torch.Tensor:
+    r"""Manual `torch.cdist` for M1"""
+    if (not is_mps_tensor_safe(d1)) and (not is_mps_tensor_safe(d2)):
+        return torch.cdist(d1, d2)
+    d1_sq = (d1 ** 2).sum(dim=1, keepdim=True)
+    d2_sq = (d2 ** 2).sum(dim=1, keepdim=True)
+    dm = d1_sq.repeat(1, d2.size(0)) + d2_sq.repeat(1, d1.size(0)).t() - 2.0 * d1 @ d2.t()
+    dm = dm.clamp(min=0.0).sqrt()
+    return dm
 
 
 def match_nn(
@@ -27,11 +39,10 @@ def match_nn(
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
 
     if dm is None:
-        dm = torch.cdist(desc1, desc2)
+        dm = _cdist(desc1, desc2)
     else:
         if not ((dm.size(0) == desc1.size(0)) and (dm.size(1) == desc2.size(0))):
             raise AssertionError
-
     match_dists, idxs_in_2 = torch.min(dm, dim=1)
     idxs_in1: torch.Tensor = torch.arange(0, idxs_in_2.size(0), device=idxs_in_2.device)
     matches_idxs: torch.Tensor = torch.cat([idxs_in1.view(-1, 1), idxs_in_2.view(-1, 1)], dim=1)
@@ -60,7 +71,7 @@ def match_mnn(
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
 
     if dm is None:
-        dm = torch.cdist(desc1, desc2)
+        dm = _cdist(desc1, desc2)
     else:
         if not ((dm.size(0) == desc1.size(0)) and (dm.size(1) == desc2.size(0))):
             raise AssertionError
@@ -109,7 +120,7 @@ def match_snn(
         raise AssertionError
 
     if dm is None:
-        dm = torch.cdist(desc1, desc2)
+        dm = _cdist(desc1, desc2)
     else:
         if not ((dm.size(0) == desc1.size(0)) and (dm.size(1) == desc2.size(0))):
             raise AssertionError
@@ -154,7 +165,7 @@ def match_smnn(
         raise AssertionError
 
     if dm is None:
-        dm = torch.cdist(desc1, desc2)
+        dm = _cdist(desc1, desc2)
     else:
         if not ((dm.size(0) == desc1.size(0)) and (dm.size(1) == desc2.size(0))):
             raise AssertionError
@@ -164,7 +175,12 @@ def match_smnn(
 
     if len(dists2) > 0 and len(dists1) > 0:
         idx2 = idx2.flip(1)
-        idxs_dm = torch.cdist(idx1.float(), idx2.float(), p=1.0)
+        if not is_mps_tensor_safe(idx1):
+            idxs_dm = torch.cdist(idx1.float(), idx2.float(), p=1.0)
+        else:
+            idxs2_rep = idx2.float().repeat_interleave(idx1.size(0), dim=0)
+            idxs_dm = (idx1.float().repeat(idx2.size(0), 1) - idxs2_rep).abs().sum(dim=1)
+            idxs_dm = idxs_dm.reshape(idx1.size(0), idx2.size(0))
         mutual_idxs1 = idxs_dm.min(dim=1)[0] < 1e-8
         mutual_idxs2 = idxs_dm.min(dim=0)[0] < 1e-8
         good_idxs1 = idx1[mutual_idxs1.view(-1)]
