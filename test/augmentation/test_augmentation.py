@@ -355,7 +355,7 @@ class TestRandomEqualizeAlternative(CommonTests):
 
         with pytest.raises(ValueError):
             self._create_augmentation_from_params(p=1.0)(
-                torch.ones((1, 3, 4, 5) * 200, device=self.device, dtype=self.dtype)
+                torch.ones((1, 3, 4, 5) * 100, device=self.device, dtype=self.dtype)
             )
 
 
