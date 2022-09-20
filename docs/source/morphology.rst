@@ -12,6 +12,9 @@ kornia.morphology
 .. autofunction:: bottom_hat
 
 Interactive Demo
-----------------
+~~~~~~~~~~~~~~~~
 .. raw:: html
-   :file: gradio/morphological_operators.html
+
+    <gradio-app space="kornia/morphological_operators"></gradio-app>
+
+Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/kornia/morphological_operators>`_.
