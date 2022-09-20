@@ -3,6 +3,7 @@
 from kornia.core import Tensor, concatenate, stack, zeros_like
 from kornia.geometry.quaternion import Quaternion
 from kornia.testing import KORNIA_CHECK_TYPE, KORNIA_CHECK
+from kornia.testing import assert_close
 
 
 class So3:
@@ -97,11 +98,11 @@ class So3:
                      [ 0.4011,  0.0000, -0.3723],
                      [-0.7219,  0.3723,  0.0000]]])
         """
-        aa, bb, cc = v[..., 0, None, None], v[..., 1, None, None], v[..., 2, None, None]
+        a, b, c = v[..., 0, None, None], v[..., 1, None, None], v[..., 2, None, None]
         zeros = zeros_like(v)[..., 0, None, None]
-        row0 = concatenate([zeros, -cc, bb], 2)
-        row1 = concatenate([cc, zeros, -aa], 2)
-        row2 = concatenate([-bb, aa, zeros], 2)
+        row0 = concatenate([zeros, -c, b], 2)
+        row1 = concatenate([c, zeros, -a], 2)
+        row2 = concatenate([-b, a, zeros], 2)
         return concatenate([row0, row1, row2], 1)
 
     @staticmethod
@@ -143,16 +144,16 @@ class So3:
         q0 = (1 - 2 * y ** 2 - 2 * z ** 2)
         q1 = (2 * x * y - 2 * z * w)
         q2 = (2 * x * z + 2 * y * w)
-        row0 = concatenate([q0, q1, q2], 1)
+        row0 = concatenate([q0, q1, q2], 2)
         q0 = (2 * x * y + 2 * z * w)
         q1 = (1 - 2 * x ** 2 - 2 * z ** 2)
         q2 = (2 * y * z - 2 * x * w)
-        row1 = concatenate([q0, q1, q2], 1)
+        row1 = concatenate([q0, q1, q2], 2)
         q0 = (2 * x * z - 2 * y * w)
         q1 = (2 * y * z + 2 * x * w)
         q2 = (1 - 2 * x ** 2 - 2 * y ** 2)
-        row2 = concatenate([q0, q1, q2], 1)
-        return concatenate([row0, row1, row2], 2)
+        row2 = concatenate([q0, q1, q2], 2)
+        return concatenate([row0, row1, row2], 1)
 
     @classmethod
     def identity(cls, batch_size: int) -> 'So3':
