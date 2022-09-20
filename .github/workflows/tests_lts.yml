@@ -1,4 +1,4 @@
-name: tests-cpu
+name: tests-lts
 
 on:
   push:
