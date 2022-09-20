@@ -21,7 +21,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: [3.7, 3.8, 3.9]
-        pytorch-version: [1.8.1, 1.9.1, 1.10.2, 1.11.0]
+        pytorch-version: [1.8.2, 1.10.2, 1.12.1]
     steps:
     - uses: actions/checkout@v2
     - name: Setup conda dependencies

@@ -355,7 +355,7 @@ class TestRandomEqualizeAlternative(CommonTests):
 
         with pytest.raises(ValueError):
             self._create_augmentation_from_params(p=1.0)(
-                torch.ones((1, 3, 4, 5) * 200, device=self.device, dtype=self.dtype)
+                torch.ones((1, 3, 4, 5) * 3, device=self.device, dtype=self.dtype)
             )
 
 
@@ -3339,7 +3339,50 @@ class TestPlanckianJitter(BaseTester):
 
 class TestRandomRGBShift:
     def test_smoke(self, device, dtype):
-        img = torch.rand(1, 3, 4, 5, device=device, dtype=dtype)
+        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
         aug = RandomRGBShift(p=1.0).to(device)
         out = aug(img)
-        assert out.shape == (1, 3, 4, 5)
+        assert out.shape == (2, 3, 4, 5)
+
+    def test_onnx_export(self, device, dtype):
+        img = torch.rand(1, 3, 4, 5, device=device, dtype=dtype)
+        aug = RandomRGBShift(p=1.0).to(device)
+        torch.onnx.export(aug, img, "temp.onnx", export_params=True)
+
+    def test_random_rgb_shift(self, device, dtype):
+        torch.manual_seed(0)
+        input = torch.tensor(
+            [[[[0.2, 0.0]], [[0.3, 0.5]], [[0.4, 0.7]]], [[[0.2, 0.7]], [[0.0, 0.8]], [[0.2, 0.3]]]],
+            device=device,
+            dtype=dtype,
+        )
+
+        f = RandomRGBShift(p=1.0).to(device)
+        expected = torch.tensor(
+            [
+                [[[0.19625, 0.00000]], [[0.56822, 0.76822]], [[0.00000, 0.28847]]],
+                [[[0.00000, 0.33203]], [[0.00000, 0.60742]], [[0.33407, 0.43407]]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        utils.assert_close(f(input), expected, rtol=1e-4, atol=1e-4)
+
+    def test_random_rgb_shift_same_batch(self, device, dtype):
+        torch.manual_seed(0)
+        input = torch.tensor(
+            [[[[0.2, 0.0]], [[0.3, 0.5]], [[0.4, 0.7]]], [[[0.2, 0.7]], [[0.0, 0.8]], [[0.2, 0.3]]]],
+            device=device,
+            dtype=dtype,
+        )
+
+        f = RandomRGBShift(p=1.0, same_on_batch=True).to(device)
+        expected = torch.tensor(
+            [
+                [[[0.19626, 0.00000]], [[0.29626, 0.49626]], [[0.66822, 0.96822]]],
+                [[[0.46822, 0.96822]], [[0.00000, 0.38848]], [[0.00000, 0.00000]]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        utils.assert_close(f(input), expected, rtol=1e-4, atol=1e-4)

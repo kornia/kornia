@@ -10,3 +10,5 @@ kornia.geometry.line
 .. autofunction:: fit_line
 
 .. autoclass:: Hyperplane
+.. raw:: html
+    :file: gradio/line_fitting.html
