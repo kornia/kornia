@@ -32,7 +32,7 @@ jobs:
       shell: bash -l {0}
       run: |
         conda install curl -c conda-forge
-        conda install pytorch-lts cpuonly -c pytorch
+        conda install pytorch cpuonly -c pytorch-lts
         pip install .[all]
     - name: Run Tests
       shell: bash -l {0}
