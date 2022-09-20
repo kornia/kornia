@@ -76,5 +76,3 @@ Module
 .. autoclass:: SpatialGradient3d
 .. autoclass:: MotionBlur
 .. autoclass:: UnsharpMask
-
-
