@@ -66,9 +66,22 @@ class So3:
             vec: tensor([[0.0893, 0.3285, 0.3060],
                     [0.0567, 0.1315, 0.1558]], grad_fn=<SliceBackward0>)
         """
+        import sys
+        import torch
         theta_sq = self.squared_norm(v)
         theta = theta_sq.sqrt()
-        return So3(Quaternion(concatenate(((0.5 * theta).cos(), (0.5 * theta).sin().div(theta).mul(v[:])),1)))
+
+        epsilon = sys.float_info.epsilon
+        small_angles_mask = theta < epsilon
+        qtensor = torch.zeros((v.shape[0],4))
+        qtensor[:,0][small_angles_mask[:,0]] = 1 #identity for small angles
+
+        if (torch.sum(~small_angles_mask) > 0):
+            ww = (0.5 * theta[~small_angles_mask]).cos()
+            xyz = (0.5 * theta[~small_angles_mask]).sin().div(theta[~small_angles_mask]).reshape(-1,1).mul(v[~small_angles_mask[:,0],:])
+            qtensor[~(small_angles_mask.repeat(1,4))] = concatenate((ww.unsqueeze(1), xyz), 1).flatten()
+
+        return So3(Quaternion(qtensor))
 
     def log(self):
         """Converts elements of lie group  to elements of lie algebra.
