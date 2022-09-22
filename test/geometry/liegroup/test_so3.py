@@ -19,19 +19,15 @@ class TestSo3:
         q = q.to(device, dtype)
         s = So3(q)
         zero_vec = torch.zeros((batch_size, 3))
-        assert_close(q[:], s.exp(zero_vec)[:])# exp of zero vec is identity
+        assert_close(s.exp(zero_vec)[:], q[:])# exp of zero vec is identity
 
-    # @pytest.mark.parametrize("batch_size", (1, 2, 5))
-    # def test_log(self, device, dtype, batch_size):
-    #     raise NotImplementedError
-
-    # @pytest.mark.parametrize("batch_size", (1, 2, 5))
-    # def test_hat(self, device, dtype, batch_size):
-    #     raise NotImplementedError
-
-    # @pytest.mark.parametrize("batch_size", (1, 2, 5))
-    # def test_vee(self, device, dtype, batch_size):
-    #     raise NotImplementedError
+    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    def test_log(self, device, dtype, batch_size):
+        q = Quaternion.identity(batch_size)
+        q = q.to(device, dtype)
+        s = So3(q)
+        zero_vec = torch.zeros((batch_size, 3))
+        assert_close(s.log(), zero_vec)# log of identity quat is zero vec
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_exp_log(self, device, dtype, batch_size):
@@ -41,6 +37,19 @@ class TestSo3:
         a = torch.rand(batch_size, 3, device=device, dtype=dtype)
         b = s.exp(a).log()
         assert_close(b, a)
+
+    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    def test_hat(self, batch_size):
+        s = So3.identity(1)
+        v = torch.Tensor([1, 2, 3]).repeat(batch_size, 1)
+        assert_close(s.hat(v).unique()[-3:], v[0,:])
+
+    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    def test_vee(self, device, dtype, batch_size):
+        s = So3.identity(1)
+        omega = torch.Tensor([[[1, 2, 3],[4, 5, 6],[7, 8, 9]]]).repeat(batch_size, 1, 1)
+        expected = torch.tensor([[8, 3, 4]]).repeat(batch_size, 1)
+        assert_close(s.vee(omega), expected)
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_hat_vee(self, device, dtype, batch_size):
