@@ -1,4 +1,4 @@
-name: tests-cpu
+name: tests-lts
 
 on:
   push:
@@ -19,9 +19,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: [3.7, 3.8, 3.9]
-        pytorch-version: [1.10.2, 1.12.1]
+        os: [ubuntu-latest, windows-latest]
+        python-version: [3.7, 3.8]
     steps:
     - uses: actions/checkout@v2
     - name: Setup conda dependencies
@@ -33,7 +32,7 @@ jobs:
       shell: bash -l {0}
       run: |
         conda install curl -c conda-forge
-        conda install pytorch=${{ matrix.pytorch-version }} cpuonly -c pytorch
+        conda install pytorch cpuonly -c pytorch-lts
         pip install .[all]
     - name: Run Tests
       shell: bash -l {0}
@@ -43,5 +42,5 @@ jobs:
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         file: coverage.xml
-        flags: cpu,pytest, torch${{ matrix.pytorch-version }}
+        flags: cpu,pytest,torch-lts-1.8.2
         name: cpu-coverage
