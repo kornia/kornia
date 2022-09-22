@@ -11,6 +11,7 @@ concatenate = torch.cat
 stack = torch.stack
 normalize = F.normalize
 zeros_like = torch.zeros_like
+zeros = torch.zeros
 
 # constructors
 as_tensor = torch.as_tensor
