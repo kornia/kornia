@@ -1,6 +1,6 @@
 # kornia.geometry.quaternion module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py
-from kornia.core import Tensor, concatenate, stack, zeros_like
+from kornia.core import Tensor, concatenate, stack, zeros_like, zeros
 from kornia.geometry.quaternion import Quaternion
 from kornia.testing import KORNIA_CHECK_TYPE, KORNIA_CHECK
 from kornia.testing import assert_close
@@ -39,6 +39,7 @@ class So3:
         """
         KORNIA_CHECK_TYPE(q, Quaternion)
         self._q = q
+        self.epsilon = 2.220446049250313e-16
 
     def __repr__(self) -> str:
         return f"{self.q}"
@@ -53,6 +54,7 @@ class So3:
 
     def exp(self, v) -> 'So3':
         """Converts elements of lie algebra to elements of lie group.
+        See more: https://vision.in.tum.de/_media/members/demmeln/nurlanov2021so3log.pdf
 
         Args:
             v: vector of shape :math:`(B,3)`.
@@ -66,21 +68,14 @@ class So3:
             vec: tensor([[0.0893, 0.3285, 0.3060],
                     [0.0567, 0.1315, 0.1558]], grad_fn=<SliceBackward0>)
         """
-        import sys
-        import torch
-        theta_sq = self.squared_norm(v)
-        theta = theta_sq.sqrt()
-
-        epsilon = sys.float_info.epsilon
-        small_angles_mask = theta < epsilon
-        qtensor = torch.zeros((v.shape[0],4))
-        qtensor[:,0][small_angles_mask[:,0]] = 1 #identity for small angles
-
-        if (torch.sum(~small_angles_mask) > 0):
-            ww = (0.5 * theta[~small_angles_mask]).cos()
-            xyz = (0.5 * theta[~small_angles_mask]).sin().div(theta[~small_angles_mask]).reshape(-1,1).mul(v[~small_angles_mask[:,0],:])
-            qtensor[~(small_angles_mask.repeat(1,4))] = concatenate((ww.unsqueeze(1), xyz), 1).flatten()
-
+        theta = self.squared_norm(v).sqrt()
+        small_angles_mask = theta < self.epsilon
+        qtensor = zeros((v.shape[0],4))
+        qtensor[:,0][small_angles_mask[:,0]] = 1 #identity for small angles(add hat()?)
+        theta_large_angles = theta[~small_angles_mask]
+        ww = (0.5 * theta_large_angles).cos()
+        xyz = (0.5 * theta_large_angles).sin().div(theta_large_angles).reshape(-1,1).mul(v[~small_angles_mask[:,0],:])
+        qtensor[~(small_angles_mask.repeat(1,4))] = concatenate((ww.unsqueeze(1), xyz), 1).flatten()
         return So3(Quaternion(qtensor))
 
     def log(self):
@@ -93,8 +88,15 @@ class So3:
             tensor([[2.3822, 0.2638, 0.1771],
                     [0.3699, 1.8639, 0.3685]], grad_fn=<MulBackward0>)
         """
-        n = self.squared_norm(self.q.vec).sqrt()
-        return 2 * (n / self.q.real).atan() / n * self.q.vec
+        theta = self.squared_norm(self.q.vec).sqrt()
+        small_angles_mask = theta < self.epsilon
+        omega_t = zeros((self.q.shape[0], 3))
+        omega_t[small_angles_mask[:,0]]  = ((2 / self.q.real[small_angles_mask]) - \
+            (2 * theta[small_angles_mask].pow(2) / 3 * self.q.real[small_angles_mask].pow(3))).reshape(-1, 1) * \
+            self.q.vec[small_angles_mask[:,0]]
+        omega_t[~small_angles_mask[:,0]] = (2 * (theta[~small_angles_mask] / self.q.real[~small_angles_mask]).atan() / theta[~small_angles_mask]).reshape(-1, 1) * \
+            self.q.vec[~small_angles_mask[:,0]]
+        return omega_t
 
     @staticmethod
     def hat(v):
