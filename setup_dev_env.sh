@@ -66,10 +66,7 @@ source $conda_bin_dir/activate $dev_env_dir/envs/venv
 # install pytorch and torchvision
 conda install pytorch=$pytorch_version torchvision $cuda_toolkit $pytorch_mode -c $pytorch_channel
 
-# install testing dependencies
-pip install -r requirements/dev.txt
-
-# install documentation dependencies
-pip install -r docs/requirements.txt
+# install all (testing and documentation) dependencies
+pip install -e .[all]
 
 conda deactivate  # close the `venv` environment
