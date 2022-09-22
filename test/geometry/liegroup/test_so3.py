@@ -40,22 +40,17 @@ class TestSo3:
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_hat(self, batch_size):
-        s = So3.identity(1)
         v = torch.Tensor([1, 2, 3]).repeat(batch_size, 1)
-        assert_close(s.hat(v).unique()[-3:], v[0,:])
+        assert_close(So3.hat(v).unique()[-3:], v[0,:])
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_vee(self, device, dtype, batch_size):
-        s = So3.identity(1)
         omega = torch.Tensor([[[1, 2, 3],[4, 5, 6],[7, 8, 9]]]).repeat(batch_size, 1, 1)
         expected = torch.tensor([[8, 3, 4]]).repeat(batch_size, 1)
-        assert_close(s.vee(omega), expected)
+        assert_close(So3.vee(omega), expected)
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_hat_vee(self, device, dtype, batch_size):
-        q = Quaternion.random(batch_size)
-        q = q.to(device, dtype)
-        s = So3(q)
         a = torch.rand(batch_size, 3, device=device, dtype=dtype)
         omega = So3.hat(a)
         b = So3.vee(omega)
@@ -75,4 +70,4 @@ class TestSo3:
             pquat = Quaternion(torch.cat([torch.Tensor([0]), pvec])[None,:])
             qp_ = q1 * pquat * q1.inv()
             rp_ = torch.matmul(r1, pvec.T)[None, :]
-            assert_close(rp_, qp_.vec) #p_ = R*p = q*p*q_inv
+            assert_close(rp_, qp_.vec) # p_ = R*p = q*p*q_inv

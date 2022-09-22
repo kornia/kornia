@@ -1,9 +1,8 @@
 # kornia.geometry.quaternion module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py
-from kornia.core import Tensor, concatenate, stack, zeros_like, zeros
+from kornia.core import concatenate, stack, zeros_like, zeros
 from kornia.geometry.quaternion import Quaternion
 from kornia.testing import KORNIA_CHECK_TYPE, KORNIA_CHECK
-from kornia.testing import assert_close
 
 
 class So3:
@@ -125,7 +124,7 @@ class So3:
         """Converts elements from lie algebra to vector space. Returns vector of shape :math:`(B,3)`.
 
         Args:
-            omega: 3x3-matrix representing lie algebra of the following strucure:
+            omega: 3x3-matrix representing lie algebra of the following structure:
                    |  0 -c  b |
                    |  c  0 -a |
                    | -b  a  0 |
