@@ -74,7 +74,7 @@ class Quaternion(Module):
         return f"real: {self.real} \nvec: {self.vec}"
 
     def __getitem__(self, idx):
-        return Quaternion(self.data[idx][None,:])
+        return Quaternion(self.data[idx].reshape(1, -1))
 
     def __neg__(self) -> 'Quaternion':
         """Inverts the sign of the quaternion data.
