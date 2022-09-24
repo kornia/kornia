@@ -72,9 +72,9 @@ class So3:
         qtensor = zeros((v.shape[0],4))
         qtensor[:,0][small_angles_mask[:,0]] = 1 #identity for small angles(add hat()?)
         theta_large_angles = theta[~small_angles_mask]
-        ww = (0.5 * theta_large_angles).cos()
+        w = (0.5 * theta_large_angles).cos()
         xyz = (0.5 * theta_large_angles).sin().div(theta_large_angles).reshape(-1,1).mul(v[~small_angles_mask[:,0],:])
-        qtensor[~(small_angles_mask.repeat(1,4))] = concatenate((ww.unsqueeze(1), xyz), 1).flatten()
+        qtensor[~(small_angles_mask.repeat(1,4))] = concatenate((w.unsqueeze(1), xyz), 1).flatten()
         return So3(Quaternion(qtensor))
 
     def log(self):
