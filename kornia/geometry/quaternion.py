@@ -73,7 +73,7 @@ class Quaternion(Module):
     def __repr__(self) -> str:
         return f"real: {self.real} \nvec: {self.vec}"
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx) -> 'Quaternion':
         return Quaternion(self.data[idx].reshape(1, -1))
 
     def __neg__(self) -> 'Quaternion':
