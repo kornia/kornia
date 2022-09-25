@@ -1,5 +1,5 @@
 """Implements several backbone networks."""
-from typing import Optional, Dict, List, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -63,7 +63,11 @@ class MultitaskHead(nn.Module):
 
 class Bottleneck2D(nn.Module):
     def __init__(
-        self, inplanes: int, planes: int, stride: Union[int, Tuple[int, int]] = 1, downsample: Optional[torch.nn.Module] = None
+        self,
+        inplanes: int,
+        planes: int,
+        stride: Union[int, Tuple[int, int]] = 1,
+        downsample: Optional[torch.nn.Module] = None,
     ):
         super().__init__()
 
