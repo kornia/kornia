@@ -1,6 +1,6 @@
 # kornia.geometry.quaternion module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py
-from kornia.core import concatenate, stack, zeros_like, zeros
+from kornia.core import Tensor, concatenate, stack, zeros_like, zeros, where
 from kornia.geometry.quaternion import Quaternion
 from kornia.testing import KORNIA_CHECK_TYPE, KORNIA_CHECK
 
@@ -43,11 +43,11 @@ class So3:
     def __repr__(self) -> str:
         return f"{self.q}"
 
-    def __getitem__(self, idx):
-        return self._q[idx]
+    def __getitem__(self, idx) -> 'So3':
+        return So3(Quaternion(self._q[idx].reshape(1, -1))) #change once quaternion bug fix is merged
 
     @property
-    def q(self):
+    def q(self) -> Quaternion:
         """Return the underlying data with shape :math:`(B,4)`."""
         return self._q
 
@@ -68,16 +68,17 @@ class So3:
                     [0.0567, 0.1315, 0.1558]], grad_fn=<SliceBackward0>)
         """
         theta = self.squared_norm(v).sqrt()
-        small_angles_mask = theta < self.epsilon
+        small_angles_indices = where(theta < self.epsilon)[0]
+        large_angles_indices = where(theta > self.epsilon)[0]
+        large_angles = theta[large_angles_indices]
         qtensor = zeros((v.shape[0],4))
-        qtensor[:,0][small_angles_mask[:,0]] = 1 #identity for small angles(add hat()?)
-        theta_large_angles = theta[~small_angles_mask]
-        w = (0.5 * theta_large_angles).cos()
-        xyz = (0.5 * theta_large_angles).sin().div(theta_large_angles).reshape(-1,1).mul(v[~small_angles_mask[:,0],:])
-        qtensor[~(small_angles_mask.repeat(1,4))] = concatenate((w.unsqueeze(1), xyz), 1).flatten()
+        qtensor[small_angles_indices] = Tensor([1, 0, 0, 0]) #identity quaternion for small angles
+        w = (0.5 * large_angles).cos()
+        xyz = (0.5 * large_angles).sin().div(large_angles).mul(v[large_angles_indices])
+        qtensor[large_angles_indices]  = concatenate((w, xyz), 1)
         return So3(Quaternion(qtensor))
 
-    def log(self):
+    def log(self) -> Tensor:
         """Converts elements of lie group  to elements of lie algebra.
 
         Example:
@@ -88,17 +89,21 @@ class So3:
                     [0.3699, 1.8639, 0.3685]], grad_fn=<MulBackward0>)
         """
         theta = self.squared_norm(self.q.vec).sqrt()
-        small_angles_mask = theta < self.epsilon
+        small_angles_indices = where(theta < self.epsilon)[0]
+        large_angles_indices = where(theta > self.epsilon)[0]
+        large_angles = theta[large_angles_indices]
+        q_real = self.q.real
+        q_vec =  self.q.vec
         omega_t = zeros((self.q.shape[0], 3))
-        omega_t[small_angles_mask[:,0]]  = ((2 / self.q.real[small_angles_mask]) - \
-            (2 * theta[small_angles_mask].pow(2) / 3 * self.q.real[small_angles_mask].pow(3))).reshape(-1, 1) * \
-            self.q.vec[small_angles_mask[:,0]]
-        omega_t[~small_angles_mask[:,0]] = (2 * (theta[~small_angles_mask] / self.q.real[~small_angles_mask]).atan() / theta[~small_angles_mask]).reshape(-1, 1) * \
-            self.q.vec[~small_angles_mask[:,0]]
+        o1 = 2 / q_real[small_angles_indices]
+        o2 = theta[small_angles_indices].pow(2)/ q_real[small_angles_indices].pow(3)
+        omega_t[small_angles_indices] = (o1 - (2 * o2) / 3) * q_vec[small_angles_indices]
+        o1 = (q_real[large_angles_indices].pow(2) + theta[large_angles_indices].pow(2)).sqrt()
+        omega_t[large_angles_indices] = (4 * (large_angles / (q_real[large_angles_indices] + o1)).atan()) / large_angles * q_vec[large_angles_indices]
         return omega_t
 
     @staticmethod
-    def hat(v):
+    def hat(v) -> Tensor:
         """Converts elements from vector space to lie algebra. Returns matrix of shape :math:`(B,3,3)`.
 
         Args:
@@ -120,7 +125,7 @@ class So3:
         return concatenate([row0, row1, row2], 1)
 
     @staticmethod
-    def vee(omega):
+    def vee(omega) -> Tensor:
         """Converts elements from lie algebra to vector space. Returns vector of shape :math:`(B,3)`.
 
         Args:
@@ -138,7 +143,7 @@ class So3:
         a, b, c = omega[..., 2, 1], omega[..., 0, 2], omega[..., 1, 0]
         return stack([a, b, c], 1)
 
-    def matrix(self):
+    def matrix(self) -> Tensor:
         """Convert the quaternion to a rotation matrix of shape :math:`(B,3,3)`.
         The matrix is of the form:
         |  (1-2y^2-2z^2) (2xy-2zw)      (2xy+2yw)      |
@@ -189,7 +194,7 @@ class So3:
     def inverse(self) -> 'So3':
         return So3(self.q.conj())
 
-    def squared_norm(self, x, y=None):
+    def squared_norm(self, x, y=None) -> Tensor:
         return self._batched_squared_norm(x, y)
 
     def _batched_squared_norm(self, x, y=None):
