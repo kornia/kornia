@@ -8,7 +8,7 @@ from kornia.nerf.types import Device
 
 
 def parse_colmap_output(cameras_path: str, images_path: str, device: Device) -> Tuple[List[str], PinholeCamera]:
-    r"""Parses colmap output to create an PinholeCamera for aligned scene cameras
+    r"""Parses colmap output to create an PinholeCamera for aligned scene cameras.
 
     Args:
         cameras_path: Path to camera.txt Colmap file with camera intrinsics: str
@@ -108,8 +108,8 @@ def parse_colmap_output(cameras_path: str, images_path: str, device: Device) -> 
 
 
 def cameras_for_ids(cameras: PinholeCamera, camera_ids: List[int]) -> PinholeCamera:
-    r"""Takes a PinholeCamera camera object and a set of camera indices and creates a new PinholeCamera object for the
-    requested cameras
+    r"""Takes a PinholeCamera camera object and a set of camera indices and creates a new PinholeCamera object for
+    the requested cameras.
 
     Args:
         cameras: Scene camera object: PinholeCamera
@@ -126,8 +126,8 @@ def cameras_for_ids(cameras: PinholeCamera, camera_ids: List[int]) -> PinholeCam
 
 
 def create_spiral_path(cameras: PinholeCamera, rad: float, num_views: int, num_circles: int) -> PinholeCamera:
-    r"""Creates a PinholeCamera object with cameras that follow a spiral path. Used for novel view synthesis for face
-    facing models
+    r"""Creates a PinholeCamera object with cameras that follow a spiral path. Used for novel view synthesis for
+    face facing models.
 
     Args:
         cameras: Scene cameras used to train the NeRF model: PinholeCamera

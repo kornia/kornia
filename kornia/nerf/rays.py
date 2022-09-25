@@ -88,7 +88,7 @@ class RaySampler:
 
     def _calc_ray_params(self, cameras: PinholeCamera, points_2d_camera: Dict[int, Points2D]) -> None:
         r"""Calculates ray parameters: origins, directions. Also stored are camera ids for each ray, and its pixel
-        coordinates
+        coordinates.
 
         Args:
             cameras: scene cameras: PinholeCamera
@@ -219,7 +219,7 @@ class RaySampler:
         # return origins, directions
 
     class Points2D_FlatTensors:
-        r"""Class to hold x/y pixel coordinates for each ray, and its scene camera id"""
+        r"""Class to hold x/y pixel coordinates for each ray, and its scene camera id."""
 
         def __init__(self) -> None:
             self._x: torch.Tensor
@@ -234,9 +234,8 @@ class RaySampler:
         camera_id: int,
         points2d_as_flat_tensors: Dict[int, Points2D_FlatTensors],
     ) -> None:
-        r"""Adds x/y pixel coordinates for all rays casted by a scene camera to dictionary of pixel coordinates grouped
-        by total number of rays
-        """
+        r"""Adds x/y pixel coordinates for all rays casted by a scene camera to dictionary of pixel coordinates
+        grouped by total number of rays."""
         if n not in points2d_as_flat_tensors:
             points2d_as_flat_tensors[n] = RaySampler.Points2D_FlatTensors()
             points2d_as_flat_tensors[n]._x = x.flatten()
@@ -251,7 +250,7 @@ class RaySampler:
         points2d_as_flat_tensors: Dict[int, Points2D_FlatTensors]
     ) -> Dict[int, Points2D]:
         r"""Builds a dictionary of ray pixel points, by total number of rays as key. The dictionary groups rays by
-        the total amount of rays, which allows the case of casting different number of rays from each scene camera
+        the total amount of rays, which allows the case of casting different number of rays from each scene camera.
 
         Args:
             points2d_as_flat_tensors: dictionary of pixel coordinates grouped by total number of rays:
@@ -274,7 +273,7 @@ class RaySampler:
 
 
 class RandomRaySampler(RaySampler):
-    r"""Class to manage random ray spatial sampling
+    r"""Class to manage random ray spatial sampling.
 
     Args:
         min_depth: sampled rays minimal depth from cameras: float
@@ -289,7 +288,7 @@ class RandomRaySampler(RaySampler):
     def sample_points_2d(
         self, heights: torch.Tensor, widths: torch.Tensor, num_img_rays: torch.Tensor
     ) -> Dict[int, RaySampler.Points2D]:
-        r"""Randomly sample pixel points in 2d
+        r"""Randomly sample pixel points in 2d.
 
         Args:
             heights: tensor that holds scene camera image heights (can vary between cameras): math: `(B)`.
@@ -312,7 +311,7 @@ class RandomRaySampler(RaySampler):
 
     def calc_ray_params(self, cameras: PinholeCamera, num_img_rays: torch.Tensor) -> None:
         r"""Calculates ray parameters: origins, directions. Also stored are camera ids for each ray, and its pixel
-        coordinates
+        coordinates.
 
         Args:
             cameras: scene cameras: PinholeCamera
@@ -330,7 +329,7 @@ class RandomRaySampler(RaySampler):
 
 class RandomGridRaySampler(RandomRaySampler):
     r"""Class to manage random ray spatial sampling. Sampling is done on a regular grid of pixels by randomizing
-    column and row values, and casting rays for all pixels along the seleceted ones
+    column and row values, and casting rays for all pixels along the seleceted ones.
 
     Args:
         min_depth: sampled rays minimal depth from cameras: float
@@ -345,7 +344,7 @@ class RandomGridRaySampler(RandomRaySampler):
     def sample_points_2d(
         self, heights: torch.Tensor, widths: torch.Tensor, num_img_rays: torch.Tensor
     ) -> Dict[int, RaySampler.Points2D]:
-        r"""Randomly sample pixel points in 2d over a regular row-column grid
+        r"""Randomly sample pixel points in 2d over a regular row-column grid.
 
         Args:
             heights: tensor that holds scene camera image heights (can vary between cameras): math: `(B)`.
@@ -386,7 +385,7 @@ class UniformRaySampler(RaySampler):
     def sample_points_2d(
         self, heights: torch.Tensor, widths: torch.Tensor, sampling_step=1
     ) -> Dict[int, RaySampler.Points2D]:
-        r"""Uniformly sample pixel points in 2d for all scene camera pixels
+        r"""Uniformly sample pixel points in 2d for all scene camera pixels.
 
         Args:
             heights: tensor that holds scene camera image heights (can vary between cameras): math: `(B)`.
@@ -449,7 +448,7 @@ def sample_ray_points(
 
 
 def calc_ray_t_vals(points_3d: torch.Tensor) -> torch.Tensor:
-    r"""Calculates t values along rays
+    r"""Calculates t values along rays.
 
     Args:
         points_3d: Points along rays :math:`(*, num_ray_points, 3)`

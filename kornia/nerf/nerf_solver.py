@@ -14,7 +14,7 @@ from kornia.nerf.types import Device, Images, ImageTensors
 
 
 class NerfSolver:
-    r"""NeRF solver class
+    r"""NeRF solver class.
 
     Args:
         device: device for class tensors: Union[str, torch.device]
@@ -54,7 +54,7 @@ class NerfSolver:
         log_space_encoding=True,
         lr: float = 1.0e-3,
     ) -> None:
-        r"""Initializes training
+        r"""Initializes training.
 
         Args:
             cameras: Scene cameras in the order of input images: PinholeCamera
@@ -114,10 +114,10 @@ class NerfSolver:
             raise ValueError('All image widths must match camera widths')
 
     def _train_one_epoch(self) -> float:
-        r"""Trains one epoch. A dataset of rays is initialized, and sent over to a data loader. The data loader sample
-        a batch of rays randomly, and runs them through the NeRF model, to predict ray associated rgb model values. The
-        model rgb is compared with the image pixel rgb, and the loss between the two is back propagated to update the
-        model weights.
+        r"""Trains one epoch. A dataset of rays is initialized, and sent over to a data loader. The data loader
+        sample a batch of rays randomly, and runs them through the NeRF model, to predict ray associated rgb model
+        values. The model rgb is compared with the image pixel rgb, and the loss between the two is back propagated
+        to update the model weights.
 
         Implemented steps:
         - Create an object of class RayDataset
@@ -156,7 +156,7 @@ class NerfSolver:
         return -10.0 * math.log10(mse)
 
     def run(self, num_epochs: int = 1) -> None:
-        r"""Runs training epochs
+        r"""Runs training epochs.
 
         Args:
             num_epochs: Number of epochs to run: int
@@ -170,7 +170,7 @@ class NerfSolver:
                 print(f'Epoch: {i_epoch}: epoch_psnr = {epoch_psnr}; time: {current_time}')
 
     def render_views(self, cameras: PinholeCamera) -> ImageTensors:
-        r"""Renders a novel synthesis view of a trained NeRF model for given cameras
+        r"""Renders a novel synthesis view of a trained NeRF model for given cameras.
 
         Args:
             cameras: cameras for image renderings: PinholeCamera

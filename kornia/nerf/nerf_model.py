@@ -8,9 +8,9 @@ from kornia.nerf.renderer import IrregularRenderer, RegularRenderer
 
 
 class MLP(nn.Module):
-    r"""Class to represent a multi-layer perceptron. The MLP represents a deep NN of fully connected layers. The network
-    is build of user defined sub-units, each with a user defined number of layers.  Skip connections span between the
-    sub-units. The model follows: Ben Mildenhall et el. (2020) at https://arxiv.org/abs/2003.08934
+    r"""Class to represent a multi-layer perceptron. The MLP represents a deep NN of fully connected layers. The
+    network is build of user defined sub-units, each with a user defined number of layers.  Skip connections span
+    between the sub-units. The model follows: Ben Mildenhall et el. (2020) at https://arxiv.org/abs/2003.08934.
 
     Args:
         num_dims: Number of input dimensions (channels)
@@ -42,7 +42,7 @@ class MLP(nn.Module):
 
 
 class NerfModel(nn.Module):
-    r"""Class to represent NeRF model
+    r"""Class to represent NeRF model.
 
     Args:
         num_ray_points: Number of points to sample along rays: int
