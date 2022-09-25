@@ -281,12 +281,12 @@ class PinholeCamera:
         Example:
             >>> _ = torch.manual_seed(0)
             >>> X = torch.rand(1, 3)
-            >>> K = torch.eye(4)[None]
+            >>> I = torch.eye(4)[None]
             >>> E = torch.eye(4)[None]
             >>> h = torch.ones(1)
             >>> w = torch.ones(1)
             >>> pinhole = kornia.geometry.camera.PinholeCamera(K, E, h, w)
-            >>> pinhole.project(X)
+            >>> pinhole.project_points(X)
             tensor([[5.6088, 8.6827]])
         """
         P = self.intrinsics @ self.extrinsics
@@ -313,12 +313,12 @@ class PinholeCamera:
             >>> _ = torch.manual_seed(0)
             >>> x = torch.rand(1, 2)
             >>> depth = torch.ones(1, 1)
-            >>> K = torch.eye(4)[None]
+            >>> I = torch.eye(4)[None]
             >>> E = torch.eye(4)[None]
             >>> h = torch.ones(1)
             >>> w = torch.ones(1)
             >>> pinhole = kornia.geometry.camera.PinholeCamera(K, E, h, w)
-            >>> pinhole.unproject(x, depth)
+            >>> pinhole.unproject_points(x, depth)
             tensor([[0.4963, 0.7682, 1.0000]])
         """
         P = self.intrinsics @ self.extrinsics
