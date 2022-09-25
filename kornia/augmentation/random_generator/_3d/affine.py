@@ -72,7 +72,7 @@ class AffineGenerator3D(RandomGeneratorBase):
                 torch.Tensor, Tuple[float, float], Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]
             ]
         ] = None,
-        shears: Union[
+        shears: Optional[Union[
             torch.Tensor,
             float,
             Tuple[float, float],
@@ -85,7 +85,7 @@ class AffineGenerator3D(RandomGeneratorBase):
                 Tuple[float, float],
                 Tuple[float, float],
             ],
-        ] = None,
+        ]] = None,
     ) -> None:
         super().__init__()
         self.degrees = degrees

@@ -127,7 +127,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         return padding
 
     def precrop_padding(
-        self, input: Tensor, padding: List[int] = None, flags: Optional[Dict[str, Any]] = None
+        self, input: Tensor, padding: Optional[List[int]] = None, flags: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         flags = self.flags if flags is None else flags
         if padding is None:
