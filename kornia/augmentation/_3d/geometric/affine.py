@@ -97,7 +97,8 @@ class RandomAffine3D(AugmentationBase3D):
         scale: Optional[
             Union[Tensor, Tuple[float, float], Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]]
         ] = None,
-        shears: Optional[Union[
+        shears: Union[
+            None,
             Tensor,
             float,
             Tuple[float, float],
@@ -110,7 +111,7 @@ class RandomAffine3D(AugmentationBase3D):
                 Tuple[float, float],
                 Tuple[float, float],
             ],
-        ]] = None,
+        ] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         same_on_batch: bool = False,
         align_corners: bool = False,
