@@ -3,8 +3,7 @@ from torch import nn
 
 
 class PositionalEncoder(nn.Module):
-    r"""
-    Sine-cosine positional encoder for input points.
+    r"""Sine-cosine positional encoder for input points.
 
     Args:
         num_dims: Number of input dimensions (channels): int
@@ -35,8 +34,7 @@ class PositionalEncoder(nn.Module):
         return self._num_encoded_dims
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        r"""
-        Apply positional encoding to input.
+        r"""Apply positional encoding to input.
 
         Args:
             x: Positionsl (or directional) tensor to encode: torch.Tensor

@@ -12,7 +12,7 @@ RayGroup = Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]
 
 
 class RayDataset(Dataset):
-    r"""Class to represent a dataset of rays
+    r"""Class to represent a dataset of rays.
 
     Args:
         cameras: scene cameras: PinholeCamera
@@ -44,8 +44,8 @@ class RayDataset(Dataset):
             self._init_random_ray_dataset(num_img_rays)
 
     def init_images_for_training(self, imgs: Images) -> None:
-        r"""Initializes images for training. Images can be either a list of tensors, or a list of paths to image disk
-        locations
+        r"""Initializes images for training. Images can be either a list of tensors, or a list of paths to image
+        disk locations.
 
         Args:
             imgs: List of image tensors or image paths: Images
@@ -61,7 +61,7 @@ class RayDataset(Dataset):
         self._imgs = [img.to(self._device) for img in self._imgs]
 
     def _init_random_ray_dataset(self, num_img_rays: torch.Tensor) -> None:
-        r"""Initializes a random ray sampler and calculates dataset ray parameters
+        r"""Initializes a random ray sampler and calculates dataset ray parameters.
 
         Args:
             num_img_rays: If not None, number of rays to randomly cast from each camers: math: `(B)`.
@@ -70,7 +70,7 @@ class RayDataset(Dataset):
         self._ray_sampler.calc_ray_params(self._cameras, num_img_rays)
 
     def _init_uniform_ray_dataset(self) -> None:
-        r"""Initializes a uniform ray sampler and calculates dataset ray parameters"""
+        r"""Initializes a uniform ray sampler and calculates dataset ray parameters."""
         self._ray_sampler = UniformRaySampler(self._min_depth, self._max_depth, self._ndc, device=self._device)
         self._ray_sampler.calc_ray_params(self._cameras)
 
@@ -103,7 +103,7 @@ class RayDataset(Dataset):
         return len(self._ray_sampler)
 
     def __getitem__(self, idxs: Union[int, List[int]]) -> RayGroup:
-        r"""Gets a dataset item
+        r"""Gets a dataset item.
 
         Args:
             idxs: An index or group of indices of ray parameter object: Union[int, List[int]]
@@ -128,7 +128,7 @@ class RayDataset(Dataset):
 
 
 def instantiate_ray_dataloader(dataset: RayDataset, batch_size: int = 1, shufle: bool = True) -> None:
-    r"""Initializes a dataloader to manage a ray dataset
+    r"""Initializes a dataloader to manage a ray dataset.
 
     Args:
         dataset: A ray dataset: RayDataset
