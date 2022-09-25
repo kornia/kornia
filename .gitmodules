@@ -1,6 +1,0 @@
-[submodule "kornia/geometry/nerf/kornia_nerf_jupyter"]
-	path = kornia/geometry/nerf/kornia_nerf_jupyter
-	url = git@github.com:YanivHollander/kornia_nerf_jupyter.git
-[submodule "kornia/geometry/nerf/kornia_nerf_data"]
-	path = kornia/geometry/nerf/kornia_nerf_data
-	url = git@github.com:YanivHollander/kornia_nerf_data.git
