@@ -1,8 +1,6 @@
 from typing import List, Union
 
-from torch import Tensor, device
-
-Device = Union[str, device]
+from kornia.core import Tensor
 
 ImagePaths = List[str]
 ImageTensors = List[Tensor]

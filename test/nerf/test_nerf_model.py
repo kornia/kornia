@@ -11,7 +11,7 @@ class TestNerfModel:
 
         num_rays = 15
         num_ray_points = 11
-        x = torch.rand(num_rays, num_ray_points, d_input)
+        x = torch.rand(num_rays, num_ray_points, d_input, device=device, dtype=dtype)
         xout = mlp(x)
         assert xout.shape == (num_rays, num_ray_points, num_hidden)
 
@@ -27,7 +27,7 @@ class TestNerfModel:
         )
         nerf_model.to(device)
         num_rays = 15
-        origins = torch.rand(num_rays, 3, device=device)
-        directions = torch.rand(num_rays, 3, device=device)
+        origins = torch.rand(num_rays, 3, device=device, dtype=dtype)
+        directions = torch.rand(num_rays, 3, device=device, dtype=dtype)
         rgbs = nerf_model(origins, directions)
         assert rgbs.shape == (num_rays, 3)

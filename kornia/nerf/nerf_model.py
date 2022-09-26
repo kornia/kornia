@@ -2,6 +2,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
+from kornia.core import Tensor
 from kornia.nerf.positional_encoder import PositionalEncoder
 from kornia.nerf.rays import sample_lengths, sample_ray_points
 from kornia.nerf.renderer import IrregularRenderer, RegularRenderer
@@ -31,7 +32,7 @@ class MLP(nn.Module):
                 layers.append(nn.Sequential(layer, nn.ReLU()))
         self._mlp = nn.ModuleList(layers)
 
-    def forward(self, inp: torch.Tensor) -> torch.Tensor:
+    def forward(self, inp: Tensor) -> Tensor:
         out = inp
         inp_skip = inp
         for i, layer in enumerate(self._mlp):
@@ -86,7 +87,7 @@ class NerfModel(nn.Module):
         self._rgb = nn.Sequential(nn.Linear(num_hidden // 2, 3), nn.Sigmoid())
         self._rgb[0].bias.data = torch.tensor([0.02, 0.02, 0.02]).float()
 
-    def forward(self, origins: torch.Tensor, directions: torch.Tensor) -> torch.Tensor:
+    def forward(self, origins: Tensor, directions: Tensor) -> Tensor:
 
         # Sample xyz for ray parameters
         batch_size = origins.shape[0]

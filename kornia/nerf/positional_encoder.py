@@ -1,6 +1,8 @@
 import torch
 from torch import nn
 
+from kornia.core import Tensor
+
 
 class PositionalEncoder(nn.Module):
     r"""Sine-cosine positional encoder for input points.
@@ -33,14 +35,14 @@ class PositionalEncoder(nn.Module):
     def num_encoded_dims(self) -> int:
         return self._num_encoded_dims
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         r"""Apply positional encoding to input.
 
         Args:
-            x: Positionsl (or directional) tensor to encode: torch.Tensor
+            x: Positionsl (or directional) tensor to encode: Tensor
 
         Returns:
-            Tensor with encoded position/direction: torch.Tensor
+            Tensor with encoded position/direction: Tensor
         """
         if x.ndim < 1:
             raise ValueError('Input tensor represents a scalar')

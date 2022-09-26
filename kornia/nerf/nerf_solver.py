@@ -1,4 +1,3 @@
-import math
 from datetime import datetime
 from typing import Optional, Union
 
@@ -7,10 +6,12 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch import nn
 
+from kornia.core import Device
 from kornia.geometry.camera import PinholeCamera
+from kornia.metrics import psnr
 from kornia.nerf.data_utils import RayDataset, instantiate_ray_dataloader
 from kornia.nerf.nerf_model import NerfModel
-from kornia.nerf.types import Device, Images, ImageTensors
+from kornia.nerf.types import Images, ImageTensors
 
 
 class NerfSolver:
@@ -131,29 +132,23 @@ class NerfSolver:
         -- Optimizer step
 
         Returns:
-            Average loss over all epoch rays
+            Average psnr over all epoch rays
         """
-        total_loss = 0.0
         ray_dataset = RayDataset(self._cameras, self._min_depth, self._max_depth, self._ndc, device=self._device)
         ray_dataset.init_ray_dataset(self._num_img_rays)
         ray_dataset.init_images_for_training(self._imgs)  # FIXME: Do we need to load the same images on each Epoch?
         ray_data_loader = instantiate_ray_dataloader(ray_dataset, self._batch_size, shuffle=True)
-        total_loss = 0.0
+        total_psnr = 0.0
         for i_batch, (origins, directions, rgbs) in enumerate(ray_data_loader):
             rgbs_model = self._nerf_model(origins, directions)
             loss = F.mse_loss(rgbs_model, rgbs)
 
-            total_loss = total_loss + loss.item()
+            total_psnr += psnr(rgbs_model, rgbs, 1.0)
 
             self._opt_nerf.zero_grad()
             loss.backward()
             self._opt_nerf.step()
-        return total_loss / (i_batch + 1)
-
-    @staticmethod
-    def psnr(mse):
-        mse = max(mse, 1e-10)
-        return -10.0 * math.log10(mse)
+        return total_psnr / (i_batch + 1)
 
     def run(self, num_epochs: int = 1) -> None:
         r"""Runs training epochs.
@@ -162,10 +157,9 @@ class NerfSolver:
             num_epochs: Number of epochs to run: int
         """
         for i_epoch in range(num_epochs):
-            epoch_loss = self._train_one_epoch()
+            epoch_psnr = self._train_one_epoch()
 
             if i_epoch % 10 == 0:
-                epoch_psnr = self.psnr(epoch_loss)
                 current_time = datetime.now().strftime("%H:%M:%S")
                 print(f'Epoch: {i_epoch}: epoch_psnr = {epoch_psnr}; time: {current_time}')
 

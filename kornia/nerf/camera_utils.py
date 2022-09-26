@@ -2,9 +2,9 @@ from typing import List, Tuple
 
 import torch
 
+from kornia.core import Device, Tensor
 from kornia.geometry.camera import PinholeCamera
 from kornia.geometry.conversions import QuaternionCoeffOrder, quaternion_to_rotation_matrix
-from kornia.nerf.types import Device
 
 
 def parse_colmap_output(cameras_path: str, images_path: str, device: Device) -> Tuple[List[str], PinholeCamera]:
@@ -53,8 +53,8 @@ def parse_colmap_output(cameras_path: str, images_path: str, device: Device) -> 
     # Parse camera quaternions and translation vectors
     with open(images_path) as f:
         lines = f.readlines()
-    intrinsics: List[torch.Tensor] = []
-    extrinsics: List[torch.Tensor] = []
+    intrinsics: List[Tensor] = []
+    extrinsics: List[Tensor] = []
     heights: List[int] = []
     widths: List[int] = []
     img_names: List[str] = []
@@ -137,15 +137,15 @@ def create_spiral_path(cameras: PinholeCamera, rad: float, num_views: int, num_c
     """
 
     # Average locations over all cameras
-    mean_center = torch.squeeze(torch.mean(cameras.translation_vector, dim=0))
+    mean_center = cameras.translation_vector.mean(0, False)
     device = cameras.intrinsics.device
     t = torch.linspace(0, 2 * torch.pi * num_circles, num_views, device=device)
     cos_t = torch.cos(t) * rad
     sin_t = -torch.sin(t) * rad
     sin_05t = -torch.sin(0.5 * t) * rad
     translation_vector = torch.unsqueeze(mean_center, dim=0) + torch.stack((cos_t, sin_t, sin_05t)).permute((1, 0))
-    mean_intrinsics = torch.mean(cameras.intrinsics, dim=0, keepdims=True).repeat((num_views, 1, 1))
-    mean_extrinsics = torch.mean(cameras.extrinsics, dim=0, keepdims=True).repeat((num_views, 1, 1))
+    mean_intrinsics = cameras.intrinsics.mean(0, True).repeat(num_views, 1, 1)
+    mean_extrinsics = cameras.extrinsics.mean(0, True).repeat(num_views, 1, 1)
     extrinsics = mean_extrinsics
     extrinsics[:, :3, 3] = translation_vector
     height = torch.tensor([cameras.height[0]] * num_views, device=device)

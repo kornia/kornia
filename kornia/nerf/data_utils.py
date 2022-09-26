@@ -2,13 +2,14 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 from torch.utils.data import BatchSampler, DataLoader, Dataset, RandomSampler, SequentialSampler
-from torchvision.io import read_image
 
+from kornia.core import Device, Tensor
 from kornia.geometry.camera import PinholeCamera
+from kornia.io import ImageLoadType, load_image
 from kornia.nerf.rays import RandomRaySampler, RaySampler, UniformRaySampler
-from kornia.nerf.types import Device, Images, ImageTensors
+from kornia.nerf.types import Images, ImageTensors
 
-RayGroup = Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]
+RayGroup = Tuple[Tensor, Tensor, Optional[Tensor]]
 
 
 class RayDataset(Dataset):
@@ -25,14 +26,14 @@ class RayDataset(Dataset):
     def __init__(self, cameras: PinholeCamera, min_depth: float, max_depth: float, ndc: bool, device: Device) -> None:
         super().__init__()
         self._ray_sampler: Optional[RaySampler] = None
-        self._imgs: Optional[List[torch.Tensor]] = None
+        self._imgs: Optional[List[Tensor]] = None
         self._cameras = cameras
         self._min_depth = min_depth
         self._max_depth = max_depth
         self._ndc = ndc
         self._device = device
 
-    def init_ray_dataset(self, num_img_rays: Optional[torch.Tensor] = None) -> None:
+    def init_ray_dataset(self, num_img_rays: Optional[Tensor] = None) -> None:
         r"""Initializes a ray dataset.
 
         Args:
@@ -60,7 +61,7 @@ class RayDataset(Dataset):
         # Move images to defined device
         self._imgs = [img.to(self._device) for img in self._imgs]
 
-    def _init_random_ray_dataset(self, num_img_rays: torch.Tensor) -> None:
+    def _init_random_ray_dataset(self, num_img_rays: Tensor) -> None:
         r"""Initializes a random ray sampler and calculates dataset ray parameters.
 
         Args:
@@ -75,7 +76,7 @@ class RayDataset(Dataset):
         self._ray_sampler.calc_ray_params(self._cameras)
 
     def _check_image_type_consistency(self, imgs: Images) -> None:
-        if not all(isinstance(img, str) for img in imgs) and not all(isinstance(img, torch.Tensor) for img in imgs):
+        if not all(isinstance(img, str) for img in imgs) and not all(isinstance(img, Tensor) for img in imgs):
             raise ValueError('The list of input images can only be all paths or tensors')
 
     def _check_dimensions(self, imgs: ImageTensors) -> None:
@@ -93,10 +94,10 @@ class RayDataset(Dataset):
                 )
 
     @staticmethod
-    def _load_images(img_paths: List[str]) -> List[torch.Tensor]:
-        imgs: List[torch.Tensor] = []
+    def _load_images(img_paths: List[str]) -> List[Tensor]:
+        imgs: List[Tensor] = []
         for img_path in img_paths:
-            imgs.append(read_image(img_path))
+            imgs.append(load_image(img_path, ImageLoadType.UNCHANGED))
         return imgs
 
     def __len__(self):

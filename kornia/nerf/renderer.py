@@ -1,5 +1,6 @@
 import torch
 
+from kornia.core import Tensor
 from kornia.nerf.rays import calc_ray_t_vals
 
 
@@ -17,7 +18,7 @@ class VolumeRenderer(torch.nn.Module):
         super().__init__()
         self._shift = shift
 
-    def _render(self, alpha: torch.Tensor, rgbs: torch.Tensor) -> torch.Tensor:
+    def _render(self, alpha: Tensor, rgbs: Tensor) -> Tensor:
         trans = torch.cumprod(1 - alpha + self._eps, dim=-2)  # (*, N, 1)
         trans = torch.roll(trans, shifts=self._shift, dims=-2)  # (*, N, 1)
         trans[..., : self._shift, :] = 1  # (*, N, 1)
@@ -28,7 +29,7 @@ class VolumeRenderer(torch.nn.Module):
 
         return rgbs_rendered
 
-    def forward(self, rgbs: torch.Tensor, densities: torch.Tensor, points_3d: torch.tensor) -> torch.Tensor:
+    def forward(self, rgbs: Tensor, densities: Tensor, points_3d: torch.tensor) -> Tensor:
         raise NotImplementedError
 
 
@@ -36,7 +37,7 @@ class IrregularRenderer(VolumeRenderer):
     def __init__(self, shift: int = 1) -> None:
         super().__init__(shift)
 
-    def forward(self, rgbs: torch.Tensor, densities: torch.Tensor, points_3d: torch.tensor) -> torch.Tensor:
+    def forward(self, rgbs: Tensor, densities: Tensor, points_3d: torch.tensor) -> Tensor:
         r"""Renders 3D irregularly sampled points along rays.
 
         Args:
@@ -61,7 +62,7 @@ class RegularRenderer(VolumeRenderer):
     def __init__(self, shift: int = 1) -> None:
         super().__init__(shift)
 
-    def forward(self, rgbs: torch.Tensor, densities: torch.Tensor, points_3d: torch.tensor) -> torch.Tensor:
+    def forward(self, rgbs: Tensor, densities: Tensor, points_3d: torch.tensor) -> Tensor:
         r"""Renders 3D regularly sampled points along rays.
 
         Args:
