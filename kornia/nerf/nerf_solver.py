@@ -9,9 +9,9 @@ from torch import nn
 from kornia.core import Device
 from kornia.geometry.camera import PinholeCamera
 from kornia.metrics import psnr
+from kornia.nerf.core import Images, ImageTensors
 from kornia.nerf.data_utils import RayDataset, instantiate_ray_dataloader
 from kornia.nerf.nerf_model import NerfModel
-from kornia.nerf.types import Images, ImageTensors
 
 
 class NerfSolver:

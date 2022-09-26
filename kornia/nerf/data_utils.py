@@ -6,8 +6,8 @@ from torch.utils.data import BatchSampler, DataLoader, Dataset, RandomSampler, S
 from kornia.core import Device, Tensor
 from kornia.geometry.camera import PinholeCamera
 from kornia.io import ImageLoadType, load_image
+from kornia.nerf.core import Images, ImageTensors
 from kornia.nerf.rays import RandomRaySampler, RaySampler, UniformRaySampler
-from kornia.nerf.types import Images, ImageTensors
 
 RayGroup = Tuple[Tensor, Tensor, Optional[Tensor]]
 
