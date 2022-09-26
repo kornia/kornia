@@ -19,7 +19,7 @@ class TestSo3:
         q = q.to(device, dtype)
         s = So3(q)
         zero_vec = torch.zeros((batch_size, 3))
-        assert_close(s.exp(zero_vec)[:], q[:])# exp of zero vec is identity
+        assert_close(s.exp(zero_vec).q[:], q[:])# exp of zero vec is identity
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_log(self, device, dtype, batch_size):
