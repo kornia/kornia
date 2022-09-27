@@ -11,6 +11,9 @@ test-cpu: FORCE
 test-cuda: FORCE
 	pytest -v --device cuda --dtype all --cov=kornia test/ --flake8 --mypy
 
+test-mps: FORCE
+	pytest -v --device mps --dtype float32 -k "not (grad or exception or jit)"  test/
+
 test-module: FORCE
 	pytest -v --device all --dtype all  test/$(module) --flake8 --mypy
 

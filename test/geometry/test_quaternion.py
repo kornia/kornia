@@ -178,3 +178,11 @@ class TestQuaternion:
                 self.assert_close(qq1, qq2)
             except Exception:
                 self.assert_close(qq1, -qq2)
+
+    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    def test_getitem(self, device, dtype, batch_size):
+        q = Quaternion.random(batch_size)
+        q = q.to(device, dtype)
+        for i in range(batch_size):
+            q1 = q[i]
+            self.assert_close(q1.data[0], q.data[i])
