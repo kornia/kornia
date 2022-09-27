@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from kornia.geometry.conversions import QuaternionCoeffOrder, quaternion_to_rotation_matrix
-from kornia.nerf.camera_utils import parse_colmap_output
+from kornia.nerf.camera_utils import create_spiral_path, parse_colmap_output
 from kornia.testing import assert_close
 
 
@@ -41,3 +41,11 @@ def test_parse_colmap_output(device, dtype, colmap_cameras_path, colmap_images_p
     assert_close(cameras.translation_vector[2], t.unsqueeze(-1))
 
     assert img_names[2] == 'image002.png'
+
+
+def test_create_spiral_path(device, dtype, colmap_cameras_path, colmap_images_path) -> None:
+    _, cameras = parse_colmap_output(colmap_cameras_path, colmap_images_path, device)
+    try:
+        create_spiral_path(cameras, 1, 30, 3)
+    except Exception as err:
+        assert False, err

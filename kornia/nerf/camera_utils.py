@@ -137,7 +137,7 @@ def create_spiral_path(cameras: PinholeCamera, rad: float, num_views: int, num_c
     """
 
     # Average locations over all cameras
-    mean_center = cameras.translation_vector.mean(0, False)
+    mean_center = cameras.translation_vector.mean(0, False).squeeze(-1)
     device = cameras.intrinsics.device
     t = torch.linspace(0, 2 * torch.pi * num_circles, num_views, device=device)
     cos_t = torch.cos(t) * rad
