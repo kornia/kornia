@@ -3,8 +3,6 @@ kornia.geometry.line
 
 .. currentmodule:: kornia.geometry.line
 
-* `Interactive Demo`_
-
 .. autoclass:: ParametrizedLine
    :members:
    :special-members: __init__
@@ -19,6 +17,7 @@ kornia.geometry.line
 Interactive Demo
 ----------------
 .. raw:: html
-   :file: gradio/enhance_gradio.html
+   
+   <gradio-app space="kornia/line-segment-matching"></gradio-app>
 
 Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/kornia/line-segment-matching>`_.
