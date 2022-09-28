@@ -8,7 +8,7 @@ from kornia.nerf.nerf_solver import NerfSolver
 
 class TestNerfSolver:
     def test_parameter_change_after_one_epoch(self, device, dtype):
-        nerf_obj = NerfSolver(device=device)
+        nerf_obj = NerfSolver(device, dtype)
         cameras = create_four_cameras(device, dtype)
         imgs = create_random_images_for_cameras(cameras)
         nerf_obj.init_training(cameras, 1.0, 3.0, True, imgs, num_img_rays=45, batch_size=1, num_ray_points=10)
@@ -29,7 +29,7 @@ class TestNerfSolver:
         camera = create_one_camera(5, 9, device, dtype)
         img = create_red_images_for_cameras(camera)
 
-        nerf_obj = NerfSolver(device)
+        nerf_obj = NerfSolver(device, dtype)
         nerf_obj.init_training(camera, 1.0, 3.0, False, img, None, 2, 10)
         nerf_obj.run(num_epochs=10)
 
@@ -41,7 +41,7 @@ class TestNerfSolver:
         camera = create_one_camera(5, 9, device, dtype)
         img = create_red_images_for_cameras(camera)
 
-        nerf_obj = NerfSolver(device=device)
+        nerf_obj = NerfSolver(device=device, dtype=dtype)
         nerf_obj.init_training(camera, 1.0, 3.0, True, img, 1, 2, 10)
         nerf_obj.run(num_epochs=20)
 
@@ -51,7 +51,7 @@ class TestNerfSolver:
         camera = create_one_camera(5, 9, device, dtype)
         img = create_red_images_for_cameras(camera)
 
-        nerf_obj = NerfSolver(device=device)
+        nerf_obj = NerfSolver(device=device, dtype=dtype)
         num_img_rays = 15
         nerf_obj.init_training(camera, 1.0, 3.0, False, img, num_img_rays, batch_size=5, num_ray_points=10)
         nerf_obj.run(num_epochs=20)

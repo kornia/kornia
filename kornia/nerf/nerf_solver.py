@@ -19,9 +19,10 @@ class NerfSolver:
 
     Args:
         device: device for class tensors: Union[str, torch.device]
+        dtype: type for all floating point calculations: torch.dtype
     """
 
-    def __init__(self, device: Device) -> None:
+    def __init__(self, device: Device, dtype: torch.dtype) -> None:
         self._cameras: Optional[PinholeCamera] = None
         self._min_depth: float = 0.0
         self._max_depth: float = 0.0
@@ -40,6 +41,7 @@ class NerfSolver:
         self._opt_nerf: optim.Optimizer = None
 
         self._device = device
+        self._dtype = dtype
 
     def init_training(
         self,
@@ -134,7 +136,9 @@ class NerfSolver:
         Returns:
             Average psnr over all epoch rays
         """
-        ray_dataset = RayDataset(self._cameras, self._min_depth, self._max_depth, self._ndc, device=self._device)
+        ray_dataset = RayDataset(
+            self._cameras, self._min_depth, self._max_depth, self._ndc, device=self._device, dtype=self._dtype
+        )
         ray_dataset.init_ray_dataset(self._num_img_rays)
         ray_dataset.init_images_for_training(self._imgs)  # FIXME: Do we need to load the same images on each Epoch?
         ray_data_loader = instantiate_ray_dataloader(ray_dataset, self._batch_size, shuffle=True)
@@ -172,7 +176,9 @@ class NerfSolver:
         Returns:
             Rendered images: ImageTensors (List[(H, W, C)]).
         """
-        ray_dataset = RayDataset(cameras, self._min_depth, self._max_depth, self._ndc, device=self._device)
+        ray_dataset = RayDataset(
+            cameras, self._min_depth, self._max_depth, self._ndc, device=self._device, dtype=self._dtype
+        )
         ray_dataset.init_ray_dataset()
         idx0 = 0
         imgs: ImageTensors = []

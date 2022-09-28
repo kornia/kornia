@@ -28,7 +28,7 @@ class TestDataset:
     def test_uniform_ray_dataset(self, device, dtype):
         cameras = create_four_cameras(device, dtype)
         imgs = create_random_images_for_cameras(cameras)
-        dataset = RayDataset(cameras, 1, 2, False, device=device)
+        dataset = RayDataset(cameras, 1, 2, False, device=device, dtype=dtype)
         dataset.init_ray_dataset()
         dataset.init_images_for_training(imgs)
 

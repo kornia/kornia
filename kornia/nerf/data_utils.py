@@ -21,9 +21,12 @@ class RayDataset(Dataset):
         max_depth: sampled rays maximal depth from cameras: float
         ndc: convert ray parameters to normalized device coordinates: bool
         device: device for ray tensors: Union[str, torch.device]
+        dtype: type of ray tensors: torch.dtype
     """
 
-    def __init__(self, cameras: PinholeCamera, min_depth: float, max_depth: float, ndc: bool, device: Device) -> None:
+    def __init__(
+        self, cameras: PinholeCamera, min_depth: float, max_depth: float, ndc: bool, device: Device, dtype: torch.dtype
+    ) -> None:
         super().__init__()
         self._ray_sampler: Optional[RaySampler] = None
         self._imgs: Optional[List[Tensor]] = None
@@ -32,6 +35,7 @@ class RayDataset(Dataset):
         self._max_depth = max_depth
         self._ndc = ndc
         self._device = device
+        self._dtype = dtype
 
     def init_ray_dataset(self, num_img_rays: Optional[Tensor] = None) -> None:
         r"""Initializes a ray dataset.
@@ -67,12 +71,16 @@ class RayDataset(Dataset):
         Args:
             num_img_rays: If not None, number of rays to randomly cast from each camers: math: `(B)`.
         """
-        self._ray_sampler = RandomRaySampler(self._min_depth, self._max_depth, self._ndc, device=self._device)
+        self._ray_sampler = RandomRaySampler(
+            self._min_depth, self._max_depth, self._ndc, device=self._device, dtype=self._dtype
+        )
         self._ray_sampler.calc_ray_params(self._cameras, num_img_rays)
 
     def _init_uniform_ray_dataset(self) -> None:
         r"""Initializes a uniform ray sampler and calculates dataset ray parameters."""
-        self._ray_sampler = UniformRaySampler(self._min_depth, self._max_depth, self._ndc, device=self._device)
+        self._ray_sampler = UniformRaySampler(
+            self._min_depth, self._max_depth, self._ndc, device=self._device, dtype=self._dtype
+        )
         self._ray_sampler.calc_ray_params(self._cameras)
 
     def _check_image_type_consistency(self, imgs: Images) -> None:

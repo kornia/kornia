@@ -25,11 +25,12 @@ class RaySampler:
     _camera_ids: Optional[Tensor] = None  # Ray camera ID
     _points_2d: Optional[Tensor] = None  # Ray intersection with image plane in camera coordinates
 
-    def __init__(self, min_depth: float, max_depth: float, ndc: bool, device: Device) -> None:
+    def __init__(self, min_depth: float, max_depth: float, ndc: bool, device: Device, dtype: torch.dtype) -> None:
         self._min_depth = min_depth
         self._max_depth = max_depth
         self._ndc = ndc
         self._device = torch.device(device)
+        self._dtype = dtype
 
     @property
     def origins(self) -> Tensor:
@@ -107,7 +108,10 @@ class RaySampler:
             # FIXME: Below both world and camera ray directions are calculated. It could be that world ray directions
             # will not be necessary and can be removed here
             num_cams_group, num_points_per_cam_group = obj._points_2d.shape[:2]
-            depths = torch.ones(num_cams_group, 2 * num_points_per_cam_group, 3, device=self._device) * self._min_depth
+            depths = (
+                torch.ones(num_cams_group, 2 * num_points_per_cam_group, 3, device=self._device, dtype=self._dtype)
+                * self._min_depth
+            )
             depths[:, num_points_per_cam_group:] = self._max_depth
             cams = cameras_for_ids(cameras, obj.camera_ids)
             points_3d = cams.unproject(obj._points_2d.repeat(1, 2, 1), depths)
@@ -248,8 +252,8 @@ class RandomRaySampler(RaySampler):
         device: device for ray tensors: Union[str, torch.device]
     """
 
-    def __init__(self, min_depth: float, max_depth: float, ndc: bool, device: Device = 'cpu') -> None:
-        super().__init__(min_depth, max_depth, ndc, device)
+    def __init__(self, min_depth: float, max_depth: float, ndc: bool, device: Device, dtype: torch.dtype) -> None:
+        super().__init__(min_depth, max_depth, ndc, device, dtype)
 
     def sample_points_2d(self, heights: Tensor, widths: Tensor, num_img_rays: Tensor) -> Dict[int, RaySampler.Points2D]:
         r"""Randomly sample pixel points in 2d.
@@ -266,8 +270,8 @@ class RandomRaySampler(RaySampler):
         num_img_rays = num_img_rays.int()
         points2d_as_flat_tensors: Dict[int, RaySampler.Points2D_FlatTensors] = {}
         for camera_id, (height, width, n) in enumerate(zip(heights.tolist(), widths.tolist(), num_img_rays.tolist())):
-            y_rand = torch.trunc(torch.rand(n, device=self._device, dtype=torch.float32) * height)
-            x_rand = torch.trunc(torch.rand(n, device=self._device, dtype=torch.float32) * width)
+            y_rand = torch.trunc(torch.rand(n, device=self._device, dtype=self._dtype) * height)
+            x_rand = torch.trunc(torch.rand(n, device=self._device, dtype=self._dtype) * width)
             RaySampler._add_points2d_as_flat_tensors_to_num_ray_dict(
                 n, x_rand, y_rand, camera_id, points2d_as_flat_tensors
             )
@@ -302,8 +306,8 @@ class RandomGridRaySampler(RandomRaySampler):
         device: device for ray tensors: Union[str, torch.device]
     """
 
-    def __init__(self, min_depth: float, max_depth: float, ndc: bool, device: Device = 'cpu') -> None:
-        super().__init__(min_depth, max_depth, ndc, device)
+    def __init__(self, min_depth: float, max_depth: float, ndc: bool, device: Device, dtype: torch.dtype) -> None:
+        super().__init__(min_depth, max_depth, ndc, device, dtype)
 
     def sample_points_2d(self, heights: Tensor, widths: Tensor, num_img_rays: Tensor) -> Dict[int, RaySampler.Points2D]:
         r"""Randomly sample pixel points in 2d over a regular row-column grid.
@@ -322,8 +326,8 @@ class RandomGridRaySampler(RandomRaySampler):
         points2d_as_flat_tensors: Dict[int, RaySampler.Points2D_FlatTensors] = {}
         for camera_id, (height, width, n) in enumerate(zip(heights.tolist(), widths.tolist(), num_img_rays.tolist())):
             n_sqrt = int(math.sqrt(n))
-            y_rand = torch.randperm(int(height), device=self._device)[: min(int(height), n_sqrt)]
-            x_rand = torch.randperm(int(width), device=self._device)[: min(int(width), n_sqrt)]
+            y_rand = torch.randperm(int(height), device=self._device, dtype=self._dtype)[: min(int(height), n_sqrt)]
+            x_rand = torch.randperm(int(width), device=self._device, dtype=self._dtype)[: min(int(width), n_sqrt)]
             y_grid, x_grid = torch.meshgrid(y_rand, x_rand, indexing='ij')
             RaySampler._add_points2d_as_flat_tensors_to_num_ray_dict(
                 n_sqrt * n_sqrt, x_grid, y_grid, camera_id, points2d_as_flat_tensors
@@ -341,8 +345,8 @@ class UniformRaySampler(RaySampler):
         device: device for ray tensors: Union[str, torch.device]
     """
 
-    def __init__(self, min_depth: float, max_depth: float, ndc: bool, device: Device = 'cpu') -> None:
-        super().__init__(min_depth, max_depth, ndc, device)
+    def __init__(self, min_depth: float, max_depth: float, ndc: bool, device: Device, dtype: torch.dtype) -> None:
+        super().__init__(min_depth, max_depth, ndc, device, dtype)
 
     def sample_points_2d(self, heights: Tensor, widths: Tensor, sampling_step=1) -> Dict[int, RaySampler.Points2D]:
         r"""Uniformly sample pixel points in 2d for all scene camera pixels.
@@ -362,8 +366,8 @@ class UniformRaySampler(RaySampler):
         for camera_id, (height, width) in enumerate(zip(heights.tolist(), widths.tolist())):
             n = height * width
             y_grid, x_grid = torch.meshgrid(
-                torch.arange(0, height, sampling_step, device=self._device, dtype=torch.float32),
-                torch.arange(0, width, sampling_step, device=self._device, dtype=torch.float32),
+                torch.arange(0, height, sampling_step, device=self._device, dtype=self._dtype),
+                torch.arange(0, width, sampling_step, device=self._device, dtype=self._dtype),
                 indexing='ij',
             )
             RaySampler._add_points2d_as_flat_tensors_to_num_ray_dict(
@@ -376,14 +380,14 @@ class UniformRaySampler(RaySampler):
         self._calc_ray_params(cameras, points_2d_camera)
 
 
-def sample_lengths(num_rays: int, num_ray_points: int, device, irregular=False) -> Tensor:
+def sample_lengths(num_rays: int, num_ray_points: int, device: Device, dtype: torch.dtype, irregular=False) -> Tensor:
     if num_ray_points <= 1:
         raise ValueError('Number of ray points must be greater than 1')
     if not irregular:
-        zero_to_one = torch.linspace(0.0, 1.0, num_ray_points, device=device)
+        zero_to_one = torch.linspace(0.0, 1.0, num_ray_points, device=device, dtype=dtype)
         lengths = zero_to_one.repeat(num_rays, 1)  # FIXME: Expand instead of repeat maybe?
     else:
-        zero_to_one = torch.linspace(0.0, 1.0, num_ray_points + 1, device=device)
+        zero_to_one = torch.linspace(0.0, 1.0, num_ray_points + 1, device=device, dtype=dtype)
         lengths = torch.rand(num_rays, num_ray_points, device=device) / num_ray_points + zero_to_one[:-1]
     return lengths
 
