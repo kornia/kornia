@@ -36,7 +36,6 @@ def torch_version_ge(major: int, minor: int, patch: int) -> bool:
 
 from torch import qr as linalg_qr
 
-
 if torch_version_ge(1, 10, 0):
 
     if not TYPE_CHECKING:
