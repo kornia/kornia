@@ -20,10 +20,10 @@ def colmap_images_path():
 
 def test_parse_colmap_output(device, dtype, colmap_cameras_path, colmap_images_path) -> None:
     img_names, cameras = parse_colmap_output(colmap_cameras_path, colmap_images_path, device)
-    assert_close(cameras.fx[0], 845.5654)
-    assert_close(cameras.fy[0], 845.5654)
-    assert_close(cameras.cx[0], 504)
-    assert_close(cameras.cy[0], 378)
+    assert_close(cameras.fx[0].item(), 845.5654)
+    assert_close(cameras.fy[0].item(), 845.5654)
+    assert_close(cameras.cx[0].item(), 504)
+    assert_close(cameras.cy[0].item(), 378)
 
     qw = 0.99967420027533338
     qx = -0.016637661896892787
