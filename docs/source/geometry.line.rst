@@ -17,7 +17,7 @@ kornia.geometry.line
 Interactive Demo
 ----------------
 .. raw:: html
-   
+
    <gradio-app space="kornia/line-segment-matching"></gradio-app>
 
 Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/kornia/line-segment-matching>`_.
