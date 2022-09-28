@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from .affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
 from .defmo import DeFMO
 from .hardnet import HardNet, HardNet8

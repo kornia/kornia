@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Dict, Tuple, Union
 
 import torch
@@ -44,9 +46,9 @@ class MotionBlurGenerator(RandomGeneratorBase):
 
     def __init__(
         self,
-        kernel_size: Union[int, Tuple[int, int]],
-        angle: Union[torch.Tensor, float, Tuple[float, float]],
-        direction: Union[torch.Tensor, float, Tuple[float, float]],
+        kernel_size: int | tuple[int, int],
+        angle: torch.Tensor | float | tuple[float, float],
+        direction: torch.Tensor | float | tuple[float, float],
     ) -> None:
         super().__init__()
         self.kernel_size = kernel_size
@@ -75,7 +77,7 @@ class MotionBlurGenerator(RandomGeneratorBase):
         self.angle_sampler = Uniform(angle[0], angle[1], validate_args=False)
         self.direction_sampler = Uniform(direction[0], direction[1], validate_args=False)
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> dict[str, torch.Tensor]:  # type:ignore
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         # self.ksize_factor.expand((batch_size, -1))
@@ -94,13 +96,13 @@ class MotionBlurGenerator(RandomGeneratorBase):
 @_deprecated(replace_with=MotionBlurGenerator.__name__)
 def random_motion_blur_generator(
     batch_size: int,
-    kernel_size: Union[int, Tuple[int, int]],
+    kernel_size: int | tuple[int, int],
     angle: torch.Tensor,
     direction: torch.Tensor,
     same_on_batch: bool = False,
     device: torch.device = torch.device('cpu'),
     dtype: torch.dtype = torch.float32,
-) -> Dict[str, torch.Tensor]:
+) -> dict[str, torch.Tensor]:
     r"""Get parameters for motion blur.
 
     Args:

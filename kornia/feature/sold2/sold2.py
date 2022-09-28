@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Dict, Optional, Tuple
 
 import torch
@@ -11,11 +13,11 @@ from kornia.testing import KORNIA_CHECK_SHAPE
 from .backbones import SOLD2Net
 from .sold2_detector import LineSegmentDetectionModule, line_map_to_segments, prob_to_junctions
 
-urls: Dict[str, str] = {}
+urls: dict[str, str] = {}
 urls["wireframe"] = "http://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth"
 
 
-default_cfg: Dict = {
+default_cfg: dict = {
     'backbone_cfg': {'input_channel': 1, 'depth': 4, 'num_stacks': 2, 'num_blocks': 1, 'num_classes': 5},
     'use_descriptor': True,
     'grid_size': 8,
@@ -75,7 +77,7 @@ class SOLD2(nn.Module):
         >>> matches = sold2.match(line_seg1, line_seg2, desc1[None], desc2[None])
     """
 
-    def __init__(self, pretrained: bool = True, config: Optional[Dict] = None):
+    def __init__(self, pretrained: bool = True, config: dict | None = None):
         super().__init__()
         # Initialize some parameters
         self.config = default_cfg if config is None else config
@@ -100,7 +102,7 @@ class SOLD2(nn.Module):
         # Initialize the line matcher
         self.line_matcher = WunschLineMatcher(**self.config["line_matcher_cfg"])
 
-    def forward(self, img: Tensor) -> Dict:
+    def forward(self, img: Tensor) -> dict:
         """
         Args:
             img: batched images with shape :math:`(B, 1, H, W)`.
@@ -227,7 +229,7 @@ class WunschLineMatcher(nn.Module):
 
         return matches
 
-    def sample_line_points(self, line_seg: Tensor) -> Tuple:
+    def sample_line_points(self, line_seg: Tensor) -> tuple:
         """Regularly sample points along each line segments, with a minimal distance between each point.
 
         Pad the remaining points.

@@ -1,4 +1,6 @@
 """Module for image projections."""
+from __future__ import annotations
+
 from typing import Tuple, Union
 
 import torch
@@ -37,7 +39,7 @@ def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:
     return intrinsics
 
 
-def random_intrinsics(low: Union[float, torch.Tensor], high: Union[float, torch.Tensor]) -> torch.Tensor:
+def random_intrinsics(low: float | torch.Tensor, high: float | torch.Tensor) -> torch.Tensor:
     r"""Generate a random camera matrix based on a given uniform distribution.
 
     Args:
@@ -54,7 +56,7 @@ def random_intrinsics(low: Union[float, torch.Tensor], high: Union[float, torch.
     return camera_matrix.view(1, 3, 3)
 
 
-def scale_intrinsics(camera_matrix: torch.Tensor, scale_factor: Union[float, torch.Tensor]) -> torch.Tensor:
+def scale_intrinsics(camera_matrix: torch.Tensor, scale_factor: float | torch.Tensor) -> torch.Tensor:
     r"""Scale a camera matrix containing the intrinsics.
 
     Applies the scaling factor to the focal length and center of projection.
@@ -107,7 +109,7 @@ def projection_from_KRt(K: torch.Tensor, R: torch.Tensor, t: torch.Tensor) -> to
     return K @ Rt
 
 
-def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     r"""Decompose the Projection matrix into Camera-Matrix, Rotation Matrix and Translation vector.
 
     Args:

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from .draw import draw_convex_polygon, draw_line, draw_rectangle
 from .grid import create_meshgrid, create_meshgrid3d
 from .helpers import _extract_device_dtype, get_cuda_device_if_available, safe_inverse_with_mask, safe_solve_with_mask

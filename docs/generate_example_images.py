@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import importlib
 import math
 import os
@@ -12,7 +14,7 @@ import torch
 import kornia as K
 
 
-def read_img_from_url(url: str, resize_to: Optional[Tuple[int, int]] = None) -> torch.Tensor:
+def read_img_from_url(url: str, resize_to: tuple[int, int] | None = None) -> torch.Tensor:
     # perform request
     response = requests.get(url).content
     # convert to array of ints

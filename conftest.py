@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from itertools import product
 from typing import Dict
 
@@ -8,14 +10,14 @@ import torch
 import kornia
 
 
-def get_test_devices() -> Dict[str, torch.device]:
+def get_test_devices() -> dict[str, torch.device]:
     """Create a dictionary with the devices to test the source code. CUDA devices will be test only in case the
     current hardware supports it.
 
     Return:
         dict(str, torch.device): list with devices names.
     """
-    devices: Dict[str, torch.device] = {}
+    devices: dict[str, torch.device] = {}
     devices["cpu"] = torch.device("cpu")
     if torch.cuda.is_available():
         devices["cuda"] = torch.device("cuda:0")
@@ -29,13 +31,13 @@ def get_test_devices() -> Dict[str, torch.device]:
     return devices
 
 
-def get_test_dtypes() -> Dict[str, torch.dtype]:
+def get_test_dtypes() -> dict[str, torch.dtype]:
     """Create a dictionary with the dtypes the source code.
 
     Return:
         dict(str, torch.dtype): list with dtype names.
     """
-    dtypes: Dict[str, torch.dtype] = {}
+    dtypes: dict[str, torch.dtype] = {}
     dtypes["bfloat16"] = torch.bfloat16
     dtypes["float16"] = torch.float16
     dtypes["float32"] = torch.float32
@@ -45,8 +47,8 @@ def get_test_dtypes() -> Dict[str, torch.dtype]:
 
 # setup the devices to test the source code
 
-TEST_DEVICES: Dict[str, torch.device] = get_test_devices()
-TEST_DTYPES: Dict[str, torch.dtype] = get_test_dtypes()
+TEST_DEVICES: dict[str, torch.device] = get_test_devices()
+TEST_DTYPES: dict[str, torch.dtype] = get_test_dtypes()
 
 # Combinations of device and dtype to be excluded from testing.
 # DEVICE_DTYPE_BLACKLIST = {('cpu', 'float16')}

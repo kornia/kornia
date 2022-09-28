@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Dict, Optional, Tuple, Union
 
 import torch
@@ -59,33 +61,32 @@ class AffineGenerator3D(RandomGeneratorBase):
 
     def __init__(
         self,
-        degrees: Union[
-            torch.Tensor,
-            float,
-            Tuple[float, float],
-            Tuple[float, float, float],
-            Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]],
-        ],
-        translate: Optional[Union[torch.Tensor, Tuple[float, float, float]]] = None,
-        scale: Optional[
-            Union[
-                torch.Tensor, Tuple[float, float], Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]
+        degrees: (
+            torch.Tensor
+            | float
+            | tuple[float, float]
+            | tuple[float, float, float]
+            | tuple[tuple[float, float], tuple[float, float], tuple[float, float]]
+        ),
+        translate: torch.Tensor | tuple[float, float, float] | None = None,
+        scale: None
+        | (
+            torch.Tensor | tuple[float, float] | tuple[tuple[float, float], tuple[float, float], tuple[float, float]]
+        ) = None,
+        shears: (
+            torch.Tensor
+            | float
+            | tuple[float, float]
+            | tuple[float, float, float, float, float, float]
+            | tuple[
+                tuple[float, float],
+                tuple[float, float],
+                tuple[float, float],
+                tuple[float, float],
+                tuple[float, float],
+                tuple[float, float],
             ]
-        ] = None,
-        shears: Union[
-            torch.Tensor,
-            float,
-            Tuple[float, float],
-            Tuple[float, float, float, float, float, float],
-            Tuple[
-                Tuple[float, float],
-                Tuple[float, float],
-                Tuple[float, float],
-                Tuple[float, float],
-                Tuple[float, float],
-                Tuple[float, float],
-            ],
-        ] = None,
+        ) = None,
     ) -> None:
         super().__init__()
         self.degrees = degrees
@@ -99,7 +100,7 @@ class AffineGenerator3D(RandomGeneratorBase):
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         degrees = _tuple_range_reader(self.degrees, 3, device, dtype)
-        shear: Optional[torch.Tensor] = None
+        shear: torch.Tensor | None = None
         if self.shears is not None:
             shear = _tuple_range_reader(self.shears, 6, device, dtype)
             self.sxy_sampler = Uniform(shear[0, 0], shear[0, 1], validate_args=False)
@@ -110,13 +111,13 @@ class AffineGenerator3D(RandomGeneratorBase):
             self.szy_sampler = Uniform(shear[5, 0], shear[5, 1], validate_args=False)
 
         # check translation range
-        self._translate: Optional[torch.Tensor] = None
+        self._translate: torch.Tensor | None = None
         if self.translate is not None:
             self._translate = torch.as_tensor(self.translate, device=device, dtype=dtype)
             _singular_range_check(self._translate, 'translate', bounds=(0, 1), mode='3d')
 
         # check scale range
-        self._scale: Optional[torch.Tensor] = None
+        self._scale: torch.Tensor | None = None
         if self.scale is not None:
             _scale = torch.as_tensor(self.scale, device=device, dtype=dtype)
             if _scale.shape == torch.Size([2]):
@@ -142,7 +143,7 @@ class AffineGenerator3D(RandomGeneratorBase):
             validate_args=False,
         )
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         depth = batch_shape[-3]
         height = batch_shape[-2]
@@ -225,13 +226,13 @@ def random_affine_generator3d(
     height: int,
     width: int,
     degrees: torch.Tensor,
-    translate: Optional[torch.Tensor] = None,
-    scale: Optional[torch.Tensor] = None,
-    shears: Optional[torch.Tensor] = None,
+    translate: torch.Tensor | None = None,
+    scale: torch.Tensor | None = None,
+    shears: torch.Tensor | None = None,
     same_on_batch: bool = False,
     device: torch.device = torch.device('cpu'),
     dtype: torch.dtype = torch.float32,
-) -> Dict[str, torch.Tensor]:
+) -> dict[str, torch.Tensor]:
     r"""Get parameters for ```3d affine``` transformation random affine transform.
 
     Args:

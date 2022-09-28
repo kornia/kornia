@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Dict, Optional, Tuple
 
 import torch
@@ -53,23 +55,19 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
         tensor(True)
     """
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
         w: int = int(params["forward_input_shape"][-1])
         flip_mat: Tensor = torch.tensor([[-1, 0, w - 1], [0, 1, 0], [0, 0, 1]], device=input.device, dtype=input.dtype)
 
         return flip_mat.repeat(input.size(0), 1, 1)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
         return hflip(input)
 
     def inverse_transform(
-        self,
-        input: Tensor,
-        flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
-        size: Optional[Tuple[int, int]] = None,
+        self, input: Tensor, flags: dict[str, Any], transform: Tensor | None = None, size: tuple[int, int] | None = None
     ) -> Tensor:
         return self.apply_transform(
             input,

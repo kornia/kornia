@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Dict, Tuple
 
 import torch
@@ -24,7 +26,7 @@ class JigsawGenerator(RandomGeneratorBase):
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
     """
 
-    def __init__(self, grid: Tuple[int, int] = (4, 4), ensure_perm: bool = True) -> None:
+    def __init__(self, grid: tuple[int, int] = (4, 4), ensure_perm: bool = True) -> None:
         super().__init__()
         self.grid = grid
         self.ensure_perm = ensure_perm
@@ -37,7 +39,7 @@ class JigsawGenerator(RandomGeneratorBase):
         self._device = device
         self._dtype = dtype
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
 

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Tuple
 
 import torch
@@ -40,7 +42,7 @@ def rgb_to_yuv(image: torch.Tensor) -> torch.Tensor:
     return out
 
 
-def rgb_to_yuv420(image: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def rgb_to_yuv420(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Convert an RGB image to YUV 420 (subsampled).
 
     The image data is assumed to be in the range of (0, 1). Input need to be padded to be evenly divisible by 2
@@ -71,7 +73,7 @@ def rgb_to_yuv420(image: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     return (yuvimage[..., :1, :, :], torch.nn.functional.avg_pool2d(yuvimage[..., 1:3, :, :], (2, 2)))
 
 
-def rgb_to_yuv422(image: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def rgb_to_yuv422(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Convert an RGB image to YUV 422 (subsampled).
 
     The image data is assumed to be in the range of (0, 1). Input need to be padded to be evenly divisible by 2
@@ -279,7 +281,7 @@ class RgbToYuv420(nn.Module):
         [1] https://es.wikipedia.org/wiki/YUV#RGB_a_Y'UV
     """
 
-    def forward(self, yuvinput: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:  # skipcq: PYL-R0201
+    def forward(self, yuvinput: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:  # skipcq: PYL-R0201
         return rgb_to_yuv420(yuvinput)
 
 
@@ -304,7 +306,7 @@ class RgbToYuv422(nn.Module):
         [1] https://es.wikipedia.org/wiki/YUV#RGB_a_Y'UV
     """
 
-    def forward(self, yuvinput: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:  # skipcq: PYL-R0201
+    def forward(self, yuvinput: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:  # skipcq: PYL-R0201
         return rgb_to_yuv422(yuvinput)
 
 

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import warnings
 from abc import ABCMeta, abstractmethod
 from functools import partial
@@ -20,10 +22,10 @@ from kornia.testing import KORNIA_UNWRAP
 from kornia.utils.helpers import _torch_inverse_cast
 
 
-def _get_geometric_only_param(module: "kornia.augmentation.ImageSequential", param: List[ParamItem]) -> List[ParamItem]:
-    named_modules: Iterator[Tuple[str, nn.Module]] = module.get_forward_sequence(param)
+def _get_geometric_only_param(module: kornia.augmentation.ImageSequential, param: list[ParamItem]) -> list[ParamItem]:
+    named_modules: Iterator[tuple[str, nn.Module]] = module.get_forward_sequence(param)
 
-    res: List[ParamItem] = []
+    res: list[ParamItem] = []
     for (_, mod), p in zip(named_modules, param):
         if isinstance(mod, (GeometricAugmentationBase2D,)):
             res.append(p)
@@ -36,13 +38,8 @@ class ApplyInverseInterface(metaclass=ABCMeta):
     @classmethod
     @abstractmethod
     def apply_trans(
-        cls,
-        input: Tensor,
-        label: Optional[Tensor],
-        module: nn.Module,
-        param: ParamItem,
-        extra_args: Dict[str, Any] = {},
-    ) -> Tuple[Tensor, Optional[Tensor]]:
+        cls, input: Tensor, label: Tensor | None, module: nn.Module, param: ParamItem, extra_args: dict[str, Any] = {}
+    ) -> tuple[Tensor, Tensor | None]:
         """Apply a transformation with respect to the parameters.
 
         Args:
@@ -57,7 +54,7 @@ class ApplyInverseInterface(metaclass=ABCMeta):
     @classmethod
     @abstractmethod
     def inverse(
-        cls, input: Tensor, module: nn.Module, param: Optional[ParamItem] = None, extra_args: Dict[str, Any] = {}
+        cls, input: Tensor, module: nn.Module, param: ParamItem | None = None, extra_args: dict[str, Any] = {}
     ) -> Tensor:
         """Inverse a transformation with respect to the parameters.
 
@@ -77,13 +74,8 @@ class ApplyInverseImpl(ApplyInverseInterface):
 
     @classmethod
     def apply_trans(
-        cls,
-        input: Tensor,
-        label: Optional[Tensor],
-        module: nn.Module,
-        param: ParamItem,
-        extra_args: Dict[str, Any] = {},
-    ) -> Tuple[Tensor, Optional[Tensor]]:
+        cls, input: Tensor, label: Tensor | None, module: nn.Module, param: ParamItem, extra_args: dict[str, Any] = {}
+    ) -> tuple[Tensor, Tensor | None]:
         """Apply a transformation with respect to the parameters.
 
         Args:
@@ -93,7 +85,7 @@ class ApplyInverseImpl(ApplyInverseInterface):
                 to apply transformations.
             param: the corresponding parameters to the module.
         """
-        mat: Optional[Tensor]
+        mat: Tensor | None
         if hasattr(module, "transform_matrix") and module.transform_matrix is not None:
             mat = cast(Tensor, module.transform_matrix)
         else:
@@ -113,7 +105,7 @@ class ApplyInverseImpl(ApplyInverseInterface):
 
     @classmethod
     def inverse(
-        cls, input: Tensor, module: nn.Module, param: Optional[ParamItem] = None, extra_args: Dict[str, Any] = {}
+        cls, input: Tensor, module: nn.Module, param: ParamItem | None = None, extra_args: dict[str, Any] = {}
     ) -> Tensor:
         """Inverse a transformation with respect to the parameters.
 
@@ -123,7 +115,7 @@ class ApplyInverseImpl(ApplyInverseInterface):
                 to apply transformations.
             param: the corresponding parameters to the module.
         """
-        mat: Optional[Tensor]
+        mat: Tensor | None
         if hasattr(module, "transform_matrix") and module.transform_matrix is not None:
             mat = cast(Tensor, module.transform_matrix)
         else:
@@ -137,8 +129,8 @@ class ApplyInverseImpl(ApplyInverseInterface):
 
     @classmethod
     def _get_transformation(
-        cls, input: Tensor, module: nn.Module, maybe_param: Optional[ParamItem] = None, extra_args: Dict[str, Any] = {}
-    ) -> Optional[Tensor]:
+        cls, input: Tensor, module: nn.Module, maybe_param: ParamItem | None = None, extra_args: dict[str, Any] = {}
+    ) -> Tensor | None:
 
         if (
             isinstance(module, (GeometricAugmentationBase2D, kornia.augmentation.ImageSequential))
@@ -146,7 +138,7 @@ class ApplyInverseImpl(ApplyInverseInterface):
         ):
             raise ValueError(f"Parameters of transformation matrix for {module} has not been computed.")
 
-        maybe_mat: Optional[Tensor] = None
+        maybe_mat: Tensor | None = None
         param = KORNIA_UNWRAP(maybe_param, ParamItem)
         if isinstance(module, GeometricAugmentationBase2D):
             param_data = KORNIA_UNWRAP(param.data, Dict[str, Tensor])
@@ -171,13 +163,8 @@ class InputApplyInverse(ApplyInverseImpl):
 
     @classmethod
     def apply_trans(  # type: ignore
-        cls,
-        input: Tensor,
-        label: Optional[Tensor],
-        module: nn.Module,
-        param: ParamItem,
-        extra_args: Dict[str, Any] = {},
-    ) -> Tuple[Tensor, Optional[Tensor]]:
+        cls, input: Tensor, label: Tensor | None, module: nn.Module, param: ParamItem, extra_args: dict[str, Any] = {}
+    ) -> tuple[Tensor, Tensor | None]:
         """Apply a transformation with respect to the parameters.
 
         Args:
@@ -214,7 +201,7 @@ class InputApplyInverse(ApplyInverseImpl):
 
     @classmethod
     def inverse(
-        cls, input: Tensor, module: nn.Module, param: Optional[ParamItem] = None, extra_args: Dict[str, Any] = {}
+        cls, input: Tensor, module: nn.Module, param: ParamItem | None = None, extra_args: dict[str, Any] = {}
     ) -> Tensor:
         """Inverse a transformation with respect to the parameters.
 
@@ -247,7 +234,7 @@ class MaskApplyInverse(ApplyInverseImpl):
     data_key = DataKey.MASK
 
     @classmethod
-    def make_input_only_sequential(cls, module: "kornia.augmentation.ImageSequential") -> Callable:
+    def make_input_only_sequential(cls, module: kornia.augmentation.ImageSequential) -> Callable:
         """Disable all other additional inputs (e.g. ) for ImageSequential."""
 
         def f(*args, **kwargs):
@@ -263,11 +250,11 @@ class MaskApplyInverse(ApplyInverseImpl):
     def apply_trans(
         cls,
         input: Tensor,
-        label: Optional[Tensor],
+        label: Tensor | None,
         module: nn.Module,
-        param: Optional[ParamItem] = None,
-        extra_args: Dict[str, Any] = {},
-    ) -> Tuple[Tensor, Optional[Tensor]]:
+        param: ParamItem | None = None,
+        extra_args: dict[str, Any] = {},
+    ) -> tuple[Tensor, Tensor | None]:
         """Apply a transformation with respect to the parameters.
 
         Args:
@@ -293,7 +280,7 @@ class MaskApplyInverse(ApplyInverseImpl):
             _param = cast(List[ParamItem], _param)
             temp = module.apply_inverse_func
             module.apply_inverse_func = MaskApplyInverse
-            geo_param: List[ParamItem] = _get_geometric_only_param(module, _param)
+            geo_param: list[ParamItem] = _get_geometric_only_param(module, _param)
             input = cls.make_input_only_sequential(module)(input, label=None, params=geo_param)
             module.apply_inverse_func = temp
         else:
@@ -302,7 +289,7 @@ class MaskApplyInverse(ApplyInverseImpl):
 
     @classmethod
     def inverse(
-        cls, input: Tensor, module: nn.Module, param: Optional[ParamItem] = None, extra_args: Dict[str, Any] = {}
+        cls, input: Tensor, module: nn.Module, param: ParamItem | None = None, extra_args: dict[str, Any] = {}
     ) -> Tensor:
         """Inverse a transformation with respect to the parameters.
 
@@ -330,7 +317,7 @@ class BBoxApplyInverse(ApplyInverseImpl):
     """
 
     @classmethod
-    def _get_padding_size(cls, module: nn.Module, param: Optional[ParamItem]) -> Optional[Tensor]:
+    def _get_padding_size(cls, module: nn.Module, param: ParamItem | None) -> Tensor | None:
         if isinstance(module, RandomCrop):
             _param = cast(Dict[str, Tensor], param.data)  # type: ignore
             return _param.get("padding_size")
@@ -394,13 +381,8 @@ class BBoxApplyInverse(ApplyInverseImpl):
 
     @classmethod
     def apply_trans(
-        cls,
-        input: Tensor,
-        label: Optional[Tensor],
-        module: nn.Module,
-        param: ParamItem,
-        extra_args: Dict[str, Any] = {},
-    ) -> Tuple[Tensor, Optional[Tensor]]:
+        cls, input: Tensor, label: Tensor | None, module: nn.Module, param: ParamItem, extra_args: dict[str, Any] = {}
+    ) -> tuple[Tensor, Tensor | None]:
         """Apply a transformation with respect to the parameters.
 
         Args:
@@ -424,7 +406,7 @@ class BBoxApplyInverse(ApplyInverseImpl):
 
     @classmethod
     def inverse(
-        cls, input: Tensor, module: nn.Module, param: Optional[ParamItem] = None, extra_args: Dict[str, Any] = {}
+        cls, input: Tensor, module: nn.Module, param: ParamItem | None = None, extra_args: dict[str, Any] = {}
     ) -> Tensor:
         """Inverse a transformation with respect to the parameters.
 
@@ -471,19 +453,14 @@ class BBoxXYXYApplyInverse(BBoxApplyInverse):
 
     @classmethod
     def apply_trans(
-        cls,
-        input: Tensor,
-        label: Optional[Tensor],
-        module: nn.Module,
-        param: ParamItem,
-        extra_args: Dict[str, Any] = {},
-    ) -> Tuple[Tensor, Optional[Tensor]]:
+        cls, input: Tensor, label: Tensor | None, module: nn.Module, param: ParamItem, extra_args: dict[str, Any] = {}
+    ) -> tuple[Tensor, Tensor | None]:
         warnings.warn("BBoxXYXYApplyInverse is no longer maintained. Please use BBoxApplyInverse instead.")
         return super().apply_trans(input, label=label, module=module, param=param, extra_args=extra_args)
 
     @classmethod
     def inverse(
-        cls, input: Tensor, module: nn.Module, param: Optional[ParamItem] = None, extra_args: Dict[str, Any] = {}
+        cls, input: Tensor, module: nn.Module, param: ParamItem | None = None, extra_args: dict[str, Any] = {}
     ) -> Tensor:
         warnings.warn("BBoxXYXYApplyInverse is no longer maintained. Please use BBoxApplyInverse instead.")
         return super().inverse(input, module=module, param=param, extra_args=extra_args)
@@ -576,7 +553,7 @@ class ApplyInverse:
     """Apply and inverse transformations for any tensors (e.g. mask, box, points)."""
 
     @classmethod
-    def _get_func_by_key(cls, dcate: Union[str, int, DataKey]) -> Type[ApplyInverseInterface]:
+    def _get_func_by_key(cls, dcate: str | int | DataKey) -> type[ApplyInverseInterface]:
         if DataKey.get(dcate) == DataKey.INPUT:
             return InputApplyInverse
         if DataKey.get(dcate) == DataKey.MASK:
@@ -592,12 +569,12 @@ class ApplyInverse:
     def apply_by_key(
         cls,
         input: Tensor,
-        label: Optional[Tensor],
+        label: Tensor | None,
         module: nn.Module,
         param: ParamItem,
-        dcate: Union[str, int, DataKey] = DataKey.INPUT,
-        extra_args: Dict[str, Any] = {},
-    ) -> Tuple[Tensor, Optional[Tensor]]:
+        dcate: str | int | DataKey = DataKey.INPUT,
+        extra_args: dict[str, Any] = {},
+    ) -> tuple[Tensor, Tensor | None]:
         """Apply a transformation with respect to the parameters.
 
         Args:
@@ -609,7 +586,7 @@ class ApplyInverse:
             dcate: data category. 'input', 'mask', 'bbox', 'bbox_xyxy', 'bbox_xyhw', 'keypoints'.
                 By default, it is set to 'input'.
         """
-        func: Type[ApplyInverseInterface] = cls._get_func_by_key(dcate)
+        func: type[ApplyInverseInterface] = cls._get_func_by_key(dcate)
 
         if isinstance(input, (tuple,)):
             # If the input is a tuple with (input, mat) or something else
@@ -621,9 +598,9 @@ class ApplyInverse:
         cls,
         input: Tensor,
         module: nn.Module,
-        param: Optional[ParamItem] = None,
-        dcate: Union[str, int, DataKey] = DataKey.INPUT,
-        extra_args: Dict[str, Any] = {},
+        param: ParamItem | None = None,
+        dcate: str | int | DataKey = DataKey.INPUT,
+        extra_args: dict[str, Any] = {},
     ) -> Tensor:
         """Inverse a transformation with respect to the parameters.
 
@@ -635,5 +612,5 @@ class ApplyInverse:
             dcate: data category. 'input', 'mask', 'bbox', 'bbox_xyxy', 'bbox_xyhw', 'keypoints'.
                 By default, it is set to 'input'.
         """
-        func: Type[ApplyInverseInterface] = cls._get_func_by_key(dcate)
+        func: type[ApplyInverseInterface] = cls._get_func_by_key(dcate)
         return func.inverse(input, module, param, extra_args=extra_args)

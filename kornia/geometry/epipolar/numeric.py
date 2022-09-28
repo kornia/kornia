@@ -1,5 +1,7 @@
 """Module containing numerical functionalities for SfM."""
 
+from __future__ import annotations
+
 import torch
 
 

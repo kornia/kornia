@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Optional, Tuple
 
 import torch
@@ -14,7 +16,7 @@ __all__ = ["crop_and_resize", "crop_by_boxes", "crop_by_transform_mat", "crop_by
 def crop_and_resize(
     tensor: torch.Tensor,
     boxes: torch.Tensor,
-    size: Tuple[int, int],
+    size: tuple[int, int],
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
     align_corners: bool = True,
@@ -85,7 +87,7 @@ def crop_and_resize(
 
 def center_crop(
     tensor: torch.Tensor,
-    size: Tuple[int, int],
+    size: tuple[int, int],
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
     align_corners: bool = True,
@@ -225,7 +227,7 @@ def crop_by_boxes(
     # Note: Tensor.dtype must be float. "solve_cpu" not implemented for 'Long'
     dst_trans_src: torch.Tensor = get_perspective_transform(src_box.to(tensor), dst_box.to(tensor))
 
-    bbox: Tuple[torch.Tensor, torch.Tensor] = infer_bbox_shape(dst_box)
+    bbox: tuple[torch.Tensor, torch.Tensor] = infer_bbox_shape(dst_box)
     if not ((bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all()):
         raise AssertionError(
             f"Cropping height, width and depth must be exact same in a batch. "
@@ -243,7 +245,7 @@ def crop_by_boxes(
 def crop_by_transform_mat(
     tensor: torch.Tensor,
     transform: torch.Tensor,
-    out_size: Tuple[int, int],
+    out_size: tuple[int, int],
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
     align_corners: bool = True,
@@ -276,9 +278,9 @@ def crop_by_transform_mat(
 def crop_by_indices(
     input: torch.Tensor,
     src_box: torch.Tensor,
-    size: Optional[Tuple] = None,
+    size: tuple | None = None,
     interpolation: str = 'bilinear',
-    align_corners: Optional[bool] = None,
+    align_corners: bool | None = None,
     antialias: bool = False,
     shape_compensation: str = "resize",
 ) -> torch.Tensor:

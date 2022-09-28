@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Dict, Optional, Tuple, Union
 
 import torch
@@ -29,7 +31,7 @@ class CropGenerator3D(RandomGeneratorBase):
     """
 
     def __init__(
-        self, size: Union[Tuple[int, int, int], torch.Tensor], resize_to: Optional[Tuple[int, int, int]] = None
+        self, size: tuple[int, int, int] | torch.Tensor, resize_to: tuple[int, int, int] | None = None
     ) -> None:
         super().__init__()
         self.size = size
@@ -46,7 +48,7 @@ class CropGenerator3D(RandomGeneratorBase):
             torch.tensor(0.0, device=device, dtype=dtype), torch.tensor(1.0, device=device, dtype=dtype)
         )
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> dict[str, torch.Tensor]:  # type:ignore
         batch_size, _, depth, height, width = batch_shape
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.size if isinstance(self.size, torch.Tensor) else None])
@@ -142,9 +144,9 @@ def center_crop_generator3d(
     depth: int,
     height: int,
     width: int,
-    size: Tuple[int, int, int],
+    size: tuple[int, int, int],
     device: torch.device = torch.device('cpu'),
-) -> Dict[str, torch.Tensor]:
+) -> dict[str, torch.Tensor]:
     r"""Get parameters for ```center_crop3d``` transformation for center crop transform.
 
     Args:
@@ -240,13 +242,13 @@ def center_crop_generator3d(
 @_deprecated(replace_with=CropGenerator3D.__name__)
 def random_crop_generator3d(
     batch_size: int,
-    input_size: Tuple[int, int, int],
-    size: Union[Tuple[int, int, int], torch.Tensor],
-    resize_to: Optional[Tuple[int, int, int]] = None,
+    input_size: tuple[int, int, int],
+    size: tuple[int, int, int] | torch.Tensor,
+    resize_to: tuple[int, int, int] | None = None,
     same_on_batch: bool = False,
     device: torch.device = torch.device('cpu'),
     dtype: torch.dtype = torch.float32,
-) -> Dict[str, torch.Tensor]:
+) -> dict[str, torch.Tensor]:
     r"""Get parameters for ```crop``` transformation for crop transform.
 
     Args:

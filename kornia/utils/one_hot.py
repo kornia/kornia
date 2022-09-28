@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Optional
 
 import torch
@@ -6,8 +8,8 @@ import torch
 def one_hot(
     labels: torch.Tensor,
     num_classes: int,
-    device: Optional[torch.device] = None,
-    dtype: Optional[torch.dtype] = None,
+    device: torch.device | None = None,
+    dtype: torch.dtype | None = None,
     eps: float = 1e-6,
 ) -> torch.Tensor:
     r"""Convert an integer label x-D tensor to a one-hot (x+1)-D tensor.

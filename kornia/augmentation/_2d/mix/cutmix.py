@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
@@ -92,11 +94,11 @@ class RandomCutMix(MixAugmentationBase):
 
     def __init__(
         self,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        height: int | None = None,
+        width: int | None = None,
         num_mix: int = 1,
-        cut_size: Optional[Union[Tensor, Tuple[float, float]]] = None,
-        beta: Optional[Union[Tensor, float]] = None,
+        cut_size: Tensor | tuple[float, float] | None = None,
+        beta: Tensor | float | None = None,
         same_on_batch: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
@@ -112,8 +114,8 @@ class RandomCutMix(MixAugmentationBase):
         warnings.warn("`RandomCutMix` is deprecated. Please use `RandomCutMixV2` instead.")
 
     def apply_transform(  # type: ignore
-        self, input: Tensor, label: Tensor, params: Dict[str, Tensor]  # type: ignore
-    ) -> Tuple[Tensor, Tensor]:
+        self, input: Tensor, label: Tensor, params: dict[str, Tensor]  # type: ignore
+    ) -> tuple[Tensor, Tensor]:
         height, width = input.size(2), input.size(3)
         num_mixes = params["mix_pairs"].size(0)
         batch_size = params["mix_pairs"].size(1)
@@ -201,17 +203,17 @@ class RandomCutMixV2(MixAugmentationBaseV2):
     def __init__(
         self,
         num_mix: int = 1,
-        cut_size: Optional[Union[Tensor, Tuple[float, float]]] = None,
-        beta: Optional[Union[Tensor, float]] = None,
+        cut_size: Tensor | tuple[float, float] | None = None,
+        beta: Tensor | float | None = None,
         same_on_batch: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
-        data_keys: List[Union[str, int, DataKey]] = [DataKey.INPUT],
+        data_keys: list[str | int | DataKey] = [DataKey.INPUT],
     ) -> None:
         super().__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim, data_keys=data_keys)
         self._param_generator = cast(rg.CutmixGenerator, rg.CutmixGenerator(cut_size, beta, num_mix, p=p))
 
-    def apply_transform_class(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def apply_transform_class(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
         height, width = params["image_shape"]
 
         out_labels = []
@@ -233,7 +235,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         return torch.stack(out_labels, dim=0)
 
     def apply_non_transform_class(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Optional[Dict[str, Any]] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any] | None = None
     ) -> Tensor:
         out_labels = []
         lam = torch.zeros((len(input)), device=input.device, dtype=params["dtype"])
@@ -252,7 +254,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         return torch.stack(out_labels, dim=0)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], maybe_flags: Optional[Dict[str, Any]] = None
+        self, input: Tensor, params: dict[str, Tensor], maybe_flags: dict[str, Any] | None = None
     ) -> Tensor:
         height, width = input.size(2), input.size(3)
 

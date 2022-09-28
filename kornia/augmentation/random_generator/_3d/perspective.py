@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Dict, Union
 
 import torch
@@ -25,7 +27,7 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
     """
 
-    def __init__(self, distortion_scale: Union[torch.Tensor, float] = 0.5) -> None:
+    def __init__(self, distortion_scale: torch.Tensor | float = 0.5) -> None:
         super().__init__()
         self.distortion_scale = distortion_scale
 
@@ -43,7 +45,7 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
             validate_args=False,
         )
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> dict[str, torch.Tensor]:  # type:ignore
         batch_size = batch_shape[0]
         depth = batch_shape[-3]
         height = batch_shape[-2]
@@ -100,7 +102,7 @@ def random_perspective_generator3d(
     same_on_batch: bool = False,
     device: torch.device = torch.device('cpu'),
     dtype: torch.dtype = torch.float32,
-) -> Dict[str, torch.Tensor]:
+) -> dict[str, torch.Tensor]:
     r"""Get parameters for ``perspective`` for a random perspective transform.
 
     Args:

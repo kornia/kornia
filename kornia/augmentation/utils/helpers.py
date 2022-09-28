@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 
@@ -56,7 +58,7 @@ def _validate_input3d(f: Callable) -> Callable:
     return wrapper
 
 
-def _infer_batch_shape(input: Union[Tensor, Tuple[Tensor, Tensor]]) -> torch.Size:
+def _infer_batch_shape(input: Tensor | tuple[Tensor, Tensor]) -> torch.Size:
     r"""Infer input shape.
 
     Input may be either (tensor,) or (tensor, transform_matrix)
@@ -68,7 +70,7 @@ def _infer_batch_shape(input: Union[Tensor, Tuple[Tensor, Tensor]]) -> torch.Siz
     return tensor.shape
 
 
-def _infer_batch_shape3d(input: Union[Tensor, Tuple[Tensor, Tensor]]) -> torch.Size:
+def _infer_batch_shape3d(input: Tensor | tuple[Tensor, Tensor]) -> torch.Size:
     r"""Infer input shape.
 
     Input may be either (tensor,) or (tensor, transform_matrix)
@@ -128,7 +130,7 @@ def _transform_input3d(input: Tensor) -> Tensor:
     return input
 
 
-def _validate_input_dtype(input: Tensor, accepted_dtypes: List) -> None:
+def _validate_input_dtype(input: Tensor, accepted_dtypes: list) -> None:
     r"""Check if the dtype of the input tensor is in the range of accepted_dtypes
     Args:
         input: Tensor
@@ -138,7 +140,7 @@ def _validate_input_dtype(input: Tensor, accepted_dtypes: List) -> None:
         raise TypeError(f"Expected input of {accepted_dtypes}. Got {input.dtype}")
 
 
-def _transform_output_shape(output: Tensor, shape: Tuple) -> Tensor:
+def _transform_output_shape(output: Tensor, shape: tuple) -> Tensor:
     r"""Collapse the broadcasted batch dimensions an input tensor to be the specified shape.
     Args:
         input: Tensor
@@ -158,7 +160,7 @@ def _transform_output_shape(output: Tensor, shape: Tuple) -> Tensor:
     return out_tensor  # type: ignore
 
 
-def _validate_shape(shape: Union[Tuple, torch.Size], required_shapes: Tuple[str, ...] = ("BCHW",)) -> None:
+def _validate_shape(shape: tuple | torch.Size, required_shapes: tuple[str, ...] = ("BCHW",)) -> None:
     r"""Check if the dtype of the input tensor is in the range of accepted_dtypes
     Args:
         shape: tensor shape
@@ -190,7 +192,7 @@ def _validate_input_shape(input: Tensor, channel_index: int, number: int) -> boo
 
 
 def _adapted_rsampling(
-    shape: Union[Tuple, torch.Size], dist: torch.distributions.Distribution, same_on_batch=False
+    shape: tuple | torch.Size, dist: torch.distributions.Distribution, same_on_batch=False
 ) -> Tensor:
     r"""The uniform reparameterized sampling function that accepts 'same_on_batch'.
 
@@ -202,9 +204,7 @@ def _adapted_rsampling(
     return dist.rsample(shape)
 
 
-def _adapted_sampling(
-    shape: Union[Tuple, torch.Size], dist: torch.distributions.Distribution, same_on_batch=False
-) -> Tensor:
+def _adapted_sampling(shape: tuple | torch.Size, dist: torch.distributions.Distribution, same_on_batch=False) -> Tensor:
     r"""The uniform sampling function that accepts 'same_on_batch'.
 
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
@@ -216,10 +216,7 @@ def _adapted_sampling(
 
 
 def _adapted_uniform(
-    shape: Union[Tuple, torch.Size],
-    low: Union[float, int, Tensor],
-    high: Union[float, int, Tensor],
-    same_on_batch: bool = False,
+    shape: tuple | torch.Size, low: float | int | Tensor, high: float | int | Tensor, same_on_batch: bool = False
 ) -> Tensor:
     r"""The uniform sampling function that accepts 'same_on_batch'.
 
@@ -241,10 +238,7 @@ def _adapted_uniform(
 
 
 def _adapted_beta(
-    shape: Union[Tuple, torch.Size],
-    a: Union[float, int, Tensor],
-    b: Union[float, int, Tensor],
-    same_on_batch: bool = False,
+    shape: tuple | torch.Size, a: float | int | Tensor, b: float | int | Tensor, same_on_batch: bool = False
 ) -> Tensor:
     r"""The beta sampling function that accepts 'same_on_batch'.
 
@@ -261,12 +255,12 @@ def _adapted_beta(
     return _adapted_rsampling(shape, dist, same_on_batch)
 
 
-def _shape_validation(param: Tensor, shape: Union[tuple, list], name: str) -> None:
+def _shape_validation(param: Tensor, shape: tuple | list, name: str) -> None:
     if param.shape != torch.Size(shape):
         raise AssertionError(f"Invalid shape for {name}. Expected {shape}. Got {param.shape}")
 
 
-def deepcopy_dict(params: Dict[str, Any]) -> Dict[str, Any]:
+def deepcopy_dict(params: dict[str, Any]) -> dict[str, Any]:
     """Perform deep copy on any dict.
 
     Support tensor copying here.
@@ -282,11 +276,11 @@ def deepcopy_dict(params: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def override_parameters(
-    params: Dict[str, Any],
-    params_override: Optional[Dict[str, Any]] = None,
+    params: dict[str, Any],
+    params_override: dict[str, Any] | None = None,
     if_none_exist: str = 'ignore',
     in_place: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Override params dict w.r.t params_override.
 
     Args:

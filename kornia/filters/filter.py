@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import List
 
 import torch
@@ -6,7 +8,7 @@ import torch.nn.functional as F
 from .kernels import normalize_kernel2d
 
 
-def _compute_padding(kernel_size: List[int]) -> List[int]:
+def _compute_padding(kernel_size: list[int]) -> list[int]:
     """Compute padding tuple."""
     # 4 or 6 ints:  (padding_left, padding_right,padding_top,padding_bottom)
     # https://pytorch.org/docs/stable/nn.html#torch.nn.functional.pad
@@ -114,7 +116,7 @@ def filter2d(
 
     # pad the input tensor
     if padding == 'same':
-        padding_shape: List[int] = _compute_padding([height, width])
+        padding_shape: list[int] = _compute_padding([height, width])
         input = F.pad(input, padding_shape, mode=border_type)
 
     # kernel and input tensor reshape to align element-wise or batch-wise params
@@ -275,7 +277,7 @@ def filter3d(
 
     # pad the input tensor
     depth, height, width = tmp_kernel.shape[-3:]
-    padding_shape: List[int] = _compute_padding([depth, height, width])
+    padding_shape: list[int] = _compute_padding([depth, height, width])
     input_pad: torch.Tensor = F.pad(input, padding_shape, mode=border_type)
 
     # kernel and input tensor reshape to align element-wise or batch-wise params

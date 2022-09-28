@@ -2,6 +2,8 @@
 Modified from: https://github.com/idiap/fast-
 transformers/blob/master/fast_transformers/attention/linear_attention.py."""
 
+from __future__ import annotations
+
 from typing import Optional
 
 import torch
@@ -23,8 +25,8 @@ class LinearAttention(Module):
         queries: torch.Tensor,
         keys: torch.Tensor,
         values: torch.Tensor,
-        q_mask: Optional[torch.Tensor] = None,
-        kv_mask: Optional[torch.Tensor] = None,
+        q_mask: torch.Tensor | None = None,
+        kv_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Multi-Head linear attention proposed in "Transformers are RNNs"
         Args:

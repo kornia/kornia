@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
@@ -66,13 +68,13 @@ class RandomRotation(GeometricAugmentationBase2D):
 
     def __init__(
         self,
-        degrees: Union[Tensor, float, Tuple[float, float], List[float]],
-        resample: Union[str, int, Resample] = Resample.BILINEAR.name,
+        degrees: Tensor | float | tuple[float, float] | list[float],
+        resample: str | int | Resample = Resample.BILINEAR.name,
         same_on_batch: bool = False,
         align_corners: bool = True,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
+        return_transform: bool | None = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator = cast(
@@ -80,7 +82,7 @@ class RandomRotation(GeometricAugmentationBase2D):
         )
         self.flags = dict(resample=Resample.get(resample), align_corners=align_corners)
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
         # TODO: Update to use `get_rotation_matrix2d`
         angles: Tensor = params["degrees"].to(input)
 
@@ -95,18 +97,14 @@ class RandomRotation(GeometricAugmentationBase2D):
         return trans_mat
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
         transform = cast(Tensor, transform)
 
         return affine(input, transform[..., :2, :3], flags["resample"].name.lower(), "zeros", flags["align_corners"])
 
     def inverse_transform(
-        self,
-        input: Tensor,
-        flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
-        size: Optional[Tuple[int, int]] = None,
+        self, input: Tensor, flags: dict[str, Any], transform: Tensor | None = None, size: tuple[int, int] | None = None
     ) -> Tensor:
         return self.apply_transform(
             input,

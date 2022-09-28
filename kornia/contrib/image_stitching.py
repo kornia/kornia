@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Dict, List, Optional, Tuple
 
 import torch
@@ -64,7 +66,7 @@ class ImageStitcher(nn.Module):
 
     def estimate_transform(self, **kwargs) -> torch.Tensor:
         """Compute the corresponding homography."""
-        homos: List[torch.Tensor] = []
+        homos: list[torch.Tensor] = []
         kp1, kp2, idx = kwargs['keypoints0'], kwargs['keypoints1'], kwargs['batch_indexes']
         for i in range(len(idx.unique())):
             homos.append(self._estimate_homography(kp1[idx == i], kp2[idx == i]))
@@ -81,11 +83,11 @@ class ImageStitcher(nn.Module):
             raise NotImplementedError(f"Unsupported blending method {self.blending_method}. Use ‘naive’.")
         return out
 
-    def preprocess(self, image_1: torch.Tensor, image_2: torch.Tensor) -> Dict[str, torch.Tensor]:
+    def preprocess(self, image_1: torch.Tensor, image_2: torch.Tensor) -> dict[str, torch.Tensor]:
         """Preprocess input to the required format."""
         # TODO: probably perform histogram matching here.
         if isinstance(self.matcher, LoFTR) or isinstance(self.matcher, LocalFeatureMatcher):
-            input_dict: Dict[str, torch.Tensor] = {  # LofTR works on grayscale images only
+            input_dict: dict[str, torch.Tensor] = {  # LofTR works on grayscale images only
                 "image0": rgb_to_grayscale(image_1),
                 "image1": rgb_to_grayscale(image_2),
             }
@@ -108,12 +110,12 @@ class ImageStitcher(nn.Module):
         self,
         images_left: torch.Tensor,
         images_right: torch.Tensor,
-        mask_left: Optional[torch.Tensor] = None,
-        mask_right: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        mask_left: torch.Tensor | None = None,
+        mask_right: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         # Compute the transformed images
-        input_dict: Dict[str, torch.Tensor] = self.preprocess(images_left, images_right)
-        out_shape: Tuple[int, int] = (images_left.shape[-2], images_left.shape[-1] + images_right.shape[-1])
+        input_dict: dict[str, torch.Tensor] = self.preprocess(images_left, images_right)
+        out_shape: tuple[int, int] = (images_left.shape[-2], images_left.shape[-1] + images_right.shape[-1])
         correspondences: dict = self.on_matcher(input_dict)
         homo: torch.Tensor = self.estimate_transform(**correspondences)
         src_img = warp_perspective(images_right, homo, out_shape)

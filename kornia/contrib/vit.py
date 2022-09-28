@@ -5,6 +5,8 @@ Paper: https://paperswithcode.com/paper/an-image-is-worth-16x16-words-transforme
 Based on: https://towardsdatascience.com/implementing-visualttransformer-in-pytorch-184f9f16f632
 Added some tricks from https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py
 """
+from __future__ import annotations
+
 from typing import List, Optional, Tuple
 
 import torch
@@ -104,7 +106,7 @@ class TransformerEncoder(nn.Module):
         self.blocks = nn.Sequential(
             *(TransformerEncoderBlock(embed_dim, num_heads, dropout_rate, dropout_attn) for _ in range(depth))
         )
-        self.results: List[torch.Tensor] = []
+        self.results: list[torch.Tensor] = []
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         self.results = []
@@ -124,7 +126,7 @@ class PatchEmbedding(nn.Module):
         out_channels: int = 768,
         patch_size: int = 16,
         image_size: int = 224,
-        backbone: Optional[nn.Module] = None,
+        backbone: nn.Module | None = None,
     ) -> None:
         super().__init__()
         self.in_channels = in_channels
@@ -142,7 +144,7 @@ class PatchEmbedding(nn.Module):
         self.cls_token = nn.Parameter(torch.randn(1, 1, out_channels))
         self.positions = nn.Parameter(torch.randn(feat_size + 1, out_channels))
 
-    def _compute_feats_dims(self, image_size: Tuple[int, int, int]) -> Tuple[int, int]:
+    def _compute_feats_dims(self, image_size: tuple[int, int, int]) -> tuple[int, int]:
         out = self.backbone(torch.zeros(1, *image_size)).detach()
         return out.shape[-3], out.shape[-2] * out.shape[-1]
 
@@ -196,7 +198,7 @@ class VisionTransformer(nn.Module):
         num_heads: int = 12,
         dropout_rate: float = 0.0,
         dropout_attn: float = 0.0,
-        backbone: Optional[nn.Module] = None,
+        backbone: nn.Module | None = None,
     ) -> None:
         super().__init__()
         self.image_size = image_size

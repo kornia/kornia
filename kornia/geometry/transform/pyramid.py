@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import math
 from typing import List, Tuple
 
@@ -184,7 +186,7 @@ class ScalePyramid(nn.Module):
             cur_level = x
         return cur_level, cur_sigma, pixel_distance
 
-    def forward(self, x: torch.Tensor) -> Tuple[List, List, List]:  # type: ignore
+    def forward(self, x: torch.Tensor) -> tuple[list, list, list]:  # type: ignore
         bs, _, _, _ = x.size()
         cur_level, cur_sigma, pixel_distance = self.get_first_level(x)
 
@@ -308,7 +310,7 @@ def pyrup(input: torch.Tensor, border_type: str = 'reflect', align_corners: bool
 
 def build_pyramid(
     input: torch.Tensor, max_level: int, border_type: str = 'reflect', align_corners: bool = False
-) -> List[torch.Tensor]:
+) -> list[torch.Tensor]:
     r"""Construct the Gaussian pyramid for an image.
 
     .. image:: _static/img/build_pyramid.png
@@ -339,7 +341,7 @@ def build_pyramid(
         raise ValueError(f"Invalid max_level, it must be a positive integer. Got: {max_level}")
 
     # create empty list and append the original image
-    pyramid: List[torch.Tensor] = []
+    pyramid: list[torch.Tensor] = []
     pyramid.append(input)
 
     # iterate and downsample

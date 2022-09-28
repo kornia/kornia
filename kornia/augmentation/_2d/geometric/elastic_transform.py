@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Dict, Optional, Tuple
 
 import torch
@@ -45,16 +47,16 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
 
     def __init__(
         self,
-        kernel_size: Tuple[int, int] = (63, 63),
-        sigma: Tuple[float, float] = (32.0, 32.0),
-        alpha: Tuple[float, float] = (1.0, 1.0),
+        kernel_size: tuple[int, int] = (63, 63),
+        sigma: tuple[float, float] = (32.0, 32.0),
+        alpha: tuple[float, float] = (1.0, 1.0),
         align_corners: bool = False,
         mode: str = "bilinear",
         padding_mode: str = "zeros",
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
+        return_transform: bool | None = None,
     ) -> None:
         super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
@@ -68,7 +70,7 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
             padding_mode=padding_mode,
         )
 
-    def generate_parameters(self, shape: torch.Size) -> Dict[str, Tensor]:
+    def generate_parameters(self, shape: torch.Size) -> dict[str, Tensor]:
         B, _, H, W = shape
         if self.same_on_batch:
             noise = torch.rand(1, 2, H, W, device=self.device, dtype=self.dtype).repeat(B, 1, 1, 1)
@@ -77,11 +79,11 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
         return dict(noise=noise * 2 - 1)
 
     # TODO: It is incorrect to return identity
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
         return self.identity_matrix(input)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
         return elastic_transform2d(
             input,

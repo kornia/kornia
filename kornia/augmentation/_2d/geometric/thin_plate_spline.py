@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Dict, Optional
 
 import torch
@@ -43,7 +45,7 @@ class RandomThinPlateSpline(GeometricAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
+        return_transform: bool | None = None,
     ) -> None:
         super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
@@ -51,18 +53,18 @@ class RandomThinPlateSpline(GeometricAugmentationBase2D):
         self.flags = dict(align_corners=align_corners)
         self.dist = torch.distributions.Uniform(-scale, scale)
 
-    def generate_parameters(self, shape: torch.Size) -> Dict[str, Tensor]:
+    def generate_parameters(self, shape: torch.Size) -> dict[str, Tensor]:
         B, _, _, _ = shape
         src = torch.tensor([[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]]).repeat(B, 1, 1)  # Bx5x2
         dst = src + self.dist.rsample(src.shape)
         return dict(src=src, dst=dst)
 
     # TODO: It is incorrect to return identity
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
         return self.identity_matrix(input)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
         src = params["src"].to(input)
         dst = params["dst"].to(input)

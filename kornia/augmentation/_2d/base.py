@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from torch import Tensor, float16, float32, float64
 
 import kornia

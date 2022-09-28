@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from .bbox import *
 from .calibration import *
 from .camera import *

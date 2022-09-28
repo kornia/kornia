@@ -1,5 +1,7 @@
 """Module with the functionalites for triangulation."""
 
+from __future__ import annotations
+
 import torch
 
 from kornia.geometry.conversions import convert_points_from_homogeneous

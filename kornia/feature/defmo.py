@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 from typing import Callable, Dict, List, Optional, Type
 
 import torch
 import torch.nn as nn
 
-urls: Dict[str, str] = {}
+urls: dict[str, str] = {}
 urls["defmo_encoder"] = "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/encoder_best.pt"
 urls["defmo_rendering"] = "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/rendering_best.pt"
 
@@ -45,11 +47,11 @@ class Bottleneck(nn.Module):
         inplanes: int,
         planes: int,
         stride: int = 1,
-        downsample: Optional[nn.Module] = None,
+        downsample: nn.Module | None = None,
         groups: int = 1,
         base_width: int = 64,
         dilation: int = 1,
-        norm_layer: Optional[Callable[..., nn.Module]] = None,
+        norm_layer: Callable[..., nn.Module] | None = None,
     ) -> None:
         super().__init__()
         if norm_layer is None:
@@ -92,14 +94,14 @@ class Bottleneck(nn.Module):
 class ResNet(nn.Module):
     def __init__(
         self,
-        block: Type[Bottleneck],
-        layers: List[int],
+        block: type[Bottleneck],
+        layers: list[int],
         num_classes: int = 1000,
         zero_init_residual: bool = False,
         groups: int = 1,
         width_per_group: int = 64,
-        replace_stride_with_dilation: Optional[List[bool]] = None,
-        norm_layer: Optional[Callable[..., nn.Module]] = None,
+        replace_stride_with_dilation: list[bool] | None = None,
+        norm_layer: Callable[..., nn.Module] | None = None,
     ) -> None:
         super().__init__()
         if norm_layer is None:
@@ -146,7 +148,7 @@ class ResNet(nn.Module):
                     nn.init.constant_(m.bn3.weight, 0)  # type: ignore[arg-type]
 
     def _make_layer(
-        self, block: Type[Bottleneck], planes: int, blocks: int, stride: int = 1, dilate: bool = False
+        self, block: type[Bottleneck], planes: int, blocks: int, stride: int = 1, dilate: bool = False
     ) -> nn.Sequential:
         norm_layer = self._norm_layer
         downsample = None

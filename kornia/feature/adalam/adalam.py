@@ -2,6 +2,8 @@
 # https://github.com/cavalli1234/AdaLAM
 # Copyright (c) 2020, Luca Cavalli
 
+from __future__ import annotations
+
 from typing import Dict, Optional, Tuple, Union
 
 import torch
@@ -38,11 +40,11 @@ def match_adalam(
     desc2: Tensor,
     lafs1: Tensor,
     lafs2: Tensor,
-    config: Optional[Dict] = None,
-    hw1: Optional[Tensor] = None,
-    hw2: Optional[Tensor] = None,
-    dm: Optional[Tensor] = None,
-) -> Tuple[Tensor, Tensor]:
+    config: dict | None = None,
+    hw1: Tensor | None = None,
+    hw2: Tensor | None = None,
+    dm: Tensor | None = None,
+) -> tuple[Tensor, Tensor]:
     """Function, which performs descriptor matching, followed by AdaLAM filtering (see :cite:`AdaLAM2020` for more
     details)
 
@@ -124,7 +126,7 @@ class AdalamFilter:
         s1: torch.Tensor = None,
         s2: torch.Tensor = None,
         return_dist: bool = False,
-    ) -> Union[Tuple[Tensor, Tensor], Tensor]:
+    ) -> tuple[Tensor, Tensor] | Tensor:
         """Call the core functionality of AdaLAM, i.e. just outlier filtering. No sanity check is performed on the
         inputs.
 

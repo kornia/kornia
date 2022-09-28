@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from kornia.augmentation._2d import (
     CenterCrop,
     ColorJiggle,

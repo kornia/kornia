@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Tuple
 
 import torch
@@ -9,8 +11,8 @@ from .kernels import get_gaussian_kernel1d, get_gaussian_kernel2d
 
 def gaussian_blur2d(
     input: torch.Tensor,
-    kernel_size: Tuple[int, int],
-    sigma: Tuple[float, float],
+    kernel_size: tuple[int, int],
+    sigma: tuple[float, float],
     border_type: str = 'reflect',
     separable: bool = True,
 ) -> torch.Tensor:
@@ -85,14 +87,14 @@ class GaussianBlur2d(nn.Module):
 
     def __init__(
         self,
-        kernel_size: Tuple[int, int],
-        sigma: Tuple[float, float],
+        kernel_size: tuple[int, int],
+        sigma: tuple[float, float],
         border_type: str = 'reflect',
         separable: bool = True,
     ) -> None:
         super().__init__()
-        self.kernel_size: Tuple[int, int] = kernel_size
-        self.sigma: Tuple[float, float] = sigma
+        self.kernel_size: tuple[int, int] = kernel_size
+        self.sigma: tuple[float, float] = sigma
         self.border_type = border_type
         self.separable = separable
 

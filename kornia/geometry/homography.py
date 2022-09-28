@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import warnings
 from typing import Optional, Tuple
 
@@ -117,7 +119,7 @@ def line_segment_transfer_error_one_way(ls1: Tensor, ls2: Tensor, H: Tensor, squ
     return error
 
 
-def find_homography_dlt(points1: Tensor, points2: Tensor, weights: Optional[Tensor] = None) -> Tensor:
+def find_homography_dlt(points1: Tensor, points2: Tensor, weights: Tensor | None = None) -> Tensor:
     r"""Compute the homography matrix using the DLT formulation.
 
     The linear system is solved by using the Weighted Least Squares Solution for the 4 Points algorithm.
@@ -233,7 +235,7 @@ def sample_is_valid_for_homography(points1: Tensor, points2: Tensor) -> Tensor:
     return sample_is_valid
 
 
-def find_homography_lines_dlt(ls1: Tensor, ls2: Tensor, weights: Optional[Tensor] = None) -> Tensor:
+def find_homography_lines_dlt(ls1: Tensor, ls2: Tensor, weights: Tensor | None = None) -> Tensor:
     r"""Compute the homography matrix using the DLT formulation for line correspondences.
 
     See :cite:`homolines2001` for details.

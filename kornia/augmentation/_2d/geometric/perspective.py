@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Dict, Optional, Tuple, Union, cast
 
 import torch
@@ -59,26 +61,26 @@ class RandomPerspective(GeometricAugmentationBase2D):
 
     def __init__(
         self,
-        distortion_scale: Union[Tensor, float] = 0.5,
-        resample: Union[str, int, Resample] = Resample.BILINEAR.name,
+        distortion_scale: Tensor | float = 0.5,
+        resample: str | int | Resample = Resample.BILINEAR.name,
         same_on_batch: bool = False,
         align_corners: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
         sampling_method: str = "basic",
-        return_transform: Optional[bool] = None,
+        return_transform: bool | None = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator = cast(
             rg.PerspectiveGenerator, rg.PerspectiveGenerator(distortion_scale, sampling_method=sampling_method)
         )
-        self.flags: Dict[str, Any] = dict(align_corners=align_corners, resample=Resample.get(resample))
+        self.flags: dict[str, Any] = dict(align_corners=align_corners, resample=Resample.get(resample))
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
         return get_perspective_transform(params["start_points"].to(input), params["end_points"].to(input))
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
         _, _, height, width = input.shape
         transform = cast(Tensor, transform)
@@ -88,11 +90,7 @@ class RandomPerspective(GeometricAugmentationBase2D):
         )
 
     def inverse_transform(
-        self,
-        input: Tensor,
-        flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
-        size: Optional[Tuple[int, int]] = None,
+        self, input: Tensor, flags: dict[str, Any], transform: Tensor | None = None, size: tuple[int, int] | None = None
     ) -> Tensor:
         return self.apply_transform(
             input,

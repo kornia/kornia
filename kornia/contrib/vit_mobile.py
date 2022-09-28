@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Tuple
 
 import torch
@@ -179,7 +181,7 @@ class MobileViTBlock(nn.Module):
         depth: int,
         channel: int,
         kernel_size: int,
-        patch_size: Tuple[int, int],
+        patch_size: tuple[int, int],
         mlp_dim: int,
         dropout: float = 0.0,
     ) -> None:
@@ -234,7 +236,7 @@ class MobileViT(nn.Module):
     """
 
     def __init__(
-        self, mode: str = 'xxs', in_channels: int = 3, patch_size: Tuple[int, int] = (2, 2), dropout: float = 0.0
+        self, mode: str = 'xxs', in_channels: int = 3, patch_size: tuple[int, int] = (2, 2), dropout: float = 0.0
     ) -> None:
         super().__init__()
         if mode == 'xxs':

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import math
 from math import sqrt
 from typing import List, Optional, Tuple
@@ -112,7 +114,7 @@ def gaussian_discrete(window_size, sigma) -> torch.Tensor:
     sigma = torch.as_tensor(sigma, dtype=torch.float, device=device)
     sigma2 = sigma * sigma
     tail = int(window_size // 2)
-    out_pos: List[Optional[torch.Tensor]] = [None] * (tail + 1)
+    out_pos: list[torch.Tensor | None] = [None] * (tail + 1)
     out_pos[0] = _modified_bessel_0(sigma2)
     out_pos[1] = _modified_bessel_1(sigma2)
     for k in range(2, len(out_pos)):
@@ -132,7 +134,7 @@ def laplacian_1d(window_size) -> torch.Tensor:
     return laplacian_1d
 
 
-def get_box_kernel2d(kernel_size: Tuple[int, int]) -> torch.Tensor:
+def get_box_kernel2d(kernel_size: tuple[int, int]) -> torch.Tensor:
     r"""Utility function that returns a box filter."""
     kx: float = float(kernel_size[0])
     ky: float = float(kernel_size[1])
@@ -141,7 +143,7 @@ def get_box_kernel2d(kernel_size: Tuple[int, int]) -> torch.Tensor:
     return scale.to(tmp_kernel.dtype) * tmp_kernel
 
 
-def get_binary_kernel2d(window_size: Tuple[int, int]) -> torch.Tensor:
+def get_binary_kernel2d(window_size: tuple[int, int]) -> torch.Tensor:
     r"""Create a binary kernel to extract the patches.
 
     If the window size is HxW will create a (H*W)xHxW kernel.
@@ -429,7 +431,7 @@ def get_gaussian_erf_kernel1d(kernel_size: int, sigma: float, force_even: bool =
 
 
 def get_gaussian_kernel2d(
-    kernel_size: Tuple[int, int], sigma: Tuple[float, float], force_even: bool = False
+    kernel_size: tuple[int, int], sigma: tuple[float, float], force_even: bool = False
 ) -> torch.Tensor:
     r"""Function that returns Gaussian filter matrix coefficients.
 
@@ -582,8 +584,8 @@ def get_pascal_kernel_1d(kernel_size: int, norm: bool = False) -> torch.Tensor:
     >>> get_pascal_kernel_1d(6)
     tensor([ 1.,  5., 10., 10.,  5.,  1.])
     """
-    pre: List[float] = []
-    cur: List[float] = []
+    pre: list[float] = []
+    cur: list[float] = []
     for i in range(kernel_size):
         cur = [1.0] * (i + 1)
 
@@ -668,7 +670,7 @@ def get_hanning_kernel1d(kernel_size: int, device=torch.device('cpu'), dtype=tor
     return x
 
 
-def get_hanning_kernel2d(kernel_size: Tuple[int, int], device=torch.device('cpu'), dtype=torch.float) -> torch.Tensor:
+def get_hanning_kernel2d(kernel_size: tuple[int, int], device=torch.device('cpu'), dtype=torch.float) -> torch.Tensor:
     r"""Returns 2d Hanning kernel, used in signal processing and KCF tracker.
 
     Args:

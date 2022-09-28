@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import math
 from typing import Dict, Tuple
 
@@ -11,7 +13,7 @@ from packaging import version
 
 from .backbones import SOLD2Net
 
-urls: Dict[str, str] = {}
+urls: dict[str, str] = {}
 urls["wireframe"] = "https://www.polybox.ethz.ch/index.php/s/blOrW89gqSLoHOk/download"
 
 
@@ -62,7 +64,7 @@ class SOLD2_detector(nn.Module):
         >>> line_segments = sold2_detector(img)["line_segments"]
     """
 
-    def __init__(self, pretrained: bool = True, config: Dict = None):
+    def __init__(self, pretrained: bool = True, config: dict = None):
         super().__init__()
         # Initialize some parameters
         self.config = default_detector_cfg if config is None else config
@@ -94,7 +96,7 @@ class SOLD2_detector(nn.Module):
         del state_dict["heatmap_decoder.conv_block_lst.2.bias"]
         return state_dict
 
-    def forward(self, img: Tensor) -> Dict:
+    def forward(self, img: Tensor) -> dict:
         """
         Args:
             img: batched images with shape :math:`(B, 1, H, W)`.
@@ -193,7 +195,7 @@ class LineSegmentDetectionModule:
         if self.use_junction_refinement and self.junction_refine_cfg is None:
             raise ValueError("[Error] Missing junction refinement config.")
 
-    def detect(self, junctions: Tensor, heatmap: Tensor) -> Tuple:
+    def detect(self, junctions: Tensor, heatmap: Tensor) -> tuple:
         """Main function performing line segment detection."""
         KORNIA_CHECK_SHAPE(heatmap, ["H", "W"])
         H, W = heatmap.shape
@@ -393,7 +395,7 @@ class LineSegmentDetectionModule:
 
     def refine_junction_perturb(
         self, junctions: Tensor, line_map: Tensor, heatmap: Tensor, H: int, W: int, device: torch.device
-    ) -> Tuple:
+    ) -> tuple:
         """Refine the line endpoints in a similar way as in LSD."""
         # Fetch refinement parameters
         num_perturbs = self.junction_refine_cfg["num_perturbs"]

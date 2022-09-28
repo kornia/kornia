@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Union, cast
 
 import torch
@@ -52,7 +54,7 @@ def bgr_to_rgb(image: torch.Tensor) -> torch.Tensor:
     return out
 
 
-def rgb_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> torch.Tensor:
+def rgb_to_rgba(image: torch.Tensor, alpha_val: float | torch.Tensor) -> torch.Tensor:
     r"""Convert an image from RGB to RGBA.
 
     Args:
@@ -89,7 +91,7 @@ def rgb_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> t
     return torch.cat([r, g, b, a], dim=-3)
 
 
-def bgr_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> torch.Tensor:
+def bgr_to_rgba(image: torch.Tensor, alpha_val: float | torch.Tensor) -> torch.Tensor:
     r"""Convert an image from BGR to RGBA.
 
     Args:
@@ -298,7 +300,7 @@ class RgbToRgba(nn.Module):
         >>> output = rgba(input)  # 2x4x4x5
     """
 
-    def __init__(self, alpha_val: Union[float, torch.Tensor]) -> None:
+    def __init__(self, alpha_val: float | torch.Tensor) -> None:
         super().__init__()
         self.alpha_val = alpha_val
 
@@ -330,7 +332,7 @@ class BgrToRgba(nn.Module):
         >>> output = rgba(input)  # 2x4x4x5
     """
 
-    def __init__(self, alpha_val: Union[float, torch.Tensor]) -> None:
+    def __init__(self, alpha_val: float | torch.Tensor) -> None:
         super().__init__()
         self.alpha_val = alpha_val
 

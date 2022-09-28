@@ -1,4 +1,6 @@
 # based on: https://github.com/ShiqiYu/libfacedetection.train/blob/74f3aa77c63234dd954d21286e9a60703b8d0868/tasks/task1/yufacedetectnet.py  # noqa
+from __future__ import annotations
+
 import math
 from enum import Enum
 from typing import Callable, Dict, List, Optional, Tuple
@@ -39,7 +41,7 @@ class FaceDetectorResult:
             raise ValueError(f"Result must comes as vector of size(14). Got: {data.shape}.")
         self._data = data
 
-    def to(self, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> "FaceDetectorResult":
+    def to(self, device: torch.device | None = None, dtype: torch.dtype | None = None) -> FaceDetectorResult:
         """Like :func:`torch.nn.Module.to()` method."""
         self._data = self._data.to(device=device, dtype=dtype)
         return self
@@ -159,9 +161,9 @@ class FaceDetector(nn.Module):
             'variance': [0.1, 0.2],
             'clip': False,
         }
-        self.min_sizes: List[List[int]] = [[10, 16, 24], [32, 48], [64, 96], [128, 192, 256]]
-        self.steps: List[int] = [8, 16, 32, 64]
-        self.variance: List[float] = [0.1, 0.2]
+        self.min_sizes: list[list[int]] = [[10, 16, 24], [32, 48], [64, 96], [128, 192, 256]]
+        self.steps: list[int] = [8, 16, 32, 64]
+        self.variance: list[float] = [0.1, 0.2]
         self.clip: bool = False
         self.model = YuFaceDetectNet('test', pretrained=True)
         self.nms: Callable = nms_kornia
@@ -169,7 +171,7 @@ class FaceDetector(nn.Module):
     def preprocess(self, image: torch.Tensor) -> torch.Tensor:
         return image
 
-    def postprocess(self, data: Dict[str, torch.Tensor], height: int, width: int) -> torch.Tensor:
+    def postprocess(self, data: dict[str, torch.Tensor], height: int, width: int) -> torch.Tensor:
         loc, conf, iou = data['loc'], data['conf'], data['iou']
 
         scale = torch.tensor(
@@ -281,7 +283,7 @@ class YuFaceDetectNet(nn.Module):
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
-    def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
         detection_sources, head_list = [], []
 
         x = self.model0(x)
@@ -329,7 +331,7 @@ class YuFaceDetectNet(nn.Module):
 
 
 # Adapted from https://github.com/Hakuyume/chainer-ssd
-def _decode(loc: torch.Tensor, priors: torch.Tensor, variances: List[float]) -> torch.Tensor:
+def _decode(loc: torch.Tensor, priors: torch.Tensor, variances: list[float]) -> torch.Tensor:
     """Decode locations from predictions using priors to undo the encoding we did for offset regression at train
     time.
 
@@ -359,7 +361,7 @@ def _decode(loc: torch.Tensor, priors: torch.Tensor, variances: List[float]) -> 
 
 
 class _PriorBox:
-    def __init__(self, min_sizes: List[List[int]], steps: List[int], clip: bool, image_size: Tuple[int, int]) -> None:
+    def __init__(self, min_sizes: list[list[int]], steps: list[int], clip: bool, image_size: tuple[int, int]) -> None:
         self.min_sizes = min_sizes
         self.steps = steps
         self.clip = clip
@@ -380,15 +382,15 @@ class _PriorBox:
 
         self.feature_maps = [self.feature_map_3th, self.feature_map_4th, self.feature_map_5th, self.feature_map_6th]
 
-    def to(self, device: torch.device, dtype: torch.dtype) -> '_PriorBox':
+    def to(self, device: torch.device, dtype: torch.dtype) -> _PriorBox:
         self.device = device
         self.dtype = dtype
         return self
 
     def __call__(self) -> torch.Tensor:
-        anchors: List[float] = []
+        anchors: list[float] = []
         for k, f in enumerate(self.feature_maps):
-            min_sizes: List[int] = self.min_sizes[k]
+            min_sizes: list[int] = self.min_sizes[k]
             # NOTE: the nested loop it's to make torchscript happy
             for i in range(f[0]):
                 for j in range(f[1]):

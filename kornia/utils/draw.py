@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -133,7 +135,7 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
 
 
 def draw_rectangle(
-    image: torch.Tensor, rectangle: torch.Tensor, color: Optional[torch.Tensor] = None, fill: Optional[bool] = None
+    image: torch.Tensor, rectangle: torch.Tensor, color: torch.Tensor | None = None, fill: bool | None = None
 ) -> torch.Tensor:
     r"""Draw N rectangles on a batch of image tensors.
 
@@ -209,7 +211,7 @@ def draw_rectangle(
     return image
 
 
-def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:
+def _get_convex_edges(polygon: Tensor, h: int, w: int) -> tuple[Tensor, Tensor]:
     r"""Gets the left and right edges of a polygon for each y-coordinate y \in [0, h)
     Args:
         polygons: represents polygons to draw in BxNx2
@@ -250,7 +252,7 @@ def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:
     return x_left, x_right
 
 
-def _batch_polygons(polygons: List[Tensor]) -> Tensor:
+def _batch_polygons(polygons: list[Tensor]) -> Tensor:
     r"""Converts a List of variable length polygons into a fixed size tensor.
 
     Works by repeating the last element in the tensor.
@@ -269,7 +271,7 @@ def _batch_polygons(polygons: List[Tensor]) -> Tensor:
     return batched_polygons
 
 
-def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], colors: Tensor) -> Tensor:
+def draw_convex_polygon(images: Tensor, polygons: Tensor | list[Tensor], colors: Tensor) -> Tensor:
     r"""Draws convex polygons on a batch of image tensors.
 
     Args:

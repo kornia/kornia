@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Tuple, Union, cast
 
 import torch
@@ -7,10 +9,7 @@ from kornia.utils import _extract_device_dtype
 
 
 def get_motion_kernel2d(
-    kernel_size: int,
-    angle: Union[torch.Tensor, float],
-    direction: Union[torch.Tensor, float] = 0.0,
-    mode: str = 'nearest',
+    kernel_size: int, angle: torch.Tensor | float, direction: torch.Tensor | float = 0.0, mode: str = 'nearest'
 ) -> torch.Tensor:
     r"""Return 2D motion blur filter.
 
@@ -71,7 +70,7 @@ def get_motion_kernel2d(
     if direction.size(0) != angle.size(0):
         raise AssertionError(f"direction and angle must have the same length. Got {direction} and {angle}.")
 
-    kernel_tuple: Tuple[int, int] = (kernel_size, kernel_size)
+    kernel_tuple: tuple[int, int] = (kernel_size, kernel_size)
 
     # direction from [-1, 1] to [0, 1] range
     direction = (torch.clamp(direction, -1.0, 1.0) + 1.0) / 2.0
@@ -99,8 +98,8 @@ def get_motion_kernel2d(
 
 def get_motion_kernel3d(
     kernel_size: int,
-    angle: Union[torch.Tensor, Tuple[float, float, float]],
-    direction: Union[torch.Tensor, float] = 0.0,
+    angle: torch.Tensor | tuple[float, float, float],
+    direction: torch.Tensor | float = 0.0,
     mode: str = 'nearest',
 ) -> torch.Tensor:
     r"""Return 3D motion blur filter.
@@ -178,7 +177,7 @@ def get_motion_kernel3d(
     if direction.size(0) != angle.size(0):
         raise AssertionError(f"direction and angle must have the same length. Got {direction} and {angle}.")
 
-    kernel_tuple: Tuple[int, int, int] = (kernel_size, kernel_size, kernel_size)
+    kernel_tuple: tuple[int, int, int] = (kernel_size, kernel_size, kernel_size)
 
     # direction from [-1, 1] to [0, 1] range
     direction = (torch.clamp(direction, -1.0, 1.0) + 1.0) / 2.0

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from .depth_smooth import InverseDepthSmoothnessLoss, inverse_depth_smoothness_loss
 from .dice import DiceLoss, dice_loss
 from .divergence import js_div_loss_2d, kl_div_loss_2d

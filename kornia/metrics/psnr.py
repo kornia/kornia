@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import torch
 from torch.nn.functional import mse_loss as mse
 

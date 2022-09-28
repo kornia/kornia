@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Tuple, Union
 
 import torch
@@ -130,10 +132,10 @@ class ConvSoftArgmax2d(nn.Module):
 
     def __init__(
         self,
-        kernel_size: Tuple[int, int] = (3, 3),
-        stride: Tuple[int, int] = (1, 1),
-        padding: Tuple[int, int] = (1, 1),
-        temperature: Union[torch.Tensor, float] = torch.tensor(1.0),
+        kernel_size: tuple[int, int] = (3, 3),
+        stride: tuple[int, int] = (1, 1),
+        padding: tuple[int, int] = (1, 1),
+        temperature: torch.Tensor | float = torch.tensor(1.0),
         normalized_coordinates: bool = True,
         eps: float = 1e-8,
         output_value: bool = False,
@@ -195,10 +197,10 @@ class ConvSoftArgmax3d(nn.Module):
 
     def __init__(
         self,
-        kernel_size: Tuple[int, int, int] = (3, 3, 3),
-        stride: Tuple[int, int, int] = (1, 1, 1),
-        padding: Tuple[int, int, int] = (1, 1, 1),
-        temperature: Union[torch.Tensor, float] = torch.tensor(1.0),
+        kernel_size: tuple[int, int, int] = (3, 3, 3),
+        stride: tuple[int, int, int] = (1, 1, 1),
+        padding: tuple[int, int, int] = (1, 1, 1),
+        temperature: torch.Tensor | float = torch.tensor(1.0),
         normalized_coordinates: bool = False,
         eps: float = 1e-8,
         output_value: bool = True,
@@ -261,14 +263,14 @@ class ConvSoftArgmax3d(nn.Module):
 
 def conv_soft_argmax2d(
     input: torch.Tensor,
-    kernel_size: Tuple[int, int] = (3, 3),
-    stride: Tuple[int, int] = (1, 1),
-    padding: Tuple[int, int] = (1, 1),
-    temperature: Union[torch.Tensor, float] = torch.tensor(1.0),
+    kernel_size: tuple[int, int] = (3, 3),
+    stride: tuple[int, int] = (1, 1),
+    padding: tuple[int, int] = (1, 1),
+    temperature: torch.Tensor | float = torch.tensor(1.0),
     normalized_coordinates: bool = True,
     eps: float = 1e-8,
     output_value: bool = False,
-) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
     r"""Compute the convolutional spatial Soft-Argmax 2D over the windows of a given heatmap.
 
     .. math::
@@ -374,15 +376,15 @@ def conv_soft_argmax2d(
 
 def conv_soft_argmax3d(
     input: torch.Tensor,
-    kernel_size: Tuple[int, int, int] = (3, 3, 3),
-    stride: Tuple[int, int, int] = (1, 1, 1),
-    padding: Tuple[int, int, int] = (1, 1, 1),
-    temperature: Union[torch.Tensor, float] = torch.tensor(1.0),
+    kernel_size: tuple[int, int, int] = (3, 3, 3),
+    stride: tuple[int, int, int] = (1, 1, 1),
+    padding: tuple[int, int, int] = (1, 1, 1),
+    temperature: torch.Tensor | float = torch.tensor(1.0),
     normalized_coordinates: bool = False,
     eps: float = 1e-8,
     output_value: bool = True,
     strict_maxima_bonus: float = 0.0,
-) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
     r"""Compute the convolutional spatial Soft-Argmax 3D over the windows of a given heatmap.
 
     .. math::
@@ -556,7 +558,7 @@ class SpatialSoftArgmax2d(nn.Module):
 
 def conv_quad_interp3d(
     input: torch.Tensor, strict_maxima_bonus: float = 10.0, eps: float = 1e-7
-) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Compute the single iteration of quadratic interpolation of the extremum (max or min).
 
     Args:

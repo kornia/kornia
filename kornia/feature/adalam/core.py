@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import math
 from typing import Optional, Tuple, Union
 
@@ -20,7 +22,7 @@ def _no_match(dm: Tensor):
     return dists, idxs
 
 
-def select_seeds(dist1: Tensor, R1: Union[float, Tensor], scores1: Tensor, fnn12: Tensor, mnn: Optional[Tensor]):
+def select_seeds(dist1: Tensor, R1: float | Tensor, scores1: Tensor, fnn12: Tensor, mnn: Tensor | None):
     """Select seed correspondences among the set of available matches.
 
     dist1: Precomputed distance matrix between keypoints in image I_1
@@ -56,17 +58,17 @@ def select_seeds(dist1: Tensor, R1: Union[float, Tensor], scores1: Tensor, fnn12
 
 
 def extract_neighborhood_sets(
-    o1: Optional[Tensor],
-    o2: Optional[Tensor],
-    s1: Optional[Tensor],
-    s2: Optional[Tensor],
+    o1: Tensor | None,
+    o2: Tensor | None,
+    s1: Tensor | None,
+    s2: Tensor | None,
     dist1: Tensor,
     im1seeds: Tensor,
     im2seeds: Tensor,
     k1: Tensor,
     k2: Tensor,
-    R1: Union[float, Tensor],
-    R2: Union[float, Tensor],
+    R1: float | Tensor,
+    R2: float | Tensor,
     fnn12: Tensor,
     ORIENTATION_THR: float,
     SCALE_RATE_THR: float,
@@ -208,15 +210,15 @@ def adalam_core(
     fnn12: Tensor,
     scores1: Tensor,
     config: dict,
-    mnn: Optional[Tensor] = None,
-    im1shape: Optional[Tuple] = None,
-    im2shape: Optional[Tuple] = None,
-    o1: Optional[Tensor] = None,
-    o2: Optional[Tensor] = None,
-    s1: Optional[Tensor] = None,
-    s2: Optional[Tensor] = None,
+    mnn: Tensor | None = None,
+    im1shape: tuple | None = None,
+    im2shape: tuple | None = None,
+    o1: Tensor | None = None,
+    o2: Tensor | None = None,
+    s1: Tensor | None = None,
+    s2: Tensor | None = None,
     return_dist: bool = False,
-) -> Union[Tuple[Tensor, Tensor], Tensor]:
+) -> tuple[Tensor, Tensor] | Tensor:
     """Call the core functionality of AdaLAM, i.e. just outlier filtering. No sanity check is performed on the
     inputs.
 

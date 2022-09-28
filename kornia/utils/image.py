@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from functools import wraps
 from typing import TYPE_CHECKING, Callable, List
 
@@ -8,7 +10,7 @@ if TYPE_CHECKING:
     import numpy as np
 
 
-def image_to_tensor(image: "np.ndarray", keepdim: bool = True) -> torch.Tensor:
+def image_to_tensor(image: np.ndarray, keepdim: bool = True) -> torch.Tensor:
     """Convert a numpy image to a PyTorch 4d tensor image.
 
     Args:
@@ -56,7 +58,7 @@ def image_to_tensor(image: "np.ndarray", keepdim: bool = True) -> torch.Tensor:
     return tensor.unsqueeze(0) if not keepdim else tensor
 
 
-def image_list_to_tensor(images: List["np.ndarray"]) -> torch.Tensor:
+def image_list_to_tensor(images: list[np.ndarray]) -> torch.Tensor:
     """Converts a list of numpy images to a PyTorch 4d tensor image.
 
     Args:
@@ -76,7 +78,7 @@ def image_list_to_tensor(images: List["np.ndarray"]) -> torch.Tensor:
     if len(images[0].shape) != 3:
         raise ValueError("Input images must be three dimensional arrays")
 
-    list_of_tensors: List[torch.Tensor] = []
+    list_of_tensors: list[torch.Tensor] = []
     for image in images:
         list_of_tensors.append(image_to_tensor(image))
     tensor: torch.Tensor = torch.stack(list_of_tensors)
@@ -137,7 +139,7 @@ def _to_bcdhw(tensor: torch.Tensor) -> torch.Tensor:
     return tensor
 
 
-def tensor_to_image(tensor: torch.Tensor, keepdim: bool = False) -> "np.ndarray":
+def tensor_to_image(tensor: torch.Tensor, keepdim: bool = False) -> np.ndarray:
     """Converts a PyTorch tensor image to a numpy image.
 
     In case the tensor is in the GPU, it will be copied back to CPU.
@@ -167,7 +169,7 @@ def tensor_to_image(tensor: torch.Tensor, keepdim: bool = False) -> "np.ndarray"
         raise ValueError("Input size must be a two, three or four dimensional tensor")
 
     input_shape = tensor.shape
-    image: "np.ndarray" = tensor.cpu().detach().numpy()
+    image: np.ndarray = tensor.cpu().detach().numpy()
 
     if len(input_shape) == 2:
         # (H, W) -> (H, W)
@@ -203,7 +205,7 @@ class ImageToTensor(nn.Module):
         super().__init__()
         self.keepdim = keepdim
 
-    def forward(self, x: "np.ndarray") -> torch.Tensor:
+    def forward(self, x: np.ndarray) -> torch.Tensor:
         return image_to_tensor(x, keepdim=self.keepdim)
 
 

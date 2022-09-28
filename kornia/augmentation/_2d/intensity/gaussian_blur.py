@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Dict, Optional, Tuple
 
 from torch import Tensor
@@ -49,13 +51,13 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        kernel_size: Tuple[int, int],
-        sigma: Tuple[float, float],
+        kernel_size: tuple[int, int],
+        sigma: tuple[float, float],
         border_type: str = "reflect",
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
+        return_transform: bool | None = None,
     ) -> None:
         super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
@@ -63,6 +65,6 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         self.flags = dict(kernel_size=kernel_size, sigma=sigma, border_type=BorderType.get(border_type))
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
         return gaussian_blur2d(input, flags["kernel_size"], flags["sigma"], flags["border_type"].name.lower())

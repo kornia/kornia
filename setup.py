@@ -1,4 +1,6 @@
 # Welcome to the Kornia setup.py.
+from __future__ import annotations
+
 import sys
 
 # Make sure that kornia is running on Python 3.6.0 or later

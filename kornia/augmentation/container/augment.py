@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import warnings
 from itertools import zip_longest
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
@@ -141,14 +143,14 @@ class AugmentationSequential(ImageSequential):
 
     def __init__(
         self,
-        *args: Union[_AugmentationBase, ImageSequential],
-        data_keys: List[Union[str, int, DataKey]] = [DataKey.INPUT],
-        same_on_batch: Optional[bool] = None,
-        return_transform: Optional[bool] = None,
-        keepdim: Optional[bool] = None,
-        random_apply: Union[int, bool, Tuple[int, int]] = False,
-        random_apply_weights: Optional[List[float]] = None,
-        extra_args: Dict[DataKey, Dict[str, Any]] = {DataKey.MASK: dict(resample=Resample.NEAREST, align_corners=True)},
+        *args: _AugmentationBase | ImageSequential,
+        data_keys: list[str | int | DataKey] = [DataKey.INPUT],
+        same_on_batch: bool | None = None,
+        return_transform: bool | None = None,
+        keepdim: bool | None = None,
+        random_apply: int | bool | tuple[int, int] = False,
+        random_apply_weights: list[float] | None = None,
+        extra_args: dict[DataKey, dict[str, Any]] = {DataKey.MASK: dict(resample=Resample.NEAREST, align_corners=True)},
     ) -> None:
         super().__init__(
             *args,
@@ -177,7 +179,7 @@ class AugmentationSequential(ImageSequential):
             # NOTE: only for images are supported for 3D.
             if isinstance(arg, AugmentationBase3D):
                 self.contains_3d_augmentation = True
-        self._transform_matrix: Optional[Tensor] = None
+        self._transform_matrix: Tensor | None = None
         self.extra_args = extra_args
 
     def identity_matrix(self, input: Tensor) -> Tensor:
@@ -188,15 +190,12 @@ class AugmentationSequential(ImageSequential):
             return eye_like(3, input)
 
     @property
-    def transform_matrix(self) -> Optional[Tensor]:
+    def transform_matrix(self) -> Tensor | None:
         return self._transform_matrix
 
     def inverse(  # type: ignore
-        self,
-        *args: Tensor,
-        params: Optional[List[ParamItem]] = None,
-        data_keys: Optional[List[Union[str, int, DataKey]]] = None,
-    ) -> Union[Tensor, List[Tensor]]:
+        self, *args: Tensor, params: list[ParamItem] | None = None, data_keys: list[str | int | DataKey] | None = None
+    ) -> Tensor | list[Tensor]:
         """Reverse the transformation applied.
 
         Number of input tensors must align with the number of``data_keys``. If ``data_keys`` is not set, use
@@ -205,7 +204,7 @@ class AugmentationSequential(ImageSequential):
         if data_keys is None:
             data_keys = cast(List[Union[str, int, DataKey]], self.data_keys)
 
-        _data_keys: List[DataKey] = [DataKey.get(inp) for inp in data_keys]
+        _data_keys: list[DataKey] = [DataKey.get(inp) for inp in data_keys]
 
         if len(args) != len(data_keys):
             raise AssertionError(
@@ -223,7 +222,7 @@ class AugmentationSequential(ImageSequential):
                 )
             params = self._params
 
-        outputs: List[Tensor] = [None] * len(data_keys)  # type: ignore
+        outputs: list[Tensor] = [None] * len(data_keys)  # type: ignore
         for idx, (arg, dcate) in enumerate(zip(args, data_keys)):
 
             if DataKey.INPUT in self.extra_args:
@@ -283,8 +282,8 @@ class AugmentationSequential(ImageSequential):
         return outputs
 
     def __packup_output__(  # type: ignore
-        self, output: List[Tensor], label: Optional[Tensor] = None
-    ) -> Union[Tensor, Tuple[Tensor, Optional[Tensor]], List[Tensor], Tuple[List[Tensor], Optional[Tensor]]]:
+        self, output: list[Tensor], label: Tensor | None = None
+    ) -> Tensor | tuple[Tensor, Tensor | None] | list[Tensor] | tuple[list[Tensor], Tensor | None]:
         if len(output) == 1 and isinstance(output, (tuple, list)) and self.return_label:
             return output[0], label
         if len(output) == 1 and isinstance(output, (tuple, list)):
@@ -293,15 +292,15 @@ class AugmentationSequential(ImageSequential):
             return output, label
         return output
 
-    def _validate_args_datakeys(self, *args: Tensor, data_keys: List[DataKey]):
+    def _validate_args_datakeys(self, *args: Tensor, data_keys: list[DataKey]):
         if len(args) != len(data_keys):
             raise AssertionError(
                 f"The number of inputs must align with the number of data_keys. Got {len(args)} and {len(data_keys)}."
             )
         # TODO: validate args batching, and its consistency
 
-    def _arguments_preproc(self, *args: Tensor, data_keys: List[DataKey]):
-        inp: List[Any] = []
+    def _arguments_preproc(self, *args: Tensor, data_keys: list[DataKey]):
+        inp: list[Any] = []
         for arg, dcate in zip(args, data_keys):
             if DataKey.get(dcate) in [DataKey.INPUT, DataKey.MASK, DataKey.KEYPOINTS]:
                 inp.append(arg)
@@ -322,12 +321,12 @@ class AugmentationSequential(ImageSequential):
     def forward(  # type: ignore
         self,
         *args: Tensor,
-        label: Optional[Tensor] = None,
-        params: Optional[List[ParamItem]] = None,
-        data_keys: Optional[List[Union[str, int, DataKey]]] = None,
-    ) -> Union[Tensor, Tuple[Tensor, Optional[Tensor]], List[Tensor], Tuple[List[Tensor], Optional[Tensor]]]:
+        label: Tensor | None = None,
+        params: list[ParamItem] | None = None,
+        data_keys: list[str | int | DataKey] | None = None,
+    ) -> Tensor | tuple[Tensor, Tensor | None] | list[Tensor] | tuple[list[Tensor], Tensor | None]:
         """Compute multiple tensors simultaneously according to ``self.data_keys``."""
-        _data_keys: List[DataKey]
+        _data_keys: list[DataKey]
         if data_keys is None:
             _data_keys = self.data_keys
         else:
@@ -353,7 +352,7 @@ class AugmentationSequential(ImageSequential):
             else:
                 raise ValueError("`params` must be provided whilst INPUT is not in data_keys.")
 
-        outputs: List[Tensor] = [None] * len(_data_keys)  # type: ignore
+        outputs: list[Tensor] = [None] * len(_data_keys)  # type: ignore
 
         self.return_label = self.return_label or label is not None or self.contains_label_operations(params)
 

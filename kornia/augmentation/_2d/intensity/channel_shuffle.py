@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Dict, Optional
 
 import torch
@@ -35,23 +37,19 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
     """
 
     def __init__(
-        self,
-        same_on_batch: bool = False,
-        p: float = 0.5,
-        keepdim: bool = False,
-        return_transform: Optional[bool] = None,
+        self, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False, return_transform: bool | None = None
     ) -> None:
         super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
         )
 
-    def generate_parameters(self, shape: torch.Size) -> Dict[str, Tensor]:
+    def generate_parameters(self, shape: torch.Size) -> dict[str, Tensor]:
         B, C, _, _ = shape
         channels = torch.rand(B, C).argsort(dim=1)
         return dict(channels=channels)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
         out = torch.empty_like(input)
         for i in range(out.shape[0]):

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import List, Tuple
 
 import torch
@@ -6,14 +8,14 @@ from .mean_iou import mean_iou_bbox
 
 
 def mean_average_precision(
-    pred_boxes: List[torch.Tensor],
-    pred_labels: List[torch.Tensor],
-    pred_scores: List[torch.Tensor],
-    gt_boxes: List[torch.Tensor],
-    gt_labels: List[torch.Tensor],
+    pred_boxes: list[torch.Tensor],
+    pred_labels: list[torch.Tensor],
+    pred_scores: list[torch.Tensor],
+    gt_boxes: list[torch.Tensor],
+    gt_labels: list[torch.Tensor],
     n_classes: int,
     threshold: float = 0.5,
-) -> Tuple[torch.Tensor, dict]:
+) -> tuple[torch.Tensor, dict]:
     """Calculate the Mean Average Precision (mAP) of detected objects.
 
     Code altered from https://github.com/sgrvinod/a-PyTorch-Tutorial-to-Object-Detection/blob/master/utils.py#L271.

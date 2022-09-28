@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from functools import partial
 from typing import Tuple
 
@@ -80,7 +82,7 @@ class TestBoxes2D:
         ).all()
 
     @pytest.mark.parametrize('shape', [(1, 4), (1, 1, 4)])
-    def test_from_tensor(self, shape: Tuple[int], device, dtype):
+    def test_from_tensor(self, shape: tuple[int], device, dtype):
         box_xyxy = torch.as_tensor([[1, 2, 3, 4]], device=device, dtype=dtype).view(*shape)
         box_xyxy_plus = torch.as_tensor([[1, 2, 2, 3]], device=device, dtype=dtype).view(*shape)
         box_xywh = torch.as_tensor([[1, 2, 2, 2]], device=device, dtype=dtype).view(*shape)
@@ -113,7 +115,7 @@ class TestBoxes2D:
         assert_allclose(boxes_vertices_plus, expected_box)
 
     @pytest.mark.parametrize('shape', [(1, 4), (1, 1, 4)])
-    def test_from_invalid_tensor(self, shape: Tuple[int], device, dtype):
+    def test_from_invalid_tensor(self, shape: tuple[int], device, dtype):
         box_xyxy = torch.as_tensor([[1, 2, -3, 4]], device=device, dtype=dtype).view(*shape)  # Invalid width
         box_xyxy_plus = torch.as_tensor([[1, 2, 0, 3]], device=device, dtype=dtype).view(*shape)  # Invalid height
 
@@ -130,7 +132,7 @@ class TestBoxes2D:
             pass
 
     @pytest.mark.parametrize('shape', [(1, 4), (1, 1, 4)])
-    def test_boxes_to_tensor(self, shape: Tuple[int], device, dtype):
+    def test_boxes_to_tensor(self, shape: tuple[int], device, dtype):
         # quadrilateral with randomized vertices to reflect possible transforms.
         box = Boxes(torch.as_tensor([[[2, 2], [2, 3], [1, 3], [1, 2]]], device=device, dtype=dtype).view(*shape, 2))
 
@@ -497,7 +499,7 @@ class TestBbox3D:
         )
 
     @pytest.mark.parametrize('shape', [(1, 6), (1, 1, 6)])
-    def test_from_tensor(self, shape: Tuple[int], device, dtype):
+    def test_from_tensor(self, shape: tuple[int], device, dtype):
         box_xyzxyz = torch.as_tensor([[1, 2, 3, 4, 5, 6]], device=device, dtype=dtype).view(*shape)
         box_xyzxyz_plus = torch.as_tensor([[1, 2, 3, 3, 4, 5]], device=device, dtype=dtype).view(*shape)
         box_xyzwhd = torch.as_tensor([[1, 2, 3, 3, 3, 3]], device=device, dtype=dtype).view(*shape)
@@ -522,7 +524,7 @@ class TestBbox3D:
         assert_allclose(kornia_xyzwhd, expected_box)
 
     @pytest.mark.parametrize('shape', [(1, 6), (1, 1, 6)])
-    def test_from_invalid_tensor(self, shape: Tuple[int], device, dtype):
+    def test_from_invalid_tensor(self, shape: tuple[int], device, dtype):
         box_xyzxyz = torch.as_tensor([[1, 2, 3, 4, -5, 6]], device=device, dtype=dtype).view(*shape)
         box_xyzxyz_plus = torch.as_tensor([[1, 2, 3, 0, 6, 4]], device=device, dtype=dtype).view(*shape)
 
@@ -539,7 +541,7 @@ class TestBbox3D:
             pass
 
     @pytest.mark.parametrize('shape', [(1, 6), (1, 1, 6)])
-    def test_boxes_to_tensor(self, shape: Tuple[int], device, dtype):
+    def test_boxes_to_tensor(self, shape: tuple[int], device, dtype):
         # Hexahedron with randomized vertices to reflect possible transforms.
         box = Boxes3D(
             torch.as_tensor(

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Dict, Optional, Tuple, cast
 
 from torch import Tensor
@@ -37,12 +39,12 @@ class RandomPlasmaBrightness(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        roughness: Tuple[float, float] = (0.1, 0.7),
-        intensity: Tuple[float, float] = (0.0, 1.0),
+        roughness: tuple[float, float] = (0.1, 0.7),
+        intensity: tuple[float, float] = (0.0, 1.0),
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
+        return_transform: bool | None = None,
     ) -> None:
         super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
@@ -53,7 +55,7 @@ class RandomPlasmaBrightness(IntensityAugmentationBase2D):
         )
 
     def apply_transform(
-        self, image: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, image: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
         B, C, H, W = image.shape
         roughness = params["roughness"].to(image)
@@ -92,11 +94,11 @@ class RandomPlasmaContrast(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        roughness: Tuple[float, float] = (0.1, 0.7),
+        roughness: tuple[float, float] = (0.1, 0.7),
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
+        return_transform: bool | None = None,
     ) -> None:
         super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
@@ -106,7 +108,7 @@ class RandomPlasmaContrast(IntensityAugmentationBase2D):
         )
 
     def apply_transform(
-        self, image: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, image: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
         B, C, H, W = image.shape
         roughness = params["roughness"].to(image)
@@ -145,13 +147,13 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        roughness: Tuple[float, float] = (0.1, 0.7),
-        shade_intensity: Tuple[float, float] = (-1.0, 0.0),
-        shade_quantity: Tuple[float, float] = (0.0, 1.0),
+        roughness: tuple[float, float] = (0.1, 0.7),
+        shade_intensity: tuple[float, float] = (-1.0, 0.0),
+        shade_quantity: tuple[float, float] = (0.0, 1.0),
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
+        return_transform: bool | None = None,
     ) -> None:
         super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
@@ -166,7 +168,7 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
         )
 
     def apply_transform(
-        self, image: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, image: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
         B, _, H, W = image.shape
         roughness = params["roughness"].to(image)

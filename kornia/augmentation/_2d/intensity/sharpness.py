@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Dict, Optional, Tuple, Union, cast
 
 from torch import Tensor
@@ -46,11 +48,11 @@ class RandomSharpness(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        sharpness: Union[Tensor, float, Tuple[float, float], Tensor] = 0.5,
+        sharpness: Tensor | float | tuple[float, float] | Tensor = 0.5,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
+        return_transform: bool | None = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator = cast(
@@ -58,7 +60,7 @@ class RandomSharpness(IntensityAugmentationBase2D):
         )
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
         factor = params["sharpness"]
         return sharpness(input, factor)

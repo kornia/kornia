@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from .perspective import project_points, unproject_points
 from .pinhole import PinholeCamera, cam2pixel, pixel2cam
 from .stereo import StereoCamera

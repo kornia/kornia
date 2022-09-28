@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from kornia.core import Module, Tensor
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 

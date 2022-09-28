@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import List, Optional, Tuple
 
 import torch
@@ -38,7 +40,7 @@ def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor, num_le
     return out
 
 
-def _create_octave_mask(mask: torch.Tensor, octave_shape: List[int]) -> torch.Tensor:
+def _create_octave_mask(mask: torch.Tensor, octave_shape: list[int]) -> torch.Tensor:
     r"""Downsample a mask based on the given octave shape."""
     mask_shape = octave_shape[-2:]
     mask_octave = F.interpolate(mask, mask_shape, mode='bilinear', align_corners=False)  # type: ignore
@@ -126,13 +128,13 @@ class ScaleSpaceDetector(nn.Module):
         )
 
     def detect(
-        self, img: torch.Tensor, num_feats: int, mask: Optional[torch.Tensor] = None
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        self, img: torch.Tensor, num_feats: int, mask: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         dev: torch.device = img.device
         dtype: torch.dtype = img.dtype
         sp, sigmas, _ = self.scale_pyr(img)
-        all_responses: List[torch.Tensor] = []
-        all_lafs: List[torch.Tensor] = []
+        all_responses: list[torch.Tensor] = []
+        all_lafs: list[torch.Tensor] = []
         for oct_idx, octave in enumerate(sp):
             sigmas_oct = sigmas[oct_idx]
             B, CH, L, H, W = octave.size()
@@ -206,8 +208,8 @@ class ScaleSpaceDetector(nn.Module):
         return responses, denormalize_laf(lafs, img)
 
     def forward(  # type: ignore
-        self, img: torch.Tensor, mask: Optional[torch.Tensor] = None  # type: ignore
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        self, img: torch.Tensor, mask: torch.Tensor | None = None  # type: ignore
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Three stage local feature detection. First the location and scale of interest points are determined by
         detect function. Then affine shape and orientation.
 

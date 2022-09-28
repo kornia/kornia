@@ -1,4 +1,6 @@
 """Script that finds faces and blurs using FaceDetection and blurring APIs."""
+from __future__ import annotations
+
 import argparse
 
 import cv2

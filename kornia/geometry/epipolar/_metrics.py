@@ -1,5 +1,7 @@
 """Module including useful metrics for Structure from Motion."""
 
+from __future__ import annotations
+
 from torch import Tensor
 
 from kornia.geometry.conversions import convert_points_to_homogeneous

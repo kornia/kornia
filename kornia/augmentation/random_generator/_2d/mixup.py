@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Dict, Optional, Tuple, Union
 
 import torch
@@ -33,7 +35,7 @@ class MixupGenerator(RandomGeneratorBase):
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
     """
 
-    def __init__(self, lambda_val: Optional[Union[torch.Tensor, Tuple[float, float]]] = None, p: float = 1.0) -> None:
+    def __init__(self, lambda_val: torch.Tensor | tuple[float, float] | None = None, p: float = 1.0) -> None:
         super().__init__()
         self.lambda_val = lambda_val
         self.p = p
@@ -52,7 +54,7 @@ class MixupGenerator(RandomGeneratorBase):
         self.lambda_sampler = Uniform(lambda_val[0], lambda_val[1], validate_args=False)
         self.prob_sampler = Bernoulli(torch.tensor(float(self.p), device=device, dtype=dtype))
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
 
         _common_param_check(batch_size, same_on_batch)
@@ -73,11 +75,11 @@ class MixupGenerator(RandomGeneratorBase):
 def random_mixup_generator(
     batch_size: int,
     p: float = 0.5,
-    lambda_val: Optional[torch.Tensor] = None,
+    lambda_val: torch.Tensor | None = None,
     same_on_batch: bool = False,
     device: torch.device = torch.device('cpu'),
     dtype: torch.dtype = torch.float32,
-) -> Dict[str, torch.Tensor]:
+) -> dict[str, torch.Tensor]:
     r"""Generate mixup indexes and lambdas for a batch of inputs.
 
     Args:

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from .classification import ClassificationHead
 from .connected_components import connected_components
 from .diamond_square import diamond_square

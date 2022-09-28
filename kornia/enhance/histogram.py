@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Optional, Tuple
 
 import torch
@@ -5,7 +7,7 @@ import torch
 
 def marginal_pdf(
     values: torch.Tensor, bins: torch.Tensor, sigma: torch.Tensor, epsilon: float = 1e-10
-) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor]:
     """Calculate the marginal probability distribution function of the input tensor based on the number of
     histogram bins.
 
@@ -153,12 +155,12 @@ def image_histogram2d(
     min: float = 0.0,
     max: float = 255.0,
     n_bins: int = 256,
-    bandwidth: Optional[float] = None,
-    centers: Optional[torch.Tensor] = None,
+    bandwidth: float | None = None,
+    centers: torch.Tensor | None = None,
     return_pdf: bool = False,
     kernel: str = "triangular",
     eps: float = 1e-10,
-) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor]:
     """Estimate the histogram of the input image(s).
 
     The calculation uses triangular kernel density estimation.

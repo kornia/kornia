@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import warnings
 from typing import Any, Dict, Optional, Tuple, cast
 
@@ -22,11 +24,7 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
     """
 
     def inverse_transform(
-        self,
-        input: Tensor,
-        flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
-        size: Optional[Tuple[int, int]] = None,
+        self, input: Tensor, flags: dict[str, Any], transform: Tensor | None = None, size: tuple[int, int] | None = None
     ) -> Tensor:
         """By default, the exact transformation as ``apply_transform`` will be used."""
         raise NotImplementedError
@@ -36,7 +34,7 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
         return _torch_inverse_cast(transform)
 
     def get_transformation_matrix(
-        self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, flags: Optional[Dict[str, Any]] = None
+        self, input: Tensor, params: dict[str, Tensor] | None = None, flags: dict[str, Any] | None = None
     ) -> Tensor:
         flags = self.flags if flags is None else flags
         if params is not None:
@@ -53,11 +51,7 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
         return as_tensor(transform, device=input.device, dtype=input.dtype)
 
     def inverse(
-        self,
-        input: Tensor,
-        params: Optional[Dict[str, Tensor]] = None,
-        size: Optional[Tuple[int, int]] = None,
-        **kwargs,
+        self, input: Tensor, params: dict[str, Tensor] | None = None, size: tuple[int, int] | None = None, **kwargs
     ) -> Tensor:
         """Perform inverse operations.
 

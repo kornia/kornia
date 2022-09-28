@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 from typing import Callable, Dict, Optional
 
@@ -64,11 +66,11 @@ class Trainer:
         model: nn.Module,
         train_dataloader: DataLoader,
         valid_dataloader: DataLoader,
-        criterion: Optional[nn.Module],
+        criterion: nn.Module | None,
         optimizer: torch.optim.Optimizer,
         scheduler: torch.optim.lr_scheduler.CosineAnnealingLR,
         config: Configuration,
-        callbacks: Dict[str, Callable] = {},
+        callbacks: dict[str, Callable] = {},
     ) -> None:
         # setup the accelerator
         if Accelerator is None:
@@ -193,7 +195,7 @@ class Trainer:
     def augmentations(self, x: dict) -> dict:
         return x
 
-    def compute_metrics(self, *args: torch.Tensor) -> Dict[str, float]:
+    def compute_metrics(self, *args: torch.Tensor) -> dict[str, float]:
         """Compute metrics during the evaluation."""
         return {}
 

@@ -1,4 +1,6 @@
 """Module containing operators to work on RGB-Depth images."""
+from __future__ import annotations
+
 from typing import Union
 
 import torch
@@ -208,8 +210,8 @@ class DepthWarper(nn.Module):
 
         # state members
         self._pinhole_dst: PinholeCamera = pinhole_dst
-        self._pinhole_src: Union[None, PinholeCamera] = None
-        self._dst_proj_src: Union[None, torch.Tensor] = None
+        self._pinhole_src: None | PinholeCamera = None
+        self._dst_proj_src: None | torch.Tensor = None
 
         self.grid: torch.Tensor = self._create_meshgrid(height, width)
 
@@ -218,7 +220,7 @@ class DepthWarper(nn.Module):
         grid: torch.Tensor = create_meshgrid(height, width, normalized_coordinates=False)  # 1xHxWx2
         return convert_points_to_homogeneous(grid)  # append ones to last dim
 
-    def compute_projection_matrix(self, pinhole_src: PinholeCamera) -> 'DepthWarper':
+    def compute_projection_matrix(self, pinhole_src: PinholeCamera) -> DepthWarper:
         r"""Compute the projection matrix from the source to destination frame."""
         if not isinstance(self._pinhole_dst, PinholeCamera):
             raise TypeError(

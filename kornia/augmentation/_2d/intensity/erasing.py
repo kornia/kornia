@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Dict, Optional, Tuple, Union, cast
 
 import torch
@@ -57,13 +59,13 @@ class RandomErasing(IntensityAugmentationBase2D):
     # Note: Extra params, inplace=False in Torchvision.
     def __init__(
         self,
-        scale: Union[Tensor, Tuple[float, float]] = (0.02, 0.33),
-        ratio: Union[Tensor, Tuple[float, float]] = (0.3, 3.3),
+        scale: Tensor | tuple[float, float] = (0.02, 0.33),
+        ratio: Tensor | tuple[float, float] = (0.3, 3.3),
         value: float = 0.0,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
+        return_transform: bool | None = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self.scale = scale
@@ -72,7 +74,7 @@ class RandomErasing(IntensityAugmentationBase2D):
         self._param_generator = cast(rg.RectangleEraseGenerator, rg.RectangleEraseGenerator(scale, ratio, float(value)))
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
         _, c, h, w = input.size()
         values = params["values"].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).repeat(1, *input.shape[1:]).to(input)

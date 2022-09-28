@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import torch
 
 from .utils import arange_sequence, batch_2x2_ellipse, batch_2x2_inv, draw_first_k_couples, piecewise_arange

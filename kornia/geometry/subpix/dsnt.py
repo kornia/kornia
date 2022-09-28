@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 r"""Implementation of "differentiable spatial to numerical" (soft-argmax) operations, as described in the paper
 "Numerical Coordinate Regression with Convolutional Neural Networks" by Nibali et al."""
 
@@ -99,7 +101,7 @@ def _safe_zero_division(numerator: torch.Tensor, denominator: torch.Tensor, eps:
 
 
 def render_gaussian2d(
-    mean: torch.Tensor, std: torch.Tensor, size: Tuple[int, int], normalized_coordinates: bool = True
+    mean: torch.Tensor, std: torch.Tensor, size: tuple[int, int], normalized_coordinates: bool = True
 ):
     r"""Render the PDF of a 2D Gaussian distribution.
 

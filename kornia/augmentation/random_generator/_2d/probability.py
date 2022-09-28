@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Dict
 
 import torch
@@ -35,7 +37,7 @@ class ProbabilityGenerator(RandomGeneratorBase):
         p = torch.tensor(float(self.p), device=device, dtype=dtype)
         self.sampler = Bernoulli(p)
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> dict[str, torch.Tensor]:  # type:ignore
         batch_size = batch_shape[0]
         probs_mask: torch.Tensor = _adapted_sampling((batch_size,), self.sampler, same_on_batch).bool()
         return dict(probs=probs_mask)

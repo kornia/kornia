@@ -1,5 +1,7 @@
 """Module containing functionals for intensity normalisation."""
 
+from __future__ import annotations
+
 from typing import List, Tuple, Union
 
 import torch
@@ -40,8 +42,8 @@ class Normalize(nn.Module):
 
     def __init__(
         self,
-        mean: Union[torch.Tensor, Tuple[float], List[float], float],
-        std: Union[torch.Tensor, Tuple[float], List[float], float],
+        mean: torch.Tensor | tuple[float] | list[float] | float,
+        std: torch.Tensor | tuple[float] | list[float] | float,
     ) -> None:
         super().__init__()
 
@@ -156,7 +158,7 @@ class Denormalize(nn.Module):
         torch.Size([1, 4, 3, 3, 3])
     """
 
-    def __init__(self, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]) -> None:
+    def __init__(self, mean: torch.Tensor | float, std: torch.Tensor | float) -> None:
 
         super().__init__()
 
@@ -171,7 +173,7 @@ class Denormalize(nn.Module):
         return self.__class__.__name__ + repr
 
 
-def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]) -> torch.Tensor:
+def denormalize(data: torch.Tensor, mean: torch.Tensor | float, std: torch.Tensor | float) -> torch.Tensor:
     r"""Denormalize an image/video tensor with mean and standard deviation.
 
     .. math::

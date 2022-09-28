@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Dict, Tuple, Union
 
 import torch
@@ -35,12 +37,12 @@ class RotationGenerator3D(RandomGeneratorBase):
 
     def __init__(
         self,
-        degrees: Union[
-            torch.Tensor,
-            float,
-            Tuple[float, float, float],
-            Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]],
-        ],
+        degrees: (
+            torch.Tensor
+            | float
+            | tuple[float, float, float]
+            | tuple[tuple[float, float], tuple[float, float], tuple[float, float]]
+        ),
     ) -> None:
         super().__init__()
         self.degrees = degrees
@@ -55,7 +57,7 @@ class RotationGenerator3D(RandomGeneratorBase):
         self.pitch_sampler = Uniform(degrees[1][0], degrees[1][1], validate_args=False)
         self.roll_sampler = Uniform(degrees[2][0], degrees[2][1], validate_args=False)
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> dict[str, torch.Tensor]:  # type:ignore
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.degrees])
@@ -74,7 +76,7 @@ def random_rotation_generator3d(
     same_on_batch: bool = False,
     device: torch.device = torch.device('cpu'),
     dtype: torch.dtype = torch.float32,
-) -> Dict[str, torch.Tensor]:
+) -> dict[str, torch.Tensor]:
     r"""Get parameters for ``rotate`` for a random rotate transform.
 
     Args:

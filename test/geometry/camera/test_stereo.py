@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Type
 
 import pytest
@@ -139,7 +141,7 @@ class _SmokeTestData:
     """Collection of smoke test data."""
 
     @staticmethod
-    def _create_rectified_camera(params: Type[_TestParams], batch_size, device, dtype, tx_fx=None):
+    def _create_rectified_camera(params: type[_TestParams], batch_size, device, dtype, tx_fx=None):
         intrinsics = torch.zeros((3, 4), device=device, dtype=dtype)
         intrinsics[..., 0, 0] = params.fx
         intrinsics[..., 1, 1] = params.fy

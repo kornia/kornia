@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
@@ -69,14 +71,14 @@ class ColorJitter(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        brightness: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
-        contrast: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
-        saturation: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
-        hue: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
+        brightness: Tensor | float | tuple[float, float] | list[float] = 0.0,
+        contrast: Tensor | float | tuple[float, float] | list[float] = 0.0,
+        saturation: Tensor | float | tuple[float, float] | list[float] = 0.0,
+        hue: Tensor | float | tuple[float, float] | list[float] = 0.0,
         same_on_batch: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
+        return_transform: bool | None = None,
         silence_instantiation_warning: bool = False,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
@@ -97,7 +99,7 @@ class ColorJitter(IntensityAugmentationBase2D):
         )
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
 
         transforms = [

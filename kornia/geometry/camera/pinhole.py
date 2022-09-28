@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Iterable, Optional
 
 import torch
@@ -138,7 +140,7 @@ class PinholeCamera:
         return self.extrinsics[..., 0, -1]
 
     @tx.setter
-    def tx(self, value) -> 'PinholeCamera':
+    def tx(self, value) -> PinholeCamera:
         r"""Set the x-coordinate of the translation vector with the given value."""
         self.extrinsics[..., 0, -1] = value
         return self
@@ -153,7 +155,7 @@ class PinholeCamera:
         return self.extrinsics[..., 1, -1]
 
     @ty.setter
-    def ty(self, value) -> 'PinholeCamera':
+    def ty(self, value) -> PinholeCamera:
         r"""Set the y-coordinate of the translation vector with the given value."""
         self.extrinsics[..., 1, -1] = value
         return self
@@ -168,7 +170,7 @@ class PinholeCamera:
         return self.extrinsics[..., 2, -1]
 
     @tz.setter
-    def tz(self, value) -> 'PinholeCamera':
+    def tz(self, value) -> PinholeCamera:
         r"""Set the y-coordinate of the translation vector with the given value."""
         self.extrinsics[..., 2, -1] = value
         return self
@@ -209,7 +211,7 @@ class PinholeCamera:
         """
         return self.extrinsics[..., :3, -1:]
 
-    def clone(self) -> 'PinholeCamera':
+    def clone(self) -> PinholeCamera:
         r"""Return a deep copy of the current object instance."""
         height: torch.Tensor = self.height.clone()
         width: torch.Tensor = self.width.clone()
@@ -225,7 +227,7 @@ class PinholeCamera:
         """
         return self.intrinsics.inverse()
 
-    def scale(self, scale_factor) -> 'PinholeCamera':
+    def scale(self, scale_factor) -> PinholeCamera:
         r"""Scale the pinhole model.
 
         Args:
@@ -247,7 +249,7 @@ class PinholeCamera:
         width: torch.Tensor = scale_factor * self.width.clone()
         return PinholeCamera(intrinsics, self.extrinsics, height, width)
 
-    def scale_(self, scale_factor) -> 'PinholeCamera':
+    def scale_(self, scale_factor) -> PinholeCamera:
         r"""Scale the pinhole model in-place.
 
         Args:
@@ -339,8 +341,8 @@ class PinholeCamera:
         ty,
         tz,
         batch_size=1,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         # create the camera matrix
         intrinsics = torch.zeros(batch_size, 4, 4, device=device, dtype=dtype)
@@ -382,7 +384,7 @@ class PinholeCamerasList(PinholeCamera):
     def __init__(self, pinholes_list: Iterable[PinholeCamera]) -> None:
         self._initialize_parameters(pinholes_list)
 
-    def _initialize_parameters(self, pinholes: Iterable[PinholeCamera]) -> 'PinholeCamerasList':
+    def _initialize_parameters(self, pinholes: Iterable[PinholeCamera]) -> PinholeCamerasList:
         r"""Initialise the class attributes given a cameras list."""
         if not isinstance(pinholes, (list, tuple)):
             raise TypeError(f"pinhole must of type list or tuple. Got {type(pinholes)}")

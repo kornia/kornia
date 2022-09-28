@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Dict, Optional, Tuple, Union, cast
 
 from torch import Tensor
@@ -77,20 +79,20 @@ class RandomMotionBlur3D(AugmentationBase3D):
 
     def __init__(
         self,
-        kernel_size: Union[int, Tuple[int, int]],
-        angle: Union[
-            Tensor,
-            float,
-            Tuple[float, float, float],
-            Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]],
-        ],
-        direction: Union[Tensor, float, Tuple[float, float]],
-        border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
-        resample: Union[str, int, Resample] = Resample.NEAREST.name,
+        kernel_size: int | tuple[int, int],
+        angle: (
+            Tensor
+            | float
+            | tuple[float, float, float]
+            | tuple[tuple[float, float], tuple[float, float], tuple[float, float]]
+        ),
+        direction: Tensor | float | tuple[float, float],
+        border_type: int | str | BorderType = BorderType.CONSTANT.name,
+        resample: str | int | Resample = Resample.NEAREST.name,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
+        return_transform: bool | None = None,
     ) -> None:
         super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
@@ -98,11 +100,11 @@ class RandomMotionBlur3D(AugmentationBase3D):
         self.flags = dict(border_type=BorderType.get(border_type), resample=Resample.get(resample))
         self._param_generator = cast(rg.MotionBlurGenerator3D, rg.MotionBlurGenerator3D(kernel_size, angle, direction))
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
         return self.identity_matrix(input)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
         kernel_size: int = cast(int, params["ksize_factor"].unique().item())
         angle = params["angle_factor"]

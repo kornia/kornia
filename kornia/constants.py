@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from enum import Enum, EnumMeta
 from typing import TypeVar, Union, cast
 
@@ -11,7 +13,7 @@ T = TypeVar('T', bound='ConstantBase')
 
 class ConstantBase:
     @classmethod
-    def get(cls, value: Union[str, int, T]) -> T:  # type: ignore
+    def get(cls, value: str | int | T) -> T:  # type: ignore
         if type(value) is str:
             return cls[value.upper()]  # type: ignore
         if type(value) is int:
@@ -22,7 +24,7 @@ class ConstantBase:
 
 
 class EnumMetaFlags(EnumMeta):
-    def __contains__(self, other: Union[str, int, T]) -> bool:  # type: ignore
+    def __contains__(self, other: str | int | T) -> bool:  # type: ignore
         if type(other) is str:
             other = cast(str, other)
             return any(val.name == other.upper() for val in self)  # type: ignore

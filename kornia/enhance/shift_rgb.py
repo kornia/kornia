@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import torch
 
 from kornia.testing import KORNIA_CHECK_IS_COLOR, KORNIA_CHECK_IS_TENSOR

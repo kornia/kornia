@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Dict, Optional, Tuple, Union, cast
 
 from torch import Tensor
@@ -86,37 +88,36 @@ class RandomAffine3D(AugmentationBase3D):
 
     def __init__(
         self,
-        degrees: Union[
-            Tensor,
-            float,
-            Tuple[float, float],
-            Tuple[float, float, float],
-            Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]],
-        ],
-        translate: Optional[Union[Tensor, Tuple[float, float, float]]] = None,
-        scale: Optional[
-            Union[Tensor, Tuple[float, float], Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]]
-        ] = None,
-        shears: Union[
-            Tensor,
-            float,
-            Tuple[float, float],
-            Tuple[float, float, float, float, float, float],
-            Tuple[
-                Tuple[float, float],
-                Tuple[float, float],
-                Tuple[float, float],
-                Tuple[float, float],
-                Tuple[float, float],
-                Tuple[float, float],
-            ],
-        ] = None,
-        resample: Union[str, int, Resample] = Resample.BILINEAR.name,
+        degrees: (
+            Tensor
+            | float
+            | tuple[float, float]
+            | tuple[float, float, float]
+            | tuple[tuple[float, float], tuple[float, float], tuple[float, float]]
+        ),
+        translate: Tensor | tuple[float, float, float] | None = None,
+        scale: None
+        | (Tensor | tuple[float, float] | tuple[tuple[float, float], tuple[float, float], tuple[float, float]]) = None,
+        shears: (
+            Tensor
+            | float
+            | tuple[float, float]
+            | tuple[float, float, float, float, float, float]
+            | tuple[
+                tuple[float, float],
+                tuple[float, float],
+                tuple[float, float],
+                tuple[float, float],
+                tuple[float, float],
+                tuple[float, float],
+            ]
+        ) = None,
+        resample: str | int | Resample = Resample.BILINEAR.name,
         same_on_batch: bool = False,
         align_corners: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
+        return_transform: bool | None = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self.degrees = degrees
@@ -127,7 +128,7 @@ class RandomAffine3D(AugmentationBase3D):
         self.flags = dict(resample=Resample.get(resample), align_corners=align_corners)
         self._param_generator = cast(rg.AffineGenerator3D, rg.AffineGenerator3D(degrees, translate, scale, shears))
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
         transform: Tensor = get_affine_matrix3d(
             params["translations"],
             params["center"],
@@ -143,7 +144,7 @@ class RandomAffine3D(AugmentationBase3D):
         return transform
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
         transform = cast(Tensor, transform)
         return warp_affine3d(

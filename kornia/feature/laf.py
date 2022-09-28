@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import math
 from typing import Optional, Union
 
@@ -101,7 +103,7 @@ def set_laf_orientation(LAF: torch.Tensor, angles_degrees: torch.Tensor) -> torc
 
 
 def laf_from_center_scale_ori(
-    xy: torch.Tensor, scale: Optional[torch.Tensor] = None, ori: Optional[torch.Tensor] = None
+    xy: torch.Tensor, scale: torch.Tensor | None = None, ori: torch.Tensor | None = None
 ) -> torch.Tensor:
     """Return orientation of the LAFs, in radians. Useful to create kornia LAFs from OpenCV keypoints.
 
@@ -128,7 +130,7 @@ def laf_from_center_scale_ori(
     return laf
 
 
-def scale_laf(laf: torch.Tensor, scale_coef: Union[float, torch.Tensor]) -> torch.Tensor:
+def scale_laf(laf: torch.Tensor, scale_coef: float | torch.Tensor) -> torch.Tensor:
     """Multiplies region part of LAF ([:, :, :2, :2]) by a scale_coefficient.
 
     So the center, shape and orientation of the local feature stays the same, but the region area changes.

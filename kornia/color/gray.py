@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Optional
 
 import torch
@@ -32,7 +34,7 @@ def grayscale_to_rgb(image: Tensor) -> Tensor:
     return concatenate([image, image, image], -3)
 
 
-def rgb_to_grayscale(image: Tensor, rgb_weights: Optional[Tensor] = None) -> Tensor:
+def rgb_to_grayscale(image: Tensor, rgb_weights: Tensor | None = None) -> Tensor:
     r"""Convert a RGB image to grayscale version of image.
 
     .. image:: _static/img/rgb_to_grayscale.png
@@ -145,7 +147,7 @@ class RgbToGrayscale(Module):
         >>> output = gray(input)  # 2x1x4x5
     """
 
-    def __init__(self, rgb_weights: Optional[Tensor] = None) -> None:
+    def __init__(self, rgb_weights: Tensor | None = None) -> None:
         super().__init__()
         self.rgb_weights = rgb_weights
 

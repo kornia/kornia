@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Optional, Union
 
 import torch
@@ -8,10 +10,7 @@ from kornia.testing import KORNIA_CHECK_SHAPE
 
 
 def harris_response(
-    input: torch.Tensor,
-    k: Union[torch.Tensor, float] = 0.04,
-    grads_mode: str = 'sobel',
-    sigmas: Optional[torch.Tensor] = None,
+    input: torch.Tensor, k: torch.Tensor | float = 0.04, grads_mode: str = 'sobel', sigmas: torch.Tensor | None = None
 ) -> torch.Tensor:
     r"""Compute the Harris cornerness function.
 
@@ -94,9 +93,7 @@ def harris_response(
     return scores
 
 
-def gftt_response(
-    input: torch.Tensor, grads_mode: str = 'sobel', sigmas: Optional[torch.Tensor] = None
-) -> torch.Tensor:
+def gftt_response(input: torch.Tensor, grads_mode: str = 'sobel', sigmas: torch.Tensor | None = None) -> torch.Tensor:
     r"""Compute the Shi-Tomasi cornerness function.
 
     Function does not do any normalization or nms. The response map is computed according the following formulation:
@@ -169,7 +166,7 @@ def gftt_response(
 
 
 def hessian_response(
-    input: torch.Tensor, grads_mode: str = 'sobel', sigmas: Optional[torch.Tensor] = None
+    input: torch.Tensor, grads_mode: str = 'sobel', sigmas: torch.Tensor | None = None
 ) -> torch.Tensor:
     r"""Compute the absolute of determinant of the Hessian matrix.
 
@@ -271,7 +268,7 @@ class BlobDoG(nn.Module):
     def __repr__(self) -> str:
         return self.__class__.__name__
 
-    def forward(self, input: torch.Tensor, sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:  # type: ignore
+    def forward(self, input: torch.Tensor, sigmas: torch.Tensor | None = None) -> torch.Tensor:  # type: ignore
         return dog_response(input)  # type: ignore
 
 
@@ -281,7 +278,7 @@ class CornerHarris(nn.Module):
     See :func:`~kornia.feature.harris_response` for details.
     """
 
-    def __init__(self, k: Union[float, torch.Tensor], grads_mode='sobel') -> None:
+    def __init__(self, k: float | torch.Tensor, grads_mode='sobel') -> None:
         super().__init__()
         if type(k) is float:
             self.register_buffer('k', torch.tensor(k))
@@ -293,7 +290,7 @@ class CornerHarris(nn.Module):
     def __repr__(self) -> str:
         return self.__class__.__name__ + '(k=' + str(self.k) + ', ' + 'grads_mode=' + self.grads_mode + ')'
 
-    def forward(self, input: torch.Tensor, sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:  # type: ignore
+    def forward(self, input: torch.Tensor, sigmas: torch.Tensor | None = None) -> torch.Tensor:  # type: ignore
         return harris_response(input, self.k, self.grads_mode, sigmas)  # type: ignore
 
 
@@ -311,7 +308,7 @@ class CornerGFTT(nn.Module):
     def __repr__(self) -> str:
         return self.__class__.__name__ + 'grads_mode=' + self.grads_mode + ')'
 
-    def forward(self, input: torch.Tensor, sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:  # type: ignore
+    def forward(self, input: torch.Tensor, sigmas: torch.Tensor | None = None) -> torch.Tensor:  # type: ignore
         return gftt_response(input, self.grads_mode, sigmas)
 
 
@@ -329,5 +326,5 @@ class BlobHessian(nn.Module):
     def __repr__(self) -> str:
         return self.__class__.__name__ + 'grads_mode=' + self.grads_mode + ')'
 
-    def forward(self, input: torch.Tensor, sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:  # type: ignore
+    def forward(self, input: torch.Tensor, sigmas: torch.Tensor | None = None) -> torch.Tensor:  # type: ignore
         return hessian_response(input, self.grads_mode, sigmas)

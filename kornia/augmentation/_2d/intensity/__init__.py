@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from kornia.augmentation._2d.intensity.box_blur import RandomBoxBlur
 from kornia.augmentation._2d.intensity.channel_shuffle import RandomChannelShuffle
 from kornia.augmentation._2d.intensity.color_jiggle import ColorJiggle

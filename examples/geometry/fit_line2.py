@@ -1,4 +1,6 @@
 # Example showing how to fit a 2d line with kornia / pytorch
+from __future__ import annotations
+
 import matplotlib.pyplot as plt
 import torch
 

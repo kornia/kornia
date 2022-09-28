@@ -1,5 +1,7 @@
 """Module containing the functionalities for computing the Fundamental Matrix."""
 
+from __future__ import annotations
+
 from typing import Tuple
 
 import torch
@@ -8,7 +10,7 @@ from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.linalg import transform_points
 
 
-def normalize_points(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Tensor, torch.Tensor]:
+def normalize_points(points: torch.Tensor, eps: float = 1e-8) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Normalizes points (isotropic).
 
     Computes the transformation matrix such that the two principal moments of the set of points

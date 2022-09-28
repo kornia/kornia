@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Dict, Optional, Tuple
 
 import torch
@@ -57,7 +59,7 @@ class PlainUniformGenerator(RandomGeneratorBase):
         return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        self.sampler_dict: Dict[str, Distribution] = {}
+        self.sampler_dict: dict[str, Distribution] = {}
         for factor, name, center, bound in self.samplers:
             if center is None and bound is None:
                 factor = torch.as_tensor(factor, device=device, dtype=dtype)
@@ -67,7 +69,7 @@ class PlainUniformGenerator(RandomGeneratorBase):
                 factor = _range_bound(factor, name, center=center, bounds=bound, device=device, dtype=dtype)
             self.sampler_dict.update({name: Uniform(factor[0], factor[1], validate_args=False)})
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> dict[str, torch.Tensor]:  # type:ignore
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([t for t, _, _, _ in self.samplers])

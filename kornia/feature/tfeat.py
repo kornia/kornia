@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Callable, Dict
 
 import torch
@@ -5,7 +7,7 @@ import torch.nn as nn
 
 from kornia.testing import KORNIA_CHECK_SHAPE
 
-urls: Dict[str, str] = {}
+urls: dict[str, str] = {}
 urls["liberty"] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-liberty.params"  # pylint: disable
 urls[
     "notredame"

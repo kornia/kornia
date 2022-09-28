@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Callable, Dict, List, Tuple, Union
 
 import torch
@@ -11,18 +13,18 @@ from kornia.utils import create_meshgrid
 
 # Precomputed coefficients for Von Mises kernel, given N and K(appa).
 sqrt2: float = 1.4142135623730951
-COEFFS_N1_K1: List[float] = [0.38214156, 0.48090413]
-COEFFS_N2_K8: List[float] = [0.14343168, 0.268285, 0.21979234]
-COEFFS_N3_K8: List[float] = [0.14343168, 0.268285, 0.21979234, 0.15838885]
-COEFFS: Dict[str, List[float]] = {'xy': COEFFS_N1_K1, 'rhophi': COEFFS_N2_K8, 'theta': COEFFS_N3_K8}
+COEFFS_N1_K1: list[float] = [0.38214156, 0.48090413]
+COEFFS_N2_K8: list[float] = [0.14343168, 0.268285, 0.21979234]
+COEFFS_N3_K8: list[float] = [0.14343168, 0.268285, 0.21979234, 0.15838885]
+COEFFS: dict[str, list[float]] = {'xy': COEFFS_N1_K1, 'rhophi': COEFFS_N2_K8, 'theta': COEFFS_N3_K8}
 
-urls: Dict[str, str] = {
+urls: dict[str, str] = {
     k: f'https://github.com/manyids2/mkd_pytorch/raw/master/mkd_pytorch/mkd-{k}-64.pth'
     for k in ['cart', 'polar', 'concat']
 }
 
 
-def get_grid_dict(patch_size: int = 32) -> Dict[str, torch.Tensor]:
+def get_grid_dict(patch_size: int = 32) -> dict[str, torch.Tensor]:
     r"""Get cartesian and polar parametrizations of grid."""
     kgrid = create_meshgrid(height=patch_size, width=patch_size, normalized_coordinates=True)
     x = kgrid[0, :, :, 0]
@@ -110,7 +112,7 @@ class VonMisesKernel(nn.Module):
         >>> emb = vm(oris) # 23x7x32x32
     """
 
-    def __init__(self, patch_size: int, coeffs: Union[list, tuple]) -> None:
+    def __init__(self, patch_size: int, coeffs: list | tuple) -> None:
         super().__init__()
 
         self.patch_size = patch_size
@@ -339,7 +341,7 @@ class ExplicitSpacialEncoding(nn.Module):
         gmask = torch.exp(-1 * norm_rho**2 / sigma**2)
         return gmask
 
-    def init_kron(self) -> Tuple[torch.Tensor, torch.Tensor]:
+    def init_kron(self) -> tuple[torch.Tensor, torch.Tensor]:
         """Initialize helper variables to calculate kronecker."""
         kron = get_kron_order(self.in_dims, self.d_emb)
         _emb = torch.jit.annotate(torch.Tensor, self.emb)
@@ -422,7 +424,7 @@ class Whitening(nn.Module):
     def __init__(
         self,
         xform: str,
-        whitening_model: Union[Dict[str, Dict[str, torch.Tensor]], None],
+        whitening_model: dict[str, dict[str, torch.Tensor]] | None,
         in_dims: int,
         output_dims: int = 128,
         keval: int = 40,
@@ -448,7 +450,7 @@ class Whitening(nn.Module):
         if whitening_model is not None:
             self.load_whitening_parameters(whitening_model)
 
-    def load_whitening_parameters(self, whitening_model: Dict[str, Dict[str, torch.Tensor]]) -> None:
+    def load_whitening_parameters(self, whitening_model: dict[str, dict[str, torch.Tensor]]) -> None:
         algo = 'lw' if self.xform == 'lw' else 'pca'
         wh_model = whitening_model[algo]
         self.mean.data = wh_model['mean']
@@ -637,7 +639,7 @@ class MKDDescriptor(nn.Module):
         )
 
 
-def load_whitening_model(kernel_type: str, training_set: str) -> Dict:
+def load_whitening_model(kernel_type: str, training_set: str) -> dict:
     storage_fcn: Callable = lambda storage, loc: storage
     whitening_models = torch.hub.load_state_dict_from_url(urls[kernel_type], map_location=storage_fcn)
     whitening_model = whitening_models[training_set]

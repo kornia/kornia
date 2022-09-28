@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 from torch import Tensor
@@ -51,12 +53,12 @@ class RandomSolarize(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        thresholds: Union[Tensor, float, Tuple[float, float], List[float]] = 0.1,
-        additions: Union[Tensor, float, Tuple[float, float], List[float]] = 0.1,
+        thresholds: Tensor | float | tuple[float, float] | list[float] = 0.1,
+        additions: Tensor | float | tuple[float, float] | list[float] = 0.1,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
+        return_transform: bool | None = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator = cast(
@@ -67,10 +69,10 @@ class RandomSolarize(IntensityAugmentationBase2D):
         )
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
         thresholds = params["thresholds"]
-        additions: Optional[Tensor]
+        additions: Tensor | None
         if "additions" in params:
             additions = params["additions"]
         else:

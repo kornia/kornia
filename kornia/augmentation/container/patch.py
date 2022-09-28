@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from itertools import cycle, islice
 from typing import Iterator, List, NamedTuple, Optional, Tuple, Union
 
@@ -15,7 +17,7 @@ __all__ = ["PatchSequential"]
 
 
 class PatchParamItem(NamedTuple):
-    indices: List[int]
+    indices: list[int]
     param: ParamItem
 
 
@@ -113,15 +115,15 @@ class PatchSequential(ImageSequential):
     def __init__(
         self,
         *args: nn.Module,
-        grid_size: Tuple[int, int] = (4, 4),
+        grid_size: tuple[int, int] = (4, 4),
         padding: str = "same",
-        same_on_batch: Optional[bool] = None,
-        keepdim: Optional[bool] = None,
+        same_on_batch: bool | None = None,
+        keepdim: bool | None = None,
         patchwise_apply: bool = True,
-        random_apply: Union[int, bool, Tuple[int, int]] = False,
-        random_apply_weights: Optional[List[float]] = None,
+        random_apply: int | bool | tuple[int, int] = False,
+        random_apply_weights: list[float] | None = None,
     ) -> None:
-        _random_apply: Optional[Union[int, Tuple[int, int]]]
+        _random_apply: int | tuple[int, int] | None
 
         if patchwise_apply and random_apply is True:
             # will only apply [1, 4] augmentations per patch
@@ -151,15 +153,15 @@ class PatchSequential(ImageSequential):
         self.padding = padding
         self.patchwise_apply = patchwise_apply
 
-    def contains_label_operations(self, params: List[PatchParamItem]) -> bool:  # type: ignore
+    def contains_label_operations(self, params: list[PatchParamItem]) -> bool:  # type: ignore
         for param in params:
             if param.param.name.startswith("RandomMixUp") or param.param.name.startswith("RandomCutMix"):
                 return True
         return False
 
     def compute_padding(
-        self, input: torch.Tensor, padding: str, grid_size: Optional[Tuple[int, int]] = None
-    ) -> Tuple[int, int, int, int]:
+        self, input: torch.Tensor, padding: str, grid_size: tuple[int, int] | None = None
+    ) -> tuple[int, int, int, int]:
         if grid_size is None:
             grid_size = self.grid_size
         if padding == "valid":
@@ -174,8 +176,8 @@ class PatchSequential(ImageSequential):
     def extract_patches(
         self,
         input: torch.Tensor,
-        grid_size: Optional[Tuple[int, int]] = None,
-        pad: Optional[Tuple[int, int, int, int]] = None,
+        grid_size: tuple[int, int] | None = None,
+        pad: tuple[int, int, int, int] | None = None,
     ) -> torch.Tensor:
         """Extract patches from tensor.
 
@@ -218,10 +220,7 @@ class PatchSequential(ImageSequential):
         return extract_tensor_patches(input, window_size, stride)
 
     def restore_from_patches(
-        self,
-        patches: torch.Tensor,
-        grid_size: Tuple[int, int] = (4, 4),
-        pad: Optional[Tuple[int, int, int, int]] = None,
+        self, patches: torch.Tensor, grid_size: tuple[int, int] = (4, 4), pad: tuple[int, int, int, int] | None = None
     ) -> torch.Tensor:
         """Restore input from patches.
 
@@ -245,8 +244,8 @@ class PatchSequential(ImageSequential):
             restored_tensor = torch.nn.functional.pad(restored_tensor, [-i for i in pad])
         return restored_tensor
 
-    def forward_parameters(self, batch_shape: torch.Size) -> List[PatchParamItem]:  # type: ignore
-        out_param: List[PatchParamItem] = []
+    def forward_parameters(self, batch_shape: torch.Size) -> list[PatchParamItem]:  # type: ignore
+        out_param: list[PatchParamItem] = []
         if not self.patchwise_apply:
             params = self.generate_parameters(torch.Size([1, batch_shape[0] * batch_shape[1], *batch_shape[2:]]))
             indices = torch.arange(0, batch_shape[0] * batch_shape[1])
@@ -263,7 +262,7 @@ class PatchSequential(ImageSequential):
             # "append" of "list" does not return a value
         return out_param
 
-    def generate_parameters(self, batch_shape: torch.Size) -> Iterator[Tuple[ParamItem, int]]:
+    def generate_parameters(self, batch_shape: torch.Size) -> Iterator[tuple[ParamItem, int]]:
         """Get multiple forward sequence but maximumly one mix augmentation in between.
 
         Args:
@@ -315,13 +314,13 @@ class PatchSequential(ImageSequential):
                         yield ParamItem(s[0], None), i
 
     def apply_by_param(
-        self, input: torch.Tensor, label: Optional[torch.Tensor], params: PatchParamItem
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], PatchParamItem]:
+        self, input: torch.Tensor, label: torch.Tensor | None, params: PatchParamItem
+    ) -> tuple[torch.Tensor, torch.Tensor | None, PatchParamItem]:
         _input: torch.Tensor
         in_shape = input.shape
         _input = input[params.indices]
 
-        _label: Optional[torch.Tensor]
+        _label: torch.Tensor | None
         if label is not None:
             _label = label[params.indices]
         else:
@@ -371,8 +370,8 @@ class PatchSequential(ImageSequential):
         return input, _label, PatchParamItem(params.indices, param=out_param)
 
     def forward_by_params(
-        self, input: torch.Tensor, label: Optional[torch.Tensor], params: List[PatchParamItem]
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, Optional[torch.Tensor]]]:
+        self, input: torch.Tensor, label: torch.Tensor | None, params: list[PatchParamItem]
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor | None]:
         _input: torch.Tensor
         in_shape = input.shape
         _input = input.reshape(-1, *in_shape[-3:])
@@ -387,7 +386,7 @@ class PatchSequential(ImageSequential):
         _input = _input.reshape(in_shape)
         return _input, label
 
-    def inverse(self, input: torch.Tensor, params: List[ParamItem]) -> torch.Tensor:  # type: ignore
+    def inverse(self, input: torch.Tensor, params: list[ParamItem]) -> torch.Tensor:  # type: ignore
         """Inverse transformation.
 
         Used to inverse a tensor according to the performed transformation by a forward pass, or with respect to
@@ -399,8 +398,8 @@ class PatchSequential(ImageSequential):
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
 
     def forward(  # type: ignore
-        self, input: torch.Tensor, label: Optional[torch.Tensor] = None, params: Optional[List[PatchParamItem]] = None
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        self, input: torch.Tensor, label: torch.Tensor | None = None, params: list[PatchParamItem] | None = None
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         """Input transformation will be returned if input is a tuple."""
         # BCHW -> B(patch)CHW
         if isinstance(input, (tuple,)):

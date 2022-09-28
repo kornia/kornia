@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import copy
 from typing import Optional
 
@@ -34,8 +36,8 @@ class LoFTREncoderLayer(nn.Module):
         self,
         x: torch.Tensor,
         source: torch.Tensor,
-        x_mask: Optional[torch.Tensor] = None,
-        source_mask: Optional[torch.Tensor] = None,
+        x_mask: torch.Tensor | None = None,
+        source_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
         Args:

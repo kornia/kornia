@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import torch
 
 from kornia.geometry.linalg import transform_points

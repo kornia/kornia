@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Dict, Tuple, Union
 
 import torch
@@ -32,8 +34,8 @@ class RectangleEraseGenerator(RandomGeneratorBase):
 
     def __init__(
         self,
-        scale: Union[torch.Tensor, Tuple[float, float]] = (0.02, 0.33),
-        ratio: Union[torch.Tensor, Tuple[float, float]] = (0.3, 3.3),
+        scale: torch.Tensor | tuple[float, float] = (0.02, 0.33),
+        ratio: torch.Tensor | tuple[float, float] = (0.3, 3.3),
         value: float = 0.0,
     ) -> None:
         super().__init__()
@@ -72,7 +74,7 @@ class RectangleEraseGenerator(RandomGeneratorBase):
             validate_args=False,
         )
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> dict[str, torch.Tensor]:  # type:ignore
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]
@@ -147,7 +149,7 @@ def random_rectangles_params_generator(
     same_on_batch: bool = False,
     device: torch.device = torch.device('cpu'),
     dtype: torch.dtype = torch.float32,
-) -> Dict[str, torch.Tensor]:
+) -> dict[str, torch.Tensor]:
     r"""Get parameters for ```erasing``` transformation for erasing transform.
 
     Args:

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Tuple
 
 import torch
@@ -7,7 +9,7 @@ from .gaussian import gaussian_blur2d
 
 
 def unsharp_mask(
-    input: torch.Tensor, kernel_size: Tuple[int, int], sigma: Tuple[float, float], border_type: str = 'reflect'
+    input: torch.Tensor, kernel_size: tuple[int, int], sigma: tuple[float, float], border_type: str = 'reflect'
 ) -> torch.Tensor:
     r"""Create an operator that sharpens a tensor by applying operation out = 2 * image - gaussian_blur2d(image).
 
@@ -64,10 +66,10 @@ class UnsharpMask(nn.Module):
         torch.Size([2, 4, 5, 5])
     """
 
-    def __init__(self, kernel_size: Tuple[int, int], sigma: Tuple[float, float], border_type: str = 'reflect') -> None:
+    def __init__(self, kernel_size: tuple[int, int], sigma: tuple[float, float], border_type: str = 'reflect') -> None:
         super().__init__()
-        self.kernel_size: Tuple[int, int] = kernel_size
-        self.sigma: Tuple[float, float] = sigma
+        self.kernel_size: tuple[int, int] = kernel_size
+        self.sigma: tuple[float, float] = sigma
         self.border_type = border_type
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:

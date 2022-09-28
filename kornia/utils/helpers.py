@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import warnings
 from functools import partial, wraps
 from inspect import isclass, isfunction
@@ -28,7 +30,7 @@ def get_cuda_device_if_available(index: int = 0) -> torch.device:
     return dev
 
 
-def _deprecated(func: Callable = None, replace_with: Optional[str] = None):
+def _deprecated(func: Callable = None, replace_with: str | None = None):
     if func is None:
         return partial(_deprecated, replace_with=replace_with)
 
@@ -50,7 +52,7 @@ def _deprecated(func: Callable = None, replace_with: Optional[str] = None):
     return wrapper
 
 
-def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.device, torch.dtype]:
+def _extract_device_dtype(tensor_list: list[Any | None]) -> tuple[torch.device, torch.dtype]:
     """Check if all the input are in the same device (only if when they are torch.Tensor).
 
     If so, it would return a tuple of (device, dtype). Default: (cpu, ``get_default_dtype()``).
@@ -109,7 +111,7 @@ def _torch_histc_cast(input: torch.Tensor, bins: int, min: int, max: int) -> tor
     return torch.histc(input.to(dtype), bins, min, max).to(input.dtype)
 
 
-def _torch_svd_cast(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def _torch_svd_cast(input: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Helper function to make torch.svd work with other than fp32/64.
 
     The function torch.svd is only implemented for fp32/64 which makes
@@ -145,7 +147,7 @@ def _torch_solve_cast(A: Tensor, B: Tensor) -> Tensor:
     return out.to(A.dtype)
 
 
-def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     r"""Helper function, which avoids crashing because of singular matrix input and outputs the mask of valid
     solution."""
     if not torch_version_geq(1, 10):
@@ -164,7 +166,7 @@ def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor
     return X.to(B.dtype), A_LU.to(A.dtype), valid_mask
 
 
-def safe_inverse_with_mask(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def safe_inverse_with_mask(A: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Helper function, which avoids crashing because of non-invertable matrix input and outputs the mask of valid
     solution."""
     # Based on https://github.com/pytorch/pytorch/issues/31546#issuecomment-694135622

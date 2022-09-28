@@ -1,4 +1,6 @@
 """Module containing functionalities for the Essential matrix."""
+from __future__ import annotations
+
 from typing import Optional, Tuple
 
 import torch
@@ -44,7 +46,7 @@ def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.
     return K2.transpose(-2, -1) @ F_mat @ K1
 
 
-def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def decompose_essential_matrix(E_mat: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     r"""Decompose an essential matrix to possible rotations and translation.
 
     This function decomposes the essential matrix E using svd decomposition [96]
@@ -119,7 +121,7 @@ def essential_from_Rt(R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: 
     return Tx @ R
 
 
-def motion_from_essential(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def motion_from_essential(E_mat: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Get Motion (R's and t's ) from Essential matrix.
 
     Computes and return four possible poses exist for the decomposition of the Essential
@@ -151,8 +153,8 @@ def motion_from_essential_choose_solution(
     K2: torch.Tensor,
     x1: torch.Tensor,
     x2: torch.Tensor,
-    mask: Optional[torch.Tensor] = None,
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    mask: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     r"""Recover the relative camera rotation and the translation from an estimated essential matrix.
 
     The method checks the corresponding points in two images and also returns the triangulated
@@ -258,7 +260,7 @@ def motion_from_essential_choose_solution(
 
 def relative_camera_motion(
     R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: torch.Tensor
-) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Compute the relative camera motion between two cameras.
 
     Given the motion parameters of two cameras, computes the motion parameters of the second

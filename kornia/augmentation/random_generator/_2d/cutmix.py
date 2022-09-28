@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Dict, Optional, Tuple, Union
 
 import torch
@@ -41,8 +43,8 @@ class CutmixGenerator(RandomGeneratorBase):
 
     def __init__(
         self,
-        cut_size: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
-        beta: Optional[Union[torch.Tensor, float]] = None,
+        cut_size: torch.Tensor | tuple[float, float] | None = None,
+        beta: torch.Tensor | float | None = None,
         num_mix: int = 1,
         p: float = 1.0,
     ) -> None:
@@ -79,7 +81,7 @@ class CutmixGenerator(RandomGeneratorBase):
             validate_args=False,
         )
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]
@@ -144,12 +146,12 @@ def random_cutmix_generator(
     height: int,
     p: float = 0.5,
     num_mix: int = 1,
-    beta: Optional[torch.Tensor] = None,
-    cut_size: Optional[torch.Tensor] = None,
+    beta: torch.Tensor | None = None,
+    cut_size: torch.Tensor | None = None,
     same_on_batch: bool = False,
     device: torch.device = torch.device('cpu'),
     dtype: torch.dtype = torch.float32,
-) -> Dict[str, torch.Tensor]:
+) -> dict[str, torch.Tensor]:
     r"""Generate cutmix indexes and lambdas for a batch of inputs.
 
     Args:

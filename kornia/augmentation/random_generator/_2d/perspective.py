@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Dict, Union
 
 import torch
@@ -29,7 +31,7 @@ class PerspectiveGenerator(RandomGeneratorBase):
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
     """
 
-    def __init__(self, distortion_scale: Union[torch.Tensor, float] = 0.5, sampling_method: str = "basic") -> None:
+    def __init__(self, distortion_scale: torch.Tensor | float = 0.5, sampling_method: str = "basic") -> None:
         super().__init__()
         if sampling_method not in ("basic", "area_preserving"):
             raise NotImplementedError(f"Sampling method {sampling_method} not yet implemented.")
@@ -50,7 +52,7 @@ class PerspectiveGenerator(RandomGeneratorBase):
             validate_args=False,
         )
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> dict[str, torch.Tensor]:  # type:ignore
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]
@@ -94,7 +96,7 @@ def random_perspective_generator(
     same_on_batch: bool = False,
     device: torch.device = torch.device('cpu'),
     dtype: torch.dtype = torch.float32,
-) -> Dict[str, torch.Tensor]:
+) -> dict[str, torch.Tensor]:
     r"""Get parameters for ``perspective`` for a random perspective transform.
 
     Args:

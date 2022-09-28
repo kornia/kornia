@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Dict, Optional, Tuple, Union, cast
 
 from torch import Tensor
@@ -65,16 +67,16 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
 
     def __init__(
         self,
-        size: Tuple[int, int],
-        scale: Union[Tensor, Tuple[float, float]] = (0.08, 1.0),
-        ratio: Union[Tensor, Tuple[float, float]] = (3.0 / 4.0, 4.0 / 3.0),
-        resample: Union[str, int, Resample] = Resample.BILINEAR.name,
+        size: tuple[int, int],
+        scale: Tensor | tuple[float, float] = (0.08, 1.0),
+        ratio: Tensor | tuple[float, float] = (3.0 / 4.0, 4.0 / 3.0),
+        resample: str | int | Resample = Resample.BILINEAR.name,
         same_on_batch: bool = False,
         align_corners: bool = True,
         p: float = 1.0,
         keepdim: bool = False,
         cropping_mode: str = "slice",
-        return_transform: Optional[bool] = None,
+        return_transform: bool | None = None,
     ) -> None:
         # Since PyTorch does not support ragged tensor. So cropping function happens all the time.
         super().__init__(
@@ -89,7 +91,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
             padding_mode="zeros",
         )
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
         if flags["cropping_mode"] in ("resample", "slice"):
             transform: Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
             transform = transform.expand(input.shape[0], -1, -1)
@@ -97,7 +99,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
         if flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
             transform = cast(Tensor, transform)
@@ -120,11 +122,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def inverse_transform(
-        self,
-        input: Tensor,
-        flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
-        size: Optional[Tuple[int, int]] = None,
+        self, input: Tensor, flags: dict[str, Any], transform: Tensor | None = None, size: tuple[int, int] | None = None
     ) -> Tensor:
         if flags["cropping_mode"] != "resample":
             raise NotImplementedError(

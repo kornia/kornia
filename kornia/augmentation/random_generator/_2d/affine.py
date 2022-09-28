@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Dict, Optional, Tuple, Union, cast
 
 import torch
@@ -50,10 +52,10 @@ class AffineGenerator(RandomGeneratorBase):
 
     def __init__(
         self,
-        degrees: Union[torch.Tensor, float, Tuple[float, float]],
-        translate: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
-        scale: Optional[Union[torch.Tensor, Tuple[float, float], Tuple[float, float, float, float]]] = None,
-        shear: Optional[Union[torch.Tensor, float, Tuple[float, float]]] = None,
+        degrees: torch.Tensor | float | tuple[float, float],
+        translate: torch.Tensor | tuple[float, float] | None = None,
+        scale: torch.Tensor | tuple[float, float] | tuple[float, float, float, float] | None = None,
+        shear: torch.Tensor | float | tuple[float, float] | None = None,
     ) -> None:
         super().__init__()
         self.degrees = degrees
@@ -74,7 +76,7 @@ class AffineGenerator(RandomGeneratorBase):
                 device=device, dtype=dtype
             )
         )
-        _scale: Optional[torch.Tensor] = None
+        _scale: torch.Tensor | None = None
         if self.scale is not None:
             if len(self.scale) == 2:
                 _scale = _range_bound(self.scale[:2], 'scale', bounds=(0, float('inf')), check='singular').to(
@@ -91,7 +93,7 @@ class AffineGenerator(RandomGeneratorBase):
                 ).to(device=device, dtype=dtype)
             else:
                 raise ValueError(f"'scale' expected to be either 2 or 4 elements. Got {self.scale}")
-        _shear: Optional[torch.Tensor] = None
+        _shear: torch.Tensor | None = None
         if self.shear is not None:
             shear = torch.as_tensor(self.shear, device=device, dtype=dtype)
             if shear.shape == torch.Size([2, 2]):
@@ -106,12 +108,12 @@ class AffineGenerator(RandomGeneratorBase):
                     ]
                 )
 
-        translate_x_sampler: Optional[Uniform] = None
-        translate_y_sampler: Optional[Uniform] = None
-        scale_2_sampler: Optional[Uniform] = None
-        scale_4_sampler: Optional[Uniform] = None
-        shear_x_sampler: Optional[Uniform] = None
-        shear_y_sampler: Optional[Uniform] = None
+        translate_x_sampler: Uniform | None = None
+        translate_y_sampler: Uniform | None = None
+        scale_2_sampler: Uniform | None = None
+        scale_4_sampler: Uniform | None = None
+        shear_x_sampler: Uniform | None = None
+        shear_y_sampler: Uniform | None = None
 
         if _translate is not None:
             translate_x_sampler = Uniform(-_translate[0], _translate[0], validate_args=False)
@@ -138,7 +140,7 @@ class AffineGenerator(RandomGeneratorBase):
         self.shear_x_sampler = shear_x_sampler
         self.shear_y_sampler = shear_y_sampler
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type: ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> dict[str, torch.Tensor]:  # type: ignore
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]
@@ -191,13 +193,13 @@ def random_affine_generator(
     height: int,
     width: int,
     degrees: torch.Tensor,
-    translate: Optional[torch.Tensor] = None,
-    scale: Optional[torch.Tensor] = None,
-    shear: Optional[torch.Tensor] = None,
+    translate: torch.Tensor | None = None,
+    scale: torch.Tensor | None = None,
+    shear: torch.Tensor | None = None,
     same_on_batch: bool = False,
     device: torch.device = torch.device('cpu'),
     dtype: torch.dtype = torch.float32,
-) -> Dict[str, torch.Tensor]:
+) -> dict[str, torch.Tensor]:
     r"""Get parameters for ``affine`` for a random affine transform.
 
     Args:

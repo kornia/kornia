@@ -2,6 +2,8 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/quaternion.py
 # https://github.com/KieranWynn/pyquaternion/blob/master/pyquaternion/quaternion.py
 # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Quaternion.h
+from __future__ import annotations
+
 from math import pi
 from typing import Tuple, Union
 
@@ -73,10 +75,10 @@ class Quaternion(Module):
     def __repr__(self) -> str:
         return f"real: {self.real} \nvec: {self.vec}"
 
-    def __getitem__(self, idx) -> 'Quaternion':
+    def __getitem__(self, idx) -> Quaternion:
         return Quaternion(self.data[idx].reshape(1, -1))
 
-    def __neg__(self) -> 'Quaternion':
+    def __neg__(self) -> Quaternion:
         """Inverts the sign of the quaternion data.
 
         Example:
@@ -86,7 +88,7 @@ class Quaternion(Module):
         """
         return Quaternion(-self.data)
 
-    def __add__(self, right: 'Quaternion') -> 'Quaternion':
+    def __add__(self, right: Quaternion) -> Quaternion:
         """Add a given quaternion.
 
         Args:
@@ -103,7 +105,7 @@ class Quaternion(Module):
         KORNIA_CHECK_TYPE(right, Quaternion)
         return Quaternion(self.data + right.data)
 
-    def __sub__(self, right: 'Quaternion') -> 'Quaternion':
+    def __sub__(self, right: Quaternion) -> Quaternion:
         """Subtract a given quaternion.
 
         Args:
@@ -120,7 +122,7 @@ class Quaternion(Module):
         KORNIA_CHECK_TYPE(right, Quaternion)
         return Quaternion(self.data - right.data)
 
-    def __mul__(self, right: 'Quaternion') -> 'Quaternion':
+    def __mul__(self, right: Quaternion) -> Quaternion:
         KORNIA_CHECK_TYPE(right, Quaternion)
         # NOTE: borrowed from sophus sympy. Produce less multiplications compared to others.
         # https://github.com/strasdat/Sophus/blob/785fef35b7d9e0fc67b4964a69124277b7434a44/sympy/sophus/quaternion.py#L19
@@ -128,13 +130,13 @@ class Quaternion(Module):
         new_vec = self.real * right.vec + right.real * self.vec + self.vec.cross(right.vec)
         return Quaternion(concatenate((new_real, new_vec), -1))
 
-    def __div__(self, right: Union[Tensor, 'Quaternion']) -> 'Quaternion':
+    def __div__(self, right: Tensor | Quaternion) -> Quaternion:
         if isinstance(right, Tensor):
             return Quaternion(self.data / right)
         KORNIA_CHECK_TYPE(right, Quaternion)
         return self * right.inv()
 
-    def __truediv__(self, right: 'Quaternion') -> 'Quaternion':
+    def __truediv__(self, right: Quaternion) -> Quaternion:
         return self.__div__(right)
 
     @property
@@ -200,7 +202,7 @@ class Quaternion(Module):
         return self.data[..., 3:4]
 
     @property
-    def shape(self) -> Tuple[int, ...]:
+    def shape(self) -> tuple[int, ...]:
         """Return the shape of the underlying data with shape :math:`(B,4)`."""
         return tuple(self.data.shape)
 
@@ -229,7 +231,7 @@ class Quaternion(Module):
         return quaternion_to_rotation_matrix(self.data, order=QuaternionCoeffOrder.WXYZ)
 
     @classmethod
-    def from_matrix(cls, matrix: Tensor) -> 'Quaternion':
+    def from_matrix(cls, matrix: Tensor) -> Quaternion:
         """Create a quaternion from a rotation matrix.
 
         Args:
@@ -245,7 +247,7 @@ class Quaternion(Module):
         return cls(rotation_matrix_to_quaternion(matrix, order=QuaternionCoeffOrder.WXYZ))
 
     @classmethod
-    def identity(cls, batch_size: int) -> 'Quaternion':
+    def identity(cls, batch_size: int) -> Quaternion:
         """Create a quaternion representing an identity rotation.
 
         Args:
@@ -263,7 +265,7 @@ class Quaternion(Module):
         return cls(data)
 
     @classmethod
-    def from_coeffs(cls, w: float, x: float, y: float, z: float) -> 'Quaternion':
+    def from_coeffs(cls, w: float, x: float, y: float, z: float) -> Quaternion:
         """Create a quaternion from the data coefficients.
 
         Args:
@@ -281,7 +283,7 @@ class Quaternion(Module):
         return cls(as_tensor([[w, x, y, z]]))
 
     @classmethod
-    def random(cls, batch_size: int) -> 'Quaternion':
+    def random(cls, batch_size: int) -> Quaternion:
         """Create a random unit quaternion of shape :math:`(B,4)`.
 
         Uniformly distributed across the rotation space as per: http://planning.cs.uiuc.edu/node198.html
@@ -304,13 +306,13 @@ class Quaternion(Module):
     def norm(self) -> Tensor:
         return self.data.norm(p=2, dim=-1)
 
-    def normalize(self) -> 'Quaternion':
+    def normalize(self) -> Quaternion:
         return Quaternion(normalize_quaternion(self.data))
 
-    def conj(self) -> 'Quaternion':
+    def conj(self) -> Quaternion:
         return Quaternion(concatenate((self.real, -self.vec), -1))
 
-    def inv(self) -> 'Quaternion':
+    def inv(self) -> Quaternion:
         return self.conj() / self.squared_norm()
 
     def squared_norm(self) -> Tensor:

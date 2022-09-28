@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -41,7 +43,7 @@ class EarlyStopping:
         self.patience = patience
 
         self.counter: int = 0
-        self.best_score: Optional[float] = None
+        self.best_score: float | None = None
         self.early_stop: bool = False
 
     def __call__(self, model: nn.Module, epoch: int, valid_metric) -> TrainerState:
@@ -84,7 +86,7 @@ class ModelCheckpoint:
         )
     """
 
-    def __init__(self, filepath: str, monitor: str, filename_fcn: Optional[Callable] = None) -> None:
+    def __init__(self, filepath: str, monitor: str, filename_fcn: Callable | None = None) -> None:
         self.filepath = filepath
         self.monitor = monitor
         self._filename_fcn = filename_fcn or default_filename_fcn

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Dict, Optional, Tuple, Union, cast
 
 from torch import Tensor
@@ -73,24 +75,24 @@ class RandomRotation3D(AugmentationBase3D):
 
     def __init__(
         self,
-        degrees: Union[
-            Tensor,
-            float,
-            Tuple[float, float, float],
-            Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]],
-        ],
-        resample: Union[str, int, Resample] = Resample.BILINEAR.name,
+        degrees: (
+            Tensor
+            | float
+            | tuple[float, float, float]
+            | tuple[tuple[float, float], tuple[float, float], tuple[float, float]]
+        ),
+        resample: str | int | Resample = Resample.BILINEAR.name,
         same_on_batch: bool = False,
         align_corners: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
+        return_transform: bool | None = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self.flags = dict(resample=Resample.get(resample), align_corners=align_corners)
         self._param_generator = cast(rg.RotationGenerator3D, rg.RotationGenerator3D(degrees))
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
         yaw: Tensor = params["yaw"].to(input)
         pitch: Tensor = params["pitch"].to(input)
         roll: Tensor = params["roll"].to(input)
@@ -107,7 +109,7 @@ class RandomRotation3D(AugmentationBase3D):
         return trans_mat
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
         transform = cast(Tensor, transform)
         return affine3d(input, transform[..., :3, :4], flags["resample"].name.lower(), "zeros", flags["align_corners"])

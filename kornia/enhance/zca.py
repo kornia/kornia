@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import List, Optional, Tuple
 
 import torch
@@ -84,7 +86,7 @@ class ZCAWhitening(nn.Module):
 
         self.mean_vector: torch.Tensor
         self.transform_matrix: torch.Tensor
-        self.transform_inv: Optional[torch.Tensor]
+        self.transform_inv: torch.Tensor | None
 
     def fit(self, x: torch.Tensor):
         r"""Fit ZCA whitening matrices to the data.
@@ -161,7 +163,7 @@ class ZCAWhitening(nn.Module):
 
 def zca_mean(
     inp: torch.Tensor, dim: int = 0, unbiased: bool = True, eps: float = 1e-6, return_inverse: bool = False
-) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
     r"""Compute the ZCA whitening matrix and mean vector.
 
     The output can be used with :py:meth:`~kornia.color.linear_transform`.
@@ -225,7 +227,7 @@ def zca_mean(
 
     feat_dims = torch.cat([torch.arange(0, dim), torch.arange(dim + 1, len(inp_size))])
 
-    new_order: List[int] = torch.cat([torch.tensor([dim]), feat_dims]).tolist()
+    new_order: list[int] = torch.cat([torch.tensor([dim]), feat_dims]).tolist()
 
     inp_permute = inp.permute(new_order)
 
@@ -252,7 +254,7 @@ def zca_mean(
     S_inv_root: torch.Tensor = torch.rsqrt(S + eps)
     T: torch.Tensor = (U).mm(S_inv_root * U.t())
 
-    T_inv: Optional[torch.Tensor] = None
+    T_inv: torch.Tensor | None = None
     if return_inverse:
         T_inv = (U).mm(torch.sqrt(S + eps) * U.t())
 
@@ -364,8 +366,8 @@ def linear_transform(
     perm = torch.cat([torch.tensor([dim]), feat_dims])
     perm_inv = torch.argsort(perm)
 
-    new_order: List[int] = perm.tolist()
-    inv_order: List[int] = perm_inv.tolist()
+    new_order: list[int] = perm.tolist()
+    inv_order: list[int] = perm_inv.tolist()
 
     feature_sizes = torch.tensor(inp_size[0:dim] + inp_size[dim + 1 : :])
     num_features: int = int(torch.prod(feature_sizes).item())

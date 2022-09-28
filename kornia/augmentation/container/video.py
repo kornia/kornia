@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
@@ -99,8 +101,8 @@ class VideoSequential(ImageSequential):
         *args: nn.Module,
         data_format: str = "BTCHW",
         same_on_frame: bool = True,
-        random_apply: Union[int, bool, Tuple[int, int]] = False,
-        random_apply_weights: Optional[List[float]] = None,
+        random_apply: int | bool | tuple[int, int] = False,
+        random_apply_weights: list[float] | None = None,
     ) -> None:
         super().__init__(
             *args,
@@ -136,8 +138,8 @@ class VideoSequential(ImageSequential):
         return repeated.reshape(-1, *list(param.shape[1:]))  # type: ignore
 
     def _input_shape_convert_in(
-        self, input: torch.Tensor, label: Optional[torch.Tensor], frame_num: int
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        self, input: torch.Tensor, label: torch.Tensor | None, frame_num: int
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
         # Convert any shape to (B, T, C, H, W)
         if self.data_format == "BCTHW":
             # Convert (B, C, T, H, W) to (B, T, C, H, W)
@@ -160,8 +162,8 @@ class VideoSequential(ImageSequential):
         return input, label
 
     def _input_shape_convert_back(
-        self, input: torch.Tensor, label: Optional[torch.Tensor], frame_num: int
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        self, input: torch.Tensor, label: torch.Tensor | None, frame_num: int
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
         input = input.view(-1, frame_num, *input.shape[1:])
         if self.data_format == "BCTHW":
             input = input.transpose(1, 2)
@@ -172,7 +174,7 @@ class VideoSequential(ImageSequential):
             label = label.view(input.size(0), frame_num, -1)
         return input, label
 
-    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
+    def forward_parameters(self, batch_shape: torch.Size) -> list[ParamItem]:
         frame_num = batch_shape[self._temporal_channel]
         named_modules = self.get_forward_sequence()
         # Got param generation shape to (B, C, H, W). Ignoring T.
@@ -217,7 +219,7 @@ class VideoSequential(ImageSequential):
         return params
 
     def inverse(
-        self, input: torch.Tensor, params: Optional[List[ParamItem]] = None, extra_args: Dict[str, Any] = {}
+        self, input: torch.Tensor, params: list[ParamItem] | None = None, extra_args: dict[str, Any] = {}
     ) -> torch.Tensor:
         """Inverse transformation.
 
@@ -242,10 +244,10 @@ class VideoSequential(ImageSequential):
     def forward(  # type: ignore
         self,
         input: torch.Tensor,
-        label: Optional[torch.Tensor] = None,
-        params: Optional[List[ParamItem]] = None,
-        extra_args: Dict[str, Any] = {},
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        label: torch.Tensor | None = None,
+        params: list[ParamItem] | None = None,
+        extra_args: dict[str, Any] = {},
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         """Define the video computation performed."""
         if len(input.shape) != 5:
             raise AssertionError(f"Input must be a 5-dim tensor. Got {input.shape}.")

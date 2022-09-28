@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import math
 import warnings
 from typing import Callable, Dict, Optional
@@ -19,7 +21,7 @@ from .laf import (
     set_laf_orientation,
 )
 
-urls: Dict[str, str] = {}
+urls: dict[str, str] = {}
 urls["affnet"] = "https://github.com/ducha-aiki/affnet/raw/master/pretrained/AffNet.pth"
 
 
@@ -91,7 +93,7 @@ class LAFAffineShapeEstimator(nn.Module):
     """  # pylint: disable
 
     def __init__(
-        self, patch_size: int = 32, affine_shape_detector: Optional[nn.Module] = None, preserve_orientation: bool = True
+        self, patch_size: int = 32, affine_shape_detector: nn.Module | None = None, preserve_orientation: bool = True
     ) -> None:
         super().__init__()
         self.patch_size = patch_size

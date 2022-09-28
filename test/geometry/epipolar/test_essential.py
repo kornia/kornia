@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import pytest
 import test_common as utils
 import torch

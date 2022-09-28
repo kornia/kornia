@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Callable, Dict
 
 import torch
@@ -6,7 +8,7 @@ import torch.nn.functional as F
 
 from kornia.testing import KORNIA_CHECK_SHAPE, is_mps_tensor_safe
 
-urls: Dict[str, str] = {}
+urls: dict[str, str] = {}
 urls["hardnet++"] = "https://github.com/DagnyT/hardnet/raw/master/pretrained/pretrained_all_datasets/HardNet++.pth"
 urls[
     "liberty_aug"

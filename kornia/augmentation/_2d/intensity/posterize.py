@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Dict, Optional, Tuple, Union, cast
 
 from torch import Tensor
@@ -48,17 +50,17 @@ class RandomPosterize(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        bits: Union[int, Tuple[int, int], Tensor] = 3,
+        bits: int | tuple[int, int] | Tensor = 3,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
+        return_transform: bool | None = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         # TODO: the generator should receive the device
         self._param_generator = cast(rg.PosterizeGenerator, rg.PosterizeGenerator(bits))
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
         return posterize(input, params["bits_factor"].to(input.device))

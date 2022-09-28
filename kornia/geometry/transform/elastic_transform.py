@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Tuple
 
 import torch
@@ -12,9 +14,9 @@ __all__ = ["elastic_transform2d"]
 def elastic_transform2d(
     image: torch.Tensor,
     noise: torch.Tensor,
-    kernel_size: Tuple[int, int] = (63, 63),
-    sigma: Tuple[float, float] = (32.0, 32.0),
-    alpha: Tuple[float, float] = (1.0, 1.0),
+    kernel_size: tuple[int, int] = (63, 63),
+    sigma: tuple[float, float] = (32.0, 32.0),
+    alpha: tuple[float, float] = (1.0, 1.0),
     align_corners: bool = False,
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',

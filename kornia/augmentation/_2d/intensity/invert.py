@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Dict, Optional, Union
 
 import torch
@@ -42,11 +44,11 @@ class RandomInvert(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        max_val: Union[float, Tensor] = torch.tensor(1.0),
+        max_val: float | Tensor = torch.tensor(1.0),
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
+        return_transform: bool | None = None,
     ) -> None:
         super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
@@ -54,6 +56,6 @@ class RandomInvert(IntensityAugmentationBase2D):
         self.flags = dict(max_val=max_val)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
         return invert(input, torch.as_tensor(flags["max_val"], device=input.device, dtype=input.dtype))

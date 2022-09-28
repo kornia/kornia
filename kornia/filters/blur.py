@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Tuple
 
 import torch
@@ -8,7 +10,7 @@ from .kernels import get_box_kernel2d, normalize_kernel2d
 
 
 def box_blur(
-    input: torch.Tensor, kernel_size: Tuple[int, int], border_type: str = 'reflect', normalized: bool = True
+    input: torch.Tensor, kernel_size: tuple[int, int], border_type: str = 'reflect', normalized: bool = True
 ) -> torch.Tensor:
     r"""Blur an image using the box filter.
 
@@ -87,9 +89,9 @@ class BoxBlur(nn.Module):
         torch.Size([2, 4, 5, 7])
     """
 
-    def __init__(self, kernel_size: Tuple[int, int], border_type: str = 'reflect', normalized: bool = True) -> None:
+    def __init__(self, kernel_size: tuple[int, int], border_type: str = 'reflect', normalized: bool = True) -> None:
         super().__init__()
-        self.kernel_size: Tuple[int, int] = kernel_size
+        self.kernel_size: tuple[int, int] = kernel_size
         self.border_type: str = border_type
         self.normalized: bool = normalized
 

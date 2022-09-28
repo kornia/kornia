@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
@@ -62,15 +64,15 @@ class RandomMosaic(MixAugmentationBaseV2):
 
     def __init__(
         self,
-        output_size: Optional[Tuple[int, int]] = None,
-        mosaic_grid: Tuple[int, int] = (2, 2),
-        start_ratio_range: Tuple[float, float] = (0.3, 0.7),
+        output_size: tuple[int, int] | None = None,
+        mosaic_grid: tuple[int, int] = (2, 2),
+        start_ratio_range: tuple[float, float] = (0.3, 0.7),
         min_bbox_size: float = 0.0,
-        data_keys: List[Union[str, int, DataKey]] = [DataKey.INPUT],
+        data_keys: list[str | int | DataKey] = [DataKey.INPUT],
         p: float = 0.7,
         keepdim: bool = False,
         padding_mode: str = "constant",
-        resample: Union[str, int, Resample] = Resample.BILINEAR.name,
+        resample: str | int | Resample = Resample.BILINEAR.name,
         align_corners: bool = True,
         cropping_mode: str = "slice",
     ) -> None:
@@ -89,11 +91,11 @@ class RandomMosaic(MixAugmentationBaseV2):
             cropping_mode=cropping_mode,
         )
 
-    def apply_transform_mask(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def apply_transform_mask(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
         raise NotImplementedError
 
     @torch.no_grad()
-    def apply_transform_boxes(self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Boxes:
+    def apply_transform_boxes(self, input: Boxes, params: dict[str, Tensor], flags: dict[str, Any]) -> Boxes:
         src_box = torch.as_tensor(params["src"], device=input.device, dtype=input.dtype)
         dst_box = torch.as_tensor(params["dst"], device=input.device, dtype=input.dtype)
         # Boxes is BxNx4x2 only.
@@ -103,7 +105,7 @@ class RandomMosaic(MixAugmentationBaseV2):
         offset_end = dst_box[0, 2].repeat(input.data.shape[0], 1)
         idx = torch.arange(0, input.data.shape[0], device=input.device, dtype=torch.long)[params["batch_prob"]]
 
-        maybe_out_boxes: Optional[Boxes] = None
+        maybe_out_boxes: Boxes | None = None
         for i in range(flags['mosaic_grid'][0]):
             for j in range(flags['mosaic_grid'][1]):
                 _offset = offset.clone()
@@ -125,14 +127,14 @@ class RandomMosaic(MixAugmentationBaseV2):
         out_boxes.filter_boxes_by_area(flags["min_bbox_size"], inplace=True)
         return out_boxes
 
-    def apply_transform_keypoint(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def apply_transform_keypoint(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
         raise NotImplementedError
 
-    def apply_transform_class(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def apply_transform_class(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
         raise RuntimeError(f"{self.__class__.__name__} does not support `TAG` types.")
 
     @torch.no_grad()
-    def _compose_images(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def _compose_images(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
         out = []
         for i in range(flags['mosaic_grid'][0]):
             out_row = []
@@ -143,7 +145,7 @@ class RandomMosaic(MixAugmentationBaseV2):
             out.append(torch.cat(out_row, dim=-2))
         return torch.cat(out, dim=-1)
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
         if flags["cropping_mode"] == "resample":
             transform: Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
             return transform
@@ -152,7 +154,7 @@ class RandomMosaic(MixAugmentationBaseV2):
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def _crop_images(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
         flags = self.flags if flags is None else flags
         if flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
@@ -180,7 +182,7 @@ class RandomMosaic(MixAugmentationBaseV2):
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def apply_non_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Optional[Dict[str, Any]] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any] | None = None
     ) -> Tensor:
         if flags is not None and flags["output_size"] is not None:
             output_size = KORNIA_UNWRAP(flags["output_size"], Tuple[int, int])
@@ -195,7 +197,7 @@ class RandomMosaic(MixAugmentationBaseV2):
         return input
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], maybe_flags: Optional[Dict[str, Any]] = None
+        self, input: Tensor, params: dict[str, Tensor], maybe_flags: dict[str, Any] | None = None
     ) -> Tensor:
         flags = KORNIA_UNWRAP(maybe_flags, Dict[str, Any])
         output = self._compose_images(input, params, flags=flags)

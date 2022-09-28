@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Dict, Optional, Tuple, Union
 
 import torch
@@ -28,12 +30,12 @@ class ResizeGenerator(RandomGeneratorBase):
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
     """
 
-    def __init__(self, resize_to: Union[int, Tuple[int, int]], side: str = "short") -> None:
+    def __init__(self, resize_to: int | tuple[int, int], side: str = "short") -> None:
         super().__init__()
         self.output_size = resize_to
         self.side = side
-        self.device: Optional[torch.device] = None
-        self.dtype: Optional[torch.dtype] = None
+        self.device: torch.device | None = None
+        self.dtype: torch.dtype | None = None
 
     def __repr__(self) -> str:
         repr = f"output_size={self.output_size}"
@@ -44,7 +46,7 @@ class ResizeGenerator(RandomGeneratorBase):
         self.dtype = dtype
         pass
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device = self.device

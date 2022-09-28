@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Dict, Optional, Tuple, Union, cast
 
 import torch
@@ -25,13 +27,13 @@ class Resize(GeometricAugmentationBase2D):
 
     def __init__(
         self,
-        size: Union[int, Tuple[int, int]],
+        size: int | tuple[int, int],
         side: str = "short",
-        resample: Union[str, int, Resample] = Resample.BILINEAR.name,
+        resample: str | int | Resample = Resample.BILINEAR.name,
         align_corners: bool = True,
         antialias: bool = False,
         p: float = 1.0,
-        return_transform: Optional[bool] = None,
+        return_transform: bool | None = None,
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=1.0, return_transform=return_transform, same_on_batch=True, p_batch=p, keepdim=keepdim)
@@ -40,7 +42,7 @@ class Resize(GeometricAugmentationBase2D):
             size=size, side=side, resample=Resample.get(resample), align_corners=align_corners, antialias=antialias
         )
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
         if params["output_size"] == input.shape[-2:]:
             return eye_like(3, input)
 
@@ -49,7 +51,7 @@ class Resize(GeometricAugmentationBase2D):
         return transform
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
         B, C, _, _ = input.shape
         out_size = tuple(params["output_size"][0].tolist())
@@ -70,11 +72,7 @@ class Resize(GeometricAugmentationBase2D):
         return out
 
     def inverse_transform(
-        self,
-        input: Tensor,
-        flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
-        size: Optional[Tuple[int, int]] = None,
+        self, input: Tensor, flags: dict[str, Any], transform: Tensor | None = None, size: tuple[int, int] | None = None
     ) -> Tensor:
         size = cast(Tuple[int, int], size)
         transform = cast(Tensor, transform)
@@ -93,10 +91,10 @@ class LongestMaxSize(Resize):
     def __init__(
         self,
         max_size: int,
-        resample: Union[str, int, Resample] = Resample.BILINEAR.name,
+        resample: str | int | Resample = Resample.BILINEAR.name,
         align_corners: bool = True,
         p: float = 1.0,
-        return_transform: Optional[bool] = None,
+        return_transform: bool | None = None,
     ) -> None:
         # TODO: Support max_size list input to randomly select from
         super().__init__(
@@ -119,10 +117,10 @@ class SmallestMaxSize(Resize):
     def __init__(
         self,
         max_size: int,
-        resample: Union[str, int, Resample] = Resample.BILINEAR.name,
+        resample: str | int | Resample = Resample.BILINEAR.name,
         align_corners: bool = True,
         p: float = 1.0,
-        return_transform: Optional[bool] = None,
+        return_transform: bool | None = None,
     ) -> None:
         # TODO: Support max_size list input to randomly select from
         super().__init__(

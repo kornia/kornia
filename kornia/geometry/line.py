@@ -1,5 +1,7 @@
 # kornia.geometry.line module inspired by Eigen::geometry::ParametrizedLine
 # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/ParametrizedLine.h
+from __future__ import annotations
+
 from typing import Optional, Union
 
 import torch
@@ -72,7 +74,7 @@ class ParametrizedLine(Module):
         return self.direction.shape[-1]
 
     @classmethod
-    def through(cls, p0, p1) -> "ParametrizedLine":
+    def through(cls, p0, p1) -> ParametrizedLine:
         """Constructs a parametrized line going from a point :math:`p0` to :math:`p1`.
 
         Args:
@@ -87,10 +89,10 @@ class ParametrizedLine(Module):
         return ParametrizedLine(p0, normalize((p1 - p0), p=2, dim=-1))
 
     @classmethod
-    def from_hyperplane(cls, plane: Hyperplane) -> "ParametrizedLine":
+    def from_hyperplane(cls, plane: Hyperplane) -> ParametrizedLine:
         raise NotImplementedError(f"Plane not implemented yet {plane}.")
 
-    def point_at(self, t: Union[float, Tensor]) -> Tensor:
+    def point_at(self, t: float | Tensor) -> Tensor:
         """The point at :math:`t` along this line.
 
         Args:
@@ -140,7 +142,7 @@ class ParametrizedLine(Module):
     # - intersection_point
 
 
-def fit_line(points: Tensor, weights: Optional[Tensor] = None) -> ParametrizedLine:
+def fit_line(points: Tensor, weights: Tensor | None = None) -> ParametrizedLine:
     """Fit a line from a set of points.
 
     Args:

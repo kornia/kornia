@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Dict, Optional, Tuple, Union, cast
 
 from torch import Size, Tensor
@@ -63,12 +65,12 @@ class CenterCrop3D(AugmentationBase3D):
 
     def __init__(
         self,
-        size: Union[int, Tuple[int, int, int]],
+        size: int | tuple[int, int, int],
         align_corners: bool = True,
-        resample: Union[str, int, Resample] = Resample.BILINEAR.name,
+        resample: str | int | Resample = Resample.BILINEAR.name,
         p: float = 1.0,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
+        return_transform: bool | None = None,
     ) -> None:
         # same_on_batch is always True for CenterCrop
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
@@ -81,18 +83,18 @@ class CenterCrop3D(AugmentationBase3D):
             raise Exception(f"Invalid size type. Expected (int, tuple(int, int int). Got: {size}.")
         self.flags = dict(align_corners=align_corners, resample=Resample.get(resample))
 
-    def generate_parameters(self, batch_shape: Size) -> Dict[str, Tensor]:
+    def generate_parameters(self, batch_shape: Size) -> dict[str, Tensor]:
         return rg.center_crop_generator3d(
             batch_shape[0], batch_shape[-3], batch_shape[-2], batch_shape[-1], self.size, device=self.device
         )
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
         transform: Tensor = get_perspective_transform3d(params["src"].to(input), params["dst"].to(input))
         transform = transform.expand(input.shape[0], -1, -1)
         return transform
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
         transform = cast(Tensor, transform)
         return crop_by_transform_mat3d(

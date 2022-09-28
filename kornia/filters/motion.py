@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Tuple, Union
 
 import torch
@@ -79,13 +81,13 @@ class MotionBlur3D(nn.Module):
     def __init__(
         self,
         kernel_size: int,
-        angle: Union[float, Tuple[float, float, float]],
+        angle: float | tuple[float, float, float],
         direction: float,
         border_type: str = 'constant',
     ) -> None:
         super().__init__()
         self.kernel_size = kernel_size
-        self.angle: Tuple[float, float, float]
+        self.angle: tuple[float, float, float]
         if isinstance(angle, float):
             self.angle = (angle, angle, angle)
         elif isinstance(angle, (tuple, list)) and len(angle) == 3:
@@ -108,8 +110,8 @@ class MotionBlur3D(nn.Module):
 def motion_blur(
     input: torch.Tensor,
     kernel_size: int,
-    angle: Union[float, torch.Tensor],
-    direction: Union[float, torch.Tensor],
+    angle: float | torch.Tensor,
+    direction: float | torch.Tensor,
     border_type: str = 'constant',
     mode: str = 'nearest',
 ) -> torch.Tensor:
@@ -154,8 +156,8 @@ def motion_blur(
 def motion_blur3d(
     input: torch.Tensor,
     kernel_size: int,
-    angle: Union[Tuple[float, float, float], torch.Tensor],
-    direction: Union[float, torch.Tensor],
+    angle: tuple[float, float, float] | torch.Tensor,
+    direction: float | torch.Tensor,
     border_type: str = 'constant',
     mode: str = 'nearest',
 ) -> torch.Tensor:

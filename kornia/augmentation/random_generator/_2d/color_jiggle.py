@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from functools import partial
 from typing import Dict, List, Tuple, Union
 
@@ -37,10 +39,10 @@ class ColorJiggleGenerator(RandomGeneratorBase):
 
     def __init__(
         self,
-        brightness: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
-        contrast: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
-        saturation: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
-        hue: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
+        brightness: Tensor | float | tuple[float, float] | list[float] = 0.0,
+        contrast: Tensor | float | tuple[float, float] | list[float] = 0.0,
+        saturation: Tensor | float | tuple[float, float] | list[float] = 0.0,
+        hue: Tensor | float | tuple[float, float] | list[float] = 0.0,
     ) -> None:
         super().__init__()
         self.brightness = brightness
@@ -71,7 +73,7 @@ class ColorJiggleGenerator(RandomGeneratorBase):
         self.saturation_sampler = Uniform(saturation[0], saturation[1], validate_args=False)
         self.randperm = partial(torch.randperm, device=device, dtype=dtype)
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> dict[str, Tensor]:  # type:ignore
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.brightness, self.contrast, self.hue, self.saturation])

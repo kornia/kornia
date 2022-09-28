@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import warnings
 from typing import Optional, Tuple
 
@@ -84,7 +86,7 @@ def validate_bbox3d(boxes: torch.Tensor) -> bool:
     return True
 
 
-def infer_bbox_shape(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def infer_bbox_shape(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Auto-infer the output sizes for the given 2D bounding boxes.
 
     Args:
@@ -117,7 +119,7 @@ def infer_bbox_shape(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     return height, width
 
 
-def infer_bbox_shape3d(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def infer_bbox_shape3d(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     r"""Auto-infer the output sizes for the given 3D bounding boxes.
 
     Args:
@@ -207,7 +209,7 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
     return mask[:, 1:-1, 1:-1]
 
 
-def bbox_to_mask3d(boxes: torch.Tensor, size: Tuple[int, int, int]) -> torch.Tensor:
+def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Tensor:
     """Convert 3D bounding boxes to masks. Covered area is 1. and the remaining is 0.
 
     Args:
@@ -440,7 +442,7 @@ def bbox_generator3d(
 
 
 def transform_bbox(
-    trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = "xyxy", restore_coordinates: Optional[bool] = None
+    trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = "xyxy", restore_coordinates: bool | None = None
 ) -> torch.Tensor:
     r"""Apply a transformation matrix to a box or batch of boxes.
 

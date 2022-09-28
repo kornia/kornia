@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Dict
 
 import torch
@@ -7,12 +9,12 @@ import kornia.geometry.epipolar as epi
 
 def generate_two_view_random_scene(
     device: torch.device = torch.device("cpu"), dtype: torch.dtype = torch.float32
-) -> Dict[str, torch.Tensor]:
+) -> dict[str, torch.Tensor]:
 
     num_views: int = 2
     num_points: int = 30
 
-    scene: Dict[str, torch.Tensor] = epi.generate_scene(num_views, num_points)
+    scene: dict[str, torch.Tensor] = epi.generate_scene(num_views, num_points)
 
     # internal parameters (same K)
     K1 = scene['K'].to(device, dtype)

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from .resnet_fpn import ResNetFPN_8_2, ResNetFPN_16_4
 
 

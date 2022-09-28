@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 from typing import List, Optional, Tuple, Union, cast
 
 import torch
 
 
-def _common_param_check(batch_size: int, same_on_batch: Optional[bool] = None):
+def _common_param_check(batch_size: int, same_on_batch: bool | None = None):
     """Valid batch_size and same_on_batch params."""
     if not (type(batch_size) is int and batch_size >= 0):
         raise AssertionError(f"`batch_size` shall be a positive integer. Got {batch_size}.")
@@ -12,11 +14,11 @@ def _common_param_check(batch_size: int, same_on_batch: Optional[bool] = None):
 
 
 def _range_bound(
-    factor: Union[torch.Tensor, float, Tuple[float, float], List[float]],
+    factor: torch.Tensor | float | tuple[float, float] | list[float],
     name: str,
     center: float = 0.0,
-    bounds: Tuple[float, float] = (0, float('inf')),
-    check: Optional[str] = 'joint',
+    bounds: tuple[float, float] = (0, float('inf')),
+    check: str | None = 'joint',
     device: torch.device = torch.device('cpu'),
     dtype: torch.dtype = torch.get_default_dtype(),
 ) -> torch.Tensor:
@@ -47,7 +49,7 @@ def _range_bound(
     return factor_bound
 
 
-def _joint_range_check(ranged_factor: torch.Tensor, name: str, bounds: Optional[Tuple[float, float]] = None) -> None:
+def _joint_range_check(ranged_factor: torch.Tensor, name: str, bounds: tuple[float, float] | None = None) -> None:
     """Check if bounds[0] <= ranged_factor[0] <= ranged_factor[1] <= bounds[1]"""
     if bounds is None:
         bounds = (float('-inf'), float('inf'))
@@ -66,7 +68,7 @@ def _joint_range_check(ranged_factor: torch.Tensor, name: str, bounds: Optional[
 def _singular_range_check(
     ranged_factor: torch.Tensor,
     name: str,
-    bounds: Optional[Tuple[float, float]] = None,
+    bounds: tuple[float, float] | None = None,
     skip_none: bool = False,
     mode: str = '2d',
 ) -> None:
@@ -94,10 +96,10 @@ def _singular_range_check(
 
 
 def _tuple_range_reader(
-    input_range: Union[torch.Tensor, float, tuple],
+    input_range: torch.Tensor | float | tuple,
     target_size: int,
-    device: Optional[torch.device] = None,
-    dtype: Optional[torch.dtype] = None,
+    device: torch.device | None = None,
+    dtype: torch.dtype | None = None,
 ) -> torch.Tensor:
     """Given target_size, it will generate the corresponding (target_size, 2) range tensor for element-wise params.
 

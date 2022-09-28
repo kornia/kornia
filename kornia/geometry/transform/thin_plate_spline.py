@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Tuple
 
 import torch
@@ -33,7 +35,7 @@ def _kernel_distance(squared_distances: torch.Tensor, eps: float = 1e-8) -> torc
     return 0.5 * squared_distances * squared_distances.add(eps).log()
 
 
-def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Compute the TPS transform parameters that warp source points to target points.
 
     The input to this function is a tensor of :math:`(x, y)` source points :math:`(B, N, 2)` and a corresponding

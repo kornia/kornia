@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Dict, Optional, Union, cast
 
 from torch import Tensor
@@ -66,23 +68,23 @@ class RandomPerspective3D(AugmentationBase3D):
 
     def __init__(
         self,
-        distortion_scale: Union[Tensor, float] = 0.5,
-        resample: Union[str, int, Resample] = Resample.BILINEAR.name,
+        distortion_scale: Tensor | float = 0.5,
+        resample: str | int | Resample = Resample.BILINEAR.name,
         same_on_batch: bool = False,
         align_corners: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
+        return_transform: bool | None = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self.flags = dict(resample=Resample.get(resample), align_corners=align_corners)
         self._param_generator = cast(rg.PerspectiveGenerator3D, rg.PerspectiveGenerator3D(distortion_scale))
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
         return get_perspective_transform3d(params["start_points"], params["end_points"]).to(input)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
         transform = cast(Tensor, transform)
         return warp_perspective3d(

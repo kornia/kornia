@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Callable, Dict, Optional
 
 import torch
@@ -11,7 +13,7 @@ from .utils.coarse_matching import CoarseMatching
 from .utils.fine_matching import FineMatching
 from .utils.position_encoding import PositionEncodingSine
 
-urls: Dict[str, str] = {}
+urls: dict[str, str] = {}
 urls["outdoor"] = "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_outdoor.ckpt"
 urls["indoor"] = "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_indoor.ckpt"
 
@@ -72,7 +74,7 @@ class LoFTR(nn.Module):
         >>> out = loftr(input)
     """
 
-    def __init__(self, pretrained: Optional[str] = 'outdoor', config: Dict = default_cfg):
+    def __init__(self, pretrained: str | None = 'outdoor', config: dict = default_cfg):
         super().__init__()
         # Misc
         self.config = config
@@ -95,7 +97,7 @@ class LoFTR(nn.Module):
             self.load_state_dict(pretrained_dict['state_dict'])
         self.eval()
 
-    def forward(self, data: dict) -> Dict[str, torch.Tensor]:
+    def forward(self, data: dict) -> dict[str, torch.Tensor]:
         """
         Args:
             data: dictionary containing the input data in the following format:
@@ -164,7 +166,7 @@ class LoFTR(nn.Module):
         # 5. match fine-level
         self.fine_matching(feat_f0_unfold, feat_f1_unfold, data)
 
-        rename_keys: Dict[str, str] = {
+        rename_keys: dict[str, str] = {
             "mkpts0_f": 'keypoints0',
             "mkpts1_f": 'keypoints1',
             "mconf": 'confidence',

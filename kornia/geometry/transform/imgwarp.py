@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import List, Optional, Tuple
 
 import torch
@@ -46,7 +48,7 @@ __all__ = [
 def warp_perspective(
     src: torch.Tensor,
     M: torch.Tensor,
-    dsize: Tuple[int, int],
+    dsize: tuple[int, int],
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
     align_corners: bool = True,
@@ -130,7 +132,7 @@ def warp_perspective(
 def warp_affine(
     src: torch.Tensor,
     M: torch.Tensor,
-    dsize: Tuple[int, int],
+    dsize: tuple[int, int],
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
     align_corners: bool = True,
@@ -467,7 +469,7 @@ def remap(
     map_y: Tensor,
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
-    align_corners: Optional[bool] = None,
+    align_corners: bool | None = None,
     normalized_coordinates: bool = False,
 ) -> Tensor:
     r"""Apply a generic geometrical transformation to an image tensor.
@@ -571,8 +573,8 @@ def get_affine_matrix2d(
     center: torch.Tensor,
     scale: torch.Tensor,
     angle: torch.Tensor,
-    sx: Optional[torch.Tensor] = None,
-    sy: Optional[torch.Tensor] = None,
+    sx: torch.Tensor | None = None,
+    sy: torch.Tensor | None = None,
 ) -> torch.Tensor:
     r"""Compose affine matrix from the components.
 
@@ -603,7 +605,7 @@ def get_affine_matrix2d(
     return transform_h
 
 
-def get_shear_matrix2d(center: torch.Tensor, sx: Optional[torch.Tensor] = None, sy: Optional[torch.Tensor] = None):
+def get_shear_matrix2d(center: torch.Tensor, sx: torch.Tensor | None = None, sy: torch.Tensor | None = None):
     r"""Compose shear matrix Bx4x4 from the components.
 
     Note: Ordered shearing, shear x-axis then y-axis.
@@ -658,12 +660,12 @@ def get_affine_matrix3d(
     center: torch.Tensor,
     scale: torch.Tensor,
     angles: torch.Tensor,
-    sxy: Optional[torch.Tensor] = None,
-    sxz: Optional[torch.Tensor] = None,
-    syx: Optional[torch.Tensor] = None,
-    syz: Optional[torch.Tensor] = None,
-    szx: Optional[torch.Tensor] = None,
-    szy: Optional[torch.Tensor] = None,
+    sxy: torch.Tensor | None = None,
+    sxz: torch.Tensor | None = None,
+    syx: torch.Tensor | None = None,
+    syz: torch.Tensor | None = None,
+    szx: torch.Tensor | None = None,
+    szy: torch.Tensor | None = None,
 ) -> torch.Tensor:
     r"""Compose 3d affine matrix from the components.
 
@@ -701,12 +703,12 @@ def get_affine_matrix3d(
 
 def get_shear_matrix3d(
     center: torch.Tensor,
-    sxy: Optional[torch.Tensor] = None,
-    sxz: Optional[torch.Tensor] = None,
-    syx: Optional[torch.Tensor] = None,
-    syz: Optional[torch.Tensor] = None,
-    szx: Optional[torch.Tensor] = None,
-    szy: Optional[torch.Tensor] = None,
+    sxy: torch.Tensor | None = None,
+    sxz: torch.Tensor | None = None,
+    syx: torch.Tensor | None = None,
+    syz: torch.Tensor | None = None,
+    szx: torch.Tensor | None = None,
+    szy: torch.Tensor | None = None,
 ):
     r"""Compose shear matrix Bx4x4 from the components.
     Note: Ordered shearing, shear x-axis then y-axis then z-axis.
@@ -807,7 +809,7 @@ def _compute_shear_matrix_3d(sxy_tan, sxz_tan, syx_tan, syz_tan, szx_tan, szy_ta
 def warp_affine3d(
     src: torch.Tensor,
     M: torch.Tensor,
-    dsize: Tuple[int, int, int],
+    dsize: tuple[int, int, int],
     flags: str = 'bilinear',
     padding_mode: str = 'zeros',
     align_corners: bool = True,
@@ -841,8 +843,8 @@ def warp_affine3d(
         raise AssertionError(dsize)
     B, C, D, H, W = src.size()
 
-    size_src: Tuple[int, int, int] = (D, H, W)
-    size_out: Tuple[int, int, int] = dsize
+    size_src: tuple[int, int, int] = (D, H, W)
+    size_out: tuple[int, int, int] = dsize
 
     M_4x4 = convert_affinematrix_to_homography3d(M)  # Bx4x4
 
@@ -853,7 +855,7 @@ def warp_affine3d(
     P_norm: torch.Tensor = src_norm_trans_dst_norm[:, :3]  # Bx3x4
 
     # compute meshgrid and apply to input
-    dsize_out: List[int] = [B, C] + list(size_out)
+    dsize_out: list[int] = [B, C] + list(size_out)
     grid = torch.nn.functional.affine_grid(P_norm, dsize_out, align_corners=align_corners)
     return torch.nn.functional.grid_sample(
         src, grid, align_corners=align_corners, mode=flags, padding_mode=padding_mode
@@ -1154,7 +1156,7 @@ def _build_perspective_param3d(p: torch.Tensor, q: torch.Tensor, axis: str) -> t
 def warp_perspective3d(
     src: torch.Tensor,
     M: torch.Tensor,
-    dsize: Tuple[int, int, int],
+    dsize: tuple[int, int, int],
     flags: str = 'bilinear',
     border_mode: str = 'zeros',
     align_corners: bool = False,
@@ -1206,7 +1208,7 @@ def warp_perspective3d(
 def homography_warp(
     patch_src: torch.Tensor,
     src_homo_dst: torch.Tensor,
-    dsize: Tuple[int, int],
+    dsize: tuple[int, int],
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
     align_corners: bool = False,
@@ -1267,8 +1269,8 @@ def homography_warp(
 def _transform_warp_impl3d(
     src: torch.Tensor,
     dst_pix_trans_src_pix: torch.Tensor,
-    dsize_src: Tuple[int, int, int],
-    dsize_dst: Tuple[int, int, int],
+    dsize_src: tuple[int, int, int],
+    dsize_dst: tuple[int, int, int],
     grid_mode: str,
     padding_mode: str,
     align_corners: bool,
@@ -1283,7 +1285,7 @@ def _transform_warp_impl3d(
 def homography_warp3d(
     patch_src: torch.Tensor,
     src_homo_dst: torch.Tensor,
-    dsize: Tuple[int, int, int],
+    dsize: tuple[int, int, int],
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
     align_corners: bool = False,

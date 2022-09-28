@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Dict, List, Optional, Union, cast
 
 from torch import Tensor, stack
@@ -154,11 +156,11 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
     def __init__(
         self,
         mode: str = "blackbody",
-        select_from: Optional[Union[int, List[int]]] = None,
+        select_from: int | list[int] | None = None,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
+        return_transform: bool | None = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
 
@@ -177,7 +179,7 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         self._param_generator = cast(rg.PlanckianJitterGenerator, rg.PlanckianJitterGenerator([_param_min, _param_max]))
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
 
         list_idx = params['idx'].tolist()

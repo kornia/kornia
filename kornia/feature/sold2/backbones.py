@@ -1,4 +1,6 @@
 """Implements several backbone networks."""
+from __future__ import annotations
+
 from typing import Dict, List, Tuple, Union
 
 import torch
@@ -63,7 +65,7 @@ class MultitaskHead(nn.Module):
 
 class Bottleneck2D(nn.Module):
     def __init__(
-        self, inplanes: int, planes: int, stride: Union[int, Tuple[int, int]] = 1, downsample: torch.nn.Module = None
+        self, inplanes: int, planes: int, stride: int | tuple[int, int] = 1, downsample: torch.nn.Module = None
     ):
         super().__init__()
 
@@ -190,7 +192,7 @@ class HourglassNet(nn.Module):
         self.score_ = nn.ModuleList(score_)
 
     def _make_residual(
-        self, block: torch.nn.Module, planes: int, blocks: int, stride: Union[int, Tuple[int, int]] = 1
+        self, block: torch.nn.Module, planes: int, blocks: int, stride: int | tuple[int, int] = 1
     ) -> torch.nn.Module:
         downsample = None
         if stride != 1 or self.inplanes != planes * self.expansion:
@@ -321,7 +323,7 @@ class PixelShuffleDecoder(nn.Module):
         )
         self.conv_block_lst = nn.ModuleList(conv_block_lst)
 
-    def get_channel_conf(self, num_upsample: int) -> List[int]:
+    def get_channel_conf(self, num_upsample: int) -> list[int]:
         """Get num of channels based on number of upsampling."""
         if num_upsample == 2:
             return [256, 64, 16]
@@ -378,7 +380,7 @@ class SOLD2Net(nn.Module):
             descriptors: semi-dense descriptors.
     """
 
-    def __init__(self, model_cfg: Dict):
+    def __init__(self, model_cfg: dict):
         super().__init__()
         self.cfg = model_cfg
 

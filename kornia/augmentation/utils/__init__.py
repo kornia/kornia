@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from kornia.augmentation.utils.helpers import (
     _adapted_beta,
     _adapted_rsampling,

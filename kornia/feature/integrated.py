@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import warnings
 from typing import Dict, List, Optional, Tuple
 
@@ -70,10 +72,7 @@ class LAFDescriptor(nn.Module):
     """
 
     def __init__(
-        self,
-        patch_descriptor_module: Optional[nn.Module] = None,
-        patch_size: int = 32,
-        grayscale_descriptor: bool = True,
+        self, patch_descriptor_module: nn.Module | None = None, patch_size: int = 32, grayscale_descriptor: bool = True
     ) -> None:
         super().__init__()
         if patch_descriptor_module is None:
@@ -131,8 +130,8 @@ class LocalFeature(nn.Module):
         self.scaling_coef = scaling_coef
 
     def forward(
-        self, img: torch.Tensor, mask: Optional[torch.Tensor] = None
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:  # type: ignore
+        self, img: torch.Tensor, mask: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:  # type: ignore
         """
         Args:
             img: image to extract features with shape :math:`(B,C,H,W)`.
@@ -257,7 +256,7 @@ class LocalFeatureMatcher(nn.Module):
         self.matcher = matcher
         self.eval()
 
-    def extract_features(self, image: torch.Tensor, mask: Optional[torch.Tensor] = None) -> Dict[str, torch.Tensor]:
+    def extract_features(self, image: torch.Tensor, mask: torch.Tensor | None = None) -> dict[str, torch.Tensor]:
         """Function for feature extraction from simple image."""
         lafs0, resps0, descs0 = self.local_feature(image, mask)
         return {"lafs": lafs0, "responses": resps0, "descriptors": descs0}
@@ -272,7 +271,7 @@ class LocalFeatureMatcher(nn.Module):
             'batch_indexes': torch.empty(0, device=device, dtype=torch.long),
         }
 
-    def forward(self, data: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+    def forward(self, data: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         """
         Args:
             data: dictionary containing the input data in the following format:
@@ -295,13 +294,13 @@ class LocalFeatureMatcher(nn.Module):
 
         if ('lafs0' not in data.keys()) or ('descriptors0' not in data.keys()):
             # One can supply pre-extracted local features
-            feats_dict0: Dict[str, torch.Tensor] = self.extract_features(data['image0'])
+            feats_dict0: dict[str, torch.Tensor] = self.extract_features(data['image0'])
             lafs0, descs0 = feats_dict0['lafs'], feats_dict0['descriptors']
         else:
             lafs0, descs0 = data['lafs0'], data['descriptors0']
 
         if ('lafs1' not in data.keys()) or ('descriptors1' not in data.keys()):
-            feats_dict1: Dict[str, torch.Tensor] = self.extract_features(data['image1'])
+            feats_dict1: dict[str, torch.Tensor] = self.extract_features(data['image1'])
             lafs1, descs1 = feats_dict1['lafs'], feats_dict1['descriptors']
         else:
             lafs1, descs1 = data['lafs1'], data['descriptors1']
@@ -309,12 +308,12 @@ class LocalFeatureMatcher(nn.Module):
         keypoints0: torch.Tensor = get_laf_center(lafs0)
         keypoints1: torch.Tensor = get_laf_center(lafs1)
 
-        out_keypoints0: List[torch.Tensor] = []
-        out_keypoints1: List[torch.Tensor] = []
-        out_confidence: List[torch.Tensor] = []
-        out_batch_indexes: List[torch.Tensor] = []
-        out_lafs0: List[torch.Tensor] = []
-        out_lafs1: List[torch.Tensor] = []
+        out_keypoints0: list[torch.Tensor] = []
+        out_keypoints1: list[torch.Tensor] = []
+        out_confidence: list[torch.Tensor] = []
+        out_batch_indexes: list[torch.Tensor] = []
+        out_lafs0: list[torch.Tensor] = []
+        out_lafs1: list[torch.Tensor] = []
 
         for batch_idx in range(num_image_pairs):
             dists, idxs = self.matcher(descs0[batch_idx], descs1[batch_idx])

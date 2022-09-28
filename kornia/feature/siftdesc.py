@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import math
 from typing import Tuple
 
@@ -32,7 +34,7 @@ def get_sift_pooling_kernel(ksize: int = 25) -> torch.Tensor:
     return kernel
 
 
-def get_sift_bin_ksize_stride_pad(patch_size: int, num_spatial_bins: int) -> Tuple:
+def get_sift_bin_ksize_stride_pad(patch_size: int, num_spatial_bins: int) -> tuple:
     r"""Return a tuple with SIFT parameters.
 
     Args:

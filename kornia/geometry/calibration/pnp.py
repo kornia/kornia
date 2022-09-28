@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Optional, Tuple
 
 import torch
@@ -8,7 +10,7 @@ from kornia.utils import eye_like
 from kornia.utils._compat import linalg_qr
 
 
-def _mean_isotropic_scale_normalize(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Tensor, torch.Tensor]:
+def _mean_isotropic_scale_normalize(points: torch.Tensor, eps: float = 1e-8) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Normalizes points.
 
     Args:
@@ -46,7 +48,7 @@ def solve_pnp_dlt(
     world_points: torch.Tensor,
     img_points: torch.Tensor,
     intrinsics: torch.Tensor,
-    weights: Optional[torch.Tensor] = None,
+    weights: torch.Tensor | None = None,
     svd_eps: float = 1e-4,
 ) -> torch.Tensor:
     r"""This function attempts to solve the Perspective-n-Point (PnP) problem using Direct Linear Transform (DLT).

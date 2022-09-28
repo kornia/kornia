@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import torch
@@ -45,17 +47,17 @@ if torch_version_ge(1, 10, 0):
 
     if not TYPE_CHECKING:
 
-        def torch_meshgrid(tensors: List[Tensor], indexing: str):
+        def torch_meshgrid(tensors: list[Tensor], indexing: str):
             return torch.meshgrid(tensors, indexing=indexing)
 
 else:
 
     if TYPE_CHECKING:
 
-        def torch_meshgrid(tensors: List[Tensor], indexing: Optional[str] = None) -> Tuple[Tensor, ...]:
+        def torch_meshgrid(tensors: list[Tensor], indexing: str | None = None) -> tuple[Tensor, ...]:
             return torch.meshgrid(tensors)
 
     else:
 
-        def torch_meshgrid(tensors: List[Tensor], indexing: str):
+        def torch_meshgrid(tensors: list[Tensor], indexing: str):
             return torch.meshgrid(tensors)

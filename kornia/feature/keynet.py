@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import math
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -28,7 +30,7 @@ keynet_config = {
     }
 }
 
-urls: Dict[str, str] = {}
+urls: dict[str, str] = {}
 urls["keynet"] = "https://github.com/axelBarroso/Key.Net-Pytorch/raw/main/model/weights/keynet_pytorch.pth"
 
 
@@ -127,7 +129,7 @@ class KeyNet(nn.Module):
         - Output: :math:`(B, 1, H, W)`
     """
 
-    def __init__(self, pretrained: bool = False, keynet_conf: Dict = keynet_config['KeyNet_default_config']):
+    def __init__(self, pretrained: bool = False, keynet_conf: dict = keynet_config['KeyNet_default_config']):
         super().__init__()
 
         num_filters = keynet_conf['num_filters']
@@ -154,7 +156,7 @@ class KeyNet(nn.Module):
         x - input image
         """
         shape_im = x.shape
-        feats: List[Tensor] = [self.feature_extractor(x)]
+        feats: list[Tensor] = [self.feature_extractor(x)]
         for i in range(1, self.num_levels):
             x = pyrdown(x, factor=1.2)
             feats_i = self.feature_extractor(x)
@@ -185,7 +187,7 @@ class KeyNetDetector(nn.Module):
         self,
         pretrained: bool = False,
         num_features: int = 2048,
-        keynet_conf: Dict = keynet_config['KeyNet_default_config'],
+        keynet_conf: dict = keynet_config['KeyNet_default_config'],
         ori_module: nn.Module = PassLAF(),
         aff_module: nn.Module = PassLAF(),
     ):
@@ -209,8 +211,8 @@ class KeyNetDetector(nn.Module):
         return mask * score_map
 
     def detect_features_on_single_level(
-        self, level_img: Tensor, num_kp: int, factor: Tuple[float, float]
-    ) -> Tuple[Tensor, Tensor]:
+        self, level_img: Tensor, num_kp: int, factor: tuple[float, float]
+    ) -> tuple[Tensor, Tensor]:
         det_map = self.nms(self.remove_borders(self.model(level_img)))
         device = level_img.device
         dtype = level_img.dtype
@@ -231,10 +233,10 @@ class KeyNetDetector(nn.Module):
         return scores_sorted[:num_kp], lafs
 
     def detect(  # type: ignore
-        self, img: Tensor, mask: Optional[Tensor] = None  # type: ignore
-    ) -> Tuple[Tensor, Tensor]:
+        self, img: Tensor, mask: Tensor | None = None  # type: ignore
+    ) -> tuple[Tensor, Tensor]:
         # Compute points per level
-        num_features_per_level: List[float] = []
+        num_features_per_level: list[float] = []
         tmp = 0.0
         factor_points = self.scale_factor_levels**2
         levels = self.num_pyramid_levels + self.num_upscale_levels + 1
@@ -247,8 +249,8 @@ class KeyNetDetector(nn.Module):
         _, _, h, w = img.shape
         img_up = img
         cur_img = img
-        all_responses: List[Tensor] = []
-        all_lafs: List[Tensor] = []
+        all_responses: list[Tensor] = []
+        all_lafs: list[Tensor] = []
         # Extract features from the upper levels
         for idx_level in range(self.num_upscale_levels):
             nf = num_features_per_level[len(num_features_per_level) - self.num_pyramid_levels - 1 - (idx_level + 1)]
@@ -291,8 +293,8 @@ class KeyNetDetector(nn.Module):
         return responses, lafs
 
     def forward(  # type: ignore
-        self, img: Tensor, mask: Optional[Tensor] = None  # type: ignore
-    ) -> Tuple[Tensor, Tensor]:
+        self, img: Tensor, mask: Tensor | None = None  # type: ignore
+    ) -> tuple[Tensor, Tensor]:
         """Three stage local feature detection. First the location and scale of interest points are determined by
         detect function. Then affine shape and orientation.
 

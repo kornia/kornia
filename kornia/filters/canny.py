@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import math
 from typing import Tuple
 
@@ -16,11 +18,11 @@ def canny(
     input: torch.Tensor,
     low_threshold: float = 0.1,
     high_threshold: float = 0.2,
-    kernel_size: Tuple[int, int] = (5, 5),
-    sigma: Tuple[float, float] = (1, 1),
+    kernel_size: tuple[int, int] = (5, 5),
+    sigma: tuple[float, float] = (1, 1),
     hysteresis: bool = True,
     eps: float = 1e-6,
-) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Find edges of the input image and filters them using the Canny algorithm.
 
     .. image:: _static/img/canny.png
@@ -182,8 +184,8 @@ class Canny(nn.Module):
         self,
         low_threshold: float = 0.1,
         high_threshold: float = 0.2,
-        kernel_size: Tuple[int, int] = (5, 5),
-        sigma: Tuple[float, float] = (1, 1),
+        kernel_size: tuple[int, int] = (5, 5),
+        sigma: tuple[float, float] = (1, 1),
         hysteresis: bool = True,
         eps: float = 1e-6,
     ) -> None:
@@ -227,7 +229,7 @@ class Canny(nn.Module):
             )
         )
 
-    def forward(self, input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, input: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         return canny(
             input, self.low_threshold, self.high_threshold, self.kernel_size, self.sigma, self.hysteresis, self.eps
         )

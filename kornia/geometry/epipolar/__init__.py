@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from ._metrics import (
     left_to_right_epipolar_distance,
     right_to_left_epipolar_distance,

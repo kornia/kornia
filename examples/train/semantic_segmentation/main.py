@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import hydra
 import numpy as np
 import torch

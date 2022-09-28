@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Callable, Dict, Optional
 
 import torch
@@ -47,7 +49,7 @@ class RandomGeneratorBase(nn.Module, metaclass=_PostInitInjectionMetaClass):
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         raise NotImplementedError
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> dict[str, torch.Tensor]:  # type:ignore
         raise NotImplementedError
 
 
@@ -76,7 +78,7 @@ class DistributionWithMapper(Distribution):
         tensor([0.8236, 0.4272, 0.1017, 0.6384, 0.2527, 0.1980, 0.5995, 0.6980])
     """
 
-    def __init__(self, dist: Distribution, map_fn: Optional[Callable] = None) -> None:
+    def __init__(self, dist: Distribution, map_fn: Callable | None = None) -> None:
         self.dist = dist
         self.map_fn = map_fn
 

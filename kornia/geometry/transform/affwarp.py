@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Optional, Tuple, Union
 
 import torch
@@ -226,7 +228,7 @@ def affine3d(
 def rotate(
     tensor: torch.Tensor,
     angle: torch.Tensor,
-    center: Union[None, torch.Tensor] = None,
+    center: None | torch.Tensor = None,
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
     align_corners: bool = True,
@@ -293,7 +295,7 @@ def rotate3d(
     yaw: torch.Tensor,
     pitch: torch.Tensor,
     roll: torch.Tensor,
-    center: Union[None, torch.Tensor] = None,
+    center: None | torch.Tensor = None,
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
     align_corners: bool = False,
@@ -405,7 +407,7 @@ def translate(
 def scale(
     tensor: torch.Tensor,
     scale_factor: torch.Tensor,
-    center: Union[None, torch.Tensor] = None,
+    center: None | torch.Tensor = None,
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
     align_corners: bool = True,
@@ -511,7 +513,7 @@ def shear(
     return affine(tensor, shear_matrix[..., :2, :3], mode, padding_mode, align_corners)
 
 
-def _side_to_image_size(side_size: int, aspect_ratio: float, side: str = "short") -> Tuple[int, int]:
+def _side_to_image_size(side_size: int, aspect_ratio: float, side: str = "short") -> tuple[int, int]:
     if side not in ("short", "long", "vert", "horz"):
         raise ValueError(f"side can be one of 'short', 'long', 'vert', and 'horz'. Got '{side}'")
     if side == "vert":
@@ -526,9 +528,9 @@ def _side_to_image_size(side_size: int, aspect_ratio: float, side: str = "short"
 @perform_keep_shape_image
 def resize(
     input: torch.Tensor,
-    size: Union[int, Tuple[int, int]],
+    size: int | tuple[int, int],
     interpolation: str = 'bilinear',
-    align_corners: Optional[bool] = None,
+    align_corners: bool | None = None,
     side: str = "short",
     antialias: bool = False,
 ) -> torch.Tensor:
@@ -604,9 +606,9 @@ def resize(
 
 def rescale(
     input: torch.Tensor,
-    factor: Union[float, Tuple[float, float]],
+    factor: float | tuple[float, float],
     interpolation: str = "bilinear",
-    align_corners: Optional[bool] = None,
+    align_corners: bool | None = None,
     antialias: bool = False,
 ) -> torch.Tensor:
     r"""Rescale the input torch.Tensor with the given factor.
@@ -672,16 +674,16 @@ class Resize(nn.Module):
 
     def __init__(
         self,
-        size: Union[int, Tuple[int, int]],
+        size: int | tuple[int, int],
         interpolation: str = 'bilinear',
-        align_corners: Optional[bool] = None,
+        align_corners: bool | None = None,
         side: str = "short",
         antialias: bool = False,
     ) -> None:
         super().__init__()
-        self.size: Union[int, Tuple[int, int]] = size
+        self.size: int | tuple[int, int] = size
         self.interpolation: str = interpolation
-        self.align_corners: Optional[bool] = align_corners
+        self.align_corners: bool | None = align_corners
         self.side: str = side
         self.antialias: bool = antialias
 
@@ -733,11 +735,11 @@ class Affine(nn.Module):
 
     def __init__(
         self,
-        angle: Optional[torch.Tensor] = None,
-        translation: Optional[torch.Tensor] = None,
-        scale_factor: Optional[torch.Tensor] = None,
-        shear: Optional[torch.Tensor] = None,
-        center: Optional[torch.Tensor] = None,
+        angle: torch.Tensor | None = None,
+        translation: torch.Tensor | None = None,
+        scale_factor: torch.Tensor | None = None,
+        shear: torch.Tensor | None = None,
+        center: torch.Tensor | None = None,
         mode: str = 'bilinear',
         padding_mode: str = 'zeros',
         align_corners: bool = True,
@@ -818,15 +820,15 @@ class Rescale(nn.Module):
 
     def __init__(
         self,
-        factor: Union[float, Tuple[float, float]],
+        factor: float | tuple[float, float],
         interpolation: str = "bilinear",
         align_corners: bool = True,
         antialias: bool = False,
     ) -> None:
         super().__init__()
-        self.factor: Union[float, Tuple[float, float]] = factor
+        self.factor: float | tuple[float, float] = factor
         self.interpolation: str = interpolation
-        self.align_corners: Optional[bool] = align_corners
+        self.align_corners: bool | None = align_corners
         self.antialias: bool = antialias
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
@@ -864,14 +866,14 @@ class Rotate(nn.Module):
     def __init__(
         self,
         angle: torch.Tensor,
-        center: Union[None, torch.Tensor] = None,
+        center: None | torch.Tensor = None,
         mode: str = 'bilinear',
         padding_mode: str = 'zeros',
         align_corners: bool = True,
     ) -> None:
         super().__init__()
         self.angle: torch.Tensor = angle
-        self.center: Union[None, torch.Tensor] = center
+        self.center: None | torch.Tensor = center
         self.mode: str = mode
         self.padding_mode: str = padding_mode
         self.align_corners: bool = align_corners
@@ -948,14 +950,14 @@ class Scale(nn.Module):
     def __init__(
         self,
         scale_factor: torch.Tensor,
-        center: Union[None, torch.Tensor] = None,
+        center: None | torch.Tensor = None,
         mode: str = 'bilinear',
         padding_mode: str = 'zeros',
         align_corners: bool = True,
     ) -> None:
         super().__init__()
         self.scale_factor: torch.Tensor = scale_factor
-        self.center: Union[None, torch.Tensor] = center
+        self.center: None | torch.Tensor = center
         self.mode: str = mode
         self.padding_mode: str = padding_mode
         self.align_corners: bool = align_corners

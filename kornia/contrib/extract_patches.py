@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Optional, Tuple, Union, cast
 
 import torch
@@ -9,8 +11,8 @@ PadType = Union[Tuple[int, int], Tuple[int, int, int, int]]
 
 
 def compute_padding(
-    original_size: Union[int, Tuple[int, int]], window_size: Union[int, Tuple[int, int]]
-) -> Tuple[int, int, int, int]:
+    original_size: int | tuple[int, int], window_size: int | tuple[int, int]
+) -> tuple[int, int, int, int]:
     r"""Compute required padding to ensure chaining of :func:`extract_tensor_patches` and
     :func:`combine_tensor_patches` produces expected result.
 
@@ -38,7 +40,7 @@ def compute_padding(
     original_size = cast(Tuple[int, int], _pair(original_size))
     window_size = cast(Tuple[int, int], _pair(window_size))
 
-    def paddim(dim1: int, dim2: int) -> Tuple[int, int]:
+    def paddim(dim1: int, dim2: int) -> tuple[int, int]:
         if dim1 % dim2 == 0:
             p1 = 0
             p2 = 0
@@ -117,13 +119,13 @@ class ExtractTensorPatches(nn.Module):
 
     def __init__(
         self,
-        window_size: Union[int, Tuple[int, int]],
-        stride: Optional[Union[int, Tuple[int, int]]] = 1,
-        padding: Optional[Union[int, PadType]] = 0,
+        window_size: int | tuple[int, int],
+        stride: int | tuple[int, int] | None = 1,
+        padding: int | PadType | None = 0,
     ) -> None:
         super().__init__()
-        self.window_size: Tuple[int, int] = _pair(window_size)
-        self.stride: Tuple[int, int] = _pair(stride)
+        self.window_size: tuple[int, int] = _pair(window_size)
+        self.stride: tuple[int, int] = _pair(stride)
         self.padding: PadType = _pair(padding)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
@@ -187,14 +189,11 @@ class CombineTensorPatches(nn.Module):
     """
 
     def __init__(
-        self,
-        original_size: Union[int, Tuple[int, int]],
-        window_size: Union[int, Tuple[int, int]],
-        unpadding: Union[int, PadType] = 0,
+        self, original_size: int | tuple[int, int], window_size: int | tuple[int, int], unpadding: int | PadType = 0
     ) -> None:
         super().__init__()
-        self.original_size: Tuple[int, int] = _pair(original_size)
-        self.window_size: Tuple[int, int] = _pair(window_size)
+        self.original_size: tuple[int, int] = _pair(original_size)
+        self.window_size: tuple[int, int] = _pair(window_size)
         self.unpadding: PadType = _pair(unpadding)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
@@ -205,10 +204,10 @@ class CombineTensorPatches(nn.Module):
 
 def combine_tensor_patches(
     patches: torch.Tensor,
-    original_size: Union[int, Tuple[int, int]],
-    window_size: Union[int, Tuple[int, int]],
-    stride: Union[int, Tuple[int, int]],
-    unpadding: Union[int, PadType] = 0,
+    original_size: int | tuple[int, int],
+    window_size: int | tuple[int, int],
+    stride: int | tuple[int, int],
+    unpadding: int | PadType = 0,
 ) -> torch.Tensor:
     r"""Restore input from patches.
 
@@ -285,7 +284,7 @@ def combine_tensor_patches(
 
 
 def _extract_tensor_patchesnd(
-    input: torch.Tensor, window_sizes: Tuple[int, ...], strides: Tuple[int, ...]
+    input: torch.Tensor, window_sizes: tuple[int, ...], strides: tuple[int, ...]
 ) -> torch.Tensor:
     batch_size, num_channels = input.size()[:2]
     dims = range(2, input.dim())
@@ -297,9 +296,9 @@ def _extract_tensor_patchesnd(
 
 def extract_tensor_patches(
     input: torch.Tensor,
-    window_size: Union[int, Tuple[int, int]],
-    stride: Union[int, Tuple[int, int]] = 1,
-    padding: Union[int, PadType] = 0,
+    window_size: int | tuple[int, int],
+    stride: int | tuple[int, int] = 1,
+    padding: int | PadType = 0,
 ) -> torch.Tensor:
     r"""Function that extract patches from tensors and stack them.
 

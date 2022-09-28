@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Dict, List
 
 import torch
@@ -10,7 +12,7 @@ from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _
 class PlanckianJitterGenerator(RandomGeneratorBase):
     r"""Generate random planckian jitter parameters for a batch of images."""
 
-    def __init__(self, domain: List[float]) -> None:
+    def __init__(self, domain: list[float]) -> None:
         super().__init__()
         self.domain = domain
 
@@ -21,7 +23,7 @@ class PlanckianJitterGenerator(RandomGeneratorBase):
         _joint_range_check(idx_range, 'idx_range', (0, self.domain[1]))
         self.pl_idx_dist = Uniform(idx_range[0], idx_range[1], validate_args=False)
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         pl_idx = _adapted_rsampling((batch_size,), self.pl_idx_dist, same_on_batch)

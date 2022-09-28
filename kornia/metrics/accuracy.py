@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 from typing import List
 
 import torch
 
 
-def accuracy(input: torch.Tensor, target: torch.Tensor, topk=(1,)) -> List[torch.Tensor]:
+def accuracy(input: torch.Tensor, target: torch.Tensor, topk=(1,)) -> list[torch.Tensor]:
     """Computes the accuracy over the k top predictions for the specified values of k.
 
     Args:

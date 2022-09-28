@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import enum
 import warnings
 from typing import Optional, Tuple
@@ -95,7 +97,7 @@ def deg2rad(tensor: torch.Tensor) -> torch.Tensor:
     return tensor * pi.to(tensor.device).type(tensor.dtype) / 180.0
 
 
-def pol2cart(rho: torch.Tensor, phi: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def pol2cart(rho: torch.Tensor, phi: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Function that converts polar coordinates to cartesian coordinates.
 
     Args:
@@ -119,7 +121,7 @@ def pol2cart(rho: torch.Tensor, phi: torch.Tensor) -> Tuple[torch.Tensor, torch.
     return x, y
 
 
-def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> Tuple[torch.Tensor, torch.Tensor]:
+def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> tuple[torch.Tensor, torch.Tensor]:
     """Function that converts cartesian coordinates to polar coordinates.
 
     Args:
@@ -1018,7 +1020,7 @@ def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
 
 
 def normalize_homography(
-    dst_pix_trans_src_pix: torch.Tensor, dsize_src: Tuple[int, int], dsize_dst: Tuple[int, int]
+    dst_pix_trans_src_pix: torch.Tensor, dsize_src: tuple[int, int], dsize_dst: tuple[int, int]
 ) -> torch.Tensor:
     r"""Normalize a given homography in pixels to [-1, 1].
 
@@ -1053,11 +1055,7 @@ def normalize_homography(
 
 
 def normal_transform_pixel(
-    height: int,
-    width: int,
-    eps: float = 1e-14,
-    device: Optional[torch.device] = None,
-    dtype: Optional[torch.dtype] = None,
+    height: int, width: int, eps: float = 1e-14, device: torch.device | None = None, dtype: torch.dtype | None = None
 ) -> torch.Tensor:
     r"""Compute the normalization matrix from image size in pixels to [-1, 1].
 
@@ -1086,8 +1084,8 @@ def normal_transform_pixel3d(
     height: int,
     width: int,
     eps: float = 1e-14,
-    device: Optional[torch.device] = None,
-    dtype: Optional[torch.dtype] = None,
+    device: torch.device | None = None,
+    dtype: torch.dtype | None = None,
 ) -> torch.Tensor:
     r"""Compute the normalization matrix from image size in pixels to [-1, 1].
 
@@ -1119,7 +1117,7 @@ def normal_transform_pixel3d(
 
 
 def denormalize_homography(
-    dst_pix_trans_src_pix: torch.Tensor, dsize_src: Tuple[int, int], dsize_dst: Tuple[int, int]
+    dst_pix_trans_src_pix: torch.Tensor, dsize_src: tuple[int, int], dsize_dst: tuple[int, int]
 ) -> torch.Tensor:
     r"""De-normalize a given homography in pixels from [-1, 1] to actual height and width.
 
@@ -1153,7 +1151,7 @@ def denormalize_homography(
 
 
 def normalize_homography3d(
-    dst_pix_trans_src_pix: torch.Tensor, dsize_src: Tuple[int, int, int], dsize_dst: Tuple[int, int, int]
+    dst_pix_trans_src_pix: torch.Tensor, dsize_src: tuple[int, int, int], dsize_dst: tuple[int, int, int]
 ) -> torch.Tensor:
     r"""Normalize a given homography in pixels to [-1, 1].
 
@@ -1212,7 +1210,7 @@ def Rt_to_matrix4x4(R: Tensor, t: Tensor) -> Tensor:
     return convert_affinematrix_to_homography3d(Rt)
 
 
-def matrix4x4_to_Rt(extrinsics: Tensor) -> Tuple[Tensor, Tensor]:
+def matrix4x4_to_Rt(extrinsics: Tensor) -> tuple[Tensor, Tensor]:
     r"""Converts 4x4 extrinsics into 3x3 rotation matrix R and 1x3 translation vector ts.
 
     Args:
@@ -1265,7 +1263,7 @@ def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: Tensor) -> Tensor:
     return extrinsics_graphics @ invert_yz
 
 
-def camtoworld_graphics_to_vision_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
+def camtoworld_graphics_to_vision_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
     r"""Converts graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.), , i.e. flips y
     and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards]. Vision convention: [+x, +y, +z] ==
 
@@ -1322,7 +1320,7 @@ def camtoworld_vision_to_graphics_4x4(extrinsics_vision: Tensor) -> Tensor:
     return extrinsics_vision @ invert_yz
 
 
-def camtoworld_vision_to_graphics_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
+def camtoworld_vision_to_graphics_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
     r"""Converts graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.), , i.e. flips y
     and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards]. Vision convention: [+x, +y, +z] ==
 
@@ -1351,7 +1349,7 @@ def camtoworld_vision_to_graphics_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tens
     return matrix4x4_to_Rt(mat4x4)
 
 
-def camtoworld_to_worldtocam_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
+def camtoworld_to_worldtocam_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
     r"""Converts camtoworld, i.e. projection from camera coordinate system to world coordinate system, to worldtocam
     frame i.e. projection from world to the camera coordinate system (used in Colmap).
     See
@@ -1383,7 +1381,7 @@ def camtoworld_to_worldtocam_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
     return (R_inv, new_t)
 
 
-def worldtocam_to_camtoworld_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
+def worldtocam_to_camtoworld_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
     r"""Converts worldtocam frame i.e. projection from world to the camera coordinate system (used in Colmap) to
     camtoworld, i.e. projection from camera coordinate system to world coordinate system.
 
@@ -1413,7 +1411,7 @@ def worldtocam_to_camtoworld_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
     return (R_inv, new_t)
 
 
-def ARKitQTVecs_to_ColmapQTVecs(qvec: Tensor, tvec: Tensor) -> Tuple[Tensor, Tensor]:
+def ARKitQTVecs_to_ColmapQTVecs(qvec: Tensor, tvec: Tensor) -> tuple[Tensor, Tensor]:
     r"""Converts output of Apple ARKit screen pose (in quaternion representation) to the camera-to-world
     transformation, expected by Colmap, also in quaternion representation.
 

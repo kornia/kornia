@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Dict
 
 import torch
@@ -13,7 +15,7 @@ def random_rotation_generator(
     same_on_batch: bool = False,
     device: torch.device = torch.device('cpu'),
     dtype: torch.dtype = torch.float32,
-) -> Dict[str, torch.Tensor]:
+) -> dict[str, torch.Tensor]:
     r"""Get parameters for ``rotate`` for a random rotate transform.
 
     Args:
@@ -52,7 +54,7 @@ def random_solarize_generator(
     same_on_batch: bool = False,
     device: torch.device = torch.device('cpu'),
     dtype: torch.dtype = torch.float32,
-) -> Dict[str, torch.Tensor]:
+) -> dict[str, torch.Tensor]:
     r"""Generate random solarize parameters for a batch of images.
 
     For each pixel in the image less than threshold, we add 'addition' amount to it and then clip the pixel value
@@ -108,7 +110,7 @@ def random_sharpness_generator(
     same_on_batch: bool = False,
     device: torch.device = torch.device('cpu'),
     dtype: torch.dtype = torch.float32,
-) -> Dict[str, torch.Tensor]:
+) -> dict[str, torch.Tensor]:
     r"""Generate random sharpness parameters for a batch of images.
 
     Args:

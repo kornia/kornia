@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Optional
 
 import torch
@@ -57,7 +59,7 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
 
 
 def distort_points(
-    points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor, new_K: Optional[torch.Tensor] = None
+    points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor, new_K: torch.Tensor | None = None
 ) -> torch.Tensor:
     r"""Distortion of a set of 2D points based on the lens distortion model.
 

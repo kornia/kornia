@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 from typing import Callable, Dict
 
 import torch
 import torch.nn as nn
 
-urls: Dict[str, str] = {}
+urls: dict[str, str] = {}
 urls[
     "liberty"
 ] = "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_LIB.pth"  # pylint: disable

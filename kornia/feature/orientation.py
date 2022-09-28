@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import math
 from typing import Callable, Dict, Optional
 
@@ -12,7 +14,7 @@ from kornia.testing import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 
 from .laf import extract_patches_from_pyramid, get_laf_orientation, set_laf_orientation
 
-urls: Dict[str, str] = {}
+urls: dict[str, str] = {}
 urls["orinet"] = "https://github.com/ducha-aiki/affnet/raw/master/pretrained/OriNet.pth"
 
 
@@ -202,7 +204,7 @@ class LAFOrienter(nn.Module):
           or OriNet.
     """  # pylint: disable
 
-    def __init__(self, patch_size: int = 32, num_angular_bins: int = 36, angle_detector: Optional[nn.Module] = None):
+    def __init__(self, patch_size: int = 32, num_angular_bins: int = 36, angle_detector: nn.Module | None = None):
         super().__init__()
         self.patch_size = patch_size
         self.num_ang_bins = num_angular_bins

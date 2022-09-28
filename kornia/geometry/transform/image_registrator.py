@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Callable, List, Tuple, Union
 
 import torch
@@ -197,7 +199,7 @@ class ImageRegistrator(nn.Module):
         dst_img: torch.Tensor,
         verbose: bool = False,
         output_intermediate_models: bool = False,
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, List[torch.Tensor]]]:
+    ) -> torch.Tensor | tuple[torch.Tensor, list[torch.Tensor]]:
         r"""Estimate the tranformation' which warps src_img into dst_img by gradient descent. The shape of the
         tensors is not checked, because it may depend on the model, e.g. volume registration.
 

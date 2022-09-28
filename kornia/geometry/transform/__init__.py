@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from .affwarp import *
 from .crop2d import *
 from .crop3d import *

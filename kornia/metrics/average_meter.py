@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Union
 
 import torch
@@ -23,7 +25,7 @@ class AverageMeter:
         self.sum = 0
         self.count = 0
 
-    def update(self, val: Union[int, float, bool, torch.Tensor], n: int = 1) -> None:
+    def update(self, val: int | float | bool | torch.Tensor, n: int = 1) -> None:
         self.val = val
         self.sum += val * n
         self.count += n

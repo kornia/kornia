@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import List, Optional, Tuple, Union, cast
 
 import torch
@@ -14,7 +16,7 @@ def _is_floating_point_dtype(dtype: torch.dtype) -> bool:
     return dtype in (torch.float16, torch.float32, torch.float64, torch.bfloat16, torch.half)
 
 
-def _merge_box_list(boxes: List[torch.Tensor], method: str = "pad") -> Tuple[torch.Tensor, List[int]]:
+def _merge_box_list(boxes: list[torch.Tensor], method: str = "pad") -> tuple[torch.Tensor, list[int]]:
     r"""Merge a list of boxes into one tensor."""
     if not all(box.shape[-2:] == torch.Size([4, 2]) and box.dim() == 3 for box in boxes):
         raise TypeError(f"Input boxes must be a list of (N, 4, 2) shaped. Got: {[box.shape for box in boxes]}.")
@@ -184,12 +186,12 @@ class Boxes:
 
     def __init__(
         self,
-        boxes: Union[torch.Tensor, List[torch.Tensor]],
+        boxes: torch.Tensor | list[torch.Tensor],
         raise_if_not_floating_point: bool = True,
         mode: str = "vertices_plus",
     ) -> None:
 
-        self._N: Optional[List[int]] = None
+        self._N: list[int] | None = None
 
         if isinstance(boxes, list):
             boxes, self._N = _merge_box_list(boxes)
@@ -216,7 +218,7 @@ class Boxes:
         self._data = boxes
         self._mode = mode
 
-    def get_boxes_shape(self) -> Tuple[torch.Tensor, torch.Tensor]:
+    def get_boxes_shape(self) -> tuple[torch.Tensor, torch.Tensor]:
         r"""Compute boxes heights and widths.
 
         Returns:
@@ -233,7 +235,7 @@ class Boxes:
         widths, heights = boxes_xywh[..., 2], boxes_xywh[..., 3]
         return heights, widths
 
-    def merge(self, boxes: "Boxes", inplace: bool = False) -> "Boxes":
+    def merge(self, boxes: Boxes, inplace: bool = False) -> Boxes:
         """Merges boxes.
 
         Say, current instance holds :math:`(B, N, 4, 2)` and the incoming boxes holds :math:`(B, M, 4, 2)`,
@@ -251,10 +253,10 @@ class Boxes:
 
     def clamp(
         self,
-        topleft: Optional[Union[Tensor, Tuple[int, int]]] = None,
-        botright: Optional[Union[Tensor, Tuple[int, int]]] = None,
+        topleft: Tensor | tuple[int, int] | None = None,
+        botright: Tensor | tuple[int, int] | None = None,
         inplace: bool = False,
-    ) -> "Boxes":
+    ) -> Boxes:
         """"""
         if not (isinstance(topleft, Tensor) and isinstance(botright, Tensor)):
             raise NotImplementedError
@@ -277,7 +279,7 @@ class Boxes:
             return self
         return Boxes(_data, False)
 
-    def trim(self, correspondence_preserve: bool = False, inplace: bool = False) -> "Boxes":
+    def trim(self, correspondence_preserve: bool = False, inplace: bool = False) -> Boxes:
         """Trim out zero padded boxes.
 
         Given box arrangements of shape :math:`(4, 4, Box)`:
@@ -299,8 +301,8 @@ class Boxes:
         raise NotImplementedError
 
     def filter_boxes_by_area(
-        self, min_area: Optional[float] = None, max_area: Optional[float] = None, inplace: bool = False
-    ) -> "Boxes":
+        self, min_area: float | None = None, max_area: float | None = None, inplace: bool = False
+    ) -> Boxes:
         area = self.compute_area()
         if inplace:
             _data = self._data
@@ -322,8 +324,8 @@ class Boxes:
 
     @classmethod
     def from_tensor(
-        cls, boxes: Union[torch.Tensor, List[torch.Tensor]], mode: str = "xyxy", validate_boxes: bool = True
-    ) -> "Boxes":
+        cls, boxes: torch.Tensor | list[torch.Tensor], mode: str = "xyxy", validate_boxes: bool = True
+    ) -> Boxes:
         r"""Helper method to easily create :class:`Boxes` from boxes stored in another format.
 
         Args:
@@ -365,7 +367,7 @@ class Boxes:
                      [7., 3.],
                      [5., 3.]]])
         """
-        quadrilaterals: Union[torch.Tensor, List[torch.Tensor]]
+        quadrilaterals: torch.Tensor | list[torch.Tensor]
         if isinstance(boxes, (torch.Tensor)):
             quadrilaterals = _boxes_to_quadrilaterals(boxes, mode=mode, validate_boxes=validate_boxes)
         else:
@@ -375,9 +377,7 @@ class Boxes:
         # constructing the class from inside of a method.
         return cls(quadrilaterals, False, mode)
 
-    def to_tensor(
-        self, mode: Optional[str] = None, as_padded_sequence: bool = False
-    ) -> Union[torch.Tensor, List[torch.Tensor]]:
+    def to_tensor(self, mode: str | None = None, as_padded_sequence: bool = False) -> torch.Tensor | list[torch.Tensor]:
         r"""Cast :class:`Boxes` to a tensor. ``mode`` controls which 2D boxes format should be use to represent
         boxes in the tensor.
 
@@ -411,7 +411,7 @@ class Boxes:
         """
         batched_boxes = self._data if self._is_batched else self._data.unsqueeze(0)
 
-        boxes: Union[torch.Tensor, List[torch.Tensor]]
+        boxes: torch.Tensor | list[torch.Tensor]
 
         # Create boxes in xyxy_plus format.
         boxes = torch.stack([batched_boxes.amin(dim=-2), batched_boxes.amax(dim=-2)], dim=-2).view(
@@ -500,7 +500,7 @@ class Boxes:
 
         return mask
 
-    def transform_boxes(self, M: torch.Tensor, inplace: bool = False) -> "Boxes":
+    def transform_boxes(self, M: torch.Tensor, inplace: bool = False) -> Boxes:
         r"""Apply a transformation matrix to the 2D boxes.
 
         Args:
@@ -522,11 +522,11 @@ class Boxes:
 
         return Boxes(transformed_boxes, False)
 
-    def transform_boxes_(self, M: torch.Tensor) -> "Boxes":
+    def transform_boxes_(self, M: torch.Tensor) -> Boxes:
         """Inplace version of :func:`Boxes.transform_boxes`"""
         return self.transform_boxes(M, inplace=True)
 
-    def translate(self, size: Tensor, method: str = "warp", inplace: bool = False) -> "Boxes":
+    def translate(self, size: Tensor, method: str = "warp", inplace: bool = False) -> Boxes:
         """Translates boxes by the provided size.
 
         Args:
@@ -566,7 +566,7 @@ class Boxes:
         """Returns boxes dtype."""
         return self._data.dtype
 
-    def to(self, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> "Boxes":
+    def to(self, device: torch.device | None = None, dtype: torch.dtype | None = None) -> Boxes:
         """Like :func:`torch.nn.Module.to()` method."""
         # In torchscript, dtype is a int and not a class. https://github.com/pytorch/pytorch/issues/51941
         if dtype is not None and not _is_floating_point_dtype(dtype):
@@ -574,7 +574,7 @@ class Boxes:
         self._data = self._data.to(device=device, dtype=dtype)
         return self
 
-    def clone(self) -> "Boxes":
+    def clone(self) -> Boxes:
         return Boxes(self._data.clone(), False)
 
 
@@ -620,7 +620,7 @@ class Boxes3D:
         self._data = boxes
         self._mode = mode
 
-    def get_boxes_shape(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def get_boxes_shape(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         r"""Compute boxes heights and widths.
 
         Returns:
@@ -639,7 +639,7 @@ class Boxes3D:
         return depths, heights, widths
 
     @classmethod
-    def from_tensor(cls, boxes: torch.Tensor, mode: str = "xyzxyz", validate_boxes: bool = True) -> "Boxes3D":
+    def from_tensor(cls, boxes: torch.Tensor, mode: str = "xyzxyz", validate_boxes: bool = True) -> Boxes3D:
         r"""Helper method to easily create :class:`Boxes3D` from 3D boxes stored in another format.
 
         Args:
@@ -879,7 +879,7 @@ class Boxes3D:
 
         return mask
 
-    def transform_boxes(self, M: torch.Tensor, inplace: bool = False) -> "Boxes3D":
+    def transform_boxes(self, M: torch.Tensor, inplace: bool = False) -> Boxes3D:
         r"""Apply a transformation matrix to the 3D boxes.
 
         Args:
@@ -901,7 +901,7 @@ class Boxes3D:
 
         return Boxes3D(transformed_boxes, False, "xyzxyz_plus")
 
-    def transform_boxes_(self, M: torch.Tensor) -> "Boxes3D":
+    def transform_boxes_(self, M: torch.Tensor) -> Boxes3D:
         """Inplace version of :func:`Boxes3D.transform_boxes`"""
         return self.transform_boxes(M, inplace=True)
 
@@ -923,7 +923,7 @@ class Boxes3D:
         """Returns boxes dtype."""
         return self._data.dtype
 
-    def to(self, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> "Boxes3D":
+    def to(self, device: torch.device | None = None, dtype: torch.dtype | None = None) -> Boxes3D:
         """Like :func:`torch.nn.Module.to()` method."""
         # In torchscript, dtype is a int and not a class. https://github.com/pytorch/pytorch/issues/51941
         if dtype is not None and not _is_floating_point_dtype(dtype):

@@ -17,3 +17,4 @@ skip_glob = []
 skip = [
     "kornia/__init__.py"
 ]
+add_imports = ["from __future__ import annotations"]

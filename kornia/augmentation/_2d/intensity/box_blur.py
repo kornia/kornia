@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Dict, Optional, Tuple
 
 from torch import Tensor
@@ -38,23 +40,23 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        kernel_size: Tuple[int, int] = (3, 3),
+        kernel_size: tuple[int, int] = (3, 3),
         border_type: str = "reflect",
         normalized: bool = True,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
+        return_transform: bool | None = None,
     ) -> None:
         super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
         )
         self.flags = dict(kernel_size=kernel_size, border_type=border_type, normalized=normalized)
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
         return self.identity_matrix(input)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
         return box_blur(input, flags["kernel_size"], flags["border_type"], flags["normalized"])

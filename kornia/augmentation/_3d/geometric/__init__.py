@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from kornia.augmentation._3d.geometric.affine import RandomAffine3D
 from kornia.augmentation._3d.geometric.center_crop import CenterCrop3D
 from kornia.augmentation._3d.geometric.crop import RandomCrop3D

@@ -1,4 +1,6 @@
 # based on: https://github.com/anguelos/tormentor/blob/e8050ac235b0c7ad3c7d931cfa47c308a305c486/diamond_square/diamond_square.py  # noqa: E501
+from __future__ import annotations
+
 import math
 from typing import Callable, List, Optional, Tuple, Union
 
@@ -10,8 +12,8 @@ from kornia.filters import filter2d
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 # the default kernels for the diamond square
-default_diamond_kernel: List[List[float]] = [[0.25, 0.0, 0.25], [0.0, 0.0, 0.0], [0.25, 0.0, 0.25]]
-default_square_kernel: List[List[float]] = [[0.0, 0.25, 0.0], [0.25, 0.0, 0.25], [0.0, 0.25, 0.0]]
+default_diamond_kernel: list[list[float]] = [[0.25, 0.0, 0.25], [0.0, 0.0, 0.0], [0.25, 0.0, 0.25]]
+default_square_kernel: list[list[float]] = [[0.0, 0.25, 0.0], [0.25, 0.0, 0.25], [0.0, 0.25, 0.0]]
 
 
 def _diamond_square_seed(
@@ -19,8 +21,8 @@ def _diamond_square_seed(
     width: int,
     height: int,
     random_fn: Callable,
-    device: Optional[torch.device] = None,
-    dtype: Optional[torch.dtype] = None,
+    device: torch.device | None = None,
+    dtype: torch.dtype | None = None,
 ) -> Tensor:
     """Helper function to generate the diamond square image seee.
 
@@ -72,10 +74,10 @@ def _diamond_square_seed(
 
 def _one_diamond_one_square(
     img: Tensor,
-    random_scale: Union[float, Tensor],
+    random_scale: float | Tensor,
     random_fn: Callable = torch.rand,
-    diamond_kernel: Optional[Tensor] = None,
-    square_kernel: Optional[Tensor] = None,
+    diamond_kernel: Tensor | None = None,
+    square_kernel: Tensor | None = None,
 ) -> Tensor:
     """Doubles the image resolution by applying a single diamond square steps.
 
@@ -138,13 +140,13 @@ def _one_diamond_one_square(
 
 
 def diamond_square(
-    output_size: Tuple[int, int, int, int],
-    roughness: Union[float, Tensor] = 0.5,
-    random_scale: Union[float, Tensor] = 1.0,
+    output_size: tuple[int, int, int, int],
+    roughness: float | Tensor = 0.5,
+    random_scale: float | Tensor = 1.0,
     random_fn: Callable = torch.rand,
-    normalize_range: Optional[Tuple[int, int]] = None,
-    device: Optional[torch.device] = None,
-    dtype: Optional[torch.dtype] = None,
+    normalize_range: tuple[int, int] | None = None,
+    device: torch.device | None = None,
+    dtype: torch.dtype | None = None,
 ) -> Tensor:
     """Generates Plasma Fractal Images using the diamond square algorithm.
 

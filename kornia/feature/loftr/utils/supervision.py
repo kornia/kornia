@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import torch
 
 from kornia.utils import create_meshgrid

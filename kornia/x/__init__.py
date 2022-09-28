@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from .callbacks import EarlyStopping, ModelCheckpoint
 from .trainer import Trainer
 from .trainers import ImageClassifierTrainer, ObjectDetectionTrainer, SemanticSegmentationTrainer

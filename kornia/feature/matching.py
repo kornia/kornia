@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Dict, Optional, Tuple
 
 import torch
@@ -25,7 +27,7 @@ def _get_default_fginn_params():
     return config
 
 
-def _get_lazy_distance_matrix(desc1: Tensor, desc2: Tensor, dm_: Optional[Tensor] = None):
+def _get_lazy_distance_matrix(desc1: Tensor, desc2: Tensor, dm_: Tensor | None = None):
     """Helper function, which checks validity of provided distance matrix, or calculates L2-distance matrix dm is
     not provided.
 
@@ -55,7 +57,7 @@ def _no_match(dm: Tensor):
     return dists, idxs
 
 
-def match_nn(desc1: Tensor, desc2: Tensor, dm: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
+def match_nn(desc1: Tensor, desc2: Tensor, dm: Tensor | None = None) -> tuple[Tensor, Tensor]:
     r"""Function, which finds nearest neighbors in desc2 for each vector in desc1.
 
     If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
@@ -81,7 +83,7 @@ def match_nn(desc1: Tensor, desc2: Tensor, dm: Optional[Tensor] = None) -> Tuple
     return match_dists.view(-1, 1), matches_idxs.view(-1, 2)
 
 
-def match_mnn(desc1: Tensor, desc2: Tensor, dm: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
+def match_mnn(desc1: Tensor, desc2: Tensor, dm: Tensor | None = None) -> tuple[Tensor, Tensor]:
     """Function, which finds mutual nearest neighbors in desc2 for each vector in desc1.
 
     If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
@@ -118,7 +120,7 @@ def match_mnn(desc1: Tensor, desc2: Tensor, dm: Optional[Tensor] = None) -> Tupl
     return match_dists.view(-1, 1), matches_idxs.view(-1, 2)
 
 
-def match_snn(desc1: Tensor, desc2: Tensor, th: float = 0.8, dm: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
+def match_snn(desc1: Tensor, desc2: Tensor, th: float = 0.8, dm: Tensor | None = None) -> tuple[Tensor, Tensor]:
     """Function, which finds nearest neighbors in desc2 for each vector in desc1.
 
     The method satisfies first to second nearest neighbor distance <= th.
@@ -155,7 +157,7 @@ def match_snn(desc1: Tensor, desc2: Tensor, th: float = 0.8, dm: Optional[Tensor
     return match_dists.view(-1, 1), matches_idxs.view(-1, 2)
 
 
-def match_smnn(desc1: Tensor, desc2: Tensor, th: float = 0.95, dm: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
+def match_smnn(desc1: Tensor, desc2: Tensor, th: float = 0.95, dm: Tensor | None = None) -> tuple[Tensor, Tensor]:
     """Function, which finds mutual nearest neighbors in desc2 for each vector in desc1.
 
     the method satisfies first to second nearest neighbor distance <= th.
@@ -217,8 +219,8 @@ def match_fginn(
     th: float = 0.8,
     spatial_th: float = 10.0,
     mutual: bool = False,
-    dm: Optional[Tensor] = None,
-) -> Tuple[Tensor, Tensor]:
+    dm: Tensor | None = None,
+) -> tuple[Tensor, Tensor]:
     """Function, which finds nearest neighbors in desc2 for each vector in desc1.
 
     The method satisfies first to second nearest neighbor distance <= th,
@@ -307,7 +309,7 @@ class DescriptorMatcher(nn.Module):
         self.match_mode = _match_mode
         self.th = th
 
-    def forward(self, desc1: Tensor, desc2: Tensor) -> Tuple[Tensor, Tensor]:
+    def forward(self, desc1: Tensor, desc2: Tensor) -> tuple[Tensor, Tensor]:
         """
         Args:
             desc1: Batch of descriptors of a shape :math:`(B1, D)`.
@@ -346,7 +348,7 @@ class GeometryAwareDescriptorMatcher(nn.Module):
 
     known_modes = ['fginn', "adalam"]
 
-    def __init__(self, match_mode: str = 'fginn', params: Dict = {}) -> None:
+    def __init__(self, match_mode: str = 'fginn', params: dict = {}) -> None:
         super().__init__()
         _match_mode: str = match_mode.lower()
         if _match_mode not in self.known_modes:
@@ -354,7 +356,7 @@ class GeometryAwareDescriptorMatcher(nn.Module):
         self.match_mode = _match_mode
         self.params = params
 
-    def forward(self, desc1: Tensor, desc2: Tensor, lafs1: Tensor, lafs2: Tensor) -> Tuple[Tensor, Tensor]:
+    def forward(self, desc1: Tensor, desc2: Tensor, lafs1: Tensor, lafs2: Tensor) -> tuple[Tensor, Tensor]:
         """
         Args:
             desc1: Batch of descriptors of a shape :math:`(B1, D)`.

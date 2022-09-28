@@ -1,5 +1,7 @@
 """In this module several equalization methods are exposed: he, ahe, clahe."""
 
+from __future__ import annotations
+
 import math
 from typing import Tuple
 
@@ -13,8 +15,8 @@ from .histogram import histogram
 
 
 def _compute_tiles(
-    imgs: torch.Tensor, grid_size: Tuple[int, int], even_tile_size: bool = False
-) -> Tuple[torch.Tensor, torch.Tensor]:
+    imgs: torch.Tensor, grid_size: tuple[int, int], even_tile_size: bool = False
+) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Compute tiles on an image according to a grid size.
 
     Note that padding can be added to the image in order to crop properly the image.
@@ -69,7 +71,7 @@ def _compute_tiles(
     return tiles, batch
 
 
-def _compute_interpolation_tiles(padded_imgs: torch.Tensor, tile_size: Tuple[int, int]) -> torch.Tensor:
+def _compute_interpolation_tiles(padded_imgs: torch.Tensor, tile_size: tuple[int, int]) -> torch.Tensor:
     r"""Compute interpolation tiles on a properly padded set of images.
 
     Note that images must be padded. So, the tile_size (TH, TW) * grid_size (GH, GW) = image_size (H, W)
@@ -310,7 +312,7 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
 def equalize_clahe(
     input: torch.Tensor,
     clip_limit: float = 40.0,
-    grid_size: Tuple[int, int] = (8, 8),
+    grid_size: tuple[int, int] = (8, 8),
     slow_and_differentiable: bool = False,
 ) -> torch.Tensor:
     r"""Apply clahe equalization on the input tensor.
@@ -360,7 +362,7 @@ def equalize_clahe(
     # img_padded: torch.Tensor  # B x C x H' x W'  # not supported by JIT
     # the size of the tiles must be even in order to divide them into 4 tiles for the interpolation
     hist_tiles, img_padded = _compute_tiles(imgs, grid_size, True)
-    tile_size: Tuple[int, int] = (hist_tiles.shape[-2], hist_tiles.shape[-1])
+    tile_size: tuple[int, int] = (hist_tiles.shape[-2], hist_tiles.shape[-1])
     interp_tiles: torch.Tensor = _compute_interpolation_tiles(img_padded, tile_size)  # B x 2GH x 2GW x C x TH/2 x TW/2
     luts: torch.Tensor = _compute_luts(hist_tiles, clip=clip_limit, diff=slow_and_differentiable)  # B x GH x GW x C x B
     equalized_tiles: torch.Tensor = _compute_equalized_tiles(interp_tiles, luts)  # B x 2GH x 2GW x C x TH/2 x TW/2

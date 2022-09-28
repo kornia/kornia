@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from enum import Enum
 from typing import Any, Dict, Optional, Tuple, Union
 
@@ -41,13 +43,13 @@ class _BasicAugmentationBase(nn.Module):
         self.p_batch = p_batch
         self.same_on_batch = same_on_batch
         self.keepdim = keepdim
-        self._params: Dict[str, Tensor] = {}
+        self._params: dict[str, Tensor] = {}
         if p != 0.0 or p != 1.0:
             self._p_gen = Bernoulli(self.p)
         if p_batch != 0.0 or p_batch != 1.0:
             self._p_batch_gen = Bernoulli(self.p_batch)
-        self._param_generator: Optional[RandomGeneratorBase] = None
-        self.flags: Dict[str, Any] = {}
+        self._param_generator: RandomGeneratorBase | None = None
+        self.flags: dict[str, Any] = {}
         self.set_rng_device_and_dtype(torch.device('cpu'), torch.get_default_dtype())
 
     def __repr__(self) -> str:
@@ -68,16 +70,16 @@ class _BasicAugmentationBase(nn.Module):
         """Standardize input tensors."""
         raise NotImplementedError
 
-    def transform_output_tensor(self, output: Tensor, output_shape: Tuple) -> Tensor:
+    def transform_output_tensor(self, output: Tensor, output_shape: tuple) -> Tensor:
         """Standardize output tensors."""
         return _transform_output_shape(output, output_shape) if self.keepdim else output
 
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, Tensor]:
+    def generate_parameters(self, batch_shape: torch.Size) -> dict[str, Tensor]:
         if self._param_generator is not None:
             return self._param_generator(batch_shape, self.same_on_batch)
         return {}
 
-    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def apply_transform(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
         raise NotImplementedError
 
     def set_rng_device_and_dtype(self, device: torch.device, dtype: torch.dtype) -> None:
@@ -116,8 +118,8 @@ class _BasicAugmentationBase(nn.Module):
         return batch_prob
 
     def _process_kwargs_to_params_and_flags(
-        self, params: Dict[str, Tensor], flags: Dict[str, Any], **kwargs
-    ) -> Tuple[Dict[str, Tensor], Dict[str, Any]]:
+        self, params: dict[str, Tensor], flags: dict[str, Any], **kwargs
+    ) -> tuple[dict[str, Tensor], dict[str, Any]]:
 
         # NOTE: determine how to save self._params
         save_kwargs = kwargs["save_kwargs"] if "save_kwargs" in kwargs else False
@@ -132,7 +134,7 @@ class _BasicAugmentationBase(nn.Module):
         flags = override_parameters(self.flags, kwargs, in_place=False)
         return params, flags
 
-    def forward_parameters(self, batch_shape) -> Dict[str, Tensor]:
+    def forward_parameters(self, batch_shape) -> dict[str, Tensor]:
         to_apply = self.__batch_prob_generator__(batch_shape, self.p, self.p_batch, self.same_on_batch)
         _params = self.generate_parameters(torch.Size((int(to_apply.sum().item()), *batch_shape[1:])))
         if _params is None:
@@ -144,10 +146,10 @@ class _BasicAugmentationBase(nn.Module):
         _params.update({'forward_input_shape': input_size})
         return _params
 
-    def apply_func(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def apply_func(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
         return self.apply_transform(input, params, flags)
 
-    def forward(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs) -> Tensor:  # type: ignore
+    def forward(self, input: Tensor, params: dict[str, Tensor] | None = None, **kwargs) -> Tensor:  # type: ignore
         """Perform forward operations.
 
         Args:
@@ -194,7 +196,7 @@ class _AugmentationBase(_BasicAugmentationBase):
 
     def __init__(
         self,
-        return_transform: Optional[bool] = None,
+        return_transform: bool | None = None,
         same_on_batch: bool = False,
         p: float = 0.5,
         p_batch: float = 1.0,
@@ -221,16 +223,16 @@ class _AugmentationBase(_BasicAugmentationBase):
     def identity_matrix(self, input: Tensor) -> Tensor:
         raise NotImplementedError
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
         raise NotImplementedError
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
         raise NotImplementedError
 
     def apply_func(  # type: ignore
-        self, in_tensor: Tensor, params: Dict[str, Tensor], flags: Optional[Dict[str, Any]] = None
+        self, in_tensor: Tensor, params: dict[str, Tensor], flags: dict[str, Any] | None = None
     ) -> Tensor:
         if flags is None:
             flags = self.flags

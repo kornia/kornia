@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -40,11 +42,11 @@ class Denormalize(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        mean: Union[Tensor, Tuple[float], List[float], float],
-        std: Union[Tensor, Tuple[float], List[float], float],
+        mean: Tensor | tuple[float] | list[float] | float,
+        std: Tensor | tuple[float] | list[float] | float,
         p: float = 1.0,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
+        return_transform: bool | None = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=True, keepdim=keepdim)
         if isinstance(mean, float):
@@ -62,6 +64,6 @@ class Denormalize(IntensityAugmentationBase2D):
         self.flags = dict(mean=mean, std=std)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
         return denormalize(input, flags["mean"], flags["std"])

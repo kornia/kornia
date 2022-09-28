@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import torch
 
 from .confusion_matrix import confusion_matrix

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Tuple
 
 import pytest
@@ -103,7 +105,7 @@ class TestEqualization(BaseTester):
     def test_he(self, img):
         # should be similar to enhance.equalize but slower. Similar because the lut is computed in a different way.
         clip_limit: float = 0.0
-        grid_size: Tuple = (1, 1)
+        grid_size: tuple = (1, 1)
         res = enhance.equalize_clahe(img, clip_limit=clip_limit, grid_size=grid_size)
         # NOTE: for next versions we need to improve the computation of the LUT
         # and test with a better image
@@ -144,7 +146,7 @@ class TestEqualization(BaseTester):
 
     def test_ahe(self, img):
         clip_limit: float = 0.0
-        grid_size: Tuple = (8, 8)
+        grid_size: tuple = (8, 8)
         res = enhance.equalize_clahe(img, clip_limit=clip_limit, grid_size=grid_size)
         # NOTE: for next versions we need to improve the computation of the LUT
         # and test with a better image
@@ -185,7 +187,7 @@ class TestEqualization(BaseTester):
 
     def test_clahe(self, img):
         clip_limit: float = 2.0
-        grid_size: Tuple = (8, 8)
+        grid_size: tuple = (8, 8)
         res = enhance.equalize_clahe(img, clip_limit=clip_limit, grid_size=grid_size)
         res_diff = enhance.equalize_clahe(img, clip_limit=clip_limit, grid_size=grid_size, slow_and_differentiable=True)
         # NOTE: for next versions we need to improve the computation of the LUT
