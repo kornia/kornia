@@ -34,7 +34,7 @@ jobs:
       run: |
         conda install curl -c conda-forge
         conda install pytorch=${{ matrix.pytorch-version }} cpuonly -c pytorch
-        pip install .[all]
+        pip install .[dev,x]
     - name: Run Tests
       shell: bash -l {0}
       run: pytest -v --device cpu --dtype float32,float64 --cov=kornia --cov-report xml ./test --mypy
