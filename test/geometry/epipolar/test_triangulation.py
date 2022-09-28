@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Dict
-
 import pytest
 import torch
 from torch.autograd import gradcheck

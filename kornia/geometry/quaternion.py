@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 from math import pi
-from typing import Tuple, Union
 
 from kornia.core import Module, Parameter, Tensor, as_tensor, concatenate, rand, stack
 from kornia.geometry.conversions import (

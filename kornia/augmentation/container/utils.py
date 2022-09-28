@@ -3,7 +3,7 @@ from __future__ import annotations
 import warnings
 from abc import ABCMeta, abstractmethod
 from functools import partial
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Type, Union, cast
+from typing import Any, Callable, Dict, Iterator, List, cast
 
 import torch
 import torch.nn as nn

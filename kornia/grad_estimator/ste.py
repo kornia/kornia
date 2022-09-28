@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable, Optional, Tuple
+from typing import Callable
 
 import torch.nn as nn
 from torch import Tensor

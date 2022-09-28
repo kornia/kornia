@@ -4,8 +4,6 @@ transformers/blob/master/fast_transformers/attention/linear_attention.py."""
 
 from __future__ import annotations
 
-from typing import Optional
-
 import torch
 from torch.nn import Dropout, Module
 

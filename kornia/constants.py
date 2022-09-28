@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum, EnumMeta
-from typing import TypeVar, Union, cast
+from typing import TypeVar, cast
 
 import torch
 

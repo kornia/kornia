@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Dict, Tuple
-
 import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase

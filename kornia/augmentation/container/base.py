@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from typing import Any, Iterator, List, NamedTuple, Optional, Tuple, Union
+from typing import Any, Iterator, NamedTuple
 
 import torch
 import torch.nn as nn

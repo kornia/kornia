@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 import warnings
-from typing import Callable, Dict, Optional
+from typing import Callable
 
 import torch
 import torch.nn as nn

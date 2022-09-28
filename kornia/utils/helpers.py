@@ -3,7 +3,7 @@ from __future__ import annotations
 import warnings
 from functools import partial, wraps
 from inspect import isclass, isfunction
-from typing import Any, Callable, List, Optional, Tuple
+from typing import Any, Callable
 
 import torch
 

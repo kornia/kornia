@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Tuple
-
 import torch
 
 from kornia.geometry.bbox import infer_bbox_shape3d, validate_bbox3d

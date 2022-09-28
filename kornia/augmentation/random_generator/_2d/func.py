@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Dict
-
 import torch
 
 from kornia.augmentation.utils import _adapted_uniform, _common_param_check, _joint_range_check

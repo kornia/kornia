@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Tuple, Union, cast
+from typing import cast
 
 import torch
 

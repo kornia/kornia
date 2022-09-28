@@ -1,8 +1,6 @@
 """Module for image projections."""
 from __future__ import annotations
 
-from typing import Tuple, Union
-
 import torch
 
 from kornia.utils import eye_like, vec_like

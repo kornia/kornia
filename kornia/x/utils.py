@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field  # type: ignore
 from enum import Enum
-from typing import Dict
 
 import torch.nn as nn
 

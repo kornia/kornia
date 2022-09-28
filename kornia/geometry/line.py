@@ -2,8 +2,6 @@
 # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/ParametrizedLine.h
 from __future__ import annotations
 
-from typing import Optional, Union
-
 import torch
 
 from kornia.core import Module, Parameter, Tensor, normalize
@@ -16,8 +14,6 @@ __all__ = ["ParametrizedLine", "fit_line"]
 # TODO: implement me: https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h
 class Hyperplane:
     """Not implemented yet: https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h."""
-
-    pass
 
 
 class ParametrizedLine(Module):

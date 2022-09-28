@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import warnings
-from typing import Optional
 
 import torch
 import torch.nn as nn

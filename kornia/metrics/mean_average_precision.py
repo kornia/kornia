@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import List, Tuple
-
 import torch
 
 from .mean_iou import mean_iou_bbox

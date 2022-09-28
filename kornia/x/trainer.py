@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Callable, Dict, Optional
+from typing import Callable
 
 # the accelerator library is a requirement for the Trainer
 # but it is optional for grousnd base user of kornia.

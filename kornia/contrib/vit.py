@@ -7,8 +7,6 @@ Added some tricks from https://github.com/rwightman/pytorch-image-models/blob/ma
 """
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
-
 import torch
 from torch import nn
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from math import pi
-from typing import Optional, Union
 
 import torch
 from torch import Tensor

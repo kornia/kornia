@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import math
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable
 
 import torch
 from torch import Tensor

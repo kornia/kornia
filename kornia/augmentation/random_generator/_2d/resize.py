@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Dict, Optional, Tuple, Union
-
 import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
@@ -44,7 +42,6 @@ class ResizeGenerator(RandomGeneratorBase):
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         self.device = device
         self.dtype = dtype
-        pass
 
     def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> dict[str, torch.Tensor]:
         batch_size = batch_shape[0]

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional, Tuple, Union, cast
+from typing import Tuple, Union, cast
 
 import torch
 import torch.nn as nn

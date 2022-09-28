@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Tuple
-
 import torch
 
 from kornia.geometry.conversions import convert_points_to_homogeneous

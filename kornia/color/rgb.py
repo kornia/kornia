@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Union, cast
+from typing import cast
 
 import torch
 import torch.nn as nn

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import warnings
 from itertools import zip_longest
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, List, Tuple, Union, cast
 
 from torch import Tensor
 

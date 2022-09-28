@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from itertools import cycle, islice
-from typing import Iterator, List, NamedTuple, Optional, Tuple, Union
+from typing import Iterator, NamedTuple
 
 import torch
 import torch.nn as nn
