@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import torch
 from torch import Tensor
+from torch import qr as linalg_qr  # noqa: F401
 
 from packaging import version
 
@@ -33,8 +34,6 @@ def torch_version_ge(major: int, minor: int, patch: int) -> bool:
     _version = version.parse(torch_version())
     return _version >= version.parse(f"{major}.{minor}.{patch}")
 
-
-from torch import qr as linalg_qr
 
 if torch_version_ge(1, 10, 0):
 
