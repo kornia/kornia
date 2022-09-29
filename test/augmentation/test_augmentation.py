@@ -22,6 +22,7 @@ from kornia.augmentation import (
     RandomEqualize,
     RandomErasing,
     RandomFisheye,
+    RandomGamma,
     RandomGaussianBlur,
     RandomGaussianNoise,
     RandomGrayscale,
@@ -1679,6 +1680,132 @@ class TestRectangleRandomErasing(BaseTester):
     @pytest.mark.skip(reason="not implemented yet")
     def test_smoke(self, device, dtype):
         pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_cardinality(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_exception(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_jit(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_module(self, device, dtype):
+        pass
+
+
+class TestRandomGamma(BaseTester):
+
+    # return values such a Tensor variable.
+    @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
+    def test_smoke(self):
+        f = RandomGamma(gamma=(0.5, 2.0), gain=(0.5, 0.5))
+        repr = (
+            "RandomGamma(gamma=tensor([0.5000, 2.5000]), gain=tensor([0.5000, 1.5000]), "
+            "p=1.0, p_batch=1.0, same_on_batch=False)"
+        )
+        assert str(f) == repr
+
+    def test_same_on_batch(self, device, dtype):
+        f = RandomGamma(gamma=(0.5, 2.0), gain=(0.5, 0.5), same_on_batch=True)
+        input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
+        res = f(input)
+        assert (res[0] == res[1]).all()
+
+    def _get_expected_gamma(self, device, dtype):
+        return torch.tensor(
+            [
+                [
+                    [[0.0703, 0.1564, 0.2496], [0.5549, 0.4497, 0.3477], [0.6628, 0.7732, 1.0000]],
+                    [[1.0000, 0.4497, 0.5549], [0.5549, 0.2496, 0.1564], [0.7732, 0.0703, 0.1564]],
+                    [[0.5549, 0.7732, 0.6628], [0.8856, 0.2496, 0.1564], [0.7732, 0.3477, 0.4497]],
+                ],
+                [
+                    [[0.0682, 0.1531, 0.2457], [0.5512, 0.4457, 0.3436], [0.6598, 0.7709, 1.0000]],
+                    [[1.0000, 0.4457, 0.5512], [0.5512, 0.2457, 0.1531], [0.7709, 0.0682, 0.1531]],
+                    [[0.5512, 0.7709, 0.6598], [0.8844, 0.2457, 0.1531], [0.7709, 0.3436, 0.4457]],
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+    def test_random_gamma(self, device, dtype):
+        torch.manual_seed(42)
+        f = RandomGamma(gamma=(0.8, 1.2))
+        input = torch.tensor(
+            [
+                [
+                    [[0.1, 0.2, 0.3], [0.6, 0.5, 0.4], [0.7, 0.8, 1.0]],
+                    [[1.0, 0.5, 0.6], [0.6, 0.3, 0.2], [0.8, 0.1, 0.2]],
+                    [[0.6, 0.8, 0.7], [0.9, 0.3, 0.2], [0.8, 0.4, 0.5]],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )  # 1 x 3 x 3 x 3
+
+        input = input.repeat(2, 1, 1, 1)  # 2 x 3 x 3 x 3
+
+        expected = self._get_expected_gamma(device, dtype)
+
+        self.assert_close(f(input), expected, low_tolerance=True)
+
+    def test_random_gamma_tuple(self, device, dtype):
+        torch.manual_seed(42)
+
+        f = RandomGamma(gamma=(0.8, 1.2))
+
+        input = torch.tensor(
+            [
+                [
+                    [[0.1, 0.2, 0.3], [0.6, 0.5, 0.4], [0.7, 0.8, 1.0]],
+                    [[1.0, 0.5, 0.6], [0.6, 0.3, 0.2], [0.8, 0.1, 0.2]],
+                    [[0.6, 0.8, 0.7], [0.9, 0.3, 0.2], [0.8, 0.4, 0.5]],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )  # 1 x 3 x 3 x 3
+
+        input = input.repeat(2, 1, 1, 1)  # 2 x 3 x 3 x 3
+
+        expected = self._get_expected_gamma(device, dtype)
+
+        self.assert_close(f(input), expected, low_tolerance=True)
+
+    def test_sequential(self, device, dtype):
+        if dtype == torch.float16:
+            pytest.skip('not work for half-precision')
+        torch.manual_seed(27)
+
+        f = AugmentationSequential(RandomGamma(gamma=(0.5, 0.5)), RandomGamma(gamma=(2.0, 2.0)))
+
+        input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0)  # 1 x 3 x 5 x 5
+
+        expected = input
+
+        self.assert_close(f(input), expected)
+
+    def test_random_gamma_batch_sequential(self, device, dtype):
+        if dtype == torch.float16:
+            pytest.skip('not work for half-precision')
+
+        f = AugmentationSequential(RandomGamma(gamma=(0.5, 0.5)), RandomGamma(gamma=(2.0, 2.0)))
+
+        input = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)  # 2 x 3 x 5 x 5
+        expected = input
+
+        self.assert_close(f(input), expected, low_tolerance=True)
+
+    def test_gradcheck(self, device, dtype):
+        input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
+        input = utils.tensor_to_gradcheck_var(input)  # to var
+        assert gradcheck(RandomGamma(p=1.0), (input,), raise_exception=True)
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_cardinality(self, device, dtype):
