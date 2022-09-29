@@ -59,11 +59,11 @@ from kornia.augmentation._3d import (
 from kornia.augmentation._3d.base import AugmentationBase3D
 from kornia.augmentation.container import (
     AugmentationSequential,
-    ManyToOneAugmentationDispather,
-    ManyToManyAugmentationDispather,
     ImageSequential,
+    ManyToManyAugmentationDispather,
+    ManyToOneAugmentationDispather,
     PatchSequential,
-    VideoSequential
+    VideoSequential,
 )
 
 __all__ = [

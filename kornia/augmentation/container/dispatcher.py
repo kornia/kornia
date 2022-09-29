@@ -30,10 +30,8 @@ class ManyToManyAugmentationDispather(nn.Module):
         ... )
         >>> output = aug_list((input_1, mask_1), (input_2, mask_2))
     """
-    def __init__(
-        self,
-        *augmentations: AugmentationSequential,
-    ) -> None:
+
+    def __init__(self, *augmentations: AugmentationSequential) -> None:
         super().__init__()
         self._check_consistency(*augmentations)
         self.augmentations = augmentations
@@ -44,9 +42,7 @@ class ManyToManyAugmentationDispather(nn.Module):
                 raise ValueError(f"Please wrap your augmentations[`{i}`] with `AugmentationSequentials`.")
         return True
 
-    def forward(
-        self, *input: Union[List[Tensor], List[Tuple[Tensor]]]
-    ) -> Union[List[Tensor], List[Tuple[Tensor]]]:
+    def forward(self, *input: Union[List[Tensor], List[Tuple[Tensor]]]) -> Union[List[Tensor], List[Tuple[Tensor]]]:
         return [aug(*inp) for inp, aug in zip(input, self.augmentations)]
 
 
@@ -78,11 +74,8 @@ class ManyToOneAugmentationDispather(nn.Module):
         ... )
         >>> output = aug_list((input, mask))
     """
-    def __init__(
-        self,
-        *augmentations: AugmentationSequential,
-        strict: bool = True
-    ) -> None:
+
+    def __init__(self, *augmentations: AugmentationSequential, strict: bool = True) -> None:
         super().__init__()
         self.strict = strict
         self._check_consistency(*augmentations)
@@ -99,7 +92,5 @@ class ManyToOneAugmentationDispather(nn.Module):
                 )
         return True
 
-    def forward(
-        self, *input: Union[Tensor, Tuple[Tensor]]
-    ) -> Union[List[Tensor], List[Tuple[Tensor]]]:
+    def forward(self, *input: Union[Tensor, Tuple[Tensor]]) -> Union[List[Tensor], List[Tuple[Tensor]]]:
         return [aug(*input) for aug in self.augmentations]
