@@ -91,7 +91,7 @@ def match_adalam(
 class AdalamFilter:
     DEFAULT_CONFIG = get_adalam_default_config()
 
-    def __init__(self, custom_config: dict = None):
+    def __init__(self, custom_config: Optional[dict] = None):
         """This class acts as a wrapper to the method AdaLAM for outlier filtering.
 
         init args:
@@ -116,13 +116,13 @@ class AdalamFilter:
         k2: torch.Tensor,
         putative_matches: torch.Tensor,
         scores: torch.Tensor,
-        mnn: torch.Tensor = None,
-        im1shape: tuple = None,
-        im2shape: tuple = None,
-        o1: torch.Tensor = None,
-        o2: torch.Tensor = None,
-        s1: torch.Tensor = None,
-        s2: torch.Tensor = None,
+        mnn: Optional[torch.Tensor] = None,
+        im1shape: Optional[tuple] = None,
+        im2shape: Optional[tuple] = None,
+        o1: Optional[torch.Tensor] = None,
+        o2: Optional[torch.Tensor] = None,
+        s1: Optional[torch.Tensor] = None,
+        s2: Optional[torch.Tensor] = None,
         return_dist: bool = False,
     ) -> Union[Tuple[Tensor, Tensor], Tensor]:
         """Call the core functionality of AdaLAM, i.e. just outlier filtering. No sanity check is performed on the
