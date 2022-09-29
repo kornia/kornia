@@ -2,6 +2,7 @@ from test.nerf.test_rays import create_four_cameras
 
 import torch
 
+from kornia.core import Device
 from kornia.geometry.camera import PinholeCamera
 from kornia.nerf.data_utils import ImageTensors, RayDataset, instantiate_ray_dataloader
 from kornia.testing import assert_close
@@ -15,12 +16,12 @@ def create_random_images_for_cameras(cameras: PinholeCamera) -> ImageTensors:
     return imgs
 
 
-def create_red_images_for_cameras(cameras: PinholeCamera) -> ImageTensors:
+def create_red_images_for_cameras(cameras: PinholeCamera, device: Device) -> ImageTensors:
     imgs: ImageTensors = []
     for height, width in zip(cameras.height.tolist(), cameras.width.tolist()):
         red_img = torch.zeros(3, int(height), int(width), dtype=torch.uint8)  # (C, H, W)
         red_img[0, ...] = 255
-        imgs.append(red_img)
+        imgs.append(red_img.to(device=device))
     return imgs
 
 

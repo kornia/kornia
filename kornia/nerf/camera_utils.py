@@ -7,7 +7,9 @@ from kornia.geometry.camera import PinholeCamera
 from kornia.geometry.conversions import QuaternionCoeffOrder, quaternion_to_rotation_matrix
 
 
-def parse_colmap_output(cameras_path: str, images_path: str, device: Device) -> Tuple[List[str], PinholeCamera]:
+def parse_colmap_output(
+    cameras_path: str, images_path: str, device: Device, dtype: torch.dtype
+) -> Tuple[List[str], PinholeCamera]:
     r"""Parses colmap output to create an PinholeCamera for aligned scene cameras.
 
     Args:
@@ -79,7 +81,7 @@ def parse_colmap_output(cameras_path: str, images_path: str, device: Device) -> 
 
             # Intrinsic
             camera_params = cameras_params[camera_ind]
-            intrinsic = torch.eye(4, device=device, dtype=torch.float32)
+            intrinsic = torch.eye(4, device=device, dtype=dtype)
             intrinsic[0, 0] = camera_params._fx
             intrinsic[1, 1] = camera_params._fy
             intrinsic[0, 2] = camera_params._cx
@@ -93,7 +95,7 @@ def parse_colmap_output(cameras_path: str, images_path: str, device: Device) -> 
             q = torch.tensor([qw, qx, qy, qz], device=device)
             R = quaternion_to_rotation_matrix(q, order=QuaternionCoeffOrder.WXYZ)
             t = torch.tensor([tx, ty, tz], device=device)
-            extrinsic = torch.eye(4, device=device, dtype=torch.float32)
+            extrinsic = torch.eye(4, device=device, dtype=dtype)
             extrinsic[:3, :3] = R
             extrinsic[:3, 3] = t
             extrinsics.append(extrinsic)

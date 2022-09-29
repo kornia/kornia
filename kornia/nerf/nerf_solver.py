@@ -93,7 +93,7 @@ class NerfSolver:
         self._nerf_model = NerfModel(
             num_ray_points, irregular_ray_sampling=irregular_ray_sampling, log_space_encoding=log_space_encoding
         )
-        self._nerf_model.to(self._device)
+        self._nerf_model.to(device=self._device, dtype=self._dtype)
         self._opt_nerf = optim.Adam(self._nerf_model.parameters(), lr=lr)
 
     @property

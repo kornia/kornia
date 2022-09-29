@@ -132,7 +132,7 @@ class RayDataset(Dataset):
         rgbs = torch.stack(
             [img[:, point2d[1].item(), point2d[0].item()] for img, point2d in zip(imgs_for_ids, points_2d)]
         )
-        rgbs = rgbs.float() / 255.0
+        rgbs = rgbs.to(dtype=self._dtype) / 255.0
         return origins, directions, rgbs
 
 

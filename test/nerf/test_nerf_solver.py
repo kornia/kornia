@@ -27,7 +27,7 @@ class TestNerfSolver:
     def test_only_red_uniform_sampling(self, device, dtype):
         torch.manual_seed(1)  # For reproducibility of random processes
         camera = create_one_camera(5, 9, device, dtype)
-        img = create_red_images_for_cameras(camera)
+        img = create_red_images_for_cameras(camera, device)
 
         nerf_obj = NerfSolver(device, dtype)
         nerf_obj.init_training(camera, 1.0, 3.0, False, img, None, 2, 10)
@@ -39,7 +39,7 @@ class TestNerfSolver:
 
     def test_single_ray(self, device, dtype):
         camera = create_one_camera(5, 9, device, dtype)
-        img = create_red_images_for_cameras(camera)
+        img = create_red_images_for_cameras(camera, device)
 
         nerf_obj = NerfSolver(device=device, dtype=dtype)
         nerf_obj.init_training(camera, 1.0, 3.0, True, img, 1, 2, 10)
@@ -49,13 +49,13 @@ class TestNerfSolver:
         torch.manual_seed(0)  # For reproducibility of random processes
 
         camera = create_one_camera(5, 9, device, dtype)
-        img = create_red_images_for_cameras(camera)
+        img = create_red_images_for_cameras(camera, device)
 
         nerf_obj = NerfSolver(device=device, dtype=dtype)
         num_img_rays = 15
         nerf_obj.init_training(camera, 1.0, 3.0, False, img, num_img_rays, batch_size=5, num_ray_points=10)
-        nerf_obj.run(num_epochs=20)
+        nerf_obj.run(num_epochs=10)
 
         img_rendered = nerf_obj.render_views(camera)[0].permute(2, 0, 1)
 
-        assert torch.all(torch.isclose(img[0] / 255.0, img_rendered / 255.0)).item()
+        assert torch.all(torch.isclose(img[0] / 255.0, img_rendered / 255.0, rtol=1.0e-2)).item()

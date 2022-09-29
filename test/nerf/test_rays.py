@@ -2,6 +2,7 @@ import math
 
 import torch
 
+from kornia.core import Device
 from kornia.geometry.camera import PinholeCamera
 from kornia.nerf.rays import (
     RandomGridRaySampler,
@@ -110,7 +111,7 @@ def create_extrinsics_with_rotation(alphas, betas, gammas, txs, tys, tzs, device
     return torch.stack(extrinsics_batch)
 
 
-def create_one_camera(height, width, device, dtype=torch.float32) -> PinholeCamera:
+def create_one_camera(height, width, device: Device, dtype: torch.dtype) -> PinholeCamera:
     fx = width
     fy = height
     cx = (width - 1.0) / 2.0
@@ -187,7 +188,7 @@ class TestRaySampler_3DPoints:
         assert lengths.shape == (3 * 28 + 45, 10)
 
     def test_dimensions_sample_ray_points(self, device, dtype):
-        cameras = create_four_cameras(device, torch.float32)
+        cameras = create_four_cameras(device, dtype)
         uniform_sampler_four_cameras = UniformRaySampler(1, 2, False, device, dtype=dtype)
         uniform_sampler_four_cameras.calc_ray_params(cameras)
         lengths = sample_lengths(

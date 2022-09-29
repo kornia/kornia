@@ -419,11 +419,6 @@ def calc_ray_t_vals(points_3d: Tensor) -> Tensor:
 
     Returns:
         t values along rays :math:`(*, num_ray_points)`
-
-    Examples:       # FIXME: Fix this example!!
-        >>> input = torch.tensor([[0., 0.]])
-        >>> convert_points_to_homogeneous(input)
-        tensor([[0., 0., 1.]])
     """
     t_vals = torch.linalg.norm(points_3d - points_3d[..., 0, :].unsqueeze(-2), dim=-1)
     return t_vals

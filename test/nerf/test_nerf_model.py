@@ -8,6 +8,7 @@ class TestNerfModel:
         d_input = 63  # Input dimension after encoding
         num_hidden = 256
         mlp = MLP(d_input, num_units=2, num_unit_layers=4, num_hidden=num_hidden)
+        mlp.to(device=device, dtype=dtype)
 
         num_rays = 15
         num_ray_points = 11
@@ -25,7 +26,7 @@ class TestNerfModel:
             num_unit_layers=4,
             num_hidden=256,
         )
-        nerf_model.to(device)
+        nerf_model.to(device=device, dtype=dtype)
         num_rays = 15
         origins = torch.rand(num_rays, 3, device=device, dtype=dtype)
         directions = torch.rand(num_rays, 3, device=device, dtype=dtype)

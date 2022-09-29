@@ -19,11 +19,11 @@ def colmap_images_path():
 
 
 def test_parse_colmap_output(device, dtype, colmap_cameras_path, colmap_images_path) -> None:
-    img_names, cameras = parse_colmap_output(colmap_cameras_path, colmap_images_path, device)
-    assert_close(cameras.fx[0].item(), 845.5654)
-    assert_close(cameras.fy[0].item(), 845.5654)
-    assert_close(cameras.cx[0].item(), 504)
-    assert_close(cameras.cy[0].item(), 378)
+    img_names, cameras = parse_colmap_output(colmap_cameras_path, colmap_images_path, device, dtype)
+    assert_close(cameras.fx[0], torch.tensor(845.5654, device=device, dtype=dtype))
+    assert_close(cameras.fy[0], torch.tensor(845.5654, device=device, dtype=dtype))
+    assert_close(cameras.cx[0], torch.tensor(504, device=device, dtype=dtype))
+    assert_close(cameras.cy[0], torch.tensor(378, device=device, dtype=dtype))
 
     qw = 0.99967420027533338
     qx = -0.016637661896892787
@@ -44,7 +44,7 @@ def test_parse_colmap_output(device, dtype, colmap_cameras_path, colmap_images_p
 
 
 def test_create_spiral_path(device, dtype, colmap_cameras_path, colmap_images_path) -> None:
-    _, cameras = parse_colmap_output(colmap_cameras_path, colmap_images_path, device)
+    _, cameras = parse_colmap_output(colmap_cameras_path, colmap_images_path, device, dtype)
     try:
         create_spiral_path(cameras, 1, 30, 3)
     except Exception as err:
