@@ -278,6 +278,9 @@ def KORNIA_CHECK_SHAPE(x, shape: List[str]) -> None:
     if '*' == shape[0]:
         start_idx: int = 1
         x_shape_to_check = x.shape[-len(shape) + 1 :]
+    elif '*' == shape[-1]:
+        start_idx: int = 0
+        x_shape_to_check = x.shape[-len(shape) - 1 :]        
     else:
         start_idx = 0
         x_shape_to_check = x.shape
