@@ -121,9 +121,9 @@ def create_one_camera(height, width, device: Device, dtype: torch.dtype) -> Pinh
     ty = 0.0
     tz = 1.0
 
-    alpha = torch.pi / 2.0
+    alpha = math.pi / 2.0
     beta = 0.0
-    gamma = -torch.pi / 2.0
+    gamma = -math.pi / 2.0
 
     intrinsics = create_intrinsics([fx], [fy], [cx], [cy], device=device, dtype=dtype)
     extrinsics = create_extrinsics_with_rotation([alpha], [beta], [gamma], [tx], [ty], [tz], device=device, dtype=dtype)
@@ -150,7 +150,7 @@ def create_four_cameras(device, dtype) -> PinholeCamera:
     ty = [0.0, 0.0, 0.0, 0.0]
     tz = [11.0, 11.0, 11.0, 5.0]
 
-    pi = torch.pi
+    pi = math.pi
     alpha = [pi / 2.0, pi / 2.0, pi / 2.0, 0.0]
     beta = [0.0, 0.0, 0.0, pi]
     gamma = [-pi / 2.0, 0.0, pi / 2.0, 0.0]
