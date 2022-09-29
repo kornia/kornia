@@ -1736,7 +1736,6 @@ class TestRandomGamma(BaseTester):
 
     def test_random_gamma(self, device, dtype):
         torch.manual_seed(42)
-
         f = RandomGamma(gamma=(0.8, 1.2))
         input = torch.tensor(
             [
