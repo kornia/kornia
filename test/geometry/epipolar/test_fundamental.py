@@ -7,7 +7,7 @@ from torch.autograd import gradcheck
 
 import kornia.geometry.epipolar as epi
 from kornia.testing import assert_close
-import kornia.testing as utils
+import kornia.testing as utils2
 
 
 class TestNormalizePoints:
@@ -380,8 +380,6 @@ class TestFundamentalFromProjections:
         assert (F_batch[0] == F[0]).all()
 
 
-
-
 class TestPerpendicular:
     def test_shape(self, device, dtype):
         lines = torch.rand(2, 4, 3, device=device, dtype=dtype)
@@ -396,21 +394,21 @@ class TestPerpendicular:
         lines = torch.tensor([[[1., -1., 0.],
                                [0., 1., 1.]]], device=device, dtype=dtype)
         perp = epi.get_perpendicular(lines, points)
-        expected = torch.tensor([[[ 1., 1., -1.],
+        expected = torch.tensor([[[1., 1., -1.],
                                   [-1., 0., 0.]]], device=device, dtype=dtype)
         assert_close(perp, expected)
 
     def test_gradcheck(self, device):
-        p = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
-        l = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
-        assert gradcheck(epi.get_perpendicular, (p, l), raise_exception=True)
+        pt = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
+        line = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
+        assert gradcheck(epi.get_perpendicular, (pt, line), raise_exception=True)
 
 
 class TestGetClosestPointOnEpipolarLine:
     def test_shape(self, device, dtype):
         pts1 = torch.rand(2, 4, 2, device=device, dtype=dtype)
         pts2 = torch.rand(2, 4, 2, device=device, dtype=dtype)
-        Fm = utils.create_random_fundamental_matrix(1).type_as(pts1)
+        Fm = utils2.create_random_fundamental_matrix(1).type_as(pts1)
         perp = epi.get_closest_point_on_epipolar_line(pts1, pts2, Fm)
         assert perp.shape == (2, 4, 2)
 
@@ -427,5 +425,5 @@ class TestGetClosestPointOnEpipolarLine:
     def test_gradcheck(self, device):
         pts1 = torch.rand(2, 4, 2, device=device, dtype=torch.float64, requires_grad=True)
         pts2 = torch.rand(2, 4, 2, device=device, dtype=torch.float64)
-        Fm = utils.create_random_fundamental_matrix(1).type_as(pts1)
+        Fm = utils2.create_random_fundamental_matrix(1).type_as(pts1)
         assert gradcheck(epi.get_closest_point_on_epipolar_line, (pts1, pts2, Fm), raise_exception=True)
