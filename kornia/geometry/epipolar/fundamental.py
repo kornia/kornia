@@ -4,9 +4,9 @@ from typing import Tuple
 
 import torch
 
-from kornia.geometry.conversions import convert_points_to_homogeneous, convert_points_from_homogeneous
-from kornia.geometry.linalg import transform_points
 from kornia.core import Tensor
+from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
+from kornia.geometry.linalg import transform_points
 from kornia.testing import KORNIA_CHECK_SHAPE
 
 
@@ -165,9 +165,9 @@ def get_perpendicular(lines: Tensor, points: Tensor) -> Tensor:
     """
     KORNIA_CHECK_SHAPE(lines, ["*", "N", "3"])
     KORNIA_CHECK_SHAPE(points, ["*", "N", "two"])
-    if (points.shape[2] == 2):
+    if points.shape[2] == 2:
         points_h: Tensor = convert_points_to_homogeneous(points)
-    elif (points.shape[2] == 3):
+    elif points.shape[2] == 3:
         points_h = points
     else:
         raise AssertionError(points.shape)
@@ -177,8 +177,7 @@ def get_perpendicular(lines: Tensor, points: Tensor) -> Tensor:
 
 
 def get_closest_point_on_epipolar_line(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> Tensor:
-    r"""Return closest point on the epipolar line to the correspondence,
-     given the fundamental matrix.
+    r"""Return closest point on the epipolar line to the correspondence, given the fundamental matrix.
 
     Args:
         pts1: correspondences from the left images with shape
