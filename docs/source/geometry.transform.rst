@@ -73,7 +73,6 @@ Module
 .. autoclass:: Vflip
 .. autoclass:: Rot180
 .. autoclass:: Resize
-* `Interactive Demo`_
 .. autoclass:: Rescale
 .. autoclass:: Affine
 .. autoclass:: HomographyWarper
@@ -88,9 +87,3 @@ Image registration
 
 .. automodule:: kornia.geometry.transform.image_registrator
     :members:
-
-Interactive Demo
-----------------
-
-.. raw:: html
-    :file: gradio/resize_antialias.html

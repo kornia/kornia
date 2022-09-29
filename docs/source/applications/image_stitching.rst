@@ -25,6 +25,7 @@ Explore with your data: https://colab.research.google.com/github/kornia/tutorial
 Interactive Demo
 ----------------
 .. raw:: html
-   :file: gradio/stitching_gradio.html
+
+    <gradio-app space="kornia/Image-Stitching"></gradio-app>
 
 Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/kornia/Image-Stitching>`_.
