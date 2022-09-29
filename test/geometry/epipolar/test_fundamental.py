@@ -7,6 +7,7 @@ from torch.autograd import gradcheck
 
 import kornia.geometry.epipolar as epi
 from kornia.testing import assert_close
+import kornia.testing as utils
 
 
 class TestNormalizePoints:
@@ -377,3 +378,54 @@ class TestFundamentalFromProjections:
         F_batch = epi.fundamental_from_projections(P1_batch, P2_batch)
         F = epi.fundamental_from_projections(P1, P2)
         assert (F_batch[0] == F[0]).all()
+
+
+
+
+class TestPerpendicular:
+    def test_shape(self, device, dtype):
+        lines = torch.rand(2, 4, 3, device=device, dtype=dtype)
+        points = torch.rand(2, 4, 2, device=device, dtype=dtype)
+        perp = epi.get_perpendicular(lines, points)
+        assert perp.shape == (2, 4, 3)
+
+    def test_result(self, device, dtype):
+        points = torch.tensor([[[1., 0.],
+                                [0., 1.]]], device=device, dtype=dtype)
+
+        lines = torch.tensor([[[1., -1., 0.],
+                               [0., 1., 1.]]], device=device, dtype=dtype)
+        perp = epi.get_perpendicular(lines, points)
+        expected = torch.tensor([[[ 1., 1., -1.],
+                                  [-1., 0., 0.]]], device=device, dtype=dtype)
+        assert_close(perp, expected)
+
+    def test_gradcheck(self, device):
+        p = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
+        l = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
+        assert gradcheck(epi.get_perpendicular, (p, l), raise_exception=True)
+
+
+class TestGetClosestPointOnEpipolarLine:
+    def test_shape(self, device, dtype):
+        pts1 = torch.rand(2, 4, 2, device=device, dtype=dtype)
+        pts2 = torch.rand(2, 4, 2, device=device, dtype=dtype)
+        Fm = utils.create_random_fundamental_matrix(1).type_as(pts1)
+        perp = epi.get_closest_point_on_epipolar_line(pts1, pts2, Fm)
+        assert perp.shape == (2, 4, 2)
+
+    def test_shift(self, device, dtype):
+        pts1 = torch.zeros(3, 2, device=device, dtype=dtype)[None]
+        pts2 = torch.tensor([[2, 4.], [2, 1], [2, 2.0]], device=device, dtype=dtype)[None]
+        Fm = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]], dtype=dtype, device=device)[None]
+        cp = epi.get_closest_point_on_epipolar_line(pts1, pts2, Fm)
+        expected = torch.tensor([[[2., 0.],
+                                  [2., 0.],
+                                  [2., 0.]]], device=device, dtype=dtype)
+        assert_close(cp, expected)
+
+    def test_gradcheck(self, device):
+        pts1 = torch.rand(2, 4, 2, device=device, dtype=torch.float64, requires_grad=True)
+        pts2 = torch.rand(2, 4, 2, device=device, dtype=torch.float64)
+        Fm = utils.create_random_fundamental_matrix(1).type_as(pts1)
+        assert gradcheck(epi.get_closest_point_on_epipolar_line, (pts1, pts2, Fm), raise_exception=True)
