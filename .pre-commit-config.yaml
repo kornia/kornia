@@ -39,6 +39,7 @@ repos:
     hooks:
       - id: pyupgrade
         args: [--py37-plus]
+        exclude: kornia/geometry/boxes.py
 
   - repo: https://github.com/psf/black
     rev: 22.8.0

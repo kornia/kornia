@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import cast
+from typing import Optional, Tuple, cast
 
 import torch
 
@@ -620,7 +620,7 @@ class Boxes3D:
         self._data = boxes
         self._mode = mode
 
-    def get_boxes_shape(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def get_boxes_shape(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         r"""Compute boxes heights and widths.
 
         Returns:
@@ -639,7 +639,7 @@ class Boxes3D:
         return depths, heights, widths
 
     @classmethod
-    def from_tensor(cls, boxes: torch.Tensor, mode: str = "xyzxyz", validate_boxes: bool = True) -> Boxes3D:
+    def from_tensor(cls, boxes: torch.Tensor, mode: str = "xyzxyz", validate_boxes: bool = True) -> "Boxes3D":
         r"""Helper method to easily create :class:`Boxes3D` from 3D boxes stored in another format.
 
         Args:
@@ -879,7 +879,7 @@ class Boxes3D:
 
         return mask
 
-    def transform_boxes(self, M: torch.Tensor, inplace: bool = False) -> Boxes3D:
+    def transform_boxes(self, M: torch.Tensor, inplace: bool = False) -> "Boxes3D":
         r"""Apply a transformation matrix to the 3D boxes.
 
         Args:
@@ -901,7 +901,7 @@ class Boxes3D:
 
         return Boxes3D(transformed_boxes, False, "xyzxyz_plus")
 
-    def transform_boxes_(self, M: torch.Tensor) -> Boxes3D:
+    def transform_boxes_(self, M: torch.Tensor) -> "Boxes3D":
         """Inplace version of :func:`Boxes3D.transform_boxes`"""
         return self.transform_boxes(M, inplace=True)
 
@@ -923,7 +923,7 @@ class Boxes3D:
         """Returns boxes dtype."""
         return self._data.dtype
 
-    def to(self, device: torch.device | None = None, dtype: torch.dtype | None = None) -> Boxes3D:
+    def to(self, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> "Boxes3D":
         """Like :func:`torch.nn.Module.to()` method."""
         # In torchscript, dtype is a int and not a class. https://github.com/pytorch/pytorch/issues/51941
         if dtype is not None and not _is_floating_point_dtype(dtype):
