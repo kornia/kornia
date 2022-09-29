@@ -33,9 +33,9 @@ def test_parse_colmap_output(device, dtype, colmap_cameras_path, colmap_images_p
     ty = 2.3447342819165637
     tz = -1.0631749488011808
 
-    q = torch.tensor([qw, qx, qy, qz], device=device)
+    q = torch.tensor([qw, qx, qy, qz], device=device, dtype=dtype)
     R = quaternion_to_rotation_matrix(q, order=QuaternionCoeffOrder.WXYZ)
-    t = torch.tensor([tx, ty, tz], device=device)
+    t = torch.tensor([tx, ty, tz], device=device, dtype=dtype)
 
     assert_close(R, cameras.rotation_matrix[2])
     assert_close(cameras.translation_vector[2], t.unsqueeze(-1))
