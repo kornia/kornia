@@ -11,4 +11,5 @@ kornia.geometry.line
 
 .. autoclass:: Hyperplane
 .. raw:: html
-    :file: gradio/line_fitting.html
+
+    <gradio-app space="kornia/Line-Fitting"></gradio-app>
