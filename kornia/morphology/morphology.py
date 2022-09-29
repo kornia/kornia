@@ -3,15 +3,7 @@ from typing import List, Optional
 import torch
 import torch.nn.functional as F
 
-__all__ = [
-    "dilation",
-    "erosion",
-    "opening",
-    "closing",
-    "gradient",
-    "top_hat",
-    "bottom_hat"
-]
+__all__ = ["dilation", "erosion", "opening", "closing", "gradient", "top_hat", "bottom_hat"]
 
 
 def _neight2channels_like_kernel(kernel: torch.Tensor) -> torch.Tensor:
@@ -199,10 +191,9 @@ def erosion(
         B, C, H, W = tensor.size()
         Hpad, Wpad = output.shape[-2:]
         reshape_kernel = _neight2channels_like_kernel(kernel)
-        output, _ = F.conv2d(output.view(B * C, 1, Hpad, Wpad),
-                             reshape_kernel,
-                             padding=0,
-                             bias=-neighborhood.view(-1)).min(dim=1)
+        output, _ = F.conv2d(
+            output.view(B * C, 1, Hpad, Wpad), reshape_kernel, padding=0, bias=-neighborhood.view(-1)
+        ).min(dim=1)
         output = output.view(B, C, H, W)
     else:
         raise NotImplementedError(f"engine {engine} is unknown, use 'convolution' or 'unfold'")

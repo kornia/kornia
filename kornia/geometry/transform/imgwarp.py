@@ -283,6 +283,7 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
 #     def __init__(self) -> None:
 #         super().__init__()
 
+
 def get_perspective_transform(points_src: Tensor, points_dst: Tensor) -> Tensor:
     r"""Calculate a perspective transform from four pairs of the corresponding points.
 
@@ -873,7 +874,6 @@ def projection_from_Rt(rmat: torch.Tensor, tvec: torch.Tensor) -> torch.Tensor:
 
     Returns:
        the projection matrix with shape :math:`(*, 3, 4)`.
-
     """
     if not (len(rmat.shape) >= 2 and rmat.shape[-2:] == (3, 3)):
         raise AssertionError(rmat.shape)
@@ -1243,7 +1243,6 @@ def homography_warp(
         >>> out = homography_warp(img, H, (4, 2), align_corners=True, normalized_homography=False)
         >>> print(out.shape)
         torch.Size([1, 4, 4, 2])
-
     """
     if not src_homo_dst.device == patch_src.device:
         raise TypeError(

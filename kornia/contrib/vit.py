@@ -10,9 +10,7 @@ from typing import List, Optional, Tuple
 import torch
 from torch import nn
 
-__all__ = [
-    "VisionTransformer"
-]
+__all__ = ["VisionTransformer"]
 
 
 class ResidualAdd(nn.Module):
@@ -28,17 +26,13 @@ class ResidualAdd(nn.Module):
 
 
 class FeedForward(nn.Sequential):
-    def __init__(self,
-                 in_features: int,
-                 hidden_features: int,
-                 out_features: int,
-                 dropout_rate: float = 0.) -> None:
+    def __init__(self, in_features: int, hidden_features: int, out_features: int, dropout_rate: float = 0.0) -> None:
         super().__init__(
             nn.Linear(in_features, hidden_features),
             nn.GELU(),
             nn.Dropout(dropout_rate),
             nn.Linear(hidden_features, out_features),
-            nn.Dropout(dropout_rate)  # added one extra as in timm
+            nn.Dropout(dropout_rate),  # added one extra as in timm
         )
 
 
@@ -47,8 +41,8 @@ class MultiHeadAttention(nn.Module):
         super().__init__()
         self.emb_size = emb_size
         self.num_heads = num_heads
-        head_size = emb_size // num_heads  # fom timm
-        self.scale = head_size ** -0.5  # from timm
+        head_size = emb_size // num_heads  # from timm
+        self.scale = head_size**-0.5  # from timm
 
         # fuse the queries, keys and values in one matrix
         self.qkv = nn.Linear(emb_size, emb_size * 3, bias=False)
@@ -78,22 +72,23 @@ class MultiHeadAttention(nn.Module):
 
 
 class TransformerEncoderBlock(nn.Sequential):
-    def __init__(self,
-                 embed_dim: int,
-                 num_heads: int,
-                 dropout_rate: float,
-                 dropout_attn: float) -> None:
+    def __init__(self, embed_dim: int, num_heads: int, dropout_rate: float, dropout_attn: float) -> None:
         super().__init__(
-            ResidualAdd(nn.Sequential(
-                nn.LayerNorm(embed_dim),
-                MultiHeadAttention(embed_dim, num_heads, dropout_attn, dropout_rate),
-                nn.Dropout(dropout_rate)
-            )),
-            ResidualAdd(nn.Sequential(
-                nn.LayerNorm(embed_dim),
-                FeedForward(embed_dim, embed_dim, embed_dim, dropout_rate=dropout_rate),
-                nn.Dropout(dropout_rate)
-            )))
+            ResidualAdd(
+                nn.Sequential(
+                    nn.LayerNorm(embed_dim),
+                    MultiHeadAttention(embed_dim, num_heads, dropout_attn, dropout_rate),
+                    nn.Dropout(dropout_rate),
+                )
+            ),
+            ResidualAdd(
+                nn.Sequential(
+                    nn.LayerNorm(embed_dim),
+                    FeedForward(embed_dim, embed_dim, embed_dim, dropout_rate=dropout_rate),
+                    nn.Dropout(dropout_rate),
+                )
+            ),
+        )
 
 
 class TransformerEncoder(nn.Module):
@@ -102,14 +97,13 @@ class TransformerEncoder(nn.Module):
         embed_dim: int = 768,
         depth: int = 12,
         num_heads: int = 12,
-        dropout_rate: float = 0.,
-        dropout_attn: float = 0.,
+        dropout_rate: float = 0.0,
+        dropout_attn: float = 0.0,
     ) -> None:
         super().__init__()
-        self.blocks = nn.Sequential(*(
-            TransformerEncoderBlock(embed_dim, num_heads, dropout_rate, dropout_attn)
-            for _ in range(depth)
-        ))
+        self.blocks = nn.Sequential(
+            *(TransformerEncoderBlock(embed_dim, num_heads, dropout_rate, dropout_attn) for _ in range(depth))
+        )
         self.results: List[torch.Tensor] = []
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -123,6 +117,7 @@ class TransformerEncoder(nn.Module):
 
 class PatchEmbedding(nn.Module):
     """Compute the 2d image patch embedding ready to pass to transformer encoder."""
+
     def __init__(
         self,
         in_channels: int = 3,
@@ -190,6 +185,7 @@ class VisionTransformer(nn.Module):
         >>> vit(img).shape
         torch.Size([1, 197, 768])
     """
+
     def __init__(
         self,
         image_size: int = 224,
@@ -198,8 +194,8 @@ class VisionTransformer(nn.Module):
         embed_dim: int = 768,
         depth: int = 12,
         num_heads: int = 12,
-        dropout_rate: float = 0.,
-        dropout_attn: float = 0.,
+        dropout_rate: float = 0.0,
+        dropout_attn: float = 0.0,
         backbone: Optional[nn.Module] = None,
     ) -> None:
         super().__init__()

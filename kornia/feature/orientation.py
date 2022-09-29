@@ -8,9 +8,9 @@ import torch.nn.functional as F
 from kornia.constants import pi
 from kornia.filters import SpatialGradient, get_gaussian_kernel2d
 from kornia.geometry import rad2deg
-from kornia.testing import KORNIA_CHECK_SHAPE
+from kornia.testing import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 
-from .laf import extract_patches_from_pyramid, get_laf_orientation, raise_error_if_laf_is_not_valid, set_laf_orientation
+from .laf import extract_patches_from_pyramid, get_laf_orientation, set_laf_orientation
 
 urls: Dict[str, str] = {}
 urls["orinet"] = "https://github.com/ducha-aiki/affnet/raw/master/pretrained/OriNet.pth"
@@ -166,9 +166,7 @@ class OriNet(nn.Module):
         # use torch.hub to load pretrained model
         if pretrained:
             storage_fcn: Callable = lambda storage, loc: storage
-            pretrained_dict = torch.hub.load_state_dict_from_url(
-                urls['orinet'], map_location=storage_fcn
-            )
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls['orinet'], map_location=storage_fcn)
             self.load_state_dict(pretrained_dict['state_dict'], strict=False)
         self.eval()
 
@@ -229,7 +227,7 @@ class LAFOrienter(nn.Module):
         Returns:
             laf_out, shape [BxNx2x3]
         """
-        raise_error_if_laf_is_not_valid(laf)
+        KORNIA_CHECK_LAF(laf)
         KORNIA_CHECK_SHAPE(img, ["B", "C", "H", "W"])
         if laf.size(0) != img.size(0):
             raise ValueError(f"Batch size of laf and img should be the same. Got {img.size(0)}, {laf.size(0)}")

@@ -15,7 +15,6 @@ cs.store(name="config", node=Configuration)
 
 @hydra.main(config_path=".", config_name="config.yaml")
 def my_app(config: Configuration) -> None:
-
     # create the model
     model = torchvision.models.detection.retinanet_resnet50_fpn(pretrained=True)
 
@@ -25,36 +24,37 @@ def my_app(config: Configuration) -> None:
 
     # create the dataset
     train_dataset = torchvision.datasets.WIDERFace(
-        root=to_absolute_path(config.data_path), transform=T.ToTensor(), split='train', download=False)
+        root=to_absolute_path(config.data_path), transform=T.ToTensor(), split='train', download=False
+    )
 
     valid_dataset = torchvision.datasets.WIDERFace(
-        root=to_absolute_path(config.data_path), transform=T.ToTensor(), split='val', download=False)
+        root=to_absolute_path(config.data_path), transform=T.ToTensor(), split='val', download=False
+    )
 
     # create the dataloaders
     train_dataloader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=config.batch_size, shuffle=True, num_workers=0,
-        pin_memory=True, collate_fn=collate_fn)
+        train_dataset, batch_size=config.batch_size, shuffle=True, num_workers=0, pin_memory=True, collate_fn=collate_fn
+    )
 
     valid_daloader = torch.utils.data.DataLoader(
-        valid_dataset, batch_size=config.batch_size, shuffle=True, num_workers=0,
-        pin_memory=True, collate_fn=collate_fn)
+        valid_dataset, batch_size=config.batch_size, shuffle=True, num_workers=0, pin_memory=True, collate_fn=collate_fn
+    )
 
     # create the loss function
     criterion = None
 
     # instantiate the optimizer and scheduler
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.lr)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, config.num_epochs * len(train_dataloader))
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, config.num_epochs * len(train_dataloader))
 
     # define some augmentations
     _augmentations = K.augmentation.AugmentationSequential(
         K.augmentation.RandomHorizontalFlip(p=0.75),
         K.augmentation.RandomVerticalFlip(p=0.75),
         K.augmentation.RandomAffine(
-            degrees=0., translate=(0.1, 0.1), scale=(0.9, 1.1)
+            degrees=0.0, translate=(0.1, 0.1), scale=(0.9, 1.1)
         ),  # NOTE: XYXY bbox format cannot handle rotated boxes
-        data_keys=['input', 'bbox_xyxy']
+        data_keys=['input', 'bbox_xyxy'],
     )
 
     def bbox_xywh_to_xyxy(boxes: torch.Tensor):
@@ -80,18 +80,23 @@ def my_app(config: Configuration) -> None:
         return {"input": xs, "target": {"boxes": ys, "labels": ys2}}
 
     def on_before_model(self, sample: dict) -> dict:
-        return {"input": sample["input"], "target": [
-            {
-                "boxes": v, "labels": l
-            } for v, l in zip(sample["target"]["boxes"], sample["target"]["labels"])
-        ]}
+        return {
+            "input": sample["input"],
+            "target": [
+                {"boxes": v, "labels": l} for v, l in zip(sample["target"]["boxes"], sample["target"]["labels"])
+            ],
+        }
 
-    model_checkpoint = ModelCheckpoint(
-        filepath="./outputs", monitor="map",
-    )
+    model_checkpoint = ModelCheckpoint(filepath="./outputs", monitor="map")
 
     trainer = ObjectDetectionTrainer(
-        model, train_dataloader, valid_daloader, criterion, optimizer, scheduler, config,
+        model,
+        train_dataloader,
+        valid_daloader,
+        criterion,
+        optimizer,
+        scheduler,
+        config,
         num_classes=81,
         loss_computed_by_model=True,
         callbacks={
@@ -99,7 +104,7 @@ def my_app(config: Configuration) -> None:
             "augmentations": augmentations,
             "on_before_model": on_before_model,
             "on_checkpoint": model_checkpoint,
-        }
+        },
     )
     trainer.fit()
     trainer.evaluate()

@@ -87,9 +87,11 @@ class RandomRGBShift(IntensityAugmentationBase2D):
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator = cast(
             rg.PlainUniformGenerator,
-            rg.PlainUniformGenerator((r_shift_limit, "r_shift", 0, (-r_shift_limit, r_shift_limit)),
-                                     (g_shift_limit, "g_shift", 0, (-g_shift_limit, g_shift_limit)),
-                                     (b_shift_limit, "b_shift", 0, (-b_shift_limit, b_shift_limit)))
+            rg.PlainUniformGenerator(
+                (r_shift_limit, "r_shift", 0, (-r_shift_limit, r_shift_limit)),
+                (g_shift_limit, "g_shift", 0, (-g_shift_limit, g_shift_limit)),
+                (b_shift_limit, "b_shift", 0, (-b_shift_limit, b_shift_limit)),
+            ),
         )
 
     def apply_transform(

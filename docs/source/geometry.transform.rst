@@ -60,6 +60,8 @@ Crop operators
 Module
 ------
 
+
+
 .. autoclass:: Rotate
 .. autoclass:: Translate
 .. autoclass:: Scale
