@@ -71,8 +71,10 @@ class So3:
         small_angles_indices = where(theta < self.epsilon)[0]
         large_angles_indices = where(theta > self.epsilon)[0]
         large_angles = theta[large_angles_indices]
+
         qtensor = zeros((v.shape[0],4))
         qtensor[small_angles_indices] = Tensor([1, 0, 0, 0]) #identity quaternion for small angles
+       
         w = (0.5 * large_angles).cos()
         xyz = (0.5 * large_angles).sin().div(large_angles).mul(v[large_angles_indices])
         qtensor[large_angles_indices]  = concatenate((w, xyz), 1)
@@ -92,9 +94,11 @@ class So3:
         small_angles_indices = where(theta < self.epsilon)[0]
         large_angles_indices = where(theta > self.epsilon)[0]
         large_angles = theta[large_angles_indices]
+
         q_real = self.q.real
         q_vec =  self.q.vec
         omega_t = zeros((self.q.shape[0], 3))
+        
         o1 = 2 / q_real[small_angles_indices]
         o2 = theta[small_angles_indices].pow(2)/ q_real[small_angles_indices].pow(3)
         omega_t[small_angles_indices] = (o1 - (2 * o2) / 3) * q_vec[small_angles_indices]
@@ -158,8 +162,8 @@ class So3:
                      [0., 1., 0.],
                      [0., 0., 1.]]], grad_fn=<CatBackward0>)
         """
-        w = self.q[..., 0, None, None]
-        x, y, z = self.q.vec[..., 0, None, None], self.q.vec[..., 1, None, None], self.q.vec[..., 2, None, None]
+        w = self.q.w.unsqueeze(2)
+        x, y, z = self.q.x.unsqueeze(2), self.q.y.unsqueeze(2), self.q.z.unsqueeze(2)
         q0 = (1 - 2 * y ** 2 - 2 * z ** 2)
         q1 = (2 * x * y - 2 * z * w)
         q2 = (2 * x * z + 2 * y * w)

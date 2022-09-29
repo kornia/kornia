@@ -39,14 +39,17 @@ class TestSo3:
         assert_close(b, a)
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
-    def test_hat(self, batch_size):
+    def test_hat(self, device, dtype, batch_size):
         v = torch.Tensor([1, 2, 3]).repeat(batch_size, 1)
+        v = v.to(device, dtype)
         assert_close(So3.hat(v).unique()[-3:], v[0,:])
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_vee(self, device, dtype, batch_size):
         omega = torch.Tensor([[[1, 2, 3],[4, 5, 6],[7, 8, 9]]]).repeat(batch_size, 1, 1)
+        omega = omega.to(device, dtype)
         expected = torch.tensor([[8, 3, 4]]).repeat(batch_size, 1)
+        expected = expected.to(device, dtype)
         assert_close(So3.vee(omega), expected)
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
