@@ -12,7 +12,7 @@ from kornia.geometry.conversions import (
     quaternion_to_rotation_matrix,
     rotation_matrix_to_quaternion,
 )
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE, KORNIA_CHECK_IS_R3_UNIT_VECTOR
 
 
 class Quaternion(Module):
@@ -243,6 +243,27 @@ class Quaternion(Module):
             tensor([[1., 0., 0., 0.]], requires_grad=True)
         """
         return cls(rotation_matrix_to_quaternion(matrix, order=QuaternionCoeffOrder.WXYZ))
+
+    @classmethod
+    def from_axis_angle(cls, axis: Tensor, angle: Tensor) -> 'Quaternion':
+        """Create a quaternion from axis-angle representation
+        Args:
+            axis: a unit vector indicating the direction of axis of rotation, of shape :math:`(B,3)`.
+            angle: magnitude of the rotation(in radians) about the axis of rotation, of shape :math:`(B,1)`.
+        Example:
+            >>> axis = torch.Tensor([[1, 0, 0]])
+            >>> angle = torch.Tensor([pi/2])
+            >>> q = Quaternion.from_axis_angle(axis, angle)
+            >>> q.data
+            Parameter containing:
+            tensor([[-0.7597,  0.6503,  0.0000,  0.0000]], requires_grad=True)
+        """
+        KORNIA_CHECK_IS_R3_UNIT_VECTOR(axis)
+        KORNIA_CHECK_SHAPE(angle, ["B", "1"])
+        theta = angle / 2.0
+        w = theta.cos()
+        xyz = axis * theta.sin()
+        return cls(stack((w.squeeze(1), xyz[..., 0], xyz[..., 1], xyz[..., 2]), -1))
 
     @classmethod
     def identity(cls, batch_size: int) -> 'Quaternion':
