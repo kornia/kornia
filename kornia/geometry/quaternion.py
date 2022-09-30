@@ -12,7 +12,7 @@ from kornia.geometry.conversions import (
     quaternion_to_rotation_matrix,
     rotation_matrix_to_quaternion,
 )
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE, KORNIA_CHECK_IS_R3_UNIT_VECTOR
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_R3_UNIT_VECTOR, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 
 
 class Quaternion(Module):
