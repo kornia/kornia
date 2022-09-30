@@ -2,14 +2,14 @@ import math
 
 import torch
 
-from kornia.core import Device
+from kornia.core import Device, Tensor
 from kornia.nerf.renderer import IrregularRenderer, RegularRenderer
 from kornia.testing import assert_close
 
 
 def _create_regular_point_cloud(
     height: int, width: int, num_ray_points: int, device: Device, dtype: torch.dtype
-) -> torch.tensor:
+) -> Tensor:
     x = torch.linspace(0, width, steps=width, device=device, dtype=dtype)
     y = torch.linspace(0, height, steps=height, device=device, dtype=dtype)
     xy = torch.meshgrid(y, x)
