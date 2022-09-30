@@ -193,16 +193,16 @@ class TestQuaternion:
         axis = vec / (vec * vec).sum(-1).sqrt().unsqueeze(1)
         angle = torch.linspace(0, 2 * torch.pi, batch_size, device=device, dtype=dtype).unsqueeze(1)
 
-        qq = Quaternion.from_axis_angle(axis, angle)
-        qq.to(device, dtype)
+        q = Quaternion.from_axis_angle(axis, angle)
+        q.to(device, dtype)
 
         # axis information cannot be retrived back as it is mulitipled by zero when theta is zero hence manually setting axis to zero vec
         non_zero_angle_indices = torch.where(angle != 0)[0]
         zero_angle_indices = torch.where(angle == 0)[0]
         axis[zero_angle_indices] = torch.Tensor([0, 0, 0])
 
-        qangle = 2 * qq.scalar.arccos()
+        qangle = 2 * q.scalar.arccos()
         qaxis = torch.zeros((batch_size, 3))
-        qaxis[non_zero_angle_indices] = qq.vec[non_zero_angle_indices] / (angle[non_zero_angle_indices] / 2).sin()
+        qaxis[non_zero_angle_indices] = q.vec[non_zero_angle_indices] / (angle[non_zero_angle_indices] / 2).sin()
         self.assert_close(axis, qaxis)
         self.assert_close(angle, qangle)
