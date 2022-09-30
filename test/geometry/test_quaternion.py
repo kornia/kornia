@@ -186,3 +186,23 @@ class TestQuaternion:
         for i in range(batch_size):
             q1 = q[i]
             self.assert_close(q1.data[0], q.data[i])
+
+    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    def test_axis_angle(self, device, dtype, batch_size):
+        vec = torch.rand(batch_size,3, device=device, dtype=dtype)
+        axis = vec / (vec * vec).sum(-1).sqrt().unsqueeze(1)
+        angle = torch.linspace(0, 2*torch.pi, batch_size, device=device, dtype=dtype).unsqueeze(1)
+
+        qq = Quaternion.from_axis_angle(axis, angle)
+        qq.to(device, dtype)
+
+        #axis information cannot be retrived back as it is mulitipled by zero when theta is zero hence manually setting axis to zero vec
+        non_zero_angle_indices = torch.where(angle != 0)[0]
+        zero_angle_indices = torch.where(angle == 0)[0]
+        axis[zero_angle_indices] = torch.Tensor([0, 0, 0])
+
+        qangle = 2 * qq.scalar.arccos()
+        qaxis = torch.zeros((batch_size, 3))
+        qaxis[non_zero_angle_indices] = qq.vec[non_zero_angle_indices] / (angle[non_zero_angle_indices]/2).sin()
+        self.assert_close(axis, qaxis)
+        self.assert_close(angle, qangle)
