@@ -196,7 +196,7 @@ class TestQuaternion:
         q = Quaternion.from_axis_angle(axis, angle)
         q.to(device, dtype)
 
-        # axis information cannot be retrived back as it is mulitipled by zero when theta is zero
+        # axis information cannot be retrieved back as it is mulitipled by zero when theta is zero
         # hence manually setting axis to zero vec
         non_zero_angle_indices = torch.where(angle != 0)[0]
         zero_angle_indices = torch.where(angle == 0)[0]
