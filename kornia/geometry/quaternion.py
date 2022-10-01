@@ -8,10 +8,10 @@ from typing import Tuple, Union
 from kornia.core import Module, Parameter, Tensor, as_tensor, concatenate, rand, stack
 from kornia.geometry.conversions import (
     QuaternionCoeffOrder,
+    angle_axis_to_quaternion,
     normalize_quaternion,
     quaternion_to_rotation_matrix,
     rotation_matrix_to_quaternion,
-    angle_axis_to_quaternion
 )
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 
