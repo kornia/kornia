@@ -356,16 +356,3 @@ def KORNIA_CHECK_LAF(laf: Tensor) -> None:
         laf: [BxNx2x3] shape.
     """
     KORNIA_CHECK_SHAPE(laf, ["B", "N", "2", "3"])
-
-
-def KORNIA_CHECK_IS_R3_UNIT_VECTOR(x: Tensor):
-    """Checks if the given vector is unit vector in R3.
-
-    Args:
-        x: tensor of [Bx3] shape
-    """
-    KORNIA_CHECK_SHAPE(x, ["B", "3"])
-    mag = (x * x).sum(-1).sqrt()
-    if not torch.allclose(mag, torch.Tensor([1])):
-        non_unit_indices = torch.where(mag != 1)[0]
-        raise TypeError(f"{x[non_unit_indices]} Not a unit vector in R3.")
