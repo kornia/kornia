@@ -192,7 +192,7 @@ class TestQuaternion:
         q1 = Quaternion.random(batch_size)
         q1 = q1.to(device, dtype)
         angle = 2 * q1.scalar.arccos()
-        axis = q1.vec/(angle/2).sin()
+        axis = q1.vec / (angle / 2).sin()
         angle_axis = angle * axis
         q2 = Quaternion.from_angle_axis(angle_axis)
         q2 = q2.to(device, dtype)
