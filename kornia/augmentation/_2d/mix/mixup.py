@@ -5,7 +5,7 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.mix.base import MixAugmentationBase, MixAugmentationBaseV2
-from kornia.constants import DataKey
+from kornia.constants import DataKey, DType
 from kornia.core import Tensor
 
 
@@ -202,9 +202,9 @@ class RandomMixUpV2(MixAugmentationBaseV2):
     ) -> Tensor:
         out_labels = torch.stack(
             [
-                input.to(device=input.device, dtype=params["dtype"]),
-                input.to(device=input.device, dtype=params["dtype"]),
-                torch.zeros((len(input),), device=input.device, dtype=params["dtype"]),
+                input.to(device=input.device, dtype=DType.to_torch(params["dtype"])),
+                input.to(device=input.device, dtype=DType.to_torch(params["dtype"])),
+                torch.zeros((len(input),), device=input.device, dtype=DType.to_torch(params["dtype"])),
             ],
             dim=-1,
         )
@@ -217,9 +217,9 @@ class RandomMixUpV2(MixAugmentationBaseV2):
 
         out_labels = torch.stack(
             [
-                input.to(device=input.device, dtype=params["dtype"]),
-                labels_permute.to(device=input.device, dtype=params["dtype"]),
-                params["mixup_lambdas"].to(device=input.device, dtype=params["dtype"]),
+                input.to(device=input.device, dtype=DType.to_torch(params["dtype"])),
+                labels_permute.to(device=input.device, dtype=DType.to_torch(params["dtype"])),
+                params["mixup_lambdas"].to(device=input.device, dtype=DType.to_torch(params["dtype"])),
             ],
             dim=-1,
         )
