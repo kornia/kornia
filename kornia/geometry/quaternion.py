@@ -246,7 +246,7 @@ class Quaternion(Module):
         return cls(rotation_matrix_to_quaternion(matrix, order=QuaternionCoeffOrder.WXYZ))
 
     @classmethod
-    def from_angle_axis(cls, angle_axis: Tensor) -> 'Quaternion':
+    def from_axis_angle(cls, axis_angle: Tensor) -> 'Quaternion':
         """Create a quaternion from angle-axis representation.
         
         Args:
