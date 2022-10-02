@@ -248,7 +248,7 @@ class Quaternion(Module):
     @classmethod
     def from_axis_angle(cls, axis_angle: Tensor) -> 'Quaternion':
         """Create a quaternion from angle-axis representation.
-        
+
         Args:
             angle_axis: rotation vector of shape :math:`(B,3)`.
             
