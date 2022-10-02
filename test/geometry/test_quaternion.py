@@ -186,3 +186,14 @@ class TestQuaternion:
         for i in range(batch_size):
             q1 = q[i]
             self.assert_close(q1.data[0], q.data[i])
+
+    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    def test_axis_angle(self, device, dtype, batch_size):
+        q1 = Quaternion.random(batch_size)
+        q1 = q1.to(device, dtype)
+        angle = 2 * q1.scalar.arccos()
+        axis = q1.vec / (angle / 2).sin()
+        axis_angle = axis * angle
+        q2 = Quaternion.from_axis_angle(axis_angle)
+        q2 = q2.to(device, dtype)
+        self.assert_close(q1, q2)
