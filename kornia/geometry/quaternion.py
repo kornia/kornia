@@ -8,6 +8,7 @@ from typing import Tuple, Union
 from kornia.core import Module, Parameter, Tensor, as_tensor, concatenate, rand, stack
 from kornia.geometry.conversions import (
     QuaternionCoeffOrder,
+    angle_axis_to_quaternion,
     normalize_quaternion,
     quaternion_to_rotation_matrix,
     rotation_matrix_to_quaternion,
@@ -243,6 +244,22 @@ class Quaternion(Module):
             tensor([[1., 0., 0., 0.]], requires_grad=True)
         """
         return cls(rotation_matrix_to_quaternion(matrix, order=QuaternionCoeffOrder.WXYZ))
+
+    @classmethod
+    def from_axis_angle(cls, axis_angle: Tensor) -> 'Quaternion':
+        """Create a quaternion from axis-angle representation.
+
+        Args:
+            axis_angle: rotation vector of shape :math:`(B,3)`.
+
+        Example:
+            >>> axis_angle = torch.tensor([[1., 0., 0.]])
+            >>> q = Quaternion.from_axis_angle(axis_angle)
+            >>> q.data
+            Parameter containing:
+            tensor([[0.8776, 0.4794, 0.0000, 0.0000]], requires_grad=True)
+        """
+        return cls(angle_axis_to_quaternion(axis_angle, order=QuaternionCoeffOrder.WXYZ))
 
     @classmethod
     def identity(cls, batch_size: int) -> 'Quaternion':
