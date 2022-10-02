@@ -253,7 +253,7 @@ class Quaternion(Module):
             axis_angle: rotation vector of shape :math:`(B,3)`.
 
         Example:
-            >>> axis_angle = torch.tensor([[1, 0, 0]])
+            >>> axis_angle = torch.tensor([[1., 0., 0.]])
             >>> q = Quaternion.from_axis_angle(axis_angle)
             >>> q.data
             Parameter containing:
