@@ -12,6 +12,7 @@ from kornia.metrics import psnr
 from kornia.nerf.core import Images, ImageTensors
 from kornia.nerf.data_utils import RayDataset, instantiate_ray_dataloader
 from kornia.nerf.nerf_model import NerfModel
+from kornia.utils._compat import torch_inference_mode
 
 
 class NerfSolver:
@@ -191,7 +192,7 @@ class NerfSolver:
                 idxe = min(idx0 + bsz, idx0_camera + height * width)
                 idxs = list(range(idx0, idxe))
                 origins, directions, _ = ray_dataset[idxs]
-                with torch.inference_mode():
+                with torch_inference_mode():
                     rgb_model = self._nerf_model(origins, directions) * 255.0
                     img[idx0 - idx0_camera : idxe - idx0_camera] = rgb_model
             idx0 = idxe
