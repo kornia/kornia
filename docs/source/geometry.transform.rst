@@ -94,4 +94,3 @@ Interactive Demo
 .. raw:: html
     :file: gradio/resize_antialias.html
     :file: gradio/geometry_image_transform.html
-
