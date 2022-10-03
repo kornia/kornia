@@ -70,7 +70,7 @@ class ObjectDetectionTrainer(Trainer):
         scheduler: torch.optim.lr_scheduler.CosineAnnealingLR,
         config: Configuration,
         num_classes: int,
-        callbacks: Dict[str, Callable] = None,
+        callbacks: Optional[Dict[str, Callable]] = None,
         loss_computed_by_model: Optional[bool] = None,
     ) -> None:
         if callbacks is None:

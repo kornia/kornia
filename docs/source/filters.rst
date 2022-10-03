@@ -8,8 +8,6 @@ The functions in this sections perform various image filtering operations.
 Blurring
 --------
 
-* `Interactive Demo`_
-
 .. autofunction:: blur_pool2d
 .. autofunction:: box_blur
 .. autofunction:: gaussian_blur2d
@@ -18,10 +16,16 @@ Blurring
 .. autofunction:: motion_blur
 .. autofunction:: unsharp_mask
 
+Interactive Demo
+~~~~~~~~~~~~~~~~
+.. raw:: html
+
+    <gradio-app space="kornia/kornia-image-filtering"></gradio-app>
+
+Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/kornia/kornia-image-filtering>`_.
+
 Edge detection
 --------------
-
-* `Interactive Demo`_
 
 .. autofunction:: canny
 .. autofunction:: laplacian
@@ -29,6 +33,13 @@ Edge detection
 .. autofunction:: spatial_gradient
 .. autofunction:: spatial_gradient3d
 
+Interactive Demo
+~~~~~~~~~~~~~~~~
+.. raw:: html
+
+    <gradio-app space="kornia/edge_detector"></gradio-app>
+
+Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/kornia/edge_detector>`_.
 
 Filtering API
 -------------
@@ -65,10 +76,3 @@ Module
 .. autoclass:: SpatialGradient3d
 .. autoclass:: MotionBlur
 .. autoclass:: UnsharpMask
-
-
-Interactive Demo
-----------------
-
-.. raw:: html
-    :file: gradio/edge_detector_gradio.html
