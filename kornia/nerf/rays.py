@@ -329,7 +329,7 @@ class RandomGridRaySampler(RandomRaySampler):
             n_sqrt = int(math.sqrt(n))
             y_rand = torch.randperm(int(height), device=self._device, dtype=self._dtype)[: min(int(height), n_sqrt)]
             x_rand = torch.randperm(int(width), device=self._device, dtype=self._dtype)[: min(int(width), n_sqrt)]
-            y_grid, x_grid = torch_meshgrid(y_rand, x_rand, indexing='ij')
+            y_grid, x_grid = torch_meshgrid([y_rand, x_rand], indexing='ij')
             RaySampler._add_points2d_as_flat_tensors_to_num_ray_dict(
                 n_sqrt * n_sqrt, x_grid, y_grid, camera_id, points2d_as_flat_tensors
             )
@@ -367,8 +367,8 @@ class UniformRaySampler(RaySampler):
         for camera_id, (height, width) in enumerate(zip(heights.tolist(), widths.tolist())):
             n = height * width
             y_grid, x_grid = torch_meshgrid(
-                torch.arange(0, height, sampling_step, device=self._device, dtype=self._dtype),
-                torch.arange(0, width, sampling_step, device=self._device, dtype=self._dtype),
+                [torch.arange(0, height, sampling_step, device=self._device, dtype=self._dtype),
+                 torch.arange(0, width, sampling_step, device=self._device, dtype=self._dtype)],
                 indexing='ij',
             )
             RaySampler._add_points2d_as_flat_tensors_to_num_ray_dict(
