@@ -43,10 +43,10 @@ class TestDataset:
         assert d[2].shape == (batch_size, 3)  # Ray rgbs
 
         # Comparing RGB values between sampled rays and original images
-        assert_close(d[2][0].cpu(), imgs[0][:, 0, 0] / 255.0)
+        assert_close(d[2][0].cpu().to(dtype), (imgs[0][:, 0, 0] / 255.0).to(dtype))
         assert_close(
-            d[2][1].cpu(), imgs[0][:, 0, 1] / 255.0
+            d[2][1].cpu().to(dtype), (imgs[0][:, 0, 1] / 255.0).to(dtype)
         )  # First row, second column in the image (1 sample point index)
         assert_close(
-            d[2][9].cpu(), imgs[0][:, 1, 0] / 255.0
+            d[2][9].cpu().to(dtype), (imgs[0][:, 1, 0] / 255.0).to(dtype)
         )  # Second row, first column in the image (9 sample point index)
