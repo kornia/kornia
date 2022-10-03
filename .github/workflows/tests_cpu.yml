@@ -9,6 +9,10 @@ on:
   schedule:
     - cron: "0 4 * * *"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   tests-cpu:
     runs-on: ${{ matrix.os }}
@@ -17,7 +21,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: [3.7, 3.8, 3.9]
-        pytorch-version: [1.8.1, 1.9.1, 1.10.2, 1.11.0]
+        pytorch-version: [1.10.2, 1.12.1]
     steps:
     - uses: actions/checkout@v2
     - name: Setup conda dependencies
@@ -30,7 +34,7 @@ jobs:
       run: |
         conda install curl -c conda-forge
         conda install pytorch=${{ matrix.pytorch-version }} cpuonly -c pytorch
-        pip install .[all]
+        pip install .[dev,x]
     - name: Run Tests
       shell: bash -l {0}
       run: pytest -v --device cpu --dtype float32,float64 --cov=kornia --cov-report xml ./test --mypy

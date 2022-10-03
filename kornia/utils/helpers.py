@@ -28,7 +28,7 @@ def get_cuda_device_if_available(index: int = 0) -> torch.device:
     return dev
 
 
-def _deprecated(func: Callable = None, replace_with: Optional[str] = None):
+def _deprecated(func: Optional[Callable] = None, replace_with: Optional[str] = None):
     if func is None:
         return partial(_deprecated, replace_with=replace_with)
 

@@ -22,6 +22,11 @@ def torch_version_lt(major: int, minor: int, patch: int) -> bool:
     return _version < version.parse(f"{major}.{minor}.{patch}")
 
 
+def torch_version_le(major: int, minor: int, patch: int) -> bool:
+    _version = version.parse(torch_version())
+    return _version <= version.parse(f"{major}.{minor}.{patch}")
+
+
 def torch_version_ge(major: int, minor: int, patch: int) -> bool:
     _version = version.parse(torch_version())
     return _version >= version.parse(f"{major}.{minor}.{patch}")
@@ -54,3 +59,9 @@ else:
 
         def torch_meshgrid(tensors: List[Tensor], indexing: str):
             return torch.meshgrid(tensors)
+
+
+if torch_version_ge(1, 10, 0):
+    torch_inference_mode = torch.inference_mode
+else:
+    torch_inference_mode = torch.no_grad

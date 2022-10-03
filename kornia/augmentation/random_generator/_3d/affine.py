@@ -73,6 +73,7 @@ class AffineGenerator3D(RandomGeneratorBase):
             ]
         ] = None,
         shears: Union[
+            None,
             torch.Tensor,
             float,
             Tuple[float, float],

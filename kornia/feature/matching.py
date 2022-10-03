@@ -4,9 +4,20 @@ import torch
 import torch.nn as nn
 
 from kornia.feature.laf import get_laf_center
-from kornia.testing import KORNIA_CHECK_DM_DESC, KORNIA_CHECK_SHAPE, Tensor
+from kornia.testing import KORNIA_CHECK_DM_DESC, KORNIA_CHECK_SHAPE, Tensor, is_mps_tensor_safe
 
 from .adalam import get_adalam_default_config, match_adalam
+
+
+def _cdist(d1: torch.Tensor, d2: torch.Tensor) -> torch.Tensor:
+    r"""Manual `torch.cdist` for M1."""
+    if (not is_mps_tensor_safe(d1)) and (not is_mps_tensor_safe(d2)):
+        return torch.cdist(d1, d2)
+    d1_sq = (d1**2).sum(dim=1, keepdim=True)
+    d2_sq = (d2**2).sum(dim=1, keepdim=True)
+    dm = d1_sq.repeat(1, d2.size(0)) + d2_sq.repeat(1, d1.size(0)).t() - 2.0 * d1 @ d2.t()
+    dm = dm.clamp(min=0.0).sqrt()
+    return dm
 
 
 def _get_default_fginn_params():
@@ -25,7 +36,7 @@ def _get_lazy_distance_matrix(desc1: Tensor, desc2: Tensor, dm_: Optional[Tensor
           to each descriptor in desc2, shape of :math:`(B1, B2)`.
     """
     if dm_ is None:
-        dm = torch.cdist(desc1, desc2)
+        dm = _cdist(desc1, desc2)
     else:
         KORNIA_CHECK_DM_DESC(desc1, desc2, dm_)
         dm = dm_
@@ -61,7 +72,8 @@ def match_nn(desc1: Tensor, desc2: Tensor, dm: Optional[Tensor] = None) -> Tuple
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
-
+    if (len(desc1) == 0) or (len(desc2) == 0):
+        return _no_match(desc1)
     distance_matrix: Tensor = _get_lazy_distance_matrix(desc1, desc2, dm)
     match_dists, idxs_in_2 = torch.min(distance_matrix, dim=1)
     idxs_in1: Tensor = torch.arange(0, idxs_in_2.size(0), device=idxs_in_2.device)
@@ -87,9 +99,9 @@ def match_mnn(desc1: Tensor, desc2: Tensor, dm: Optional[Tensor] = None) -> Tupl
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
-
+    if (len(desc1) == 0) or (len(desc2) == 0):
+        return _no_match(desc1)
     distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm)
-
     ms = min(distance_matrix.size(0), distance_matrix.size(1))
     match_dists, idxs_in_2 = torch.min(distance_matrix, dim=1)
     match_dists2, idxs_in_1 = torch.min(distance_matrix, dim=0)
@@ -128,11 +140,9 @@ def match_snn(desc1: Tensor, desc2: Tensor, th: float = 0.8, dm: Optional[Tensor
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
 
-    distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm)
-
     if desc2.shape[0] < 2:  # We cannot perform snn check, so output empty matches
-        return _no_match(distance_matrix)
-
+        return _no_match(desc1)
+    distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm)
     vals, idxs_in_2 = torch.topk(distance_matrix, 2, dim=1, largest=False)
     ratio = vals[:, 0] / vals[:, 1]
     mask = ratio <= th
@@ -169,7 +179,6 @@ def match_smnn(desc1: Tensor, desc2: Tensor, th: float = 0.95, dm: Optional[Tens
 
     if (desc1.shape[0] < 2) or (desc2.shape[0] < 2):
         return _no_match(desc1)
-
     distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm)
 
     dists1, idx1 = match_snn(desc1, desc2, th, distance_matrix)
@@ -177,7 +186,12 @@ def match_smnn(desc1: Tensor, desc2: Tensor, th: float = 0.95, dm: Optional[Tens
 
     if len(dists2) > 0 and len(dists1) > 0:
         idx2 = idx2.flip(1)
-        idxs_dm = torch.cdist(idx1.float(), idx2.float(), p=1.0)
+        if not is_mps_tensor_safe(idx1):
+            idxs_dm = torch.cdist(idx1.float(), idx2.float(), p=1.0)
+        else:
+            idxs2_rep = idx2.float().repeat_interleave(idx1.size(0), dim=0)
+            idxs_dm = (idx1.float().repeat(idx2.size(0), 1) - idxs2_rep).abs().sum(dim=1)
+            idxs_dm = idxs_dm.reshape(idx1.size(0), idx2.size(0))
         mutual_idxs1 = idxs_dm.min(dim=1)[0] < 1e-8
         mutual_idxs2 = idxs_dm.min(dim=0)[0] < 1e-8
         good_idxs1 = idx1[mutual_idxs1.view(-1)]

@@ -10,3 +10,6 @@ kornia.geometry.line
 .. autofunction:: fit_line
 
 .. autoclass:: Hyperplane
+.. raw:: html
+
+    <gradio-app space="kornia/Line-Fitting"></gradio-app>

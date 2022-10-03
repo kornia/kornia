@@ -6,13 +6,22 @@ import torch
 import torch.nn as nn
 from torch import Tensor, tensor
 
+from kornia.core import Tensor
 from kornia.geometry import (
     find_fundamental,
     find_homography_dlt,
     find_homography_dlt_iterated,
+    find_homography_lines_dlt,
+    find_homography_lines_dlt_iterated,
     symmetrical_epipolar_distance,
 )
-from kornia.geometry.homography import oneway_transfer_error, sample_is_valid_for_homography
+
+from kornia.geometry.homography import (
+    line_segment_transfer_error_one_way,
+    oneway_transfer_error,
+    sample_is_valid_for_homography,
+)
+
 from kornia.testing import KORNIA_CHECK_SHAPE
 
 __all__ = ["RANSAC"]
@@ -30,7 +39,7 @@ class RANSAC(nn.Module):
         max_local_iterations: number of local optimization (polishing) iterations.
     """
 
-    supported_models = ['homography', 'fundamental']
+    supported_models = ['homography', 'fundamental', 'homography_from_linesegments']
 
     def __init__(
         self,
@@ -54,6 +63,11 @@ class RANSAC(nn.Module):
             self.minimal_solver = find_homography_dlt  # type: ignore
             self.polisher_solver = find_homography_dlt_iterated  # type: ignore
             self.minimal_sample_size = 4
+        elif model_type == 'homography_from_linesegments':
+            self.error_fn = line_segment_transfer_error_one_way  # type: ignore
+            self.minimal_solver = find_homography_lines_dlt  # type: ignore
+            self.polisher_solver = find_homography_lines_dlt_iterated  # type: ignore
+            self.minimal_sample_size = 4
         elif model_type == 'fundamental':
             self.error_fn = symmetrical_epipolar_distance  # type: ignore
             self.minimal_solver = find_fundamental  # type: ignore
@@ -70,7 +84,7 @@ class RANSAC(nn.Module):
         """Minimal sampler, but unlike traditional RANSAC we sample in batches to get benefit of the parallel
         processing, esp.
 
-        on GPU
+        on GPU.
         """
         rand = torch.rand(batch_size, pop_size, device=device)
         _, out = rand.topk(k=sample_size, dim=1)
@@ -95,7 +109,10 @@ class RANSAC(nn.Module):
         if len(kp2.shape) == 2:
             kp2 = kp2[None]
         batch_size = models.shape[0]
-        errors = self.error_fn(kp1.expand(batch_size, -1, 2), kp2.expand(batch_size, -1, 2), models)
+        if self.model_type == 'homography_from_linesegments':
+            errors = self.error_fn(kp1.expand(batch_size, -1, 2, 2), kp2.expand(batch_size, -1, 2, 2), models)
+        else:
+            errors = self.error_fn(kp1.expand(batch_size, -1, 2), kp2.expand(batch_size, -1, 2), models)
         inl = errors <= inl_th
         models_score = inl.to(kp1).sum(dim=1)
         best_model_idx = models_score.argmax()
@@ -130,28 +147,39 @@ class RANSAC(nn.Module):
         )
         return model
 
+    def validate_inputs(self, kp1: Tensor, kp2: Tensor, weights: Optional[Tensor] = None) -> None:
+        if self.model_type in ['homography', 'fundamental']:
+            KORNIA_CHECK_SHAPE(kp1, ["N", "2"])
+            KORNIA_CHECK_SHAPE(kp2, ["N", "2"])
+            if not (kp1.shape[0] == kp2.shape[0]) or (kp1.shape[0] < self.minimal_sample_size):
+                raise ValueError(
+                    f"kp1 and kp2 should be \
+                                 equal shape at at least [{self.minimal_sample_size}, 2], \
+                                 got {kp1.shape}, {kp2.shape}"
+                )
+        if self.model_type == 'homography_from_linesegments':
+            KORNIA_CHECK_SHAPE(kp1, ["N", "2", "2"])
+            KORNIA_CHECK_SHAPE(kp2, ["N", "2", "2"])
+            if not (kp1.shape[0] == kp2.shape[0]) or (kp1.shape[0] < self.minimal_sample_size):
+                raise ValueError(
+                    f"kp1 and kp2 should be \
+                                 equal shape at at least [{self.minimal_sample_size}, 2, 2], \
+                                 got {kp1.shape}, {kp2.shape}"
+                )
+
     def forward(self, kp1: Tensor, kp2: Tensor, weights: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
         r"""Main forward method to execute the RANSAC algorithm.
 
         Args:
-            kp1 (Tensor): source image keypoints :math:`(N, 2)`.
-            kp2 (Tensor): distance image keypoints :math:`(N, 2)`.
-            weights (Tensor): optional correspondences weights. Not used now
+            kp1: source image keypoints :math:`(N, 2)`.
+            kp2: distance image keypoints :math:`(N, 2)`.
+            weights: optional correspondences weights. Not used now.
 
         Returns:
             - Estimated model, shape of :math:`(1, 3, 3)`.
             - The inlier/outlier mask, shape of :math:`(1, N)`, where N is number of input correspondences.
         """
-        KORNIA_CHECK_SHAPE(kp1, ["N", "2"])
-        KORNIA_CHECK_SHAPE(kp2, ["N", "2"])
-        if weights is not None:
-            KORNIA_CHECK_SHAPE(weights, ["N", "1"])
-        if not (kp1.shape[0] == kp2.shape[0]) or (kp1.shape[0] < self.minimal_sample_size):
-            raise ValueError(
-                f"kp1 and kp2 should be \
-                             equal shape at at least [{self.minimal_sample_size}, 2], \
-                             got {kp1.shape}, {kp2.shape}"
-            )
+        self.validate_inputs(kp1, kp2, weights)
         best_score_total: float = float(self.minimal_sample_size)
         num_tc: int = len(kp1)
         best_model_total = torch.zeros(3, 3, dtype=kp1.dtype, device=kp1.device)
