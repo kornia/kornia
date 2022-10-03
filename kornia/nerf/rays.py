@@ -367,8 +367,10 @@ class UniformRaySampler(RaySampler):
         for camera_id, (height, width) in enumerate(zip(heights.tolist(), widths.tolist())):
             n = height * width
             y_grid, x_grid = torch_meshgrid(
-                [torch.arange(0, height, sampling_step, device=self._device, dtype=self._dtype),
-                 torch.arange(0, width, sampling_step, device=self._device, dtype=self._dtype)],
+                [
+                    torch.arange(0, height, sampling_step, device=self._device, dtype=self._dtype),
+                    torch.arange(0, width, sampling_step, device=self._device, dtype=self._dtype),
+                ],
                 indexing='ij',
             )
             RaySampler._add_points2d_as_flat_tensors_to_num_ray_dict(
