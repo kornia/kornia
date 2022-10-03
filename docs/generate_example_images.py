@@ -55,7 +55,7 @@ def main():
     mod = importlib.import_module("kornia.augmentation")
     augmentations_list: dict = {
         "CenterCrop": ((184, 184), 1, 2018),
-        "ColorJitter": ((0.3, 0.3, 0.3, 0.3), 2, 2018),
+        "ColorJiggle": ((0.3, 0.3, 0.3, 0.3), 2, 2018),
         "RandomAffine": (((-15.0, 20.0), (0.1, 0.1), (0.7, 1.3), 20), 2, 2019),
         "RandomBoxBlur": (((7, 7),), 1, 2020),
         "RandomCrop": ((img1.shape[-2:], (50, 50)), 2, 2020),
@@ -71,6 +71,10 @@ def main():
         "RandomInvert": ((), 1, 2020),
         "RandomMotionBlur": ((7, 35.0, 0.5), 2, 2020),
         "RandomPerspective": ((0.2,), 2, 2020),
+        "RandomPlanckianJitter": ((), 2, 2022),
+        "RandomPlasmaShadow": (((0.2, 0.5),), 2, 2022),
+        "RandomPlasmaBrightness": ((), 2, 2022),
+        "RandomPlasmaContrast": ((), 2, 2022),
         "RandomPosterize": (((1, 4),), 2, 2016),
         "RandomResizedCrop": ((img1.shape[-2:], (1.0, 2.0), (1.0, 2.0)), 2, 2020),
         "RandomRotation": ((45.0,), 2, 2019),
@@ -88,7 +92,7 @@ def main():
         aug = cls(*args, p=1.0)
         # set seed
         torch.manual_seed(seed)
-        # apply the augmentaiton to the image and concat
+        # apply the augmentation to the image and concat
         out = aug(img_in)
 
         if aug_name == "CenterCrop":
@@ -117,7 +121,7 @@ def main():
         aug = cls(*args, p=1.0)
         # set seed
         torch.manual_seed(seed)
-        # apply the augmentaiton to the image and concat
+        # apply the augmentation to the image and concat
         out, _ = aug(img_in, torch.tensor([0, 1]))
         out = torch.cat([img_in[0], img_in[1], *(out[i] for i in range(out.size(0)))], dim=-1)
         # save the output image

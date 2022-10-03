@@ -151,7 +151,7 @@ class TestDepthWarper:
 
         # test compute_subpixel_step
         subpixel_step = warper.compute_subpixel_step()
-        assert pytest.approx(subpixel_step.item(), 0.3536)
+        assert_close(subpixel_step.item(), 0.1715, rtol=1e-3, atol=1e-3)
 
     @pytest.mark.parametrize("batch_size", (1, 2))
     def test_gradcheck(self, batch_size, device, dtype):

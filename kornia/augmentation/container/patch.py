@@ -4,11 +4,12 @@ from typing import Iterator, List, NamedTuple, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
-from kornia.augmentation.base import _AugmentationBase, MixAugmentationBase, TensorWithTransformMat
+from kornia.augmentation import MixAugmentationBase
+from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
+from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import SequentialBase
+from kornia.augmentation.container.image import ImageSequential, ParamItem
 from kornia.contrib.extract_patches import extract_tensor_patches
-
-from .image import ImageSequential, ParamItem
 
 __all__ = ["PatchSequential"]
 
@@ -64,13 +65,13 @@ class PatchSequential(ImageSequential):
         >>> input = torch.randn(2, 3, 224, 224)
         >>> seq = PatchSequential(
         ...     ImageSequential(
-        ...         K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
+        ...         K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=0.5),
         ...         K.RandomPerspective(0.2, p=0.5),
         ...         K.RandomSolarize(0.1, 0.1, p=0.5),
         ...     ),
         ...     K.RandomAffine(360, p=1.0),
         ...     ImageSequential(
-        ...         K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
+        ...         K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=0.5),
         ...         K.RandomPerspective(0.2, p=0.5),
         ...         K.RandomSolarize(0.1, 0.1, p=0.5),
         ...     ),
@@ -93,7 +94,7 @@ class PatchSequential(ImageSequential):
         >>> input = torch.randn(2, 3, 224, 224)
         >>> seq = PatchSequential(
         ...     ImageSequential(
-        ...         K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.5),
+        ...         K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=0.5),
         ...         K.RandomPerspective(0.2, p=0.5),
         ...         K.RandomSolarize(0.1, 0.1, p=0.5),
         ...     ),
@@ -138,8 +139,11 @@ class PatchSequential(ImageSequential):
         else:
             _random_apply = random_apply
         super().__init__(
-            *args, same_on_batch=same_on_batch, return_transform=False, keepdim=keepdim, random_apply=_random_apply,
-            random_apply_weights=random_apply_weights
+            *args,
+            same_on_batch=same_on_batch,
+            keepdim=keepdim,
+            random_apply=_random_apply,
+            random_apply_weights=random_apply_weights,
         )
         if padding not in ("same", "valid"):
             raise ValueError(f"`padding` must be either `same` or `valid`. Got {padding}.")
@@ -177,7 +181,7 @@ class PatchSequential(ImageSequential):
 
         Example:
             >>> import kornia.augmentation as K
-            >>> pas = PatchSequential(K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), patchwise_apply=False)
+            >>> pas = PatchSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), patchwise_apply=False)
             >>> pas.extract_patches(torch.arange(16).view(1, 1, 4, 4), grid_size=(2, 2))
             tensor([[[[[ 0,  1],
                        [ 4,  5]]],
@@ -223,7 +227,7 @@ class PatchSequential(ImageSequential):
 
         Example:
             >>> import kornia.augmentation as K
-            >>> pas = PatchSequential(K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), patchwise_apply=False)
+            >>> pas = PatchSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), patchwise_apply=False)
             >>> out = pas.extract_patches(torch.arange(16).view(1, 1, 4, 4), grid_size=(2, 2))
             >>> pas.restore_from_patches(out, grid_size=(2, 2))
             tensor([[[[ 0,  1,  2,  3],
@@ -273,20 +277,26 @@ class PatchSequential(ImageSequential):
                 seq, mix_added = self.get_random_forward_sequence(with_mix=with_mix)
                 with_mix = mix_added
                 for s in seq:
-                    if isinstance(s[1], (_AugmentationBase, MixAugmentationBase, SequentialBase)):
+                    if isinstance(
+                        s[1], (_AugmentationBase, MixAugmentationBase, SequentialBase, MixAugmentationBaseV2)
+                    ):
                         yield ParamItem(s[0], s[1].forward_parameters(torch.Size(batch_shape[1:]))), i
                     else:
                         yield ParamItem(s[0], None), i
         elif not self.same_on_batch and not self.random_apply:
             for i, nchild in enumerate(self.named_children()):
-                if isinstance(nchild[1], (_AugmentationBase, MixAugmentationBase, SequentialBase)):
+                if isinstance(
+                    nchild[1], (_AugmentationBase, MixAugmentationBase, SequentialBase, MixAugmentationBaseV2)
+                ):
                     yield ParamItem(nchild[0], nchild[1].forward_parameters(torch.Size(batch_shape[1:]))), i
                 else:
                     yield ParamItem(nchild[0], None), i
         elif not self.random_apply:
             # same_on_batch + not random_apply => location-wise augmentation
             for i, nchild in enumerate(islice(cycle(self.named_children()), batch_shape[0])):
-                if isinstance(nchild[1], (_AugmentationBase, MixAugmentationBase, SequentialBase)):
+                if isinstance(
+                    nchild[1], (_AugmentationBase, MixAugmentationBase, SequentialBase, MixAugmentationBaseV2)
+                ):
                     yield ParamItem(nchild[0], nchild[1].forward_parameters(torch.Size(batch_shape[1:]))), i
                 else:
                     yield ParamItem(nchild[0], None), i
@@ -297,21 +307,19 @@ class PatchSequential(ImageSequential):
                 seq, mix_added = self.get_random_forward_sequence(with_mix=with_mix)
                 with_mix = mix_added
                 for s in seq:
-                    if isinstance(s[1], (_AugmentationBase, MixAugmentationBase, SequentialBase)):
+                    if isinstance(
+                        s[1], (_AugmentationBase, MixAugmentationBase, SequentialBase, MixAugmentationBaseV2)
+                    ):
                         yield ParamItem(s[0], s[1].forward_parameters(torch.Size(batch_shape[1:]))), i
                     else:
                         yield ParamItem(s[0], None), i
 
     def apply_by_param(
-        self, input: TensorWithTransformMat, label: Optional[torch.Tensor], params: PatchParamItem
-    ) -> Tuple[TensorWithTransformMat, Optional[torch.Tensor], PatchParamItem]:
-        _input: TensorWithTransformMat
-        if isinstance(input, (tuple,)):
-            in_shape = input[0].shape
-            _input = (input[0][params.indices], input[1][params.indices])
-        else:
-            in_shape = input.shape
-            _input = input[params.indices]
+        self, input: torch.Tensor, label: Optional[torch.Tensor], params: PatchParamItem
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], PatchParamItem]:
+        _input: torch.Tensor
+        in_shape = input.shape
+        _input = input[params.indices]
 
         _label: Optional[torch.Tensor]
         if label is not None:
@@ -320,9 +328,9 @@ class PatchSequential(ImageSequential):
             _label = label
 
         module = self.get_submodule(params.param.name)
-        output, out_label = self.apply_to_input(_input, _label, module, params.param)
+        output, out_label = self.apply_to_input(_input, _label, module, params.param, extra_args={})
 
-        if isinstance(module, (_AugmentationBase, MixAugmentationBase, SequentialBase)):
+        if isinstance(module, (_AugmentationBase, MixAugmentationBase, SequentialBase, MixAugmentationBaseV2)):
             out_param = ParamItem(params.param.name, module._params)
         else:
             out_param = ParamItem(params.param.name, None)
@@ -364,8 +372,8 @@ class PatchSequential(ImageSequential):
 
     def forward_by_params(
         self, input: torch.Tensor, label: Optional[torch.Tensor], params: List[PatchParamItem]
-    ) -> Union[TensorWithTransformMat, Tuple[TensorWithTransformMat, Optional[torch.Tensor]]]:
-        _input: TensorWithTransformMat
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, Optional[torch.Tensor]]]:
+        _input: torch.Tensor
         in_shape = input.shape
         _input = input.reshape(-1, *in_shape[-3:])
 
@@ -376,17 +384,10 @@ class PatchSequential(ImageSequential):
         for patch_param in params:
             _input, label, out_param = self.apply_by_param(_input, label, params=patch_param)
             self.update_params(out_param)
-        if isinstance(_input, (tuple,)):
-            _input = (_input[0].reshape(in_shape), _input[1])
-        else:
-            _input = _input.reshape(in_shape)
+        _input = _input.reshape(in_shape)
         return _input, label
 
-    def inverse(  # type: ignore
-        self,
-        input: torch.Tensor,
-        params: List[ParamItem],
-    ) -> torch.Tensor:
+    def inverse(self, input: torch.Tensor, params: List[ParamItem]) -> torch.Tensor:  # type: ignore
         """Inverse transformation.
 
         Used to inverse a tensor according to the performed transformation by a forward pass, or with respect to
@@ -399,12 +400,12 @@ class PatchSequential(ImageSequential):
 
     def forward(  # type: ignore
         self, input: torch.Tensor, label: Optional[torch.Tensor] = None, params: Optional[List[PatchParamItem]] = None
-    ) -> Union[TensorWithTransformMat, Tuple[TensorWithTransformMat, torch.Tensor]]:
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """Input transformation will be returned if input is a tuple."""
         # BCHW -> B(patch)CHW
         if isinstance(input, (tuple,)):
             raise ValueError("tuple input is not currently supported.")
-        _input: TensorWithTransformMat
+        _input: torch.Tensor
 
         pad = self.compute_padding(input, self.padding)
         input = self.extract_patches(input, self.grid_size, pad)
@@ -414,10 +415,7 @@ class PatchSequential(ImageSequential):
 
         _input, label = self.forward_by_params(input, label, params)
 
-        if isinstance(_input, (tuple,)):
-            _input = (self.restore_from_patches(_input[0], self.grid_size, pad=pad), _input[1])
-        else:
-            _input = self.restore_from_patches(_input, self.grid_size, pad=pad)
+        _input = self.restore_from_patches(_input, self.grid_size, pad=pad)
 
         self.return_label = label is not None or self.contains_label_operations(params)
 

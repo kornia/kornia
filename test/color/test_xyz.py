@@ -3,7 +3,7 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia
-from kornia.testing import assert_close, BaseTester
+from kornia.testing import BaseTester
 
 
 class TestRgbToXyz(BaseTester):
@@ -85,7 +85,7 @@ class TestRgbToXyz(BaseTester):
             dtype=dtype,
         )
 
-        assert_close(kornia.color.rgb_to_xyz(data), expected)
+        self.assert_close(kornia.color.rgb_to_xyz(data), expected)
 
     def test_forth_and_back(self, device, dtype):
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
@@ -93,7 +93,7 @@ class TestRgbToXyz(BaseTester):
         rgb = kornia.color.xyz_to_rgb
 
         data_out = xyz(rgb(data))
-        assert_close(data_out, data)
+        self.assert_close(data_out, data)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
@@ -107,15 +107,14 @@ class TestRgbToXyz(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.rgb_to_xyz
         op_jit = torch.jit.script(op)
-        assert_close(op(img), op_jit(img))
+        self.assert_close(op(img), op_jit(img))
 
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.RgbToXyz().to(device, dtype)
         fcn = kornia.color.rgb_to_xyz
-        assert_close(ops(img), fcn(img))
+        self.assert_close(ops(img), fcn(img))
 
 
 class TestXyzToRgb(BaseTester):
@@ -197,7 +196,7 @@ class TestXyzToRgb(BaseTester):
             dtype=dtype,
         )
 
-        assert_close(kornia.color.xyz_to_rgb(data), expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(kornia.color.xyz_to_rgb(data), expected, low_tolerance=True)
 
     def test_forth_and_back(self, device, dtype):
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
@@ -205,7 +204,7 @@ class TestXyzToRgb(BaseTester):
         rgb = kornia.color.xyz_to_rgb
 
         data_out = rgb(xyz(data))
-        assert_close(data_out, data)
+        self.assert_close(data_out, data, low_tolerance=True)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
@@ -219,12 +218,11 @@ class TestXyzToRgb(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.xyz_to_rgb
         op_jit = torch.jit.script(op)
-        assert_close(op(img), op_jit(img))
+        self.assert_close(op(img), op_jit(img))
 
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.XyzToRgb().to(device, dtype)
         fcn = kornia.color.xyz_to_rgb
-        assert_close(ops(img), fcn(img))
+        self.assert_close(ops(img), fcn(img))

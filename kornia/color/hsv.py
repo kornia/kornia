@@ -43,14 +43,14 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     deltac = torch.where(deltac == 0, torch.ones_like(deltac), deltac)
     rc, gc, bc = torch.unbind((max_rgb.unsqueeze(-3) - image), dim=-3)
 
-    h1 = (bc - gc)
+    h1 = bc - gc
     h2 = (rc - bc) + 2.0 * deltac
     h3 = (gc - rc) + 4.0 * deltac
 
     h = torch.stack((h1, h2, h3), dim=-3) / deltac.unsqueeze(-3)
     h = torch.gather(h, dim=-3, index=argmax_rgb.unsqueeze(-3)).squeeze(-3)
     h = (h / 6.0) % 1.0
-    h = 2. * math.pi * h  # we return 0/2pi output
+    h = 2.0 * math.pi * h  # we return 0/2pi output
 
     return torch.stack((h, s, v), dim=-3)
 

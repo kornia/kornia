@@ -51,7 +51,9 @@ class TestImageHistogram2d:
         op = TestImageHistogram2d.fcn
         op_script = torch.jit.script(op)
 
-        assert_close(op(*inputs), op_script(*inputs))
+        out, out_script = op(*inputs), op_script(*inputs)
+        assert_close(out[0], out_script[0])
+        assert_close(out[1], out_script[1])
 
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     @pytest.mark.parametrize("size", [(1, 1), (3, 1, 1), (8, 3, 1, 1)])
@@ -60,7 +62,7 @@ class TestImageHistogram2d:
         input_x, _ = torch.meshgrid(input, input)
         input_x = input_x.repeat(*size)
         if kernel == "gaussian":
-            bandwidth = 2 * 0.4 ** 2
+            bandwidth = 2 * 0.4**2
         else:
             bandwidth = None
         hist, _ = TestImageHistogram2d.fcn(input_x, 0.0, 255.0, 10, bandwidth=bandwidth, centers=input, kernel=kernel)
@@ -74,7 +76,7 @@ class TestImageHistogram2d:
         input_x, _ = torch.meshgrid(input, input)
         input_x = input_x.repeat(*size)
         if kernel == "gaussian":
-            bandwidth = 2 * 0.4 ** 2
+            bandwidth = 2 * 0.4**2
         else:
             bandwidth = None
         hist, pdf = TestImageHistogram2d.fcn(
@@ -119,7 +121,7 @@ class TestHistogram2d:
         input1 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
         input2 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
         bins = torch.linspace(0, 255, 10, device=device, dtype=dtype)
-        bandwidth = torch.tensor(2 * 0.4 ** 2, device=device, dtype=dtype)
+        bandwidth = torch.tensor(2 * 0.4**2, device=device, dtype=dtype)
         inputs = (input1, input2, bins, bandwidth)
 
         op = TestHistogram2d.fcn
@@ -131,7 +133,7 @@ class TestHistogram2d:
         input1 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
         input2 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
         bins = torch.linspace(0, 255, 10, device=device, dtype=dtype)
-        bandwidth = torch.tensor(2 * 0.4 ** 2, device=device, dtype=dtype)
+        bandwidth = torch.tensor(2 * 0.4**2, device=device, dtype=dtype)
 
         pdf = TestHistogram2d.fcn(input1, input2, bins, bandwidth)
         ans = 0.1 * kornia.eye_like(10, pdf)
@@ -168,7 +170,7 @@ class TestHistogram:
     def test_jit(self, device, dtype):
         input1 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
         bins = torch.linspace(0, 255, 10, device=device, dtype=dtype)
-        bandwidth = torch.tensor(2 * 0.4 ** 2, device=device, dtype=dtype)
+        bandwidth = torch.tensor(2 * 0.4**2, device=device, dtype=dtype)
         inputs = (input1, bins, bandwidth)
 
         op = TestHistogram.fcn
@@ -179,7 +181,7 @@ class TestHistogram:
     def test_uniform_dist(self, device, dtype):
         input1 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
         input2 = torch.linspace(0, 255, 10, device=device, dtype=dtype)
-        bandwidth = torch.tensor(2 * 0.4 ** 2, device=device, dtype=dtype)
+        bandwidth = torch.tensor(2 * 0.4**2, device=device, dtype=dtype)
 
         pdf = TestHistogram.fcn(input1, input2, bandwidth)
         ans = 0.1 * torch.ones(1, 10, device=device, dtype=dtype)

@@ -581,12 +581,13 @@ def resize(
 
     if antialias:
         # First, we have to determine sigma
-        sigmas = (max(factors[0], 1.0), max(factors[1], 1.0))
+        # Taken from skimage: https://github.com/scikit-image/scikit-image/blob/v0.19.2/skimage/transform/_warps.py#L171
+        sigmas = (max((factors[0] - 1.0) / 2.0, 0.001), max((factors[1] - 1.0) / 2.0, 0.001))
 
         # Now kernel size. Good results are for 3 sigma, but that is kind of slow. Pillow uses 1 sigma
         # https://github.com/python-pillow/Pillow/blob/master/src/libImaging/Resample.c#L206
         # But they do it in the 2 passes, which gives better results. Let's try 2 sigmas for now
-        ks = int(2.0 * 2 * sigmas[0]), int(2.0 * 2 * sigmas[1])
+        ks = int(max(2.0 * 2 * sigmas[0], 3)), int(max(2.0 * 2 * sigmas[1], 3))
 
         # Make sure it is odd
         if (ks[0] % 2) == 0:
@@ -667,6 +668,10 @@ class Resize(nn.Module):
         >>> out = Resize((6, 8))(img)
         >>> print(out.shape)
         torch.Size([1, 3, 6, 8])
+
+    .. raw:: html
+
+        <gradio-app space="kornia/kornia-resize-antialias"></gradio-app>
     """
 
     def __init__(
@@ -904,11 +909,7 @@ class Translate(nn.Module):
     """
 
     def __init__(
-        self,
-        translation: torch.Tensor,
-        mode: str = 'bilinear',
-        padding_mode: str = 'zeros',
-        align_corners: bool = True,
+        self, translation: torch.Tensor, mode: str = 'bilinear', padding_mode: str = 'zeros', align_corners: bool = True
     ) -> None:
         super().__init__()
         self.translation: torch.Tensor = translation

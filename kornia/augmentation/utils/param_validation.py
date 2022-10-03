@@ -1,4 +1,4 @@
-from typing import cast, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, cast
 
 import torch
 
@@ -20,7 +20,7 @@ def _range_bound(
     device: torch.device = torch.device('cpu'),
     dtype: torch.dtype = torch.get_default_dtype(),
 ) -> torch.Tensor:
-    r"""Check inputs and compute the corresponding factor bounds"""
+    r"""Check inputs and compute the corresponding factor bounds."""
     if not isinstance(factor, (torch.Tensor)):
         factor = torch.tensor(factor, device=device, dtype=dtype)
     factor_bound: torch.Tensor

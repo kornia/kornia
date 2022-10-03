@@ -1,8 +1,11 @@
-from typing import Iterable, Optional
+from typing import Iterable, List, Optional
 
 import torch
 
+from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.linalg import inverse_transformation, transform_points
+from kornia.testing import KORNIA_CHECK_SAME_DEVICE
+from kornia.utils.helpers import _torch_inverse_cast
 
 
 class PinholeCamera:
@@ -30,6 +33,7 @@ class PinholeCamera:
         self._check_valid_params(extrinsics, "extrinsics")
         self._check_valid_shape(height, "height")
         self._check_valid_shape(width, "width")
+        self._check_consistent_device([intrinsics, extrinsics, height, width])
         # set class attributes
         self.height: torch.Tensor = height
         self.width: torch.Tensor = width
@@ -58,6 +62,20 @@ class PinholeCamera:
                 "Argument {} shape must be in the following shape" " B. Got {}".format(data_name, data.shape)
             )
         return True
+
+    @staticmethod
+    def _check_consistent_device(data_iter: List[torch.Tensor]) -> None:
+        first = data_iter[0]
+        for data in data_iter:
+            KORNIA_CHECK_SAME_DEVICE(data, first)
+
+    def device(self) -> torch.device:
+        r"""Returns the device for camera buffers.
+
+        Returns:
+            Device type
+        """
+        return self._intrinsics.device
 
     @property
     def intrinsics(self) -> torch.Tensor:
@@ -266,6 +284,63 @@ class PinholeCamera:
         self.width *= scale_factor
         return self
 
+    def project(self, point_3d: torch.Tensor) -> torch.Tensor:
+        r"""Project a 3d point in world coordinates onto the 2d camera plane.
+
+        Args:
+            point3d: tensor containing the 3d points to be projected
+                to the camera plane. The shape of the tensor can be :math:`(*, 3)`.
+
+        Returns:
+            tensor of (u, v) cam coordinates with shape :math:`(*, 2)`.
+
+        Example:
+            >>> _ = torch.manual_seed(0)
+            >>> X = torch.rand(1, 3)
+            >>> K = torch.eye(4)[None]
+            >>> E = torch.eye(4)[None]
+            >>> h = torch.ones(1)
+            >>> w = torch.ones(1)
+            >>> pinhole = kornia.geometry.camera.PinholeCamera(K, E, h, w)
+            >>> pinhole.project(X)
+            tensor([[5.6088, 8.6827]])
+        """
+        P = self.intrinsics @ self.extrinsics
+        return convert_points_from_homogeneous(transform_points(P, point_3d))
+
+    def unproject(self, point_2d: torch.Tensor, depth: torch.Tensor):
+        r"""Unproject a 2d point in 3d.
+
+        Transform coordinates in the pixel frame to the world frame.
+
+        Args:
+            point2d: tensor containing the 2d to be projected to
+                world coordinates. The shape of the tensor can be :math:`(*, 2)`.
+            depth: tensor containing the depth value of each 2d
+                points. The tensor shape must be equal to point2d :math:`(*, 1)`.
+            normalize: whether to normalize the pointcloud. This
+                must be set to `True` when the depth is represented as the Euclidean
+                ray length from the camera position.
+
+        Returns:
+            tensor of (x, y, z) world coordinates with shape :math:`(*, 3)`.
+
+        Example:
+            >>> _ = torch.manual_seed(0)
+            >>> x = torch.rand(1, 2)
+            >>> depth = torch.ones(1, 1)
+            >>> K = torch.eye(4)[None]
+            >>> E = torch.eye(4)[None]
+            >>> h = torch.ones(1)
+            >>> w = torch.ones(1)
+            >>> pinhole = kornia.geometry.camera.PinholeCamera(K, E, h, w)
+            >>> pinhole.unproject(x, depth)
+            tensor([[0.4963, 0.7682, 1.0000]])
+        """
+        P = self.intrinsics @ self.extrinsics
+        P_inv = _torch_inverse_cast(P)
+        return transform_points(P_inv, convert_points_to_homogeneous(point_2d) * depth)
+
     # NOTE: just for test. Decide if we keep it.
     @classmethod
     def from_parameters(
@@ -361,7 +436,7 @@ class PinholeCamerasList(PinholeCamera):
 
 
 def pinhole_matrix(pinholes: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
-    r"""Function that returns the pinhole matrix from a pinhole model
+    r"""Function that returns the pinhole matrix from a pinhole model.
 
     .. note::
         This method is going to be deprecated in version 0.2 in favour of
@@ -405,7 +480,7 @@ def pinhole_matrix(pinholes: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
 
 
 def inverse_pinhole_matrix(pinhole: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
-    r"""Return the inverted pinhole matrix from a pinhole model
+    r"""Return the inverted pinhole matrix from a pinhole model.
 
     .. note::
         This method is going to be deprecated in version 0.2 in favour of
@@ -508,7 +583,7 @@ def get_optical_pose_base(pinholes: torch.Tensor) -> torch.Tensor:
 
 
 def homography_i_H_ref(pinhole_i: torch.Tensor, pinhole_ref: torch.Tensor) -> torch.Tensor:
-    r"""Homography from reference to ith pinhole
+    r"""Homography from reference to ith pinhole.
 
     .. note::
         The pinhole model is represented in a single vector as follows:

@@ -1,45 +1,67 @@
+Image Augmentations
+===================
+
 .. currentmodule:: kornia.augmentation
 
-
 Transforms2D
-============
+------------
 
 Set of operators to perform data augmentation on 2D image tensors.
 
-.. autoclass:: CenterCrop
+Intensity
+~~~~~~~~~
+
+.. autoclass:: RandomPlanckianJitter
+.. autoclass:: RandomPlasmaShadow
+.. autoclass:: RandomPlasmaBrightness
+.. autoclass:: RandomPlasmaContrast
+.. autoclass:: ColorJiggle
 .. autoclass:: ColorJitter
-.. autoclass:: RandomAffine
 .. autoclass:: RandomBoxBlur
-.. autoclass:: RandomCrop
 .. autoclass:: RandomChannelShuffle
-.. autoclass:: RandomCutMix
-.. autoclass:: RandomErasing
-.. autoclass:: RandomElasticTransform
 .. autoclass:: RandomEqualize
-.. autoclass:: RandomFisheye
+.. autoclass:: RandomGamma
 .. autoclass:: RandomGrayscale
 .. autoclass:: RandomGaussianBlur
 .. autoclass:: RandomGaussianNoise
-.. autoclass:: RandomHorizontalFlip
-.. autoclass:: RandomInvert
-.. autoclass:: RandomMixUp
 .. autoclass:: RandomMotionBlur
-.. autoclass:: RandomPerspective
 .. autoclass:: RandomPosterize
-.. autoclass:: RandomResizedCrop
-.. autoclass:: RandomRotation
+.. autoclass:: RandomRGBShift
 .. autoclass:: RandomSharpness
 .. autoclass:: RandomSolarize
+
+Geometric
+~~~~~~~~~
+
+.. autoclass:: CenterCrop
+.. autoclass:: RandomAffine
+.. autoclass:: RandomCrop
+.. autoclass:: RandomErasing
+.. autoclass:: RandomElasticTransform
+.. autoclass:: RandomFisheye
+.. autoclass:: RandomHorizontalFlip
+.. autoclass:: RandomInvert
+.. autoclass:: RandomPerspective
+.. autoclass:: RandomResizedCrop
+.. autoclass:: RandomRotation
 .. autoclass:: RandomVerticalFlip
 .. autoclass:: RandomThinPlateSpline
 
+Mix
+~~~
 
-.. currentmodule:: kornia.augmentation
+.. autoclass:: RandomCutMixV2
+.. autoclass:: RandomMixUpV2
+.. autoclass:: RandomMosaic
+.. autoclass:: RandomJigsaw
 
 Transforms3D
-============
+------------
 
 Set of operators to perform data augmentation on 3D volumetric tensors.
+
+Geometric
+~~~~~~~~~
 
 .. autoclass:: RandomDepthicalFlip3D
 .. autoclass:: RandomHorizontalFlip3D
@@ -48,16 +70,24 @@ Set of operators to perform data augmentation on 3D volumetric tensors.
 .. autoclass:: RandomAffine3D
 .. autoclass:: RandomCrop3D
 .. autoclass:: CenterCrop3D
+
+Intensity
+~~~~~~~~~
+
 .. autoclass:: RandomMotionBlur3D
 .. autoclass:: RandomEqualize3D
 
-
-.. currentmodule:: kornia.augmentation
-
 Normalizations
-==============
+--------------
 
 Normalization operations are shape-agnostic for both 2D and 3D tensors.
 
 .. autoclass:: Denormalize
 .. autoclass:: Normalize
+
+Image Resize
+------------
+
+.. autoclass:: Resize
+.. autoclass:: LongestMaxSize
+.. autoclass:: SmallestMaxSize

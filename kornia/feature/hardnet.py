@@ -1,8 +1,10 @@
-from typing import Dict
+from typing import Callable, Dict
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from kornia.testing import KORNIA_CHECK_SHAPE, is_mps_tensor_safe
 
 urls: Dict[str, str] = {}
 urls["hardnet++"] = "https://github.com/DagnyT/hardnet/raw/master/pretrained/pretrained_all_datasets/HardNet++.pth"
@@ -63,22 +65,26 @@ class HardNet(nn.Module):
 
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(
-                urls['liberty_aug'], map_location=lambda storage, loc: storage
-            )
+            storage_fcn: Callable = lambda storage, loc: storage
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls['liberty_aug'], map_location=storage_fcn)
             self.load_state_dict(pretrained_dict['state_dict'], strict=True)
         self.eval()
 
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
         """Utility function that normalizes the input by batch."""
-        sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
+        if not is_mps_tensor_safe(x):
+            sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
+        else:
+            mp = torch.mean(x, dim=(-3, -2, -1), keepdim=True)
+            sp = torch.std(x, dim=(-3, -2, -1), keepdim=True)
         # WARNING: we need to .detach() input, otherwise the gradients produced by
         # the patches extractor with F.grid_sample are very noisy, making the detector
         # training totally unstable.
         return (x - mp.detach()) / (sp.detach() + eps)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         x_norm: torch.Tensor = self._normalize_input(input)
         x_features: torch.Tensor = self.features(x_norm)
         x_out = x_features.view(x_features.size(0), -1)
@@ -142,9 +148,8 @@ class HardNet8(nn.Module):
 
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(
-                urls['hardnet8v2'], map_location=lambda storage, loc: storage
-            )
+            storage_fcn: Callable = lambda storage, loc: storage
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls['hardnet8v2'], map_location=storage_fcn)
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
@@ -158,13 +163,18 @@ class HardNet8(nn.Module):
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-7) -> torch.Tensor:
         """Utility function that normalizes the input by batch."""
-        sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
+        if not is_mps_tensor_safe(x):
+            sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
+        else:
+            mp = torch.mean(x, dim=(-3, -2, -1), keepdim=True)
+            sp = torch.std(x, dim=(-3, -2, -1), keepdim=True)
         # WARNING: we need to .detach() input, otherwise the gradients produced by
         # the patches extractor with F.grid_sample are very noisy, making the detector
         # training totally unstable.
         return (x - mp.detach()) / (sp.detach() + eps)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         x_norm: torch.Tensor = self._normalize_input(input)
         x_features: torch.Tensor = self.features(x_norm)
         mean: torch.Tensor = torch.jit.annotate(torch.Tensor, self.mean)

@@ -29,6 +29,7 @@ Image Segmentation
 Image Patches
 -------------
 
+.. autofunction:: compute_padding
 .. autofunction:: extract_tensor_patches
 .. autofunction:: combine_tensor_patches
 
@@ -51,3 +52,11 @@ Lambda
 ------
 
 .. autoclass:: Lambda
+
+Distance Transform
+------------------
+
+.. autofunction:: distance_transform
+.. autofunction:: diamond_square
+
+.. autoclass:: DistanceTransform

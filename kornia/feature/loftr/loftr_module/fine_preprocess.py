@@ -55,12 +55,18 @@ class FinePreprocess(nn.Module):
 
         # option: use coarse-level loftr feature as context: concat and linear
         if self.cat_c_feat:
-            feat_c_win = self.down_proj(torch.cat([feat_c0[data['b_ids'], data['i_ids']],
-                                                   feat_c1[data['b_ids'], data['j_ids']]], 0))  # [2n, c]
-            feat_cf_win = self.merge_feat(torch.cat([
-                torch.cat([feat_f0_unfold, feat_f1_unfold], 0),  # [2n, ww, cf]
-                feat_c_win.unsqueeze(1).repeat(1, W**2, 1),  # [2n, ww, cf]
-            ], -1))
+            feat_c_win = self.down_proj(
+                torch.cat([feat_c0[data['b_ids'], data['i_ids']], feat_c1[data['b_ids'], data['j_ids']]], 0)
+            )  # [2n, c]
+            feat_cf_win = self.merge_feat(
+                torch.cat(
+                    [
+                        torch.cat([feat_f0_unfold, feat_f1_unfold], 0),  # [2n, ww, cf]
+                        feat_c_win.unsqueeze(1).repeat(1, W**2, 1),  # [2n, ww, cf]
+                    ],
+                    -1,
+                )
+            )
             feat_f0_unfold, feat_f1_unfold = torch.chunk(feat_cf_win, 2, dim=0)
 
         return feat_f0_unfold, feat_f1_unfold

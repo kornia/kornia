@@ -1,9 +1,10 @@
-from .blur import box_blur, BoxBlur
-from .blur_pool import blur_pool2d, BlurPool2D, max_blur_pool2d, MaxBlurPool2D
+from .blur import BoxBlur, box_blur
+from .blur_pool import BlurPool2D, MaxBlurPool2D, blur_pool2d, edge_aware_blur_pool2d, max_blur_pool2d
 from .canny import Canny, canny
+
 from .dexined import DexiNed
-from .filter import filter2d, filter2D, filter2d_separable, filter3d, filter3D
-from .gaussian import gaussian_blur2d, GaussianBlur2d
+from .filter import filter2d, filter2d_separable, filter3d
+from .gaussian import GaussianBlur2d, gaussian_blur2d
 from .kernels import (
     gaussian,
     get_binary_kernel2d,
@@ -13,6 +14,8 @@ from .kernels import (
     get_gaussian_erf_kernel1d,
     get_gaussian_kernel1d,
     get_gaussian_kernel2d,
+    get_hanning_kernel1d,
+    get_hanning_kernel2d,
     get_laplacian_kernel1d,
     get_laplacian_kernel2d,
     get_sobel_kernel2d,
@@ -22,10 +25,10 @@ from .kernels import (
 )
 from .kernels_geometry import get_motion_kernel2d, get_motion_kernel3d
 from .laplacian import Laplacian, laplacian
-from .median import median_blur, MedianBlur
-from .motion import motion_blur, motion_blur3d, MotionBlur, MotionBlur3D
-from .sobel import Sobel, sobel, spatial_gradient, spatial_gradient3d, SpatialGradient, SpatialGradient3d
-from .unsharp import unsharp_mask, UnsharpMask
+from .median import MedianBlur, median_blur
+from .motion import MotionBlur, MotionBlur3D, motion_blur, motion_blur3d
+from .sobel import Sobel, SpatialGradient, SpatialGradient3d, sobel, spatial_gradient, spatial_gradient3d
+from .unsharp import UnsharpMask, unsharp_mask
 
 __all__ = [
     "gaussian",
@@ -35,6 +38,8 @@ __all__ = [
     "get_gaussian_discrete_kernel1d",
     "get_gaussian_erf_kernel1d",
     "get_gaussian_kernel2d",
+    "get_hanning_kernel1d",
+    "get_hanning_kernel2d",
     "get_laplacian_kernel1d",
     "get_laplacian_kernel2d",
     "get_motion_kernel2d",
@@ -59,8 +64,6 @@ __all__ = [
     "filter2d",
     "filter2d_separable",
     "filter3d",
-    "filter2D",
-    "filter3D",
     "GaussianBlur2d",
     "Laplacian",
     "SpatialGradient",

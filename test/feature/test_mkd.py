@@ -9,14 +9,14 @@ from kornia.feature.mkd import (
     COEFFS,
     EmbedGradients,
     ExplicitSpacialEncoding,
-    get_grid_dict,
-    get_kron_order,
     MKDDescriptor,
     MKDGradients,
     SimpleKD,
-    spatial_kernel_embedding,
     VonMisesKernel,
     Whitening,
+    get_grid_dict,
+    get_kron_order,
+    spatial_kernel_embedding,
 )
 from kornia.testing import assert_close
 

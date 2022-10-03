@@ -1,14 +1,32 @@
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple, Union, cast
 
 import torch
 
+from kornia.core import Tensor
+from kornia.geometry.bbox import validate_bbox
 from kornia.geometry.linalg import transform_points
+from kornia.utils import eye_like
 
 __all__ = ["Boxes", "Boxes3D"]
 
 
 def _is_floating_point_dtype(dtype: torch.dtype) -> bool:
     return dtype in (torch.float16, torch.float32, torch.float64, torch.bfloat16, torch.half)
+
+
+def _merge_box_list(boxes: List[torch.Tensor], method: str = "pad") -> Tuple[torch.Tensor, List[int]]:
+    r"""Merge a list of boxes into one tensor."""
+    if not all(box.shape[-2:] == torch.Size([4, 2]) and box.dim() == 3 for box in boxes):
+        raise TypeError(f"Input boxes must be a list of (N, 4, 2) shaped. Got: {[box.shape for box in boxes]}.")
+
+    if method == "pad":
+        max_N = max(box.shape[0] for box in boxes)
+        stats = [max_N - box.shape[0] for box in boxes]
+        output = torch.nn.utils.rnn.pad_sequence(boxes, batch_first=True)
+    else:
+        raise NotImplementedError(f"`{method}` is not implemented.")
+
+    return output, stats
 
 
 def _transform_boxes(boxes: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
@@ -55,6 +73,64 @@ def _boxes_to_polygons(
     return polygons
 
 
+def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_boxes: bool = True) -> torch.Tensor:
+    """Convert from boxes to quadrilaterals."""
+    mode = mode.lower()
+
+    if mode.startswith("vertices"):
+        batched = boxes.ndim == 4
+        if not (3 <= boxes.ndim <= 4 and boxes.shape[-2:] == torch.Size([4, 2])):
+            raise ValueError(f"Boxes shape must be (N, 4, 2) or (B, N, 4, 2) when {mode} mode. Got {boxes.shape}.")
+    elif mode.startswith("xy"):
+        batched = boxes.ndim == 3
+        if not (2 <= boxes.ndim <= 3 and boxes.shape[-1] == 4):
+            raise ValueError(f"Boxes shape must be (N, 4) or (B, N, 4) when {mode} mode. Got {boxes.shape}.")
+    else:
+        raise ValueError(f"Unknown mode {mode}")
+
+    boxes = boxes if boxes.is_floating_point() else boxes.float()
+    boxes = boxes if batched else boxes.unsqueeze(0)
+
+    if mode.startswith("vertices"):
+        if mode == "vertices":
+            quadrilaterals = boxes.clone()
+            # Here, vertices are quadrilaterals with width and height defined as `width = xmax - xmin`  and
+            # `height = ymax - ymin`. We need to convert to `width = xmax - xmin + 1` and `height = ymax - ymin + 1` to
+            # match with internal Boxes Kornia representation.
+            quadrilaterals[..., 1:3, 0] = quadrilaterals[..., 1:3, 0] - 1
+            quadrilaterals[..., 2:, 1] = quadrilaterals[..., 2:, 1] - 1
+        elif mode == "vertices_plus":
+            # Avoid passing reference
+            quadrilaterals = boxes.clone()
+        else:
+            raise ValueError(f"Unknown mode {mode}")
+        not validate_boxes or validate_bbox(quadrilaterals)
+    elif mode.startswith("xy"):
+        if mode == "xyxy":
+            height, width = boxes[..., 3] - boxes[..., 1], boxes[..., 2] - boxes[..., 0]
+        elif mode == "xyxy_plus":
+            height, width = boxes[..., 3] - boxes[..., 1] + 1, boxes[..., 2] - boxes[..., 0] + 1
+        elif mode == "xywh":
+            height, width = boxes[..., 3], boxes[..., 2]
+        else:
+            raise ValueError(f"Unknown mode {mode}")
+
+        if validate_boxes:
+            if (width <= 0).any():
+                raise ValueError("Some boxes have negative widths or 0.")
+            if (height <= 0).any():
+                raise ValueError("Some boxes have negative heights or 0.")
+
+        xmin, ymin = boxes[..., 0], boxes[..., 1]
+        quadrilaterals = _boxes_to_polygons(xmin, ymin, width, height)
+    else:
+        raise ValueError(f"Unknown mode {mode}")
+
+    quadrilaterals = quadrilaterals if batched else quadrilaterals.squeeze(0)
+
+    return quadrilaterals
+
+
 def _boxes3d_to_polygons3d(
     xmin: torch.Tensor,
     ymin: torch.Tensor,
@@ -86,14 +162,17 @@ def _boxes3d_to_polygons3d(
     return polygons3d
 
 
-@torch.jit.script
+# NOTE: Cannot jit with Union types with torch <= 0.10
+# @torch.jit.script
 class Boxes:
     r"""2D boxes containing N or BxN boxes.
 
     Args:
-        boxes: 2D boxes, shape of :math:`(N,4,2)` or :math:`(B,N,4,2)`. See below for more details.
+        boxes: 2D boxes, shape of :math:`(N, 4, 2)`, :math:`(B, N, 4, 2)` or a list of :math:`(N, 4, 2)`.
+            See below for more details.
         raise_if_not_floating_point: flag to control floating point casting behaviour when `boxes` is not a floating
             point tensor. True to raise an error when `boxes` isn't a floating point tensor, False to cast to float.
+        mode: the box format of the input boxes.
 
     Note:
         **2D boxes format** is defined as a floating data type tensor of shape ``Nx4x2`` or ``BxNx4x2``
@@ -102,7 +181,19 @@ class Boxes:
         ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. Examples of
         `quadrilaterals <https://en.wikipedia.org/wiki/Quadrilateral>`_ are rectangles, rhombus and trapezoids.
     """
-    def __init__(self, boxes: torch.Tensor, raise_if_not_floating_point: bool = True) -> None:
+
+    def __init__(
+        self,
+        boxes: Union[torch.Tensor, List[torch.Tensor]],
+        raise_if_not_floating_point: bool = True,
+        mode: str = "vertices_plus",
+    ) -> None:
+
+        self._N: Optional[List[int]] = None
+
+        if isinstance(boxes, list):
+            boxes, self._N = _merge_box_list(boxes)
+
         if not isinstance(boxes, torch.Tensor):
             raise TypeError(f"Input boxes is not a Tensor. Got: {type(boxes)}.")
 
@@ -120,7 +211,10 @@ class Boxes:
         if not (3 <= boxes.ndim <= 4 and boxes.shape[-2:] == (4, 2)):
             raise ValueError(f"Boxes shape must be (N, 4, 2) or (B, N, 4, 2). Got {boxes.shape}.")
 
-        self._boxes = boxes
+        self._is_batched = False if boxes.ndim == 3 else True
+
+        self._data = boxes
+        self._mode = mode
 
     def get_boxes_shape(self) -> Tuple[torch.Tensor, torch.Tensor]:
         r"""Compute boxes heights and widths.
@@ -135,24 +229,121 @@ class Boxes:
             >>> boxes.get_boxes_shape()
             (tensor([[1., 1.]]), tensor([[1., 2.]]))
         """
-        boxes_xywh = self.to_tensor(mode='xywh')
+        boxes_xywh = cast(torch.Tensor, self.to_tensor("xywh", as_padded_sequence=True))
         widths, heights = boxes_xywh[..., 2], boxes_xywh[..., 3]
         return heights, widths
 
+    def merge(self, boxes: "Boxes", inplace: bool = False) -> "Boxes":
+        """Merges boxes.
+
+        Say, current instance holds :math:`(B, N, 4, 2)` and the incoming boxes holds :math:`(B, M, 4, 2)`,
+        the merge results in :math:`(B, N + M, 4, 2)`.
+
+        Args:
+            boxes: 2D boxes.
+            inplace: do transform in-place and return self.
+        """
+        data = torch.cat([self._data, boxes.data], dim=1)
+        if inplace:
+            self._data = data
+            return self
+        return Boxes(data, False)
+
+    def clamp(
+        self,
+        topleft: Optional[Union[Tensor, Tuple[int, int]]] = None,
+        botright: Optional[Union[Tensor, Tuple[int, int]]] = None,
+        inplace: bool = False,
+    ) -> "Boxes":
+        """"""
+        if not (isinstance(topleft, Tensor) and isinstance(botright, Tensor)):
+            raise NotImplementedError
+        if inplace:
+            _data = self._data
+        else:
+            _data = self._data.clone()
+        topleft_x = topleft[:, None, :1].repeat(1, _data.size(1), 4)
+        _data[..., 0][_data[..., 0] < topleft_x] = topleft_x[_data[..., 0] < topleft_x]
+
+        topleft_y = topleft[:, None, 1:].repeat(1, _data.size(1), 4)
+        _data[..., 1][_data[..., 1] < topleft_y] = topleft_y[_data[..., 1] < topleft_y]
+
+        botright_x = botright[:, None, :1].repeat(1, _data.size(1), 4)
+        _data[..., 0][_data[..., 0] > botright_x] = botright_x[_data[..., 0] > botright_x]
+
+        botright_y = botright[:, None, 1:].repeat(1, _data.size(1), 4)
+        _data[..., 1][_data[..., 1] > botright_y] = botright_y[_data[..., 1] > botright_y]
+        if inplace:
+            return self
+        return Boxes(_data, False)
+
+    def trim(self, correspondence_preserve: bool = False, inplace: bool = False) -> "Boxes":
+        """Trim out zero padded boxes.
+
+        Given box arrangements of shape :math:`(4, 4, Box)`:
+            -- Box -- Box -- Box  -- Box --
+            --  0  --  0  -- Box  -- Box --
+            --  0  -- Box --  0   --  0  --
+            --  0  --  0  --  0   --  0  --
+
+        Nothing will change if correspondence_preserve is True. Only pure zero layers will be
+        removed, resulting in shape :math:`(4, 3, Box)`:
+            -- Box -- Box -- Box  -- Box --
+            --  0  --  0  -- Box  -- Box --
+            --  0  -- Box --  0   --  0  --
+
+        Otherwise, you will get :math:`(4, 2, Box)`:
+            -- Box -- Box -- Box  -- Box --
+            --  0  -- Box -- Box  -- Box --
+        """
+        raise NotImplementedError
+
+    def filter_boxes_by_area(
+        self, min_area: Optional[float] = None, max_area: Optional[float] = None, inplace: bool = False
+    ) -> "Boxes":
+        area = self.compute_area()
+        if inplace:
+            _data = self._data
+        else:
+            _data = self._data.clone()
+        if min_area is not None:
+            _data[area < min_area] = 0.0
+        if max_area is not None:
+            _data[area > max_area] = 0.0
+        if inplace:
+            return self
+        return Boxes(_data, False)
+
+    def compute_area(self) -> torch.Tensor:
+        """Returns :math:`(B, N)`."""
+        w = self._data[:, :, 1, 0] - self._data[:, :, 0, 0]
+        h = self._data[:, :, 2, 1] - self._data[:, :, 0, 1]
+        return w * h
+
     @classmethod
-    def from_tensor(cls, boxes: torch.Tensor, mode: str = "xyxy", validate_boxes: bool = True) -> "Boxes":
+    def from_tensor(
+        cls, boxes: Union[torch.Tensor, List[torch.Tensor]], mode: str = "xyxy", validate_boxes: bool = True
+    ) -> "Boxes":
         r"""Helper method to easily create :class:`Boxes` from boxes stored in another format.
 
         Args:
-            boxes: 2D boxes, shape of :math:`(N,4)` or :math:`(B,N,4)`.
+            boxes: 2D boxes, shape of :math:`(N, 4)`, :math:`(B, N, 4)`, :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
             mode: The format in which the boxes are provided.
 
                 * 'xyxy': boxes are assumed to be in the format ``xmin, ymin, xmax, ymax`` where ``width = xmax - xmin``
-                  and ``height = ymax - ymin``.
+                  and ``height = ymax - ymin``. With shape :math:`(N, 4)`, :math:`(B, N, 4)`.
                 * 'xyxy_plus': similar to 'xyxy' mode but where box width and length are defined as
                   ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``.
+                  With shape :math:`(N, 4)`, :math:`(B, N, 4)`.
                 * 'xywh': boxes are assumed to be in the format ``xmin, ymin, width, height`` where
-                  ``width = xmax - xmin`` and ``height = ymax - ymin``.
+                  ``width = xmax - xmin`` and ``height = ymax - ymin``. With shape :math:`(N, 4)`, :math:`(B, N, 4)`.
+                * 'vertices': boxes are defined by their vertices points in the following ``clockwise`` order:
+                  *top-left, top-right, bottom-right, bottom-left*. Vertices coordinates are in (x,y) order. Finally,
+                  box width and height are defined as ``width = xmax - xmin`` and ``height = ymax - ymin``.
+                  With shape :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
+                * 'vertices_plus': similar to 'vertices' mode but where box width and length are defined as
+                  ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. ymin + 1``.
+                  With shape :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
 
             validate_boxes: check if boxes are valid rectangles or not. Valid rectangles are those with width
                 and height >= 1 (>= 2 when mode ends with '_plus' suffix).
@@ -163,7 +354,7 @@ class Boxes:
         Examples:
             >>> boxes_xyxy = torch.as_tensor([[0, 3, 1, 4], [5, 1, 8, 4]])
             >>> boxes = Boxes.from_tensor(boxes_xyxy, mode='xyxy')
-            >>> boxes._boxes  # (2, 4, 2)
+            >>> boxes.data  # (2, 4, 2)
             tensor([[[0., 3.],
                      [0., 3.],
                      [0., 3.],
@@ -174,39 +365,21 @@ class Boxes:
                      [7., 3.],
                      [5., 3.]]])
         """
-        if not (2 <= boxes.ndim <= 3 and boxes.shape[-1] == 4):
-            raise ValueError(f"Boxes shape must be (N, 4) or (B, N, 4). Got {boxes.shape}.")
-
-        batched = boxes.ndim == 3
-        boxes = boxes if batched else boxes.unsqueeze(0)
-        boxes = boxes if boxes.is_floating_point() else boxes.float()
-
-        xmin, ymin = boxes[..., 0], boxes[..., 1]
-        mode = mode.lower()
-        if mode == "xyxy":
-            height, width = boxes[..., 3] - boxes[..., 1], boxes[..., 2] - boxes[..., 0]
-        elif mode == "xyxy_plus":
-            height, width = boxes[..., 3] - boxes[..., 1] + 1, boxes[..., 2] - boxes[..., 0] + 1
-        elif mode == "xywh":
-            height, width = boxes[..., 3], boxes[..., 2]
+        quadrilaterals: Union[torch.Tensor, List[torch.Tensor]]
+        if isinstance(boxes, (torch.Tensor)):
+            quadrilaterals = _boxes_to_quadrilaterals(boxes, mode=mode, validate_boxes=validate_boxes)
         else:
-            raise ValueError(f"Unknown mode {mode}")
+            quadrilaterals = [_boxes_to_quadrilaterals(box, mode, validate_boxes) for box in boxes]
 
-        if validate_boxes:
-            if (width <= 0).any():
-                raise ValueError("Some boxes have negative widths or 0.")
-            if (height <= 0).any():
-                raise ValueError("Some boxes have negative heights or 0.")
-
-        quadrilaterals = _boxes_to_polygons(xmin, ymin, width, height)
-        quadrilaterals = quadrilaterals if batched else quadrilaterals.squeeze(0)
         # Due to some torch.jit.script bug (at least <= 1.9), you need to pass all arguments to __init__ when
         # constructing the class from inside of a method.
-        return cls(quadrilaterals, False)
+        return cls(quadrilaterals, False, mode)
 
-    def to_tensor(self, mode: str = "xyxy") -> torch.Tensor:
-        r"""Cast :class:`Boxes` to a tensor. ``mode`` controls which 2D boxes format should be use to represent boxes
-        in the tensor.
+    def to_tensor(
+        self, mode: Optional[str] = None, as_padded_sequence: bool = False
+    ) -> Union[torch.Tensor, List[torch.Tensor]]:
+        r"""Cast :class:`Boxes` to a tensor. ``mode`` controls which 2D boxes format should be use to represent
+        boxes in the tensor.
 
         Args:
             mode: the output box format. It could be:
@@ -222,6 +395,8 @@ class Boxes:
                   box width and height are defined as ``width = xmax - xmin`` and ``height = ymax - ymin``.
                 * 'vertices_plus': similar to 'vertices' mode but where box width and length are defined as
                   ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. ymin + 1``.
+            as_padded_sequence: whether to keep the pads for a list of boxes. This parameter is only valid
+                if the boxes are from a box list.
 
         Returns:
             Boxes tensor in the ``mode`` format. The shape depends with the ``mode`` value:
@@ -234,14 +409,20 @@ class Boxes:
             >>> boxes = Boxes.from_tensor(boxes_xyxy)
             >>> assert (boxes_xyxy == boxes.to_tensor(mode='xyxy')).all()
         """
-        batched_boxes = self._boxes if self._is_batch else self._boxes.unsqueeze(0)
+        batched_boxes = self._data if self._is_batched else self._data.unsqueeze(0)
+
+        boxes: Union[torch.Tensor, List[torch.Tensor]]
 
         # Create boxes in xyxy_plus format.
         boxes = torch.stack([batched_boxes.amin(dim=-2), batched_boxes.amax(dim=-2)], dim=-2).view(
             batched_boxes.shape[0], batched_boxes.shape[1], 4
         )
 
+        if mode is None:
+            mode = self.mode
+
         mode = mode.lower()
+
         if mode in ("xyxy", "xyxy_plus"):
             pass
         elif mode in ("xywh", "vertices", "vertices_plus"):
@@ -258,7 +439,12 @@ class Boxes:
         if mode.startswith('vertices'):
             boxes = _boxes_to_polygons(boxes[..., 0], boxes[..., 1], boxes[..., 2], boxes[..., 3])
 
-        boxes = boxes if self._is_batch else boxes.squeeze(0)
+        if self._N is not None and not as_padded_sequence:
+            boxes = list(
+                torch.nn.functional.pad(o, (len(o.shape) - 1) * [0, 0] + [0, -n]) for o, n in zip(boxes, self._N)
+            )
+        else:
+            boxes = boxes if self._is_batched else boxes.squeeze(0)
         return boxes
 
     def to_mask(self, height: int, width: int) -> torch.Tensor:
@@ -289,20 +475,20 @@ class Boxes:
                      [0., 1., 1., 1., 1.],
                      [0., 0., 0., 0., 0.]]])
         """
-        if self._boxes.requires_grad:
+        if self._data.requires_grad:
             raise RuntimeError(
                 "Boxes.to_tensor isn't differentiable. Please, create boxes from tensors with `requires_grad=False`."
             )
 
-        if self._is_batch:  # (B, N, 4, 2)
+        if self._is_batched:  # (B, N, 4, 2)
             mask = torch.zeros(
-                (self._boxes.shape[0], self._boxes.shape[1], height, width), dtype=self.dtype, device=self.device
+                (self._data.shape[0], self._data.shape[1], height, width), dtype=self.dtype, device=self.device
             )
         else:  # (N, 4, 2)
-            mask = torch.zeros((self._boxes.shape[0], height, width), dtype=self.dtype, device=self.device)
+            mask = torch.zeros((self._data.shape[0], height, width), dtype=self.dtype, device=self.device)
 
         # Boxes coordinates can be outside the image size after transforms. Clamp values to the image size
-        clipped_boxes_xyxy = self.to_tensor("xyxy")
+        clipped_boxes_xyxy = cast(torch.Tensor, self.to_tensor("xyxy", as_padded_sequence=True))
         clipped_boxes_xyxy[..., ::2].clamp_(0, width)
         clipped_boxes_xyxy[..., 1::2].clamp_(0, height)
 
@@ -329,9 +515,9 @@ class Boxes:
 
         # Due to some torch.jit.script bug (at least <= 1.9), you need to pass all arguments to __init__ when
         # constructing the class from inside of a method.
-        transformed_boxes = _transform_boxes(self._boxes, M)
+        transformed_boxes = _transform_boxes(self._data, M)
         if inplace:
-            self._boxes = transformed_boxes
+            self._data = transformed_boxes
             return self
 
         return Boxes(transformed_boxes, False)
@@ -340,27 +526,56 @@ class Boxes:
         """Inplace version of :func:`Boxes.transform_boxes`"""
         return self.transform_boxes(M, inplace=True)
 
+    def translate(self, size: Tensor, method: str = "warp", inplace: bool = False) -> "Boxes":
+        """Translates boxes by the provided size.
+
+        Args:
+            size: translate size for x, y direction, shape of :math:`(B, 2)`.
+            method: "warp" or "fast".
+            inplace: do transform in-place and return self.
+
+        Returns:
+            The transformed boxes.
+        """
+        if method == "fast":
+            raise NotImplementedError
+        elif method == "warp":
+            pass
+        else:
+            raise NotImplementedError
+
+        M: Tensor = eye_like(3, size)
+        M[:, :2, 2] = size
+        return self.transform_boxes(M, inplace=inplace)
+
     @property
-    def _is_batch(self) -> bool:
-        return self._boxes.ndim == 4
+    def data(self) -> torch.Tensor:
+        return self._data
+
+    @property
+    def mode(self) -> str:
+        return self._mode
 
     @property
     def device(self) -> torch.device:
         """Returns boxes device."""
-        return self._boxes.device
+        return self._data.device
 
     @property
     def dtype(self) -> torch.dtype:
         """Returns boxes dtype."""
-        return self._boxes.dtype
+        return self._data.dtype
 
     def to(self, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> "Boxes":
         """Like :func:`torch.nn.Module.to()` method."""
         # In torchscript, dtype is a int and not a class. https://github.com/pytorch/pytorch/issues/51941
         if dtype is not None and not _is_floating_point_dtype(dtype):
             raise ValueError("Boxes must be in floating point")
-        self._boxes = self._boxes.to(device=device, dtype=dtype)
+        self._data = self._data.to(device=device, dtype=dtype)
         return self
+
+    def clone(self) -> "Boxes":
+        return Boxes(self._data.clone(), False)
 
 
 @torch.jit.script
@@ -379,7 +594,10 @@ class Boxes3D:
         ``width = xmax - xmin + 1``, ``height = ymax - ymin + 1`` and ``depth = zmax - zmin + 1``. Examples of
         `hexahedrons <https://en.wikipedia.org/wiki/Hexahedron>`_ are cubes and rhombohedrons.
     """
-    def __init__(self, boxes: torch.Tensor, raise_if_not_floating_point: bool = True):
+
+    def __init__(
+        self, boxes: torch.Tensor, raise_if_not_floating_point: bool = True, mode: str = "xyzxyz_plus"
+    ) -> None:
         if not isinstance(boxes, torch.Tensor):
             raise TypeError(f"Input boxes is not a Tensor. Got: {type(boxes)}.")
 
@@ -397,7 +615,10 @@ class Boxes3D:
         if not (3 <= boxes.ndim <= 4 and boxes.shape[-2:] == (8, 3)):
             raise ValueError(f"3D bbox shape must be (N, 8, 3) or (B, N, 8, 3). Got {boxes.shape}.")
 
-        self._boxes = boxes
+        self._is_batched = False if boxes.ndim == 3 else True
+
+        self._data = boxes
+        self._mode = mode
 
     def get_boxes_shape(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         r"""Compute boxes heights and widths.
@@ -441,7 +662,7 @@ class Boxes3D:
         Examples:
             >>> boxes_xyzxyz = torch.as_tensor([[0, 3, 6, 1, 4, 8], [5, 1, 3, 8, 4, 9]])
             >>> boxes = Boxes3D.from_tensor(boxes_xyzxyz, mode='xyzxyz')
-            >>> boxes._boxes  # (2, 8, 3)
+            >>> boxes.data  # (2, 8, 3)
             tensor([[[0., 3., 6.],
                      [0., 3., 6.],
                      [0., 3., 6.],
@@ -494,11 +715,11 @@ class Boxes3D:
         hexahedrons = hexahedrons if batched else hexahedrons.squeeze(0)
         # Due to some torch.jit.script bug (at least <= 1.9), you need to pass all arguments to __init__ when
         # constructing the class from inside of a method.
-        return cls(hexahedrons, raise_if_not_floating_point=False)
+        return cls(hexahedrons, raise_if_not_floating_point=False, mode=mode)
 
     def to_tensor(self, mode: str = "xyzxyz") -> torch.Tensor:
-        r"""Cast :class:`Boxes3D` to a tensor. ``mode`` controls which 3D boxes format should be use to represent boxes
-        in the tensor.
+        r"""Cast :class:`Boxes3D` to a tensor. ``mode`` controls which 3D boxes format should be use to represent
+        boxes in the tensor.
 
         Args:
             mode: The format in which the boxes are provided.
@@ -532,13 +753,15 @@ class Boxes3D:
             >>> boxes = Boxes3D.from_tensor(boxes_xyzxyz, mode='xyzxyz')
             >>> assert (boxes.to_tensor(mode='xyzxyz') == boxes_xyzxyz).all()
         """
-        if self._boxes.requires_grad:
-            raise RuntimeError("Boxes3D.to_tensor doesn't support computing gradients since they aren't accurate. "
-                               "Please, create boxes from tensors with `requires_grad=False`. "
-                               "This is a known bug. Help is needed to fix it. For more information, "
-                               "see https://github.com/kornia/kornia/issues/1396.")
+        if self._data.requires_grad:
+            raise RuntimeError(
+                "Boxes3D.to_tensor doesn't support computing gradients since they aren't accurate. "
+                "Please, create boxes from tensors with `requires_grad=False`. "
+                "This is a known bug. Help is needed to fix it. For more information, "
+                "see https://github.com/kornia/kornia/issues/1396."
+            )
 
-        batched_boxes = self._boxes if self._is_batch else self._boxes.unsqueeze(0)
+        batched_boxes = self._data if self._is_batched else self._data.unsqueeze(0)
 
         # Create boxes in xyzxyz_plus format.
         boxes = torch.stack([batched_boxes.amin(dim=-2), batched_boxes.amax(dim=-2)], dim=-2).view(
@@ -568,7 +791,7 @@ class Boxes3D:
 
             boxes = _boxes3d_to_polygons3d(xmin, ymin, zmin, width, height, depth)
 
-        boxes = boxes if self._is_batch else boxes.squeeze(0)
+        boxes = boxes if self._is_batched else boxes.squeeze(0)
         return boxes
 
     def to_mask(self, depth: int, height: int, width: int) -> torch.Tensor:
@@ -622,20 +845,20 @@ class Boxes3D:
                       [0., 0., 0., 0., 0.],
                       [0., 0., 0., 0., 0.]]]])
         """
-        if self._boxes.requires_grad:
+        if self._data.requires_grad:
             raise RuntimeError(
                 "Boxes.to_tensor isn't differentiable. Please, create boxes from tensors with `requires_grad=False`."
             )
 
-        if self._is_batch:  # (B, N, 8, 3)
+        if self._is_batched:  # (B, N, 8, 3)
             mask = torch.zeros(
-                (self._boxes.shape[0], self._boxes.shape[1], depth, height, width),
-                dtype=self._boxes.dtype,
-                device=self._boxes.device,
+                (self._data.shape[0], self._data.shape[1], depth, height, width),
+                dtype=self._data.dtype,
+                device=self._data.device,
             )
         else:  # (N, 8, 3)
             mask = torch.zeros(
-                (self._boxes.shape[0], depth, height, width), dtype=self._boxes.dtype, device=self._boxes.device
+                (self._data.shape[0], depth, height, width), dtype=self._data.dtype, device=self._data.device
             )
 
         # Boxes coordinates can be outside the image size after transforms. Clamp values to the image size
@@ -671,35 +894,39 @@ class Boxes3D:
 
         # Due to some torch.jit.script bug (at least <= 1.9), you need to pass all arguments to __init__ when
         # constructing the class from inside of a method.
-        transformed_boxes = _transform_boxes(self._boxes, M)
+        transformed_boxes = _transform_boxes(self._data, M)
         if inplace:
-            self._boxes = transformed_boxes
+            self._data = transformed_boxes
             return self
 
-        return Boxes3D(transformed_boxes, False)
+        return Boxes3D(transformed_boxes, False, "xyzxyz_plus")
 
     def transform_boxes_(self, M: torch.Tensor) -> "Boxes3D":
         """Inplace version of :func:`Boxes3D.transform_boxes`"""
         return self.transform_boxes(M, inplace=True)
 
     @property
-    def _is_batch(self) -> bool:
-        return self._boxes.ndim == 4
+    def data(self) -> torch.Tensor:
+        return self._data
+
+    @property
+    def mode(self) -> str:
+        return self._mode
 
     @property
     def device(self) -> torch.device:
         """Returns boxes device."""
-        return self._boxes.device
+        return self._data.device
 
     @property
     def dtype(self) -> torch.dtype:
         """Returns boxes dtype."""
-        return self._boxes.dtype
+        return self._data.dtype
 
     def to(self, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> "Boxes3D":
         """Like :func:`torch.nn.Module.to()` method."""
         # In torchscript, dtype is a int and not a class. https://github.com/pytorch/pytorch/issues/51941
         if dtype is not None and not _is_floating_point_dtype(dtype):
             raise ValueError("Boxes must be in floating point")
-        self._boxes = self._boxes.to(device=device, dtype=dtype)
+        self._data = self._data.to(device=device, dtype=dtype)
         return self

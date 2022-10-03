@@ -1,3 +1,4 @@
+import math
 from math import sqrt
 from typing import List, Optional, Tuple
 
@@ -19,12 +20,14 @@ def gaussian(window_size: int, sigma: float) -> torch.Tensor:
     x = torch.arange(window_size, device=device, dtype=dtype) - window_size // 2
     if window_size % 2 == 0:
         x = x + 0.5
-    gauss = torch.exp(-x.pow(2.0) / (2 * sigma ** 2))
+    gauss = torch.exp(-x.pow(2.0) / (2 * sigma**2))
     return gauss / gauss.sum()
 
 
 def gaussian_discrete_erf(window_size: int, sigma) -> torch.Tensor:
-    r"""Discrete Gaussian by interpolating the error function. Adapted from:
+    r"""Discrete Gaussian by interpolating the error function.
+
+    Adapted from:
     https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
     """
     device = sigma.device if isinstance(sigma, torch.Tensor) else None
@@ -38,6 +41,7 @@ def gaussian_discrete_erf(window_size: int, sigma) -> torch.Tensor:
 
 def _modified_bessel_0(x: torch.Tensor) -> torch.Tensor:
     r"""Adapted from:
+
     https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
     """
     if torch.abs(x) < 3.75:
@@ -54,6 +58,7 @@ def _modified_bessel_0(x: torch.Tensor) -> torch.Tensor:
 
 def _modified_bessel_1(x: torch.Tensor) -> torch.Tensor:
     r"""adapted from:
+
     https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
     """
     if torch.abs(x) < 3.75:
@@ -70,6 +75,7 @@ def _modified_bessel_1(x: torch.Tensor) -> torch.Tensor:
 
 def _modified_bessel_i(n: int, x: torch.Tensor) -> torch.Tensor:
     r"""adapted from:
+
     https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
     """
     if n < 2:
@@ -97,7 +103,9 @@ def _modified_bessel_i(n: int, x: torch.Tensor) -> torch.Tensor:
 
 
 def gaussian_discrete(window_size, sigma) -> torch.Tensor:
-    r"""Discrete Gaussian kernel based on the modified Bessel functions. Adapted from:
+    r"""Discrete Gaussian kernel based on the modified Bessel functions.
+
+    Adapted from:
     https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
     """
     device = sigma.device if isinstance(sigma, torch.Tensor) else None
@@ -116,9 +124,7 @@ def gaussian_discrete(window_size, sigma) -> torch.Tensor:
 
 
 def laplacian_1d(window_size) -> torch.Tensor:
-    r"""One could also use the Laplacian of Gaussian formula
-    to design the filter.
-    """
+    r"""One could also use the Laplacian of Gaussian formula to design the filter."""
 
     filter_1d = torch.ones(window_size)
     filter_1d[window_size // 2] = 1 - window_size
@@ -136,8 +142,9 @@ def get_box_kernel2d(kernel_size: Tuple[int, int]) -> torch.Tensor:
 
 
 def get_binary_kernel2d(window_size: Tuple[int, int]) -> torch.Tensor:
-    r"""Create a binary kernel to extract the patches. If the window size
-    is HxW will create a (H*W)xHxW kernel.
+    r"""Create a binary kernel to extract the patches.
+
+    If the window size is HxW will create a (H*W)xHxW kernel.
     """
     window_range: int = window_size[0] * window_size[1]
     kernel: torch.Tensor = torch.zeros(window_range, window_range)
@@ -276,8 +283,10 @@ def get_diff_kernel2d_2nd_order() -> torch.Tensor:
 
 
 def get_spatial_gradient_kernel2d(mode: str, order: int) -> torch.Tensor:
-    r"""Function that returns kernel for 1st or 2nd order image gradients,
-    using one of the following operators: sobel, diff"""
+    r"""Function that returns kernel for 1st or 2nd order image gradients, using one of the following operators:
+
+    sobel, diff.
+    """
     if mode not in ['sobel', 'diff']:
         raise TypeError(
             "mode should be either sobel\
@@ -306,8 +315,8 @@ def get_spatial_gradient_kernel2d(mode: str, order: int) -> torch.Tensor:
 
 
 def get_spatial_gradient_kernel3d(mode: str, order: int, device=torch.device('cpu'), dtype=torch.float) -> torch.Tensor:
-    r"""Function that returns kernel for 1st or 2nd order scale pyramid gradients,
-    using one of the following operators: sobel, diff"""
+    r"""Function that returns kernel for 1st or 2nd order scale pyramid gradients, using one of the following
+    operators: sobel, diff."""
     if mode not in ['sobel', 'diff']:
         raise TypeError(
             "mode should be either sobel\
@@ -362,9 +371,8 @@ def get_gaussian_kernel1d(kernel_size: int, sigma: float, force_even: bool = Fal
 
 
 def get_gaussian_discrete_kernel1d(kernel_size: int, sigma: float, force_even: bool = False) -> torch.Tensor:
-    r"""Function that returns Gaussian filter coefficients
-    based on the modified Bessel functions. Adapted from:
-    https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
+    r"""Function that returns Gaussian filter coefficients based on the modified Bessel functions. Adapted from:
+    https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
 
     Args:
         kernel_size: filter size. It should be odd and positive.
@@ -392,9 +400,8 @@ def get_gaussian_discrete_kernel1d(kernel_size: int, sigma: float, force_even: b
 
 
 def get_gaussian_erf_kernel1d(kernel_size: int, sigma: float, force_even: bool = False) -> torch.Tensor:
-    r"""Function that returns Gaussian filter coefficients by interpolating the error function,
-    adapted from:
-    https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
+    r"""Function that returns Gaussian filter coefficients by interpolating the error function, adapted from:
+    https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
 
     Args:
         kernel_size: filter size. It should be odd and positive.
@@ -478,7 +485,6 @@ def get_laplacian_kernel1d(kernel_size: int) -> torch.Tensor:
         tensor([ 1., -2.,  1.])
         >>> get_laplacian_kernel1d(5)
         tensor([ 1.,  1., -4.,  1.,  1.])
-
     """
     if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or kernel_size <= 0:
         raise TypeError(f"ksize must be an odd positive integer. Got {kernel_size}")
@@ -515,7 +521,7 @@ def get_laplacian_kernel2d(kernel_size: int) -> torch.Tensor:
 
     kernel = torch.ones((kernel_size, kernel_size))
     mid = kernel_size // 2
-    kernel[mid, mid] = 1 - kernel_size ** 2
+    kernel[mid, mid] = 1 - kernel_size**2
     kernel_2d: torch.Tensor = kernel
     return kernel_2d
 
@@ -630,3 +636,54 @@ def get_hysteresis_kernel(device=torch.device('cpu'), dtype=torch.float) -> torc
         dtype=dtype,
     )
     return kernel.unsqueeze(1)
+
+
+def get_hanning_kernel1d(kernel_size: int, device=torch.device('cpu'), dtype=torch.float) -> torch.Tensor:
+    r"""Returns Hanning (also known as Hann) kernel, used in signal processing and KCF tracker.
+
+    .. math::  w(n) = 0.5 - 0.5cos\\left(\\frac{2\\pi{n}}{M-1}\\right)
+               \\qquad 0 \\leq n \\leq M-1
+
+    See further in numpy docs https://numpy.org/doc/stable/reference/generated/numpy.hanning.html
+
+    Args:
+        kernel_size: The size the of the kernel. It should be positive.
+
+    Returns:
+        1D tensor with Hanning filter coefficients.
+            .. math::  w(n) = 0.5 - 0.5cos\\left(\\frac{2\\pi{n}}{M-1}\\right)
+
+    Shape:
+        - Output: math:`(\text{kernel_size})`
+
+    Examples:
+        >>> get_hanning_kernel1d(4)
+        tensor([0.0000, 0.7500, 0.7500, 0.0000])
+    """
+    if not isinstance(kernel_size, int) or kernel_size <= 2:
+        raise TypeError(f"ksize must be an positive integer > 2. Got {kernel_size}")
+
+    x: torch.Tensor = torch.arange(kernel_size, device=device, dtype=dtype)
+    x = 0.5 - 0.5 * torch.cos(2.0 * math.pi * x / float(kernel_size - 1))
+    return x
+
+
+def get_hanning_kernel2d(kernel_size: Tuple[int, int], device=torch.device('cpu'), dtype=torch.float) -> torch.Tensor:
+    r"""Returns 2d Hanning kernel, used in signal processing and KCF tracker.
+
+    Args:
+        kernel_size: The size of the kernel for the filter. It should be positive.
+
+    Returns:
+        2D tensor with Hanning filter coefficients.
+            .. math::  w(n) = 0.5 - 0.5cos\\left(\\frac{2\\pi{n}}{M-1}\\right)
+
+    Shape:
+        - Output: math:`(\text{kernel_size[0], kernel_size[1]})`
+    """
+    if kernel_size[0] <= 2 or kernel_size[1] <= 2:
+        raise TypeError(f"ksize must be an tuple of positive integers > 2. Got {kernel_size}")
+    ky: torch.Tensor = get_hanning_kernel1d(kernel_size[0], device, dtype)[None].T
+    kx: torch.Tensor = get_hanning_kernel1d(kernel_size[1], device, dtype)[None]
+    kernel2d = ky @ kx
+    return kernel2d

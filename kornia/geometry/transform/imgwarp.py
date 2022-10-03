@@ -2,7 +2,9 @@ from typing import List, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
+from torch.nn.functional import grid_sample
 
+from kornia.core import Tensor, stack
 from kornia.geometry.conversions import (
     angle_axis_to_rotation_matrix,
     angle_to_rotation_matrix,
@@ -14,6 +16,7 @@ from kornia.geometry.conversions import (
     normalize_pixel_coordinates,
 )
 from kornia.geometry.linalg import transform_points
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.utils import create_meshgrid, create_meshgrid3d, eye_like
 from kornia.utils.helpers import _torch_inverse_cast, _torch_solve_cast
 
@@ -205,11 +208,7 @@ def warp_affine(
 
 
 def _fill_and_warp(
-    src: torch.Tensor,
-    grid: torch.Tensor,
-    mode: str,
-    align_corners: bool,
-    fill_value: torch.Tensor,
+    src: torch.Tensor, grid: torch.Tensor, mode: str, align_corners: bool, fill_value: torch.Tensor
 ) -> torch.Tensor:
     r"""Warp a mask of ones, then multiple with fill_value and add to default warp.
 
@@ -278,35 +277,45 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
     return flow.view(batch_size, depth, height, width, 3)  # NxDxHxWx3
 
 
-def get_perspective_transform(src, dst):
-    r"""Calculate a perspective transform from four pairs of the corresponding
-    points.
+# TODO: move to kornia.geometry.projective
+# TODO: create the nn.Module -- TBD what inputs/outputs etc
+# class PerspectiveTransform(nn.Module):
+#     def __init__(self) -> None:
+#         super().__init__()
 
-    The function calculates the matrix of a perspective transform so that:
+
+def get_perspective_transform(points_src: Tensor, points_dst: Tensor) -> Tensor:
+    r"""Calculate a perspective transform from four pairs of the corresponding points.
+
+    The algorithm is a vanilla implementation of the Direct Linear transform (DLT).
+    See more: https://www.cs.cmu.edu/~16385/s17/Slides/10.2_2D_Alignment__DLT.pdf
+
+    The function calculates the matrix of a perspective transform that maps from
+    the source to destination points:
 
     .. math ::
 
         \begin{bmatrix}
-        t_{i}x_{i}^{'} \\
-        t_{i}y_{i}^{'} \\
-        t_{i} \\
+        x^{'} \\
+        y^{'} \\
+        1 \\
         \end{bmatrix}
         =
-        \textbf{map_matrix} \cdot
         \begin{bmatrix}
-        x_{i} \\
-        y_{i} \\
+        h_1 & h_2 & h_3 \\
+        h_4 & h_5 & h_6 \\
+        h_7 & h_8 & h_9 \\
+        \end{bmatrix}
+        \cdot
+        \begin{bmatrix}
+        x \\
+        y \\
         1 \\
         \end{bmatrix}
 
-    where
-
-    .. math ::
-        dst(i) = (x_{i}^{'},y_{i}^{'}), src(i) = (x_{i}, y_{i}), i = 0,1,2,3
-
     Args:
-        src: coordinates of quadrangle vertices in the source image with shape :math:`(B, 4, 2)`.
-        dst: coordinates of the corresponding quadrangle vertices in
+        points_src: coordinates of quadrangle vertices in the source image with shape :math:`(B, 4, 2)`.
+        points_dst: coordinates of the corresponding quadrangle vertices in
             the destination image with shape :math:`(B, 4, 2)`.
 
     Returns:
@@ -314,78 +323,52 @@ def get_perspective_transform(src, dst):
 
     .. note::
         This function is often used in conjunction with :func:`warp_perspective`.
+
+    Example:
+        >>> x1 = torch.tensor([[[0., 0.], [1., 0.], [1., 1.], [0., 1.]]])
+        >>> x2 = torch.tensor([[[1., 0.], [0., 0.], [0., 1.], [1., 1.]]])
+        >>> x2_trans_x1 = get_perspective_transform(x1, x2)
     """
-    if not isinstance(src, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(src)}")
-
-    if not isinstance(dst, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(dst)}")
-
-    if not src.dtype == dst.dtype:
-        raise TypeError(f"Source data type {src.dtype} must match Destination data type {dst.dtype}")
-
-    if not src.shape[-2:] == (4, 2):
-        raise ValueError(f"Inputs must be a Bx4x2 tensor. Got {src.shape}")
-
-    if not src.shape == dst.shape:
-        raise ValueError(f"Inputs must have the same shape. Got {dst.shape}")
-
-    if not (src.shape[0] == dst.shape[0]):
-        raise ValueError(f"Inputs must have same batch size dimension. Expect {src.shape} but got {dst.shape}")
+    KORNIA_CHECK_SHAPE(points_src, ["B", "4", "2"])
+    KORNIA_CHECK_SHAPE(points_dst, ["B", "4", "2"])
+    KORNIA_CHECK(points_src.shape == points_dst.shape, "Source data shape must match Destination data shape.")
+    KORNIA_CHECK(points_src.dtype == points_dst.dtype, "Source data type must match Destination data type.")
 
     # we build matrix A by using only 4 point correspondence. The linear
     # system is solved with the least square method, so here
     # we could even pass more correspondence
-    p = []
-    for i in [0, 1, 2, 3]:
-        p.append(_build_perspective_param(src[:, i], dst[:, i], 'x'))
-        p.append(_build_perspective_param(src[:, i], dst[:, i], 'y'))
 
-    # A is Bx8x8
-    A = torch.stack(p, dim=1)
+    # create the lhs tensor with shape # Bx8x8
+    B: int = points_src.shape[0]  # batch_size
 
-    # b is a Bx8x1
-    b = torch.stack(
-        [
-            dst[:, 0:1, 0],
-            dst[:, 0:1, 1],
-            dst[:, 1:2, 0],
-            dst[:, 1:2, 1],
-            dst[:, 2:3, 0],
-            dst[:, 2:3, 1],
-            dst[:, 3:4, 0],
-            dst[:, 3:4, 1],
-        ],
-        dim=1,
-    )
+    A = torch.empty(B, 8, 8, device=points_src.device, dtype=points_src.dtype)
+
+    # we need to perform in batch
+    zeros = torch.zeros(B, device=points_src.device, dtype=points_src.dtype)
+    ones = torch.ones(B, device=points_src.device, dtype=points_src.dtype)
+
+    for i in range(4):
+        x1, y1 = points_src[..., i, 0], points_src[..., i, 1]  # Bx4
+        x2, y2 = points_dst[..., i, 0], points_dst[..., i, 1]  # Bx4
+
+        A[:, 2 * i] = stack([x1, y1, ones, zeros, zeros, zeros, -x1 * x2, -y1 * x2], -1)
+        A[:, 2 * i + 1] = stack([zeros, zeros, zeros, x1, y1, ones, -x1 * y2, -y1 * y2], -1)
+
+    # the rhs tensor
+    b = points_dst.view(-1, 8, 1)
 
     # solve the system Ax = b
-    X, _ = _torch_solve_cast(b, A)
+    X: Tensor = _torch_solve_cast(A, b)
 
-    # create variable to return
-    batch_size = src.shape[0]
-    M = torch.ones(batch_size, 9, device=src.device, dtype=src.dtype)
-    M[..., :8] = torch.squeeze(X, dim=-1)
+    # create variable to return the Bx3x3 transform
+    M = torch.empty(B, 9, device=points_src.device, dtype=points_src.dtype)
+    M[..., :8] = X[..., 0]  # Bx8
+    M[..., -1].fill_(1)
 
     return M.view(-1, 3, 3)  # Bx3x3
 
 
-def _build_perspective_param(p: torch.Tensor, q: torch.Tensor, axis: str) -> torch.Tensor:
-    ones = torch.ones_like(p)[..., 0:1]
-    zeros = torch.zeros_like(p)[..., 0:1]
-    if axis == 'x':
-        return torch.cat(
-            [p[:, 0:1], p[:, 1:2], ones, zeros, zeros, zeros, -p[:, 0:1] * q[:, 0:1], -p[:, 1:2] * q[:, 0:1]], dim=1
-        )
-
-    if axis == 'y':
-        return torch.cat(
-            [zeros, zeros, zeros, p[:, 0:1], p[:, 1:2], ones, -p[:, 0:1] * q[:, 1:2], -p[:, 1:2] * q[:, 1:2]], dim=1
-        )
-
-    raise NotImplementedError(f"perspective params for axis `{axis}` is not implemented.")
-
-
+# TODO: move to kornia.geometry.affine
 def get_rotation_matrix2d(center: torch.Tensor, angle: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
     r"""Calculate an affine matrix of 2D rotation.
 
@@ -479,15 +462,15 @@ def get_rotation_matrix2d(center: torch.Tensor, angle: torch.Tensor, scale: torc
 
 
 def remap(
-    tensor: torch.Tensor,
-    map_x: torch.Tensor,
-    map_y: torch.Tensor,
+    image: Tensor,
+    map_x: Tensor,
+    map_y: Tensor,
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
     align_corners: Optional[bool] = None,
     normalized_coordinates: bool = False,
-) -> torch.Tensor:
-    r"""Apply a generic geometrical transformation to a tensor.
+) -> Tensor:
+    r"""Apply a generic geometrical transformation to an image tensor.
 
     .. image:: _static/img/remap.png
 
@@ -497,8 +480,8 @@ def remap(
         \text{dst}(x, y) = \text{src}(map_x(x, y), map_y(x, y))
 
     Args:
-        tensor: the tensor to remap with shape (B, D, H, W).
-          Where D is the number of channels.
+        image: the tensor to remap with shape (B, C, H, W).
+          Where C is the number of channels.
         map_x: the flow in the x-direction in pixel coordinates.
           The tensor must be in the shape of (B, H, W).
         map_y: the flow in the y-direction in pixel coordinates.
@@ -509,12 +492,13 @@ def remap(
           ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: mode for grid_generation.
         normalized_coordinates: whether the input coordinates are
-           normalised in the range of [-1, 1].
+           normalized in the range of [-1, 1].
 
     Returns:
         the warped tensor with same shape as the input grid maps.
 
     Example:
+        >>> import torch
         >>> from kornia.utils import create_meshgrid
         >>> grid = create_meshgrid(2, 2, False)  # 1x2x2x2
         >>> grid += 1  # apply offset in both directions
@@ -526,35 +510,24 @@ def remap(
     .. note::
         This function is often used in conjunction with :func:`kornia.utils.create_meshgrid`.
     """
-    if not isinstance(tensor, torch.Tensor):
-        raise TypeError(f"Input tensor type is not a torch.Tensor. Got {type(tensor)}")
+    KORNIA_CHECK_SHAPE(image, ["B", "C", "H", "W"])
+    KORNIA_CHECK_SHAPE(map_x, ["B", "H", "W"])
+    KORNIA_CHECK_SHAPE(map_y, ["B", "H", "W"])
 
-    if not isinstance(map_x, torch.Tensor):
-        raise TypeError(f"Input map_x type is not a torch.Tensor. Got {type(map_x)}")
-
-    if not isinstance(map_y, torch.Tensor):
-        raise TypeError(f"Input map_y type is not a torch.Tensor. Got {type(map_y)}")
-
-    if not tensor.shape[-2:] == map_x.shape[-2:] == map_y.shape[-2:]:
-        raise ValueError("Inputs last two dimensions must match.")
-
-    batch_size, _, height, width = tensor.shape
+    batch_size, _, height, width = image.shape
 
     # grid_sample need the grid between -1/1
-    map_xy: torch.Tensor = torch.stack([map_x, map_y], dim=-1)
+    map_xy: Tensor = stack([map_x, map_y], -1)
 
     # normalize coordinates if not already normalized
     if not normalized_coordinates:
         map_xy = normalize_pixel_coordinates(map_xy, height, width)
 
     # simulate broadcasting since grid_sample does not support it
-    map_xy_norm: torch.Tensor = map_xy.expand(batch_size, -1, -1, -1)
+    map_xy = map_xy.expand(batch_size, -1, -1, -1)
 
-    # warp ans return
-    tensor_warped: torch.Tensor = F.grid_sample(
-        tensor, map_xy_norm, mode=mode, padding_mode=padding_mode, align_corners=align_corners
-    )
-    return tensor_warped
+    # warp the image tensor and return
+    return grid_sample(image, map_xy, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
 
 
 def invert_affine_transform(matrix: torch.Tensor) -> torch.Tensor:
@@ -588,7 +561,7 @@ def invert_affine_transform(matrix: torch.Tensor) -> torch.Tensor:
         raise ValueError(f"Input matrix must be a Bx2x3 tensor. Got {matrix.shape}")
 
     matrix_tmp: torch.Tensor = convert_affinematrix_to_homography(matrix)
-    matrix_inv: torch.Tensor = torch.inverse(matrix_tmp)
+    matrix_inv: torch.Tensor = _torch_inverse_cast(matrix_tmp)
 
     return matrix_inv[..., :2, :3]
 
@@ -673,15 +646,7 @@ def get_shear_matrix2d(center: torch.Tensor, sx: Optional[torch.Tensor] = None, 
     sy_tan = torch.tan(sy)  # type: ignore
     ones = torch.ones_like(sx)  # type: ignore
     shear_mat = torch.stack(
-        [
-            ones,
-            -sx_tan,
-            sx_tan * y,  # type: ignore
-            -sy_tan,
-            ones + sx_tan * sy_tan,
-            sy_tan * (sx_tan * y + x),
-        ],
-        dim=-1,
+        [ones, -sx_tan, sx_tan * y, -sy_tan, ones + sx_tan * sy_tan, sy_tan * (sx_tan * y + x)], dim=-1  # type: ignore
     ).view(-1, 2, 3)
 
     shear_mat = convert_affinematrix_to_homography(shear_mat)
@@ -909,7 +874,6 @@ def projection_from_Rt(rmat: torch.Tensor, tvec: torch.Tensor) -> torch.Tensor:
 
     Returns:
        the projection matrix with shape :math:`(*, 3, 4)`.
-
     """
     if not (len(rmat.shape) >= 2 and rmat.shape[-2:] == (3, 3)):
         raise AssertionError(rmat.shape)
@@ -1103,12 +1067,14 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
     )
 
     # solve the system Ax = b
-    X, _ = _torch_solve_cast(b, A)
+    X: Tensor = _torch_solve_cast(A, b)
 
     # create variable to return
-    batch_size = src.shape[0]
-    M = torch.ones(batch_size, 16, device=src.device, dtype=src.dtype)
-    M[..., :15] = torch.squeeze(X, dim=-1)
+    batch_size: int = src.shape[0]
+    M = torch.empty(batch_size, 16, device=src.device, dtype=src.dtype)
+    M[..., :15] = X[..., 0]
+    M[..., -1].fill_(1)
+
     return M.view(-1, 4, 4)  # Bx4x4
 
 
@@ -1277,7 +1243,6 @@ def homography_warp(
         >>> out = homography_warp(img, H, (4, 2), align_corners=True, normalized_homography=False)
         >>> print(out.shape)
         torch.Size([1, 4, 4, 2])
-
     """
     if not src_homo_dst.device == patch_src.device:
         raise TypeError(
@@ -1288,8 +1253,9 @@ def homography_warp(
         )
     if normalized_homography:
         height, width = dsize
-        grid = create_meshgrid(height, width, normalized_coordinates=normalized_coordinates,
-                               device=patch_src.device, dtype=patch_src.dtype)
+        grid = create_meshgrid(
+            height, width, normalized_coordinates=normalized_coordinates, device=patch_src.device, dtype=patch_src.dtype
+        )
         warped_grid = warp_grid(grid, src_homo_dst)
 
         return F.grid_sample(patch_src, warped_grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners)

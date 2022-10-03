@@ -5,13 +5,21 @@ from typing import Optional, Tuple
 import torch
 import torch.nn as nn
 
+from kornia.core import Tensor
 from kornia.geometry import (
     find_fundamental,
     find_homography_dlt,
     find_homography_dlt_iterated,
+    find_homography_lines_dlt,
+    find_homography_lines_dlt_iterated,
     symmetrical_epipolar_distance,
 )
-from kornia.geometry.homography import oneway_transfer_error, sample_is_valid_for_homography
+from kornia.geometry.homography import (
+    line_segment_transfer_error_one_way,
+    oneway_transfer_error,
+    sample_is_valid_for_homography,
+)
+from kornia.testing import KORNIA_CHECK_SHAPE
 
 __all__ = ["RANSAC"]
 
@@ -29,15 +37,18 @@ class RANSAC(nn.Module):
         confidence: desired confidence of the result, used for the early stopping.
         max_local_iterations: number of local optimization (polishing) iterations.
     """
-    supported_models = ['homography', 'fundamental']
 
-    def __init__(self,
-                 model_type: str = 'homography',
-                 inl_th: float = 2.0,
-                 batch_size: int = 2048,
-                 max_iter: int = 10,
-                 confidence: float = 0.99,
-                 max_lo_iters: int = 5):
+    supported_models = ['homography', 'fundamental', 'homography_from_linesegments']
+
+    def __init__(
+        self,
+        model_type: str = 'homography',
+        inl_th: float = 2.0,
+        batch_size: int = 2048,
+        max_iter: int = 10,
+        confidence: float = 0.99,
+        max_lo_iters: int = 5,
+    ):
         super().__init__()
         self.inl_th = inl_th
         self.max_iter = max_iter
@@ -51,6 +62,11 @@ class RANSAC(nn.Module):
             self.minimal_solver = find_homography_dlt  # type: ignore
             self.polisher_solver = find_homography_dlt_iterated  # type: ignore
             self.minimal_sample_size = 4
+        elif model_type == 'homography_from_linesegments':
+            self.error_fn = line_segment_transfer_error_one_way  # type: ignore
+            self.minimal_solver = find_homography_lines_dlt  # type: ignore
+            self.polisher_solver = find_homography_lines_dlt_iterated  # type: ignore
+            self.minimal_sample_size = 4
         elif model_type == 'fundamental':
             self.error_fn = symmetrical_epipolar_distance  # type: ignore
             self.minimal_solver = find_fundamental  # type: ignore
@@ -61,15 +77,13 @@ class RANSAC(nn.Module):
         else:
             raise NotImplementedError(f"{model_type} is unknown. Try one of {self.supported_models}")
 
-    def sample(self,
-               sample_size: int,
-               pop_size: int,
-               batch_size: int,
-               device: torch.device = torch.device('cpu')) -> torch.Tensor:
+    def sample(
+        self, sample_size: int, pop_size: int, batch_size: int, device: torch.device = torch.device('cpu')
+    ) -> Tensor:
         """Minimal sampler, but unlike traditional RANSAC we sample in batches to get benefit of the parallel
         processing, esp.
 
-        on GPU
+        on GPU.
         """
         rand = torch.rand(batch_size, pop_size, device=device)
         _, out = rand.topk(k=sample_size, dim=1)
@@ -81,33 +95,24 @@ class RANSAC(nn.Module):
         https://en.wikipedia.org/wiki/Random_sample_consensus."""
         if n_inl == num_tc:
             return 1.0
-        return math.log(1.0 - conf) / math.log(1. - math.pow(n_inl / num_tc, sample_size))
+        return math.log(1.0 - conf) / math.log(1.0 - math.pow(n_inl / num_tc, sample_size))
 
-    def estimate_model_from_minsample(self,
-                                      kp1: torch.Tensor,
-                                      kp2: torch.Tensor) -> torch.Tensor:
+    def estimate_model_from_minsample(self, kp1: Tensor, kp2: Tensor) -> Tensor:
         batch_size, sample_size = kp1.shape[:2]
-        H = self.minimal_solver(kp1,
-                                kp2,
-                                torch.ones(batch_size,
-                                           sample_size,
-                                           dtype=kp1.dtype,
-                                           device=kp1.device))
+        H = self.minimal_solver(kp1, kp2, torch.ones(batch_size, sample_size, dtype=kp1.dtype, device=kp1.device))
         return H
 
-    def verify(self,
-               kp1: torch.Tensor,
-               kp2: torch.Tensor,
-               models: torch.Tensor, inl_th: float) -> Tuple[torch.Tensor, torch.Tensor, float]:
+    def verify(self, kp1: Tensor, kp2: Tensor, models: Tensor, inl_th: float) -> Tuple[Tensor, Tensor, float]:
         if len(kp1.shape) == 2:
             kp1 = kp1[None]
         if len(kp2.shape) == 2:
             kp2 = kp2[None]
         batch_size = models.shape[0]
-        errors = self.error_fn(kp1.expand(batch_size, -1, 2),
-                               kp2.expand(batch_size, -1, 2),
-                               models)
-        inl = (errors <= inl_th)
+        if self.model_type == 'homography_from_linesegments':
+            errors = self.error_fn(kp1.expand(batch_size, -1, 2, 2), kp2.expand(batch_size, -1, 2, 2), models)
+        else:
+            errors = self.error_fn(kp1.expand(batch_size, -1, 2), kp2.expand(batch_size, -1, 2), models)
+        inl = errors <= inl_th
         models_score = inl.to(kp1).sum(dim=1)
         best_model_idx = models_score.argmax()
         best_model_score = models_score[best_model_idx].item()
@@ -115,7 +120,7 @@ class RANSAC(nn.Module):
         inliers_best = inl[best_model_idx]
         return model_best, inliers_best, best_model_score
 
-    def remove_bad_samples(self, kp1: torch.Tensor, kp2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def remove_bad_samples(self, kp1: Tensor, kp2: Tensor) -> Tuple[Tensor, Tensor]:
         """"""
         # ToDo: add (model-specific) verification of the samples,
         # E.g. constraints on not to be a degenerate sample
@@ -124,63 +129,60 @@ class RANSAC(nn.Module):
             return kp1[mask], kp2[mask]
         return kp1, kp2
 
-    def remove_bad_models(self, models: torch.Tensor) -> torch.Tensor:
+    def remove_bad_models(self, models: Tensor) -> Tensor:
         # ToDo: add more and better degenerate model rejection
         # For now it is simple and hardcoded
-        main_diagonal = torch.diagonal(models,
-                                       dim1=1,
-                                       dim2=2)
+        main_diagonal = torch.diagonal(models, dim1=1, dim2=2)
         mask = main_diagonal.abs().min(dim=1)[0] > 1e-4
         return models[mask]
 
-    def polish_model(self,
-                     kp1: torch.Tensor,
-                     kp2: torch.Tensor,
-                     inliers: torch.Tensor) -> torch.Tensor:
+    def polish_model(self, kp1: Tensor, kp2: Tensor, inliers: Tensor) -> Tensor:
         # TODO: Replace this with MAGSAC++ polisher
         kp1_inl = kp1[inliers][None]
         kp2_inl = kp2[inliers][None]
         num_inl = kp1_inl.size(1)
-        model = self.polisher_solver(kp1_inl,
-                                     kp2_inl,
-                                     torch.ones(1,
-                                                num_inl,
-                                                dtype=kp1_inl.dtype,
-                                                device=kp1_inl.device))
+        model = self.polisher_solver(
+            kp1_inl, kp2_inl, torch.ones(1, num_inl, dtype=kp1_inl.dtype, device=kp1_inl.device)
+        )
         return model
 
-    def forward(self,
-                kp1: torch.Tensor,
-                kp2: torch.Tensor,
-                weights: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+    def validate_inputs(self, kp1: Tensor, kp2: Tensor, weights: Optional[Tensor] = None) -> None:
+        if self.model_type in ['homography', 'fundamental']:
+            KORNIA_CHECK_SHAPE(kp1, ["N", "2"])
+            KORNIA_CHECK_SHAPE(kp2, ["N", "2"])
+            if not (kp1.shape[0] == kp2.shape[0]) or (kp1.shape[0] < self.minimal_sample_size):
+                raise ValueError(
+                    f"kp1 and kp2 should be \
+                                 equal shape at at least [{self.minimal_sample_size}, 2], \
+                                 got {kp1.shape}, {kp2.shape}"
+                )
+        if self.model_type == 'homography_from_linesegments':
+            KORNIA_CHECK_SHAPE(kp1, ["N", "2", "2"])
+            KORNIA_CHECK_SHAPE(kp2, ["N", "2", "2"])
+            if not (kp1.shape[0] == kp2.shape[0]) or (kp1.shape[0] < self.minimal_sample_size):
+                raise ValueError(
+                    f"kp1 and kp2 should be \
+                                 equal shape at at least [{self.minimal_sample_size}, 2, 2], \
+                                 got {kp1.shape}, {kp2.shape}"
+                )
+
+    def forward(self, kp1: Tensor, kp2: Tensor, weights: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
         r"""Main forward method to execute the RANSAC algorithm.
 
         Args:
-            kp1 (torch.Tensor): source image keypoints :math:`(N, 2)`.
-            kp2 (torch.Tensor): distance image keypoints :math:`(N, 2)`.
-            weights (torch.Tensor): optional correspondences weights. Not used now
+            kp1: source image keypoints :math:`(N, 2)`.
+            kp2: distance image keypoints :math:`(N, 2)`.
+            weights: optional correspondences weights. Not used now.
 
         Returns:
             - Estimated model, shape of :math:`(1, 3, 3)`.
             - The inlier/outlier mask, shape of :math:`(1, N)`, where N is number of input correspondences.
-            """
-        if not isinstance(kp1, torch.Tensor):
-            raise TypeError(f"Input kp1 is not torch.Tensor. Got {type(kp1)}")
-        if not isinstance(kp2, torch.Tensor):
-            raise TypeError(f"Input kp2 is not torch.Tensor. Got {type(kp2)}")
-        if not len(kp1.shape) == 2:
-            raise ValueError(f"Invalid kp1 shape, we expect Nx2 Got: {kp1.shape}")
-        if not len(kp2.shape) == 2:
-            raise ValueError(f"Invalid kp2 shape, we expect Nx2 Got: {kp2.shape}")
-        if not (kp1.shape[0] == kp2.shape[0]) or (kp1.shape[0] < self.minimal_sample_size):
-            raise ValueError(f"kp1 and kp2 should be \
-                             equal shape at at least [{self.minimal_sample_size}, 2], \
-                             got {kp1.shape}, {kp2.shape}")
-
+        """
+        self.validate_inputs(kp1, kp2, weights)
         best_score_total: float = float(self.minimal_sample_size)
         num_tc: int = len(kp1)
         best_model_total = torch.zeros(3, 3, dtype=kp1.dtype, device=kp1.device)
-        inliers_best_total: torch.Tensor = torch.zeros(num_tc, 1, device=kp1.device, dtype=torch.bool)
+        inliers_best_total: Tensor = torch.zeros(num_tc, 1, device=kp1.device, dtype=torch.bool)
         for i in range(self.max_iter):
             # Sample minimal samples in batch to estimate models
             idxs = self.sample(self.minimal_sample_size, num_tc, self.batch_size, kp1.device)
@@ -218,10 +220,9 @@ class RANSAC(nn.Module):
                 best_score_total = model_score
 
                 # Should we already stop?
-                new_max_iter = int(self.max_samples_by_conf(int(best_score_total),
-                                                            num_tc,
-                                                            self.minimal_sample_size,
-                                                            self.confidence))
+                new_max_iter = int(
+                    self.max_samples_by_conf(int(best_score_total), num_tc, self.minimal_sample_size, self.confidence)
+                )
                 # print (f"New max_iter = {new_max_iter}")
                 # Stop estimation, if the model is very good
                 if (i + 1) * self.batch_size >= new_max_iter:

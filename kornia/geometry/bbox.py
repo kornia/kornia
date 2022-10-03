@@ -28,16 +28,19 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
             of Bx4x2, where each box is defined in the following ``clockwise`` order: top-left, top-right, bottom-right,
             bottom-left. The coordinates must be in the x, y order.
     """
-    if not (len(boxes.shape) == 3 and boxes.shape[1:] == torch.Size([4, 2])):
-        raise AssertionError(f"Box shape must be (B, 4, 2). Got {boxes.shape}.")
+    if not (len(boxes.shape) in [3, 4] and boxes.shape[-2:] == torch.Size([4, 2])):
+        raise AssertionError(f"Box shape must be (B, 4, 2) or (B, N, 4, 2). Got {boxes.shape}.")
 
-    if not torch.allclose((boxes[:, 1, 0] - boxes[:, 0, 0] + 1), (boxes[:, 2, 0] - boxes[:, 3, 0] + 1)):
+    if len(boxes.shape) == 4:
+        boxes = boxes.view(-1, 4, 2)
+
+    if not torch.allclose((boxes[:, 1, 0] - boxes[:, 0, 0] + 1), (boxes[:, 2, 0] - boxes[:, 3, 0] + 1), atol=1e-4):
         raise ValueError(
             "Boxes must have be rectangular, while get widths %s and %s"
             % (str(boxes[:, 1, 0] - boxes[:, 0, 0] + 1), str(boxes[:, 2, 0] - boxes[:, 3, 0] + 1))
         )
 
-    if not torch.allclose((boxes[:, 2, 1] - boxes[:, 0, 1] + 1), (boxes[:, 3, 1] - boxes[:, 1, 1] + 1)):
+    if not torch.allclose((boxes[:, 2, 1] - boxes[:, 0, 1] + 1), (boxes[:, 3, 1] - boxes[:, 1, 1] + 1), atol=1e-4):
         raise ValueError(
             "Boxes must have be rectangular, while get heights %s and %s"
             % (str(boxes[:, 2, 1] - boxes[:, 0, 1] + 1), str(boxes[:, 3, 1] - boxes[:, 1, 1] + 1))
@@ -56,8 +59,11 @@ def validate_bbox3d(boxes: torch.Tensor) -> bool:
             front-bottom-right, front-bottom-left, back-top-left, back-top-right, back-bottom-right, back-bottom-left.
             The coordinates must be in the x, y, z order.
     """
-    if not (len(boxes.shape) == 3 and boxes.shape[1:] == torch.Size([8, 3])):
-        raise AssertionError(f"Box shape must be (B, 8, 3). Got {boxes.shape}.")
+    if not (len(boxes.shape) in [3, 4] and boxes.shape[-2:] == torch.Size([8, 3])):
+        raise AssertionError(f"Box shape must be (B, 8, 3) or (B, N, 8, 3). Got {boxes.shape}.")
+
+    if len(boxes.shape) == 4:
+        boxes = boxes.view(-1, 8, 3)
 
     left = torch.index_select(boxes, 1, torch.tensor([1, 2, 5, 6], device=boxes.device, dtype=torch.long))[:, :, 0]
     right = torch.index_select(boxes, 1, torch.tensor([0, 3, 4, 7], device=boxes.device, dtype=torch.long))[:, :, 0]
@@ -197,7 +203,7 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
     box_i = (boxes + 1).long()
     # set all pixels within box to 1
     for msk, bx in zip(mask, box_i):
-        msk[bx[0, 1]:bx[2, 1] + 1, bx[0, 0]:bx[1, 0] + 1] = 1.0
+        msk[bx[0, 1] : bx[2, 1] + 1, bx[0, 0] : bx[1, 0] + 1] = 1.0
     return mask[:, 1:-1, 1:-1]
 
 
@@ -436,13 +442,13 @@ def bbox_generator3d(
 def transform_bbox(
     trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = "xyxy", restore_coordinates: Optional[bool] = None
 ) -> torch.Tensor:
-    r"""Function that applies a transformation matrix to a box or batch of boxes. Boxes must
-    be a tensor of the shape (N, 4) or a batch of boxes (B, N, 4) and trans_mat must be a (3, 3)
-    transformation matrix or a batch of transformation matrices (B, 3, 3)
+    r"""Apply a transformation matrix to a box or batch of boxes.
 
     Args:
-        trans_mat: The transformation matrix to be applied
-        boxes: The boxes to be transformed
+        trans_mat: The transformation matrix to be applied with a shape of :math:`(3, 3)`
+            or batched as :math:`(B, 3, 3)`.
+        boxes: The boxes to be transformed with a common shape of :math:`(N, 4)` or batched as :math:`(B, N, 4)`, the
+            polygon shape of :math:`(B, N, 4, 2)` is also supported.
         mode: The format in which the boxes are provided. If set to 'xyxy' the boxes are assumed to be in the format
             ``xmin, ymin, xmax, ymax``. If set to 'xywh' the boxes are assumed to be in the format
             ``xmin, ymin, width, height``
@@ -459,8 +465,8 @@ def transform_bbox(
     if mode not in ("xyxy", "xywh"):
         raise ValueError(f"Mode must be one of 'xyxy', 'xywh'. Got {mode}")
 
-    # (B, 4, 2) shaped polygon boxes do not need to be restored.
-    if restore_coordinates is None and boxes.shape[-2:] != torch.Size([4, 2]):
+    # (B, N, 4, 2) shaped polygon boxes do not need to be restored.
+    if restore_coordinates is None and not (boxes.shape[-2:] == torch.Size([4, 2])):
         warnings.warn(
             "Previous behaviour produces incorrect box coordinates if a flip transformation performed on boxes."
             "The previous wrong behaviour has been corrected and will be removed in the future versions."
@@ -476,7 +482,7 @@ def transform_bbox(
     transformed_boxes: torch.Tensor = transform_points(trans_mat, boxes.view(boxes.shape[0], -1, 2))
     transformed_boxes = transformed_boxes.view_as(boxes)
 
-    if (restore_coordinates is None or restore_coordinates) and boxes.shape[-2:] != torch.Size([4, 2]):
+    if (restore_coordinates is None or restore_coordinates) and not (boxes.shape[-2:] == torch.Size([4, 2])):
         restored_boxes = transformed_boxes.clone()
         # In case the boxes are flipped, we ensure it is ordered like left-top -> right-bot points
         restored_boxes[..., 0] = torch.min(transformed_boxes[..., [0, 2]], dim=-1)[0]
@@ -537,8 +543,8 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
         xx2 = torch.min(x2[i], x2[order[1:]])
         yy2 = torch.min(y2[i], y2[order[1:]])
 
-        w = torch.clamp(xx2 - xx1, min=0.)
-        h = torch.clamp(yy2 - yy1, min=0.)
+        w = torch.clamp(xx2 - xx1, min=0.0)
+        h = torch.clamp(yy2 - yy1, min=0.0)
         inter = w * h
         ovr = inter / (areas[i] + areas[order[1:]] - inter)
 

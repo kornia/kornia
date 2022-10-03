@@ -23,6 +23,9 @@ def get_test_devices() -> Dict[str, torch.device]:
         import torch_xla.core.xla_model as xm
 
         devices["tpu"] = xm.xla_device()
+    if hasattr(torch.backends, 'mps'):
+        if torch.backends.mps.is_available():  # type: ignore
+            devices["mps"] = torch.device("mps")
     return devices
 
 
@@ -33,6 +36,7 @@ def get_test_dtypes() -> Dict[str, torch.dtype]:
         dict(str, torch.dtype): list with dtype names.
     """
     dtypes: Dict[str, torch.dtype] = {}
+    dtypes["bfloat16"] = torch.bfloat16
     dtypes["float16"] = torch.float16
     dtypes["float32"] = torch.float32
     dtypes["float64"] = torch.float64
@@ -45,7 +49,8 @@ TEST_DEVICES: Dict[str, torch.device] = get_test_devices()
 TEST_DTYPES: Dict[str, torch.dtype] = get_test_dtypes()
 
 # Combinations of device and dtype to be excluded from testing.
-DEVICE_DTYPE_BLACKLIST = {('cpu', 'float16')}
+# DEVICE_DTYPE_BLACKLIST = {('cpu', 'float16')}
+DEVICE_DTYPE_BLACKLIST = {}
 
 
 @pytest.fixture()
@@ -97,6 +102,7 @@ def add_np(doctest_namespace):
 
 # the commit hash for the data version
 sha: str = 'cb8f42bf28b9f347df6afba5558738f62a11f28a'
+sha2: str = '824ff1518870864644df6842a4ec964040f64504'
 
 
 @pytest.fixture(scope='session')
@@ -104,5 +110,6 @@ def data(request):
     url = {
         'loftr_homo': f'https://github.com/kornia/data_test/blob/{sha}/loftr_outdoor_and_homography_data.pt?raw=true',
         'loftr_fund': f'https://github.com/kornia/data_test/blob/{sha}/loftr_indoor_and_fundamental_data.pt?raw=true',
+        'adalam_idxs': f'https://github.com/kornia/data_test/blob/{sha2}/adalam_test.pt?raw=true',
     }
     return torch.hub.load_state_dict_from_url(url[request.param])

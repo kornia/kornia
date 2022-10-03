@@ -214,25 +214,29 @@ def image_histogram2d(
 
     if bandwidth is None:
         bandwidth = (max - min) / n_bins
+
     if centers is None:
-        centers = min + bandwidth * (torch.arange(n_bins, device=image.device, dtype=image.dtype).float() + 0.5)
+        centers = min + bandwidth * (torch.arange(n_bins, device=image.device, dtype=image.dtype) + 0.5)
     centers = centers.reshape(-1, 1, 1, 1, 1)
+
     u = torch.abs(image.unsqueeze(0) - centers) / bandwidth
-    if kernel == "triangular":
+
+    if kernel == "gaussian":
+        kernel_values = torch.exp(-0.5 * u**2)
+    elif kernel in ("triangular", "uniform", "epanechnikov"):
+        # compute the mask and cast to floating point
         mask = (u <= 1).to(u.dtype)
-        kernel_values = (1 - u) * mask
-    elif kernel == "gaussian":
-        kernel_values = torch.exp(-0.5 * u ** 2)
-    elif kernel == "uniform":
-        mask = (u <= 1).to(u.dtype)
-        kernel_values = torch.ones_like(u, dtype=u.dtype, device=u.device) * mask
-    elif kernel == "epanechnikov":
-        mask = (u <= 1).to(u.dtype)
-        kernel_values = (1 - u ** 2) * mask
+        if kernel == "triangular":
+            kernel_values = (1.0 - u) * mask
+        elif kernel == "uniform":
+            kernel_values = torch.ones_like(u) * mask
+        else:  # kernel == "epanechnikov"
+            kernel_values = (1.0 - u**2) * mask
     else:
         raise ValueError(f"Kernel must be 'triangular', 'gaussian', " f"'uniform' or 'epanechnikov'. Got {kernel}.")
 
     hist = torch.sum(kernel_values, dim=(-2, -1)).permute(1, 2, 0)
+
     if return_pdf:
         normalization = torch.sum(hist, dim=-1, keepdim=True) + eps
         pdf = hist / normalization
@@ -248,4 +252,5 @@ def image_histogram2d(
         hist = hist.squeeze()
     elif image.dim() == 3:
         hist = hist.squeeze(0)
-    return hist, torch.zeros_like(hist, dtype=hist.dtype, device=hist.device)
+
+    return hist, torch.zeros_like(hist)

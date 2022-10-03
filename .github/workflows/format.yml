@@ -16,24 +16,11 @@ jobs:
     - name: Install dependencies
       run: |
         pip install torch --find-links https://download.pytorch.org/whl/cpu/torch_stable.html
-        pip install -r requirements/dev.txt
+        pip install .[dev]
         python setup.py develop --user
 
     - name: Run linter
       run: make lint
-
-  static-check:
-    runs-on: [ubuntu-latest]
-    steps:
-    - uses: actions/checkout@v2
-    - name: Install dependencies
-      run: |
-        pip install torch --find-links https://download.pytorch.org/whl/cpu/torch_stable.html
-        pip install -r requirements/dev.txt
-        python setup.py develop --user
-
-    - name: Run mypy
-      run: make mypy
 
   doctest:
     runs-on: [ubuntu-latest]
@@ -42,7 +29,7 @@ jobs:
     - name: Install dependencies
       run: |
         pip install torch --find-links https://download.pytorch.org/whl/cpu/torch_stable.html
-        pip install -r requirements/dev.txt
+        pip install .[dev]
         python setup.py develop --user
 
     - name: Run doctest

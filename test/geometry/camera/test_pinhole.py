@@ -1,3 +1,5 @@
+import math
+
 import pytest
 import torch
 from torch.autograd import gradcheck
@@ -240,6 +242,36 @@ class TestPinholeCamera:
         extrinsics[..., 2, -1] = tz
         return extrinsics.expand(batch_size, -1, -1)
 
+    def _create_extrinsics_with_rotation(self, batch_size, alpha, beta, gamma, tx, ty, tz, device, dtype):
+        Rx = torch.eye(3, device=device, dtype=dtype)
+        Rx[1, 1] = math.cos(alpha)
+        Rx[1, 2] = math.sin(alpha)
+        Rx[2, 1] = -Rx[1, 2]
+        Rx[2, 2] = Rx[1, 1]
+
+        Ry = torch.eye(3, device=device, dtype=dtype)
+        Ry[0, 0] = math.cos(beta)
+        Ry[0, 2] = -math.sin(beta)
+        Ry[2, 0] = -Ry[0, 2]
+        Ry[2, 2] = Ry[0, 0]
+
+        Rz = torch.eye(3, device=device, dtype=dtype)
+        Rz[0, 0] = math.cos(gamma)
+        Rz[0, 1] = math.sin(gamma)
+        Rz[1, 0] = -Rz[0, 1]
+        Rz[1, 1] = Rz[0, 0]
+
+        Ryz = torch.matmul(Ry, Rz)
+        R = torch.matmul(Rx, Ryz)
+
+        extrinsics = torch.eye(4, device=device, dtype=dtype)
+        extrinsics[..., 0, -1] = tx
+        extrinsics[..., 1, -1] = ty
+        extrinsics[..., 2, -1] = tz
+        extrinsics[:3, :3] = R
+
+        return extrinsics.expand(batch_size, -1, -1)
+
     def test_smoke(self, device, dtype):
         intrinsics = torch.eye(4, device=device, dtype=dtype)[None]
         extrinsics = torch.eye(4, device=device, dtype=dtype)[None]
@@ -401,3 +433,39 @@ class TestPinholeCamera:
         )  # cy
         assert_close(pinhole_scale.height, pinhole.height * scale_val, atol=1e-4, rtol=1e-4)
         assert_close(pinhole_scale.width, pinhole.width * scale_val, atol=1e-4, rtol=1e-4)
+
+    def test_pinhole_camera_project_and_unproject(self, device, dtype):
+        batch_size = 5
+        n = 2  # Point per batch
+        height, width = 4, 6
+        fx, fy, cx, cy = 1, 2, width / 2, height / 2
+        alpha, beta, gamma = 0.0, 0.0, 0.4
+        tx, ty, tz = 0, 0, 3
+
+        intrinsics = self._create_intrinsics(batch_size, fx, fy, cx, cy, device=device, dtype=dtype)
+        extrinsics = self._create_extrinsics_with_rotation(
+            batch_size, alpha, beta, gamma, tx, ty, tz, device=device, dtype=dtype
+        )
+
+        height = torch.ones(batch_size, device=device, dtype=dtype) * height
+        width = torch.ones(batch_size, device=device, dtype=dtype) * width
+
+        pinhole = kornia.geometry.camera.PinholeCamera(intrinsics, extrinsics, height, width)
+
+        point_3d = torch.rand((batch_size, n, 3), device=device, dtype=dtype)
+
+        depth = point_3d[..., -1:] + tz
+
+        point_2d = pinhole.project(point_3d)
+        point_3d_hat = pinhole.unproject(point_2d, depth)
+        assert_close(point_3d, point_3d_hat, atol=1e-4, rtol=1e-4)
+
+    def test_pinhole_camera_device(self, device, dtype):
+        batch_size = 5
+        intrinsics = torch.rand((batch_size, 4, 4), device=device, dtype=dtype)
+        extrinsics = torch.rand((batch_size, 4, 4), device=device, dtype=dtype)
+        height = torch.randint(low=5, high=9, size=(batch_size,), device=device)
+        width = torch.randint(low=5, high=9, size=(batch_size,), device=device)
+
+        pinhole = kornia.geometry.camera.PinholeCamera(intrinsics, extrinsics, height, width)
+        assert pinhole.device() == intrinsics.device

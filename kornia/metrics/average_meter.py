@@ -13,6 +13,7 @@ class AverageMeter:
         >>> stats.avg
         tensor(0.9900)
     """
+
     def __init__(self) -> None:
         self.reset()
 
