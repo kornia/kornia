@@ -33,7 +33,7 @@ def my_app():
 
     cv2.namedWindow('frame', cv2.WINDOW_NORMAL)
 
-    while(True):
+    while True:
 
         # Capture the video frame
         # by frame
@@ -55,8 +55,7 @@ def my_app():
 
         frame_vis = K.tensor_to_image(edges.byte())
 
-        frame_vis = cv2.putText(
-            frame_vis, f"FPS: {fps:.1f}", (10, 20), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
+        frame_vis = cv2.putText(frame_vis, f"FPS: {fps:.1f}", (10, 20), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
 
         # write the processed frame
         out.write(frame_vis)

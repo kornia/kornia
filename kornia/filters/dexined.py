@@ -32,12 +32,9 @@ def weight_init(m):
 class CoFusion(nn.Module):
     def __init__(self, in_ch, out_ch):
         super().__init__()
-        self.conv1 = nn.Conv2d(in_ch, 64, kernel_size=3,
-                               stride=1, padding=1)
-        self.conv2 = nn.Conv2d(64, 64, kernel_size=3,
-                               stride=1, padding=1)
-        self.conv3 = nn.Conv2d(64, out_ch, kernel_size=3,
-                               stride=1, padding=1)
+        self.conv1 = nn.Conv2d(in_ch, 64, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1)
+        self.conv3 = nn.Conv2d(64, out_ch, kernel_size=3, stride=1, padding=1)
         self.relu = nn.ReLU()
         self.norm_layer1 = nn.GroupNorm(4, 64)
         self.norm_layer2 = nn.GroupNorm(4, 64)
@@ -56,12 +53,12 @@ class _DenseLayer(nn.Sequential):
     def __init__(self, input_features, out_features):
         super().__init__()
         self.add_module('relu1', nn.ReLU(inplace=True)),
-        self.add_module('conv1', nn.Conv2d(input_features, out_features,
-                                           kernel_size=3, stride=1, padding=2, bias=True)),
+        self.add_module(
+            'conv1', nn.Conv2d(input_features, out_features, kernel_size=3, stride=1, padding=2, bias=True)
+        ),
         self.add_module('norm1', nn.BatchNorm2d(out_features)),
         self.add_module('relu2', nn.ReLU(inplace=True)),
-        self.add_module('conv2', nn.Conv2d(out_features, out_features,
-                                           kernel_size=3, stride=1, bias=True)),
+        self.add_module('conv2', nn.Conv2d(out_features, out_features, kernel_size=3, stride=1, bias=True)),
         self.add_module('norm2', nn.BatchNorm2d(out_features))
 
     def forward(self, x: List[torch.Tensor]) -> List[torch.Tensor]:
@@ -101,13 +98,12 @@ class UpConvBlock(nn.Module):
         layers = []
         all_pads = [0, 0, 1, 3, 7]
         for i in range(up_scale):
-            kernel_size = 2 ** up_scale
+            kernel_size = 2**up_scale
             pad = all_pads[up_scale]  # kernel_size-1
             out_features = self.compute_out_features(i, up_scale)
             layers.append(nn.Conv2d(in_features, out_features, 1))
             layers.append(nn.ReLU(inplace=True))
-            layers.append(nn.ConvTranspose2d(
-                out_features, out_features, kernel_size, stride=2, padding=pad))
+            layers.append(nn.ConvTranspose2d(out_features, out_features, kernel_size, stride=2, padding=pad))
             in_features = out_features
         return layers
 
@@ -150,7 +146,7 @@ class DoubleConvBlock(nn.Sequential):
 
 
 class DexiNed(nn.Module):
-    r""" Definition of the DXtrem network from :cite:`xsoria2020dexined`.
+    r"""Definition of the DXtrem network from :cite:`xsoria2020dexined`.
 
     Return:
         A list of tensor with the intermediate features which the last element
@@ -166,7 +162,7 @@ class DexiNed(nn.Module):
 
     def __init__(self):
         super().__init__()
-        self.block_1 = DoubleConvBlock(3, 32, 64, stride=2,)
+        self.block_1 = DoubleConvBlock(3, 32, 64, stride=2)
         self.block_2 = DoubleConvBlock(64, 128, use_act=False)
         self.dblock_3 = _DenseBlock(2, 128, 256)  # [128,256,100,100]
         self.dblock_4 = _DenseBlock(3, 256, 512)
@@ -202,9 +198,7 @@ class DexiNed(nn.Module):
 
     def load_from_file(self, path_file: str):
         # use torch.hub to load pretrained model
-        pretrained_dict = torch.load(
-            path_file, map_location=lambda storage, loc: storage
-        )
+        pretrained_dict = torch.load(path_file, map_location=lambda storage, loc: storage)
         self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
@@ -237,8 +231,7 @@ class DexiNed(nn.Module):
         block_4_side = self.side_4(block_4_add)
 
         # Block 5
-        block_5_pre_dense = self.pre_dense_5(
-            block_4_down)  # block_5_pre_dense_512 +block_4_down
+        block_5_pre_dense = self.pre_dense_5(block_4_down)  # block_5_pre_dense_512 +block_4_down
         block_5, _ = self.dblock_5([block_4_add, block_5_pre_dense])
         block_5_add = block_5 + block_4_side
 

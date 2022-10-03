@@ -25,7 +25,7 @@ def my_app(args):
         img = img.float()
         img -= torch.tensor([103.939, 116.779, 123.68]).view(1, 3, 1, 1).to(img)
         img = K.color.bgr_to_rgb(img)
-        return img / 255.
+        return img / 255.0
 
     # create the detector and find the faces !
     edge_detection = EdgeDetector().to(device)
@@ -37,8 +37,10 @@ def my_app(args):
 
     # show image
 
-    import pdb;pdb.set_trace()
-    edges = K.enhance.normalize_min_max(edges, 0., 255.)
+    import pdb
+
+    pdb.set_trace()
+    edges = K.enhance.normalize_min_max(edges, 0.0, 255.0)
     img_vis = K.tensor_to_image(edges.byte())
 
     # save and show image

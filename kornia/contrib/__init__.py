@@ -1,6 +1,5 @@
 from .classification import ClassificationHead
 from .connected_components import connected_components
-
 from .diamond_square import diamond_square
 from .distance_transform import DistanceTransform, distance_transform
 from .edge_detection import EdgeDetector

@@ -21,6 +21,7 @@ class EdgeDetector(nn.Module):
         >>> out.shape
         torch.Size([1, 1, 320, 320])
     """
+
     def __init__(self) -> None:
         super().__init__()
         self.model = DexiNed()
