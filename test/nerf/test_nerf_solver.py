@@ -4,6 +4,7 @@ from test.nerf.test_rays import create_four_cameras, create_one_camera
 import torch
 
 from kornia.nerf.nerf_solver import NerfSolver
+from kornia.testing import assert_close
 
 
 class TestNerfSolver:
@@ -35,7 +36,7 @@ class TestNerfSolver:
 
         img_rendered = nerf_obj.render_views(camera)[0].permute(2, 0, 1)
 
-        assert torch.all(torch.isclose(img[0] / 255.0, img_rendered / 255.0, atol=1.0e-3)).item()
+        assert_close(img_rendered.to(dtype) / 255.0, img[0].to(dtype) / 255.0)
 
     def test_single_ray(self, device, dtype):
         camera = create_one_camera(5, 9, device, dtype)
@@ -53,9 +54,9 @@ class TestNerfSolver:
 
         nerf_obj = NerfSolver(device=device, dtype=dtype)
         num_img_rays = 15
-        nerf_obj.init_training(camera, 1.0, 3.0, False, img, num_img_rays, batch_size=5, num_ray_points=10)
+        nerf_obj.init_training(camera, 1.0, 3.0, False, img, num_img_rays, batch_size=5, num_ray_points=10, lr=1e-2)
         nerf_obj.run(num_epochs=10)
 
         img_rendered = nerf_obj.render_views(camera)[0].permute(2, 0, 1)
 
-        assert torch.all(torch.isclose(img[0] / 255.0, img_rendered / 255.0, rtol=1.0e-2)).item()
+        assert_close(img_rendered.to(dtype) / 255.0, img[0].to(dtype) / 255.0)
