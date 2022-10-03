@@ -69,7 +69,6 @@ def normalize_transformation(M: Tensor, eps: float = 1e-8) -> Tensor:
     return torch.where(norm_val.abs() > eps, M / (norm_val + eps), M)
 
 
-
 def find_fundamental(
     points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None
 ) -> torch.Tensor:

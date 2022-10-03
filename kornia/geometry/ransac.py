@@ -15,13 +15,11 @@ from kornia.geometry import (
     find_homography_lines_dlt_iterated,
     symmetrical_epipolar_distance,
 )
-
 from kornia.geometry.homography import (
     line_segment_transfer_error_one_way,
     oneway_transfer_error,
     sample_is_valid_for_homography,
 )
-
 from kornia.testing import KORNIA_CHECK_SHAPE
 
 __all__ = ["RANSAC"]
