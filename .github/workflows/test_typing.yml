@@ -33,7 +33,7 @@ jobs:
       run: |
         conda install curl -c conda-forge
         conda install pytorch cpuonly -c pytorch-lts
-        pip install .[all]
+        pip install .[dev,x]
     - name: Run Tests
       shell: bash -l {0}
       run: pytest -v --cov=kornia --cov-report xml --mypy kornia/ -m mypy

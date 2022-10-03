@@ -27,6 +27,9 @@ Fundamental
 .. autofunction:: compute_correspond_epilines
 .. autofunction:: normalize_points
 .. autofunction:: normalize_transformation
+.. autofunction:: get_perpendicular
+.. autofunction:: get_closest_point_on_epipolar_line
+
 
 Metrics
 -------
