@@ -59,3 +59,8 @@ else:
 
         def torch_meshgrid(tensors: List[Tensor], indexing: str):
             return torch.meshgrid(tensors)
+
+if torch_version_ge(1, 10, 0):
+    torch_inference_mode = torch.inference_mode
+else:
+    torch_inference_mode = torch.no_grad
