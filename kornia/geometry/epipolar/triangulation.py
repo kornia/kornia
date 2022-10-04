@@ -3,6 +3,7 @@
 import torch
 
 from kornia.geometry.conversions import convert_points_from_homogeneous
+from kornia.utils.helpers import _torch_svd_cast
 
 # https://github.com/opencv/opencv_contrib/blob/master/modules/sfm/src/triangulation.cpp#L68
 
@@ -57,8 +58,7 @@ def triangulate_points(
     # 1. Solve the system Ax=0 with smallest eigenvalue
     # 2. Return homogeneous coordinates
 
-    _, _, Vh = torch.linalg.svd(X)
-    V = Vh.mH
+    _, _, V = _torch_svd_cast(X)
 
     points3d_h = V[..., -1]
     points3d: torch.Tensor = convert_points_from_homogeneous(points3d_h)

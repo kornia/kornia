@@ -6,6 +6,7 @@ import torch
 from kornia.core import Tensor
 from kornia.testing import KORNIA_CHECK_SHAPE
 from kornia.utils import _extract_device_dtype, safe_inverse_with_mask, safe_solve_with_mask
+from kornia.utils.helpers import _torch_svd_cast
 
 from .conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from .epipolar import normalize_points
@@ -168,8 +169,7 @@ def find_homography_dlt(
 
     if solver == 'svd':
         try:
-            _, _, Vh = torch.linalg.svd(A)
-            V = Vh.mH
+            _, _, V = _torch_svd_cast(A)
         except RuntimeError:
             warnings.warn('SVD did not converge', RuntimeWarning)
             return torch.empty((points1_norm.size(0), 3, 3), device=device, dtype=dtype)
