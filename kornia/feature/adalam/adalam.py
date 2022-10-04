@@ -104,8 +104,8 @@ class AdalamFilter:
             for key, val in custom_config.items():
                 if key not in self.config.keys():
                     print(
-                        "WARNING: custom configuration contains a key which is not recognized ({key}). "
-                        "Known configurations are {list(self.config.keys())}."
+                        f"WARNING: custom configuration contains a key which is not recognized ({key}). "
+                        f"Known configurations are {list(self.config.keys())}."
                     )
                     continue
                 self.config[key] = val
