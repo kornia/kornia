@@ -90,7 +90,7 @@ class DType(ConstantBase, Enum, metaclass=EnumMetaFlags):
         raise ValueError()
 
 
-# TODO: (low-priority) add INPUT3D, MASK3D, BBOX3D, etc.
+# TODO: (low-priority) add INPUT3D, MASK3D, BBOX3D, LAFs etc.
 class DataKey(ConstantBase, Enum, metaclass=EnumMetaFlags):
     INPUT = 0
     MASK = 1
