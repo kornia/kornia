@@ -61,7 +61,8 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
         raise AssertionError(E_mat.shape)
 
     # decompose matrix by its singular values
-    U, _, V = torch.svd(E_mat)
+    U, _, Vh = torch.linalg.svd(E_mat)
+    V = Vh.mH
     Vt = V.transpose(-2, -1)
 
     mask = torch.ones_like(E_mat)

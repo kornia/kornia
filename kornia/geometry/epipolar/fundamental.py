@@ -115,11 +115,13 @@ def find_fundamental(
         X = X.transpose(-2, -1) @ w_diag @ X
     # compute eigevectors and retrieve the one with the smallest eigenvalue
 
-    _, _, V = torch.svd(X)
+    _, _, Vh = torch.linalg.svd(X)
+    V = Vh.mH
     F_mat = V[..., -1].view(-1, 3, 3)
 
     # reconstruct and force the matrix to have rank2
-    U, S, V = torch.svd(F_mat)
+    U, S, Vh = torch.linalg.svd(F_mat)
+    V = Vh.mH
     rank_mask = torch.tensor([1.0, 1.0, 0.0], device=F_mat.device, dtype=F_mat.dtype)
 
     F_projected = U @ (torch.diag_embed(S * rank_mask) @ V.transpose(-2, -1))

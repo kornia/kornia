@@ -57,7 +57,8 @@ def triangulate_points(
     # 1. Solve the system Ax=0 with smallest eigenvalue
     # 2. Return homogeneous coordinates
 
-    _, _, V = torch.svd(X)
+    _, _, Vh = torch.linalg.svd(X)
+    V = Vh.mH
 
     points3d_h = V[..., -1]
     points3d: torch.Tensor = convert_points_from_homogeneous(points3d_h)

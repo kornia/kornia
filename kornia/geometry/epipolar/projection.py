@@ -171,8 +171,9 @@ def _nullspace(A):
 
     Return the smallest singular value and the corresponding vector.
     """
-    _, s, vh = torch.svd(A)
-    return s[..., -1], vh[..., -1]
+    _, s, vh = torch.linalg.svd(A)
+    v=vh.mH
+    return s[..., -1], v[..., -1]
 
 
 def projections_from_fundamental(F_mat: torch.Tensor) -> torch.Tensor:
