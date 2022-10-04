@@ -3,8 +3,6 @@ from typing import List, Optional, Tuple
 import torch
 import torch.nn as nn
 
-from kornia.utils.helpers import _torch_svd_cast
-
 __all__ = ["zca_mean", "zca_whiten", "linear_transform", "ZCAWhitening"]
 
 
