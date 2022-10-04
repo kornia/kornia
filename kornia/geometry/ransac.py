@@ -4,7 +4,6 @@ from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
-from torch import Tensor, tensor
 
 from kornia.core import Tensor
 from kornia.geometry import (
