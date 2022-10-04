@@ -131,7 +131,7 @@ class TestSolveWithMask:
     )
     def test_all_bad(self, device, dtype):
         A = torch.ones(10, 3, 3, device=device, dtype=dtype)
-        B = torch.ones(3, 10, device=device, dtype=dtype)
+        B = torch.ones(10, 3, device=device, dtype=dtype)
 
         X, _, mask = safe_solve_with_mask(B, A)
         assert torch.equal(mask, torch.zeros_like(mask))
