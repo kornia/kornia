@@ -176,6 +176,7 @@ class TestRANSACFundamental:
         )
         assert gross_errors.sum().item() < 2
 
+    @pytest.mark.skip(reason="try except block in python version")
     def test_jit(self, device, dtype):
         torch.random.manual_seed(0)
         points1 = torch.rand(8, 2, device=device, dtype=dtype)
