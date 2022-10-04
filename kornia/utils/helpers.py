@@ -158,7 +158,11 @@ def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor
     dtype: torch.dtype = B.dtype
     if dtype not in (torch.float32, torch.float64):
         dtype = torch.float32
-    A_LU, pivots, info = torch.linalg.lu_factor_ex(A.to(dtype))
+    if not torch_version_geq(1, 13):
+        A_LU, pivots, info = torch.linalg.lu(A.to(dtype), True, get_infos=True)
+    else:
+        A_LU, pivots, info = torch.linalg.lu_factor_ex(A.to(dtype))
+
     valid_mask: torch.Tensor = info == 0
     n_dim_B = len(B.shape)
     n_dim_A = len(A.shape)
