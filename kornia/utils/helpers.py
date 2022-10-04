@@ -133,7 +133,7 @@ def _torch_svd_cast(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, to
 
 
 def _torch_linalg_svdvals(input: torch.Tensor) -> torch.Tensor:
-    """Helper function to make svdval work with other than fp32/64.
+    """Helper function to make torch.linalg.svdvals work with other than fp32/64.
 
     The function torch.svd is only implemented for fp32/64 which makes
     impossible to be used by fp16 or others. What this function does, is cast
