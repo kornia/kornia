@@ -176,6 +176,7 @@ def fit_line(points: Tensor, weights: Optional[Tensor] = None) -> ParametrizedLi
 
     # NOTE: not optimal for 2d points, but for now works for other dimensions
     _, _, V = _torch_svd_cast(A)
+    V = V.transpose(-2, -1)
 
     # the first left eigenvector is the direction on the fited line
     direction = V[..., 0, :]  # BxD
