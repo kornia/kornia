@@ -246,7 +246,7 @@ def zca_mean(
     else:
         cov = cov / float(N)
 
-    U, S, _ = _torch_svd_cast(cov)
+    U, S, _ = torch.linalg.svd(cov)
 
     S = S.reshape(-1, 1)
     S_inv_root: torch.Tensor = torch.rsqrt(S + eps)
