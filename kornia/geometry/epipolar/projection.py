@@ -5,6 +5,7 @@ import torch
 
 from kornia.utils import eye_like, vec_like
 from kornia.utils._compat import linalg_qr
+from kornia.utils.helpers import _torch_svd_cast
 
 from .numeric import cross_product_matrix
 
@@ -171,8 +172,7 @@ def _nullspace(A):
 
     Return the smallest singular value and the corresponding vector.
     """
-    _, s, vh = torch.linalg.svd(A)
-    v = vh.mH
+    _, s, v = _torch_svd_cast(A)
     return s[..., -1], v[..., -1]
 
 

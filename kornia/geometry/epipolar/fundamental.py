@@ -8,6 +8,7 @@ from kornia.core import Tensor
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.linalg import transform_points
 from kornia.testing import KORNIA_CHECK_SHAPE
+from kornia.utils.helpers import _torch_svd_cast
 
 
 def normalize_points(points: Tensor, eps: float = 1e-8) -> Tuple[Tensor, Tensor]:
@@ -115,13 +116,11 @@ def find_fundamental(
         X = X.transpose(-2, -1) @ w_diag @ X
     # compute eigevectors and retrieve the one with the smallest eigenvalue
 
-    _, _, Vh = torch.linalg.svd(X)
-    V = Vh.mH
+    _, _, V = _torch_svd_cast(X)
     F_mat = V[..., -1].view(-1, 3, 3)
 
     # reconstruct and force the matrix to have rank2
-    U, S, Vh = torch.linalg.svd(F_mat)
-    V = Vh.mH
+    U, S, V = _torch_svd_cast(F_mat)
     rank_mask = torch.tensor([1.0, 1.0, 0.0], device=F_mat.device, dtype=F_mat.dtype)
 
     F_projected = U @ (torch.diag_embed(S * rank_mask) @ V.transpose(-2, -1))
