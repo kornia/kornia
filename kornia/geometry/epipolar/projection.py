@@ -172,7 +172,7 @@ def _nullspace(A):
     Return the smallest singular value and the corresponding vector.
     """
     _, s, vh = torch.linalg.svd(A)
-    v=vh.mH
+    v = vh.mH
     return s[..., -1], v[..., -1]
 
 
