@@ -25,9 +25,7 @@ __all__ = ["RANSAC"]
 
 
 class RANSAC(nn.Module):
-    """Module for robust geometry estimation with RANSAC.
-
-    https://en.wikipedia.org/wiki/Random_sample_consensus
+    """Module for robust geometry estimation with RANSAC. https://en.wikipedia.org/wiki/Random_sample_consensus.
 
     Args:
         model_type: type of model to estimate, e.g. "homography" or "fundamental".

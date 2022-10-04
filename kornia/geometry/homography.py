@@ -5,7 +5,8 @@ import torch
 
 from kornia.core import Tensor
 from kornia.testing import KORNIA_CHECK_SHAPE
-from kornia.utils import _extract_device_dtype, safe_inverse_with_mask
+from kornia.utils import _extract_device_dtype, safe_inverse_with_mask, safe_solve_with_mask
+from kornia.utils.helpers import _torch_svd_cast
 
 from .conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from .epipolar import normalize_points
@@ -117,7 +118,9 @@ def line_segment_transfer_error_one_way(ls1: Tensor, ls2: Tensor, H: Tensor, squ
     return error
 
 
-def find_homography_dlt(points1: Tensor, points2: Tensor, weights: Optional[Tensor] = None) -> Tensor:
+def find_homography_dlt(
+    points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None, solver: str = 'lu'
+) -> torch.Tensor:
     r"""Compute the homography matrix using the DLT formulation.
 
     The linear system is solved by using the Weighted Least Squares Solution for the 4 Points algorithm.
@@ -126,6 +129,8 @@ def find_homography_dlt(points1: Tensor, points2: Tensor, weights: Optional[Tens
         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`.
         points2: A set of points in the second image with a tensor shape :math:`(B, N, 2)`.
         weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
+        solver: variants: svd, lu.
+
 
     Returns:
         the computed homography matrix with shape :math:`(B, 3, 3)`.
@@ -162,13 +167,19 @@ def find_homography_dlt(points1: Tensor, points2: Tensor, weights: Optional[Tens
         w_diag = torch.diag_embed(weights.unsqueeze(dim=-1).repeat(1, 1, 2).reshape(weights.shape[0], -1))
         A = A.transpose(-2, -1) @ w_diag @ A
 
-    try:
-        _, _, V = torch.svd(A)
-    except RuntimeError:
-        warnings.warn('SVD did not converge', RuntimeWarning)
-        return torch.empty((points1_norm.size(0), 3, 3), device=device, dtype=dtype)
-
-    H = V[..., -1].view(-1, 3, 3)
+    if solver == 'svd':
+        try:
+            _, _, V = _torch_svd_cast(A)
+        except RuntimeError:
+            warnings.warn('SVD did not converge', RuntimeWarning)
+            return torch.empty((points1_norm.size(0), 3, 3), device=device, dtype=dtype)
+        H = V[..., -1].view(-1, 3, 3)
+    elif solver == 'lu':
+        B = torch.ones(A.shape[0], A.shape[1], device=device, dtype=dtype)
+        sol, _, _ = safe_solve_with_mask(B, A)
+        H = sol.reshape(-1, 3, 3)
+    else:
+        raise NotImplementedError
     H = transform2.inverse() @ (H @ transform1)
     H_norm = H / (H[..., -1:, -1:] + eps)
     return H_norm
