@@ -1,6 +1,6 @@
 """Module containing the functionalities for computing the Fundamental Matrix."""
 
-from typing import Tuple
+from typing import Optional, Tuple
 
 import torch
 
@@ -8,6 +8,7 @@ from kornia.core import Tensor
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.linalg import transform_points
 from kornia.testing import KORNIA_CHECK_SHAPE
+from kornia.utils.helpers import _torch_svd_cast
 
 
 def normalize_points(points: Tensor, eps: float = 1e-8) -> Tuple[Tensor, Tensor]:
@@ -69,14 +70,17 @@ def normalize_transformation(M: Tensor, eps: float = 1e-8) -> Tensor:
     return torch.where(norm_val.abs() > eps, M / (norm_val + eps), M)
 
 
-def find_fundamental(points1: Tensor, points2: Tensor, weights: Tensor) -> Tensor:
+def find_fundamental(
+    points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None
+) -> torch.Tensor:
+
     r"""Compute the fundamental matrix using the DLT formulation.
 
     The linear system is solved by using the Weighted Least Squares Solution for the 8 Points algorithm.
 
     Args:
-        points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`.
-        points2: A set of points in the second image with a tensor shape :math:`(B, N, 2)`.
+        points1: A set of points in the first image with a tensor shape :math:`(B, N, 2), N>=8`.
+        points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=8`.
         weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
 
     Returns:
@@ -84,8 +88,11 @@ def find_fundamental(points1: Tensor, points2: Tensor, weights: Tensor) -> Tenso
     """
     if points1.shape != points2.shape:
         raise AssertionError(points1.shape, points2.shape)
-    if not (len(weights.shape) == 2 and weights.shape[1] == points1.shape[1]):
-        raise AssertionError(weights.shape)
+    if points1.shape[1] < 8:
+        raise AssertionError(points1.shape)
+    if not (weights is None):
+        if not (len(weights.shape) == 2 and weights.shape[1] == points1.shape[1]):
+            raise AssertionError(weights.shape)
 
     points1_norm, transform1 = normalize_points(points1)
     points2_norm, transform2 = normalize_points(points2)
@@ -102,15 +109,18 @@ def find_fundamental(points1: Tensor, points2: Tensor, weights: Tensor) -> Tenso
     X = torch.cat([x2 * x1, x2 * y1, x2, y2 * x1, y2 * y1, y2, x1, y1, ones], dim=-1)  # BxNx9
 
     # apply the weights to the linear system
-    w_diag = torch.diag_embed(weights)
-    X = X.transpose(-2, -1) @ w_diag @ X
-
+    if weights is None:
+        X = X.transpose(-2, -1) @ X
+    else:
+        w_diag = torch.diag_embed(weights)
+        X = X.transpose(-2, -1) @ w_diag @ X
     # compute eigevectors and retrieve the one with the smallest eigenvalue
-    _, _, V = torch.svd(X)
+
+    _, _, V = _torch_svd_cast(X)
     F_mat = V[..., -1].view(-1, 3, 3)
 
     # reconstruct and force the matrix to have rank2
-    U, S, V = torch.svd(F_mat)
+    U, S, V = _torch_svd_cast(F_mat)
     rank_mask = torch.tensor([1.0, 1.0, 0.0], device=F_mat.device, dtype=F_mat.dtype)
 
     F_projected = U @ (torch.diag_embed(S * rank_mask) @ V.transpose(-2, -1))
