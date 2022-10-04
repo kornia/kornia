@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from kornia.geometry.conversions import QuaternionCoeffOrder, quaternion_to_rotation_matrix
-from kornia.nerf.camera_utils import create_spiral_path, parse_colmap_output
+from kornia.nerf.camera_utils import create_spiral_path, parse_colmap_cameras, parse_colmap_output
 from kornia.testing import assert_close
 
 
@@ -41,6 +41,16 @@ def test_parse_colmap_output(device, dtype, colmap_cameras_path, colmap_images_p
     assert_close(cameras.translation_vector[2], t.unsqueeze(-1))
 
     assert img_names[2] == 'image002.png'
+
+
+@pytest.fixture
+def colmap_simple_radial_cameras_path():
+    return Path(__file__).parent / './cameras_simple_radial.txt'
+
+
+def test_parse_simple_radial_camera_params(device, dtype, colmap_simple_radial_cameras_path) -> None:
+    parse_colmap_cameras(colmap_simple_radial_cameras_path, device, dtype)
+    # FIXME: Continue this test
 
 
 def test_create_spiral_path(device, dtype, colmap_cameras_path, colmap_images_path) -> None:

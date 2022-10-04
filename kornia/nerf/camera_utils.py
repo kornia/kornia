@@ -8,6 +8,57 @@ from kornia.geometry.camera import PinholeCamera
 from kornia.geometry.conversions import QuaternionCoeffOrder, quaternion_to_rotation_matrix
 
 
+def parse_colmap_cameras(
+    cameras_path: str, device: Device, dtype: torch.dtype
+) -> Tuple[List[int], List[int], List[Tensor]]:
+
+    # Parse camera intrinsics
+    with open(cameras_path) as f:
+        lines = f.readlines()
+
+    class CameraParams:
+        def __init__(self, line: str) -> None:
+            split_line = line.split(' ')
+            model = split_line[1]
+            self._width = int(split_line[2])
+            self._height = int(split_line[3])
+            if model == 'SIMPLE_PINHOLE':
+                self._fx = float(split_line[4])
+                self._fy = self._fx
+                self._cx = float(split_line[5])
+                self._cy = float(split_line[6])
+            elif model == 'PINHOLE':
+                self._fx = float(split_line[4])
+                self._fy = float(split_line[5])
+                self._cx = float(split_line[6])
+                self._cy = float(split_line[7])
+            elif model == 'SIMPLE_RADIAL':
+                self._fx = float(split_line[4])
+                self._fy = self._fx
+                self._cx = float(split_line[5])
+                self._cy = float(split_line[6])
+                self._k = float(
+                    split_line[7]
+                )  # FIXME: Skewness is assigned here but ignored later since PinholeCamera does not support distortion
+
+    heights: List[int] = []
+    widths: List[int] = []
+    intrinsics: List[Tensor] = []
+    for line in lines:
+        if line.startswith('#'):
+            continue
+        camera_params = CameraParams(line)
+        heights.append(camera_params._height)
+        widths.append(camera_params._width)
+        intrinsic = torch.eye(4, device=device, dtype=dtype)
+        intrinsic[0, 0] = camera_params._fx
+        intrinsic[1, 1] = camera_params._fy
+        intrinsic[0, 2] = camera_params._cx
+        intrinsic[1, 2] = camera_params._cy
+        intrinsics.append(intrinsic)
+    return heights, widths, intrinsics
+
+
 def parse_colmap_output(
     cameras_path: str, images_path: str, device: Device, dtype: torch.dtype
 ) -> Tuple[List[str], PinholeCamera]:
@@ -24,42 +75,15 @@ def parse_colmap_output(
     """
 
     # Parse camera intrinsics
-    with open(cameras_path) as f:
-        lines = f.readlines()
-
-    class CameraParams:
-        def __init__(self, line: str) -> None:
-            split_line = line.split(' ')
-            model = split_line[1]
-            if model == 'SIMPLE_PINHOLE':
-                self._width = int(split_line[2])
-                self._height = int(split_line[3])
-                self._fx = float(split_line[4])
-                self._fy = self._fx
-                self._cx = int(split_line[5])
-                self._cy = int(split_line[6])
-            elif model == 'PINHOLE':
-                self._width = int(split_line[2])
-                self._height = int(split_line[3])
-                self._fx = float(split_line[4])
-                self._fy = float(split_line[5])
-                self._cx = int(split_line[6])
-                self._cy = int(split_line[7])
-
-    cameras_params: List[CameraParams] = []
-    for line in lines:
-        if line.startswith('#'):
-            continue
-        camera_params = CameraParams(line)
-        cameras_params.append(camera_params)
+    camera_heights, camera_widths, camera_intrinsics = parse_colmap_cameras(cameras_path, device, dtype)
 
     # Parse camera quaternions and translation vectors
     with open(images_path) as f:
         lines = f.readlines()
-    intrinsics: List[Tensor] = []
-    extrinsics: List[Tensor] = []
     heights: List[int] = []
     widths: List[int] = []
+    intrinsics: List[Tensor] = []
+    extrinsics: List[Tensor] = []
     img_names: List[str] = []
     for line in lines:
         if line.startswith('#'):
@@ -81,16 +105,9 @@ def parse_colmap_output(
             img_names.append(img_name)
 
             # Intrinsic
-            camera_params = cameras_params[camera_ind]
-            intrinsic = torch.eye(4, device=device, dtype=dtype)
-            intrinsic[0, 0] = camera_params._fx
-            intrinsic[1, 1] = camera_params._fy
-            intrinsic[0, 2] = camera_params._cx
-            intrinsic[1, 2] = camera_params._cy
-            intrinsics.append(intrinsic)
-
-            heights.append(camera_params._height)
-            widths.append(camera_params._width)
+            intrinsics.append(camera_intrinsics[camera_ind])
+            heights.append(camera_heights[camera_ind])
+            widths.append(camera_widths[camera_ind])
 
             # Extrinsic
             q = torch.tensor([qw, qx, qy, qz], device=device)
