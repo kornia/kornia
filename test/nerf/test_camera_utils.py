@@ -49,8 +49,14 @@ def colmap_simple_radial_cameras_path():
 
 
 def test_parse_simple_radial_camera_params(device, dtype, colmap_simple_radial_cameras_path) -> None:
-    parse_colmap_cameras(colmap_simple_radial_cameras_path, device, dtype)
-    # FIXME: Continue this test
+    heights, widths, intrinsics = parse_colmap_cameras(colmap_simple_radial_cameras_path, device, dtype)
+    assert heights[0] == 2731
+    assert widths[0] == 1536
+    intrinsic = intrinsics[0].to('cpu')
+    assert_close(intrinsic[0, 0].item(), 2136.7647911326526)
+    assert_close(intrinsic[1, 1].item(), 2136.7647911326526)
+    assert_close(intrinsic[0, 2].item(), 768)
+    assert_close(intrinsic[1, 2].item(), 1365.5)
 
 
 def test_create_spiral_path(device, dtype, colmap_cameras_path, colmap_images_path) -> None:
