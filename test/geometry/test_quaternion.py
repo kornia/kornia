@@ -209,11 +209,11 @@ class TestQuaternion:
             q3 = Quaternion.from_axis_angle(axis * 3 * torch.pi / 2)
             q3.to(device, dtype)
             for t in torch.linspace(0.1, 1, 10):
-                q4 = Quaternion.slerp(q1, q1, t)# zero theta case i.e dot product is one
+                q4 = Quaternion.slerp(q2, q2, t)# zero theta case i.e dot product is one
                 q5 = Quaternion.slerp(q1, q2, t)
                 q6 = Quaternion.slerp(q1, q3, t)# negative dot product case
                 q7 = Quaternion.from_axis_angle(axis * t * torch.pi / 2)
                 q8 = Quaternion.from_axis_angle(axis * t * (-torch.pi / 2))
-                self.assert_close(q4, q1)
+                self.assert_close(q4, q2)
                 self.assert_close(q5, q7)
                 self.assert_close(q6, -q8)
