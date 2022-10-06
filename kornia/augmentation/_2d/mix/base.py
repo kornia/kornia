@@ -82,7 +82,7 @@ class MixAugmentationBase(_BasicAugmentationBase):
                 "Mix augmentations must be performed batch-wisely. Element-wise augmentation is not supported."
             )
 
-        return output, label
+        return output.type(in_tensor.dtype), label
 
     def forward(  # type: ignore
         self,
