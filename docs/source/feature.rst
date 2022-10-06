@@ -10,6 +10,8 @@ Detectors
 .. autofunction:: harris_response
 .. autofunction:: hessian_response
 .. autofunction:: dog_response
+.. autoclass:: SOLD2_detector
+   :members: forward
 
 
 Descriptors
@@ -24,6 +26,9 @@ Descriptors
 .. autoclass:: TFeat
 .. autoclass:: SOSNet
 .. autoclass:: LAFDescriptor
+   :members: forward
+
+.. autoclass:: SOLD2
    :members: forward
 
 .. autofunction:: get_laf_descriptors

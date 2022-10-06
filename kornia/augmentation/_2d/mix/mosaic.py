@@ -21,7 +21,8 @@ class RandomMosaic(MixAugmentationBaseV2):
     .. image:: https://raw.githubusercontent.com/kornia/data/main/random_mosaic.png
 
     Given a certain number of images, mosaic transform combines them into one output image.
-    The output image is composed of the parts from each sub-image.
+    The output image is composed of the parts from each sub-image. To mess up each image individually,
+    referring to :class:`kornia.augmentation.RandomJigsaw`.
 
     The mosaic transform steps are as follows:
 
@@ -183,7 +184,7 @@ class RandomMosaic(MixAugmentationBaseV2):
     ) -> Tensor:
         if flags is not None and flags["output_size"] is not None:
             output_size = KORNIA_UNWRAP(flags["output_size"], Tuple[int, int])
-            return pad(input, [0, output_size[0] - input.shape[-2], 0, output_size[1] - input.shape[-1]])
+            return pad(input, [0, output_size[1] - input.shape[-1], 0, output_size[0] - input.shape[-2]])
             # NOTE: resize is not suitable for being consistent with bounding boxes.
             # return resize(
             #     input,

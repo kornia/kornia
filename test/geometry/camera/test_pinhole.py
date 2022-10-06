@@ -459,3 +459,13 @@ class TestPinholeCamera:
         point_2d = pinhole.project(point_3d)
         point_3d_hat = pinhole.unproject(point_2d, depth)
         assert_close(point_3d, point_3d_hat, atol=1e-4, rtol=1e-4)
+
+    def test_pinhole_camera_device(self, device, dtype):
+        batch_size = 5
+        intrinsics = torch.rand((batch_size, 4, 4), device=device, dtype=dtype)
+        extrinsics = torch.rand((batch_size, 4, 4), device=device, dtype=dtype)
+        height = torch.randint(low=5, high=9, size=(batch_size,), device=device)
+        width = torch.randint(low=5, high=9, size=(batch_size,), device=device)
+
+        pinhole = kornia.geometry.camera.PinholeCamera(intrinsics, extrinsics, height, width)
+        assert pinhole.device() == intrinsics.device

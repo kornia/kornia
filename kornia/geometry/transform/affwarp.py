@@ -668,6 +668,10 @@ class Resize(nn.Module):
         >>> out = Resize((6, 8))(img)
         >>> print(out.shape)
         torch.Size([1, 3, 6, 8])
+
+    .. raw:: html
+
+        <gradio-app space="kornia/kornia-resize-antialias"></gradio-app>
     """
 
     def __init__(

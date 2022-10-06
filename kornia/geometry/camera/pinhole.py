@@ -1,9 +1,10 @@
-from typing import Iterable, Optional
+from typing import Iterable, List, Optional
 
 import torch
 
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.linalg import inverse_transformation, transform_points
+from kornia.testing import KORNIA_CHECK_SAME_DEVICE
 from kornia.utils.helpers import _torch_inverse_cast
 
 
@@ -32,6 +33,7 @@ class PinholeCamera:
         self._check_valid_params(extrinsics, "extrinsics")
         self._check_valid_shape(height, "height")
         self._check_valid_shape(width, "width")
+        self._check_consistent_device([intrinsics, extrinsics, height, width])
         # set class attributes
         self.height: torch.Tensor = height
         self.width: torch.Tensor = width
@@ -60,6 +62,20 @@ class PinholeCamera:
                 "Argument {} shape must be in the following shape" " B. Got {}".format(data_name, data.shape)
             )
         return True
+
+    @staticmethod
+    def _check_consistent_device(data_iter: List[torch.Tensor]) -> None:
+        first = data_iter[0]
+        for data in data_iter:
+            KORNIA_CHECK_SAME_DEVICE(data, first)
+
+    def device(self) -> torch.device:
+        r"""Returns the device for camera buffers.
+
+        Returns:
+            Device type
+        """
+        return self._intrinsics.device
 
     @property
     def intrinsics(self) -> torch.Tensor:
