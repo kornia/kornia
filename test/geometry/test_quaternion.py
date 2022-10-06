@@ -202,7 +202,6 @@ class TestQuaternion:
     def test_slerp(self, device, dtype, batch_size):
         for axis in torch.tensor([[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]]):
             axis = axis.repeat(batch_size, 1)
-            axis.to(device, dtype)
             q1 = Quaternion.from_axis_angle(axis * 0)
             q1.to(device, dtype)
             q2 = Quaternion.from_axis_angle(axis * torch.pi / 2)
