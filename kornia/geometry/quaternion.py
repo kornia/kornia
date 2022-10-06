@@ -333,7 +333,7 @@ class Quaternion(Module):
             >>> q1 = Quaternion.random(1)
             >>> q2 = Quaternion.random(1)
             >>> Quaternion.slerp(q1, q2, .3)
-            real: tensor([[0.8130]], grad_fn=<SliceBackward0>) 
+            real: tensor([[0.8130]], grad_fn=<SliceBackward0>)
             vec: tensor([[-0.2700,  0.0896,  0.5081]], grad_fn=<SliceBackward0>)
         """
         KORNIA_CHECK_TYPE(q0, Quaternion)
@@ -348,17 +348,19 @@ class Quaternion(Module):
         dot: Tensor = (q0_data * q1_data).sum(dim=-1)
         neg_dot_indices = where(dot < 0)[0]
         zero_theta_indices = where(dot > 0.9995)[0]
-        
+
         q0_data[neg_dot_indices] *= -1
         dot[neg_dot_indices] *= -1
 
-        theta: Tensor = dot.arccos() 
+        theta: Tensor = dot.arccos()
         t_theta: Tensor = theta * t
         s0: Tensor = (t_theta.cos() - dot * t_theta.sin() / theta.sin()).unsqueeze(dim=0)
         s1: Tensor = (t_theta.sin() / theta.sin()).unsqueeze(dim=0)
 
         q_slerp: Tensor = (s0.T * q0_data) + (s1.T * q1_data)
-        q_slerp[zero_theta_indices] =  q0_data[zero_theta_indices] + t * (q1_data[zero_theta_indices] - q0_data[zero_theta_indices])
+        q_slerp[zero_theta_indices] = q0_data[zero_theta_indices] + t * (
+            q1_data[zero_theta_indices] - q0_data[zero_theta_indices]
+        )
         return cls(q_slerp).normalize()
 
     def norm(self) -> Tensor:
