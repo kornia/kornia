@@ -124,9 +124,33 @@ def _torch_svd_cast(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, to
     if dtype not in (torch.float32, torch.float64):
         dtype = torch.float32
 
-    out1, out2, out3 = torch.svd(input.to(dtype))
-
+    out1, out2, out3H = torch.linalg.svd(input.to(dtype))
+    if torch_version_geq(1, 11):
+        out3 = out3H.mH
+    else:
+        out3 = out3H.transpose(-1, -2)
     return (out1.to(input.dtype), out2.to(input.dtype), out3.to(input.dtype))
+
+
+def _torch_linalg_svdvals(input: torch.Tensor) -> torch.Tensor:
+    """Helper function to make torch.linalg.svdvals work with other than fp32/64.
+
+    The function torch.svd is only implemented for fp32/64 which makes
+    impossible to be used by fp16 or others. What this function does, is cast
+    input data type to fp32, apply torch.svd, and cast back to the input dtype.
+
+    NOTE: in torch 1.8.1 this function is recommended to use as torch.linalg.svd
+    """
+    if not isinstance(input, torch.Tensor):
+        raise AssertionError(f"Input must be torch.Tensor. Got: {type(input)}.")
+    dtype: torch.dtype = input.dtype
+    if dtype not in (torch.float32, torch.float64):
+        dtype = torch.float32
+    if torch_version_geq(1, 10):
+        out = torch.linalg.svdvals(input.to(dtype))
+    else:
+        _, out, _ = torch.linalg.svd(input.to(dtype))
+    return out.to(input.dtype)
 
 
 # TODO: return only `torch.Tensor` and review all the calls to adjust
@@ -158,9 +182,21 @@ def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor
     dtype: torch.dtype = B.dtype
     if dtype not in (torch.float32, torch.float64):
         dtype = torch.float32
-    A_LU, pivots, info = torch.lu(A.to(dtype), get_infos=True)
+    if not torch_version_geq(1, 13):
+        A_LU, pivots, info = torch.lu(A.to(dtype), True, get_infos=True)
+    else:
+        A_LU, pivots, info = torch.linalg.lu_factor_ex(A.to(dtype))
+
     valid_mask: torch.Tensor = info == 0
-    X = torch.lu_solve(B.to(dtype), A_LU, pivots)
+    n_dim_B = len(B.shape)
+    n_dim_A = len(A.shape)
+    if n_dim_A - n_dim_B == 1:
+        B = B.unsqueeze(-1)
+
+    if not torch_version_geq(1, 13):
+        X = torch.lu_solve(B.to(dtype), A_LU, pivots)
+    else:
+        X = torch.linalg.lu_solve(A_LU, pivots, B.to(dtype))
     return X.to(B.dtype), A_LU.to(A.dtype), valid_mask
 
 
