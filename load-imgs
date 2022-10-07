@@ -1,0 +1,6 @@
+def load_img(file):
+  # load the image using the rust backend
+  img_rgb: Tensor = K.io.load_image(file.name, K.io.ImageLoadType.RGB32)
+  img_rgb = img_rgb[None]
+  img_gray = K.color.rgb_to_grayscale(img_rgb)
+  return img_gray
