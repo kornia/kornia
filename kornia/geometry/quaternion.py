@@ -319,7 +319,7 @@ class Quaternion(Module):
         return cls(stack((q1, q2, q3, q4), -1))
 
     def norm(self) -> Tensor:
-        return self.data.norm(p=2, dim=-1)
+        return self.data.norm(p=2, dim=-1, keepdim=True)
 
     def normalize(self) -> 'Quaternion':
         return Quaternion(normalize_quaternion(self.data))
