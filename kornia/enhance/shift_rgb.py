@@ -14,6 +14,6 @@ def shift_rgb(image: torch.Tensor, r_shift: torch.Tensor, g_shift: torch.Tensor,
 
     shifts = [r_shift, g_shift, b_shift]
 
-    shifted = (image + torch.stack(shifts).view(-1, 3, 1, 1).to(image)).clamp_(min=0, max=1)
+    shifted = (image + torch.stack(shifts, dim=1).view(-1, 3, 1, 1).to(image)).clamp_(min=0, max=1)
 
     return shifted
