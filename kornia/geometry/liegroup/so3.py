@@ -53,6 +53,7 @@ class So3:
 
     def exp(self, v) -> 'So3':
         """Converts elements of lie algebra to elements of lie group.
+ 
         See more: https://vision.in.tum.de/_media/members/demmeln/nurlanov2021so3log.pdf
 
         Args:
