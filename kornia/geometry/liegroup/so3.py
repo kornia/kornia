@@ -151,6 +151,7 @@ class So3:
 
     def matrix(self) -> Tensor:
         """Convert the quaternion to a rotation matrix of shape :math:`(B,3,3)`.
+
         The matrix is of the form:
         |  (1-2y^2-2z^2) (2xy-2zw)      (2xy+2yw)      |
         |  (2xy+2zw)     (1-2x^2-2z^2)  (2yz-2xw)      |
