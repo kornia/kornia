@@ -24,6 +24,15 @@ class TestSo3:
         assert_close(s1.q.data, s2.q.data)
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    def test_getitem(self, device, dtype, batch_size):
+        q = Quaternion.random(batch_size)
+        q = q.to(device, dtype)
+        s = So3(q)
+        for i in range(batch_size):
+            s1 = s[i]
+            assert_close(s1.q.data[0], q.data[i])
+
+    @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_exp(self, device, dtype, batch_size):
         q = Quaternion.identity(batch_size)
         q = q.to(device, dtype)
@@ -77,7 +86,7 @@ class TestSo3:
         r = s.matrix()
         p = torch.rand(batch_size, 3, device=device, dtype=dtype)
         for i in range(batch_size):
-            q1 = q[i] # possible Quaternion index bug? (resolved)
+            q1 = q[i]
             r1 = r[i,:,:]
             pvec = torch.rand((3))
             pquat = Quaternion(torch.cat([torch.Tensor([0]), pvec])[None,:])
