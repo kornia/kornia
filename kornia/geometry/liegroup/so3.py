@@ -7,6 +7,7 @@ from kornia.testing import KORNIA_CHECK_TYPE, KORNIA_CHECK
 
 class So3:
     r"""Base class to represent the So3 group.
+
     The SO(3) is the group of all rotations about the origin of three-dimensional Euclidean space
     R^3 under the operation of composition.
     See more: https://en.wikipedia.org/wiki/3D_rotation_group
