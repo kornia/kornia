@@ -1,4 +1,4 @@
-# kornia.geometry.quaternion module inspired by Sophus-sympy.
+# kornia.geometry.so3 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py
 from kornia.core import Tensor, concatenate, stack, zeros_like, zeros, where
 from kornia.geometry.quaternion import Quaternion
@@ -136,9 +136,11 @@ class So3:
 
         Args:
             omega: 3x3-matrix representing lie algebra of the following structure:
-                   |  0 -c  b |
-                   |  c  0 -a |
-                   | -b  a  0 |
+            ::
+
+                          [0  -c   b ]
+                omega  =  [c   0  -a ]
+                          [-b  a   0 ]
 
         Example:
             >>> v = torch.rand((1,3))
@@ -153,9 +155,11 @@ class So3:
         """Convert the quaternion to a rotation matrix of shape :math:`(B,3,3)`.
 
         The matrix is of the form:
-        |  (1-2y^2-2z^2) (2xy-2zw)      (2xy+2yw)      |
-        |  (2xy+2zw)     (1-2x^2-2z^2)  (2yz-2xw)      |
-        |  (2xz-2yw)     (2yz+2xw)      (1-2x^2-2y^2)) |
+            ::
+
+                        [(1-2y^2-2z^2)  (2xy-2zw)       (2xy+2yw)    ]
+                        [(2xy+2zw)      (1-2x^2-2z^2)   (2yz-2xw)    ]
+                        [(2xz-2yw)      (2yz+2xw)       (1-2x^2-2y^2)]
 
         Example:
             >>> s = So3.identity(batch_size=1)
