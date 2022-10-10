@@ -45,7 +45,7 @@ class So3:
         return f"{self.q}"
 
     def __getitem__(self, idx) -> 'So3':
-        return So3(Quaternion(self._q[idx].reshape(1, -1))) #change once quaternion bug fix is merged
+        return So3(self._q[idx]) #change once quaternion bug fix is merged
 
     @property
     def q(self) -> Quaternion:

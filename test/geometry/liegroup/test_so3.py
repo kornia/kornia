@@ -29,7 +29,7 @@ class TestSo3:
         q = q.to(device, dtype)
         s = So3(q)
         zero_vec = torch.zeros((batch_size, 3))
-        assert_close(s.exp(zero_vec).q[:], q[:])# exp of zero vec is identity
+        assert_close(s.exp(zero_vec).q.data, q.data)# exp of zero vec is identity
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_log(self, device, dtype, batch_size):
@@ -77,7 +77,7 @@ class TestSo3:
         r = s.matrix()
         p = torch.rand(batch_size, 3, device=device, dtype=dtype)
         for i in range(batch_size):
-            q1 = Quaternion(q[i][None,:]) # possible Quaternion index bug?
+            q1 = q[i] # possible Quaternion index bug? (resolved)
             r1 = r[i,:,:]
             pvec = torch.rand((3))
             pquat = Quaternion(torch.cat([torch.Tensor([0]), pvec])[None,:])
