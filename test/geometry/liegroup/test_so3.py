@@ -3,15 +3,25 @@ import torch
 
 from kornia.geometry.liegroup.so3 import So3
 from kornia.geometry.quaternion import Quaternion
-
 from kornia.testing import assert_close
 
 
 class TestSo3:
+    def test_smoke(self, device, dtype):
+        q = Quaternion.from_coeffs(1.0, 0.0, 0.0, 0.0)
+        q = q.to(device, dtype)
+        s = So3(q)
+        assert isinstance(s, So3)
+        assert_close(s.q.data, q.data)
 
-    # @pytest.mark.parametrize("batch_size", (1, 2, 5))
-    # def test_init(self, device, dtype, batch_size):
-    #     raise NotImplementedError
+    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    def test_init(self, device, dtype, batch_size):
+        q = Quaternion.identity(batch_size)
+        q = q.to(device, dtype)
+        s1 = So3(q)
+        s2 = So3(s1.q)
+        assert isinstance(s2, So3)
+        assert_close(s1.q.data, s2.q.data)
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_exp(self, device, dtype, batch_size):
