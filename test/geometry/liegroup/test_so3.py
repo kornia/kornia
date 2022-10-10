@@ -84,7 +84,6 @@ class TestSo3:
         q = q.to(device, dtype)
         s = So3(q)
         r = s.matrix()
-        p = torch.rand(batch_size, 3, device=device, dtype=dtype)
         for i in range(batch_size):
             q1 = q[i]
             r1 = r[i,:,:]

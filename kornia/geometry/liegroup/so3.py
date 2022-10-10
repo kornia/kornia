@@ -54,7 +54,7 @@ class So3:
 
     def exp(self, v) -> 'So3':
         """Converts elements of lie algebra to elements of lie group.
- 
+
         See more: https://vision.in.tum.de/_media/members/demmeln/nurlanov2021so3log.pdf
 
         Args:
@@ -76,7 +76,7 @@ class So3:
 
         qtensor = zeros((v.shape[0],4))
         qtensor[small_angles_indices] = Tensor([1, 0, 0, 0]) #identity quaternion for small angles
-       
+
         w = (0.5 * large_angles).cos()
         xyz = (0.5 * large_angles).sin().div(large_angles).mul(v[large_angles_indices])
         qtensor[large_angles_indices]  = concatenate((w, xyz), 1)
@@ -100,7 +100,7 @@ class So3:
         q_real = self.q.real
         q_vec =  self.q.vec
         omega_t = zeros((self.q.shape[0], 3))
-        
+
         o1 = 2 / q_real[small_angles_indices]
         o2 = theta[small_angles_indices].pow(2)/ q_real[small_angles_indices].pow(3)
         omega_t[small_angles_indices] = (o1 - (2 * o2) / 3) * q_vec[small_angles_indices]
