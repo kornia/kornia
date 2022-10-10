@@ -16,7 +16,7 @@ jobs:
     - name: Install dependencies
       run: |
         pip install torch --find-links https://download.pytorch.org/whl/cpu/torch_stable.html
-        pip install -r requirements/dev.txt
+        pip install .[dev]
         python setup.py develop --user
 
     - name: Run linter
@@ -29,7 +29,7 @@ jobs:
     - name: Install dependencies
       run: |
         pip install torch --find-links https://download.pytorch.org/whl/cpu/torch_stable.html
-        pip install -r requirements/dev.txt
+        pip install .[dev]
         python setup.py develop --user
 
     - name: Run doctest

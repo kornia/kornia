@@ -8,6 +8,18 @@ from .ransac import ransac
 from .utils import dist_matrix, orientation_diff
 
 
+def _no_match(dm: Tensor):
+    """Helper function, which output empty tensors.
+
+    Returns:
+            - Descriptor distance of matching descriptors, shape of :math:`(0, 1)`.
+            - Long tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(0, 2)`.
+    """
+    dists = torch.empty(0, 1, device=dm.device, dtype=dm.dtype)
+    idxs = torch.empty(0, 2, device=dm.device, dtype=torch.long)
+    return dists, idxs
+
+
 def select_seeds(dist1: Tensor, R1: Union[float, Tensor], scores1: Tensor, fnn12: Tensor, mnn: Optional[Tensor]):
     """Select seed correspondences among the set of available matches.
 
@@ -203,7 +215,8 @@ def adalam_core(
     o2: Optional[Tensor] = None,
     s1: Optional[Tensor] = None,
     s2: Optional[Tensor] = None,
-):
+    return_dist: bool = False,
+) -> Union[Tuple[Tensor, Tensor], Tensor]:
     """Call the core functionality of AdaLAM, i.e. just outlier filtering. No sanity check is performed on the
     inputs.
 
@@ -231,10 +244,11 @@ def adalam_core(
         s1/s2: keypoint scales. They can be None if 'scale_rate_threshold' in config is set to None.
                See documentation on 'scale_rate_threshold' in the DEFAULT_CONFIG.
                Expected a float32 tensor with shape (num_keypoints_in_source/destination_image,)
+        return_dist: if True, inverse confidence value is also outputted. Default is False
 
     Returns:
-        Filtered putative matches.
-        A long tensor with shape (num_filtered_matches, 2) with indices of corresponding keypoints in k1 and k2.
+        idxs: A long tensor with shape (num_filtered_matches, 2) with indices of corresponding keypoints in k1 and k2.
+        dists: inverse confidence ratio.
     """  # noqa: E501
     AREA_RATIO = config['area_ratio']
     SEARCH_EXP = config['search_expansion']
@@ -286,9 +300,18 @@ def adalam_core(
 
     if rdims.shape[0] == 0:
         # No seed point survived. Just output ratio-test matches. This should happen very rarely.
-        absolute_im1idx = torch.where(scores1 < 0.8**2)[0]
-        absolute_im2idx = fnn12[absolute_im1idx]
-        return torch.stack([absolute_im1idx, absolute_im2idx], dim=1)
+        score_mask = scores1 <= 0.95
+        absolute_im1idx = torch.where(score_mask)[0]
+        if len(absolute_im1idx) > 0:
+            absolute_im2idx = fnn12[absolute_im1idx]
+            out_scores = scores1[score_mask].reshape(-1, 1)
+            idxs = torch.stack([absolute_im1idx, absolute_im2idx], dim=1)
+        else:
+            idxs, out_scores = _no_match(scores1)
+        if return_dist:
+            return idxs, out_scores
+        else:
+            return idxs
 
     # Format neighborhoods for parallel RANSACs
     im1loc, im2loc, ransidx, tokp1, tokp2 = extract_local_patterns(
@@ -304,13 +327,23 @@ def adalam_core(
 
     conf = inl_confidence[ransidx[inlier_idx]]
     cnt = inlier_counts[ransidx[inlier_idx]].float()
-    passed_inliers_mask = (conf >= MIN_CONF) & (cnt * (1 - 1 / conf) >= MIN_INLIERS)
+    dist_ratio = 1.0 / conf
+    passed_inliers_mask = (conf >= MIN_CONF) & (cnt * (1 - dist_ratio) >= MIN_INLIERS)
     accepted_inliers = inlier_idx[passed_inliers_mask]
+    accepted_dist = dist_ratio[passed_inliers_mask]
 
     absolute_im1idx = tokp1[accepted_inliers]
     absolute_im2idx = tokp2[accepted_inliers]
 
     final_matches = torch.stack([absolute_im1idx, absolute_im2idx], dim=1)
     if final_matches.shape[0] > 1:
-        return torch.unique(final_matches, dim=0)
+        # https://stackoverflow.com/a/72005790
+        final_matches, idxs, counts = torch.unique(final_matches, dim=0, return_inverse=True, return_counts=True)
+        _, ind_sorted = torch.sort(idxs)
+        cum_sum = counts.cumsum(0)
+        cum_sum = torch.cat((torch.tensor([0]), cum_sum[:-1]))
+        first_indicies = ind_sorted[cum_sum]
+        accepted_dist = accepted_dist[first_indicies]
+    if return_dist:
+        return final_matches, accepted_dist.reshape(-1, 1)
     return final_matches

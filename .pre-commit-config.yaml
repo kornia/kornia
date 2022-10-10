@@ -16,13 +16,19 @@ repos:
       - id: pretty-format-json
         exclude: ^$|.devcontainer
 
+  - repo: https://github.com/asottile/setup-cfg-fmt
+    rev: v2.0.0
+    hooks:
+      - id: setup-cfg-fmt
+
+
   - repo: https://github.com/psf/black
-    rev: 22.6.0
+    rev: 22.8.0
     hooks:
       - id: black
 
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.1.0
+    rev: v2.2.1
     hooks:
       - id: codespell
         args:
@@ -42,7 +48,7 @@ repos:
       - id: flake8
 
   - repo: https://github.com/asottile/pyupgrade
-    rev: v2.37.3
+    rev: v2.38.2
     hooks:
       - id: pyupgrade
         args: [--py36-plus]
@@ -62,8 +68,8 @@ repos:
           - --skip
           - "B101,B311"
 
-  - repo: https://github.com/myint/docformatter
-    rev: v1.5.0-rc1
+  - repo: https://github.com/PyCQA/docformatter
+    rev: v1.5.0
     hooks:
       - id: docformatter
         args: [--in-place, --wrap-summaries=115, --wrap-descriptions=120]

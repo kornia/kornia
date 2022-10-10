@@ -38,7 +38,6 @@ class TestRANSACHomography:
 
         assert_close(transform_points(dst_homo_src[None], points_src[:, :-1]), points_dst[:, :-1], rtol=1e-3, atol=1e-3)
 
-    @pytest.mark.xfail(reason="might slightly and randomly imprecise due to RANSAC randomness")
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_real_clean(self, device, dtype, data):
         # generate input data
@@ -52,7 +51,7 @@ class TestRANSACHomography:
         # compute transform from source to target
         dst_homo_src, _ = ransac(pts_src, pts_dst)
 
-        assert_close(transform_points(dst_homo_src[None], pts_src[None]), pts_dst[None], rtol=1e-3, atol=1e-3)
+        assert_close(transform_points(dst_homo_src[None], pts_src[None]), pts_dst[None], rtol=1e-2, atol=1.0)
 
     @pytest.mark.xfail(reason="might slightly and randomly imprecise due to RANSAC randomness")
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
@@ -73,7 +72,7 @@ class TestRANSACHomography:
         dst_homo_src, _ = ransac(kp1, kp2)
 
         # Reprojection error of 5px is OK
-        assert_close(transform_points(dst_homo_src[None], pts_src[None]), pts_dst[None], rtol=5, atol=0.15)
+        assert_close(transform_points(dst_homo_src[None], pts_src[None]), pts_dst[None], rtol=0.15, atol=5)
 
     @pytest.mark.skip(reason="find_homography_dlt is using try/except block")
     def test_jit(self, device, dtype):
@@ -82,6 +81,54 @@ class TestRANSACHomography:
         points2 = torch.rand(4, 2, device=device, dtype=dtype)
         model = RANSAC('homography').to(device=device, dtype=dtype)
         model_jit = torch.jit.script(RANSAC('homography').to(device=device, dtype=dtype))
+        assert_close(model(points1, points2)[0], model_jit(points1, points2)[0], rtol=1e-4, atol=1e-4)
+
+
+class TestRANSACHomographyLineSegments:
+    def test_smoke(self, device, dtype):
+        torch.random.manual_seed(0)
+        points1 = torch.rand(4, 2, 2, device=device, dtype=dtype)
+        points2 = torch.rand(4, 2, 2, device=device, dtype=dtype)
+        ransac = RANSAC('homography_from_linesegments').to(device=device, dtype=dtype)
+        torch.random.manual_seed(0)
+        H, _ = ransac(points1, points2)
+        assert H.shape == (3, 3)
+
+    @pytest.mark.xfail(reason="might slightly and randomly imprecise due to RANSAC randomness")
+    def test_dirty_points(self, device, dtype):
+        # generate input data
+        torch.random.manual_seed(0)
+
+        H = torch.eye(3, dtype=dtype, device=device)
+        H[:2] = H[:2] + 0.1 * torch.rand_like(H[:2])
+        H[2:, :2] = H[2:, :2] + 0.001 * torch.rand_like(H[2:, :2])
+
+        points_src_st = 100.0 * torch.rand(1, 20, 2, device=device, dtype=dtype)
+        points_src_end = 100.0 * torch.rand(1, 20, 2, device=device, dtype=dtype)
+
+        points_dst_st = transform_points(H[None], points_src_st)
+        points_dst_end = transform_points(H[None], points_src_end)
+
+        # making last point an outlier
+        points_dst_st[:, -1, :] += 800
+        ls1 = torch.stack([points_src_st, points_src_end], dim=2)
+        ls2 = torch.stack([points_dst_st, points_dst_end], dim=2)
+
+        ransac = RANSAC('homography_from_linesegments', inl_th=0.5, max_iter=20).to(device=device, dtype=dtype)
+        # compute transform from source to target
+        dst_homo_src, _ = ransac(ls1[0], ls2[0])
+
+        assert_close(
+            transform_points(dst_homo_src[None], points_src_st[:, :-1]), points_dst_st[:, :-1], rtol=1e-3, atol=1e-3
+        )
+
+    @pytest.mark.skip(reason="find_homography_dlt is using try/except block")
+    def test_jit(self, device, dtype):
+        torch.random.manual_seed(0)
+        points1 = torch.rand(4, 2, 2, device=device, dtype=dtype)
+        points2 = torch.rand(4, 2, 2, device=device, dtype=dtype)
+        model = RANSAC('homography_from_linesegments').to(device=device, dtype=dtype)
+        model_jit = torch.jit.script(RANSAC('homography_from_linesegments').to(device=device, dtype=dtype))
         assert_close(model(points1, points2)[0], model_jit(points1, points2)[0], rtol=1e-4, atol=1e-4)
 
 
@@ -130,6 +177,7 @@ class TestRANSACFundamental:
         )
         assert gross_errors.sum().item() < 2
 
+    @pytest.mark.skip(reason="try except block in python version")
     def test_jit(self, device, dtype):
         torch.random.manual_seed(0)
         points1 = torch.rand(8, 2, device=device, dtype=dtype)

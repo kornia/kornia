@@ -4,6 +4,7 @@ from typing import Optional, Tuple
 import torch
 
 from kornia.utils import eye_like, vec_like
+from kornia.utils.helpers import _torch_svd_cast
 
 from .numeric import cross_product_matrix
 from .projection import depth_from_point, projection_from_KRt
@@ -61,7 +62,7 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
         raise AssertionError(E_mat.shape)
 
     # decompose matrix by its singular values
-    U, _, V = torch.svd(E_mat)
+    U, _, V = _torch_svd_cast(E_mat)
     Vt = V.transpose(-2, -1)
 
     mask = torch.ones_like(E_mat)
