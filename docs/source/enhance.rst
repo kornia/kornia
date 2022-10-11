@@ -5,8 +5,6 @@ kornia.enhance
 
 The functions in this section perform normalisations and intensity transformations.
 
-* `Interactive Demo`_
-
 Adjustment
 ----------
 
@@ -23,6 +21,14 @@ Adjustment
 .. autofunction:: posterize
 .. autofunction:: sharpness
 .. autofunction:: solarize
+
+Interactive Demo
+~~~~~~~~~~~~~~~~
+.. raw:: html
+
+    <gradio-app space="kornia/kornia-image-enhancement"></gradio-app>
+
+Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/kornia/kornia-image-enhancement>`_.
 
 Equalization
 ------------
@@ -65,13 +71,6 @@ Modules
 
 .. autoclass:: Invert
 
-
-Interactive Demo
-----------------
-.. raw:: html
-   :file: gradio/enhance_gradio.html
-
-Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/kornia/kornia-image-enhancement>`_.
 
 ZCA Whitening Interactive Demo
 ----------------
