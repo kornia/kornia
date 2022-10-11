@@ -625,7 +625,6 @@ class TestEdgeDetector:
         out = net(img)
         assert out.shape == (2, 1, 64, 64)
 
-    @pytest.mark.skip(reason="some missmatch in few layers -- weird error.")
     def test_jit(self, device, dtype):
         op = kornia.contrib.EdgeDetector().to(device, dtype)
         op_jit = torch.jit.script(op)

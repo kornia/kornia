@@ -113,7 +113,7 @@ class UpConvBlock(nn.Module):
     def compute_out_features(self, idx, up_scale):
         return 1 if idx == up_scale - 1 else self.constant_features
 
-    def forward(self, x: torch.Tensor, out_shape: torch.Size) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, out_shape: List[int]) -> torch.Tensor:
         out = self.features(x)
         if out.shape[-2:] != out_shape:
             out = F.interpolate(out, out_shape, mode='bilinear')
