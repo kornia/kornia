@@ -145,7 +145,7 @@ class Quaternion(Module):
         Example:
             >>> q = Quaternion.random(1)
             >>> q**2
-            real: tensor([[-0.3000]], grad_fn=<SliceBackward0>) 
+            real: tensor([[-0.3000]], grad_fn=<SliceBackward0>)
             vec: tensor([[ 0.1525, -0.8357, -0.4340]], grad_fn=<SliceBackward0>)
         """
         theta = self.polar_angle
@@ -353,7 +353,7 @@ class Quaternion(Module):
         q0 = self.normalize()
         q1 = q1.normalize()
         t: Tensor = as_tensor(t).clip(0, 1)
-        return q0 * (q0.inv() * q1)**t
+        return q0 * (q0.inv() * q1) ** t
 
     def norm(self) -> Tensor:
         return self.data.norm(p=2, dim=-1, keepdim=True)
