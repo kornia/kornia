@@ -76,13 +76,13 @@ class TestNormalizeTransformation:
 
 class TestFindFundamental:
     def test_smoke(self, device, dtype):
-        points1 = torch.rand(1, 1, 2, device=device, dtype=dtype)
-        points2 = torch.rand(1, 1, 2, device=device, dtype=dtype)
-        weights = torch.ones(1, 1, device=device, dtype=dtype)
+        points1 = torch.rand(1, 8, 2, device=device, dtype=dtype)
+        points2 = torch.rand(1, 8, 2, device=device, dtype=dtype)
+        weights = torch.ones(1, 8, device=device, dtype=dtype)
         F_mat = epi.find_fundamental(points1, points2, weights)
         assert F_mat.shape == (1, 3, 3)
 
-    @pytest.mark.parametrize("batch_size, num_points", [(1, 2), (2, 3), (3, 2)])
+    @pytest.mark.parametrize("batch_size, num_points", [(1, 8), (2, 9), (3, 10)])
     def test_shape(self, batch_size, num_points, device, dtype):
         B, N = batch_size, num_points
         points1 = torch.rand(B, N, 2, device=device, dtype=dtype)
@@ -91,7 +91,16 @@ class TestFindFundamental:
         F_mat = epi.find_fundamental(points1, points2, weights)
         assert F_mat.shape == (B, 3, 3)
 
-    def test_opencv(self, device, dtype):
+    @pytest.mark.parametrize("batch_size, num_points", [(1, 8), (2, 8), (3, 10)])
+    def test_shape_noweights(self, batch_size, num_points, device, dtype):
+        B, N = batch_size, num_points
+        points1 = torch.rand(B, N, 2, device=device, dtype=dtype)
+        points2 = torch.rand(B, N, 2, device=device, dtype=dtype)
+        weights = None
+        F_mat = epi.find_fundamental(points1, points2, weights)
+        assert F_mat.shape == (B, 3, 3)
+
+    def test_opencv_svd(self, device, dtype):
         points1 = torch.tensor(
             [
                 [
