@@ -69,12 +69,11 @@ Modules
 Interactive Demo
 ----------------
 .. raw:: html
-   :file: gradio/zca_whitening.html
+   :file: gradio/enhance_gradio.html
 
 Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/kornia/kornia-image-enhancement>`_.
 
 ZCA Whitening Interactive Demo
 ----------------
 .. raw:: html
-    :file: gradio/zca_whitening.html
   <gradio-app space="kornia/zca-whitening"></gradio-app>
