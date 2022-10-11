@@ -342,6 +342,7 @@ class Quaternion(Module):
 
         Args:
             q1: second quaternion to be interpolated between.
+
             t: interpolation ratio, range [0-1]
         Example:
             >>> q0 = Quaternion.random(1)
