@@ -139,7 +139,8 @@ class Quaternion(Module):
         return self.__div__(right)
 
     def __pow__(self, t: 'int') -> 'Quaternion':
-        """Return the power of a quaternion raised to exponent t
+        """Return the power of a quaternion raised to exponent t.
+
         Args:
             t: exponent which is raised. (change this)
         Example:
