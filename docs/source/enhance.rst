@@ -76,4 +76,4 @@ Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/kornia/kor
 ZCA Whitening Interactive Demo
 ----------------
 .. raw:: html
-<gradio-app space="kornia/zca-whiteing"></gradio-app>
+  <gradio-app space="kornia/zca-whitening"></gradio-app>
