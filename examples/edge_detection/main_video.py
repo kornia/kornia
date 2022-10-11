@@ -23,13 +23,8 @@ def my_app():
     fps = cap.get(cv2.CAP_PROP_FPS)
     print(f"Video: h/w: {h}/{w} fps:{fps}")
 
-    # create the video writer object
-    fourcc = cv2.VideoWriter_fourcc('M', 'J', 'P', 'G')
-    out = cv2.VideoWriter(args.video_out, fourcc, fps, (w, h))
-
     # create the detector object
     edge_detection = EdgeDetector().to(device)
-    edge_detection.load(args.weights_file)
 
     cv2.namedWindow('frame', cv2.WINDOW_NORMAL)
 
@@ -57,9 +52,6 @@ def my_app():
 
         frame_vis = cv2.putText(frame_vis, f"FPS: {fps:.1f}", (10, 20), cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255))
 
-        # write the processed frame
-        out.write(frame_vis)
-
         # Display the resulting frame
         cv2.imshow('frame', frame_vis)
 
@@ -71,7 +63,6 @@ def my_app():
 
     # After the loop release the cap and writing objects
     cap.release()
-    out.release()
 
     # Destroy all the windows
     cv2.destroyAllWindows()
@@ -79,8 +70,6 @@ def my_app():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Face and Landmark Detection')
-    parser.add_argument('--video_out', required=True, type=str, help='the file path to write the output.')
-    parser.add_argument('--weights_file', required=True, type=str, help='the file path to the trained weights.')
     parser.add_argument('--cuda', dest='cuda', action='store_true')
     args = parser.parse_args()
     my_app()

@@ -1,12 +1,11 @@
 from typing import List
 
-import torch
-import torch.nn as nn
-
+from kornia.core import Module, Tensor
 from kornia.filters.dexined import DexiNed
+from kornia.testing import KORNIA_CHECK_SHAPE
 
 
-class EdgeDetector(nn.Module):
+class EdgeDetector(Module):
     r"""Detect edges in a given image using a CNN.
 
     By default, it uses the method described in :cite:`xsoria2020dexined`.
@@ -24,19 +23,20 @@ class EdgeDetector(nn.Module):
 
     def __init__(self) -> None:
         super().__init__()
-        self.model = DexiNed()
+        self.model = DexiNed(pretrained=True)
 
     def load(self, path_file: str) -> None:
         self.model.load_from_file(path_file)
 
-    def preprocess(self, image: torch.Tensor) -> torch.Tensor:
+    def preprocess(self, image: Tensor) -> Tensor:
         return image
 
-    def postprocess(self, data: List[torch.Tensor]) -> torch.Tensor:
+    def postprocess(self, data: List[Tensor]) -> Tensor:
         # input are intermediate layer -- for inference we need only last.
         return data[-1]  # Bx1xHxW
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
+    def forward(self, image: Tensor) -> Tensor:
+        KORNIA_CHECK_SHAPE(image, ["B", "3", "H", "W"])
         img = self.preprocess(image)
         out = self.model(img)
         return self.postprocess(out)

@@ -1,9 +1,11 @@
 # adapted from: https://github.com/xavysp/DexiNed/blob/d944b70eb6eaf40e22f8467c1e12919aa600d8e4/model.py
-from typing import List
+from typing import Callable, List
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+url: str = "http://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth"
 
 
 def weight_init(m):
@@ -91,7 +93,8 @@ class UpConvBlock(nn.Module):
         self.constant_features = 16
 
         layers = self.make_deconv_layers(in_features, up_scale)
-        assert layers is not None, layers
+        if layers is None:
+            raise Exception("layers cannot be none")
         self.features = nn.Sequential(*layers)
 
     def make_deconv_layers(self, in_features, up_scale):
@@ -160,7 +163,7 @@ class DexiNed(nn.Module):
         torch.Size([1, 1, 320, 320])
     """
 
-    def __init__(self):
+    def __init__(self, pretrained: bool):
         super().__init__()
         self.block_1 = DoubleConvBlock(3, 32, 64, stride=2)
         self.block_2 = DoubleConvBlock(64, 128, use_act=False)
@@ -194,17 +197,19 @@ class DexiNed(nn.Module):
         self.block_cat = SingleConvBlock(6, 1, stride=1, use_bs=False)  # hed fusion method
         # self.block_cat = CoFusion(6,6)# cats fusion method
 
-        self.apply(weight_init)
+        if pretrained:
+            self.load_from_file(url)
+        else:
+            self.apply(weight_init)
 
     def load_from_file(self, path_file: str):
         # use torch.hub to load pretrained model
-        pretrained_dict = torch.load(path_file, map_location=lambda storage, loc: storage)
+        storage_fcn: Callable = lambda storage, loc: storage
+        pretrained_dict = torch.hub.load_state_dict_from_url(path_file, map_location=storage_fcn)
         self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
     def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
-        assert len(x.shape) == 4, x.shape
-
         # Block 1
         block_1 = self.block_1(x)
         block_1_side = self.side_1(block_1)
