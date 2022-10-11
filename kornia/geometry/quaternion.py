@@ -143,6 +143,7 @@ class Quaternion(Module):
 
         Args:
             t: exponent which is raised. (change this)
+
         Example:
             >>> q = Quaternion.random(1)
             >>> q**2
