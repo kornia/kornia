@@ -5,7 +5,7 @@
 from math import pi
 from typing import Tuple, Union
 
-from kornia.core import Module, Parameter, Tensor, as_tensor, concatenate, rand, stack, where
+from kornia.core import Module, Parameter, Tensor, as_tensor, concatenate, rand, stack
 from kornia.geometry.conversions import (
     QuaternionCoeffOrder,
     angle_axis_to_quaternion,
