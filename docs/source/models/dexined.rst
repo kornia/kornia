@@ -20,3 +20,7 @@ Dexined (edge detection)
 
     +++
     **Authors:** X. Soria and E. Riba and A. Sappa
+
+
+.. image:: https://github.com/xavysp/DexiNed/raw/master/figs/DexiNed_banner.png
+   :align: center
