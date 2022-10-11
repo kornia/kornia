@@ -157,7 +157,7 @@ class DexiNed(nn.Module):
 
     Example:
         >>> img = torch.rand(1, 3, 320, 320)
-        >>> net = DexiNed()
+        >>> net = DexiNed(pretrained=False)
         >>> out = net(img)
         >>> out[-1].shape
         torch.Size([1, 1, 320, 320])
