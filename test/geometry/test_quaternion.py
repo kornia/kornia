@@ -207,7 +207,7 @@ class TestQuaternion:
             axis = axis.repeat(batch_size, 1)
             q1 = Quaternion.from_axis_angle(axis * 0)
             q1.to(device, dtype)
-            q2 = Quaternion.from_axis_angle(axis * 3.14159) 
+            q2 = Quaternion.from_axis_angle(axis * 3.14159)
             q2.to(device, dtype)
             for t in torch.linspace(0.1, 1, 10):
                 q3 = q1.slerp(q2, t)  # zero theta case i.e dot product is one
