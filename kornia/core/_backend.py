@@ -13,6 +13,7 @@ Parameter = torch.nn.Parameter
 concatenate = torch.cat
 stack = torch.stack
 normalize = F.normalize
+where = torch.where
 
 # constructors
 as_tensor = torch.as_tensor
