@@ -341,7 +341,7 @@ def adalam_core(
         final_matches, idxs, counts = torch.unique(final_matches, dim=0, return_inverse=True, return_counts=True)
         _, ind_sorted = torch.sort(idxs)
         cum_sum = counts.cumsum(0)
-        cum_sum = torch.cat((torch.tensor([0]), cum_sum[:-1]))
+        cum_sum = torch.cat((torch.tensor([0], dtype=cum_sum.dtype, device=cum_sum.device), cum_sum[:-1]))
         first_indicies = ind_sorted[cum_sum]
         accepted_dist = accepted_dist[first_indicies]
     if return_dist:
