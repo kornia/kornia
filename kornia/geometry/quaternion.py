@@ -327,7 +327,8 @@ class Quaternion(Module):
         Example:
             >>> q = Quaternion.random(batch_size=2)
             >>> q.norm()
-            tensor([1.0000, 1.0000], grad_fn=<NormBackward1>)
+            tensor([[1.0000],
+                    [1.0000]], grad_fn=<NormBackward1>)
         """
         r1, r2, r3 = rand(3, batch_size)
         q1 = (1.0 - r1).sqrt() * ((2 * pi * r2).sin())
