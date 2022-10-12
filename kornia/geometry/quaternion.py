@@ -145,10 +145,10 @@ class Quaternion(Module):
             t: raised exponent.
 
         Example:
-            >>> q = Quaternion.random(1)
+            >>> q = Quaternion(torch.tensor([1., .5, 0., 0.]))
             >>> q**2
-            real: tensor([[-0.3000]], grad_fn=<SliceBackward0>)
-            vec: tensor([[ 0.1525, -0.8357, -0.4340]], grad_fn=<SliceBackward0>)
+            real: tensor([0.6000], grad_fn=<SliceBackward0>)
+            vec: tensor([0.8000, 0.0000, 0.0000], grad_fn=<SliceBackward0>)
         """
         theta = self.polar_angle
         n = self.vec / self.vec.norm(dim=-1, keepdim=True)
@@ -347,16 +347,15 @@ class Quaternion(Module):
             t: interpolation ratio, range [0-1]
 
         Example:
-            >>> q0 = Quaternion.random(1)
-            >>> q1 = Quaternion.random(1)
+            >>> q0 = Quaternion.identity(batch_size=1)
+            >>> q1 = Quaternion(torch.tensor([[1., .5, 0., 0.]]))
             >>> q0.slerp(q1, .3)
-            real: tensor([[0.8130]], grad_fn=<SliceBackward0>)
-            vec: tensor([[-0.2700,  0.0896,  0.5081]], grad_fn=<SliceBackward0>)
+            real: tensor([[0.9903]], grad_fn=<SliceBackward0>)
+            vec: tensor([[0.1386, 0.0000, 0.0000]], grad_fn=<SliceBackward0>)
         """
         KORNIA_CHECK_TYPE(q1, Quaternion)
         q0 = self.normalize()
         q1 = q1.normalize()
-        t: Tensor = as_tensor(t).clip(0, 1)
         return q0 * (q0.inv() * q1) ** t
 
     def norm(self) -> Tensor:
