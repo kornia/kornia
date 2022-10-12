@@ -2,8 +2,9 @@ import math
 from typing import Optional, Tuple, Union
 
 import torch
-from kornia.core import Tensor
 from torch import tensor
+
+from kornia.core import Tensor
 
 from .ransac import ransac
 from .utils import dist_matrix, orientation_diff
