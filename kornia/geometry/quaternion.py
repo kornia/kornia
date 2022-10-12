@@ -146,9 +146,7 @@ class Quaternion(Module):
 
         Example:
             >>> q = Quaternion(torch.tensor([1., .5, 0., 0.]))
-            >>> q**2
-            real: tensor([0.6000], grad_fn=<SliceBackward0>)
-            vec: tensor([0.8000, 0.0000, 0.0000], grad_fn=<SliceBackward0>)
+            >>> q_pow = q**2
         """
         theta = self.polar_angle
         n = self.vec / self.vec.norm(dim=-1, keepdim=True)
@@ -349,9 +347,7 @@ class Quaternion(Module):
         Example:
             >>> q0 = Quaternion.identity(batch_size=1)
             >>> q1 = Quaternion(torch.tensor([[1., .5, 0., 0.]]))
-            >>> q0.slerp(q1, .3)
-            real: tensor([[0.9903]], grad_fn=<SliceBackward0>)
-            vec: tensor([[0.1386, 0.0000, 0.000]], grad_fn=<SliceBackward0>)
+            >>> q2 = q0.slerp(q1, .3)
         """
         KORNIA_CHECK_TYPE(q1, Quaternion)
         q0 = self.normalize()

@@ -134,7 +134,7 @@ class TestQuaternion:
     def test_pow(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size)
         q = q.to(device, dtype)
-        self.assert_close(q**0, Quaternion.identity(batch_size))
+        self.assert_close(q**0, Quaternion.identity(batch_size).to(device, dtype))
         self.assert_close(q**1, q)
         self.assert_close(q**2, q * q)
         self.assert_close(q**-1, q.inv())
