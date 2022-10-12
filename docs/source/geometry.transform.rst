@@ -34,6 +34,7 @@ Image 2d transforms
 .. autofunction:: pyrdown
 .. autofunction:: pyrup
 .. autofunction:: build_pyramid
+.. autofunction:: build_laplacian_pyramid
 
 Matrix transformations
 ----------------------
