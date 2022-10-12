@@ -130,8 +130,15 @@ class TestQuaternion:
         self.assert_close(k / k, one)
         self.assert_close(i / -j, k)
 
-    def test_pow(self, device, dtype):
-        pass
+    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    def test_pow(self, device, dtype, batch_size):
+        q = Quaternion.random(batch_size)
+        q = q.to(device, dtype)
+        self.assert_close(q**0, Quaternion.identity(batch_size))
+        self.assert_close(q**1, q)
+        self.assert_close(q**2, q * q)
+        self.assert_close(q**-1, q.inv())
+        self.assert_close((q**0.5) * (q**0.5), q)
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_inverse(self, device, dtype, batch_size):
@@ -216,6 +223,6 @@ class TestQuaternion:
             q2 = Quaternion.from_axis_angle(axis * 3.14159)
             q2.to(device, dtype)
             for t in torch.linspace(0.1, 1, 10):
-                q3 = q1.slerp(q2, t)  # zero theta case i.e dot product is one
+                q3 = q1.slerp(q2, t)
                 q4 = Quaternion.from_axis_angle(axis * t * 3.14159)
                 self.assert_close(q3, q4)
