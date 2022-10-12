@@ -616,3 +616,16 @@ class TestFaceDetection:
         data = torch.zeros(14, device=device, dtype=dtype)
         with pytest.raises(ValueError):
             _ = kornia.contrib.FaceDetectorResult(data)
+
+
+class TestEdgeDetector:
+    def test_smoke(self, device, dtype):
+        img = torch.rand(2, 3, 64, 64, device=device, dtype=dtype)
+        net = kornia.contrib.EdgeDetector().to(device, dtype)
+        out = net(img)
+        assert out.shape == (2, 1, 64, 64)
+
+    def test_jit(self, device, dtype):
+        op = kornia.contrib.EdgeDetector().to(device, dtype)
+        op_jit = torch.jit.script(op)
+        assert op_jit is not None
