@@ -1,8 +1,8 @@
 # kornia.geometry.so3 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py
-from kornia.core import Tensor, concatenate, stack, zeros_like, zeros, where
+from kornia.core import Tensor, concatenate, stack, where, zeros, zeros_like
 from kornia.geometry.quaternion import Quaternion
-from kornia.testing import KORNIA_CHECK_TYPE, KORNIA_CHECK
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_TYPE
 
 
 class So3:
@@ -18,7 +18,7 @@ class So3:
         >>> q = Quaternion.identity(batch_size=1)
         >>> s = So3(q)
         >>> s.q
-        real: tensor([[1.]], grad_fn=<SliceBackward0>) 
+        real: tensor([[1.]], grad_fn=<SliceBackward0>)
         vec: tensor([[0., 0., 0.]], grad_fn=<SliceBackward0>)
     """
 
@@ -33,7 +33,7 @@ class So3:
             >>> q = Quaternion(data)
             >>> So3(q)
             real: tensor([[0.2734],
-                          [0.7782]], grad_fn=<SliceBackward0>) 
+                          [0.7782]], grad_fn=<SliceBackward0>)
             vec: tensor([[0.2420, 0.2716, 0.6159],
                          [0.8727, 0.7592, 0.7212]], grad_fn=<SliceBackward0>)
         """
@@ -65,7 +65,7 @@ class So3:
             >>> s = So3.identity(batch_size=1).exp(v)
             >>> s
             real: tensor([[0.8891],
-                    [0.9774]], grad_fn=<SliceBackward0>) 
+                    [0.9774]], grad_fn=<SliceBackward0>)
             vec: tensor([[0.0893, 0.3285, 0.3060],
                     [0.0567, 0.1315, 0.1558]], grad_fn=<SliceBackward0>)
         """
@@ -74,12 +74,12 @@ class So3:
         large_angles_indices = where(theta > self.epsilon)[0]
         large_angles = theta[large_angles_indices]
 
-        qtensor = zeros((v.shape[0],4))
-        qtensor[small_angles_indices] = Tensor([1, 0, 0, 0]) #identity quaternion for small angles
+        qtensor = zeros((v.shape[0], 4))
+        qtensor[small_angles_indices] = Tensor([1, 0, 0, 0])  # identity quaternion for small angles
 
         w = (0.5 * large_angles).cos()
         xyz = (0.5 * large_angles).sin().div(large_angles).mul(v[large_angles_indices])
-        qtensor[large_angles_indices]  = concatenate((w, xyz), 1)
+        qtensor[large_angles_indices] = concatenate((w, xyz), 1)
         return So3(Quaternion(qtensor))
 
     def log(self) -> Tensor:
@@ -98,14 +98,18 @@ class So3:
         large_angles = theta[large_angles_indices]
 
         q_real = self.q.real
-        q_vec =  self.q.vec
+        q_vec = self.q.vec
         omega_t = zeros((self.q.shape[0], 3))
 
         o1 = 2 / q_real[small_angles_indices]
-        o2 = theta[small_angles_indices].pow(2)/ q_real[small_angles_indices].pow(3)
+        o2 = theta[small_angles_indices].pow(2) / q_real[small_angles_indices].pow(3)
         omega_t[small_angles_indices] = (o1 - (2 * o2) / 3) * q_vec[small_angles_indices]
         o1 = (q_real[large_angles_indices].pow(2) + theta[large_angles_indices].pow(2)).sqrt()
-        omega_t[large_angles_indices] = (4 * (large_angles / (q_real[large_angles_indices] + o1)).atan()) / large_angles * q_vec[large_angles_indices]
+        omega_t[large_angles_indices] = (
+            (4 * (large_angles / (q_real[large_angles_indices] + o1)).atan())
+            / large_angles
+            * q_vec[large_angles_indices]
+        )
         return omega_t
 
     @staticmethod
@@ -171,17 +175,17 @@ class So3:
         """
         w = self.q.w.unsqueeze(2)
         x, y, z = self.q.x.unsqueeze(2), self.q.y.unsqueeze(2), self.q.z.unsqueeze(2)
-        q0 = (1 - 2 * y ** 2 - 2 * z ** 2)
-        q1 = (2 * x * y - 2 * z * w)
-        q2 = (2 * x * z + 2 * y * w)
+        q0 = 1 - 2 * y**2 - 2 * z**2
+        q1 = 2 * x * y - 2 * z * w
+        q2 = 2 * x * z + 2 * y * w
         row0 = concatenate([q0, q1, q2], 2)
-        q0 = (2 * x * y + 2 * z * w)
-        q1 = (1 - 2 * x ** 2 - 2 * z ** 2)
-        q2 = (2 * y * z - 2 * x * w)
+        q0 = 2 * x * y + 2 * z * w
+        q1 = 1 - 2 * x**2 - 2 * z**2
+        q2 = 2 * y * z - 2 * x * w
         row1 = concatenate([q0, q1, q2], 2)
-        q0 = (2 * x * z - 2 * y * w)
-        q1 = (2 * y * z + 2 * x * w)
-        q2 = (1 - 2 * x ** 2 - 2 * y ** 2)
+        q0 = 2 * x * z - 2 * y * w
+        q1 = 2 * y * z + 2 * x * w
+        q2 = 1 - 2 * x**2 - 2 * y**2
         row2 = concatenate([q0, q1, q2], 2)
         return concatenate([row0, row1, row2], 1)
 
@@ -196,7 +200,7 @@ class So3:
             >>> s = So3.identity(batch_size=2)
             >>> s.data
             real: tensor([[1.],
-                    [1.]], grad_fn=<SliceBackward0>) 
+                    [1.]], grad_fn=<SliceBackward0>)
             vec: tensor([[0., 0., 0.],
                     [0., 0., 0.]], grad_fn=<SliceBackward0>)
         """

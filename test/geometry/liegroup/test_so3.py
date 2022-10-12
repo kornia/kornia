@@ -38,7 +38,7 @@ class TestSo3:
         q = q.to(device, dtype)
         s = So3(q)
         zero_vec = torch.zeros((batch_size, 3))
-        assert_close(s.exp(zero_vec).q.data, q.data)# exp of zero vec is identity
+        assert_close(s.exp(zero_vec).q.data, q.data)  # exp of zero vec is identity
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_log(self, device, dtype, batch_size):
@@ -46,7 +46,7 @@ class TestSo3:
         q = q.to(device, dtype)
         s = So3(q)
         zero_vec = torch.zeros((batch_size, 3))
-        assert_close(s.log(), zero_vec)# log of identity quat is zero vec
+        assert_close(s.log(), zero_vec)  # log of identity quat is zero vec
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_exp_log(self, device, dtype, batch_size):
@@ -61,11 +61,11 @@ class TestSo3:
     def test_hat(self, device, dtype, batch_size):
         v = torch.Tensor([1, 2, 3]).repeat(batch_size, 1)
         v = v.to(device, dtype)
-        assert_close(So3.hat(v).unique()[-3:], v[0,:])
+        assert_close(So3.hat(v).unique()[-3:], v[0, :])
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_vee(self, device, dtype, batch_size):
-        omega = torch.Tensor([[[1, 2, 3],[4, 5, 6],[7, 8, 9]]]).repeat(batch_size, 1, 1)
+        omega = torch.Tensor([[[1, 2, 3], [4, 5, 6], [7, 8, 9]]]).repeat(batch_size, 1, 1)
         omega = omega.to(device, dtype)
         expected = torch.tensor([[8, 3, 4]]).repeat(batch_size, 1)
         expected = expected.to(device, dtype)
@@ -86,9 +86,9 @@ class TestSo3:
         r = s.matrix()
         for i in range(batch_size):
             q1 = q[i]
-            r1 = r[i,:,:]
-            pvec = torch.rand((3))
-            pquat = Quaternion(torch.cat([torch.Tensor([0]), pvec])[None,:])
+            r1 = r[i, :, :]
+            pvec = torch.rand(3)
+            pquat = Quaternion(torch.cat([torch.Tensor([0]), pvec])[None, :])
             qp_ = q1 * pquat * q1.inv()
             rp_ = torch.matmul(r1, pvec.T)[None, :]
-            assert_close(rp_, qp_.vec) # p_ = R*p = q*p*q_inv
+            assert_close(rp_, qp_.vec)  # p_ = R*p = q*p*q_inv
