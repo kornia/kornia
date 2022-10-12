@@ -1,10 +1,10 @@
 import pytest
 import torch
 from torch.autograd import gradcheck
+from torch.testing import assert_close
 
 import kornia
 import kornia.testing as utils  # test utils
-from kornia.testing import assert_close
 
 
 class TestFilter2D:
@@ -631,6 +631,25 @@ class TestDexiNed:
         out = net(img)
         assert len(out) == 7
         assert out[-1].shape == (2, 1, 64, 64)
+
+    @pytest.mark.parametrize("data", ["dexined"], indirect=True)
+    def test_inference(self, device, dtype, data):
+        model = kornia.filters.DexiNed(pretrained=False)
+        model.load_state_dict(data, strict=True)
+        model.eval()
+        model = model.to(device, dtype)
+
+        img = torch.tensor([[[[0, 255, 0], [0, 255, 0], [0, 255, 0]]]], device=device, dtype=dtype)
+        img = img.repeat(1, 3, 1, 1)
+
+        expect = torch.tensor(
+            [[[[-0.3709, 0.0519, -0.2839], [0.0627, 0.6587, -0.1276], [-0.1840, -0.3917, -0.8240]]]],
+            device=device,
+            dtype=dtype,
+        )
+
+        out = model(img)
+        assert_close(out[-1][:, :1], expect, atol=1e-4, rtol=1e-4)
 
     def test_jit(self, device, dtype):
         op = kornia.filters.DexiNed(pretrained=False).to(device, dtype)
