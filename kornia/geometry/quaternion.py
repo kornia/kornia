@@ -142,7 +142,7 @@ class Quaternion(Module):
         """Return the power of a quaternion raised to exponent t.
 
         Args:
-            t: exponent which is raised. (change this)
+            t: raised exponent.
 
         Example:
             >>> q = Quaternion.random(1)
@@ -343,8 +343,8 @@ class Quaternion(Module):
 
         Args:
             q1: second quaternion to be interpolated between.
-
             t: interpolation ratio, range [0-1]
+
         Example:
             >>> q0 = Quaternion.random(1)
             >>> q1 = Quaternion.random(1)
