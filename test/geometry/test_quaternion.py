@@ -161,6 +161,12 @@ class TestQuaternion:
         self.assert_close((q1 * q2).norm(), q1.norm() * q2.norm())
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    def test_norm_shape(self, device, dtype, batch_size):
+        q = Quaternion.random(batch_size)
+        q = q.to(device, dtype)
+        self.assert_close(q.norm().shape, torch.Size([batch_size, 1]))
+
+    @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_normalize(self, device, dtype, batch_size):
         q1 = Quaternion.random(batch_size)
         q1 = q1.to(device, dtype)
