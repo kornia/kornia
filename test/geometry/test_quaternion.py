@@ -131,6 +131,16 @@ class TestQuaternion:
         self.assert_close(i / -j, k)
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    def test_pow(self, device, dtype, batch_size):
+        q = Quaternion.random(batch_size)
+        q = q.to(device, dtype)
+        self.assert_close(q**0, Quaternion.identity(batch_size).to(device, dtype))
+        self.assert_close(q**1, q)
+        self.assert_close(q**2, q * q)
+        self.assert_close(q**-1, q.inv())
+        self.assert_close((q**0.5) * (q**0.5), q)
+
+    @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_inverse(self, device, dtype, batch_size):
         q1 = Quaternion.random(batch_size)
         q1 = q1.to(device, dtype)
@@ -203,3 +213,16 @@ class TestQuaternion:
         q2 = Quaternion.from_axis_angle(axis_angle)
         q2 = q2.to(device, dtype)
         self.assert_close(q1, q2)
+
+    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    def test_slerp(self, device, dtype, batch_size):
+        for axis in torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]):
+            axis = axis.repeat(batch_size, 1).to(device, dtype)
+            q1 = Quaternion.from_axis_angle(axis * 0)
+            q1.to(device, dtype)
+            q2 = Quaternion.from_axis_angle(axis * 3.14159)
+            q2.to(device, dtype)
+            for t in torch.linspace(0.1, 1, 10):
+                q3 = q1.slerp(q2, t)
+                q4 = Quaternion.from_axis_angle(axis * t * 3.14159)
+                self.assert_close(q3, q4)
