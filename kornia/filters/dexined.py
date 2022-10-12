@@ -1,5 +1,5 @@
 # adapted from: https://github.com/xavysp/DexiNed/blob/d944b70eb6eaf40e22f8467c1e12919aa600d8e4/model.py
-from typing import Callable, List
+from typing import List
 
 import torch
 import torch.nn as nn
@@ -204,8 +204,7 @@ class DexiNed(nn.Module):
 
     def load_from_file(self, path_file: str):
         # use torch.hub to load pretrained model
-        storage_fcn: Callable = lambda storage, loc: storage
-        pretrained_dict = torch.hub.load_state_dict_from_url(path_file, map_location=storage_fcn)
+        pretrained_dict = torch.hub.load_state_dict_from_url(path_file, map_location=torch.device("cpu"))
         self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
