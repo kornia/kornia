@@ -162,7 +162,7 @@ class TestBuildLaplacianPyramid:
         input = torch.ones(1, 2, 4, 5, device=device, dtype=dtype)
         pyramid = kornia.geometry.transform.build_laplacian_pyramid(input, max_level=1)
         assert len(pyramid) == 1
-        assert pyramid[0].shape == (1, 2, 4, 8)
+        assert pyramid[0].shape == (1, 2, 4, 5)
 
     @pytest.mark.parametrize("batch_size", (1, 2, 3))
     @pytest.mark.parametrize("channels", (1, 3))
