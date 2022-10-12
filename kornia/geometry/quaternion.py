@@ -351,7 +351,7 @@ class Quaternion(Module):
             >>> q1 = Quaternion(torch.tensor([[1., .5, 0., 0.]]))
             >>> q0.slerp(q1, .3)
             real: tensor([[0.9903]], grad_fn=<SliceBackward0>)
-            vec: tensor([[0.1386, 0.0000, 0.0000]], grad_fn=<SliceBackward0>)
+            vec: tensor([[0.1386, 0.0000, 0.000]], grad_fn=<SliceBackward0>)
         """
         KORNIA_CHECK_TYPE(q1, Quaternion)
         q0 = self.normalize()
