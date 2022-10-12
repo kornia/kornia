@@ -3,6 +3,11 @@ kornia.contrib
 
 .. currentmodule:: kornia.contrib
 
+Edge Detection
+--------------
+
+.. autoclass:: EdgeDetector
+
 Face Detection
 --------------
 

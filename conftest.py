@@ -111,5 +111,6 @@ def data(request):
         'loftr_homo': f'https://github.com/kornia/data_test/blob/{sha}/loftr_outdoor_and_homography_data.pt?raw=true',
         'loftr_fund': f'https://github.com/kornia/data_test/blob/{sha}/loftr_indoor_and_fundamental_data.pt?raw=true',
         'adalam_idxs': f'https://github.com/kornia/data_test/blob/{sha2}/adalam_test.pt?raw=true',
+        'dexined': 'https://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth',
     }
-    return torch.hub.load_state_dict_from_url(url[request.param])
+    return torch.hub.load_state_dict_from_url(url[request.param], map_location=torch.device('cpu'))
