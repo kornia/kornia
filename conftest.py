@@ -113,4 +113,4 @@ def data(request):
         'adalam_idxs': f'https://github.com/kornia/data_test/blob/{sha2}/adalam_test.pt?raw=true',
         'dexined': 'https://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth',
     }
-    return torch.hub.load_state_dict_from_url(url[request.param])
+    return torch.hub.load_state_dict_from_url(url[request.param], map_location=torch.device('cpu'))
