@@ -322,6 +322,7 @@ def main():
         "pyrdown": ((), 1),
         "pyrup": ((), 1),
         "build_pyramid": ((3,), 1),
+        "build_laplacian_pyramid": ((3,), 1),
     }
     # ITERATE OVER THE TRANSFORMS
     for fn_name, (args, num_samples) in transforms.items():
@@ -340,8 +341,22 @@ def main():
                 out_tmp = torch.nn.functional.pad(pyr, (0, (w - w_new), 0, (h - h_new)))
                 _out.append(out_tmp)
             out = torch.cat(_out)
+
+        if fn_name == "build_laplacian_pyramid":
+            h_, w_ = out[0].shape[-2:]
+            _out = [out[0]]
+            for pyr in out[1:]:
+                h_new, w_new = pyr.shape[-2:]
+                out_tmp = torch.nn.functional.pad(pyr, (0, (w_ - w_new), 0, (h_ - h_new)))
+                print(out_tmp.size())
+                _out.append(out_tmp)
+            out = torch.cat(_out)
+
         # save the output image
-        out = torch.cat([img_in[0], *(out[i] for i in range(out.size(0)))], dim=-1)
+        if fn_name != "build_laplacian_pyramid":
+            out = torch.cat([img_in[0], *(out[i] for i in range(out.size(0)))], dim=-1)
+        else:
+            out = torch.cat([*(out[i] for i in range(out.size(0)))], dim=-1)
         out_np = K.utils.tensor_to_image((out * 255.0).byte())
         cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"

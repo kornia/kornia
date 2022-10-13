@@ -21,6 +21,23 @@ for automating the processing of masks, bounding boxes, and keypoints.
    .. automethod:: inverse
 
 
+Augmentation Dispatchers
+------------------------
+Kornia supports two types of augmentation dispatching, namely many-to-many and many-to-one. The former wraps
+different augmentations into one group and allows user to input multiple inputs in align with the number of
+augmentations. The latter aims at performing different augmentations for one input that to obtain a list of
+various transformed data.
+
+.. autoclass:: ManyToManyAugmentationDispather
+
+   .. automethod:: forward
+
+
+.. autoclass:: ManyToOneAugmentationDispather
+
+   .. automethod:: forward
+
+
 
 ImageSequential
 ---------------
