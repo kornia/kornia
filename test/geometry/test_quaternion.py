@@ -134,11 +134,17 @@ class TestQuaternion:
     def test_pow(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size)
         q = q.to(device, dtype)
-        self.assert_close(q**0, Quaternion.identity(batch_size).to(device, dtype))
+        q1 = Quaternion.identity(batch_size)
+        q1 = q1.to(device, dtype)
+        self.assert_close(q**0, q1)
         self.assert_close(q**1, q)
         self.assert_close(q**2, q * q)
         self.assert_close(q**-1, q.inv())
         self.assert_close((q**0.5) * (q**0.5), q)
+        self.assert_close((q1**1), q1)
+        self.assert_close((q1**2), q1)
+        self.assert_close((q1**-1), q1)
+        self.assert_close((q1**0.5), q1)
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_inverse(self, device, dtype, batch_size):
