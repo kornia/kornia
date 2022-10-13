@@ -2,10 +2,15 @@ import math
 from typing import List, Tuple
 
 import torch
+from scipy.interpolate import splev, splprep
 
 from kornia.core import Device, Tensor
 from kornia.geometry.camera import PinholeCamera
-from kornia.geometry.conversions import QuaternionCoeffOrder, quaternion_to_rotation_matrix
+from kornia.geometry.conversions import (
+    QuaternionCoeffOrder,
+    quaternion_to_rotation_matrix,
+    rotation_matrix_to_quaternion,
+)
 
 
 def parse_colmap_cameras(
@@ -171,3 +176,28 @@ def create_spiral_path(cameras: PinholeCamera, rad: float, num_views: int, num_c
     height = torch.tensor([cameras.height[0]] * num_views, device=device)
     width = torch.tensor([cameras.width[0]] * num_views, device=device)
     return PinholeCamera(mean_intrinsics, extrinsics, height, width)
+
+
+def create_spline_curve(cameras: PinholeCamera, num_views: int) -> PinholeCamera:
+    r"""Create a PinholeCamera object with cameras that are positioned along a path that is calculated from the
+    locations of the input camera centers. Parameteric spline is used for the tranjectory. Output camera intrinsics
+    are also interpolated from those of the input cameras.
+
+    Args:
+        cameras: Scene cameras used to train the NeRF model: PinholeCamera
+        num_views: Number of created cameras: int
+    """
+    translation_vector = cameras.translation_vector.squeeze().numpy()
+    tx = translation_vector[:, 0]
+    ty = translation_vector[:, 1]
+    tz = translation_vector[:, 2]
+
+    rotation_matrix = torch.clone(cameras.rotation_matrix)  # Cloning to restore memory contingency
+    q = rotation_matrix_to_quaternion(rotation_matrix, order=QuaternionCoeffOrder.WXYZ)
+    print(q)
+
+    tck, u = splprep([tx, ty, tz], s=0)
+    u2 = torch.linspace(0, 1, num_views, device='cpu', dtype=cameras.translation_vector.dtype).numpy()
+    new_points = splev(u2, tck)
+
+    print(new_points)
