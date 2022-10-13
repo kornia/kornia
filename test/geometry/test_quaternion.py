@@ -143,8 +143,6 @@ class TestQuaternion:
         self.assert_close((q**0.5) * (q**0.5), q)
         self.assert_close((q1**1), q1)
         self.assert_close((q1**2), q1)
-        self.assert_close((q1**-1), q1)
-        self.assert_close((q1**0.5), q1)
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_inverse(self, device, dtype, batch_size):
