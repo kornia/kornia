@@ -20,3 +20,4 @@ kornia.egg-info/
 *ipynb_checkpoints*
 docs/source/_static/*jpg
 *DS_Store
+*venv
