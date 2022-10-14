@@ -163,6 +163,7 @@ class Quaternion(Module):
     @property
     def coeffs(self) -> Tensor:
         """Return the underlying data with shape :math:`(B,4)`.
+
         Alias for :func:`~kornia.geometry.quaternion.Quaternion.data`
         """
         return self._data
