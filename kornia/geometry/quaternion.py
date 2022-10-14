@@ -5,7 +5,7 @@
 from math import pi
 from typing import Tuple, Union
 
-from kornia.core import Module, Parameter, Tensor, as_tensor, concatenate, rand, stack
+from kornia.core import Module, Parameter, Tensor, as_tensor, concatenate, rand, stack, where
 from kornia.geometry.conversions import (
     QuaternionCoeffOrder,
     angle_axis_to_quaternion,
@@ -149,7 +149,8 @@ class Quaternion(Module):
             >>> q_pow = q**2
         """
         theta = self.polar_angle
-        n = self.vec / self.vec.norm(dim=-1, keepdim=True)
+        vec_norm = self.vec.norm(dim=-1, keepdim=True)
+        n = where(vec_norm != 0, self.vec / vec_norm, self.vec * 0)
         w = (t * theta).cos()
         xyz = (t * theta).sin() * n
         return Quaternion(concatenate((w, xyz), -1))
