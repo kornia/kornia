@@ -54,6 +54,7 @@ Matrix transformations
 Crop operators
 --------------
 
+.. autofunction:: crop_by_indices
 .. autofunction:: crop_by_boxes
 .. autofunction:: center_crop
 .. autofunction:: crop_and_resize
