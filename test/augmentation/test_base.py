@@ -76,22 +76,19 @@ class TestBasicAugmentationBase:
             assert output.shape == expected_output.shape
             assert_close(output, expected_output)
 
-    @pytest.mark.parametrize("seed, expected_batch_prob", [[0, [True, True]], [1, [False, True]]])
-    def test_autocast(self, seed, expected_batch_prob, device, dtype):
-        # seed=0: triggers all data to be augmented
-        # seed=1: triggers part of the dta to be augmented
-        torch.manual_seed(seed)
+    @pytest.mark.parametrize("batch_prob", [[True, True], [False, True], [False, False]])
+    def test_autocast(self, batch_prob, device, dtype):
+        torch.manual_seed(42)
 
-        aug = RandomGaussianBlur((3, 3), (0.1, 3), p=0.5)
-        x = torch.rand(2, 3, 100, 100, dtype=torch.float32).to(device)
+        aug = RandomGaussianBlur((3, 3), (0.1, 3), p=1)
+        x = torch.rand(len(batch_prob), 3, 100, 100, dtype=dtype).to(device)
 
-        # Check that the seed behavior is correct
+        # Explicitly set the batch probability to trigger the different conditions in apply_func()
         params = aug.forward_parameters(x.shape)
-        expected_batch_prob = torch.tensor(expected_batch_prob, device=params["batch_prob"].device)
-        assert torch.all(params["batch_prob"] == expected_batch_prob)
+        params["batch_prob"] = torch.tensor(batch_prob, device=params["batch_prob"].device)
 
         with torch.autocast(device.type):
-            res = aug(x)
+            res = aug(x, params)
 
         assert res.dtype == dtype, "The output dtype should match the input dtype"
 
