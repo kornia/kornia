@@ -3,6 +3,26 @@ import torch.nn as nn
 
 
 def sepia(input: torch.Tensor, rescale: bool = True) -> torch.Tensor:
+    r"""Apply to a tensor the sepia filter.
+
+    Args:
+        input: the input tensor with shape of :math:`(B, C, H, W)`.
+        rescale: If True, the output tensor will be rescaled (max values be 1. or 255).
+
+    Returns:
+        - torch.Tensor: The sepia tensor of same size and numbers of channels
+        as the input with shape :math:`(B, C, H, W)`.
+
+    Example:
+        >>> input = torch.ones(2, 3, 1, 1)
+        >>> sepia(input)
+        tensor([[[[1.0000]],
+                 [[0.8905]],
+                 [[0.6936]]],
+                [[[1.0000]],
+                 [[0.8905]],
+                 [[0.6936]]]])
+    """
     if len(input.shape) < 3 or input.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {input.shape}")
 
@@ -28,7 +48,8 @@ def sepia(input: torch.Tensor, rescale: bool = True) -> torch.Tensor:
 
     sepia_out = torch.matmul(input_reshaped, weights.T)
     if rescale:
-        sepia_out = torch.div(sepia_out, sepia_out.max())
+        max_values = sepia_out.amax(dim=-1).amax(dim=-1)
+        sepia_out = torch.div(sepia_out, (max_values.unsqueeze(-1).unsqueeze(-1)))
 
     sepia_out = sepia_out.movedim(-1, -3).contiguous()
 
@@ -36,6 +57,28 @@ def sepia(input: torch.Tensor, rescale: bool = True) -> torch.Tensor:
 
 
 class Sepia(nn.Module):
+    r"""Module that apply the sepia filter to tensors.
+
+    Args:
+        input: the input tensor with shape of :math:`(B, C, H, W)`.
+        rescale: If True, the output tensor will be rescaled (max values be 1. or 255).
+
+    Returns:
+        - torch.Tensor: The sepia tensor of same size and numbers of channels
+        as the input with shape :math:`(B, C, H, W)`.
+
+    Example:
+        >>>
+        >>> input = torch.ones(2, 3, 1, 1)
+        >>> Sepia()(input)
+        tensor([[[[1.0000]],
+                 [[0.8905]],
+                 [[0.6936]]],
+                [[[1.0000]],
+                 [[0.8905]],
+                 [[0.6936]]]])
+    """
+
     def __init__(self, rescale: bool = True) -> None:
         self.rescale = True
         super().__init__()
