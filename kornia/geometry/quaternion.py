@@ -5,9 +5,10 @@
 from math import pi
 from typing import Tuple, Union
 
-from kornia.core import Module, Parameter, Tensor, as_tensor, concatenate, rand, stack
+from kornia.core import Module, Parameter, Tensor, as_tensor, concatenate, rand, stack, where
 from kornia.geometry.conversions import (
     QuaternionCoeffOrder,
+    angle_axis_to_quaternion,
     normalize_quaternion,
     quaternion_to_rotation_matrix,
     rotation_matrix_to_quaternion,
@@ -73,8 +74,8 @@ class Quaternion(Module):
     def __repr__(self) -> str:
         return f"real: {self.real} \nvec: {self.vec}"
 
-    def __getitem__(self, idx):
-        return self.data[idx]
+    def __getitem__(self, idx) -> 'Quaternion':
+        return Quaternion(self.data[idx].reshape(1, -1))
 
     def __neg__(self) -> 'Quaternion':
         """Inverts the sign of the quaternion data.
@@ -136,6 +137,23 @@ class Quaternion(Module):
 
     def __truediv__(self, right: 'Quaternion') -> 'Quaternion':
         return self.__div__(right)
+
+    def __pow__(self, t: 'int') -> 'Quaternion':
+        """Return the power of a quaternion raised to exponent t.
+
+        Args:
+            t: raised exponent.
+
+        Example:
+            >>> q = Quaternion(torch.tensor([1., .5, 0., 0.]))
+            >>> q_pow = q**2
+        """
+        theta = self.polar_angle
+        vec_norm = self.vec.norm(dim=-1, keepdim=True)
+        n = where(vec_norm != 0, self.vec / vec_norm, self.vec * 0)
+        w = (t * theta).cos()
+        xyz = (t * theta).sin() * n
+        return Quaternion(concatenate((w, xyz), -1))
 
     @property
     def data(self) -> Tensor:
@@ -245,6 +263,22 @@ class Quaternion(Module):
         return cls(rotation_matrix_to_quaternion(matrix, order=QuaternionCoeffOrder.WXYZ))
 
     @classmethod
+    def from_axis_angle(cls, axis_angle: Tensor) -> 'Quaternion':
+        """Create a quaternion from axis-angle representation.
+
+        Args:
+            axis_angle: rotation vector of shape :math:`(B,3)`.
+
+        Example:
+            >>> axis_angle = torch.tensor([[1., 0., 0.]])
+            >>> q = Quaternion.from_axis_angle(axis_angle)
+            >>> q.data
+            Parameter containing:
+            tensor([[0.8776, 0.4794, 0.0000, 0.0000]], requires_grad=True)
+        """
+        return cls(angle_axis_to_quaternion(axis_angle, order=QuaternionCoeffOrder.WXYZ))
+
+    @classmethod
     def identity(cls, batch_size: int) -> 'Quaternion':
         """Create a quaternion representing an identity rotation.
 
@@ -292,7 +326,8 @@ class Quaternion(Module):
         Example:
             >>> q = Quaternion.random(batch_size=2)
             >>> q.norm()
-            tensor([1.0000, 1.0000], grad_fn=<NormBackward1>)
+            tensor([[1.],
+                    [1.]], grad_fn=<NormBackward1>)
         """
         r1, r2, r3 = rand(3, batch_size)
         q1 = (1.0 - r1).sqrt() * ((2 * pi * r2).sin())
@@ -301,8 +336,27 @@ class Quaternion(Module):
         q4 = r1.sqrt() * (2 * pi * r3).cos()
         return cls(stack((q1, q2, q3, q4), -1))
 
+    def slerp(self, q1: 'Quaternion', t: float) -> 'Quaternion':
+        """Returns a unit quaternion spherically interpolated between quaternions self.q and q1.
+
+        See more: https://en.wikipedia.org/wiki/Slerp
+
+        Args:
+            q1: second quaternion to be interpolated between.
+            t: interpolation ratio, range [0-1]
+
+        Example:
+            >>> q0 = Quaternion.identity(batch_size=1)
+            >>> q1 = Quaternion(torch.tensor([[1., .5, 0., 0.]]))
+            >>> q2 = q0.slerp(q1, .3)
+        """
+        KORNIA_CHECK_TYPE(q1, Quaternion)
+        q0 = self.normalize()
+        q1 = q1.normalize()
+        return q0 * (q0.inv() * q1) ** t
+
     def norm(self) -> Tensor:
-        return self.data.norm(p=2, dim=-1)
+        return self.data.norm(p=2, dim=-1, keepdim=True)
 
     def normalize(self) -> 'Quaternion':
         return Quaternion(normalize_quaternion(self.data))
@@ -321,7 +375,3 @@ class Quaternion(Module):
             y = x
         KORNIA_CHECK(x.shape == y.shape)
         return (x[..., None, :] @ y[..., :, None])[..., 0]
-
-    # TODO: implement me
-    def slerp(self):
-        raise NotImplementedError

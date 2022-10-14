@@ -23,7 +23,7 @@ jobs:
       run: |
         # NOTE: pytorch image does not include git
         conda install -c anaconda git
-        pip install .[all]
+        pip install .[dev,x]
     - name: Run Tests
       shell: bash -l {0}
       run: pytest -v --device cuda --dtype float32,float64 ./test

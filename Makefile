@@ -11,6 +11,9 @@ test-cpu: FORCE
 test-cuda: FORCE
 	pytest -v --device cuda --dtype all --cov=kornia test/ --flake8 --mypy
 
+test-mps: FORCE
+	pytest -v --device mps --dtype float32 -k "not (grad or exception or jit)"  test/
+
 test-module: FORCE
 	pytest -v --device all --dtype all  test/$(module) --flake8 --mypy
 
@@ -34,9 +37,6 @@ lint: FORCE
 
 mypy: FORCE
 	pytest -v --cache-clear --mypy kornia/ -m mypy
-
-autopep8: FORCE
-	autopep8 --in-place --aggressive --recursive kornia/ test/ examples/
 
 yapf: FORCE
 	yapf --in-place --parallel --recursive kornia/ test/ examples/

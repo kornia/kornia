@@ -73,6 +73,8 @@ Modules
 
 
 ZCA Whitening Interactive Demo
-----------------
+------------------------------
 .. raw:: html
+
   <gradio-app space="kornia/zca-whitening"></gradio-app>
+

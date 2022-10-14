@@ -1,5 +1,8 @@
+from typing import Union
+
 import torch
 import torch.nn.functional as F
+from torch import device
 
 # classes
 Tensor = torch.Tensor
@@ -10,9 +13,13 @@ Parameter = torch.nn.Parameter
 concatenate = torch.cat
 stack = torch.stack
 normalize = F.normalize
+where = torch.where
 
 # constructors
 as_tensor = torch.as_tensor
 
 # random
 rand = torch.rand
+
+# device
+Device = Union[str, device]

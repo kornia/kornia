@@ -7,6 +7,7 @@ import torch
 from kornia.core import Module, Parameter, Tensor, normalize
 from kornia.geometry.linalg import squared_norm
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.utils.helpers import _torch_svd_cast
 
 __all__ = ["ParametrizedLine", "fit_line"]
 
@@ -145,12 +146,12 @@ def fit_line(points: Tensor, weights: Optional[Tensor] = None) -> ParametrizedLi
 
     Args:
         points: tensor containing a batch of sets of n-dimensional points. The  expected
-            shape of the tensor is :math:`(B,N,D)`.
+            shape of the tensor is :math:`(B, N, D)`.
         weights: weights to use to solve the equations system. The  expected
-            shape of the tensor is :math:`(B,N)`.
+            shape of the tensor is :math:`(B, N)`.
 
     Return:
-        A tensor containing the direction of the fited line of shape :math:`(B,D)`.
+        A tensor containing the direction of the fited line of shape :math:`(B, D)`.
 
     Example:
         >>> points = torch.rand(2, 10, 3)
@@ -167,14 +168,15 @@ def fit_line(points: Tensor, weights: Optional[Tensor] = None) -> ParametrizedLi
 
     if weights is not None:
         KORNIA_CHECK_IS_TENSOR(weights, "weights must be a tensor")
-        KORNIA_CHECK_SHAPE(weights, ["B"])
+        KORNIA_CHECK_SHAPE(weights, ["B", "N"])
         KORNIA_CHECK(points.shape[0] == weights.shape[0])
         A = A.transpose(-2, -1) @ torch.diag_embed(weights) @ A
     else:
         A = A.transpose(-2, -1) @ A
 
     # NOTE: not optimal for 2d points, but for now works for other dimensions
-    _, _, V = torch.linalg.svd(A)
+    _, _, V = _torch_svd_cast(A)
+    V = V.transpose(-2, -1)
 
     # the first left eigenvector is the direction on the fited line
     direction = V[..., 0, :]  # BxD

@@ -34,6 +34,7 @@ Image 2d transforms
 .. autofunction:: pyrdown
 .. autofunction:: pyrup
 .. autofunction:: build_pyramid
+.. autofunction:: build_laplacian_pyramid
 
 Matrix transformations
 ----------------------
@@ -73,7 +74,6 @@ Module
 .. autoclass:: Vflip
 .. autoclass:: Rot180
 .. autoclass:: Resize
-* `Interactive Demo`_
 .. autoclass:: Rescale
 .. autoclass:: Affine
 .. autoclass:: HomographyWarper
@@ -94,3 +94,4 @@ Interactive Demo
 
 .. raw:: html
     :file: gradio/resize_antialias.html
+    :file: gradio/geometry_image_transform.html

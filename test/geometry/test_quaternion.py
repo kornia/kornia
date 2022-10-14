@@ -131,6 +131,20 @@ class TestQuaternion:
         self.assert_close(i / -j, k)
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    def test_pow(self, device, dtype, batch_size):
+        q = Quaternion.random(batch_size)
+        q = q.to(device, dtype)
+        q1 = Quaternion.identity(batch_size)
+        q1 = q1.to(device, dtype)
+        self.assert_close(q**0, q1)
+        self.assert_close(q**1, q)
+        self.assert_close(q**2, q * q)
+        self.assert_close(q**-1, q.inv())
+        self.assert_close((q**0.5) * (q**0.5), q)
+        self.assert_close((q1**1), q1)
+        self.assert_close((q1**2), q1)
+
+    @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_inverse(self, device, dtype, batch_size):
         q1 = Quaternion.random(batch_size)
         q1 = q1.to(device, dtype)
@@ -161,6 +175,12 @@ class TestQuaternion:
         self.assert_close((q1 * q2).norm(), q1.norm() * q2.norm())
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    def test_norm_shape(self, device, dtype, batch_size):
+        q = Quaternion.random(batch_size)
+        q = q.to(device, dtype)
+        self.assert_close(q.norm().shape, torch.Size([batch_size, 1]))
+
+    @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_normalize(self, device, dtype, batch_size):
         q1 = Quaternion.random(batch_size)
         q1 = q1.to(device, dtype)
@@ -178,3 +198,35 @@ class TestQuaternion:
                 self.assert_close(qq1, qq2)
             except Exception:
                 self.assert_close(qq1, -qq2)
+
+    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    def test_getitem(self, device, dtype, batch_size):
+        q = Quaternion.random(batch_size)
+        q = q.to(device, dtype)
+        for i in range(batch_size):
+            q1 = q[i]
+            self.assert_close(q1.data[0], q.data[i])
+
+    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    def test_axis_angle(self, device, dtype, batch_size):
+        q1 = Quaternion.random(batch_size)
+        q1 = q1.to(device, dtype)
+        angle = 2 * q1.scalar.arccos()
+        axis = q1.vec / (angle / 2).sin()
+        axis_angle = axis * angle
+        q2 = Quaternion.from_axis_angle(axis_angle)
+        q2 = q2.to(device, dtype)
+        self.assert_close(q1, q2)
+
+    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    def test_slerp(self, device, dtype, batch_size):
+        for axis in torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]):
+            axis = axis.repeat(batch_size, 1).to(device, dtype)
+            q1 = Quaternion.from_axis_angle(axis * 0)
+            q1.to(device, dtype)
+            q2 = Quaternion.from_axis_angle(axis * 3.14159)
+            q2.to(device, dtype)
+            for t in torch.linspace(0.1, 1, 10):
+                q3 = q1.slerp(q2, t)
+                q4 = Quaternion.from_axis_angle(axis * t * 3.14159)
+                self.assert_close(q3, q4)

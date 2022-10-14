@@ -6,6 +6,7 @@ from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.linalg import transform_points
 from kornia.utils import eye_like
 from kornia.utils._compat import linalg_qr
+from kornia.utils.helpers import _torch_linalg_svdvals
 
 
 def _mean_isotropic_scale_normalize(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -194,7 +195,7 @@ def solve_pnp_dlt(
     # Checking if world_points_norm (of any element of the batch) has rank = 3. This
     # function cannot be used if all world points (of any element of the batch) lie
     # on a line or if all world points (of any element of the batch) lie on a plane.
-    _, s, _ = torch.svd(world_points_norm)
+    s = _torch_linalg_svdvals(world_points_norm)
     if torch.any(s[:, -1] < svd_eps):
         raise AssertionError(
             f"The last singular value of one/more of the elements of the batch is smaller "
