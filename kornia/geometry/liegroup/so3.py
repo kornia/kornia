@@ -39,7 +39,6 @@ class So3:
         """
         KORNIA_CHECK_TYPE(q, Quaternion)
         self._q = q
-        self.epsilon = 2.220446049250313e-16
 
     def __repr__(self) -> str:
         return f"{self.q}"
