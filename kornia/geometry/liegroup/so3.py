@@ -2,8 +2,8 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py
 from kornia.core import Tensor, concatenate, stack, where, zeros, zeros_like
 from kornia.geometry.quaternion import Quaternion
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_TYPE
-
+from kornia.geometry.liegroup._utils import squared_norm
+from kornia.testing import KORNIA_CHECK_TYPE
 
 class So3:
     r"""Base class to represent the So3 group.
@@ -26,7 +26,7 @@ class So3:
         """Constructor for the base class.
 
         Args:
-            data: Quaternion with the sape of :math:`(B, 4)`.
+            data: Quaternion with the shape of :math:`(B, 4)`.
 
         Example:
             >>> data = torch.rand((2, 4))
@@ -52,7 +52,8 @@ class So3:
         """Return the underlying data with shape :math:`(B,4)`."""
         return self._q
 
-    def exp(self, v) -> 'So3':
+    @staticmethod
+    def exp(v) -> 'So3':
         """Converts elements of lie algebra to elements of lie group.
 
         See more: https://vision.in.tum.de/_media/members/demmeln/nurlanov2021so3log.pdf
@@ -69,9 +70,9 @@ class So3:
             vec: tensor([[0.0893, 0.3285, 0.3060],
                     [0.0567, 0.1315, 0.1558]], grad_fn=<SliceBackward0>)
         """
-        theta = self.squared_norm(v).sqrt()
-        small_angles_indices = where(theta < self.epsilon)[0]
-        large_angles_indices = where(theta > self.epsilon)[0]
+        theta = squared_norm(v).sqrt()
+        small_angles_indices = where(theta < 2.220446049250313e-16)[0]
+        large_angles_indices     = where(theta > 2.220446049250313e-16)[0]
         large_angles = theta[large_angles_indices]
 
         qtensor = zeros((v.shape[0], 4))
@@ -92,9 +93,9 @@ class So3:
             tensor([[2.3822, 0.2638, 0.1771],
                     [0.3699, 1.8639, 0.3685]], grad_fn=<MulBackward0>)
         """
-        theta = self.squared_norm(self.q.vec).sqrt()
-        small_angles_indices = where(theta < self.epsilon)[0]
-        large_angles_indices = where(theta > self.epsilon)[0]
+        theta = squared_norm(self.q.vec).sqrt()
+        small_angles_indices = where(theta < 2.220446049250313e-16)[0]
+        large_angles_indices = where(theta > 2.220446049250313e-16)[0]
         large_angles = theta[large_angles_indices]
 
         q_real = self.q.real
@@ -208,12 +209,3 @@ class So3:
 
     def inverse(self) -> 'So3':
         return So3(self.q.conj())
-
-    def squared_norm(self, x, y=None) -> Tensor:
-        return self._batched_squared_norm(x, y)
-
-    def _batched_squared_norm(self, x, y=None):
-        if y is None:
-            y = x
-        KORNIA_CHECK(x.shape == y.shape)
-        return (x[..., None, :] @ y[..., :, None])[..., 0]
