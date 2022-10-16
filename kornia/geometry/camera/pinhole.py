@@ -69,13 +69,23 @@ class PinholeCamera:
         for data in data_iter:
             KORNIA_CHECK_SAME_DEVICE(data, first)
 
+    @property
     def device(self) -> torch.device:
         r"""Returns the device for camera buffers.
 
         Returns:
-            Device type
+            Device for camera matrices
         """
         return self._intrinsics.device
+
+    @property
+    def dtype(self) -> torch.dtype:
+        r"""Returns the type for camera buffers.
+
+        Returns:
+            Type for camera matrices
+        """
+        return self._intrinsics.dtype
 
     @property
     def intrinsics(self) -> torch.Tensor:
@@ -225,6 +235,15 @@ class PinholeCamera:
         """
         return self.extrinsics[..., :3, -1:]
 
+    def origins(self) -> torch.Tensor:
+        r"""Return camera origins in world coordinates.
+
+        Returns:
+            tensor of shape :math:`(B, 3, 1)`.
+        """
+        origins_cam = torch.zeros(self.batch_size, 1, 3, device=self.device, dtype=self.dtype)
+        return self.transform_to_world(origins_cam).view(-1, 3, 1)
+
     def clone(self) -> 'PinholeCamera':
         r"""Return a deep copy of the current object instance."""
         height: torch.Tensor = self.height.clone()
@@ -340,6 +359,29 @@ class PinholeCamera:
         P = self.intrinsics @ self.extrinsics
         P_inv = _torch_inverse_cast(P)
         return transform_points(P_inv, convert_points_to_homogeneous(point_2d) * depth)
+
+    def transform_to_camera_view(self, points_3d: torch.Tensor) -> torch.Tensor:
+        r"""Transform between world and camera 3D coordinate systems.
+
+        Args:
+            point3d: world coordinates. The shape of the tensor can be :math:`(*, 3)`.
+
+        Returns:
+            tensor of (x, y, z) camera coordinates with shape :math:`(*, 3)`.
+        """
+        return transform_points(self.extrinsics, points_3d)
+
+    def transform_to_world(self, points_3d: torch.Tensor) -> torch.Tensor:
+        r"""Transform between camera and world 3D coordinate systems.
+
+        Args:
+            point3d: camera coordinates. The shape of the tensor can be :math:`(*, 3)`.
+
+        Returns:
+            tensor of (x, y, z) world coordinates with shape :math:`(*, 3)`.
+        """
+        Rt_inv = _torch_inverse_cast(self.extrinsics)
+        return transform_points(Rt_inv, points_3d)
 
     # NOTE: just for test. Decide if we keep it.
     @classmethod
