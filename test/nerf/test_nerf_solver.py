@@ -36,7 +36,7 @@ class TestNerfSolver:
 
         img_rendered = nerf_obj.render_views(camera)[0].permute(2, 0, 1)
 
-        assert_close(img_rendered.to(dtype) / 255.0, img[0].to(dtype) / 255.0)
+        assert_close(img_rendered.to(device, dtype) / 255.0, img[0].to(device, dtype) / 255.0)
 
     def test_single_ray(self, device, dtype):
         camera = create_one_camera(5, 9, device, dtype)
@@ -59,4 +59,4 @@ class TestNerfSolver:
 
         img_rendered = nerf_obj.render_views(camera)[0].permute(2, 0, 1)
 
-        assert_close(img_rendered.to(dtype) / 255.0, img[0].to(dtype) / 255.0)
+        assert_close(img_rendered.to(device, dtype) / 255.0, img[0].to(device, dtype) / 255.0)

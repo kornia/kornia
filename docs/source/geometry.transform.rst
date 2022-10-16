@@ -34,6 +34,7 @@ Image 2d transforms
 .. autofunction:: pyrdown
 .. autofunction:: pyrup
 .. autofunction:: build_pyramid
+.. autofunction:: build_laplacian_pyramid
 
 Matrix transformations
 ----------------------
@@ -53,6 +54,7 @@ Matrix transformations
 Crop operators
 --------------
 
+.. autofunction:: crop_by_indices
 .. autofunction:: crop_by_boxes
 .. autofunction:: center_crop
 .. autofunction:: crop_and_resize
