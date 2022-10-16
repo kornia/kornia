@@ -5,6 +5,7 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia
+from kornia.geometry.camera.pinhole import PinholeCamera
 from kornia.testing import assert_close, tensor_to_gradcheck_var
 
 
@@ -371,6 +372,21 @@ class TestPinholeCamera:
         assert pinhole.rotation_matrix.shape == (batch_size, 3, 3)
         assert pinhole.translation_vector.shape == (batch_size, 3, 1)
 
+    def test_pinhole_camera_origins(self, device, dtype):
+        batch_size = 2
+        height, width = 4, 6
+        fx, fy, cx, cy = 1, 2, width / 2, height / 2
+        tx, ty, tz = 1, 2, 3
+        intrinsics = self._create_intrinsics(batch_size, fx, fy, cx, cy, device=device, dtype=dtype)
+        extrinsics = self._create_extrinsics(batch_size, tx, ty, tz, device=device, dtype=dtype)
+        height = torch.ones(batch_size, device=device, dtype=dtype) * height
+        width = torch.ones(batch_size, device=device, dtype=dtype) * width
+        pinhole = kornia.geometry.camera.PinholeCamera(intrinsics, extrinsics, height, width)
+        assert torch.equal(
+            pinhole.origins(),
+            torch.tensor([[-tx], [-ty], [-tz]], device=device, dtype=dtype).unsqueeze(0).repeat(batch_size, 1, 1),
+        )
+
     def test_pinhole_camera_scale(self, device, dtype):
         batch_size = 2
         height, width = 4, 6
@@ -434,12 +450,11 @@ class TestPinholeCamera:
         assert_close(pinhole_scale.height, pinhole.height * scale_val, atol=1e-4, rtol=1e-4)
         assert_close(pinhole_scale.width, pinhole.width * scale_val, atol=1e-4, rtol=1e-4)
 
-    def test_pinhole_camera_project_and_unproject(self, device, dtype):
+    def _create_cameras(self, device, dtype) -> PinholeCamera:
         batch_size = 5
-        n = 2  # Point per batch
         height, width = 4, 6
         fx, fy, cx, cy = 1, 2, width / 2, height / 2
-        alpha, beta, gamma = 0.0, 0.0, 0.4
+        alpha, beta, gamma = 0.1, 0.2, 0.4
         tx, ty, tz = 0, 0, 3
 
         intrinsics = self._create_intrinsics(batch_size, fx, fy, cx, cy, device=device, dtype=dtype)
@@ -451,14 +466,31 @@ class TestPinholeCamera:
         width = torch.ones(batch_size, device=device, dtype=dtype) * width
 
         pinhole = kornia.geometry.camera.PinholeCamera(intrinsics, extrinsics, height, width)
+        return pinhole
 
-        point_3d = torch.rand((batch_size, n, 3), device=device, dtype=dtype)
+    def test_pinhole_camera_project_and_unproject(self, device, dtype):
+        pinhole = self._create_cameras(device=device, dtype=dtype)
+        n = 2  # Point per batch
 
-        depth = point_3d[..., -1:] + tz
+        point_3d = torch.rand((pinhole.batch_size, n, 3), device=device, dtype=dtype)
+        depth = pinhole.transform_to_camera_view(point_3d)[..., 2].view(pinhole.batch_size, 2, 1)
 
         point_2d = pinhole.project(point_3d)
         point_3d_hat = pinhole.unproject(point_2d, depth)
         assert_close(point_3d, point_3d_hat, atol=1e-4, rtol=1e-4)
+
+    def test_pinhole_camera_transform_to_world(self, device, dtype):
+        pinhole = self._create_cameras(device=device, dtype=dtype)
+        origins_world = pinhole.transform_to_world(pinhole.translation_vector.view(-1, 1, 3))
+        assert_close(origins_world, torch.zeros_like(origins_world))  # World origins is at zero
+
+    def test_pinhole_transform_world_to_camera_and_back(self, device, dtype):
+        pinhole = self._create_cameras(device=device, dtype=dtype)
+        n = 2  # Point per batch
+        point_3d_world_ref = torch.rand((pinhole.batch_size, n, 3), device=device, dtype=dtype)
+        point_3d_cam = pinhole.transform_to_camera_view(point_3d_world_ref)
+        point_3d_world = pinhole.transform_to_world(point_3d_cam)
+        assert_close(point_3d_world_ref, point_3d_world)
 
     def test_pinhole_camera_device(self, device, dtype):
         batch_size = 5
@@ -469,3 +501,6 @@ class TestPinholeCamera:
 
         pinhole = kornia.geometry.camera.PinholeCamera(intrinsics, extrinsics, height, width)
         assert pinhole.device() == intrinsics.device
+
+    def test_pinhole_camera_dtype(self, device, dtype):
+        pass  # FIXME: Complete this
