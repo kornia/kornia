@@ -379,8 +379,48 @@ class UniformRaySampler(RaySampler):
         return RaySampler._build_num_ray_dict_of_points2d(points2d_as_flat_tensors)
 
     def calc_ray_params(self, cameras: PinholeCamera) -> None:
+        r"""Calculates ray parameters: origins, directions. Also stored are camera ids for each ray, and its pixel
+        coordinates.
+
+        Args:
+            cameras: scene cameras: PinholeCamera
+        """
         points_2d_camera = self.sample_points_2d(cameras.height, cameras.width)
         self._calc_ray_params(cameras, points_2d_camera)
+
+
+class FocalAxisRay(UniformRaySampler):
+    r"""A class to create rays from camera focal axes. Rays are sampled from the focal point (camera origin) to a
+    defined maximal depth.
+
+    Args:
+        max_depth: sampled rays maximal depth from cameras: float
+        corner_rays: in addition to the focal ray, shoot 4 more rays, one from each corner of the image plane: bool
+    """
+
+    def __init__(self, max_depth: float, corner_rays: bool = False) -> None:
+        super().__init__(0.0, max_depth, False, 'cpu', torch.float32)
+        self._corner_rays = corner_rays
+
+    def sample_points_2d(self, heights: Tensor, widths: Tensor) -> Dict[int, RaySampler.Points2D]:
+        heights = heights.int()
+        widths = widths.int()
+        points2d_as_flat_tensors: Dict[int, RaySampler.Points2D_FlatTensors] = {}
+        for camera_id, (height, width) in enumerate(zip(heights.tolist(), widths.tolist())):
+            x = torch.tensor((width - 1.0) / 2.0, device=self._device, dtype=self._dtype)
+            y = torch.tensor((height - 1.0) / 2.0, device=self._device, dtype=self._dtype)
+            if self._corner_rays:
+                y_corners, x_corners = torch_meshgrid(
+                    [
+                        torch.arange(0, height, height - 1, device=self._device, dtype=self._dtype),
+                        torch.arange(0, width, width - 1, device=self._device, dtype=self._dtype),
+                    ],
+                    indexing='ij',
+                )
+                x = torch.cat((x.unsqueeze(0), x_corners.flatten()), 0)
+                y = torch.cat((y.unsqueeze(0), y_corners.flatten()), 0)
+            RaySampler._add_points2d_as_flat_tensors_to_num_ray_dict(1, x, y, camera_id, points2d_as_flat_tensors)
+        return RaySampler._build_num_ray_dict_of_points2d(points2d_as_flat_tensors)
 
 
 def sample_lengths(num_rays: int, num_ray_points: int, device: Device, dtype: torch.dtype, irregular=False) -> Tensor:

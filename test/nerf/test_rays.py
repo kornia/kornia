@@ -5,6 +5,7 @@ import torch
 from kornia.core import Device
 from kornia.geometry.camera import PinholeCamera
 from kornia.nerf.rays import (
+    FocalAxisRay,
     RandomGridRaySampler,
     RandomRaySampler,
     UniformRaySampler,
@@ -220,3 +221,14 @@ class TestRaySampler_3DPoints:
         origins_ndc, directions_ndc = uniform_sampler_four_cameras.transform_ray_params_world_to_ndc(cameras)
         assert origins_ndc.shape == (3 * 28 + 45, 3)
         assert directions_ndc.shape == (3 * 28 + 45, 3)
+
+    def test_focal_axis_rays(self, device, dtype):
+        cameras = create_four_cameras(device, dtype)
+        focal_axis_rays = FocalAxisRay(3.0, corner_rays=True)
+        focal_axis_rays.calc_ray_params(cameras)
+        lengths = sample_lengths(
+            focal_axis_rays.origins.shape[0], 2, irregular=False, device='cpu', dtype=torch.float32
+        )
+        points_3d = sample_ray_points(focal_axis_rays.origins, focal_axis_rays.directions, lengths)
+        cameras.transform_to_world(cameras.translation_vector.view(-1, 1, 3))
+        assert points_3d.shape == (20, 2, 3)
