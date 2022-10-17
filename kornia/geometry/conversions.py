@@ -4,10 +4,10 @@ from typing import Optional, Tuple
 
 import torch
 import torch.nn.functional as F
-from kornia.core import Tensor, tensor, stack, concatenate
 
 from kornia.constants import pi
-from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK_SAME_DEVICE
+from kornia.core import Tensor, concatenate, stack, tensor
+from kornia.testing import KORNIA_CHECK_SAME_DEVICE, KORNIA_CHECK_SHAPE
 from kornia.utils.helpers import _torch_inverse_cast
 
 __all__ = [
@@ -588,9 +588,7 @@ def quaternion_to_rotation_matrix(
     return matrix
 
 
-def quaternion_to_angle_axis(
-    quaternion: Tensor, order: QuaternionCoeffOrder = QuaternionCoeffOrder.XYZW
-) -> Tensor:
+def quaternion_to_angle_axis(quaternion: Tensor, order: QuaternionCoeffOrder = QuaternionCoeffOrder.XYZW) -> Tensor:
     """Convert quaternion vector to angle axis of rotation in radians.
 
     The quaternion should be in (x, y, z, w) or (w, x, y, z) format.
@@ -774,9 +772,7 @@ def quaternion_exp_to_log(
     norm_q: Tensor = torch.norm(quaternion_vector, p=2, dim=-1, keepdim=True).clamp(min=eps)
 
     # apply log map
-    quaternion_log: Tensor = (
-        quaternion_vector * torch.acos(torch.clamp(quaternion_scalar, min=-1.0, max=1.0)) / norm_q
-    )
+    quaternion_log: Tensor = quaternion_vector * torch.acos(torch.clamp(quaternion_scalar, min=-1.0, max=1.0)) / norm_q
 
     return quaternion_log
 
@@ -785,9 +781,7 @@ def quaternion_exp_to_log(
 # https://github.com/facebookresearch/QuaterNet/blob/master/common/quaternion.py#L138
 
 
-def angle_axis_to_quaternion(
-    angle_axis: Tensor, order: QuaternionCoeffOrder = QuaternionCoeffOrder.XYZW
-) -> Tensor:
+def angle_axis_to_quaternion(angle_axis: Tensor, order: QuaternionCoeffOrder = QuaternionCoeffOrder.XYZW) -> Tensor:
     r"""Convert an angle axis to a quaternion.
 
     The quaternion vector has components in (x, y, z, w) or (w, x, y, z) format.
@@ -844,9 +838,7 @@ def angle_axis_to_quaternion(
     k: Tensor = torch.where(mask, k_pos, k_neg)
     w: Tensor = torch.where(mask, torch.cos(half_theta), ones)
 
-    quaternion: Tensor = torch.zeros(
-        size=(*angle_axis.shape[:-1], 4), dtype=angle_axis.dtype, device=angle_axis.device
-    )
+    quaternion: Tensor = torch.zeros(size=(*angle_axis.shape[:-1], 4), dtype=angle_axis.dtype, device=angle_axis.device)
     if order == QuaternionCoeffOrder.XYZW:
         quaternion[..., 0:1] = a0 * k
         quaternion[..., 1:2] = a1 * k
@@ -864,9 +856,7 @@ def angle_axis_to_quaternion(
 # https://github.com/ClementPinard/SfmLearner-Pytorch/blob/master/inverse_warp.py#L65-L71
 
 
-def normalize_pixel_coordinates(
-    pixel_coordinates: Tensor, height: int, width: int, eps: float = 1e-8
-) -> Tensor:
+def normalize_pixel_coordinates(pixel_coordinates: Tensor, height: int, width: int, eps: float = 1e-8) -> Tensor:
     r"""Normalize pixel coordinates between -1 and 1.
 
     Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1).
@@ -896,16 +886,12 @@ def normalize_pixel_coordinates(
         ]
     )
 
-    factor: Tensor = tensor(2.0, device=pixel_coordinates.device, dtype=pixel_coordinates.dtype) / (
-        hw - 1
-    ).clamp(eps)
+    factor: Tensor = tensor(2.0, device=pixel_coordinates.device, dtype=pixel_coordinates.dtype) / (hw - 1).clamp(eps)
 
     return factor * pixel_coordinates - 1
 
 
-def denormalize_pixel_coordinates(
-    pixel_coordinates: Tensor, height: int, width: int, eps: float = 1e-8
-) -> Tensor:
+def denormalize_pixel_coordinates(pixel_coordinates: Tensor, height: int, width: int, eps: float = 1e-8) -> Tensor:
     r"""Denormalize pixel coordinates.
 
     The input is assumed to be -1 if on extreme left, 1 if on extreme right (x = w-1).
@@ -927,11 +913,7 @@ def denormalize_pixel_coordinates(
     if pixel_coordinates.shape[-1] != 2:
         raise ValueError("Input pixel_coordinates must be of shape (*, 2). " "Got {}".format(pixel_coordinates.shape))
     # compute normalization factor
-    hw: Tensor = (
-        stack([tensor(width), tensor(height)])
-        .to(pixel_coordinates.device)
-        .to(pixel_coordinates.dtype)
-    )
+    hw: Tensor = stack([tensor(width), tensor(height)]).to(pixel_coordinates.device).to(pixel_coordinates.dtype)
 
     factor: Tensor = tensor(2.0) / (hw - 1).clamp(eps)
 
@@ -959,9 +941,7 @@ def normalize_pixel_coordinates3d(
         raise ValueError("Input pixel_coordinates must be of shape (*, 3). " "Got {}".format(pixel_coordinates.shape))
     # compute normalization factor
     dhw: Tensor = (
-        stack([tensor(depth), tensor(width), tensor(height)])
-        .to(pixel_coordinates.device)
-        .to(pixel_coordinates.dtype)
+        stack([tensor(depth), tensor(width), tensor(height)]).to(pixel_coordinates.device).to(pixel_coordinates.dtype)
     )
 
     factor: Tensor = tensor(2.0) / (dhw - 1).clamp(eps)
@@ -990,9 +970,7 @@ def denormalize_pixel_coordinates3d(
         raise ValueError("Input pixel_coordinates must be of shape (*, 3). " "Got {}".format(pixel_coordinates.shape))
     # compute normalization factor
     dhw: Tensor = (
-        stack([tensor(depth), tensor(width), tensor(height)])
-        .to(pixel_coordinates.device)
-        .to(pixel_coordinates.dtype)
+        stack([tensor(depth), tensor(width), tensor(height)]).to(pixel_coordinates.device).to(pixel_coordinates.dtype)
     )
 
     factor: Tensor = tensor(2.0) / (dhw - 1).clamp(eps)
