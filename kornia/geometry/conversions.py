@@ -1182,7 +1182,7 @@ def normalize_points_with_intrinsics(point_2d: Tensor, camera_matrix: Tensor):
 
     Example:
         >>> _ = torch.manual_seed(0)
-        >>> X = torch.ones(1, 2)
+        >>> X = torch.rand(1, 2)
         >>> K = torch.eye(3)[None]
         >>> normalize_points_with_intrinsics(X, K)
         tensor([[0.4963, 0.7682]])
