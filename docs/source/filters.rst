@@ -81,4 +81,3 @@ Module
 .. autoclass:: GaussianBlur2d
 .. autoclass:: MotionBlur
 .. autoclass:: UnsharpMask
-.. autoclass:: Sepia
