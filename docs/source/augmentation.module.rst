@@ -20,6 +20,7 @@ Intensity
 .. autoclass:: RandomBoxBlur
 .. autoclass:: RandomChannelShuffle
 .. autoclass:: RandomEqualize
+.. autoclass:: RandomGamma
 .. autoclass:: RandomGrayscale
 .. autoclass:: RandomGaussianBlur
 .. autoclass:: RandomGaussianNoise
@@ -49,8 +50,10 @@ Geometric
 Mix
 ~~~
 
-.. autoclass:: RandomCutMix
-.. autoclass:: RandomMixUp
+.. autoclass:: RandomCutMixV2
+.. autoclass:: RandomMixUpV2
+.. autoclass:: RandomMosaic
+.. autoclass:: RandomJigsaw
 
 Transforms3D
 ------------

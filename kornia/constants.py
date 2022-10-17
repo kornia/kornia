@@ -2,8 +2,9 @@ from enum import Enum, EnumMeta
 from typing import TypeVar, Union, cast
 
 import torch
+from torch import Tensor
 
-__all__ = ['pi', 'Resample', 'BorderType', 'SamplePadding']
+__all__ = ['pi', 'DType', 'Resample', 'BorderType', 'SamplePadding']
 
 pi = torch.tensor(3.14159265358979323846)
 T = TypeVar('T', bound='ConstantBase')
@@ -53,7 +54,43 @@ class SamplePadding(ConstantBase, Enum, metaclass=EnumMetaFlags):
     REFLECTION = 2
 
 
-# TODO: (low-priority) add INPUT3D, MASK3D, BBOX3D, etc.
+class DType(ConstantBase, Enum, metaclass=EnumMetaFlags):
+    INT64 = 0
+    FLOAT16 = 1
+    FLOAT32 = 2
+    FLOAT64 = 3
+
+    @classmethod
+    def get(cls, value: Union[str, int, torch.dtype, Tensor, T]) -> T:  # type: ignore
+        if type(value) is torch.dtype:
+            value = str(value).upper()  # Convert to str
+        if type(value) is Tensor:
+            value = value.item()  # Convert to int
+        if type(value) is str:
+            if value.upper().startswith("TORCH."):
+                return cls[value.upper()[6:]]  # type: ignore
+            return cls[value.upper()]  # type: ignore
+        if type(value) is int:
+            return cls(value)  # type: ignore
+        if type(value) is cls:
+            return value  # type: ignore
+        raise TypeError(f"Invalid identifier {value}.")
+
+    @classmethod
+    def to_torch(cls, value: Union[str, int, T]) -> T:  # type: ignore
+        data = cls.get(value=value)
+        if data == DType.INT64:
+            return torch.long
+        if data == DType.FLOAT16:
+            return torch.float16
+        if data == DType.FLOAT32:
+            return torch.float32
+        if data == DType.FLOAT64:
+            return torch.float64
+        raise ValueError()
+
+
+# TODO: (low-priority) add INPUT3D, MASK3D, BBOX3D, LAFs etc.
 class DataKey(ConstantBase, Enum, metaclass=EnumMetaFlags):
     INPUT = 0
     MASK = 1
@@ -61,3 +98,4 @@ class DataKey(ConstantBase, Enum, metaclass=EnumMetaFlags):
     BBOX_XYXY = 3
     BBOX_XYWH = 4
     KEYPOINTS = 5
+    CLASS = 6

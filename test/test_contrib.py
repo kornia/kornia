@@ -518,9 +518,9 @@ class TestConvDistanceTransform:
         output1 = kornia.contrib.distance_transform(sample1, kernel_size, h)
         assert_close(expected_output1, output1)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         B, C, H, W = 1, 1, 32, 32
-        sample1 = torch.ones(B, C, H, W, device=device, dtype=dtype, requires_grad=True)
+        sample1 = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.contrib.distance_transform, (sample1), raise_exception=True)
 
     def test_loss_grad(self, device, dtype):
@@ -616,3 +616,16 @@ class TestFaceDetection:
         data = torch.zeros(14, device=device, dtype=dtype)
         with pytest.raises(ValueError):
             _ = kornia.contrib.FaceDetectorResult(data)
+
+
+class TestEdgeDetector:
+    def test_smoke(self, device, dtype):
+        img = torch.rand(2, 3, 64, 64, device=device, dtype=dtype)
+        net = kornia.contrib.EdgeDetector().to(device, dtype)
+        out = net(img)
+        assert out.shape == (2, 1, 64, 64)
+
+    def test_jit(self, device, dtype):
+        op = kornia.contrib.EdgeDetector().to(device, dtype)
+        op_jit = torch.jit.script(op)
+        assert op_jit is not None

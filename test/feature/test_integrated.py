@@ -17,7 +17,10 @@ from kornia.feature import (
     SIFTDescriptor,
     SIFTFeature,
     extract_patches_from_pyramid,
+    get_laf_center,
     get_laf_descriptors,
+    get_laf_orientation,
+    get_laf_scale,
 )
 from kornia.feature.integrated import LocalFeatureMatcher
 from kornia.geometry import RANSAC, resize, transform_points
@@ -50,9 +53,7 @@ class TestGetLAFDescriptors:
         B, C, H, W = 1, 1, 32, 32
         PS = 16
         img = torch.rand(B, C, H, W, device=device)
-        centers = torch.tensor([[H / 2.0, W / 2.0], [2.0 * H / 3.0, W / 2.0]], device=device, dtype=dtype).view(
-            1, 2, 2
-        )
+        centers = torch.tensor([[H / 2.0, W / 2.0], [2.0 * H / 3.0, W / 2.0]], device=device, dtype=dtype).view(1, 2, 2)
         scales = torch.tensor([(H + W) / 5.0, (H + W) / 6.0], device=device, dtype=dtype).view(1, 2, 1, 1)
         ori = torch.tensor([0.0, 30.0], device=device, dtype=dtype).view(1, 2, 1)
         lafs = kornia.feature.laf_from_center_scale_ori(centers, scales, ori)
@@ -64,8 +65,9 @@ class TestGetLAFDescriptors:
                 return inputs.mean(dim=(2, 3))
 
         desc = _MeanPatch()
-        assert gradcheck(get_laf_descriptors, (img, lafs, desc, PS, True),
-                         eps=1e-3, atol=1e-3, raise_exception=True, nondet_tol=1e-3)
+        assert gradcheck(
+            get_laf_descriptors, (img, lafs, desc, PS, True), eps=1e-3, atol=1e-3, raise_exception=True, nondet_tol=1e-3
+        )
 
 
 class TestLAFDescriptor:
@@ -88,13 +90,21 @@ class TestLAFDescriptor:
         descs_reference = sift(patches.view(B1 * N1, CH1, H1, W1)).view(B1, N1, -1)
         assert_close(descs_test, descs_reference)
 
+    def test_empty(self, device):
+        B, C, H, W = 1, 1, 32, 32
+        PS = 16
+        img = torch.rand(B, C, H, W, device=device)
+        lafs = torch.zeros(B, 0, 2, 3, device=device)
+        sift = SIFTDescriptor(PS).to(device)
+        lafsift = LAFDescriptor(sift, PS)
+        descs_test = lafsift(img, lafs)
+        assert descs_test.shape == (B, 0, 128)
+
     def test_gradcheck(self, device):
         B, C, H, W = 1, 1, 32, 32
         PS = 16
         img = torch.rand(B, C, H, W, device=device)
-        centers = torch.tensor([[H / 2.0, W / 2.0], [2.0 * H / 3.0, W / 2.0]], device=device).view(
-            1, 2, 2
-        )
+        centers = torch.tensor([[H / 2.0, W / 2.0], [2.0 * H / 3.0, W / 2.0]], device=device).view(1, 2, 2)
         scales = torch.tensor([(H + W) / 5.0, (H + W) / 6.0], device=device).view(1, 2, 1, 1)
         ori = torch.tensor([0.0, 30.0], device=device).view(1, 2, 1)
         lafs = kornia.feature.laf_from_center_scale_ori(centers, scales, ori)
@@ -104,6 +114,7 @@ class TestLAFDescriptor:
         class _MeanPatch(nn.Module):
             def forward(self, inputs):
                 return inputs.mean(dim=(2, 3))
+
         lafdesc = LAFDescriptor(_MeanPatch(), PS)
         assert gradcheck(lafdesc, (img, lafs), eps=1e-3, atol=1e-3, raise_exception=True, nondet_tol=1e-3)
 
@@ -132,6 +143,20 @@ class TestLocalFeature:
         # So we need to reshape a bit :)
         descs1 = desc(patches.view(B1 * N1, CH1, H1, W1)).view(B1, N1, -1)
         assert_close(descs, descs1)
+
+    def test_scale(self, device, dtype):
+        B, C, H, W = 1, 1, 64, 64
+        PS = 16
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        det = ScaleSpaceDetector(10)
+        desc = SIFTDescriptor(PS)
+        local_feature = LocalFeature(det, LAFDescriptor(desc, PS), 1.0).to(device, dtype)
+        local_feature2 = LocalFeature(det, LAFDescriptor(desc, PS), 2.0).to(device, dtype)
+        lafs, responses, descs = local_feature(img)
+        lafs2, responses2, descs2 = local_feature2(img)
+        assert_close(get_laf_center(lafs), get_laf_center(lafs2))
+        assert_close(get_laf_orientation(lafs), get_laf_orientation(lafs2))
+        assert_close(2.0 * get_laf_scale(lafs), get_laf_scale(lafs2))
 
     @pytest.mark.skip("Takes too long time (but works)")
     def test_gradcheck(self, device):
@@ -259,8 +284,7 @@ class TestLocalFeatureMatcher:
         # Reprojection error of 5px is OK
         assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
 
-    @pytest.mark.skipif(sys.platform == "win32",
-                        reason="this test takes so much memory in the CI with Windows")
+    @pytest.mark.skipif(sys.platform == "win32", reason="this test takes so much memory in the CI with Windows")
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_real_gftt(self, device, dtype, data):
         torch.random.manual_seed(0)
@@ -277,8 +301,7 @@ class TestLocalFeatureMatcher:
         # Reprojection error of 5px is OK
         assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
 
-    @pytest.mark.skipif(sys.platform == "win32",
-                        reason="this test takes so much memory in the CI with Windows")
+    @pytest.mark.skipif(sys.platform == "win32", reason="this test takes so much memory in the CI with Windows")
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_real_keynet(self, device, dtype, data):
         torch.random.manual_seed(0)

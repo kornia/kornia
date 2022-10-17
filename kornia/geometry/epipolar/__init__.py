@@ -17,6 +17,8 @@ from .fundamental import (
     find_fundamental,
     fundamental_from_essential,
     fundamental_from_projections,
+    get_closest_point_on_epipolar_line,
+    get_perpendicular,
     normalize_points,
     normalize_transformation,
 )
@@ -60,4 +62,6 @@ __all__ = [
     "projections_from_fundamental",
     "generate_scene",
     "triangulate_points",
+    "get_perpendicular",
+    "get_closest_point_on_epipolar_line",
 ]

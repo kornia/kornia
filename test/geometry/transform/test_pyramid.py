@@ -145,7 +145,7 @@ class TestBuildPyramid:
         assert len(pyramid) == max_level
         for i in range(1, max_level):
             img = pyramid[i]
-            denom = 2 ** i
+            denom = 2**i
             expected_shape = (batch_size, channels, height // denom, width // denom)
             assert img.shape == expected_shape
 
@@ -155,3 +155,32 @@ class TestBuildPyramid:
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.geometry.transform.build_pyramid, (img, max_level), raise_exception=True)
+
+
+class TestBuildLaplacianPyramid:
+    def test_smoke(self, device, dtype):
+        input = torch.ones(1, 2, 4, 5, device=device, dtype=dtype)
+        pyramid = kornia.geometry.transform.build_laplacian_pyramid(input, max_level=1)
+        assert len(pyramid) == 1
+        assert pyramid[0].shape == (1, 2, 4, 5)
+
+    @pytest.mark.parametrize("batch_size", (1, 2, 3))
+    @pytest.mark.parametrize("channels", (1, 3))
+    @pytest.mark.parametrize("max_level", (2, 3, 4))
+    def test_num_levels(self, batch_size, channels, max_level, device, dtype):
+        height, width = 16, 32
+        input = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
+        pyramid = kornia.geometry.transform.build_laplacian_pyramid(input, max_level)
+        assert len(pyramid) == max_level
+        for i in range(1, max_level):
+            img = pyramid[i]
+            denom = 2**i
+            expected_shape = (batch_size, channels, height // denom, width // denom)
+            assert img.shape == expected_shape
+
+    def test_gradcheck(self, device, dtype):
+        max_level = 1
+        batch_size, channels, height, width = 1, 2, 7, 9
+        img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
+        img = utils.tensor_to_gradcheck_var(img)  # to var
+        assert gradcheck(kornia.geometry.transform.build_laplacian_pyramid, (img, max_level), raise_exception=True)

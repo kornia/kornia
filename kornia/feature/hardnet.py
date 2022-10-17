@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.testing import KORNIA_CHECK_SHAPE
+from kornia.testing import KORNIA_CHECK_SHAPE, is_mps_tensor_safe
 
 urls: Dict[str, str] = {}
 urls["hardnet++"] = "https://github.com/DagnyT/hardnet/raw/master/pretrained/pretrained_all_datasets/HardNet++.pth"
@@ -66,16 +66,18 @@ class HardNet(nn.Module):
         # use torch.hub to load pretrained model
         if pretrained:
             storage_fcn: Callable = lambda storage, loc: storage
-            pretrained_dict = torch.hub.load_state_dict_from_url(
-                urls['liberty_aug'], map_location=storage_fcn
-            )
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls['liberty_aug'], map_location=storage_fcn)
             self.load_state_dict(pretrained_dict['state_dict'], strict=True)
         self.eval()
 
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
         """Utility function that normalizes the input by batch."""
-        sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
+        if not is_mps_tensor_safe(x):
+            sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
+        else:
+            mp = torch.mean(x, dim=(-3, -2, -1), keepdim=True)
+            sp = torch.std(x, dim=(-3, -2, -1), keepdim=True)
         # WARNING: we need to .detach() input, otherwise the gradients produced by
         # the patches extractor with F.grid_sample are very noisy, making the detector
         # training totally unstable.
@@ -147,9 +149,7 @@ class HardNet8(nn.Module):
         # use torch.hub to load pretrained model
         if pretrained:
             storage_fcn: Callable = lambda storage, loc: storage
-            pretrained_dict = torch.hub.load_state_dict_from_url(
-                urls['hardnet8v2'], map_location=storage_fcn
-            )
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls['hardnet8v2'], map_location=storage_fcn)
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
@@ -163,7 +163,11 @@ class HardNet8(nn.Module):
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-7) -> torch.Tensor:
         """Utility function that normalizes the input by batch."""
-        sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
+        if not is_mps_tensor_safe(x):
+            sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
+        else:
+            mp = torch.mean(x, dim=(-3, -2, -1), keepdim=True)
+            sp = torch.std(x, dim=(-3, -2, -1), keepdim=True)
         # WARNING: we need to .detach() input, otherwise the gradients produced by
         # the patches extractor with F.grid_sample are very noisy, making the detector
         # training totally unstable.

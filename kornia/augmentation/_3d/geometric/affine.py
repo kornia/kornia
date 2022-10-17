@@ -95,11 +95,10 @@ class RandomAffine3D(AugmentationBase3D):
         ],
         translate: Optional[Union[Tensor, Tuple[float, float, float]]] = None,
         scale: Optional[
-            Union[
-                Tensor, Tuple[float, float], Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]
-            ]
+            Union[Tensor, Tuple[float, float], Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]]
         ] = None,
         shears: Union[
+            None,
             Tensor,
             float,
             Tuple[float, float],

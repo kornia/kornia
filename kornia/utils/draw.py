@@ -252,6 +252,7 @@ def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:
 
 def _batch_polygons(polygons: List[Tensor]) -> Tensor:
     r"""Converts a List of variable length polygons into a fixed size tensor.
+
     Works by repeating the last element in the tensor.
     Args:
         polygon: List of variable length polygons of shape [N_1 x 2, N_2 x 2, ..., N_B x 2].

@@ -34,6 +34,7 @@ Image 2d transforms
 .. autofunction:: pyrdown
 .. autofunction:: pyrup
 .. autofunction:: build_pyramid
+.. autofunction:: build_laplacian_pyramid
 
 Matrix transformations
 ----------------------
@@ -53,12 +54,15 @@ Matrix transformations
 Crop operators
 --------------
 
+.. autofunction:: crop_by_indices
 .. autofunction:: crop_by_boxes
 .. autofunction:: center_crop
 .. autofunction:: crop_and_resize
 
 Module
 ------
+
+
 
 .. autoclass:: Rotate
 .. autoclass:: Translate
@@ -85,3 +89,10 @@ Image registration
 
 .. automodule:: kornia.geometry.transform.image_registrator
     :members:
+
+Interactive Demo
+----------------
+
+.. raw:: html
+    :file: gradio/resize_antialias.html
+    :file: gradio/geometry_image_transform.html

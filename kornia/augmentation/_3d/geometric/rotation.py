@@ -110,6 +110,4 @@ class RandomRotation3D(AugmentationBase3D):
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         transform = cast(Tensor, transform)
-        return affine3d(
-            input, transform[..., :3, :4], flags["resample"].name.lower(), "zeros", flags["align_corners"]
-        )
+        return affine3d(input, transform[..., :3, :4], flags["resample"].name.lower(), "zeros", flags["align_corners"])

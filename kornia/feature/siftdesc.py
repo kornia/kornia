@@ -28,7 +28,7 @@ def get_sift_pooling_kernel(ksize: int = 25) -> torch.Tensor:
     """
     ks_2: float = float(ksize) / 2.0
     xc2: torch.Tensor = ks_2 - (torch.arange(ksize).float() + 0.5 - ks_2).abs()  # type: ignore
-    kernel: torch.Tensor = torch.ger(xc2, xc2) / (ks_2 ** 2)
+    kernel: torch.Tensor = torch.ger(xc2, xc2) / (ks_2**2)
     return kernel
 
 
@@ -176,14 +176,16 @@ class SIFTDescriptor(nn.Module):
         return ang_bins
 
 
-def sift_describe(input: torch.Tensor,
-                  patch_size: int = 41,
-                  num_ang_bins: int = 8,
-                  num_spatial_bins: int = 4,
-                  rootsift: bool = True,
-                  clipval: float = 0.2,
-                  ) -> torch.Tensor:
+def sift_describe(
+    input: torch.Tensor,
+    patch_size: int = 41,
+    num_ang_bins: int = 8,
+    num_spatial_bins: int = 4,
+    rootsift: bool = True,
+    clipval: float = 0.2,
+) -> torch.Tensor:
     r"""Computes the sift descriptor.
+
     See :class:`~kornia.feature.SIFTDescriptor` for details.
     """
     return SIFTDescriptor(patch_size, num_ang_bins, num_spatial_bins, rootsift, clipval)(input)
@@ -216,23 +218,39 @@ class DenseSIFTDescriptor(nn.Module):
     """
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ +\
-            '(' + 'num_ang_bins=' + str(self.num_ang_bins) +\
-            ', ' + 'num_spatial_bins=' + str(self.num_spatial_bins) +\
-            ', ' + 'spatial_bin_size=' + str(self.spatial_bin_size) +\
-            ', ' + 'rootsift=' + str(self.rootsift) +\
-            ', ' + 'stride=' + str(self.stride) +\
-            ', ' + 'clipval=' + str(self.clipval) + ')'
+        return (
+            self.__class__.__name__
+            + '('
+            + 'num_ang_bins='
+            + str(self.num_ang_bins)
+            + ', '
+            + 'num_spatial_bins='
+            + str(self.num_spatial_bins)
+            + ', '
+            + 'spatial_bin_size='
+            + str(self.spatial_bin_size)
+            + ', '
+            + 'rootsift='
+            + str(self.rootsift)
+            + ', '
+            + 'stride='
+            + str(self.stride)
+            + ', '
+            + 'clipval='
+            + str(self.clipval)
+            + ')'
+        )
 
-    def __init__(self,
-                 num_ang_bins: int = 8,
-                 num_spatial_bins: int = 4,
-                 spatial_bin_size: int = 4,
-                 rootsift: bool = True,
-                 clipval: float = 0.2,
-                 stride: int = 1,
-                 padding: int = 1,
-                 ) -> None:
+    def __init__(
+        self,
+        num_ang_bins: int = 8,
+        num_spatial_bins: int = 4,
+        spatial_bin_size: int = 4,
+        rootsift: bool = True,
+        clipval: float = 0.2,
+        stride: int = 1,
+        padding: int = 1,
+    ) -> None:
         super().__init__()
         self.eps = 1e-10
         self.num_ang_bins = num_ang_bins
@@ -243,18 +261,26 @@ class DenseSIFTDescriptor(nn.Module):
         self.stride = stride
         self.pad = padding
         nw = get_sift_pooling_kernel(ksize=self.spatial_bin_size).float()
-        self.bin_pooling_kernel = nn.Conv2d(1, 1, kernel_size=(nw.size(0), nw.size(1)),
-                                            stride=(1, 1),
-                                            bias=False,
-                                            padding=(nw.size(0) // 2, nw.size(1) // 2))
+        self.bin_pooling_kernel = nn.Conv2d(
+            1,
+            1,
+            kernel_size=(nw.size(0), nw.size(1)),
+            stride=(1, 1),
+            bias=False,
+            padding=(nw.size(0) // 2, nw.size(1) // 2),
+        )
         self.bin_pooling_kernel.weight.data.copy_(nw.reshape(1, 1, nw.size(0), nw.size(1)))
-        self.PoolingConv = nn.Conv2d(num_ang_bins,
-                                     num_ang_bins * num_spatial_bins**2,
-                                     kernel_size=(num_spatial_bins, num_spatial_bins),
-                                     stride=(self.stride, self.stride), bias=False, padding=(self.pad, self.pad))
-        self.PoolingConv.weight.data.copy_(_get_reshape_kernel(num_ang_bins,
-                                                               num_spatial_bins,
-                                                               num_spatial_bins).float())
+        self.PoolingConv = nn.Conv2d(
+            num_ang_bins,
+            num_ang_bins * num_spatial_bins**2,
+            kernel_size=(num_spatial_bins, num_spatial_bins),
+            stride=(self.stride, self.stride),
+            bias=False,
+            padding=(self.pad, self.pad),
+        )
+        self.PoolingConv.weight.data.copy_(
+            _get_reshape_kernel(num_ang_bins, num_spatial_bins, num_spatial_bins).float()
+        )
         return
 
     def get_pooling_kernel(self) -> torch.Tensor:
@@ -275,15 +301,16 @@ class DenseSIFTDescriptor(nn.Module):
         o_big: torch.Tensor = float(self.num_ang_bins) * ori / (2.0 * pi)
 
         bo0_big_: torch.Tensor = torch.floor(o_big)
-        wo1_big_: torch.Tensor = (o_big - bo0_big_)
+        wo1_big_: torch.Tensor = o_big - bo0_big_
         bo0_big: torch.Tensor = bo0_big_ % self.num_ang_bins
         bo1_big: torch.Tensor = (bo0_big + 1) % self.num_ang_bins
         wo0_big: torch.Tensor = (1.0 - wo1_big_) * mag  # type: ignore
         wo1_big: torch.Tensor = wo1_big_ * mag
         ang_bins = []
         for i in range(0, self.num_ang_bins):
-            out = self.bin_pooling_kernel((bo0_big == i).to(input.dtype) * wo0_big +  # noqa
-                                          (bo1_big == i).to(input.dtype) * wo1_big)
+            out = self.bin_pooling_kernel(
+                (bo0_big == i).to(input.dtype) * wo0_big + (bo1_big == i).to(input.dtype) * wo1_big
+            )
             ang_bins.append(out)
         ang_bins = torch.cat(ang_bins, dim=1)
         out_no_norm = self.PoolingConv(ang_bins)

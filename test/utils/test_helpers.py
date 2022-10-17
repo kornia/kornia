@@ -107,7 +107,7 @@ class TestSolveCast:
         A = torch.randn(2, 3, 1, 4, 4, device=device, dtype=dtype)
         B = torch.randn(2, 3, 1, 4, 6, device=device, dtype=dtype)
 
-        X, _ = _torch_solve_cast(B, A)
+        X = _torch_solve_cast(A, B)
         error = torch.dist(B, A.matmul(X))
 
         tol_val: float = 1e-1 if dtype == torch.float16 else 1e-4
@@ -120,7 +120,7 @@ class TestSolveWithMask:
         B = torch.randn(2, 3, 1, 4, 6, device=device, dtype=dtype)
 
         X, _, mask = safe_solve_with_mask(B, A)
-        X2, _ = _torch_solve_cast(B, A)
+        X2 = _torch_solve_cast(A, B)
         tol_val: float = 1e-1 if dtype == torch.float16 else 1e-4
         if mask.sum() > 0:
             assert_close(X[mask], X2[mask], atol=tol_val, rtol=tol_val)
@@ -131,7 +131,7 @@ class TestSolveWithMask:
     )
     def test_all_bad(self, device, dtype):
         A = torch.ones(10, 3, 3, device=device, dtype=dtype)
-        B = torch.ones(3, 10, device=device, dtype=dtype)
+        B = torch.ones(10, 3, device=device, dtype=dtype)
 
         X, _, mask = safe_solve_with_mask(B, A)
         assert torch.equal(mask, torch.zeros_like(mask))

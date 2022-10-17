@@ -5,6 +5,7 @@ import torch
 
 from kornia.utils import eye_like, vec_like
 from kornia.utils._compat import linalg_qr
+from kornia.utils.helpers import _torch_svd_cast
 
 from .numeric import cross_product_matrix
 
@@ -21,7 +22,6 @@ def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:
 
     Returns:
         The camera matrix with the shape of :math:`(B, 3, 3)`.
-
     """
     if len(input.shape) != 4:
         raise AssertionError(input.shape)
@@ -47,7 +47,6 @@ def random_intrinsics(low: Union[float, torch.Tensor], high: Union[float, torch.
 
     Returns:
         the random camera matrix with the shape of :math:`(1, 3, 3)`.
-
     """
     sampler = torch.distributions.Uniform(low, high)
     fx, fy, cx, cy = (sampler.sample((1,)) for _ in range(4))
@@ -68,7 +67,6 @@ def scale_intrinsics(camera_matrix: torch.Tensor, scale_factor: Union[float, tor
 
     Returns:
         The scaled camera matrix with shame shape as input :math:`(B, 3, 3)`.
-
     """
     K_scale = camera_matrix.clone()
     K_scale[..., 0, 0] *= scale_factor
@@ -90,7 +88,6 @@ def projection_from_KRt(K: torch.Tensor, R: torch.Tensor, t: torch.Tensor) -> to
 
     Returns:
        The projection matrix P with shape :math:`(B, 4, 4)`.
-
     """
     if K.shape[-2:] != (3, 3):
         raise AssertionError(K.shape)
@@ -121,7 +118,6 @@ def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tenso
         - The Camera matrix with shape :math:`(B, 3, 3)`.
         - The Rotation matrix with shape :math:`(B, 3, 3)`.
         - The Translation vector with shape :math:`(B, 3)`.
-
     """
     if P.shape[-2:] != (3, 4):
         raise AssertionError("P must be of shape [B, 3, 4]")
@@ -160,7 +156,6 @@ def depth_from_point(R: torch.Tensor, t: torch.Tensor, X: torch.Tensor) -> torch
 
     Returns:
        The depth value per point with shape :math:`(*, 1)`.
-
     """
     X_tmp = R @ X.transpose(-2, -1)
     X_out = X_tmp[..., 2, :] + t[..., 2, :]
@@ -177,8 +172,8 @@ def _nullspace(A):
 
     Return the smallest singular value and the corresponding vector.
     """
-    _, s, vh = torch.svd(A)
-    return s[..., -1], vh[..., -1]
+    _, s, v = _torch_svd_cast(A)
+    return s[..., -1], v[..., -1]
 
 
 def projections_from_fundamental(F_mat: torch.Tensor) -> torch.Tensor:
@@ -189,7 +184,6 @@ def projections_from_fundamental(F_mat: torch.Tensor) -> torch.Tensor:
 
     Returns:
         The projection matrices with shape :math:`(B, 3, 4, 2)`.
-
     """
     if len(F_mat.shape) != 3:
         raise AssertionError(F_mat.shape)

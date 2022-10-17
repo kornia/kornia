@@ -13,6 +13,10 @@ from kornia.utils.helpers import _extract_device_dtype
 class ColorJitterGenerator(RandomGeneratorBase):
     r"""Generate random color jiter parameters for a batch of images following Pil.
 
+    This implementation is for maintaining compatibility with torchvision. It does not
+    follow the color theory and is not be actively maintained. Prefer using
+    :func:`kornia.augmentation.ColorJiggleGenerator`
+
     Args:
         brightness: The brightness factor to apply.
         contrast: The contrast factor to apply.
@@ -50,15 +54,12 @@ class ColorJitterGenerator(RandomGeneratorBase):
 
     def __repr__(self) -> str:
         repr = (
-            f"brightness={self.brightness}, contrast={self.contrast}, saturation="
-            f"{self.saturation}, hue={self.hue}"
+            f"brightness={self.brightness}, contrast={self.contrast}, saturation=" f"{self.saturation}, hue={self.hue}"
         )
         return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        brightness: Tensor = _range_bound(
-            self.brightness, 'brightness', center=1.0, device=device, dtype=dtype
-        )
+        brightness: Tensor = _range_bound(self.brightness, 'brightness', center=1.0, device=device, dtype=dtype)
         contrast: Tensor = _range_bound(self.contrast, 'contrast', center=1.0, device=device, dtype=dtype)
         saturation: Tensor = _range_bound(self.saturation, 'saturation', center=1.0, device=device, dtype=dtype)
         hue: Tensor = _range_bound(self.hue, 'hue', bounds=(-0.5, 0.5), device=device, dtype=dtype)
