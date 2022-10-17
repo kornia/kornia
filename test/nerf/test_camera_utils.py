@@ -4,7 +4,13 @@ import pytest
 import torch
 
 from kornia.geometry.conversions import QuaternionCoeffOrder, quaternion_to_rotation_matrix
-from kornia.nerf.camera_utils import create_spiral_path, create_spline_curve, parse_colmap_cameras, parse_colmap_output
+from kornia.nerf.camera_utils import (
+    create_spiral_path,
+    create_spline_curve,
+    parse_colmap_cameras,
+    parse_colmap_output,
+    parse_colmap_points_3d,
+)
 from kornia.testing import assert_close
 
 
@@ -70,3 +76,18 @@ def test_create_spiral_path(device, dtype, colmap_cameras_path, colmap_images_pa
 def test_create_spline_curve(device, dtype, colmap_cameras_path, colmap_images_path) -> None:
     _, cameras = parse_colmap_output(colmap_cameras_path, colmap_images_path, device, dtype)
     create_spline_curve(cameras, 10)
+
+
+@pytest.fixture
+def colmap_points_3d_path():
+    return Path(__file__).parent / './points3D.txt'
+
+
+def test_parse_colmap_points_3d(device, dtype, colmap_points_3d_path) -> None:
+    points_3d = parse_colmap_points_3d(colmap_points_3d_path, device, dtype)
+    assert_close(points_3d[0, 0, 0].item(), 4.0266901330732763)
+    assert_close(points_3d[0, 0, 1].item(), -2.4103584120496508)
+    assert_close(points_3d[0, 0, 2].item(), 5.0333513314325495)
+    assert_close(points_3d[2, 0, 0].item(), 2.0597405997244165)
+    assert_close(points_3d[2, 0, 1].item(), -2.2297621675904238)
+    assert_close(points_3d[2, 0, 2].item(), 5.9957942279104977)

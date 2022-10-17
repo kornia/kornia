@@ -65,7 +65,7 @@ def parse_colmap_cameras(
 
 
 def parse_colmap_output(
-    cameras_path: str, images_path: str, device: Device, dtype: torch.dtype
+    cameras_path: str, images_path: str, device: Device, dtype: torch.dtype, sort_by_image_names: bool = False
 ) -> Tuple[List[str], PinholeCamera]:
     r"""Parses colmap output to create an PinholeCamera for aligned scene cameras.
 
@@ -73,6 +73,9 @@ def parse_colmap_output(
         cameras_path: Path to camera.txt Colmap file with camera intrinsics: str
         images_path: Path to images.txt Colmap file with camera extrinsics for each image: str
         device: device for created camera object: Union[str, torch.device]
+        dtype: type for created camera object: torch.dtype
+        sort_by_image_names: sort camers by image names. Useful for the case where image shooting order is important.
+        For example, to create a camera path for rendering that follows the path of original images: bool
 
     Returns:
         image names: List[str]
@@ -106,7 +109,8 @@ def parse_colmap_output(
             ty = float(split_line[6])
             tz = float(split_line[7])
             camera_ind = int(split_line[8]) - 1
-            img_name = split_line[9]
+            img_name = split_line[9:]  # Assuming all last fields in the line compose the image filename
+            img_name = ' '.join(img_name)
             img_names.append(img_name)
 
             # Intrinsic
@@ -123,6 +127,11 @@ def parse_colmap_output(
             extrinsic[:3, 3] = t
             extrinsics.append(extrinsic)
 
+    if sort_by_image_names:
+        sorted_by_img_names = sorted(zip(img_names, intrinsics, extrinsics, heights, widths))
+        tuples = zip(*sorted_by_img_names)
+        img_names, intrinsics, extrinsics, heights, widths = (list(tuple) for tuple in tuples)
+
     cameras = PinholeCamera(
         torch.stack(intrinsics),
         torch.stack(extrinsics),
@@ -130,6 +139,38 @@ def parse_colmap_output(
         torch.tensor(widths, device=device),
     )
     return img_names, cameras
+
+
+def parse_colmap_points_3d(points_3d_path: str, device: Device, dtype: torch.dtype) -> Tensor:
+    r"""Parses colmap point3D file for point cloud coordinates.
+
+    Args:
+        points_3d_path: Path to points3D.txt colmap file with point cloud coordinates
+        device: device for created camera object: Union[str, torch.device]
+        dtype: type for created camera object: torch.dtype
+
+    Returns:
+        points_3d: Point cloud coordinates :math:`(*, 1, 3)`
+    """
+    with open(points_3d_path) as f:
+        lines = f.readlines()
+    x: List[float] = []
+    y: List[float] = []
+    z: List[float] = []
+    points_3d: List[Tensor] = []
+    for line in lines:
+        if line.startswith('#'):
+            continue
+
+        # Read line for a point in 3D
+        line = line.strip()
+        split_line = line.split(' ')
+        x.append(float(split_line[1]))
+        y.append(float(split_line[2]))
+        z.append(float(split_line[3]))
+        points_3d.append(torch.tensor([float(split_line[1]), float(split_line[2]), float(split_line[3])]))
+        # TODO: Parse here more fields as necessary for future usages
+    return torch.stack(points_3d).unsqueeze(1)
 
 
 def cameras_for_ids(cameras: PinholeCamera, camera_ids: List[int]) -> PinholeCamera:
