@@ -1185,7 +1185,6 @@ def normalize_points_with_intrinsics(point_2d: Tensor, camera_matrix: Tensor):
         >>> X = torch.rand(1, 2)
         >>> K = torch.eye(3)[None]
         >>> normalize_points_with_intrinsics(X, K)
-        tensor([[5.6088, 8.6827]])
     """
     KORNIA_CHECK_SHAPE(point_2d, ["*", "2"])
     KORNIA_CHECK_SHAPE(camera_matrix, ["*", "3", "3"])
@@ -1229,7 +1228,6 @@ def denormalize_points_with_intrinsics(point_2d_norm: Tensor, camera_matrix: Ten
         >>> X = torch.rand(1, 2)
         >>> K = torch.eye(3)[None]
         >>> denormalize_points_with_intrinsics(X, K)
-        tensor([[5.6088, 8.6827]])
     """
     KORNIA_CHECK_SHAPE(point_2d_norm, ["*", "2"])
     KORNIA_CHECK_SHAPE(camera_matrix, ["*", "3", "3"])
