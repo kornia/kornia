@@ -1,8 +1,10 @@
 import torch
 import torch.nn as nn
 
+from kornia.core import Tensor
 
-def sepia(input: torch.Tensor, rescale: bool = True) -> torch.Tensor:
+
+def sepia(input: Tensor, rescale: bool = True) -> Tensor:
     r"""Apply to a tensor the sepia filter.
 
     Args:
@@ -10,7 +12,7 @@ def sepia(input: torch.Tensor, rescale: bool = True) -> torch.Tensor:
         rescale: If True, the output tensor will be rescaled (max values be 1. or 255).
 
     Returns:
-        - torch.Tensor: The sepia tensor of same size and numbers of channels
+        - Tensor: The sepia tensor of same size and numbers of channels
         as the input with shape :math:`(B, C, H, W)`.
 
     Example:
@@ -64,7 +66,7 @@ class Sepia(nn.Module):
         rescale: If True, the output tensor will be rescaled (max values be 1. or 255).
 
     Returns:
-        - torch.Tensor: The sepia tensor of same size and numbers of channels
+        - Tensor: The sepia tensor of same size and numbers of channels
         as the input with shape :math:`(B, C, H, W)`.
 
     Example:
@@ -86,5 +88,5 @@ class Sepia(nn.Module):
     def __repr__(self) -> str:
         return self.__class__.__name__ + f'(rescale={self.rescale})'
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: Tensor) -> Tensor:
         return sepia(input, rescale=self.rescale)
