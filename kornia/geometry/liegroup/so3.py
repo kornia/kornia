@@ -1,6 +1,6 @@
 # kornia.geometry.so3 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py
-from kornia.core import Tensor, concatenate, stack, where, zeros, zeros_like
+from kornia.core import Tensor, concatenate, stack, where, zeros_like
 from kornia.geometry.liegroup._utils import squared_norm
 from kornia.geometry.quaternion import Quaternion
 from kornia.testing import KORNIA_CHECK_TYPE
@@ -53,7 +53,7 @@ class So3:
         return self._q
 
     @staticmethod
-    def exp(v) -> 'So3':
+    def exp(v):
         """Converts elements of lie algebra to elements of lie group.
 
         See more: https://vision.in.tum.de/_media/members/demmeln/nurlanov2021so3log.pdf
@@ -71,17 +71,10 @@ class So3:
                     [0., 0., 0.]], grad_fn=<SliceBackward0>)
         """
         theta = squared_norm(v).sqrt()
-        small_angles_indices = where(theta < 2.220446049250313e-16)[0]
-        large_angles_indices = where(theta > 2.220446049250313e-16)[0]
-        large_angles = theta[large_angles_indices]
-
-        qtensor = zeros((v.shape[0], 4))
-        qtensor[small_angles_indices] = Tensor([1, 0, 0, 0])  # identity quaternion for small angles
-
-        w = (0.5 * large_angles).cos()
-        xyz = (0.5 * large_angles).sin().div(large_angles).mul(v[large_angles_indices])
-        qtensor[large_angles_indices] = concatenate((w, xyz), 1)
-        return So3(Quaternion(qtensor))
+        w = where(theta != 0.0, (0.5 * theta).cos(), Tensor([1.0]))
+        b = where(theta != 0.0, (0.5 * theta).sin().div(theta), Tensor([0.0]))
+        xyz = b * v
+        return So3(Quaternion(concatenate((w, xyz), 1)))
 
     def log(self) -> Tensor:
         """Converts elements of lie group  to elements of lie algebra.
@@ -90,30 +83,12 @@ class So3:
             >>> data = torch.ones((2, 4))
             >>> q = Quaternion(data)
             >>> So3(q).log()
-            real: tensor([[1.],
-                    [1.]], grad_fn=<SliceBackward0>)
-            vec: tensor([[1., 1., 1.],
-                    [1., 1., 1.]], grad_fn=<SliceBackward0>)
+            tensor([[0., 0., 0.],
+                    [0., 0., 0.]], grad_fn=<SWhereBackward0>)
         """
         theta = squared_norm(self.q.vec).sqrt()
-        small_angles_indices = where(theta < 2.220446049250313e-16)[0]
-        large_angles_indices = where(theta > 2.220446049250313e-16)[0]
-        large_angles = theta[large_angles_indices]
-
-        q_real = self.q.real
-        q_vec = self.q.vec
-        omega_t = zeros((self.q.shape[0], 3))
-
-        o1 = 2 / q_real[small_angles_indices]
-        o2 = theta[small_angles_indices].pow(2) / q_real[small_angles_indices].pow(3)
-        omega_t[small_angles_indices] = (o1 - (2 * o2) / 3) * q_vec[small_angles_indices]
-        o1 = (q_real[large_angles_indices].pow(2) + theta[large_angles_indices].pow(2)).sqrt()
-        omega_t[large_angles_indices] = (
-            (4 * (large_angles / (q_real[large_angles_indices] + o1)).atan())
-            / large_angles
-            * q_vec[large_angles_indices]
-        )
-        return omega_t
+        omega = where(theta != 0, 2 * self.q.real.acos() * self.q.vec / theta, 2 * self.q.vec / self.q.real)
+        return omega
 
     @staticmethod
     def hat(v) -> Tensor:
