@@ -279,16 +279,16 @@ def KORNIA_CHECK_SHAPE(x, shape: List[str]) -> None:
         start_idx: int = 1
         x_shape_to_check = x.shape[-len(shape) + 1 :]
     elif '*' == shape[-1]:
-        start_idx: int = 0
+        start_idx = 0
         x_shape_to_check = x.shape[: len(shape) - 1]
     else:
-        valid_shape = shape
+        start_idx = 0
         x_shape_to_check = x.shape
 
     for i in range(start_idx, len(x_shape_to_check)):
         # The voodoo below is because torchscript does not like
         # that dim can be both int and str
-        dim_: str = valid_shape[i]
+        dim_: str = shape[i]
         if not dim_.isnumeric():
             continue
         dim = int(dim_)
