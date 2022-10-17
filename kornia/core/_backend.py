@@ -13,8 +13,8 @@ Parameter = torch.nn.Parameter
 concatenate = torch.cat
 stack = torch.stack
 normalize = F.normalize
-zeros_like = torch.zeros_like
 eye = torch.eye
+zeros_like = torch.zeros_like
 zeros = torch.zeros
 where = torch.where
 
