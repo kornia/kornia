@@ -395,11 +395,12 @@ class FocalAxisRay(UniformRaySampler):
 
     Args:
         max_depth: sampled rays maximal depth from cameras: float
+        min_depth: sampled rays minimal depth from cameras (defaults to 0 to shoot from focal point): float
         corner_rays: in addition to the focal ray, shoot 4 more rays, one from each corner of the image plane: bool
     """
 
-    def __init__(self, max_depth: float, corner_rays: bool = False) -> None:
-        super().__init__(0.0, max_depth, False, 'cpu', torch.float32)
+    def __init__(self, max_depth: float, min_depth: float = 0.0, corner_rays: bool = False) -> None:
+        super().__init__(min_depth, max_depth, False, 'cpu', torch.float32)
         self._corner_rays = corner_rays
 
     def sample_points_2d(self, heights: Tensor, widths: Tensor) -> Dict[int, RaySampler.Points2D]:
