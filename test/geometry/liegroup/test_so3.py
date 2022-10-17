@@ -59,7 +59,7 @@ class TestSo3:
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_hat(self, device, dtype, batch_size):
-        v = torch.Tensor([1, 2, 3]).repeat(batch_size, 1)
+        v = torch.tensor([1, 2, 3]).repeat(batch_size, 1)
         v = v.to(device, dtype)
         assert_close(So3.hat(v).unique()[-3:], v[0, :])
 
@@ -92,3 +92,9 @@ class TestSo3:
             qp_ = q1 * pquat * q1.inv()
             rp_ = torch.matmul(r1, pvec.T)[None, :]
             assert_close(rp_, qp_.vec)  # p_ = R*p = q*p*q_inv
+
+    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    def test_inverse(self, device, dtype, batch_size):
+        q = Quaternion.random(batch_size)
+        q = q.to(device, dtype)
+        assert_close(So3(q).inverse().inverse().q.data, q.data)

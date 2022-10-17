@@ -11,11 +11,11 @@ class Se3:
 
     Example:
         >>> q = Quaternion.identity(batch_size=1)
-        >>> s = Se3(So3(q), torch.rand((1, 3)))
+        >>> s = Se3(So3(q), torch.ones((1, 3)))
         >>> s
-        rotation:real: tensor([[-0.4420]], grad_fn=<SliceBackward0>) 
-        vec: tensor([[ 0.3347,  0.7869, -0.2711]], grad_fn=<SliceBackward0>)
-        translation:tensor([[0.0631, 0.0164, 0.9543]])
+        rotation: real: tensor([[1.]], grad_fn=<SliceBackward0>) 
+        vec: tensor([[0., 0., 0.]], grad_fn=<SliceBackward0>)
+        translation: tensor([[1., 1., 1.]])
     """
 
     def __init__(self, r: So3, t: Tensor) -> None:
@@ -26,20 +26,20 @@ class Se3:
             t: translation vector with the shape of :math:`(B, 3)`.
 
         Example:
-            >>> q = Quaternion.random(batch_size=1)
-            >>> s = Se3(So3(q), torch.rand((1,3)))
-            >>> s
-            rotation:real: tensor([[-0.7368]], grad_fn=<SliceBackward0>) 
-            vec: tensor([[-0.5644,  0.0390,  0.3702]], grad_fn=<SliceBackward0>)
-            translation:tensor([[0.6353, 0.5230, 0.5110]])
-        """
+            >>> q = Quaternion.identity(batch_size=1)
+            >>> s = Se3(So3(q), torch.ones((1,3)))
+            >>> s.r
+            rotation: real: tensor([[1.]], grad_fn=<SliceBackward0>) 
+            vec: tensor([[0., 0., 0.]], grad_fn=<SliceBackward0>)
+            translation: tensor([[1., 1., 1.]])
+       """
         KORNIA_CHECK_TYPE(r, So3)
         KORNIA_CHECK_SHAPE(t, ["B", "3"])
         self._r = r
         self._t = t
 
     def __repr__(self) -> str:
-        return f"rotation:{self.r}\ntranslation:{self.t}"
+        return f"rotation: {self.r}\ntranslation: {self.t}"
 
     def __getitem__(self, idx) -> 'Se3':
         return Se3(self._r[idx], self._t[idx].unsqueeze(0))
@@ -62,31 +62,29 @@ class Se3:
             v: vector of shape :math:`(B, 6)`.
 
         Example:
-            >>> v = torch.rand((1, 6))
+            >>> v = torch.zeros((1, 6))
             >>> s = Se3.exp(v)
             >>> s
-            rotation:real: tensor([[0.9032]], grad_fn=<SliceBackward0>) 
-            vec: tensor([[0.0506, 0.2116, 0.3700]], grad_fn=<SliceBackward0>)
-            translation:tensor([[0.4024, 0.7548, 0.6127]])
+            rotation: real: tensor([[1.]], grad_fn=<SliceBackward0>) 
+            vec: tensor([[0., 0., 0.]], grad_fn=<SliceBackward0>)
+            translation: tensor([[0., 0., 0.]])
         """
-        import pdb
-        tt = v[..., 0:3]
+        t = v[..., 0:3]
         omega = v[..., 3:]
         omega_hat = So3.hat(omega)
         theta = squared_norm(omega).sqrt()
         R = So3.exp(omega)
         V = (eye(3) + ((1 - theta.cos()) / (theta**2)).unsqueeze(-1) * omega_hat + ((theta - theta.sin()) / (theta**3)).unsqueeze(-1) * (omega_hat @ omega_hat))
-        U = where(theta != 0.0, (tt.reshape(-1, 1, 3)*V).sum(-1), tt)
+        U = where(theta != 0.0, (t.reshape(-1, 1, 3) * V).sum(-1), t)
         return Se3(R, U)
 
     def log(self) -> Tensor:
         """Converts elements of lie group  to elements of lie algebra.
 
         Example:
-            >>> q = Quaternion.random(batch_size=1)
-            >>> Se3(So3(q), torch.rand((1,3))).log()
-            tensor([[-0.3175,  1.0273,  1.1459,  1.5137,  3.5590, -1.2261]],
-                   grad_fn=<CatBackward0>)
+            >>> q = Quaternion.identity(batch_size=1)
+            >>> Se3(So3(q), torch.zeros((1,3))).log()
+            tensor([[0., 0., 0., 0., 0., 0.]], grad_fn=<CatBackward0>)
         """
         omega = self.r.log()
         theta = squared_norm(omega).sqrt()
@@ -103,13 +101,13 @@ class Se3:
             v: vector of shape :math:`(B,6)`.
 
         Example:
-            >>> v = torch.rand((1,6))
+            >>> v = torch.ones((1,6))
             >>> m = Se3.hat(v)
             >>> m
-            tensor([[[ 0.0000,  0.0000, -0.7649,  0.4374],
-                     [ 0.0000,  0.7649,  0.0000, -0.1046],
-                     [ 0.0000, -0.4374,  0.1046,  0.0000],
-                     [ 0.0000,  0.4076,  0.6015,  0.6532]]])
+            tensor([[[ 0.,  0., -1.,  1.],
+                     [ 0.,  1.,  0., -1.],
+                     [ 0., -1.,  1.,  0.],
+                     [ 0.,  1.,  1.,  1.]]])
         """
         t = v[..., 0:3].reshape(-1, 1, 3)
         omega = v[..., 3:]
@@ -124,19 +122,38 @@ class Se3:
             omega: 4x4-matrix representing lie algebra
 
         Example:
-            >>> v = torch.rand((1,6))
-            >>> omega = Se3.hat(v)
-            >>> Se3.vee(omega)
-            tensor([[0.5979, 0.5425, 0.2085, 0.5961, 0.2532, 0.5150]])
+            >>> v = torch.ones((1,6))
+            >>> omega_hat = Se3.hat(v)
+            >>> Se3.vee(omega_hat)
+            tensor([[1., 1., 1., 1., 1., 1.]])
         """
-        t = omega[..., 3, 1:4]
-        v  = So3.vee(omega[..., 0:3, 1:4])
+        t = omega[..., 3, 1:]
+        v = So3.vee(omega[..., 0:3, 1:])
         return concatenate((t, v), 1)
 
     def matrix(self) -> Tensor:
+        """Returns the matrix representation of shape :math:`(B, 4, 4)`.
+
+        Example:
+            >>> s = Se3(So3.identity(batch_size=1), torch.ones((1,3)))
+            >>> s
+            tensor([[[0., 1., 0., 0.],
+                     [0., 0., 1., 0.],
+                     [0., 0., 0., 1.],
+                     [0., 1., 1., 1.]]], grad_fn=<CatBackward0>)
+        """
         rt = concatenate((self.r.matrix(), self.t.reshape(-1, 1, 3)), 1)
-        return concatenate((zeros(1, 4, 1), rt), -1)
+        return concatenate((zeros(self.t.shape[0], 4, 1), rt), -1)
 
     def inverse(self) -> 'Se3':
+        """Returns the inverse transformation.
+
+        Example:
+            >>> s = Se3(So3.identity(batch_size=1), torch.ones((1,3)))
+            >>> s.inverse()
+            rotation: real: tensor([[1.]], grad_fn=<SliceBackward0>) 
+            vec: tensor([[-0., -0., -0.]], grad_fn=<SliceBackward0>)
+            translation: tensor([[-1., -1., -1.]])
+        """
         R_inv = self.r.inverse()
         return Se3(R_inv, -1 * self.t)

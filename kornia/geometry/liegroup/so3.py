@@ -29,13 +29,13 @@ class So3:
             data: Quaternion with the shape of :math:`(B, 4)`.
 
         Example:
-            >>> data = torch.rand((2, 4))
+            >>> data = torch.ones((2, 4))
             >>> q = Quaternion(data)
             >>> So3(q)
-            real: tensor([[0.2734],
-                          [0.7782]], grad_fn=<SliceBackward0>)
-            vec: tensor([[0.2420, 0.2716, 0.6159],
-                         [0.8727, 0.7592, 0.7212]], grad_fn=<SliceBackward0>)
+            real: tensor([[1.],
+                    [1.]], grad_fn=<SliceBackward0>) 
+            vec: tensor([[1., 1., 1.],
+                    [1., 1., 1.]], grad_fn=<SliceBackward0>)
         """
         KORNIA_CHECK_TYPE(q, Quaternion)
         self._q = q
@@ -61,13 +61,13 @@ class So3:
             v: vector of shape :math:`(B,3)`.
 
         Example:
-            >>> v = torch.rand((2,3))
+            >>> v = torch.zeros((2,3))
             >>> s = So3.identity(batch_size=1).exp(v)
             >>> s
-            real: tensor([[0.8891],
-                    [0.9774]], grad_fn=<SliceBackward0>)
-            vec: tensor([[0.0893, 0.3285, 0.3060],
-                    [0.0567, 0.1315, 0.1558]], grad_fn=<SliceBackward0>)
+            real: tensor([[1.],
+                    [1.]], grad_fn=<SliceBackward0>) 
+            vec: tensor([[0., 0., 0.],
+                    [0., 0., 0.]], grad_fn=<SliceBackward0>)
         """
         theta = squared_norm(v).sqrt()
         small_angles_indices = where(theta < 2.220446049250313e-16)[0]
@@ -86,11 +86,13 @@ class So3:
         """Converts elements of lie group  to elements of lie algebra.
 
         Example:
-            >>> data = torch.rand((2, 4))
+            >>> data = torch.ones((2, 4))
             >>> q = Quaternion(data)
             >>> So3(q).log()
-            tensor([[2.3822, 0.2638, 0.1771],
-                    [0.3699, 1.8639, 0.3685]], grad_fn=<MulBackward0>)
+            real: tensor([[1.],
+                    [1.]], grad_fn=<SliceBackward0>) 
+            vec: tensor([[1., 1., 1.],
+                    [1., 1., 1.]], grad_fn=<SliceBackward0>)
         """
         theta = squared_norm(self.q.vec).sqrt()
         small_angles_indices = where(theta < 2.220446049250313e-16)[0]
@@ -120,12 +122,16 @@ class So3:
             v: vector of shape :math:`(B,3)`.
 
         Example:
-            >>> v = torch.rand((1,3))
+            >>> v = torch.ones((2,3))
             >>> m = So3.hat(v)
             >>> m
-            tensor([[[ 0.0000, -0.4011,  0.7219],
-                     [ 0.4011,  0.0000, -0.3723],
-                     [-0.7219,  0.3723,  0.0000]]])
+            tensor([[[ 0., -1.,  1.],
+                     [ 1.,  0., -1.],
+                     [-1.,  1.,  0.]],
+
+                    [[ 0., -1.,  1.],
+                     [ 1.,  0., -1.],
+                     [-1.,  1.,  0.]]])
         """
         a, b, c = v[..., 0, None, None], v[..., 1, None, None], v[..., 2, None, None]
         zeros = zeros_like(v)[..., 0, None, None]
@@ -147,10 +153,10 @@ class So3:
                           [-b  a   0 ]
 
         Example:
-            >>> v = torch.rand((1,3))
+            >>> v = torch.ones((1,3))
             >>> omega = So3.hat(v)
             >>> So3.vee(omega)
-            tensor([[0.1802, 0.8256, 0.6205]])
+            tensor([[1., 1., 1.]])
         """
         a, b, c = omega[..., 2, 1], omega[..., 0, 2], omega[..., 1, 0]
         return stack([a, b, c], 1)
@@ -207,4 +213,12 @@ class So3:
         return cls(Quaternion.identity(batch_size))
 
     def inverse(self) -> 'So3':
+        """Returns the inverse transformation.
+
+        Example:
+            >>> s = So3.identity(batch_size=1)
+            >>> s.inverse()
+            real: tensor([[1.]], grad_fn=<SliceBackward0>) 
+            vec: tensor([[-0., -0., -0.]], grad_fn=<SliceBackward0>)
+        """
         return So3(self.q.conj())
