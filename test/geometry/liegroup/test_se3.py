@@ -1,9 +1,9 @@
 import pytest
 import torch
 
+from kornia.geometry.liegroup.se3 import Se3
 from kornia.geometry.liegroup.so3 import So3
 from kornia.geometry.quaternion import Quaternion
-from kornia.geometry.liegroup.se3 import Se3
 from kornia.testing import assert_close
 
 
@@ -65,7 +65,7 @@ class TestSe3:
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_hat(self, device, dtype, batch_size):
-        t = torch.rand((batch_size,3))
+        t = torch.rand((batch_size, 3))
         t = t.to(device, dtype)
         omega = torch.tensor([1, 2, 3]).repeat(batch_size, 1)
         omega = omega.to(device, dtype)
@@ -76,13 +76,9 @@ class TestSe3:
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_vee(self, device, dtype, batch_size):
-        omega_hat = torch.Tensor([[
-                               [0, 9, 5, 1], 
-                               [0, 10, 6,  2],
-                               [0, 11, 7,  3],
-                               [0, 12, 8,  4]]]).repeat(batch_size, 1, 1)
+        omega_hat = torch.Tensor([[[0, 9, 5, 1], [0, 10, 6, 2], [0, 11, 7, 3], [0, 12, 8, 4]]]).repeat(batch_size, 1, 1)
         omega_hat = omega_hat.to(device, dtype)
-        expected = torch.tensor([[12.0,  8.0,  4.0,  7.0,  1.0, 10.0]]).repeat(batch_size, 1)
+        expected = torch.tensor([[12.0, 8.0, 4.0, 7.0, 1.0, 10.0]]).repeat(batch_size, 1)
         expected = expected.to(device, dtype)
         assert_close(Se3.vee(omega_hat), expected)
 
@@ -101,6 +97,7 @@ class TestSe3:
         t = t.to(device, dtype)
         rot = So3(q)
         s = Se3(rot, t)
+        assert s.matrix().shape == torch.Size([batch_size, 4, 4])
         assert_close(s.matrix()[..., 0:3, 1:], rot.matrix())
         assert_close(s.matrix()[..., 3, 1:], t)
 

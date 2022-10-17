@@ -1,9 +1,10 @@
 # kornia.geometry.so3 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py
 from kornia.core import Tensor, concatenate, stack, where, zeros, zeros_like
-from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.liegroup._utils import squared_norm
+from kornia.geometry.quaternion import Quaternion
 from kornia.testing import KORNIA_CHECK_TYPE
+
 
 class So3:
     r"""Base class to represent the So3 group.
@@ -33,7 +34,7 @@ class So3:
             >>> q = Quaternion(data)
             >>> So3(q)
             real: tensor([[1.],
-                    [1.]], grad_fn=<SliceBackward0>) 
+                    [1.]], grad_fn=<SliceBackward0>)
             vec: tensor([[1., 1., 1.],
                     [1., 1., 1.]], grad_fn=<SliceBackward0>)
         """
@@ -65,13 +66,13 @@ class So3:
             >>> s = So3.identity(batch_size=1).exp(v)
             >>> s
             real: tensor([[1.],
-                    [1.]], grad_fn=<SliceBackward0>) 
+                    [1.]], grad_fn=<SliceBackward0>)
             vec: tensor([[0., 0., 0.],
                     [0., 0., 0.]], grad_fn=<SliceBackward0>)
         """
         theta = squared_norm(v).sqrt()
         small_angles_indices = where(theta < 2.220446049250313e-16)[0]
-        large_angles_indices     = where(theta > 2.220446049250313e-16)[0]
+        large_angles_indices = where(theta > 2.220446049250313e-16)[0]
         large_angles = theta[large_angles_indices]
 
         qtensor = zeros((v.shape[0], 4))
@@ -90,7 +91,7 @@ class So3:
             >>> q = Quaternion(data)
             >>> So3(q).log()
             real: tensor([[1.],
-                    [1.]], grad_fn=<SliceBackward0>) 
+                    [1.]], grad_fn=<SliceBackward0>)
             vec: tensor([[1., 1., 1.],
                     [1., 1., 1.]], grad_fn=<SliceBackward0>)
         """
@@ -218,7 +219,7 @@ class So3:
         Example:
             >>> s = So3.identity(batch_size=1)
             >>> s.inverse()
-            real: tensor([[1.]], grad_fn=<SliceBackward0>) 
+            real: tensor([[1.]], grad_fn=<SliceBackward0>)
             vec: tensor([[-0., -0., -0.]], grad_fn=<SliceBackward0>)
         """
         return So3(self.q.conj())

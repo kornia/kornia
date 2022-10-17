@@ -1,7 +1,10 @@
-from kornia.core import Tensor, concatenate, zeros, eye, where
-from kornia.geometry.liegroup.so3 import So3
+# kornia.geometry.so3 module inspired by Sophus-sympy.
+# https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py
+from kornia.core import Tensor, concatenate, eye, where, zeros
 from kornia.geometry.liegroup._utils import squared_norm
-from kornia.testing import KORNIA_CHECK_TYPE, KORNIA_CHECK_SHAPE
+from kornia.geometry.liegroup.so3 import So3
+from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
+
 
 class Se3:
     r"""Base class to represent the Se3 group.
@@ -13,7 +16,7 @@ class Se3:
         >>> q = Quaternion.identity(batch_size=1)
         >>> s = Se3(So3(q), torch.ones((1, 3)))
         >>> s
-        rotation: real: tensor([[1.]], grad_fn=<SliceBackward0>) 
+        rotation: real: tensor([[1.]], grad_fn=<SliceBackward0>)
         vec: tensor([[0., 0., 0.]], grad_fn=<SliceBackward0>)
         translation: tensor([[1., 1., 1.]])
     """
@@ -29,10 +32,10 @@ class Se3:
             >>> q = Quaternion.identity(batch_size=1)
             >>> s = Se3(So3(q), torch.ones((1,3)))
             >>> s.r
-            rotation: real: tensor([[1.]], grad_fn=<SliceBackward0>) 
+            rotation: real: tensor([[1.]], grad_fn=<SliceBackward0>)
             vec: tensor([[0., 0., 0.]], grad_fn=<SliceBackward0>)
             translation: tensor([[1., 1., 1.]])
-       """
+        """
         KORNIA_CHECK_TYPE(r, So3)
         KORNIA_CHECK_SHAPE(t, ["B", "3"])
         self._r = r
@@ -65,7 +68,7 @@ class Se3:
             >>> v = torch.zeros((1, 6))
             >>> s = Se3.exp(v)
             >>> s
-            rotation: real: tensor([[1.]], grad_fn=<SliceBackward0>) 
+            rotation: real: tensor([[1.]], grad_fn=<SliceBackward0>)
             vec: tensor([[0., 0., 0.]], grad_fn=<SliceBackward0>)
             translation: tensor([[0., 0., 0.]])
         """
@@ -74,7 +77,11 @@ class Se3:
         omega_hat = So3.hat(omega)
         theta = squared_norm(omega).sqrt()
         R = So3.exp(omega)
-        V = (eye(3) + ((1 - theta.cos()) / (theta**2)).unsqueeze(-1) * omega_hat + ((theta - theta.sin()) / (theta**3)).unsqueeze(-1) * (omega_hat @ omega_hat))
+        V = (
+            eye(3)
+            + ((1 - theta.cos()) / (theta**2)).unsqueeze(-1) * omega_hat
+            + ((theta - theta.sin()) / (theta**3)).unsqueeze(-1) * (omega_hat @ omega_hat)
+        )
         U = where(theta != 0.0, (t.reshape(-1, 1, 3) * V).sum(-1), t)
         return Se3(R, U)
 
@@ -89,7 +96,12 @@ class Se3:
         omega = self.r.log()
         theta = squared_norm(omega).sqrt()
         omega_hat = So3.hat(omega)
-        V_inv = eye(3) - 0.5 * omega_hat + ((1 - theta * (theta / 2).cos() / (2 * (theta/2).sin())) / theta.pow(2)).unsqueeze(-1) * (omega_hat @ omega_hat)
+        V_inv = (
+            eye(3)
+            - 0.5 * omega_hat
+            + ((1 - theta * (theta / 2).cos() / (2 * (theta / 2).sin())) / theta.pow(2)).unsqueeze(-1)
+            * (omega_hat @ omega_hat)
+        )
         t = where(theta != 0.0, (self.t.reshape(-1, 1, 3) * V_inv).sum(-1), self.t)
         return concatenate((t, omega), -1)
 
@@ -151,7 +163,7 @@ class Se3:
         Example:
             >>> s = Se3(So3.identity(batch_size=1), torch.ones((1,3)))
             >>> s.inverse()
-            rotation: real: tensor([[1.]], grad_fn=<SliceBackward0>) 
+            rotation: real: tensor([[1.]], grad_fn=<SliceBackward0>)
             vec: tensor([[-0., -0., -0.]], grad_fn=<SliceBackward0>)
             translation: tensor([[-1., -1., -1.]])
         """

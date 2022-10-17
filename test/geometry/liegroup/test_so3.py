@@ -88,9 +88,9 @@ class TestSo3:
             q1 = q[i]
             r1 = r[i, :, :]
             pvec = torch.rand(3)
-            pquat = Quaternion(torch.cat([torch.Tensor([0]), pvec])[None, :])
+            pquat = Quaternion(torch.cat([torch.tensor([0]), pvec])[None, :])
             qp_ = q1 * pquat * q1.inv()
-            rp_ = torch.matmul(r1, pvec.T)[None, :]
+            rp_ = torch.matmul(r1, pvec)[None, :]
             assert_close(rp_, qp_.vec)  # p_ = R*p = q*p*q_inv
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
