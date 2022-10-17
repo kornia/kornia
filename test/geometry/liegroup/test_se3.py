@@ -40,45 +40,49 @@ class TestSe3:
             assert_close(s1.r.q.data[0], q.data[i])
             assert_close(s1.t[0], t[i])
 
-    # @pytest.mark.parametrize("batch_size", (1, 2, 5))
-    # def test_exp(self, device, dtype, batch_size):
-    #     q = Quaternion.identity(batch_size)
-    #     q = q.to(device, dtype)
-    #     s = So3(q)
-    #     zero_vec = torch.zeros((batch_size, 3))
-    #     assert_close(s.exp(zero_vec).q.data, q.data)  # exp of zero vec is identity
+    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    def test_exp(self, device, dtype, batch_size):
+        omega = torch.zeros((batch_size, 3))
+        t = torch.rand((batch_size,3))
+        s = Se3.exp(torch.cat((t, omega), -1))
+        assert_close(s.r.q.data, Quaternion.identity(batch_size).to(device, dtype).data)
+        assert_close(s.t, t)
 
-    # @pytest.mark.parametrize("batch_size", (1, 2, 5))
-    # def test_log(self, device, dtype, batch_size):
-    #     q = Quaternion.identity(batch_size)
-    #     q = q.to(device, dtype)
-    #     s = So3(q)
-    #     zero_vec = torch.zeros((batch_size, 3))
-    #     assert_close(s.log(), zero_vec)  # log of identity quat is zero vec
+    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    def test_log(self, device, dtype, batch_size):
+        q = Quaternion.identity(batch_size)
+        q = q.to(device, dtype)
+        t = torch.rand((batch_size,3))
+        s = Se3(So3(q), t)
+        zero_vec = torch.zeros((batch_size, 3))
+        assert_close(s.log(), torch.cat((t, zero_vec), -1))  # log of identity quat is zero vec
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_exp_log(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size)
         q = q.to(device, dtype)
-        t = torch.rand((1,3))
+        t = torch.rand((batch_size,3))
         s = Se3(So3(q), t)
         a = torch.rand(batch_size, 6, device=device, dtype=dtype)
         b = s.exp(a).log()
         assert_close(b, a)
 
-    # @pytest.mark.parametrize("batch_size", (1, 2, 5))
-    # def test_hat(self, device, dtype, batch_size):
-    #     v = torch.Tensor([1, 2, 3]).repeat(batch_size, 1)
-    #     v = v.to(device, dtype)
-    #     assert_close(So3.hat(v).unique()[-3:], v[0, :])
+    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    def test_hat(self, device, dtype, batch_size):
+        t = torch.rand((batch_size,3))
+        omega = torch.tensor([1, 2, 3]).repeat(batch_size, 1)
+        omega_hat = Se3.hat(torch.cat((t, omega), 1))
+        assert omega_hat.shape == torch.Size([batch_size, 4, 4])
+        assert_close(omega_hat[:, 3, 1:4], t)
+        assert_close(omega_hat[:, 0:3, 1:4].unique()[-3:], torch.tensor([1, 2, 3]))
 
-    # @pytest.mark.parametrize("batch_size", (1, 2, 5))
-    # def test_vee(self, device, dtype, batch_size):
-    #     omega = torch.Tensor([[[1, 2, 3], [4, 5, 6], [7, 8, 9]]]).repeat(batch_size, 1, 1)
-    #     omega = omega.to(device, dtype)
-    #     expected = torch.tensor([[8, 3, 4]]).repeat(batch_size, 1)
-    #     expected = expected.to(device, dtype)
-    #     assert_close(So3.vee(omega), expected)
+    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    def test_vee(self, device, dtype, batch_size):
+        omega = torch.Tensor([[[1, 2, 3], [4, 5, 6], [7, 8, 9]]]).repeat(batch_size, 1, 1)
+        omega = omega.to(device, dtype)
+        expected = torch.tensor([[8, 3, 4]]).repeat(batch_size, 1)
+        expected = expected.to(device, dtype)
+        assert_close(So3.vee(omega), expected)
 
     # @pytest.mark.parametrize("batch_size", (1, 2, 5))
     # def test_hat_vee(self, device, dtype, batch_size):

@@ -1,4 +1,4 @@
-from kornia.core import Tensor, concatenate, zeros, eye
+from kornia.core import Tensor, concatenate, zeros, eye, where
 from kornia.geometry.liegroup.so3 import So3
 from kornia.geometry.liegroup._utils import squared_norm
 from kornia.testing import KORNIA_CHECK_TYPE, KORNIA_CHECK_SHAPE
@@ -70,14 +70,14 @@ class Se3:
             translation:tensor([[0.4024, 0.7548, 0.6127]])
         """
         import pdb
-        tt = v[..., 0:3].reshape(-1, 3, 1)
+        tt = v[..., 0:3]
         omega = v[..., 3:]
         omega_hat = So3.hat(omega)
         theta = squared_norm(omega).sqrt()
-        rot = So3.exp(omega)
-        V = eye(3) + ((1 - theta.cos()) / theta.pow(2)).unsqueeze(-1)* omega_hat + ((theta - theta.sin()) / theta.pow(3)).unsqueeze(-1) * omega_hat.pow(2)
-        # pdb.set_trace()
-        return Se3(rot, (tt * V).sum(-1))
+        R = So3.exp(omega)
+        V = (eye(3) + ((1 - theta.cos()) / (theta**2)).unsqueeze(-1) * omega_hat + ((theta - theta.sin()) / (theta**3)).unsqueeze(-1) * (omega_hat @ omega_hat))
+        U = where(theta != 0.0, (tt.reshape(-1, 1, 3)*V).sum(-1), tt)
+        return Se3(R, U)
 
     def log(self) -> Tensor:
         """Converts elements of lie group  to elements of lie algebra.
@@ -88,13 +88,12 @@ class Se3:
             tensor([[-0.3175,  1.0273,  1.1459,  1.5137,  3.5590, -1.2261]],
                    grad_fn=<CatBackward0>)
         """
-        # import pdb
         omega = self.r.log()
         theta = squared_norm(omega).sqrt()
         omega_hat = So3.hat(omega)
-        # pdb.set_trace()
-        vv_inv = eye(3) - 0.5 * omega_hat + ((1 - ((theta * (theta / 2).cos()) / (2 * (theta/2).sin()))) / theta.pow(2)).unsqueeze(-1) * omega_hat.pow(2)
-        return concatenate(((self.t.reshape(-1, 3, 1) * vv_inv).sum(-1), omega), -1)
+        V_inv = eye(3) - 0.5 * omega_hat + ((1 - theta * (theta / 2).cos() / (2 * (theta/2).sin())) / theta.pow(2)).unsqueeze(-1) * (omega_hat @ omega_hat)
+        t = where(theta != 0.0, (self.t.reshape(-1, 1, 3) * V_inv).sum(-1), self.t)
+        return concatenate((t, omega), -1)
 
     @staticmethod
     def hat(v) -> Tensor:
@@ -115,7 +114,7 @@ class Se3:
         t = v[..., 0:3].reshape(-1, 1, 3)
         omega = v[..., 3:]
         rt = concatenate((So3.hat(omega), t.reshape(-1, 1, 3)), 1)
-        return concatenate((zeros(1, 4, 1), rt), -1)
+        return concatenate((zeros(v.shape[0], 4, 1), rt), -1)
 
     @staticmethod
     def vee(omega) -> Tensor:
