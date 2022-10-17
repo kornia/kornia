@@ -1443,9 +1443,11 @@ class TestDenormalizePointsWithIntrinsics:
 
     def test_toy(self, device, dtype):
         point_2d = torch.tensor([[1.0, 1.0]], device=device, dtype=dtype)
-        camera_matrix = torch.tensor([[64., 0.0, 128.0], [0.0, 64., 128.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        camera_matrix = torch.tensor(
+            [[64.0, 0.0, 128.0], [0.0, 64.0, 128.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype
+        )
         op = kornia.geometry.conversions.denormalize_points_with_intrinsics
-        expected = torch.tensor([[192., 192.]], device=device, dtype=dtype)
+        expected = torch.tensor([[192.0, 192.0]], device=device, dtype=dtype)
         assert_close(op(point_2d, camera_matrix), expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
@@ -1456,7 +1458,9 @@ class TestDenormalizePointsWithIntrinsics:
         points_2d = tensor_to_gradcheck_var(points_2d)
         camera_matrix = tensor_to_gradcheck_var(camera_matrix)
         assert gradcheck(
-            kornia.geometry.conversions.denormalize_points_with_intrinsics, (points_2d, camera_matrix), raise_exception=True
+            kornia.geometry.conversions.denormalize_points_with_intrinsics,
+            (points_2d, camera_matrix),
+            raise_exception=True,
         )
 
     def test_jit(self, device, dtype):
@@ -1483,7 +1487,9 @@ class TestNormalizePointsWithIntrinsics:
 
     def test_norm_unnorm(self, device, dtype):
         point_2d = torch.tensor([[128.0, 128.0]], device=device, dtype=dtype)
-        camera_matrix = torch.tensor([[64., 0.0, 128.0], [0.0, 64., 128.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        camera_matrix = torch.tensor(
+            [[64.0, 0.0, 128.0], [0.0, 64.0, 128.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype
+        )
         op = kornia.geometry.conversions.normalize_points_with_intrinsics
         back = kornia.geometry.conversions.denormalize_points_with_intrinsics
         point_2d_norm = op(point_2d, camera_matrix)
@@ -1492,10 +1498,12 @@ class TestNormalizePointsWithIntrinsics:
 
     def test_toy(self, device, dtype):
         point_2d = torch.tensor([[192.0, 192.0]], device=device, dtype=dtype)
-        camera_matrix = torch.tensor([[64., 0.0, 128.0], [0.0, 64., 128.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        camera_matrix = torch.tensor(
+            [[64.0, 0.0, 128.0], [0.0, 64.0, 128.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype
+        )
         op = kornia.geometry.conversions.normalize_points_with_intrinsics
         out = op(point_2d, camera_matrix)
-        expected = torch.tensor([[1., 1.]], device=device, dtype=dtype)
+        expected = torch.tensor([[1.0, 1.0]], device=device, dtype=dtype)
         assert_close(out, expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
@@ -1506,7 +1514,9 @@ class TestNormalizePointsWithIntrinsics:
         points_2d = tensor_to_gradcheck_var(points_2d)
         camera_matrix = tensor_to_gradcheck_var(camera_matrix)
         assert gradcheck(
-            kornia.geometry.conversions.normalize_points_with_intrinsics, (points_2d, camera_matrix), raise_exception=True
+            kornia.geometry.conversions.normalize_points_with_intrinsics,
+            (points_2d, camera_matrix),
+            raise_exception=True,
         )
 
     def test_jit(self, device, dtype):

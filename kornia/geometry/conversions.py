@@ -1191,8 +1191,7 @@ def normalize_homography3d(
 
 
 def normalize_points_with_intrinsics(point_2d: torch.Tensor, camera_matrix: torch.Tensor):
-    r"""Normalizes points with intrinsics. Useful for conversion of keypoints
-    to be used with essential matrix.
+    r"""Normalizes points with intrinsics. Useful for conversion of keypoints to be used with essential matrix.
 
     Args:
         point_2d: tensor containing the 2d points in the image pixel coordinates.
@@ -1237,8 +1236,7 @@ def normalize_points_with_intrinsics(point_2d: torch.Tensor, camera_matrix: torc
 
 
 def denormalize_points_with_intrinsics(point_2d_norm: torch.Tensor, camera_matrix: torch.Tensor):
-    r"""Normalizes points with intrinsics. Useful for conversion of keypoints
-    to be used with essential matrix.
+    r"""Normalizes points with intrinsics. Useful for conversion of keypoints to be used with essential matrix.
 
     Args:
         point_2d_norm: tensor containing the 2d points in the image pixel coordinates.
