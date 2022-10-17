@@ -229,12 +229,12 @@ def create_spline_curve(cameras: PinholeCamera, num_views: int) -> PinholeCamera
         num_views: Number of created cameras: int
     """
     # Extrinsics
-    origins = cameras.origins().squeeze().numpy()
+    origins = cameras.origins().cpu().squeeze().numpy()
     ox = origins[:, 0]
     oy = origins[:, 1]
     oz = origins[:, 2]
 
-    rotation_matrix = torch.clone(cameras.rotation_matrix)  # Cloning to restore memory contingency
+    rotation_matrix = torch.clone(cameras.rotation_matrix).cpu()  # Cloning to restore memory contingency
     q = rotation_matrix_to_quaternion(rotation_matrix, order=QuaternionCoeffOrder.WXYZ).numpy()
     qw = q[:, 0]
     qx = q[:, 1]
@@ -242,16 +242,16 @@ def create_spline_curve(cameras: PinholeCamera, num_views: int) -> PinholeCamera
     qz = q[:, 3]
 
     # Intrinsics
-    fx_new = torch.mean(cameras.fx)  # Use average of camera focals
-    fy_new = torch.mean(cameras.fy)
-    width_new = cameras.width[0]  # For new camera sizes use first input camera
-    height_new = cameras.height[0]
+    fx_new = torch.mean(cameras.fx).item()  # Use average of camera focals
+    fy_new = torch.mean(cameras.fy).item()
+    width_new = cameras.width[0].item()  # For new camera sizes use first input camera
+    height_new = cameras.height[0].item()
     cx_new = width_new / 2.0  # Assign principal point to mid-image
     cy_new = height_new / 2.0
 
     # Interpolate output camera extrinsic parameters
     tck, _ = splprep([ox, oy, oz, qw, qx, qy, qz], s=0)
-    u2 = torch.linspace(0, 1, num_views, device='cpu', dtype=cameras.translation_vector.dtype).numpy()
+    u2 = torch.linspace(0, 1, num_views, device='cpu', dtype=cameras.dtype).numpy()
     new_points = splev(u2, tck)
 
     device = cameras.device
