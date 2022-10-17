@@ -26,7 +26,6 @@ from .kernels_geometry import get_motion_kernel2d, get_motion_kernel3d
 from .laplacian import Laplacian, laplacian
 from .median import MedianBlur, median_blur
 from .motion import MotionBlur, MotionBlur3D, motion_blur, motion_blur3d
-from .sepia import Sepia, sepia
 from .sobel import Sobel, SpatialGradient, SpatialGradient3d, sobel, spatial_gradient, spatial_gradient3d
 from .unsharp import UnsharpMask, unsharp_mask
 
@@ -79,6 +78,4 @@ __all__ = [
     "spatial_gradient3d",
     "UnsharpMask",
     "DexiNed",
-    "Sepia",
-    "sepia",
 ]

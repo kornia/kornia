@@ -4,7 +4,7 @@ import torch.nn as nn
 from kornia.core import Tensor
 
 
-def sepia(input: Tensor, rescale: bool = True) -> Tensor:
+def sepia_from_rgb(input: Tensor, rescale: bool = True) -> Tensor:
     r"""Apply to a tensor the sepia filter.
 
     Args:
@@ -47,7 +47,6 @@ def sepia(input: Tensor, rescale: bool = True) -> Tensor:
         raise TypeError(f"Unknown data type: {input.dtype}")
 
     input_reshaped = input.movedim(-3, -1)
-
     sepia_out = torch.matmul(input_reshaped, weights.T)
     if rescale:
         max_values = sepia_out.amax(dim=-1).amax(dim=-1)
@@ -82,11 +81,11 @@ class Sepia(nn.Module):
     """
 
     def __init__(self, rescale: bool = True) -> None:
-        self.rescale = True
+        self.rescale = rescale
         super().__init__()
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f'(rescale={self.rescale})'
 
     def forward(self, input: Tensor) -> Tensor:
-        return sepia(input, rescale=self.rescale)
+        return sepia_from_rgb(input, rescale=self.rescale)

@@ -18,7 +18,7 @@ def test_sepia_calc(batch_shape, expected, device, dtype):
     input_tensor = torch.ones(batch_shape, device=device, dtype=dtype)
     expected_tensor = torch.tensor(expected, device=device, dtype=dtype)
 
-    actual = kornia.filters.sepia(input_tensor, rescale=True)
+    actual = kornia.color.sepia(input_tensor, rescale=True)
     assert_close(actual, expected_tensor, rtol=1e-4, atol=1e-4)
 
 
@@ -29,7 +29,7 @@ def test_sepia_calc_without_rescale(device, dtype):
         [[[0.1351, 0.0, 1.3510]], [[0.1203, 0.0, 1.2030]], [[0.0937, 0.0, 0.9370]]], device=device, dtype=dtype
     )
 
-    actual = kornia.filters.sepia(input_tensor, rescale=False)
+    actual = kornia.color.sepia(input_tensor, rescale=False)
     assert_close(actual, expected)
 
 
@@ -38,7 +38,7 @@ def test_sepia_uint():
 
     expected = torch.tensor([[[112, 0, 168]], [[224, 0, 208]], [[76, 0, 18]]], dtype=torch.uint8)
 
-    actual = kornia.filters.sepia(input_tensor, rescale=False)
+    actual = kornia.color.sepia(input_tensor, rescale=False)
     assert_close(actual, expected)
 
 
@@ -46,14 +46,14 @@ class TestSepia:
     @pytest.mark.parametrize("batch_shape", [(1, 3, 8, 15), (2, 3, 11, 7), (3, 8, 15)])
     def test_shape(self, batch_shape, device, dtype):
         input_tensor = torch.rand(batch_shape, device=device, dtype=dtype)
-        actual = kornia.filters.sepia(input_tensor)
+        actual = kornia.color.sepia(input_tensor)
         assert actual.shape == batch_shape
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
         inp = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
 
-        actual = kornia.filters.sepia(inp)
+        actual = kornia.color.sepia(inp)
 
         assert inp.is_contiguous() is False
         assert actual.is_contiguous()
@@ -66,18 +66,18 @@ class TestSepia:
         # evaluate function gradient
         input_tensor = torch.rand(batch_shape, device=device, dtype=dtype)
         input_tensor = utils.tensor_to_gradcheck_var(input_tensor)
-        assert gradcheck(kornia.filters.sepia, (input_tensor,), raise_exception=True)
+        assert gradcheck(kornia.color.sepia, (input_tensor,), raise_exception=True)
 
     def test_jit(self, device, dtype):
-        op = kornia.filters.sepia
+        op = kornia.color.sepia
         op_script = torch.jit.script(op)
 
         img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
         assert_close(op(img), op_script(img))
 
     def test_module(self, device, dtype):
-        op = kornia.filters.sepia
-        op_module = kornia.filters.Sepia()
+        op = kornia.color.sepia
+        op_module = kornia.color.Sepia()
 
         img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
         assert_close(op(img), op_module(img))
