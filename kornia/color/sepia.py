@@ -1,19 +1,19 @@
 import torch
-import torch.nn as nn
 
-from kornia.core import Tensor
+from kornia.core import Module, Tensor
 
 
-def sepia_from_rgb(input: Tensor, rescale: bool = True) -> Tensor:
+def sepia_from_rgb(input: Tensor, rescale: bool = True, eps: float = 1e-6) -> Tensor:
     r"""Apply to a tensor the sepia filter.
 
     Args:
-        input: the input tensor with shape of :math:`(B, C, H, W)`.
+        input: the input tensor with shape of :math:`(*, C, H, W)`.
         rescale: If True, the output tensor will be rescaled (max values be 1. or 255).
+        eps: scalar to enforce numerical stability.
 
     Returns:
         - Tensor: The sepia tensor of same size and numbers of channels
-        as the input with shape :math:`(B, C, H, W)`.
+        as the input with shape :math:`(*, C, H, W)`.
 
     Example:
         >>> input = torch.ones(2, 3, 1, 1)
@@ -50,23 +50,24 @@ def sepia_from_rgb(input: Tensor, rescale: bool = True) -> Tensor:
     sepia_out = torch.matmul(input_reshaped, weights.T)
     if rescale:
         max_values = sepia_out.amax(dim=-1).amax(dim=-1)
-        sepia_out = torch.div(sepia_out, (max_values.unsqueeze(-1).unsqueeze(-1)))
+        sepia_out = sepia_out / (max_values[..., None, None] + eps)
 
     sepia_out = sepia_out.movedim(-1, -3).contiguous()
 
     return sepia_out
 
 
-class Sepia(nn.Module):
+class Sepia(Module):
     r"""Module that apply the sepia filter to tensors.
 
     Args:
-        input: the input tensor with shape of :math:`(B, C, H, W)`.
+        input: the input tensor with shape of :math:`(*, C, H, W)`.
         rescale: If True, the output tensor will be rescaled (max values be 1. or 255).
+        eps: scalar to enforce numerical stability.
 
     Returns:
         - Tensor: The sepia tensor of same size and numbers of channels
-        as the input with shape :math:`(B, C, H, W)`.
+        as the input with shape :math:`(*, C, H, W)`.
 
     Example:
         >>>
@@ -80,12 +81,13 @@ class Sepia(nn.Module):
                  [[0.6936]]]])
     """
 
-    def __init__(self, rescale: bool = True) -> None:
+    def __init__(self, rescale: bool = True, eps: float = 1e-6) -> None:
         self.rescale = rescale
+        self.eps = eps
         super().__init__()
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ + f'(rescale={self.rescale})'
+        return self.__class__.__name__ + f'(rescale={self.rescale}, eps={self.eps})'
 
     def forward(self, input: Tensor) -> Tensor:
-        return sepia_from_rgb(input, rescale=self.rescale)
+        return sepia_from_rgb(input, rescale=self.rescale, eps=self.eps)
