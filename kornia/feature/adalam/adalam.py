@@ -27,7 +27,7 @@ def get_adalam_default_config():
         'refit': True,  # Whether to perform refitting at the end of the RANSACs. Generally improves accuracy at the cost of runtime.   # noqa: E501
         'force_seed_mnn': True,  # Whether to consider only MNN for the purpose of selecting seeds. Generally improves accuracy at the cost of runtime.    # noqa: E501
         # You can provide a MNN mask in input to skip MNN computation and still get the improvement.
-        'device': torch.device('cpu'),  # Device to be used for running AdaLAM. Use GPU if available.   # noqa: E501
+        'device': torch.device('cpu'),  # Device to be used for running AdaLAM. Use GPU if available.
     }
     return DEFAULT_CONFIG
 
