@@ -8,6 +8,7 @@ from kornia.augmentation._2d import (
     PadTo,
     RandomAffine,
     RandomBoxBlur,
+    RandomBrightness,
     RandomChannelShuffle,
     RandomCrop,
     RandomCutMix,

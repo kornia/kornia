@@ -18,6 +18,7 @@ Intensity
 .. autoclass:: ColorJiggle
 .. autoclass:: ColorJitter
 .. autoclass:: RandomBoxBlur
+.. autoclass:: RandomBrightness
 .. autoclass:: RandomChannelShuffle
 .. autoclass:: RandomEqualize
 .. autoclass:: RandomGamma
