@@ -19,7 +19,8 @@ def get_cuda_device_if_available(index: int = 0) -> torch.device:
         torch.device
     """
     try:
-        if torch.cuda.is_available():
+        # nvFuser imports are conditional on being compiled with CUDA
+        if hasattr(torch._C, "_nvfuser"):
             dev = torch.device(f'cuda:{index}')
         else:
             dev = torch.device('cpu')
