@@ -5,21 +5,20 @@ from torch import Tensor
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.utils import  _range_bound
+from kornia.constants import pi
 
-from kornia.enhance.adjust import adjust_brightness
+from kornia.enhance.adjust import adjust_hue
 
-
-class RandomBrightness(IntensityAugmentationBase2D):
-    r"""Apply a random transformation to the brightness of a tensor image.
+class RandomHue(IntensityAugmentationBase2D):
+    r"""Apply a random transformation to the hue of a tensor image.
 
     This implementation aligns PIL. Hence, the output is close to TorchVision.
 
-    .. image:: _static/img/RandomBrighness.png
+    .. image:: _static/img/RandomHue.png
 
     Args:
         p: probability of applying the transformation.
-        brightness: the brightness factor to apply
-        clip_output: if true clip output
+        hue: the saturation factor to apply
         silence_instantiation_warning: if True, silence the warning at instantiation.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -29,51 +28,49 @@ class RandomBrightness(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     .. note::
-        This function internally uses :func:`kornia.enhance.adjust_brightness`
+        This function internally uses :func:`kornia.enhance.adjust_hue
 
         Examples:
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.rand(1, 3, 3, 3)
-        >>> aug = RandomBrightness(brightness = (0.5,2.),p=1.)
+        >>> aug = RandomHue(hue = (-0.5,0.5),p=1.)
         >>> aug(inputs)
-        tensor([[[[0.9963, 1.0000, 0.5885],
-                  [0.6320, 0.8074, 1.0000],
-                  [0.9901, 1.0000, 0.9556]],
-        <BLANKLINE>
-                 [[1.0000, 0.8489, 0.9017],
-                  [0.5223, 0.6689, 0.7939],
-                  [1.0000, 1.0000, 1.0000]],
-        <BLANKLINE>
-                 [[0.6610, 0.7823, 1.0000],
-                  [1.0000, 0.8971, 1.0000],
-                  [0.9194, 1.0000, 1.0000]]]])
+        tensor([[[[0.3993, 0.2823, 0.6816],
+                  [0.6117, 0.2090, 0.4081],
+                  [0.4693, 0.5529, 0.9527]],
 
+                 [[0.1610, 0.5962, 0.4971],
+                  [0.9152, 0.3971, 0.8742],
+                  [0.4194, 0.6771, 0.7162]],
+
+                 [[0.6323, 0.7682, 0.0885],
+                  [0.0223, 0.1689, 0.2939],
+                  [0.5185, 0.8964, 0.4556]]]])
+ 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
         >>> input = torch.rand(1, 3, 32, 32)
-        >>> aug = RandomBrightness((0.8,1.2), p=1.)
+        >>> aug = RandomHue((-0.2,0.2), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
     """
 
     def __init__(
         self,
-        brightness: Tuple[float, float] = (1.0, 1.0),
-        clip_output: bool = True,
+        hue: Tuple[float, float] = (0.0, 0.0),
         same_on_batch: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
         return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-        brightness  = _range_bound(brightness, 'brightness', center=1.0, bounds=(0, 2))
+        hue = _range_bound(hue, 'hue', bounds=(-0.5, 0.5))
         self._param_generator = cast(
             rg.PlainUniformGenerator,
-            rg.PlainUniformGenerator((brightness, "brightness_factor", None, None))
+            rg.PlainUniformGenerator((hue, "hue_factor", None, None))
         )
-        self.clip_output = clip_output
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        brightness_factor = params["brightness_factor"].to(input)
-        return adjust_brightness(input, brightness_factor-1, self.clip_output)
+        hue_factor = params["hue_factor"].to(input)
+        return adjust_hue(input, hue_factor * 2 * pi)
