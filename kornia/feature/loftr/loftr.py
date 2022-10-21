@@ -77,6 +77,8 @@ class LoFTR(nn.Module):
         super().__init__()
         # Misc
         self.config = config
+        if pretrained == 'indoor_new':
+            self.config['coarse']['temp_bug_fix'] = True
         # Modules
         self.backbone = build_backbone(config)
         self.pos_encoding = PositionEncodingSine(
