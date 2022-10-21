@@ -1,6 +1,6 @@
 # kornia.geometry.so3 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py
-from kornia.core import Tensor, concatenate, eye, where, zeros
+from kornia.core import Tensor, as_tensor, concatenate, eye, where, zeros
 from kornia.geometry.liegroup._utils import squared_norm
 from kornia.geometry.liegroup.so3 import So3
 from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
@@ -24,6 +24,8 @@ class Se3:
     def __init__(self, r: So3, t: Tensor) -> None:
         """Constructor for the base class.
 
+        Internally represented by a unit quaternion `q` and a translation 3-vector.
+
         Args:
             rot: So3 group encompassing a rotation.
             t: translation vector with the shape of :math:`(B, 3)`.
@@ -45,7 +47,15 @@ class Se3:
         return f"rotation: {self.r}\ntranslation: {self.t}"
 
     def __getitem__(self, idx) -> 'Se3':
-        return Se3(self._r[idx], self._t[idx].unsqueeze(0))
+        return Se3(self._r[idx], self._t[idx][None])
+
+    # TODO: add tests
+    def __mul__(self, right: "Se3") -> "Se3":
+        KORNIA_CHECK_TYPE(right, Se3)
+        # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py#L97
+        r = self.r * right.r
+        t = self.t + self.r * right.t
+        return Se3(r, t)
 
     @property
     def r(self) -> So3:
@@ -72,15 +82,18 @@ class Se3:
             vec: tensor([[0., 0., 0.]], grad_fn=<SliceBackward0>)
             translation: tensor([[0., 0., 0.]])
         """
+        KORNIA_CHECK_SHAPE(v, ["B", "6"])
         t = v[..., 0:3]
         omega = v[..., 3:]
         omega_hat = So3.hat(omega)
         theta = squared_norm(omega).sqrt()
         R = So3.exp(omega)
+        # TODO: is this batched ???
+        # TODO: infer device, dtype
         V = (
-            eye(3)
-            + ((1 - theta.cos()) / (theta**2)).unsqueeze(-1) * omega_hat
-            + ((theta - theta.sin()) / (theta**3)).unsqueeze(-1) * (omega_hat @ omega_hat)
+            eye(3).to(v.device, v.dtype)
+            + ((1 - theta.cos()) / (theta**2))[..., None] * omega_hat
+            + ((theta - theta.sin()) / (theta**3))[..., None] * (omega_hat @ omega_hat)
         )
         U = where(theta != 0.0, (t.reshape(-1, 1, 3) * V).sum(-1), t)
         return Se3(R, U)
@@ -96,10 +109,12 @@ class Se3:
         omega = self.r.log()
         theta = squared_norm(omega).sqrt()
         omega_hat = So3.hat(omega)
+        # TODO: is this batched ???
+        # TODO: infer device, dtype
         V_inv = (
-            eye(3)
+            eye(3).to(self._t.device, self._t.dtype)
             - 0.5 * omega_hat
-            + ((1 - theta * (theta / 2).cos() / (2 * (theta / 2).sin())) / theta.pow(2)).unsqueeze(-1)
+            + ((1 - theta * (theta / 2).cos() / (2 * (theta / 2).sin())) / theta.pow(2))[..., None]
             * (omega_hat @ omega_hat)
         )
         t = where(theta != 0.0, (self.t.reshape(-1, 1, 3) * V_inv).sum(-1), self.t)
@@ -121,17 +136,22 @@ class Se3:
                      [ 0., -1.,  1.,  0.],
                      [ 0.,  1.,  1.,  1.]]])
         """
+        KORNIA_CHECK_SHAPE(v, ["B", "6"])
         t = v[..., 0:3].reshape(-1, 1, 3)
         omega = v[..., 3:]
         rt = concatenate((So3.hat(omega), t.reshape(-1, 1, 3)), 1)
-        return concatenate((zeros(v.shape[0], 4, 1), rt), -1)
+        # TODO: infer device, dtype
+        return concatenate((zeros(v.shape[0], 4, 1).to(rt.device, rt.dtype), rt), -1)
 
     @staticmethod
     def vee(omega) -> Tensor:
-        """Converts elements from lie algebra to vector space. Returns vector of shape :math:`(B,6)`.
+        """Converts elements from lie algebra to vector space.
 
         Args:
-            omega: 4x4-matrix representing lie algebra
+            omega: 4x4-matrix representing lie algebra of shape :math:`(B,4,4)`.
+
+        Returns:
+            vector of shape :math:`(B,6)`.
 
         Example:
             >>> v = torch.ones((1,6))
@@ -139,9 +159,31 @@ class Se3:
             >>> Se3.vee(omega_hat)
             tensor([[1., 1., 1., 1., 1., 1.]])
         """
+        KORNIA_CHECK_SHAPE(omega, ["B", "4", "4"])
         t = omega[..., 3, 1:]
         v = So3.vee(omega[..., 0:3, 1:])
         return concatenate((t, v), 1)
+
+    @classmethod
+    def identity(cls, batch_size: int, device=None, dtype=None) -> 'Se3':
+        """Create a Se3 group representing an identity rotation and zero translation.
+
+        Args:
+            batch_size: the batch size of the underlying data.
+
+        Example:
+            >>> s = Se3.identity(batch_size=2)
+            >>> s.data
+            rotation: real: tensor([[1.],
+                    [1.]], grad_fn=<SliceBackward0>)
+            vec: tensor([[0., 0., 0.],
+                    [0., 0., 0.]], grad_fn=<SliceBackward0>)
+            translation: tensor([[0., 0., 0.],
+                    [0., 0., 0.]])
+        """
+        t: Tensor = as_tensor([0.0, 0.0, 0.0])
+        t = t.repeat(batch_size, 1)
+        return cls(So3.identity(batch_size, device, dtype), t.to(device, dtype))
 
     def matrix(self) -> Tensor:
         """Returns the matrix representation of shape :math:`(B, 4, 4)`.
@@ -155,7 +197,7 @@ class Se3:
                      [0., 1., 1., 1.]]], grad_fn=<CatBackward0>)
         """
         rt = concatenate((self.r.matrix(), self.t.reshape(-1, 1, 3)), 1)
-        return concatenate((zeros(self.t.shape[0], 4, 1), rt), -1)
+        return concatenate((zeros(self.t.shape[0], 4, 1).to(rt.device, rt.dtype), rt), -1)
 
     def inverse(self) -> 'Se3':
         """Returns the inverse transformation.
@@ -167,5 +209,7 @@ class Se3:
             vec: tensor([[-0., -0., -0.]], grad_fn=<SliceBackward0>)
             translation: tensor([[-1., -1., -1.]])
         """
-        R_inv = self.r.inverse()
-        return Se3(R_inv, -1 * self.t)
+        r_inv = self.r.inverse()
+        # NOTE: do not match with: https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py#L68
+        # Se3(r_inv, -1 * r_inv * self.t)
+        return Se3(r_inv, r_inv * (-1 * self.t))

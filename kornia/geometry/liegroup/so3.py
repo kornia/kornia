@@ -1,9 +1,9 @@
 # kornia.geometry.so3 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py
-from kornia.core import Tensor, concatenate, stack, where, zeros_like
+from kornia.core import Tensor, concatenate, stack, where, zeros, zeros_like
 from kornia.geometry.liegroup._utils import squared_norm
 from kornia.geometry.quaternion import Quaternion
-from kornia.testing import KORNIA_CHECK_TYPE
+from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 
 
 class So3:
@@ -26,6 +26,8 @@ class So3:
     def __init__(self, q: Quaternion) -> None:
         """Constructor for the base class.
 
+        Internally represented by a unit quaternion `q`.
+
         Args:
             data: Quaternion with the shape of :math:`(B, 4)`.
 
@@ -46,6 +48,18 @@ class So3:
 
     def __getitem__(self, idx) -> 'So3':
         return So3(self._q[idx])
+
+    # TODO: add tests
+    def __mul__(self, right):
+        # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py#L98
+        if isinstance(right, So3):
+            return So3(self.q * right.q)
+        elif isinstance(right, Tensor):
+            KORNIA_CHECK_SHAPE(right, ["B", "3"])
+            w = zeros(right.shape[0], 1).to(right.device, right.dtype)
+            return (self.q * Quaternion(concatenate((w, right), 1)) * self.q.conj()).vec
+        else:
+            raise TypeError(f"Not So3 or Tensor type. Got: {type(right)}")
 
     @property
     def q(self) -> Quaternion:
@@ -70,9 +84,14 @@ class So3:
             vec: tensor([[0., 0., 0.],
                     [0., 0., 0.]], grad_fn=<SliceBackward0>)
         """
+        KORNIA_CHECK_SHAPE(v, ["B", "3"])
         theta = squared_norm(v).sqrt()
-        w = where(theta != 0.0, (0.5 * theta).cos(), Tensor([1.0]))
-        b = where(theta != 0.0, (0.5 * theta).sin().div(theta), Tensor([0.0]))
+        theta_nonzeros = theta != 0.0
+        theta_half = 0.5 * theta
+        w = where(
+            theta_nonzeros, theta_half.cos(), Tensor([1.0]).to(v.device, v.dtype)
+        )  # error :expected scalar type float but found double
+        b = where(theta_nonzeros, theta_half.sin() / theta, Tensor([0.0]).to(v.device, v.dtype))
         xyz = b * v
         return So3(Quaternion(concatenate((w, xyz), 1)))
 
@@ -87,6 +106,7 @@ class So3:
                     [0., 0., 0.]], grad_fn=<SWhereBackward0>)
         """
         theta = squared_norm(self.q.vec).sqrt()
+        # NOTE: this differs from https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py#L33
         omega = where(theta != 0, 2 * self.q.real.acos() * self.q.vec / theta, 2 * self.q.vec / self.q.real)
         return omega
 
@@ -109,6 +129,7 @@ class So3:
                      [ 1.,  0., -1.],
                      [-1.,  1.,  0.]]])
         """
+        KORNIA_CHECK_SHAPE(v, ["B", "3"])
         a, b, c = v[..., 0, None, None], v[..., 1, None, None], v[..., 2, None, None]
         zeros = zeros_like(v)[..., 0, None, None]
         row0 = concatenate([zeros, -c, b], 2)
@@ -134,9 +155,12 @@ class So3:
             >>> So3.vee(omega)
             tensor([[1., 1., 1.]])
         """
+        KORNIA_CHECK_SHAPE(omega, ["B", "3", "3"])
         a, b, c = omega[..., 2, 1], omega[..., 0, 2], omega[..., 1, 0]
         return stack([a, b, c], 1)
 
+    # NOTE: the math style won't render well with sphinx
+    # NOTE: this is not tested
     def matrix(self) -> Tensor:
         """Convert the quaternion to a rotation matrix of shape :math:`(B,3,3)`.
 
@@ -155,8 +179,8 @@ class So3:
                      [0., 1., 0.],
                      [0., 0., 1.]]], grad_fn=<CatBackward0>)
         """
-        w = self.q.w.unsqueeze(2)
-        x, y, z = self.q.x.unsqueeze(2), self.q.y.unsqueeze(2), self.q.z.unsqueeze(2)
+        w = self.q.w[..., None]
+        x, y, z = self.q.x[..., None], self.q.y[..., None], self.q.z[..., None]
         q0 = 1 - 2 * y**2 - 2 * z**2
         q1 = 2 * x * y - 2 * z * w
         q2 = 2 * x * z + 2 * y * w
@@ -172,7 +196,23 @@ class So3:
         return concatenate([row0, row1, row2], 1)
 
     @classmethod
-    def identity(cls, batch_size: int) -> 'So3':
+    def from_matrix(cls, matrix: Tensor) -> 'So3':
+        """Create So3 from a rotation matrix.
+
+        Args:
+            matrix: the rotation matrix to convert of shape :math:`(B,3,3)`.
+
+        Example:
+            >>> m = torch.eye(3)[None]
+            >>> s = So3.from_matrix(m)
+            >>> s
+            Parameter containing:
+            tensor([[1., 0., 0., 0.]], requires_grad=True)
+        """
+        return cls(Quaternion.from_matrix(matrix))
+
+    @classmethod
+    def identity(cls, batch_size: int, device=None, dtype=None) -> 'So3':
         """Create a So3 group representing an identity rotation.
 
         Args:
@@ -186,7 +226,7 @@ class So3:
             vec: tensor([[0., 0., 0.],
                     [0., 0., 0.]], grad_fn=<SliceBackward0>)
         """
-        return cls(Quaternion.identity(batch_size))
+        return cls(Quaternion.identity(batch_size).to(device, dtype))
 
     def inverse(self) -> 'So3':
         """Returns the inverse transformation.
