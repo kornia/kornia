@@ -28,31 +28,19 @@ def sepia_from_rgb(input: Tensor, rescale: bool = True, eps: float = 1e-6) -> Te
     if len(input.shape) < 3 or input.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {input.shape}")
 
-    # 8 bit images
-    if input.dtype == torch.uint8:
-        if input.device != torch.device('cpu'):
-            raise TypeError(
-                f"Input device must be `cpu` to apply sepia to a `uint8` tensor. Got {input.device}"
-            )  # issue pytorch#44428
+    r = input[..., 0, :, :]
+    g = input[..., 1, :, :]
+    b = input[..., 2, :, :]
 
-        weights = torch.tensor([[100, 196, 48], [88, 174, 42], [69, 136, 33]], device=input.device, dtype=torch.uint8)
-    # floating point images
-    elif input.dtype in (torch.float16, torch.float32, torch.float64):
-        weights = torch.tensor(
-            [[0.393, 0.769, 0.189], [0.349, 0.686, 0.168], [0.272, 0.534, 0.131]],
-            device=input.device,
-            dtype=input.dtype,
-        )
-    else:
-        raise TypeError(f"Unknown data type: {input.dtype}")
+    r_out = 0.393 * r + 0.769 * g + 0.189 * b
+    g_out = 0.349 * r + 0.686 * g + 0.168 * b
+    b_out = 0.272 * r + 0.534 * g + 0.131 * b
 
-    input_reshaped = input.movedim(-3, -1)
-    sepia_out = torch.matmul(input_reshaped, weights.T)
+    sepia_out = torch.stack([r_out, g_out, b_out], dim=-3)
+
     if rescale:
         max_values = sepia_out.amax(dim=-1).amax(dim=-1)
         sepia_out = sepia_out / (max_values[..., None, None] + eps)
-
-    sepia_out = sepia_out.movedim(-1, -3).contiguous()
 
     return sepia_out
 

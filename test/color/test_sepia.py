@@ -9,46 +9,37 @@ from kornia.testing import BaseTester
 
 class TestSepia(BaseTester):
     def test_smoke(self, device, dtype):
-        input_tensor = torch.ones((2, 3, 1, 1), device=device, dtype=dtype)
+        input_tensor = torch.tensor(
+            [[[0.1, 1.0], [0.2, 0.1]], [[0.1, 0.8], [0.2, 0.5]], [[0.1, 0.3], [0.2, 0.8]]], device=device, dtype=dtype
+        )
+
+        # With rescale
         expected_tensor = torch.tensor(
-            [[[[1.0]], [[0.8905]], [[0.6936]]], [[[1.0]], [[0.8905]], [[0.6936]]]], device=device, dtype=dtype
+            [[[0.1269, 1.0], [0.2537, 0.5400]], [[0.1269, 1.0], [0.2537, 0.5403]], [[0.1269, 1.0], [0.2538, 0.5403]]],
+            device=device,
+            dtype=dtype,
         )
-
         actual = kornia.color.sepia(input_tensor, rescale=True)
-        assert actual.shape[:] == (2, 3, 1, 1)
-        self.assert_close(actual, expected_tensor, rtol=1e-4, atol=1e-4)
 
-        input_tensor = torch.ones((3, 1, 1), device=device, dtype=dtype)
-        expected_tensor = torch.tensor([[[1.0]], [[0.8905]], [[0.6936]]], device=device, dtype=dtype)
+        assert actual.shape[:] == (3, 2, 2)
+        self.assert_close(actual, expected_tensor, rtol=1e-2, atol=1e-2)
 
-        actual = kornia.color.sepia(input_tensor, rescale=True)
-        assert actual.shape[:] == (3, 1, 1)
-        self.assert_close(actual, expected_tensor, rtol=1e-4, atol=1e-4)
-
-    def test_sepia_calc_without_rescale(self, device, dtype):
-        input_tensor = torch.tensor([[[0.1, 0, 1]], [[0.1, 0, 1]], [[0.1, 0, 1]]], device=device, dtype=dtype)
-
-        expected = torch.tensor(
-            [[[0.1351, 0.0, 1.3510]], [[0.1203, 0.0, 1.2030]], [[0.0937, 0.0, 0.9370]]], device=device, dtype=dtype
+        # Without rescale
+        expected_tensor = torch.tensor(
+            [
+                [[0.1351, 1.0649], [0.2702, 0.5750]],
+                [[0.1203, 0.9482], [0.2406, 0.5123]],
+                [[0.0937, 0.7385], [0.1874, 0.3990]],
+            ],
+            device=device,
+            dtype=dtype,
         )
 
         actual = kornia.color.sepia(input_tensor, rescale=False)
-        self.assert_close(actual, expected)
-
-    def test_sepia_uint(self):
-        input_tensor = torch.tensor([[[10, 0, 255]], [[10, 0, 255]], [[10, 0, 255]]], dtype=torch.uint8)
-
-        expected = torch.tensor([[[112, 0, 168]], [[224, 0, 208]], [[76, 0, 18]]], dtype=torch.uint8)
-
-        actual = kornia.color.sepia(input_tensor, rescale=False)
-        self.assert_close(actual, expected)
+        assert actual.shape[:] == (3, 2, 2)
+        self.assert_close(actual, expected_tensor, rtol=1e-2, atol=1e-2)
 
     def test_exception(self, device, dtype):
-        inp = torch.randint(1, 10, (3, 1, 1), dtype=torch.int32, device=device)
-
-        with pytest.raises(TypeError):
-            kornia.color.sepia(inp)
-
         with pytest.raises(ValueError):
             kornia.color.sepia(torch.rand(size=(4, 1, 1), dtype=dtype, device=device))
 
