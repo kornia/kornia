@@ -56,6 +56,7 @@ class NerfSolver:
         num_ray_points: int,
         irregular_ray_sampling: bool = True,
         log_space_encoding=True,
+        num_hidden=256,
         lr: float = 1.0e-3,
     ) -> None:
         r"""Initializes training.
@@ -70,7 +71,8 @@ class NerfSolver:
             batch_size: Number of rays to sample in a batch: int
             num_ray_points: Number of points to sample along rays: int
             irregular_ray_sampling: Whether to sample ray points irregularly: bool
-            log_space: Whether frequency sampling should be log spaced: bool
+            log_space_encoding: Whether frequency sampling should be log spaced: bool
+            num_hidden: Layer hidden dimensions: int
             lr: Learning rate: float
         """
         # self._check_camera_image_consistency(cameras, imgs)   # FIXME: Check if required
@@ -92,7 +94,10 @@ class NerfSolver:
         self._batch_size = batch_size
 
         self._nerf_model = NerfModel(
-            num_ray_points, irregular_ray_sampling=irregular_ray_sampling, log_space_encoding=log_space_encoding
+            num_ray_points,
+            irregular_ray_sampling=irregular_ray_sampling,
+            log_space_encoding=log_space_encoding,
+            num_hidden=num_hidden,
         )
         self._nerf_model.to(device=self._device, dtype=self._dtype)
         self._opt_nerf = optim.Adam(self._nerf_model.parameters(), lr=lr)
