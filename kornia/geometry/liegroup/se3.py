@@ -33,7 +33,7 @@ class Se3:
         Example:
             >>> q = Quaternion.identity(batch_size=1)
             >>> s = Se3(So3(q), torch.ones((1,3)))
-            >>> s.r
+            >>> s
             rotation: real: tensor([[1.]], grad_fn=<SliceBackward0>)
             vec: tensor([[0., 0., 0.]], grad_fn=<SliceBackward0>)
             translation: tensor([[1., 1., 1.]])
@@ -173,7 +173,7 @@ class Se3:
 
         Example:
             >>> s = Se3.identity(batch_size=2)
-            >>> s.data
+            >>> s
             rotation: real: tensor([[1.],
                     [1.]], grad_fn=<SliceBackward0>)
             vec: tensor([[0., 0., 0.],
@@ -209,7 +209,7 @@ class Se3:
             >>> s.inverse()
             rotation: real: tensor([[1.]], grad_fn=<SliceBackward0>)
             vec: tensor([[-0., -0., -0.]], grad_fn=<SliceBackward0>)
-            translation: tensor([[-1., -1., -1.]])
+            translation: tensor([[-1., -1., -1.]], grad_fn=<SliceBackward0>)
         """
         r_inv = self.r.inverse()
         # NOTE: do not match with: https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py#L68
