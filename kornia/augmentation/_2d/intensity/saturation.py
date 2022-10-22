@@ -4,8 +4,7 @@ from torch import Tensor
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.augmentation.utils import  _range_bound
-
+from kornia.augmentation.utils import _range_bound
 from kornia.enhance.adjust import adjust_saturation
 
 
@@ -38,11 +37,11 @@ class RandomSaturation(IntensityAugmentationBase2D):
         tensor([[[[0.5569, 0.7682, 0.3529],
                   [0.4811, 0.3474, 0.7411],
                   [0.5028, 0.8964, 0.6772]],
-
+        <BLANKLINE>
                  [[0.6323, 0.5358, 0.5265],
                   [0.4203, 0.2706, 0.5525],
                   [0.5185, 0.7863, 0.8681]],
-
+        <BLANKLINE>
                  [[0.3711, 0.4989, 0.6816],
                   [0.9152, 0.3971, 0.8742],
                   [0.4636, 0.7060, 0.9527]]]])
@@ -63,10 +62,9 @@ class RandomSaturation(IntensityAugmentationBase2D):
         return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-        saturation  = _range_bound(saturation, 'saturation', center=1.0)
+        self.saturation: Tensor = _range_bound(saturation, 'saturation', center=1.0)
         self._param_generator = cast(
-            rg.PlainUniformGenerator,
-            rg.PlainUniformGenerator((saturation, "saturation_factor", None, None))
+            rg.PlainUniformGenerator, rg.PlainUniformGenerator((self.saturation, "saturation_factor", None, None))
         )
 
     def apply_transform(

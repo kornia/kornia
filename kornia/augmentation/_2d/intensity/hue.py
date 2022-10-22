@@ -4,10 +4,10 @@ from torch import Tensor
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.augmentation.utils import  _range_bound
+from kornia.augmentation.utils import _range_bound
 from kornia.constants import pi
-
 from kornia.enhance.adjust import adjust_hue
+
 
 class RandomHue(IntensityAugmentationBase2D):
     r"""Apply a random transformation to the hue of a tensor image.
@@ -38,15 +38,15 @@ class RandomHue(IntensityAugmentationBase2D):
         tensor([[[[0.3993, 0.2823, 0.6816],
                   [0.6117, 0.2090, 0.4081],
                   [0.4693, 0.5529, 0.9527]],
-
+        <BLANKLINE>
                  [[0.1610, 0.5962, 0.4971],
                   [0.9152, 0.3971, 0.8742],
                   [0.4194, 0.6771, 0.7162]],
-
+        <BLANKLINE>
                  [[0.6323, 0.7682, 0.0885],
                   [0.0223, 0.1689, 0.2939],
                   [0.5185, 0.8964, 0.4556]]]])
- 
+
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
         >>> input = torch.rand(1, 3, 32, 32)
         >>> aug = RandomHue((-0.2,0.2), p=1.)
@@ -63,10 +63,9 @@ class RandomHue(IntensityAugmentationBase2D):
         return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-        hue = _range_bound(hue, 'hue', bounds=(-0.5, 0.5))
+        self.hue: Tensor = _range_bound(hue, 'hue', bounds=(-0.5, 0.5))
         self._param_generator = cast(
-            rg.PlainUniformGenerator,
-            rg.PlainUniformGenerator((hue, "hue_factor", None, None))
+            rg.PlainUniformGenerator, rg.PlainUniformGenerator((self.hue, "hue_factor", None, None))
         )
 
     def apply_transform(

@@ -4,8 +4,7 @@ from torch import Tensor
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.augmentation.utils import  _range_bound
-
+from kornia.augmentation.utils import _range_bound
 from kornia.enhance.adjust import adjust_contrast
 
 
@@ -44,9 +43,9 @@ class RandomContrast(IntensityAugmentationBase2D):
                   [0.0124, 0.0936, 0.1629],
                   [0.2874, 0.3867, 0.4434]],
         <BLANKLINE>
-                [[0.0893, 0.1564, 0.3778],
-                 [0.5072, 0.2201, 0.4845],
-                 [0.2325, 0.3064, 0.5281]]]])
+                 [[0.0893, 0.1564, 0.3778],
+                  [0.5072, 0.2201, 0.4845],
+                  [0.2325, 0.3064, 0.5281]]]])
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
         >>> input = torch.rand(1, 3, 32, 32)
@@ -65,10 +64,9 @@ class RandomContrast(IntensityAugmentationBase2D):
         return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-        contrast  = _range_bound(contrast, 'contrast', center=1.0)
+        self.contrast: Tensor = _range_bound(contrast, 'contrast', center=1.0)
         self._param_generator = cast(
-            rg.PlainUniformGenerator,
-            rg.PlainUniformGenerator((contrast, "contrast_factor", None, None))
+            rg.PlainUniformGenerator, rg.PlainUniformGenerator((self.contrast, "contrast_factor", None, None))
         )
         self.clip_output = clip_output
 

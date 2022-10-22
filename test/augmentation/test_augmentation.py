@@ -987,7 +987,8 @@ class TestRandomVerticalFlip(BaseTester):
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_module(self, device, dtype):
-        pass    
+        pass
+
 
 class TestColorJiggle(BaseTester):
 
@@ -1639,18 +1640,18 @@ class TestColorJitter(BaseTester):
     def test_module(self, device, dtype):
         pass
 
+
 class TestRandomBrightness(BaseTester):
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self):
-        f = RandomBrightness(brightness=(0.5,1.5))
+        f = RandomBrightness(brightness=(0.5, 1.5))
         repr = (
-            "RandomBrightness(brightness_factor=tensor([0.5000, 1.5000]), "
-            "p=1.0, p_batch=1.0, same_on_batch=False))"
+            "RandomBrightness(brightness_factor=tensor([0.5000, 1.5000]), " "p=1.0, p_batch=1.0, same_on_batch=False))"
         )
         assert str(f.__repr__) == repr
-        
+
     def test_random_brighness_identity(self, device, dtype):
-    
+
         f = RandomBrightness()
 
         input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0)  # 3 x 5 x 5
@@ -1660,33 +1661,34 @@ class TestRandomBrightness(BaseTester):
 
         self.assert_close(f(input), expected, low_tolerance=True)
         self.assert_close(f.transform_matrix, expected_transform, low_tolerance=True)
-        
+
     def test_same_on_batch(self, device, dtype):
-        f = RandomBrightness(brightness=(0.5,1.5), same_on_batch=True)
+        f = RandomBrightness(brightness=(0.5, 1.5), same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
         assert (res[0] == res[1]).all()
-    
+
     def _get_expected_brightness(self, device, dtype):
         return torch.tensor(
-        [
             [
-                [[0.2529, 0.3529, 0.4529], [0.7529, 0.6529, 0.5529], [0.8529, 0.9529, 1.0000]],
-                [[0.2529, 0.3529, 0.4529], [0.7529, 0.6529, 0.5529], [0.8529, 0.9529, 1.0000]],
-                [[0.2529, 0.3529, 0.4529], [0.7529, 0.6529, 0.5529], [0.8529, 0.9529, 1.0000]],
+                [
+                    [[0.2529, 0.3529, 0.4529], [0.7529, 0.6529, 0.5529], [0.8529, 0.9529, 1.0000]],
+                    [[0.2529, 0.3529, 0.4529], [0.7529, 0.6529, 0.5529], [0.8529, 0.9529, 1.0000]],
+                    [[0.2529, 0.3529, 0.4529], [0.7529, 0.6529, 0.5529], [0.8529, 0.9529, 1.0000]],
+                ],
+                [
+                    [[0.2660, 0.3660, 0.4660], [0.7660, 0.6660, 0.5660], [0.8660, 0.9660, 1.0000]],
+                    [[0.2660, 0.3660, 0.4660], [0.7660, 0.6660, 0.5660], [0.8660, 0.9660, 1.0000]],
+                    [[0.2660, 0.3660, 0.4660], [0.7660, 0.6660, 0.5660], [0.8660, 0.9660, 1.0000]],
+                ],
             ],
-            [
-                [[0.2660, 0.3660, 0.4660], [0.7660, 0.6660, 0.5660], [0.8660, 0.9660, 1.0000]],
-                [[0.2660, 0.3660, 0.4660], [0.7660, 0.6660, 0.5660], [0.8660, 0.9660, 1.0000]],
-                [[0.2660, 0.3660, 0.4660], [0.7660, 0.6660, 0.5660], [0.8660, 0.9660, 1.0000]],
-            ],
-        ],
-        device=device,
-        dtype=dtype,
-    )
+            device=device,
+            dtype=dtype,
+        )
+
     def test_random_brightness(self, device, dtype):
         torch.manual_seed(42)
-        f = RandomBrightness(brightness=(0.8,1.2))
+        f = RandomBrightness(brightness=(0.8, 1.2))
 
         input = torch.tensor(
             [[[[0.1, 0.2, 0.3], [0.6, 0.5, 0.4], [0.7, 0.8, 1.0]]]], device=device, dtype=dtype
@@ -1696,7 +1698,7 @@ class TestRandomBrightness(BaseTester):
         expected = self._get_expected_brightness(device, dtype)
 
         self.assert_close(f(input), expected, low_tolerance=True)
-        
+
     def test_sequential(self, device, dtype):
         if dtype == torch.float16:
             pytest.skip('not work for half-precision')
@@ -1709,7 +1711,7 @@ class TestRandomBrightness(BaseTester):
         expected = input
 
         self.assert_close(f(input), expected)
-        
+
     def test_random_brightness_batch_sequential(self, device, dtype):
         if dtype == torch.float16:
             pytest.skip('not work for half-precision')
@@ -1742,18 +1744,16 @@ class TestRandomBrightness(BaseTester):
     def test_module(self, device, dtype):
         pass
 
+
 class TestRandomContrast(BaseTester):
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self):
-        f = RandomContrast(contrast=(0.7,1.3))
-        repr = (
-            "RandomContrast(contrast=tensor([0.7000, 1.3000]), "
-            "p=1.0, p_batch=1.0, same_on_batch=False)"
-        )
+        f = RandomContrast(contrast=(0.7, 1.3))
+        repr = "RandomContrast(contrast=tensor([0.7000, 1.3000]), " "p=1.0, p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
-    
+
     def test_random_contrast_identity(self, device, dtype):
-        
+
         f = RandomContrast()
 
         input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0)  # 3 x 5 x 5
@@ -1762,14 +1762,14 @@ class TestRandomContrast(BaseTester):
         expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
 
         self.assert_close(f(input), expected, low_tolerance=True)
-        self.assert_close(f.transform_matrix, expected_transform, low_tolerance=True) 
-        
+        self.assert_close(f.transform_matrix, expected_transform, low_tolerance=True)
+
     def test_same_on_batch(self, device, dtype):
-        f = RandomContrast(contrast=(0.5,1.5), same_on_batch=True)
+        f = RandomContrast(contrast=(0.5, 1.5), same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
         assert (res[0] == res[1]).all()
-        
+
     def _get_expected_contrast(self, device, dtype):
         return torch.tensor(
             [
@@ -1790,7 +1790,7 @@ class TestRandomContrast(BaseTester):
 
     def test_random_contrast(self, device, dtype):
         torch.manual_seed(42)
-        f = RandomContrast(contrast=(0.8,1.2))
+        f = RandomContrast(contrast=(0.8, 1.2))
 
         input = torch.tensor(
             [[[[0.1, 0.2, 0.3], [0.6, 0.5, 0.4], [0.7, 0.8, 1.0]]]], device=device, dtype=dtype
@@ -1800,7 +1800,7 @@ class TestRandomContrast(BaseTester):
         expected = self._get_expected_contrast(device, dtype)
 
         self.assert_close(f(input), expected, low_tolerance=True)
-        
+
     def test_sequential(self, device, dtype):
         if dtype == torch.float16:
             pytest.skip('not work for half-precision')
@@ -1813,7 +1813,7 @@ class TestRandomContrast(BaseTester):
         expected = input
 
         self.assert_close(f(input), expected)
-        
+
     def test_random_contrast_batch_sequential(self, device, dtype):
         if dtype == torch.float16:
             pytest.skip('not work for half-precision')
@@ -1844,21 +1844,19 @@ class TestRandomContrast(BaseTester):
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_module(self, device, dtype):
-        pass    
- 
+        pass
+
+
 class TestRandomHue(BaseTester):
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self):
-        f = RandomHue(hue=(-0.2,0.3))
-        repr = (
-            "RandomHue(hue=tensor([-0.2000, 0.3000]), "
-            "p=1.0, p_batch=1.0, same_on_batch=False)"
-        )
+        f = RandomHue(hue=(-0.2, 0.3))
+        repr = "RandomHue(hue=tensor([-0.2000, 0.3000]), " "p=1.0, p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
-        
+
     def test_random_hue_identity(self, device, dtype):
-        
-        f = RandomHue(hue = (0.,0.))
+
+        f = RandomHue(hue=(0.0, 0.0))
 
         input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0)  # 3 x 5 x 5
         expected = input
@@ -1867,13 +1865,13 @@ class TestRandomHue(BaseTester):
 
         self.assert_close(f(input), expected, low_tolerance=True)
         self.assert_close(f.transform_matrix, expected_transform, low_tolerance=True)
-    
+
     def test_same_on_batch(self, device, dtype):
-        f = RandomHue(hue=(-0.5,0.5), same_on_batch=True)
+        f = RandomHue(hue=(-0.5, 0.5), same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
         assert (res[0] == res[1]).all()
-        
+
     def _get_expected_hue(self, device, dtype):
         return torch.tensor(
             [
@@ -1912,7 +1910,7 @@ class TestRandomHue(BaseTester):
         expected = self._get_expected_hue(device, dtype)
 
         self.assert_close(f(input), expected, low_tolerance=True)
-        
+
     def test_sequential(self, device, dtype):
         if dtype == torch.float16:
             pytest.skip('not work for half-precision')
@@ -1925,7 +1923,7 @@ class TestRandomHue(BaseTester):
         expected = input
 
         self.assert_close(f(input), expected)
-        
+
     def test_random_hue_batch_sequential(self, device, dtype):
         if dtype == torch.float16:
             pytest.skip('not work for half-precision')
@@ -1957,20 +1955,18 @@ class TestRandomHue(BaseTester):
     @pytest.mark.skip(reason="not implemented yet")
     def test_module(self, device, dtype):
         pass
-   
+
+
 class TestRandomSaturation(BaseTester):
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self):
-        f = RandomSaturation(saturation=(0.5,1.5))
-        repr = (
-            "RandomSaturation(hue=tensor([0.5000, 1.5000]), "
-            "p=1.0, p_batch=1.0, same_on_batch=False)"
-        )
+        f = RandomSaturation(saturation=(0.5, 1.5))
+        repr = "RandomSaturation(hue=tensor([0.5000, 1.5000]), " "p=1.0, p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
-        
+
     def test_random_saturation_identity(self, device, dtype):
-        
-        f = RandomSaturation(saturation=  (1.0,1.0))
+
+        f = RandomSaturation(saturation=(1.0, 1.0))
 
         input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0)  # 3 x 5 x 5
         expected = input
@@ -1979,13 +1975,13 @@ class TestRandomSaturation(BaseTester):
 
         self.assert_close(f(input), expected, low_tolerance=True)
         self.assert_close(f.transform_matrix, expected_transform, low_tolerance=True)
-    
+
     def test_same_on_batch(self, device, dtype):
-        f = RandomSaturation(saturation=(0.5,1.5), same_on_batch=True)
+        f = RandomSaturation(saturation=(0.5, 1.5), same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
         assert (res[0] == res[1]).all()
-        
+
     def _get_expected_saturation(self, device, dtype):
         return torch.tensor(
             [
@@ -2024,7 +2020,7 @@ class TestRandomSaturation(BaseTester):
         expected = self._get_expected_saturation(device, dtype)
 
         self.assert_close(f(input), expected, low_tolerance=True)
-        
+
     def test_sequential(self, device, dtype):
         if dtype == torch.float16:
             pytest.skip('not work for half-precision')
@@ -2037,7 +2033,7 @@ class TestRandomSaturation(BaseTester):
         expected = input
 
         self.assert_close(f(input), expected)
-        
+
     def test_random_saturation_batch_sequential(self, device, dtype):
         if dtype == torch.float16:
             pytest.skip('not work for half-precision')
@@ -2069,7 +2065,8 @@ class TestRandomSaturation(BaseTester):
     @pytest.mark.skip(reason="not implemented yet")
     def test_module(self, device, dtype):
         pass
-    
+
+
 class TestRectangleRandomErasing(BaseTester):
     @pytest.mark.parametrize("erase_scale_range", [(0.001, 0.001), (1.0, 1.0)])
     @pytest.mark.parametrize("aspect_ratio_range", [(0.1, 0.1), (10.0, 10.0)])
@@ -3324,6 +3321,7 @@ class TestGaussianBlur:
         f = RandomGaussianBlur((3, 3), (0.1, 2.0), p=1.0)
         repr = "RandomGaussianBlur(p=1.0, p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
+
 
 class TestRandomInvert(BaseTester):
     def test_smoke(self, device, dtype):
