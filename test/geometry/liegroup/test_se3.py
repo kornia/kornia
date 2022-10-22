@@ -132,8 +132,8 @@ class TestSe3(BaseTester):
         rot = So3(q)
         s = Se3(rot, t)
         assert s.matrix().shape == torch.Size([batch_size, 4, 4])
-        self.assert_close(s.matrix()[..., 0:3, 1:], rot.matrix())
-        self.assert_close(s.matrix()[..., 3, 1:], t)
+        self.assert_close(s.matrix()[..., 0:3, 0:3], rot.matrix())
+        self.assert_close(s.matrix()[..., 0:3, 3], t)
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_inverse(self, device, dtype, batch_size):
