@@ -190,14 +190,16 @@ class Se3:
 
         Example:
             >>> s = Se3(So3.identity(batch_size=1), torch.ones((1,3)))
-            >>> s
+            >>> s.matrix()
             tensor([[[1., 0., 0., 1.],
                      [0., 1., 0., 1.],
                      [0., 0., 1., 1.],
                      [0., 0., 0., 1.]]], grad_fn=<CatBackward0>)
         """
         rt = concatenate((self.r.matrix(), self.t.reshape(-1, 3, 1)), 2)
-        return concatenate((rt, zeros(self.t.shape[0], 1, 4).to(rt.device, rt.dtype)), 1)
+        return concatenate(
+            (rt, Tensor([0.0, 0.0, 0.0, 1.0]).repeat([self.t.shape[0], 1, 1]).to(rt.device, rt.dtype)), 1
+        )
 
     def inverse(self) -> 'Se3':
         """Returns the inverse transformation.
