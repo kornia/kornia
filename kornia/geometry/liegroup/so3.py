@@ -206,8 +206,8 @@ class So3:
             >>> m = torch.eye(3)[None]
             >>> s = So3.from_matrix(m)
             >>> s
-            Parameter containing:
-            tensor([[1., 0., 0., 0.]], requires_grad=True)
+            real: tensor([[1.]], grad_fn=<SliceBackward0>)
+            vec: tensor([[0., 0., 0.]], grad_fn=<SliceBackward0>)
         """
         return cls(Quaternion.from_matrix(matrix))
 
@@ -220,7 +220,7 @@ class So3:
 
         Example:
             >>> s = So3.identity(batch_size=2)
-            >>> s.data
+            >>> s
             real: tensor([[1.],
                     [1.]], grad_fn=<SliceBackward0>)
             vec: tensor([[0., 0., 0.],
