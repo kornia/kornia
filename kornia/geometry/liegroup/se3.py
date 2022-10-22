@@ -194,7 +194,7 @@ class Se3:
             tensor([[[1., 0., 0., 1.],
                      [0., 1., 0., 1.],
                      [0., 0., 1., 1.],
-                     [0., 0., 0., 0.]]], grad_fn=<CatBackward0>)
+                     [0., 0., 0., 1.]]], grad_fn=<CatBackward0>)
         """
         rt = concatenate((self.r.matrix(), self.t.reshape(-1, 3, 1)), 2)
         return concatenate((rt, zeros(self.t.shape[0], 1, 4).to(rt.device, rt.dtype)), 1)
