@@ -1189,7 +1189,6 @@ def normalize_points_with_intrinsics(point_2d: Tensor, camera_matrix: Tensor):
     """
     KORNIA_CHECK_SHAPE(point_2d, ["*", "2"])
     KORNIA_CHECK_SHAPE(camera_matrix, ["*", "3", "3"])
-    KORNIA_CHECK_SAME_DEVICE(point_2d, camera_matrix)
     # projection eq. K_inv * [u v 1]'
     # x = (u - cx) * Z / fx
     # y = (v - cy) * Z / fy
@@ -1233,9 +1232,6 @@ def denormalize_points_with_intrinsics(point_2d_norm: Tensor, camera_matrix: Ten
     """
     KORNIA_CHECK_SHAPE(point_2d_norm, ["*", "2"])
     KORNIA_CHECK_SHAPE(camera_matrix, ["*", "3", "3"])
-    if not (point_2d_norm.device == camera_matrix.device):
-        raise ValueError("Input tensors must be all in the same device.")
-
     # projection eq. [u, v, w]' = K * [x y z 1]'
     # u = fx * X + cx
     # v = fy * Y + cy
