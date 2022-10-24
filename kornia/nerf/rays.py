@@ -297,8 +297,10 @@ class RandomRaySampler(RaySampler):
 
 
 class RandomGridRaySampler(RandomRaySampler):
-    r"""Class to manage random ray spatial sampling. Sampling is done on a regular grid of pixels by randomizing
-    column and row values, and casting rays for all pixels along the seleceted ones.
+    r"""Class to manage random ray spatial sampling.
+
+    Sampling is done on a regular grid of pixels by randomizing
+    column and row values, and casting rays for all pixels along the selected ones.
 
     Args:
         min_depth: sampled rays minimal depth from cameras: float
