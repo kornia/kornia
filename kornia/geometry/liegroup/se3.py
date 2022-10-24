@@ -181,7 +181,7 @@ class Se3:
             translation: tensor([[0., 0., 0.],
                     [0., 0., 0.]])
         """
-        t: Tensor = as_tensor([0.0, 0.0, 0.0])
+        t: Tensor = as_tensor([0.0, 0.0, 0.0], device=device, dtype=dtype)
         t = t.repeat(batch_size, 1)
         return cls(So3.identity(batch_size, device, dtype), t.to(device, dtype))
 
