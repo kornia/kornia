@@ -87,9 +87,7 @@ class So3:
         theta = squared_norm(v).sqrt()
         theta_nonzeros = theta != 0.0
         theta_half = 0.5 * theta
-        w = where(
-            theta_nonzeros, theta_half.cos(), Tensor([1.0]).to(v.device, v.dtype)
-        )
+        w = where(theta_nonzeros, theta_half.cos(), Tensor([1.0]).to(v.device, v.dtype))
         b = where(theta_nonzeros, theta_half.sin() / theta, Tensor([0.0]).to(v.device, v.dtype))
         xyz = b * v
         return So3(Quaternion(concatenate((w, xyz), 1)))
