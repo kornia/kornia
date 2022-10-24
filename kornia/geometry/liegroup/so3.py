@@ -49,7 +49,6 @@ class So3:
     def __getitem__(self, idx) -> 'So3':
         return So3(self._q[idx])
 
-    # TODO: add tests
     def __mul__(self, right):
         # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py#L98
         if isinstance(right, So3):
@@ -90,7 +89,7 @@ class So3:
         theta_half = 0.5 * theta
         w = where(
             theta_nonzeros, theta_half.cos(), Tensor([1.0]).to(v.device, v.dtype)
-        )  # error :expected scalar type float but found double
+        )
         b = where(theta_nonzeros, theta_half.sin() / theta, Tensor([0.0]).to(v.device, v.dtype))
         xyz = b * v
         return So3(Quaternion(concatenate((w, xyz), 1)))
@@ -160,7 +159,6 @@ class So3:
         return stack([a, b, c], 1)
 
     # NOTE: the math style won't render well with sphinx
-    # NOTE: this is not tested
     def matrix(self) -> Tensor:
         """Convert the quaternion to a rotation matrix of shape :math:`(B,3,3)`.
 

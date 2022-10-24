@@ -49,7 +49,6 @@ class Se3:
     def __getitem__(self, idx) -> 'Se3':
         return Se3(self._r[idx], self._t[idx][None])
 
-    # TODO: add tests
     def __mul__(self, right: "Se3") -> "Se3":
         KORNIA_CHECK_TYPE(right, Se3)
         # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py#L97
@@ -88,8 +87,6 @@ class Se3:
         omega_hat = So3.hat(omega)
         theta = squared_norm(omega).sqrt()
         R = So3.exp(omega)
-        # TODO: is this batched ???
-        # TODO: infer device, dtype
         V = (
             eye(3).to(v.device, v.dtype)
             + ((1 - theta.cos()) / (theta**2))[..., None] * omega_hat
@@ -109,8 +106,6 @@ class Se3:
         omega = self.r.log()
         theta = squared_norm(omega).sqrt()
         omega_hat = So3.hat(omega)
-        # TODO: is this batched ???
-        # TODO: infer device, dtype
         V_inv = (
             eye(3).to(self._t.device, self._t.dtype)
             - 0.5 * omega_hat
@@ -140,7 +135,6 @@ class Se3:
         t = v[..., 0:3].reshape(-1, 1, 3)
         omega = v[..., 3:]
         rt = concatenate((So3.hat(omega), t.reshape(-1, 1, 3)), 1)
-        # TODO: infer device, dtype
         return concatenate((zeros(v.shape[0], 4, 1).to(rt.device, rt.dtype), rt), -1)
 
     @staticmethod
@@ -212,6 +206,4 @@ class Se3:
             translation: tensor([[-1., -1., -1.]], grad_fn=<SliceBackward0>)
         """
         r_inv = self.r.inverse()
-        # NOTE: do not match with: https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py#L68
-        # Se3(r_inv, -1 * r_inv * self.t)
         return Se3(r_inv, r_inv * (-1 * self.t))
