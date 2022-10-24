@@ -9,8 +9,8 @@ from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 class So3:
     r"""Base class to represent the So3 group.
 
-    The SO(3) is the group of all rotations about the origin of three-dimensional Euclidean space
-    R^3 under the operation of composition.
+    The SO(3) is the group of all rotations about the origin of three-dimensional Euclidean space.
+    :math:`R^3` under the operation of composition.
     See more: https://en.wikipedia.org/wiki/3D_rotation_group
 
     We internally represent the rotation by a unit quaternion.
@@ -117,14 +117,10 @@ class So3:
             v: vector of shape :math:`(B,3)`.
 
         Example:
-            >>> v = torch.ones((2,3))
+            >>> v = torch.ones((1,3))
             >>> m = So3.hat(v)
             >>> m
             tensor([[[ 0., -1.,  1.],
-                     [ 1.,  0., -1.],
-                     [-1.,  1.,  0.]],
-
-                    [[ 0., -1.,  1.],
                      [ 1.,  0., -1.],
                      [-1.,  1.,  0.]]])
         """
@@ -139,14 +135,14 @@ class So3:
     @staticmethod
     def vee(omega) -> Tensor:
         """Converts elements from lie algebra to vector space. Returns vector of shape :math:`(B,3)`.
+        ::
+
+                      [0  -c   b ]
+            omega  =  [c   0  -a ]
+                      [-b  a   0 ]
 
         Args:
-            omega: 3x3-matrix representing lie algebra of the following structure:
-            ::
-
-                          [0  -c   b ]
-                omega  =  [c   0  -a ]
-                          [-b  a   0 ]
+            omega: 3x3-matrix representing lie algebra.
 
         Example:
             >>> v = torch.ones((1,3))
@@ -163,11 +159,11 @@ class So3:
         """Convert the quaternion to a rotation matrix of shape :math:`(B,3,3)`.
 
         The matrix is of the form:
-            ::
+        ::
 
-                        [(1-2y^2-2z^2)  (2xy-2zw)       (2xy+2yw)    ]
-                        [(2xy+2zw)      (1-2x^2-2z^2)   (2yz-2xw)    ]
-                        [(2xz-2yw)      (2yz+2xw)       (1-2x^2-2y^2)]
+                    [(1-2y^2-2z^2)  (2xy-2zw)       (2xy+2yw)    ]
+                    [(2xy+2zw)      (1-2x^2-2z^2)   (2yz-2xw)    ]
+                    [(2xz-2yw)      (2yz+2xw)       (1-2x^2-2y^2)]
 
         Example:
             >>> s = So3.identity(batch_size=1)

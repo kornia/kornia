@@ -9,8 +9,9 @@ from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 class Se3:
     r"""Base class to represent the Se3 group.
 
-    The SE(3) is the group of rigid body transformations
-    https://ingmec.ual.es/~jlblanco/papers/jlblanco2010geometry3D_techrep.pdf
+    The SE(3) is the group of rigid body transformations about the origin of three-dimensional Euclidean
+    space :math:`R^3` under the operation of composition.
+    See more: https://ingmec.ual.es/~jlblanco/papers/jlblanco2010geometry3D_techrep.pdf
 
     Example:
         >>> q = Quaternion.identity(batch_size=1)
