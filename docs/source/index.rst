@@ -94,6 +94,7 @@ Join the community
    metrics
    morphology
    tracking
+   testing
    utils
    x
 
