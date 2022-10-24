@@ -21,7 +21,8 @@ class RandomMosaic(MixAugmentationBaseV2):
     .. image:: https://raw.githubusercontent.com/kornia/data/main/random_mosaic.png
 
     Given a certain number of images, mosaic transform combines them into one output image.
-    The output image is composed of the parts from each sub-image.
+    The output image is composed of the parts from each sub-image. To mess up each image individually,
+    referring to :class:`kornia.augmentation.RandomJigsaw`.
 
     The mosaic transform steps are as follows:
 

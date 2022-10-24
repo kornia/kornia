@@ -247,9 +247,12 @@ class _AugmentationBase(_BasicAugmentationBase):
         else:
             output = in_tensor.clone()
             trans_matrix = self.identity_matrix(in_tensor)
-            trans_matrix[to_apply] = self.compute_transformation(in_tensor[to_apply], params=params, flags=flags)
-            output[to_apply] = self.apply_transform(
-                in_tensor[to_apply], params=params, flags=flags, transform=trans_matrix[to_apply]
+            trans_matrix = trans_matrix.index_put(
+                (to_apply,), self.compute_transformation(in_tensor[to_apply], params=params, flags=flags)
+            )
+            output = output.index_put(
+                (to_apply,),
+                self.apply_transform(in_tensor[to_apply], params=params, flags=flags, transform=trans_matrix[to_apply]),
             )
 
         self._transform_matrix = trans_matrix
