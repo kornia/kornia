@@ -118,7 +118,7 @@ class NerfModel(nn.Module):
         y = self._fc2(y)
         rgbs_ray_points = self._rgb(y)
 
-        # Rendring rgbs and densities along rays
+        # Rendering rgbs and densities along rays
         rgbs = self._renderer(rgbs_ray_points, densities_ray_points, points_3d)
 
         # Return pixel point rendered rgb

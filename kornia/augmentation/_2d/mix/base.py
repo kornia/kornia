@@ -5,7 +5,7 @@ import torch
 
 from kornia.augmentation.base import TensorWithTransformMat, _BasicAugmentationBase
 from kornia.augmentation.utils import _transform_input, _transform_output_shape, _validate_input_dtype
-from kornia.constants import DataKey
+from kornia.constants import DataKey, DType
 from kornia.core import Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.testing import KORNIA_UNWRAP
@@ -249,7 +249,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             in_tensor: Tensor = input[in_tensor_idx]
             in_tensor = self.transform_tensor(in_tensor)
             self._params = self.forward_parameters(in_tensor.shape)
-            self._params.update({"device": in_tensor.device, "dtype": in_tensor.dtype})
+            self._params.update({"dtype": torch.tensor(DType.get(in_tensor.dtype).value)})
         else:
             self._params = params
 

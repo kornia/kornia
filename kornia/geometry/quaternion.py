@@ -5,7 +5,7 @@
 from math import pi
 from typing import Tuple, Union
 
-from kornia.core import Module, Parameter, Tensor, as_tensor, concatenate, rand, stack
+from kornia.core import Module, Parameter, Tensor, as_tensor, concatenate, rand, stack, where
 from kornia.geometry.conversions import (
     QuaternionCoeffOrder,
     angle_axis_to_quaternion,
@@ -137,6 +137,23 @@ class Quaternion(Module):
 
     def __truediv__(self, right: 'Quaternion') -> 'Quaternion':
         return self.__div__(right)
+
+    def __pow__(self, t: 'int') -> 'Quaternion':
+        """Return the power of a quaternion raised to exponent t.
+
+        Args:
+            t: raised exponent.
+
+        Example:
+            >>> q = Quaternion(torch.tensor([1., .5, 0., 0.]))
+            >>> q_pow = q**2
+        """
+        theta = self.polar_angle
+        vec_norm = self.vec.norm(dim=-1, keepdim=True)
+        n = where(vec_norm != 0, self.vec / vec_norm, self.vec * 0)
+        w = (t * theta).cos()
+        xyz = (t * theta).sin() * n
+        return Quaternion(concatenate((w, xyz), -1))
 
     @property
     def data(self) -> Tensor:
@@ -309,7 +326,8 @@ class Quaternion(Module):
         Example:
             >>> q = Quaternion.random(batch_size=2)
             >>> q.norm()
-            tensor([1.0000, 1.0000], grad_fn=<NormBackward1>)
+            tensor([[1.],
+                    [1.]], grad_fn=<NormBackward1>)
         """
         r1, r2, r3 = rand(3, batch_size)
         q1 = (1.0 - r1).sqrt() * ((2 * pi * r2).sin())
@@ -318,8 +336,27 @@ class Quaternion(Module):
         q4 = r1.sqrt() * (2 * pi * r3).cos()
         return cls(stack((q1, q2, q3, q4), -1))
 
+    def slerp(self, q1: 'Quaternion', t: float) -> 'Quaternion':
+        """Returns a unit quaternion spherically interpolated between quaternions self.q and q1.
+
+        See more: https://en.wikipedia.org/wiki/Slerp
+
+        Args:
+            q1: second quaternion to be interpolated between.
+            t: interpolation ratio, range [0-1]
+
+        Example:
+            >>> q0 = Quaternion.identity(batch_size=1)
+            >>> q1 = Quaternion(torch.tensor([[1., .5, 0., 0.]]))
+            >>> q2 = q0.slerp(q1, .3)
+        """
+        KORNIA_CHECK_TYPE(q1, Quaternion)
+        q0 = self.normalize()
+        q1 = q1.normalize()
+        return q0 * (q0.inv() * q1) ** t
+
     def norm(self) -> Tensor:
-        return self.data.norm(p=2, dim=-1)
+        return self.data.norm(p=2, dim=-1, keepdim=True)
 
     def normalize(self) -> 'Quaternion':
         return Quaternion(normalize_quaternion(self.data))
@@ -338,7 +375,3 @@ class Quaternion(Module):
             y = x
         KORNIA_CHECK(x.shape == y.shape)
         return (x[..., None, :] @ y[..., :, None])[..., 0]
-
-    # TODO: implement me
-    def slerp(self):
-        raise NotImplementedError

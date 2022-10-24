@@ -60,7 +60,14 @@ from kornia.augmentation._3d import (
     RandomVerticalFlip3D,
 )
 from kornia.augmentation._3d.base import AugmentationBase3D
-from kornia.augmentation.container import AugmentationSequential, ImageSequential, PatchSequential, VideoSequential
+from kornia.augmentation.container import (
+    AugmentationSequential,
+    ImageSequential,
+    ManyToManyAugmentationDispather,
+    ManyToOneAugmentationDispather,
+    PatchSequential,
+    VideoSequential,
+)
 
 __all__ = [
     "AugmentationBase2D",
@@ -120,6 +127,8 @@ __all__ = [
     "RandomEqualize3D",
     "RandomMotionBlur3D",
     "AugmentationSequential",
+    "ManyToOneAugmentationDispather",
+    "ManyToManyAugmentationDispather",
     "ImageSequential",
     "PatchSequential",
     "VideoSequential",

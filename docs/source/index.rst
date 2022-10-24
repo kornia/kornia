@@ -74,6 +74,7 @@ Join the community
    models/hardnet
    models/affnet
    models/sold2
+   models/dexined
 
 
 .. toctree::
@@ -93,6 +94,7 @@ Join the community
    metrics
    morphology
    tracking
+   testing
    utils
    x
 
