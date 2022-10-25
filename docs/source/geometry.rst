@@ -52,6 +52,7 @@ transforms, camera, conversions, linalg and depth. We next describe each of them
    geometry.depth
    geometry.epipolar
    geometry.homography
+   geometry.liegroup
    geometry.linalg
    geometry.line
    geometry.quaternion
