@@ -187,3 +187,9 @@ Bayer RAW
 
 .. autoclass:: RawToRgb
 .. autoclass:: RgbToRaw
+
+Sepia
+-----
+
+.. autoclass:: Sepia
+.. autofunction:: sepia
