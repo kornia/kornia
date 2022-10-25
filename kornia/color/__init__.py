@@ -22,8 +22,7 @@ from .rgb import (
     rgba_to_bgr,
     rgba_to_rgb,
 )
-from .sepia import Sepia
-from .sepia import sepia_from_rgb as sepia
+from .sepia import Sepia, sepia_from_rgb
 from .xyz import RgbToXyz, XyzToRgb, rgb_to_xyz, xyz_to_rgb
 from .ycbcr import RgbToYcbcr, YcbcrToRgb, rgb_to_y, rgb_to_ycbcr, ycbcr_to_rgb
 from .yuv import (
@@ -109,3 +108,5 @@ __all__ = [
     "Sepia",
     "sepia",
 ]
+
+sepia = sepia_from_rgb
