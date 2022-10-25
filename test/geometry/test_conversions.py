@@ -1381,6 +1381,153 @@ class TestDenormalizePixelCoordinates:
         assert_close(actual, expected)
 
 
+class TestProjectPoints:
+    def test_smoke(self, device, dtype):
+        point_3d = torch.zeros(1, 3, device=device, dtype=dtype)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(1, -1, -1)
+        point_2d = kornia.geometry.camera.project_points(point_3d, camera_matrix)
+        assert point_2d.shape == (1, 2)
+
+    def test_smoke_batch(self, device, dtype):
+        point_3d = torch.zeros(2, 3, device=device, dtype=dtype)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(2, -1, -1)
+        point_2d = kornia.geometry.camera.project_points(point_3d, camera_matrix)
+        assert point_2d.shape == (2, 2)
+
+    def test_smoke_batch_multi(self, device, dtype):
+        point_3d = torch.zeros(2, 4, 3, device=device, dtype=dtype)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(2, 4, -1, -1)
+        point_2d = kornia.geometry.camera.project_points(point_3d, camera_matrix)
+        assert point_2d.shape == (2, 4, 2)
+
+    def test_project_and_unproject(self, device, dtype):
+        point_3d = torch.tensor([[10.0, 2.0, 30.0]], device=device, dtype=dtype)
+        depth = point_3d[..., -1:]
+        camera_matrix = torch.tensor(
+            [[[2746.0, 0.0, 991.0], [0.0, 2748.0, 619.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
+        )
+        point_2d = kornia.geometry.camera.project_points(point_3d, camera_matrix)
+        point_3d_hat = kornia.geometry.camera.unproject_points(point_2d, depth, camera_matrix)
+        assert_close(point_3d, point_3d_hat, atol=1e-4, rtol=1e-4)
+
+    def test_gradcheck(self, device, dtype):
+        # TODO: point [0, 0, 0] crashes
+        points_3d = torch.ones(1, 3, device=device, dtype=dtype)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(1, -1, -1)
+
+        # evaluate function gradient
+        points_3d = tensor_to_gradcheck_var(points_3d)
+        camera_matrix = tensor_to_gradcheck_var(camera_matrix)
+        assert gradcheck(kornia.geometry.camera.project_points, (points_3d, camera_matrix), raise_exception=True)
+
+    def test_jit(self, device, dtype):
+        points_3d = torch.zeros(1, 3, device=device, dtype=dtype)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(1, -1, -1)
+        op = kornia.geometry.camera.project_points
+        op_jit = torch.jit.script(op)
+        assert_close(op(points_3d, camera_matrix), op_jit(points_3d, camera_matrix))
+
+
+class TestDenormalizePointsWithIntrinsics:
+    def test_smoke(self, device, dtype):
+        points_2d = torch.zeros(1, 2, device=device, dtype=dtype)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(1, -1, -1)
+        points_norm = kornia.geometry.conversions.denormalize_points_with_intrinsics(points_2d, camera_matrix)
+        assert points_norm.shape == (1, 2)
+
+    def test_smoke_batch(self, device, dtype):
+        points_2d = torch.zeros(2, 2, device=device, dtype=dtype)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(2, -1, -1)
+        points_norm = kornia.geometry.conversions.denormalize_points_with_intrinsics(points_2d, camera_matrix)
+        assert points_norm.shape == (2, 2)
+
+    def test_toy(self, device, dtype):
+        point_2d = torch.tensor([[1.0, 1.0]], device=device, dtype=dtype)
+        camera_matrix = torch.tensor(
+            [[64.0, 0.0, 128.0], [0.0, 64.0, 128.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype
+        )
+        op = kornia.geometry.conversions.denormalize_points_with_intrinsics
+        expected = torch.tensor([[192.0, 192.0]], device=device, dtype=dtype)
+        assert_close(op(point_2d, camera_matrix), expected, atol=1e-4, rtol=1e-4)
+
+    def test_gradcheck(self, device, dtype):
+        points_2d = torch.zeros(1, 2, device=device, dtype=dtype)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(1, -1, -1)
+
+        # evaluate function gradient
+        points_2d = tensor_to_gradcheck_var(points_2d)
+        camera_matrix = tensor_to_gradcheck_var(camera_matrix)
+        assert gradcheck(
+            kornia.geometry.conversions.denormalize_points_with_intrinsics,
+            (points_2d, camera_matrix),
+            raise_exception=True,
+        )
+
+    def test_jit(self, device, dtype):
+        points_2d = torch.zeros(1, 2, device=device, dtype=dtype)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(1, -1, -1)
+        args = (points_2d, camera_matrix)
+        op = kornia.geometry.conversions.denormalize_points_with_intrinsics
+        op_jit = torch.jit.script(op)
+        assert_close(op(*args), op_jit(*args))
+
+
+class TestNormalizePointsWithIntrinsics:
+    def test_smoke(self, device, dtype):
+        points_2d = torch.zeros(1, 2, device=device, dtype=dtype)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(1, -1, -1)
+        points_norm = kornia.geometry.conversions.normalize_points_with_intrinsics(points_2d, camera_matrix)
+        assert points_norm.shape == (1, 2)
+
+    def test_smoke_batch(self, device, dtype):
+        points_2d = torch.zeros(2, 2, device=device, dtype=dtype)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(2, -1, -1)
+        points_norm = kornia.geometry.conversions.normalize_points_with_intrinsics(points_2d, camera_matrix)
+        assert points_norm.shape == (2, 2)
+
+    def test_norm_unnorm(self, device, dtype):
+        point_2d = torch.tensor([[128.0, 128.0]], device=device, dtype=dtype)
+        camera_matrix = torch.tensor(
+            [[64.0, 0.0, 128.0], [0.0, 64.0, 128.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype
+        )
+        op = kornia.geometry.conversions.normalize_points_with_intrinsics
+        back = kornia.geometry.conversions.denormalize_points_with_intrinsics
+        point_2d_norm = op(point_2d, camera_matrix)
+        point_2d_hat = back(point_2d_norm, camera_matrix)
+        assert_close(point_2d, point_2d_hat, atol=1e-4, rtol=1e-4)
+
+    def test_toy(self, device, dtype):
+        point_2d = torch.tensor([[192.0, 192.0]], device=device, dtype=dtype)
+        camera_matrix = torch.tensor(
+            [[64.0, 0.0, 128.0], [0.0, 64.0, 128.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype
+        )
+        op = kornia.geometry.conversions.normalize_points_with_intrinsics
+        out = op(point_2d, camera_matrix)
+        expected = torch.tensor([[1.0, 1.0]], device=device, dtype=dtype)
+        assert_close(out, expected, atol=1e-4, rtol=1e-4)
+
+    def test_gradcheck(self, device, dtype):
+        points_2d = torch.zeros(1, 2, device=device, dtype=dtype)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(1, -1, -1)
+
+        # evaluate function gradient
+        points_2d = tensor_to_gradcheck_var(points_2d)
+        camera_matrix = tensor_to_gradcheck_var(camera_matrix)
+        assert gradcheck(
+            kornia.geometry.conversions.normalize_points_with_intrinsics,
+            (points_2d, camera_matrix),
+            raise_exception=True,
+        )
+
+    def test_jit(self, device, dtype):
+        points_2d = torch.zeros(1, 2, device=device, dtype=dtype)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(1, -1, -1)
+        args = (points_2d, camera_matrix)
+        op = kornia.geometry.conversions.normalize_points_with_intrinsics
+        op_jit = torch.jit.script(op)
+        assert_close(op(*args), op_jit(*args))
+
+
 class TestRt2Extrinsics:
     @pytest.mark.parametrize("batch_size", [1, 2, 3])
     def test_everything(self, batch_size, device, dtype):

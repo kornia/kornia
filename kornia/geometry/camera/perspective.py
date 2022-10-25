@@ -1,7 +1,12 @@
 import torch
 import torch.nn.functional as F
 
-from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
+from kornia.geometry.conversions import (
+    convert_points_from_homogeneous,
+    convert_points_to_homogeneous,
+    denormalize_points_with_intrinsics,
+    normalize_points_with_intrinsics,
+)
 
 
 def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch.Tensor:
@@ -23,41 +28,12 @@ def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch
         >>> project_points(X, K)
         tensor([[5.6088, 8.6827]])
     """
-    if not isinstance(point_3d, torch.Tensor):
-        raise TypeError(f"Input point_3d type is not a torch.Tensor. Got {type(point_3d)}")
-
-    if not isinstance(camera_matrix, torch.Tensor):
-        raise TypeError(f"Input camera_matrix type is not a torch.Tensor. Got {type(camera_matrix)}")
-
-    if not (point_3d.device == camera_matrix.device):
-        raise ValueError("Input tensors must be all in the same device.")
-
-    if not point_3d.shape[-1] == 3:
-        raise ValueError("Input points_3d must be in the shape of (*, 3)." " Got {}".format(point_3d.shape))
-
-    if not camera_matrix.shape[-2:] == (3, 3):
-        raise ValueError("Input camera_matrix must be in the shape of (*, 3, 3).")
-
     # projection eq. [u, v, w]' = K * [x y z 1]'
     # u = fx * X / Z + cx
     # v = fy * Y / Z + cy
-
     # project back using depth dividing in a safe way
     xy_coords: torch.Tensor = convert_points_from_homogeneous(point_3d)
-    x_coord: torch.Tensor = xy_coords[..., 0]
-    y_coord: torch.Tensor = xy_coords[..., 1]
-
-    # unpack intrinsics
-    fx: torch.Tensor = camera_matrix[..., 0, 0]
-    fy: torch.Tensor = camera_matrix[..., 1, 1]
-    cx: torch.Tensor = camera_matrix[..., 0, 2]
-    cy: torch.Tensor = camera_matrix[..., 1, 2]
-
-    # apply intrinsics ans return
-    u_coord: torch.Tensor = x_coord * fx + cx
-    v_coord: torch.Tensor = y_coord * fy + cy
-
-    return torch.stack([u_coord, v_coord], dim=-1)
+    return denormalize_points_with_intrinsics(xy_coords, camera_matrix)
 
 
 def unproject_points(
@@ -89,48 +65,14 @@ def unproject_points(
         >>> unproject_points(x, depth, K)
         tensor([[0.4963, 0.7682, 1.0000]])
     """
-    if not isinstance(point_2d, torch.Tensor):
-        raise TypeError(f"Input point_2d type is not a torch.Tensor. Got {type(point_2d)}")
-
     if not isinstance(depth, torch.Tensor):
         raise TypeError(f"Input depth type is not a torch.Tensor. Got {type(depth)}")
-
-    if not isinstance(camera_matrix, torch.Tensor):
-        raise TypeError(f"Input camera_matrix type is not a torch.Tensor. Got {type(camera_matrix)}")
-
-    if not (point_2d.device == depth.device == camera_matrix.device):
-        raise ValueError("Input tensors must be all in the same device.")
-
-    if not point_2d.shape[-1] == 2:
-        raise ValueError("Input points_2d must be in the shape of (*, 2)." " Got {}".format(point_2d.shape))
 
     if not depth.shape[-1] == 1:
         raise ValueError("Input depth must be in the shape of (*, 1)." " Got {}".format(depth.shape))
 
-    if not camera_matrix.shape[-2:] == (3, 3):
-        raise ValueError("Input camera_matrix must be in the shape of (*, 3, 3).")
-
-    # projection eq. K_inv * [u v 1]'
-    # x = (u - cx) * Z / fx
-    # y = (v - cy) * Z / fy
-
-    # unpack coordinates
-    u_coord: torch.Tensor = point_2d[..., 0]
-    v_coord: torch.Tensor = point_2d[..., 1]
-
-    # unpack intrinsics
-    fx: torch.Tensor = camera_matrix[..., 0, 0]
-    fy: torch.Tensor = camera_matrix[..., 1, 1]
-    cx: torch.Tensor = camera_matrix[..., 0, 2]
-    cy: torch.Tensor = camera_matrix[..., 1, 2]
-
-    # projective
-    x_coord: torch.Tensor = (u_coord - cx) / fx
-    y_coord: torch.Tensor = (v_coord - cy) / fy
-
-    xyz: torch.Tensor = torch.stack([x_coord, y_coord], dim=-1)
-    xyz = convert_points_to_homogeneous(xyz)
-
+    xy: torch.Tensor = normalize_points_with_intrinsics(point_2d, camera_matrix)
+    xyz: torch.Tensor = convert_points_to_homogeneous(xy)
     if normalize:
         xyz = F.normalize(xyz, dim=-1, p=2.0)
 
