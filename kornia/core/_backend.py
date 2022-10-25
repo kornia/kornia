@@ -6,6 +6,7 @@ from torch import device
 
 # classes
 Tensor = torch.Tensor
+tensor = torch.tensor
 Module = torch.nn.Module
 Parameter = torch.nn.Parameter
 
