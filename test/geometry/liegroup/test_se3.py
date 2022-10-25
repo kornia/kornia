@@ -1,8 +1,7 @@
 import pytest
 import torch
 
-from kornia.geometry.liegroup.se3 import Se3
-from kornia.geometry.liegroup.so3 import So3
+from kornia.geometry.liegroup import Se3, So3
 from kornia.geometry.quaternion import Quaternion
 from kornia.testing import BaseTester
 

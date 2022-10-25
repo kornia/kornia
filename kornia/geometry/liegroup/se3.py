@@ -1,8 +1,8 @@
 # kornia.geometry.so3 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py
 from kornia.core import Tensor, as_tensor, concatenate, eye, where, zeros
+from kornia.geometry.liegroup import So3
 from kornia.geometry.liegroup._utils import squared_norm
-from kornia.geometry.liegroup.so3 import So3
 from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 
 
