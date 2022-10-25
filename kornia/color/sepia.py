@@ -12,18 +12,17 @@ def sepia_from_rgb(input: Tensor, rescale: bool = True, eps: float = 1e-6) -> Te
         eps: scalar to enforce numerical stability.
 
     Returns:
-        - Tensor: The sepia tensor of same size and numbers of channels
+        Tensor: The sepia tensor of same size and numbers of channels
         as the input with shape :math:`(*, C, H, W)`.
 
     Example:
-        >>> input = torch.ones(2, 3, 1, 1)
-        >>> sepia(input)
-        tensor([[[[1.0000]],
-                 [[0.8905]],
-                 [[0.6936]]],
-                [[[1.0000]],
-                 [[0.8905]],
-                 [[0.6936]]]])
+        >>> input = torch.ones(3, 1, 1)
+        >>> sepia_from_rgb(input, rescale=False)
+        tensor([[[1.3510]],
+        <BLANKLINE>
+                [[1.2030]],
+        <BLANKLINE>
+                [[0.9370]]])
     """
     if len(input.shape) < 3 or input.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {input.shape}")
@@ -54,19 +53,18 @@ class Sepia(Module):
         eps: scalar to enforce numerical stability.
 
     Returns:
-        - Tensor: The sepia tensor of same size and numbers of channels
+        Tensor: The sepia tensor of same size and numbers of channels
         as the input with shape :math:`(*, C, H, W)`.
 
     Example:
         >>>
-        >>> input = torch.ones(2, 3, 1, 1)
-        >>> Sepia()(input)
-        tensor([[[[1.0000]],
-                 [[0.8905]],
-                 [[0.6936]]],
-                [[[1.0000]],
-                 [[0.8905]],
-                 [[0.6936]]]])
+        >>> input = torch.ones(3, 1, 1)
+        >>> Sepia(rescale=False)(input)
+        tensor([[[1.3510]],
+        <BLANKLINE>
+                [[1.2030]],
+        <BLANKLINE>
+                [[0.9370]]])
     """
 
     def __init__(self, rescale: bool = True, eps: float = 1e-6) -> None:
