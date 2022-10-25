@@ -28,7 +28,7 @@ class Se3:
         Internally represented by a unit quaternion `q` and a translation 3-vector.
 
         Args:
-            rot: So3 group encompassing a rotation.
+            r: So3 group encompassing a rotation.
             t: translation vector with the shape of :math:`(B, 3)`.
 
         Example:
