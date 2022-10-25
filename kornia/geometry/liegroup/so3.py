@@ -100,7 +100,7 @@ class So3:
             >>> q = Quaternion(data)
             >>> So3(q).log()
             tensor([[0., 0., 0.],
-                    [0., 0., 0.]], grad_fn=<SWhereBackward0>)
+                    [0., 0., 0.]], grad_fn=<WhereBackward0>)
         """
         theta = squared_norm(self.q.vec).sqrt()
         # NOTE: this differs from https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py#L33

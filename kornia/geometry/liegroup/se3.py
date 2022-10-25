@@ -14,6 +14,7 @@ class Se3:
     See more: https://ingmec.ual.es/~jlblanco/papers/jlblanco2010geometry3D_techrep.pdf
 
     Example:
+        >>> from kornia.geometry.quaternion import Quaternion
         >>> q = Quaternion.identity(batch_size=1)
         >>> s = Se3(So3(q), torch.ones((1, 3)))
         >>> s
@@ -32,6 +33,7 @@ class Se3:
             t: translation vector with the shape of :math:`(B, 3)`.
 
         Example:
+            >>> from kornia.geometry.quaternion import Quaternion
             >>> q = Quaternion.identity(batch_size=1)
             >>> s = Se3(So3(q), torch.ones((1,3)))
             >>> s
@@ -100,6 +102,7 @@ class Se3:
         """Converts elements of lie group  to elements of lie algebra.
 
         Example:
+            >>> from kornia.geometry.quaternion import Quaternion
             >>> q = Quaternion.identity(batch_size=1)
             >>> Se3(So3(q), torch.zeros((1,3))).log()
             tensor([[0., 0., 0., 0., 0., 0.]], grad_fn=<CatBackward0>)
