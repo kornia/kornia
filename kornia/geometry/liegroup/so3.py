@@ -1,6 +1,6 @@
 # kornia.geometry.so3 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py
-from kornia.core import Tensor, concatenate, stack, where, zeros
+from kornia.core import Tensor, concatenate, stack, tensor, where, zeros
 from kornia.geometry.liegroup._utils import squared_norm
 from kornia.geometry.quaternion import Quaternion
 from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
@@ -95,8 +95,11 @@ class So3:
         theta = squared_norm(v).sqrt()
         theta_nonzeros = theta != 0.0
         theta_half = 0.5 * theta
-        w = where(theta_nonzeros, theta_half.cos(), 1.0)
-        b = where(theta_nonzeros, theta_half.sin() / theta, 0.0)
+        # TODO: uncomment me after deprecate pytorch 10.2
+        # w = where(theta_nonzeros, theta_half.cos(), 1.0)
+        # b = where(theta_nonzeros, theta_half.sin() / theta, 0.0)
+        w = where(theta_nonzeros, theta_half.cos(), tensor(1.0, device=v.device, dtype=v.dtype))
+        b = where(theta_nonzeros, theta_half.sin() / theta, tensor(0.0, device=v.device, dtype=v.dtype))
         xyz = b * v
         return So3(Quaternion(concatenate((w, xyz), 1)))
 
@@ -227,7 +230,7 @@ class So3:
             vec: tensor([[0., 0., 0.],
                     [0., 0., 0.]], grad_fn=<SliceBackward0>)
         """
-        return cls(Quaternion.identity(batch_size).to(device, dtype))
+        return cls(Quaternion.identity(batch_size, device, dtype))
 
     def inverse(self) -> 'So3':
         """Returns the inverse transformation.
