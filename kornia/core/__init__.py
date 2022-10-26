@@ -1,4 +1,19 @@
-from ._backend import Device, Module, Parameter, Tensor, as_tensor, concatenate, normalize, rand, stack, tensor, where, eye, zeros, zeros_like
+from ._backend import (
+    Device,
+    Module,
+    Parameter,
+    Tensor,
+    as_tensor,
+    concatenate,
+    eye,
+    normalize,
+    pad,
+    rand,
+    stack,
+    tensor,
+    where,
+    zeros,
+)
 
 __all__ = [
     "concatenate",
@@ -8,11 +23,11 @@ __all__ = [
     "tensor",
     "Parameter",
     "normalize",
+    "pad",
     "stack",
     "as_tensor",
     "rand",
     "where",
     "eye",
     "zeros",
-    "zeros_like"
 ]

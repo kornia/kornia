@@ -72,7 +72,7 @@ class Quaternion(Module):
         self._data = Parameter(data)
 
     def __repr__(self) -> str:
-        return f"real: {self.real} \nvec: {self.vec}"
+        return f"real: {self.real}\nvec: {self.vec}"
 
     def __getitem__(self, idx) -> 'Quaternion':
         return Quaternion(self.data[idx].reshape(1, -1))
@@ -279,7 +279,7 @@ class Quaternion(Module):
         return cls(angle_axis_to_quaternion(axis_angle, order=QuaternionCoeffOrder.WXYZ))
 
     @classmethod
-    def identity(cls, batch_size: int) -> 'Quaternion':
+    def identity(cls, batch_size: int, device=None, dtype=None) -> 'Quaternion':
         """Create a quaternion representing an identity rotation.
 
         Args:
@@ -292,7 +292,7 @@ class Quaternion(Module):
             tensor([[1., 0., 0., 0.],
                     [1., 0., 0., 0.]], requires_grad=True)
         """
-        data: Tensor = as_tensor([1.0, 0.0, 0.0, 0.0])
+        data: Tensor = as_tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
         data = data.repeat(batch_size, 1)
         return cls(data)
 
