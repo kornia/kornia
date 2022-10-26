@@ -6,17 +6,11 @@ import torch
 
 from kornia.core import Module, Parameter, Tensor, normalize
 from kornia.geometry.linalg import squared_norm
+from kornia.geometry.plane import Hyperplane
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.utils.helpers import _torch_svd_cast
 
 __all__ = ["ParametrizedLine", "fit_line"]
-
-
-# TODO: implement me: https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h
-class Hyperplane:
-    """Not implemented yet: https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h."""
-
-    pass
 
 
 class ParametrizedLine(Module):
@@ -88,7 +82,7 @@ class ParametrizedLine(Module):
         return ParametrizedLine(p0, normalize((p1 - p0), p=2, dim=-1))
 
     @classmethod
-    def from_hyperplane(cls, plane: Hyperplane) -> "ParametrizedLine":
+    def from_hyperplane(cls, plane) -> "ParametrizedLine":
         raise NotImplementedError(f"Plane not implemented yet {plane}.")
 
     def point_at(self, t: Union[float, Tensor]) -> Tensor:
@@ -139,6 +133,11 @@ class ParametrizedLine(Module):
     # - intersection
     # - intersection_parameter
     # - intersection_point
+
+    # TODO: add tests
+    def intersection_parameter(self, plane: Hyperplane):
+        dot_prod = plane.normal @ self.direction
+        return -(plane.offset + plane.normal @ self.origin) / dot_prod
 
 
 def fit_line(points: Tensor, weights: Optional[Tensor] = None) -> ParametrizedLine:
