@@ -14,6 +14,7 @@ Parameter = torch.nn.Parameter
 concatenate = torch.cat
 stack = torch.stack
 normalize = F.normalize
+pad = F.pad
 eye = torch.eye
 zeros_like = torch.zeros_like
 zeros = torch.zeros

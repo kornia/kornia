@@ -1,6 +1,6 @@
 # kornia.geometry.so3 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py
-from kornia.core import Tensor, concatenate, stack, where, zeros, zeros_like
+from kornia.core import Tensor, concatenate, stack, where, zeros
 from kornia.geometry.liegroup._utils import squared_norm
 from kornia.geometry.quaternion import Quaternion
 from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
@@ -50,6 +50,14 @@ class So3:
         return So3(self._q[idx])
 
     def __mul__(self, right):
+        """Compose two So3 transformations.
+
+        Args:
+            right: the other So3 transformation.
+
+        Return:
+            The resulting So3 transformation.
+        """
         # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py#L98
         if isinstance(right, So3):
             return So3(self.q * right.q)
@@ -87,8 +95,8 @@ class So3:
         theta = squared_norm(v).sqrt()
         theta_nonzeros = theta != 0.0
         theta_half = 0.5 * theta
-        w = where(theta_nonzeros, theta_half.cos(), Tensor([1.0]).to(v.device, v.dtype))
-        b = where(theta_nonzeros, theta_half.sin() / theta, Tensor([0.0]).to(v.device, v.dtype))
+        w = where(theta_nonzeros, theta_half.cos(), 1.0)
+        b = where(theta_nonzeros, theta_half.sin() / theta, 0.0)
         xyz = b * v
         return So3(Quaternion(concatenate((w, xyz), 1)))
 
@@ -123,11 +131,12 @@ class So3:
                      [-1.,  1.,  0.]]])
         """
         KORNIA_CHECK_SHAPE(v, ["B", "3"])
-        a, b, c = v[..., 0, None, None], v[..., 1, None, None], v[..., 2, None, None]
-        zeros = zeros_like(v)[..., 0, None, None]
-        row0 = concatenate([zeros, -c, b], 2)
-        row1 = concatenate([c, zeros, -a], 2)
-        row2 = concatenate([-b, a, zeros], 2)
+        v = v[..., None, None]
+        a, b, c = v[:, 0], v[:, 1], v[:, 2]
+        z = zeros(v.shape[0], 1, 1, device=v.device, dtype=v.dtype)
+        row0 = concatenate([z, -c, b], 2)
+        row1 = concatenate([c, z, -a], 2)
+        row2 = concatenate([-b, a, z], 2)
         return concatenate([row0, row1, row2], 1)
 
     @staticmethod
