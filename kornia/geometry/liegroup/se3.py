@@ -149,7 +149,7 @@ class Se3:
         KORNIA_CHECK_SHAPE(v, ["B", "6"])
         t, omega = v[..., None, :3], v[..., 3:]
         rt = concatenate((So3.hat(omega), t), 1)
-        return pad(rt, (1, 0, 0, 0))  # add zeros column
+        return pad(rt, (1, 0, 0, 0))  # add zeros left column
 
     @staticmethod
     def vee(omega) -> Tensor:
