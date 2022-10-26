@@ -64,7 +64,7 @@ class NerfModel(nn.Module):
         num_dir_freqs: int = 4,
         num_units: int = 2,
         num_unit_layers: int = 4,
-        num_hidden: int = 128,  # FIXME: add as call argument
+        num_hidden: int = 128,
         log_space_encoding=True,
     ):
         super().__init__()

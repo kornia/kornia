@@ -54,7 +54,9 @@ class TestNerfSolver:
 
         nerf_obj = NerfSolver(device=device, dtype=dtype)
         num_img_rays = 15
-        nerf_obj.init_training(camera, 1.0, 3.0, False, img, num_img_rays, batch_size=5, num_ray_points=10, lr=1e-2)
+        nerf_obj.init_training(
+            camera, 1.0, 3.0, False, img, num_img_rays, batch_size=5, num_ray_points=10, lr=1e-2, num_hidden=128
+        )
         nerf_obj.run(num_epochs=10)
 
         img_rendered = nerf_obj.render_views(camera)[0].permute(2, 0, 1)
