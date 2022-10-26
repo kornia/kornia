@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 from kornia.constants import pi
 from kornia.core import Tensor, concatenate, stack, tensor
-from kornia.testing import KORNIA_CHECK_SAME_DEVICE, KORNIA_CHECK_SHAPE
+from kornia.testing import KORNIA_CHECK_SHAPE
 from kornia.utils.helpers import _torch_inverse_cast
 
 __all__ = [
