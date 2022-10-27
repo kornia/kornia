@@ -4,7 +4,7 @@
 from typing import Optional
 
 from kornia.core import Module, Tensor, normalize
-from kornia.geometry.linalg import batched_dot
+from kornia.geometry.linalg import batched_dot_product
 from kornia.testing import KORNIA_CHECK_SHAPE
 from kornia.utils.helpers import _torch_svd_cast
 
@@ -18,6 +18,12 @@ class Hyperplane(Module):
         KORNIA_CHECK_SHAPE(d, ["B"])
         self._n = n
         self._d = d
+
+    def __str__(self) -> str:
+        return f"Normal: {self.normal}\nOffset: {self.offset}"
+
+    def __repr__(self) -> str:
+        return str(self)
 
     def __getitem__(self, idx) -> Tensor:
         return self.normal if idx == 0 else self.offset
@@ -36,7 +42,7 @@ class Hyperplane(Module):
     @classmethod
     def from_vector(self, n: Tensor, e: Tensor) -> "Hyperplane":
         normal = n
-        offset = -batched_dot(normal, e)
+        offset = -batched_dot_product(normal, e)
         return Hyperplane(normal, offset)
 
     @classmethod
@@ -47,7 +53,7 @@ class Hyperplane(Module):
             KORNIA_CHECK_SHAPE(p1, ["B", "2"])
             # TODO: implement `.unitOrthonormal`
             normal = normalize((p1 - p0), p=2, dim=-1)
-            offset = -batched_dot(p0, normal)
+            offset = -batched_dot_product(p0, normal)
             return Hyperplane(normal, offset)
         # 3d case
         KORNIA_CHECK_SHAPE(p0, ["B", "3"])
@@ -59,8 +65,8 @@ class Hyperplane(Module):
         # TODO: use where
         # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L108
         # general case
-        normal = normal / norm
-        offset = -batched_dot(p0, normal)
+        normal = normal / (norm + 1e-6)
+        offset = -batched_dot_product(p0, normal)
         return Hyperplane(normal, offset)
 
 

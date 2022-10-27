@@ -5,7 +5,7 @@ from typing import Optional, Union
 import torch
 
 from kornia.core import Module, Parameter, Tensor, normalize
-from kornia.geometry.linalg import squared_norm
+from kornia.geometry.linalg import batched_dot_product, squared_norm
 from kornia.geometry.plane import Hyperplane
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.utils.helpers import _torch_svd_cast
@@ -134,10 +134,21 @@ class ParametrizedLine(Module):
     # - intersection_parameter
     # - intersection_point
 
-    # TODO: add tests
-    def intersection_parameter(self, plane: Hyperplane):
-        dot_prod = plane.normal @ self.direction
-        return -(plane.offset + plane.normal @ self.origin) / dot_prod
+    # TODO: add tests, and possibly return a mask
+    def intersect(self, plane: Hyperplane) -> Tensor:
+        """Return the intersection point between the line and a given plane.
+
+        Args:
+            plane: the plane to compute the intersection point.
+
+        Return:
+            - the lambda value used to compute the look at point.
+            - the intersected point.
+        """
+        dot_prod = batched_dot_product(plane.normal, self.direction)
+        res_lambda = -(plane.offset + batched_dot_product(plane.normal, self.origin)) / dot_prod
+        res_point = self.point_at(res_lambda)
+        return res_lambda, res_point
 
 
 def fit_line(points: Tensor, weights: Optional[Tensor] = None) -> ParametrizedLine:
