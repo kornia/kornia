@@ -137,10 +137,10 @@ class So3:
         v = v[..., None, None]
         a, b, c = v[:, 0], v[:, 1], v[:, 2]
         z = zeros(v.shape[0], 1, 1, device=v.device, dtype=v.dtype)
-        row0 = concatenate([z, -c, b], 2)
-        row1 = concatenate([c, z, -a], 2)
-        row2 = concatenate([-b, a, z], 2)
-        return concatenate([row0, row1, row2], 1)
+        row0 = concatenate((z, -c, b), 2)
+        row1 = concatenate((c, z, -a), 2)
+        row2 = concatenate((-b, a, z), 2)
+        return concatenate((row0, row1, row2), 1)
 
     @staticmethod
     def vee(omega) -> Tensor:
@@ -162,9 +162,8 @@ class So3:
         """
         KORNIA_CHECK_SHAPE(omega, ["B", "3", "3"])
         a, b, c = omega[..., 2, 1], omega[..., 0, 2], omega[..., 1, 0]
-        return stack([a, b, c], 1)
+        return stack((a, b, c), 1)
 
-    # NOTE: the math style won't render well with sphinx
     def matrix(self) -> Tensor:
         r"""Convert the quaternion to a rotation matrix of shape :math:`(B,3,3)`.
 
@@ -188,16 +187,16 @@ class So3:
         q0 = 1 - 2 * y**2 - 2 * z**2
         q1 = 2 * x * y - 2 * z * w
         q2 = 2 * x * z + 2 * y * w
-        row0 = concatenate([q0, q1, q2], 2)
+        row0 = concatenate((q0, q1, q2), 2)
         q0 = 2 * x * y + 2 * z * w
         q1 = 1 - 2 * x**2 - 2 * z**2
         q2 = 2 * y * z - 2 * x * w
-        row1 = concatenate([q0, q1, q2], 2)
+        row1 = concatenate((q0, q1, q2), 2)
         q0 = 2 * x * z - 2 * y * w
         q1 = 2 * y * z + 2 * x * w
         q2 = 1 - 2 * x**2 - 2 * y**2
-        row2 = concatenate([q0, q1, q2], 2)
-        return concatenate([row0, row1, row2], 1)
+        row2 = concatenate((q0, q1, q2), 2)
+        return concatenate((row0, row1, row2), 1)
 
     @classmethod
     def from_matrix(cls, matrix: Tensor) -> 'So3':
