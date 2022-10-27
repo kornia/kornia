@@ -1,6 +1,6 @@
 # kornia.geometry.so3 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py
-from kornia.core import Tensor, as_tensor, concatenate, eye, where, zeros
+from kornia.core import Tensor, as_tensor, concatenate, eye, pad, where
 from kornia.geometry.liegroup._utils import squared_norm
 from kornia.geometry.liegroup.so3 import So3
 from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
@@ -14,12 +14,14 @@ class Se3:
     See more: https://ingmec.ual.es/~jlblanco/papers/jlblanco2010geometry3D_techrep.pdf
 
     Example:
+        >>> from kornia.geometry.quaternion import Quaternion
         >>> q = Quaternion.identity(batch_size=1)
         >>> s = Se3(So3(q), torch.ones((1, 3)))
-        >>> s
-        rotation: real: tensor([[1.]], grad_fn=<SliceBackward0>)
+        >>> s.r
+        real: tensor([[1.]], grad_fn=<SliceBackward0>)
         vec: tensor([[0., 0., 0.]], grad_fn=<SliceBackward0>)
-        translation: tensor([[1., 1., 1.]])
+        >>> s.t
+        tensor([[1., 1., 1.]])
     """
 
     def __init__(self, r: So3, t: Tensor) -> None:
@@ -32,12 +34,14 @@ class Se3:
             t: translation vector with the shape of :math:`(B, 3)`.
 
         Example:
+            >>> from kornia.geometry.quaternion import Quaternion
             >>> q = Quaternion.identity(batch_size=1)
             >>> s = Se3(So3(q), torch.ones((1,3)))
-            >>> s
-            rotation: real: tensor([[1.]], grad_fn=<SliceBackward0>)
+            >>> s.r
+            real: tensor([[1.]], grad_fn=<SliceBackward0>)
             vec: tensor([[0., 0., 0.]], grad_fn=<SliceBackward0>)
-            translation: tensor([[1., 1., 1.]])
+            >>> s.t
+            tensor([[1., 1., 1.]])
         """
         KORNIA_CHECK_TYPE(r, So3)
         KORNIA_CHECK_SHAPE(t, ["B", "3"])
@@ -51,6 +55,14 @@ class Se3:
         return Se3(self._r[idx], self._t[idx][None])
 
     def __mul__(self, right: "Se3") -> "Se3":
+        """Compose two Se3 transformations.
+
+        Args:
+            right: the other Se3 transformation.
+
+        Return:
+            The resulting Se3 transformation.
+        """
         KORNIA_CHECK_TYPE(right, Se3)
         # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py#L97
         r = self.r * right.r
@@ -77,10 +89,11 @@ class Se3:
         Example:
             >>> v = torch.zeros((1, 6))
             >>> s = Se3.exp(v)
-            >>> s
-            rotation: real: tensor([[1.]], grad_fn=<SliceBackward0>)
+            >>> s.r
+            real: tensor([[1.]], grad_fn=<SliceBackward0>)
             vec: tensor([[0., 0., 0.]], grad_fn=<SliceBackward0>)
-            translation: tensor([[0., 0., 0.]])
+            >>> s.t
+            tensor([[0., 0., 0.]])
         """
         KORNIA_CHECK_SHAPE(v, ["B", "6"])
         t = v[..., 0:3]
@@ -89,7 +102,7 @@ class Se3:
         theta = squared_norm(omega).sqrt()
         R = So3.exp(omega)
         V = (
-            eye(3).to(v.device, v.dtype)
+            eye(3, device=v.device, dtype=v.dtype)
             + ((1 - theta.cos()) / (theta**2))[..., None] * omega_hat
             + ((theta - theta.sin()) / (theta**3))[..., None] * (omega_hat @ omega_hat)
         )
@@ -100,6 +113,7 @@ class Se3:
         """Converts elements of lie group  to elements of lie algebra.
 
         Example:
+            >>> from kornia.geometry.quaternion import Quaternion
             >>> q = Quaternion.identity(batch_size=1)
             >>> Se3(So3(q), torch.zeros((1,3))).log()
             tensor([[0., 0., 0., 0., 0., 0.]], grad_fn=<CatBackward0>)
@@ -108,7 +122,7 @@ class Se3:
         theta = squared_norm(omega).sqrt()
         omega_hat = So3.hat(omega)
         V_inv = (
-            eye(3).to(self._t.device, self._t.dtype)
+            eye(3, device=omega.device, dtype=omega.dtype)
             - 0.5 * omega_hat
             + ((1 - theta * (theta / 2).cos() / (2 * (theta / 2).sin())) / theta.pow(2))[..., None]
             * (omega_hat @ omega_hat)
@@ -133,10 +147,9 @@ class Se3:
                      [ 0.,  1.,  1.,  1.]]])
         """
         KORNIA_CHECK_SHAPE(v, ["B", "6"])
-        t = v[..., 0:3].reshape(-1, 1, 3)
-        omega = v[..., 3:]
-        rt = concatenate((So3.hat(omega), t.reshape(-1, 1, 3)), 1)
-        return concatenate((zeros(v.shape[0], 4, 1).to(rt.device, rt.dtype), rt), -1)
+        t, omega = v[..., None, :3], v[..., 3:]
+        rt = concatenate((So3.hat(omega), t), 1)
+        return pad(rt, (1, 0, 0, 0))  # add zeros left column
 
     @staticmethod
     def vee(omega) -> Tensor:
@@ -167,18 +180,15 @@ class Se3:
             batch_size: the batch size of the underlying data.
 
         Example:
-            >>> s = Se3.identity(batch_size=2)
-            >>> s
-            rotation: real: tensor([[1.],
-                    [1.]], grad_fn=<SliceBackward0>)
-            vec: tensor([[0., 0., 0.],
-                    [0., 0., 0.]], grad_fn=<SliceBackward0>)
-            translation: tensor([[0., 0., 0.],
-                    [0., 0., 0.]])
+            >>> s = Se3.identity(batch_size=1)
+            >>> s.r
+            real: tensor([[1.]], grad_fn=<SliceBackward0>)
+            vec: tensor([[0., 0., 0.]], grad_fn=<SliceBackward0>)
+            >>> s.t
+            tensor([[0., 0., 0.]])
         """
-        t: Tensor = as_tensor([0.0, 0.0, 0.0], device=device, dtype=dtype)
-        t = t.repeat(batch_size, 1)
-        return cls(So3.identity(batch_size, device, dtype), t.to(device, dtype))
+        t: Tensor = as_tensor(batch_size * [[0.0, 0.0, 0.0]], device=device, dtype=dtype)
+        return cls(So3.identity(batch_size, device, dtype), t)
 
     def matrix(self) -> Tensor:
         """Returns the matrix representation of shape :math:`(B, 4, 4)`.
@@ -189,22 +199,24 @@ class Se3:
             tensor([[[1., 0., 0., 1.],
                      [0., 1., 0., 1.],
                      [0., 0., 1., 1.],
-                     [0., 0., 0., 1.]]], grad_fn=<CatBackward0>)
+                     [0., 0., 0., 1.]]], grad_fn=<CopySlices>)
         """
         rt = concatenate((self.r.matrix(), self.t.reshape(-1, 3, 1)), 2)
-        return concatenate(
-            (rt, Tensor([0.0, 0.0, 0.0, 1.0]).repeat([self.t.shape[0], 1, 1]).to(rt.device, rt.dtype)), 1
-        )
+        rt_4x4 = pad(rt, (0, 0, 0, 1))  # add last row zeros
+        rt_4x4[..., -1, -1] = 1.0
+        return rt_4x4
 
     def inverse(self) -> 'Se3':
         """Returns the inverse transformation.
 
         Example:
             >>> s = Se3(So3.identity(batch_size=1), torch.ones((1,3)))
-            >>> s.inverse()
-            rotation: real: tensor([[1.]], grad_fn=<SliceBackward0>)
+            >>> s_inv = s.inverse()
+            >>> s_inv.r
+            real: tensor([[1.]], grad_fn=<SliceBackward0>)
             vec: tensor([[-0., -0., -0.]], grad_fn=<SliceBackward0>)
-            translation: tensor([[-1., -1., -1.]], grad_fn=<SliceBackward0>)
+            >>> s_inv.t
+            tensor([[-1., -1., -1.]], grad_fn=<SliceBackward0>)
         """
         r_inv = self.r.inverse()
         return Se3(r_inv, r_inv * (-1 * self.t))
