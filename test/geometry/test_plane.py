@@ -1,13 +1,54 @@
 import pytest
+import torch
 
-from kornia.geometry.plane import Hyperplane
+from kornia.geometry.plane import Hyperplane, fit_plane
 from kornia.geometry.vector import _VectorType
 from kornia.testing import BaseTester
 
 
+# TODO: implement the rest of methods
+class TestFitPlane(BaseTester):
+    @pytest.mark.parametrize("B", (1, 2))
+    @pytest.mark.parametrize("D", (2, 3, 4))
+    def test_smoke(self, device, dtype, B, D):
+        N: int = 10  # num points
+        points = torch.ones(B, N, D, device=device, dtype=dtype)
+        plane = fit_plane(points)
+        assert isinstance(plane, Hyperplane)
+        assert plane.offset.shape == (B,)
+        assert plane.normal.shape == (B, D)
+
+        assert (plane.normal == plane[0]).all()
+        assert (plane.offset == plane[1]).all()
+
+        normal, offset = fit_plane(points)
+        assert (plane.normal == normal).all()
+        assert (plane.offset == offset).all()
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_cardinality(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_jit(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_exception(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_module(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_gradcheck(self, device):
+        pass
+
+
+# TODO: implement the rest of methods
 class TestHyperplane(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 2])
-    @pytest.mark.parametrize("dim", [2, 3])
     def test_smoke(self, device, dtype, batch_size, dim):
         p0 = _VectorType.random((batch_size, dim), device, dtype)
         n0 = _VectorType.random((batch_size, dim), device, dtype).normalized()
