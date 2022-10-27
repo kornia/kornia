@@ -15,7 +15,7 @@ def dice_loss(input: torch.Tensor, target: torch.Tensor, eps: float = 1e-8) -> t
 
     .. math::
 
-        \text{Dice}(x, class) = \frac{2 |X| \cap |Y|}{|X| + |Y|}
+        \text{Dice}(x, class) = \frac{2 |X \cap Y|}{|X| + |Y|}
 
     Where:
        - :math:`X` expects to be the scores of each class.
