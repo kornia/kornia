@@ -1,7 +1,8 @@
-from typing import Iterable, List, Optional
+from typing import Iterable, List
 
 import torch
 
+from kornia.core import Device
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.linalg import inverse_transformation, transform_points
 from kornia.testing import KORNIA_CHECK_SAME_DEVICE
@@ -344,19 +345,7 @@ class PinholeCamera:
     # NOTE: just for test. Decide if we keep it.
     @classmethod
     def from_parameters(
-        self,
-        fx,
-        fy,
-        cx,
-        cy,
-        height,
-        width,
-        tx,
-        ty,
-        tz,
-        batch_size=1,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        self, fx, fy, cx, cy, height, width, tx, ty, tz, batch_size, device: Device, dtype: torch.dtype
     ):
         # create the camera matrix
         intrinsics = torch.zeros(batch_size, 4, 4, device=device, dtype=dtype)

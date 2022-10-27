@@ -63,7 +63,8 @@ class RayDataset(Dataset):
         self._check_dimensions(self._imgs)
 
         # Move images to defined device
-        self._imgs = [img.to(self._device) for img in self._imgs]
+        if self._imgs is not None:
+            self._imgs = [img.to(self._device) for img in self._imgs]
 
     def _init_random_ray_dataset(self, num_img_rays: Tensor) -> None:
         r"""Initializes a random ray sampler and calculates dataset ray parameters.
@@ -121,10 +122,14 @@ class RayDataset(Dataset):
             A ray parameter object that includes ray origins, directions, and rgb values at the ray 2d pixel
             coordinates: RayGroup
         """
+        if not isinstance(self._ray_sampler, RaySampler):
+            raise TypeError('Ray sampler is not initiate yet, please run self.init_ray_dataset() before use it.')
+
         origins = self._ray_sampler.origins[idxs]
         directions = self._ray_sampler.directions[idxs]
         if self._imgs is None:
             return origins, directions, None
+
         camerd_ids = self._ray_sampler.camera_ids[idxs]
         points_2d = self._ray_sampler.points_2d[idxs]
         rgbs = None
@@ -136,7 +141,7 @@ class RayDataset(Dataset):
         return origins, directions, rgbs
 
 
-def instantiate_ray_dataloader(dataset: RayDataset, batch_size: int = 1, shuffle: bool = True) -> None:
+def instantiate_ray_dataloader(dataset: RayDataset, batch_size: int = 1, shuffle: bool = True) -> DataLoader:
     r"""Initializes a dataloader to manage a ray dataset.
 
     Args:

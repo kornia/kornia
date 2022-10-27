@@ -1,7 +1,17 @@
+from functools import partial
+
 import torch
 from torch import nn
 
 from kornia.core import Tensor
+
+
+def _torch_sin(x: Tensor, freq: Tensor) -> Tensor:
+    return torch.sin(x * freq)  # FIXME: PI?
+
+
+def _torch_cos(x: Tensor, freq: Tensor) -> Tensor:
+    return torch.cos(x * freq)
 
 
 class PositionalEncoder(nn.Module):
@@ -19,6 +29,7 @@ class PositionalEncoder(nn.Module):
         self._embed_fns = [lambda x: x]
 
         # Define frequencies in either linear or log scale
+        freq_bands: Tensor
         if log_space:
             freq_bands = 2.0 ** torch.linspace(0.0, num_freqs - 1, num_freqs)
         else:
@@ -26,8 +37,8 @@ class PositionalEncoder(nn.Module):
 
         # Alternate sin and cos
         for freq in freq_bands:
-            self._embed_fns.append(lambda x, freq=freq: torch.sin(x * freq))  # FIXME: PI?
-            self._embed_fns.append(lambda x, freq=freq: torch.cos(x * freq))
+            self._embed_fns.append(partial(_torch_sin, freq=freq))
+            self._embed_fns.append(partial(_torch_cos, freq=freq))
 
         self._num_encoded_dims = self._num_dims * len(self._embed_fns)
 

@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 from torch.distributions import Distribution
 
+from kornia.core import Device
+
 
 class _PostInitInjectionMetaClass(type):
     """To inject the ``__post_init__`` function after the creation of each instance."""
@@ -17,10 +19,11 @@ class _PostInitInjectionMetaClass(type):
 class RandomGeneratorBase(nn.Module, metaclass=_PostInitInjectionMetaClass):
     """Base class for generating random augmentation parameters."""
 
+    device: Optional[Device] = None
+    dtype: torch.dtype
+
     def __init__(self) -> None:
         super().__init__()
-        self.device = None
-        self.dtype = None
 
     def __post_init__(self) -> None:
         self.set_rng_device_and_dtype()

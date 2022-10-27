@@ -1,5 +1,5 @@
 import math
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 import torch
 
@@ -19,12 +19,12 @@ class RaySampler:
         ndc: convert ray parameters to normalized device coordinates: bool
         device: device for ray tensors: Union[str, torch.device]
     """
-    _origins: Optional[Tensor] = None  # Ray origins in world coordinates (*, 3)
-    _directions: Optional[Tensor] = None  # Ray directions in world coordinates (*, 3)
-    _directions_cam: Optional[Tensor] = None  # Ray directions in camera coordinates (*, 3)
-    _origins_cam: Optional[Tensor] = None  # Ray origins in camera coordinates (*, 3)
-    _camera_ids: Optional[Tensor] = None  # Ray camera ID
-    _points_2d: Optional[Tensor] = None  # Ray intersection with image plane in camera coordinates
+    _origins: Tensor  # Ray origins in world coordinates (*, 3)
+    _directions: Tensor  # Ray directions in world coordinates (*, 3)
+    _directions_cam: Tensor  # Ray directions in camera coordinates (*, 3)
+    _origins_cam: Tensor  # Ray origins in camera coordinates (*, 3)
+    _camera_ids: Tensor  # Ray camera ID
+    _points_2d: Tensor  # Ray intersection with image plane in camera coordinates
 
     def __init__(self, min_depth: float, max_depth: float, ndc: bool, device: Device, dtype: torch.dtype) -> None:
         self._min_depth = min_depth
@@ -199,11 +199,7 @@ class RaySampler:
 
     @staticmethod
     def _add_points2d_as_flat_tensors_to_num_ray_dict(
-        n: int,
-        x: torch.tensor,
-        y: torch.tensor,
-        camera_id: int,
-        points2d_as_flat_tensors: Dict[int, Points2D_FlatTensors],
+        n: int, x: Tensor, y: Tensor, camera_id: int, points2d_as_flat_tensors: Dict[int, Points2D_FlatTensors]
     ) -> None:
         r"""Adds x/y pixel coordinates for all rays casted by a scene camera to dictionary of pixel coordinates
         grouped by total number of rays."""

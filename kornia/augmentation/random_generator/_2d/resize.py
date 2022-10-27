@@ -1,9 +1,10 @@
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Tuple, Union
 
 import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _common_param_check
+from kornia.core import Device
 from kornia.geometry.bbox import bbox_generator
 from kornia.geometry.transform.affwarp import _side_to_image_size
 
@@ -32,14 +33,12 @@ class ResizeGenerator(RandomGeneratorBase):
         super().__init__()
         self.output_size = resize_to
         self.side = side
-        self.device: Optional[torch.device] = None
-        self.dtype: Optional[torch.dtype] = None
 
     def __repr__(self) -> str:
         repr = f"output_size={self.output_size}"
         return repr
 
-    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+    def make_samplers(self, device: Device, dtype: torch.dtype) -> None:
         self.device = device
         self.dtype = dtype
         pass
