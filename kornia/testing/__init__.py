@@ -146,9 +146,9 @@ class BaseTester(ABC):
                 This parameter allows to reduce tolerance. Half the decimal places.
                 Example, 1e-4 -> 1e-2 or 1e-6 -> 1e-3
         """
-        if isinstance(actual, Parameter):
+        if hasattr(actual, "data"):
             actual = actual.data
-        if isinstance(expected, Parameter):
+        if hasattr(expected, "data"):
             expected = expected.data
 
         if 'xla' in actual.device.type or 'xla' in expected.device.type:
@@ -313,7 +313,7 @@ def KORNIA_CHECK_SHAPE(x, shape: List[str]) -> None:
     """
     # Desired shape here is list and not tuple, because torch.jit
     # does not like variable-length tuples
-    KORNIA_CHECK_IS_TENSOR(x)
+    KORNIA_CHECK(hasattr(x, "shape"), "cannot perform `x.shape`")
     if '*' == shape[0]:
         start_idx: int = 1
         x_shape_to_check = x.shape[-len(shape) + 1 :]
