@@ -1,6 +1,6 @@
 # kornia.geometry.so3 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py
-from kornia.core import Tensor, concatenate, stack, where, zeros, zeros_like
+from kornia.core import Tensor, concatenate, stack, tensor, where, zeros
 from kornia.geometry.liegroup._utils import squared_norm
 from kornia.geometry.quaternion import Quaternion
 from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
@@ -50,6 +50,14 @@ class So3:
         return So3(self._q[idx])
 
     def __mul__(self, right):
+        """Compose two So3 transformations.
+
+        Args:
+            right: the other So3 transformation.
+
+        Return:
+            The resulting So3 transformation.
+        """
         # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py#L98
         if isinstance(right, So3):
             return So3(self.q * right.q)
@@ -87,8 +95,11 @@ class So3:
         theta = squared_norm(v).sqrt()
         theta_nonzeros = theta != 0.0
         theta_half = 0.5 * theta
-        w = where(theta_nonzeros, theta_half.cos(), Tensor([1.0]).to(v.device, v.dtype))
-        b = where(theta_nonzeros, theta_half.sin() / theta, Tensor([0.0]).to(v.device, v.dtype))
+        # TODO: uncomment me after deprecate pytorch 10.2
+        # w = where(theta_nonzeros, theta_half.cos(), 1.0)
+        # b = where(theta_nonzeros, theta_half.sin() / theta, 0.0)
+        w = where(theta_nonzeros, theta_half.cos(), tensor(1.0, device=v.device, dtype=v.dtype))
+        b = where(theta_nonzeros, theta_half.sin() / theta, tensor(0.0, device=v.device, dtype=v.dtype))
         xyz = b * v
         return So3(Quaternion(concatenate((w, xyz), 1)))
 
@@ -100,7 +111,7 @@ class So3:
             >>> q = Quaternion(data)
             >>> So3(q).log()
             tensor([[0., 0., 0.],
-                    [0., 0., 0.]], grad_fn=<SWhereBackward0>)
+                    [0., 0., 0.]], grad_fn=<WhereBackward0>)
         """
         theta = squared_norm(self.q.vec).sqrt()
         # NOTE: this differs from https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py#L33
@@ -123,12 +134,13 @@ class So3:
                      [-1.,  1.,  0.]]])
         """
         KORNIA_CHECK_SHAPE(v, ["B", "3"])
-        a, b, c = v[..., 0, None, None], v[..., 1, None, None], v[..., 2, None, None]
-        zeros = zeros_like(v)[..., 0, None, None]
-        row0 = concatenate([zeros, -c, b], 2)
-        row1 = concatenate([c, zeros, -a], 2)
-        row2 = concatenate([-b, a, zeros], 2)
-        return concatenate([row0, row1, row2], 1)
+        v = v[..., None, None]
+        a, b, c = v[:, 0], v[:, 1], v[:, 2]
+        z = zeros(v.shape[0], 1, 1, device=v.device, dtype=v.dtype)
+        row0 = concatenate((z, -c, b), 2)
+        row1 = concatenate((c, z, -a), 2)
+        row2 = concatenate((-b, a, z), 2)
+        return concatenate((row0, row1, row2), 1)
 
     @staticmethod
     def vee(omega) -> Tensor:
@@ -150,9 +162,8 @@ class So3:
         """
         KORNIA_CHECK_SHAPE(omega, ["B", "3", "3"])
         a, b, c = omega[..., 2, 1], omega[..., 0, 2], omega[..., 1, 0]
-        return stack([a, b, c], 1)
+        return stack((a, b, c), 1)
 
-    # NOTE: the math style won't render well with sphinx
     def matrix(self) -> Tensor:
         r"""Convert the quaternion to a rotation matrix of shape :math:`(B,3,3)`.
 
@@ -176,16 +187,16 @@ class So3:
         q0 = 1 - 2 * y**2 - 2 * z**2
         q1 = 2 * x * y - 2 * z * w
         q2 = 2 * x * z + 2 * y * w
-        row0 = concatenate([q0, q1, q2], 2)
+        row0 = concatenate((q0, q1, q2), 2)
         q0 = 2 * x * y + 2 * z * w
         q1 = 1 - 2 * x**2 - 2 * z**2
         q2 = 2 * y * z - 2 * x * w
-        row1 = concatenate([q0, q1, q2], 2)
+        row1 = concatenate((q0, q1, q2), 2)
         q0 = 2 * x * z - 2 * y * w
         q1 = 2 * y * z + 2 * x * w
         q2 = 1 - 2 * x**2 - 2 * y**2
-        row2 = concatenate([q0, q1, q2], 2)
-        return concatenate([row0, row1, row2], 1)
+        row2 = concatenate((q0, q1, q2), 2)
+        return concatenate((row0, row1, row2), 1)
 
     @classmethod
     def from_matrix(cls, matrix: Tensor) -> 'So3':
@@ -218,7 +229,7 @@ class So3:
             vec: tensor([[0., 0., 0.],
                     [0., 0., 0.]], grad_fn=<SliceBackward0>)
         """
-        return cls(Quaternion.identity(batch_size).to(device, dtype))
+        return cls(Quaternion.identity(batch_size, device, dtype))
 
     def inverse(self) -> 'So3':
         """Returns the inverse transformation.

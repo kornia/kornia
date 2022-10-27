@@ -7,12 +7,12 @@ from ._backend import (
     concatenate,
     eye,
     normalize,
+    pad,
     rand,
     stack,
     tensor,
     where,
     zeros,
-    zeros_like,
 )
 
 __all__ = [
@@ -23,11 +23,11 @@ __all__ = [
     "tensor",
     "Parameter",
     "normalize",
+    "pad",
     "stack",
     "as_tensor",
     "rand",
     "where",
     "eye",
     "zeros",
-    "zeros_like",
 ]
