@@ -3,7 +3,7 @@ from typing import Dict, List, Tuple
 
 import torch
 
-from kornia.core import Device, Tensor
+from kornia.core import Device, Tensor, tensor
 from kornia.geometry.camera import PinholeCamera
 from kornia.nerf.camera_utils import cameras_for_ids
 from kornia.utils._compat import torch_meshgrid
@@ -125,7 +125,7 @@ class RaySampler:
             directions_cam.append(self._calc_ray_directions_cam(cams, obj._points_2d))
             origins_cam.append(directions_cam[-1] * self._min_depth)
             camera_ids.append(
-                torch.tensor(obj.camera_ids).repeat(num_points_per_cam_group, 1).permute(1, 0).reshape(1, -1).squeeze(0)
+                tensor(obj.camera_ids).repeat(num_points_per_cam_group, 1).permute(1, 0).reshape(1, -1).squeeze(0)
             )
             points_2d.append(obj._points_2d.reshape(-1, 2).int())
         self._origins = torch.cat(origins)
