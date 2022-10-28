@@ -81,10 +81,6 @@ class ParametrizedLine(Module):
         """
         return ParametrizedLine(p0, normalize((p1 - p0), p=2, dim=-1))
 
-    @classmethod
-    def from_hyperplane(cls, plane) -> "ParametrizedLine":
-        raise NotImplementedError(f"Plane not implemented yet {plane}.")
-
     def point_at(self, t: Union[float, Tensor]) -> Tensor:
         """The point at :math:`t` along this line.
 
