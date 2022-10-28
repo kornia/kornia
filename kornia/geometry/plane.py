@@ -11,6 +11,14 @@ from kornia.utils.helpers import _torch_svd_cast
 __all__ = ["Hyperplane", "fit_plane"]
 
 
+# NOTE: in the near future the constructor will change
+# class Hyperplane(Module):
+#     def __init__(self, n: _VectorType, d: _VectorType) -> None:
+#         super().__init__()
+#         self._n = n
+#         self._d = d
+
+
 class Hyperplane(Module):
     def __init__(self, n: Tensor, d: Tensor) -> None:
         super().__init__()
