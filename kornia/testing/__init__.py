@@ -290,7 +290,6 @@ except ImportError:
 # Logger api
 
 
-@torch.jit.ignore
 def KORNIA_CHECK_SHAPE(x, shape: List[str]) -> None:
     """Check whether a tensor has a specified shape.
 
@@ -313,8 +312,7 @@ def KORNIA_CHECK_SHAPE(x, shape: List[str]) -> None:
     """
     # Desired shape here is list and not tuple, because torch.jit
     # does not like variable-length tuples
-    KORNIA_CHECK_TYPE(x, Tensor, msg=f"Not a tensor: Got {type(x)}")
-    KORNIA_CHECK(hasattr(x, "shape"), "cannot perform `x.shape`")
+    KORNIA_CHECK_IS_TENSOR(x)
 
     if '*' == shape[0]:
         start_idx: int = 1
