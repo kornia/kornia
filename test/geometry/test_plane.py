@@ -49,6 +49,7 @@ class TestFitPlane(BaseTester):
 # TODO: implement the rest of methods
 class TestHyperplane(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 2])
+    @pytest.mark.parametrize("dim", (2, 3))
     def test_smoke(self, device, dtype, batch_size, dim):
         p0 = _VectorType.random((batch_size, dim), device, dtype)
         n0 = _VectorType.random((batch_size, dim), device, dtype).normalized()
