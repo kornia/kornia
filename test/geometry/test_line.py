@@ -3,6 +3,7 @@ import torch
 from torch.autograd import gradcheck
 
 from kornia.geometry.line import ParametrizedLine, fit_line
+from kornia.geometry.plane import Hyperplane
 from kornia.testing import BaseTester
 
 
@@ -72,6 +73,24 @@ class TestParametrizedLine(BaseTester):
         point = torch.tensor([1.0, 4.0], device=device, dtype=dtype)
         distance_expected = torch.tensor(16.0, device=device, dtype=dtype)
         self.assert_close(l1.squared_distance(point), distance_expected)
+
+    def test_instersect_plane(self, device, dtype):
+        p0 = torch.tensor([0.0, 0.0, 0.0], device=device, dtype=dtype)
+        p1 = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
+        l1 = ParametrizedLine.through(p0, p1)
+
+        v0 = torch.tensor([3.0, 0.0, 1.0], device=device, dtype=dtype)
+        v1 = torch.tensor([3.0, 1.0, 0.0], device=device, dtype=dtype)
+        v2 = torch.tensor([3.0, 0.0, -1.0], device=device, dtype=dtype)
+        pl0 = Hyperplane.through(v0, v1, v2)
+
+        lmbda, point = l1.intersect(pl0)
+
+        expected_point = torch.tensor([3.0, 0.0, 0.0], device=device, dtype=dtype)
+        expected_lambda = torch.tensor(3.0, device=device, dtype=dtype)
+
+        self.assert_close(lmbda, expected_lambda)
+        self.assert_close(point, expected_point)
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_cardinality(self, device, dtype):

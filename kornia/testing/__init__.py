@@ -5,10 +5,9 @@ import math
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from itertools import product
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import torch
-from torch.nn import Parameter
 
 from kornia.core import Tensor
 
@@ -146,9 +145,9 @@ class BaseTester(ABC):
                 This parameter allows to reduce tolerance. Half the decimal places.
                 Example, 1e-4 -> 1e-2 or 1e-6 -> 1e-3
         """
-        if isinstance(actual, Parameter):
+        if hasattr(actual, "data"):
             actual = actual.data
-        if isinstance(expected, Parameter):
+        if hasattr(expected, "data"):
             expected = expected.data
 
         if 'xla' in actual.device.type or 'xla' in expected.device.type:
@@ -314,6 +313,7 @@ def KORNIA_CHECK_SHAPE(x, shape: List[str]) -> None:
     # Desired shape here is list and not tuple, because torch.jit
     # does not like variable-length tuples
     KORNIA_CHECK_IS_TENSOR(x)
+
     if '*' == shape[0]:
         start_idx: int = 1
         x_shape_to_check = x.shape[-len(shape) + 1 :]
@@ -332,7 +332,7 @@ def KORNIA_CHECK_SHAPE(x, shape: List[str]) -> None:
             continue
         dim = int(dim_)
         if x_shape_to_check[i] != dim:
-            raise TypeError(f"{x} shape should be must be [{shape}]. Got {x.shape}")
+            raise TypeError(f"{x} shape must be [{shape}]. Got {x.shape}")
 
 
 def KORNIA_CHECK(condition: bool, msg: Optional[str] = None) -> None:
