@@ -30,4 +30,5 @@ jobs:
         conda install pytorch cpuonly -c pytorch-lts
         pip install .[dev,x]
     - name: Run doctest
+      shell: bash -l {0}
       run: make doctest
