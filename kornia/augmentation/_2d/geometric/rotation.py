@@ -49,11 +49,7 @@ class RandomRotation(GeometricAugmentationBase2D):
         tensor([[[ 1.0000, -0.0059,  0.0088],
                  [ 0.0059,  1.0000, -0.0088],
                  [ 0.0000,  0.0000,  1.0000]]])
-        >>> aug.inverse(out)
-        tensor([[[[9.6526e-01, 8.6824e-03, 1.7263e-02, 1.9305e+00],
-                  [8.6398e-03, 2.9485e-03, 5.8971e-03, 1.7365e-02],
-                  [2.9054e-03, 9.9416e-01, 1.9825e+00, 2.3134e-02],
-                  [2.5777e-05, 1.1640e-02, 9.9992e-01, 1.9392e+00]]]])
+        >>> inv = aug.inverse(out)
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
         >>> input = torch.randn(1, 3, 32, 32)
