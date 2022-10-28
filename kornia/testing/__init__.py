@@ -5,10 +5,9 @@ import math
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from itertools import product
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import torch
-from torch.nn import Parameter
 
 from kornia.core import Tensor
 
@@ -291,6 +290,7 @@ except ImportError:
 # Logger api
 
 
+@torch.jit.ignore
 def KORNIA_CHECK_SHAPE(x, shape: List[str]) -> None:
     """Check whether a tensor has a specified shape.
 
@@ -314,6 +314,7 @@ def KORNIA_CHECK_SHAPE(x, shape: List[str]) -> None:
     # Desired shape here is list and not tuple, because torch.jit
     # does not like variable-length tuples
     KORNIA_CHECK(hasattr(x, "shape"), "cannot perform `x.shape`")
+
     if '*' == shape[0]:
         start_idx: int = 1
         x_shape_to_check = x.shape[-len(shape) + 1 :]
