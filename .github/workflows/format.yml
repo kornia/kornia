@@ -11,6 +11,11 @@ on:
 jobs:
   doctest:
     runs-on: [ubuntu-latest]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: [3.8]
     steps:
     - uses: actions/checkout@v2
     - name: Setup conda dependencies
