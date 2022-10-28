@@ -164,4 +164,4 @@ def parse_colmap_points_3d(points_3d_path: str, device: Device, dtype: torch.dty
         z.append(float(split_line[3]))
         points_3d.append(torch.tensor([float(split_line[1]), float(split_line[2]), float(split_line[3])]))
         # TODO: Parse here more fields as necessary for future usages
-    return torch.stack(points_3d)
+    return torch.stack(points_3d).to(device=device, dtype=dtype)
