@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Optional, Tuple
 
 from kornia.core import Module, Tensor
 from kornia.testing import KORNIA_CHECK_SHAPE
