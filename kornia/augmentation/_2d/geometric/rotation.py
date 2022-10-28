@@ -49,7 +49,7 @@ class RandomRotation(GeometricAugmentationBase2D):
         tensor([[[ 1.0000, -0.0059,  0.0088],
                  [ 0.0059,  1.0000, -0.0088],
                  [ 0.0000,  0.0000,  1.0000]]])
-        >>> aug.inverse(out)
+        >>> aug.inverse(out)  # doctest:+ELLIPSIS
         tensor([[[[9.6526e-01, 8.6824e-03, 1.7263e-02, 1.9305e+00],
                   [8.6398e-03, 2.9485e-03, 5.8971e-03, 1.7365e-02],
                   [2.9054e-03, 9.9416e-01, 1.9825e+00, 2.3134e-02],
