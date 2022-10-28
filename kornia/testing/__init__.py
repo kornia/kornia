@@ -313,6 +313,7 @@ def KORNIA_CHECK_SHAPE(x, shape: List[str]) -> None:
     """
     # Desired shape here is list and not tuple, because torch.jit
     # does not like variable-length tuples
+    KORNIA_CHECK_TYPE(x, Tensor, msg=f"Not a tensor: Got {type(x)}")
     KORNIA_CHECK(hasattr(x, "shape"), "cannot perform `x.shape`")
 
     if '*' == shape[0]:
