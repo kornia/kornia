@@ -226,9 +226,9 @@ def point_line_distance(point: Tensor, line: Tensor, eps: float = 1e-9) -> Tenso
     return numerator / (denominator + eps)
 
 
-def squared_norm(x: Tensor) -> Tensor:
+def squared_norm(x: Tensor, keepdim: bool = False) -> Tensor:
     """Return the squared norm of a vector."""
-    return x.pow(2).sum(-1)
+    return (x * x).sum(-1, keepdim)
 
 
 def batched_dot_product(x: Tensor, y: Tensor, keepdim: bool = False) -> Tensor:
@@ -237,6 +237,9 @@ def batched_dot_product(x: Tensor, y: Tensor, keepdim: bool = False) -> Tensor:
     KORNIA_CHECK_SHAPE(y, ["B", "N"])
     return (x * y).sum(-1, keepdim)
 
+
+# aliases
+batched_squared_norm = squared_norm
 
 # TODO:
 # - project_points: from opencv

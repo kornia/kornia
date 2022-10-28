@@ -58,6 +58,28 @@ class TestHyperplane(BaseTester):
         assert pl0.offset.shape == (batch_size,)
         assert pl0.normal.shape == (batch_size, dim)
 
+    def test_dot_unbatched(self, device, dtype):
+        p0 = _VectorType.random((3,), device, dtype)
+        n0 = _VectorType.random((3,), device, dtype).normalized()
+        assert p0.dot(n0).shape == ()
+
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    @pytest.mark.parametrize("dim", (2, 3))
+    def test_dot_batched(self, device, dtype, batch_size, dim):
+        p0 = _VectorType.random((batch_size, dim), device, dtype)
+        n0 = _VectorType.random((batch_size, dim), device, dtype).normalized()
+        assert p0.dot(n0).shape == (batch_size,)
+
+    def test_sqn_unbatched(self, device, dtype):
+        p0 = _VectorType.random((3,), device, dtype).normalized()
+        assert p0.squared_norm().shape == ()
+
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    @pytest.mark.parametrize("dim", (2, 3))
+    def test_sqn_batched(self, device, dtype, batch_size, dim):
+        n0 = _VectorType.random((batch_size, dim), device, dtype).normalized()
+        assert n0.squared_norm().shape == (batch_size,)
+
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_through_two(self, device, dtype, batch_size):
         v0 = _VectorType.random((batch_size, 2), device, dtype)

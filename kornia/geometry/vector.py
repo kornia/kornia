@@ -1,6 +1,8 @@
 from typing import List
 
 from kornia.core import Module, Parameter, Tensor, normalize, rand
+from kornia.geometry.linalg import batched_dot_product
+from kornia.geometry.linalg import batched_squared_norm as _squared_norm
 from kornia.testing import KORNIA_CHECK_SHAPE
 
 __all__ = ["UnitVector"]
@@ -25,18 +27,18 @@ class _VectorType(Module):
 
     @property
     def device(self):
-        return self._vector.device
+        return self.data.device
 
     @property
     def dtype(self):
-        return self._vector.dtype
+        return self.data.dtype
 
     @property
     def shape(self):
-        return self._vector.shape
+        return self.data.shape
 
     def __repr__(self) -> str:
-        return f"vec: {tuple(self._vector.shape)} {self._vector}"
+        return f"{self.data}"
 
     @classmethod
     def random(cls, shape: List[int], device=None, dtype=None) -> "_VectorType":
@@ -46,13 +48,13 @@ class _VectorType(Module):
         vec_norm = normalize(self._vector, p=2, dim=-1)
         return _VectorType(vec_norm)
 
-    # TODO: implement me
     def squared_norm(self) -> "_VectorType":
-        raise NotImplementedError("Not implemented")
+        return _VectorType(_squared_norm(self.data))
 
-    # TODO: implement batched_dot
-    def dot(self) -> "_VectorType":
-        raise NotImplementedError("Not implemented")
+    def dot(self, right: "_VectorType") -> "_VectorType":
+        if len(right.shape) == 1:
+            return _VectorType(self.data.dot(right.data))
+        return _VectorType(batched_dot_product(self.data, right.data))
 
 
 class UnitVector(Module):
