@@ -334,7 +334,7 @@ def KORNIA_CHECK_SHAPE(x, shape: List[str]) -> None:
             continue
         dim = int(dim_)
         if x_shape_to_check[i] != dim:
-            raise TypeError(f"{x} shape should be must be [{shape}]. Got {x.shape}")
+            raise TypeError(f"{x} shape must be [{shape}]. Got {x.shape}")
 
 
 def KORNIA_CHECK(condition: bool, msg: Optional[str] = None) -> None:
