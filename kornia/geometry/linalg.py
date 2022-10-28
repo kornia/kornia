@@ -1,7 +1,7 @@
 import torch
 from torch import Tensor
 
-from kornia.testing import KORNIA_CHECK_IS_TENSOR, check_is_tensor
+from kornia.testing import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, check_is_tensor
 
 from .conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 
@@ -12,6 +12,7 @@ __all__ = [
     "transform_points",
     "point_line_distance",
     "squared_norm",
+    "batched_dot_product",
 ]
 
 
@@ -225,10 +226,20 @@ def point_line_distance(point: Tensor, line: Tensor, eps: float = 1e-9) -> Tenso
     return numerator / (denominator + eps)
 
 
-def squared_norm(x: Tensor) -> Tensor:
+def squared_norm(x: Tensor, keepdim: bool = False) -> Tensor:
     """Return the squared norm of a vector."""
-    return x.pow(2).sum(-1)
+    return (x * x).sum(-1, keepdim)
 
+
+def batched_dot_product(x: Tensor, y: Tensor, keepdim: bool = False) -> Tensor:
+    """Return a batched version of .dot()"""
+    KORNIA_CHECK_SHAPE(x, ["B", "N"])
+    KORNIA_CHECK_SHAPE(y, ["B", "N"])
+    return (x * y).sum(-1, keepdim)
+
+
+# aliases
+batched_squared_norm = squared_norm
 
 # TODO:
 # - project_points: from opencv
