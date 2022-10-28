@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch import nn
 
-from kornia.core import Module, Tensor
+from kornia.core import Module, Tensor, tensor
 from kornia.geometry.camera import PinholeCamera
 from kornia.metrics import psnr
 from kornia.nerf.core import Images, ImageTensors
@@ -84,7 +84,7 @@ class NerfSolver:
         if num_img_rays is None:
             self._num_img_rays = None
         elif isinstance(num_img_rays, int):
-            self._num_img_rays = torch.tensor([num_img_rays] * cameras.batch_size)
+            self._num_img_rays = tensor([num_img_rays] * cameras.batch_size)
         elif torch.is_tensor(num_img_rays):
             self._num_img_rays = num_img_rays
         else:
@@ -144,7 +144,7 @@ class NerfSolver:
         ray_dataset.init_ray_dataset(self._num_img_rays)
         ray_dataset.init_images_for_training(self._imgs)  # FIXME: Do we need to load the same images on each Epoch?
         ray_data_loader = instantiate_ray_dataloader(ray_dataset, self._batch_size, shuffle=True)
-        total_psnr = torch.tensor(0.0, device=self._device, dtype=self._dtype)
+        total_psnr = tensor(0.0, device=self._device, dtype=self._dtype)
         for i_batch, (origins, directions, rgbs) in enumerate(ray_data_loader):
             rgbs_model = self._nerf_model(origins, directions)
             loss = F.mse_loss(rgbs_model, rgbs)

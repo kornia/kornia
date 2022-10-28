@@ -7,11 +7,11 @@ from kornia.core import Tensor
 
 
 def _torch_sin(x: Tensor, freq: Tensor) -> Tensor:
-    return torch.sin(x * freq)  # FIXME: PI?
+    return (x * freq).sin()  # FIXME: PI?
 
 
 def _torch_cos(x: Tensor, freq: Tensor) -> Tensor:
-    return torch.cos(x * freq)
+    return (x * freq).cos()
 
 
 class PositionalEncoder(nn.Module):
