@@ -472,12 +472,12 @@ class TestPinholeCamera:
         pinhole = self._create_cameras(device=device, dtype=dtype)
         n = 2  # Point per batch
 
-        point_3d = torch.rand((pinhole.batch_size, n, 3), device=device, dtype=dtype)
+        point_3d = torch.rand((n, 3), device=device, dtype=dtype)
         depth = pinhole.transform_to_camera_view(point_3d)[..., 2].view(pinhole.batch_size, 2, 1)
 
-        point_2d = pinhole.project(point_3d)
+        point_2d = pinhole.project(point_3d.repeat(pinhole.batch_size, 1, 1))
         point_3d_hat = pinhole.unproject(point_2d, depth)
-        assert_close(point_3d, point_3d_hat, atol=1e-4, rtol=1e-4)
+        assert_close(point_3d.repeat(pinhole.batch_size, 1, 1), point_3d_hat, atol=1e-4, rtol=1e-4)
 
     def test_pinhole_camera_transform_to_world(self, device, dtype):
         pinhole = self._create_cameras(device=device, dtype=dtype)

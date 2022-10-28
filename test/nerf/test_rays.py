@@ -9,6 +9,7 @@ from kornia.nerf.rays import (
     RandomGridRaySampler,
     RandomRaySampler,
     UniformRaySampler,
+    analyze_points_3d,
     calc_ray_t_vals,
     cameras_for_ids,
     sample_lengths,
@@ -232,3 +233,10 @@ class TestRaySampler_3DPoints:
         points_3d = sample_ray_points(focal_axis_rays.origins, focal_axis_rays.directions, lengths)
         cameras.transform_to_world(cameras.translation_vector.view(-1, 1, 3))
         assert points_3d.shape == (20, 2, 3)
+
+    def test_analyze_points_3d(self, device, dtype):
+        points_3d = torch.rand((20, 3)) * 3.0
+        cameras = create_four_cameras(device, dtype)
+        min_depth, max_depth = analyze_points_3d(points_3d, cameras)
+        assert min_depth.shape == (4,)
+        assert max_depth.shape == (4,)

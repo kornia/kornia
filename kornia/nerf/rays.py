@@ -468,3 +468,24 @@ def calc_ray_t_vals(points_3d: Tensor) -> Tensor:
     """
     t_vals = torch.linalg.norm(points_3d - points_3d[..., 0, :].unsqueeze(-2), dim=-1)
     return t_vals
+
+
+def analyze_points_3d(points_3d: Tensor, cameras: PinholeCamera, q: float = 0.05) -> Tuple[List[float], List[float]]:
+    r"""Analyzes 3d point cloud with recpect to given set of cameras. The goal is to calculate for each camera the
+    closest and farthest points, which can be used to set the NeRF arguments for minimal and maximal depths for ray
+    marching.
+
+    Args:
+        points_3d: Point cloud
+        cameras: scene cameras: PinholeCamera
+        q: qunatile value to ignore the "small" percentage of outliers that are either too near or far from the
+        cameras: float [0, 1]
+
+    Returns:
+        A tuple of lists for min and max depth of points from each scene camera
+    """
+    points_3d_cam = cameras.transform_to_camera_view(points_3d)
+    depths = points_3d_cam[..., 2]
+    min_depth = torch.quantile(depths, q, dim=1)
+    max_depth = torch.quantile(depths, 1.0 - q, dim=1)
+    return min_depth, max_depth

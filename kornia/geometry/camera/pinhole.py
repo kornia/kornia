@@ -364,12 +364,14 @@ class PinholeCamera:
         r"""Transform between world and camera 3D coordinate systems.
 
         Args:
-            point3d: world coordinates. The shape of the tensor can be :math:`(*, 3)`.
+            point3d: world coordinates. Can be either one point cloud that will be transformed to all cameras; or
+            set of point clouds to be transformed separately to each camera coordinates.
+            The shape of the tensor can be :math:`(N, 3)` or `(B, N, 3)`.
 
         Returns:
-            tensor of (x, y, z) camera coordinates with shape :math:`(*, 3)`.
+            tensor of (x, y, z) camera coordinates with shape :math:`(B, N, 3)`.
         """
-        return transform_points(self.extrinsics, points_3d)
+        return transform_points(self.extrinsics, points_3d.expand(self.batch_size, -1, -1))
 
     def transform_to_world(self, points_3d: torch.Tensor) -> torch.Tensor:
         r"""Transform between camera and world 3D coordinate systems.
