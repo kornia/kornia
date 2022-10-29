@@ -1,6 +1,3 @@
-default_language_version:
-  python: python3.8
-
 ci:
   autofix_prs: true
   autoupdate_commit_msg: '[pre-commit.ci] pre-commit suggestions'
@@ -51,7 +48,7 @@ repos:
     rev: v3.1.0
     hooks:
       - id: pyupgrade
-        args: [--py36-plus]
+        args: [--py37-plus]
 
   - repo: https://github.com/PyCQA/bandit
     rev: 1.7.4
