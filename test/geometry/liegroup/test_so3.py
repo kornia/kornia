@@ -79,7 +79,7 @@ class TestSo3(BaseTester):
         s6 = s3.inverse()
         for i in range(batch_size):
             self.assert_close(s1[i].q.norm(), torch.Tensor([[1.0]]))
-            self.assert_close(s2[i].q.norm(), torch.Tensor([[1.0]]))
+            self.assert_close(s2[i].q.norm(), torch.tensor([[1.0]], device=device, dtype=dtype))
             self.assert_close(s3[i].q.norm(), torch.Tensor([[1.0]]))
             self.assert_close(s4[i].q.norm(), torch.Tensor([[1.0]]))
             self.assert_close(s5[i].q.norm(), torch.Tensor([[1.0]]))
@@ -154,7 +154,7 @@ class TestSo3(BaseTester):
         a_R_b = So3(q).inverse().matrix()
         a_R_a = (So3(q) * So3(q).inverse()).matrix()
 
-        self.assert_close(a_R_a, torch.eye(3).repeat(batch_size, 1, 1))
+        self.assert_close(a_R_a, torch.eye(3, device=device, dtype=dtype).repeat(batch_size, 1, 1))
 
         for i in range(batch_size):
             self.assert_close(a_R_a[i, :, :], torch.eye(3))
