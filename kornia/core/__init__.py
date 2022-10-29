@@ -13,6 +13,7 @@ from ._backend import (
     tensor,
     where,
     zeros,
+    complex_
 )
 
 __all__ = [
@@ -30,4 +31,5 @@ __all__ = [
     "where",
     "eye",
     "zeros",
+    "complex_"
 ]

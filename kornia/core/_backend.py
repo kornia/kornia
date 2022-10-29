@@ -18,6 +18,7 @@ pad = F.pad
 eye = torch.eye
 zeros = torch.zeros
 where = torch.where
+complex_ = torch.complex
 
 # constructors
 as_tensor = torch.as_tensor
