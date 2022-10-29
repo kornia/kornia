@@ -134,11 +134,11 @@ class TestSo3(BaseTester):
         a_R_a = (So3(q) * So3(q).inverse()).matrix()
 
         for i in range(batch_size):
-            self.assert_close(a_R_a[i,:,:], torch.eye(3))
-            self.assert_close(b_R_a[i,:,:].inverse() * b_R_a[i,:,:], torch.eye(3))
-            self.assert_close(a_R_b[i,:,:].inverse() * a_R_b[i,:,:], torch.eye(3))
-            self.assert_close(a_R_b[i,:,:] * b_R_a[i,:,:], torch.eye(3))
-            self.assert_close(b_R_a[i,:,:] * a_R_b[i,:,:], torch.eye(3))
+            self.assert_close(a_R_a[i, :, :], torch.eye(3))
+            self.assert_close(b_R_a[i, :, :].inverse() * b_R_a[i, :, :], torch.eye(3))
+            self.assert_close(a_R_b[i, :, :].inverse() * a_R_b[i, :, :], torch.eye(3))
+            self.assert_close(a_R_b[i, :, :] * b_R_a[i, :, :], torch.eye(3))
+            self.assert_close(b_R_a[i, :, :] * a_R_b[i, :, :], torch.eye(3))
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_inverse(self, device, dtype, batch_size):
