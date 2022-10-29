@@ -1,6 +1,6 @@
 # kornia.geometry.so2 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so2.py
-from kornia.core import Tensor, concatenate, stack, tensor, complex_
+from kornia.core import Parameter, Tensor, concatenate, stack, tensor, complex_
 from kornia.geometry.liegroup._utils import squared_norm
 from kornia.testing import KORNIA_CHECK_SHAPE
 
@@ -17,7 +17,7 @@ class So2:
         >>> real = torch.tensor([1, 2], dtype=torch.float32)
         >>> imag = torch.tensor([3, 4], dtype=torch.float32)
         >>> So2(torch.complex(real, imag))
-        tensor([1.+3.j, 2.+4.j])
+        tensor([1.+3.j, 2.+4.j], requires_grad=True)
     """
 
     def __init__(self, z: Tensor) -> None:
@@ -32,10 +32,10 @@ class So2:
             >>> real = torch.tensor([1, 2], dtype=torch.float32)
             >>> imag = torch.tensor([3, 4], dtype=torch.float32)
             >>> So2(torch.complex(real, imag))
-            tensor([1.+3.j, 2.+4.j])
+            tensor([1.+3.j, 2.+4.j], requires_grad=True)
         """
         KORNIA_CHECK_SHAPE(z, ["B", "1"])
-        self._z = z
+        self._z = Parameter(z)
 
     def __repr__(self) -> str:
         return f"{self.z}"
@@ -76,7 +76,7 @@ class So2:
             >>> v = torch.tensor([3.1415/2])[..., None]
             >>> s = So2.exp(v)
             >>> s
-            tensor([[4.6329e-05+1.j]])
+            tensor([[4.6329e-05+1.j]], requires_grad=True)
         """
         KORNIA_CHECK_SHAPE(theta, ["B", "1"])
         return So2(complex_(theta.cos(), theta.sin()))
@@ -88,67 +88,66 @@ class So2:
             >>> real = torch.tensor([1, 2], dtype=torch.float32)
             >>> imag = torch.tensor([3, 4], dtype=torch.float32)
             >>> So2(torch.complex(real, imag)).log()
-            Tensorsor([1.2490, 1.1071])
+            tensor([1.2490, 1.1071], grad_fn=<Atan2Backward0>)
         """
         return self.z.imag.atan2(self.z.real)
 
     @staticmethod
     def hat(theta) -> Tensor:
-        """Converts elements from vector space to lie algebra. Returns matrix of shape :math:`(B,3,3)`.
+        """Converts elements from vector space to lie algebra. Returns matrix of shape :math:`(B, 2, 2)`.
 
         Args:
-            v: vector of shape :math:`(B,3)`.
+            theta: angle in radians of shape :math:`(B, 1)`.
 
         Example:
-            >>> v = torch.ones((1,3))
-            >>> m = So2.hat(v)
-            >>> m
-            tensor([[[ 0., -1.,  1.],
-                     [ 1.,  0., -1.],
-                     [-1.,  1.,  0.]]])
+            >>> pi = 3.1415
+            >>> theta = torch.tensor([pi/2, pi])
+            >>> So2.hat(theta[..., None])
+            tensor([[[0.0000, 1.5707],
+                     [1.5707, 0.0000]],
+
+                    [[0.0000, 3.1415],
+                     [3.1415, 0.0000]]])
         """
         KORNIA_CHECK_SHAPE(theta, ["B", "1"])
         batch_size = theta.shape[0]
         z = tensor([0.0] * batch_size, device=theta.device, dtype=theta.dtype)[..., None]
-        row0 = concatenate((z, theta), -1)
-        row1 = concatenate((theta, z), -1)
-        return stack((row0, row1), -1)
+        row0 = stack((z, theta), -1)
+        row1 = stack((theta, z), -1)
+        return concatenate((row0, row1), 1)
 
     def matrix(self) -> Tensor:
-        #TODO
-        """Convert the quaternion to a rotation matrix of shape :math:`(B,3,3)`.
+        """Convert the complex number to a rotation matrix of shape :math:`(B, 2, 2)`.
 
         Example:
             >>> s = So2.identity(batch_size=1)
             >>> m = s.matrix()
             >>> m
-            tensor([[[1., 0., 0.],
-                     [0., 1., 0.],
-                     [0., 0., 1.]]], grad_fn=<CatBackward0>)
+            tensor([[[1., 0.],
+                     [0., 1.]]], grad_fn=<CatBackward0>)
         """
-        row0 = concatenate((self.z.real, -self.z.imag), -1)
-        row1 = concatenate((self.z.imag, self.z.real), -1)
-        return stack((row0, row1), -1)
+        row0 = stack((self.z.real, -self.z.imag), -1)
+        row1 = stack((self.z.imag, self.z.real), -1)
+        return concatenate((row0, row1), 1)
 
     @classmethod
-    def from_matrix(cls, matrix: Tensor) -> 'So3':
+    def from_matrix(cls, matrix: Tensor) -> 'So2':
         """Create So2 from a rotation matrix.
 
         Args:
-            matrix: the rotation matrix to convert of shape :math:`(B,3,3)`.
+            matrix: the rotation matrix to convert of shape :math:`(B, 2, 2)`.
 
         Example:
             >>> m = torch.eye(3)[None]
-            >>> s = So3.from_matrix(m)
+            >>> s = So2.from_matrix(m)
             >>> s
-            real: tensor([[1.]], grad_fn=<SliceBackward0>)
-            vec: tensor([[0., 0., 0.]], grad_fn=<SliceBackward0>)
+            Parameter containing:
+            tensor([1.+0.j], requires_grad=True)
         """
         return cls(complex_(matrix[..., 0, 0], matrix[..., 1, 0]))
 
     @classmethod
     def identity(cls, batch_size: int, device=None, dtype=None) -> 'So2':
-        #TODO
         """Create a So2 group representing an identity rotation.
 
         Args:
@@ -157,23 +156,19 @@ class So2:
         Example:
             >>> s = So2.identity(batch_size=2)
             >>> s
-            real: tensor([[1.],
-                    [1.]], grad_fn=<SliceBackward0>)
-            vec: tensor([[0., 0., 0.],
-                    [0., 0., 0.]], grad_fn=<SliceBackward0>)
+            tensor([[1.+0.j],
+                    [1.+0.j]], requires_grad=True)
         """
         z = complex_(tensor([[1.0]] * batch_size, device=device, dtype=dtype), tensor([[0.0]] * batch_size, device=device, dtype=dtype))
         return cls(z)
 
     def inverse(self) -> 'So2':
-        #TODO
         """Returns the inverse transformation.
 
         Example:
             >>> s = So2.identity(batch_size=1)
             >>> s.inverse()
-            real: tensor([[1.]], grad_fn=<SliceBackward0>)
-            vec: tensor([[-0., -0., -0.]], grad_fn=<SliceBackward0>)
+            Parameter containing:
+            tensor([[1.+0.j]], requires_grad=True)
         """
-        # complex_(self.z.real, -self.z.imag)
         return So2(1 / self.z)

@@ -31,7 +31,7 @@ class TestSo2(BaseTester):
     # TODO: implement me
     def test_module(self, device, dtype):
         pass
-    #todo remove dtype
+
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_init(self, device, dtype, batch_size):
         z = torch.randn(batch_size, 1, dtype=torch.cfloat, device=device)
@@ -85,15 +85,26 @@ class TestSo2(BaseTester):
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_hat(self, device, dtype, batch_size):
-        pass
+        pi = 3.1415
+        theta = torch.tensor([0, pi / 4, pi / 2, 3 * pi / 2, pi] * batch_size, device=device, dtype=dtype)
+        m = So2.hat(theta[..., None])
+        o = torch.ones((1, 2, 1), device=device, dtype=dtype)
+        self.assert_close(m @ o, torch.cat((theta[..., None, None], theta[..., None, None]), 1))
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_matrix(self, device, dtype, batch_size):
         data = torch.rand(batch_size, 2, device=device, dtype=dtype)
         z = torch.complex(data[..., 0, None], data[..., 1, None])
         m = So2(z).matrix()
-        self.assert_close(m)
+        self.assert_close(m[..., 0, 0], z.real[..., 0])
+        self.assert_close(m[..., 0, 1], -z.imag[..., 0])
+        self.assert_close(m[..., 1, 0], z.imag[..., 0])
+        self.assert_close(m[..., 1, 1], z.real[..., 0])
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_inverse(self, device, dtype, batch_size):
-        pass
+        data = torch.rand(batch_size, 2, device=device, dtype=dtype)
+        z = torch.complex(data[..., 0, None], data[..., 1, None])
+        s = So2(z)
+        self.assert_close(s.inverse().inverse().z.real, z.real)
+        self.assert_close(s.inverse().inverse().z.imag, z.imag)
