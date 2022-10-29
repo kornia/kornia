@@ -154,6 +154,8 @@ class TestSo3(BaseTester):
         a_R_b = So3(q).inverse().matrix()
         a_R_a = (So3(q) * So3(q).inverse()).matrix()
 
+        self.assert_close(a_R_a, torch.eye(3).repeat(batch_size, 1, 1))
+
         for i in range(batch_size):
             self.assert_close(a_R_a[i, :, :], torch.eye(3))
             self.assert_close(a_R_b[i, :, :] @ b_R_a[i, :, :], torch.eye(3))
