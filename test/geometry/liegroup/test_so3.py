@@ -66,6 +66,26 @@ class TestSo3(BaseTester):
         self.assert_close((s1 * t), t)
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    def test_unit_norm(self, device, dtype, batch_size):
+        q1 = Quaternion.random(batch_size)
+        q1 = q1.to(device, dtype)
+        q2 = Quaternion.random(batch_size)
+        q2 = q2.to(device, dtype)
+        s1 = So3(q1)
+        s2 = So3(q2)
+        s3 = s1 * s2
+        s4 = s1.inverse()
+        s5 = s2.inverse()
+        s6 = s3.inverse()
+        for i in range(batch_size):
+            self.assert_close(s1[i].q.norm(), torch.Tensor([[1.0]]))
+            self.assert_close(s2[i].q.norm(), torch.Tensor([[1.0]]))
+            self.assert_close(s3[i].q.norm(), torch.Tensor([[1.0]]))
+            self.assert_close(s4[i].q.norm(), torch.Tensor([[1.0]]))
+            self.assert_close(s5[i].q.norm(), torch.Tensor([[1.0]]))
+            self.assert_close(s6[i].q.norm(), torch.Tensor([[1.0]]))
+
+    @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_exp(self, device, dtype, batch_size):
         q = Quaternion.identity(batch_size)
         q = q.to(device, dtype)
@@ -124,6 +144,7 @@ class TestSo3(BaseTester):
             qp_ = q1 * pquat * q1.inv()
             rp_ = torch.matmul(r1, pvec)[None, :]
             self.assert_close(rp_, qp_.vec)  # p_ = R*p = q*p*q_inv
+            self.assert_close(rp_.norm(), pvec.norm())
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_ortho(self, device, dtype, batch_size):
@@ -135,8 +156,6 @@ class TestSo3(BaseTester):
 
         for i in range(batch_size):
             self.assert_close(a_R_a[i, :, :], torch.eye(3))
-            self.assert_close(b_R_a[i, :, :].inverse() * b_R_a[i, :, :], torch.eye(3))
-            self.assert_close(a_R_b[i, :, :].inverse() * a_R_b[i, :, :], torch.eye(3))
             self.assert_close(a_R_b[i, :, :] * b_R_a[i, :, :], torch.eye(3))
             self.assert_close(b_R_a[i, :, :] * a_R_b[i, :, :], torch.eye(3))
 
@@ -145,3 +164,4 @@ class TestSo3(BaseTester):
         q = Quaternion.random(batch_size)
         q = q.to(device, dtype)
         self.assert_close(So3(q).inverse().inverse().q.data, q.data)
+        self.assert_close(So3(q).inverse().inverse().matrix(), So3(q).matrix())
