@@ -41,7 +41,7 @@ class So2(Module):
     def __repr__(self) -> str:
         return f"{self.z}"
 
-    def __getitem__(self, idx) -> 'So2':
+    def __getitem__(self, idx: int) -> 'So2':
         return So2(self._z[idx][..., None])
 
     def __mul__(self, right):
