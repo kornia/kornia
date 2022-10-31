@@ -94,7 +94,7 @@ class So2(Module):
         return self.z.imag.atan2(self.z.real)
 
     @staticmethod
-    def hat(theta) -> Tensor:
+    def hat(theta: Tensor) -> Tensor:
         """Converts elements from vector space to lie algebra. Returns matrix of shape :math:`(B, 2, 2)`.
 
         Args:
