@@ -77,13 +77,15 @@ class TestSo3(BaseTester):
         s4 = s1.inverse()
         s5 = s2.inverse()
         s6 = s3.inverse()
+
+        ones_vec = torch.tensor([[1.0]], device=device, dtype=dtype)
         for i in range(batch_size):
-            self.assert_close(s1[i].q.norm(), torch.Tensor([[1.0]]))
-            self.assert_close(s2[i].q.norm(), torch.tensor([[1.0]], device=device, dtype=dtype))
-            self.assert_close(s3[i].q.norm(), torch.Tensor([[1.0]]))
-            self.assert_close(s4[i].q.norm(), torch.Tensor([[1.0]]))
-            self.assert_close(s5[i].q.norm(), torch.Tensor([[1.0]]))
-            self.assert_close(s6[i].q.norm(), torch.Tensor([[1.0]]))
+            self.assert_close(s1[i].q.norm(), ones_vec)
+            self.assert_close(s2[i].q.norm(), ones_vec)
+            self.assert_close(s3[i].q.norm(), ones_vec)
+            self.assert_close(s4[i].q.norm(), ones_vec)
+            self.assert_close(s5[i].q.norm(), ones_vec)
+            self.assert_close(s6[i].q.norm(), ones_vec)
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_exp(self, device, dtype, batch_size):
@@ -154,12 +156,14 @@ class TestSo3(BaseTester):
         a_R_b = So3(q).inverse().matrix()
         a_R_a = (So3(q) * So3(q).inverse()).matrix()
 
-        self.assert_close(a_R_a, torch.eye(3, device=device, dtype=dtype).repeat(batch_size, 1, 1))
+        eye_mat = torch.eye(3, device=device, dtype=dtype)
+
+        self.assert_close(a_R_a, eye_mat[None].repeat(batch_size, 1, 1))
 
         for i in range(batch_size):
-            self.assert_close(a_R_a[i, :, :], torch.eye(3))
-            self.assert_close(a_R_b[i, :, :] @ b_R_a[i, :, :], torch.eye(3))
-            self.assert_close(b_R_a[i, :, :] @ a_R_b[i, :, :], torch.eye(3))
+            self.assert_close(a_R_a[i, :, :], eye_mat)
+            self.assert_close(a_R_b[i, :, :] @ b_R_a[i, :, :], eye_mat)
+            self.assert_close(b_R_a[i, :, :] @ a_R_b[i, :, :], eye_mat)
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_inverse(self, device, dtype, batch_size):
