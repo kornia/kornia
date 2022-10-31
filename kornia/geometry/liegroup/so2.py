@@ -1,11 +1,10 @@
 # kornia.geometry.so2 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so2.py
-from kornia.core import Parameter, Tensor, concatenate, stack, tensor, complex_
-from kornia.geometry.liegroup._utils import squared_norm
+from kornia.core import Module, Parameter, Tensor, _complex, concatenate, stack, tensor
 from kornia.testing import KORNIA_CHECK_SHAPE
 
 
-class So2:
+class So2(Module):
     r"""Base class to represent the So2 group.
 
     The SO(2) is the group of all rotations about the origin of two-dimensional Euclidean space
@@ -13,11 +12,12 @@ class So2:
     See more: https://en.wikipedia.org/wiki/Orthogonal_group#Special_orthogonal_group
 
     We internally represent the rotation by a complex number.
+
     Example:
-        >>> real = torch.tensor([1, 2], dtype=torch.float32)
-        >>> imag = torch.tensor([3, 4], dtype=torch.float32)
+        >>> real = torch.tensor([[1.0]])
+        >>> imag = torch.tensor([[2.0]])
         >>> So2(torch.complex(real, imag))
-        tensor([1.+3.j, 2.+4.j], requires_grad=True)
+        tensor([1.+2.j], requires_grad=True)
     """
 
     def __init__(self, z: Tensor) -> None:
@@ -29,11 +29,12 @@ class So2:
             z: Complex number with the shape of :math:`(B, 1)`.
 
         Example:
-            >>> real = torch.tensor([1, 2], dtype=torch.float32)
-            >>> imag = torch.tensor([3, 4], dtype=torch.float32)
+            >>> real = torch.tensor([[1.0]])
+            >>> imag = torch.tensor([[2.0]])
             >>> So2(torch.complex(real, imag))
-            tensor([1.+3.j, 2.+4.j], requires_grad=True)
+            tensor([1.+2.j], requires_grad=True)
         """
+        super().__init__()
         KORNIA_CHECK_SHAPE(z, ["B", "1"])
         self._z = Parameter(z)
 
@@ -56,7 +57,7 @@ class So2:
             return So2(self.z * right.z)
         elif isinstance(right, Tensor):
             KORNIA_CHECK_SHAPE(right, ["B", "2", "1"])
-            return (self.matrix() @ right)
+            return self.matrix() @ right
         else:
             raise TypeError(f"Not So2 or Tensor type. Got: {type(right)}")
 
@@ -70,25 +71,25 @@ class So2:
         """Converts elements of lie algebra to elements of lie group.
 
         Args:
-            theta: angle in radians  of shape :math:`(B, 1)`.
+            theta: angle in radians of shape :math:`(B, 1)`.
 
         Example:
-            >>> v = torch.tensor([3.1415/2])[..., None]
+            >>> v = torch.tensor([[3.1415/2]])
             >>> s = So2.exp(v)
             >>> s
             tensor([[4.6329e-05+1.j]], requires_grad=True)
         """
         KORNIA_CHECK_SHAPE(theta, ["B", "1"])
-        return So2(complex_(theta.cos(), theta.sin()))
+        return So2(_complex(theta.cos(), theta.sin()))
 
     def log(self) -> Tensor:
-        """Converts elements of lie group  to elements of lie algebra.
-        
+        """Converts elements of lie group to elements of lie algebra.
+
         Example:
-            >>> real = torch.tensor([1, 2], dtype=torch.float32)
-            >>> imag = torch.tensor([3, 4], dtype=torch.float32)
+            >>> real = torch.tensor([[1.0]])
+            >>> imag = torch.tensor([[3.0]])
             >>> So2(torch.complex(real, imag)).log()
-            tensor([1.2490, 1.1071], grad_fn=<Atan2Backward0>)
+            tensor([1.2490], grad_fn=<Atan2Backward0>)
         """
         return self.z.imag.atan2(self.z.real)
 
@@ -100,14 +101,10 @@ class So2:
             theta: angle in radians of shape :math:`(B, 1)`.
 
         Example:
-            >>> pi = 3.1415
-            >>> theta = torch.tensor([pi/2, pi])
-            >>> So2.hat(theta[..., None])
+            >>> theta = torch.tensor([[3.1415/2]])
+            >>> So2.hat(theta)
             tensor([[[0.0000, 1.5707],
-                     [1.5707, 0.0000]],
-
-                    [[0.0000, 3.1415],
-                     [3.1415, 0.0000]]])
+                     [1.5707, 0.0000]]])
         """
         KORNIA_CHECK_SHAPE(theta, ["B", "1"])
         batch_size = theta.shape[0]
@@ -138,13 +135,14 @@ class So2:
             matrix: the rotation matrix to convert of shape :math:`(B, 2, 2)`.
 
         Example:
-            >>> m = torch.eye(3)[None]
+            >>> m = torch.eye(2)[None]
             >>> s = So2.from_matrix(m)
             >>> s
             Parameter containing:
             tensor([1.+0.j], requires_grad=True)
         """
-        return cls(complex_(matrix[..., 0, 0], matrix[..., 1, 0]))
+        KORNIA_CHECK_SHAPE(matrix, ["B", "2", "2"])
+        return cls(_complex(matrix[..., 0, 0], matrix[..., 1, 0]))
 
     @classmethod
     def identity(cls, batch_size: int, device=None, dtype=None) -> 'So2':
@@ -159,7 +157,10 @@ class So2:
             tensor([[1.+0.j],
                     [1.+0.j]], requires_grad=True)
         """
-        z = complex_(tensor([[1.0]] * batch_size, device=device, dtype=dtype), tensor([[0.0]] * batch_size, device=device, dtype=dtype))
+        z = _complex(
+            tensor([[1.0]] * batch_size, device=device, dtype=dtype),
+            tensor([[0.0]] * batch_size, device=device, dtype=dtype),
+        )
         return cls(z)
 
     def inverse(self) -> 'So2':
