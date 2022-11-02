@@ -33,12 +33,9 @@ def torch_version_ge(major: int, minor: int, patch: int) -> bool:
 
 
 if version.parse(torch_version()) > version.parse("1.7.1"):
-    # TODO: remove the type: ignore once Python 3.6 is deprecated.
-    # It turns out that Pytorch has no attribute `torch.linalg` for
-    # Python 3.6 / PyTorch 1.7.0, 1.7.1
-    from torch.linalg import qr as linalg_qr  # type: ignore
+    from torch.linalg import qr as linalg_qr
 else:
-    from torch import qr as linalg_qr  # type: ignore # noqa: F401
+    from torch import qr as linalg_qr  # noqa: F401
 
 
 if torch_version_ge(1, 10, 0):
