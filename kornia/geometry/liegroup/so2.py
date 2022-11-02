@@ -1,9 +1,10 @@
 # kornia.geometry.so2 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so2.py
-from typing import Union, Optional
+from typing import Optional, Union
 
-from kornia.core import Module, Parameter, Tensor, complex, concatenate, stack, pad, tensor
-from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK
+from kornia.core import Module, Parameter, Tensor, complex, concatenate, pad, stack, tensor
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+
 
 class So2(Module):
     r"""Base class to represent the So2 group.
@@ -46,7 +47,7 @@ class So2(Module):
         return So2(self._z[idx][..., None])
 
     def __mul__(self, right: Union['So2', Tensor]) -> Union['So2', Tensor]:
-        """Performs a left-multiplication either rotation concatenation or point-transform
+        """Performs a left-multiplication either rotation concatenation or point-transform.
 
         Args:
             right: the other So2 transformation.
