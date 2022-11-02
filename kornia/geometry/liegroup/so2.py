@@ -1,8 +1,9 @@
 # kornia.geometry.so2 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so2.py
-from kornia.core import Module, Parameter, Tensor, _complex, concatenate, stack, tensor
-from kornia.testing import KORNIA_CHECK_SHAPE
+from typing import Union, Optional
 
+from kornia.core import Module, Parameter, Tensor, complex, concatenate, stack, pad, tensor
+from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK
 
 class So2(Module):
     r"""Base class to represent the So2 group.
@@ -44,8 +45,8 @@ class So2(Module):
     def __getitem__(self, idx: int) -> 'So2':
         return So2(self._z[idx][..., None])
 
-    def __mul__(self, right):
-        """Compose two So2 transformations.
+    def __mul__(self, right: Union['So2', Tensor]) -> Union['So2', Tensor]:
+        """Performs a left-multiplication either rotation concatenation or point-transform
 
         Args:
             right: the other So2 transformation.
@@ -53,13 +54,15 @@ class So2(Module):
         Return:
             The resulting So2 transformation.
         """
+        out: Union['So2', Tensor]
         if isinstance(right, So2):
-            return So2(self.z * right.z)
+            out = So2(self.z * right.z)
         elif isinstance(right, Tensor):
             KORNIA_CHECK_SHAPE(right, ["B", "2", "1"])
-            return self.matrix() @ right
+            out = self.matrix() @ right
         else:
             raise TypeError(f"Not So2 or Tensor type. Got: {type(right)}")
+        return out
 
     @property
     def z(self) -> Tensor:
@@ -67,7 +70,7 @@ class So2(Module):
         return self._z
 
     @staticmethod
-    def exp(theta) -> 'So2':
+    def exp(theta: Tensor):
         """Converts elements of lie algebra to elements of lie group.
 
         Args:
@@ -80,7 +83,7 @@ class So2(Module):
             tensor([[4.6329e-05+1.j]], requires_grad=True)
         """
         KORNIA_CHECK_SHAPE(theta, ["B", "1"])
-        return So2(_complex(theta.cos(), theta.sin()))
+        return So2(complex(theta.cos(), theta.sin()))
 
     def log(self) -> Tensor:
         """Converts elements of lie group to elements of lie algebra.
@@ -107,11 +110,9 @@ class So2(Module):
                      [1.5707, 0.0000]]])
         """
         KORNIA_CHECK_SHAPE(theta, ["B", "1"])
-        batch_size = theta.shape[0]
-        z = tensor([0.0] * batch_size, device=theta.device, dtype=theta.dtype)[..., None]
-        row0 = stack((z, theta), -1)
-        row1 = stack((theta, z), -1)
-        return concatenate((row0, row1), 1)
+        row0 = pad(theta, (1, 0))
+        row1 = pad(theta, (0, 1))
+        return stack((row0, row1), -1)
 
     def matrix(self) -> Tensor:
         """Convert the complex number to a rotation matrix of shape :math:`(B, 2, 2)`.
@@ -142,10 +143,10 @@ class So2(Module):
             tensor([1.+0.j], requires_grad=True)
         """
         KORNIA_CHECK_SHAPE(matrix, ["B", "2", "2"])
-        return cls(_complex(matrix[..., 0, 0], matrix[..., 1, 0]))
+        return cls(complex(matrix[..., 0, 0], matrix[..., 1, 0]))
 
     @classmethod
-    def identity(cls, batch_size: int, device=None, dtype=None) -> 'So2':
+    def identity(cls, batch_size: Optional[int] = None, device=None, dtype=None) -> 'So2':
         """Create a So2 group representing an identity rotation.
 
         Args:
@@ -157,11 +158,13 @@ class So2(Module):
             tensor([[1.+0.j],
                     [1.+0.j]], requires_grad=True)
         """
-        z = _complex(
-            tensor([[1.0]] * batch_size, device=device, dtype=dtype),
-            tensor([[0.0]] * batch_size, device=device, dtype=dtype),
-        )
-        return cls(z)
+        real_data = tensor([1.0], device=device, dtype=dtype)
+        imag_data = tensor([0.0], device=device, dtype=dtype)
+        if batch_size is not None:
+            KORNIA_CHECK(batch_size >= 1, msg="batch_size must be positive")
+            real_data = real_data[None].repeat(batch_size, 1)
+            imag_data = imag_data[None].repeat(batch_size, 1)
+        return cls(complex(real_data, imag_data))
 
     def inverse(self) -> 'So2':
         """Returns the inverse transformation.

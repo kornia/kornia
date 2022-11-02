@@ -57,11 +57,11 @@ class TestSo2(BaseTester):
         s2 = So2(torch.complex(z[..., 0, None], z[..., 1, None]))
         t = torch.rand((batch_size, 2, 1), device=device, dtype=dtype)
         s1_pose_s2 = s1 * s2
-        s2_pose_s2 = s2 * s2.inverse()
-        self.assert_close(s1s2.z.real, s2.z.real)
-        self.assert_close(s1s2.z.imag, s2.z.imag)
-        self.assert_close(s2s2_inv.z.real, s1.z.real)
-        self.assert_close(s2s2_inv.z.imag, s1.z.imag)
+        s2_pose_s2 = s2 * s2.inverse() #TODO naming correct?
+        self.assert_close(s1_pose_s2.z.real, s2.z.real)
+        self.assert_close(s1_pose_s2.z.imag, s2.z.imag)
+        self.assert_close(s2_pose_s2.z.real, s1.z.real)
+        self.assert_close(s2_pose_s2.z.imag, s1.z.imag)
         self.assert_close((s1 * t), t)
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))

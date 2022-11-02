@@ -3,7 +3,7 @@ from ._backend import (
     Module,
     Parameter,
     Tensor,
-    _complex,
+    complex,
     as_tensor,
     concatenate,
     eye,
@@ -31,5 +31,5 @@ __all__ = [
     "where",
     "eye",
     "zeros",
-    "_complex",
+    "complex",
 ]
