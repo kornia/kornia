@@ -1,5 +1,5 @@
 import warnings
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
@@ -108,7 +108,7 @@ class RandomCutMix(MixAugmentationBase):
                 "The height and width arguments will be removed finally.",
                 category=DeprecationWarning,
             )
-        self._param_generator = cast(rg.CutmixGenerator, rg.CutmixGenerator(cut_size, beta, num_mix, p=p))
+        self._param_generator: rg.CutmixGenerator = rg.CutmixGenerator(cut_size, beta, num_mix, p=p)
         warnings.warn("`RandomCutMix` is deprecated. Please use `RandomCutMixV2` instead.")
 
     def apply_transform(  # type: ignore
@@ -209,7 +209,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         data_keys: List[Union[str, int, DataKey]] = [DataKey.INPUT],
     ) -> None:
         super().__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim, data_keys=data_keys)
-        self._param_generator = cast(rg.CutmixGenerator, rg.CutmixGenerator(cut_size, beta, num_mix, p=p))
+        self._param_generator: rg.CutmixGenerator = rg.CutmixGenerator(cut_size, beta, num_mix, p=p)
 
     def apply_transform_class(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         height, width = params["image_shape"]

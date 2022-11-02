@@ -1,9 +1,9 @@
 import math
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 import torch
 
-from kornia.core import Device, Tensor
+from kornia.core import Device, Tensor, tensor
 from kornia.geometry.camera import PinholeCamera
 from kornia.nerf.camera_utils import cameras_for_ids
 from kornia.utils._compat import torch_meshgrid
@@ -19,12 +19,12 @@ class RaySampler:
         ndc: convert ray parameters to normalized device coordinates: bool
         device: device for ray tensors: Union[str, torch.device]
     """
-    _origins: Optional[Tensor] = None  # Ray origins in world coordinates (*, 3)
-    _directions: Optional[Tensor] = None  # Ray directions in world coordinates (*, 3)
-    _directions_cam: Optional[Tensor] = None  # Ray directions in camera coordinates (*, 3)
-    _origins_cam: Optional[Tensor] = None  # Ray origins in camera coordinates (*, 3)
-    _camera_ids: Optional[Tensor] = None  # Ray camera ID
-    _points_2d: Optional[Tensor] = None  # Ray intersection with image plane in camera coordinates
+    _origins: Tensor  # Ray origins in world coordinates (*, 3)
+    _directions: Tensor  # Ray directions in world coordinates (*, 3)
+    _directions_cam: Tensor  # Ray directions in camera coordinates (*, 3)
+    _origins_cam: Tensor  # Ray origins in camera coordinates (*, 3)
+    _camera_ids: Tensor  # Ray camera ID
+    _points_2d: Tensor  # Ray intersection with image plane in camera coordinates
 
     def __init__(self, min_depth: float, max_depth: float, ndc: bool, device: Device, dtype: torch.dtype) -> None:
         self._min_depth = min_depth
@@ -125,7 +125,7 @@ class RaySampler:
             directions_cam.append(self._calc_ray_directions_cam(cams, obj._points_2d))
             origins_cam.append(directions_cam[-1] * self._min_depth)
             camera_ids.append(
-                torch.tensor(obj.camera_ids).repeat(num_points_per_cam_group, 1).permute(1, 0).reshape(1, -1).squeeze(0)
+                tensor(obj.camera_ids).repeat(num_points_per_cam_group, 1).permute(1, 0).reshape(1, -1).squeeze(0)
             )
             points_2d.append(obj._points_2d.reshape(-1, 2).int())
         self._origins = torch.cat(origins)
@@ -199,11 +199,7 @@ class RaySampler:
 
     @staticmethod
     def _add_points2d_as_flat_tensors_to_num_ray_dict(
-        n: int,
-        x: torch.tensor,
-        y: torch.tensor,
-        camera_id: int,
-        points2d_as_flat_tensors: Dict[int, Points2D_FlatTensors],
+        n: int, x: Tensor, y: Tensor, camera_id: int, points2d_as_flat_tensors: Dict[int, Points2D_FlatTensors]
     ) -> None:
         r"""Adds x/y pixel coordinates for all rays casted by a scene camera to dictionary of pixel coordinates
         grouped by total number of rays."""

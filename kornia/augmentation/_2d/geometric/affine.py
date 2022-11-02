@@ -1,11 +1,11 @@
 from typing import Any, Dict, Optional, Tuple, Union, cast
 
 import torch
-from torch import Tensor
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample, SamplePadding
+from kornia.core import Tensor
 from kornia.geometry.conversions import deg2rad
 from kornia.geometry.transform import get_affine_matrix2d, warp_affine
 
@@ -91,7 +91,7 @@ class RandomAffine(GeometricAugmentationBase2D):
         return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator = cast(rg.AffineGenerator, rg.AffineGenerator(degrees, translate, scale, shear))
+        self._param_generator: rg.AffineGenerator = rg.AffineGenerator(degrees, translate, scale, shear)
         self.flags = dict(
             resample=Resample.get(resample), padding_mode=SamplePadding.get(padding_mode), align_corners=align_corners
         )
