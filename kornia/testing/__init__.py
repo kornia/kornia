@@ -292,7 +292,7 @@ try:
 
 except ImportError:
     # TODO: remove this branch if kornia relies on torch>=1.9
-    from torch.testing import assert_allclose as assert_close
+    from torch.testing import assert_allclose as assert_close  # type: ignore
 
 
 # Logger api
