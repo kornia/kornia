@@ -15,7 +15,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        python-version: [3.8]
+        python-version: [3.7]
     steps:
     - uses: actions/checkout@v2
     - name: Setup conda dependencies
