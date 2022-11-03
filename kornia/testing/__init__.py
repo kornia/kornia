@@ -246,10 +246,22 @@ def _get_precision_by_name(
     return tol_val_default
 
 
+# {dtype: (rtol, atol)}
+_DTYPE_PRECISIONS = {
+    torch.float16: (1e-3, 1e-3),
+    torch.float32: (1e-4, 1e-5),
+    torch.float64: (1e-5, 1e-8),
+}
+
+
+def _default_tolerances(*tensors: torch.Tensor) -> Tuple[float, float]:
+    rtols, atols = zip(*[_DTYPE_PRECISIONS.get(tensor.dtype, (0.0, 0.0)) for tensor in tensors])
+    return max(rtols), max(atols)
+
+
 try:
     # torch.testing.assert_close is only available for torch>=1.9
     from torch.testing import assert_close as _assert_close  # type: ignore
-    from torch.testing._comparison import default_tolerances  # type: ignore
 
     def assert_close(
         actual: torch.Tensor,
@@ -260,8 +272,7 @@ try:
         **kwargs: Any,
     ) -> None:
         if rtol is None and atol is None:
-            with contextlib.suppress(Exception):
-                rtol, atol = default_tolerances(actual, expected)
+            rtol, atol = _default_tolerances(actual, expected)
 
         return _assert_close(actual, expected, rtol=rtol, atol=atol, check_stride=False, equal_nan=True, **kwargs)
 
