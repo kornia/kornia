@@ -247,11 +247,7 @@ def _get_precision_by_name(
 
 
 # {dtype: (rtol, atol)}
-_DTYPE_PRECISIONS = {
-    torch.float16: (1e-3, 1e-3),
-    torch.float32: (1e-4, 1e-5),
-    torch.float64: (1e-5, 1e-8),
-}
+_DTYPE_PRECISIONS = {torch.float16: (1e-3, 1e-3), torch.float32: (1e-4, 1e-5), torch.float64: (1e-5, 1e-8)}
 
 
 def _default_tolerances(*tensors: torch.Tensor) -> Tuple[float, float]:
