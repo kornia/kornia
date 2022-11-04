@@ -250,8 +250,8 @@ def _get_precision_by_name(
 _DTYPE_PRECISIONS = {torch.float16: (1e-3, 1e-3), torch.float32: (1e-4, 1e-5), torch.float64: (1e-5, 1e-8)}
 
 
-def _default_tolerances(*tensors: torch.Tensor) -> Tuple[float, float]:
-    rtols, atols = zip(*[_DTYPE_PRECISIONS.get(tensor.dtype, (0.0, 0.0)) for tensor in tensors])
+def _default_tolerances(*inputs: Any) -> Tuple[float, float]:
+    rtols, atols = zip(*[_DTYPE_PRECISIONS.get(torch.as_tensor(input).dtype, (0.0, 0.0)) for input in inputs])
     return max(rtols), max(atols)
 
 
