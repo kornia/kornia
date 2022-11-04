@@ -36,7 +36,7 @@ jobs:
         pip install .[dev,x]
     - name: Run Tests
       shell: bash -l {0}
-      run: pytest -v --cov=kornia --cov-report xml --mypy kornia/ -m mypy
+      run: pytest -v --cov=kornia --cov-report xml --mypy kornia/
     - name: Upload coverage
       uses: codecov/codecov-action@v1
       with:
