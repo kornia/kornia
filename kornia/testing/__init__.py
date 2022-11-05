@@ -246,10 +246,18 @@ def _get_precision_by_name(
     return tol_val_default
 
 
+# {dtype: (rtol, atol)}
+_DTYPE_PRECISIONS = {torch.float16: (1e-3, 1e-3), torch.float32: (1e-4, 1e-5), torch.float64: (1e-5, 1e-8)}
+
+
+def _default_tolerances(*inputs: Any) -> Tuple[float, float]:
+    rtols, atols = zip(*[_DTYPE_PRECISIONS.get(torch.as_tensor(input).dtype, (0.0, 0.0)) for input in inputs])
+    return max(rtols), max(atols)
+
+
 try:
     # torch.testing.assert_close is only available for torch>=1.9
     from torch.testing import assert_close as _assert_close  # type: ignore
-    from torch.testing._core import _get_default_tolerance  # type: ignore
 
     def assert_close(
         actual: torch.Tensor,
@@ -260,31 +268,27 @@ try:
         **kwargs: Any,
     ) -> None:
         if rtol is None and atol is None:
-            with contextlib.suppress(Exception):
-                rtol, atol = _get_default_tolerance(actual, expected)
+            # `torch.testing.assert_close` used different default tolerances than `torch.testing.assert_allclose`.
+            # TODO: remove this special handling as soon as https://github.com/kornia/kornia/issues/1134 is resolved.
+            #  Basically, this whole wrapper function can be removed and `torch.testing.assert_close` can be used
+            #  directly.
+            rtol, atol = _default_tolerances(actual, expected)
 
-        return _assert_close(actual, expected, rtol=rtol, atol=atol, check_stride=False, equal_nan=True, **kwargs)
+        return _assert_close(
+            actual,
+            expected,
+            rtol=rtol,
+            atol=atol,
+            # this is the default value for torch>=1.10, but not for torch==1.9
+            # TODO: remove this if kornia relies on torch>=1.10
+            check_stride=False,
+            equal_nan=True,
+            **kwargs,
+        )
 
 except ImportError:
-    # Partial backport of torch.testing.assert_close for torch<1.9
     # TODO: remove this branch if kornia relies on torch>=1.9
-    from torch.testing import assert_allclose as _assert_close
-
-    class UsageError(Exception):
-        pass
-
-    def assert_close(
-        actual: torch.Tensor,
-        expected: torch.Tensor,
-        *,
-        rtol: Optional[float] = None,
-        atol: Optional[float] = None,
-        **kwargs: Any,
-    ) -> None:
-        try:
-            return _assert_close(actual, expected, rtol=rtol, atol=atol, **kwargs)
-        except ValueError as error:
-            raise UsageError(str(error)) from error
+    from torch.testing import assert_allclose as assert_close  # type: ignore
 
 
 # Logger api
