@@ -282,7 +282,7 @@ try:
             # this is the default value for torch>=1.10, but not for torch==1.9
             # TODO: remove this if kornia relies on torch>=1.10
             check_stride=False,
-            equal_nan=True,
+            equal_nan=False,
             **kwargs,
         )
 
