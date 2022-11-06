@@ -312,7 +312,7 @@ def KORNIA_CHECK_SHAPE(x, shape: List[str]) -> None:
     """
     # Desired shape here is list and not tuple, because torch.jit
     # does not like variable-length tuples
-    KORNIA_CHECK_IS_TENSOR(x)
+    # KORNIA_CHECK_IS_TENSOR(x)
 
     if '*' == shape[0]:
         start_idx: int = 1

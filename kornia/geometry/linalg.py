@@ -233,8 +233,8 @@ def squared_norm(x: Tensor, keepdim: bool = False) -> Tensor:
 
 def batched_dot_product(x: Tensor, y: Tensor, keepdim: bool = False) -> Tensor:
     """Return a batched version of .dot()"""
-    KORNIA_CHECK_SHAPE(x, ["B", "N"])
-    KORNIA_CHECK_SHAPE(y, ["B", "N"])
+    KORNIA_CHECK_SHAPE(x, ["*", "N"])
+    KORNIA_CHECK_SHAPE(y, ["*", "N"])
     return (x * y).sum(-1, keepdim)
 
 

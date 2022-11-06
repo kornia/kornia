@@ -11,6 +11,7 @@ Module = torch.nn.Module
 Parameter = torch.nn.Parameter
 
 # functions
+# NOTE: ideally we expose what we find in numpy
 concatenate = torch.cat
 stack = torch.stack
 normalize = F.normalize

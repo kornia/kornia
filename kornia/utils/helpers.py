@@ -118,8 +118,8 @@ def _torch_svd_cast(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, to
 
     NOTE: in torch 1.8.1 this function is recommended to use as torch.linalg.svd
     """
-    if not isinstance(input, torch.Tensor):
-        raise AssertionError(f"Input must be torch.Tensor. Got: {type(input)}.")
+    # if not isinstance(input, torch.Tensor):
+    #    raise AssertionError(f"Input must be torch.Tensor. Got: {type(input)}.")
     dtype: torch.dtype = input.dtype
     if dtype not in (torch.float32, torch.float64):
         dtype = torch.float32
