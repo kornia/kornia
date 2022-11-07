@@ -29,7 +29,7 @@ class VolumeRenderer(torch.nn.Module):
 
         return rgbs_rendered
 
-    def forward(self, rgbs: Tensor, densities: Tensor, points_3d: torch.tensor) -> Tensor:
+    def forward(self, rgbs: Tensor, densities: Tensor, points_3d: Tensor) -> Tensor:
         raise NotImplementedError
 
 
@@ -37,7 +37,7 @@ class IrregularRenderer(VolumeRenderer):
     def __init__(self, shift: int = 1) -> None:
         super().__init__(shift)
 
-    def forward(self, rgbs: Tensor, densities: Tensor, points_3d: torch.tensor) -> Tensor:
+    def forward(self, rgbs: Tensor, densities: Tensor, points_3d: Tensor) -> Tensor:
         r"""Renders 3D irregularly sampled points along rays.
 
         Args:
@@ -62,7 +62,7 @@ class RegularRenderer(VolumeRenderer):
     def __init__(self, shift: int = 1) -> None:
         super().__init__(shift)
 
-    def forward(self, rgbs: Tensor, densities: Tensor, points_3d: torch.tensor) -> Tensor:
+    def forward(self, rgbs: Tensor, densities: Tensor, points_3d: Tensor) -> Tensor:
         r"""Renders 3D regularly sampled points along rays.
 
         Args:

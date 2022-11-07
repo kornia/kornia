@@ -138,7 +138,7 @@ class Quaternion(Module):
     def __truediv__(self, right: 'Quaternion') -> 'Quaternion':
         return self.__div__(right)
 
-    def __pow__(self, t: 'int') -> 'Quaternion':
+    def __pow__(self, t: Union[int, float]) -> 'Quaternion':
         """Return the power of a quaternion raised to exponent t.
 
         Args:
