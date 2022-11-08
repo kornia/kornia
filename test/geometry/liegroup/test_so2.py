@@ -7,18 +7,51 @@ from kornia.testing import BaseTester
 
 class TestSo2(BaseTester):
     def test_smoke(self, device, dtype):
-        z = torch.randn(2, 1, dtype=torch.cfloat)
+        z = torch.randn(2, 1, dtype=torch.cfloat, device=device)
         s = So2(z)
         assert isinstance(s, So2)
         self.assert_close(s.z.data, z.data)
 
-    # TODO: implement me
-    def test_cardinality(self, device, dtype):
-        pass
+    @pytest.mark.parametrize("input_shape", [(1, 1), (2, 1), (5, 1), (1,), (2,), (5,)])
+    def test_cardinality(self, device, dtype, input_shape):
+        z = torch.randn(input_shape, dtype=torch.cfloat, device=device)
+        s = So2(z)
+        theta = torch.rand(input_shape, dtype=dtype, device=device)
+        assert s.z.shape == (input_shape[0], 1)
+        assert (s * s).z.shape == (input_shape[0], 1)
+        assert s.exp(theta).z.shape == (input_shape[0], 1)
+        assert s.log().shape == (input_shape[0], 1)
+        assert s.hat(theta).shape == (input_shape[0], 2, 2)
+        assert s.inverse().z.shape == (input_shape[0], 1)
 
-    # TODO: implement me
-    def test_exception(self, device, dtype):
-        pass
+    @pytest.mark.parametrize("input_shape", [(1, 2, 2), (2, 2, 2), (5, 2, 2), (2, 2)])
+    def test_matrix_cardinality(self, device, dtype, input_shape):
+        matrix = torch.rand(input_shape, dtype=dtype, device=device)
+        s = So2.from_matrix(matrix)
+        if len(input_shape) == 3:
+            expected_shape = input_shape
+        else:
+            expected_shape = (1, 2, 2)
+        assert s.matrix().shape == expected_shape
+
+    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    def test_exception(self, batch_size, device, dtype):
+        with pytest.raises(ValueError):
+            z = torch.randn(batch_size, 2, dtype=torch.cfloat, device=device)
+            assert So2(z)
+        with pytest.raises(TypeError):
+            assert So2.identity(1, device, dtype) * [1.0, 2.0, 1.0]
+        with pytest.raises(ValueError):
+            theta = torch.rand((2, 2), dtype=dtype, device=device)
+            assert So2.exp(theta)
+        with pytest.raises(ValueError):
+            theta = torch.rand((2, 2), dtype=dtype, device=device)
+            assert So2.hat(theta)
+        with pytest.raises(ValueError):
+            m = torch.rand((2, 2, 1), dtype=dtype, device=device)
+            assert So2.from_matrix(m)
+        with pytest.raises(Exception):
+            assert So2.identity(batch_size=0)
 
     # TODO: implement me
     def test_gradcheck(self, device):
@@ -57,7 +90,7 @@ class TestSo2(BaseTester):
         s2 = So2(torch.complex(z[..., 0, None], z[..., 1, None]))
         t = torch.rand((batch_size, 2, 1), device=device, dtype=dtype)
         s1_pose_s2 = s1 * s2
-        s2_pose_s2 = s2 * s2.inverse()  # TODO naming correct?
+        s2_pose_s2 = s2 * s2.inverse()
         self.assert_close(s1_pose_s2.z.real, s2.z.real)
         self.assert_close(s1_pose_s2.z.imag, s2.z.imag)
         self.assert_close(s2_pose_s2.z.real, s1.z.real)
@@ -83,7 +116,7 @@ class TestSo2(BaseTester):
     def test_exp_log(self, device, dtype, batch_size):
         pi = 3.1415
         theta = torch.tensor([0, pi / 4, pi / 2, 3 * pi / 4, pi] * batch_size, device=device, dtype=dtype)
-        self.assert_close(So2.exp(theta).log(), theta)
+        self.assert_close(So2.exp(theta).log(), theta[..., None])
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_hat(self, device, dtype, batch_size):
