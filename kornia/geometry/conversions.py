@@ -876,17 +876,17 @@ def euler_from_quaternion(w: Tensor, x: Tensor, y: Tensor, z: Tensor) -> Tuple[T
 
     yy = y * y
 
-    t0 = 2.0 * (w * x + y * z)
-    t1 = 1.0 - 2.0 * (x * x + yy)
-    roll = t0.atan2(t1)
+    sinr_cosp = 2.0 * (w * x + y * z)
+    cosr_cosp = 1.0 - 2.0 * (x * x + yy)
+    roll = sinr_cosp.atan2(cosr_cosp)
 
-    t2 = 2.0 * (w * y - z * x)
-    t2 = t2.clamp(min=-1.0, max=1.0)
-    pitch = t2.asin()
+    sinp = 2.0 * (w * y - z * x)
+    sinp = sinp.clamp(min=-1.0, max=1.0)
+    pitch = sinp.asin()
 
-    t3 = 2.0 * (w * z + x * y)
-    t4 = 1.0 - 2.0 * (yy + z * z)
-    yaw = t3.atan2(t4)
+    siny_cosp = 2.0 * (w * z + x * y)
+    cosy_cosp = 1.0 - 2.0 * (yy + z * z)
+    yaw = siny_cosp.atan2(cosy_cosp)
 
     return roll, pitch, yaw
 
