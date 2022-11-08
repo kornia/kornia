@@ -3,7 +3,7 @@
 from typing import Optional, Union
 
 from kornia.core import Module, Parameter, Tensor, complex, concatenate, pad, stack, tensor
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 
 class So2(Module):
@@ -16,10 +16,10 @@ class So2(Module):
     We internally represent the rotation by a complex number.
 
     Example:
-        >>> real = torch.tensor([[1.0]])
-        >>> imag = torch.tensor([[2.0]])
+        >>> real = torch.tensor([1.0])
+        >>> imag = torch.tensor([2.0])
         >>> So2(torch.complex(real, imag))
-        tensor([1.+2.j], requires_grad=True)
+        tensor([[1.+2.j]], requires_grad=True)
     """
 
     def __init__(self, z: Tensor) -> None:
@@ -28,16 +28,22 @@ class So2(Module):
         Internally represented by complex number `z`.
 
         Args:
-            z: Complex number with the shape of :math:`(B, 1)`.
+            z: Complex number with the shape of :math:`(B, 1)` or :math:`(B)`.
 
         Example:
-            >>> real = torch.tensor([[1.0]])
-            >>> imag = torch.tensor([[2.0]])
+            >>> real = torch.tensor([1.0])
+            >>> imag = torch.tensor([2.0])
             >>> So2(torch.complex(real, imag))
-            tensor([1.+2.j], requires_grad=True)
+            tensor([[1.+2.j]], requires_grad=True)
         """
         super().__init__()
-        KORNIA_CHECK_SHAPE(z, ["B", "1"])
+        KORNIA_CHECK_IS_TENSOR(z)
+        # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
+        z_shape = z.shape
+        len_z_shape = len(z_shape)
+        if (len_z_shape == 2 and z_shape[1] != 1) or (len_z_shape == 0 and not z.numel()) or (len_z_shape > 2):
+            raise ValueError(f"Invalid input size, we expect [B, 1], [B] or []. Got: {z.shape}")
+        z = z.reshape(-1, 1)
         self._z = Parameter(z)
 
     def __repr__(self) -> str:
@@ -71,29 +77,37 @@ class So2(Module):
         return self._z
 
     @staticmethod
-    def exp(theta: Tensor):
+    def exp(theta: Tensor) -> 'So2':
         """Converts elements of lie algebra to elements of lie group.
 
         Args:
-            theta: angle in radians of shape :math:`(B, 1)`.
+            theta: angle in radians of shape :math:`(B, 1)` or :math:`(B)`.
 
         Example:
-            >>> v = torch.tensor([[3.1415/2]])
+            >>> v = torch.tensor([3.1415/2])
             >>> s = So2.exp(v)
             >>> s
             tensor([[4.6329e-05+1.j]], requires_grad=True)
         """
-        KORNIA_CHECK_SHAPE(theta, ["B", "1"])
+        # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
+        theta_shape = theta.shape
+        len_theta_shape = len(theta_shape)
+        if (
+            (len_theta_shape == 2 and theta_shape[1] != 1)
+            or (len_theta_shape == 0 and not theta.numel())
+            or (len_theta_shape > 2)
+        ):
+            raise ValueError(f"Invalid input size, we expect [B, 1], [B] or []. Got: {theta.shape}")
         return So2(complex(theta.cos(), theta.sin()))
 
     def log(self) -> Tensor:
         """Converts elements of lie group to elements of lie algebra.
 
         Example:
-            >>> real = torch.tensor([[1.0]])
-            >>> imag = torch.tensor([[3.0]])
+            >>> real = torch.tensor([1.0])
+            >>> imag = torch.tensor([3.0])
             >>> So2(torch.complex(real, imag)).log()
-            tensor([1.2490], grad_fn=<Atan2Backward0>)
+            tensor([[1.2490]], grad_fn=<Atan2Backward0>)
         """
         return self.z.imag.atan2(self.z.real)
 
@@ -105,12 +119,21 @@ class So2(Module):
             theta: angle in radians of shape :math:`(B, 1)`.
 
         Example:
-            >>> theta = torch.tensor([[3.1415/2]])
+            >>> theta = torch.tensor([3.1415/2])
             >>> So2.hat(theta)
             tensor([[[0.0000, 1.5707],
                      [1.5707, 0.0000]]])
         """
-        KORNIA_CHECK_SHAPE(theta, ["B", "1"])
+        # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
+        theta_shape = theta.shape
+        len_theta_shape = len(theta_shape)
+        if (
+            (len_theta_shape == 2 and theta_shape[1] != 1)
+            or (len_theta_shape == 0 and not theta.numel())
+            or (len_theta_shape > 2)
+        ):
+            raise ValueError(f"Invalid input size, we expect [B, 1], [B] or []. Got: {theta.shape}")
+        theta = theta.reshape(-1, 1)
         row0 = pad(theta, (1, 0))
         row1 = pad(theta, (0, 1))
         return stack((row0, row1), -1)
@@ -137,13 +160,21 @@ class So2(Module):
             matrix: the rotation matrix to convert of shape :math:`(B, 2, 2)`.
 
         Example:
-            >>> m = torch.eye(2)[None]
+            >>> m = torch.eye(2)
             >>> s = So2.from_matrix(m)
             >>> s
             Parameter containing:
-            tensor([1.+0.j], requires_grad=True)
+            tensor([[1.+0.j]], requires_grad=True)
         """
-        KORNIA_CHECK_SHAPE(matrix, ["B", "2", "2"])
+        # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
+        matrix_shape = matrix.shape
+        len_matrix_shape = len(matrix_shape)
+        if (
+            (len_matrix_shape == 3 and (matrix_shape[1] != 2 or matrix_shape[2] != 2))
+            or (len_matrix_shape == 2 and (matrix_shape[0] != 2 or matrix_shape[1] != 2))
+            or (len_matrix_shape > 3 or len_matrix_shape < 2)
+        ):
+            raise ValueError(f"Invalid input size, we expect [B, 2, 2] or [2, 2]. Got: {matrix.shape}")
         return cls(complex(matrix[..., 0, 0], matrix[..., 1, 0]))
 
     @classmethod
