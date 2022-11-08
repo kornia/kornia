@@ -234,7 +234,7 @@ class PinholeCamera:
         """
         return self.extrinsics[..., :3, -1:]
 
-    def origins(self) -> torch.Tensor:
+    def origins(self) -> Tensor:
         r"""Return camera origins in world coordinates.
 
         Returns:
@@ -359,7 +359,7 @@ class PinholeCamera:
         P_inv = _torch_inverse_cast(P)
         return transform_points(P_inv, convert_points_to_homogeneous(point_2d) * depth)
 
-    def transform_to_camera_view(self, points_3d: torch.Tensor) -> torch.Tensor:
+    def transform_to_camera_view(self, points_3d: Tensor) -> Tensor:
         r"""Transform between world and camera 3D coordinate systems.
 
         Args:
@@ -372,7 +372,7 @@ class PinholeCamera:
         """
         return transform_points(self.extrinsics, points_3d.expand(self.batch_size, -1, -1))
 
-    def transform_to_world(self, points_3d: torch.Tensor) -> torch.Tensor:
+    def transform_to_world(self, points_3d: Tensor) -> Tensor:
         r"""Transform between camera and world 3D coordinate systems.
 
         Args:
