@@ -54,8 +54,8 @@ class NerfSolver:
         batch_size: int,
         num_ray_points: int,
         irregular_ray_sampling: bool = True,
-        log_space_encoding=True,
-        num_hidden=256,
+        log_space_encoding: bool = True,
+        num_hidden: int = 256,
         lr: float = 1.0e-3,
     ) -> None:
         r"""Initializes training.
