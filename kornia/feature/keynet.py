@@ -68,7 +68,7 @@ class _HandcraftedBlock(Module):
         sobel_dy = self.spatial_gradient(dy)
         dyy = sobel_dy[:, :, 1, :, :]
 
-        hc_feats = concatenate([dx, dy, dx**2.0, dy**2.0, dx * dy, dxy, dxy**2.0, dxx, dyy, dxx * dyy], dim=1)
+        hc_feats = concatenate([dx, dy, dx**2.0, dy**2.0, dx * dy, dxy, dxy**2.0, dxx, dyy, dxx * dyy], 1)
 
         return hc_feats
 
@@ -160,7 +160,7 @@ class KeyNet(Module):
             feats_i = self.feature_extractor(x)
             feats_i = F.interpolate(feats_i, size=(shape_im[2], shape_im[3]), mode='bilinear')
             feats.append(feats_i)
-        scores = self.last_conv(concatenate(feats, dim=1))
+        scores = self.last_conv(concatenate(feats, 1))
         return scores
 
 
@@ -186,8 +186,8 @@ class KeyNetDetector(Module):
         pretrained: bool = False,
         num_features: int = 2048,
         keynet_conf: Dict = keynet_config['KeyNet_default_config'],
-        ori_module: Module = PassLAF(),
-        aff_module: Module = PassLAF(),
+        ori_module: Optional[Module] = None,
+        aff_module: Optional[Module] = None,
     ):
         super().__init__()
         self.model = KeyNet(pretrained, keynet_conf)
@@ -199,8 +199,16 @@ class KeyNetDetector(Module):
         self.nms_size: int = keynet_conf['nms_size']
         self.nms = NonMaximaSuppression2d((self.nms_size, self.nms_size))
         self.num_features = num_features
-        self.ori = ori_module
-        self.aff = aff_module
+
+        if ori_module is None:
+            self.ori: Module = PassLAF()
+        else:
+            self.ori = ori_module
+
+        if aff_module is None:
+            self.aff: Module = PassLAF()
+        else:
+            self.aff = aff_module
 
     def remove_borders(self, score_map, borders: int = 15):
         """It removes the borders of the image to avoid detections on the corners."""
@@ -279,8 +287,8 @@ class KeyNetDetector(Module):
             cur_scores, cur_lafs = self.detect_features_on_single_level(cur_img, num_points_level, factor)
             all_responses.append(cur_scores.view(1, -1))
             all_lafs.append(cur_lafs)
-        responses: Tensor = concatenate(all_responses, dim=1)
-        lafs: Tensor = concatenate(all_lafs, dim=1)
+        responses: Tensor = concatenate(all_responses, 1)
+        lafs: Tensor = concatenate(all_lafs, 1)
         if lafs.shape[1] > self.num_features:
             responses, idxs = torch.topk(responses, k=self.num_features, dim=1)
             lafs = torch.gather(lafs, 1, idxs.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, 2, 3))
