@@ -21,10 +21,6 @@ class TestSe3(BaseTester):
         q = q.to(device, dtype)
         t = torch.rand(1, 3, device=device, dtype=dtype)
         s = Se3(So3(q), t)
-        import pdb
-
-        pdb.set_trace()
-        pass
         assert isinstance(s, Se3)
         assert isinstance(s.r, So3)
         self.assert_close(s.r.q.data, q.data)
