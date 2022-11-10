@@ -3,7 +3,7 @@
 from typing import Optional, Union
 
 from kornia.core import Module, Parameter, Tensor, complex, concatenate, pad, stack, tensor
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 
 
 class So2(Module):
@@ -19,6 +19,7 @@ class So2(Module):
         >>> real = torch.tensor([1.0])
         >>> imag = torch.tensor([2.0])
         >>> So2(torch.complex(real, imag))
+        Parameter containing:
         tensor([[1.+2.j]], requires_grad=True)
     """
 
@@ -34,6 +35,7 @@ class So2(Module):
             >>> real = torch.tensor([1.0])
             >>> imag = torch.tensor([2.0])
             >>> So2(torch.complex(real, imag))
+            Parameter containing:
             tensor([[1.+2.j]], requires_grad=True)
         """
         super().__init__()
@@ -65,7 +67,16 @@ class So2(Module):
         if isinstance(right, So2):
             out = So2(self.z * right.z)
         elif isinstance(right, Tensor):
-            KORNIA_CHECK_SHAPE(right, ["B", "2", "1"])
+            # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
+            right_shape = right.shape
+            len_right_shape = len(right_shape)
+            if (
+                (len_right_shape == 3 and (right_shape[1] != 2 or right_shape[2] != 1))
+                or (len_right_shape == 2 and (sum(right.shape) != 3))
+                or (len_right_shape > 3 or len_right_shape < 2)
+            ):
+                raise ValueError(f"Invalid input size, we expect [B, 2, 1], [2, 1] or [1, 2]. Got: {right_shape}")
+            right = right.reshape(-1, 2, 1)
             out = self.matrix() @ right
         else:
             raise TypeError(f"Not So2 or Tensor type. Got: {type(right)}")
@@ -87,6 +98,7 @@ class So2(Module):
             >>> v = torch.tensor([3.1415/2])
             >>> s = So2.exp(v)
             >>> s
+            Parameter containing:
             tensor([[4.6329e-05+1.j]], requires_grad=True)
         """
         # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
@@ -97,7 +109,7 @@ class So2(Module):
             or (len_theta_shape == 0 and not theta.numel())
             or (len_theta_shape > 2)
         ):
-            raise ValueError(f"Invalid input size, we expect [B, 1], [B] or []. Got: {theta.shape}")
+            raise ValueError(f"Invalid input size, we expect [B, 1] or [B]. Got: {theta_shape}")
         return So2(complex(theta.cos(), theta.sin()))
 
     def log(self) -> Tensor:
@@ -132,7 +144,7 @@ class So2(Module):
             or (len_theta_shape == 0 and not theta.numel())
             or (len_theta_shape > 2)
         ):
-            raise ValueError(f"Invalid input size, we expect [B, 1], [B] or []. Got: {theta.shape}")
+            raise ValueError(f"Invalid input size, we expect [B, 1] or [B]. Got: {theta_shape}")
         theta = theta.reshape(-1, 1)
         row0 = pad(theta, (1, 0))
         row1 = pad(theta, (0, 1))
@@ -145,7 +157,7 @@ class So2(Module):
             >>> s = So2.identity(batch_size=1)
             >>> m = s.matrix()
             >>> m
-            tensor([[[1., 0.],
+            tensor([[[1., -0.],
                      [0., 1.]]], grad_fn=<CatBackward0>)
         """
         row0 = stack((self.z.real, -self.z.imag), -1)
@@ -174,7 +186,7 @@ class So2(Module):
             or (len_matrix_shape == 2 and (matrix_shape[0] != 2 or matrix_shape[1] != 2))
             or (len_matrix_shape > 3 or len_matrix_shape < 2)
         ):
-            raise ValueError(f"Invalid input size, we expect [B, 2, 2] or [2, 2]. Got: {matrix.shape}")
+            raise ValueError(f"Invalid input size, we expect [B, 2, 2] or [2, 2]. Got: {matrix_shape}")
         return cls(complex(matrix[..., 0, 0], matrix[..., 1, 0]))
 
     @classmethod
@@ -187,6 +199,7 @@ class So2(Module):
         Example:
             >>> s = So2.identity(batch_size=2)
             >>> s
+            Parameter containing:
             tensor([[1.+0.j],
                     [1.+0.j]], requires_grad=True)
         """
