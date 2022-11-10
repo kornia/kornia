@@ -34,7 +34,7 @@ def load_image_to_tensor(path_file: str, device: str) -> Tensor:
     # for convenience use the torch dlpack parser to get a zero copy torch.Tensor
     # TODO: evaluate other potential API so that we can return in numpy, jax, mxnet since
     # the kornia_rs cv::Tensor has this ability.
-    th_tensor = torch.utils.dlpack.from_dlpack(cv_tensor)  # type: ignore # HxWx3
+    th_tensor = torch.utils.dlpack.from_dlpack(cv_tensor)  # HxWx3
     # move the tensor to the desired device, move the data layout to CHW and clone
     # to return an owned data tensor.
     return th_tensor.to(torch.device(device)).permute(2, 0, 1).clone()  # CxHxW

@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple, cast
 
 import torch
 
-from kornia.core import Tensor
+from kornia.core import Tensor, eye, tensor
 
 __all__ = [
     "tensor_to_gradcheck_var",
@@ -46,7 +46,7 @@ def is_mps_tensor_safe(x: Tensor) -> bool:
 # TODO: Isn't this function duplicated with eye_like?
 def create_eye_batch(batch_size, eye_size, device=None, dtype=None):
     """Create a batch of identity matrices of shape Bx3x3."""
-    return torch.eye(eye_size, device=device, dtype=dtype).view(1, eye_size, eye_size).expand(batch_size, -1, -1)
+    return eye(eye_size, device=device, dtype=dtype).view(1, eye_size, eye_size).expand(batch_size, -1, -1)
 
 
 def create_random_homography(batch_size, eye_size, std_val=1e-3):
@@ -69,7 +69,7 @@ def tensor_to_gradcheck_var(tensor, dtype=torch.float64, requires_grad=True):
 def dict_to(data: dict, device: torch.device, dtype: torch.dtype) -> dict:
     out: dict = {}
     for key, val in data.items():
-        out[key] = val.to(device, dtype) if isinstance(val, torch.Tensor) else val
+        out[key] = val.to(device, dtype) if isinstance(val, Tensor) else val
     return out
 
 
@@ -80,13 +80,13 @@ def compute_patch_error(x, y, h, w):
 
 def check_is_tensor(obj):
     """Check whether the supplied object is a tensor."""
-    if not isinstance(obj, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(obj)}")
+    if not isinstance(obj, Tensor):
+        raise TypeError(f"Input type is not a Tensor. Got {type(obj)}")
 
 
 def create_rectified_fundamental_matrix(batch_size):
     """Create a batch of rectified fundamental matrices of shape Bx3x3."""
-    F_rect = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]]).view(1, 3, 3)
+    F_rect = tensor([[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]]).view(1, 3, 3)
     F_repeat = F_rect.repeat(batch_size, 1, 1)
     return F_repeat
 
@@ -167,13 +167,13 @@ class BaseTester(ABC):
 
 def generate_two_view_random_scene(
     device: torch.device = torch.device("cpu"), dtype: torch.dtype = torch.float32
-) -> Dict[str, torch.Tensor]:
+) -> Dict[str, Tensor]:
     from kornia.geometry import epipolar as epi
 
     num_views: int = 2
     num_points: int = 30
 
-    scene: Dict[str, torch.Tensor] = epi.generate_scene(num_views, num_points)
+    scene: Dict[str, Tensor] = epi.generate_scene(num_views, num_points)
 
     # internal parameters (same K)
     K1 = scene['K'].to(device, dtype)
@@ -257,15 +257,10 @@ def _default_tolerances(*inputs: Any) -> Tuple[float, float]:
 
 try:
     # torch.testing.assert_close is only available for torch>=1.9
-    from torch.testing import assert_close as _assert_close  # type: ignore
+    from torch.testing import assert_close as _assert_close
 
     def assert_close(
-        actual: torch.Tensor,
-        expected: torch.Tensor,
-        *,
-        rtol: Optional[float] = None,
-        atol: Optional[float] = None,
-        **kwargs: Any,
+        actual: Tensor, expected: Tensor, *, rtol: Optional[float] = None, atol: Optional[float] = None, **kwargs: Any
     ) -> None:
         if rtol is None and atol is None:
             # `torch.testing.assert_close` used different default tolerances than `torch.testing.assert_allclose`.
@@ -288,7 +283,7 @@ try:
 
 except ImportError:
     # TODO: remove this branch if kornia relies on torch>=1.9
-    from torch.testing import assert_allclose as assert_close  # type: ignore
+    from torch.testing import assert_allclose as assert_close
 
 
 # Logger api

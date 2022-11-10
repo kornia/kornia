@@ -5,6 +5,7 @@ from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _adapted_uniform, _common_param_check, _tuple_range_reader
+from kornia.core import Tensor
 from kornia.utils.helpers import _deprecated, _extract_device_dtype
 
 
@@ -23,9 +24,9 @@ class RotationGenerator3D(RandomGeneratorBase):
 
     Returns:
         A dict of parameters to be passed for transformation.
-            - yaw (torch.Tensor): element-wise rotation yaws with a shape of (B,).
-            - pitch (torch.Tensor): element-wise rotation pitches with a shape of (B,).
-            - roll (torch.Tensor): element-wise rotation rolls with a shape of (B,).
+            - yaw (Tensor): element-wise rotation yaws with a shape of (B,).
+            - pitch (Tensor): element-wise rotation pitches with a shape of (B,).
+            - roll (Tensor): element-wise rotation rolls with a shape of (B,).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -36,7 +37,7 @@ class RotationGenerator3D(RandomGeneratorBase):
     def __init__(
         self,
         degrees: Union[
-            torch.Tensor,
+            Tensor,
             float,
             Tuple[float, float, float],
             Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]],
@@ -55,7 +56,7 @@ class RotationGenerator3D(RandomGeneratorBase):
         self.pitch_sampler = Uniform(degrees[1][0], degrees[1][1], validate_args=False)
         self.roll_sampler = Uniform(degrees[2][0], degrees[2][1], validate_args=False)
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.degrees])
@@ -70,25 +71,25 @@ class RotationGenerator3D(RandomGeneratorBase):
 @_deprecated(replace_with=RotationGenerator3D.__name__)
 def random_rotation_generator3d(
     batch_size: int,
-    degrees: torch.Tensor,
+    degrees: Tensor,
     same_on_batch: bool = False,
     device: torch.device = torch.device('cpu'),
     dtype: torch.dtype = torch.float32,
-) -> Dict[str, torch.Tensor]:
+) -> Dict[str, Tensor]:
     r"""Get parameters for ``rotate`` for a random rotate transform.
 
     Args:
         batch_size (int): the tensor batch size.
-        degrees (torch.Tensor): Ranges of degrees (3, 2) for yaw, pitch and roll.
+        degrees (Tensor): Ranges of degrees (3, 2) for yaw, pitch and roll.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         device (torch.device): the device on which the random numbers will be generated. Default: cpu.
         dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
 
     Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - yaw (torch.Tensor): element-wise rotation yaws with a shape of (B,).
-            - pitch (torch.Tensor): element-wise rotation pitches with a shape of (B,).
-            - roll (torch.Tensor): element-wise rotation rolls with a shape of (B,).
+        params Dict[str, Tensor]: parameters to be passed for transformation.
+            - yaw (Tensor): element-wise rotation yaws with a shape of (B,).
+            - pitch (Tensor): element-wise rotation pitches with a shape of (B,).
+            - roll (Tensor): element-wise rotation rolls with a shape of (B,).
     """
     if degrees.shape != torch.Size([3, 2]):
         raise AssertionError(f"'degrees' must be the shape of (3, 2). Got {degrees.shape}.")
