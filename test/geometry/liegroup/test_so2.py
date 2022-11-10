@@ -6,6 +6,11 @@ from kornia.testing import BaseTester
 
 
 class TestSo2(BaseTester):
+    def _make_rand_data(self, device, dtype, input_shape):
+        batch_size = input_shape[0]
+        shape = input_shape[1:] if batch_size is None else input_shape
+        return torch.rand(shape, device=device, dtype=dtype)
+
     def test_smoke(self, device, dtype):
         z = torch.randn(2, 1, dtype=torch.cfloat, device=device)
         s = So2(z)
@@ -65,81 +70,78 @@ class TestSo2(BaseTester):
     def test_module(self, device, dtype):
         pass
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_init(self, device, dtype, batch_size):
-        z = torch.randn(batch_size, 1, dtype=torch.cfloat, device=device)
-        s1 = So2(z)
+        z = self._make_rand_data(device, dtype, [batch_size, 2])
+        s1 = So2(torch.complex(z[..., 0, None], z[..., 1, None]))
         s2 = So2(s1.z)
         assert isinstance(s2, So2)
         self.assert_close(s1.z.data, s2.z.data)
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_getitem(self, device, dtype, batch_size):
-        data = torch.rand(batch_size, 2, device=device, dtype=dtype)
+        data = self._make_rand_data(device, dtype, [batch_size, 2])
         z = torch.complex(data[..., 0, None], data[..., 1, None])
         s = So2(z)
-        for i in range(batch_size):
+        n = 1 if batch_size is None else batch_size
+        for i in range(n):
             s1 = s[i]
-            self.assert_close(s1.z.data[0].real, z.data[i].real)
-            self.assert_close(s1.z.data[0].imag, z.data[i].imag)
+            self.assert_close(s1.z.data[0].real.squeeze(), z.data[i].real.squeeze())
+            self.assert_close(s1.z.data[0].imag.squeeze(), z.data[i].imag.squeeze())
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_mul(self, device, dtype, batch_size):
         s1 = So2.identity(batch_size, device, dtype)
-        z = torch.rand(batch_size, 2, device=device, dtype=dtype)
+        z = self._make_rand_data(device, dtype, [batch_size, 2])
         s2 = So2(torch.complex(z[..., 0, None], z[..., 1, None]))
-        t = torch.rand((batch_size, 2, 1), device=device, dtype=dtype)
+        t = self._make_rand_data(device, dtype, [batch_size, 2, 1])
         s1_pose_s2 = s1 * s2
         s2_pose_s2 = s2 * s2.inverse()
         self.assert_close(s1_pose_s2.z.real, s2.z.real)
         self.assert_close(s1_pose_s2.z.imag, s2.z.imag)
         self.assert_close(s2_pose_s2.z.real, s1.z.real)
         self.assert_close(s2_pose_s2.z.imag, s1.z.imag)
-        self.assert_close((s1 * t), t)
+        self.assert_close((s1 * t), t.reshape(-1, 2, 1))
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_exp(self, device, dtype, batch_size):
-        pi = 3.1415
-        theta = torch.tensor([0, pi / 4, pi / 2, 3 * pi / 4, pi] * batch_size, device=device, dtype=dtype)
-        s = So2.exp(theta[..., None])
-        self.assert_close(s.z.real, theta[..., None].cos())
-        self.assert_close(s.z.imag, theta[..., None].sin())
+        theta = self._make_rand_data(device, dtype, [batch_size, 1])
+        s = So2.exp(theta)
+        self.assert_close(s.z.real, theta.cos().reshape(-1, 1))
+        self.assert_close(s.z.imag, theta.sin().reshape(-1, 1))
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_log(self, device, dtype, batch_size):
-        data = torch.rand(batch_size, 2, device=device, dtype=dtype)
+        data = self._make_rand_data(device, dtype, [batch_size, 2])
         z = torch.complex(data[..., 0, None], data[..., 1, None])
         t = So2(z).log()
-        self.assert_close(t, data[..., 1, None].atan2(data[..., 0, None]))
+        self.assert_close(t, data[..., 1, None].atan2(data[..., 0, None]).reshape(-1, 1))
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_exp_log(self, device, dtype, batch_size):
-        pi = 3.1415
-        theta = torch.tensor([0, pi / 4, pi / 2, 3 * pi / 4, pi] * batch_size, device=device, dtype=dtype)
-        self.assert_close(So2.exp(theta).log(), theta[..., None])
+        theta = self._make_rand_data(device, dtype, [batch_size, 1])
+        self.assert_close(So2.exp(theta).log(), theta.reshape(-1, 1))
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_hat(self, device, dtype, batch_size):
-        pi = 3.1415
-        theta = torch.tensor([0, pi / 4, pi / 2, 3 * pi / 4, pi] * batch_size, device=device, dtype=dtype)
-        m = So2.hat(theta[..., None])
+        theta = self._make_rand_data(device, dtype, [batch_size, 1])
+        m = So2.hat(theta)
         o = torch.ones((1, 2, 1), device=device, dtype=dtype)
-        self.assert_close(m @ o, torch.cat((theta[..., None, None], theta[..., None, None]), 1))
+        self.assert_close(m @ o, torch.cat((theta[..., None], theta[..., None]), 1).reshape(-1, 2, 1))
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_matrix(self, device, dtype, batch_size):
-        pi = 3.1415
-        theta = torch.tensor([pi / 2] * batch_size, device=device, dtype=dtype)
-        t = torch.rand((batch_size, 2, 1), device=device, dtype=dtype)
-        ss = So2.exp(theta[..., None])
+        theta = self._make_rand_data(device, dtype, [batch_size, 1])
+        t = self._make_rand_data(device, dtype, [batch_size, 2, 1])
+        ss = So2.exp(theta)
         p1 = ss * t
         p2 = ss.matrix() @ t
         self.assert_close(p1, p2)
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_inverse(self, device, dtype, batch_size):
-        data = torch.rand(batch_size, 2, device=device, dtype=dtype)
+        data = self._make_rand_data(device, dtype, [batch_size, 2])
         z = torch.complex(data[..., 0, None], data[..., 1, None])
         s = So2(z)
-        self.assert_close(s.inverse().inverse().z.real, z.real)
-        self.assert_close(s.inverse().inverse().z.imag, z.imag)
+        self.assert_close(s.inverse().inverse().z.real, z.real.reshape(-1, 1))
+        self.assert_close(s.inverse().inverse().z.imag, z.imag.reshape(-1, 1))
