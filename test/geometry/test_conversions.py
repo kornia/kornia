@@ -1728,3 +1728,37 @@ class TestQuaternionFromEuler(BaseTester):
         assert_close(roll, roll_new)
         assert_close(pitch, pitch_new)
         assert_close(yaw, yaw_new)
+
+    def test_values(self, device, dtype):
+        num_samples = 5
+        torch.manual_seed(0)
+        data = 2 * torch.rand(3, num_samples, device=device, dtype=dtype) - 1
+        roll, pitch, yaw = torch.pi * data
+
+        quat = quaternion_from_euler(roll, pitch, yaw)
+        euler = euler_from_quaternion(*quat)
+        euler = torch.stack(euler, -1)
+
+        euler_expected = torch.tensor(
+            [
+                [-0.0235, 0.8424, -0.9494],
+                [1.6853, -0.0622, -0.6175],
+                [0.5559, 0.6507, 0.1403],
+                [-2.3120, -0.2788, -2.0806],
+                [-1.2100, 0.8313, -1.2950],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        self.assert_close(euler, euler_expected, 1e-4, 1e-4)
+
+        # this test is passing: pip install transforms3d
+        # import transforms3d as tf3
+        # out = [tf3.euler.euler2quat(roll[i], pitch[i], yaw[i]) for i in range(num_samples)]
+        # out = torch.tensor(out, device=device, dtype=dtype)
+        # self.assert_close(torch.stack((qw, qx, qy, qz), -1), out)
+
+        # out = [tf3.euler.quat2euler((qw[i], qx[i], qy[i], qz[i])) for i in range(num_samples)]
+        # out = torch.tensor(out, device=device, dtype=dtype)
+        # self.assert_close(torch.stack((roll_new, pitch_new, yaw_new), -1), out)

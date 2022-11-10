@@ -854,8 +854,9 @@ def angle_axis_to_quaternion(angle_axis: Tensor, order: QuaternionCoeffOrder = Q
     return quaternion
 
 
-# TODO(edgar): move to kornia later
-# https://stackoverflow.com/questions/56207448/efficient-quaternions-to-euler-transformation
+# inspired by: https://stackoverflow.com/questions/56207448/efficient-quaternions-to-euler-transformation
+
+
 def euler_from_quaternion(w: Tensor, x: Tensor, y: Tensor, z: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
     """Convert a quaternion coefficients to Euler angles.
 
