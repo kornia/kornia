@@ -78,7 +78,7 @@ class TestSo3(BaseTester):
         s5 = s2.inverse()
         s6 = s3.inverse()
 
-        ones_vec = torch.tensor([[1.0]], device=device, dtype=dtype)
+        ones_vec = torch.tensor([1.0], device=device, dtype=dtype)
         for i in range(batch_size):
             self.assert_close(s1[i].q.norm(), ones_vec)
             self.assert_close(s2[i].q.norm(), ones_vec)

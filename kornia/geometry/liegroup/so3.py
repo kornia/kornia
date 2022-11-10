@@ -2,6 +2,7 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py
 from kornia.core import Tensor, concatenate, stack, tensor, where, zeros
 from kornia.geometry.liegroup._utils import squared_norm
+from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.quaternion import Quaternion
 from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 
@@ -113,9 +114,13 @@ class So3:
             tensor([[0., 0., 0.],
                     [0., 0., 0.]], grad_fn=<WhereBackward0>)
         """
-        theta = squared_norm(self.q.vec).sqrt()
+        theta = batched_dot_product(self.q.vec, self.q.vec).sqrt()
         # NOTE: this differs from https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py#L33
-        omega = where(theta != 0, 2 * self.q.real.acos() * self.q.vec / theta, 2 * self.q.vec / self.q.real)
+        omega = where(
+            theta[..., None] != 0,
+            2 * self.q.real[..., None].acos() * self.q.vec / theta[..., None],
+            2 * self.q.vec / self.q.real[..., None],
+        )
         return omega
 
     @staticmethod
@@ -187,16 +192,16 @@ class So3:
         q0 = 1 - 2 * y**2 - 2 * z**2
         q1 = 2 * x * y - 2 * z * w
         q2 = 2 * x * z + 2 * y * w
-        row0 = concatenate((q0, q1, q2), 2)
+        row0 = concatenate((q0, q1, q2), -1)
         q0 = 2 * x * y + 2 * z * w
         q1 = 1 - 2 * x**2 - 2 * z**2
         q2 = 2 * y * z - 2 * x * w
-        row1 = concatenate((q0, q1, q2), 2)
+        row1 = concatenate((q0, q1, q2), -1)
         q0 = 2 * x * z - 2 * y * w
         q1 = 2 * y * z + 2 * x * w
         q2 = 1 - 2 * x**2 - 2 * y**2
-        row2 = concatenate((q0, q1, q2), 2)
-        return concatenate((row0, row1, row2), 1)
+        row2 = concatenate((q0, q1, q2), -1)
+        return stack((row0, row1, row2), -2)
 
     @classmethod
     def from_matrix(cls, matrix: Tensor) -> 'So3':

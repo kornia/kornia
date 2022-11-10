@@ -5,7 +5,7 @@
 from math import pi
 from typing import Optional, Tuple, Union
 
-from kornia.core import Module, Parameter, Tensor, as_tensor, concatenate, rand, stack, tensor, where
+from kornia.core import Module, Parameter, Tensor, concatenate, rand, stack, tensor, where
 from kornia.geometry.conversions import (
     QuaternionCoeffOrder,
     angle_axis_to_quaternion,
@@ -289,7 +289,7 @@ class Quaternion(Module):
             Parameter containing:
             tensor([1., 0., 0., 0.], requires_grad=True)
         """
-        data: Tensor = as_tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
+        data: Tensor = tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
         if batch_size is not None:
             data = data.repeat(batch_size, 1)
         return cls(data)
