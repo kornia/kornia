@@ -17,13 +17,13 @@ class Se3:
 
     Example:
         >>> from kornia.geometry.quaternion import Quaternion
-        >>> q = Quaternion.identity(batch_size=1)
-        >>> s = Se3(So3(q), torch.ones((1, 3)))
+        >>> q = Quaternion.identity()
+        >>> s = Se3(So3(q), torch.ones(3))
         >>> s.r
-        real: tensor([[1.]], grad_fn=<SliceBackward0>)
-        vec: tensor([[0., 0., 0.]], grad_fn=<SliceBackward0>)
+        Parameter containing:
+        tensor([1., 0., 0., 0.], requires_grad=True)
         >>> s.t
-        tensor([[1., 1., 1.]])
+        tensor([1., 1., 1.])
     """
 
     def __init__(self, r: So3, t: Tensor) -> None:
@@ -38,10 +38,10 @@ class Se3:
         Example:
             >>> from kornia.geometry.quaternion import Quaternion
             >>> q = Quaternion.identity(batch_size=1)
-            >>> s = Se3(So3(q), torch.ones((1,3)))
+            >>> s = Se3(So3(q), torch.ones((1, 3)))
             >>> s.r
-            real: tensor([[1.]], grad_fn=<SliceBackward0>)
-            vec: tensor([[0., 0., 0.]], grad_fn=<SliceBackward0>)
+            Parameter containing:
+            tensor([[1., 0., 0., 0.]], requires_grad=True)
             >>> s.t
             tensor([[1., 1., 1.]])
         """
@@ -92,8 +92,8 @@ class Se3:
             >>> v = torch.zeros((1, 6))
             >>> s = Se3.exp(v)
             >>> s.r
-            real: tensor([[1.]], grad_fn=<SliceBackward0>)
-            vec: tensor([[0., 0., 0.]], grad_fn=<SliceBackward0>)
+            Parameter containing:
+            tensor([[1., 0., 0., 0.]], requires_grad=True)
             >>> s.t
             tensor([[0., 0., 0.]])
         """
@@ -117,9 +117,9 @@ class Se3:
 
         Example:
             >>> from kornia.geometry.quaternion import Quaternion
-            >>> q = Quaternion.identity(batch_size=1)
-            >>> Se3(So3(q), torch.zeros((1,3))).log()
-            tensor([[0., 0., 0., 0., 0., 0.]], grad_fn=<CatBackward0>)
+            >>> q = Quaternion.identity()
+            >>> Se3(So3(q), torch.zeros(3)).log()
+            tensor([0., 0., 0., 0., 0., 0.], grad_fn=<CatBackward0>)
         """
         omega = self.r.log()
         theta = batched_dot_product(omega, omega).sqrt()
@@ -138,19 +138,19 @@ class Se3:
         """Converts elements from vector space to lie algebra.
 
         Args:
-            v: vector of shape :math:`(B,6)`.
+            v: vector of shape :math:`(B, 6)`.
 
         Returns:
-            matrix of shape :math:`(B,4,4)`.
+            matrix of shape :math:`(B, 4, 4)`.
 
         Example:
-            >>> v = torch.ones((1,6))
+            >>> v = torch.ones((1, 6))
             >>> m = Se3.hat(v)
             >>> m
-            tensor([[[ 0.,  0., -1.,  1.],
-                     [ 0.,  1.,  0., -1.],
-                     [ 0., -1.,  1.,  0.],
-                     [ 0.,  1.,  1.,  1.]]])
+            tensor([[[ 0., -1.,  1.,  1.],
+                     [ 1.,  0., -1.,  1.],
+                     [-1.,  1.,  0.,  1.],
+                     [ 0.,  0.,  0.,  0.]]])
         """
         KORNIA_CHECK_SHAPE(v, ["B", "6"])
         upsilon, omega = v[..., :3], v[..., 3:]
@@ -168,7 +168,7 @@ class Se3:
             vector of shape :math:`(B,6)`.
 
         Example:
-            >>> v = torch.ones((1,6))
+            >>> v = torch.ones((1, 6))
             >>> omega_hat = Se3.hat(v)
             >>> Se3.vee(omega_hat)
             tensor([[1., 1., 1., 1., 1., 1.]])
@@ -188,8 +188,8 @@ class Se3:
         Example:
             >>> s = Se3.identity()
             >>> s.r
-            real: tensor([1.], grad_fn=<SliceBackward0>)
-            vec: tensor([0., 0., 0.], grad_fn=<SliceBackward0>)
+            Parameter containing:
+            tensor([1., 0., 0., 0.], requires_grad=True)
             >>> s.t
             tensor([0., 0., 0.])
         """
@@ -203,12 +203,12 @@ class Se3:
         """Returns the matrix representation of shape :math:`(B, 4, 4)`.
 
         Example:
-            >>> s = Se3(So3.identity(batch_size=1), torch.ones((1,3)))
+            >>> s = Se3(So3.identity(), torch.ones(3))
             >>> s.matrix()
-            tensor([[[1., 0., 0., 1.],
-                     [0., 1., 0., 1.],
-                     [0., 0., 1., 1.],
-                     [0., 0., 0., 1.]]], grad_fn=<CopySlices>)
+            tensor([[1., 0., 0., 1.],
+                    [0., 1., 0., 1.],
+                    [0., 0., 1., 1.],
+                    [0., 0., 0., 1.]], grad_fn=<CopySlices>)
         """
         rt = concatenate((self.r.matrix(), self.t[..., None]), -1)
         rt_4x4 = pad(rt, (0, 0, 0, 1))  # add last row zeros
@@ -219,13 +219,13 @@ class Se3:
         """Returns the inverse transformation.
 
         Example:
-            >>> s = Se3(So3.identity(batch_size=1), torch.ones((1,3)))
+            >>> s = Se3(So3.identity(), torch.ones(3))
             >>> s_inv = s.inverse()
             >>> s_inv.r
-            real: tensor([[1.]], grad_fn=<SliceBackward0>)
-            vec: tensor([[-0., -0., -0.]], grad_fn=<SliceBackward0>)
+            Parameter containing:
+            tensor([1., -0., -0., -0.], requires_grad=True)
             >>> s_inv.t
-            tensor([[-1., -1., -1.]], grad_fn=<SliceBackward0>)
+            tensor([-1., -1., -1.], grad_fn=<SliceBackward0>)
         """
         r_inv = self.r.inverse()
         return Se3(r_inv, r_inv * (-1 * self.t))

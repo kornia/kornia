@@ -18,11 +18,11 @@ class So3:
     We internally represent the rotation by a unit quaternion.
 
     Example:
-        >>> q = Quaternion.identity(batch_size=1)
+        >>> q = Quaternion.identity()
         >>> s = So3(q)
         >>> s.q
-        real: tensor([[1.]], grad_fn=<SliceBackward0>)
-        vec: tensor([[0., 0., 0.]], grad_fn=<SliceBackward0>)
+        Parameter containing:
+        tensor([1., 0., 0., 0.], requires_grad=True)
     """
 
     def __init__(self, q: Quaternion) -> None:
@@ -37,10 +37,9 @@ class So3:
             >>> data = torch.ones((2, 4))
             >>> q = Quaternion(data)
             >>> So3(q)
-            real: tensor([[1.],
-                    [1.]], grad_fn=<SliceBackward0>)
-            vec: tensor([[1., 1., 1.],
-                    [1., 1., 1.]], grad_fn=<SliceBackward0>)
+            Parameter containing:
+            tensor([[1., 1., 1., 1.],
+                    [1., 1., 1., 1.]], requires_grad=True)
         """
         KORNIA_CHECK_TYPE(q, Quaternion)
         self._q = q
@@ -86,13 +85,12 @@ class So3:
             v: vector of shape :math:`(B,3)`.
 
         Example:
-            >>> v = torch.zeros((2,3))
-            >>> s = So3.identity(batch_size=1).exp(v)
+            >>> v = torch.zeros((2, 3))
+            >>> s = So3.identity().exp(v)
             >>> s
-            real: tensor([[1.],
-                    [1.]], grad_fn=<SliceBackward0>)
-            vec: tensor([[0., 0., 0.],
-                    [0., 0., 0.]], grad_fn=<SliceBackward0>)
+            Parameter containing:
+            tensor([[1., 0., 0., 0.],
+                    [1., 0., 0., 0.]], requires_grad=True)
         """
         KORNIA_CHECK_SHAPE(v, ["B", "3"])
         theta = batched_dot_product(v, v).sqrt()[..., None]
@@ -181,12 +179,12 @@ class So3:
             2xz-2yw & 2yz+2xw & 1-2x^2-2y^2\end{bmatrix}
 
         Example:
-            >>> s = So3.identity(batch_size=1)
+            >>> s = So3.identity()
             >>> m = s.matrix()
             >>> m
-            tensor([[[1., 0., 0.],
-                     [0., 1., 0.],
-                     [0., 0., 1.]]], grad_fn=<CatBackward0>)
+            tensor([[1., 0., 0.],
+                    [0., 1., 0.],
+                    [0., 0., 1.]], grad_fn=<StackBackward0>)
         """
         w = self.q.w[..., None]
         x, y, z = self.q.x[..., None], self.q.y[..., None], self.q.z[..., None]
@@ -212,11 +210,11 @@ class So3:
             matrix: the rotation matrix to convert of shape :math:`(B,3,3)`.
 
         Example:
-            >>> m = torch.eye(3)[None]
+            >>> m = torch.eye(3)
             >>> s = So3.from_matrix(m)
             >>> s
-            real: tensor([[1.]], grad_fn=<SliceBackward0>)
-            vec: tensor([[0., 0., 0.]], grad_fn=<SliceBackward0>)
+            Parameter containing:
+            tensor([1., 0., 0., 0.], requires_grad=True)
         """
         return cls(Quaternion.from_matrix(matrix))
 
@@ -228,12 +226,16 @@ class So3:
             batch_size: the batch size of the underlying data.
 
         Example:
+            >>> s = So3.identity()
+            >>> s
+            Parameter containing:
+            tensor([1., 0., 0., 0.], requires_grad=True)
+
             >>> s = So3.identity(batch_size=2)
             >>> s
-            real: tensor([[1.],
-                    [1.]], grad_fn=<SliceBackward0>)
-            vec: tensor([[0., 0., 0.],
-                    [0., 0., 0.]], grad_fn=<SliceBackward0>)
+            Parameter containing:
+            tensor([[1., 0., 0., 0.],
+                    [1., 0., 0., 0.]], requires_grad=True)
         """
         return cls(Quaternion.identity(batch_size, device, dtype))
 
@@ -241,9 +243,9 @@ class So3:
         """Returns the inverse transformation.
 
         Example:
-            >>> s = So3.identity(batch_size=1)
+            >>> s = So3.identity()
             >>> s.inverse()
-            real: tensor([[1.]], grad_fn=<SliceBackward0>)
-            vec: tensor([[-0., -0., -0.]], grad_fn=<SliceBackward0>)
+            Parameter containing:
+            tensor([1., -0., -0., -0.], requires_grad=True)
         """
         return So3(self.q.conj())
