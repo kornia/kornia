@@ -6,6 +6,10 @@ from kornia.testing import assert_close
 
 
 class TestQuaternion:
+    def _make_rand_data(self, device, dtype, batch_size):
+        shape = [] if batch_size is None else [batch_size]
+        return torch.rand(shape + [4], device=device, dtype=dtype)
+
     def assert_close(self, actual, expected, rtol=None, atol=None):
         if isinstance(actual, Quaternion):
             actual = actual.data.data
@@ -21,16 +25,16 @@ class TestQuaternion:
     def test_smoke(self, device, dtype):
         q = Quaternion.from_coeffs(1.0, 0.0, 0.0, 0.0)
         q = q.to(device, dtype)
-        q_data = torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype)
+        q_data = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
         assert isinstance(q, Quaternion)
-        assert q.shape == (1, 4)
+        assert q.shape == (4,)
         self.assert_close(q.data, q_data)
         self.assert_close(q.q, q_data)
-        self.assert_close(q.real, q_data[..., :1])
-        self.assert_close(q.scalar, q_data[..., :1])
+        self.assert_close(q.real, q_data[..., 0])
+        self.assert_close(q.scalar, q_data[..., 0])
         self.assert_close(q.vec, q_data[..., 1:])
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_init(self, device, dtype, batch_size):
         q1 = Quaternion.identity(batch_size)
         q1 = q1.to(device, dtype)
@@ -48,24 +52,24 @@ class TestQuaternion:
         with pytest.raises(Exception):
             _ = Quaternion(1, [0, 0, 0])
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_random(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size)
         q = q.to(device, dtype)
         q_n = q.normalize().norm()
         self.assert_close(q_n, q_n.new_ones(q_n.shape))
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_minus(self, device, dtype, batch_size):
-        data = torch.rand(batch_size, 4, device=device, dtype=dtype)
+        data = self._make_rand_data(device, dtype, batch_size)
         q = Quaternion(data)
         q = q.to(device, dtype)
         self.assert_close(-q, -data)
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_add(self, device, dtype, batch_size):
-        d1 = torch.rand(batch_size, 4, device=device, dtype=dtype)
-        d2 = torch.rand(batch_size, 4, device=device, dtype=dtype)
+        d1 = self._make_rand_data(device, dtype, batch_size)
+        d2 = self._make_rand_data(device, dtype, batch_size)
         q1 = Quaternion(d1).to(device, dtype)
         q2 = Quaternion(d2).to(device, dtype)
         q3 = q1 + q2
@@ -74,10 +78,10 @@ class TestQuaternion:
         q1 += q2
         self.assert_close(q1, q3)
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_subtract(self, device, dtype, batch_size):
-        d1 = torch.rand(batch_size, 4, device=device, dtype=dtype)
-        d2 = torch.rand(batch_size, 4, device=device, dtype=dtype)
+        d1 = self._make_rand_data(device, dtype, batch_size)
+        d2 = self._make_rand_data(device, dtype, batch_size)
         q1 = Quaternion(d1).to(device, dtype)
         q2 = Quaternion(d2).to(device, dtype)
         q3 = q1 - q2
@@ -130,7 +134,7 @@ class TestQuaternion:
         self.assert_close(k / k, one)
         self.assert_close(i / -j, k)
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_pow(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size)
         q = q.to(device, dtype)
@@ -144,7 +148,7 @@ class TestQuaternion:
         self.assert_close((q1**1), q1)
         self.assert_close((q1**2), q1)
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_inverse(self, device, dtype, batch_size):
         q1 = Quaternion.random(batch_size)
         q1 = q1.to(device, dtype)
@@ -152,7 +156,7 @@ class TestQuaternion:
         q2 = q2.to(device, dtype)
         self.assert_close(q1 * q1.inv(), q2, rtol=1e-4, atol=1e-4)
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_conjugate(self, device, dtype, batch_size):
         q1 = Quaternion.random(batch_size)
         q1 = q1.to(device, dtype)
@@ -160,13 +164,13 @@ class TestQuaternion:
         q2 = q2.to(device, dtype)
         self.assert_close((q1 * q2).conj(), q2.conj() * q1.conj())
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_double_conjugate(self, device, dtype, batch_size):
         q1 = Quaternion.random(batch_size)
         q1 = q1.to(device, dtype)
         self.assert_close(q1, q1.conj().conj())
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_norm(self, device, dtype, batch_size):
         q1 = Quaternion.random(batch_size)
         q1 = q1.to(device, dtype)
@@ -174,20 +178,21 @@ class TestQuaternion:
         q2 = q2.to(device, dtype)
         self.assert_close((q1 * q2).norm(), q1.norm() * q2.norm())
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_norm_shape(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size)
         q = q.to(device, dtype)
-        self.assert_close(q.norm().shape, torch.Size([batch_size, 1]))
+        expected_shape = () if batch_size is None else (batch_size,)
+        self.assert_close(tuple(q.norm().shape), expected_shape)
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_normalize(self, device, dtype, batch_size):
         q1 = Quaternion.random(batch_size)
         q1 = q1.to(device, dtype)
         q1_n = q1.normalize().norm()
         self.assert_close(q1_n, q1_n.new_ones(q1_n.shape))
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_matrix(self, device, dtype, batch_size):
         q1 = Quaternion.random(batch_size)
         q1 = q1.to(device, dtype)
@@ -207,21 +212,23 @@ class TestQuaternion:
             q1 = q[i]
             self.assert_close(q1.data[0], q.data[i])
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_axis_angle(self, device, dtype, batch_size):
         q1 = Quaternion.random(batch_size)
         q1 = q1.to(device, dtype)
-        angle = 2 * q1.scalar.arccos()
+        angle = 2 * q1.scalar.arccos()[..., None]
         axis = q1.vec / (angle / 2).sin()
         axis_angle = axis * angle
         q2 = Quaternion.from_axis_angle(axis_angle)
         q2 = q2.to(device, dtype)
         self.assert_close(q1, q2)
 
-    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_slerp(self, device, dtype, batch_size):
         for axis in torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]):
-            axis = axis.repeat(batch_size, 1).to(device, dtype)
+            axis = axis.to(device, dtype)
+            if batch_size is not None:
+                axis = axis.repeat(batch_size, 1)
             q1 = Quaternion.from_axis_angle(axis * 0)
             q1.to(device, dtype)
             q2 = Quaternion.from_axis_angle(axis * 3.14159)
