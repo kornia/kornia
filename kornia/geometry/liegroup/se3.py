@@ -1,8 +1,10 @@
 # kornia.geometry.so3 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py
-from kornia.core import Tensor, as_tensor, concatenate, eye, pad, where
-from kornia.geometry.liegroup._utils import squared_norm
+from typing import Optional
+
+from kornia.core import Tensor, concatenate, eye, pad, tensor, where
 from kornia.geometry.liegroup.so3 import So3
+from kornia.geometry.linalg import batched_dot_product
 from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 
 
@@ -96,17 +98,18 @@ class Se3:
             tensor([[0., 0., 0.]])
         """
         KORNIA_CHECK_SHAPE(v, ["B", "6"])
-        t = v[..., 0:3]
+        upsilon = v[..., :3]
         omega = v[..., 3:]
         omega_hat = So3.hat(omega)
-        theta = squared_norm(omega).sqrt()
+        omega_hat_sq = omega_hat @ omega_hat
+        theta = batched_dot_product(omega, omega).sqrt()
         R = So3.exp(omega)
         V = (
             eye(3, device=v.device, dtype=v.dtype)
-            + ((1 - theta.cos()) / (theta**2))[..., None] * omega_hat
-            + ((theta - theta.sin()) / (theta**3))[..., None] * (omega_hat @ omega_hat)
+            + ((1 - theta.cos()) / (theta**2))[..., None, None] * omega_hat
+            + ((theta - theta.sin()) / (theta**3))[..., None, None] * omega_hat_sq
         )
-        U = where(theta != 0.0, (t.reshape(-1, 1, 3) * V).sum(-1), t)
+        U = where(theta[..., None] != 0.0, (upsilon[..., None, :] * V).sum(-1), upsilon)
         return Se3(R, U)
 
     def log(self) -> Tensor:
@@ -119,23 +122,26 @@ class Se3:
             tensor([[0., 0., 0., 0., 0., 0.]], grad_fn=<CatBackward0>)
         """
         omega = self.r.log()
-        theta = squared_norm(omega).sqrt()
+        theta = batched_dot_product(omega, omega).sqrt()
         omega_hat = So3.hat(omega)
+        omega_hat_sq = omega_hat @ omega_hat
         V_inv = (
             eye(3, device=omega.device, dtype=omega.dtype)
             - 0.5 * omega_hat
-            + ((1 - theta * (theta / 2).cos() / (2 * (theta / 2).sin())) / theta.pow(2))[..., None]
-            * (omega_hat @ omega_hat)
+            + ((1 - theta * (theta / 2).cos() / (2 * (theta / 2).sin())) / theta.pow(2))[..., None, None] * omega_hat_sq
         )
-        t = where(theta != 0.0, (self.t.reshape(-1, 1, 3) * V_inv).sum(-1), self.t)
+        t = where(theta[..., None] != 0.0, (self.t[..., None, :] * V_inv).sum(-1), self.t)
         return concatenate((t, omega), -1)
 
     @staticmethod
     def hat(v) -> Tensor:
-        """Converts elements from vector space to lie algebra. Returns matrix of shape :math:`(B,4,4)`.
+        """Converts elements from vector space to lie algebra.
 
         Args:
             v: vector of shape :math:`(B,6)`.
+
+        Returns:
+            matrix of shape :math:`(B,4,4)`.
 
         Example:
             >>> v = torch.ones((1,6))
@@ -147,9 +153,9 @@ class Se3:
                      [ 0.,  1.,  1.,  1.]]])
         """
         KORNIA_CHECK_SHAPE(v, ["B", "6"])
-        t, omega = v[..., None, :3], v[..., 3:]
-        rt = concatenate((So3.hat(omega), t), 1)
-        return pad(rt, (1, 0, 0, 0))  # add zeros left column
+        upsilon, omega = v[..., :3], v[..., 3:]
+        rt = concatenate((So3.hat(omega), upsilon[..., None]), -1)
+        return pad(rt, (0, 0, 0, 1))  # add zeros bottom
 
     @staticmethod
     def vee(omega) -> Tensor:
@@ -168,26 +174,29 @@ class Se3:
             tensor([[1., 1., 1., 1., 1., 1.]])
         """
         KORNIA_CHECK_SHAPE(omega, ["B", "4", "4"])
-        t = omega[..., 3, 1:]
-        v = So3.vee(omega[..., 0:3, 1:])
-        return concatenate((t, v), 1)
+        head = omega[..., :3, -1]
+        tail = So3.vee(omega[..., :3, :3])
+        return concatenate((head, tail), -1)
 
     @classmethod
-    def identity(cls, batch_size: int, device=None, dtype=None) -> 'Se3':
+    def identity(cls, batch_size: Optional[int] = None, device=None, dtype=None) -> 'Se3':
         """Create a Se3 group representing an identity rotation and zero translation.
 
         Args:
             batch_size: the batch size of the underlying data.
 
         Example:
-            >>> s = Se3.identity(batch_size=1)
+            >>> s = Se3.identity()
             >>> s.r
-            real: tensor([[1.]], grad_fn=<SliceBackward0>)
-            vec: tensor([[0., 0., 0.]], grad_fn=<SliceBackward0>)
+            real: tensor([1.], grad_fn=<SliceBackward0>)
+            vec: tensor([0., 0., 0.], grad_fn=<SliceBackward0>)
             >>> s.t
-            tensor([[0., 0., 0.]])
+            tensor([0., 0., 0.])
         """
-        t: Tensor = as_tensor(batch_size * [[0.0, 0.0, 0.0]], device=device, dtype=dtype)
+        t: Tensor = tensor([0.0, 0.0, 0.0], device=device, dtype=dtype)
+        if batch_size is not None:
+            t = t.repeat(batch_size, 1)
+
         return cls(So3.identity(batch_size, device, dtype), t)
 
     def matrix(self) -> Tensor:
@@ -201,7 +210,7 @@ class Se3:
                      [0., 0., 1., 1.],
                      [0., 0., 0., 1.]]], grad_fn=<CopySlices>)
         """
-        rt = concatenate((self.r.matrix(), self.t.reshape(-1, 3, 1)), 2)
+        rt = concatenate((self.r.matrix(), self.t[..., None]), -1)
         rt_4x4 = pad(rt, (0, 0, 0, 1))  # add last row zeros
         rt_4x4[..., -1, -1] = 1.0
         return rt_4x4
