@@ -2,13 +2,13 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py
 from typing import Optional
 
-from kornia.core import Tensor, concatenate, eye, pad, tensor, where
+from kornia.core import Module, Parameter, Tensor, concatenate, eye, pad, tensor, where
 from kornia.geometry.liegroup.so3 import So3
 from kornia.geometry.linalg import batched_dot_product
 from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 
 
-class Se3:
+class Se3(Module):
     r"""Base class to represent the Se3 group.
 
     The SE(3) is the group of rigid body transformations about the origin of three-dimensional Euclidean
@@ -23,7 +23,8 @@ class Se3:
         Parameter containing:
         tensor([1., 0., 0., 0.], requires_grad=True)
         >>> s.t
-        tensor([1., 1., 1.])
+        Parameter containing:
+        tensor([1., 1., 1.], requires_grad=True)
     """
 
     def __init__(self, r: So3, t: Tensor) -> None:
@@ -43,12 +44,14 @@ class Se3:
             Parameter containing:
             tensor([[1., 0., 0., 0.]], requires_grad=True)
             >>> s.t
-            tensor([[1., 1., 1.]])
+            Parameter containing:
+            tensor([[1., 1., 1.]], requires_grad=True)
         """
+        super().__init__()
         KORNIA_CHECK_TYPE(r, So3)
         KORNIA_CHECK_SHAPE(t, ["B", "3"])
         self._r = r
-        self._t = t
+        self._t = Parameter(t)
 
     def __repr__(self) -> str:
         return f"rotation: {self.r}\ntranslation: {self.t}"
@@ -95,7 +98,8 @@ class Se3:
             Parameter containing:
             tensor([[1., 0., 0., 0.]], requires_grad=True)
             >>> s.t
-            tensor([[0., 0., 0.]])
+            Parameter containing:
+            tensor([[0., 0., 0.]], requires_grad=True)
         """
         KORNIA_CHECK_SHAPE(v, ["B", "6"])
         upsilon = v[..., :3]
@@ -191,7 +195,8 @@ class Se3:
             Parameter containing:
             tensor([1., 0., 0., 0.], requires_grad=True)
             >>> s.t
-            tensor([0., 0., 0.])
+            Parameter containing:
+            tensor([0., 0., 0.], requires_grad=True)
         """
         t: Tensor = tensor([0.0, 0.0, 0.0], device=device, dtype=dtype)
         if batch_size is not None:
@@ -225,7 +230,8 @@ class Se3:
             Parameter containing:
             tensor([1., -0., -0., -0.], requires_grad=True)
             >>> s_inv.t
-            tensor([-1., -1., -1.], grad_fn=<SliceBackward0>)
+            Parameter containing:
+            tensor([-1., -1., -1.], requires_grad=True)
         """
         r_inv = self.r.inverse()
         return Se3(r_inv, r_inv * (-1 * self.t))

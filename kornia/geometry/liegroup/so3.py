@@ -2,13 +2,13 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py
 from typing import Optional
 
-from kornia.core import Tensor, concatenate, stack, tensor, where, zeros, zeros_like
+from kornia.core import Module, Tensor, concatenate, stack, tensor, where, zeros, zeros_like
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.quaternion import Quaternion
 from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 
 
-class So3:
+class So3(Module):
     r"""Base class to represent the So3 group.
 
     The SO(3) is the group of all rotations about the origin of three-dimensional Euclidean space
@@ -41,6 +41,7 @@ class So3:
             tensor([[1., 1., 1., 1.],
                     [1., 1., 1., 1.]], requires_grad=True)
         """
+        super().__init__()
         KORNIA_CHECK_TYPE(q, Quaternion)
         self._q = q
 
