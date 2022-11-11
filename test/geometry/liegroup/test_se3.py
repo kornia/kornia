@@ -81,6 +81,19 @@ class TestSe3(BaseTester):
         self.assert_close(s2s2inv.t, zeros_vec)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_mul_point(self, device, dtype, batch_size):
+        world_pose_s1: Se3 = self._make_rand_se3d(device, dtype, batch_size)
+        world_pose_s2: Se3 = self._make_rand_se3d(device, dtype, batch_size)
+        pt_in_world = self._make_rand_data(device, dtype, batch_size, dims=3)
+        s1_pose_s2: Se3 = world_pose_s1.inverse() * world_pose_s2
+        pt_in_s1 = world_pose_s1.inverse() * pt_in_world
+        pt_in_s2 = world_pose_s2.inverse() * pt_in_world
+        pt_in_s1_in_s2 = s1_pose_s2.inverse() * pt_in_s1
+        pt_in_s2_in_s1 = s1_pose_s2 * pt_in_s2
+        self.assert_close(pt_in_s1, pt_in_s2_in_s1)
+        self.assert_close(pt_in_s2, pt_in_s1_in_s2)
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_exp(self, device, dtype, batch_size):
         omega = torch.zeros(3, device=device, dtype=dtype)
         t = torch.rand(3, device=device, dtype=dtype)

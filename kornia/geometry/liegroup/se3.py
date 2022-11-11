@@ -68,11 +68,23 @@ class Se3(Module):
         Return:
             The resulting Se3 transformation.
         """
-        KORNIA_CHECK_TYPE(right, Se3)
-        # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py#L97
-        r = self.r * right.r
-        t = self.t + self.r * right.t
-        return Se3(r, t)
+        if isinstance(right, Se3):
+            KORNIA_CHECK_TYPE(right, Se3)
+            # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py#L97
+            r = self.so3 * right.so3
+            t = self.t + self.so3 * right.t
+            return Se3(r, t)
+        elif isinstance(right, Tensor):
+            KORNIA_CHECK_TYPE(right, Tensor)
+            KORNIA_CHECK_SHAPE(right, ["B", "N"])
+            return self.so3 * right + self.t
+        else:
+            raise TypeError(f"Unsupported type: {type(right)}")
+
+    @property
+    def so3(self) -> So3:
+        """Return the underlying rotation(So3)."""
+        return self._r
 
     @property
     def r(self) -> So3:
