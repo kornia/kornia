@@ -250,8 +250,8 @@ def euclidean_distance(x: Tensor, y: Tensor, keepdim: bool = False, eps: float =
         keepdim: whether to keep the dimension after reduction.
         eps: small value to have numerical stability.
     """
-    KORNIA_CHECK_SHAPE(x, ["*", "D"])
-    KORNIA_CHECK_SHAPE(y, ["*", "D"])
+    KORNIA_CHECK_SHAPE(x, ["*", "N"])
+    KORNIA_CHECK_SHAPE(y, ["*", "N"])
     KORNIA_CHECK(x.shape == y.shape)
 
     return (x - y + eps).pow(2).sum(-1, keepdim).sqrt()
