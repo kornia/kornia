@@ -55,7 +55,7 @@ def test_parse_simple_radial_camera_params(device, dtype, colmap_simple_radial_c
     intrinsic = intrinsics[0].to('cpu')
     assert_close(intrinsic[0, 0].item(), 2136.7647911326526)
     assert_close(intrinsic[1, 1].item(), 2136.7647911326526)
-    assert_close(intrinsic[0, 2].item(), 768)
+    assert_close(intrinsic[0, 2].item(), 768.0)
     assert_close(intrinsic[1, 2].item(), 1365.5)
 
 
@@ -66,9 +66,9 @@ def colmap_points_3d_path():
 
 def test_parse_colmap_points_3d(device, dtype, colmap_points_3d_path) -> None:
     points_3d = parse_colmap_points_3d(colmap_points_3d_path, device, dtype)
-    assert_close(points_3d[0, 0, 0].item(), 4.0266901330732763)
-    assert_close(points_3d[0, 0, 1].item(), -2.4103584120496508)
-    assert_close(points_3d[0, 0, 2].item(), 5.0333513314325495)
-    assert_close(points_3d[2, 0, 0].item(), 2.0597405997244165)
-    assert_close(points_3d[2, 0, 1].item(), -2.2297621675904238)
-    assert_close(points_3d[2, 0, 2].item(), 5.9957942279104977)
+    assert_close(points_3d[0, 0].item(), 4.0266901330732763)
+    assert_close(points_3d[0, 1].item(), -2.4103584120496508)
+    assert_close(points_3d[0, 2].item(), 5.0333513314325495)
+    assert_close(points_3d[2, 0].item(), 2.0597405997244165)
+    assert_close(points_3d[2, 1].item(), -2.2297621675904238)
+    assert_close(points_3d[2, 2].item(), 5.9957942279104977)

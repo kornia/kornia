@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from kornia.nerf.camera_utils import create_spiral_path, create_spline_curve
+from kornia.nerf.camera_utils import create_spiral_path
 from kornia.nerf.colmap_parser import parse_colmap_output
 
 
@@ -22,8 +22,3 @@ def test_create_spiral_path(device, dtype, colmap_cameras_path, colmap_images_pa
         create_spiral_path(cameras, 1, 30, 3)
     except Exception as err:
         assert False, err
-
-
-def test_create_spline_curve(device, dtype, colmap_cameras_path, colmap_images_path) -> None:
-    _, cameras = parse_colmap_output(colmap_cameras_path, colmap_images_path, device, dtype)
-    create_spline_curve(cameras, 10)
