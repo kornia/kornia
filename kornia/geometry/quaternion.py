@@ -312,6 +312,8 @@ class Quaternion(Module):
         """
         return cls(tensor([w, x, y, z]))
 
+    # TODO: update signature
+    # def random(cls, shape: Optional[List] = None, device = None, dtype = None) -> 'Quaternion':
     @classmethod
     def random(cls, batch_size: Optional[int] = None, device=None, dtype=None) -> 'Quaternion':
         """Create a random unit quaternion of shape :math:`(B, 4)`.
