@@ -54,6 +54,12 @@ Angle Axis
 .. autofunction:: angle_axis_to_quaternion
 .. autofunction:: angle_axis_to_rotation_matrix
 
+Euler Angles
+------------
+
+.. autofuction:: quaternion_from_euler
+.. autofuction:: euler_from_quaternion
+
 Pose
 ----------
 
