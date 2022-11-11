@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 from kornia.constants import pi
 from kornia.core import Tensor, concatenate, pad, stack, tensor, where
-from kornia.testing import KORNIA_CHECK_SHAPE
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.utils.helpers import _torch_inverse_cast
 
 __all__ = [
@@ -27,6 +27,8 @@ __all__ = [
     "quaternion_to_rotation_matrix",
     "quaternion_log_to_exp",
     "quaternion_exp_to_log",
+    "quaternion_from_euler",
+    "euler_from_quaternion",
     "denormalize_pixel_coordinates",
     "normalize_pixel_coordinates",
     "normalize_quaternion",
@@ -850,6 +852,79 @@ def angle_axis_to_quaternion(angle_axis: Tensor, order: QuaternionCoeffOrder = Q
         quaternion[..., 3:4] = a2 * k
         quaternion[..., 0:1] = w
     return quaternion
+
+
+# inspired by: https://stackoverflow.com/questions/56207448/efficient-quaternions-to-euler-transformation
+
+
+def euler_from_quaternion(w: Tensor, x: Tensor, y: Tensor, z: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+    """Convert a quaternion coefficients to Euler angles.
+
+    Returned angles are in radians in XYZ convention.
+
+    Args:
+        w: quaternion :math:`q_w` coefficient.
+        x: quaternion :math:`q_x` coefficient.
+        y: quaternion :math:`q_y` coefficient.
+        z: quaternion :math:`q_z` coefficient.
+
+    Return:
+        A tuple with euler angles`roll`, `pitch`, `yaw`.
+    """
+    KORNIA_CHECK(w.shape == x.shape)
+    KORNIA_CHECK(x.shape == y.shape)
+    KORNIA_CHECK(y.shape == z.shape)
+
+    yy = y * y
+
+    sinr_cosp = 2.0 * (w * x + y * z)
+    cosr_cosp = 1.0 - 2.0 * (x * x + yy)
+    roll = sinr_cosp.atan2(cosr_cosp)
+
+    sinp = 2.0 * (w * y - z * x)
+    sinp = sinp.clamp(min=-1.0, max=1.0)
+    pitch = sinp.asin()
+
+    siny_cosp = 2.0 * (w * z + x * y)
+    cosy_cosp = 1.0 - 2.0 * (yy + z * z)
+    yaw = siny_cosp.atan2(cosy_cosp)
+
+    return roll, pitch, yaw
+
+
+def quaternion_from_euler(roll: Tensor, pitch: Tensor, yaw: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+    """Convert Euler angles to quaternion coefficients.
+
+    Euler angles are assumed to be in radians in XYZ convention.
+
+    Args:
+        roll: the roll euler angle.
+        pitch: the pitch euler angle.
+        yaw: the yaw euler angle.
+
+    Return:
+        A tuple with quaternion coefficients in order of `wxyz`.
+    """
+    KORNIA_CHECK(roll.shape == pitch.shape)
+    KORNIA_CHECK(pitch.shape == yaw.shape)
+
+    roll_half = roll * 0.5
+    pitch_half = pitch * 0.5
+    yaw_half = yaw * 0.5
+
+    cy = yaw_half.cos()
+    sy = yaw_half.sin()
+    cp = pitch_half.cos()
+    sp = pitch_half.sin()
+    cr = roll_half.cos()
+    sr = roll_half.sin()
+
+    qw = cy * cp * cr + sy * sp * sr
+    qx = cy * cp * sr - sy * sp * cr
+    qy = sy * cp * sr + cy * sp * cr
+    qz = sy * cp * cr - cy * sp * sr
+
+    return qw, qx, qy, qz
 
 
 # based on:
