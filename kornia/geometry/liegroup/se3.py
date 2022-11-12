@@ -291,10 +291,8 @@ class Se3(Module):
         KORNIA_CHECK(y.shape == z.shape)
         KORNIA_CHECK_SAME_DEVICES([x, y, z])
         batch_size = x.shape[0] if len(x.shape) > 0 else None
-        device, dtype = x.device, x.dtype
-        rotation = So3.identity(batch_size, device, dtype)
-        translation = stack((x, y, z), -1)
-        return cls(rotation, translation)
+        rotation = So3.identity(batch_size, x.device, x.dtype)
+        return cls(rotation, stack((x, y, z), -1))
 
     @classmethod
     def trans_x(cls, x: Tensor) -> "Se3":
