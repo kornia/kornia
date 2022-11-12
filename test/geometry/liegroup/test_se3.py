@@ -157,7 +157,7 @@ class TestSe3(BaseTester):
         se3 = Se3.rot_x(x)
         quat = rotation_matrix_to_quaternion(se3.so3.matrix(), order=QuaternionCoeffOrder.WXYZ)
         quat = Quaternion(quat)
-        roll, _, _ = euler_from_quaternion(quat.w, quat.x, quat.y, quat.z)
+        roll, _, _ = euler_from_quaternion(*quat.coeffs)
         self.assert_close(x, roll)
         self.assert_close(se3.t, torch.zeros_like(se3.t))
 
@@ -167,7 +167,7 @@ class TestSe3(BaseTester):
         se3 = Se3.rot_y(y)
         quat = rotation_matrix_to_quaternion(se3.so3.matrix(), order=QuaternionCoeffOrder.WXYZ)
         quat = Quaternion(quat)
-        _, pitch, _ = euler_from_quaternion(quat.w, quat.x, quat.y, quat.z)
+        _, pitch, _ = euler_from_quaternion(*quat.coeffs)
         self.assert_close(y, pitch)
         self.assert_close(se3.t, torch.zeros_like(se3.t))
 
@@ -177,7 +177,7 @@ class TestSe3(BaseTester):
         se3 = Se3.rot_z(z)
         quat = rotation_matrix_to_quaternion(se3.so3.matrix(), order=QuaternionCoeffOrder.WXYZ)
         quat = Quaternion(quat)
-        _, _, yaw = euler_from_quaternion(quat.w, quat.x, quat.y, quat.z)
+        _, _, yaw = euler_from_quaternion(*quat.coeffs)
         self.assert_close(z, yaw)
         self.assert_close(se3.t, torch.zeros_like(se3.t))
 

@@ -192,19 +192,19 @@ class TestSo3(BaseTester):
     def test_rot_x(self, device, dtype, batch_size):
         x = self._make_rand_data(device, dtype, batch_size, dims=1).squeeze(-1)
         so3 = So3.rot_x(x)
-        roll, _, _ = euler_from_quaternion(so3.q.w, so3.q.x, so3.q.y, so3.q.z)
+        roll, _, _ = euler_from_quaternion(*so3.q.coeffs)
         self.assert_close(x, roll)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_rot_y(self, device, dtype, batch_size):
         y = self._make_rand_data(device, dtype, batch_size, dims=1).squeeze(-1)
         so3 = So3.rot_y(y)
-        _, pitch, _ = euler_from_quaternion(so3.q.w, so3.q.x, so3.q.y, so3.q.z)
+        _, pitch, _ = euler_from_quaternion(*so3.q.coeffs)
         self.assert_close(y, pitch)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_rot_z(self, device, dtype, batch_size):
         z = self._make_rand_data(device, dtype, batch_size, dims=1).squeeze(-1)
         so3 = So3.rot_z(z)
-        _, _, yaw = euler_from_quaternion(so3.q.w, so3.q.x, so3.q.y, so3.q.z)
+        _, _, yaw = euler_from_quaternion(*so3.q.coeffs)
         self.assert_close(z, yaw)
