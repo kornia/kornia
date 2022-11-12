@@ -250,3 +250,8 @@ class So3(Module):
             tensor([1., -0., -0., -0.], requires_grad=True)
         """
         return So3(self.q.conj())
+
+    @classmethod
+    def rot_x(cls, x: Tensor) -> "So3":
+        zeros_vec = zeros_like(x)
+        return cls.exp(stack([x, zeros_vec, zeros_vec], -1))

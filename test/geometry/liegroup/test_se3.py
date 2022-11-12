@@ -149,3 +149,13 @@ class TestSe3(BaseTester):
         sinv = Se3(rot, t).inverse()
         self.assert_close(sinv.r.inverse().q.data, q.data)
         self.assert_close(sinv.t, sinv.r * (-1 * t))
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_rot_x(self, device, dtype, batch_size):
+        x = self._make_rand_data(device, dtype, batch_size, dims=1).squeeze(-1)
+        se3 = Se3.rot_x(x)
+        print(se3)
+        import pdb
+
+        pdb.set_trace()
+        pass

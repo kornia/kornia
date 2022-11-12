@@ -2,7 +2,7 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py
 from typing import Optional
 
-from kornia.core import Module, Parameter, Tensor, concatenate, eye, pad, tensor, where
+from kornia.core import Module, Parameter, Tensor, concatenate, eye, pad, stack, tensor, where, zeros_like
 from kornia.geometry.liegroup.so3 import So3
 from kornia.geometry.linalg import batched_dot_product
 from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
@@ -247,3 +247,8 @@ class Se3(Module):
         """
         r_inv = self.r.inverse()
         return Se3(r_inv, r_inv * (-1 * self.t))
+
+    @classmethod
+    def rot_x(cls, x: Tensor) -> "Se3":
+        z = zeros_like(x)
+        return Se3(So3.rot_x(x), stack([z, z, z], -1))

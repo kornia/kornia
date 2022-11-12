@@ -186,3 +186,9 @@ class TestSo3(BaseTester):
         q = Quaternion.random(batch_size, device, dtype)
         self.assert_close(So3(q).inverse().inverse().q.data, q.data)
         self.assert_close(So3(q).inverse().inverse().matrix(), So3(q).matrix())
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_rot_x(self, device, dtype, batch_size):
+        x = self._make_rand_data(device, dtype, batch_size, dims=1).squeeze(-1)
+        so3 = So3.rot_x(x)
+        print(so3)
