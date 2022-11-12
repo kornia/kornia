@@ -17,6 +17,7 @@ normalize = F.normalize
 pad = F.pad
 eye = torch.eye
 zeros = torch.zeros
+zeros_like = torch.zeros_like
 where = torch.where
 
 # constructors
