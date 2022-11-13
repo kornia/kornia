@@ -2,8 +2,6 @@ import warnings
 from itertools import zip_longest
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
-from torch import Tensor
-
 from kornia.augmentation import (
     AugmentationBase3D,
     GeometricAugmentationBase2D,
@@ -18,6 +16,7 @@ from kornia.augmentation.container.patch import PatchSequential
 from kornia.augmentation.container.utils import ApplyInverse
 from kornia.augmentation.container.video import VideoSequential
 from kornia.constants import DataKey, Resample
+from kornia.core import Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.utils import eye_like
 
@@ -314,7 +313,7 @@ class AugmentationSequential(ImageSequential):
                     mode = "xywh"
                 else:
                     raise ValueError(f"Unsupported mode `{DataKey.get(dcate).name}`.")
-                inp.append(Boxes.from_tensor(arg, mode=mode))  # type: ignore
+                inp.append(Boxes.from_tensor(arg, mode=mode))
             else:
                 raise NotImplementedError(f"input type of {dcate} is not implemented.")
         return inp
@@ -367,7 +366,7 @@ class AugmentationSequential(ImageSequential):
             if dcate == DataKey.INPUT:
                 _inp = args[idx]
 
-                _out = super().forward(_inp, label, params=params, extra_args=extra_args)  # type: ignore
+                _out = super().forward(_inp, label, params=params, extra_args=extra_args)
                 self._transform_matrix = self.get_transformation_matrix(_inp, params=params)
                 if self.return_label:
                     _input, label = cast(Tuple[Tensor, Tensor], _out)

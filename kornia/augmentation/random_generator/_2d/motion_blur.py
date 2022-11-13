@@ -11,6 +11,7 @@ from kornia.augmentation.utils import (
     _joint_range_check,
     _range_bound,
 )
+from kornia.core import Tensor, tensor
 from kornia.utils.helpers import _deprecated, _extract_device_dtype
 
 
@@ -32,9 +33,9 @@ class MotionBlurGenerator(RandomGeneratorBase):
 
     Returns:
         A dict of parameters to be passed for transformation.
-            - ksize_factor (torch.Tensor): element-wise kernel size factors with a shape of (B,).
-            - angle_factor (torch.Tensor): element-wise angle factors with a shape of (B,).
-            - direction_factor (torch.Tensor): element-wise direction factors with a shape of (B,).
+            - ksize_factor (Tensor): element-wise kernel size factors with a shape of (B,).
+            - angle_factor (Tensor): element-wise angle factors with a shape of (B,).
+            - direction_factor (Tensor): element-wise direction factors with a shape of (B,).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -45,8 +46,8 @@ class MotionBlurGenerator(RandomGeneratorBase):
     def __init__(
         self,
         kernel_size: Union[int, Tuple[int, int]],
-        angle: Union[torch.Tensor, float, Tuple[float, float]],
-        direction: Union[torch.Tensor, float, Tuple[float, float]],
+        angle: Union[Tensor, float, Tuple[float, float]],
+        direction: Union[Tensor, float, Tuple[float, float]],
     ) -> None:
         super().__init__()
         self.kernel_size = kernel_size
@@ -75,7 +76,7 @@ class MotionBlurGenerator(RandomGeneratorBase):
         self.angle_sampler = Uniform(angle[0], angle[1], validate_args=False)
         self.direction_sampler = Uniform(direction[0], direction[1], validate_args=False)
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         # self.ksize_factor.expand((batch_size, -1))
@@ -95,19 +96,19 @@ class MotionBlurGenerator(RandomGeneratorBase):
 def random_motion_blur_generator(
     batch_size: int,
     kernel_size: Union[int, Tuple[int, int]],
-    angle: torch.Tensor,
-    direction: torch.Tensor,
+    angle: Tensor,
+    direction: Tensor,
     same_on_batch: bool = False,
     device: torch.device = torch.device('cpu'),
     dtype: torch.dtype = torch.float32,
-) -> Dict[str, torch.Tensor]:
+) -> Dict[str, Tensor]:
     r"""Get parameters for motion blur.
 
     Args:
         batch_size (int): the tensor batch size.
         kernel_size (int or (int, int)): motion kernel size (odd and positive) or range.
-        angle (torch.Tensor): angle of the motion blur in degrees (anti-clockwise rotation).
-        direction (torch.Tensor): forward/backward direction of the motion blur.
+        angle (Tensor): angle of the motion blur in degrees (anti-clockwise rotation).
+        direction (Tensor): forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with
             angle provided via angle), while higher values towards 1.0 will point the motion
             blur forward. A value of 0.0 leads to a uniformly (but still angled) motion blur.
@@ -116,10 +117,10 @@ def random_motion_blur_generator(
         dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
 
     Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - ksize_factor (torch.Tensor): element-wise kernel size factors with a shape of (B,).
-            - angle_factor (torch.Tensor): element-wise angle factors with a shape of (B,).
-            - direction_factor (torch.Tensor): element-wise direction factors with a shape of (B,).
+        params Dict[str, Tensor]: parameters to be passed for transformation.
+            - ksize_factor (Tensor): element-wise kernel size factors with a shape of (B,).
+            - angle_factor (Tensor): element-wise angle factors with a shape of (B,).
+            - direction_factor (Tensor): element-wise direction factors with a shape of (B,).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
@@ -133,7 +134,7 @@ def random_motion_blur_generator(
     if isinstance(kernel_size, int):
         if not (kernel_size >= 3 and kernel_size % 2 == 1):
             raise AssertionError(f"`kernel_size` must be odd and greater than 3. Got {kernel_size}.")
-        ksize_factor = torch.tensor([kernel_size] * batch_size, device=device, dtype=dtype)
+        ksize_factor = tensor([kernel_size] * batch_size, device=device, dtype=dtype)
     elif isinstance(kernel_size, tuple):
         # kernel_size is fixed across the batch
         if len(kernel_size) != 2:

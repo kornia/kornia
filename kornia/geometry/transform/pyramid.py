@@ -2,10 +2,9 @@ import math
 from typing import List, Tuple
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.core import Tensor
+from kornia.core import Module, Tensor, pad, stack, tensor
 from kornia.filters import filter2d, gaussian_blur2d
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
@@ -15,7 +14,7 @@ __all__ = ["PyrDown", "PyrUp", "ScalePyramid", "pyrdown", "pyrup", "build_pyrami
 def _get_pyramid_gaussian_kernel() -> Tensor:
     """Utility function that return a pre-computed gaussian kernel."""
     return (
-        torch.tensor(
+        tensor(
             [
                 [
                     [1.0, 4.0, 6.0, 4.0, 1.0],
@@ -30,7 +29,7 @@ def _get_pyramid_gaussian_kernel() -> Tensor:
     )
 
 
-class PyrDown(nn.Module):
+class PyrDown(Module):
     r"""Blur a tensor and downsamples it.
 
     Args:
@@ -62,7 +61,7 @@ class PyrDown(nn.Module):
         return pyrdown(input, self.border_type, self.align_corners, self.factor)
 
 
-class PyrUp(nn.Module):
+class PyrUp(Module):
     r"""Upsample a tensor and then blurs it.
 
     Args:
@@ -92,7 +91,7 @@ class PyrUp(nn.Module):
         return pyrup(input, self.border_type, self.align_corners)
 
 
-class ScalePyramid(nn.Module):
+class ScalePyramid(Module):
     r"""Create an scale pyramid of image, usually used for local feature detection.
 
     Images are consequently smoothed with Gaussian blur and downscaled.
@@ -186,7 +185,7 @@ class ScalePyramid(nn.Module):
             cur_level = x
         return cur_level, cur_sigma, pixel_distance
 
-    def forward(self, x: Tensor) -> Tuple[List, List, List]:  # type: ignore
+    def forward(self, x: Tensor) -> Tuple[List, List, List]:
         bs, _, _, _ = x.size()
         cur_level, cur_sigma, pixel_distance = self.get_first_level(x)
 
@@ -225,7 +224,7 @@ class ScalePyramid(nn.Module):
             pixel_dists.append(pixel_distance * torch.ones(bs, self.n_levels + self.extra_levels).to(x.device))
             oct_idx += 1
         for i in range(len(pyr)):
-            pyr[i] = torch.stack(pyr[i], dim=2)  # type: ignore
+            pyr[i] = stack(pyr[i], 2)  # type: ignore
         return pyr, sigmas, pixel_dists
 
 
@@ -394,8 +393,8 @@ def build_laplacian_pyramid(
     if require_padding:
         # in case of arbitrary shape tensor image need to be padded.
         # Reference: https://stackoverflow.com/a/29967555
-        pad = (0, find_next_powerof_two(w) - w, 0, find_next_powerof_two(h) - h)
-        input = F.pad(input, pad, "reflect")
+        padding = (0, find_next_powerof_two(w) - w, 0, find_next_powerof_two(h) - h)
+        input = pad(input, padding, "reflect")
 
     # create gaussian pyramid
     gaussian_pyramid: List[Tensor] = build_pyramid(input, max_level, border_type, align_corners)
