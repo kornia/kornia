@@ -6,7 +6,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.constants import pi
-from kornia.core import Tensor, concatenate, stack, tensor
+from kornia.core import Tensor, concatenate, pad, stack, tensor, where
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.utils.helpers import _torch_inverse_cast
 
@@ -176,7 +176,7 @@ def convert_points_from_homogeneous(points: Tensor, eps: float = 1e-8) -> Tensor
     # follow the convention of opencv:
     # https://github.com/opencv/opencv/pull/14411/files
     mask: Tensor = torch.abs(z_vec) > eps
-    scale = torch.where(mask, 1.0 / (z_vec + eps), torch.ones_like(z_vec))
+    scale = where(mask, 1.0 / (z_vec + eps), torch.ones_like(z_vec))
 
     return scale * points[..., :-1]
 
@@ -200,11 +200,11 @@ def convert_points_to_homogeneous(points: Tensor) -> Tensor:
     if len(points.shape) < 2:
         raise ValueError(f"Input must be at least a 2D tensor. Got {points.shape}")
 
-    return torch.nn.functional.pad(points, [0, 1], "constant", 1.0)
+    return pad(points, [0, 1], "constant", 1.0)
 
 
 def _convert_affinematrix_to_homography_impl(A: Tensor) -> Tensor:
-    H: Tensor = torch.nn.functional.pad(A, [0, 0, 0, 1], "constant", value=0.0)
+    H: Tensor = pad(A, [0, 0, 0, 1], "constant", value=0.0)
     H[..., -1, -1] += 1.0
     return H
 
@@ -420,7 +420,7 @@ def rotation_matrix_to_quaternion(
         )
 
     def safe_zero_division(numerator: Tensor, denominator: Tensor) -> Tensor:
-        eps: float = torch.finfo(numerator.dtype).tiny  # type: ignore
+        eps: float = torch.finfo(numerator.dtype).tiny
         return numerator / torch.clamp(denominator, min=eps)
 
     rotation_matrix_vec: Tensor = rotation_matrix.view(*rotation_matrix.shape[:-2], 9)
@@ -469,10 +469,10 @@ def rotation_matrix_to_quaternion(
             return concatenate((qx, qy, qz, qw), dim=-1)
         return concatenate((qw, qx, qy, qz), dim=-1)
 
-    where_2 = torch.where(m11 > m22, cond_2(), cond_3())
-    where_1 = torch.where((m00 > m11) & (m00 > m22), cond_1(), where_2)
+    where_2 = where(m11 > m22, cond_2(), cond_3())
+    where_1 = where((m00 > m11) & (m00 > m22), cond_1(), where_2)
 
-    quaternion: Tensor = torch.where(trace > 0.0, trace_positive_cond(), where_1)
+    quaternion: Tensor = where(trace > 0.0, trace_positive_cond(), where_1)
     return quaternion
 
 
@@ -649,13 +649,13 @@ def quaternion_to_angle_axis(quaternion: Tensor, order: QuaternionCoeffOrder = Q
     sin_squared_theta: Tensor = q1 * q1 + q2 * q2 + q3 * q3
 
     sin_theta: Tensor = torch.sqrt(sin_squared_theta)
-    two_theta: Tensor = 2.0 * torch.where(
+    two_theta: Tensor = 2.0 * where(
         cos_theta < 0.0, torch.atan2(-sin_theta, -cos_theta), torch.atan2(sin_theta, cos_theta)
     )
 
     k_pos: Tensor = two_theta / sin_theta
     k_neg: Tensor = 2.0 * torch.ones_like(sin_theta)
-    k: Tensor = torch.where(sin_squared_theta > 0.0, k_pos, k_neg)
+    k: Tensor = where(sin_squared_theta > 0.0, k_pos, k_neg)
 
     angle_axis: Tensor = torch.zeros_like(quaternion)[..., :3]
     angle_axis[..., 0] += q1 * k
@@ -837,8 +837,8 @@ def angle_axis_to_quaternion(angle_axis: Tensor, order: QuaternionCoeffOrder = Q
 
     k_neg: Tensor = 0.5 * ones
     k_pos: Tensor = torch.sin(half_theta) / theta
-    k: Tensor = torch.where(mask, k_pos, k_neg)
-    w: Tensor = torch.where(mask, torch.cos(half_theta), ones)
+    k: Tensor = where(mask, k_pos, k_neg)
+    w: Tensor = where(mask, torch.cos(half_theta), ones)
 
     quaternion: Tensor = torch.zeros(size=(*angle_axis.shape[:-1], 4), dtype=angle_axis.dtype, device=angle_axis.device)
     if order == QuaternionCoeffOrder.XYZW:
