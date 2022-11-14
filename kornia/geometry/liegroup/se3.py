@@ -2,7 +2,7 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py
 from typing import Optional
 
-from kornia.core import Module, Parameter, Tensor, concatenate, eye, pad, zeros_like, tensor, where
+from kornia.core import Module, Parameter, Tensor, concatenate, eye, pad, tensor, where, zeros_like
 from kornia.geometry.liegroup.so3 import So3
 from kornia.geometry.linalg import batched_dot_product
 from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
