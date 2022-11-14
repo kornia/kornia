@@ -2,7 +2,7 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py
 from typing import Optional
 
-from kornia.core import Module, Parameter, Tensor, concatenate, eye, pad, tensor, where
+from kornia.core import Module, Parameter, Tensor, concatenate, eye, pad, zeros_like, tensor, where
 from kornia.geometry.liegroup.so3 import So3
 from kornia.geometry.linalg import batched_dot_product
 from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
@@ -247,3 +247,22 @@ class Se3(Module):
         """
         r_inv = self.r.inverse()
         return Se3(r_inv, r_inv * (-1 * self.t))
+
+    def adjoint(self) -> Tensor:
+        """Returns the adjoint matrix of shape :math:`(B, 6, 6)`.
+
+        Example:
+            >>> s = Se3.identity(1)
+            >>> s.adjoint()
+            tensor([[[1., 0., 0., 0., 0., 0.],
+                     [0., 1., 0., 0., 0., 0.],
+                     [0., 0., 1., 0., 0., 0.],
+                     [0., 0., 0., 1., 0., 0.],
+                     [0., 0., 0., 0., 1., 0.],
+                     [0., 0., 0., 0., 0., 1.]]], grad_fn=<CatBackward0>)
+        """
+        R = self.so3.matrix()
+        z = zeros_like(R)
+        row0 = concatenate((R, self.t * R), -1)
+        row1 = concatenate((z, R), -1)
+        return concatenate((row0, row1), 1)

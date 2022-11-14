@@ -250,3 +250,15 @@ class So3(Module):
             tensor([1., -0., -0., -0.], requires_grad=True)
         """
         return So3(self.q.conj())
+
+    def adjoint(self) -> Tensor:
+        """Returns the adjoint matrix of shape :math:`(B, 3, 3)`.
+
+        Example:
+            >>> s = So3.identity()
+            >>> s.adjoint()
+            tensor([[1., 0., 0.],
+                    [0., 1., 0.],
+                    [0., 0., 1.]], grad_fn=<StackBackward0>)
+        """
+        return self.matrix()
