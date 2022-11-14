@@ -1,4 +1,4 @@
-name: test-typing
+name: Run typing tests
 
 on:
   push:
@@ -14,33 +14,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  tests-cpu:
+  tests:
+    name: ${{ matrix.os }} - python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}
     runs-on: ${{ matrix.os }}
+
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        python-version: [3.8]
+        python-version: ['3.7']
+        pytorch-version: ['lts', '1.10.2', '1.12.1', 'nightly']
+
     steps:
-    - uses: actions/checkout@v2
-    - name: Setup conda dependencies
-      uses: conda-incubator/setup-miniconda@v2
-      with:
-        auto-update-conda: true
-        python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
-      shell: bash -l {0}
-      run: |
-        conda install curl -c conda-forge
-        conda install pytorch cpuonly -c pytorch-lts
-        pip install .[dev,x]
-    - name: Run Tests
-      shell: bash -l {0}
-      run: pytest -v --cov=kornia --cov-report xml --mypy kornia/
-    - name: Upload coverage
-      uses: codecov/codecov-action@v1
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        file: coverage.xml
-        flags: cpu,pytest,typing
-        name: cpu-coverage
+      - name: Checkout kornia
+        uses: actions/checkout@v3
+
+      - name: Setting environment on ${{ matrix.os }} with python ${{ matrix.python-version }} and pytorch  ${{ matrix.pytorch-version }}
+        uses: ./.github/actions/env
+        with:
+          python-version: ${{ matrix.python-version }}
+          pytorch-version: ${{ matrix.pytorch-version }}
+
+      - name: Run typing tests
+        shell: bash -l {0}
+        run: mypy --cobertura-xml-report ./
+
+      - if: always()
+        name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          file: cobertura.xml
+          flags: typing,${{ matrix.os }}_python-${{ matrix.python-version }}_torch-${{ matrix.pytorch-version }}
+          name: cpu-coverage-types
