@@ -1,24 +1,31 @@
-name: test-nightly
+name: Run tests on torch-nightly (CPU)
 
 on:
-  #push:
-  #  branches:
-  #    - master
-  #pull_request:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+    types: [open, reopened, synchronize, review_requested, ready_for_review]
   schedule:
     - cron: "0 4 * * *"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test-cpu-versions:
+  tests:
+    name: ${{ matrix.os }} - python-${{ matrix.python-version }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: [3.7, 3.8]
     steps:
-    - uses: actions/checkout@v2
-    - name: Setup conda dependencies
+    - name: Checkout kornia
+      uses: actions/checkout@v3
+    - name: Setup environment (conda)
       uses: conda-incubator/setup-miniconda@v2
       with:
         auto-update-conda: true
@@ -29,6 +36,12 @@ jobs:
         conda install curl -c conda-forge
         conda install pytorch cpuonly -c pytorch-nightly
         pip install .[dev,x]
-    - name: Run Tests
+    - name: Run CPU tests (float32,float64)
       shell: bash -l {0}
-      run: pytest -v --device cpu --dtype float32,float64 ./test
+      run: pytest -v --device cpu --dtype float32,float64 --cov=kornia --cov-report xml ./test
+    - name: Upload coverage
+      uses: codecov/codecov-action@v3
+      with:
+        name: cpu-coverage-nightly
+        file: coverage.xml
+        flags: cpu,pytest,torch-nightly
