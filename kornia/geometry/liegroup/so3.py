@@ -259,7 +259,7 @@ class So3(Module):
             x: the x-axis rotation angle.
         """
         zs = zeros_like(x)
-        return cls.exp(stack([x, zs, zs], -1))
+        return cls.exp(stack((x, zs, zs), -1))
 
     @classmethod
     def rot_y(cls, y: Tensor) -> "So3":
@@ -269,7 +269,7 @@ class So3(Module):
             y: the y-axis rotation angle.
         """
         zs = zeros_like(y)
-        return cls.exp(stack([zs, y, zs], -1))
+        return cls.exp(stack((zs, y, zs), -1))
 
     @classmethod
     def rot_z(cls, z: Tensor) -> "So3":
@@ -279,4 +279,4 @@ class So3(Module):
             z: the z-axis rotation angle.
         """
         zs = zeros_like(z)
-        return cls.exp(stack([zs, zs, z], -1))
+        return cls.exp(stack((zs, zs, z), -1))

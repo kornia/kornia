@@ -256,7 +256,7 @@ class Se3(Module):
             x: the x-axis rotation angle.
         """
         zs = zeros_like(x)
-        return cls(So3.rot_x(x), stack([zs, zs, zs], -1))
+        return cls(So3.rot_x(x), stack((zs, zs, zs), -1))
 
     @classmethod
     def rot_y(cls, y: Tensor) -> "Se3":
@@ -266,7 +266,7 @@ class Se3(Module):
             y: the y-axis rotation angle.
         """
         zs = zeros_like(y)
-        return cls(So3.rot_y(y), stack([zs, zs, zs], -1))
+        return cls(So3.rot_y(y), stack((zs, zs, zs), -1))
 
     @classmethod
     def rot_z(cls, z: Tensor) -> "Se3":
@@ -276,7 +276,7 @@ class Se3(Module):
             z: the z-axis rotation angle.
         """
         zs = zeros_like(z)
-        return cls(So3.rot_z(z), stack([zs, zs, zs], -1))
+        return cls(So3.rot_z(z), stack((zs, zs, zs), -1))
 
     @classmethod
     def trans(cls, x: Tensor, y: Tensor, z: Tensor) -> "Se3":
