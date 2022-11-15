@@ -252,7 +252,7 @@ class Se3(Module):
         """Returns the adjoint matrix of shape :math:`(B, 6, 6)`.
 
         Example:
-            >>> s = Se3.identity(1)
+            >>> s = Se3.identity()
             >>> s.adjoint()
             tensor([[[1., 0., 0., 0., 0., 0.],
                      [0., 1., 0., 0., 0., 0.],
@@ -261,8 +261,8 @@ class Se3(Module):
                      [0., 0., 0., 0., 1., 0.],
                      [0., 0., 0., 0., 0., 1.]]], grad_fn=<CatBackward0>)
         """
-        R = self.so3.matrix()
+        R = self.so3.matrix().reshape(-1, 3, 3)
         z = zeros_like(R)
-        row0 = concatenate((R, So3.hat(self.t) * R), -1)
+        row0 = concatenate((R, So3.hat(self.t) @ R), -1)
         row1 = concatenate((z, R), -1)
         return concatenate((row0, row1), 1)

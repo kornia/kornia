@@ -186,3 +186,12 @@ class TestSo3(BaseTester):
         q = Quaternion.random(batch_size, device, dtype)
         self.assert_close(So3(q).inverse().inverse().q.data, q.data)
         self.assert_close(So3(q).inverse().inverse().matrix(), So3(q).matrix())
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_adjoint(self, device, dtype, batch_size):
+        q1 = Quaternion.random(batch_size, device, dtype)
+        q2 = Quaternion.random(batch_size, device, dtype)
+        x = So3(q1)
+        y = So3(q2)
+        self.assert_close(x.inverse().adjoint(), x.adjoint().inverse())
+        self.assert_close((x * y).adjoint(), x.adjoint() @ y.adjoint())
