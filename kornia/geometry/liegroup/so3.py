@@ -251,6 +251,36 @@ class So3(Module):
         """
         return So3(self.q.conj())
 
+    @classmethod
+    def rot_x(cls, x: Tensor) -> "So3":
+        """Construct a x-axis rotation.
+
+        Args:
+            x: the x-axis rotation angle.
+        """
+        zs = zeros_like(x)
+        return cls.exp(stack((x, zs, zs), -1))
+
+    @classmethod
+    def rot_y(cls, y: Tensor) -> "So3":
+        """Construct a z-axis rotation.
+
+        Args:
+            y: the y-axis rotation angle.
+        """
+        zs = zeros_like(y)
+        return cls.exp(stack((zs, y, zs), -1))
+
+    @classmethod
+    def rot_z(cls, z: Tensor) -> "So3":
+        """Construct a z-axis rotation.
+
+        Args:
+            z: the z-axis rotation angle.
+        """
+        zs = zeros_like(z)
+        return cls.exp(stack((zs, zs, z), -1))
+
     def adjoint(self) -> Tensor:
         """Returns the adjoint matrix of shape :math:`(B, 3, 3)`.
 

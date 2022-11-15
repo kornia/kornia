@@ -1,6 +1,7 @@
 import pytest
 import torch
 
+from kornia.geometry.conversions import QuaternionCoeffOrder, euler_from_quaternion, rotation_matrix_to_quaternion
 from kornia.geometry.liegroup import Se3, So3
 from kornia.geometry.quaternion import Quaternion
 from kornia.testing import BaseTester
@@ -149,6 +150,68 @@ class TestSe3(BaseTester):
         sinv = Se3(rot, t).inverse()
         self.assert_close(sinv.r.inverse().q.data, q.data)
         self.assert_close(sinv.t, sinv.r * (-1 * t))
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_rot_x(self, device, dtype, batch_size):
+        x = self._make_rand_data(device, dtype, batch_size, dims=1).squeeze(-1)
+        se3 = Se3.rot_x(x)
+        quat = rotation_matrix_to_quaternion(se3.so3.matrix(), order=QuaternionCoeffOrder.WXYZ)
+        quat = Quaternion(quat)
+        roll, _, _ = euler_from_quaternion(*quat.coeffs)
+        self.assert_close(x, roll)
+        self.assert_close(se3.t, torch.zeros_like(se3.t))
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_rot_y(self, device, dtype, batch_size):
+        y = self._make_rand_data(device, dtype, batch_size, dims=1).squeeze(-1)
+        se3 = Se3.rot_y(y)
+        quat = rotation_matrix_to_quaternion(se3.so3.matrix(), order=QuaternionCoeffOrder.WXYZ)
+        quat = Quaternion(quat)
+        _, pitch, _ = euler_from_quaternion(*quat.coeffs)
+        self.assert_close(y, pitch)
+        self.assert_close(se3.t, torch.zeros_like(se3.t))
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_rot_z(self, device, dtype, batch_size):
+        z = self._make_rand_data(device, dtype, batch_size, dims=1).squeeze(-1)
+        se3 = Se3.rot_z(z)
+        quat = rotation_matrix_to_quaternion(se3.so3.matrix(), order=QuaternionCoeffOrder.WXYZ)
+        quat = Quaternion(quat)
+        _, _, yaw = euler_from_quaternion(*quat.coeffs)
+        self.assert_close(z, yaw)
+        self.assert_close(se3.t, torch.zeros_like(se3.t))
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_trans(self, device, dtype, batch_size):
+        trans = self._make_rand_data(device, dtype, batch_size, dims=3)
+        x, y, z = trans[..., 0], trans[..., 1], trans[..., 2]
+        se3 = Se3.trans(x, y, z)
+        self.assert_close(se3.t, trans)
+        self.assert_close(se3.so3.matrix(), So3.identity(batch_size, device, dtype).matrix())
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_trans_x(self, device, dtype, batch_size):
+        x = self._make_rand_data(device, dtype, batch_size, dims=1).squeeze(-1)
+        zs = torch.zeros_like(x)
+        se3 = Se3.trans_x(x)
+        self.assert_close(se3.t, torch.stack((x, zs, zs), -1))
+        self.assert_close(se3.so3.matrix(), So3.identity(batch_size, device, dtype).matrix())
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_trans_y(self, device, dtype, batch_size):
+        y = self._make_rand_data(device, dtype, batch_size, dims=1).squeeze(-1)
+        zs = torch.zeros_like(y)
+        se3 = Se3.trans_y(y)
+        self.assert_close(se3.t, torch.stack((zs, y, zs), -1))
+        self.assert_close(se3.so3.matrix(), So3.identity(batch_size, device, dtype).matrix())
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_trans_z(self, device, dtype, batch_size):
+        z = self._make_rand_data(device, dtype, batch_size, dims=1).squeeze(-1)
+        zs = torch.zeros_like(z)
+        se3 = Se3.trans_z(z)
+        self.assert_close(se3.t, torch.stack((zs, zs, z), -1))
+        self.assert_close(se3.so3.matrix(), So3.identity(batch_size, device, dtype).matrix())
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_adjoint(self, device, dtype, batch_size):

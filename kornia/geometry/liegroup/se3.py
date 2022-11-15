@@ -2,10 +2,10 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py
 from typing import Optional
 
-from kornia.core import Module, Parameter, Tensor, concatenate, eye, pad, tensor, where, zeros_like
+from kornia.core import Module, Parameter, Tensor, concatenate, eye, pad, stack, tensor, where, zeros_like
 from kornia.geometry.liegroup.so3 import So3
 from kornia.geometry.linalg import batched_dot_product
-from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 
 
 class Se3(Module):
@@ -247,6 +247,82 @@ class Se3(Module):
         """
         r_inv = self.r.inverse()
         return Se3(r_inv, r_inv * (-1 * self.t))
+
+    @classmethod
+    def rot_x(cls, x: Tensor) -> "Se3":
+        """Construct a x-axis rotation.
+
+        Args:
+            x: the x-axis rotation angle.
+        """
+        zs = zeros_like(x)
+        return cls(So3.rot_x(x), stack((zs, zs, zs), -1))
+
+    @classmethod
+    def rot_y(cls, y: Tensor) -> "Se3":
+        """Construct a y-axis rotation.
+
+        Args:
+            y: the y-axis rotation angle.
+        """
+        zs = zeros_like(y)
+        return cls(So3.rot_y(y), stack((zs, zs, zs), -1))
+
+    @classmethod
+    def rot_z(cls, z: Tensor) -> "Se3":
+        """Construct a z-axis rotation.
+
+        Args:
+            z: the z-axis rotation angle.
+        """
+        zs = zeros_like(z)
+        return cls(So3.rot_z(z), stack((zs, zs, zs), -1))
+
+    @classmethod
+    def trans(cls, x: Tensor, y: Tensor, z: Tensor) -> "Se3":
+        """Construct a translation only Se3 instance.
+
+        Args:
+            x: the x-axis translation.
+            y: the y-axis translation.
+            z: the z-axis translation.
+        """
+        KORNIA_CHECK(x.shape == y.shape)
+        KORNIA_CHECK(y.shape == z.shape)
+        KORNIA_CHECK_SAME_DEVICES([x, y, z])
+        batch_size = x.shape[0] if len(x.shape) > 0 else None
+        rotation = So3.identity(batch_size, x.device, x.dtype)
+        return cls(rotation, stack((x, y, z), -1))
+
+    @classmethod
+    def trans_x(cls, x: Tensor) -> "Se3":
+        """Construct a x-axis translation.
+
+        Args:
+            x: the x-axis translation.
+        """
+        zs = zeros_like(x)
+        return cls.trans(x, zs, zs)
+
+    @classmethod
+    def trans_y(cls, y: Tensor) -> "Se3":
+        """Construct a y-axis translation.
+
+        Args:
+            y: the y-axis translation.
+        """
+        zs = zeros_like(y)
+        return cls.trans(zs, y, zs)
+
+    @classmethod
+    def trans_z(cls, z: Tensor) -> "Se3":
+        """Construct a z-axis translation.
+
+        Args:
+            z: the z-axis translation.
+        """
+        zs = zeros_like(z)
+        return cls.trans(zs, zs, z)
 
     def adjoint(self) -> Tensor:
         """Returns the adjoint matrix of shape :math:`(B, 6, 6)`.

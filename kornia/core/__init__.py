@@ -4,6 +4,7 @@ from ._backend import (
     Parameter,
     Tensor,
     as_tensor,
+    complex,
     concatenate,
     eye,
     normalize,
@@ -31,5 +32,6 @@ __all__ = [
     "where",
     "eye",
     "zeros",
+    "complex",
     "zeros_like",
 ]
