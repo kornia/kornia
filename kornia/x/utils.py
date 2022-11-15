@@ -1,5 +1,4 @@
-# TODO: remove the type: ignore in below after deprecating python 3.6
-from dataclasses import dataclass, field  # type: ignore
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict
 

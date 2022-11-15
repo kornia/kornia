@@ -1,13 +1,11 @@
 import warnings
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
-
-import torch
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.mix.base import MixAugmentationBase, MixAugmentationBaseV2
 from kornia.augmentation.utils import _shape_validation
 from kornia.constants import DataKey, DType
-from kornia.core import Tensor
+from kornia.core import Tensor, stack, zeros
 from kornia.geometry.bbox import bbox_to_mask, infer_bbox_shape
 
 
@@ -108,11 +106,11 @@ class RandomCutMix(MixAugmentationBase):
                 "The height and width arguments will be removed finally.",
                 category=DeprecationWarning,
             )
-        self._param_generator = cast(rg.CutmixGenerator, rg.CutmixGenerator(cut_size, beta, num_mix, p=p))
+        self._param_generator: rg.CutmixGenerator = rg.CutmixGenerator(cut_size, beta, num_mix, p=p)
         warnings.warn("`RandomCutMix` is deprecated. Please use `RandomCutMixV2` instead.")
 
     def apply_transform(  # type: ignore
-        self, input: Tensor, label: Tensor, params: Dict[str, Tensor]  # type: ignore
+        self, input: Tensor, label: Tensor, params: Dict[str, Tensor]
     ) -> Tuple[Tensor, Tensor]:
         height, width = input.size(2), input.size(3)
         num_mixes = params["mix_pairs"].size(0)
@@ -131,11 +129,9 @@ class RandomCutMix(MixAugmentationBase):
             # compute mask to match input shape
             mask = bbox_to_mask(crop, width, height).bool().unsqueeze(dim=1).repeat(1, input.size(1), 1, 1)
             out_inputs[mask] = input_permute[mask]
-            out_labels.append(
-                torch.stack([label.to(input.dtype), labels_permute.to(input.dtype), lam.to(label.device)], dim=1)
-            )
+            out_labels.append(stack([label.to(input.dtype), labels_permute.to(input.dtype), lam.to(label.device)], 1))
 
-        return out_inputs, torch.stack(out_labels, dim=0)
+        return out_inputs, stack(out_labels, 0)
 
 
 class RandomCutMixV2(MixAugmentationBaseV2):
@@ -209,7 +205,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         data_keys: List[Union[str, int, DataKey]] = [DataKey.INPUT],
     ) -> None:
         super().__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim, data_keys=data_keys)
-        self._param_generator = cast(rg.CutmixGenerator, rg.CutmixGenerator(cut_size, beta, num_mix, p=p))
+        self._param_generator: rg.CutmixGenerator = rg.CutmixGenerator(cut_size, beta, num_mix, p=p)
 
     def apply_transform_class(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         height, width = params["image_shape"]
@@ -220,36 +216,36 @@ class RandomCutMixV2(MixAugmentationBaseV2):
             w, h = infer_bbox_shape(crop)
             lam = w.to(input.dtype) * h.to(input.dtype) / (width * height)  # width_beta * height_beta
             out_labels.append(
-                torch.stack(
+                stack(
                     [
                         input.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
                         labels_permute.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
                         lam.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
                     ],
-                    dim=1,
+                    1,
                 )
             )
 
-        return torch.stack(out_labels, dim=0)
+        return stack(out_labels, 0)
 
     def apply_non_transform_class(
         self, input: Tensor, params: Dict[str, Tensor], flags: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         out_labels = []
-        lam = torch.zeros((len(input)), device=input.device, dtype=DType.to_torch(int(params["dtype"].item())))
+        lam = zeros((len(input)), device=input.device, dtype=DType.to_torch(int(params["dtype"].item())))
         for _ in range(self._param_generator.num_mix):
             out_labels.append(
-                torch.stack(
+                stack(
                     [
                         input.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
                         input.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
                         lam,
                     ],
-                    dim=1,
+                    1,
                 )
             )
 
-        return torch.stack(out_labels, dim=0)
+        return stack(out_labels, 0)
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], maybe_flags: Optional[Dict[str, Any]] = None

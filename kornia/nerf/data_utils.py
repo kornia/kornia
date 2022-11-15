@@ -1,7 +1,8 @@
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Sequence, Tuple, Union
 
 import torch
 from torch.utils.data import BatchSampler, DataLoader, Dataset, RandomSampler, SequentialSampler
+from typing_extensions import TypeGuard
 
 from kornia.core import Device, Tensor
 from kornia.geometry.camera import PinholeCamera
@@ -10,6 +11,14 @@ from kornia.nerf.core import Images, ImageTensors
 from kornia.nerf.rays import RandomRaySampler, RaySampler, UniformRaySampler
 
 RayGroup = Tuple[Tensor, Tensor, Optional[Tensor]]
+
+
+def _is_list_of_str(lst: Sequence[object]) -> TypeGuard[List[str]]:
+    return isinstance(lst, list) and all(isinstance(x, str) for x in lst)
+
+
+def _is_list_of_tensors(lst: Sequence[object]) -> TypeGuard[List[Tensor]]:
+    return isinstance(lst, list) and all(isinstance(x, Tensor) for x in lst)
 
 
 class RayDataset(Dataset):
@@ -56,14 +65,18 @@ class RayDataset(Dataset):
             imgs: List of image tensors or image paths: Images
         """
         self._check_image_type_consistency(imgs)
-        if isinstance(imgs[0], str):  # Load images from disk
-            self._imgs = self._load_images(imgs)
+
+        if _is_list_of_str(imgs):  # Load images from disk
+            images = self._load_images(imgs)
+        elif _is_list_of_tensors(imgs):
+            images = imgs  # Take images provided on input
         else:
-            self._imgs = imgs  # Take images provided on input
-        self._check_dimensions(self._imgs)
+            raise TypeError(f'Expected a list of image tensors or image paths. Gotcha {type(imgs)}.')
+
+        self._check_dimensions(images)
 
         # Move images to defined device
-        self._imgs = [img.to(self._device) for img in self._imgs]
+        self._imgs = [img.to(self._device) for img in images]
 
     def _init_random_ray_dataset(self, num_img_rays: Tensor) -> None:
         r"""Initializes a random ray sampler and calculates dataset ray parameters.
@@ -121,10 +134,14 @@ class RayDataset(Dataset):
             A ray parameter object that includes ray origins, directions, and rgb values at the ray 2d pixel
             coordinates: RayGroup
         """
+        if not isinstance(self._ray_sampler, RaySampler):
+            raise TypeError('Ray sampler is not initiate yet, please run self.init_ray_dataset() before use it.')
+
         origins = self._ray_sampler.origins[idxs]
         directions = self._ray_sampler.directions[idxs]
         if self._imgs is None:
             return origins, directions, None
+
         camerd_ids = self._ray_sampler.camera_ids[idxs]
         points_2d = self._ray_sampler.points_2d[idxs]
         rgbs = None
@@ -136,7 +153,7 @@ class RayDataset(Dataset):
         return origins, directions, rgbs
 
 
-def instantiate_ray_dataloader(dataset: RayDataset, batch_size: int = 1, shuffle: bool = True) -> None:
+def instantiate_ray_dataloader(dataset: RayDataset, batch_size: int = 1, shuffle: bool = True) -> DataLoader:
     r"""Initializes a dataloader to manage a ray dataset.
 
     Args:

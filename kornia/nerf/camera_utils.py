@@ -1,5 +1,5 @@
 import math
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 import torch
 
@@ -110,7 +110,7 @@ def parse_colmap_output(
     return img_names, cameras
 
 
-def cameras_for_ids(cameras: PinholeCamera, camera_ids: List[int]) -> PinholeCamera:
+def cameras_for_ids(cameras: PinholeCamera, camera_ids: Union[List[int], Tensor]) -> PinholeCamera:
     r"""Takes a PinholeCamera camera object and a set of camera indices and creates a new PinholeCamera object for
     the requested cameras.
 

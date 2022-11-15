@@ -5,6 +5,7 @@ from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _adapted_uniform, _common_param_check
+from kornia.core import Tensor, tensor
 from kornia.utils.helpers import _deprecated, _extract_device_dtype
 
 
@@ -20,8 +21,8 @@ class PerspectiveGenerator(RandomGeneratorBase):
 
     Returns:
         A dict of parameters to be passed for transformation.
-            - start_points (torch.Tensor): element-wise perspective source areas with a shape of (B, 4, 2).
-            - end_points (torch.Tensor): element-wise perspective target areas with a shape of (B, 4, 2).
+            - start_points (Tensor): element-wise perspective source areas with a shape of (B, 4, 2).
+            - end_points (Tensor): element-wise perspective target areas with a shape of (B, 4, 2).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -29,7 +30,7 @@ class PerspectiveGenerator(RandomGeneratorBase):
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
     """
 
-    def __init__(self, distortion_scale: Union[torch.Tensor, float] = 0.5, sampling_method: str = "basic") -> None:
+    def __init__(self, distortion_scale: Union[Tensor, float] = 0.5, sampling_method: str = "basic") -> None:
         super().__init__()
         if sampling_method not in ("basic", "area_preserving"):
             raise NotImplementedError(f"Sampling method {sampling_method} not yet implemented.")
@@ -45,12 +46,10 @@ class PerspectiveGenerator(RandomGeneratorBase):
         if not (self._distortion_scale.dim() == 0 and 0 <= self._distortion_scale <= 1):
             raise AssertionError(f"'distortion_scale' must be a scalar within [0, 1]. Got {self._distortion_scale}.")
         self.rand_val_sampler = Uniform(
-            torch.tensor(0, device=device, dtype=dtype),
-            torch.tensor(1, device=device, dtype=dtype),
-            validate_args=False,
+            tensor(0, device=device, dtype=dtype), tensor(1, device=device, dtype=dtype), validate_args=False
         )
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]
@@ -60,7 +59,7 @@ class PerspectiveGenerator(RandomGeneratorBase):
         if not (type(height) is int and height > 0 and type(width) is int and width > 0):
             raise AssertionError(f"'height' and 'width' must be integers. Got {height}, {width}.")
 
-        start_points: torch.Tensor = torch.tensor(
+        start_points: Tensor = tensor(
             [[[0.0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]]], device=_device, dtype=_dtype
         ).expand(batch_size, -1, -1)
 
@@ -71,11 +70,11 @@ class PerspectiveGenerator(RandomGeneratorBase):
         factor = torch.stack([fx, fy], dim=0).view(-1, 1, 2).to(device=_device, dtype=_dtype)
 
         # TODO: This line somehow breaks the gradcheck
-        rand_val: torch.Tensor = _adapted_rsampling(start_points.shape, self.rand_val_sampler, same_on_batch).to(
+        rand_val: Tensor = _adapted_rsampling(start_points.shape, self.rand_val_sampler, same_on_batch).to(
             device=_device, dtype=_dtype
         )
         if self.sampling_method == "basic":
-            pts_norm = torch.tensor([[[1, 1], [-1, 1], [-1, -1], [1, -1]]], device=_device, dtype=_dtype)
+            pts_norm = tensor([[[1, 1], [-1, 1], [-1, -1], [1, -1]]], device=_device, dtype=_dtype)
             offset = factor * rand_val * pts_norm
         elif self.sampling_method == "area_preserving":
             offset = 2 * factor * (rand_val - 0.5)
@@ -90,26 +89,26 @@ def random_perspective_generator(
     batch_size: int,
     height: int,
     width: int,
-    distortion_scale: torch.Tensor,
+    distortion_scale: Tensor,
     same_on_batch: bool = False,
     device: torch.device = torch.device('cpu'),
     dtype: torch.dtype = torch.float32,
-) -> Dict[str, torch.Tensor]:
+) -> Dict[str, Tensor]:
     r"""Get parameters for ``perspective`` for a random perspective transform.
 
     Args:
         batch_size (int): the tensor batch size.
         height (int) : height of the image.
         width (int): width of the image.
-        distortion_scale (torch.Tensor): it controls the degree of distortion and ranges from 0 to 1.
+        distortion_scale (Tensor): it controls the degree of distortion and ranges from 0 to 1.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         device (torch.device): the device on which the random numbers will be generated. Default: cpu.
         dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
 
     Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - start_points (torch.Tensor): element-wise perspective source areas with a shape of (B, 4, 2).
-            - end_points (torch.Tensor): element-wise perspective target areas with a shape of (B, 4, 2).
+        params Dict[str, Tensor]: parameters to be passed for transformation.
+            - start_points (Tensor): element-wise perspective source areas with a shape of (B, 4, 2).
+            - end_points (Tensor): element-wise perspective target areas with a shape of (B, 4, 2).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
@@ -120,7 +119,7 @@ def random_perspective_generator(
     if not (type(height) is int and height > 0 and type(width) is int and width > 0):
         raise AssertionError(f"'height' and 'width' must be integers. Got {height}, {width}.")
 
-    start_points: torch.Tensor = torch.tensor(
+    start_points: Tensor = tensor(
         [[[0.0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]]],
         device=distortion_scale.device,
         dtype=distortion_scale.dtype,
@@ -133,14 +132,11 @@ def random_perspective_generator(
     factor = torch.stack([fx, fy], dim=0).view(-1, 1, 2)
 
     # TODO: This line somehow breaks the gradcheck
-    rand_val: torch.Tensor = _adapted_uniform(
-        start_points.shape,
-        torch.tensor(0, device=device, dtype=dtype),
-        torch.tensor(1, device=device, dtype=dtype),
-        same_on_batch,
+    rand_val: Tensor = _adapted_uniform(
+        start_points.shape, tensor(0, device=device, dtype=dtype), tensor(1, device=device, dtype=dtype), same_on_batch
     ).to(device=distortion_scale.device, dtype=distortion_scale.dtype)
 
-    pts_norm = torch.tensor(
+    pts_norm = tensor(
         [[[1, 1], [-1, 1], [-1, -1], [1, -1]]], device=distortion_scale.device, dtype=distortion_scale.dtype
     )
     end_points = start_points + factor * rand_val * pts_norm

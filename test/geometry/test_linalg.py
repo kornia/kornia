@@ -5,7 +5,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.geometry.linalg as kgl
 import kornia.testing as utils  # test utils
-from kornia.testing import assert_close
+from kornia.testing import BaseTester, assert_close
 
 
 def identity_matrix(batch_size, device, dtype):
@@ -390,3 +390,39 @@ class TestPointsLinesDistances:
         pts = torch.rand(2, 3, 2, device=device, requires_grad=True, dtype=torch.float64)
         lines = torch.rand(2, 3, 3, device=device, requires_grad=True, dtype=torch.float64)
         assert gradcheck(kgl.point_line_distance, (pts, lines), raise_exception=True)
+
+
+class TestEuclideanDistance(BaseTester):
+    def test_smoke(self, device, dtype):
+        pt1 = torch.tensor([0, 0, 0], device=device, dtype=dtype)
+        pt2 = torch.tensor([1, 0, 0], device=device, dtype=dtype)
+        dst = kgl.euclidean_distance(pt1, pt2)
+        self.assert_close(dst, torch.tensor(1.0, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("shape", [(2,), (3,), (1, 2), (2, 3)])
+    def test_cardinality(self, device, dtype, shape):
+        pt1 = torch.rand(shape, device=device, dtype=dtype)
+        pt2 = torch.rand(shape, device=device, dtype=dtype)
+        dst = kgl.euclidean_distance(pt1, pt2)
+        assert len(dst.shape) == len(shape) - 1
+
+    def test_exception(self, device, dtype):
+        pt1 = torch.tensor([0, 0, 0], device=device, dtype=dtype)
+        pt2 = torch.rand(1, 2, device=device, dtype=dtype)
+        with pytest.raises(Exception):
+            kgl.euclidean_distance(pt1, pt2)
+
+    def test_gradcheck(self, device):
+        pt1 = torch.rand(2, 3, device=device, dtype=torch.float64, requires_grad=True)
+        pt2 = torch.rand(2, 3, device=device, dtype=torch.float64, requires_grad=True)
+        assert gradcheck(kgl.euclidean_distance, (pt1, pt2), raise_exception=True)
+
+    def test_jit(self, device, dtype):
+        pt1 = torch.rand(2, 3, device=device, dtype=dtype)
+        pt2 = torch.rand(2, 3, device=device, dtype=dtype)
+        op = kgl.euclidean_distance
+        op_jit = torch.jit.script(op)
+        self.assert_close(op(pt1, pt2), op_jit(pt1, pt2))
+
+    def test_module(self, device, dtype):
+        pass

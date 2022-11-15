@@ -80,5 +80,5 @@ class AddWeighted(Module):
         self.beta = beta
         self.gamma = gamma
 
-    def forward(self, src1: Tensor, src2: Tensor) -> Tensor:  # type: ignore
+    def forward(self, src1: Tensor, src2: Tensor) -> Tensor:
         return add_weighted(src1, self.alpha, src2, self.beta, self.gamma)

@@ -1,7 +1,6 @@
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
-import torch.nn as nn
 
 import kornia
 from kornia.augmentation import RandomCrop
@@ -10,6 +9,7 @@ from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import SequentialBase
 from kornia.augmentation.container.image import ImageSequential, ParamItem, _get_new_batch_shape
 from kornia.augmentation.container.utils import InputApplyInverse, MaskApplyInverse
+from kornia.core import Module, Tensor
 
 __all__ = ["VideoSequential"]
 
@@ -96,7 +96,7 @@ class VideoSequential(ImageSequential):
 
     def __init__(
         self,
-        *args: nn.Module,
+        *args: Module,
         data_format: str = "BTCHW",
         same_on_frame: bool = True,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
@@ -123,7 +123,7 @@ class VideoSequential(ImageSequential):
         # Fix mypy complains: error: Incompatible return value type (got "Tuple[int, ...]", expected "Size")
         return cast(torch.Size, batch_shape[:chennel_index] + batch_shape[chennel_index + 1 :])
 
-    def __repeat_param_across_channels__(self, param: torch.Tensor, frame_num: int) -> torch.Tensor:
+    def __repeat_param_across_channels__(self, param: Tensor, frame_num: int) -> Tensor:
         """Repeat parameters across channels.
 
         The input is shaped as (B, ...), while to output (B * same_on_frame, ...), which
@@ -133,11 +133,11 @@ class VideoSequential(ImageSequential):
                               | ch_size | | ch_size |  ..., | ch_size |
         """
         repeated = param[:, None, ...].repeat(1, frame_num, *([1] * len(param.shape[1:])))
-        return repeated.reshape(-1, *list(param.shape[1:]))  # type: ignore
+        return repeated.reshape(-1, *list(param.shape[1:]))
 
     def _input_shape_convert_in(
-        self, input: torch.Tensor, label: Optional[torch.Tensor], frame_num: int
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        self, input: Tensor, label: Optional[Tensor], frame_num: int
+    ) -> Tuple[Tensor, Optional[Tensor]]:
         # Convert any shape to (B, T, C, H, W)
         if self.data_format == "BCTHW":
             # Convert (B, C, T, H, W) to (B, T, C, H, W)
@@ -160,8 +160,8 @@ class VideoSequential(ImageSequential):
         return input, label
 
     def _input_shape_convert_back(
-        self, input: torch.Tensor, label: Optional[torch.Tensor], frame_num: int
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        self, input: Tensor, label: Optional[Tensor], frame_num: int
+    ) -> Tuple[Tensor, Optional[Tensor]]:
         input = input.view(-1, frame_num, *input.shape[1:])
         if self.data_format == "BCTHW":
             input = input.transpose(1, 2)
@@ -217,8 +217,8 @@ class VideoSequential(ImageSequential):
         return params
 
     def inverse(
-        self, input: torch.Tensor, params: Optional[List[ParamItem]] = None, extra_args: Dict[str, Any] = {}
-    ) -> torch.Tensor:
+        self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Dict[str, Any] = {}
+    ) -> Tensor:
         """Inverse transformation.
 
         Used to inverse a tensor according to the performed transformation by a forward pass, or with respect to
@@ -239,13 +239,13 @@ class VideoSequential(ImageSequential):
 
         return input
 
-    def forward(  # type: ignore
+    def forward(
         self,
-        input: torch.Tensor,
-        label: Optional[torch.Tensor] = None,
+        input: Tensor,
+        label: Optional[Tensor] = None,
         params: Optional[List[ParamItem]] = None,
         extra_args: Dict[str, Any] = {},
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    ) -> Union[Tensor, Tuple[Tensor, Tensor]]:
         """Define the video computation performed."""
         if len(input.shape) != 5:
             raise AssertionError(f"Input must be a 5-dim tensor. Got {input.shape}.")
@@ -263,11 +263,11 @@ class VideoSequential(ImageSequential):
             batch_size: int = input.size(0)
             input = input.view(-1, *input.shape[2:])
 
-        out = super().forward(input, label, params, extra_args=extra_args)  # type: ignore
+        out = super().forward(input, label, params, extra_args=extra_args)
         if self.return_label:
-            output, label = cast(Tuple[torch.Tensor, torch.Tensor], out)
+            output, label = cast(Tuple[Tensor, Tensor], out)
         else:
-            output = cast(torch.Tensor, out)
+            output = cast(Tensor, out)
 
         if isinstance(output, (tuple, list)):
             if self.apply_inverse_func in (InputApplyInverse, MaskApplyInverse):
