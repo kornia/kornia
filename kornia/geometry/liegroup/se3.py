@@ -263,6 +263,6 @@ class Se3(Module):
         """
         R = self.so3.matrix()
         z = zeros_like(R)
-        row0 = concatenate((R, self.t * R), -1)
+        row0 = concatenate((R, So3.hat(self.t) * R), -1)
         row1 = concatenate((z, R), -1)
         return concatenate((row0, row1), 1)
