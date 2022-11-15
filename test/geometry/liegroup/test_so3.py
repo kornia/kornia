@@ -1,6 +1,7 @@
 import pytest
 import torch
 
+from kornia.geometry.conversions import euler_from_quaternion
 from kornia.geometry.liegroup import So3
 from kornia.geometry.quaternion import Quaternion
 from kornia.testing import BaseTester
@@ -186,3 +187,24 @@ class TestSo3(BaseTester):
         q = Quaternion.random(batch_size, device, dtype)
         self.assert_close(So3(q).inverse().inverse().q.data, q.data)
         self.assert_close(So3(q).inverse().inverse().matrix(), So3(q).matrix())
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_rot_x(self, device, dtype, batch_size):
+        x = self._make_rand_data(device, dtype, batch_size, dims=1).squeeze(-1)
+        so3 = So3.rot_x(x)
+        roll, _, _ = euler_from_quaternion(*so3.q.coeffs)
+        self.assert_close(x, roll)
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_rot_y(self, device, dtype, batch_size):
+        y = self._make_rand_data(device, dtype, batch_size, dims=1).squeeze(-1)
+        so3 = So3.rot_y(y)
+        _, pitch, _ = euler_from_quaternion(*so3.q.coeffs)
+        self.assert_close(y, pitch)
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_rot_z(self, device, dtype, batch_size):
+        z = self._make_rand_data(device, dtype, batch_size, dims=1).squeeze(-1)
+        so3 = So3.rot_z(z)
+        _, _, yaw = euler_from_quaternion(*so3.q.coeffs)
+        self.assert_close(z, yaw)
