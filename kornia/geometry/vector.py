@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Union
 
 from kornia.core import Module, Parameter, Tensor, normalize, rand
 from kornia.geometry.linalg import batched_dot_product
@@ -58,10 +58,11 @@ class _VectorType(Module):
 
 
 class UnitVector(Module):
-    def __init__(self, vector: Tensor) -> None:
+    def __init__(self, vector: Union[Tensor, _VectorType]) -> None:
         super().__init__()
         KORNIA_CHECK_SHAPE(vector, ["B", "N"])
-        self._vector = Parameter(vector)
+        if isinstance(vector, Tensor):
+            self._vector = Parameter(vector)
 
     @property
     def vector(self) -> Tensor:

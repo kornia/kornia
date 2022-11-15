@@ -1,10 +1,10 @@
-from typing import List, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional, Sequence, Tuple, Union
 
 import torch
 from torch.utils.data import BatchSampler, DataLoader, Dataset, RandomSampler, SequentialSampler
 from typing_extensions import TypeGuard
 
-from kornia.core import Device, Tensor
+from kornia.core import Device, Tensor, stack
 from kornia.geometry.camera import PinholeCamera
 from kornia.io import ImageLoadType, load_image
 from kornia.nerf.core import Images, ImageTensors
@@ -146,9 +146,7 @@ class RayDataset(Dataset):
         points_2d = self._ray_sampler.points_2d[idxs]
         rgbs = None
         imgs_for_ids = [self._imgs[i] for i in camerd_ids]
-        rgbs = torch.stack(
-            [img[:, point2d[1].item(), point2d[0].item()] for img, point2d in zip(imgs_for_ids, points_2d)]
-        )
+        rgbs = stack([img[:, point2d[1].item(), point2d[0].item()] for img, point2d in zip(imgs_for_ids, points_2d)])
         rgbs = rgbs.to(dtype=self._dtype) / 255.0
         return origins, directions, rgbs
 
@@ -165,10 +163,14 @@ def instantiate_ray_dataloader(dataset: RayDataset, batch_size: int = 1, shuffle
     def collate_rays(items: List[RayGroup]) -> RayGroup:
         return items[0]
 
-    return DataLoader(
-        dataset,
-        sampler=BatchSampler(
-            RandomSampler(dataset) if shuffle else SequentialSampler(dataset), batch_size, drop_last=False
-        ),
-        collate_fn=collate_rays,
-    )
+    if TYPE_CHECKING:
+        # TODO: remove the type ignore when kornia relies on kornia 1.9.0
+        return DataLoader(dataset)
+    else:
+        return DataLoader(
+            dataset,
+            sampler=BatchSampler(
+                RandomSampler(dataset) if shuffle else SequentialSampler(dataset), batch_size, drop_last=False
+            ),
+            collate_fn=collate_rays,
+        )

@@ -1,15 +1,9 @@
-from typing import Optional
-
 import torch
 
+from kornia.core import Tensor, zeros
 
-def one_hot(
-    labels: torch.Tensor,
-    num_classes: int,
-    device: Optional[torch.device] = None,
-    dtype: Optional[torch.dtype] = None,
-    eps: float = 1e-6,
-) -> torch.Tensor:
+
+def one_hot(labels: Tensor, num_classes: int, device: torch.device, dtype: torch.dtype, eps: float = 1e-6) -> Tensor:
     r"""Convert an integer label x-D tensor to a one-hot (x+1)-D tensor.
 
     Args:
@@ -24,7 +18,7 @@ def one_hot(
 
     Examples:
         >>> labels = torch.LongTensor([[[0, 1], [2, 0]]])
-        >>> one_hot(labels, num_classes=3)
+        >>> one_hot(labels, num_classes=3, device=torch.device('cpu'), dtype=torch.int64)
         tensor([[[[1.0000e+00, 1.0000e-06],
                   [1.0000e-06, 1.0000e+00]],
         <BLANKLINE>
@@ -34,8 +28,8 @@ def one_hot(
                  [[1.0000e-06, 1.0000e-06],
                   [1.0000e+00, 1.0000e-06]]]])
     """
-    if not isinstance(labels, torch.Tensor):
-        raise TypeError(f"Input labels type is not a torch.Tensor. Got {type(labels)}")
+    if not isinstance(labels, Tensor):
+        raise TypeError(f"Input labels type is not a Tensor. Got {type(labels)}")
 
     if not labels.dtype == torch.int64:
         raise ValueError(f"labels must be of the same dtype torch.int64. Got: {labels.dtype}")
@@ -44,6 +38,6 @@ def one_hot(
         raise ValueError("The number of classes must be bigger than one." " Got: {}".format(num_classes))
 
     shape = labels.shape
-    one_hot = torch.zeros((shape[0], num_classes) + shape[1:], device=device, dtype=dtype)
+    one_hot = zeros((shape[0], num_classes) + shape[1:], device=device, dtype=dtype)
 
     return one_hot.scatter_(1, labels.unsqueeze(1), 1.0) + eps
