@@ -159,12 +159,9 @@ class Quaternion(Module):
         return self._data
 
     @property
-    def coeffs(self) -> Tensor:
-        """Return the underlying data with shape :math:`(B, 4)`.
-
-        Alias for :func:`~kornia.geometry.quaternion.Quaternion.data`
-        """
-        return self._data
+    def coeffs(self) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+        """Return a tuple with the underlying coefficients in WXYZ order."""
+        return self.w, self.x, self.y, self.z
 
     @property
     def real(self) -> Tensor:
