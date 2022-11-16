@@ -212,3 +212,12 @@ class TestSe3(BaseTester):
         se3 = Se3.trans_z(z)
         self.assert_close(se3.t, torch.stack((zs, zs, z), -1))
         self.assert_close(se3.so3.matrix(), So3.identity(batch_size, device, dtype).matrix())
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_adjoint(self, device, dtype, batch_size):
+        x_data = self._make_rand_data(device, dtype, batch_size, dims=6)
+        y_data = self._make_rand_data(device, dtype, batch_size, dims=6)
+        x = Se3.exp(x_data)
+        y = Se3.exp(y_data)
+        self.assert_close(x.inverse().adjoint(), x.adjoint().inverse())
+        self.assert_close((x * y).adjoint(), x.adjoint() @ y.adjoint())
