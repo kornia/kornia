@@ -45,7 +45,6 @@ class So2(Module):
         len_z_shape = len(z_shape)
         if (len_z_shape == 2 and z_shape[1] != 1) or (len_z_shape == 0 and not z.numel()) or (len_z_shape > 2):
             raise ValueError(f"Invalid input size, we expect [B, 1], [B] or []. Got: {z.shape}")
-        z = z.reshape(-1, 1)
         self._z = Parameter(z)
 
     def __repr__(self) -> str:
@@ -76,7 +75,6 @@ class So2(Module):
                 or (len_right_shape > 3 or len_right_shape < 2)
             ):
                 raise ValueError(f"Invalid input size, we expect [B, 2, 1], [2, 1] or [1, 2]. Got: {right_shape}")
-            right = right.reshape(-1, 2, 1)
             out = self.matrix() @ right
         else:
             raise TypeError(f"Not So2 or Tensor type. Got: {type(right)}")
@@ -145,7 +143,6 @@ class So2(Module):
             or (len_theta_shape > 2)
         ):
             raise ValueError(f"Invalid input size, we expect [B, 1] or [B]. Got: {theta_shape}")
-        theta = theta.reshape(-1, 1)
         row0 = pad(theta, (1, 0))
         row1 = pad(theta, (0, 1))
         return stack((row0, row1), -1)
