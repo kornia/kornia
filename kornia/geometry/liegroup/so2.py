@@ -75,7 +75,7 @@ class So2(Module):
                 or (len_right_shape > 3 or len_right_shape < 2)
             ):
                 raise ValueError(f"Invalid input size, we expect [B, 2, 1], [2, 1] or [1, 2]. Got: {right_shape}")
-            out = self.matrix() @ right
+            out = right @ self.matrix()
         else:
             raise TypeError(f"Not So2 or Tensor type. Got: {type(right)}")
         return out
@@ -126,7 +126,7 @@ class So2(Module):
         """Converts elements from vector space to lie algebra. Returns matrix of shape :math:`(B, 2, 2)`.
 
         Args:
-            theta: angle in radians of shape :math:`(B, 1)`.
+            theta: angle in radians of shape :math:`(B)`.
 
         Example:
             >>> theta = torch.tensor([3.1415/2])
@@ -143,9 +143,10 @@ class So2(Module):
             or (len_theta_shape > 2)
         ):
             raise ValueError(f"Invalid input size, we expect [B, 1] or [B]. Got: {theta_shape}")
+        theta = theta.reshape(-1, 1)
         row0 = pad(theta, (1, 0))
         row1 = pad(theta, (0, 1))
-        return stack((row0, row1), -1)
+        return stack((row0, row1), -1).squeeze()
 
     def matrix(self) -> Tensor:
         """Convert the complex number to a rotation matrix of shape :math:`(B, 2, 2)`.
@@ -157,9 +158,11 @@ class So2(Module):
             tensor([[[1., -0.],
                      [0., 1.]]], grad_fn=<CatBackward0>)
         """
+        # real = self.z.real
+        # imag = self.z.imag
         row0 = stack((self.z.real, -self.z.imag), -1)
         row1 = stack((self.z.imag, self.z.real), -1)
-        return concatenate((row0, row1), 1)
+        return stack((row0, row1), -2) # TODO double check
 
     @classmethod
     def from_matrix(cls, matrix: Tensor) -> 'So2':
