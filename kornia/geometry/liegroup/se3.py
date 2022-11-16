@@ -323,3 +323,22 @@ class Se3(Module):
         """
         zs = zeros_like(z)
         return cls.trans(zs, zs, z)
+
+    def adjoint(self) -> Tensor:
+        """Returns the adjoint matrix of shape :math:`(B, 6, 6)`.
+
+        Example:
+            >>> s = Se3.identity()
+            >>> s.adjoint()
+            tensor([[1., 0., 0., 0., 0., 0.],
+                    [0., 1., 0., 0., 0., 0.],
+                    [0., 0., 1., 0., 0., 0.],
+                    [0., 0., 0., 1., 0., 0.],
+                    [0., 0., 0., 0., 1., 0.],
+                    [0., 0., 0., 0., 0., 1.]], grad_fn=<CatBackward0>)
+        """
+        R = self.so3.matrix()
+        z = zeros_like(R)
+        row0 = concatenate((R, So3.hat(self.t) @ R), -1)
+        row1 = concatenate((z, R), -1)
+        return concatenate((row0, row1), -2)
