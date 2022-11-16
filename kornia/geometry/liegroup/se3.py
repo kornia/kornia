@@ -341,4 +341,4 @@ class Se3(Module):
         z = zeros_like(R)
         row0 = concatenate((R, So3.hat(self.t) @ R), -1)
         row1 = concatenate((z, R), -1)
-        return concatenate((row0, row1), 0 if len(R.shape) < 3 else 1)
+        return concatenate((row0, row1), -2)
