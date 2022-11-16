@@ -12,6 +12,9 @@ import kornia
 
 torch_dynamo_optimize = dynamo.optimize("inductor")
 
+# TODO: kornia.geometry.transform.warp_perspective
+# NOTE: there are some crashed in warp_perspective
+
 op = kornia.color.rgb_to_grayscale
 op_dyn = torch_dynamo_optimize(op)
 
