@@ -280,3 +280,15 @@ class So3(Module):
         """
         zs = zeros_like(z)
         return cls.exp(stack((zs, zs, z), -1))
+
+    def adjoint(self) -> Tensor:
+        """Returns the adjoint matrix of shape :math:`(B, 3, 3)`.
+
+        Example:
+            >>> s = So3.identity()
+            >>> s.adjoint()
+            tensor([[1., 0., 0.],
+                    [0., 1., 0.],
+                    [0., 0., 1.]], grad_fn=<StackBackward0>)
+        """
+        return self.matrix()
