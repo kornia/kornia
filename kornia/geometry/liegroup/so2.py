@@ -2,7 +2,7 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so2.py
 from typing import Optional, Union
 
-from kornia.core import Module, Parameter, Tensor, complex, concatenate, pad, stack, tensor
+from kornia.core import Module, Parameter, Tensor, complex, pad, stack, tensor
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 
 
@@ -20,7 +20,7 @@ class So2(Module):
         >>> imag = torch.tensor([2.0])
         >>> So2(torch.complex(real, imag))
         Parameter containing:
-        tensor([[1.+2.j]], requires_grad=True)
+        tensor([1.+2.j], requires_grad=True)
     """
 
     def __init__(self, z: Tensor) -> None:
@@ -32,11 +32,11 @@ class So2(Module):
             z: Complex number with the shape of :math:`(B, 1)` or :math:`(B)`.
 
         Example:
-            >>> real = torch.tensor([1.0])
-            >>> imag = torch.tensor([2.0])
-            >>> So2(torch.complex(real, imag))
+            >>> real = torch.tensor(1.0)
+            >>> imag = torch.tensor(2.0)
+            >>> So2(torch.complex(real, imag)).z
             Parameter containing:
-            tensor([[1.+2.j]], requires_grad=True)
+            tensor(1.+2.j, requires_grad=True)
         """
         super().__init__()
         KORNIA_CHECK_IS_TENSOR(z)
@@ -75,7 +75,7 @@ class So2(Module):
                 or (len_right_shape > 3 or len_right_shape < 2)
             ):
                 raise ValueError(f"Invalid input size, we expect [B, 2, 1], [2, 1] or [1, 2]. Got: {right_shape}")
-            out = right @ self.matrix()
+            out = self.matrix() @ right
         else:
             raise TypeError(f"Not So2 or Tensor type. Got: {type(right)}")
         return out
@@ -97,7 +97,7 @@ class So2(Module):
             >>> s = So2.exp(v)
             >>> s
             Parameter containing:
-            tensor([[4.6329e-05+1.j]], requires_grad=True)
+            tensor([4.6329e-05+1.j], requires_grad=True)
         """
         # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
         theta_shape = theta.shape
@@ -117,7 +117,7 @@ class So2(Module):
             >>> real = torch.tensor([1.0])
             >>> imag = torch.tensor([3.0])
             >>> So2(torch.complex(real, imag)).log()
-            tensor([[1.2490]], grad_fn=<Atan2Backward0>)
+            tensor([1.2490], grad_fn=<Atan2Backward0>)
         """
         return self.z.imag.atan2(self.z.real)
 
@@ -131,8 +131,8 @@ class So2(Module):
         Example:
             >>> theta = torch.tensor([3.1415/2])
             >>> So2.hat(theta)
-            tensor([[[0.0000, 1.5707],
-                     [1.5707, 0.0000]]])
+            tensor([[0.0000, 1.5707],
+                    [1.5707, 0.0000]])
         """
         # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
         theta_shape = theta.shape
@@ -152,17 +152,15 @@ class So2(Module):
         """Convert the complex number to a rotation matrix of shape :math:`(B, 2, 2)`.
 
         Example:
-            >>> s = So2.identity(batch_size=1)
+            >>> s = So2.identity()
             >>> m = s.matrix()
             >>> m
-            tensor([[[1., -0.],
-                     [0., 1.]]], grad_fn=<CatBackward0>)
+            tensor([[1., -0.],
+                    [0., 1.]], grad_fn=<StackBackward0>)
         """
-        # real = self.z.real
-        # imag = self.z.imag
         row0 = stack((self.z.real, -self.z.imag), -1)
         row1 = stack((self.z.imag, self.z.real), -1)
-        return stack((row0, row1), -2) # TODO double check
+        return stack((row0, row1), -2)
 
     @classmethod
     def from_matrix(cls, matrix: Tensor) -> 'So2':
@@ -174,9 +172,9 @@ class So2(Module):
         Example:
             >>> m = torch.eye(2)
             >>> s = So2.from_matrix(m)
-            >>> s
+            >>> s.z
             Parameter containing:
-            tensor([[1.+0.j]], requires_grad=True)
+            tensor(1.+0.j, requires_grad=True)
         """
         # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
         matrix_shape = matrix.shape
@@ -187,7 +185,11 @@ class So2(Module):
             or (len_matrix_shape > 3 or len_matrix_shape < 2)
         ):
             raise ValueError(f"Invalid input size, we expect [B, 2, 2] or [2, 2]. Got: {matrix_shape}")
-        return cls(complex(matrix[..., 0, 0], matrix[..., 1, 0]))
+        if len_matrix_shape == 2:
+            z = complex(matrix[0, 0], matrix[1, 0])
+        else:
+            z = complex(matrix[..., 0, 0], matrix[..., 1, 0])
+        return cls(z)
 
     @classmethod
     def identity(cls, batch_size: Optional[int] = None, device=None, dtype=None) -> 'So2':
@@ -200,24 +202,23 @@ class So2(Module):
             >>> s = So2.identity(batch_size=2)
             >>> s
             Parameter containing:
-            tensor([[1.+0.j],
-                    [1.+0.j]], requires_grad=True)
+            tensor([1.+0.j, 1.+0.j], requires_grad=True)
         """
-        real_data = tensor([1.0], device=device, dtype=dtype)
-        imag_data = tensor([0.0], device=device, dtype=dtype)
+        real_data = tensor(1.0, device=device, dtype=dtype)
+        imag_data = tensor(0.0, device=device, dtype=dtype)
         if batch_size is not None:
             KORNIA_CHECK(batch_size >= 1, msg="batch_size must be positive")
-            real_data = real_data[None].repeat(batch_size, 1)
-            imag_data = imag_data[None].repeat(batch_size, 1)
+            real_data = real_data.repeat(batch_size)
+            imag_data = imag_data.repeat(batch_size)
         return cls(complex(real_data, imag_data))
 
     def inverse(self) -> 'So2':
         """Returns the inverse transformation.
 
         Example:
-            >>> s = So2.identity(batch_size=1)
+            >>> s = So2.identity(1)
             >>> s.inverse()
             Parameter containing:
-            tensor([[1.+0.j]], requires_grad=True)
+            tensor([1.+0.j], requires_grad=True)
         """
         return So2(1 / self.z)
