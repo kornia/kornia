@@ -6,8 +6,6 @@ on:
   pull_request:
     branches: [master]
     types: [open, reopened, synchronize, review_requested, ready_for_review]
-  schedule:
-    - cron: "0 4 * * *"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -23,7 +21,7 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         python-version: ['3.7']
-        pytorch-version: ['1.10.2', '1.12.1', 'nightly']
+        pytorch-version: ['1.9.1', '1.13.0']
 
     steps:
       - name: Checkout kornia

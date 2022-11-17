@@ -1,0 +1,43 @@
+name: (scheduled) Run typing tests
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: ${{ matrix.os }} - python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ['3.7']
+        pytorch-version: ['1.9.1', '1.10.2', '1.12.1', '1.13.0', 'nightly']
+
+    steps:
+      - name: Checkout kornia
+        uses: actions/checkout@v3
+
+      - name: Setting environment on ${{ matrix.os }} with python ${{ matrix.python-version }} and pytorch  ${{ matrix.pytorch-version }}
+        uses: ./.github/actions/env
+        with:
+          python-version: ${{ matrix.python-version }}
+          pytorch-version: ${{ matrix.pytorch-version }}
+
+      - name: Run typing tests
+        shell: bash -l {0}
+        run: mypy --cobertura-xml-report ./
+
+      - if: always()
+        name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          file: cobertura.xml
+          flags: typing,${{ matrix.os }}_python-${{ matrix.python-version }}_torch-${{ matrix.pytorch-version }}
+          name: cpu-coverage-types

@@ -1,11 +1,6 @@
-name: Run tests on CPU
+name: (scheduled) Run tests on CPU
 
 on:
-  push:
-    branches: [master]
-  pull_request:
-    branches: [master]
-    types: [open, reopened, synchronize, review_requested, ready_for_review]
   schedule:
     - cron: "0 4 * * *"
 
@@ -23,7 +18,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos]
         python-version: ['3.7', '3.8']
-        pytorch-version: ['1.10.2', '1.12.1', 'nightly']
+        pytorch-version: ['1.9.1', '1.10.2', '1.12.1', '1.13.0', 'nightly']
 
     steps:
       - name: Checkout kornia
@@ -36,19 +31,20 @@ jobs:
           pytorch-version: ${{ matrix.pytorch-version }}
 
       - name: Run CPU tests float16
-        continue-on-error: true # Remove this when float16 stop raising errors
+        continue-on-error: true # TODO: Remove this when float16 stop raising errors
         shell: bash -l {0}
         run: pytest -v --device cpu --dtype float16 ./test
 
       - name: Run CPU tests float32
         shell: bash -l {0}
-        run: pytest -v --device cpu --dtype float32 ./test
+        run: pytest -v --device cpu --dtype float32 --cov=kornia --cov-report xml ./test
 
       - name: Run CPU tests float64
         shell: bash -l {0}
-        run: pytest -v --device cpu --dtype float64 --cov=kornia --cov-report xml ./test
+        run: pytest -v --device cpu --dtype float64 ./test
 
-      - name: Upload coverage
+      - if: always()
+        name: Upload coverage
         uses: codecov/codecov-action@v3
         with:
           file: coverage.xml
