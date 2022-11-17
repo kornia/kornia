@@ -1,8 +1,8 @@
 from typing import Optional
 
 import torch
-from torch import Tensor, stack
 
+from kornia.core import Tensor, stack
 from kornia.utils._compat import torch_meshgrid
 
 

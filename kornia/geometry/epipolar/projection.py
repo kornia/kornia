@@ -2,9 +2,9 @@
 from typing import Tuple, Union
 
 import torch
+from torch.linalg import qr as linalg_qr
 
 from kornia.utils import eye_like, vec_like
-from kornia.utils._compat import linalg_qr
 from kornia.utils.helpers import _torch_svd_cast
 
 from .numeric import cross_product_matrix
