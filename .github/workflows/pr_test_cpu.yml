@@ -17,11 +17,11 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         os: [ubuntu-latest, windows-latest, macos]
         python-version: ['3.7', '3.8']
-        pytorch-version: ['1.10.2', '1.12.1']
+        pytorch-version: ['1.9.1', '1.13.0']
 
     steps:
       - name: Checkout kornia
