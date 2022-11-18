@@ -129,7 +129,7 @@ class So2(Module):
             theta: angle in radians of shape :math:`(B)`.
 
         Example:
-            >>> theta = torch.tensor([3.1415/2])
+            >>> theta = torch.tensor(3.1415/2)
             >>> So2.hat(theta)
             tensor([[0.0000, 1.5707],
                     [1.5707, 0.0000]])
