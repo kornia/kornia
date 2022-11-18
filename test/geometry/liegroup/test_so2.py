@@ -26,7 +26,7 @@ class TestSo2(BaseTester):
         assert (s * s).z.shape == input_shape
         assert s.exp(theta).z.shape == input_shape
         assert s.log().shape == input_shape
-        if not any(input_shape) or input_shape[0] == 1:
+        if not any(input_shape):
             expected_hat_shape = (2, 2)
         else:
             expected_hat_shape = (input_shape[0], 2, 2)
@@ -126,7 +126,7 @@ class TestSo2(BaseTester):
     def test_hat(self, device, dtype, batch_size):
         theta = self._make_rand_data(device, dtype, (batch_size, 1))
         m = So2.hat(theta)
-        o = torch.ones((1, 2, 1), device=device, dtype=dtype)
+        o = torch.ones((2, 1), device=device, dtype=dtype)
         self.assert_close(m @ o, torch.cat((theta[..., None], theta[..., None]), 1).reshape(-1, 2, 1))
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))

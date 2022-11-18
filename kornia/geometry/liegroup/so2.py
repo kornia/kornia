@@ -143,10 +143,10 @@ class So2(Module):
             or (len_theta_shape > 2)
         ):
             raise ValueError(f"Invalid input size, we expect [B, 1] or [B]. Got: {theta_shape}")
-        theta = theta.reshape(-1, 1)
+        theta = theta.reshape(-1, 1) if any(theta.shape) else theta.reshape(-1)
         row0 = pad(theta, (1, 0))
         row1 = pad(theta, (0, 1))
-        return stack((row0, row1), -1).squeeze()
+        return stack((row0, row1), -1)
 
     def matrix(self) -> Tensor:
         """Convert the complex number to a rotation matrix of shape :math:`(B, 2, 2)`.
@@ -185,10 +185,7 @@ class So2(Module):
             or (len_matrix_shape > 3 or len_matrix_shape < 2)
         ):
             raise ValueError(f"Invalid input size, we expect [B, 2, 2] or [2, 2]. Got: {matrix_shape}")
-        if len_matrix_shape == 2:
-            z = complex(matrix[0, 0], matrix[1, 0])
-        else:
-            z = complex(matrix[..., 0, 0], matrix[..., 1, 0])
+        z = complex(matrix[..., 0, 0], matrix[..., 1, 0])
         return cls(z)
 
     @classmethod
