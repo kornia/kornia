@@ -1,6 +1,8 @@
 name: (scheduled) Run typing tests
 
 on:
+  push:
+    branches: [master]
   schedule:
     - cron: "0 4 * * *"
 

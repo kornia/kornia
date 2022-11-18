@@ -1,8 +1,6 @@
 name: Run typing tests
 
 on:
-  push:
-    branches: [master]
   pull_request:
     branches: [master]
     types: [open, reopened, synchronize, review_requested, ready_for_review]
@@ -21,7 +19,7 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         python-version: ['3.7']
-        pytorch-version: ['1.9.1', '1.13.0']
+        pytorch-version: ['1.9.1', '1.12.1']
 
     steps:
       - name: Checkout kornia

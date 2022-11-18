@@ -1,6 +1,8 @@
 name: (scheduled) Run tests on CPU
 
 on:
+  push:
+    branches: [master]
   schedule:
     - cron: "0 4 * * *"
 

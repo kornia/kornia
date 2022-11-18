@@ -1,8 +1,6 @@
 name: Run tests on CPU
 
 on:
-  push:
-    branches: [master]
   pull_request:
     branches: [master]
     types: [open, reopened, synchronize, review_requested, ready_for_review]
@@ -21,7 +19,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos]
         python-version: ['3.7', '3.8']
-        pytorch-version: ['1.9.1', '1.13.0']
+        pytorch-version: ['1.9.1', '1.12.1']
 
     steps:
       - name: Checkout kornia
