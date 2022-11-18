@@ -2,7 +2,7 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so2.py
 from typing import Optional, Union
 
-from kornia.core import Module, Parameter, Tensor, complex, pad, stack, tensor
+from kornia.core import Module, Parameter, Tensor, complex, zeros_like, stack, tensor
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 
 
@@ -143,9 +143,9 @@ class So2(Module):
             or (len_theta_shape > 2)
         ):
             raise ValueError(f"Invalid input size, we expect [B, 1] or [B]. Got: {theta_shape}")
-        theta = theta.reshape(-1, 1) if any(theta.shape) else theta.reshape(-1)
-        row0 = pad(theta, (1, 0))
-        row1 = pad(theta, (0, 1))
+        z = zeros_like(theta)
+        row0 = stack((z, theta), -1)
+        row1 = stack((theta, z), -1)
         return stack((row0, row1), -1)
 
     def matrix(self) -> Tensor:

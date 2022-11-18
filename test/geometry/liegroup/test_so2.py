@@ -124,10 +124,10 @@ class TestSo2(BaseTester):
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_hat(self, device, dtype, batch_size):
-        theta = self._make_rand_data(device, dtype, (batch_size, 1))
+        theta = self._make_rand_data(device, dtype, (batch_size,))
         m = So2.hat(theta)
         o = torch.ones((2, 1), device=device, dtype=dtype)
-        self.assert_close(m @ o, torch.cat((theta[..., None], theta[..., None]), 1).reshape(-1, 2, 1))
+        self.assert_close((m @ o).reshape(-1, 2, 1), theta.reshape(-1,1,1).repeat(1, 2, 1))
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_matrix(self, device, dtype, batch_size):
