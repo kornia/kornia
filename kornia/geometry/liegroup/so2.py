@@ -2,7 +2,7 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so2.py
 from typing import Optional, Union
 
-from kornia.core import Module, Parameter, Tensor, complex, zeros_like, stack, tensor
+from kornia.core import Module, Parameter, Tensor, complex, stack, tensor, zeros_like
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 
 
