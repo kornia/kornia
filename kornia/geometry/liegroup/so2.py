@@ -213,9 +213,9 @@ class So2(Module):
         """Returns the inverse transformation.
 
         Example:
-            >>> s = So2.identity(1)
-            >>> s.inverse()
+            >>> s = So2.identity()
+            >>> s.inverse().z
             Parameter containing:
-            tensor([1.+0.j], requires_grad=True)
+            tensor(1.+0.j, requires_grad=True)
         """
         return So2(1 / self.z)
