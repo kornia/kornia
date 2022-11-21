@@ -2,10 +2,10 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se2.py
 from typing import Optional
 
-from kornia.core import Module, Parameter, Tensor, concatenate, stack, eye, pad, tensor, where
+from kornia.core import Module, Parameter, Tensor, concatenate, pad, stack, tensor
+from kornia.geometry.liegroup._utils import check_se2_t_shape, check_v_shape
 from kornia.geometry.liegroup.so2 import So2
-from kornia.geometry.linalg import batched_dot_product
-from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
+from kornia.testing import KORNIA_CHECK_TYPE
 
 
 class Se2(Module):
@@ -13,15 +13,16 @@ class Se2(Module):
 
     The SE(2) is the group of rigid body transformations about the origin of two-dimensional Euclidean
     space :math:`R^2` under the operation of composition.
-    See more: 
+    See more:
 
-    TODO:
     Example:
-        >>> real = torch.tensor([1.0])
-        >>> imag = torch.tensor([2.0])
-        >>> So2(torch.complex(real, imag))
-        Parameter containing:
-        tensor([[1.+2.j]], requires_grad=True)
+        >>> so2 = So2.identity()
+        >>> t = torch.ones((1, 2))
+        >>> se2 = Se2(so2, t)
+        >>> se2
+        rotation: (1+0j)
+        translation: Parameter containing:
+        tensor([[1., 1.]], requires_grad=True)
     """
 
     def __init__(self, r: So2, t: Tensor) -> None:
@@ -32,21 +33,20 @@ class Se2(Module):
         Args:
             r: So2 group encompassing a rotation.
             t: translation vector with the shape of :math:`(B, 2)`.
-        
-        TODO
+
         Example:
-            >>> from kornia.geometry.quaternion import Quaternion
-            >>> q = Quaternion.identity(batch_size=1)
-            >>> s = Se2(So2(q), torch.ones((1,3)))
-            >>> s.r
-            real: tensor([[1.]], grad_fn=<SliceBackward0>)
-            vec: tensor([[0., 0., 0.]], grad_fn=<SliceBackward0>)
-            >>> s.t
-            tensor([[1., 1., 1.]])
+            >>> so2 = So2.identity()
+            >>> t = torch.ones((1, 2))
+            >>> se2 = Se2(so2, t)
+            >>> se2
+            rotation: (1+0j)
+            translation: Parameter containing:
+            tensor([[1., 1.]], requires_grad=True)
         """
         super().__init__()
         KORNIA_CHECK_TYPE(r, So2)
-        KORNIA_CHECK_SHAPE(t, ["B", "2"])
+        # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
+        check_se2_t_shape(t)
         self._r = r
         self._t = Parameter(t)
 
@@ -67,13 +67,13 @@ class Se2(Module):
         """
         if isinstance(right, Se2):
             KORNIA_CHECK_TYPE(right, Se2)
-            # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se2.py#L97
             r = self.so2 * right.so2
             t = self.t + self.so2 * right.t
             return Se2(r, t)
         elif isinstance(right, Tensor):
             KORNIA_CHECK_TYPE(right, Tensor)
-            KORNIA_CHECK_SHAPE(right, ["B", "N"])
+            # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
+            check_se2_t_shape(right)
             return self.so2 * right + self.t
         else:
             raise TypeError(f"Unsupported type: {type(right)}")
@@ -101,38 +101,107 @@ class Se2(Module):
             v: vector of shape :math:`(B, 3)`.
 
         Example:
-            >>> v = torch.zeros((1, 3))
+            >>> v = torch.ones((1, 3))
             >>> s = Se2.exp(v)
             >>> s.r
             Parameter containing:
-            tensor([[1.+0.j]], requires_grad=True)
+            tensor([0.5403+0.8415j], requires_grad=True)
             >>> s.t
             Parameter containing:
-            tensor([[nan, nan]], requires_grad=True)
+            tensor([[0.3818, 1.3012]], requires_grad=True)
         """
-        KORNIA_CHECK_SHAPE(v, ["B", "3"])
-        #TODO when theta is 0
+        # TODO when theta is 0
+        check_v_shape(v)
         theta = v[..., 2]
         so2 = So2.exp(theta)
-        aa = so2.z.imag / theta
-        bb = (1.0 - so2.z.real) / theta
-        t = stack((aa @ v[..., 0] - bb @ v[..., 1], bb @ v[..., 0] + aa @ v[..., 1]), -1)
+        a = so2.z.imag / theta
+        b = (1.0 - so2.z.real) / theta
+        t = stack((a * v[..., 0] - b * v[..., 1], b * v[..., 0] + a * v[..., 1]), -1)
         return Se2(so2, t)
 
     def log(self) -> Tensor:
         """Converts elements of lie group  to elements of lie algebra.
 
         Example:
-            >>> from kornia.geometry.quaternion import Quaternion
-            >>> q = Quaternion.identity()
-            >>> Se2(So2(q), torch.zeros(3)).log()
-            tensor([0., 0., 0., 0., 0., 0.], grad_fn=<CatBackward0>)
+            >>> v = torch.ones((1, 3))
+            >>> s = Se2.exp(v).log()
+            tensor([[1.0000, 1.0000, 1.0000]], grad_fn=<StackBackward0>)
         """
         theta = self.so2.log()
         half_theta = 0.5 * theta
-        aa = -(half_theta * self.so2.z.imag) / (self.so2.z.real - 1)
-        row0 = concatenate((aa[..., None], half_theta[..., None]), -1)
-        row1 = concatenate((-half_theta[..., None], aa[..., None]), -1)
-        V_inv = concatenate((row0, row1), 1)
+        a = -(half_theta * self.so2.z.imag) / (self.so2.z.real - 1)
+        row0 = stack((a, half_theta), -1)
+        row1 = stack((-half_theta, a), -1)
+        V_inv = stack((row0, row1), -2)
         upsilon = V_inv @ self.t[..., None]
-        return concatenate((upsilon[:, 0], upsilon[:, 1], theta), -1)
+        return stack((upsilon[..., 0, 0], upsilon[..., 1, 0], theta), -1)
+
+    @staticmethod
+    def hat(v):
+        """Converts elements from vector space to lie algebra. Returns matrix of shape :math:`(B, 2, 2)`.
+
+        Args:
+            theta: angle in radians of shape :math:`(B)`.
+
+        Example:
+            >>> theta = torch.tensor(3.1415/2)
+            >>> So2.hat(theta)
+            tensor([[0.0000, 1.5707],
+                    [1.5707, 0.0000]])
+        """
+        # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
+        check_v_shape(v)
+        upsilon = stack((v[..., 0], v[..., 1]), -1)
+        theta = v[..., 2]
+        col0 = concatenate((So2.hat(theta), upsilon.reshape(-1, 1, 2)), -2)
+        return pad(col0, (0, 1))
+
+    @classmethod
+    def identity(cls, batch_size: Optional[int] = None, device=None, dtype=None) -> 'Se2':
+        """Create a Se2 group representing an identity rotation and zero translation.
+
+        Args:
+            batch_size: the batch size of the underlying data.
+
+        Example:
+            >>> s = Se2.identity()
+            >>> s.r
+            (1+0j)
+            >>> s.t
+            Parameter containing:
+            tensor([0., 0.], requires_grad=True)
+        """
+        t: Tensor = tensor([0.0, 0.0], device=device, dtype=dtype)
+        if batch_size is not None:
+            t = t.repeat(batch_size, 1)
+        return cls(So2.identity(batch_size, device, dtype), t)
+
+    def matrix(self) -> Tensor:
+        """Returns the matrix representation of shape :math:`(B, 3, 3)`.
+
+        Example:
+            >>> s = Se2(So2.identity(), torch.ones(2))
+            >>> s.matrix()
+            tensor([[1., -0., 1.],
+                    [0., 1., 1.],
+                    [0., 0., 1.]], grad_fn=<CopySlices>)
+        """
+        rt = concatenate((self.r.matrix(), self.t[..., None]), -1)
+        rt_3x3 = pad(rt, (0, 0, 0, 1))  # add last row zeros
+        rt_3x3[..., -1, -1] = 1.0
+        return rt_3x3
+
+    def inverse(self) -> 'Se2':
+        """Returns the inverse transformation.
+
+        Example:
+            >>> s = Se2(So2.identity(), torch.ones(2))
+            >>> s_inv = s.inverse()
+            >>> s_inv.r
+            (1+0j)
+            >>> s_inv.t
+            Parameter containing:
+            tensor([-1., -1.], requires_grad=True)
+        """
+        r_inv = self.r.inverse()
+        return Se2(r_inv, r_inv * (-1 * self.t))
