@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   tests-cpu:
-    name: ${{ matrix.os }} - python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}
+    name: ${{ matrix.os }} - python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}, ${{ matrix.pytorch-dtype }}
     runs-on: ${{ matrix.os }}
 
     strategy:

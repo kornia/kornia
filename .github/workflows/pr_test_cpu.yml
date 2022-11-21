@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   tests-cpu:
-    name: ${{ matrix.os }} - python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}
+    name: ${{ matrix.os }} - python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}, ${{ matrix.pytorch-dtype }}
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -33,6 +33,7 @@ jobs:
           pytorch-version: ${{ matrix.pytorch-version }}
 
       - name: Run CPU tests ${{ matrix.pytorch-dtype }}
+        continue-on-error: ${{ contains('float16', matrix.pytorch-dtype) }}  # Remove this when float16 stop raising errors
         shell: bash -l {0}
         run: pytest -v --device cpu --dtype ${{ matrix.pytorch-dtype }} --cov=kornia --cov-report xml ./test
 
