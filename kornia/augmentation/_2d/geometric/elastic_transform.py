@@ -1,9 +1,11 @@
-from typing import Any, Dict, Optional, Tuple
+import warnings
+from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 from torch import Tensor
 
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
+from kornia.constants import Resample
 from kornia.geometry.transform import elastic_transform2d
 
 
@@ -19,7 +21,9 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
         alpha: The scaling factor that controls the intensity of the deformation
           in the y and x directions, respectively.
         align_corners: Interpolation flag used by `grid_sample`.
-        mode: Interpolation mode used by `grid_sample`. Either 'bilinear' or 'nearest'.
+        resample: Interpolation mode used by `grid_sample`. Either 'nearest' (0) or 'bilinear' (1).
+        mode: Deprecated: Interpolation mode used by `grid_sample`. Either 'bilinear' or 'nearest'.
+          Please use the `resample` argument instead.
         padding_mode: The padding used by ```grid_sample```. Either 'zeros', 'border' or 'refection'.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
@@ -49,7 +53,8 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
         sigma: Tuple[float, float] = (32.0, 32.0),
         alpha: Tuple[float, float] = (1.0, 1.0),
         align_corners: bool = False,
-        mode: str = "bilinear",
+        resample: Union[str, int, Resample] = Resample.BILINEAR.name,
+        mode: Optional[str] = None,
         padding_mode: str = "zeros",
         same_on_batch: bool = False,
         p: float = 0.5,
@@ -59,12 +64,21 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
         super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
         )
+        if mode is not None:
+            resample = mode
+            if not torch.jit.is_scripting():
+                warnings.warn(
+                    "`mode` argument has been deprecated. Please use the `resample` argument instead",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+
         self.flags = dict(
             kernel_size=kernel_size,
             sigma=sigma,
             alpha=alpha,
             align_corners=align_corners,
-            mode=mode,
+            resample=Resample.get(resample),
             padding_mode=padding_mode,
         )
 
@@ -90,6 +104,6 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
             flags["sigma"],
             flags["alpha"],
             flags["align_corners"],
-            flags["mode"],
+            flags["resample"].name.lower(),
             flags["padding_mode"],
         )
