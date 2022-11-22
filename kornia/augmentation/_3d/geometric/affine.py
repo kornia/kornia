@@ -1,10 +1,9 @@
-from typing import Any, Dict, Optional, Tuple, Union, cast
-
-from torch import Tensor
+from typing import Any, Dict, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.base import AugmentationBase3D
 from kornia.constants import Resample
+from kornia.core import Tensor
 from kornia.geometry import deg2rad, get_affine_matrix3d, warp_affine3d
 
 
@@ -126,7 +125,7 @@ class RandomAffine3D(AugmentationBase3D):
         self.scale = scale
 
         self.flags = dict(resample=Resample.get(resample), align_corners=align_corners)
-        self._param_generator = cast(rg.AffineGenerator3D, rg.AffineGenerator3D(degrees, translate, scale, shears))
+        self._param_generator = rg.AffineGenerator3D(degrees, translate, scale, shears)
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         transform: Tensor = get_affine_matrix3d(
@@ -146,7 +145,9 @@ class RandomAffine3D(AugmentationBase3D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        transform = cast(Tensor, transform)
+        if not isinstance(transform, Tensor):
+            raise TypeError(f'Expected the transform to be a Tensor. Gotcha {type(transform)}')
+
         return warp_affine3d(
             input,
             transform[:, :3, :],

@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple, Union, cast
+from typing import Dict, Optional, Tuple, Union
 
 import torch
 from torch.distributions import Uniform
@@ -126,8 +126,8 @@ class AffineGenerator(RandomGeneratorBase):
             else:
                 raise ValueError(f"'scale' expected to be either 2 or 4 elements. Got {self.scale}")
         if _shear is not None:
-            _joint_range_check(cast(Tensor, _shear)[0], "shear")
-            _joint_range_check(cast(Tensor, _shear)[1], "shear")
+            _joint_range_check(_shear[0], "shear")
+            _joint_range_check(_shear[1], "shear")
             shear_x_sampler = Uniform(_shear[0][0], _shear[0][1], validate_args=False)
             shear_y_sampler = Uniform(_shear[1][0], _shear[1][1], validate_args=False)
 
@@ -246,10 +246,10 @@ def random_affine_generator(
         scale = scale.to(device=device, dtype=dtype)
         if not (len(scale.shape) == 1 and len(scale) in (2, 4)):
             raise AssertionError(f"`scale` shall have 2 or 4 elements. Got {scale}.")
-        _joint_range_check(cast(Tensor, scale[:2]), "scale")
+        _joint_range_check(scale[:2], "scale")
         _scale = _adapted_uniform((batch_size,), scale[0], scale[1], same_on_batch).unsqueeze(1).repeat(1, 2)
         if len(scale) == 4:
-            _joint_range_check(cast(Tensor, scale[2:]), "scale_y")
+            _joint_range_check(scale[2:], "scale_y")
             _scale[:, 1] = _adapted_uniform((batch_size,), scale[2], scale[3], same_on_batch)
         _scale = _scale.to(device=_device, dtype=_dtype)
     else:
@@ -277,8 +277,8 @@ def random_affine_generator(
 
     if shear is not None:
         shear = shear.to(device=device, dtype=dtype)
-        _joint_range_check(cast(Tensor, shear)[0], "shear")
-        _joint_range_check(cast(Tensor, shear)[1], "shear")
+        _joint_range_check(shear[0], "shear")
+        _joint_range_check(shear[1], "shear")
         sx = _adapted_uniform((batch_size,), shear[0][0], shear[0][1], same_on_batch)
         sy = _adapted_uniform((batch_size,), shear[1][0], shear[1][1], same_on_batch)
         sx = sx.to(device=_device, dtype=_dtype)

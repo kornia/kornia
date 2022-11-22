@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple, Union, cast
+from typing import Any, Dict, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.base import AugmentationBase3D
@@ -91,7 +91,7 @@ class RandomCrop3D(AugmentationBase3D):
             resample=Resample.get(resample),
             align_corners=align_corners,
         )
-        self._param_generator = cast(rg.CropGenerator3D, rg.CropGenerator3D(size, None))
+        self._param_generator = rg.CropGenerator3D(size, None)
 
     def precrop_padding(self, input: Tensor, flags: Optional[Dict[str, Any]] = None) -> Tensor:
         flags = self.flags if flags is None else flags
@@ -129,7 +129,9 @@ class RandomCrop3D(AugmentationBase3D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        transform = cast(Tensor, transform)
+        if not isinstance(transform, Tensor):
+            raise TypeError(f'Expected the transform to be a Tensor. Gotcha {type(transform)}')
+
         return crop_by_transform_mat3d(
             input, transform, flags["size"], mode=flags["resample"].name.lower(), align_corners=flags["align_corners"]
         )

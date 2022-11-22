@@ -1,10 +1,9 @@
 import warnings
-from typing import Any, Dict, Optional, Tuple, cast
-
-from torch import Tensor, as_tensor
+from typing import Any, Dict, Optional, Tuple
 
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.augmentation.utils import override_parameters
+from kornia.core import Tensor, as_tensor
 from kornia.utils.helpers import _torch_inverse_cast
 
 
@@ -110,4 +109,7 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
             output[to_apply] = self.inverse_transform(
                 in_tensor[to_apply], transform=transform[to_apply], size=size, flags=flags
             )
-        return cast(Tensor, self.transform_output_tensor(output, input_shape)) if self.keepdim else output
+        if self.keepdim:
+            return self.transform_output_tensor(output, input_shape)
+
+        return output
