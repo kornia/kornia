@@ -2,9 +2,8 @@ import math
 from typing import Optional, Tuple, Union
 
 import torch
-from torch import tensor
 
-from kornia.core import Tensor
+from kornia.core import Tensor, concatenate, tensor, where
 
 from .ransac import ransac
 from .utils import dist_matrix, orientation_diff
@@ -52,7 +51,7 @@ def select_seeds(dist1: Tensor, R1: Union[float, Tensor], scores1: Tensor, fnn12
         im1bs = (~torch.any(im1neighmap & im1scorescomp, dim=1)) & (scores1 < 0.8**2)
 
     # collect all seeds in both images and the 1NN of the seeds of the other image
-    im1seeds = torch.where(im1bs)[0]  # (n1bs) index format
+    im1seeds = where(im1bs)[0]  # (n1bs) index format
     im2seeds = fnn12[im1bs]  # (n1bs) index format
     return im1seeds, im2seeds
 
@@ -178,7 +177,7 @@ def extract_local_patterns(
     # first get an indexing representation of the assignments:
     # - ransidx holds the index of the seed for each assignment
     # - tokp1 holds the index of the keypoint in image I_1 for each assignment
-    ransidx, tokp1 = torch.where(fnn_to_seed_local_consistency_map_corr)
+    ransidx, tokp1 = where(fnn_to_seed_local_consistency_map_corr)
     # - and of course tokp2 holds the index of the corresponding keypoint in image I_2
     tokp2 = fnn12[tokp1]
 
@@ -261,18 +260,23 @@ def adalam_core(
     SCALE_RATE_THR = config['scale_rate_threshold']
     REFIT = config['refit']
 
-    if im1shape is None:
-        k1mins, _ = torch.min(k1, dim=0)
-        k1maxs, _ = torch.max(k1, dim=0)
-        im1shape = k1maxs - k1mins
-    if im2shape is None:
-        k2mins, _ = torch.min(k2, dim=0)
-        k2maxs, _ = torch.max(k2, dim=0)
-        im2shape = k2maxs - k2mins
+    if isinstance(im1shape, tuple):
+        _im1shape = tensor(im1shape, device=k1.device, dtype=k1.dtype)
+    else:
+        k1mins = k1.min(dim=0).values
+        k1maxs = k1.max(dim=0).values
+        _im1shape = k1maxs - k1mins
+
+    if isinstance(im2shape, tuple):
+        _im2shape = tensor(im2shape, device=k2.device, dtype=k2.dtype)
+    else:
+        k2mins = k2.min(dim=0).values
+        k2maxs = k2.max(dim=0).values
+        _im2shape = k2maxs - k2mins
 
     # Compute seed selection radii to be invariant to image rescaling
-    R1 = torch.sqrt(torch.prod(tensor(im1shape[:2])) / AREA_RATIO / math.pi)
-    R2 = torch.sqrt(torch.prod(tensor(im2shape[:2])) / AREA_RATIO / math.pi)
+    R1 = torch.sqrt(torch.prod(_im1shape[:2]) / AREA_RATIO / math.pi)
+    R2 = torch.sqrt(torch.prod(_im2shape[:2]) / AREA_RATIO / math.pi)
 
     # Precompute the inner distances of keypoints in image I_1
     dist1 = dist_matrix(k1, k1)
@@ -303,7 +307,7 @@ def adalam_core(
     if rdims.shape[0] == 0:
         # No seed point survived. Just output ratio-test matches. This should happen very rarely.
         score_mask = scores1 <= 0.95
-        absolute_im1idx = torch.where(score_mask)[0]
+        absolute_im1idx = where(score_mask)[0]
         if len(absolute_im1idx) > 0:
             absolute_im2idx = fnn12[absolute_im1idx]
             out_scores = scores1[score_mask].reshape(-1, 1)
@@ -343,7 +347,7 @@ def adalam_core(
         final_matches, idxs, counts = torch.unique(final_matches, dim=0, return_inverse=True, return_counts=True)
         _, ind_sorted = torch.sort(idxs)
         cum_sum = counts.cumsum(0)
-        cum_sum = torch.cat((torch.tensor([0], dtype=cum_sum.dtype, device=cum_sum.device), cum_sum[:-1]))
+        cum_sum = concatenate((torch.tensor([0], dtype=cum_sum.dtype, device=cum_sum.device), cum_sum[:-1]))
         first_indicies = ind_sorted[cum_sum]
         accepted_dist = accepted_dist[first_indicies]
     if return_dist:

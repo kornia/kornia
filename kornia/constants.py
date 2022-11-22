@@ -64,7 +64,7 @@ class DType(ConstantBase):
     FLOAT64 = 3
 
     @classmethod
-    def get(cls, value: Union[str, int, torch.dtype, Tensor, 'DType']) -> 'DType':  # type: ignore[override]
+    def get(cls, value: Union[str, int, torch.dtype, Tensor, 'DType']) -> 'DType':
         if isinstance(value, torch.dtype):
             value = str(value).upper()  # Convert to str
         if isinstance(value, Tensor):

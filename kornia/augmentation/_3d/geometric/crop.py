@@ -1,11 +1,9 @@
 from typing import Any, Dict, Optional, Tuple, Union, cast
 
-from torch import Tensor
-from torch.nn.functional import pad
-
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.base import AugmentationBase3D
 from kornia.constants import Resample
+from kornia.core import Tensor, pad
 from kornia.geometry import crop_by_transform_mat3d, get_perspective_transform3d
 
 
@@ -104,7 +102,7 @@ class RandomCrop3D(AugmentationBase3D):
             elif isinstance(padding, (tuple, list)) and len(padding) == 3:
                 padding = [padding[0], padding[0], padding[1], padding[1], padding[2], padding[2]]
             elif isinstance(padding, (tuple, list)) and len(padding) == 6:
-                padding = [padding[0], padding[1], padding[2], padding[3], padding[4], padding[5]]  # type: ignore
+                padding = [padding[0], padding[1], padding[2], padding[3], padding[4], padding[5]]
             else:
                 raise ValueError(f"`padding` must be an integer, 3-element-list or 6-element-list. Got {padding}.")
             input = pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
@@ -136,7 +134,7 @@ class RandomCrop3D(AugmentationBase3D):
             input, transform, flags["size"], mode=flags["resample"].name.lower(), align_corners=flags["align_corners"]
         )
 
-    def forward(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs) -> Tensor:  # type: ignore
+    def forward(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs) -> Tensor:
         # TODO: need to align 2D implementations
         input = self.precrop_padding(input)
-        return super().forward(input, params)  # type:ignore
+        return super().forward(input, params)

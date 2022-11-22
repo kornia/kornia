@@ -1,5 +1,5 @@
 import math
-from typing import List
+from typing import List, Union
 
 import torch
 
@@ -7,7 +7,7 @@ from kornia.core import tensor
 from kornia.geometry.camera import PinholeCamera
 
 
-def cameras_for_ids(cameras: PinholeCamera, camera_ids: List[int]) -> PinholeCamera:
+def cameras_for_ids(cameras: PinholeCamera, camera_ids: Union[List[int], Tensor]) -> PinholeCamera:
     r"""Takes a PinholeCamera camera object and a set of camera indices and creates a new PinholeCamera object for
     the requested cameras.
 
