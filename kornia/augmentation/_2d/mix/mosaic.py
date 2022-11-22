@@ -1,12 +1,11 @@
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
-from torch.nn.functional import pad
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.constants import DataKey, Resample
-from kornia.core import Tensor
+from kornia.core import Tensor, as_tensor, concatenate, pad, zeros
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
 from kornia.testing import KORNIA_UNWRAP
@@ -76,9 +75,8 @@ class RandomMosaic(MixAugmentationBaseV2):
     ) -> None:
         super().__init__(p=p, p_batch=1.0, same_on_batch=False, keepdim=keepdim, data_keys=data_keys)
         self.start_ratio_range = start_ratio_range
-        self._param_generator = cast(
-            rg.MosaicGenerator, rg.MosaicGenerator(output_size, mosaic_grid, start_ratio_range)
-        )
+        self._param_generator = rg.MosaicGenerator(output_size, mosaic_grid, start_ratio_range)
+
         self.flags = dict(
             mosaic_grid=mosaic_grid,
             output_size=output_size,
@@ -94,11 +92,11 @@ class RandomMosaic(MixAugmentationBaseV2):
 
     @torch.no_grad()
     def apply_transform_boxes(self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Boxes:
-        src_box = torch.as_tensor(params["src"], device=input.device, dtype=input.dtype)
-        dst_box = torch.as_tensor(params["dst"], device=input.device, dtype=input.dtype)
+        src_box = as_tensor(params["src"], device=input.device, dtype=input.dtype)
+        dst_box = as_tensor(params["dst"], device=input.device, dtype=input.dtype)
         # Boxes is BxNx4x2 only.
-        batch_shapes = torch.as_tensor(params["batch_shapes"], device=input.device, dtype=input.dtype)
-        offset = torch.zeros((len(params["batch_prob"]), 2), device=input.device, dtype=input.dtype)  # Bx2
+        batch_shapes = as_tensor(params["batch_shapes"], device=input.device, dtype=input.dtype)
+        offset = zeros((len(params["batch_prob"]), 2), device=input.device, dtype=input.dtype)  # Bx2
         # NOTE: not a pretty good line I think.
         offset_end = dst_box[0, 2].repeat(input.data.shape[0], 1)
         idx = torch.arange(0, input.data.shape[0], device=input.device, dtype=torch.long)[params["batch_prob"]]
@@ -140,8 +138,8 @@ class RandomMosaic(MixAugmentationBaseV2):
                 img_idx = flags['mosaic_grid'][1] * i + j
                 image = input[params["permutation"][:, img_idx]]
                 out_row.append(image)
-            out.append(torch.cat(out_row, dim=-2))
-        return torch.cat(out, dim=-1)
+            out.append(concatenate(out_row, -2))
+        return concatenate(out, -1)
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         if flags["cropping_mode"] == "resample":
@@ -156,7 +154,9 @@ class RandomMosaic(MixAugmentationBaseV2):
     ) -> Tensor:
         flags = self.flags if flags is None else flags
         if flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
-            transform = cast(Tensor, transform)
+            if not isinstance(transform, Tensor):
+                raise TypeError(f'Expected the transform to be a Tensor. Gotcha {type(transform)}')
+
             # Fit the arg to F.pad
             if flags['padding_mode'] == "constant":
                 padding_mode = "zeros"

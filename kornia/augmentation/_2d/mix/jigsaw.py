@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
@@ -48,7 +48,7 @@ class RandomJigsaw(MixAugmentationBaseV2):
         ensure_perm: bool = True,
     ) -> None:
         super().__init__(p=p, p_batch=1.0, same_on_batch=same_on_batch, keepdim=keepdim, data_keys=data_keys)
-        self._param_generator = cast(rg.JigsawGenerator, rg.JigsawGenerator(grid, ensure_perm))
+        self._param_generator = rg.JigsawGenerator(grid, ensure_perm)
         self.flags = dict(grid=grid)
 
     def apply_transform(

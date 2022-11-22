@@ -90,7 +90,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         super().__init__(
             p=1.0, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim
         )
-        self._param_generator = cast(rg.CropGenerator, rg.CropGenerator(size))
+        self._param_generator = rg.CropGenerator(size)
         self.flags = dict(
             size=size,
             padding=padding,
@@ -246,7 +246,6 @@ class RandomCrop(GeometricAugmentationBase2D):
             _input = (self.precrop_padding(input_temp, input_pad, flags), input[1])
             _input = _transform_output_shape(_input, ori_shape) if self.keepdim else _input
         else:
-            input = cast(Tensor, input)
             ori_shape = input.shape
             input_temp = _transform_input(input)
             input_pad = self.compute_padding(input_temp.shape, flags) if input_pad is None else input_pad

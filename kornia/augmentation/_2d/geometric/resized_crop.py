@@ -1,10 +1,9 @@
-from typing import Any, Dict, Optional, Tuple, Union, cast
-
-from torch import Tensor
+from typing import Any, Dict, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
+from kornia.core import Tensor
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
 
 
@@ -80,7 +79,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         super().__init__(
             p=1.0, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim
         )
-        self._param_generator = cast(rg.ResizedCropGenerator, rg.ResizedCropGenerator(size, scale, ratio))
+        self._param_generator = rg.ResizedCropGenerator(size, scale, ratio)
         self.flags = dict(
             size=size,
             resample=Resample.get(resample),
@@ -100,7 +99,9 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         if flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
-            transform = cast(Tensor, transform)
+            if not isinstance(transform, Tensor):
+                raise TypeError(f'Expected the transform be a Tensor. Gotcha {type(transform)}')
+
             return crop_by_transform_mat(
                 input,
                 transform,
@@ -130,8 +131,12 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
             raise NotImplementedError(
                 f"`inverse` is only applicable for resample cropping mode. Got {flags['cropping_mode']}."
             )
-        size = cast(Tuple[int, int], size)
-        transform = cast(Tensor, transform)
+        if not isinstance(size, tuple):
+            raise TypeError(f'Expected the size be a tuple. Gotcha {type(size)}')
+
+        if not isinstance(transform, Tensor):
+            raise TypeError(f'Expected the transform be a Tensor. Gotcha {type(transform)}')
+
         return crop_by_transform_mat(
             input,
             transform[:, :2, :],
