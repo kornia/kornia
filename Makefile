@@ -1,9 +1,9 @@
 .PHONY: test test-cpu test-cuda lint mypy build-docs install uninstall FORCE
 
 test: mypy lint build-docs test-all
-# TODO: Add cuda-float16 when #649 is solved
+
 test-all: FORCE
-	pytest -v --device all --dtype float32,float64 --cov=kornia test/ --flake8 --mypy
+	pytest -v --device all --dtype all --cov=kornia test/
 
 test-cpu: FORCE
 	pytest -v --device cpu --dtype all --cov=kornia test/
@@ -36,7 +36,7 @@ lint: FORCE
 	flake8 -v kornia/ test/ examples/
 
 mypy: FORCE
-	pytest -v --cache-clear --mypy kornia/ -m mypy
+	mypy
 
 yapf: FORCE
 	yapf --in-place --parallel --recursive kornia/ test/ examples/
