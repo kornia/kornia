@@ -1,5 +1,5 @@
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 from torch.distributions import Beta, Uniform
@@ -147,8 +147,7 @@ def _transform_output_shape(output: Tensor, shape: Tuple) -> Tensor:
     Returns:
         Tensor
     """
-    out_tensor: Tensor
-    out_tensor = cast(Tensor, output)
+    out_tensor = output.clone()
 
     for dim in range(len(out_tensor.shape) - len(shape)):
         if out_tensor.shape[0] != 1:

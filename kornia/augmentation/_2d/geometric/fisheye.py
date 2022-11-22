@@ -1,9 +1,8 @@
-from typing import Any, Dict, Optional, cast
-
-from torch import Tensor
+from typing import Any, Dict, Optional
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
+from kornia.core import Tensor
 from kornia.geometry.transform import remap
 from kornia.utils import create_meshgrid
 
@@ -55,13 +54,10 @@ class RandomFisheye(GeometricAugmentationBase2D):
         self._check_tensor(center_x)
         self._check_tensor(center_y)
         self._check_tensor(gamma)
-        self._param_generator = cast(
-            rg.PlainUniformGenerator,
-            rg.PlainUniformGenerator(
-                (center_x[:, None], "center_x", None, None),
-                (center_y[:, None], "center_y", None, None),
-                (gamma[:, None], "gamma", None, None),
-            ),
+        self._param_generator = rg.PlainUniformGenerator(
+            (center_x[:, None], "center_x", None, None),
+            (center_y[:, None], "center_y", None, None),
+            (gamma[:, None], "gamma", None, None),
         )
 
     def _check_tensor(self, data: Tensor) -> None:

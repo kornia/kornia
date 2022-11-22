@@ -1,10 +1,9 @@
-from typing import Any, Dict, Optional, Tuple, cast
-
-from torch import Tensor
+from typing import Any, Dict, Optional, Tuple
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.utils import _range_bound
+from kornia.core import Tensor
 from kornia.enhance.adjust import adjust_saturation
 
 
@@ -63,9 +62,7 @@ class RandomSaturation(IntensityAugmentationBase2D):
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self.saturation: Tensor = _range_bound(saturation, 'saturation', center=1.0)
-        self._param_generator = cast(
-            rg.PlainUniformGenerator, rg.PlainUniformGenerator((self.saturation, "saturation_factor", None, None))
-        )
+        self._param_generator = rg.PlainUniformGenerator((self.saturation, "saturation_factor", None, None))
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None

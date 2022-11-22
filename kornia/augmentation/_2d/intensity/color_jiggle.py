@@ -1,10 +1,9 @@
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
-
-from torch import Tensor
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.constants import pi
+from kornia.core import Tensor
 from kornia.enhance import adjust_brightness, adjust_contrast, adjust_hue, adjust_saturation
 
 
@@ -71,9 +70,7 @@ class ColorJiggle(IntensityAugmentationBase2D):
         self.contrast = contrast
         self.saturation = saturation
         self.hue = hue
-        self._param_generator = cast(
-            rg.ColorJiggleGenerator, rg.ColorJiggleGenerator(brightness, contrast, saturation, hue)
-        )
+        self._param_generator = rg.ColorJiggleGenerator(brightness, contrast, saturation, hue)
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None

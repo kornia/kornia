@@ -1,12 +1,10 @@
 import warnings
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
-
-import torch
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.mix.base import MixAugmentationBase, MixAugmentationBaseV2
 from kornia.constants import DataKey, DType
-from kornia.core import Tensor
+from kornia.core import Tensor, stack, zeros
 
 
 class RandomMixUp(MixAugmentationBase):
@@ -86,7 +84,7 @@ class RandomMixUp(MixAugmentationBase):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator = cast(rg.MixupGenerator, rg.MixupGenerator(lambda_val, p=p))
+        self._param_generator = rg.MixupGenerator(lambda_val, p=p)
         warnings.warn("`RandomMixUp` is deprecated. Please use `RandomMixUpV2` instead.")
 
     def apply_transform(  # type: ignore
@@ -97,13 +95,13 @@ class RandomMixUp(MixAugmentationBase):
 
         lam = params["mixup_lambdas"].view(-1, 1, 1, 1).expand_as(input).to(label.device)
         inputs = input * (1 - lam) + input_permute * lam
-        out_labels = torch.stack(
+        out_labels = stack(
             [
                 label.to(input.dtype),
                 labels_permute.to(input.dtype),
                 params["mixup_lambdas"].to(label.device, input.dtype),
             ],
-            dim=-1,
+            -1,
         ).to(label.device)
         return inputs, out_labels
 
@@ -186,7 +184,7 @@ class RandomMixUpV2(MixAugmentationBaseV2):
         data_keys: List[Union[str, int, DataKey]] = [DataKey.INPUT],
     ) -> None:
         super().__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim, data_keys=data_keys)
-        self._param_generator = cast(rg.MixupGenerator, rg.MixupGenerator(lambda_val, p=p))
+        self._param_generator = rg.MixupGenerator(lambda_val, p=p)
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], maybe_flags: Optional[Dict[str, Any]] = None
@@ -200,13 +198,13 @@ class RandomMixUpV2(MixAugmentationBaseV2):
     def apply_non_transform_class(
         self, input: Tensor, params: Dict[str, Tensor], maybe_flags: Optional[Dict[str, Any]] = None
     ) -> Tensor:
-        out_labels = torch.stack(
+        out_labels = stack(
             [
                 input.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
                 input.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
-                torch.zeros((len(input),), device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
+                zeros((len(input),), device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
             ],
-            dim=-1,
+            -1,
         )
         return out_labels
 
@@ -215,12 +213,12 @@ class RandomMixUpV2(MixAugmentationBaseV2):
     ) -> Tensor:
         labels_permute = input.index_select(dim=0, index=params["mixup_pairs"].to(input.device))
 
-        out_labels = torch.stack(
+        out_labels = stack(
             [
                 input.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
                 labels_permute.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
                 params["mixup_lambdas"].to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
             ],
-            dim=-1,
+            -1,
         )
         return out_labels
