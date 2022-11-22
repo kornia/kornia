@@ -1,7 +1,7 @@
 import warnings
 from functools import partial, wraps
 from inspect import isclass, isfunction
-from typing import TYPE_CHECKING, Any, Callable, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Tuple, Union, overload
 
 import torch
 
@@ -28,7 +28,17 @@ def get_cuda_device_if_available(index: int = 0) -> torch.device:
     return dev
 
 
-def map_location_to_cpu(storage: str, *args: Any, **kwargs: Any) -> str:
+@overload
+def map_location_to_cpu(storage: Tensor, location: str) -> Tensor:
+    ...
+
+
+@overload
+def map_location_to_cpu(storage: str) -> str:
+    ...
+
+
+def map_location_to_cpu(storage: Union[str, Tensor], *args: Any, **kwargs: Any) -> Union[str, Tensor]:
     return storage
 
 
