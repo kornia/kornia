@@ -3,8 +3,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union, cast
 import torch
 
 import kornia
-from kornia.augmentation import RandomCrop
-from kornia.augmentation._2d.mix.base import MixAugmentationBase, MixAugmentationBaseV2
+from kornia.augmentation import MixAugmentationBaseV2, RandomCrop
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import SequentialBase
 from kornia.augmentation.container.image import ImageSequential, ParamItem, _get_new_batch_shape
@@ -195,7 +194,7 @@ class VideoSequential(ImageSequential):
                 if self.same_on_frame:
                     raise ValueError("Sequential is currently unsupported for ``same_on_frame``.")
                 param = ParamItem(name, seq_param)
-            elif isinstance(module, (_AugmentationBase, MixAugmentationBase, MixAugmentationBaseV2)):
+            elif isinstance(module, (_AugmentationBase, MixAugmentationBaseV2)):
                 mod_param = module.forward_parameters(batch_shape)
                 if self.same_on_frame:
                     for k, v in mod_param.items():

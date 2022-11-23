@@ -1,4 +1,3 @@
-import warnings
 from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
@@ -54,7 +53,6 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
         alpha: Tuple[float, float] = (1.0, 1.0),
         align_corners: bool = False,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        mode: Optional[str] = None,
         padding_mode: str = "zeros",
         same_on_batch: bool = False,
         p: float = 0.5,
@@ -64,14 +62,6 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
         super().__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
         )
-        if mode is not None:
-            resample = mode
-            if not torch.jit.is_scripting():
-                warnings.warn(
-                    "`mode` argument has been deprecated. Please use the `resample` argument instead",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
 
         self.flags = dict(
             kernel_size=kernel_size,

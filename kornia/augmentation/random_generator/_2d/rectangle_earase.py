@@ -4,9 +4,9 @@ import torch
 from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
-from kornia.augmentation.utils import _adapted_rsampling, _adapted_uniform, _common_param_check, _joint_range_check
+from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check
 from kornia.core import Tensor, as_tensor, tensor, where
-from kornia.utils.helpers import _deprecated, _extract_device_dtype
+from kornia.utils.helpers import _extract_device_dtype
 
 
 class RectangleEraseGenerator(RandomGeneratorBase):
@@ -131,123 +131,3 @@ class RectangleEraseGenerator(RandomGeneratorBase):
             ys=ys.floor(),
             values=tensor([self.value] * batch_size, device=_device, dtype=_dtype),
         )
-
-
-@_deprecated(replace_with=RectangleEraseGenerator.__name__)
-def random_rectangles_params_generator(
-    batch_size: int,
-    height: int,
-    width: int,
-    scale: Tensor,
-    ratio: Tensor,
-    value: float = 0.0,
-    same_on_batch: bool = False,
-    device: torch.device = torch.device('cpu'),
-    dtype: torch.dtype = torch.float32,
-) -> Dict[str, Tensor]:
-    r"""Get parameters for ```erasing``` transformation for erasing transform.
-
-    Args:
-        batch_size (int): the tensor batch size.
-        height (int) : height of the image.
-        width (int): width of the image.
-        scale (Tensor): range of size of the origin size cropped. Shape (2).
-        ratio (Tensor): range of aspect ratio of the origin aspect ratio cropped. Shape (2).
-        value (float): value to be filled in the erased area.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        device (torch.device): the device on which the random numbers will be generated. Default: cpu.
-        dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
-
-    Returns:
-        params Dict[str, Tensor]: parameters to be passed for transformation.
-            - widths (Tensor): element-wise erasing widths with a shape of (B,).
-            - heights (Tensor): element-wise erasing heights with a shape of (B,).
-            - xs (Tensor): element-wise erasing x coordinates with a shape of (B,).
-            - ys (Tensor): element-wise erasing y coordinates with a shape of (B,).
-            - values (Tensor): element-wise filling values with a shape of (B,).
-
-    Note:
-        The generated random numbers are not reproducible across different devices and dtypes.
-    """
-    _common_param_check(batch_size, same_on_batch)
-    _device, _dtype = _extract_device_dtype([ratio, scale])
-    if not (type(height) is int and height > 0 and type(width) is int and width > 0):
-        raise AssertionError(f"'height' and 'width' must be integers. Got {height}, {width}.")
-    if not (isinstance(value, (int, float)) and value >= 0 and value <= 1):
-        raise AssertionError(f"'value' must be a number between 0 - 1. Got {value}.")
-    _joint_range_check(scale, 'scale', bounds=(0, float('inf')))
-    _joint_range_check(ratio, 'ratio', bounds=(0, float('inf')))
-
-    images_area = height * width
-    target_areas = (
-        _adapted_uniform(
-            (batch_size,),
-            scale[0].to(device=device, dtype=dtype),
-            scale[1].to(device=device, dtype=dtype),
-            same_on_batch,
-        )
-        * images_area
-    )
-
-    if ratio[0] < 1.0 and ratio[1] > 1.0:
-        aspect_ratios1 = _adapted_uniform((batch_size,), ratio[0].to(device=device, dtype=dtype), 1, same_on_batch)
-        aspect_ratios2 = _adapted_uniform((batch_size,), 1, ratio[1].to(device=device, dtype=dtype), same_on_batch)
-        if same_on_batch:
-            rand_idxs = (
-                torch.round(
-                    _adapted_uniform(
-                        (1,),
-                        tensor(0, device=device, dtype=dtype),
-                        tensor(1, device=device, dtype=dtype),
-                        same_on_batch,
-                    )
-                )
-                .repeat(batch_size)
-                .bool()
-            )
-        else:
-            rand_idxs = torch.round(
-                _adapted_uniform(
-                    (batch_size,),
-                    tensor(0, device=device, dtype=dtype),
-                    tensor(1, device=device, dtype=dtype),
-                    same_on_batch,
-                )
-            ).bool()
-        aspect_ratios = where(rand_idxs, aspect_ratios1, aspect_ratios2)
-    else:
-        aspect_ratios = _adapted_uniform(
-            (batch_size,),
-            ratio[0].to(device=device, dtype=dtype),
-            ratio[1].to(device=device, dtype=dtype),
-            same_on_batch,
-        )
-
-    # based on target areas and aspect ratios, rectangle params are computed
-    heights = torch.min(
-        torch.max(torch.round((target_areas * aspect_ratios) ** (1 / 2)), tensor(1.0, device=device, dtype=dtype)),
-        tensor(height, device=device, dtype=dtype),
-    )
-
-    widths = torch.min(
-        torch.max(torch.round((target_areas / aspect_ratios) ** (1 / 2)), tensor(1.0, device=device, dtype=dtype)),
-        tensor(width, device=device, dtype=dtype),
-    )
-
-    xs_ratio = _adapted_uniform(
-        (batch_size,), tensor(0, device=device, dtype=dtype), tensor(1, device=device, dtype=dtype), same_on_batch
-    )
-    ys_ratio = _adapted_uniform(
-        (batch_size,), tensor(0, device=device, dtype=dtype), tensor(1, device=device, dtype=dtype), same_on_batch
-    )
-
-    xs = xs_ratio * (tensor(width, device=device, dtype=dtype) - widths + 1)
-    ys = ys_ratio * (tensor(height, device=device, dtype=dtype) - heights + 1)
-
-    return dict(
-        widths=widths.floor().to(device=_device, dtype=_dtype),
-        heights=heights.floor().to(device=_device, dtype=_dtype),
-        xs=xs.floor().to(device=_device, dtype=_dtype),
-        ys=ys.floor().to(device=_device, dtype=_dtype),
-        values=tensor([value] * batch_size, device=_device, dtype=_dtype),
-    )
