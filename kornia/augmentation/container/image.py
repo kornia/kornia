@@ -52,14 +52,13 @@ class ImageSequential(SequentialBase):
         ...     kornia.filters.MedianBlur((3, 3)),
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
         ...     kornia.enhance.Invert(),
-        ...     kornia.augmentation.RandomMixUp(p=1.0),
+        ...     kornia.augmentation.RandomMixUpV2(p=1.0),
         ...     same_on_batch=True,
         ...     random_apply=10,
         ... )
         >>> out, lab = aug_list(input, label=label)
         >>> lab
-        tensor([[0.0000, 1.0000, 0.1214],
-                [1.0000, 0.0000, 0.1214]])
+        tensor([0, 1])
         >>> out.shape
         torch.Size([2, 3, 5, 6])
 

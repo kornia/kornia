@@ -145,10 +145,22 @@ class ResizedCropGenerator(CropGenerator):
 
     Examples:
         >>> _ = torch.manual_seed(42)
-        >>> random_crop_size_generator(3, (30, 30), scale=torch.tensor([.7, 1.3]), ratio=torch.tensor([.9, 1.]))
-        {'size': tensor([[29., 29.],
-                [27., 28.],
-                [26., 29.]])}
+        >>> rcg = ResizedCropGenerator((30, 30), scale=torch.tensor([.7, 1.3]), ratio=torch.tensor([.9, 1.]))
+        >>> out = rcg(torch.Size([1, 3, 3]))
+        >>> out["src"]
+        tensor([[[0., 0.],
+                 [2., 0.],
+                 [2., 2.],
+                 [0., 2.]]])
+        >>> out["dst"]
+        tensor([[[ 0.,  0.],
+                 [29.,  0.],
+                 [29., 29.],
+                 [ 0., 29.]]])
+        >>> out["input_size"]
+        tensor([[3, 3]])
+        >>> out["output_size"]
+        tensor([[30, 30]])
     """
 
     def __init__(

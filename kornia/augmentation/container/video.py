@@ -61,12 +61,12 @@ class VideoSequential(ImageSequential):
         >>> aug_list = VideoSequential(
         ...     kornia.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
-        ...     kornia.augmentation.RandomMixUp(p=1.0),
+        ...     kornia.augmentation.RandomMixUpV2(p=1.0),
         ... data_format="BCTHW",
         ... same_on_frame=False)
         >>> output, lab = aug_list(input)
         >>> output.shape, lab.shape
-        (torch.Size([2, 3, 4, 5, 6]), torch.Size([2, 4, 3]))
+        (torch.Size([3, 4, 5, 6]), torch.Size([3, 4, 5, 6]))
         >>> (output[0, :, 0] == output[0, :, 1]).all()
         tensor(False)
 
@@ -82,7 +82,7 @@ class VideoSequential(ImageSequential):
         >>> aug_list = VideoSequential(
         ...     kornia.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
-        ...     kornia.augmentation.RandomMixUp(p=1.0),
+        ...     kornia.augmentation.RandomMixUpV2(p=1.0),
         ... data_format="BCTHW",
         ... same_on_frame=False,
         ... random_apply=1,
