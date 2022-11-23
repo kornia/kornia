@@ -189,8 +189,8 @@ def match_smnn(desc1: Tensor, desc2: Tensor, th: float = 0.95, dm: Optional[Tens
         if not is_mps_tensor_safe(idx1):
             idxs_dm = torch.cdist(idx1.float(), idx2.float(), p=1.0)
         else:
-            idxs2_rep = idx2.float().repeat_interleave(idx1.size(0), dim=0)
-            idxs_dm = (idx1.float().repeat(idx2.size(0), 1) - idxs2_rep).abs().sum(dim=1)
+            idxs1_rep = idx1.to(desc1).repeat_interleave(idx2.size(0), dim=0)
+            idxs_dm = (idx2.to(desc2).repeat(idx1.size(0), 1) - idxs1_rep).abs().sum(dim=1)
             idxs_dm = idxs_dm.reshape(idx1.size(0), idx2.size(0))
         mutual_idxs1 = idxs_dm.min(dim=1)[0] < 1e-8
         mutual_idxs2 = idxs_dm.min(dim=0)[0] < 1e-8
