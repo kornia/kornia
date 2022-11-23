@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -7,7 +7,6 @@ from kornia.core import Module, Tensor, concatenate, pad, stack
 from kornia.geometry.conversions import normalize_pixel_coordinates
 from kornia.testing import KORNIA_CHECK_SHAPE
 from kornia.utils import map_location_to_cpu
-from packaging import version
 
 from .backbones import SOLD2Net
 from .sold2_detector import LineSegmentDetectionModule, line_map_to_segments, prob_to_junctions
@@ -288,14 +287,7 @@ class WunschLineMatcher(Module):
         topk_lines = torch.argsort(line_scores, dim=1)[:, -self.top_k_candidates :]
         # topk_lines.shape = (n_lines1, top_k_candidates)
 
-        if TYPE_CHECKING:
-            # TODO: remove this branch if kornia relies on torch>=1.9
-            top_scores: Tensor
-        else:
-            if version.parse(torch.__version__) >= version.parse('1.9.0'):
-                top_scores = torch.take_along_dim(scores, topk_lines[:, :, None, None], dim=1)
-            else:
-                NotImplementedError('This method just work with pytorch newer than 1.9.0')
+        top_scores = torch.take_along_dim(scores, topk_lines[:, :, None, None], dim=1)
 
         # Consider the reversed line segments as well
         top_scores = concatenate([top_scores, torch.flip(top_scores, dims=[-1])], 1)
