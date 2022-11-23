@@ -1,4 +1,4 @@
-from typing import List, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional, Sequence, Tuple, Union
 
 import torch
 from torch.utils.data import BatchSampler, DataLoader, Dataset, RandomSampler, SequentialSampler
@@ -163,10 +163,14 @@ def instantiate_ray_dataloader(dataset: RayDataset, batch_size: int = 1, shuffle
     def collate_rays(items: List[RayGroup]) -> RayGroup:
         return items[0]
 
-    return DataLoader(
-        dataset,
-        sampler=BatchSampler(
-            RandomSampler(dataset) if shuffle else SequentialSampler(dataset), batch_size, drop_last=False
-        ),
-        collate_fn=collate_rays,
-    )
+    if TYPE_CHECKING:
+        # TODO: remove the type ignore when kornia relies on kornia 1.10
+        return DataLoader(dataset)
+    else:
+        return DataLoader(
+            dataset,
+            sampler=BatchSampler(
+                RandomSampler(dataset) if shuffle else SequentialSampler(dataset), batch_size, drop_last=False
+            ),
+            collate_fn=collate_rays,
+        )
