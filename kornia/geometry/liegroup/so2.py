@@ -3,6 +3,12 @@
 from typing import Optional, Union
 
 from kornia.core import Module, Parameter, Tensor, complex, stack, tensor, zeros_like
+from kornia.geometry.liegroup._utils import (
+    check_so2_matrix_shape,
+    check_so2_t_shape,
+    check_so2_theta_shape,
+    check_so2_z_shape,
+)
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 
 
@@ -41,10 +47,7 @@ class So2(Module):
         super().__init__()
         KORNIA_CHECK_IS_TENSOR(z)
         # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
-        z_shape = z.shape
-        len_z_shape = len(z_shape)
-        if (len_z_shape == 2 and z_shape[1] != 1) or (len_z_shape == 0 and not z.numel()) or (len_z_shape > 2):
-            raise ValueError(f"Invalid input size, we expect [B, 1], [B] or []. Got: {z.shape}")
+        check_so2_z_shape(z)
         self._z = Parameter(z)
 
     def __repr__(self) -> str:
@@ -67,14 +70,7 @@ class So2(Module):
             out = So2(self.z * right.z)
         elif isinstance(right, Tensor):
             # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
-            right_shape = right.shape
-            len_right_shape = len(right_shape)
-            if (
-                (len_right_shape == 3 and (right_shape[1] != 2 or right_shape[2] != 1))
-                or (len_right_shape == 2 and (sum(right.shape) != 3))
-                or (len_right_shape > 3 or len_right_shape < 2)
-            ):
-                raise ValueError(f"Invalid input size, we expect [B, 2, 1], [2, 1] or [1, 2]. Got: {right_shape}")
+            check_so2_t_shape(right)
             out = self.matrix() @ right
         else:
             raise TypeError(f"Not So2 or Tensor type. Got: {type(right)}")
@@ -100,14 +96,7 @@ class So2(Module):
             tensor([4.6329e-05+1.j], requires_grad=True)
         """
         # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
-        theta_shape = theta.shape
-        len_theta_shape = len(theta_shape)
-        if (
-            (len_theta_shape == 2 and theta_shape[1] != 1)
-            or (len_theta_shape == 0 and not theta.numel())
-            or (len_theta_shape > 2)
-        ):
-            raise ValueError(f"Invalid input size, we expect [B, 1] or [B]. Got: {theta_shape}")
+        check_so2_theta_shape(theta)
         return So2(complex(theta.cos(), theta.sin()))
 
     def log(self) -> Tensor:
@@ -135,14 +124,7 @@ class So2(Module):
                     [1.5707, 0.0000]])
         """
         # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
-        theta_shape = theta.shape
-        len_theta_shape = len(theta_shape)
-        if (
-            (len_theta_shape == 2 and theta_shape[1] != 1)
-            or (len_theta_shape == 0 and not theta.numel())
-            or (len_theta_shape > 2)
-        ):
-            raise ValueError(f"Invalid input size, we expect [B, 1] or [B]. Got: {theta_shape}")
+        check_so2_theta_shape(theta)
         z = zeros_like(theta)
         row0 = stack((z, theta), -1)
         row1 = stack((theta, z), -1)
@@ -177,14 +159,7 @@ class So2(Module):
             tensor(1.+0.j, requires_grad=True)
         """
         # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
-        matrix_shape = matrix.shape
-        len_matrix_shape = len(matrix_shape)
-        if (
-            (len_matrix_shape == 3 and (matrix_shape[1] != 2 or matrix_shape[2] != 2))
-            or (len_matrix_shape == 2 and (matrix_shape[0] != 2 or matrix_shape[1] != 2))
-            or (len_matrix_shape > 3 or len_matrix_shape < 2)
-        ):
-            raise ValueError(f"Invalid input size, we expect [B, 2, 2] or [2, 2]. Got: {matrix_shape}")
+        check_so2_matrix_shape(matrix)
         z = complex(matrix[..., 0, 0], matrix[..., 1, 0])
         return cls(z)
 
