@@ -164,7 +164,7 @@ def instantiate_ray_dataloader(dataset: RayDataset, batch_size: int = 1, shuffle
         return items[0]
 
     if TYPE_CHECKING:
-        # TODO: remove the type ignore when kornia relies on kornia 1.9.0
+        # TODO: remove the type ignore when kornia relies on kornia 1.10
         return DataLoader(dataset)
     else:
         return DataLoader(
