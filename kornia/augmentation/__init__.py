@@ -12,7 +12,6 @@ from kornia.augmentation._2d import (
     RandomChannelShuffle,
     RandomContrast,
     RandomCrop,
-    RandomCutMix,
     RandomCutMixV2,
     RandomElasticTransform,
     RandomEqualize,
@@ -26,7 +25,6 @@ from kornia.augmentation._2d import (
     RandomHue,
     RandomInvert,
     RandomJigsaw,
-    RandomMixUp,
     RandomMixUpV2,
     RandomMosaic,
     RandomMotionBlur,
@@ -50,7 +48,7 @@ from kornia.augmentation._2d import (
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.augmentation._2d.mix.base import MixAugmentationBase
+from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.augmentation._3d import (
     CenterCrop3D,
     RandomAffine3D,
@@ -77,7 +75,7 @@ __all__ = [
     "AugmentationBase2D",
     "GeometricAugmentationBase2D",
     "IntensityAugmentationBase2D",
-    "MixAugmentationBase",
+    "MixAugmentationBaseV2",
     "CenterCrop",
     "ColorJiggle",
     "ColorJitter",

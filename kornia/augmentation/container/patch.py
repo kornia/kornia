@@ -4,8 +4,7 @@ from typing import Iterator, List, NamedTuple, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
-from kornia.augmentation import MixAugmentationBase
-from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
+from kornia.augmentation import MixAugmentationBaseV2
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import SequentialBase
 from kornia.augmentation.container.image import ImageSequential, ParamItem
@@ -277,26 +276,20 @@ class PatchSequential(ImageSequential):
                 seq, mix_added = self.get_random_forward_sequence(with_mix=with_mix)
                 with_mix = mix_added
                 for s in seq:
-                    if isinstance(
-                        s[1], (_AugmentationBase, MixAugmentationBase, SequentialBase, MixAugmentationBaseV2)
-                    ):
+                    if isinstance(s[1], (_AugmentationBase, SequentialBase, MixAugmentationBaseV2)):
                         yield ParamItem(s[0], s[1].forward_parameters(torch.Size(batch_shape[1:]))), i
                     else:
                         yield ParamItem(s[0], None), i
         elif not self.same_on_batch and not self.random_apply:
             for i, nchild in enumerate(self.named_children()):
-                if isinstance(
-                    nchild[1], (_AugmentationBase, MixAugmentationBase, SequentialBase, MixAugmentationBaseV2)
-                ):
+                if isinstance(nchild[1], (_AugmentationBase, SequentialBase, MixAugmentationBaseV2)):
                     yield ParamItem(nchild[0], nchild[1].forward_parameters(torch.Size(batch_shape[1:]))), i
                 else:
                     yield ParamItem(nchild[0], None), i
         elif not self.random_apply:
             # same_on_batch + not random_apply => location-wise augmentation
             for i, nchild in enumerate(islice(cycle(self.named_children()), batch_shape[0])):
-                if isinstance(
-                    nchild[1], (_AugmentationBase, MixAugmentationBase, SequentialBase, MixAugmentationBaseV2)
-                ):
+                if isinstance(nchild[1], (_AugmentationBase, SequentialBase, MixAugmentationBaseV2)):
                     yield ParamItem(nchild[0], nchild[1].forward_parameters(torch.Size(batch_shape[1:]))), i
                 else:
                     yield ParamItem(nchild[0], None), i
@@ -307,9 +300,7 @@ class PatchSequential(ImageSequential):
                 seq, mix_added = self.get_random_forward_sequence(with_mix=with_mix)
                 with_mix = mix_added
                 for s in seq:
-                    if isinstance(
-                        s[1], (_AugmentationBase, MixAugmentationBase, SequentialBase, MixAugmentationBaseV2)
-                    ):
+                    if isinstance(s[1], (_AugmentationBase, SequentialBase, MixAugmentationBaseV2)):
                         yield ParamItem(s[0], s[1].forward_parameters(torch.Size(batch_shape[1:]))), i
                     else:
                         yield ParamItem(s[0], None), i
@@ -330,7 +321,7 @@ class PatchSequential(ImageSequential):
         module = self.get_submodule(params.param.name)
         output, out_label = self.apply_to_input(_input, _label, module, params.param, extra_args={})
 
-        if isinstance(module, (_AugmentationBase, MixAugmentationBase, SequentialBase, MixAugmentationBaseV2)):
+        if isinstance(module, (_AugmentationBase, SequentialBase, MixAugmentationBaseV2)):
             out_param = ParamItem(params.param.name, module._params)
         else:
             out_param = ParamItem(params.param.name, None)
