@@ -4,9 +4,9 @@ import torch
 from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
-from kornia.augmentation.utils import _adapted_rsampling, _adapted_uniform, _common_param_check
+from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
 from kornia.core import Tensor, tensor
-from kornia.utils.helpers import _deprecated, _extract_device_dtype
+from kornia.utils.helpers import _extract_device_dtype
 
 
 class PerspectiveGenerator(RandomGeneratorBase):
@@ -82,63 +82,3 @@ class PerspectiveGenerator(RandomGeneratorBase):
         end_points = start_points + offset
 
         return dict(start_points=start_points, end_points=end_points)
-
-
-@_deprecated(replace_with=PerspectiveGenerator.__name__)
-def random_perspective_generator(
-    batch_size: int,
-    height: int,
-    width: int,
-    distortion_scale: Tensor,
-    same_on_batch: bool = False,
-    device: torch.device = torch.device('cpu'),
-    dtype: torch.dtype = torch.float32,
-) -> Dict[str, Tensor]:
-    r"""Get parameters for ``perspective`` for a random perspective transform.
-
-    Args:
-        batch_size (int): the tensor batch size.
-        height (int) : height of the image.
-        width (int): width of the image.
-        distortion_scale (Tensor): it controls the degree of distortion and ranges from 0 to 1.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        device (torch.device): the device on which the random numbers will be generated. Default: cpu.
-        dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
-
-    Returns:
-        params Dict[str, Tensor]: parameters to be passed for transformation.
-            - start_points (Tensor): element-wise perspective source areas with a shape of (B, 4, 2).
-            - end_points (Tensor): element-wise perspective target areas with a shape of (B, 4, 2).
-
-    Note:
-        The generated random numbers are not reproducible across different devices and dtypes.
-    """
-    _common_param_check(batch_size, same_on_batch)
-    if not (distortion_scale.dim() == 0 and 0 <= distortion_scale <= 1):
-        raise AssertionError(f"'distortion_scale' must be a scalar within [0, 1]. Got {distortion_scale}.")
-    if not (type(height) is int and height > 0 and type(width) is int and width > 0):
-        raise AssertionError(f"'height' and 'width' must be integers. Got {height}, {width}.")
-
-    start_points: Tensor = tensor(
-        [[[0.0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]]],
-        device=distortion_scale.device,
-        dtype=distortion_scale.dtype,
-    ).expand(batch_size, -1, -1)
-
-    # generate random offset not larger than half of the image
-    fx = distortion_scale * width / 2
-    fy = distortion_scale * height / 2
-
-    factor = torch.stack([fx, fy], dim=0).view(-1, 1, 2)
-
-    # TODO: This line somehow breaks the gradcheck
-    rand_val: Tensor = _adapted_uniform(
-        start_points.shape, tensor(0, device=device, dtype=dtype), tensor(1, device=device, dtype=dtype), same_on_batch
-    ).to(device=distortion_scale.device, dtype=distortion_scale.dtype)
-
-    pts_norm = tensor(
-        [[[1, 1], [-1, 1], [-1, -1], [1, -1]]], device=distortion_scale.device, dtype=distortion_scale.dtype
-    )
-    end_points = start_points + factor * rand_val * pts_norm
-
-    return dict(start_points=start_points, end_points=end_points)

@@ -30,7 +30,7 @@ Intensity
 .. autoclass:: RandomMotionBlur
 .. autoclass:: RandomPosterize
 .. autoclass:: RandomRGBShift
-.. autoclass:: RnadomSaturation
+.. autoclass:: RandomSaturation
 .. autoclass:: RandomSharpness
 .. autoclass:: RandomSolarize
 

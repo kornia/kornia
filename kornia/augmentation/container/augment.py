@@ -143,7 +143,6 @@ class AugmentationSequential(ImageSequential):
         *args: Union[_AugmentationBase, ImageSequential],
         data_keys: List[Union[str, int, DataKey]] = [DataKey.INPUT],
         same_on_batch: Optional[bool] = None,
-        return_transform: Optional[bool] = None,
         keepdim: Optional[bool] = None,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
         random_apply_weights: Optional[List[float]] = None,
@@ -152,7 +151,6 @@ class AugmentationSequential(ImageSequential):
         super().__init__(
             *args,
             same_on_batch=same_on_batch,
-            return_transform=return_transform,
             keepdim=keepdim,
             random_apply=random_apply,
             random_apply_weights=random_apply_weights,
