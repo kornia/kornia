@@ -3,6 +3,9 @@ from typing import Callable, Dict, List, Optional, Type
 import torch
 import torch.nn as nn
 
+from kornia.core import Module, Tensor, concatenate, stack
+from kornia.utils.helpers import map_location_to_cpu
+
 urls: Dict[str, str] = {}
 urls["defmo_encoder"] = "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/encoder_best.pt"
 urls["defmo_rendering"] = "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/rendering_best.pt"
@@ -31,7 +34,7 @@ def conv3x3(in_planes: int, out_planes: int, stride: int = 1, groups: int = 1, d
     )
 
 
-class Bottleneck(nn.Module):
+class Bottleneck(Module):
     # Bottleneck in torchvision places the stride for downsampling at 3x3 convolution(self.conv2)
     # while original implementation places the stride at the first 1x1 convolution(self.conv1)
     # according to "Deep residual learning for image recognition"https://arxiv.org/abs/1512.03385.
@@ -45,11 +48,11 @@ class Bottleneck(nn.Module):
         inplanes: int,
         planes: int,
         stride: int = 1,
-        downsample: Optional[nn.Module] = None,
+        downsample: Optional[Module] = None,
         groups: int = 1,
         base_width: int = 64,
         dilation: int = 1,
-        norm_layer: Optional[Callable[..., nn.Module]] = None,
+        norm_layer: Optional[Callable[..., Module]] = None,
     ) -> None:
         super().__init__()
         if norm_layer is None:
@@ -66,7 +69,7 @@ class Bottleneck(nn.Module):
         self.downsample = downsample
         self.stride = stride
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         identity = x
 
         out = self.conv1(x)
@@ -89,7 +92,7 @@ class Bottleneck(nn.Module):
         return out
 
 
-class ResNet(nn.Module):
+class ResNet(Module):
     def __init__(
         self,
         block: Type[Bottleneck],
@@ -99,7 +102,7 @@ class ResNet(nn.Module):
         groups: int = 1,
         width_per_group: int = 64,
         replace_stride_with_dilation: Optional[List[bool]] = None,
-        norm_layer: Optional[Callable[..., nn.Module]] = None,
+        norm_layer: Optional[Callable[..., Module]] = None,
     ) -> None:
         super().__init__()
         if norm_layer is None:
@@ -142,8 +145,8 @@ class ResNet(nn.Module):
         # This improves the model by 0.2~0.3% according to https://arxiv.org/abs/1706.02677
         if zero_init_residual:
             for m in self.modules():
-                if isinstance(m, Bottleneck):
-                    nn.init.constant_(m.bn3.weight, 0)  # type: ignore[arg-type]
+                if isinstance(m, Bottleneck) and isinstance(m.bn3.weight, Tensor):
+                    nn.init.constant_(m.bn3.weight, 0)
 
     def _make_layer(
         self, block: Type[Bottleneck], planes: int, blocks: int, stride: int = 1, dilate: bool = False
@@ -180,7 +183,7 @@ class ResNet(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def _forward_impl(self, x: torch.Tensor) -> torch.Tensor:
+    def _forward_impl(self, x: Tensor) -> Tensor:
         # See note [TorchScript super()]
         x = self.conv1(x)
         x = self.bn1(x)
@@ -198,11 +201,11 @@ class ResNet(nn.Module):
 
         return x
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         return self._forward_impl(x)
 
 
-class EncoderDeFMO(nn.Module):
+class EncoderDeFMO(Module):
     def __init__(self):
         super().__init__()
         model = ResNet(Bottleneck, [3, 4, 6, 3])  # ResNet50
@@ -211,11 +214,11 @@ class EncoderDeFMO(nn.Module):
         modelc1[0] = nn.Conv2d(6, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
         self.net = nn.Sequential(modelc1, modelc2)
 
-    def forward(self, input_data: torch.Tensor) -> torch.Tensor:
+    def forward(self, input_data: Tensor) -> Tensor:
         return self.net(input_data)
 
 
-class RenderingDeFMO(nn.Module):
+class RenderingDeFMO(Module):
     def __init__(self):
         super().__init__()
         self.tsr_steps: int = 24
@@ -238,7 +241,7 @@ class RenderingDeFMO(nn.Module):
         self.net = model
         self.times = torch.linspace(0, 1, self.tsr_steps)
 
-    def forward(self, latent: torch.Tensor) -> torch.Tensor:
+    def forward(self, latent: Tensor) -> Tensor:
         times = self.times.to(latent.device).unsqueeze(0).repeat(latent.shape[0], 1)
         renders = []
         for ki in range(times.shape[1]):
@@ -251,15 +254,15 @@ class RenderingDeFMO(nn.Module):
                 .unsqueeze(-1)
                 .repeat(1, 1, latent.shape[2], latent.shape[3])
             )
-            latenti = torch.cat((t_tensor, latent), 1)
+            latenti = concatenate((t_tensor, latent), 1)
             result = self.net(latenti)
             renders.append(result)
-        renders_stacked = torch.stack(renders, 1).contiguous()
+        renders_stacked = stack(renders, 1).contiguous()
         renders_stacked[:, :, :4] = torch.sigmoid(renders_stacked[:, :, :4])
         return renders_stacked
 
 
-class DeFMO(nn.Module):
+class DeFMO(Module):
     """Module that disentangle a fast-moving object from the background and performs deblurring.
 
     This is based on the original code from paper "DeFMO: Deblurring and Shape Recovery
@@ -287,14 +290,17 @@ class DeFMO(nn.Module):
 
         # use torch.hub to load pretrained model
         if pretrained:
-            storage_fcn: Callable = lambda storage, loc: storage
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls['defmo_encoder'], map_location=storage_fcn)
+            pretrained_dict = torch.hub.load_state_dict_from_url(
+                urls['defmo_encoder'], map_location=map_location_to_cpu
+            )
             self.encoder.load_state_dict(pretrained_dict, strict=True)
-            pretrained_dict_ren = torch.hub.load_state_dict_from_url(urls['defmo_rendering'], map_location=storage_fcn)
+            pretrained_dict_ren = torch.hub.load_state_dict_from_url(
+                urls['defmo_rendering'], map_location=map_location_to_cpu
+            )
             self.rendering.load_state_dict(pretrained_dict_ren, strict=True)
         self.eval()
 
-    def forward(self, input_data: torch.Tensor) -> torch.Tensor:
+    def forward(self, input_data: Tensor) -> Tensor:
         latent = self.encoder(input_data)
         x_out = self.rendering(latent)
         return x_out

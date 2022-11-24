@@ -3,9 +3,8 @@ from typing import Tuple
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
-from kornia.core import Module, Tensor, concatenate, eye
+from kornia.core import Module, Tensor, concatenate, eye, normalize
 from kornia.filters import get_gaussian_kernel2d, spatial_gradient
 from kornia.geometry.conversions import pi
 from kornia.testing import KORNIA_CHECK_SHAPE
@@ -169,11 +168,11 @@ class SIFTDescriptor(Module):
             ang_bins.append(out)
         ang_bins = concatenate(ang_bins, 1)
         ang_bins = ang_bins.view(B, -1)
-        ang_bins = F.normalize(ang_bins, p=2)
+        ang_bins = normalize(ang_bins, p=2)
         ang_bins = torch.clamp(ang_bins, 0.0, float(self.clipval))
-        ang_bins = F.normalize(ang_bins, p=2)
+        ang_bins = normalize(ang_bins, p=2)
         if self.rootsift:
-            ang_bins = torch.sqrt(F.normalize(ang_bins, p=1) + self.eps)
+            ang_bins = torch.sqrt(normalize(ang_bins, p=1) + self.eps)
         return ang_bins
 
 
@@ -287,36 +286,39 @@ class DenseSIFTDescriptor(Module):
     def get_pooling_kernel(self) -> Tensor:
         return self.bin_pooling_kernel.weight.detach()
 
-    def forward(self, input):
+    def forward(self, input: Tensor) -> Tensor:
         KORNIA_CHECK_SHAPE(input, ["B", "1", "H", "W"])
 
         B, CH, W, H = input.size()
         self.bin_pooling_kernel = self.bin_pooling_kernel.to(input.dtype).to(input.device)
         self.PoolingConv = self.PoolingConv.to(input.dtype).to(input.device)
-        grads: Tensor = spatial_gradient(input, 'diff')
+        grads = spatial_gradient(input, 'diff')
         # unpack the edges
-        gx: Tensor = grads[:, :, 0]
-        gy: Tensor = grads[:, :, 1]
-        mag: Tensor = torch.sqrt(gx * gx + gy * gy + self.eps)
-        ori: Tensor = torch.atan2(gy, gx + self.eps) + 2.0 * pi
-        o_big: Tensor = float(self.num_ang_bins) * ori / (2.0 * pi)
+        gx = grads[:, :, 0]
+        gy = grads[:, :, 1]
+        mag = torch.sqrt(gx * gx + gy * gy + self.eps)
+        ori = torch.atan2(gy, gx + self.eps) + 2.0 * pi
+        o_big = float(self.num_ang_bins) * ori / (2.0 * pi)
 
-        bo0_big_: Tensor = torch.floor(o_big)
-        wo1_big_: Tensor = o_big - bo0_big_
-        bo0_big: Tensor = bo0_big_ % self.num_ang_bins
-        bo1_big: Tensor = (bo0_big + 1) % self.num_ang_bins
-        wo0_big: Tensor = (1.0 - wo1_big_) * mag  # type: ignore
-        wo1_big: Tensor = wo1_big_ * mag
-        ang_bins = []
-        for i in range(0, self.num_ang_bins):
-            out = self.bin_pooling_kernel(
-                (bo0_big == i).to(input.dtype) * wo0_big + (bo1_big == i).to(input.dtype) * wo1_big
-            )
-            ang_bins.append(out)
-        ang_bins = concatenate(ang_bins, 1)
+        bo0_big_ = torch.floor(o_big)
+        wo1_big_ = o_big - bo0_big_
+        bo0_big = bo0_big_ % self.num_ang_bins
+        bo1_big = (bo0_big + 1) % self.num_ang_bins
+        wo0_big = (1.0 - wo1_big_) * mag
+        wo1_big = wo1_big_ * mag
+        ang_bins = concatenate(
+            [
+                self.bin_pooling_kernel(
+                    (bo0_big == i).to(input.dtype) * wo0_big + (bo1_big == i).to(input.dtype) * wo1_big
+                )
+                for i in range(0, self.num_ang_bins)
+            ],
+            1,
+        )
+
         out_no_norm = self.PoolingConv(ang_bins)
-        out = F.normalize(out_no_norm, dim=1, p=2).clamp_(0, float(self.clipval))
-        out = F.normalize(out, dim=1, p=2)
+        out = normalize(out_no_norm, dim=1, p=2).clamp_(0, float(self.clipval))
+        out = normalize(out, dim=1, p=2)
         if self.rootsift:
-            out = torch.sqrt(F.normalize(out, p=1) + self.eps)
+            out = torch.sqrt(normalize(out, p=1) + self.eps)
         return out

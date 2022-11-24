@@ -24,7 +24,7 @@ def get_test_devices() -> Dict[str, torch.device]:
 
         devices["tpu"] = xm.xla_device()
     if hasattr(torch.backends, 'mps'):
-        if torch.backends.mps.is_available():  # type: ignore
+        if torch.backends.mps.is_available():
             devices["mps"] = torch.device("mps")
     return devices
 
