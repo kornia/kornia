@@ -4,8 +4,7 @@ from typing import Any, Iterator, List, NamedTuple, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
-from kornia.augmentation import MixAugmentationBase
-from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
+from kornia.augmentation import MixAugmentationBaseV2
 from kornia.augmentation.base import _AugmentationBase
 
 __all__ = ["SequentialBase", "ParamItem"]
@@ -29,13 +28,7 @@ class SequentialBase(nn.Sequential):
             to the batch form (False). If None, it will not overwrite the function-wise settings.
     """
 
-    def __init__(
-        self,
-        *args: nn.Module,
-        same_on_batch: Optional[bool] = None,
-        return_transform: Optional[bool] = None,
-        keepdim: Optional[bool] = None,
-    ) -> None:
+    def __init__(self, *args: nn.Module, same_on_batch: Optional[bool] = None, keepdim: Optional[bool] = None) -> None:
         # To name the modules properly
         _args = OrderedDict()
         for idx, mod in enumerate(args):
@@ -44,10 +37,9 @@ class SequentialBase(nn.Sequential):
             _args.update({f"{mod.__class__.__name__}_{idx}": mod})
         super().__init__(_args)
         self._same_on_batch = same_on_batch
-        self._return_transform = return_transform
         self._keepdim = keepdim
         self._params: Optional[List[ParamItem]] = None
-        self.update_attribute(same_on_batch, return_transform, keepdim)
+        self.update_attribute(same_on_batch, keepdim)
 
     def update_attribute(
         self,
@@ -57,7 +49,7 @@ class SequentialBase(nn.Sequential):
     ) -> None:
         for mod in self.children():
             # MixAugmentation does not have return transform
-            if isinstance(mod, (_AugmentationBase, MixAugmentationBase, MixAugmentationBaseV2)):
+            if isinstance(mod, (_AugmentationBase, MixAugmentationBaseV2)):
                 if same_on_batch is not None:
                     mod.same_on_batch = same_on_batch
                 if keepdim is not None:
@@ -114,15 +106,6 @@ class SequentialBase(nn.Sequential):
     def same_on_batch(self, same_on_batch: Optional[bool]) -> None:
         self._same_on_batch = same_on_batch
         self.update_attribute(same_on_batch=same_on_batch)
-
-    @property
-    def return_transform(self) -> Optional[bool]:
-        return self._return_transform
-
-    @return_transform.setter
-    def return_transform(self, return_transform: Optional[bool]) -> None:
-        self._return_transform = return_transform
-        self.update_attribute(return_transform=return_transform)
 
     @property
     def keepdim(self) -> Optional[bool]:

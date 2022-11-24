@@ -109,10 +109,7 @@ def main():
         print(f"Generated image example for {aug_name}. {sig}")
 
     mod = importlib.import_module("kornia.augmentation")
-    mix_augmentations_list: dict = {
-        "RandomMixUp": (((0.3, 0.4),), 2, 20),
-        "RandomCutMix": ((img1.shape[-2], img1.shape[-1]), 2, 2019),
-    }
+    mix_augmentations_list: dict = {"RandomMixUpV2": ((), 2, 20), "RandomCutMixV2": ((), 2, 2019)}
     # ITERATE OVER THE TRANSFORMS
     for aug_name, (args, num_samples, seed) in mix_augmentations_list.items():
         img_in = torch.cat([img1, img2])
@@ -122,10 +119,11 @@ def main():
         # set seed
         torch.manual_seed(seed)
         # apply the augmentation to the image and concat
-        out, _ = aug(img_in, torch.tensor([0, 1]))
-        out = torch.cat([img_in[0], img_in[1], *(out[i] for i in range(out.size(0)))], dim=-1)
+        img_aug, _ = aug(img_in, torch.tensor([0, 1]))
+
+        output = torch.cat([img_in[0], img_in[1], img_aug], dim=-1)
         # save the output image
-        out_np = K.utils.tensor_to_image((out * 255.0).byte())
+        out_np = K.utils.tensor_to_image((output * 255.0).byte())
         cv2.imwrite(str(OUTPUT_PATH / f"{aug_name}.png"), out_np)
         sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
         print(f"Generated image example for {aug_name}. {sig}")

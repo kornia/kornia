@@ -4,9 +4,9 @@ import torch
 from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
-from kornia.augmentation.utils import _adapted_rsampling, _adapted_uniform, _common_param_check, _joint_range_check
-from kornia.core import Tensor, as_tensor, tensor
-from kornia.utils.helpers import _deprecated, _extract_device_dtype
+from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check
+from kornia.core import Tensor, as_tensor
+from kornia.utils.helpers import _extract_device_dtype
 
 
 class PosterizeGenerator(RandomGeneratorBase):
@@ -51,36 +51,3 @@ class PosterizeGenerator(RandomGeneratorBase):
         _device, _ = _extract_device_dtype([self.bits if isinstance(self.bits, Tensor) else None])
         bits_factor = _adapted_rsampling((batch_size,), self.bit_sampler, same_on_batch)
         return dict(bits_factor=bits_factor.to(device=_device, dtype=torch.int32))
-
-
-@_deprecated()
-def random_posterize_generator(
-    batch_size: int,
-    bits: Tensor = tensor([3, 5]),
-    same_on_batch: bool = False,
-    device: torch.device = torch.device('cpu'),
-    dtype: torch.dtype = torch.float32,
-) -> Dict[str, Tensor]:
-    r"""Generate random posterize parameters for a batch of images.
-
-    Args:
-        batch_size (int): the number of images.
-        bits (int or tuple): Takes in an integer tuple tensor that ranged from 0 ~ 8. Default value is [3, 5].
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        device (torch.device): the device on which the random numbers will be generated. Default: cpu.
-        dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
-
-    Returns:
-        params Dict[str, Tensor]: parameters to be passed for transformation.
-            - bits_factor (Tensor): element-wise bit factors with a shape of (B,).
-
-    Note:
-        The generated random numbers are not reproducible across different devices and dtypes.
-    """
-    _common_param_check(batch_size, same_on_batch)
-    _joint_range_check(bits, 'bits', (0, 8))
-    bits_factor = _adapted_uniform(
-        (batch_size,), bits[0].to(device=device, dtype=dtype), bits[1].to(device=device, dtype=dtype), same_on_batch
-    ).int()
-
-    return dict(bits_factor=bits_factor.to(device=bits.device, dtype=torch.int32))
