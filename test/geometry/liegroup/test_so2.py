@@ -12,7 +12,7 @@ class TestSo2(BaseTester):
         return torch.rand(shape, device=device, dtype=dtype)
 
     @pytest.mark.parametrize("cdtype", (torch.cfloat, torch.cdouble))
-    def test_smoke(self, device, dtype, cdtype):
+    def test_smoke(self, device, cdtype):
         z = torch.randn(2, 1, dtype=cdtype, device=device)
         s = So2(z)
         assert isinstance(s, So2)
