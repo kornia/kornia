@@ -90,15 +90,19 @@ class TestSo2(BaseTester):
         self.assert_close(So2(z3).z, z3)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
-    def test_getitem(self, device, dtype, batch_size):
-        data = self._make_rand_data(device, dtype, (batch_size, 2))
-        z = torch.complex(data[..., 0, None], data[..., 1, None])
+    @pytest.mark.parametrize("cdtype", (torch.cfloat, torch.cdouble))
+    def test_getitem(self, device, batch_size, cdtype):
+        z = self._make_rand_data(device, cdtype, (batch_size,))
         s = So2(z)
         n = 1 if batch_size is None else batch_size
         for i in range(n):
-            s1 = s[i]
-            self.assert_close(s1.z.data[0].real.squeeze(), z.data[i].real.squeeze())
-            self.assert_close(s1.z.data[0].imag.squeeze(), z.data[i].imag.squeeze())
+            if batch_size is None:
+                expected = s.z
+                actual = z
+            else:
+                expected = s[i].z.data.squeeze()
+                actual = z[i]
+            self.assert_close(expected, actual)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_mul(self, device, dtype, batch_size):
@@ -122,11 +126,11 @@ class TestSo2(BaseTester):
         self.assert_close(s.z.imag, theta.sin())
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
-    def test_log(self, device, dtype, batch_size):
-        data = self._make_rand_data(device, dtype, (batch_size, 2))
-        z = torch.complex(data[..., 0], data[..., 1])
+    @pytest.mark.parametrize("cdtype", (torch.cfloat, torch.cdouble))
+    def test_log(self, device, batch_size, cdtype):
+        z = self._make_rand_data(device, cdtype, (batch_size,))
         t = So2(z).log()
-        self.assert_close(t, data[..., 1].atan2(data[..., 0]))
+        self.assert_close(t, z.imag.atan2(z.real))
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_exp_log(self, device, dtype, batch_size):
@@ -150,9 +154,9 @@ class TestSo2(BaseTester):
         self.assert_close(p1, p2)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
-    def test_inverse(self, device, dtype, batch_size):
-        data = self._make_rand_data(device, dtype, (batch_size, 2))
-        z = torch.complex(data[..., 0], data[..., 1])
+    @pytest.mark.parametrize("cdtype", (torch.cfloat, torch.cdouble))
+    def test_inverse(self, device, batch_size, cdtype):
+        z = self._make_rand_data(device, cdtype, (batch_size,))
         s = So2(z)
         self.assert_close(s.inverse().inverse().z.real, z.real)
         self.assert_close(s.inverse().inverse().z.imag, z.imag)
