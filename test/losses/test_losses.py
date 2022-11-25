@@ -7,6 +7,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.testing import assert_close
+from kornia.utils import torch_meshgrid
 
 
 class TestBinaryFocalLossWithLogits:
@@ -369,8 +370,8 @@ class TestDivergenceLoss:
         ],
     )
     def test_noncontiguous_kl(self, device, dtype, input, target, expected):
-        input = input.to(device, dtype).view(input.shape[::-1]).T
-        target = target.to(device, dtype).view(target.shape[::-1]).T
+        input = input.to(device, dtype).view(input.shape[::-1]).transpose(-2, -1)
+        target = target.to(device, dtype).view(target.shape[::-1]).transpose(-2, -1)
         actual = kornia.losses.kl_div_loss_2d(input, target)
         expected = torch.tensor(expected).to(device, dtype)
         assert_close(actual, expected)
@@ -380,13 +381,13 @@ class TestDivergenceLoss:
         [
             (torch.full((1, 1, 2, 4), 0.125), torch.full((1, 1, 2, 4), 0.125), 0.0),
             (torch.full((1, 7, 2, 4), 0.125), torch.full((1, 7, 2, 4), 0.125), 0.0),
-            (torch.full((1, 7, 2, 4), 0.125), torch.zeros((1, 7, 2, 4)), 0.346574),
-            (torch.zeros((1, 7, 2, 4)), torch.full((1, 7, 2, 4), 0.125), 0.346574),
+            (torch.full((1, 7, 2, 4), 0.125), torch.zeros((1, 7, 2, 4)), 0.303251),
+            (torch.zeros((1, 7, 2, 4)), torch.full((1, 7, 2, 4), 0.125), 0.303251),
         ],
     )
     def test_noncontiguous_js(self, device, dtype, input, target, expected):
-        input = input.to(device, dtype).view(input.shape[::-1]).T
-        target = target.to(device, dtype).view(target.shape[::-1]).T
+        input = input.to(device, dtype).view(input.shape[::-1]).transpose(-2, -1)
+        target = target.to(device, dtype).view(target.shape[::-1]).transpose(-2, -1)
         actual = kornia.losses.js_div_loss_2d(input, target)
         expected = torch.tensor(expected).to(device, dtype)
         assert_close(actual, expected)
@@ -410,16 +411,16 @@ class TestDivergenceLoss:
         assert gradcheck(kornia.losses.js_div_loss_2d, (input, target), raise_exception=True)
 
     def test_jit_kl(self, device, dtype):
-        input = torch.randn((2, 4, 10, 16), dtype=dtype, device=device)
-        target = torch.randn((2, 4, 10, 16), dtype=dtype, device=device)
+        input = torch.full((1, 1, 2, 4), 0.125, dtype=dtype, device=device)
+        target = torch.full((1, 1, 2, 4), 0.125, dtype=dtype, device=device)
         args = (input, target)
         op = kornia.losses.kl_div_loss_2d
         op_jit = torch.jit.script(op)
         assert_close(op(*args), op_jit(*args), rtol=0, atol=1e-5)
 
     def test_jit_js(self, device, dtype):
-        input = torch.randn((2, 4, 10, 16), dtype=dtype, device=device)
-        target = torch.randn((2, 4, 10, 16), dtype=dtype, device=device)
+        input = torch.full((1, 1, 2, 4), 0.125, dtype=dtype, device=device)
+        target = torch.full((1, 1, 2, 4), 0.125, dtype=dtype, device=device)
         args = (input, target)
         op = kornia.losses.js_div_loss_2d
         op_jit = torch.jit.script(op)
@@ -528,7 +529,7 @@ class TestTotalVariation:
 
     @pytest.mark.parametrize('reduction, expected', [('sum', torch.tensor(20)), ('mean', torch.tensor(1))])
     def test_tv_reduction(self, device, dtype, reduction, expected):
-        input, _ = torch.meshgrid(torch.arange(5), torch.arange(5))
+        input, _ = torch_meshgrid([torch.arange(5), torch.arange(5)], 'ij')
         input = input.to(device, dtype)
         actual = kornia.losses.total_variation(input, reduction=reduction)
         assert_close(actual, expected.to(device, dtype), rtol=1e-3, atol=1e-3)
