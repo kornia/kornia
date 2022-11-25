@@ -1,9 +1,8 @@
-from typing import Any, Dict, Optional, Tuple, cast
-
-from torch import Tensor
+from typing import Any, Dict, Optional, Tuple
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core import Tensor
 from kornia.enhance.adjust import adjust_gamma
 
 
@@ -63,9 +62,8 @@ class RandomGamma(IntensityAugmentationBase2D):
         return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator = cast(
-            rg.PlainUniformGenerator,
-            rg.PlainUniformGenerator((gamma, "gamma_factor", None, None), (gain, "gain_factor", None, None)),
+        self._param_generator = rg.PlainUniformGenerator(
+            (gamma, "gamma_factor", None, None), (gain, "gain_factor", None, None)
         )
 
     def apply_transform(

@@ -1,11 +1,10 @@
-from typing import Any, Dict, Optional, Tuple, cast
-
-from torch import Tensor
+from typing import Any, Dict, Optional, Tuple
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.utils import _range_bound
 from kornia.constants import pi
+from kornia.core import Tensor
 from kornia.enhance.adjust import adjust_hue
 
 
@@ -64,9 +63,7 @@ class RandomHue(IntensityAugmentationBase2D):
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self.hue: Tensor = _range_bound(hue, 'hue', bounds=(-0.5, 0.5))
-        self._param_generator = cast(
-            rg.PlainUniformGenerator, rg.PlainUniformGenerator((self.hue, "hue_factor", None, None))
-        )
+        self._param_generator = rg.PlainUniformGenerator((self.hue, "hue_factor", None, None))
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None

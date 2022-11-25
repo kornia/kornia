@@ -4,9 +4,8 @@ from typing import Optional, Union
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
-from torch import nn
 
-from kornia.core import Module, Tensor, tensor
+from kornia.core import Module, Tensor, tensor, zeros
 from kornia.geometry.camera import PinholeCamera
 from kornia.metrics import psnr
 from kornia.nerf.core import Images, ImageTensors
@@ -19,7 +18,7 @@ class NerfSolver:
     r"""NeRF solver class.
 
     Args:
-        device: device for class tensors: Union[str, torch.device]
+        device: device for class tensors: Union[str, Device]
         dtype: type for all floating point calculations: torch.dtype
     """
     _nerf_model: Module
@@ -99,24 +98,25 @@ class NerfSolver:
         self._opt_nerf = optim.Adam(self._nerf_model.parameters(), lr=lr)
 
     @property
-    def nerf_model(self) -> nn.Module:
+    def nerf_model(self) -> Module:
         return self._nerf_model
 
     # FIXME: Remove this function - consistency is checked in
-    @staticmethod
-    def _check_camera_image_consistency(cameras: PinholeCamera, imgs: Images):
-        if cameras is None:
-            raise ValueError('Invalid camera object')
-        if imgs is None:
-            raise ValueError('Invalid image list object')
-        if cameras.batch_size != len(imgs):
-            raise ValueError('Number of cameras must match number of input images')
-        if not all(img.shape[0] == 3 for img in imgs):
-            raise ValueError('All images must have three RGB channels')
-        if not all(height == img.shape[1] for height, img in zip(cameras.height.tolist(), imgs)):
-            raise ValueError('All image heights must match camera heights')
-        if not all(width == img.shape[2] for width, img in zip(cameras.width.tolist(), imgs)):
-            raise ValueError('All image widths must match camera widths')
+    # @staticmethod
+    # def _check_camera_image_consistency(cameras: PinholeCamera, imgs: Images):
+    #     if cameras is None:
+    #         raise TypeError('Invalid camera object')
+    #     if imgs is None:
+    #         raise TypeError('Invalid image list object')
+    #     if cameras.batch_size != len(imgs):
+    #         raise ValueError('Number of cameras must match number of input images')
+
+    #     if not all(img.shape[0] == 3 for img in imgs):
+    #         raise ValueError('All images must have three RGB channels')
+    #     if not all(height == img.shape[1] for height, img in zip(cameras.height.tolist(), imgs)):
+    #         raise ValueError('All image heights must match camera heights')
+    #     if not all(width == img.shape[2] for width, img in zip(cameras.width.tolist(), imgs)):
+    #         raise ValueError('All image widths must match camera widths')
 
     def _train_one_epoch(self) -> float:
         r"""Trains one epoch. A dataset of rays is initialized, and sent over to a data loader. The data loader
@@ -138,11 +138,23 @@ class NerfSolver:
         Returns:
             Average psnr over all epoch rays
         """
+        if self._cameras is None:
+            raise TypeError('The camera should be a PinholeCamera. Gotcha None. You init the training before train?')
+
         ray_dataset = RayDataset(
             self._cameras, self._min_depth, self._max_depth, self._ndc, device=self._device, dtype=self._dtype
         )
+
+        if isinstance(self._num_img_rays, int):
+            raise TypeError(
+                'The number of images of Ray should be a tensor. Gotcha an integer. You init the training before train?'
+            )
         ray_dataset.init_ray_dataset(self._num_img_rays)
+
+        if self._imgs is None:
+            raise TypeError('Invalid image list object')
         ray_dataset.init_images_for_training(self._imgs)  # FIXME: Do we need to load the same images on each Epoch?
+
         ray_data_loader = instantiate_ray_dataloader(ray_dataset, self._batch_size, shuffle=True)
         total_psnr = tensor(0.0, device=self._device, dtype=self._dtype)
         for i_batch, (origins, directions, rgbs) in enumerate(ray_data_loader):
@@ -187,7 +199,7 @@ class NerfSolver:
         batch_size = 4096  # FIXME: Consider exposing this value to the user
         for height, width in zip(cameras.height.int().tolist(), cameras.width.int().tolist()):
             bsz = batch_size if batch_size != -1 else height * width
-            img = torch.zeros((height * width, 3), dtype=torch.uint8)
+            img = zeros((height * width, 3), dtype=torch.uint8)
             idx0_camera = idx0
             for idx0 in range(idx0, idx0 + height * width, bsz):
                 idxe = min(idx0 + bsz, idx0_camera + height * width)
