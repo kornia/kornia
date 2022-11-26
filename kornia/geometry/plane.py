@@ -1,23 +1,16 @@
 # kornia.geometry.plane module inspired by Eigen::geometry::Hyperplane
 # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h
 
-from typing import Optional, Union
+from typing import Optional
 
 from kornia.core import Module, Tensor, stack, where
+from kornia.core.tensor_wrapper import unwrap, wrap
 from kornia.geometry.linalg import batched_dot_product
-from kornia.geometry.vector import Vec3
-from kornia.testing import KORNIA_CHECK_SHAPE
+from kornia.geometry.vector import Scalar, Vector3
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.utils.helpers import _torch_svd_cast
 
 __all__ = ["Hyperplane", "fit_plane"]
-
-
-# NOTE: in the near future the constructor will change
-# class Hyperplane(Module):
-#     def __init__(self, n: _VectorType, d: _VectorType) -> None:
-#         super().__init__()
-#         self._n = n
-#         self._d = d
 
 
 def normalized(v, eps=1e-6):
@@ -25,12 +18,13 @@ def normalized(v, eps=1e-6):
 
 
 class Hyperplane(Module):
-    def __init__(self, n: Union[Tensor, Vec3], d: Tensor) -> None:
+    def __init__(self, n: Vector3, d: Scalar) -> None:
         super().__init__()
-        KORNIA_CHECK_SHAPE(n, ["B", "*"])
-        KORNIA_CHECK_SHAPE(d, ["B"])
-        self._n = n
-        self._d = d
+        # TODO: fix checkers
+        # KORNIA_CHECK_SHAPE(n, ["B", "*"])
+        # KORNIA_CHECK_SHAPE(d, ["B"])
+        self._n: Vector3 = n
+        self._d: Scalar = d
 
     def __str__(self) -> str:
         return f"Normal: {self.normal}\nOffset: {self.offset}"
@@ -38,74 +32,68 @@ class Hyperplane(Module):
     def __repr__(self) -> str:
         return str(self)
 
-    def __getitem__(self, idx) -> Tensor:
-        return self.normal if idx == 0 else self.offset
-
-    def __iter__(self):
-        yield from (self.normal, self.offset)
-
     @property
-    def normal(self) -> Union[Tensor, Vec3]:
+    def normal(self) -> Vector3:
         return self._n
 
     @property
-    def offset(self) -> Tensor:
+    def offset(self) -> Scalar:
         return self._d
 
     # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L145
     # TODO: tests
-    def signed_distance(self, p):
-        # NOTE: make sure `p` is tensor
-        return batched_dot_product(self.normal, p.data, True) + self.offset
+    def signed_distance(self, p: Vector3) -> Scalar:
+        KORNIA_CHECK(isinstance(p, (Vector3, Tensor)))
+        return self.normal.dot(p) + self.offset
+        # return batched_dot_product(self.normal, p, True) + self.offset
 
     # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L154
     # TODO: tests
-    def projection(self, p) -> Union[Tensor, Vec3]:
-        out = p - self.signed_distance(p) * self.normal
-        if isinstance(p, Vec3) and not isinstance(out, Vec3):
-            out = Vec3(out)
-        return out
+    def projection(self, p: Vector3) -> Vector3:
+        return p - self.signed_distance(p) * self.normal
 
     @classmethod
-    def from_vector(self, n: Tensor, e: Tensor) -> "Hyperplane":
-        normal = n
-        offset = -batched_dot_product(normal, e)
+    def from_vector(self, n: Vector3, e: Vector3) -> "Hyperplane":
+        normal: Vector3 = n
+        offset: Scalar = -batched_dot_product(normal, e)
         return Hyperplane(normal, offset)
 
     @classmethod
     def through(cls, p0: Tensor, p1: Tensor, p2: Optional[Tensor] = None) -> "Hyperplane":
         # 2d case
         if p2 is None:
-            KORNIA_CHECK_SHAPE(p0, ["B", "2"])
-            KORNIA_CHECK_SHAPE(p1, ["B", "2"])
+            # TODO: improve tests
+            KORNIA_CHECK_SHAPE(p0, ["*", "2"])
+            KORNIA_CHECK(p0.shape == p1.shape)
             # TODO: implement `.unitOrthonormal`
-            normal = normalized(p1 - p0)
-            offset = -batched_dot_product(p0, normal)
-            return Hyperplane(normal, offset)
+            normal: Vector3 = normalized(p1 - p0)
+            offset: Tensor = -batched_dot_product(p0, normal)
+            return Hyperplane(normal, Scalar(offset))
         # 3d case
-        KORNIA_CHECK_SHAPE(p0, ["B", "3"])
-        KORNIA_CHECK_SHAPE(p1, ["B", "3"])
-        KORNIA_CHECK_SHAPE(p2, ["B", "3"])
-        v0, v1 = (p2 - p1), (p1 - p0)
-        normal = v0.cross(v1)
+        KORNIA_CHECK_SHAPE(p0, ["*", "3"])
+        KORNIA_CHECK(p0.shape == p1.shape)
+        KORNIA_CHECK(p1.shape == p2.shape)
+        v0, v1 = (p2 - p0), (p1 - p0)
+        normal: Vector3 = v0.cross(v1)
         norm = normal.norm(-1)
 
         # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L108
         def compute_normal_svd(v0, v1):
-            m = stack((v0.data, v1.data), -2)  # Bx2x3
-            _, _, V = _torch_svd_cast(m)
-            return V[..., :, -1]  # Bx3
+            # NOTE: for reason TensorWrapper does not stack well
+            m = stack((unwrap(v0), unwrap(v1)), -2)  # Bx2x3
+            _, _, V = _torch_svd_cast(m)  # kornia solution lies in the last row
+            return wrap(V[..., -1, :], Vector3)  # Bx3
 
         normal_mask = norm <= v0.norm(-1) * v1.norm(-1) * 1e-6
-        normal = where(normal_mask, compute_normal_svd(v0, v1), normal.data / (norm + 1e-6))
+        normal = where(normal_mask, compute_normal_svd(v0, v1), normal / (norm + 1e-6))
         offset = -batched_dot_product(p0, normal)
         # NOTE: make sure  offset is tensor
-        return Hyperplane(normal, offset.data)
+        return Hyperplane(normal, Scalar(offset))
 
 
 # TODO: factor to avoid duplicated from line.py
 # https://github.com/strasdat/Sophus/blob/23.04-beta/cpp/sophus/geometry/fit_plane.h
-def fit_plane(points: Tensor) -> Hyperplane:
+def fit_plane(points: Vector3) -> Hyperplane:
     """Fit a plane from a set of points using SVD.
 
     Args:
@@ -122,7 +110,6 @@ def fit_plane(points: Tensor) -> Hyperplane:
 
     # NOTE: not optimal for 2d points, but for now works for other dimensions
     U, S, V = _torch_svd_cast(points_centered)
-    V = V.transpose(-2, -1)
 
     # the first left eigenvector is the direction on the fited line
     direction = V[..., -1, :]  # BxD

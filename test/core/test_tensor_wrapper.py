@@ -55,6 +55,12 @@ class TestTensorWrapper(BaseTester):
         self.assert_close(x.eq(x), x == x)
         self.assert_close(x.ne(x), x != x)
 
+    def test_callable(self, device, dtype):
+        data = torch.ones(2, device=device, dtype=dtype)
+        x = TensorWrapper(data)
+        y = (x * x).sum(-1, True)
+        self.assert_close(y, torch.ones_like(y) * 2)
+
     @pytest.mark.skip(reason="not implemented yet")
     def test_cardinality(self, device, dtype):
         pass

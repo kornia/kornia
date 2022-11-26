@@ -49,16 +49,17 @@ class TensorWrapper:
 
         val = getattr(self._data, name)
 
+        # NOTE: not clear is really needed
         # If it's a method
-        if callable(val):
-            c = getattr(type(self._data), name)
-            # Don't append self to args if classmethod/staticmethod
-            if c is val:
-                return lambda *a, **kw: wrap(self.__torch_function__(c, (type(self),), args=a, kwargs=kw), type(self))
-            # Otherwise append self to args
-            return lambda *a, **kw: wrap(
-                self.__torch_function__(c, (type(self),), args=(self,) + a, kwargs=kw), type(self)
-            )
+        # if callable(val):
+        #    c = getattr(type(self._data), name)
+        #    # Don't append self to args if classmethod/staticmethod
+        #    if c is val:
+        #        return lambda *a, **kw: wrap(self.__torch_function__(c, (type(self),), args=a, kwargs=kw), type(self))
+        #    # Otherwise append self to args
+        #    return lambda *a, **kw: wrap(
+        #        #self.__torch_function__(c, (type(self),), args=(self,) + a, kwargs=kw), type(self)
+        #    )
 
         return wrap(val, type(self))
 
