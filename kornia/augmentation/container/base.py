@@ -13,7 +13,7 @@ __all__ = ["SequentialBase", "ParamItem"]
 
 class ParamItem(NamedTuple):
     name: str
-    data: Optional[Union[Dict[str, Tensor], List['ParamItem']]]
+    data: Optional[Union[Dict[str, Tensor], list]]
 
 
 class SequentialBase(nn.Sequential):
