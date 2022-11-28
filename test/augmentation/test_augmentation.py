@@ -3580,6 +3580,24 @@ class TestRandomElasticTransform:
         res = f(input)
         assert (res[0] == res[1]).all()
 
+    def test_mask_transform(self, device, dtype):
+        torch.manual_seed(0)
+        features = torch.rand(1, 1, 4, 4, dtype=dtype, device=device)
+        labels = torch.ones(1, 1, 4, 4, dtype=dtype, device=device) * 10
+        labels[:, :, :, :2] = 0
+        labels[:, :, :2, :] = 0
+
+        compose = AugmentationSequential(RandomElasticTransform(alpha=(10, 10)))
+
+        # Use an example which would produce invalid label values
+        torch.manual_seed(0)
+        labels_transformed = compose(features, labels, data_keys=["input", "input"])[1]
+        assert len(labels_transformed.unique()) > 2
+
+        # The transformed values are fine if we use mask input type
+        labels_transformed = compose(features, labels, data_keys=["input", "mask"])[1]
+        assert torch.all(labels_transformed.unique() == torch.tensor([0, 10], dtype=dtype, device=device))
+
 
 class TestRandomThinPlateSpline:
     def test_smoke(self, device, dtype):

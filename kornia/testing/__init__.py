@@ -1,13 +1,13 @@
 """The testing package contains testing-specific utilities."""
-import contextlib
 import importlib
 import math
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from itertools import product
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, cast
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import torch
+from torch.testing import assert_close as _assert_close
 
 from kornia.core import Tensor, eye, tensor
 
@@ -255,48 +255,28 @@ def _default_tolerances(*inputs: Any) -> Tuple[float, float]:
     return max(rtols), max(atols)
 
 
-if TYPE_CHECKING:
-    # TODO: remove this branch if kornia relies on torch>=1.9
-    def assert_close(
-        actual: Tensor, expected: Tensor, *, rtol: Optional[float] = None, atol: Optional[float] = None, **kwargs: Any
-    ) -> None:
-        ...
+def assert_close(
+    actual: Tensor, expected: Tensor, *, rtol: Optional[float] = None, atol: Optional[float] = None, **kwargs: Any
+) -> None:
+    if rtol is None and atol is None:
+        # `torch.testing.assert_close` used different default tolerances than `torch.testing.assert_allclose`.
+        # TODO: remove this special handling as soon as https://github.com/kornia/kornia/issues/1134 is resolved
+        #  Basically, this whole wrapper function can be removed and `torch.testing.assert_close` can be used
+        #  directly.
+        rtol, atol = _default_tolerances(actual, expected)
 
-else:
-    try:
-        # torch.testing.assert_close is only available for torch>=1.9
-        from torch.testing import assert_close as _assert_close
+    return _assert_close(
+        actual,
+        expected,
+        rtol=rtol,
+        atol=atol,
+        # this is the default value for torch>=1.10, but not for torch==1.9
+        # TODO: remove this if kornia relies on torch>=1.10
+        check_stride=False,
+        equal_nan=False,
+        **kwargs,
+    )
 
-        def assert_close(
-            actual: Tensor,
-            expected: Tensor,
-            *,
-            rtol: Optional[float] = None,
-            atol: Optional[float] = None,
-            **kwargs: Any,
-        ) -> None:
-            if rtol is None and atol is None:
-                # `torch.testing.assert_close` used different default tolerances than `torch.testing.assert_allclose`.
-                # TODO: remove this special handling as soon as https://github.com/kornia/kornia/issues/1134 is resolved
-                #  Basically, this whole wrapper function can be removed and `torch.testing.assert_close` can be used
-                #  directly.
-                rtol, atol = _default_tolerances(actual, expected)
-
-            return _assert_close(
-                actual,
-                expected,
-                rtol=rtol,
-                atol=atol,
-                # this is the default value for torch>=1.10, but not for torch==1.9
-                # TODO: remove this if kornia relies on torch>=1.10
-                check_stride=False,
-                equal_nan=True,
-                **kwargs,
-            )
-
-    except ImportError:
-        # TODO: remove this branch if kornia relies on torch>=1.9
-        from torch.testing import assert_allclose as assert_close
 
 # Logger api
 

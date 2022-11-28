@@ -7,10 +7,9 @@ import kornia
 from kornia.augmentation import (
     GeometricAugmentationBase2D,
     IntensityAugmentationBase2D,
-    MixAugmentationBase,
+    MixAugmentationBaseV2,
     RandomCrop,
 )
-from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import ParamItem, SequentialBase
 from kornia.augmentation.container.utils import ApplyInverseInterface, InputApplyInverse
@@ -53,14 +52,13 @@ class ImageSequential(SequentialBase):
         ...     kornia.filters.MedianBlur((3, 3)),
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
         ...     kornia.enhance.Invert(),
-        ...     kornia.augmentation.RandomMixUp(p=1.0),
+        ...     kornia.augmentation.RandomMixUpV2(p=1.0),
         ...     same_on_batch=True,
         ...     random_apply=10,
         ... )
         >>> out, lab = aug_list(input, label=label)
         >>> lab
-        tensor([[0.0000, 1.0000, 0.1214],
-                [1.0000, 0.0000, 0.1214]])
+        tensor([0, 1])
         >>> out.shape
         torch.Size([2, 3, 5, 6])
 
@@ -90,18 +88,12 @@ class ImageSequential(SequentialBase):
         self,
         *args: Module,
         same_on_batch: Optional[bool] = None,
-        return_transform: Optional[bool] = None,
         keepdim: Optional[bool] = None,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
         random_apply_weights: Optional[List[float]] = None,
         if_unsupported_ops: str = "raise",
     ) -> None:
-        if return_transform is not None:
-            raise ValueError(
-                "`return_transform` is deprecated. Please access"
-                " `.transform_matrix` in `AugmentationSequential` instead."
-            )
-        super().__init__(*args, same_on_batch=same_on_batch, return_transform=return_transform, keepdim=keepdim)
+        super().__init__(*args, same_on_batch=same_on_batch, keepdim=keepdim)
 
         self.random_apply: Union[Tuple[int, int], bool] = self._read_random_apply(random_apply, len(args))
         if random_apply_weights is not None and len(random_apply_weights) != len(self):
@@ -178,11 +170,8 @@ class ImageSequential(SequentialBase):
 
         Special operations needed for label-involved augmentations.
         """
-        indices = []
-        for idx, (_, child) in enumerate(named_modules):
-            if isinstance(child, (MixAugmentationBase,)):  # NOTE: MixV2 will not be a special op in the future.
-                indices.append(idx)
-        return indices
+        # NOTE: MixV2 will not be a special op in the future.
+        return [idx for idx, (_, child) in enumerate(named_modules) if isinstance(child, MixAugmentationBaseV2)]
 
     def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, Module]]:
         if params is None:
@@ -223,7 +212,7 @@ class ImageSequential(SequentialBase):
             if isinstance(module, RandomCrop):
                 mod_param = module.forward_parameters_precrop(batch_shape)
                 param = ParamItem(name, mod_param)
-            elif isinstance(module, (_AugmentationBase, MixAugmentationBase, MixAugmentationBaseV2, ImageSequential)):
+            elif isinstance(module, (_AugmentationBase, MixAugmentationBaseV2, ImageSequential)):
                 mod_param = module.forward_parameters(batch_shape)
                 param = ParamItem(name, mod_param)
             else:
@@ -271,9 +260,7 @@ class ImageSequential(SequentialBase):
         # Define as 1 for broadcasting
         res_mat: Optional[Tensor] = None
         for (_, module), param in zip(named_modules, params if params is not None else []):
-            if isinstance(module, (_AugmentationBase,)) and not isinstance(
-                module, (MixAugmentationBase, MixAugmentationBaseV2)
-            ):
+            if isinstance(module, (_AugmentationBase,)) and not isinstance(module, MixAugmentationBaseV2):
                 pdata = cast(Dict[str, Tensor], param.data)
                 to_apply = pdata['batch_prob']
                 ori_shape = input.shape
@@ -382,7 +369,7 @@ class ImageSequential(SequentialBase):
         for param in params:
             module = self.get_submodule(param.name)
             input, label = self.apply_to_input(input, label, module, param=param, extra_args=extra_args)
-            if isinstance(module, (_AugmentationBase, MixAugmentationBase, MixAugmentationBaseV2, SequentialBase)):
+            if isinstance(module, (_AugmentationBase, MixAugmentationBaseV2, SequentialBase)):
                 param = ParamItem(param.name, module._params)
             else:
                 param = ParamItem(param.name, None)

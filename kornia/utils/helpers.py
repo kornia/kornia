@@ -1,9 +1,10 @@
 import warnings
 from functools import partial, wraps
 from inspect import isclass, isfunction
-from typing import TYPE_CHECKING, Any, Callable, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Tuple, Union, overload
 
 import torch
+from torch.linalg import inv_ex
 
 from kornia.core import Tensor
 from kornia.utils._compat import torch_version_geq
@@ -28,7 +29,17 @@ def get_cuda_device_if_available(index: int = 0) -> torch.device:
     return dev
 
 
-def map_location_to_cpu(storage: str, *args: Any, **kwargs: Any) -> str:
+@overload
+def map_location_to_cpu(storage: Tensor, location: str) -> Tensor:
+    ...
+
+
+@overload
+def map_location_to_cpu(storage: str) -> str:
+    ...
+
+
+def map_location_to_cpu(storage: Union[str, Tensor], *args: Any, **kwargs: Any) -> Union[str, Tensor]:
     return storage
 
 
@@ -227,11 +238,6 @@ def safe_solve_with_mask(B: Tensor, A: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
 def safe_inverse_with_mask(A: Tensor) -> Tuple[Tensor, Tensor]:
     r"""Helper function, which avoids crashing because of non-invertable matrix input and outputs the mask of valid
     solution."""
-    # Based on https://github.com/pytorch/pytorch/issues/31546#issuecomment-694135622
-    if not torch_version_geq(1, 9):
-        inv = _torch_inverse_cast(A)
-        warnings.warn('PyTorch version < 1.9, inverse validness mask maybe not correct', RuntimeWarning)
-        return inv, torch.ones(len(A), dtype=torch.bool, device=A.device)
 
     if not isinstance(A, Tensor):
         raise AssertionError(f"A must be Tensor. Got: {type(A)}.")
@@ -242,16 +248,6 @@ def safe_inverse_with_mask(A: Tensor) -> Tuple[Tensor, Tensor]:
     else:
         dtype = dtype_original
 
-    if TYPE_CHECKING:
-        # TODO: remove this branch when kornia relies on torch >= 1.9
-        dummy: Tensor = torch.tensor(0)
-        return dummy, dummy
-    else:
-        if torch_version_geq(1, 9):
-            from torch.linalg import inv_ex  # (not available in 1.8)
-
-            inverse, info = inv_ex(A.to(dtype))
-            mask = info == 0
-            return inverse.to(dtype_original), mask
-        else:
-            NotImplementedError('This function just work with pytorch newer than 1.9.0')
+    inverse, info = inv_ex(A.to(dtype))
+    mask = info == 0
+    return inverse.to(dtype_original), mask
