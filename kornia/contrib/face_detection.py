@@ -210,6 +210,15 @@ class FaceDetector(nn.Module):
         return batched_dets
 
     def forward(self, image: torch.Tensor) -> List[torch.Tensor]:
+        r"""Detect faces in a given batch of images.
+
+        Args:
+            image (torch.Tensor): batch of images :math:`(B,3,H,W)`
+
+        Return:
+            List[torch.Tensor]: list with the boxes found on each image. :math:`Bx(N,15)`
+
+        """
         img = self.preprocess(image)
         out = self.model(img)
         return self.postprocess(out, img.shape[-2], img.shape[-1])
