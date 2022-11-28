@@ -33,7 +33,7 @@ test-slow: FORCE
 	pytest -v --device all --dtype all -m "(jit or grad or nn)"
 
 lint: FORCE
-	flake8 -v kornia/ test/ examples/
+	pre-commit run flake8 --all-files
 
 mypy: FORCE
 	mypy
