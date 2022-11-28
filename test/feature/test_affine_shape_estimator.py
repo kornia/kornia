@@ -7,6 +7,7 @@ from kornia.feature.affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeE
 from kornia.testing import assert_close
 
 
+# TODO: add kornia.testing.BaseTester
 class TestPatchAffineShapeEstimator:
     def test_shape(self, device):
         inp = torch.rand(1, 1, 32, 32, device=device)
@@ -47,6 +48,7 @@ class TestPatchAffineShapeEstimator:
         assert_close(tfeat_jit(patches), tfeat(patches))
 
 
+# TODO: add kornia.testing.BaseTester
 class TestLAFAffineShapeEstimator:
     def test_shape(self, device):
         inp = torch.rand(1, 1, 32, 32, device=device)
@@ -120,6 +122,7 @@ class TestLAFAffineShapeEstimator:
         assert_close(tfeat_jit(laf, inp), tfeat(laf, inp))
 
 
+# TODO: add kornia.testing.BaseTester
 class TestLAFAffNetShapeEstimator:
     def test_shape(self, device):
         inp = torch.rand(1, 1, 32, 32, device=device)
