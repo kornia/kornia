@@ -12,12 +12,12 @@ concurrency:
 jobs:
   tests:
     name: ${{ matrix.os }} - python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}-latest
 
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
+        os: ['Ubuntu']
         python-version: ['3.7']
         pytorch-version: ['1.9.1', '1.12.1']
 
@@ -40,5 +40,6 @@ jobs:
         uses: codecov/codecov-action@v3
         with:
           file: cobertura.xml
-          flags: typing,${{ matrix.os }}_python-${{ matrix.python-version }}_torch-${{ matrix.pytorch-version }}
+          token: ${{ secrets.CODECOV_TOKEN }} # to not depend on build via GH API
+          flags: typing,${{ matrix.os }}_py-${{ matrix.python-version }}_pt-${{ matrix.pytorch-version }}_${{ matrix.pytorch-dtype }}
           name: cpu-coverage-types
