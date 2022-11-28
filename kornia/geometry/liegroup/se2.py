@@ -3,7 +3,7 @@
 from typing import Optional
 
 from kornia.core import Module, Parameter, Tensor, concatenate, pad, stack, tensor
-from kornia.geometry.liegroup._utils import check_se2_t_shape, check_v_shape
+from kornia.geometry.liegroup._utils import check_se2_r_t_shape, check_se2_t_shape, check_v_shape
 from kornia.geometry.liegroup.so2 import So2
 from kornia.testing import KORNIA_CHECK_TYPE
 
@@ -17,7 +17,7 @@ class Se2(Module):
 
     Example:
         >>> so2 = So2.identity()
-        >>> t = torch.ones((1, 2))
+        >>> t = torch.ones((2))
         >>> se2 = Se2(so2, t)
         >>> se2
         rotation: (1+0j)
@@ -46,7 +46,7 @@ class Se2(Module):
         super().__init__()
         KORNIA_CHECK_TYPE(r, So2)
         # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
-        check_se2_t_shape(t)
+        check_se2_r_t_shape(r, t)
         self._r = r
         self._t = Parameter(t)
 
@@ -73,7 +73,7 @@ class Se2(Module):
         elif isinstance(right, Tensor):
             KORNIA_CHECK_TYPE(right, Tensor)
             # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
-            check_se2_t_shape(right)
+            check_se2_r_t_shape(self.so2, right)
             return self.so2 * right + self.t
         else:
             raise TypeError(f"Unsupported type: {type(right)}")
@@ -116,7 +116,9 @@ class Se2(Module):
         so2 = So2.exp(theta)
         a = so2.z.imag / theta
         b = (1.0 - so2.z.real) / theta
-        t = stack((a * v[..., 0] - b * v[..., 1], b * v[..., 0] + a * v[..., 1]), -1)
+        x = v[..., 0]
+        y = v[..., 1]
+        t = stack((a * x - b * y, b * x + a * y), -1)
         return Se2(so2, t)
 
     def log(self) -> Tensor:
