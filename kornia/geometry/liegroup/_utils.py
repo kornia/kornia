@@ -51,10 +51,9 @@ def check_se2_t_shape(t):
 
 
 def check_se2_r_t_shape(r, t):
-    if (
-        ((len(r.z.shape) == 1) and (len(t.shape) == 2))
-        or ((len(r.z.shape) == 0) and len(t.shape) == 1)
-    ):
+    if ((len(r.z.shape) == 1) and (len(t.shape) == 2)) or ((len(r.z.shape) == 0) and len(t.shape) == 1):
         check_se2_t_shape(t)
     else:
-        raise ValueError(f"Invalid input, both the inputs should be either batched or unbatched. Got: {r.z.shape} and {t.shape}")
+        raise ValueError(
+            f"Invalid input, both the inputs should be either batched or unbatched. Got: {r.z.shape} and {t.shape}"
+        )
