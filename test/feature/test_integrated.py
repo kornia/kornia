@@ -27,6 +27,7 @@ from kornia.geometry import RANSAC, resize, transform_points
 from kornia.testing import assert_close
 
 
+# TODO: add kornia.testing.BaseTester
 class TestGetLAFDescriptors:
     def test_same(self, device, dtype):
         B, C, H, W = 1, 3, 64, 64
@@ -70,6 +71,7 @@ class TestGetLAFDescriptors:
         )
 
 
+# TODO: add kornia.testing.BaseTester
 class TestLAFDescriptor:
     def test_same(self, device, dtype):
         B, C, H, W = 1, 3, 64, 64
@@ -119,6 +121,7 @@ class TestLAFDescriptor:
         assert gradcheck(lafdesc, (img, lafs), eps=1e-3, atol=1e-3, raise_exception=True, nondet_tol=1e-3)
 
 
+# TODO: add kornia.testing.BaseTester
 class TestLocalFeature:
     def test_smoke(self, device, dtype):
         det = ScaleSpaceDetector(10)
@@ -168,6 +171,7 @@ class TestLocalFeature:
         assert gradcheck(local_feature, img, eps=1e-4, atol=1e-4, raise_exception=True)
 
 
+# TODO: add kornia.testing.BaseTester
 class TestSIFTFeature:
     # The real test is in TestLocalFeatureMatcher
     def test_smoke(self, device, dtype):
@@ -183,6 +187,7 @@ class TestSIFTFeature:
         assert gradcheck(local_feature, img, eps=1e-4, atol=1e-4, raise_exception=True)
 
 
+# TODO: add kornia.testing.BaseTester
 class TestKeyNetHardNetFeature:
     # The real test is in TestLocalFeatureMatcher
     def test_smoke(self, device, dtype):
@@ -201,6 +206,7 @@ class TestKeyNetHardNetFeature:
         assert gradcheck(local_feature, img, eps=1e-4, atol=1e-4, raise_exception=True)
 
 
+# TODO: add kornia.testing.BaseTester
 class TestGFTTAffNetHardNet:
     # The real test is in TestLocalFeatureMatcher
     def test_smoke(self, device, dtype):
@@ -216,6 +222,7 @@ class TestGFTTAffNetHardNet:
         assert gradcheck(local_feature, img, eps=1e-4, atol=1e-4, raise_exception=True)
 
 
+# TODO: add kornia.testing.BaseTester
 class TestLocalFeatureMatcher:
     def test_smoke(self, device):
         matcher = LocalFeatureMatcher(SIFTFeature(5), DescriptorMatcher('snn', 0.8)).to(device)
@@ -246,8 +253,8 @@ class TestLocalFeatureMatcher:
     def test_real_sift(self, device, dtype, data):
         torch.random.manual_seed(0)
         # This is not unit test, but that is quite good integration test
-        matcher = LocalFeatureMatcher(SIFTFeature(2000), DescriptorMatcher('snn', 0.8)).to(device, dtype)
-        ransac = RANSAC('homography', 1.0, 2048, 10).to(device, dtype)
+        matcher = LocalFeatureMatcher(SIFTFeature(1000), DescriptorMatcher('snn', 0.8)).to(device, dtype)
+        ransac = RANSAC('homography', 1.0, 1024, 5).to(device, dtype)
         data_dev = utils.dict_to(data, device, dtype)
         pts_src = data_dev['pts0']
         pts_dst = data_dev['pts1']
@@ -262,9 +269,9 @@ class TestLocalFeatureMatcher:
     def test_real_sift_preextract(self, device, dtype, data):
         torch.random.manual_seed(0)
         # This is not unit test, but that is quite good integration test
-        feat = SIFTFeature(2000)
+        feat = SIFTFeature(1000)
         matcher = LocalFeatureMatcher(feat, DescriptorMatcher('snn', 0.8)).to(device)
-        ransac = RANSAC('homography', 1.0, 2048, 10).to(device, dtype)
+        ransac = RANSAC('homography', 1.0, 1024, 5).to(device, dtype)
         data_dev = utils.dict_to(data, device, dtype)
         pts_src = data_dev['pts0']
         pts_dst = data_dev['pts1']
@@ -289,8 +296,8 @@ class TestLocalFeatureMatcher:
     def test_real_gftt(self, device, dtype, data):
         torch.random.manual_seed(0)
         # This is not unit test, but that is quite good integration test
-        matcher = LocalFeatureMatcher(GFTTAffNetHardNet(2000), DescriptorMatcher('snn', 0.8)).to(device, dtype)
-        ransac = RANSAC('homography', 1.0, 2048, 10).to(device, dtype)
+        matcher = LocalFeatureMatcher(GFTTAffNetHardNet(1000), DescriptorMatcher('snn', 0.8)).to(device, dtype)
+        ransac = RANSAC('homography', 1.0, 1024, 5).to(device, dtype)
         data_dev = utils.dict_to(data, device, dtype)
         pts_src = data_dev['pts0']
         pts_dst = data_dev['pts1']
@@ -307,7 +314,7 @@ class TestLocalFeatureMatcher:
         torch.random.manual_seed(0)
         # This is not unit test, but that is quite good integration test
         matcher = LocalFeatureMatcher(KeyNetHardNet(500), DescriptorMatcher('snn', 0.9)).to(device, dtype)
-        ransac = RANSAC('homography', 1.0, 2048, 10).to(device, dtype)
+        ransac = RANSAC('homography', 1.0, 1024, 5).to(device, dtype)
         data_dev = utils.dict_to(data, device, dtype)
         pts_src = data_dev['pts0']
         pts_dst = data_dev['pts1']

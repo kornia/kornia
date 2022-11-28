@@ -7,15 +7,15 @@ from kornia.feature.sold2 import SOLD2, SOLD2_detector
 from kornia.testing import assert_close
 
 
+# TODO: add kornia.testing.BaseTester
 class TestSOLD2_detector:
     @pytest.mark.parametrize("batch_size", [1, 2])
-    def test_shape(self, device, batch_size):
-        inp = torch.ones(batch_size, 1, 128, 128, device=device)
-        sold2 = SOLD2_detector(pretrained=False).to(device)
-        sold2.eval()
+    def test_shape(self, device, batch_size, dtype):
+        inp = torch.ones(batch_size, 1, 64, 64, device=device, dtype=dtype)
+        sold2 = SOLD2_detector(pretrained=False).to(device, dtype)
         out = sold2(inp)
-        assert out["junction_heatmap"].shape == (batch_size, 128, 128)
-        assert out["line_heatmap"].shape == (batch_size, 128, 128)
+        assert out["junction_heatmap"].shape == (batch_size, 64, 64)
+        assert out["line_heatmap"].shape == (batch_size, 64, 64)
 
     @pytest.mark.skip("Takes ages to run")
     def test_gradcheck(self, device):
@@ -37,14 +37,14 @@ class TestSOLD2_detector:
         assert_close(model(img), model_jit(img))
 
 
+# TODO: add kornia.testing.BaseTester
 class TestSOLD2:
     @pytest.mark.parametrize("batch_size", [1, 2])
-    def test_shape(self, device, batch_size):
-        inp = torch.ones(batch_size, 1, 256, 256, device=device)
-        sold2 = SOLD2(pretrained=False).to(device)
-        sold2.eval()
+    def test_shape(self, device, batch_size, dtype):
+        inp = torch.ones(batch_size, 1, 64, 64, device=device, dtype=dtype)
+        sold2 = SOLD2(pretrained=False).to(device, dtype)
         out = sold2(inp)
-        assert out["dense_desc"].shape == (batch_size, 128, 64, 64)
+        assert out["dense_desc"].shape == (batch_size, 128, 16, 16)
 
     @pytest.mark.skip("Takes ages to run")
     def test_gradcheck(self, device):
