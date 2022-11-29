@@ -261,14 +261,11 @@ class Se3(Module):
         """
         r = So3.random(batch_size, device, dtype)
         if batch_size is None:
-          shape = ()
+            shape = ()
         else:
-          shape = (batch_size,)
-       return cls(r, rand(shape + (3,), device=device, dtype=dtype))
-            t = rand((batch_size, 3), device=device, dtype=dtype)
-        else:
-            t = rand((3,), device=device, dtype=dtype)
-        return cls(r, t)
+            KORNIA_CHECK(batch_size >= 1, msg="batch_size must be positive")
+            shape = (batch_size,)
+        return cls(r, rand(shape + (3,), device=device, dtype=dtype))
 
     @classmethod
     def rot_x(cls, x: Tensor) -> "Se3":
