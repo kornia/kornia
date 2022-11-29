@@ -217,7 +217,6 @@ class FaceDetector(nn.Module):
 
         Return:
             List[torch.Tensor]: list with the boxes found on each image. :math:`Bx(N,15)`.
-
         """
         img = self.preprocess(image)
         out = self.model(img)
