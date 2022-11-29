@@ -260,6 +260,7 @@ class Se3(Module):
             >>> s = Se3.random(batch_size=3)
         """
         r = So3.random(batch_size, device, dtype)
+        shape: Tuple[int, ...]
         if batch_size is None:
             shape = (3,)
         else:
