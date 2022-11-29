@@ -583,7 +583,7 @@ class TestFaceDetection:
         face_detection = kornia.contrib.FaceDetector().to(device, dtype)
         dets = face_detection(img)
         assert isinstance(dets, list)
-        assert len(dets) == batch_size # same as the number of images
+        assert len(dets) == batch_size  # same as the number of images
         assert isinstance(dets[0], torch.Tensor)
         assert dets[0].shape[0] >= 0  # number of detections
         assert dets[0].shape[1] == 15  # dims of each detection
