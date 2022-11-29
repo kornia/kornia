@@ -2,7 +2,7 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py
 from typing import Optional
 
-from kornia.core import Module, Parameter, Tensor, concatenate, eye, pad, stack, tensor, where, zeros_like
+from kornia.core import Module, Parameter, Tensor, concatenate, eye, pad, rand, stack, tensor, where, zeros_like
 from kornia.geometry.liegroup.so3 import So3
 from kornia.geometry.linalg import batched_dot_product
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
@@ -247,6 +247,24 @@ class Se3(Module):
         """
         r_inv = self.r.inverse()
         return Se3(r_inv, r_inv * (-1 * self.t))
+
+    @classmethod
+    def random(cls, batch_size: Optional[int] = None, device=None, dtype=None) -> 'Se3':
+        """Create a Se3 group representing a random rotation.
+
+        Args:
+            batch_size: the batch size of the underlying data.
+
+        Example:
+            >>> s = Se3.random()
+            >>> s = Se3.random(batch_size=3)
+        """
+        r = So3.random(batch_size, device, dtype)
+        if batch_size is not None:
+            t = rand((batch_size, 3), device=device, dtype=dtype)
+        else:
+            t = rand((3,), device=device, dtype=dtype)
+        return cls(r, t)
 
     @classmethod
     def rot_x(cls, x: Tensor) -> "Se3":

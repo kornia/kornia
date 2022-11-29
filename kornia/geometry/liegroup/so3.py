@@ -252,6 +252,19 @@ class So3(Module):
         return So3(self.q.conj())
 
     @classmethod
+    def random(cls, batch_size: Optional[int] = None, device=None, dtype=None) -> 'So3':
+        """Create a So3 group representing a random rotation.
+
+        Args:
+            batch_size: the batch size of the underlying data.
+
+        Example:
+            >>> s = So3.random()
+            >>> s = So3.random(batch_size=3)
+        """
+        return cls(Quaternion.random(batch_size, device, dtype))
+
+    @classmethod
     def rot_x(cls, x: Tensor) -> "So3":
         """Construct a x-axis rotation.
 
