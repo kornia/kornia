@@ -199,16 +199,13 @@ class AugmentationSequential(ImageSequential):
         Number of input tensors must align with the number of``data_keys``. If ``data_keys`` is not set, use
         ``self.data_keys`` by default.
         """
+        _data_keys: List[DataKey]
         if data_keys is None:
-            data_keys = cast(List[Union[str, int, DataKey]], self.data_keys)
+            _data_keys = self.data_keys
+        else:
+            _data_keys = [DataKey.get(inp) for inp in data_keys]
 
-        _data_keys: List[DataKey] = [DataKey.get(inp) for inp in data_keys]
-
-        if len(args) != len(data_keys):
-            raise AssertionError(
-                "The number of inputs must align with the number of data_keys, "
-                f"Got {len(args)} and {len(data_keys)}."
-            )
+        self._validate_args_datakeys(*args, data_keys=_data_keys)
 
         args = self._arguments_preproc(*args, data_keys=_data_keys)
 
@@ -220,11 +217,11 @@ class AugmentationSequential(ImageSequential):
                 )
             params = self._params
 
-        outputs: List[Tensor] = [None] * len(data_keys)  # type: ignore
-        for idx, (arg, dcate) in enumerate(zip(args, data_keys)):
+        outputs: List[Tensor] = [None] * len(_data_keys)  # type: ignore
+        for idx, (arg, dcate) in enumerate(zip(args, _data_keys)):
 
-            if DataKey.INPUT in self.extra_args:
-                extra_args = self.extra_args[DataKey.INPUT]
+            if dcate in self.extra_args:
+                extra_args = self.extra_args[dcate]
             else:
                 extra_args = {}
 
@@ -329,7 +326,7 @@ class AugmentationSequential(ImageSequential):
             _data_keys = self.data_keys
         else:
             _data_keys = [DataKey.get(inp) for inp in data_keys]
-            self.data_keys = _data_keys
+
         self._validate_args_datakeys(*args, data_keys=_data_keys)
 
         args = self._arguments_preproc(*args, data_keys=_data_keys)

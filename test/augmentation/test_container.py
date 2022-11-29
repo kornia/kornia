@@ -440,12 +440,14 @@ class TestAugmentationSequential:
         assert out[1].shape == mask.shape
         assert out[2].shape == bbox.shape
         assert out[3].shape == keypoints.shape
+        assert set(out[1].unique().tolist()).issubset(set(mask.unique().tolist()))
 
         out_inv = aug.inverse(*out)
         assert out_inv[0].shape == inp.shape
         assert out_inv[1].shape == mask.shape
         assert out_inv[2].shape == bbox.shape
         assert out_inv[3].shape == keypoints.shape
+        assert set(out_inv[1].unique().tolist()).issubset(set(mask.unique().tolist()))
 
         if random_apply is False:
             reproducibility_test((inp, mask, bbox, keypoints), aug)
