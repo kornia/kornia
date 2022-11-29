@@ -250,7 +250,7 @@ class Se3(Module):
 
     @classmethod
     def random(cls, batch_size: Optional[int] = None, device=None, dtype=None) -> 'Se3':
-        """Create a Se3 group representing a random rotation.
+        """Create a Se3 group representing a random transformation.
 
         Args:
             batch_size: the batch size of the underlying data.
