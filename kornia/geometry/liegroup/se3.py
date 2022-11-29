@@ -1,6 +1,6 @@
 # kornia.geometry.so3 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py
-from typing import Optional
+from typing import Optional, Tuple
 
 from kornia.core import Module, Parameter, Tensor, concatenate, eye, pad, rand, stack, tensor, where, zeros_like
 from kornia.geometry.liegroup.so3 import So3
