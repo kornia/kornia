@@ -260,7 +260,11 @@ class Se3(Module):
             >>> s = Se3.random(batch_size=3)
         """
         r = So3.random(batch_size, device, dtype)
-        if batch_size is not None:
+        if batch_size is None:
+          shape = ()
+        else:
+          shape = (batch_size,)
+       return cls(r, rand(shape + (3,), device=device, dtype=dtype))
             t = rand((batch_size, 3), device=device, dtype=dtype)
         else:
             t = rand((3,), device=device, dtype=dtype)
