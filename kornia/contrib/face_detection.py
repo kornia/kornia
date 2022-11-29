@@ -213,10 +213,10 @@ class FaceDetector(nn.Module):
         r"""Detect faces in a given batch of images.
 
         Args:
-            image (torch.Tensor): batch of images :math:`(B,3,H,W)`
+            image: batch of images :math:`(B,3,H,W)`
 
         Return:
-            List[torch.Tensor]: list with the boxes found on each image. :math:`Bx(N,15)`
+            List[torch.Tensor]: list with the boxes found on each image. :math:`Bx(N,15)`.
 
         """
         img = self.preprocess(image)
@@ -326,11 +326,7 @@ class YuFaceDetectNet(nn.Module):
         loc_data, conf_data, iou_data = head_data.split((14, 2, 1), dim=-1)
 
         if self.phase == "test":
-            # trick to make it work with batches
-            # loc_data = loc_data.view(-1, 14)
-            # conf_data = torch.softmax(conf_data.view(-1, self.num_classes), dim=-1)
             conf_data = torch.softmax(conf_data, dim=-1)
-            # iou_data = iou_data.view(-1, 1)
         else:
             loc_data = loc_data.view(loc_data.size(0), -1, 14)
             conf_data = conf_data.view(conf_data.size(0), -1, self.num_classes)
