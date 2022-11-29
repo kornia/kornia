@@ -579,9 +579,9 @@ class TestFaceDetection:
     @pytest.mark.parametrize("batch_size", [1, 2, 4])
     def test_valid(self, batch_size, device, dtype):
         torch.manual_seed(44)
-        img = torch.rand(3, 320, 320, device=device, dtype=dtype)
+        img = torch.rand(batch_size, 3, 320, 320, device=device, dtype=dtype)
         face_detection = kornia.contrib.FaceDetector().to(device, dtype)
-        dets = face_detection(torch.stack([img] * batch_size))
+        dets = face_detection(img)
         assert isinstance(dets, list)
         assert len(dets) == batch_size # same as the number of images
         assert isinstance(dets[0], torch.Tensor)
