@@ -217,3 +217,10 @@ class TestSo3(BaseTester):
         y = So3(q2)
         self.assert_close(x.inverse().adjoint(), x.adjoint().inverse())
         self.assert_close((x * y).adjoint(), x.adjoint() @ y.adjoint())
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_random(self, device, dtype, batch_size):
+        s = So3.random(batch_size=batch_size, device=device, dtype=dtype)
+        s_in_s = s.inverse() * s
+        i = So3.identity(batch_size=batch_size, device=device, dtype=dtype)
+        self.assert_close(s_in_s.q.data, i.q.data)
