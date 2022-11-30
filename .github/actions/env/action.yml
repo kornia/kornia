@@ -28,10 +28,6 @@ runs:
       shell: bash -l {0}
       run: conda install curl -c conda-forge
 
-    - name: Install Kornia dev
-      shell: bash -l {0}
-      run: pip install -e .[x,dev]
-
     - if: ${{ contains(fromJson('["lts", "nightly"]'), inputs.pytorch-version ) }}
       name: Install pytorch
       shell: bash -l {0}
@@ -41,6 +37,10 @@ runs:
       name: Install pytorch
       shell: bash -l {0}
       run: conda install pytorch=${{ inputs.pytorch-version }} cpuonly -c pytorch
+
+    - name: Install Kornia dev
+      shell: bash -l {0}
+      run: pip install -e .[x,dev]
 
     - name: Environment
       shell: bash -l {0}
