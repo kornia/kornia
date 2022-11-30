@@ -2,7 +2,7 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so2.py
 from typing import Optional, Union
 
-from kornia.core import Module, Parameter, Tensor, complex, stack, tensor, zeros_like
+from kornia.core import Module, Parameter, Tensor, complex, rand, stack, tensor, zeros_like
 from kornia.geometry.liegroup._utils import (
     check_so2_matrix_shape,
     check_so2_t_shape,
@@ -194,3 +194,23 @@ class So2(Module):
             tensor(1.+0.j, requires_grad=True)
         """
         return So2(1 / self.z)
+
+    @classmethod
+    def random(cls, batch_size: Optional[int] = None, device=None, dtype=None) -> 'So2':
+        """Create a So2 group representing a random rotation.
+
+        Args:
+            batch_size: the batch size of the underlying data.
+
+        Example:
+            >>> s = So2.random()
+            >>> s = So2.random(batch_size=3)
+        """
+        if batch_size is not None:
+            KORNIA_CHECK(batch_size >= 1, msg="batch_size must be positive")
+            real_data = rand((batch_size,), device=device, dtype=dtype)
+            imag_data = rand((batch_size,), device=device, dtype=dtype)
+        else:
+            real_data = rand((), device=device, dtype=dtype)
+            imag_data = rand((), device=device, dtype=dtype)
+        return cls(complex(real_data, imag_data))
