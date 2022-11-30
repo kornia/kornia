@@ -156,7 +156,7 @@ class AugmentationSequential(ImageSequential):
             random_apply_weights=random_apply_weights,
         )
 
-        self.data_keys = [DataKey.get(inp) for inp in data_keys]
+        self.data_keys: List[DataKey] = [DataKey.get(inp) for inp in data_keys]
 
         if not all(in_type in DataKey for in_type in self.data_keys):
             raise AssertionError(f"`data_keys` must be in {DataKey}. Got {data_keys}.")
@@ -199,7 +199,6 @@ class AugmentationSequential(ImageSequential):
         Number of input tensors must align with the number of``data_keys``. If ``data_keys`` is not set, use
         ``self.data_keys`` by default.
         """
-        _data_keys: List[DataKey]
         if data_keys is None:
             _data_keys = self.data_keys
         else:
@@ -321,7 +320,6 @@ class AugmentationSequential(ImageSequential):
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
     ) -> Union[Tensor, Tuple[Tensor, Optional[Tensor]], List[Tensor], Tuple[List[Tensor], Optional[Tensor]]]:
         """Compute multiple tensors simultaneously according to ``self.data_keys``."""
-        _data_keys: List[DataKey]
         if data_keys is None:
             _data_keys = self.data_keys
         else:
