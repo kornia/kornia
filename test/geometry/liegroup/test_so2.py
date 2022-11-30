@@ -158,5 +158,14 @@ class TestSo2(BaseTester):
     def test_inverse(self, device, batch_size, cdtype):
         z = self._make_rand_data(device, cdtype, (batch_size,))
         s = So2(z)
-        self.assert_close(s.inverse().inverse().z.real, z.real)
-        self.assert_close(s.inverse().inverse().z.imag, z.imag)
+        s_in_in = s.inverse().inverse()
+        self.assert_close(s_in_in.z.real, z.real)
+        self.assert_close(s_in_in.z.imag, z.imag)
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_random(self, device, dtype, batch_size):
+        s = So2.random(batch_size=batch_size, device=device, dtype=dtype)
+        s_in_s = s.inverse() * s
+        i = So2.identity(batch_size=batch_size, device=device, dtype=dtype)
+        self.assert_close(s_in_s.z.real, i.z.real)
+        self.assert_close(s_in_s.z.imag, i.z.imag)

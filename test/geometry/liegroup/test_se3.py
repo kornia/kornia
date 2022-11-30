@@ -221,3 +221,11 @@ class TestSe3(BaseTester):
         y = Se3.exp(y_data)
         self.assert_close(x.inverse().adjoint(), x.adjoint().inverse())
         self.assert_close((x * y).adjoint(), x.adjoint() @ y.adjoint())
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_random(self, device, dtype, batch_size):
+        s = Se3.random(batch_size=batch_size, device=device, dtype=dtype)
+        s_in_s = s.inverse() * s
+        i = Se3.identity(batch_size=batch_size, device=device, dtype=dtype)
+        self.assert_close(s_in_s.so3.q.data, i.so3.q.data)
+        self.assert_close(s_in_s.t, i.t)
