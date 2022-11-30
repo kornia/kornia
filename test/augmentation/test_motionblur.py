@@ -7,6 +7,7 @@ from kornia.filters import motion_blur, motion_blur3d
 from kornia.testing import assert_close, tensor_to_gradcheck_var
 
 
+# TODO: add kornia.testing.BaseTester
 class TestRandomMotionBlur:
 
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
@@ -77,6 +78,7 @@ class TestRandomMotionBlur:
         )
 
 
+# TODO: add kornia.testing.BaseTester
 class TestRandomMotionBlur3D:
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
@@ -128,7 +130,7 @@ class TestRandomMotionBlur3D:
 
     def test_gradcheck(self, device, dtype):
         torch.manual_seed(0)  # for random reproductibility
-        inp = torch.rand((1, 3, 11, 7)).to(device)
+        inp = torch.rand((1, 3, 6, 7), device=device, dtype=dtype)
         inp = tensor_to_gradcheck_var(inp)  # to var
         params = {
             'batch_prob': torch.tensor([True]),

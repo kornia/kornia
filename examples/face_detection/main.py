@@ -51,7 +51,7 @@ def my_app(args):
 
     with torch.no_grad():
         dets = face_detection(img)
-    dets = [FaceDetectorResult(o) for o in dets]
+    dets = [FaceDetectorResult(o) for o in dets[0]]
 
     # show image
 
