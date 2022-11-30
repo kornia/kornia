@@ -13,6 +13,7 @@ __all__ = ["SequentialBase", "ParamItem"]
 
 class ParamItem(NamedTuple):
     name: str
+    # TODO: add type List['ParamItem'] when mypy > 0.991 be available (see python/mypy#14200)
     data: Optional[Union[Dict[str, Tensor], list]]
 
 
