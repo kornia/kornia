@@ -71,7 +71,9 @@ class So2(Module):
         elif isinstance(right, Tensor):
             # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
             check_so2_t_shape(right)
-            out = self.matrix() @ right
+            x = right[..., 0]
+            y = right[..., 1]
+            out = stack((self.z.real * x - self.z.imag * y, self.z.imag * x + self.z.real * y), -1)
         else:
             raise TypeError(f"Not So2 or Tensor type. Got: {type(right)}")
         return out
