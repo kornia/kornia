@@ -47,10 +47,15 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
         self.flags = dict(mean=mean, std=std)
 
     def generate_parameters(self, shape: torch.Size) -> Dict[str, Tensor]:
-        noise = torch.randn(shape)
-        return dict(noise=noise)
+        return {}
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        return input + params["noise"].to(input.device) * flags["std"] + flags["mean"]
+        noise = torch.randn_like(input)  # Generating on GPU is fastest with `torch.randn_like(...)`
+        if flags["std"] != 1.0:  # `if` is cheaper than multiplication
+            noise *= flags["std"]
+        if flags["mean"] != 0.0:  # `if` is cheaper than addition
+            noise += flags["mean"]
+
+        return input + noise
