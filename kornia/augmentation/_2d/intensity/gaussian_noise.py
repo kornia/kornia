@@ -6,6 +6,15 @@ from torch import Tensor
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 
 
+def _randn_like(input: Tensor, mean: float, std: float) -> Tensor:
+    x = torch.randn_like(input)  # Generating on GPU is fastest with `torch.randn_like(...)`
+    if std != 1.0:  # `if` is cheaper than multiplication
+        x *= std
+    if mean != 0.0:  # `if` is cheaper than addition
+        x += mean
+    return x
+
+
 class RandomGaussianNoise(IntensityAugmentationBase2D):
     r"""Add gaussian noise to a batch of multi-dimensional images.
 
@@ -49,13 +58,21 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
     def generate_parameters(self, shape: torch.Size) -> Dict[str, Tensor]:
         return {}
 
+    @staticmethod
+    def randomize(input: Tensor, flags: Dict[str, Any]) -> Tensor:
+        additive_noise = torch.randn_like(input)  # Generating on GPU is fastest with `torch.randn_like(...)`
+        if flags["std"] != 1.0:  # `if` is cheaper than multiplication
+            additive_noise *= flags["std"]
+        if flags["mean"] != 0.0:  # `if` is cheaper than addition
+            additive_noise += flags["mean"]
+        return additive_noise
+
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        noise = torch.randn_like(input)  # Generating on GPU is fastest with `torch.randn_like(...)`
-        if flags["std"] != 1.0:  # `if` is cheaper than multiplication
-            noise *= flags["std"]
-        if flags["mean"] != 0.0:  # `if` is cheaper than addition
-            noise += flags["mean"]
-
-        return input + noise
+        if "gaussian_noise" in self._params:
+            gaussian_noise = self._params["gaussian_noise"]
+        else:
+            gaussian_noise = _randn_like(input, mean=flags["mean"], std=flags["std"])
+            self._params["gaussian_noise"] = gaussian_noise
+        return input + gaussian_noise
