@@ -2,10 +2,10 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se2.py
 from typing import Optional
 
-from kornia.core import Module, Parameter, Tensor, concatenate, pad, stack, tensor
+from kornia.core import Module, Parameter, Tensor, concatenate, pad, stack, tensor, rand
 from kornia.geometry.liegroup._utils import check_se2_r_t_shape, check_se2_t_shape, check_v_shape
 from kornia.geometry.liegroup.so2 import So2
-from kornia.testing import KORNIA_CHECK_TYPE
+from kornia.testing import KORNIA_CHECK_TYPE, KORNIA_CHECK
 
 
 class Se2(Module):
@@ -67,8 +67,9 @@ class Se2(Module):
         """
         if isinstance(right, Se2):
             KORNIA_CHECK_TYPE(right, Se2)
-            r = self.so2 * right.so2
-            t = self.t + self.so2 * right.t
+            so2 = self.so2
+            r = so2 * right.so2
+            t = self.t + so2 * right.t
             return Se2(r, t)
         elif isinstance(right, Tensor):
             KORNIA_CHECK_TYPE(right, Tensor)
@@ -207,3 +208,23 @@ class Se2(Module):
         """
         r_inv = self.r.inverse()
         return Se2(r_inv, r_inv * (-1 * self.t))
+
+    @classmethod
+    def random(cls, batch_size: Optional[int] = None, device=None, dtype=None) -> 'Se3':
+        """Create a Se2 group representing a random transformation.
+
+        Args:
+            batch_size: the batch size of the underlying data.
+
+        Example:
+            >>> s = Se2.random()
+            >>> s = Se2.random(batch_size=3)
+        """
+        r = So2.random(batch_size, device, dtype)
+        shape: Tuple[int, ...]
+        if batch_size is None:
+            shape = (2,)
+        else:
+            KORNIA_CHECK(batch_size >= 1, msg="batch_size must be positive")
+            shape = (batch_size, 2)
+        return cls(r, rand(shape, device=device, dtype=dtype))
