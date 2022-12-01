@@ -183,7 +183,7 @@ class ScaleSpaceDetector(Module):
             else:
                 raise TypeError(
                     'Expected the scale pyramid module to have `n_levels` as a Tensor or int.'
-                    f'Gotcha {type(self.scale_pyr.n_leve)}'
+                    f'Gotcha {type(self.scale_pyr.n_levels)}'
                 )
 
             max_coords_best = _scale_index_to_scale(max_coords_best, sigmas_oct, num_levels)
