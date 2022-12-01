@@ -213,7 +213,12 @@ class InputApplyInverse(ApplyInverseImpl):
             temp = module.apply_inverse_func
             module.apply_inverse_func = InputApplyInverse
             if isinstance(module, kornia.augmentation.AugmentationSequential):
-                input = cast(Tensor, module.inverse(input, params=None if param is None else cast(List, param.data)))
+                input = cast(
+                    Tensor,
+                    module.inverse(
+                        input, params=None if param is None else cast(List, param.data), data_keys=[cls.data_key]
+                    ),
+                )
             else:
                 input = module.inverse(
                     input, params=None if param is None else cast(List, param.data), extra_args=extra_args
@@ -275,7 +280,14 @@ class MaskApplyInverse(ApplyInverseImpl):
             temp = module.apply_inverse_func
             module.apply_inverse_func = MaskApplyInverse
             geo_param: List[ParamItem] = _get_geometric_only_param(module, _param)
-            input = cls.make_input_only_sequential(module)(input, label=None, params=geo_param)
+            if isinstance(module, kornia.augmentation.AugmentationSequential):
+                input = cls.make_input_only_sequential(module)(
+                    input, label=None, params=geo_param, data_keys=[cls.data_key]
+                )
+            else:
+                input = cls.make_input_only_sequential(module)(
+                    input, label=None, params=geo_param, extra_args=extra_args
+                )
             module.apply_inverse_func = temp
         else:
             pass  # No need to update anything
@@ -299,7 +311,17 @@ class MaskApplyInverse(ApplyInverseImpl):
         elif isinstance(module, kornia.augmentation.ImageSequential):
             temp = module.apply_inverse_func
             module.apply_inverse_func = MaskApplyInverse
-            input = module.inverse(input, params=None if param is None else cast(List, param.data))
+            if isinstance(module, kornia.augmentation.AugmentationSequential):
+                input = cast(
+                    Tensor,
+                    module.inverse(
+                        input, params=None if param is None else cast(List, param.data), data_keys=[cls.data_key]
+                    ),
+                )
+            else:
+                input = module.inverse(
+                    input, params=None if param is None else cast(List, param.data), extra_args=extra_args
+                )
             module.apply_inverse_func = temp
         return input
 
