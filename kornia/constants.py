@@ -1,22 +1,27 @@
 from enum import Enum, EnumMeta
-from typing import Any, Iterator, Union
+from typing import Iterator, Type, TypeVar, Union
 
 import torch
 
 from kornia.core import Tensor
 
-__all__ = ['pi', 'DType', 'Resample', 'BorderType', 'SamplePadding']
+__all__ = ['pi', 'DType', 'Resample', 'BorderType', 'SamplePadding', 'TKEnum']
 
 pi = torch.tensor(3.14159265358979323846)
 
 
-class EnumMetaFlags(EnumMeta):
+T = TypeVar('T', bound=Enum)
+TKEnum = Union[str, int, T]
+
+
+class _KORNIA_EnumMeta(EnumMeta):
     def __iter__(self) -> Iterator[Enum]:  # type: ignore[override]
         return super().__iter__()
 
-    def __contains__(self, other: Union[str, int, Enum]) -> bool:  # type: ignore[override]
+    def __contains__(self, other: TKEnum[Enum]) -> bool:  # type: ignore[override]
         if isinstance(other, str):
-            return any(val.name == other.upper() for val in self)
+            return any(val.name.upper() == other.upper() for val in self)
+
         elif isinstance(other, int):
             return any(val.value == other for val in self)
 
@@ -26,38 +31,53 @@ class EnumMetaFlags(EnumMeta):
         return ' | '.join(f"{self.__name__}.{val.name}" for val in self)
 
 
-class ConstantBase(Enum, metaclass=EnumMetaFlags):
-    @classmethod
-    def get(cls, value: Union[str, int, Any]) -> Any:
-        if isinstance(value, str):
-            return cls[value.upper()]
-        if isinstance(value, int):
-            return cls(value)
-        if isinstance(value, cls):
-            return value
-        raise TypeError()
+def _get(cls: Type[T], value: TKEnum[T]) -> T:
+    if isinstance(value, str):
+        return cls[value.upper()]
+
+    elif isinstance(value, int):
+        return cls(value)
+
+    elif isinstance(value, cls):
+        return value
+
+    raise TypeError(
+        f'The `.get` method from `{cls}` expects a value with type `str`, `int` or `{cls}`. Gotcha {type(value)}'
+    )
 
 
-class Resample(ConstantBase):
+class Resample(Enum, metaclass=_KORNIA_EnumMeta):
     NEAREST = 0
     BILINEAR = 1
     BICUBIC = 2
 
+    @classmethod
+    def get(cls, value: TKEnum['Resample']) -> 'Resample':
+        return _get(cls, value)
 
-class BorderType(ConstantBase):
+
+class BorderType(Enum, metaclass=_KORNIA_EnumMeta):
     CONSTANT = 0
     REFLECT = 1
     REPLICATE = 2
     CIRCULAR = 3
 
+    @classmethod
+    def get(cls, value: TKEnum['BorderType']) -> 'BorderType':
+        return _get(cls, value)
 
-class SamplePadding(ConstantBase):
+
+class SamplePadding(Enum, metaclass=_KORNIA_EnumMeta):
     ZEROS = 0
     BORDER = 1
     REFLECTION = 2
 
+    @classmethod
+    def get(cls, value: TKEnum['SamplePadding']) -> 'SamplePadding':
+        return _get(cls, value)
 
-class DType(ConstantBase):
+
+class DType(Enum, metaclass=_KORNIA_EnumMeta):
     INT64 = 0
     FLOAT16 = 1
     FLOAT32 = 2
@@ -65,38 +85,45 @@ class DType(ConstantBase):
 
     @classmethod
     def get(cls, value: Union[str, int, torch.dtype, Tensor, 'DType']) -> 'DType':
-        if isinstance(value, torch.dtype):
-            value = str(value).upper()  # Convert to str
-        if isinstance(value, Tensor):
-            value = int(value.item())  # Convert to int
 
-        if isinstance(value, str):
-            if value.upper().startswith("TORCH."):
-                return cls[value.upper()[6:]]
+        if isinstance(value, torch.dtype):
+            return cls[str(value).upper()[6:]]
+
+        elif isinstance(value, Tensor):
+            return cls(int(value.item()))
+
+        elif isinstance(value, str):
             return cls[value.upper()]
 
-        if isinstance(value, int):
+        elif isinstance(value, int):
             return cls(value)
-        if isinstance(value, cls):
+
+        elif isinstance(value, cls):
             return value
-        raise TypeError(f"Invalid identifier {value}.")
+
+        raise TypeError(f"Invalid identifier {value} with type {type(value)}.")
 
     @classmethod
-    def to_torch(cls, value: Union[str, int, 'DType']) -> torch.dtype:
+    def to_torch(cls, value: TKEnum['DType']) -> torch.dtype:
         data = cls.get(value=value)
+
         if data == DType.INT64:
             return torch.long
-        if data == DType.FLOAT16:
+
+        elif data == DType.FLOAT16:
             return torch.float16
-        if data == DType.FLOAT32:
+
+        elif data == DType.FLOAT32:
             return torch.float32
-        if data == DType.FLOAT64:
+
+        elif data == DType.FLOAT64:
             return torch.float64
+
         raise ValueError()
 
 
 # TODO: (low-priority) add INPUT3D, MASK3D, BBOX3D, LAFs etc.
-class DataKey(ConstantBase):
+class DataKey(Enum, metaclass=_KORNIA_EnumMeta):
     INPUT = 0
     MASK = 1
     BBOX = 2
@@ -104,3 +131,7 @@ class DataKey(ConstantBase):
     BBOX_XYWH = 4
     KEYPOINTS = 5
     CLASS = 6
+
+    @classmethod
+    def get(cls, value: TKEnum['DataKey']) -> 'DataKey':
+        return _get(cls, value)
