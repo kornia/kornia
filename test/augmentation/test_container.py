@@ -357,6 +357,18 @@ class TestAugmentationSequential:
         out = aug(input, input)
         assert torch.all(out[1][out[0] == fill_value] == 0.0)
 
+    def test_resize(self, device, dtype):
+        size = 50
+        input = torch.randn(3, 3, 100, 100, device=device, dtype=dtype)
+        mask = torch.randn(3, 1, 100, 100, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.Resize((size, size), p=1.0), data_keys=["input", "mask"])
+
+        reproducibility_test((input, mask), aug)
+
+        out = aug(input, mask)
+        assert out[0].shape == (3, 3, size, size)
+        assert out[1].shape == (3, 1, size, size)
+
     def test_random_crops(self, device, dtype):
         torch.manual_seed(233)
         input = torch.randn(3, 3, 3, 3, device=device, dtype=dtype)
