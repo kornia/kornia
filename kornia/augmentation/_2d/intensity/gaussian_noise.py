@@ -6,6 +6,15 @@ from torch import Tensor
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 
 
+def _randn_like(input: Tensor, mean: float, std: float) -> Tensor:
+    x = torch.randn_like(input)  # Generating on GPU is fastest with `torch.randn_like(...)`
+    if std != 1.0:  # `if` is cheaper than multiplication
+        x *= std
+    if mean != 0.0:  # `if` is cheaper than addition
+        x += mean
+    return x
+
+
 class RandomGaussianNoise(IntensityAugmentationBase2D):
     r"""Add gaussian noise to a batch of multi-dimensional images.
 
@@ -47,10 +56,14 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
         self.flags = dict(mean=mean, std=std)
 
     def generate_parameters(self, shape: torch.Size) -> Dict[str, Tensor]:
-        noise = torch.randn(shape)
-        return dict(noise=noise)
+        return {}
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        return input + params["noise"].to(input.device) * flags["std"] + flags["mean"]
+        if "gaussian_noise" in params:
+            gaussian_noise = params["gaussian_noise"]
+        else:
+            gaussian_noise = _randn_like(input, mean=flags["mean"], std=flags["std"])
+            self._params["gaussian_noise"] = gaussian_noise
+        return input + gaussian_noise
