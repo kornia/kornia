@@ -196,8 +196,11 @@ def _adapted_rsampling(
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
     same_on_batch is set to False.
     """
+    if isinstance(shape, tuple):
+        shape = torch.Size(shape)
+
     if same_on_batch:
-        return dist.rsample((1, *shape[1:])).repeat(shape[0], *[1] * (len(shape) - 1))
+        return dist.rsample(torch.Size((1, *shape[1:]))).repeat(shape[0], *[1] * (len(shape) - 1))
     return dist.rsample(shape)
 
 
@@ -209,8 +212,11 @@ def _adapted_sampling(
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
     same_on_batch is set to False.
     """
+    if isinstance(shape, tuple):
+        shape = torch.Size(shape)
+
     if same_on_batch:
-        return dist.sample((1, *shape[1:])).repeat(shape[0], *[1] * (len(shape) - 1))
+        return dist.sample(torch.Size((1, *shape[1:]))).repeat(shape[0], *[1] * (len(shape) - 1))
     return dist.sample(shape)
 
 

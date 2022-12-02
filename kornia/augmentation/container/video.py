@@ -244,7 +244,7 @@ class VideoSequential(ImageSequential):
         label: Optional[Tensor] = None,
         params: Optional[List[ParamItem]] = None,
         extra_args: Dict[str, Any] = {},
-    ) -> Union[Tensor, Tuple[Tensor, Tensor]]:
+    ) -> Union[Tensor, Tuple[Tensor, Optional[Tensor]]]:
         """Define the video computation performed."""
         if len(input.shape) != 5:
             raise AssertionError(f"Input must be a 5-dim tensor. Got {input.shape}.")

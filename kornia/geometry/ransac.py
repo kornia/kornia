@@ -1,6 +1,6 @@
 """Module containing RANSAC modules."""
 import math
-from typing import Optional, Tuple
+from typing import Callable, Optional, Tuple
 
 import torch
 
@@ -54,23 +54,28 @@ class RANSAC(Module):
         self.confidence = confidence
         self.max_lo_iters = max_lo_iters
         self.model_type = model_type
+
+        self.error_fn: Callable[..., Tensor]
+        self.minimal_solver: Callable[..., Tensor]
+        self.polisher_solver: Callable[..., Tensor]
+
         if model_type == 'homography':
             self.error_fn = oneway_transfer_error
             self.minimal_solver = find_homography_dlt
             self.polisher_solver = find_homography_dlt_iterated
             self.minimal_sample_size = 4
         elif model_type == 'homography_from_linesegments':
-            self.error_fn = line_segment_transfer_error_one_way  # type: ignore
-            self.minimal_solver = find_homography_lines_dlt  # type: ignore
-            self.polisher_solver = find_homography_lines_dlt_iterated  # type: ignore
+            self.error_fn = line_segment_transfer_error_one_way
+            self.minimal_solver = find_homography_lines_dlt
+            self.polisher_solver = find_homography_lines_dlt_iterated
             self.minimal_sample_size = 4
         elif model_type == 'fundamental':
-            self.error_fn = symmetrical_epipolar_distance  # type: ignore
-            self.minimal_solver = find_fundamental  # type: ignore
+            self.error_fn = symmetrical_epipolar_distance
+            self.minimal_solver = find_fundamental
             self.minimal_sample_size = 8
             # ToDo: implement 7pt solver instead of 8pt minimal_solver
             # https://github.com/opencv/opencv/blob/master/modules/calib3d/src/fundam.cpp#L498
-            self.polisher_solver = find_fundamental  # type: ignore
+            self.polisher_solver = find_fundamental
         else:
             raise NotImplementedError(f"{model_type} is unknown. Try one of {self.supported_models}")
 
