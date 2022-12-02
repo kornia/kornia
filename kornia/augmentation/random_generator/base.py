@@ -1,10 +1,9 @@
 from typing import Callable, Dict, Optional
 
 import torch
-import torch.nn as nn
 from torch.distributions import Distribution
 
-from kornia.core import Device, Tensor
+from kornia.core import Device, Module, Tensor
 
 
 class _PostInitInjectionMetaClass(type):
@@ -16,7 +15,7 @@ class _PostInitInjectionMetaClass(type):
         return obj
 
 
-class RandomGeneratorBase(nn.Module, metaclass=_PostInitInjectionMetaClass):
+class RandomGeneratorBase(Module, metaclass=_PostInitInjectionMetaClass):
     """Base class for generating random augmentation parameters."""
 
     device: Optional[Device] = None

@@ -26,6 +26,7 @@ def _get_nms_kernel3d(kd: int, ky: int, kx: int) -> Tensor:
 
 class NonMaximaSuppression2d(Module):
     r"""Apply non maxima suppression to filter."""
+    kernel: Tensor
 
     def __init__(self, kernel_size: Tuple[int, int]):
         super().__init__()
@@ -55,7 +56,7 @@ class NonMaximaSuppression2d(Module):
         B, CH, HP, WP = x_padded.size()
 
         max_non_center = (
-            F.conv2d(x_padded.view(B * CH, 1, HP, WP), self.kernel.to(x.device, x.dtype), stride=1)  # type: ignore
+            F.conv2d(x_padded.view(B * CH, 1, HP, WP), self.kernel.to(x.device, x.dtype), stride=1)
             .view(B, CH, -1, H, W)
             .max(dim=2)[0]
         )

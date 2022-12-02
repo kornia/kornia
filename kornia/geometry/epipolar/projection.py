@@ -49,7 +49,7 @@ def random_intrinsics(low: Union[float, torch.Tensor], high: Union[float, torch.
         the random camera matrix with the shape of :math:`(1, 3, 3)`.
     """
     sampler = torch.distributions.Uniform(low, high)
-    fx, fy, cx, cy = (sampler.sample((1,)) for _ in range(4))
+    fx, fy, cx, cy = (sampler.sample(torch.Size((1,))) for _ in range(4))
     zeros, ones = torch.zeros_like(fx), torch.ones_like(fx)
     camera_matrix: torch.Tensor = torch.cat([fx, zeros, cx, zeros, fy, cy, zeros, zeros, ones])
     return camera_matrix.view(1, 3, 3)

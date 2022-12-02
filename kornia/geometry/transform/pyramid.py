@@ -166,7 +166,7 @@ class ScalePyramid(Module):
             ksize += 1
         return ksize
 
-    def get_first_level(self, input):
+    def get_first_level(self, input: Tensor) -> Tuple[Tensor, float, float]:
         pixel_distance = 1.0
         cur_sigma = 0.5
         # Same as in OpenCV up to interpolation difference
@@ -176,6 +176,7 @@ class ScalePyramid(Module):
             cur_sigma *= 2.0
         else:
             x = input
+
         if self.init_sigma > cur_sigma:
             sigma = max(math.sqrt(self.init_sigma**2 - cur_sigma**2), 0.01)
             ksize = self.get_kernel_size(sigma)
@@ -223,9 +224,10 @@ class ScalePyramid(Module):
             sigmas.append(cur_sigma * torch.ones(bs, self.n_levels + self.extra_levels).to(x.device))
             pixel_dists.append(pixel_distance * torch.ones(bs, self.n_levels + self.extra_levels).to(x.device))
             oct_idx += 1
-        for i in range(len(pyr)):
-            pyr[i] = stack(pyr[i], 2)  # type: ignore
-        return pyr, sigmas, pixel_dists
+
+        output_pyr = [stack(i, 2) for i in pyr]
+
+        return output_pyr, sigmas, pixel_dists
 
 
 def pyrdown(input: Tensor, border_type: str = 'reflect', align_corners: bool = False, factor: float = 2.0) -> Tensor:
