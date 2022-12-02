@@ -123,13 +123,13 @@ class RandomCutMixV2(MixAugmentationBaseV2):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], maybe_flags: Optional[Dict[str, Any]] = None
     ) -> Tensor:
-        height, width = input.size(2), input.size(3)
+        height, width = input.shape[2], input.shape[3]
 
         out_inputs = input.clone()
         for pair, crop in zip(params["mix_pairs"], params["crop_src"]):
             input_permute = input.index_select(dim=0, index=pair.to(input.device))
             # compute mask to match input shape
-            mask = bbox_to_mask(crop, width, height).bool().unsqueeze(dim=1).repeat(1, input.size(1), 1, 1)
+            mask = bbox_to_mask(crop, width, height).bool().unsqueeze(dim=1).repeat(1, input.shape[1], 1, 1)
             out_inputs[mask] = input_permute[mask]
 
         return out_inputs

@@ -18,7 +18,7 @@ def eye_like(n: int, input: torch.Tensor) -> torch.Tensor:
         raise AssertionError(input.shape)
 
     identity = torch.eye(n, device=input.device, dtype=input.dtype)
-    return identity[None].repeat(input.shape[0], 1, 1)
+    return identity[None].expand(input.shape[0], n, n)
 
 
 def vec_like(n, tensor):
@@ -38,4 +38,4 @@ def vec_like(n, tensor):
         raise AssertionError(tensor.shape)
 
     vec = torch.zeros(n, 1, device=tensor.device, dtype=tensor.dtype)
-    return vec[None].repeat(tensor.shape[0], 1, 1)
+    return vec[None].expand(tensor.shape[0], n, 1)

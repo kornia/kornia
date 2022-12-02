@@ -50,7 +50,7 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
         h: int = int(params["forward_input_shape"][-2])
         flip_mat: Tensor = torch.tensor([[1, 0, 0], [0, -1, h - 1], [0, 0, 1]], device=input.device, dtype=input.dtype)
 
-        return flip_mat.repeat(input.size(0), 1, 1)
+        return flip_mat.expand(input.shape[0], 3, 3)
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
