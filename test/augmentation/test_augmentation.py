@@ -3628,6 +3628,7 @@ class TestResize:
         aug = Resize(size=(4, 5))
         out = aug(img)
         assert out.shape == (1, 1, 4, 5)
+        assert aug.inverse(out).shape == (1, 1, 4, 6)
 
 
 class TestSmallestMaxSize:

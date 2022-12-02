@@ -85,7 +85,7 @@ class Resize(GeometricAugmentationBase2D):
             raise TypeError(f'Expected the transform be a Tensor. Gotcha {type(transform)}')
 
         return crop_by_transform_mat(
-            input, transform[:, :2, :], size, flags["resample"], flags["padding_mode"], flags["align_corners"]
+            input, transform[:, :2, :], size, flags["resample"].name.lower(), "zeros", flags["align_corners"]
         )
 
 
