@@ -40,7 +40,7 @@ runs:
 
     - name: Install Kornia dev
       shell: bash -l {0}
-      run: pip install -e .[dev,x]
+      run: pip install .[dev,x]
 
     - name: Environment
       shell: bash -l {0}
