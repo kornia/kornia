@@ -150,19 +150,19 @@ class TestBoxes2D:
         boxes_vertices = box.to_tensor(mode='vertices')
         boxes_vertices_plus = box.to_tensor(mode='vertices_plus')
 
-        assert boxes_xyxy.shape == expected_box_xyxy.shape  # type: ignore
+        assert boxes_xyxy.shape == expected_box_xyxy.shape
         assert_allclose(boxes_xyxy, expected_box_xyxy)
 
-        assert boxes_xyxy_plus.shape == expected_box_xyxy_plus.shape  # type: ignore
+        assert boxes_xyxy_plus.shape == expected_box_xyxy_plus.shape
         assert_allclose(boxes_xyxy_plus, expected_box_xyxy_plus)
 
-        assert boxes_xywh.shape == expected_box_xywh.shape  # type: ignore
+        assert boxes_xywh.shape == expected_box_xywh.shape
         assert_allclose(boxes_xywh, expected_box_xywh)
 
-        assert boxes_vertices.shape == expected_vertices.shape  # type: ignore
+        assert boxes_vertices.shape == expected_vertices.shape
         assert_allclose(boxes_vertices, expected_vertices)
 
-        assert boxes_vertices_plus.shape == expected_vertices_plus.shape  # type: ignore
+        assert boxes_vertices_plus.shape == expected_vertices_plus.shape
         assert_allclose(boxes_vertices_plus, expected_vertices_plus)
 
     @pytest.mark.parametrize('mode', ['xyxy', 'xyxy_plus', 'xywh', 'vertices', 'vertices_plus'])

@@ -325,7 +325,7 @@ def crop_by_indices(
         == len(y2.unique(sorted=False))
         == 1
     ):
-        out = input_tensor[..., y1[0] : y2[0], x1[0] : x2[0]]  # type: ignore[misc]
+        out = input_tensor[..., int(y1[0]) : int(y2[0]), int(x1[0]) : int(x2[0])]
         if size is not None and out.shape[-2:] != size:
             return resize(
                 out, size, interpolation=interpolation, align_corners=align_corners, side="short", antialias=antialias
@@ -337,7 +337,7 @@ def crop_by_indices(
     out = torch.empty(B, C, *size, device=input_tensor.device, dtype=input_tensor.dtype)
     # Find out the cropped shapes that need to be resized.
     for i, _ in enumerate(out):
-        _out = input_tensor[i : i + 1, :, y1[i] : y2[i], x1[i] : x2[i]]  # type: ignore[misc]
+        _out = input_tensor[i : i + 1, :, int(y1[i]) : int(y2[i]), int(x1[i]) : int(x2[i])]
         if _out.shape[-2:] != size:
             if shape_compensation == "resize":
                 out[i] = resize(

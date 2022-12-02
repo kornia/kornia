@@ -5,7 +5,7 @@ import torch
 from kornia.augmentation.base import _BasicAugmentationBase
 from kornia.augmentation.utils import _transform_input, _transform_output_shape, _validate_input_dtype
 from kornia.constants import DataKey, DType
-from kornia.core import Tensor
+from kornia.core import Tensor, tensor
 from kornia.geometry.boxes import Boxes
 from kornia.testing import KORNIA_UNWRAP
 
@@ -130,7 +130,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
     def apply_transform_class(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         raise NotImplementedError
 
-    def forward(  # type: ignore
+    def forward(  # type: ignore[override]
         self,
         *input: Tensor,
         params: Optional[Dict[str, Tensor]] = None,
@@ -147,11 +147,11 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             in_tensor: Tensor = input[in_tensor_idx]
             in_tensor = self.transform_tensor(in_tensor)
             self._params = self.forward_parameters(in_tensor.shape)
-            self._params.update({"dtype": torch.tensor(DType.get(in_tensor.dtype).value)})
+            self._params.update({"dtype": tensor(DType.get(in_tensor.dtype).value)})
         else:
             self._params = params
 
-        outputs = []
+        outputs: List[Tensor] = []
         for dcate, _input in zip(keys, input):
             output: Tensor
             if dcate == DataKey.INPUT:

@@ -95,7 +95,7 @@ class ImageSequential(SequentialBase):
     ) -> None:
         super().__init__(*args, same_on_batch=same_on_batch, keepdim=keepdim)
 
-        self.random_apply: Union[Tuple[int, int], bool] = self._read_random_apply(random_apply, len(args))
+        self.random_apply = self._read_random_apply(random_apply, len(args))
         if random_apply_weights is not None and len(random_apply_weights) != len(self):
             raise ValueError(
                 "The length of `random_apply_weights` must be as same as the number of operations."
@@ -142,7 +142,11 @@ class ImageSequential(SequentialBase):
         Note:
             Mix augmentations (e.g. RandomMixUp) will be only applied once even in a random forward.
         """
-        num_samples = int(torch.randint(*self.random_apply, (1,)).item())  # type: ignore
+        if isinstance(self.random_apply, tuple):
+            num_samples = int(torch.randint(*self.random_apply, (1,)).item())
+        else:
+            raise TypeError(f'random apply should be a tuple. Gotcha {type(self.random_apply)}')
+
         multinomial_weights = self.random_apply_weights.clone()
         # Mix augmentation can only be applied once per forward
         mix_indices = self.get_mix_augmentation_indices(self.named_children())
@@ -228,10 +232,12 @@ class ImageSequential(SequentialBase):
                 return True
         return False
 
-    def __packup_output__(self, output: Tensor, label: Optional[Tensor] = None) -> Union[Tensor, Tuple[Tensor, Tensor]]:
+    def __packup_output__(
+        self, output: Tensor, label: Optional[Tensor] = None
+    ) -> Union[Tensor, Tuple[Tensor, Optional[Tensor]]]:
         if self.return_label:
-            return output, label  # type: ignore
             # Implicitly indicating the label cannot be optional since there is a mix aug
+            return output, label
         return output
 
     def identity_matrix(self, input) -> Tensor:
@@ -260,9 +266,12 @@ class ImageSequential(SequentialBase):
         # Define as 1 for broadcasting
         res_mat: Optional[Tensor] = None
         for (_, module), param in zip(named_modules, params if params is not None else []):
-            if isinstance(module, (_AugmentationBase,)) and not isinstance(module, MixAugmentationBaseV2):
-                pdata = cast(Dict[str, Tensor], param.data)
-                to_apply = pdata['batch_prob']
+            if (
+                isinstance(module, (_AugmentationBase,))
+                and not isinstance(module, MixAugmentationBaseV2)
+                and isinstance(param.data, dict)
+            ):
+                to_apply = param.data['batch_prob']
                 ori_shape = input.shape
                 try:
                     input = module.transform_tensor(input)
@@ -273,7 +282,7 @@ class ImageSequential(SequentialBase):
                 if recompute:
                     mat: Tensor = self.identity_matrix(input)
                     flags = override_parameters(module.flags, extra_args, in_place=False)
-                    mat[to_apply] = module.compute_transformation(input[to_apply], param.data, flags)  # type: ignore
+                    mat[to_apply] = module.compute_transformation(input[to_apply], param.data, flags)
                 else:
                     mat = as_tensor(module._transform_matrix, device=input.device, dtype=input.dtype)
                 res_mat = mat if res_mat is None else mat @ res_mat
@@ -333,17 +342,16 @@ class ImageSequential(SequentialBase):
             params = self._params
 
         for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
-            maybe_param: Optional[ParamItem] = None
             if isinstance(module, (_AugmentationBase, ImageSequential)):
-                maybe_param = params[name] if name in params else param  # type: ignore
+                _mb: List[ParamItem] = [p for p in params if name in p]
+                maybe_param = _mb if len(_mb) > 0 else [param]
 
             if isinstance(module, IntensityAugmentationBase2D):
                 pass  # Do nothing
             elif isinstance(module, ImageSequential) and module.is_intensity_only():
                 pass  # Do nothing
-            elif isinstance(module, ImageSequential) and maybe_param is not None:
-                param_data = cast(List[ParamItem], cast(ParamItem, maybe_param).data)
-                input = module.inverse(input, param_data, extra_args=extra_args)
+            elif isinstance(module, ImageSequential) and isinstance(maybe_param, ParamItem):
+                input = module.inverse(input, maybe_param, extra_args=extra_args)
             elif isinstance(module, (GeometricAugmentationBase2D,)):
                 input = self.apply_inverse_func.inverse(input, module, param, extra_args=extra_args)
             else:
@@ -358,7 +366,7 @@ class ImageSequential(SequentialBase):
         label: Optional[Tensor] = None,
         params: Optional[List[ParamItem]] = None,
         extra_args: Dict[str, Any] = {},
-    ) -> Union[Tensor, Tuple[Tensor, Tensor]]:
+    ) -> Union[Tensor, Tuple[Tensor, Optional[Tensor]]]:
         self.clear_state()
         if params is None:
             inp = input

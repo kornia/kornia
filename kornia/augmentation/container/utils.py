@@ -87,10 +87,11 @@ class ApplyInverseImpl(ApplyInverseInterface):
         else:
             mat = cls._get_transformation(input, module, param, extra_args=extra_args)
         mat = as_tensor(mat, device=input.device, dtype=input.dtype)
+
         to_apply = None
-        if isinstance(module, _AugmentationBase):
-            to_apply = param.data['batch_prob']  # type: ignore
-        if isinstance(module, kornia.augmentation.ImageSequential):
+        if isinstance(module, _AugmentationBase) and isinstance(param.data, dict):
+            to_apply = param.data['batch_prob']
+        elif isinstance(module, kornia.augmentation.ImageSequential):
             to_apply = torch.ones(input.shape[0], device=input.device, dtype=input.dtype).bool()
 
         # If any inputs need to be transformed.
@@ -334,9 +335,8 @@ class BBoxApplyInverse(ApplyInverseImpl):
 
     @classmethod
     def _get_padding_size(cls, module: Module, param: Optional[ParamItem]) -> Optional[Tensor]:
-        if isinstance(module, RandomCrop):
-            _param = cast(Dict[str, Tensor], param.data)  # type: ignore
-            return _param.get("padding_size")
+        if isinstance(module, RandomCrop) and param is not None and isinstance(param.data, dict):
+            return param.data["padding_size"]
         return None
 
     @classmethod

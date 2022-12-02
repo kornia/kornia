@@ -2,11 +2,10 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict
 
-import torch.nn as nn
-
+from kornia.core import Module
 from kornia.metrics.average_meter import AverageMeter
 
-# import yaml  # type: ignore
+# import yaml
 
 
 class TrainerState(Enum):
@@ -39,8 +38,8 @@ class Configuration:
     #     return cls(**data)
 
 
-class Lambda(nn.Module):
-    """Module to create a lambda function as nn.Module.
+class Lambda(Module):
+    """Module to create a lambda function as Module.
 
     Args:
         fcn: a pointer to any function.
