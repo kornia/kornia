@@ -1,11 +1,15 @@
 import pytest
 import torch
 
-from kornia.geometry.liegroup import So2, Se2
+from kornia.geometry.liegroup import Se2, So2
 from kornia.testing import BaseTester
 
 
 class TestSe2(BaseTester):
+    def _make_rand_data(self, device, dtype, batch_size, dims):
+        shape = [] if batch_size is None else [batch_size]
+        return torch.rand(shape + [dims], device=device, dtype=dtype)
+
     def test_smoke(self, device, dtype):
         z = torch.rand((2,), dtype=torch.cfloat, device=device)
         so2 = So2(z)
@@ -16,9 +20,27 @@ class TestSe2(BaseTester):
         self.assert_close(s.r.z.data, z)
         self.assert_close(s.t, t)
 
-    # TODO: implement me
-    def test_cardinality(self, device, dtype):
-    	pass
+    @pytest.mark.parametrize("input_shape", [(1,), (2,), (5,), ()])
+    def test_cardinality(self, device, dtype, input_shape):
+        t_input_shape = input_shape + (2,)
+        zz = torch.randn(input_shape + (2,), dtype=dtype, device=device)
+        tt = torch.randn(t_input_shape, dtype=dtype, device=device)
+        ss = Se2(So2(torch.complex(zz[..., 0], zz[..., 1])), tt)
+        theta = torch.rand(input_shape + (3,), dtype=dtype, device=device)
+        assert ss.so2.z.shape == input_shape
+        assert ss.t.shape == t_input_shape
+        assert (ss * ss).so2.z.shape == input_shape
+        assert (ss * ss).t.shape == t_input_shape
+        assert ss.exp(theta).so2.z.shape == input_shape
+        assert ss.exp(theta).t.shape == t_input_shape
+        assert ss.log().shape == input_shape + (3,)
+        if not any(input_shape):
+            expected_hat_shape = (3, 3)
+        else:
+            expected_hat_shape = (input_shape[0], 3, 3)
+        assert ss.hat(theta).shape == expected_hat_shape
+        assert ss.inverse().so2.z.shape == input_shape
+        assert ss.inverse().t.shape == t_input_shape
 
     # TODO: implement me
     def test_exception(self, device, dtype):
@@ -54,7 +76,7 @@ class TestSe2(BaseTester):
             self.assert_close(s1.r.z, z[i][None])
             self.assert_close(s1.t[0], t[i])
 
-    @pytest.mark.parametrize("batch_size", (2, 5))
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_mul(self, device, dtype, batch_size):
         s1 = Se2.identity(batch_size, device, dtype)
         s2 = Se2.random(batch_size, device, dtype)
@@ -69,3 +91,56 @@ class TestSe2(BaseTester):
         self.assert_close(s2_pose_s2.r.z.real, so2_expected.z.real)
         self.assert_close(s2_pose_s2.r.z.imag, so2_expected.z.imag)
         self.assert_close(s2_pose_s2.t, zeros_vec)
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_exp(self, device, dtype, batch_size):
+        t = self._make_rand_data(device, dtype, batch_size, dims=2)
+        theta = torch.zeros(batch_size if batch_size is not None else (), device=device, dtype=dtype)
+        z = torch.zeros((batch_size, 2) if batch_size is not None else (2,), device=device, dtype=dtype)
+        s = Se2.exp(torch.cat((t, theta[..., None]), -1))
+        self.assert_close(s.r.z, So2.exp(theta).z)
+        self.assert_close(s.t, z)
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_log(self, device, dtype, batch_size):
+        t = self._make_rand_data(device, dtype, batch_size, dims=2)
+        s = Se2(So2.identity(batch_size, device, dtype), t)
+        s.log()
+        zero_vec = torch.zeros(3, device=device, dtype=dtype)
+        if batch_size is not None:
+            zero_vec = zero_vec.repeat(batch_size, 1)
+        self.assert_close(s.log(), zero_vec)
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_exp_log(self, device, dtype, batch_size):
+        a = self._make_rand_data(device, dtype, batch_size, dims=3)
+        b = Se2.exp(a).log()
+        self.assert_close(b, a)
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_matrix(self, device, dtype, batch_size):
+        theta = self._make_rand_data(device, dtype, batch_size, dims=1)
+        t = self._make_rand_data(device, dtype, batch_size, dims=2)
+        s = So2.exp(theta)
+        p1 = s * t
+        p2 = s.matrix() @ t[..., None]
+        self.assert_close(p1, p2.squeeze(-1))
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_random(self, device, dtype, batch_size):
+        s = So2.random(batch_size=batch_size, device=device, dtype=dtype)
+        t = self._make_rand_data(device, dtype, batch_size, dims=2)
+        se2 = Se2(s, t)
+        se2_in_se2 = se2.inverse() * se2
+        i = Se2.identity(batch_size=batch_size, device=device, dtype=dtype)
+        self.assert_close(se2_in_se2.so2.z.real, i.so2.z.real)
+        self.assert_close(se2_in_se2.so2.z.imag, i.so2.z.imag)
+        self.assert_close(se2_in_se2.t, i.t)
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_inverse(self, device, batch_size, dtype):
+        s = Se2.random(batch_size, device, dtype)
+        s_in_in = s.inverse().inverse()
+        self.assert_close(s_in_in.so2.z.real, s.so2.z.real)
+        self.assert_close(s_in_in.so2.z.imag, s.so2.z.imag)
+        self.assert_close(s_in_in.t, s.t)

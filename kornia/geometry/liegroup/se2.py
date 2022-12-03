@@ -1,11 +1,11 @@
 # kornia.geometry.so2 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se2.py
-from typing import Optional
+from typing import Optional, Tuple
 
-from kornia.core import Module, Parameter, Tensor, concatenate, pad, stack, tensor, rand
-from kornia.geometry.liegroup._utils import check_se2_r_t_shape, check_se2_t_shape, check_v_shape
+from kornia.core import Module, Parameter, Tensor, concatenate, pad, rand, stack, tensor, where
+from kornia.geometry.liegroup._utils import check_se2_r_t_shape, check_v_shape
 from kornia.geometry.liegroup.so2 import So2
-from kornia.testing import KORNIA_CHECK_TYPE, KORNIA_CHECK
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_TYPE
 
 
 class Se2(Module):
@@ -22,7 +22,7 @@ class Se2(Module):
         >>> se2
         rotation: (1+0j)
         translation: Parameter containing:
-        tensor([[1., 1.]], requires_grad=True)
+        tensor([1., 1.], requires_grad=True)
     """
 
     def __init__(self, r: So2, t: Tensor) -> None:
@@ -35,11 +35,12 @@ class Se2(Module):
             t: translation vector with the shape of :math:`(B, 2)`.
 
         Example:
-            >>> so2 = So2.identity()
+            >>> so2 = So2.identity(1)
             >>> t = torch.ones((1, 2))
             >>> se2 = Se2(so2, t)
             >>> se2
-            rotation: (1+0j)
+            rotation: Parameter containing:
+            tensor([1.+0.j], requires_grad=True)
             translation: Parameter containing:
             tensor([[1., 1.]], requires_grad=True)
         """
@@ -111,12 +112,12 @@ class Se2(Module):
             Parameter containing:
             tensor([[0.3818, 1.3012]], requires_grad=True)
         """
-        # TODO when theta is 0
         check_v_shape(v)
         theta = v[..., 2]
         so2 = So2.exp(theta)
-        a = so2.z.imag / theta
-        b = (1.0 - so2.z.real) / theta
+        z = tensor(0.0, device=v.device, dtype=v.dtype)
+        a = where(theta != 0.0, so2.z.imag / theta, z)
+        b = where(theta != 0.0, (1.0 - so2.z.real) / theta, z)
         x = v[..., 0]
         y = v[..., 1]
         t = stack((a * x - b * y, b * x + a * y), -1)
@@ -128,11 +129,15 @@ class Se2(Module):
         Example:
             >>> v = torch.ones((1, 3))
             >>> s = Se2.exp(v).log()
+            >>> s
             tensor([[1.0000, 1.0000, 1.0000]], grad_fn=<StackBackward0>)
         """
         theta = self.so2.log()
         half_theta = 0.5 * theta
-        a = -(half_theta * self.so2.z.imag) / (self.so2.z.real - 1)
+        denom = self.so2.z.real - 1
+        a = where(
+            denom != 0, -(half_theta * self.so2.z.imag) / denom, tensor(0.0, device=theta.device, dtype=theta.dtype)
+        )
         row0 = stack((a, half_theta), -1)
         row1 = stack((-half_theta, a), -1)
         V_inv = stack((row0, row1), -2)
@@ -156,7 +161,7 @@ class Se2(Module):
         check_v_shape(v)
         upsilon = stack((v[..., 0], v[..., 1]), -1)
         theta = v[..., 2]
-        col0 = concatenate((So2.hat(theta), upsilon.reshape(-1, 1, 2)), -2)
+        col0 = concatenate((So2.hat(theta), upsilon.unsqueeze(-2)), -2)
         return pad(col0, (0, 1))
 
     @classmethod
@@ -210,7 +215,7 @@ class Se2(Module):
         return Se2(r_inv, r_inv * (-1 * self.t))
 
     @classmethod
-    def random(cls, batch_size: Optional[int] = None, device=None, dtype=None) -> 'Se3':
+    def random(cls, batch_size: Optional[int] = None, device=None, dtype=None) -> 'Se2':
         """Create a Se2 group representing a random transformation.
 
         Args:
