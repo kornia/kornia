@@ -128,6 +128,7 @@ class ScaleSpaceDetector(Module):
     def detect(self, img: Tensor, num_feats: int, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
         dev: Device = img.device
         dtype: torch.dtype = img.dtype
+        sigmas: List[Tensor]
         sp, sigmas, _ = self.scale_pyr(img)
         all_responses: List[Tensor] = []
         all_lafs: List[Tensor] = []
@@ -144,7 +145,7 @@ class ScaleSpaceDetector(Module):
                 # We want nms for scale responses, so reorder to (B, CH, L, H, W)
                 oct_resp = oct_resp.permute(0, 2, 1, 3, 4)
                 # 3rd extra level is required for DoG only
-                if self.scale_pyr.extra_levels % 2 != 0:  # type: ignore
+                if isinstance(self.scale_pyr.extra_levels, Tensor) and self.scale_pyr.extra_levels % 2 != 0:
                     oct_resp = oct_resp[:, :, :-1]
 
             if mask is not None:
@@ -152,6 +153,8 @@ class ScaleSpaceDetector(Module):
                 oct_resp = oct_mask * oct_resp
 
             # Differentiable nms
+            coord_max: Tensor
+            response_max: Tensor
             coord_max, response_max = self.nms(oct_resp)
             if self.minima_are_also_good:
                 coord_min, response_min = self.nms(-oct_resp)
@@ -172,9 +175,18 @@ class ScaleSpaceDetector(Module):
             B, N = resp_flat_best.size()
 
             # Converts scale level index from ConvSoftArgmax3d to the actual scale, using the sigmas
-            max_coords_best = _scale_index_to_scale(
-                max_coords_best, sigmas_oct, self.scale_pyr.n_levels  # type: ignore
-            )
+
+            if isinstance(self.scale_pyr.n_levels, Tensor):
+                num_levels = int(self.scale_pyr.n_levels.item())
+            elif isinstance(self.scale_pyr.n_levels, int):
+                num_levels = self.scale_pyr.n_levels
+            else:
+                raise TypeError(
+                    'Expected the scale pyramid module to have `n_levels` as a Tensor or int.'
+                    f'Gotcha {type(self.scale_pyr.n_levels)}'
+                )
+
+            max_coords_best = _scale_index_to_scale(max_coords_best, sigmas_oct, num_levels)
 
             # Create local affine frames (LAFs)
             rotmat = eye(2, dtype=dtype, device=dev).view(1, 1, 2, 2)

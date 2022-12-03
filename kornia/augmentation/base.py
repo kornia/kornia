@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 import torch
 from torch.distributions import Bernoulli
@@ -9,6 +9,18 @@ from kornia.augmentation.utils import _adapted_sampling, _transform_output_shape
 from kornia.core import Module, Tensor, tensor
 
 TensorWithTransformMat = Union[Tensor, Tuple[Tensor, Tensor]]
+
+
+# Trick mypy into not applying contravariance rules to inputs by defining
+# forward as a value, rather than a function.  See also
+# https://github.com/python/mypy/issues/8795
+# Based on the trick that torch.nn.Module does for the forward method
+def _apply_transform_unimplemented(self, *input: Any) -> Tensor:
+    r"""Defines the computation performed at every call.
+
+    Should be overridden by all subclasses.
+    """
+    raise NotImplementedError(f"Module [{type(self).__name__}] is missing the required \"apply_tranform\" function")
 
 
 class _BasicAugmentationBase(Module):
@@ -49,6 +61,8 @@ class _BasicAugmentationBase(Module):
         self.flags: Dict[str, Any] = {}
         self.set_rng_device_and_dtype(torch.device('cpu'), torch.get_default_dtype())
 
+    apply_transform: Callable[..., Tensor] = _apply_transform_unimplemented
+
     def __repr__(self) -> str:
         txt = f"p={self.p}, p_batch={self.p_batch}, same_on_batch={self.same_on_batch}"
         if isinstance(self._param_generator, RandomGeneratorBase):
@@ -75,9 +89,6 @@ class _BasicAugmentationBase(Module):
         if self._param_generator is not None:
             return self._param_generator(batch_shape, self.same_on_batch)
         return {}
-
-    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        raise NotImplementedError
 
     def set_rng_device_and_dtype(self, device: torch.device, dtype: torch.dtype) -> None:
         """Change the random generation device and dtype.
