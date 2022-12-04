@@ -1,11 +1,10 @@
 from typing import Dict, Tuple, Union
 
-import torch
 from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _adapted_uniform, _common_param_check, _tuple_range_reader
-from kornia.core import Tensor
+from kornia.core import Device, Dtype, Size, Tensor
 from kornia.utils.helpers import _deprecated, _extract_device_dtype
 
 
@@ -50,13 +49,13 @@ class RotationGenerator3D(RandomGeneratorBase):
         repr = f"degrees={self.degrees}"
         return repr
 
-    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+    def make_samplers(self, device: Device = None, dtype: Dtype = None) -> None:
         degrees = _tuple_range_reader(self.degrees, 3, device, dtype)
         self.yaw_sampler = Uniform(degrees[0][0], degrees[0][1], validate_args=False)
         self.pitch_sampler = Uniform(degrees[1][0], degrees[1][1], validate_args=False)
         self.roll_sampler = Uniform(degrees[2][0], degrees[2][1], validate_args=False)
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.degrees])
@@ -70,11 +69,7 @@ class RotationGenerator3D(RandomGeneratorBase):
 
 @_deprecated(replace_with=RotationGenerator3D.__name__)
 def random_rotation_generator3d(
-    batch_size: int,
-    degrees: Tensor,
-    same_on_batch: bool = False,
-    device: torch.device = torch.device('cpu'),
-    dtype: torch.dtype = torch.float32,
+    batch_size: int, degrees: Tensor, same_on_batch: bool = False, device: Device = None, dtype: Dtype = None
 ) -> Dict[str, Tensor]:
     r"""Get parameters for ``rotate`` for a random rotate transform.
 
@@ -91,7 +86,7 @@ def random_rotation_generator3d(
             - pitch (Tensor): element-wise rotation pitches with a shape of (B,).
             - roll (Tensor): element-wise rotation rolls with a shape of (B,).
     """
-    if degrees.shape != torch.Size([3, 2]):
+    if degrees.shape != Size([3, 2]):
         raise AssertionError(f"'degrees' must be the shape of (3, 2). Got {degrees.shape}.")
     _device, _dtype = _extract_device_dtype([degrees])
     degrees = degrees.to(device=device, dtype=dtype)

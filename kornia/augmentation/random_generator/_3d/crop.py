@@ -5,7 +5,7 @@ from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _adapted_uniform, _common_param_check
-from kornia.core import Device, Tensor, tensor, zeros
+from kornia.core import Device, Dtype, Size, Tensor, tensor, zeros
 from kornia.geometry.bbox import bbox_generator3d
 from kornia.utils.helpers import _deprecated, _extract_device_dtype
 
@@ -42,10 +42,10 @@ class CropGenerator3D(RandomGeneratorBase):
             repr += f", resize_to={self.resize_to}"
         return repr
 
-    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+    def make_samplers(self, device: Device = None, dtype: Dtype = None) -> None:
         self.rand_sampler = Uniform(tensor(0.0, device=device, dtype=dtype), tensor(1.0, device=device, dtype=dtype))
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size, _, depth, height, width = batch_shape
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.size if isinstance(self.size, Tensor) else None])
@@ -54,10 +54,10 @@ class CropGenerator3D(RandomGeneratorBase):
             size = tensor(self.size, device=_device, dtype=_dtype).repeat(batch_size, 1)
         else:
             size = self.size.to(device=_device, dtype=_dtype)
-        if size.shape != torch.Size([batch_size, 3]):
+        if size.shape != Size([batch_size, 3]):
             raise AssertionError(
                 "If `size` is a tensor, it must be shaped as (B, 3). "
-                f"Got {size.shape} while expecting {torch.Size([batch_size, 3])}."
+                f"Got {size.shape} while expecting {Size([batch_size, 3])}."
             )
         if not (
             isinstance(depth, (int,))
@@ -136,12 +136,7 @@ class CropGenerator3D(RandomGeneratorBase):
 
 
 def center_crop_generator3d(
-    batch_size: int,
-    depth: int,
-    height: int,
-    width: int,
-    size: Tuple[int, int, int],
-    device: Device = torch.device('cpu'),
+    batch_size: int, depth: int, height: int, width: int, size: Tuple[int, int, int], device: Device = None
 ) -> Dict[str, Tensor]:
     r"""Get parameters for ```center_crop3d``` transformation for center crop transform.
 
@@ -216,7 +211,7 @@ def center_crop_generator3d(
     # [x, y, z] destination
     # top-left-front, top-right-front, bottom-right-front, bottom-left-front
     # top-left-back, top-right-back, bottom-right-back, bottom-left-back
-    points_dst: Tensor = tensor(
+    points_dst = tensor(
         [
             [
                 [0, 0, 0],
@@ -242,8 +237,8 @@ def random_crop_generator3d(
     size: Union[Tuple[int, int, int], Tensor],
     resize_to: Optional[Tuple[int, int, int]] = None,
     same_on_batch: bool = False,
-    device: torch.device = torch.device('cpu'),
-    dtype: torch.dtype = torch.float32,
+    device: Device = None,
+    dtype: Dtype = None,
 ) -> Dict[str, Tensor]:
     r"""Get parameters for ```crop``` transformation for crop transform.
 
@@ -270,10 +265,10 @@ def random_crop_generator3d(
         size = tensor(size, device=device, dtype=dtype).repeat(batch_size, 1)
     else:
         size = size.to(device=device, dtype=dtype)
-    if size.shape != torch.Size([batch_size, 3]):
+    if size.shape != Size([batch_size, 3]):
         raise AssertionError(
             "If `size` is a tensor, it must be shaped as (B, 3). "
-            f"Got {size.shape} while expecting {torch.Size([batch_size, 3])}."
+            f"Got {size.shape} while expecting {Size([batch_size, 3])}."
         )
     if not (
         len(input_size) == 3

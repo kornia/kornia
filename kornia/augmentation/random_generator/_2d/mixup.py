@@ -12,6 +12,7 @@ from kornia.augmentation.utils import (
     _common_param_check,
     _joint_range_check,
 )
+from kornia.core import Device, Dtype, Tensor, as_tensor, tensor
 from kornia.utils.helpers import _extract_device_dtype
 
 
@@ -19,13 +20,13 @@ class MixupGenerator(RandomGeneratorBase):
     r"""Generate mixup indexes and lambdas for a batch of inputs.
 
     Args:
-        lambda_val (torch.Tensor, optional): min-max strength for mixup images, ranged from [0., 1.].
+        lambda_val (Tensor, optional): min-max strength for mixup images, ranged from [0., 1.].
             If None, it will be set to tensor([0., 1.]), which means no restrictions.
 
     Returns:
         A dict of parameters to be passed for transformation.
-            - mix_pairs (torch.Tensor): element-wise probabilities with a shape of (B,).
-            - mixup_lambdas (torch.Tensor): element-wise probabilities with a shape of (B,).
+            - mix_pairs (Tensor): element-wise probabilities with a shape of (B,).
+            - mixup_lambdas (Tensor): element-wise probabilities with a shape of (B,).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -33,7 +34,7 @@ class MixupGenerator(RandomGeneratorBase):
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
     """
 
-    def __init__(self, lambda_val: Optional[Union[torch.Tensor, Tuple[float, float]]] = None, p: float = 1.0) -> None:
+    def __init__(self, lambda_val: Optional[Union[Tensor, Tuple[float, float]]] = None, p: float = 1.0) -> None:
         super().__init__()
         self.lambda_val = lambda_val
         self.p = p
@@ -42,26 +43,26 @@ class MixupGenerator(RandomGeneratorBase):
         repr = f"lambda_val={self.lambda_val}"
         return repr
 
-    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+    def make_samplers(self, device: Device = None, dtype: Dtype = None) -> None:
         if self.lambda_val is None:
-            lambda_val = torch.tensor([0.0, 1.0], device=device, dtype=dtype)
+            lambda_val = tensor([0.0, 1.0], device=device, dtype=dtype)
         else:
-            lambda_val = torch.as_tensor(self.lambda_val, device=device, dtype=dtype)
+            lambda_val = as_tensor(self.lambda_val, device=device, dtype=dtype)
 
         _joint_range_check(lambda_val, 'lambda_val', bounds=(0, 1))
         self.lambda_sampler = Uniform(lambda_val[0], lambda_val[1], validate_args=False)
-        self.prob_sampler = Bernoulli(torch.tensor(float(self.p), device=device, dtype=dtype))
+        self.prob_sampler = Bernoulli(tensor(float(self.p), device=device, dtype=dtype))
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
 
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.lambda_val])
 
         with torch.no_grad():
-            batch_probs: torch.Tensor = _adapted_sampling((batch_size,), self.prob_sampler, same_on_batch)
-        mixup_pairs: torch.Tensor = torch.randperm(batch_size, device=_device, dtype=_dtype).long()
-        mixup_lambdas: torch.Tensor = _adapted_rsampling((batch_size,), self.lambda_sampler, same_on_batch)
+            batch_probs = _adapted_sampling((batch_size,), self.prob_sampler, same_on_batch)
+        mixup_pairs = torch.randperm(batch_size, device=_device, dtype=_dtype).long()
+        mixup_lambdas = _adapted_rsampling((batch_size,), self.lambda_sampler, same_on_batch)
         mixup_lambdas = mixup_lambdas * batch_probs
 
         return dict(
@@ -73,26 +74,26 @@ class MixupGenerator(RandomGeneratorBase):
 def random_mixup_generator(
     batch_size: int,
     p: float = 0.5,
-    lambda_val: Optional[torch.Tensor] = None,
+    lambda_val: Optional[Tensor] = None,
     same_on_batch: bool = False,
     device: torch.device = torch.device('cpu'),
     dtype: torch.dtype = torch.float32,
-) -> Dict[str, torch.Tensor]:
+) -> Dict[str, Tensor]:
     r"""Generate mixup indexes and lambdas for a batch of inputs.
 
     Args:
         batch_size (int): the number of images. If batchsize == 1, the output will be as same as the input.
         p (flot): probability of applying mixup.
-        lambda_val (torch.Tensor, optional): min-max strength for mixup images, ranged from [0., 1.].
+        lambda_val (Tensor, optional): min-max strength for mixup images, ranged from [0., 1.].
             If None, it will be set to tensor([0., 1.]), which means no restrictions.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         device (torch.device): the device on which the random numbers will be generated. Default: cpu.
         dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
 
     Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - mix_pairs (torch.Tensor): element-wise probabilities with a shape of (B,).
-            - mixup_lambdas (torch.Tensor): element-wise probabilities with a shape of (B,).
+        params Dict[str, Tensor]: parameters to be passed for transformation.
+            - mix_pairs (Tensor): element-wise probabilities with a shape of (B,).
+            - mixup_lambdas (Tensor): element-wise probabilities with a shape of (B,).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
@@ -104,16 +105,12 @@ def random_mixup_generator(
     """
     _common_param_check(batch_size, same_on_batch)
     _device, _dtype = _extract_device_dtype([lambda_val])
-    lambda_val = torch.as_tensor([0.0, 1.0] if lambda_val is None else lambda_val, device=device, dtype=dtype)
+    lambda_val = as_tensor([0.0, 1.0] if lambda_val is None else lambda_val, device=device, dtype=dtype)
     _joint_range_check(lambda_val, 'lambda_val', bounds=(0, 1))
 
-    batch_probs: torch.Tensor = random_prob_generator(
-        batch_size, p, same_on_batch=same_on_batch, device=device, dtype=dtype
-    )
-    mixup_pairs: torch.Tensor = torch.randperm(batch_size, device=device, dtype=dtype).long()
-    mixup_lambdas: torch.Tensor = _adapted_uniform(
-        (batch_size,), lambda_val[0], lambda_val[1], same_on_batch=same_on_batch
-    )
+    batch_probs: Tensor = random_prob_generator(batch_size, p, same_on_batch=same_on_batch, device=device, dtype=dtype)
+    mixup_pairs: Tensor = torch.randperm(batch_size, device=device, dtype=dtype).long()
+    mixup_lambdas: Tensor = _adapted_uniform((batch_size,), lambda_val[0], lambda_val[1], same_on_batch=same_on_batch)
     mixup_lambdas = mixup_lambdas * batch_probs
 
     return dict(

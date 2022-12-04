@@ -30,7 +30,7 @@ class RaySampler:
         self._min_depth = min_depth
         self._max_depth = max_depth
         self._ndc = ndc
-        self._device = torch.device(device)
+        self._device = device
         self._dtype = dtype
 
     @property

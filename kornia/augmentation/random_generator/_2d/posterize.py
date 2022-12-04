@@ -5,7 +5,7 @@ from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check
-from kornia.core import Tensor, as_tensor
+from kornia.core import Device, Dtype, Size, Tensor, as_tensor
 from kornia.utils.helpers import _extract_device_dtype
 
 
@@ -35,8 +35,9 @@ class PosterizeGenerator(RandomGeneratorBase):
         repr = f"bits={self.bits}"
         return repr
 
-    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        bits = as_tensor(self.bits, device=device, dtype=dtype)
+    def make_samplers(self, device: Device = None, dtype: Dtype = None) -> None:
+        _dtype = torch.float32 if dtype is None else dtype
+        bits = as_tensor(self.bits, device=device, dtype=_dtype)
         if len(bits.size()) == 0:
             bits = bits.repeat(2)
             bits[1] = 8
@@ -45,7 +46,7 @@ class PosterizeGenerator(RandomGeneratorBase):
         _joint_range_check(bits, 'bits', (0, 8))
         self.bit_sampler = Uniform(bits[0], bits[1], validate_args=False)
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _ = _extract_device_dtype([self.bits if isinstance(self.bits, Tensor) else None])

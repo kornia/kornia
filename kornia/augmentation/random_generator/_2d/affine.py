@@ -1,11 +1,10 @@
 from typing import Dict, Optional, Tuple, Union
 
-import torch
 from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check, _range_bound
-from kornia.core import Tensor, as_tensor, concatenate, stack, tensor, zeros
+from kornia.core import Device, Dtype, Size, Tensor, as_tensor, concatenate, ones, stack, tensor, zeros
 from kornia.utils.helpers import _extract_device_dtype
 
 
@@ -60,7 +59,7 @@ class AffineGenerator(RandomGeneratorBase):
         repr = f"degrees={self.degrees}, translate={self.translate}, scale={self.scale}, shear={self.shear}"
         return repr
 
-    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+    def make_samplers(self, device: Device = None, dtype: Dtype = None) -> None:
         _degrees = _range_bound(self.degrees, 'degrees', 0, (-360, 360)).to(device=device, dtype=dtype)
         _translate = (
             self.translate
@@ -89,7 +88,7 @@ class AffineGenerator(RandomGeneratorBase):
         _shear: Optional[Tensor] = None
         if self.shear is not None:
             shear = as_tensor(self.shear, device=device, dtype=dtype)
-            if shear.shape == torch.Size([2, 2]):
+            if shear.shape == Size([2, 2]):
                 _shear = shear
             else:
                 _shear = stack(
@@ -133,7 +132,7 @@ class AffineGenerator(RandomGeneratorBase):
         self.shear_x_sampler = shear_x_sampler
         self.shear_y_sampler = shear_y_sampler
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]
@@ -152,7 +151,7 @@ class AffineGenerator(RandomGeneratorBase):
                 _scale[:, 1] = _adapted_rsampling((batch_size,), self.scale_4_sampler, same_on_batch)
             _scale = _scale.to(device=_device, dtype=_dtype)
         else:
-            _scale = torch.ones((batch_size, 2), device=_device, dtype=_dtype)
+            _scale = ones((batch_size, 2), device=_device, dtype=_dtype)
 
         if self.translate_x_sampler is not None and self.translate_y_sampler is not None:
             translations = stack(

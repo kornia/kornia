@@ -5,7 +5,7 @@ from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
-from kornia.core import Tensor
+from kornia.core import Device, Dtype, Size, Tensor
 from kornia.utils.helpers import _extract_device_dtype
 
 
@@ -52,9 +52,11 @@ class MotionBlurGenerator(RandomGeneratorBase):
         repr = f"kernel_size={self.kernel_size}, angle={self.angle}, direction={self.direction}"
         return repr
 
-    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        angle = _range_bound(self.angle, 'angle', center=0.0, bounds=(-360, 360)).to(device=device, dtype=dtype)
-        direction = _range_bound(self.direction, 'direction', center=0.0, bounds=(-1, 1)).to(device=device, dtype=dtype)
+    def make_samplers(self, device: Device = None, dtype: Dtype = None) -> None:
+        angle = _range_bound(self.angle, 'angle', center=0.0, bounds=(-360.0, 360.0)).to(device=device, dtype=dtype)
+        direction = _range_bound(self.direction, 'direction', center=0.0, bounds=(-1.0, 1.0)).to(
+            device=device, dtype=dtype
+        )
         if isinstance(self.kernel_size, int):
             if not (self.kernel_size >= 3 and self.kernel_size % 2 == 1):
                 raise AssertionError(f"`kernel_size` must be odd and greater than 3. Got {self.kernel_size}.")
@@ -70,7 +72,7 @@ class MotionBlurGenerator(RandomGeneratorBase):
         self.angle_sampler = Uniform(angle[0], angle[1], validate_args=False)
         self.direction_sampler = Uniform(direction[0], direction[1], validate_args=False)
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         # self.ksize_factor.expand((batch_size, -1))

@@ -1,10 +1,9 @@
 from typing import Dict, Tuple
 
-import torch
-
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.random_generator.utils import randperm
 from kornia.augmentation.utils import _common_param_check
+from kornia.core import Device, Dtype, Size, Tensor, stack, zeros
 
 
 class JigsawGenerator(RandomGeneratorBase):
@@ -33,23 +32,23 @@ class JigsawGenerator(RandomGeneratorBase):
         repr = f"grid={self.grid}"
         return repr
 
-    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+    def make_samplers(self, device: Device = None, dtype: Dtype = None) -> None:
         self._device = device
         self._dtype = dtype
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    def forward(self, batch_shape: Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
 
         perm_times = self.grid[0] * self.grid[1]
         # Generate mosiac order in one shot
         if batch_size == 0:
-            rand_ids = torch.zeros([0, perm_times], device=self._device)
+            rand_ids = zeros([0, perm_times], device=self._device)
         elif same_on_batch:
             rand_ids = randperm(perm_times, ensure_perm=self.ensure_perm, device=self._device)
-            rand_ids = torch.stack([rand_ids] * batch_size)
+            rand_ids = stack([rand_ids] * batch_size)
         else:
-            rand_ids = torch.stack(
+            rand_ids = stack(
                 [randperm(perm_times, ensure_perm=self.ensure_perm, device=self._device) for _ in range(batch_size)]
             )
         return dict(permutation=rand_ids)

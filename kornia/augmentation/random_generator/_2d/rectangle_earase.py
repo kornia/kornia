@@ -5,7 +5,7 @@ from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check
-from kornia.core import Tensor, as_tensor, tensor, where
+from kornia.core import Device, Dtype, Size, Tensor, as_tensor, tensor, where
 from kornia.utils.helpers import _extract_device_dtype
 
 
@@ -46,7 +46,7 @@ class RectangleEraseGenerator(RandomGeneratorBase):
         repr = f"scale={self.scale}, resize_to={self.ratio}, value={self.value}"
         return repr
 
-    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+    def make_samplers(self, device: Device = None, dtype: Dtype = None) -> None:
         scale = as_tensor(self.scale, device=device, dtype=dtype)
         ratio = as_tensor(self.ratio, device=device, dtype=dtype)
 
@@ -58,18 +58,18 @@ class RectangleEraseGenerator(RandomGeneratorBase):
         self.scale_sampler = Uniform(scale[0], scale[1], validate_args=False)
 
         if ratio[0] < 1.0 and ratio[1] > 1.0:
-            self.ratio_sampler1 = Uniform(ratio[0], 1, validate_args=False)
-            self.ratio_sampler2 = Uniform(1, ratio[1], validate_args=False)
+            self.ratio_sampler1 = Uniform(ratio[0], 1.0, validate_args=False)
+            self.ratio_sampler2 = Uniform(1.0, ratio[1], validate_args=False)
             self.index_sampler = Uniform(
-                tensor(0, device=device, dtype=dtype), tensor(1, device=device, dtype=dtype), validate_args=False
+                tensor(0.0, device=device, dtype=dtype), tensor(1.0, device=device, dtype=dtype), validate_args=False
             )
         else:
             self.ratio_sampler = Uniform(ratio[0], ratio[1], validate_args=False)
         self.uniform_sampler = Uniform(
-            tensor(0, device=device, dtype=dtype), tensor(1, device=device, dtype=dtype), validate_args=False
+            tensor(0.0, device=device, dtype=dtype), tensor(1.0, device=device, dtype=dtype), validate_args=False
         )
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]

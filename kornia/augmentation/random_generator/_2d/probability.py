@@ -1,11 +1,10 @@
 from typing import Dict
 
-import torch
 from torch.distributions import Bernoulli
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_sampling, _common_param_check
-from kornia.core import Tensor, tensor
+from kornia.core import Device, Dtype, Size, Tensor, tensor
 
 
 class ProbabilityGenerator(RandomGeneratorBase):
@@ -32,22 +31,18 @@ class ProbabilityGenerator(RandomGeneratorBase):
         repr = f"p={self.p}"
         return repr
 
-    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        p = torch.tensor(float(self.p), device=device, dtype=dtype)
+    def make_samplers(self, device: Device = None, dtype: Dtype = None) -> None:
+        p = tensor(float(self.p), device=device, dtype=dtype)
         self.sampler = Bernoulli(p)
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         probs_mask: Tensor = _adapted_sampling((batch_size,), self.sampler, same_on_batch).bool()
         return dict(probs=probs_mask)
 
 
 def random_prob_generator(
-    batch_size: int,
-    p: float = 0.5,
-    same_on_batch: bool = False,
-    device: torch.device = torch.device('cpu'),
-    dtype: torch.dtype = torch.float32,
+    batch_size: int, p: float = 0.5, same_on_batch: bool = False, device: Device = None, dtype: Dtype = None
 ) -> Tensor:
     r"""Generate random probabilities for a batch of inputs.
 
@@ -55,8 +50,8 @@ def random_prob_generator(
         batch_size (int): the number of images.
         p (float): probability to generate an 1-d binary mask. Default value is 0.5.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        device (torch.device): the device on which the random numbers will be generated. Default: cpu.
-        dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
+        device (Device): the device on which the random numbers will be generated. Default: None.
+        dtype (Dtype): the data type of the generated random numbers. Default: None.
 
     Returns:
         Tensor: parameters to be passed for transformation.
@@ -70,6 +65,6 @@ def random_prob_generator(
         raise TypeError(f"The probability should be a float number within [0, 1]. Got {type(p)}.")
 
     _bernoulli = Bernoulli(tensor(float(p), device=device, dtype=dtype))
-    probs_mask: Tensor = _adapted_sampling((batch_size,), _bernoulli, same_on_batch).bool()
+    probs_mask = _adapted_sampling((batch_size,), _bernoulli, same_on_batch).bool()
 
     return probs_mask

@@ -13,6 +13,7 @@ from kornia.augmentation.utils import (
     _common_param_check,
     _joint_range_check,
 )
+from kornia.core import Device, Dtype, Tensor, as_tensor, rand, tensor, zeros, zeros_like
 from kornia.geometry.bbox import bbox_generator
 from kornia.utils.helpers import _extract_device_dtype
 
@@ -23,15 +24,15 @@ class CutmixGenerator(RandomGeneratorBase):
     Args:
         p (float): probability of applying cutmix.
         num_mix (int): number of images to mix with. Default is 1.
-        beta (torch.Tensor, optional): hyperparameter for generating cut size from beta distribution.
+        beta (Tensor, optional): hyperparameter for generating cut size from beta distribution.
             If None, it will be set to 1.
-        cut_size (torch.Tensor, optional): controlling the minimum and maximum cut ratio from [0, 1].
+        cut_size (Tensor, optional): controlling the minimum and maximum cut ratio from [0, 1].
             If None, it will be set to [0, 1], which means no restriction.
 
     Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - mix_pairs (torch.Tensor): element-wise probabilities with a shape of (num_mix, B).
-            - crop_src (torch.Tensor): element-wise probabilities with a shape of (num_mix, B, 4, 2).
+        params Dict[str, Tensor]: parameters to be passed for transformation.
+            - mix_pairs (Tensor): element-wise probabilities with a shape of (num_mix, B).
+            - crop_src (Tensor): element-wise probabilities with a shape of (num_mix, B, 4, 2).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -41,8 +42,8 @@ class CutmixGenerator(RandomGeneratorBase):
 
     def __init__(
         self,
-        cut_size: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
-        beta: Optional[Union[torch.Tensor, float]] = None,
+        cut_size: Optional[Union[Tensor, Tuple[float, float]]] = None,
+        beta: Optional[Union[Tensor, float]] = None,
         num_mix: int = 1,
         p: float = 1.0,
     ) -> None:
@@ -59,27 +60,25 @@ class CutmixGenerator(RandomGeneratorBase):
         repr = f"cut_size={self.cut_size}, beta={self.beta}, num_mix={self.num_mix}"
         return repr
 
-    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+    def make_samplers(self, device: Device = None, dtype: Dtype = None) -> None:
         if self.beta is None:
-            self._beta = torch.tensor(1.0, device=device, dtype=dtype)
+            self._beta = tensor(1.0, device=device, dtype=dtype)
         else:
-            self._beta = torch.as_tensor(self.beta, device=device, dtype=dtype)
+            self._beta = as_tensor(self.beta, device=device, dtype=dtype)
         if self.cut_size is None:
-            self._cut_size = torch.tensor([0.0, 1.0], device=device, dtype=dtype)
+            self._cut_size = tensor([0.0, 1.0], device=device, dtype=dtype)
         else:
-            self._cut_size = torch.as_tensor(self.cut_size, device=device, dtype=dtype)
+            self._cut_size = as_tensor(self.cut_size, device=device, dtype=dtype)
 
         _joint_range_check(self._cut_size, 'cut_size', bounds=(0, 1))
 
         self.beta_sampler = Beta(self._beta, self._beta)
-        self.prob_sampler = Bernoulli(torch.tensor(float(self.p), device=device, dtype=dtype))
+        self.prob_sampler = Bernoulli(tensor(float(self.p), device=device, dtype=dtype))
         self.rand_sampler = Uniform(
-            torch.tensor(0.0, device=device, dtype=dtype),
-            torch.tensor(1.0, device=device, dtype=dtype),
-            validate_args=False,
+            tensor(0.0, device=device, dtype=dtype), tensor(1.0, device=device, dtype=dtype), validate_args=False
         )
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]
@@ -91,16 +90,14 @@ class CutmixGenerator(RandomGeneratorBase):
 
         if batch_size == 0:
             return dict(
-                mix_pairs=torch.zeros([0, 3], device=_device, dtype=torch.long),
-                crop_src=torch.zeros([0, 4, 2], device=_device, dtype=_dtype),
+                mix_pairs=zeros([0, 3], device=_device, dtype=torch.long),
+                crop_src=zeros([0, 4, 2], device=_device, dtype=_dtype),
             )
 
         with torch.no_grad():
-            batch_probs: torch.Tensor = _adapted_sampling(
-                (batch_size * self.num_mix,), self.prob_sampler, same_on_batch
-            )
-        mix_pairs: torch.Tensor = torch.rand(self.num_mix, batch_size, device=_device, dtype=_dtype).argsort(dim=1)
-        cutmix_betas: torch.Tensor = _adapted_rsampling((batch_size * self.num_mix,), self.beta_sampler, same_on_batch)
+            batch_probs: Tensor = _adapted_sampling((batch_size * self.num_mix,), self.prob_sampler, same_on_batch)
+        mix_pairs: Tensor = rand(self.num_mix, batch_size, device=_device, dtype=_dtype).argsort(dim=1)
+        cutmix_betas: Tensor = _adapted_rsampling((batch_size * self.num_mix,), self.beta_sampler, same_on_batch)
 
         # Note: torch.clamp does not accept tensor, cutmix_betas.clamp(cut_size[0], cut_size[1]) throws:
         # Argument 1 to "clamp" of "_TensorBase" has incompatible type "Tensor"; expected "float"
@@ -117,12 +114,8 @@ class CutmixGenerator(RandomGeneratorBase):
             cut_width = cut_width[0]
 
         # Reserve at least 1 pixel for cropping.
-        x_start: torch.Tensor = _adapted_rsampling(_gen_shape, self.rand_sampler, same_on_batch) * (
-            width - cut_width - 1
-        )
-        y_start: torch.Tensor = _adapted_rsampling(_gen_shape, self.rand_sampler, same_on_batch) * (
-            height - cut_height - 1
-        )
+        x_start: Tensor = _adapted_rsampling(_gen_shape, self.rand_sampler, same_on_batch) * (width - cut_width - 1)
+        y_start: Tensor = _adapted_rsampling(_gen_shape, self.rand_sampler, same_on_batch) * (height - cut_height - 1)
         x_start = x_start.floor().to(device=_device, dtype=_dtype)
         y_start = y_start.floor().to(device=_device, dtype=_dtype)
 
@@ -134,7 +127,7 @@ class CutmixGenerator(RandomGeneratorBase):
         return dict(
             mix_pairs=mix_pairs.to(device=_device, dtype=torch.long),
             crop_src=crop_src.floor().to(device=_device, dtype=_dtype),
-            image_shape=torch.as_tensor(batch_shape[-2:], device=_device, dtype=_dtype),
+            image_shape=as_tensor(batch_shape[-2:], device=_device, dtype=_dtype),
         )
 
 
@@ -144,12 +137,12 @@ def random_cutmix_generator(
     height: int,
     p: float = 0.5,
     num_mix: int = 1,
-    beta: Optional[torch.Tensor] = None,
-    cut_size: Optional[torch.Tensor] = None,
+    beta: Optional[Tensor] = None,
+    cut_size: Optional[Tensor] = None,
     same_on_batch: bool = False,
-    device: torch.device = torch.device('cpu'),
-    dtype: torch.dtype = torch.float32,
-) -> Dict[str, torch.Tensor]:
+    device: Device = torch.device('cpu'),
+    dtype: Dtype = torch.float32,
+) -> Dict[str, Tensor]:
     r"""Generate cutmix indexes and lambdas for a batch of inputs.
 
     Args:
@@ -158,18 +151,18 @@ def random_cutmix_generator(
         height (int): image height.
         p (float): probability of applying cutmix.
         num_mix (int): number of images to mix with. Default is 1.
-        beta (torch.Tensor, optional): hyperparameter for generating cut size from beta distribution.
+        beta (Tensor, optional): hyperparameter for generating cut size from beta distribution.
             If None, it will be set to 1.
-        cut_size (torch.Tensor, optional): controlling the minimum and maximum cut ratio from [0, 1].
+        cut_size (Tensor, optional): controlling the minimum and maximum cut ratio from [0, 1].
             If None, it will be set to [0, 1], which means no restriction.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        device (torch.device): the device on which the random numbers will be generated. Default: cpu.
-        dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
+        device (Device): the device on which the random numbers will be generated. Default: cpu.
+        dtype (Dtype): the data type of the generated random numbers. Default: float32.
 
     Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - mix_pairs (torch.Tensor): element-wise probabilities with a shape of (num_mix, B).
-            - crop_src (torch.Tensor): element-wise probabilities with a shape of (num_mix, B, 4, 2).
+        params Dict[str, Tensor]: parameters to be passed for transformation.
+            - mix_pairs (Tensor): element-wise probabilities with a shape of (num_mix, B).
+            - crop_src (Tensor): element-wise probabilities with a shape of (num_mix, B, 4, 2).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
@@ -210,8 +203,8 @@ def random_cutmix_generator(
                   [ 97.,  69.]]]])}
     """
     _device, _dtype = _extract_device_dtype([beta, cut_size])
-    beta = torch.as_tensor(1.0 if beta is None else beta, device=device, dtype=dtype)
-    cut_size = torch.as_tensor([0.0, 1.0] if cut_size is None else cut_size, device=device, dtype=dtype)
+    beta = as_tensor(1.0 if beta is None else beta, device=device, dtype=dtype)
+    cut_size = as_tensor([0.0, 1.0] if cut_size is None else cut_size, device=device, dtype=dtype)
     if not (num_mix >= 1 and isinstance(num_mix, (int,))):
         raise AssertionError(f"`num_mix` must be an integer greater than 1. Got {num_mix}.")
     if not (type(height) is int and height > 0 and type(width) is int and width > 0):
@@ -221,15 +214,13 @@ def random_cutmix_generator(
 
     if batch_size == 0:
         return dict(
-            mix_pairs=torch.zeros([0, 3], device=_device, dtype=torch.long),
-            crop_src=torch.zeros([0, 4, 2], device=_device, dtype=torch.long),
+            mix_pairs=zeros([0, 3], device=_device, dtype=torch.long),
+            crop_src=zeros([0, 4, 2], device=_device, dtype=torch.long),
         )
 
-    batch_probs: torch.Tensor = random_prob_generator(
-        batch_size * num_mix, p, same_on_batch, device=device, dtype=dtype
-    )
-    mix_pairs: torch.Tensor = torch.rand(num_mix, batch_size, device=device, dtype=dtype).argsort(dim=1)
-    cutmix_betas: torch.Tensor = _adapted_beta((batch_size * num_mix,), beta, beta, same_on_batch=same_on_batch)
+    batch_probs = random_prob_generator(batch_size * num_mix, p, same_on_batch, device=device, dtype=dtype)
+    mix_pairs = rand(num_mix, batch_size, device=device, dtype=dtype).argsort(dim=1)
+    cutmix_betas = _adapted_beta((batch_size * num_mix,), beta, beta, same_on_batch=same_on_batch)
     # Note: torch.clamp does not accept tensor, cutmix_betas.clamp(cut_size[0], cut_size[1]) throws:
     # Argument 1 to "clamp" of "_TensorBase" has incompatible type "Tensor"; expected "float"
     cutmix_betas = torch.min(torch.max(cutmix_betas, cut_size[0]), cut_size[1])
@@ -248,7 +239,7 @@ def random_cutmix_generator(
     x_start = (
         _adapted_uniform(
             _gen_shape,
-            torch.zeros_like(cut_width, device=device, dtype=dtype),
+            zeros_like(cut_width, device=device, dtype=dtype),
             (width - cut_width - 1).to(device=device, dtype=dtype),
             same_on_batch,
         )
@@ -258,7 +249,7 @@ def random_cutmix_generator(
     y_start = (
         _adapted_uniform(
             _gen_shape,
-            torch.zeros_like(cut_height, device=device, dtype=dtype),
+            zeros_like(cut_height, device=device, dtype=dtype),
             (height - cut_height - 1).to(device=device, dtype=dtype),
             same_on_batch,
         )

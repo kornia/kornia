@@ -1,13 +1,15 @@
 from functools import partial
-from typing import Dict, List, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
-import torch
+from torch import randperm
 from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check, _range_bound
-from kornia.core import Tensor
+from kornia.core import Device, Dtype, Size, Tensor
 from kornia.utils.helpers import _extract_device_dtype
+
+__all__ = ['ColorJitterGenerator']
 
 
 class ColorJitterGenerator(RandomGeneratorBase):
@@ -58,7 +60,7 @@ class ColorJitterGenerator(RandomGeneratorBase):
         )
         return repr
 
-    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+    def make_samplers(self, device: Device = None, dtype: Dtype = None) -> None:
         brightness: Tensor = _range_bound(self.brightness, 'brightness', center=1.0, device=device, dtype=dtype)
         contrast: Tensor = _range_bound(self.contrast, 'contrast', center=1.0, device=device, dtype=dtype)
         saturation: Tensor = _range_bound(self.saturation, 'saturation', center=1.0, device=device, dtype=dtype)
@@ -73,9 +75,17 @@ class ColorJitterGenerator(RandomGeneratorBase):
         self.contrast_sampler = Uniform(contrast[0], contrast[1], validate_args=False)
         self.hue_sampler = Uniform(hue[0], hue[1], validate_args=False)
         self.saturation_sampler = Uniform(saturation[0], saturation[1], validate_args=False)
-        self.randperm = partial(torch.randperm, device=device, dtype=dtype)
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
+        _randperm_args: Dict[str, Any] = {}
+        if dtype is not None:
+            _randperm_args['dtype'] = dtype
+        if device is not None:
+            _randperm_args['device'] = device
+
+        # TODO: pass args directly when kornia relies on torch >= 1.13
+        self.randperm = partial(randperm, **_randperm_args)
+
+    def forward(self, batch_shape: Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.brightness, self.contrast, self.hue, self.saturation])

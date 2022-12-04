@@ -6,7 +6,7 @@ from torch.distributions import Bernoulli
 
 from kornia.augmentation.random_generator import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_sampling, _transform_output_shape, override_parameters
-from kornia.core import Module, Tensor, tensor
+from kornia.core import Device, Dtype, Module, Size, Tensor, tensor
 
 TensorWithTransformMat = Union[Tensor, Tuple[Tensor, Tensor]]
 
@@ -59,7 +59,7 @@ class _BasicAugmentationBase(Module):
             self._p_batch_gen = Bernoulli(self.p_batch)
         self._param_generator: Optional[RandomGeneratorBase] = None
         self.flags: Dict[str, Any] = {}
-        self.set_rng_device_and_dtype(torch.device('cpu'), torch.get_default_dtype())
+        self.set_rng_device_and_dtype(device=torch.device('cpu'), dtype=torch.get_default_dtype())
 
     apply_transform: Callable[..., Tensor] = _apply_transform_unimplemented
 
@@ -85,12 +85,12 @@ class _BasicAugmentationBase(Module):
         """Standardize output tensors."""
         return _transform_output_shape(output, output_shape) if self.keepdim else output
 
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, Tensor]:
+    def generate_parameters(self, batch_shape: Size) -> Dict[str, Tensor]:
         if self._param_generator is not None:
             return self._param_generator(batch_shape, self.same_on_batch)
         return {}
 
-    def set_rng_device_and_dtype(self, device: torch.device, dtype: torch.dtype) -> None:
+    def set_rng_device_and_dtype(self, device: Device = None, dtype: Dtype = None) -> None:
         """Change the random generation device and dtype.
 
         Note:
@@ -101,9 +101,7 @@ class _BasicAugmentationBase(Module):
         if self._param_generator is not None:
             self._param_generator.set_rng_device_and_dtype(device, dtype)
 
-    def __batch_prob_generator__(
-        self, batch_shape: torch.Size, p: float, p_batch: float, same_on_batch: bool
-    ) -> Tensor:
+    def __batch_prob_generator__(self, batch_shape: Size, p: float, p_batch: float, same_on_batch: bool) -> Tensor:
         batch_prob: Tensor
         if p_batch == 1:
             batch_prob = tensor([True])
@@ -144,7 +142,7 @@ class _BasicAugmentationBase(Module):
 
     def forward_parameters(self, batch_shape) -> Dict[str, Tensor]:
         to_apply = self.__batch_prob_generator__(batch_shape, self.p, self.p_batch, self.same_on_batch)
-        _params = self.generate_parameters(torch.Size((int(to_apply.sum().item()), *batch_shape[1:])))
+        _params = self.generate_parameters(Size((int(to_apply.sum().item()), *batch_shape[1:])))
         if _params is None:
             _params = {}
         _params['batch_prob'] = to_apply

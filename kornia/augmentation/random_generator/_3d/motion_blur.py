@@ -12,7 +12,7 @@ from kornia.augmentation.utils import (
     _range_bound,
     _tuple_range_reader,
 )
-from kornia.core import Tensor, stack
+from kornia.core import Device, Dtype, Size, Tensor, stack, tensor
 from kornia.utils.helpers import _deprecated, _extract_device_dtype
 
 
@@ -64,7 +64,7 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
         repr = f"kernel_size={self.kernel_size}, angle={self.angle}, direction={self.direction}"
         return repr
 
-    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+    def make_samplers(self, device: Device = None, dtype: Dtype = None) -> None:
         angle: Tensor = _tuple_range_reader(self.angle, 3, device=device, dtype=dtype)
         direction = _range_bound(self.direction, 'direction', center=0.0, bounds=(-1, 1)).to(device=device, dtype=dtype)
         if isinstance(self.kernel_size, int):
@@ -84,7 +84,7 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
         self.roll_sampler = Uniform(angle[2][0], angle[2][1], validate_args=False)
         self.direction_sampler = Uniform(direction[0], direction[1], validate_args=False)
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         # self.ksize_factor.expand((batch_size, -1))
@@ -111,8 +111,8 @@ def random_motion_blur_generator3d(
     angle: Tensor,
     direction: Tensor,
     same_on_batch: bool = False,
-    device: torch.device = torch.device('cpu'),
-    dtype: torch.dtype = torch.float32,
+    device: Device = None,
+    dtype: Dtype = None,
 ) -> Dict[str, Tensor]:
     r"""Get parameters for motion blur.
 
@@ -142,7 +142,7 @@ def random_motion_blur_generator3d(
     if isinstance(kernel_size, int):
         if not (kernel_size >= 3 and kernel_size % 2 == 1):
             raise AssertionError(f"`kernel_size` must be odd and greater than 3. Got {kernel_size}.")
-        ksize_factor = torch.tensor([kernel_size] * batch_size, device=device, dtype=dtype).int()
+        ksize_factor = tensor([kernel_size] * batch_size, device=device, dtype=dtype).int()
     elif isinstance(kernel_size, tuple):
         if not (len(kernel_size) == 2 and kernel_size[0] >= 3 and kernel_size[0] <= kernel_size[1]):
             raise AssertionError(f"`kernel_size` must be greater than 3. Got range {kernel_size}.")
@@ -153,7 +153,7 @@ def random_motion_blur_generator3d(
     else:
         raise TypeError(f"Unsupported type: {type(kernel_size)}")
 
-    if angle.shape != torch.Size([3, 2]):
+    if angle.shape != Size([3, 2]):
         raise AssertionError(f"'angle' must be the shape of (3, 2). Got {angle.shape}.")
     angle = angle.to(device=device, dtype=dtype)
     yaw = _adapted_uniform((batch_size,), angle[0][0], angle[0][1], same_on_batch)

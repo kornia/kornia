@@ -1,10 +1,8 @@
 from typing import Any, Dict, Optional, Tuple, Union
 
-import torch
-from torch import Tensor
-
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
+from kornia.core import Size, Tensor, rand
 from kornia.geometry.transform import elastic_transform2d
 
 
@@ -72,12 +70,12 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
             padding_mode=padding_mode,
         )
 
-    def generate_parameters(self, shape: torch.Size) -> Dict[str, Tensor]:
+    def generate_parameters(self, shape: Size) -> Dict[str, Tensor]:
         B, _, H, W = shape
         if self.same_on_batch:
-            noise = torch.rand(1, 2, H, W, device=self.device, dtype=self.dtype).repeat(B, 1, 1, 1)
+            noise = rand(1, 2, H, W, device=self.device, dtype=self.dtype).repeat(B, 1, 1, 1)
         else:
-            noise = torch.rand(B, 2, H, W, device=self.device, dtype=self.dtype)
+            noise = rand(B, 2, H, W, device=self.device, dtype=self.dtype)
         return dict(noise=noise * 2 - 1)
 
     # TODO: It is incorrect to return identity

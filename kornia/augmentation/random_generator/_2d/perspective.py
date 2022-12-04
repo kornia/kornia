@@ -1,12 +1,13 @@
 from typing import Dict, Union
 
-import torch
 from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
-from kornia.core import Tensor, tensor
+from kornia.core import Device, Dtype, Size, Tensor, as_tensor, stack, tensor
 from kornia.utils.helpers import _extract_device_dtype
+
+__all__ = ['PerspectiveGenerator']
 
 
 class PerspectiveGenerator(RandomGeneratorBase):
@@ -41,15 +42,15 @@ class PerspectiveGenerator(RandomGeneratorBase):
         repr = f"distortion_scale={self.distortion_scale}"
         return repr
 
-    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        self._distortion_scale = torch.as_tensor(self.distortion_scale, device=device, dtype=dtype)
+    def make_samplers(self, device: Device = None, dtype: Dtype = None) -> None:
+        self._distortion_scale = as_tensor(self.distortion_scale, device=device, dtype=dtype)
         if not (self._distortion_scale.dim() == 0 and 0 <= self._distortion_scale <= 1):
             raise AssertionError(f"'distortion_scale' must be a scalar within [0, 1]. Got {self._distortion_scale}.")
         self.rand_val_sampler = Uniform(
-            tensor(0, device=device, dtype=dtype), tensor(1, device=device, dtype=dtype), validate_args=False
+            tensor(0.0, device=device, dtype=dtype), tensor(1.0, device=device, dtype=dtype), validate_args=False
         )
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]
@@ -67,7 +68,7 @@ class PerspectiveGenerator(RandomGeneratorBase):
         fx = self._distortion_scale * width / 2
         fy = self._distortion_scale * height / 2
 
-        factor = torch.stack([fx, fy], dim=0).view(-1, 1, 2).to(device=_device, dtype=_dtype)
+        factor = stack([fx, fy], 0).view(-1, 1, 2).to(device=_device, dtype=_dtype)
 
         # TODO: This line somehow breaks the gradcheck
         rand_val: Tensor = _adapted_rsampling(start_points.shape, self.rand_val_sampler, same_on_batch).to(

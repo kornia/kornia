@@ -5,7 +5,7 @@ from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
-from kornia.core import Tensor
+from kornia.core import Device, Dtype, Size, Tensor, as_tensor, concatenate, stack, tensor, zeros
 from kornia.geometry.bbox import bbox_generator
 from kornia.utils.helpers import _extract_device_dtype
 
@@ -50,14 +50,14 @@ class MosaicGenerator(RandomGeneratorBase):
         )
         return repr
 
-    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+    def make_samplers(self, device: Device = None, dtype: Dtype = None) -> None:
         self.start_ratio_range_sampler = Uniform(
-            torch.tensor(self.start_ratio_range[0], device=device, dtype=dtype),
-            torch.tensor(self.start_ratio_range[1], device=device, dtype=dtype),
+            tensor(self.start_ratio_range[0], device=device, dtype=dtype),
+            tensor(self.start_ratio_range[1], device=device, dtype=dtype),
             validate_args=False,
         )
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    def forward(self, batch_shape: Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         input_sizes = (batch_shape[-2], batch_shape[-1])
         # output_size = input_sizes if self.output_size is None else self.output_size
@@ -69,7 +69,7 @@ class MosaicGenerator(RandomGeneratorBase):
         # Generate mosiac order in one shot
         rand_ids = torch.randperm(batch_size * (perm_times - 1), device=_device) % batch_size
         mosiac_ids = (
-            torch.cat([torch.arange(0, batch_size, device=_device), rand_ids])
+            concatenate([torch.arange(0, batch_size, device=_device), rand_ids])
             .reshape(perm_times, batch_size)
             .permute(1, 0)
         )
@@ -85,7 +85,7 @@ class MosaicGenerator(RandomGeneratorBase):
             start_corner_x.clone().fill_(input_sizes[0]),
             start_corner_y.clone().fill_(input_sizes[1]),
         )
-        crop_dst = torch.tensor(
+        crop_dst = tensor(
             [[[0, 0], [input_sizes[1] - 1, 0], [input_sizes[1] - 1, input_sizes[0] - 1], [0, input_sizes[0] - 1]]],
             device=_device,
             dtype=_dtype,
@@ -95,9 +95,9 @@ class MosaicGenerator(RandomGeneratorBase):
 
         batch_shapes: Tensor
         if batch_size == 0:
-            batch_shapes = torch.zeros([0, 3], device=_device, dtype=torch.long)
+            batch_shapes = zeros([0, 3], device=_device, dtype=torch.long)
         else:
-            batch_shapes = torch.stack([torch.as_tensor(batch_shape[1:], device=_device) for _ in range(batch_size)])
+            batch_shapes = stack([as_tensor(batch_shape[1:], device=_device) for _ in range(batch_size)])
         return dict(
             permutation=mosiac_ids.to(device=_device, dtype=torch.long),
             src=crop_src,

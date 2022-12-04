@@ -1,11 +1,10 @@
 from typing import Any, Dict, Optional, Tuple
 
-import torch
 from torch.distributions import Distribution, Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
-from kornia.core import Tensor, as_tensor
+from kornia.core import Device, Dtype, Parameter, Size, Tensor, as_tensor
 from kornia.utils.helpers import _extract_device_dtype
 
 # factor, name, center, range
@@ -48,7 +47,7 @@ class PlainUniformGenerator(RandomGeneratorBase):
             if name in names:
                 raise RuntimeError(f"factor name `{name}` has already been registered. Please check the duplication.")
             names.append(name)
-            if isinstance(factor, torch.nn.Parameter):
+            if isinstance(factor, Parameter):
                 self.register_parameter(name, factor)
             elif isinstance(factor, Tensor):
                 self.register_buffer(name, factor)
@@ -57,7 +56,7 @@ class PlainUniformGenerator(RandomGeneratorBase):
         repr = ", ".join([f"{name}={factor}" for factor, name, _, _ in self.samplers])
         return repr
 
-    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+    def make_samplers(self, device: Device = None, dtype: Dtype = None) -> None:
         self.sampler_dict: Dict[str, Distribution] = {}
         for factor, name, center, bound in self.samplers:
             if center is None and bound is None:
@@ -68,7 +67,7 @@ class PlainUniformGenerator(RandomGeneratorBase):
                 factor = _range_bound(factor, name, center=center, bounds=bound, device=device, dtype=dtype)
             self.sampler_dict.update({name: Uniform(factor[0], factor[1], validate_args=False)})
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([t for t, _, _, _ in self.samplers])

@@ -1,11 +1,10 @@
 from typing import Dict, Union
 
-import torch
 from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _adapted_uniform, _common_param_check
-from kornia.core import Tensor, as_tensor, stack, tensor
+from kornia.core import Device, Dtype, Size, Tensor, as_tensor, stack, tensor
 from kornia.utils.helpers import _deprecated, _extract_device_dtype
 
 
@@ -34,15 +33,15 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
         repr = f"distortion_scale={self.distortion_scale}"
         return repr
 
-    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+    def make_samplers(self, device: Device = None, dtype: Dtype = None) -> None:
         self._distortion_scale = as_tensor(self.distortion_scale, device=device, dtype=dtype)
         if not (self._distortion_scale.dim() == 0 and 0 <= self._distortion_scale <= 1):
             raise AssertionError(f"'distortion_scale' must be a scalar within [0, 1]. Got {self._distortion_scale}")
         self.rand_sampler = Uniform(
-            tensor(0, device=device, dtype=dtype), tensor(1, device=device, dtype=dtype), validate_args=False
+            tensor(0.0, device=device, dtype=dtype), tensor(1.0, device=device, dtype=dtype), validate_args=False
         )
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         depth = batch_shape[-3]
         height = batch_shape[-2]
@@ -97,8 +96,8 @@ def random_perspective_generator3d(
     width: int,
     distortion_scale: Tensor,
     same_on_batch: bool = False,
-    device: torch.device = torch.device('cpu'),
-    dtype: torch.dtype = torch.float32,
+    device: Device = None,
+    dtype: Dtype = None,
 ) -> Dict[str, Tensor]:
     r"""Get parameters for ``perspective`` for a random perspective transform.
 

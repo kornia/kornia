@@ -4,7 +4,7 @@ import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _common_param_check
-from kornia.core import Device, Tensor, tensor
+from kornia.core import Device, Dtype, Size, Tensor, tensor, zeros
 from kornia.geometry.bbox import bbox_generator
 from kornia.geometry.transform.affwarp import _side_to_image_size
 
@@ -38,12 +38,11 @@ class ResizeGenerator(RandomGeneratorBase):
         repr = f"output_size={self.output_size}"
         return repr
 
-    def make_samplers(self, device: Device, dtype: torch.dtype) -> None:
+    def make_samplers(self, device: Device = None, dtype: Dtype = None) -> None:
         self.device = device
         self.dtype = dtype
-        pass
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device = self.device
@@ -51,8 +50,7 @@ class ResizeGenerator(RandomGeneratorBase):
 
         if batch_size == 0:
             return dict(
-                src=torch.zeros([0, 4, 2], device=_device, dtype=_dtype),
-                dst=torch.zeros([0, 4, 2], device=_device, dtype=_dtype),
+                src=zeros([0, 4, 2], device=_device, dtype=_dtype), dst=zeros([0, 4, 2], device=_device, dtype=_dtype)
             )
 
         input_size = h, w = (batch_shape[-2], batch_shape[-1])
