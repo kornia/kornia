@@ -117,9 +117,11 @@ def warp_perspective(
     src_norm_trans_dst_norm = _torch_inverse_cast(dst_norm_trans_src_norm)  # Bx3x3
 
     # this piece of code substitutes F.affine_grid since it does not support 3x3
-    grid = create_meshgrid(
-        h_out, w_out, normalized_coordinates=True, device=src.device
-    ).to(src.dtype).expand(B, h_out, w_out, 2)
+    grid = (
+        create_meshgrid(h_out, w_out, normalized_coordinates=True, device=src.device)
+        .to(src.dtype)
+        .expand(B, h_out, w_out, 2)
+    )
     grid = transform_points(src_norm_trans_dst_norm[:, None, None], grid)
 
     if padding_mode == "fill":
