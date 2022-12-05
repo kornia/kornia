@@ -113,9 +113,9 @@ class TestSe2(BaseTester):
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_exp_log(self, device, dtype, batch_size):
-        aa = self._make_rand_data(device, dtype, batch_size, dims=3)
-        bb = Se2.exp(aa).log()
-        self.assert_close(bb, aa, low_tolerance=True)
+        a = self._make_rand_data(device, dtype, batch_size, dims=3)
+        b = Se2.exp(a).log()
+        self.assert_close(b, a, low_tolerance=True)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_hat(self, device, dtype, batch_size):
