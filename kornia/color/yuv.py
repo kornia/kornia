@@ -64,7 +64,7 @@ def rgb_to_yuv420(image: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
     if len(image.shape) < 2 or image.shape[-2] % 2 == 1 or image.shape[-1] % 2 == 1:
-        raise ValueError(f"Input H&W must be evenly disible by 2. Got {image.shape}")
+        raise ValueError(f"Input H&W must be evenly divisible by 2. Got {image.shape}")
 
     yuvimage = rgb_to_yuv(image)
 
@@ -95,7 +95,7 @@ def rgb_to_yuv422(image: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
     if len(image.shape) < 2 or image.shape[-2] % 2 == 1 or image.shape[-1] % 2 == 1:
-        raise ValueError(f"Input H&W must be evenly disible by 2. Got {image.shape}")
+        raise ValueError(f"Input H&W must be evenly divisible by 2. Got {image.shape}")
 
     yuvimage = rgb_to_yuv(image)
 
@@ -169,7 +169,7 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
         raise ValueError(f"Input imageuv size must have a shape of (*, 2, H/2, W/2). Got {imageuv.shape}")
 
     if len(imagey.shape) < 2 or imagey.shape[-2] % 2 == 1 or imagey.shape[-1] % 2 == 1:
-        raise ValueError(f"Input H&W must be evenly disible by 2. Got {imagey.shape}")
+        raise ValueError(f"Input H&W must be evenly divisible by 2. Got {imagey.shape}")
 
     if (
         len(imageuv.shape) < 2
@@ -220,7 +220,7 @@ def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
         raise ValueError(f"Input imageuv size must have a shape of (*, 2, H, W/2). Got {imageuv.shape}")
 
     if len(imagey.shape) < 2 or imagey.shape[-2] % 2 == 1 or imagey.shape[-1] % 2 == 1:
-        raise ValueError(f"Input H&W must be evenly disible by 2. Got {imagey.shape}")
+        raise ValueError(f"Input H&W must be evenly divisible by 2. Got {imagey.shape}")
 
     if len(imageuv.shape) < 2 or len(imagey.shape) < 2 or imagey.shape[-1] / imageuv.shape[-1] != 2:
         raise ValueError(
