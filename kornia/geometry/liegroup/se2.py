@@ -1,4 +1,4 @@
-# kornia.geometry.so2 module inspired by Sophus-sympy.
+# kornia.geometry.se2 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se2.py
 from typing import Optional, Tuple
 
