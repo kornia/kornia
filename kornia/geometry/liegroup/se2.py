@@ -25,7 +25,7 @@ class Se2(Module):
         tensor([1., 1.], requires_grad=True)
     """
 
-    def __init__(self, r: So2, t: Tensor) -> None:
+    def __init__(self, rotation: So2, translation: Tensor) -> None:
         """Constructor for the base class.
 
         Internally represented by a complex number `z` and a translation 2-vector.
@@ -45,17 +45,17 @@ class Se2(Module):
             tensor([[1., 1.]], requires_grad=True)
         """
         super().__init__()
-        KORNIA_CHECK_TYPE(r, So2)
+        KORNIA_CHECK_TYPE(rotation, So2)
         # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
-        check_se2_r_t_shape(r, t)
-        self._r = r
-        self._t = Parameter(t)
+        check_se2_r_t_shape(rotation, translation)
+        self._rotation = rotation
+        self._translation = Parameter(translation)
 
     def __repr__(self) -> str:
         return f"rotation: {self.r}\ntranslation: {self.t}"
 
     def __getitem__(self, idx) -> 'Se2':
-        return Se2(self._r[idx], self._t[idx][None])
+        return Se2(self._rotation[idx], self._translation[idx][None])
 
     def __mul__(self, right: "Se2") -> "Se2":
         """Compose two Se2 transformations.
@@ -83,17 +83,27 @@ class Se2(Module):
     @property
     def so2(self) -> So2:
         """Return the underlying rotation(So2)."""
-        return self._r
+        return self._rotation
 
     @property
     def r(self) -> So2:
         """Return the underlying rotation(So2)."""
-        return self._r
+        return self._rotation
 
     @property
     def t(self) -> Tensor:
         """Return the underlying translation vector of shape :math:`(B,3)`."""
-        return self._t
+        return self._translation
+
+    @property
+    def rotation(self) -> So2:
+        """Return the underlying rotation(So2)."""
+        return self._rotation
+
+    @property
+    def translation(self) -> Tensor:
+        """Return the underlying translation vector of shape :math:`(B,3)`."""
+        return self._translation
 
     @staticmethod
     def exp(v) -> 'Se2':
@@ -116,8 +126,9 @@ class Se2(Module):
         theta = v[..., 2]
         so2 = So2.exp(theta)
         z = tensor(0.0, device=v.device, dtype=v.dtype)
-        a = where(theta != 0.0, so2.z.imag / theta, z)
-        b = where(theta != 0.0, (1.0 - so2.z.real) / theta, z)
+        theta_nonzeros = theta != 0.0
+        a = where(theta_nonzeros, so2.z.imag / theta, z)
+        b = where(theta_nonzeros, (1.0 - so2.z.real) / theta, z)
         x = v[..., 0]
         y = v[..., 1]
         t = stack((a * x - b * y, b * x + a * y), -1)
