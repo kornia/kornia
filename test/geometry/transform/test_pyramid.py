@@ -21,7 +21,7 @@ class TestPyrUp:
     def test_gradcheck(self, device, dtype):
         img = torch.rand(1, 2, 5, 4, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.geometry.pyrup, (img,), raise_exception=True)
+        assert gradcheck(kornia.geometry.pyrup, (img,), nondet_tol=1e-8, raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
@@ -56,7 +56,7 @@ class TestPyrDown:
     def test_gradcheck(self, device, dtype):
         img = torch.rand(1, 2, 5, 4, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.geometry.pyrdown, (img,), raise_exception=True)
+        assert gradcheck(kornia.geometry.pyrdown, (img,), nondet_tol=1e-8, raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
@@ -125,7 +125,7 @@ class TestScalePyramid:
             sp, _, _ = SP()(img)
             return tuple(sp)
 
-        assert gradcheck(sp_tuple, (img,), raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(sp_tuple, (img,), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
 
 
 class TestBuildPyramid:
@@ -154,7 +154,9 @@ class TestBuildPyramid:
         batch_size, channels, height, width = 1, 2, 7, 9
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.geometry.transform.build_pyramid, (img, max_level), raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.transform.build_pyramid, (img, max_level), raise_exception=True, fast_mode=True
+        )
 
 
 class TestBuildLaplacianPyramid:
@@ -183,4 +185,10 @@ class TestBuildLaplacianPyramid:
         batch_size, channels, height, width = 1, 2, 7, 9
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.geometry.transform.build_laplacian_pyramid, (img, max_level), raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.transform.build_laplacian_pyramid,
+            (img, max_level),
+            nondet_tol=1e-8,
+            raise_exception=True,
+            fast_mode=True,
+        )

@@ -79,7 +79,7 @@ class TestEqualization(BaseTester):
             rot = rotate(input, torch.tensor(30.0, dtype=input.dtype, device=device))
             return enhance.equalize_clahe(rot, a, b, c)
 
-        assert gradcheck(grad_rot, (inputs, 40.0, (2, 2), True), nondet_tol=1e-4, raise_exception=True)
+        assert gradcheck(grad_rot, (inputs, 40.0, (2, 2), True), nondet_tol=1e-4, raise_exception=True, fast_mode=True)
 
     @pytest.mark.skip(reason="args and kwargs in decorator")
     def test_jit(self, device, dtype):

@@ -61,7 +61,7 @@ class TestEssentialFromFundamental:
         F_mat = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
         K1 = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
         K2 = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
-        assert gradcheck(epi.essential_from_fundamental, (F_mat, K1, K2), raise_exception=True)
+        assert gradcheck(epi.essential_from_fundamental, (F_mat, K1, K2), raise_exception=True, fast_mode=True)
 
 
 class TestRelativeCameraMotion:
@@ -120,7 +120,7 @@ class TestRelativeCameraMotion:
         R2 = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
         t1 = torch.rand(1, 3, 1, device=device, dtype=torch.float64)
         t2 = torch.rand(1, 3, 1, device=device, dtype=torch.float64)
-        assert gradcheck(epi.relative_camera_motion, (R1, t1, R2, t2), raise_exception=True)
+        assert gradcheck(epi.relative_camera_motion, (R1, t1, R2, t2), raise_exception=True, fast_mode=True)
 
 
 class TestEssentalFromRt:
@@ -161,7 +161,7 @@ class TestEssentalFromRt:
         R2 = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
         t1 = torch.rand(1, 3, 1, device=device, dtype=torch.float64)
         t2 = torch.rand(1, 3, 1, device=device, dtype=torch.float64)
-        assert gradcheck(epi.essential_from_Rt, (R1, t1, R2, t2), raise_exception=True)
+        assert gradcheck(epi.essential_from_Rt, (R1, t1, R2, t2), raise_exception=True, fast_mode=True)
 
 
 class TestDecomposeEssentialMatrix:
@@ -192,9 +192,9 @@ class TestDecomposeEssentialMatrix:
         def eval_vec(input):
             return epi.decompose_essential_matrix(input)[2]
 
-        assert gradcheck(eval_rot1, (E_mat,), raise_exception=True)
-        assert gradcheck(eval_rot2, (E_mat,), raise_exception=True)
-        assert gradcheck(eval_vec, (E_mat,), raise_exception=True)
+        assert gradcheck(eval_rot1, (E_mat,), raise_exception=True, fast_mode=True)
+        assert gradcheck(eval_rot2, (E_mat,), raise_exception=True, fast_mode=True)
+        assert gradcheck(eval_vec, (E_mat,), raise_exception=True, fast_mode=True)
 
 
 class TestMotionFromEssential:
@@ -239,8 +239,8 @@ class TestMotionFromEssential:
         def eval_vec(input):
             return epi.motion_from_essential(input)[1]
 
-        assert gradcheck(eval_rot, (E_mat,), raise_exception=True)
-        assert gradcheck(eval_vec, (E_mat,), raise_exception=True)
+        assert gradcheck(eval_rot, (E_mat,), raise_exception=True, fast_mode=True)
+        assert gradcheck(eval_vec, (E_mat,), raise_exception=True, fast_mode=True)
 
 
 class TestMotionFromEssentialChooseSolution:
@@ -330,4 +330,6 @@ class TestMotionFromEssentialChooseSolution:
         x1 = torch.rand(1, 2, 2, device=device, dtype=torch.float64)
         x2 = torch.rand(1, 2, 2, device=device, dtype=torch.float64)
 
-        assert gradcheck(epi.motion_from_essential_choose_solution, (E_mat, K1, K2, x1, x2), raise_exception=True)
+        assert gradcheck(
+            epi.motion_from_essential_choose_solution, (E_mat, K1, K2, x1, x2), raise_exception=True, fast_mode=True
+        )

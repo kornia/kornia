@@ -58,7 +58,7 @@ class TestTransformParameters:
         src, dst = _sample_points(batch_size, **opts)
         src.requires_grad_(requires_grad)
         dst.requires_grad_(not requires_grad)
-        assert gradcheck(kornia.geometry.transform.get_tps_transform, (src, dst), raise_exception=True)
+        assert gradcheck(kornia.geometry.transform.get_tps_transform, (src, dst), raise_exception=True, fast_mode=True)
 
     @pytest.mark.jit
     @pytest.mark.parametrize('batch_size', [1, 3])
@@ -130,7 +130,9 @@ class TestWarpPoints:
         kernel, affine = kornia.geometry.transform.get_tps_transform(src, dst)
         kernel.requires_grad_(requires_grad)
         affine.requires_grad_(not requires_grad)
-        assert gradcheck(kornia.geometry.transform.warp_points_tps, (src, dst, kernel, affine), raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.transform.warp_points_tps, (src, dst, kernel, affine), raise_exception=True, fast_mode=True
+        )
 
     @pytest.mark.jit
     @pytest.mark.parametrize('batch_size', [1, 3])
@@ -221,6 +223,8 @@ class TestWarpImage:
             raise_exception=True,
             atol=1e-4,
             rtol=1e-4,
+            nondet_tol=1e-8,
+            fast_mode=True,
         )
 
     @pytest.mark.jit

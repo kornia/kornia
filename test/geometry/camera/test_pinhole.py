@@ -116,6 +116,7 @@ class TestCam2Pixel:
             raise_exception=True,
             atol=atol,
             rtol=rtol,
+            fast_mode=True,
         )
 
 

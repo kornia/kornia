@@ -88,7 +88,9 @@ class TestCropAndResize:
         boxes = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)  # 1x4x2
         boxes = utils.tensor_to_gradcheck_var(boxes, requires_grad=False)  # to var
 
-        assert gradcheck(kornia.geometry.transform.crop_and_resize, (img, boxes, (4, 2)), raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.transform.crop_and_resize, (img, boxes, (4, 2)), raise_exception=True, fast_mode=True
+        )
 
     def test_jit(self, device, dtype):
         # Define script
@@ -160,7 +162,7 @@ class TestCenterCrop:
         img = torch.rand(1, 2, 5, 4, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
 
-        assert gradcheck(kornia.geometry.transform.center_crop, (img, (4, 2)), raise_exception=True)
+        assert gradcheck(kornia.geometry.transform.center_crop, (img, (4, 2)), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         # Define script
@@ -227,7 +229,7 @@ class TestCropByBoxes:
 
         inp = utils.tensor_to_gradcheck_var(inp, requires_grad=True)  # to var
 
-        assert gradcheck(kornia.geometry.transform.crop_by_boxes, (inp, src, dst), raise_exception=True)
+        assert gradcheck(kornia.geometry.transform.crop_by_boxes, (inp, src, dst), raise_exception=True, fast_mode=True)
 
 
 class TestCropByTransform:
@@ -272,5 +274,8 @@ class TestCropByTransform:
         inp = utils.tensor_to_gradcheck_var(inp, requires_grad=True)  # to var
 
         assert gradcheck(
-            kornia.geometry.transform.crop_by_transform_mat, (inp, transform, (2, 2)), raise_exception=True
+            kornia.geometry.transform.crop_by_transform_mat,
+            (inp, transform, (2, 2)),
+            raise_exception=True,
+            fast_mode=True,
         )
