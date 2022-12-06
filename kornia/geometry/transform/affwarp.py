@@ -6,6 +6,7 @@ import torch.nn as nn
 from kornia.filters import gaussian_blur2d
 from kornia.utils import _extract_device_dtype
 from kornia.utils.image import perform_keep_shape_image
+from kornia.utils.misc import eye_like
 
 from .imgwarp import get_affine_matrix2d, get_projective_transform, get_rotation_matrix2d, warp_affine, warp_affine3d
 
@@ -86,8 +87,7 @@ def _compute_rotation_matrix3d(
 
 def _compute_translation_matrix(translation: torch.Tensor) -> torch.Tensor:
     """Compute affine matrix for translation."""
-    matrix: torch.Tensor = torch.eye(3, device=translation.device, dtype=translation.dtype)
-    matrix = matrix.repeat(translation.shape[0], 1, 1)
+    matrix: torch.Tensor = eye_like(3, translation, shared_memory=False)
 
     dx, dy = torch.chunk(translation, chunks=2, dim=-1)
     matrix[..., 0, 2:3] += dx
@@ -104,8 +104,7 @@ def _compute_scaling_matrix(scale: torch.Tensor, center: torch.Tensor) -> torch.
 
 def _compute_shear_matrix(shear: torch.Tensor) -> torch.Tensor:
     """Compute affine matrix for shearing."""
-    matrix: torch.Tensor = torch.eye(3, device=shear.device, dtype=shear.dtype)
-    matrix = matrix.repeat(shear.shape[0], 1, 1)
+    matrix: torch.Tensor = eye_like(3, shear, shared_memory=False)
 
     shx, shy = torch.chunk(shear, chunks=2, dim=-1)
     matrix[..., 0, 1:2] += shx
