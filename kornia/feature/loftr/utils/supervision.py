@@ -46,9 +46,9 @@ def spvs_coarse(data, config):
 
     # 2. warp grids
     # create kpts in meshgrid and resize them to image resolution
-    grid_pt0_c = create_meshgrid(h0, w0, False, device).reshape(1, h0 * w0, 2).repeat(N, 1, 1)  # [N, hw, 2]
+    grid_pt0_c = create_meshgrid(h0, w0, False, device).reshape(1, h0 * w0, 2).expand(N, h0 * w0, 2)  # [N, hw, 2]
     grid_pt0_i = scale0 * grid_pt0_c
-    grid_pt1_c = create_meshgrid(h1, w1, False, device).reshape(1, h1 * w1, 2).repeat(N, 1, 1)
+    grid_pt1_c = create_meshgrid(h1, w1, False, device).reshape(1, h1 * w1, 2).expand(N, h1 * w1, 2)
     grid_pt1_i = scale1 * grid_pt1_c
 
     # mask padded region to (0, 0), so no need to manually mask conf_matrix_gt

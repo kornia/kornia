@@ -87,7 +87,7 @@ def check_is_tensor(obj):
 def create_rectified_fundamental_matrix(batch_size):
     """Create a batch of rectified fundamental matrices of shape Bx3x3."""
     F_rect = tensor([[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]]).view(1, 3, 3)
-    F_repeat = F_rect.repeat(batch_size, 1, 1)
+    F_repeat = F_rect.expand(batch_size, 3, 3)
     return F_repeat
 
 
