@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from kornia.feature import DescriptorMatcher, GFTTAffNetHardNet, LocalFeatureMatcher, SIFTFeature
-from kornia.geometry import resize, transform_points
+from kornia.geometry import rescale, transform_points
 from kornia.testing import assert_close
 from kornia.tracking import HomographyTracker
 
@@ -38,12 +38,8 @@ class TestHomographyTracker:
             if isinstance(data[k], torch.Tensor):
                 data[k] = data[k].to(device, dtype)
         h0, w0 = data["image0"].shape[2:]
-        data["image0"] = resize(
-            data["image0"], (int(h0 // 2), int(w0 // 2)), interpolation='bilinear', align_corners=False
-        )
-        data["image1"] = resize(
-            data["image1"], (int(h0 // 2), int(w0 // 2)), interpolation='bilinear', align_corners=False
-        )
+        data["image0"] = rescale(data["image0"], 0.5, interpolation='bilinear', align_corners=False)
+        data["image1"] = rescale(data["image1"], 0.5, interpolation='bilinear', align_corners=False)
         with torch.no_grad():
             tracker.set_target(data["image0"])
             torch.manual_seed(3)  # issue kornia#2027
