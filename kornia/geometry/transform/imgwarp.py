@@ -118,7 +118,9 @@ def warp_perspective(
 
     # this piece of code substitutes F.affine_grid since it does not support 3x3
     grid = (
-        create_meshgrid(h_out, w_out, normalized_coordinates=True, device=src.device).to(src.dtype).repeat(B, 1, 1, 1)
+        create_meshgrid(h_out, w_out, normalized_coordinates=True, device=src.device)
+        .to(src.dtype)
+        .expand(B, h_out, w_out, 2)
     )
     grid = transform_points(src_norm_trans_dst_norm[:, None, None], grid)
 
@@ -917,7 +919,7 @@ def get_projective_transform(center: Tensor, angles: Tensor, scales: Tensor) -> 
     rmat = rmat @ scaling_matrix.to(rmat)
 
     # define matrix to move forth and back to origin
-    from_origin_mat = eye(4)[None].repeat(rmat.shape[0], 1, 1).type_as(center)  # Bx4x4
+    from_origin_mat = eye_like(4, rmat, shared_memory=False)  # Bx4x4
     from_origin_mat[..., :3, -1] += center
 
     to_origin_mat = from_origin_mat.clone()

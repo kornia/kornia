@@ -9,6 +9,7 @@ from kornia.constants import pi
 from kornia.core import Tensor, concatenate, pad, stack, tensor, where
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.utils.helpers import _torch_inverse_cast
+from kornia.utils.misc import eye_like
 
 __all__ = [
     "rad2deg",
@@ -337,9 +338,7 @@ def angle_axis_to_rotation_matrix(angle_axis: Tensor) -> Tensor:
     mask_neg = (~mask).type_as(theta2)
 
     # create output pose matrix
-    batch_size = angle_axis.shape[0]
-    rotation_matrix = torch.eye(3).to(angle_axis.device).type_as(angle_axis)
-    rotation_matrix = rotation_matrix.view(1, 3, 3).repeat(batch_size, 1, 1)
+    rotation_matrix = eye_like(3, angle_axis, shared_memory=False)
     # fill output matrix with masked values
     rotation_matrix[..., :3, :3] = mask_pos * rotation_matrix_normal + mask_neg * rotation_matrix_taylor
     return rotation_matrix  # Nx3x3

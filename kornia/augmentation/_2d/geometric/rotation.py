@@ -3,9 +3,10 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
-from kornia.core import Tensor, as_tensor, eye
+from kornia.core import Tensor, as_tensor
 from kornia.geometry.transform import affine
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
+from kornia.utils.misc import eye_like
 
 
 class RandomRotation(GeometricAugmentationBase2D):
@@ -81,7 +82,7 @@ class RandomRotation(GeometricAugmentationBase2D):
         rotation_mat: Tensor = _compute_rotation_matrix(angles, center.expand(angles.shape[0], -1))
 
         # rotation_mat is B x 2 x 3 and we need a B x 3 x 3 matrix
-        trans_mat: Tensor = eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
+        trans_mat: Tensor = eye_like(3, input, shared_memory=False)
         trans_mat[:, 0] = rotation_mat[:, 0]
         trans_mat[:, 1] = rotation_mat[:, 1]
 
