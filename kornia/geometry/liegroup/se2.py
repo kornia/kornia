@@ -1,6 +1,6 @@
 # kornia.geometry.se2 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se2.py
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 from kornia.core import Module, Parameter, Tensor, concatenate, pad, rand, stack, tensor, where
 from kornia.geometry.liegroup._utils import check_se2_r_t_shape, check_v_shape
@@ -16,13 +16,14 @@ class Se2(Module):
     See more:
 
     Example:
-        >>> so2 = So2.identity()
-        >>> t = torch.ones((2))
+        >>> so2 = So2.identity(1)
+        >>> t = torch.ones((1, 2))
         >>> se2 = Se2(so2, t)
         >>> se2
-        rotation: (1+0j)
+        rotation: Parameter containing:
+        tensor([1.+0.j], requires_grad=True)
         translation: Parameter containing:
-        tensor([1., 1.], requires_grad=True)
+        tensor([[1., 1.]], requires_grad=True)
     """
 
     def __init__(self, rotation: So2, translation: Tensor) -> None:
@@ -57,7 +58,7 @@ class Se2(Module):
     def __getitem__(self, idx) -> 'Se2':
         return Se2(self._rotation[idx], self._translation[idx][None])
 
-    def __mul__(self, right: "Se2") -> "Se2":
+    def __mul__(self, right: "Se2") -> Union['Se2', Tensor]:
         """Compose two Se2 transformations.
 
         Args:
@@ -66,17 +67,20 @@ class Se2(Module):
         Return:
             The resulting Se2 transformation.
         """
+        out: Union['Se2', Tensor]
         if isinstance(right, Se2):
             KORNIA_CHECK_TYPE(right, Se2)
             so2 = self.so2
             r = so2 * right.so2
             t = self.t + so2 * right.t
-            return Se2(r, t)
+            out = Se2(r, t)
+            return out
         elif isinstance(right, Tensor):
             KORNIA_CHECK_TYPE(right, Tensor)
             # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
             check_se2_r_t_shape(self.so2, right)
-            return self.so2 * right + self.t
+            out = self.so2 * right + self.t
+            return out
         else:
             raise TypeError(f"Unsupported type: {type(right)}")
 
@@ -183,12 +187,13 @@ class Se2(Module):
             batch_size: the batch size of the underlying data.
 
         Example:
-            >>> s = Se2.identity()
+            >>> s = Se2.identity(1)
             >>> s.r
-            (1+0j)
+            Parameter containing:
+            tensor([1.+0.j], requires_grad=True)
             >>> s.t
             Parameter containing:
-            tensor([0., 0.], requires_grad=True)
+            tensor([[0., 0.]], requires_grad=True)
         """
         t: Tensor = tensor([0.0, 0.0], device=device, dtype=dtype)
         if batch_size is not None:
@@ -199,11 +204,11 @@ class Se2(Module):
         """Returns the matrix representation of shape :math:`(B, 3, 3)`.
 
         Example:
-            >>> s = Se2(So2.identity(), torch.ones(2))
+            >>> s = Se2(So2.identity(1), torch.ones(1, 2))
             >>> s.matrix()
-            tensor([[1., -0., 1.],
-                    [0., 1., 1.],
-                    [0., 0., 1.]], grad_fn=<CopySlices>)
+            tensor([[[1., -0., 1.],
+                     [0., 1., 1.],
+                     [0., 0., 1.]]], grad_fn=<CopySlices>)
         """
         rt = concatenate((self.r.matrix(), self.t[..., None]), -1)
         rt_3x3 = pad(rt, (0, 0, 0, 1))  # add last row zeros
@@ -214,16 +219,18 @@ class Se2(Module):
         """Returns the inverse transformation.
 
         Example:
-            >>> s = Se2(So2.identity(), torch.ones(2))
+            >>> s = Se2(So2.identity(1), torch.ones(1,2))
             >>> s_inv = s.inverse()
             >>> s_inv.r
-            (1+0j)
+            Parameter containing:
+            tensor([1.+0.j], requires_grad=True)
             >>> s_inv.t
             Parameter containing:
-            tensor([-1., -1.], requires_grad=True)
+            tensor([[-1., -1.]], requires_grad=True)
         """
-        r_inv = self.r.inverse()
-        return Se2(r_inv, r_inv * (-1 * self.t))
+        r_inv: So2 = self.r.inverse()
+        t_inv: Tensor = r_inv * (-1 * self.t)
+        return Se2(r_inv, t_inv)
 
     @classmethod
     def random(cls, batch_size: Optional[int] = None, device=None, dtype=None) -> 'Se2':
