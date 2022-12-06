@@ -415,6 +415,7 @@ class TestLambdaModule:
 class TestImageStitcher:
     @pytest.mark.parametrize("estimator", ['ransac', 'vanilla'])
     def test_smoke(self, estimator, device, dtype):
+        torch.manual_seed(7)  # issue kornia#2027
         B, C, H, W = 1, 3, 224, 224
         sample1 = torch.rand(B, C, H, W, device=device, dtype=dtype)
         sample2 = torch.rand(B, C, H, W, device=device, dtype=dtype)
