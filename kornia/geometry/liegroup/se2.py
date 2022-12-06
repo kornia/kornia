@@ -71,18 +71,17 @@ class Se2(Module):
         if isinstance(right, Se2):
             KORNIA_CHECK_TYPE(right, Se2)
             so2 = self.so2
-            r = so2 * right.so2
-            t = self.t + so2 * right.t
+            r: So2 = so2 * right.so2
+            t: Tensor = self.t + so2 * right.t
             out = Se2(r, t)
-            return out
         elif isinstance(right, Tensor):
             KORNIA_CHECK_TYPE(right, Tensor)
             # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
             check_se2_r_t_shape(self.so2, right)
             out = self.so2 * right + self.t
-            return out
         else:
             raise TypeError(f"Unsupported type: {type(right)}")
+        return out
 
     @property
     def so2(self) -> So2:
@@ -96,7 +95,7 @@ class Se2(Module):
 
     @property
     def t(self) -> Tensor:
-        """Return the underlying translation vector of shape :math:`(B,3)`."""
+        """Return the underlying translation vector of shape :math:`(B,2)`."""
         return self._translation
 
     @property
@@ -106,7 +105,7 @@ class Se2(Module):
 
     @property
     def translation(self) -> Tensor:
-        """Return the underlying translation vector of shape :math:`(B,3)`."""
+        """Return the underlying translation vector of shape :math:`(B,2)`."""
         return self._translation
 
     @staticmethod
