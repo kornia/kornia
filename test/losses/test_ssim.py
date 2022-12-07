@@ -68,7 +68,9 @@ class TestSSIMLoss:
         img2 = utils.tensor_to_gradcheck_var(img2)  # to var
 
         # TODO: review method since it needs `nondet_tol` in cuda sometimes.
-        assert gradcheck(kornia.losses.ssim_loss, (img1, img2, window_size), raise_exception=True, nondet_tol=1e-8)
+        assert gradcheck(
+            kornia.losses.ssim_loss, (img1, img2, window_size), raise_exception=True, nondet_tol=1e-8, fast_mode=True
+        )
 
 
 class TestMS_SSIMLoss:
@@ -107,7 +109,7 @@ class TestMS_SSIMLoss:
 
         loss = kornia.losses.MS_SSIMLoss().to(device, dtype)
 
-        assert gradcheck(loss, (img1, img2), raise_exception=True, nondet_tol=1e-8)
+        assert gradcheck(loss, (img1, img2), raise_exception=True, nondet_tol=1e-8, fast_mode=True)
 
     def test_jit(self, device, dtype):
         img1 = torch.rand(1, 3, 10, 10, device=device, dtype=dtype)

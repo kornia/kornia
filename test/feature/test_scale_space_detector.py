@@ -54,4 +54,6 @@ class TestScaleSpaceDetector:
         batch_size, channels, height, width = 1, 1, 7, 7
         patches = torch.rand(batch_size, channels, height, width, device=device)
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
-        assert gradcheck(ScaleSpaceDetector(2).to(device), patches, raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(
+            ScaleSpaceDetector(2).to(device), patches, raise_exception=True, nondet_tol=1e-4, fast_mode=True
+        )

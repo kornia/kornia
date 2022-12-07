@@ -112,7 +112,9 @@ class TestTransformPoints:
         # evaluate function gradient
         points_src = utils.tensor_to_gradcheck_var(points_src)  # to var
         dst_homo_src = utils.tensor_to_gradcheck_var(dst_homo_src)  # to var
-        assert gradcheck(kornia.geometry.transform_points, (dst_homo_src, points_src), raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.transform_points, (dst_homo_src, points_src), raise_exception=True, fast_mode=True
+        )
 
     def test_jit(self, device, dtype):
         points = torch.ones(1, 2, 2, device=device, dtype=dtype)
@@ -187,7 +189,7 @@ class TestComposeTransforms:
 
         trans_01 = utils.tensor_to_gradcheck_var(trans_01)  # to var
         trans_12 = utils.tensor_to_gradcheck_var(trans_12)  # to var
-        assert gradcheck(kgl.compose_transformations, (trans_01, trans_12), raise_exception=True)
+        assert gradcheck(kgl.compose_transformations, (trans_01, trans_12), raise_exception=True, fast_mode=True)
 
 
 class TestInverseTransformation:
@@ -256,7 +258,7 @@ class TestInverseTransformation:
     def test_gradcheck(self, batch_size, device, dtype):
         trans_01 = identity_matrix(batch_size, device=device, dtype=dtype)
         trans_01 = utils.tensor_to_gradcheck_var(trans_01)  # to var
-        assert gradcheck(kgl.inverse_transformation, (trans_01,), raise_exception=True)
+        assert gradcheck(kgl.inverse_transformation, (trans_01,), raise_exception=True, fast_mode=True)
 
 
 class TestRelativeTransformation:
@@ -329,7 +331,7 @@ class TestRelativeTransformation:
 
         trans_01 = utils.tensor_to_gradcheck_var(trans_01)  # to var
         trans_02 = utils.tensor_to_gradcheck_var(trans_02)  # to var
-        assert gradcheck(kgl.relative_transformation, (trans_01, trans_02), raise_exception=True)
+        assert gradcheck(kgl.relative_transformation, (trans_01, trans_02), raise_exception=True, fast_mode=True)
 
 
 class TestPointsLinesDistances:
@@ -389,7 +391,7 @@ class TestPointsLinesDistances:
     def test_gradcheck(self, device):
         pts = torch.rand(2, 3, 2, device=device, requires_grad=True, dtype=torch.float64)
         lines = torch.rand(2, 3, 3, device=device, requires_grad=True, dtype=torch.float64)
-        assert gradcheck(kgl.point_line_distance, (pts, lines), raise_exception=True)
+        assert gradcheck(kgl.point_line_distance, (pts, lines), raise_exception=True, fast_mode=True)
 
 
 class TestEuclideanDistance(BaseTester):
@@ -415,7 +417,7 @@ class TestEuclideanDistance(BaseTester):
     def test_gradcheck(self, device):
         pt1 = torch.rand(2, 3, device=device, dtype=torch.float64, requires_grad=True)
         pt2 = torch.rand(2, 3, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kgl.euclidean_distance, (pt1, pt2), raise_exception=True)
+        assert gradcheck(kgl.euclidean_distance, (pt1, pt2), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         pt1 = torch.rand(2, 3, device=device, dtype=dtype)

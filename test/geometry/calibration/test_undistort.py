@@ -232,7 +232,7 @@ class TestUndistortPoints:
         new_K = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
         distCoeff = torch.rand(1, 4, device=device, dtype=torch.float64)
 
-        assert gradcheck(undistort_points, (points, K, distCoeff, new_K), raise_exception=True)
+        assert gradcheck(undistort_points, (points, K, distCoeff, new_K), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         points = torch.rand(1, 1, 2, device=device, dtype=dtype)
@@ -341,7 +341,7 @@ class TestUndistortImage:
         K = torch.rand(3, 3, device=device, dtype=torch.float64)
         distCoeff = torch.rand(4, device=device, dtype=torch.float64)
 
-        assert gradcheck(undistort_image, (im, K, distCoeff), raise_exception=True)
+        assert gradcheck(undistort_image, (im, K, distCoeff), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         im = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)

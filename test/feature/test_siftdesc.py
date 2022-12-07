@@ -58,7 +58,7 @@ class TestSIFTDescriptor:
         patches = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
         sift = SIFTDescriptor(15).to(device, dtype)
-        assert gradcheck(sift, (patches,), raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(sift, (patches,), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
 
     @pytest.mark.skip("Compiled functions can't take variable number")
     def test_jit(self, device, dtype):
@@ -96,9 +96,8 @@ class TestDenseSIFTDescriptor:
         sift = DenseSIFTDescriptor()
         sift.__repr__()
 
-    @pytest.mark.xfail(reason='May raise checkIfNumericalAnalyticAreClose.')
     def test_gradcheck(self, device, dtype):
         batch_size, channels, height, width = 1, 1, 16, 16
         patches = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
-        assert gradcheck(DenseSIFTDescriptor(4, 2, 2), (patches), raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(DenseSIFTDescriptor(4, 2, 2), (patches), raise_exception=True, nondet_tol=1e-4, fast_mode=True)

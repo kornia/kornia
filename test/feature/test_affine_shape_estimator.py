@@ -38,7 +38,7 @@ class TestPatchAffineShapeEstimator:
         ori = PatchAffineShapeEstimator(width).to(device)
         patches = torch.rand(batch_size, channels, height, width, device=device)
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
-        assert gradcheck(ori, (patches,), raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(ori, (patches,), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
 
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 13, 13
@@ -108,6 +108,7 @@ class TestLAFAffineShapeEstimator:
             rtol=1e-3,
             atol=1e-3,
             nondet_tol=1e-4,
+            fast_mode=True,
         )
 
     @pytest.mark.jit
@@ -158,7 +159,6 @@ class TestLAFAffNetShapeEstimator:
         expected = torch.tensor([[[[40.8758, 0.0, 16.0], [-0.3824, 9.7857, 16.0]]]], device=device, dtype=dtype)
         assert_close(new_laf, expected, atol=1e-4, rtol=1e-4)
 
-    @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 35, 35
         patches = torch.rand(batch_size, channels, height, width, device=device)
@@ -172,6 +172,7 @@ class TestLAFAffNetShapeEstimator:
             rtol=1e-3,
             atol=1e-3,
             nondet_tol=1e-4,
+            fast_mode=True,
         )
 
     @pytest.mark.jit

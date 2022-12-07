@@ -61,7 +61,7 @@ class TestScaleIntrinsics:
     def test_gradcheck(self, device):
         scale_factor = torch.ones(1, device=device, dtype=torch.float64, requires_grad=True)
         camera_matrix = torch.ones(1, 3, 3, device=device, dtype=torch.float64)
-        assert gradcheck(epi.scale_intrinsics, (camera_matrix, scale_factor), raise_exception=True)
+        assert gradcheck(epi.scale_intrinsics, (camera_matrix, scale_factor), raise_exception=True, fast_mode=True)
 
 
 class TestProjectionFromKRt:
@@ -115,7 +115,7 @@ class TestProjectionFromKRt:
         K = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
         R = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
         t = torch.rand(1, 3, 1, device=device, dtype=torch.float64)
-        assert gradcheck(epi.projection_from_KRt, (K, R, t), raise_exception=True)
+        assert gradcheck(epi.projection_from_KRt, (K, R, t), raise_exception=True, fast_mode=True)
 
 
 class TestProjectionsFromFundamental:
@@ -133,7 +133,7 @@ class TestProjectionsFromFundamental:
 
     def test_gradcheck(self, device):
         F_mat = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(epi.projections_from_fundamental, (F_mat,), raise_exception=True)
+        assert gradcheck(epi.projections_from_fundamental, (F_mat,), raise_exception=True, fast_mode=True)
 
 
 class TestKRtFromProjection:
@@ -206,4 +206,4 @@ class TestKRtFromProjection:
 
     def test_gradcheck(self, device):
         P_mat = torch.rand(1, 3, 4, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(epi.KRt_from_projection, (P_mat,), raise_exception=True)
+        assert gradcheck(epi.KRt_from_projection, (P_mat,), raise_exception=True, fast_mode=True)
