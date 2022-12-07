@@ -32,7 +32,7 @@ class TestMaxBlurPool:
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.filters.max_blur_pool2d, (img, 3), raise_exception=True)
+        assert gradcheck(kornia.filters.max_blur_pool2d, (img, 3), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         op = kornia.filters.max_blur_pool2d
@@ -82,7 +82,7 @@ class TestBlurPool:
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.filters.blur_pool2d, (img, 3), raise_exception=True)
+        assert gradcheck(kornia.filters.blur_pool2d, (img, 3), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         op = kornia.filters.blur_pool2d
@@ -119,7 +119,7 @@ class TestEdgeAwareBlurPool:
     def test_gradcheck(self, device, dtype):
         img = torch.rand((1, 2, 5, 4), device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.filters.edge_aware_blur_pool2d, (img, 3), raise_exception=True)
+        assert gradcheck(kornia.filters.edge_aware_blur_pool2d, (img, 3), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         op = kornia.filters.edge_aware_blur_pool2d

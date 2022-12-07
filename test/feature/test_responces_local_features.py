@@ -114,7 +114,9 @@ class TestCornerHarris:
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width, device=device)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.feature.harris_response, (img, k), raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(
+            kornia.feature.harris_response, (img, k), raise_exception=True, nondet_tol=1e-4, fast_mode=True
+        )
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device):
@@ -233,7 +235,7 @@ class TestCornerGFTT:
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width, device=device)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.feature.gftt_response, (img), raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(kornia.feature.gftt_response, (img), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device):
@@ -313,7 +315,7 @@ class TestBlobHessian:
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width, device=device)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.feature.hessian_response, (img), raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(kornia.feature.hessian_response, (img), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
 
     @pytest.mark.jit
     def test_jit(self, device):

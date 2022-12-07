@@ -37,7 +37,7 @@ class TestNormalizePoints:
 
     def test_gradcheck(self, device):
         points = torch.rand(2, 3, 2, device=device, requires_grad=True, dtype=torch.float64)
-        assert gradcheck(epi.normalize_points, (points,), raise_exception=True)
+        assert gradcheck(epi.normalize_points, (points,), raise_exception=True, fast_mode=True)
 
 
 class TestNormalizeTransformation:
@@ -71,7 +71,7 @@ class TestNormalizeTransformation:
 
     def test_gradcheck(self, device):
         trans = torch.rand(2, 3, 3, device=device, requires_grad=True, dtype=torch.float64)
-        assert gradcheck(epi.normalize_transformation, (trans,), raise_exception=True)
+        assert gradcheck(epi.normalize_transformation, (trans,), raise_exception=True, fast_mode=True)
 
 
 class TestFindFundamental:
@@ -180,7 +180,7 @@ class TestFindFundamental:
         points1 = torch.rand(1, 10, 2, device=device, dtype=torch.float64, requires_grad=True)
         points2 = torch.rand(1, 10, 2, device=device, dtype=torch.float64)
         weights = torch.ones(1, 10, device=device, dtype=torch.float64)
-        assert gradcheck(epi.find_fundamental, (points1, points2, weights), raise_exception=True)
+        assert gradcheck(epi.find_fundamental, (points1, points2, weights), raise_exception=True, fast_mode=True)
 
 
 class TestComputeCorrespondEpilines:
@@ -240,7 +240,7 @@ class TestComputeCorrespondEpilines:
     def test_gradcheck(self, device):
         point = torch.rand(1, 4, 2, device=device, dtype=torch.float64, requires_grad=True)
         F_mat = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
-        assert gradcheck(epi.compute_correspond_epilines, (point, F_mat), raise_exception=True)
+        assert gradcheck(epi.compute_correspond_epilines, (point, F_mat), raise_exception=True, fast_mode=True)
 
 
 class TestFundamentlFromEssential:
@@ -282,7 +282,7 @@ class TestFundamentlFromEssential:
         E_mat = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
         K1 = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
         K2 = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
-        assert gradcheck(epi.fundamental_from_essential, (E_mat, K1, K2), raise_exception=True)
+        assert gradcheck(epi.fundamental_from_essential, (E_mat, K1, K2), raise_exception=True, fast_mode=True)
 
 
 class TestFundamentalFromProjections:
@@ -326,7 +326,7 @@ class TestFundamentalFromProjections:
     def test_gradcheck(self, device):
         P1 = torch.rand(1, 3, 4, device=device, dtype=torch.float64, requires_grad=True)
         P2 = torch.rand(1, 3, 4, device=device, dtype=torch.float64)
-        assert gradcheck(epi.fundamental_from_projections, (P1, P2), raise_exception=True)
+        assert gradcheck(epi.fundamental_from_projections, (P1, P2), raise_exception=True, fast_mode=True)
 
     def test_batch_support_check(self, device, dtype):
         P1_batch = torch.tensor(
@@ -386,7 +386,7 @@ class TestFundamentalFromProjections:
 
         F_batch = epi.fundamental_from_projections(P1_batch, P2_batch)
         F = epi.fundamental_from_projections(P1, P2)
-        assert (F_batch[0] == F[0]).all()
+        assert_close(F_batch[0], F[0])
 
 
 class TestPerpendicular:
@@ -407,7 +407,7 @@ class TestPerpendicular:
     def test_gradcheck(self, device):
         pt = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
         line = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
-        assert gradcheck(epi.get_perpendicular, (pt, line), raise_exception=True)
+        assert gradcheck(epi.get_perpendicular, (pt, line), raise_exception=True, fast_mode=True)
 
 
 class TestGetClosestPointOnEpipolarLine:
@@ -430,4 +430,4 @@ class TestGetClosestPointOnEpipolarLine:
         pts1 = torch.rand(2, 4, 2, device=device, dtype=torch.float64, requires_grad=True)
         pts2 = torch.rand(2, 4, 2, device=device, dtype=torch.float64)
         Fm = utils2.create_random_fundamental_matrix(1).type_as(pts1)
-        assert gradcheck(epi.get_closest_point_on_epipolar_line, (pts1, pts2, Fm), raise_exception=True)
+        assert gradcheck(epi.get_closest_point_on_epipolar_line, (pts1, pts2, Fm), raise_exception=True, fast_mode=True)

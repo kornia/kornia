@@ -53,7 +53,7 @@ class TestSkewSymmetric:
 
     def test_gradcheck(self, device):
         vec = torch.ones(2, 3, device=device, requires_grad=True, dtype=torch.float64)
-        assert gradcheck(epi.cross_product_matrix, (vec,), raise_exception=True)
+        assert gradcheck(epi.cross_product_matrix, (vec,), raise_exception=True, fast_mode=True)
 
 
 class TestEyeLike:

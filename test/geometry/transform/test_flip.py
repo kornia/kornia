@@ -72,7 +72,7 @@ class TestVflip:
 
         input = utils.tensor_to_gradcheck_var(input)  # to var
 
-        assert gradcheck(kornia.geometry.transform.Vflip(), (input,), raise_exception=True)
+        assert gradcheck(kornia.geometry.transform.Vflip(), (input,), raise_exception=True, fast_mode=True)
 
 
 class TestHflip:
@@ -142,7 +142,7 @@ class TestHflip:
 
         input = utils.tensor_to_gradcheck_var(input)  # to var
 
-        assert gradcheck(kornia.geometry.transform.Hflip(), (input,), raise_exception=True)
+        assert gradcheck(kornia.geometry.transform.Hflip(), (input,), raise_exception=True, fast_mode=True)
 
 
 class TestRot180:
@@ -210,4 +210,4 @@ class TestRot180:
 
         input = utils.tensor_to_gradcheck_var(input)  # to var
 
-        assert gradcheck(kornia.geometry.transform.Rot180(), (input,), raise_exception=True)
+        assert gradcheck(kornia.geometry.transform.Rot180(), (input,), raise_exception=True, fast_mode=True)

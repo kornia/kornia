@@ -20,12 +20,11 @@ class TestHyNet:
         out = hynet(inp)
         assert out.shape == (16, 128)
 
-    @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device):
         patches = torch.rand(2, 1, 32, 32, device=device)
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
         hynet = HyNet().to(patches.device, patches.dtype)
-        assert gradcheck(hynet, (patches,), eps=1e-4, atol=1e-4, raise_exception=True)
+        assert gradcheck(hynet, (patches,), eps=1e-4, atol=1e-4, nondet_tol=1e-8, raise_exception=True, fast_mode=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):

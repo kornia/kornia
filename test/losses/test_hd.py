@@ -140,4 +140,4 @@ class TestHausdorffLoss:
         loss = hd(k=2)
 
         logits = utils.tensor_to_gradcheck_var(logits)  # to var
-        assert gradcheck(loss, (logits, labels), raise_exception=True)
+        assert gradcheck(loss, (logits, labels), raise_exception=True, fast_mode=True)

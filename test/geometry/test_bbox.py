@@ -49,7 +49,7 @@ class TestBbox2D:
     def test_gradcheck(self, device, dtype):
         boxes = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
         boxes = utils.tensor_to_gradcheck_var(boxes)
-        assert gradcheck(infer_bbox_shape, (boxes,), raise_exception=True)
+        assert gradcheck(infer_bbox_shape, (boxes,), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         # Define script
@@ -169,7 +169,7 @@ class TestTransformBoxes2D:
         trans_mat = utils.tensor_to_gradcheck_var(trans_mat)
         boxes = utils.tensor_to_gradcheck_var(boxes)
 
-        assert gradcheck(transform_bbox, (trans_mat, boxes, "xyxy", True), raise_exception=True)
+        assert gradcheck(transform_bbox, (trans_mat, boxes, "xyxy", True), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         boxes = torch.tensor([[139.2640, 103.0150, 258.0480, 307.5075]], device=device, dtype=dtype)
@@ -233,7 +233,7 @@ class TestBbox3D:
             dtype=dtype,
         )
         boxes = utils.tensor_to_gradcheck_var(boxes)
-        assert gradcheck(infer_bbox_shape3d, (boxes,), raise_exception=True)
+        assert gradcheck(infer_bbox_shape3d, (boxes,), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         # Define script

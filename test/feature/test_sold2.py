@@ -26,7 +26,7 @@ class TestSOLD2_detector:
         def proxy_forward(x):
             return sold2.forward(x)["junction_heatmap"]
 
-        assert gradcheck(proxy_forward, (img,), eps=1e-4, atol=1e-4, raise_exception=True)
+        assert gradcheck(proxy_forward, (img,), eps=1e-4, atol=1e-4, raise_exception=True, fast_mode=True)
 
     @pytest.mark.skip("Does not like recursive definition of Hourglass in backbones.py l.134.")
     def test_jit(self, device, dtype):

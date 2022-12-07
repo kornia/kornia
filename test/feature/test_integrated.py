@@ -67,7 +67,13 @@ class TestGetLAFDescriptors:
 
         desc = _MeanPatch()
         assert gradcheck(
-            get_laf_descriptors, (img, lafs, desc, PS, True), eps=1e-3, atol=1e-3, raise_exception=True, nondet_tol=1e-3
+            get_laf_descriptors,
+            (img, lafs, desc, PS, True),
+            eps=1e-3,
+            atol=1e-3,
+            raise_exception=True,
+            nondet_tol=1e-3,
+            fast_mode=True,
         )
 
 
@@ -118,7 +124,9 @@ class TestLAFDescriptor:
                 return inputs.mean(dim=(2, 3))
 
         lafdesc = LAFDescriptor(_MeanPatch(), PS)
-        assert gradcheck(lafdesc, (img, lafs), eps=1e-3, atol=1e-3, raise_exception=True, nondet_tol=1e-3)
+        assert gradcheck(
+            lafdesc, (img, lafs), eps=1e-3, atol=1e-3, raise_exception=True, nondet_tol=1e-3, fast_mode=True
+        )
 
 
 # TODO: add kornia.testing.BaseTester
@@ -161,14 +169,13 @@ class TestLocalFeature:
         assert_close(get_laf_orientation(lafs), get_laf_orientation(lafs2))
         assert_close(2.0 * get_laf_scale(lafs), get_laf_scale(lafs2))
 
-    @pytest.mark.skip("Takes too long time (but works)")
     def test_gradcheck(self, device):
         B, C, H, W = 1, 1, 32, 32
         PS = 16
         img = torch.rand(B, C, H, W, device=device)
         img = utils.tensor_to_gradcheck_var(img)  # to var
         local_feature = LocalFeature(ScaleSpaceDetector(2), LAFDescriptor(SIFTDescriptor(PS), PS)).to(device, img.dtype)
-        assert gradcheck(local_feature, img, eps=1e-4, atol=1e-4, raise_exception=True)
+        assert gradcheck(local_feature, img, eps=1e-4, atol=1e-4, nondet_tol=1e-8, raise_exception=True, fast_mode=True)
 
 
 # TODO: add kornia.testing.BaseTester
@@ -247,7 +254,7 @@ class TestLocalFeatureMatcher:
         def proxy_forward(x, y):
             return matcher({"image0": x, "image1": y})["keypoints0"]
 
-        assert gradcheck(proxy_forward, (patches, patches05), eps=1e-4, atol=1e-4, raise_exception=True)
+        assert gradcheck(proxy_forward, (patches, patches05), eps=1e-4, atol=1e-4, raise_exception=True, fast_mode=True)
 
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_real_sift(self, device, dtype, data):

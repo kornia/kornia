@@ -106,7 +106,9 @@ class TestSolvePnpDlt:
         img_points = tensor_to_gradcheck_var(img_points)
         intrinsics = tensor_to_gradcheck_var(intrinsics)
 
-        assert gradcheck(kornia.geometry.solve_pnp_dlt, (world_points, img_points, intrinsics), raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.solve_pnp_dlt, (world_points, img_points, intrinsics), raise_exception=True, fast_mode=True
+        )
 
     @pytest.mark.parametrize("num_points", (6, 20))
     def test_pred_world_to_cam(self, num_points, device, dtype):
@@ -152,4 +154,4 @@ class TestNormalization:
         points = torch.rand((batch_size, num_points, dimension), device=device, dtype=dtype)
         points = tensor_to_gradcheck_var(points)
 
-        assert gradcheck(_mean_isotropic_scale_normalize, (points,), raise_exception=True)
+        assert gradcheck(_mean_isotropic_scale_normalize, (points,), raise_exception=True, fast_mode=True)

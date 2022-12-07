@@ -72,7 +72,9 @@ class TestAddWeighted:
         src1, src2, alpha, beta, gamma = self.get_input(device, dtype, size=3, max_elem=5)  # to shave time on gradcheck
         src1 = utils.tensor_to_gradcheck_var(src1)  # to var
         src2 = utils.tensor_to_gradcheck_var(src2)  # to var
-        assert gradcheck(kornia.enhance.AddWeighted(alpha, beta, gamma), (src1, src2), raise_exception=True)
+        assert gradcheck(
+            kornia.enhance.AddWeighted(alpha, beta, gamma), (src1, src2), raise_exception=True, fast_mode=True
+        )
 
     def test_module(self, device, dtype):
         src1, src2, alpha, beta, gamma = self.get_input(device, dtype, size=3)
