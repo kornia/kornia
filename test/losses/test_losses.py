@@ -83,7 +83,10 @@ class TestBinaryFocalLossWithLogits:
 
         logits = utils.tensor_to_gradcheck_var(logits)  # to var
         assert gradcheck(
-            kornia.losses.binary_focal_loss_with_logits, (logits, labels, alpha, gamma), raise_exception=True
+            kornia.losses.binary_focal_loss_with_logits,
+            (logits, labels, alpha, gamma),
+            raise_exception=True,
+            fast_mode=True,
         )
 
     def test_same_output(self, device, dtype):
@@ -137,7 +140,7 @@ class TestFocalLoss:
         labels = labels.to(device).long()
 
         logits = utils.tensor_to_gradcheck_var(logits)  # to var
-        assert gradcheck(kornia.losses.focal_loss, (logits, labels, alpha, gamma), raise_exception=True)
+        assert gradcheck(kornia.losses.focal_loss, (logits, labels, alpha, gamma), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         num_classes = 3
@@ -198,7 +201,9 @@ class TestTverskyLoss:
         labels = labels.to(device).long()
 
         logits = utils.tensor_to_gradcheck_var(logits)  # to var
-        assert gradcheck(kornia.losses.tversky_loss, (logits, labels, alpha, beta), raise_exception=True)
+        assert gradcheck(
+            kornia.losses.tversky_loss, (logits, labels, alpha, beta), raise_exception=True, fast_mode=True
+        )
 
     def test_jit(self, device, dtype):
         num_classes = 3
@@ -258,7 +263,7 @@ class TestDiceLoss:
         labels = labels.to(device).long()
 
         logits = utils.tensor_to_gradcheck_var(logits)  # to var
-        assert gradcheck(kornia.losses.dice_loss, (logits, labels), raise_exception=True)
+        assert gradcheck(kornia.losses.dice_loss, (logits, labels), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         num_classes = 3
@@ -315,7 +320,9 @@ class TestDepthSmoothnessLoss:
         depth = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         depth = utils.tensor_to_gradcheck_var(depth)  # to var
         image = utils.tensor_to_gradcheck_var(image)  # to var
-        assert gradcheck(kornia.losses.inverse_depth_smoothness_loss, (depth, image), raise_exception=True)
+        assert gradcheck(
+            kornia.losses.inverse_depth_smoothness_loss, (depth, image), raise_exception=True, fast_mode=True
+        )
 
 
 class TestDivergenceLoss:
@@ -399,7 +406,7 @@ class TestDivergenceLoss:
         # evaluate function gradient
         input = utils.tensor_to_gradcheck_var(input)  # to var
         target = utils.tensor_to_gradcheck_var(target)  # to var
-        assert gradcheck(kornia.losses.kl_div_loss_2d, (input, target), raise_exception=True)
+        assert gradcheck(kornia.losses.kl_div_loss_2d, (input, target), raise_exception=True, fast_mode=True)
 
     def test_gradcheck_js(self, device, dtype):
         input = torch.rand(1, 1, 10, 16, device=device, dtype=dtype)
@@ -408,7 +415,7 @@ class TestDivergenceLoss:
         # evaluate function gradient
         input = utils.tensor_to_gradcheck_var(input)  # to var
         target = utils.tensor_to_gradcheck_var(target)  # to var
-        assert gradcheck(kornia.losses.js_div_loss_2d, (input, target), raise_exception=True)
+        assert gradcheck(kornia.losses.js_div_loss_2d, (input, target), raise_exception=True, fast_mode=True)
 
     def test_jit_kl(self, device, dtype):
         input = torch.full((1, 1, 2, 4), 0.125, dtype=dtype, device=device)
@@ -559,7 +566,7 @@ class TestTotalVariation:
     def test_gradcheck(self, device, dtype):
         image = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         image = utils.tensor_to_gradcheck_var(image)  # to var
-        assert gradcheck(kornia.losses.total_variation, (image,), raise_exception=True)
+        assert gradcheck(kornia.losses.total_variation, (image,), raise_exception=True, fast_mode=True)
 
 
 class TestPSNRLoss:
@@ -619,7 +626,7 @@ class TestPSNRLoss:
         target = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)  # to var
         target = utils.tensor_to_gradcheck_var(target)  # to var
-        assert gradcheck(kornia.losses.psnr_loss, (input, target, 1.0), raise_exception=True)
+        assert gradcheck(kornia.losses.psnr_loss, (input, target, 1.0), raise_exception=True, fast_mode=True)
 
 
 class TestLovaszHingeLoss:
@@ -658,7 +665,7 @@ class TestLovaszHingeLoss:
         labels = labels.to(device).long()
 
         logits = utils.tensor_to_gradcheck_var(logits)  # to var
-        assert gradcheck(kornia.losses.lovasz_hinge_loss, (logits, labels), raise_exception=True)
+        assert gradcheck(kornia.losses.lovasz_hinge_loss, (logits, labels), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         num_classes = 1
@@ -723,7 +730,7 @@ class TestLovaszSoftmaxLoss:
         labels = labels.to(device).long()
 
         logits = utils.tensor_to_gradcheck_var(logits)  # to var
-        assert gradcheck(kornia.losses.lovasz_softmax_loss, (logits, labels), raise_exception=True)
+        assert gradcheck(kornia.losses.lovasz_softmax_loss, (logits, labels), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         num_classes = 6

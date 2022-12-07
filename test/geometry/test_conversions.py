@@ -200,6 +200,7 @@ class TestAngleAxisToQuaternion:
                 partial(kornia.geometry.conversions.angle_axis_to_quaternion, order=QuaternionCoeffOrder.XYZW),
                 (angle_axis,),
                 raise_exception=True,
+                fast_mode=True,
             )
 
     def test_gradcheck(self, device, dtype):
@@ -211,6 +212,7 @@ class TestAngleAxisToQuaternion:
             partial(kornia.geometry.conversions.angle_axis_to_quaternion, order=QuaternionCoeffOrder.WXYZ),
             (angle_axis,),
             raise_exception=True,
+            fast_mode=True,
         )
 
 
@@ -364,6 +366,7 @@ class TestQuaternionToAngleAxis:
                 partial(kornia.geometry.conversions.quaternion_to_angle_axis, order=QuaternionCoeffOrder.XYZW),
                 (quaternion,),
                 raise_exception=True,
+                fast_mode=True,
             )
 
     def test_gradcheck(self, device, dtype):
@@ -375,6 +378,7 @@ class TestQuaternionToAngleAxis:
             partial(kornia.geometry.conversions.quaternion_to_angle_axis, order=QuaternionCoeffOrder.WXYZ),
             (quaternion,),
             raise_exception=True,
+            fast_mode=True,
         )
 
 
@@ -502,6 +506,7 @@ class TestRotationMatrixToQuaternion:
                 ),
                 (matrix,),
                 raise_exception=True,
+                fast_mode=True,
             )
 
     def test_gradcheck(self, device, dtype):
@@ -515,9 +520,9 @@ class TestRotationMatrixToQuaternion:
             ),
             (matrix,),
             raise_exception=True,
+            fast_mode=True,
         )
 
-    @pytest.mark.skipif(torch.__version__.startswith('1.6'), reason='JIT Enum not handled.')
     def test_jit_xyzw(self, device, dtype):
         op = kornia.geometry.conversions.quaternion_log_to_exp
         op_script = torch.jit.script(op)
@@ -528,7 +533,6 @@ class TestRotationMatrixToQuaternion:
             expected = op(quaternion)
         assert_close(actual, expected)
 
-    @pytest.mark.skipif(torch.__version__.startswith('1.6'), reason='JIT Enum not handled.')
     def test_jit(self, device, dtype):
         eps = torch.finfo(dtype).eps
         op = kornia.geometry.conversions.quaternion_log_to_exp
@@ -625,6 +629,7 @@ class TestQuaternionToRotationMatrix:
                 partial(kornia.geometry.conversions.quaternion_to_rotation_matrix, order=QuaternionCoeffOrder.XYZW),
                 (quaternion,),
                 raise_exception=True,
+                fast_mode=True,
             )
 
     def test_gradcheck(self, device, dtype):
@@ -635,9 +640,9 @@ class TestQuaternionToRotationMatrix:
             partial(kornia.geometry.conversions.quaternion_to_rotation_matrix, order=QuaternionCoeffOrder.WXYZ),
             (quaternion,),
             raise_exception=True,
+            fast_mode=True,
         )
 
-    @pytest.mark.skipif(torch.__version__.startswith('1.6'), reason='JIT Enum not handled.')
     def test_jit_xyzw(self, device, dtype):
         op = kornia.geometry.conversions.quaternion_to_rotation_matrix
         op_jit = torch.jit.script(op)
@@ -645,7 +650,6 @@ class TestQuaternionToRotationMatrix:
         with pytest.warns(UserWarning):
             assert_close(op(quaternion), op_jit(quaternion))
 
-    @pytest.mark.skipif(torch.__version__.startswith('1.6'), reason='JIT Enum not handled.')
     def test_jit(self, device, dtype):
         op = kornia.geometry.conversions.quaternion_to_rotation_matrix
         op_jit = torch.jit.script(op)
@@ -792,6 +796,7 @@ class TestQuaternionLogToExp:
                 partial(kornia.geometry.conversions.quaternion_log_to_exp, eps=eps, order=QuaternionCoeffOrder.XYZW),
                 (quaternion,),
                 raise_exception=True,
+                fast_mode=True,
             )
 
     def test_gradcheck(self, device, dtype):
@@ -803,9 +808,9 @@ class TestQuaternionLogToExp:
             partial(kornia.geometry.conversions.quaternion_log_to_exp, eps=eps, order=QuaternionCoeffOrder.WXYZ),
             (quaternion,),
             raise_exception=True,
+            fast_mode=True,
         )
 
-    @pytest.mark.skipif(torch.__version__.startswith('1.6'), reason='JIT Enum not handled.')
     def test_jit_xyzw(self, device, dtype):
         op = kornia.geometry.conversions.quaternion_log_to_exp
         op_jit = torch.jit.script(op)
@@ -815,7 +820,6 @@ class TestQuaternionLogToExp:
                 op(quaternion, order=QuaternionCoeffOrder.XYZW), op_jit(quaternion, order=QuaternionCoeffOrder.XYZW)
             )
 
-    @pytest.mark.skipif(torch.__version__.startswith('1.6'), reason='JIT Enum not handled.')
     def test_jit(self, device, dtype):
         op = kornia.geometry.conversions.quaternion_log_to_exp
         op_jit = torch.jit.script(op)
@@ -956,6 +960,7 @@ class TestQuaternionExpToLog:
                 partial(kornia.geometry.conversions.quaternion_exp_to_log, eps=eps, order=QuaternionCoeffOrder.XYZW),
                 (quaternion,),
                 raise_exception=True,
+                fast_mode=True,
             )
 
     def test_gradcheck(self, device, dtype):
@@ -967,9 +972,9 @@ class TestQuaternionExpToLog:
             partial(kornia.geometry.conversions.quaternion_exp_to_log, eps=eps, order=QuaternionCoeffOrder.WXYZ),
             (quaternion,),
             raise_exception=True,
+            fast_mode=True,
         )
 
-    @pytest.mark.skipif(torch.__version__.startswith('1.6'), reason='JIT Enum not handled.')
     def test_jit_xyzw(self, device, dtype, atol, rtol):
         op = kornia.geometry.conversions.quaternion_exp_to_log
         op_jit = torch.jit.script(op)
@@ -977,7 +982,6 @@ class TestQuaternionExpToLog:
         with pytest.warns(UserWarning):
             assert_close(op(quaternion), op_jit(quaternion), atol=atol, rtol=rtol)
 
-    @pytest.mark.skipif(torch.__version__.startswith('1.6'), reason='JIT Enum not handled.')
     def test_jit(self, device, dtype, atol, rtol):
         op = kornia.geometry.conversions.quaternion_exp_to_log
         op_script = torch.jit.script(op)
@@ -1003,7 +1007,12 @@ class TestAngleAxisToRotationMatrix:
 
         # evaluate function gradient
         angle_axis = tensor_to_gradcheck_var(angle_axis)  # to var
-        assert gradcheck(kornia.geometry.conversions.angle_axis_to_rotation_matrix, (angle_axis,), raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.conversions.angle_axis_to_rotation_matrix,
+            (angle_axis,),
+            raise_exception=True,
+            fast_mode=True,
+        )
 
     def test_angle_axis_to_rotation_matrix(self, device, dtype, atol, rtol):
         rmat_1 = torch.tensor(
@@ -1051,7 +1060,10 @@ class TestRotationMatrixToAngleAxis:
         # evaluate function gradient
         rotation_matrix = tensor_to_gradcheck_var(rotation_matrix)  # to var
         assert gradcheck(
-            kornia.geometry.conversions.rotation_matrix_to_angle_axis, (rotation_matrix,), raise_exception=True
+            kornia.geometry.conversions.rotation_matrix_to_angle_axis,
+            (rotation_matrix,),
+            raise_exception=True,
+            fast_mode=True,
         )
 
     def test_rotation_matrix_to_angle_axis(self, device, dtype, atol, rtol):
@@ -1099,7 +1111,9 @@ def test_rad2deg(batch_shape, device, dtype):
     assert_close(x_rad, x_deg_to_rad)
 
     # evaluate function gradient
-    assert gradcheck(kornia.geometry.conversions.rad2deg, (tensor_to_gradcheck_var(x_rad),), raise_exception=True)
+    assert gradcheck(
+        kornia.geometry.conversions.rad2deg, (tensor_to_gradcheck_var(x_rad),), raise_exception=True, fast_mode=True
+    )
 
 
 @pytest.mark.parametrize("batch_shape", [(2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3)])
@@ -1113,7 +1127,9 @@ def test_deg2rad(batch_shape, device, dtype, atol, rtol):
 
     assert_close(x_deg, x_rad_to_deg, atol=atol, rtol=rtol)
 
-    assert gradcheck(kornia.geometry.conversions.deg2rad, (tensor_to_gradcheck_var(x_deg),), raise_exception=True)
+    assert gradcheck(
+        kornia.geometry.conversions.deg2rad, (tensor_to_gradcheck_var(x_deg),), raise_exception=True, fast_mode=True
+    )
 
 
 class TestPolCartConversions:
@@ -1141,6 +1157,7 @@ class TestPolCartConversions:
             kornia.geometry.conversions.pol2cart,
             (tensor_to_gradcheck_var(rho), tensor_to_gradcheck_var(phi)),
             raise_exception=True,
+            fast_mode=True,
         )
 
     @pytest.mark.parametrize("batch_shape", [(2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3)])
@@ -1162,6 +1179,7 @@ class TestPolCartConversions:
             kornia.geometry.conversions.cart2pol,
             (tensor_to_gradcheck_var(x), tensor_to_gradcheck_var(y)),
             raise_exception=True,
+            fast_mode=True,
         )
 
 
@@ -1208,7 +1226,9 @@ class TestConvertPointsToHomogeneous:
 
         # evaluate function gradient
         points_h = tensor_to_gradcheck_var(points_h)  # to var
-        assert gradcheck(kornia.geometry.conversions.convert_points_to_homogeneous, (points_h,), raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.conversions.convert_points_to_homogeneous, (points_h,), raise_exception=True, fast_mode=True
+        )
 
     def test_jit(self, device, dtype):
         op = kornia.geometry.conversions.convert_points_to_homogeneous
@@ -1237,7 +1257,10 @@ class TestConvertAtoH:
         # evaluate function gradient
         points_h = tensor_to_gradcheck_var(points_h)  # to var
         assert gradcheck(
-            kornia.geometry.conversions.convert_affinematrix_to_homography, (points_h,), raise_exception=True
+            kornia.geometry.conversions.convert_affinematrix_to_homography,
+            (points_h,),
+            raise_exception=True,
+            fast_mode=True,
         )
 
     def test_jit(self, device, dtype):
@@ -1285,7 +1308,12 @@ class TestConvertPointsFromHomogeneous:
 
         # evaluate function gradient
         points_h = tensor_to_gradcheck_var(points_h)  # to var
-        assert gradcheck(kornia.geometry.conversions.convert_points_from_homogeneous, (points_h,), raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.conversions.convert_points_from_homogeneous,
+            (points_h,),
+            raise_exception=True,
+            fast_mode=True,
+        )
 
     @pytest.mark.skip("RuntimeError: Jacobian mismatch for output 0 with respect to input 0,")
     def test_gradcheck_zvec_zeros(self, device, dtype):
@@ -1294,7 +1322,12 @@ class TestConvertPointsFromHomogeneous:
 
         # evaluate function gradient
         points_h = tensor_to_gradcheck_var(points_h)  # to var
-        assert gradcheck(kornia.geometry.conversions.convert_points_from_homogeneous, (points_h,), raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.conversions.convert_points_from_homogeneous,
+            (points_h,),
+            raise_exception=True,
+            fast_mode=True,
+        )
 
     def test_jit(self, device, dtype):
         op = kornia.geometry.conversions.convert_points_from_homogeneous
@@ -1421,7 +1454,9 @@ class TestProjectPoints:
         # evaluate function gradient
         points_3d = tensor_to_gradcheck_var(points_3d)
         camera_matrix = tensor_to_gradcheck_var(camera_matrix)
-        assert gradcheck(kornia.geometry.camera.project_points, (points_3d, camera_matrix), raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.camera.project_points, (points_3d, camera_matrix), raise_exception=True, fast_mode=True
+        )
 
     def test_jit(self, device, dtype):
         points_3d = torch.zeros(1, 3, device=device, dtype=dtype)
@@ -1464,6 +1499,7 @@ class TestDenormalizePointsWithIntrinsics:
             kornia.geometry.conversions.denormalize_points_with_intrinsics,
             (points_2d, camera_matrix),
             raise_exception=True,
+            fast_mode=True,
         )
 
     def test_jit(self, device, dtype):
@@ -1520,6 +1556,7 @@ class TestNormalizePointsWithIntrinsics:
             kornia.geometry.conversions.normalize_points_with_intrinsics,
             (points_2d, camera_matrix),
             raise_exception=True,
+            fast_mode=True,
         )
 
     def test_jit(self, device, dtype):
@@ -1551,6 +1588,7 @@ class TestRt2Extrinsics:
             kornia.geometry.conversions.Rt_to_matrix4x4,
             (tensor_to_gradcheck_var(R), tensor_to_gradcheck_var(t)),
             raise_exception=True,
+            fast_mode=True,
         )
 
 
@@ -1584,8 +1622,12 @@ class TestCamtoworldGraphicsToVision:
         R_vis_back, t_vis_back = camtoworld_graphics_to_vision_Rt(R_graf, t_graf)
         assert_close(R_vis_back, R_vis, rtol=1e-4, atol=1e-5)
         assert_close(t_vis_back, t_vis, rtol=1e-4, atol=1e-5)
-        assert gradcheck(camtoworld_graphics_to_vision_4x4, (tensor_to_gradcheck_var(K_vis)), raise_exception=True)
-        assert gradcheck(camtoworld_vision_to_graphics_4x4, (tensor_to_gradcheck_var(K_vis)), raise_exception=True)
+        assert gradcheck(
+            camtoworld_graphics_to_vision_4x4, (tensor_to_gradcheck_var(K_vis)), raise_exception=True, fast_mode=True
+        )
+        assert gradcheck(
+            camtoworld_vision_to_graphics_4x4, (tensor_to_gradcheck_var(K_vis)), raise_exception=True, fast_mode=True
+        )
 
 
 class TestCamtoworldRtToPoseRt:
@@ -1610,10 +1652,16 @@ class TestCamtoworldRtToPoseRt:
         assert_close(tback, t, rtol=1e-4, atol=1e-5)
 
         assert gradcheck(
-            camtoworld_to_worldtocam_Rt, (tensor_to_gradcheck_var(R), tensor_to_gradcheck_var(t)), raise_exception=True
+            camtoworld_to_worldtocam_Rt,
+            (tensor_to_gradcheck_var(R), tensor_to_gradcheck_var(t)),
+            raise_exception=True,
+            fast_mode=True,
         )
         assert gradcheck(
-            worldtocam_to_camtoworld_Rt, (tensor_to_gradcheck_var(R), tensor_to_gradcheck_var(t)), raise_exception=True
+            worldtocam_to_camtoworld_Rt,
+            (tensor_to_gradcheck_var(R), tensor_to_gradcheck_var(t)),
+            raise_exception=True,
+            fast_mode=True,
         )
 
 
@@ -1661,7 +1709,7 @@ class TestEulerFromQuaternion(BaseTester):
 
     def test_gradcheck(self, device):
         q = Quaternion.random(batch_size=1).to(device, torch.float64)
-        assert gradcheck(euler_from_quaternion, (q.w, q.x, q.y, q.z), raise_exception=True)
+        assert gradcheck(euler_from_quaternion, (q.w, q.x, q.y, q.z), raise_exception=True, fast_mode=True)
 
     def test_module(self, device, dtype):
         pass
@@ -1709,7 +1757,7 @@ class TestQuaternionFromEuler(BaseTester):
 
     def test_gradcheck(self, device):
         roll, pitch, yaw = torch.rand(3, 2, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(quaternion_from_euler, (roll, pitch, yaw), raise_exception=True)
+        assert gradcheck(quaternion_from_euler, (roll, pitch, yaw), raise_exception=True, fast_mode=True)
 
     def test_module(self, device, dtype):
         pass

@@ -86,7 +86,9 @@ class TestGetPerspectiveTransform:
         # compute gradient check
         points_src = torch.rand(1, 4, 2, device=device, dtype=torch.float64, requires_grad=True)
         points_dst = torch.rand(1, 4, 2, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.geometry.get_perspective_transform, (points_src, points_dst), raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.get_perspective_transform, (points_src, points_dst), raise_exception=True, fast_mode=True
+        )
 
 
 @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -136,7 +138,9 @@ def test_rotation_matrix2d(batch_size, device, dtype):
     center = utils.tensor_to_gradcheck_var(center)  # to var
     angle = utils.tensor_to_gradcheck_var(angle)  # to var
     scale = utils.tensor_to_gradcheck_var(scale)  # to var
-    assert gradcheck(kornia.geometry.get_rotation_matrix2d, (center, angle, scale), raise_exception=True)
+    assert gradcheck(
+        kornia.geometry.get_rotation_matrix2d, (center, angle, scale), raise_exception=True, fast_mode=True
+    )
 
 
 class TestWarpAffine:
@@ -226,7 +230,9 @@ class TestWarpAffine:
         img_b = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         aff_ab = utils.tensor_to_gradcheck_var(aff_ab)  # to var
         img_b = utils.tensor_to_gradcheck_var(img_b)  # to var
-        assert gradcheck(kornia.geometry.warp_affine, (img_b, aff_ab, (height, width)), raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.warp_affine, (img_b, aff_ab, (height, width)), raise_exception=True, fast_mode=True
+        )
 
     def test_fill_padding_translation(self, device, dtype):
         offset = 1.0
@@ -424,7 +430,9 @@ class TestWarpPerspective:
         img_b = utils.tensor_to_gradcheck_var(img_b)  # to var
         # TODO(dmytro/edgar): firgure out why gradient don't propagate for the tranaform
         H_ab = utils.tensor_to_gradcheck_var(H_ab, requires_grad=False)  # to var
-        assert gradcheck(kornia.geometry.warp_perspective, (img_b, H_ab, (height, width)), raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.warp_perspective, (img_b, H_ab, (height, width)), raise_exception=True, fast_mode=True
+        )
 
     def test_fill_padding_translation(self, device, dtype):
         offset = 1.0
@@ -545,7 +553,10 @@ class TestRemap:
         grid = utils.tensor_to_gradcheck_var(grid, requires_grad=False)  # to var
 
         assert gradcheck(
-            kornia.geometry.remap, (img, grid[..., 0], grid[..., 1], 'bilinear', 'zeros', True), raise_exception=True
+            kornia.geometry.remap,
+            (img, grid[..., 0], grid[..., 1], 'bilinear', 'zeros', True),
+            raise_exception=True,
+            fast_mode=True,
         )
 
     def test_jit(self, device, dtype):
@@ -591,7 +602,7 @@ class TestInvertAffineTransform:
     def test_gradcheck(self, device, dtype):
         matrix = torch.eye(2, 3, device=device, dtype=dtype)[None]
         matrix = utils.tensor_to_gradcheck_var(matrix)  # to var
-        assert gradcheck(kornia.geometry.invert_affine_transform, (matrix,), raise_exception=True)
+        assert gradcheck(kornia.geometry.invert_affine_transform, (matrix,), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         op = kornia.geometry.invert_affine_transform

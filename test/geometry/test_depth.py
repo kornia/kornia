@@ -113,7 +113,9 @@ class TestDepthTo3d:
         camera_matrix = utils.tensor_to_gradcheck_var(camera_matrix)  # to var
 
         # evaluate function gradient
-        assert gradcheck(kornia.geometry.depth.depth_to_3d, (depth, camera_matrix), raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.depth.depth_to_3d, (depth, camera_matrix), raise_exception=True, fast_mode=True
+        )
 
 
 class TestDepthToNormals:
@@ -210,7 +212,9 @@ class TestDepthToNormals:
         camera_matrix = utils.tensor_to_gradcheck_var(camera_matrix)  # to var
 
         # evaluate function gradient
-        assert gradcheck(kornia.geometry.depth.depth_to_normals, (depth, camera_matrix), raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.depth.depth_to_normals, (depth, camera_matrix), raise_exception=True, fast_mode=True
+        )
 
 
 class TestWarpFrameDepth:
@@ -323,4 +327,5 @@ class TestWarpFrameDepth:
             kornia.geometry.depth.warp_frame_depth,
             (image_src, depth_dst, src_trans_dst, camera_matrix),
             raise_exception=True,
+            fast_mode=True,
         )
