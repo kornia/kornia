@@ -415,10 +415,33 @@ class TestLambdaModule:
 class TestImageStitcher:
     @pytest.mark.parametrize("estimator", ['ransac', 'vanilla'])
     def test_smoke(self, estimator, device, dtype):
-        torch.manual_seed(7)  # issue kornia#2027
-        B, C, H, W = 1, 3, 224, 224
-        sample1 = torch.rand(B, C, H, W, device=device, dtype=dtype)
-        sample2 = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        B, C, H, W = 1, 3, 6, 6
+        sample1 = torch.tensor(
+            [
+                [0.5349, 0.1988, 0.6592, 0.6569, 0.2328, 0.4251],
+                [0.2071, 0.6297, 0.3653, 0.8513, 0.8549, 0.5509],
+                [0.2868, 0.2063, 0.4451, 0.3593, 0.7204, 0.0731],
+                [0.9699, 0.1078, 0.8829, 0.4132, 0.7572, 0.6948],
+                [0.5209, 0.5932, 0.8797, 0.6286, 0.7653, 0.1132],
+                [0.8559, 0.6721, 0.6267, 0.5691, 0.7437, 0.9592],
+            ],
+            dtype=dtype,
+            device=device,
+        )
+        sample2 = torch.tensor(
+            [
+                [0.3887, 0.2214, 0.3742, 0.1953, 0.7405, 0.2529],
+                [0.2332, 0.9314, 0.9575, 0.5575, 0.4134, 0.4355],
+                [0.7369, 0.0331, 0.0914, 0.8994, 0.9936, 0.4703],
+                [0.1049, 0.5137, 0.2674, 0.4990, 0.7447, 0.7213],
+                [0.4414, 0.5550, 0.6361, 0.1081, 0.3305, 0.5196],
+                [0.2147, 0.2816, 0.6679, 0.7878, 0.5070, 0.3055],
+            ],
+            dtype=dtype,
+            device=device,
+        )
+        sample1 = sample1.expand((B, C, H, W))
+        sample2 = sample2.expand((B, C, H, W))
         return_value = {
             "keypoints0": torch.rand((15, 2), device=device, dtype=dtype),
             "keypoints1": torch.rand((15, 2), device=device, dtype=dtype),
@@ -433,8 +456,8 @@ class TestImageStitcher:
             matcher = kornia.feature.LoFTR(None)
             stitcher = kornia.contrib.ImageStitcher(matcher, estimator=estimator).to(device=device, dtype=dtype)
             out = stitcher(sample1, sample2)
-            assert out.shape[:-1] == torch.Size([1, 3, 224])
-            assert out.shape[-1] <= 448
+            assert out.shape[:-1] == torch.Size([1, 3, 6])
+            assert out.shape[-1] <= 12
 
     def test_exception(self, device, dtype):
         B, C, H, W = 1, 3, 224, 224

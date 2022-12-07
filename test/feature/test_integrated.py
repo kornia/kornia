@@ -294,7 +294,6 @@ class TestLocalFeatureMatcher:
     @pytest.mark.skipif(sys.platform == "win32", reason="this test takes so much memory in the CI with Windows")
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_real_gftt(self, device, dtype, data):
-        torch.random.manual_seed(0)
         # This is not unit test, but that is quite good integration test
         matcher = LocalFeatureMatcher(GFTTAffNetHardNet(1000), DescriptorMatcher('snn', 0.8)).to(device, dtype)
         ransac = RANSAC('homography', 1.0, 1024, 5).to(device, dtype)
@@ -302,6 +301,7 @@ class TestLocalFeatureMatcher:
         pts_src = data_dev['pts0']
         pts_dst = data_dev['pts1']
         with torch.no_grad():
+            torch.manual_seed(0)
             out = matcher(data_dev)
         homography, inliers = ransac(out['keypoints0'], out['keypoints1'])
         assert inliers.sum().item() > 50  # we have enough inliers

@@ -42,7 +42,7 @@ class TestHomographyTracker:
         data["image1"] = rescale(data["image1"], 0.5, interpolation='bilinear', align_corners=False)
         with torch.no_grad():
             tracker.set_target(data["image0"])
-            torch.manual_seed(3)  # issue kornia#2027
+            torch.manual_seed(0)  # issue kornia#2027
             homography, success = tracker(data["image1"])
         assert success
         pts_src = data['pts0'].to(device, dtype) / 2.0
@@ -51,7 +51,7 @@ class TestHomographyTracker:
         assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
         # next frame
         with torch.no_grad():
-            torch.manual_seed(3)  # issue kornia#2027
+            torch.manual_seed(0)  # issue kornia#2027
             homography, success = tracker(data["image1"])
         assert success
         assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
