@@ -296,10 +296,10 @@ def KORNIA_CHECK_SHAPE(x, shape: List[str]) -> None:
 
     Example:
         >>> x = torch.rand(2, 3, 4, 4)
-        >>> KORNIA_CHECK_SHAPE(x, ["B","C", "H", "W"])  # implicit
+        >>> KORNIA_CHECK_SHAPE(x, ["B", "C", "H", "W"])  # implicit
 
         >>> x = torch.rand(2, 3, 4, 4)
-        >>> KORNIA_CHECK_SHAPE(x, ["2","3", "H", "W"])  # explicit
+        >>> KORNIA_CHECK_SHAPE(x, ["2", "3", "H", "W"])  # explicit
     """
     # Desired shape here is list and not tuple, because torch.jit
     # does not like variable-length tuples
@@ -307,13 +307,19 @@ def KORNIA_CHECK_SHAPE(x, shape: List[str]) -> None:
 
     if '*' == shape[0]:
         start_idx: int = 1
-        x_shape_to_check = x.shape[-len(shape) + 1 :]
+        shape_to_check = shape[1:]
+        x_shape_to_check = x.shape[-len(shape) + 1:]
     elif '*' == shape[-1]:
         start_idx = 0
+        shape_to_check = shape[:-1]
         x_shape_to_check = x.shape[: len(shape) - 1]
     else:
         start_idx = 0
+        shape_to_check = shape
         x_shape_to_check = x.shape
+
+    if len(x_shape_to_check) != len(shape_to_check):
+        raise TypeError(f"{x} shape must be [{shape}]. Got {x.shape}")
 
     for i in range(start_idx, len(x_shape_to_check)):
         # The voodoo below is because torchscript does not like
