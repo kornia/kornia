@@ -81,12 +81,17 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         self._param_generator = rg.MotionBlurGenerator(kernel_size, angle, direction)
         self.flags = dict(border_type=BorderType.get(border_type), resample=Resample.get(resample))
 
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, Tensor]:
+        params = super().generate_parameters(batch_shape)
+        params["idx"] = torch.randint(batch_shape[0], (1,)).item()
+        return params
+
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         # sample a kernel size
         kernel_size_list: List[int] = params["ksize_factor"].tolist()
-        idx: int = cast(int, torch.randint(len(kernel_size_list), (1,)).item())
+        idx: int = cast(int, params["idx"])
         return motion_blur(
             input,
             kernel_size=kernel_size_list[idx],
