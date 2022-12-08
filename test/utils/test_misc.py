@@ -1,6 +1,7 @@
-import kornia
 import pytest
 import torch
+
+import kornia
 
 
 @pytest.mark.parametrize(

@@ -7,19 +7,18 @@ from kornia.core import Tensor, tensor
 from kornia.testing import KORNIA_CHECK_SHAPE
 from kornia.utils.misc import reduce_first_dims
 
+_RGB2YUV_WEIGHTS = tensor(
+    [
+        [[[0.29900]], [[0.58700]], [[0.11400]]],
+        [[[-0.1470]], [[-0.2890]], [[0.43600]]],
+        [[[0.61500]], [[-0.5150]], [[-0.1000]]],
+    ]
+)  # 3x3x1x1
 
-_RGB2YUV_WEIGHTS = tensor([
-    [[[0.29900]], [[0.58700]], [[0.11400]]],
-    [[[-0.1470]], [[-0.2890]], [[0.43600]]],
-    [[[0.61500]], [[-0.5150]], [[-0.1000]]],
-])  # 3x3x1x1
 
-
-_YUV2RGB_WEIGHTS = tensor([
-    [[[1.0]], [[0.0000]], [[1.1400]]],
-    [[[1.0]], [[-0.396]], [[-0.581]]],
-    [[[1.0]], [[2.0290]], [[0.0000]]],
-])  # 3x3x1x1
+_YUV2RGB_WEIGHTS = tensor(
+    [[[[1.0]], [[0.0000]], [[1.1400]]], [[[1.0]], [[-0.396]], [[-0.581]]], [[[1.0]], [[2.0290]], [[0.0000]]]]
+)  # 3x3x1x1
 
 
 def rgb_to_yuv(rgb: Tensor) -> Tensor:

@@ -1,14 +1,13 @@
-import kornia.color as color
-import kornia.color.covolutional as covolutional_color
 import pytest
 import torch
-
-from kornia.testing import BaseTester
 from torch.autograd import gradcheck
+
+import kornia.color as color
+import kornia.color.covolutional as covolutional_color
+from kornia.testing import BaseTester
 
 
 class TestRgbToXyz(BaseTester):
-
     def test_smoke(self, device, dtype):
         B, C, H, W = 2, 3, 4, 5
         img = torch.rand(B, C, H, W, device=device, dtype=dtype)

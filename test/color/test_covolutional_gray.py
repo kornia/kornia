@@ -1,10 +1,10 @@
 import pytest
 import torch
+from torch.autograd import gradcheck
+
 import kornia.color as color
 import kornia.color.covolutional as covolutional_color
-
 from kornia.testing import BaseTester, assert_close
-from torch.autograd import gradcheck
 
 
 class TestGrayscaleToRgb(BaseTester):
@@ -35,7 +35,7 @@ class TestGrayscaleToRgb(BaseTester):
             assert covolutional_color.grayscale_to_rgb(img)
 
     def test_color(self, device, dtype):
-        data = torch.rand(2, 1, 5, 5, device=device, dtype=dtype,)
+        data = torch.rand(2, 1, 5, 5, device=device, dtype=dtype)
         assert_close(color.grayscale_to_rgb(data), covolutional_color.grayscale_to_rgb(data))
 
     @pytest.mark.grad
@@ -89,7 +89,7 @@ class TestRgbToGrayscale(BaseTester):
             assert covolutional_color.rgb_to_grayscale(img, rgb_weights=rgb_weights)
 
     def test_color(self, device, dtype):
-        data = torch.rand(2, 3, 5, 5, device=device, dtype=dtype,)
+        data = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)
         assert_close(color.rgb_to_grayscale(data), covolutional_color.rgb_to_grayscale(data))
 
     def test_custom_rgb_weights(self, device, dtype):
@@ -138,7 +138,7 @@ class TestBgrToGrayscale(BaseTester):
             assert covolutional_color.bgr_to_grayscale(img)
 
     def test_color(self, device, dtype):
-        data = torch.rand(2, 3, 5, 5, device=device, dtype=dtype,)
+        data = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)
         assert_close(color.bgr_to_grayscale(data), covolutional_color.bgr_to_grayscale(data))
 
     @pytest.mark.grad

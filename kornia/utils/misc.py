@@ -1,7 +1,7 @@
-import torch
-
-from torch import Size, Tensor
 from typing import Tuple, Union
+
+import torch
+from torch import Size, Tensor
 
 
 def eye_like(n: int, input: Tensor, shared_memory: bool = False) -> Tensor:
