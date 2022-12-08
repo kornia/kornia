@@ -1,6 +1,6 @@
 # kornia.geometry.se2 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se2.py
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, overload
 
 from kornia.core import Module, Parameter, Tensor, concatenate, pad, rand, stack, tensor, where
 from kornia.geometry.liegroup._utils import check_se2_r_t_shape, check_v_shape
@@ -58,7 +58,15 @@ class Se2(Module):
     def __getitem__(self, idx) -> 'Se2':
         return Se2(self._rotation[idx], self._translation[idx][None])
 
-    def __mul__(self, right: "Se2") -> Union['Se2', Tensor]:
+    @overload
+    def __mul__(self, right: 'Se2') -> 'Se2':
+        ...
+
+    @overload
+    def __mul__(self, right: Tensor) -> Tensor:
+        ...
+
+    def __mul__(self, right):
         """Compose two Se2 transformations.
 
         Args:
@@ -67,21 +75,20 @@ class Se2(Module):
         Return:
             The resulting Se2 transformation.
         """
-        out: Union['Se2', Tensor]
+        so2 = self.so2
+        t = self.t
         if isinstance(right, Se2):
             KORNIA_CHECK_TYPE(right, Se2)
-            so2 = self.so2
-            r: So2 = so2 * right.so2
-            t: Tensor = self.t + so2 * right.t
-            out = Se2(r, t)
+            _r = so2 * right.so2
+            _t = t + so2 * right.t
+            return Se2(_r, _t)
         elif isinstance(right, Tensor):
             KORNIA_CHECK_TYPE(right, Tensor)
             # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
-            check_se2_r_t_shape(self.so2, right)
-            out = self.so2 * right + self.t
+            check_se2_r_t_shape(so2, right)
+            return so2 * right + t
         else:
             raise TypeError(f"Unsupported type: {type(right)}")
-        return out
 
     @property
     def so2(self) -> So2:
