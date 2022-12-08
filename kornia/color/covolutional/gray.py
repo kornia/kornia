@@ -1,9 +1,9 @@
 from typing import Optional
 
 import torch
-import torch.nn.functional as TF
+import torch.nn.functional as F
 
-from kornia.core import Tensor
+from kornia.core import Tensor, tensor
 from kornia.testing import KORNIA_CHECK_SHAPE
 from kornia.utils.misc import reduce_first_dims
 
@@ -26,9 +26,9 @@ def grayscale_to_rgb(gray: Tensor) -> Tensor:
         >>> rgb = grayscale_to_rgb(gray) # 2x3x4x5
     """
     KORNIA_CHECK_SHAPE(gray, ["*", "1", "H", "W"])
-    gray, shape = reduce_first_dims(gray, keep_last_dims=3)
-    weights = gray.new_ones(3, 1, 1, 1)
-    rgb = TF.conv2d(gray, weights, bias=None)
+    gray, shape = reduce_first_dims(gray, keep_last_dims=3, return_shape=True)
+    weights = gray.new_ones((3, 1, 1, 1))
+    rgb = F.conv2d(gray, weights, bias=None)
     rgb = rgb.view(*shape[:-3], 3, shape[-2], shape[-1])
     return rgb
 
@@ -56,15 +56,15 @@ def rgb_to_grayscale(rgb: Tensor, rgb_weights: Optional[Tensor] = None) -> Tenso
         >>> gray = rgb_to_grayscale(rgb) # 2x1x4x5
     """
     KORNIA_CHECK_SHAPE(rgb, ["*", "3", "H", "W"])
-    rgb, shape = reduce_first_dims(rgb, keep_last_dims=3)
+    rgb, shape = reduce_first_dims(rgb, keep_last_dims=3, return_shape=True)
 
     if rgb_weights is None:
         # 8 bit images
         if rgb.dtype == torch.uint8:
-            rgb_weights = torch.tensor([76, 150, 29], device=rgb.device, dtype=torch.uint8)
+            rgb_weights = tensor([76, 150, 29], device=rgb.device, dtype=torch.uint8)
         # floating point images
         elif rgb.dtype in (torch.float16, torch.float32, torch.float64):
-            rgb_weights = torch.tensor([0.299, 0.587, 0.114], device=rgb.device, dtype=rgb.dtype)
+            rgb_weights = tensor([0.299, 0.587, 0.114], device=rgb.device, dtype=rgb.dtype)
         else:
             raise TypeError(f"Unknown data type: {rgb.dtype}")
     else:
@@ -72,11 +72,11 @@ def rgb_to_grayscale(rgb: Tensor, rgb_weights: Optional[Tensor] = None) -> Tenso
         rgb_weights = rgb_weights.to(rgb)
 
     rgb_weights = rgb_weights.view(1, 3, 1, 1)
-    gray = TF.conv2d(rgb, rgb_weights, bias=None)
+    gray = F.conv2d(rgb, rgb_weights, bias=None)
     return gray.view(*shape[:-3], 1, shape[-2], shape[-1])
 
 
-def bgr_to_grayscale(bgr: torch.Tensor) -> torch.Tensor:
+def bgr_to_grayscale(bgr: Tensor) -> Tensor:
     r"""Convert a BGR image to grayscale.
 
     The image data is assumed to be in the range of (0, 1). First flips to RGB, then converts.
@@ -92,17 +92,17 @@ def bgr_to_grayscale(bgr: torch.Tensor) -> torch.Tensor:
         >>> gray = bgr_to_grayscale(bgr) # 2x1x4x5
     """
     KORNIA_CHECK_SHAPE(bgr, ["*", "3", "H", "W"])
-    bgr, shape = reduce_first_dims(bgr, keep_last_dims=3)
+    bgr, shape = reduce_first_dims(bgr, keep_last_dims=3, return_shape=True)
 
     # 8 bit images
     if bgr.dtype == torch.uint8:
-        bgr_weights = torch.tensor([29, 150, 76], device=bgr.device, dtype=torch.uint8)
+        bgr_weights = tensor([29, 150, 76], device=bgr.device, dtype=torch.uint8)
     # floating point images
     elif bgr.dtype in (torch.float16, torch.float32, torch.float64):
-        bgr_weights = torch.tensor([0.114, 0.587, 0.299], device=bgr.device, dtype=bgr.dtype)
+        bgr_weights = tensor([0.114, 0.587, 0.299], device=bgr.device, dtype=bgr.dtype)
     else:
         raise TypeError(f"Unknown data type: {bgr.dtype}")
 
     bgr_weights = bgr_weights.view(1, 3, 1, 1)
-    gray = TF.conv2d(bgr, bgr_weights, bias=None)
+    gray = F.conv2d(bgr, bgr_weights, bias=None)
     return gray.view(*shape[:-3], 1, shape[-2], shape[-1])

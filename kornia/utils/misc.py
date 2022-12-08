@@ -1,7 +1,7 @@
 import torch
 
 from torch import Size, Tensor
-from typing import Optional, Tuple
+from typing import Tuple, Union
 
 
 def eye_like(n: int, input: Tensor, shared_memory: bool = False) -> Tensor:
@@ -56,23 +56,29 @@ def vec_like(n: int, tensor: Tensor, shared_memory: bool = False) -> Tensor:
     return vec[None].expand(tensor.shape[0], n, 1) if shared_memory else vec[None].repeat(tensor.shape[0], 1, 1)
 
 
-def reduce_first_dims(x: Tensor, keep_last_dims: int = None) -> Tuple[Optional[Tensor], Optional[Size]]:
+def reduce_first_dims(x: Tensor, keep_last_dims: int, return_shape: bool = True) -> Union[Tensor, Tuple[Tensor, Size]]:
     """View of a tensor by keeping the last N dims the same, and squeezing all prior dims to a single leading dim.
 
     Args:
-        x: torch.Tensor.
+        x: Tensor.
         keep_last_dims: number of last N dims to keep unchanged.
+        return_shape: whether or not to return the tensor's original shape.
 
     Returns:
         A view of the input tensor, with (keep_last_dims + 1) dims:
             keep_last_dims are kept the same, all prior dims are squeezed to the new first dim.
         In addition, the method returns the original shape of the input tensor.
-        The original tensor can be restored as follow:
+
+    Example:
         >>> x = torch.rand(2, 4, 8, 16, 32)
-        >>> y, shape = reduce_first_dims(x, keep_last_dims=3)
-        >>> z = y.view(shape)
+        >>> y, shape = reduce_first_dims(x, keep_last_dims=3, return_shape=True)
+        >>> z = y.view(shape)  # restoring the original shape
         >>> assert torch.equal(x, z)
         >>> y.shape
         torch.Size([8, 8, 16, 32])
     """
-    return x.view(-1, *x.shape[-keep_last_dims:]), x.shape
+    shape = x.shape
+    x_view = x.view(-1, *shape[-keep_last_dims:])
+    if return_shape:
+        return x_view, shape
+    return x_view
