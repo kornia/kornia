@@ -81,7 +81,7 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         self._param_generator = rg.MotionBlurGenerator(kernel_size, angle, direction)
         self.flags = dict(border_type=BorderType.get(border_type), resample=Resample.get(resample))
 
-    def generate_parameters(self, batch_shape: torch.Size):
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, Tensor]:
         params = super().generate_parameters(batch_shape)
         params["idx"] = tensor([0]) if batch_shape[0] == 0 else torch.randint(batch_shape[0], (1,))
         return params
