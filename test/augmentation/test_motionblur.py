@@ -70,6 +70,7 @@ class TestRandomMotionBlur:
             'angle_factor': torch.tensor([30.0]),
             'direction_factor': torch.tensor([-0.5]),
             'border_type': torch.tensor([0]),
+            'idx': torch.tensor([0]),
         }
         assert gradcheck(
             RandomMotionBlur(kernel_size=3, angle=(10, 30), direction=(-0.5, 0.5), p=1.0),
@@ -138,6 +139,7 @@ class TestRandomMotionBlur3D:
             'angle_factor': torch.tensor([[30.0, 30.0, 30.0]]),
             'direction_factor': torch.tensor([-0.5]),
             'border_type': torch.tensor([0]),
+            'idx': torch.tensor([0]),
         }
         assert gradcheck(
             RandomMotionBlur3D(kernel_size=3, angle=(10, 30), direction=(-0.5, 0.5), p=1.0),

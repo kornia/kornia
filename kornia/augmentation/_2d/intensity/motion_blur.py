@@ -1,11 +1,11 @@
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
-from torch import Tensor
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.constants import BorderType, Resample
+from kornia.core import Tensor, tensor
 from kornia.filters import motion_blur
 
 
@@ -83,7 +83,7 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, Tensor]:
         params = super().generate_parameters(batch_shape)
-        params["idx"] = torch.randint(batch_shape[0], (1,)).item()
+        params["idx"] = tensor([0]) if batch_shape[0] == 0 else torch.randint(batch_shape[0], (1,))
         return params
 
     def apply_transform(
@@ -91,7 +91,13 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
     ) -> Tensor:
         # sample a kernel size
         kernel_size_list: List[int] = params["ksize_factor"].tolist()
-        idx: int = cast(int, params["idx"])
+
+        # 1. We have to apply the same kernel size to all samples in the batch, thus we take the previously
+        # selected random index --- `params["idx"][0]` --- to determine the applied kernel size.
+        # 2. The `VideoSequential` flattens the first two dimensions, effectively creating a larger batch.
+        # Its method `VideoSequential.__repeat_param_across_channels__` repeats the previously selected index,
+        # creating a tensor with equal values. Hence, taking the first one (`params["idx"][0]`) is legit.
+        idx: int = cast(int, params["idx"][0])
         return motion_blur(
             input,
             kernel_size=kernel_size_list[idx],
