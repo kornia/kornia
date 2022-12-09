@@ -203,6 +203,7 @@ class Se2(Module):
         """
         t: Tensor = tensor([0.0, 0.0], device=device, dtype=dtype)
         if batch_size is not None:
+            KORNIA_CHECK(batch_size >= 1, msg="batch_size must be positive")
             t = t.repeat(batch_size, 1)
         return cls(So2.identity(batch_size, device, dtype), t)
 
