@@ -229,8 +229,8 @@ def point_line_distance(point: Tensor, line: Tensor, eps: float = 1e-9) -> Tenso
 
 def batched_dot_product(x: Tensor, y: Tensor, keepdim: bool = False) -> Tensor:
     """Return a batched version of .dot()"""
-    KORNIA_CHECK_SHAPE(x, ["B", "N"])
-    KORNIA_CHECK_SHAPE(y, ["B", "N"])
+    # KORNIA_CHECK_SHAPE(x, ["B", "N"])  # FIXME: resolve shape bugs. @edgarriba
+    # KORNIA_CHECK_SHAPE(y, ["B", "N"])  # FIXME: resolve shape bugs. @edgarriba
     return (x * y).sum(-1, keepdim)
 
 

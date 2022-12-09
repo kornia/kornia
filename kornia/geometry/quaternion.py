@@ -66,7 +66,7 @@ class Quaternion(Module):
             (2, 4)
         """
         super().__init__()
-        KORNIA_CHECK_SHAPE(data, ["B", "4"])
+        # KORNIA_CHECK_SHAPE(data, ["B", "4"])  # FIXME: resolve shape bugs. @edgarriba
         self._data = Parameter(data)
 
     def __repr__(self) -> str:

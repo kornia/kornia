@@ -64,7 +64,7 @@ class So3(Module):
         if isinstance(right, So3):
             return So3(self.q * right.q)
         elif isinstance(right, Tensor):
-            KORNIA_CHECK_SHAPE(right, ["B", "3"])
+            # KORNIA_CHECK_SHAPE(right, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
             w = zeros(*right.shape[:-1], 1, device=right.device, dtype=right.dtype)
             quat = Quaternion(concatenate((w, right), -1))
             return (self.q * quat * self.q.conj()).vec
@@ -93,7 +93,7 @@ class So3(Module):
             tensor([[1., 0., 0., 0.],
                     [1., 0., 0., 0.]], requires_grad=True)
         """
-        KORNIA_CHECK_SHAPE(v, ["B", "3"])
+        # KORNIA_CHECK_SHAPE(v, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
         theta = batched_dot_product(v, v).sqrt()[..., None]
         theta_nonzeros = theta != 0.0
         theta_half = 0.5 * theta
@@ -139,7 +139,7 @@ class So3(Module):
                      [ 1.,  0., -1.],
                      [-1.,  1.,  0.]]])
         """
-        KORNIA_CHECK_SHAPE(v, ["B", "3"])
+        # KORNIA_CHECK_SHAPE(v, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
         a, b, c = v[..., 0], v[..., 1], v[..., 2]
         z = zeros_like(a)
         row0 = stack((z, -c, b), -1)
@@ -165,7 +165,7 @@ class So3(Module):
             >>> So3.vee(omega)
             tensor([[1., 1., 1.]])
         """
-        KORNIA_CHECK_SHAPE(omega, ["B", "3", "3"])
+        # KORNIA_CHECK_SHAPE(omega, ["B", "3", "3"])  # FIXME: resolve shape bugs. @edgarriba
         a, b, c = omega[..., 2, 1], omega[..., 0, 2], omega[..., 1, 0]
         return stack((a, b, c), -1)
 
