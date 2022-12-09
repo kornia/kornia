@@ -170,7 +170,7 @@ class TestQuaternion:
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_norm_shape(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size, device, dtype)
-        expected_shape = (1, ) if batch_size is None else (batch_size,)
+        expected_shape = (1,) if batch_size is None else (batch_size,)
         self.assert_close(tuple(q.norm().shape), expected_shape)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
