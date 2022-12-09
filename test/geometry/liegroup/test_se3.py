@@ -14,7 +14,7 @@ class TestSe3(BaseTester):
         return Se3(So3(q), t)
 
     def _make_rand_data(self, device, dtype, batch_size, dims):
-        shape = [] if batch_size is None else [batch_size]
+        shape = [1] if batch_size is None else [batch_size]
         return torch.rand(shape + [dims], device=device, dtype=dtype)
 
     def test_smoke(self, device, dtype):
@@ -73,8 +73,8 @@ class TestSe3(BaseTester):
         s1s2 = s1 * s2
         s2s2inv = s2 * s2.inverse()
         zeros_vec = torch.zeros(3, device=device, dtype=dtype)
-        if batch_size is not None:
-            zeros_vec = zeros_vec.repeat(batch_size, 1)
+        batch_size = batch_size if batch_size is not None else 1
+        zeros_vec = zeros_vec.repeat(batch_size, 1)
         so3_expected = So3.identity(batch_size, device, dtype)
         self.assert_close(s1s2.r.q.data, s2.r.q.data)
         self.assert_close(s1s2.t, s2.t)
@@ -98,9 +98,9 @@ class TestSe3(BaseTester):
     def test_exp(self, device, dtype, batch_size):
         omega = torch.zeros(3, device=device, dtype=dtype)
         t = torch.rand(3, device=device, dtype=dtype)
-        if batch_size is not None:
-            omega = omega.repeat(batch_size, 1)
-            t = t.repeat(batch_size, 1)
+        batch_size = batch_size if batch_size is not None else 1
+        omega = omega.repeat(batch_size, 1)
+        t = t.repeat(batch_size, 1)
         s = Se3.exp(torch.cat((t, omega), -1))
         quat_expected = Quaternion.identity(batch_size, device, dtype)
         self.assert_close(s.r.q.data, quat_expected.data)
@@ -112,8 +112,8 @@ class TestSe3(BaseTester):
         t = self._make_rand_data(device, dtype, batch_size, dims=3)
         s = Se3(So3(q), t)
         zero_vec = torch.zeros(3, device=device, dtype=dtype)
-        if batch_size is not None:
-            zero_vec = zero_vec.repeat(batch_size, 1)
+        batch_size = batch_size if batch_size is not None else 1
+        zero_vec = zero_vec.repeat(batch_size, 1)
         self.assert_close(s.log(), torch.cat((t, zero_vec), -1))
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))

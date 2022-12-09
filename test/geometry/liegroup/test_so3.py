@@ -5,11 +5,12 @@ from kornia.geometry.conversions import euler_from_quaternion
 from kornia.geometry.liegroup import So3
 from kornia.geometry.quaternion import Quaternion
 from kornia.testing import BaseTester
+from kornia.utils.misc import eye_like
 
 
 class TestSo3(BaseTester):
     def _make_rand_data(self, device, dtype, batch_size, dims):
-        shape = [] if batch_size is None else [batch_size]
+        shape = [1] if batch_size is None else [batch_size]
         return torch.rand(shape + [dims], device=device, dtype=dtype)
 
     def test_smoke(self, device, dtype):
@@ -77,13 +78,10 @@ class TestSo3(BaseTester):
         s5 = s2.inverse()
         s6 = s3.inverse()
 
-        ones_vec = torch.tensor(1.0, device=device, dtype=dtype)
+        ones_vec = torch.tensor([1.0], device=device, dtype=dtype)
         if batch_size is None:
             self.assert_close(s1.q.norm(), ones_vec)
             return
-
-        if batch_size is not None:
-            ones_vec = ones_vec[None]
 
         for i in range(batch_size):
             self.assert_close(s1[i].q.norm(), ones_vec)
@@ -119,20 +117,18 @@ class TestSo3(BaseTester):
     def test_hat(self, device, dtype, batch_size):
         v = torch.tensor([1, 2, 3], device=device, dtype=dtype)
         expected = v
-        if batch_size is not None:
-            v = v.repeat(batch_size, 1)
+        batch_size = batch_size if batch_size is not None else 1
+        v = v.repeat(batch_size, 1)
         hat = So3.hat(v)
-        if batch_size is None:
-            hat = hat[None]
         self.assert_close(hat.unique()[-3:], expected)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_vee(self, device, dtype, batch_size):
         omega = torch.tensor([[1, 2, 3], [4, 5, 6], [7, 8, 9]], device=device, dtype=dtype)
         expected = torch.tensor([8, 3, 4], device=device, dtype=dtype)
-        if batch_size is not None:
-            omega = omega.repeat(batch_size, 1, 1)
-            expected = expected.repeat(batch_size, 1)
+        batch_size = batch_size if batch_size is not None else 1
+        omega = omega.repeat(batch_size, 1, 1)
+        expected = expected.repeat(batch_size, 1)
         self.assert_close(So3.vee(omega), expected)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
@@ -146,9 +142,6 @@ class TestSo3(BaseTester):
     def test_matrix(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size, device, dtype)
         r = So3(q).matrix()
-        if batch_size is None:
-            q = Quaternion(q.data[None])
-            r = r[None]
         for i in range(r.shape[0]):
             q1 = q[i]
             r1 = r[i, :, :]
@@ -166,15 +159,7 @@ class TestSo3(BaseTester):
         a_R_b = So3(q).inverse().matrix()
         a_R_a = (So3(q) * So3(q).inverse()).matrix()
 
-        eye_mat = torch.eye(3, device=device, dtype=dtype)
-        if batch_size is None:
-            eye_mat = eye_mat[None]
-            a_R_a = a_R_a[None]
-            a_R_b = a_R_b[None]
-            b_R_a = b_R_a[None]
-        if batch_size is not None:
-            eye_mat = eye_mat.repeat(batch_size, 1, 1)
-
+        eye_mat = eye_like(3, q.data)
         self.assert_close(a_R_a, eye_mat)
 
         for i in range(eye_mat.shape[0]):

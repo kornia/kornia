@@ -60,6 +60,7 @@ class Quaternion(Module):
             data: tensor containing the quaternion data with the sape of :math:`(B, 4)`.
 
         Example:
+            >>> import torch
             >>> data = torch.rand(2, 4)
             >>> q = Quaternion(data)
             >>> q.shape
@@ -81,7 +82,7 @@ class Quaternion(Module):
         Example:
             >>> q = Quaternion.identity()
             >>> -q.data
-            tensor([-1., -0., -0., -0.], grad_fn=<NegBackward0>)
+            tensor([[-1., -0., -0., -0.]], grad_fn=<NegBackward0>)
         """
         return Quaternion(-self.data)
 
@@ -93,11 +94,11 @@ class Quaternion(Module):
 
         Example:
             >>> q1 = Quaternion.identity()
-            >>> q2 = Quaternion(tensor([2., 0., 1., 1.]))
+            >>> q2 = Quaternion(tensor([[2., 0., 1., 1.]]))
             >>> q3 = q1 + q2
             >>> q3.data
             Parameter containing:
-            tensor([3., 0., 1., 1.], requires_grad=True)
+            tensor([[3., 0., 1., 1.]], requires_grad=True)
         """
         KORNIA_CHECK_TYPE(right, Quaternion)
         return Quaternion(self.data + right.data)
@@ -109,12 +110,12 @@ class Quaternion(Module):
             right: the quaternion to subtract.
 
         Example:
-            >>> q1 = Quaternion(tensor([2., 0., 1., 1.]))
+            >>> q1 = Quaternion(tensor([[2., 0., 1., 1.]]))
             >>> q2 = Quaternion.identity()
             >>> q3 = q1 - q2
             >>> q3.data
             Parameter containing:
-            tensor([1., 0., 1., 1.], requires_grad=True)
+            tensor([[1., 0., 1., 1.]], requires_grad=True)
         """
         KORNIA_CHECK_TYPE(right, Quaternion)
         return Quaternion(self.data - right.data)
@@ -143,7 +144,7 @@ class Quaternion(Module):
             t: raised exponent.
 
         Example:
-            >>> q = Quaternion(tensor([1., .5, 0., 0.]))
+            >>> q = Quaternion(tensor([[1., .5, 0., 0.]]))
             >>> q_pow = q**2
         """
         theta = self.polar_angle[..., None]
@@ -224,18 +225,9 @@ class Quaternion(Module):
         Example:
             >>> q = Quaternion.identity()
             >>> q.polar_angle
-            tensor(0., grad_fn=<AcosBackward0>)
+            tensor([0.], grad_fn=<AcosBackward0>)
         """
         return (self.scalar / self.norm()).acos()
-
-    def view(self, *shape) -> "Quaternion":
-        return Quaternion(self.data.view(*shape))
-
-    def repeat(self, *shape) -> "Quaternion":
-        return Quaternion(self.data.repeat(*shape))
-
-    def expand(self, *shape) -> "Quaternion":
-        return Quaternion(self.data.expand(*shape))
 
     def matrix(self) -> Tensor:
         """Convert the quaternion to a rotation matrix of shape :math:`(B, 3, 3)`.
@@ -244,9 +236,9 @@ class Quaternion(Module):
             >>> q = Quaternion.identity()
             >>> m = q.matrix()
             >>> m
-            tensor([[1., 0., 0.],
-                    [0., 1., 0.],
-                    [0., 0., 1.]], grad_fn=<SqueezeBackward1>)
+            tensor([[[1., 0., 0.],
+                     [0., 1., 0.],
+                     [0., 0., 1.]]], grad_fn=<ViewBackward0>)
         """
         return quaternion_to_rotation_matrix(self.data, order=QuaternionCoeffOrder.WXYZ)
 
@@ -258,6 +250,7 @@ class Quaternion(Module):
             matrix: the rotation matrix to convert of shape :math:`(B, 3, 3)`.
 
         Example:
+            >>> import torch
             >>> m = torch.eye(3)[None]
             >>> q = Quaternion.from_matrix(m)
             >>> q.data
@@ -274,6 +267,7 @@ class Quaternion(Module):
             axis_angle: rotation vector of shape :math:`(B, 3)`.
 
         Example:
+            >>> import torch
             >>> axis_angle = torch.tensor([[1., 0., 0.]])
             >>> q = Quaternion.from_axis_angle(axis_angle)
             >>> q.data
@@ -293,7 +287,7 @@ class Quaternion(Module):
             >>> q = Quaternion.identity()
             >>> q.data
             Parameter containing:
-            tensor([1., 0., 0., 0.], requires_grad=True)
+            tensor([[1., 0., 0., 0.]], requires_grad=True)
         """
         data: Tensor = tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
         batch_size = batch_size if batch_size is not None else 1
@@ -314,7 +308,7 @@ class Quaternion(Module):
             >>> q = Quaternion.from_coeffs(1., 0., 0., 0.)
             >>> q.data
             Parameter containing:
-            tensor([1., 0., 0., 0.], requires_grad=True)
+            tensor([[1., 0., 0., 0.]], requires_grad=True)
         """
         return cls(tensor([[w, x, y, z]]))
 
@@ -352,8 +346,9 @@ class Quaternion(Module):
             t: interpolation ratio, range [0-1]
 
         Example:
+            >>> import torch
             >>> q0 = Quaternion.identity()
-            >>> q1 = Quaternion(torch.tensor([1., .5, 0., 0.]))
+            >>> q1 = Quaternion(torch.tensor([[1., .5, 0., 0.]]))
             >>> q2 = q0.slerp(q1, .3)
         """
         KORNIA_CHECK_TYPE(q1, Quaternion)

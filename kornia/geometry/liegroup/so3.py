@@ -22,7 +22,7 @@ class So3(Module):
         >>> s = So3(q)
         >>> s.q
         Parameter containing:
-        tensor([1., 0., 0., 0.], requires_grad=True)
+        tensor([[1., 0., 0., 0.]], requires_grad=True)
     """
 
     def __init__(self, q: Quaternion) -> None:
@@ -34,6 +34,7 @@ class So3(Module):
             data: Quaternion with the shape of :math:`(B, 4)`.
 
         Example:
+            >>> import torch
             >>> data = torch.ones((2, 4))
             >>> q = Quaternion(data)
             >>> So3(q)
@@ -86,6 +87,7 @@ class So3(Module):
             v: vector of shape :math:`(B,3)`.
 
         Example:
+            >>> import torch
             >>> v = torch.zeros((2, 3))
             >>> s = So3.identity().exp(v)
             >>> s
@@ -109,6 +111,7 @@ class So3(Module):
         """Converts elements of lie group  to elements of lie algebra.
 
         Example:
+            >>> import torch
             >>> data = torch.ones((2, 4))
             >>> q = Quaternion(data)
             >>> So3(q).log()
@@ -132,6 +135,7 @@ class So3(Module):
             v: vector of shape :math:`(B,3)`.
 
         Example:
+            >>> import torch
             >>> v = torch.ones((1,3))
             >>> m = So3.hat(v)
             >>> m
@@ -160,6 +164,7 @@ class So3(Module):
             omega: 3x3-matrix representing lie algebra.
 
         Example:
+            >>> import torch
             >>> v = torch.ones((1,3))
             >>> omega = So3.hat(v)
             >>> So3.vee(omega)
@@ -180,12 +185,13 @@ class So3(Module):
             2xz-2yw & 2yz+2xw & 1-2x^2-2y^2\end{bmatrix}
 
         Example:
+            >>> import torch
             >>> s = So3.identity()
             >>> m = s.matrix()
             >>> m
-            tensor([[1., 0., 0.],
-                    [0., 1., 0.],
-                    [0., 0., 1.]], grad_fn=<StackBackward0>)
+            tensor([[[1., 0., 0.],
+                     [0., 1., 0.],
+                     [0., 0., 1.]]], grad_fn=<StackBackward0>)
         """
         w = self.q.w[..., None]
         x, y, z = self.q.x[..., None], self.q.y[..., None], self.q.z[..., None]
@@ -211,11 +217,12 @@ class So3(Module):
             matrix: the rotation matrix to convert of shape :math:`(B,3,3)`.
 
         Example:
-            >>> m = torch.eye(3)
+            >>> import torch
+            >>> m = torch.eye(3)[None]
             >>> s = So3.from_matrix(m)
             >>> s
             Parameter containing:
-            tensor([1., 0., 0., 0.], requires_grad=True)
+            tensor([[1., 0., 0., 0.]], requires_grad=True)
         """
         return cls(Quaternion.from_matrix(matrix))
 
@@ -230,7 +237,7 @@ class So3(Module):
             >>> s = So3.identity()
             >>> s
             Parameter containing:
-            tensor([1., 0., 0., 0.], requires_grad=True)
+            tensor([[1., 0., 0., 0.]], requires_grad=True)
 
             >>> s = So3.identity(batch_size=2)
             >>> s
@@ -247,7 +254,7 @@ class So3(Module):
             >>> s = So3.identity()
             >>> s.inverse()
             Parameter containing:
-            tensor([1., -0., -0., -0.], requires_grad=True)
+            tensor([[1., -0., -0., -0.]], requires_grad=True)
         """
         return So3(self.q.conj())
 
@@ -300,8 +307,8 @@ class So3(Module):
         Example:
             >>> s = So3.identity()
             >>> s.adjoint()
-            tensor([[1., 0., 0.],
-                    [0., 1., 0.],
-                    [0., 0., 1.]], grad_fn=<StackBackward0>)
+            tensor([[[1., 0., 0.],
+                     [0., 1., 0.],
+                     [0., 0., 1.]]], grad_fn=<StackBackward0>)
         """
         return self.matrix()
