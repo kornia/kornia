@@ -83,7 +83,7 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
 
     def generate_parameters(self, batch_shape: torch.Size):
         params = super().generate_parameters(batch_shape)
-        params["idx"] = tensor(0) if batch_shape[0] == 0 else torch.randint(batch_shape[0], (1,))
+        params["idx"] = tensor([0]) if batch_shape[0] == 0 else torch.randint(batch_shape[0], (1,))
         return params
 
     def apply_transform(
